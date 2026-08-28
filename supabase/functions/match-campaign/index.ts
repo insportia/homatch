@@ -300,8 +300,18 @@ class DataForSEOProvider{
   private auth():string{return`Basic ${btoa(`${this.login}:${this.password}`)}` ;}
   async validateCredentials():Promise<{ok:boolean;error?:string}>{
     if(!this.isConfigured())return{ok:false,error:'NOT_CONFIGURED'};
-    try{const r=await fetch('https://api.dataforseo.com/v3/appendices/user_data',{headers:{Authorization:this.auth()},signal:AbortSignal.timeout(8_000)});
-      if(r.ok)return{ok:true};const b=await r.text().catch(()=>'');return{ok:false,error:`HTTP ${r.status}: ${b.slice(0,100)}`};}
+    // Skip the /appendices/user_data ping (returns 404 on some plans).
+    // Instead do a minimal live SERP call with a 1-result depth; a 200 with
+    // tasks array confirms valid credentials; non-2xx means bad creds.
+    try{
+      const probe=[{keyword:'test',language_code:'en',location_code:2840,device:'desktop',depth:1,tag:'cred_probe'}];
+      const r=await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced',
+        {method:'POST',headers:{Authorization:this.auth(),'Content-Type':'application/json'},
+         body:JSON.stringify(probe),signal:AbortSignal.timeout(10_000)});
+      if(r.ok){const j=await r.json().catch(()=>({}));
+        if(Array.isArray(j.tasks)&&j.tasks.length>0)return{ok:true};
+        return{ok:false,error:`Unexpected response: ${JSON.stringify(j).slice(0,120)}`};}
+      const b=await r.text().catch(()=>'');return{ok:false,error:`HTTP ${r.status}: ${b.slice(0,100)}`};}
     catch(e:unknown){return{ok:false,error:e instanceof Error?e.message:String(e)};}
   }
   async searchLive(queries:SearchQuery[]):Promise<SearchProviderResponse>{
@@ -542,11 +552,26 @@ function cheapFilter(text:string):FilterResult{
   if(hasSupply&&!hasBuyer)return{pass:false,reason:'supply_ad'};
   return{pass:true};
 }
+// Maps common full country names (as returned by OpenAI) → ISO-2 codes
+const COUNTRY_NAME_TO_ISO:Record<string,string>={
+  'GEORGIA':'GE','TURKEY':'TR','ISRAEL':'IL','UAE':'AE','UNITED ARAB EMIRATES':'AE',
+  'RUSSIA':'RU','RUSSIAN FEDERATION':'RU','UNITED STATES':'US','USA':'US',
+  'GERMANY':'DE','FRANCE':'FR','SPAIN':'ES','ITALY':'IT','UNITED KINGDOM':'GB','UK':'GB',
+  'ARMENIA':'AM','AZERBAIJAN':'AZ','KAZAKHSTAN':'KZ','UKRAINE':'UA','POLAND':'PL',
+};
+function normaliseCountryToISO(raw:string):string{
+  const upper=raw.toUpperCase().trim();
+  if(upper.length===2)return upper; // already ISO-2
+  return COUNTRY_NAME_TO_ISO[upper]??upper;
+}
+
 const NORM_DEMAND_TYPES=new Set(['BUY','RENT','INVEST','RELOCATE_BUY','RELOCATE_RENT']);
 function postAIFilter(intent:AIIntentResult,property:{country:string;transaction_type?:string|null},recencyDays:number,maxRecencyDays=90):FilterResult{
   if(!NORM_DEMAND_TYPES.has(intent.intentType))return{pass:false,reason:`non_demand:${intent.intentType}`};
   if(intent.intentConfidence<0.25)return{pass:false,reason:`low_confidence:${intent.intentConfidence.toFixed(2)}`};
-  const ic=(intent.country??'').toUpperCase(),pc=property.country.toUpperCase();
+  // Normalise country to ISO-2 before comparing — OpenAI may return full names
+  const ic=normaliseCountryToISO(intent.country??'').toUpperCase();
+  const pc=property.country.toUpperCase();
   if(ic&&ic!==pc)return{pass:false,reason:`country_mismatch:${ic}!=${pc}`};
   if(recencyDays>maxRecencyDays)return{pass:false,reason:`stale:${recencyDays}d`};
   return{pass:true};

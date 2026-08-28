@@ -14,4 +14,3 @@ create table if not exists public.discovery_query_queue (
 );
 create index if not exists discovery_query_queue_work_idx on public.discovery_query_queue(property_id,status,platform,created_at);
 alter table public.discovery_query_queue enable row level security;
-create policy "admin read discovery queue" on public.discovery_query_queue for select using (public.is_admin());

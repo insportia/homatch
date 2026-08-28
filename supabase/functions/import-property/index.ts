@@ -1250,9 +1250,10 @@ Deno.serve(async (req) => {
   const testHeader  = req.headers.get('x-test-mode') ?? '';
   const isTestMode  = testSecret.length > 8 && testHeader === testSecret;
 
-  // If caller is using the anon key only (no Bearer JWT), reject.
+  // If caller is using the anon key only (no Bearer JWT), reject —
+  // UNLESS this is an internal test-mode call (test mode bypasses auth entirely).
   const isAnonOnly = authHeader === `Bearer ${anonKey}`;
-  if (!authHeader || isAnonOnly) {
+  if (!isTestMode && (!authHeader || isAnonOnly)) {
     return Response.json(
       { success: false, error: 'Authentication required', error_code: 'UNAUTHORIZED' },
       { status: 401, headers: { ...CORS, 'WWW-Authenticate': 'Bearer' } },

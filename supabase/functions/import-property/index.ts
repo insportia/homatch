@@ -667,23 +667,37 @@ function adaptSS(html: string, url: string): Partial<ExtractedFacts> | null {
   if (!url.includes('ss.ge')) return null;
   const facts: Partial<ExtractedFacts> = { source_url: url, country: 'GE' };
 
-  // Transaction type from URL path (most reliable for ss.ge)
+  // Transaction type from URL path (most reliable for ss.ge / home.ss.ge)
   const urlLower = url.toLowerCase();
-  if (/\/for-sale\/|\/iyideba\/|\/gasayideli\//i.test(urlLower)) facts.transaction_type = 'SALE';
-  else if (/\/for-rent\/|\/qiravdeba\/|\/gasaqiravebeli\//i.test(urlLower)) facts.transaction_type = 'RENT';
+  if (/\/for-sale\/|\/iyideba[-\/]|\/gasayideli\//i.test(urlLower)) facts.transaction_type = 'SALE';
+  else if (/\/for-rent\/|\/qiravdeba[-\/]|\/gasaqiravebeli\//i.test(urlLower)) facts.transaction_type = 'RENT';
 
-  // Property type from URL
-  if (/\/flat\/|\/apartment\/|\/bina\//i.test(urlLower)) facts.property_type = 'APARTMENT';
-  else if (/\/house\/|\/cottage\/|\/saxli\//i.test(urlLower)) facts.property_type = 'HOUSE';
-  else if (/\/commercial\/|\/office\//i.test(urlLower)) facts.property_type = 'COMMERCIAL';
-  else if (/\/land\/|\/plot\/|\/miwa\//i.test(urlLower)) facts.property_type = 'LAND';
+  // Property type from URL — handle both /bina/ (old ss.ge) and -bina- slug (home.ss.ge)
+  if (/\/bina\/|-bina-|\/flat\/|\/apartment\//i.test(urlLower)) facts.property_type = 'APARTMENT';
+  else if (/\/kerdzo-saxli\/|-saxli-|\/house\/|\/cottage\//i.test(urlLower)) facts.property_type = 'HOUSE';
+  else if (/\/komerciuli\/|\/commercial\/|\/office\//i.test(urlLower)) facts.property_type = 'COMMERCIAL';
+  else if (/\/mitsis-nakveti\/|\/land\/|\/plot\//i.test(urlLower)) facts.property_type = 'LAND';
 
-  // Layer 1: __NEXT_DATA__ → pageProps.applicationData (authoritative)
+  // Layer 1: __NEXT_DATA__ → pageProps.applicationData (ss.ge classic)
+  // Note: home.ss.ge serves applicationData client-side only; rendered HTML is used for it instead.
   const ndMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
   if (ndMatch) {
     try {
       const nd = JSON.parse(ndMatch[1]);
       const app = nd?.props?.pageProps?.applicationData as Record<string, unknown> | undefined;
+
+      // home.ss.ge embeds listing ID in __NEXT_DATA__.query.slug
+      if (!app) {
+        const slug = nd?.query?.slug as string | undefined;
+        if (slug) {
+          const idFromSlug = slug.match(/(\d+)$/)?.[1];
+          if (idFromSlug) facts.source_listing_id = idFromSlug;
+          // Extract title from slug: "iyideba-3-otaxiani-bina-krtsanisshi-35980396"
+          // → "3 otaxiani bina krtsanisshi" (strip deal type prefix + trailing ID)
+          const slugTitle = slug.replace(/^\w+-/, '').replace(/-\d+$/, '').replace(/-/g, ' ');
+          if (slugTitle.length > 4) facts.title = slugTitle;
+        }
+      }
 
       if (app) {
         if (app.title) facts.title = String(app.title);
@@ -854,6 +868,66 @@ function adaptSS(html: string, url: string): Partial<ExtractedFacts> | null {
     const oi = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i)
       ?? html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:image"/i);
     if (oi?.[1] && isListingPhoto(oi[1])) facts.cover_image = oi[1];
+  }
+
+  // Layer 3: home.ss.ge rendered HTML — extract static.ss.ge photos and rendered price/area
+  // home.ss.ge loads applicationData client-side, so photos/price appear in rendered HTML only.
+  if (!facts.gallery_images?.length) {
+    // Full-res static.ss.ge images (no _Thumb suffix, deduplicated)
+    const allStaticImgs = [...html.matchAll(/https:\/\/static\.ss\.ge\/[^\s"'<>]+\.(?:jpg|jpeg|webp|png)/gi)]
+      .map(m => m[0])
+      .filter(u => !/_Thumb\./i.test(u) && isListingPhoto(u));
+    const dedupedImgs = [...new Set(allStaticImgs)].slice(0, 5);
+    if (dedupedImgs.length > 0) {
+      facts.gallery_images = dedupedImgs;
+      facts.cover_image = dedupedImgs[0];
+    }
+  }
+
+  // home.ss.ge rendered price: "81,000 $" or "212,000 ₾"
+  if (!facts.total_price) {
+    const renderedPricePatterns = [
+      /([\d]{2,3}(?:,\d{3})+|\d{4,})\s*\$/,   // "81,000 $" or "81000 $"
+      /([\d]{2,3}(?:,\d{3})+|\d{4,})\s*₾/,    // "212,000 ₾"
+      /"priceUsd"\s*:\s*([\d.]+)/i,
+      /"priceGeo"\s*:\s*([\d.]+)/i,
+    ];
+    for (const pat of renderedPricePatterns) {
+      const m = html.match(pat);
+      if (m?.[1]) {
+        const p = parseFloat(m[1].replace(/,/g, ''));
+        if (p > 1000) {
+          facts.total_price = p;
+          // Detect currency from match
+          if (pat.source.includes('₾') || pat.source.includes('priceGeo')) facts.currency = 'GEL';
+          else if (pat.source.includes('\\$') || pat.source.includes('priceUsd')) facts.currency = 'USD';
+          break;
+        }
+      }
+    }
+  }
+  // home.ss.ge rendered price/m²: "836 $" or "1,230 ₾" in unit-price context
+  if (!facts.price_per_sqm) {
+    const unitPat = html.match(/1\s*(?:მ²|m²|m2)\s*[-–]\s*([\d,]+)\s*(?:\$|₾)/i)
+      ?? html.match(/"unitPriceUsd"\s*:\s*([\d.]+)/i)
+      ?? html.match(/"unitPriceGeo"\s*:\s*([\d.]+)/i);
+    if (unitPat?.[1]) {
+      const up = parseFloat(unitPat[1].replace(/,/g, ''));
+      if (up > 10) facts.price_per_sqm = up;
+    }
+  }
+  // home.ss.ge rendered area: "130 მ²"
+  if (!facts.area) {
+    const areaPat = html.match(/([\d]+(?:[.,]\d+)?)\s*(?:მ²|m²|m2)/i);
+    if (areaPat?.[1]) {
+      const a = parseFloat(areaPat[1].replace(',', '.'));
+      if (a > 5) facts.area = a;
+    }
+  }
+  // home.ss.ge rendered rooms from title/heading: "4 ოთახიანი"
+  if (!facts.rooms) {
+    const roomPat = html.match(/(\d+)\s*(?:ოთახიანი|otaxiani|room)/i);
+    if (roomPat?.[1]) facts.rooms = parseInt(roomPat[1]);
   }
 
   return facts;

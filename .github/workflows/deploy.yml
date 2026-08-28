@@ -1,0 +1,222 @@
+name: Deploy Homatch
+
+on:
+  push:
+    branches: [main]
+
+# Prevent concurrent deployments
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  SUPABASE_PROJECT_REF: ptxajsjhobhvsfhmutjn
+
+jobs:
+  # ── Job 1: Validate ────────────────────────────────────────────────────────
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install ast-grep
+        run: |
+          npm install -g @ast-grep/cli
+          ast-grep --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint
+        env:
+          VITE_SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: pnpm run lint
+
+  # ── Job 2: Deploy Supabase migrations ─────────────────────────────────────
+  migrate:
+    name: Apply DB Migrations
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply pending migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          echo "Marking baseline migrations 00001–00006 as already applied..."
+          # These 6 migrations were applied manually via homatch_clean_install.sql.
+          # Mark them as applied so supabase db push does not try to re-run them.
+          for version in \
+            20260827203146 \
+            20260827205525 \
+            20260827212117 \
+            20260827213737 \
+            20260827221926 \
+            20260828071514; do
+            supabase migration repair "$version" \
+              --status applied \
+              --project-ref "$SUPABASE_PROJECT_REF" \
+              2>&1 || true
+            echo "  ✅ Marked $version as applied"
+          done
+
+          echo "Pushing any new migrations after baseline..."
+          supabase db push \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --password "${{ secrets.SUPABASE_DB_PASSWORD }}" \
+            2>&1
+          echo "✅ Migrations applied"
+
+  # ── Job 3: Deploy Edge Functions ──────────────────────────────────────────
+  deploy-functions:
+    name: Deploy Edge Functions
+    runs-on: ubuntu-latest
+    needs: migrate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy functions — JWT required
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          JWT_FUNCTIONS=(
+            "atomic-unlock"
+            "credits-topup"
+            "import-property"
+            "seed-demo-matches"
+            "provider-health-check"
+          )
+          FAILED=()
+          for fn in "${JWT_FUNCTIONS[@]}"; do
+            echo "→ Deploying $fn (JWT required) ..."
+            if supabase functions deploy "$fn" \
+                --project-ref "$SUPABASE_PROJECT_REF" \
+                2>&1; then
+              echo "  ✅ $fn"
+            else
+              echo "  ❌ $fn FAILED"
+              FAILED+=("$fn")
+            fi
+          done
+          if [[ ${#FAILED[@]} -gt 0 ]]; then
+            echo "::error::Failed to deploy: ${FAILED[*]}"
+            exit 1
+          fi
+
+      - name: Deploy functions — no JWT verification
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          NO_JWT_FUNCTIONS=(
+            "classify-signals"
+            "dataforseo-search"
+            "payment-webhook"
+            "run-matching"
+            "social-collect"
+            "spend-cap-check"
+          )
+          FAILED=()
+          for fn in "${NO_JWT_FUNCTIONS[@]}"; do
+            echo "→ Deploying $fn (--no-verify-jwt) ..."
+            if supabase functions deploy "$fn" \
+                --project-ref "$SUPABASE_PROJECT_REF" \
+                --no-verify-jwt \
+                2>&1; then
+              echo "  ✅ $fn"
+            else
+              echo "  ❌ $fn FAILED"
+              FAILED+=("$fn")
+            fi
+          done
+          if [[ ${#FAILED[@]} -gt 0 ]]; then
+            echo "::error::Failed to deploy: ${FAILED[*]}"
+            exit 1
+          fi
+
+  # ── Job 4: Deploy frontend to Vercel ──────────────────────────────────────
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: validate
+    env:
+      VITE_SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Vercel CLI
+        run: pnpm add -g vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build for Vercel
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel (production)
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+  # ── Job 5: Deployment summary ─────────────────────────────────────────────
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [migrate, deploy-functions, build-frontend]
+    if: always()
+    steps:
+      - name: Report status
+        run: |
+          echo "## Homatch Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| DB Migrations | ${{ needs.migrate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Edge Functions | ${{ needs.deploy-functions.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Build | ${{ needs.build-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Supabase project:** \`ptxajsjhobhvsfhmutjn\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+
+          # Fail the job if any critical step failed
+          if [[ "${{ needs.migrate.result }}" == "failure" ]] || \
+             [[ "${{ needs.deploy-functions.result }}" == "failure" ]]; then
+            echo "::error::Critical deployment step failed — see above"
+            exit 1
+          fi

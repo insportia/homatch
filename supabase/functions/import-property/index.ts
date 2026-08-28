@@ -418,6 +418,10 @@ function adaptMyHome(html: string, url: string): Partial<ExtractedFacts> | null 
         const dynTitle = statement.dynamic_title ?? statement.title ?? statement.name;
         if (dynTitle) facts.title = String(dynTitle);
 
+        // Listing ID — myhome.ge uses statement_id or application_id
+        const stId = statement.statement_id ?? statement.application_id ?? statement.id;
+        if (stId != null) facts.source_listing_id = String(stId);
+
         // Currency
         const currId = typeof statement.currency_id === 'number' ? statement.currency_id : 2;
         facts.currency = currencyIdToCode(currId);
@@ -1671,6 +1675,58 @@ Deno.serve(async (req) => {
     facts.price_per_sqm = Math.round((facts.total_price / facts.area) * 100) / 100;
   }
   if (!facts.country && isKnownListingDomain(rawUrl)) facts.country = 'GE';
+
+  // source_listing_id — extract from URL for known patterns if not already set
+  if (!facts.source_listing_id) {
+    // myhome.ge: /ka/udzravi-qoneba/...-NNNNNNN/ or /en/real-estate/...-NNNNNNN/
+    const mhId = rawUrl.match(/[-\/](\d{6,9})\/?(?:\?|$)/)?.[1];
+    // home.ss.ge: slug-NNNNNNN  or  ss.ge/...-NNNNNNN
+    const ssId = rawUrl.match(/[-\/](\d{6,9})(?:\?|$)/)?.[1];
+    const idFromUrl = mhId ?? ssId;
+    if (idFromUrl) facts.source_listing_id = idFromUrl;
+  }
+
+  // source_language — detect from URL locale segment
+  if (!facts.source_language) {
+    const localeMatch = rawUrl.match(/\/(?:ka|en|ru|tr|ar|uk|kk|he)\//);
+    if (localeMatch) {
+      facts.source_language = localeMatch[0].replace(/\//g, '');
+    } else if (isMyHome || isSS) {
+      facts.source_language = 'ka'; // Georgian sites default to Georgian
+    }
+  }
+
+  // country_code — 2-letter ISO from country name
+  if (!facts.country_code && facts.country) {
+    const countryCodeMap: Record<string, string> = {
+      'GE': 'GE', 'Georgia': 'GE', 'საქართველო': 'GE',
+      'TR': 'TR', 'Turkey': 'TR', 'Türkiye': 'TR',
+      'DE': 'DE', 'Germany': 'DE',
+      'AE': 'AE', 'UAE': 'AE', 'United Arab Emirates': 'AE',
+      'GB': 'GB', 'UK': 'GB', 'United Kingdom': 'GB',
+      'US': 'US', 'USA': 'US', 'United States': 'US',
+      'FR': 'FR', 'France': 'FR',
+      'ES': 'ES', 'Spain': 'ES',
+      'IT': 'IT', 'Italy': 'IT',
+      'PL': 'PL', 'Poland': 'PL',
+      'UA': 'UA', 'Ukraine': 'UA',
+      'KZ': 'KZ', 'Kazakhstan': 'KZ',
+      'IL': 'IL', 'Israel': 'IL',
+      'PT': 'PT', 'Portugal': 'PT',
+    };
+    facts.country_code = countryCodeMap[facts.country] ?? facts.country.slice(0, 2).toUpperCase();
+  } else if (!facts.country_code && (isMyHome || isSS)) {
+    facts.country_code = 'GE';
+  }
+
+  // canonical_url — cleaned URL without tracking params
+  if (!facts.canonical_url) {
+    try {
+      const u = new URL(rawUrl);
+      ['_gl', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'ref'].forEach(p => u.searchParams.delete(p));
+      facts.canonical_url = u.toString();
+    } catch { facts.canonical_url = rawUrl; }
+  }
 
   // ── Step 7: Persist diagnostic + extracted data ──────────
   const diagnostic = {

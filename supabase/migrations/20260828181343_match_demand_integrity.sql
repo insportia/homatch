@@ -1,0 +1,2 @@
+-- Synced production migration marker: match_demand_integrity.
+-- Production schema is already applied; this file keeps Git migration history aligned.

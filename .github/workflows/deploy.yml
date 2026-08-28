@@ -48,19 +48,10 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      - name: Sync and apply migrations
+      - name: Apply migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          for version in \
-            20260827203146 \
-            20260827205525 \
-            20260827212117 \
-            20260827213737 \
-            20260827221926 \
-            20260828071514; do
-            supabase migration repair "$version" --status applied --project-ref "$SUPABASE_PROJECT_REF" 2>&1 || true
-          done
           supabase db push \
             --project-ref "$SUPABASE_PROJECT_REF" \
             --password "${{ secrets.SUPABASE_DB_PASSWORD }}"
@@ -78,35 +69,15 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          FUNCTIONS=(
-            atomic-unlock
-            credits-topup
-            import-property
-            seed-demo-matches
-            provider-health-check
-            generate-search-profile
-            apify-discover
-          )
+          FUNCTIONS=(atomic-unlock credits-topup import-property seed-demo-matches provider-health-check generate-search-profile apify-discover)
           for fn in "${FUNCTIONS[@]}"; do
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
           done
-      - name: Deploy internal/public functions
+      - name: Deploy internal functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          FUNCTIONS=(
-            classify-signals
-            classify-signals-v2
-            dataforseo-search
-            payment-webhook
-            run-matching
-            run-matching-v2
-            social-collect
-            spend-cap-check
-            source-discovery-massive
-            source-monitor-public
-            continuous-matching-worker
-          )
+          FUNCTIONS=(classify-signals classify-signals-v2 dataforseo-search payment-webhook run-matching run-matching-v2 social-collect spend-cap-check source-discovery-massive source-monitor-public discovery-queue-worker continuous-matching-worker)
           for fn in "${FUNCTIONS[@]}"; do
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
           done
@@ -124,6 +95,4 @@ jobs:
           echo "- DB migrations: ${{ needs.migrate.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Edge functions: ${{ needs.deploy-functions.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Frontend production deploy: handled by Vercel native GitHub integration" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ needs.validate.result }}" == "failure" ]] || [[ "${{ needs.migrate.result }}" == "failure" ]] || [[ "${{ needs.deploy-functions.result }}" == "failure" ]]; then
-            exit 1
-          fi
+          if [[ "${{ needs.validate.result }}" == "failure" ]] || [[ "${{ needs.migrate.result }}" == "failure" ]] || [[ "${{ needs.deploy-functions.result }}" == "failure" ]]; then exit 1; fi

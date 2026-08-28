@@ -103,6 +103,9 @@ jobs:
             run-matching-v2
             social-collect
             spend-cap-check
+            source-discovery-massive
+            source-monitor-public
+            continuous-matching-worker
           )
           for fn in "${FUNCTIONS[@]}"; do
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt

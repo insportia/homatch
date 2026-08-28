@@ -20,29 +20,27 @@ Deno.serve(async(req:Request)=>{
   let fbFound=0,fbInserted=0,fbError:string|null=null;
   try{
    const token=Deno.env.get('APIFY_API_TOKEN')!; if(token){
-    const kws=[...new Set(roots.map(x=>x.replace(/^site:\S+\s+/,'').trim()))].slice(0,60);
-    const per=Math.max(10,Math.min(100,Math.ceil(Number(maxFacebookGroups||2500)/Math.max(1,kws.length))));
-    const items=await runActor(token,'fetch_cat~facebook-groups-search-scraper',{keywords:kws,locations:[city,country],maxGroupsPerQuery:per},150000);
+    const kws=[...new Set(roots.map(x=>x.replace(/^site:\S+\s+/,'').trim()))].slice(0,40);
+    const per=Math.max(10,Math.min(500,Math.ceil(Number(maxFacebookGroups||2500)/Math.max(1,kws.length))));
+    const items=await runActor(token,'scraper-engine~facebook-groups-search-scraper',{startUrls:kws,maxItems:per,proxyConfiguration:{useApifyProxy:false}},165000);
     fbFound=items.length;
-    for(const x of items){const u=canonical(x.groupUrl||x.url||'','FACEBOOK');if(!u)continue;const ok=await saveSource(db,'FACEBOOK','FACEBOOK_GROUP',u,x.groupName||x.name||u,country,'APIFY_GROUP_DISCOVERY');if(ok)fbInserted++;}
+    for(const x of items){const u=canonical(x.url||x.groupUrl||'','FACEBOOK');if(!u)continue;const ok=await saveSource(db,'FACEBOOK','FACEBOOK_GROUP',u,x.name||x.groupName||u,country,'APIFY_GROUP_DISCOVERY');if(ok)fbInserted++;}
    }
   }catch(e){fbError=e instanceof Error?e.message:String(e)}
-  await db.from('cost_events').insert([{provider:'DATAFORSEO',operation_type:'SOURCE_DISCOVERY_MASSIVE',source:'public-web',market:country,units:siteQueries.length,cost_usd:serp.cost,success:true,cache_hit:false,property_id:propertyId},{provider:'APIFY',operation_type:'FACEBOOK_GROUP_DISCOVERY',source:'public-groups',market:country,units:fbFound,cost_usd:0,success:!fbError,cache_hit:false,property_id:propertyId}]);
+  await db.from('cost_events').insert([{provider:'DATAFORSEO',operation_type:'SOURCE_DISCOVERY_MASSIVE',source:`public-web results=${serp.results.length} inserted=${inserted}`,market:country,units:siteQueries.length,cost_usd:serp.cost,success:true,cache_hit:false,property_id:propertyId},{provider:'APIFY',operation_type:'FACEBOOK_GROUP_DISCOVERY',source:fbError?`error:${fbError.slice(0,180)}`:`found=${fbFound} inserted=${fbInserted}`,market:country,units:fbFound,cost_usd:0,success:!fbError,cache_hit:false,property_id:propertyId}]);
   return json({success:true,roots:roots.length,webQueries:siteQueries.length,webResults:serp.results.length,sourcesInserted:inserted,duplicates,platforms,facebook:{found:fbFound,inserted:fbInserted,error:fbError}});
  }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
 });
 
 function rootsFor(tx:string,pt:string,city:string,district:string){
  const type=pt.toLowerCase(),loc=[district,city].filter(Boolean).join(' '); const buy=tx==='RENT'?'rent':'buy';
- const a=[
-  `looking for ${type} ${loc}`,`want to ${buy} ${type} ${loc}`,`need ${type} ${loc}`,`real estate buyers ${city}`,`property investors ${city}`,`expats ${city} real estate`,
-  `ищу ${type} ${loc}`,`хочу купить недвижимость ${city}`,`сниму недвижимость ${city}`,`инвесторы недвижимость ${city}`,`русские ${city} недвижимость`,
-  `ვეძებ უძრავ ქონებას ${city}`,`ვიყიდი ${type} ${city}`,`ვიქირავებ ${type} ${city}`,`ინვესტორი უძრავი ქონება ${city}`,
-  `${city} gayrimenkul arıyorum`,`${city} ev almak istiyorum`,`${city} kiralık arıyorum`,`${city} yatırım gayrimenkul`,
-  `أبحث عن عقار ${city}`,`أريد شراء عقار ${city}`,`أريد استئجار عقار ${city}`,`مستثمر عقاري ${city}`,
-  `מחפש נדלן ${city}`,`רוצה לקנות דירה ${city}`,`רוצה לשכור דירה ${city}`,`השקעות נדלן ${city}`,
-  `${city} apartments`,`${city} property`,`${city} real estate`,`${city} expats`,`${city} investors`,`${city} relocation`,`${city} rent`,`${city} buy property`
- ]; return [...new Set(a.map(x=>x.replace(/\s+/g,' ').trim()))];
+ const a=[`looking for ${type} ${loc}`,`want to ${buy} ${type} ${loc}`,`need ${type} ${loc}`,`real estate buyers ${city}`,`property investors ${city}`,`expats ${city} real estate`,`property wanted ${city}`,`housing wanted ${city}`,`relocating to ${city}`,
+  `ищу ${type} ${loc}`,`хочу купить недвижимость ${city}`,`сниму недвижимость ${city}`,`инвесторы недвижимость ${city}`,`русские ${city} недвижимость`,`недвижимость нужна ${city}`,`переезд ${city} квартира`,
+  `ვეძებ უძრავ ქონებას ${city}`,`ვიყიდი ${type} ${city}`,`ვიქირავებ ${type} ${city}`,`ინვესტორი უძრავი ქონება ${city}`,`ბინა მინდა ${city}`,
+  `${city} gayrimenkul arıyorum`,`${city} ev almak istiyorum`,`${city} kiralık arıyorum`,`${city} yatırım gayrimenkul`,`${city} taşınmak ev arıyorum`,
+  `أبحث عن عقار ${city}`,`أريد شراء عقار ${city}`,`أريد استئجار عقار ${city}`,`مستثمر عقاري ${city}`,`الانتقال إلى ${city} سكن`,
+  `מחפש נדלן ${city}`,`רוצה לקנות דירה ${city}`,`רוצה לשכור דירה ${city}`,`השקעות נדלן ${city}`,`עובר ל${city} מחפש דירה`,
+  `${city} apartments`,`${city} property`,`${city} real estate`,`${city} expats`,`${city} investors`,`${city} relocation`,`${city} rent`,`${city} buy property`,`${city} property wanted`,`${city} housing group`]; return [...new Set(a.map(x=>x.replace(/\s+/g,' ').trim()))];
 }
 function buildSiteQueries(r:string[]){const sites=['site:facebook.com/groups','site:t.me','site:vk.com','site:reddit.com/r','site:threads.net','site:instagram.com','site:quora.com'];const out:string[]=[];for(const q of r)for(const s of sites)out.push(`${s} ${q}`);return out}
 async function runDataForSeo(qs:string[],country:string){const login=Deno.env.get('DATAFORSEO_LOGIN')!,pass=Deno.env.get('DATAFORSEO_PASSWORD')!;const all:any[]=[];let cost=0;for(let i=0;i<qs.length;i+=20){const tasks=qs.slice(i,i+20).map(keyword=>({keyword,language_code:'en',location_code:country==='GE'?21831:undefined,device:'desktop'}));const r=await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced',{method:'POST',headers:{Authorization:`Basic ${btoa(`${login}:${pass}`)}`,'Content-Type':'application/json'},body:JSON.stringify(tasks)});if(!r.ok)throw new Error(`DataForSEO ${r.status}`);const d=await r.json();for(const t of d.tasks||[]){cost+=Number(t.cost||0);for(const x of t.result?.[0]?.items||[])if(x.type==='organic'&&x.url)all.push({url:x.url,title:x.title||''})}}return{results:all,cost}}

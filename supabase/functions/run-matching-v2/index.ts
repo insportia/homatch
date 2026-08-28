@@ -11,14 +11,15 @@ Deno.serve(async(req:Request)=>{
   const {data:p}=await db.from('properties').select(`id,user_id,title,transaction_type,property_type,matching_status,facts:property_facts!property_id(country,country_code,city,district,neighborhood,total_price,currency,area,rooms,bedrooms,description,original_description,features)`).eq('id',propertyId).maybeSingle();
   if(!p) return json({error:'Property not found'},404);
   const f=Array.isArray(p.facts)?p.facts[0]:p.facts;
-  const {data:profiles,error}=await db.from('intent_profiles').select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,signal:raw_signals!signal_id(id,platform,published_at,source_url,classification_status,intent_type,original_text,source:source_registry!source_id(quality_score))`).order('created_at',{ascending:false}).limit(intentProfileBatchSize);
+  const {data:profiles,error}=await db.from('intent_profiles').select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,signal:raw_signals!signal_id(id,property_id,platform,published_at,source_url,classification_status,intent_type,original_text,source:source_registry!source_id(quality_score))`).order('created_at',{ascending:false}).limit(intentProfileBatchSize);
   if(error) throw error;
-  let created=0,skipped=0,rejectedSupply=0,best=0; const buckets:any={'20-49':0,'50-79':0,'80-100':0};
+  let created=0,skipped=0,rejectedSupply=0,rejectedOtherProperty=0,best=0; const buckets:any={'20-49':0,'50-79':0,'80-100':0};
   for(const ip of profiles||[]){
     const signal=Array.isArray(ip.signal)?ip.signal[0]:ip.signal;
+    if(!signal||signal.property_id!==p.id){skipped++;rejectedOtherProperty++;continue;}
     const currentIntent=String(signal?.intent_type||ip.intent_type||'').toUpperCase();
     const text=String(signal?.original_text||ip.original_text||ip.translated_text||'');
-    if(signal?.classification_status!=='CLASSIFIED'||!DEMAND.has(String(ip.intent_type||'').toUpperCase())||!DEMAND.has(currentIntent)||isSupplyAd(text)){
+    if(signal?.classification_status!=='CLASSIFIED'||Number(ip.intent_confidence||0)<0.65||!DEMAND.has(String(ip.intent_type||'').toUpperCase())||!DEMAND.has(currentIntent)||isSupplyAd(text)){
       skipped++; if(isSupplyAd(text)) rejectedSupply++; continue;
     }
     const {data:exists}=await db.from('matches').select('id').eq('property_id',p.id).eq('intent_profile_id',ip.id).maybeSingle();
@@ -34,7 +35,7 @@ Deno.serve(async(req:Request)=>{
     if(!ins){created++;best=Math.max(best,r.score);buckets[r.score>=80?'80-100':r.score>=50?'50-79':'20-49']++;}
   }
   await db.from('properties').update({matchability_score:best||null}).eq('id',p.id);
-  return json({success:true,matchesCreated:created,matchesSkipped:skipped,rejectedSupply,bestScore:best,buckets});
+  return json({success:true,matchesCreated:created,matchesSkipped:skipped,rejectedSupply,rejectedOtherProperty,bestScore:best,buckets});
  }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
 });
 

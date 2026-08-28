@@ -315,25 +315,32 @@ class DataForSEOProvider{
     catch(e:unknown){return{ok:false,error:e instanceof Error?e.message:String(e)};}
   }
   async searchLive(queries:SearchQuery[]):Promise<SearchProviderResponse>{
-    if(!this.isConfigured())return this.mock(queries);
+    if(!this.isConfigured())throw new Error('DataForSEO not configured — credentials missing');
     const payloads=queries.map((q,i)=>({keyword:q.q,language_code:q.language??'en',location_code:dfseoLocationCode(q.country),device:'desktop',depth:10,tag:`live:${i}`}));
-    const r=await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced',{method:'POST',headers:{Authorization:this.auth(),'Content-Type':'application/json'},body:JSON.stringify(payloads),signal:AbortSignal.timeout(45_000)});
-    if(!r.ok){const b=await r.text().catch(()=>'');throw new Error(`DFSEO live failed: ${r.status} ${b.slice(0,200)}`);}
+    const r=await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced',{method:'POST',headers:{Authorization:this.auth(),'Content-Type':'application/json'},body:JSON.stringify(payloads),signal:AbortSignal.timeout(60_000)});
+    if(!r.ok){const b=await r.text().catch(()=>'');throw new Error(`DFSEO HTTP ${r.status}: ${b.slice(0,200)}`);}
     const json=await r.json();const results:SearchResult[]=[];let totalCost=0;const taskStatuses:DFSEOTaskStatus[]=[];
     for(let ti=0;ti<(json.tasks??[]).length;ti++){
-      const task=json.tasks[ti];const taskCost:number=task.cost??0;totalCost+=taskCost;const q=queries[ti];
-      taskStatuses.push({taskId:task.id??'',keyword:q?.q??'',status:'ready',costUsd:taskCost,payloadHash:''});
+      const task=json.tasks[ti];
+      const taskCode:number=task.status_code??0;
+      const taskMsg:string=task.status_message??'';
+      const taskCost:number=task.cost??0;totalCost+=taskCost;const q=queries[ti];
+      // Task-level failure: status_code outside 20000-20099 range means the task failed
+      if(taskCode<20000||taskCode>20099){
+        taskStatuses.push({taskId:task.id??'',keyword:q?.q??'',status:'failed',statusCode:taskCode,statusMessage:taskMsg,costUsd:taskCost,payloadHash:''});
+        continue;
+      }
+      taskStatuses.push({taskId:task.id??'',keyword:q?.q??'',status:'ready',statusCode:taskCode,statusMessage:taskMsg,costUsd:taskCost,payloadHash:''});
       for(const item of task.result?.[0]?.items??[]){
         if(item.type!=='organic')continue;const raw=item.url??'';
         results.push({title:item.title??'',url:raw,canonicalUrl:canonicalUrlDFSEO(raw),snippet:item.description??'',domain:item.domain??'',rankPosition:item.rank_absolute??0,publishedAt:item.timestamp??null,tier:q?.tier??1,queryText:q?.q??'',taskId:task.id});
       }
     }
+    const failed=taskStatuses.filter(t=>t.status==='failed');
+    if(failed.length>0&&results.length===0)throw new Error(`All ${failed.length} DFSEO tasks failed. First: ${failed[0].statusCode} ${failed[0].statusMessage}`);
     return{results,taskStatuses,costUsd:totalCost,provider:'DATAFORSEO',cacheHit:false,mode:'live',requestId:json.tasks?.[0]?.id};
   }
-  mock(queries:SearchQuery[]):SearchProviderResponse{
-    const results:SearchResult[]=queries.flatMap((q,qi)=>Array.from({length:3},(_,i)=>({title:`[MOCK] ${q.q} — result ${i+1}`,url:`https://example.com/mock/${qi}/${i}`,canonicalUrl:`https://example.com/mock/${qi}/${i}`,snippet:`Mock buyer intent signal for: ${q.q}`,domain:'example.com',rankPosition:i+1,publishedAt:new Date().toISOString(),tier:q.tier??1,queryText:q.q})));
-    return{results,taskStatuses:[],costUsd:0,provider:'DATAFORSEO_MOCK',cacheHit:false,mode:'mock'};
-  }
+  // mock() removed from production bundle — never fabricate search results
 }
 
 // ── INLINE: apify_v2 ──────────────────────────────────────────
@@ -397,7 +404,9 @@ class ApifyProvider{
     return items.map(item=>normItem(item,'UNKNOWN'));
   }
   async collect(req:SocialCollectRequest):Promise<SocialCollectResponse>{
-    if(!this.isConfigured()||!this.actorId(req.platform))return this.mock(req);
+    if(!this.isConfigured())throw new Error(`Apify token not configured`);
+    const actor=this.actorId(req.platform);
+    if(!actor)throw new Error(`APIFY_${req.platform}_ACTOR_ID not configured — platform unavailable`);
     let runMeta:ApifyRunMeta;
     const TERMINAL=new Set(['SUCCEEDED','FAILED','TIMED-OUT','ABORTED']);
     if(req.existingRunId){runMeta=await this.pollRun(req.existingRunId);}
@@ -414,16 +423,7 @@ class ApifyProvider{
     const posts=items.map((item:SocialPost)=>({...item,platform:req.platform}));
     return{posts,runMeta:{...runMeta,itemCount:posts.length},costUsd:runMeta.costUsd??0,provider:'APIFY',cacheHit:false};
   }
-  mock(req:SocialCollectRequest):SocialCollectResponse{
-    const TEXTS:Record<string,string[]>={
-      FACEBOOK:['Looking for 2-bedroom apartment in Vake, budget $150k-$200k, serious buyer','Ищу квартиру в Тбилиси, 2 комнаты, до $180,000, желательно новостройка','ვეძებ ბინას ვაკეში, 2 ოთახიანი, $150 000-მდე','We are relocating to Tbilisi and need 3BR apartment near Saburtalo, budget up to $230k','Israeli family looking for furnished apartment Tbilisi, 3 rooms, long-term rent'],
-      TELEGRAM:['Need apartment Tbilisi Saburtalo area, 2-3 rooms, rent $800-1000/month','ვიყიდი ბინას საბურთალოში, 3 ოთახიანი, $200 000-მდე','Куплю квартиру в центре Тбилиси 2-3 комнаты до 200к бюджет есть срочно','investor looking buy Tbilisi apartment 2024 new build cash deal','apartment wanted Tbilisi Vake 3 bedrooms $230k max ready to move'],
-      INSTAGRAM:['Moving to Tbilisi! Looking for a furnished 2BR apartment for long-term rent 🏠','Digital nomad seeking furnished studio or 1BR Tbilisi, budget $600-800/month'],
-      VK:['Ищем квартиру в Тбилиси для покупки, 2-3 комнаты, бюджет до $200k','Семья переезжает в Тбилиси, нужна квартира 3 комнаты, аренда или покупка'],
-    };
-    const texts=TEXTS[req.platform]??[`Mock post from ${req.platform}`];
-    return{posts:texts.map((text,i)=>({externalId:`mock-${req.platform}-${i}`,text,authorName:`mock_user_${i}`,authorUrl:`https://${req.platform.toLowerCase()}.com/mock_user_${i}`,publishedAt:new Date(Date.now()-i*3_600_000).toISOString(),sourceUrl:req.sourceUrl,platform:req.platform,isGroupPost:true})),runMeta:{runId:`mock-run-${req.platform}`,status:'SUCCEEDED',startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),itemCount:texts.length},costUsd:0,provider:'APIFY_MOCK',cacheHit:false};
-  }
+  // mock() removed — Apify must use real actors or emit APIFY_PLATFORM_NOT_CONFIGURED
 }
 
 // ── INLINE: openai_classifier ─────────────────────────────────
@@ -452,7 +452,7 @@ class OpenAIClassifier{
   private apiKey=getEnv('OPENAI_API_KEY');
   isConfigured():boolean{return!!this.apiKey;}
   async classify(req:AIClassifyRequest):Promise<AIIntentResult>{
-    if(!this.isConfigured())return this.mock(req);
+    if(!this.isConfigured())throw new Error('OpenAI API key not configured — classifier unavailable');
     const userContent=req.propertyContext?`[Property context: ${req.propertyContext.country}, ${req.propertyContext.city??'city unknown'}, ${req.propertyContext.transactionType??'txn unknown'}]\n\n${req.text}`:req.text;
     let rawJson='',parsed:AIIntentResult|null=null,totalTokens=0;
     for(let attempt=0;attempt<2;attempt++){
@@ -465,12 +465,7 @@ class OpenAIClassifier{
     if(!parsed){console.error(`[classifier] malformed JSON: ${rawJson.slice(0,100)}`);return defaultIntentResult('gpt-4o-mini',costUsd);}
     return{intentType:parsed.intentType??'UNKNOWN',country:parsed.country??null,region:parsed.region??null,city:parsed.city??null,district:parsed.district??null,neighborhoods:Array.isArray(parsed.neighborhoods)?parsed.neighborhoods:null,transactionType:parsed.transactionType??null,propertyTypes:Array.isArray(parsed.propertyTypes)?parsed.propertyTypes:null,bedroomsMin:parsed.bedroomsMin??null,bedroomsMax:parsed.bedroomsMax??null,areaMin:parsed.areaMin??null,areaMax:parsed.areaMax??null,budgetMin:parsed.budgetMin??null,budgetMax:parsed.budgetMax??null,currency:parsed.currency??null,timeline:parsed.timeline??null,relocationIntent:parsed.relocationIntent??false,investmentIntent:parsed.investmentIntent??false,language:parsed.language??req.language??null,intentConfidence:Number(parsed.intentConfidence??0),specificityScore:Number(parsed.specificityScore??0),actionabilityScore:Number(parsed.actionabilityScore??0),contactabilityScore:Number(parsed.contactabilityScore??0),evidenceQualityScore:Number(parsed.evidenceQualityScore??0.5),translatedText:parsed.translatedText??null,model:'gpt-4o-mini',costUsd,promptVersion:CLASSIFIER_PROMPT_VERSION};
   }
-  mock(req:AIClassifyRequest):AIIntentResult{
-    const t=req.text.toLowerCase();
-    const isBuyer=/looking|want|buy|rent|need|ищу|куплю|ვეძებ|arıyorum|أبحث|מחפש/.test(t);
-    const isRent=/rent|аренд|ქირა|kiralama|إيجار|השכרה/.test(t);
-    return{intentType:isBuyer?(isRent?'RENT':'BUY'):'UNKNOWN',country:'GE',region:null,city:t.includes('tbilisi')||t.includes('тбилис')?'Tbilisi':null,district:t.includes('vake')?'Vake':t.includes('saburtalo')?'Saburtalo':null,neighborhoods:null,transactionType:isRent?'RENT':'SALE',propertyTypes:['APARTMENT'],bedroomsMin:t.includes('3')?3:t.includes('2')?2:null,bedroomsMax:null,areaMin:null,areaMax:null,budgetMin:150_000,budgetMax:230_000,currency:'USD',timeline:null,relocationIntent:t.includes('reloc')||t.includes('переезд'),investmentIntent:t.includes('invest')||t.includes('инвест'),language:req.language??'en',intentConfidence:isBuyer?0.78:0.10,specificityScore:0.65,actionabilityScore:0.60,contactabilityScore:0.40,evidenceQualityScore:0.70,translatedText:null,model:'MOCK',costUsd:0,promptVersion:CLASSIFIER_PROMPT_VERSION};
-  }
+  // mock() removed — OpenAI must be configured; missing key is a hard failure
 }
 
 // ── INLINE: scorer ────────────────────────────────────────────
@@ -777,13 +772,13 @@ Deno.serve(async (req) => {
     // ── 1. Validate credentials ───────────────────────────
     if (validateOnly) {
       const dfseo  = new DataForSEOProvider();
-      const dfseoV = await dfseo.validateCredentials().catch(e => ({ ok: false, error: e.message }));
+      const dfseoV = await dfseo.validateCredentials().catch(e => ({ ok: false, error: String(e) }));
       const apify  = new ApifyProvider();
       const openai = new OpenAIClassifier();
       return json({
-        dataforseo: { configured: dfseo.isConfigured(), ...dfseoV },
-        apify:      { configured: apify.isConfigured() },
-        openai:     { configured: openai.isConfigured() },
+        dataforseo: { status: dfseo.isConfigured() ? (dfseoV.ok ? 'LIVE' : 'FAILED') : 'NOT_CONFIGURED', ...dfseoV },
+        apify:      { status: apify.isConfigured()  ? 'LIVE' : 'NOT_CONFIGURED' },
+        openai:     { status: openai.isConfigured() ? 'LIVE' : 'NOT_CONFIGURED' },
       });
     }
 
@@ -901,21 +896,43 @@ Deno.serve(async (req) => {
     const apify  = new ApifyProvider();
     const openai = new OpenAIClassifier();
 
+    // Hard-fail if any required provider is missing — no mock fallbacks in production
+    if (!dfseo.isConfigured()) {
+      await emitEvent(sb, jobId, 'PROVIDER_FATAL', 'DataForSEO credentials not configured');
+      await updateJob(sb, jobId, { status: 'failed', failure_reason: 'DATAFORSEO_NOT_CONFIGURED',
+        error_message: 'DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets must be set' });
+      return new Response(JSON.stringify({ error: 'DATAFORSEO_NOT_CONFIGURED' }), { status: 500, headers: CORS });
+    }
+    if (!openai.isConfigured()) {
+      await emitEvent(sb, jobId, 'PROVIDER_FATAL', 'OpenAI API key not configured');
+      await updateJob(sb, jobId, { status: 'failed', failure_reason: 'OPENAI_NOT_CONFIGURED',
+        error_message: 'OPENAI_API_KEY secret must be set' });
+      return new Response(JSON.stringify({ error: 'OPENAI_NOT_CONFIGURED' }), { status: 500, headers: CORS });
+    }
+    if (!apify.isConfigured()) {
+      await emitEvent(sb, jobId, 'PROVIDER_FATAL', 'Apify token not configured');
+      await updateJob(sb, jobId, { status: 'failed', failure_reason: 'APIFY_NOT_CONFIGURED',
+        error_message: 'APIFY_TOKEN secret must be set' });
+      return new Response(JSON.stringify({ error: 'APIFY_NOT_CONFIGURED' }), { status: 500, headers: CORS });
+    }
     const providerStatus = {
-      dataforseo: dfseo.isConfigured()  ? 'CONFIGURED' : 'MOCK',
-      apify:      apify.isConfigured()  ? 'CONFIGURED' : 'MOCK',
-      openai:     openai.isConfigured() ? 'CONFIGURED' : 'MOCK',
+      dataforseo: 'LIVE',
+      apify:      'LIVE',
+      openai:     'LIVE',
     };
     await updateJob(sb, jobId, { provider_results: providerStatus });
 
     await emitEvent(sb, jobId, 'PROVIDERS_READY', 'Providers initialised', providerStatus);
 
     // ── 6. Validate DataForSEO creds on first use ─────────
-    if (dfseo.isConfigured()) {
+    {
       const credCheck = await dfseo.validateCredentials();
       if (!credCheck.ok) {
         await emitEvent(sb, jobId, 'DATAFORSEO_CRED_FAIL',
-          'DataForSEO credential check failed — will use mock', { error: credCheck.error });
+          `DataForSEO credential check failed — aborting`, { error: credCheck.error });
+        await updateJob(sb, jobId, { status: 'failed', failure_reason: 'DATAFORSEO_CRED_FAIL',
+          error_message: credCheck.error?.slice(0, 200) });
+        return new Response(JSON.stringify({ error: 'DATAFORSEO_CRED_FAIL', detail: credCheck.error }), { status: 500, headers: CORS });
       }
     }
 
@@ -953,6 +970,7 @@ Deno.serve(async (req) => {
             })();
 
             const { data: qp, error: qpErr } = await sb.from('query_packs').upsert({
+              job_id:           jobId,
               property_id:      propertyId,
               campaign_id:      resolvedCampaignId,
               country:          snap.country,
@@ -973,7 +991,7 @@ Deno.serve(async (req) => {
               pack_status:      'running',
               started_at:       new Date().toISOString(),
               priority:         currentTier === 1 ? 10 : 5,
-            }, { onConflict: 'query_hash' })
+            }, { onConflict: 'job_id,query_hash' })
               .select('id, queries, language')
               .maybeSingle();
 
@@ -996,17 +1014,14 @@ Deno.serve(async (req) => {
               tier:     currentTier,
             }));
 
-            let response;
-            if (dfseo.isConfigured()) {
-              response = await dfseo.searchLive(queries).catch(async (e: unknown) => {
-                const msg = e instanceof Error ? e.message : String(e);
-                await emitEvent(sb, jobId, 'DFSEO_ERROR', `DataForSEO error: ${msg.slice(0,100)}`);
-                await logCost(sb, 'DATAFORSEO', 'SERP_SEARCH', 0, false, { job_id: jobId });
-                return null;
-              });
-            } else {
-              response = dfseo.mock(queries);
-            }
+            // dfseo is always configured here — hard-fail guard is above
+            const response = await dfseo.searchLive(queries).catch(async (e: unknown) => {
+              const msg = e instanceof Error ? e.message : String(e);
+              await emitEvent(sb, jobId, 'DFSEO_ERROR', `DataForSEO error: ${msg.slice(0,200)}`, { pack_id: qp.id });
+              await logCost(sb, 'DATAFORSEO', 'SERP_SEARCH', 0, false, { job_id: jobId });
+              await sb.from('query_packs').update({ pack_status: 'failed', completed_at: new Date().toISOString() }).eq('id', qp.id);
+              return null;
+            });
 
             if (!response) continue;
 
@@ -1020,7 +1035,7 @@ Deno.serve(async (req) => {
 
             // Insert raw_signals (deduplicated by canonical URL)
             for (const result of response.results) {
-              const norm = await normaliseSearchResult(result, response.provider.includes('MOCK'));
+              const norm = await normaliseSearchResult(result, false);
               const { error: sigErr } = await sb.from('raw_signals').insert({
                 job_id:               jobId,
                 query_pack_id:        qp.id,
@@ -1086,71 +1101,61 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         try {
-          let posts;
-
-          if (apify.isConfigured()) {
-            const req = {
-              platform,
-              sourceUrl:   sources[0].url,
-              sourceUrls:  sources.map(s => s.url),
-              maxItems:    80,
-              existingRunId: (existingRun && existingRun.status !== 'FAILED') 
-                ? existingRun.run_id : undefined,
-              jobId,
-            };
-
-            await emitEvent(sb, jobId, `APIFY_${platform}_START`,
-              `Apify ${platform}: starting collection from ${sources.length} source(s)`);
-
-            const result = await apify.collect(req);
-
-            // Upsert actor run record
-            await sb.from('apify_actor_runs').upsert({
-              job_id:       jobId,
-              query_pack_id: null,
-              platform,
-              actor_id:     Deno.env.get(`APIFY_${platform}_ACTOR_ID`) ?? '',
-              run_id:       result.runMeta.runId,
-              dataset_id:   result.runMeta.datasetId ?? null,
-              status:       result.runMeta.status,
-              items_returned: result.posts.length,
-              cost_usd:     result.costUsd,
-              started_at:   result.runMeta.startedAt,
-              finished_at:  result.runMeta.finishedAt ?? null,
-              dataset_fetched: !result.partial,
-            }, { onConflict: 'run_id' });
-
-            await logCost(sb, result.provider, `COLLECT_${platform}`,
-              result.costUsd, result.runMeta.status === 'SUCCEEDED', { job_id: jobId });
-
-            if (result.partial) {
-              await emitEvent(sb, jobId, `APIFY_${platform}_PARTIAL`,
-                `Apify ${platform} run still in progress — will retry on next job`);
-              continue;
-            }
-
-            posts = result.posts;
-          } else {
-            // Mock path
-            const mockResult = apify.mock({
-              platform, sourceUrl: sources[0].url, maxItems: 10,
-            });
-            posts = mockResult.posts;
-            await sb.from('apify_actor_runs').upsert({
-              job_id: jobId, platform,
-              actor_id: 'mock', run_id: `mock-${platform}-${jobId}`,
-              status: 'SUCCEEDED', items_returned: posts.length,
-              cost_usd: 0, started_at: new Date().toISOString(),
-              dataset_fetched: true,
-            }, { onConflict: 'run_id' });
+          // Check actor ID — hard-fail per platform, continue to others
+          const actorId = Deno.env.get(`APIFY_${platform}_ACTOR_ID`) ?? '';
+          if (!actorId) {
+            await emitEvent(sb, jobId, `APIFY_${platform}_SKIP`,
+              `APIFY_PLATFORM_NOT_CONFIGURED: APIFY_${platform}_ACTOR_ID not set — skipping`);
+            continue;
           }
 
-          // Find best source_id for this platform
-          const bestSource = sources[0];
+          const apifyReq = {
+            platform,
+            sourceUrl:   sources[0].url,
+            sourceUrls:  sources.map(s => s.url),
+            maxItems:    80,
+            existingRunId: (existingRun && existingRun.status !== 'FAILED')
+              ? existingRun.run_id : undefined,
+            jobId,
+          };
 
-          // Normalise + insert
+          await emitEvent(sb, jobId, `APIFY_${platform}_START`,
+            `Apify ${platform}: starting collection from ${sources.length} source(s)`);
+
+          const result = await apify.collect(apifyReq);
+
+          // Persist actor run record (real run_id, dataset_id, actor_id)
+          await sb.from('apify_actor_runs').upsert({
+            job_id:          jobId,
+            query_pack_id:   null,
+            platform,
+            actor_id:        actorId,
+            run_id:          result.runMeta.runId,
+            dataset_id:      result.runMeta.datasetId ?? null,
+            status:          result.runMeta.status,
+            items_returned:  result.posts.length,
+            cost_usd:        result.costUsd,
+            started_at:      result.runMeta.startedAt,
+            finished_at:     result.runMeta.finishedAt ?? null,
+            dataset_fetched: !result.partial,
+          }, { onConflict: 'run_id' });
+
+          await logCost(sb, result.provider, `COLLECT_${platform}`,
+            result.costUsd, result.runMeta.status === 'SUCCEEDED', { job_id: jobId });
+
+          if (result.partial) {
+            await emitEvent(sb, jobId, `APIFY_${platform}_PARTIAL`,
+              `Apify ${platform} run still in progress — will retry on next job`);
+            continue;
+          }
+
+          const posts = result.posts;
+          const bestSource = sources[0];
+          let platformSignals = 0;
+
+          // Normalise + insert raw signals (mock_mode always false here)
           for (const post of posts) {
-            const norm = await normalisePost(post, !apify.isConfigured());
+            const norm = await normalisePost(post, false);
             if (!norm.text || norm.text.length < 20) continue;
 
             const { error: sigErr } = await sb.from('raw_signals').insert({
@@ -1165,17 +1170,24 @@ Deno.serve(async (req) => {
               language:            bestSource.language ?? null,
               published_at:        norm.publishedAt ?? null,
               content_fingerprint: norm.fingerprint,
-              provider:            apify.isConfigured() ? 'APIFY' : 'APIFY_MOCK',
+              provider:            'APIFY',
               tier:                currentTier,
               classification_status: 'PENDING',
-              mock_mode:           !apify.isConfigured(),
+              mock_mode:           false,
             });
 
-            if (!sigErr) apifySignals++;
+            if (sigErr) {
+              await emitEvent(sb, jobId, 'RAW_SIGNAL_INSERT_ERROR',
+                `raw_signals insert failed: ${sigErr.message.slice(0,120)}`, { platform });
+            } else {
+              platformSignals++;
+              apifySignals++;
+            }
           }
 
           await emitEvent(sb, jobId, `APIFY_${platform}_DONE`,
-            `Apify ${platform}: ${posts.length} posts → ${apifySignals} signals`, { posts: posts.length });
+            `Apify ${platform}: ${posts.length} posts → ${platformSignals} signals`,
+            { posts: posts.length, signals: platformSignals, run_id: result.runMeta.runId, dataset_id: result.runMeta.datasetId ?? null });
 
         } catch (e: unknown) {
           // Source-level partial failure — do not destroy other results

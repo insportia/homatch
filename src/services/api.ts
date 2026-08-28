@@ -482,8 +482,9 @@ export async function initiateTopUp(amountUsd: number): Promise<{
 export async function startMatchingCampaign(
   propertyId: string,
   userId: string
-): Promise<string | null> {
-  // Upsert campaign for this property
+): Promise<{ jobId: string; campaignId: string } | null> {
+  // 1. Upsert campaign record
+  let campaignId: string;
   const { data: existing } = await supabase
     .from('matching_campaigns')
     .select('id, status_v2')
@@ -495,32 +496,32 @@ export async function startMatchingCampaign(
       .from('matching_campaigns')
       .update({ status_v2: 'ACTIVE' })
       .eq('id', existing.id);
-    // Also flip matching_status on property
     await supabase
       .from('properties')
       .update({ matching_status: 'ACTIVE' })
       .eq('id', propertyId);
-    await logActivity(userId, 'MATCHING_STARTED', propertyId);
-    return existing.id;
+    campaignId = existing.id;
+  } else {
+    const { data } = await supabase
+      .from('matching_campaigns')
+      .insert({ property_id: propertyId, user_id: userId, status_v2: 'ACTIVE' })
+      .select('id')
+      .single();
+    if (!data) return null;
+    campaignId = data.id;
   }
+  await logActivity(userId, 'MATCHING_STARTED', propertyId);
 
-  const { data } = await supabase
-    .from('matching_campaigns')
-    .insert({ property_id: propertyId, user_id: userId, status_v2: 'ACTIVE' })
-    .select('id')
-    .maybeSingle();
+  // 2. Invoke match-campaign Edge Function — returns real job ID
+  const idempotencyKey = `ui-${propertyId}-${Date.now()}`;
+  const { data, error } = await supabase.functions.invoke('match-campaign', {
+    body: { propertyId, campaignId, idempotencyKey },
+  });
+  if (error) throw new Error(`match-campaign EF error: ${error.message}`);
+  if (!data?.jobId) throw new Error('match-campaign returned no jobId');
 
-  if (data?.id) {
-    await supabase
-      .from('properties')
-      .update({ matching_status: 'ACTIVE' })
-      .eq('id', propertyId);
-    await logActivity(userId, 'MATCHING_STARTED', propertyId);
-  }
-
-  return data?.id ?? null;
+  return { jobId: data.jobId as string, campaignId };
 }
-
 export async function pauseMatchingCampaign(
   propertyId: string,
   userId: string

@@ -7,7 +7,7 @@ import { RouteGuard } from '@/components/common/RouteGuard';
 import { Button } from '@/components/ui/button';
 import { getProperty, softDeleteProperty, calculateMatchability,
   startMatchingCampaign, pauseMatchingCampaign,
-  getMatchCounts, getCreditAccount, seedDemoMatches } from '@/services/api';
+  getMatchCounts, getCreditAccount } from '@/services/api';
 import type { Property, CreditAccount } from '@/types/types';
 import { toast } from 'sonner';
 import {
@@ -21,6 +21,7 @@ import {
   CheckCircle2, AlertCircle, Lock, Layers,
   Play, Pause, Loader2, ChevronRight,
 } from 'lucide-react';
+import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 
 function MatchabilityPanel({ score, improvements }: { score: number; improvements: string[] }) {
   const { t } = useLanguage();
@@ -126,22 +127,21 @@ function CampaignPanel({
   const [active, setActive] = useState(initialActive);
   const [loading, setLoading] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const handleStart = async () => {
     setLoading(true);
-    await startMatchingCampaign(propertyId, userId);
-    setActive(true);
-    // Seed demo matches then reload counts so cards appear immediately
-    const seed = await seedDemoMatches(propertyId);
-    if (seed.seeded > 0) {
-      toast.success(`Matching started — ${seed.seeded} demo signals loaded!`);
-    } else {
-      toast.success('Matching campaign started!');
+    try {
+      const result = await startMatchingCampaign(propertyId, userId);
+      if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
+      setActive(true);
+      setActiveJobId(result.jobId);
+      toast.success('Matching campaign started — live results loading…');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to start matching');
+    } finally {
+      setLoading(false);
     }
-    // Reload match counts so the stat grid reflects the new matches
-    const fresh = await getMatchCounts(propertyId);
-    onCountsRefresh(fresh);
-    setLoading(false);
   };
 
   const handlePauseConfirmed = async () => {
@@ -233,6 +233,22 @@ function CampaignPanel({
           )}
         </div>
       </div>
+
+      {/* Live job progress — shown once a job is started */}
+      {activeJobId && (
+        <MatchingJobProgress
+          jobId={activeJobId}
+          onComplete={(job) => {
+            // Refresh match counts when job finishes
+            getMatchCounts(propertyId).then(onCountsRefresh);
+            if (job.matches_created > 0) {
+              toast.success(`Matching complete — ${job.matches_created} match${job.matches_created !== 1 ? 'es' : ''} found`);
+            } else if (job.status === 'partially_completed') {
+              toast.warning('Matching partially completed — check events for details');
+            }
+          }}
+        />
+      )}
 
       <AlertDialog open={showPauseConfirm} onOpenChange={setShowPauseConfirm}>
         <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-md bg-card border-border">

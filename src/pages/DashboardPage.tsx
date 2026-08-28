@@ -112,7 +112,7 @@ function LiveMatchingPanel({ run }: { run: MatchingRunProgress }) {
           })}
         </div>
         <div className="space-y-3">
-          <div><p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Sources</p><div className="flex flex-wrap gap-1.5">{Object.entries(sources).map(([key, value]) => <span key={key} className={`text-[10px] px-2 py-1 rounded-md border ${String(value).includes('done') ? 'border-green-500/20 bg-green-500/5 text-green-400' : String(value).includes('error') ? 'border-destructive/20 bg-destructive/5 text-destructive' : 'border-border bg-secondary/40 text-muted-foreground'}`}>{sourceLabels[key] || key}: {String(value).replaceAll('-', ' ')}</span>)}</div></div>
+          <div><p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Sources</p><div className="flex flex-wrap gap-1.5">{Object.entries(sources).map(([key, value]) => <span key={key} className={`text-[10px] px-2 py-1 rounded-md border ${String(value).includes('done') ? 'border-green-500/20 bg-green-500/5 text-green-400' : String(value).includes('error') ? 'border-destructive/20 bg-destructive/5 text-destructive' : 'border-border bg-secondary/40 text-muted-foreground'}`}>{sourceLabels[key] || key}: {String(value).split('-').join(' ')}</span>)}</div></div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <MiniMetric label="Web candidates" value={counters.webCandidates ?? 0} />
             <MiniMetric label="Social candidates" value={counters.socialCandidates ?? 0} />

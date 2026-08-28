@@ -57,10 +57,10 @@ function FallbackChain({ chain }: { chain: Array<{ strategy: string; status: str
 }
 
 function ExpandableRow({ imp }: { imp: Record<string, unknown> }) {
+  const chain = (imp.fallback_chain as Array<{ strategy: string; status: string | number; size?: number; reason?: string }> | undefined) ?? [];
   const [open, setOpen] = useState(false);
   const Icon = STATUS_ICON[imp.status as string] ?? Clock;
   const color = STATUS_COLOR[imp.status as string] ?? 'text-muted-foreground';
-  const chain = (imp.fallback_chain as Array<{ strategy: string; status: string | number; size?: number; reason?: string }>) ?? [];
   const missing = (imp.missing_critical as string[]) ?? [];
 
   return (
@@ -138,7 +138,7 @@ function ExpandableRow({ imp }: { imp: Record<string, unknown> }) {
                 <p className="text-muted-foreground font-medium uppercase tracking-wide text-[10px] mb-1">HTTP Details</p>
                 <p>Status: <span className="font-mono">{String(imp.http_status ?? '—')}</span></p>
                 <p>Response size: <span className="font-mono">
-                  {imp.response_size ? `${((imp.response_size as number) / 1024).toFixed(1)} KB` : '—'}
+                  {imp.response_size ? `${(Number(imp.response_size) / 1024).toFixed(1)} KB` : '—'}
                 </span></p>
                 <p>Cloudflare blocked: <span className={`font-medium ${imp.cloudflare_blocked ? 'text-destructive' : 'text-green-600 dark:text-green-400'}`}>
                   {imp.cloudflare_blocked ? 'yes' : 'no'}
@@ -152,7 +152,7 @@ function ExpandableRow({ imp }: { imp: Record<string, unknown> }) {
                     <AlertTriangle className="h-3 w-3" /> Error
                   </div>
                   <p className="text-destructive font-mono">{String(imp.error_code ?? '')}</p>
-                  {imp.error_message && <p className="text-muted-foreground">{imp.error_message as string}</p>}
+                  {imp.error_message && <p className="text-muted-foreground">{String(imp.error_message)}</p>}
                 </div>
               )}
 

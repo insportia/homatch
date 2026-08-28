@@ -17,12 +17,13 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Zap, Lock, Unlock, ExternalLink, User, Globe, MapPin, DollarSign,
-  BedDouble, Clock, ChevronRight, Loader2, Play, Pause, AlertCircle, FlaskConical,
+  BedDouble, Clock, ChevronRight, Loader2, Play, Pause, AlertCircle,
 } from 'lucide-react';
+import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import {
   getMatches, getMatchCounts, unlockMatch, markMatchPreviewed,
   getUnlockedMatch, startMatchingCampaign, pauseMatchingCampaign,
-  getCreditAccount, seedDemoMatches,
+  getCreditAccount,
 } from '@/services/api';
 import type { Match, MatchUnlock, CreditAccount } from '@/types/types';
 import { toast } from 'sonner';
@@ -154,7 +155,6 @@ function LockedMatchCard({
       {match.mock_mode && import.meta.env.DEV && (
         <div className="flex items-center gap-1.5">
           <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 px-2 py-0.5 rounded-full">
-            <FlaskConical className="h-2.5 w-2.5" />
             DEV SIGNAL
           </span>
         </div>
@@ -347,11 +347,7 @@ function MatchesContent() {
   const [campaignActive, setCampaignActive] = useState(false);
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
-
-  // Demo seed (admin-only dev tool — hidden in production)
-  const isDev = import.meta.env.DEV;
-  const [seedingDemo, setSeedingDemo] = useState(false);
-  const [demoSeeded, setDemoSeeded] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!propertyId || !homatchUser) return;
@@ -366,10 +362,6 @@ function MatchesContent() {
     setCreditAccount(credits);
     // Detect campaign status from match data
     setCampaignActive(matchData.some(m => m.status !== 'ARCHIVED'));
-    // Check if demo matches exist (dev only)
-    if (import.meta.env.DEV) {
-      setDemoSeeded(matchData.some(m => m.mock_mode));
-    }
     setLoading(false);
   }, [propertyId, homatchUser]);
 
@@ -433,29 +425,16 @@ function MatchesContent() {
   const handleStartMatching = async () => {
     if (!propertyId || !homatchUser) return;
     setCampaignLoading(true);
-    const result = await startMatchingCampaign(propertyId, homatchUser.id);
-    setCampaignActive(true);
-    setCampaignLoading(false);
-    if ((result as any)?.mock_mode && import.meta.env.DEV) {
-      toast.success('Matching started (DEV mode — mock signals will appear)');
-    } else {
-      toast.success('Matching campaign started!');
-    }
-  };
-
-  const handleSeedDemo = async () => {
-    if (!propertyId) return;
-    setSeedingDemo(true);
-    const result = await seedDemoMatches(propertyId);
-    setSeedingDemo(false);
-    if (result.success && result.seeded > 0) {
-      toast.success(`Seeded ${result.seeded} demo matches!`);
-      setDemoSeeded(true);
-      await loadData();
-    } else if (result.seeded === 0) {
-      toast.info('Demo matches already exist for this property.');
-    } else {
-      toast.error(result.message ?? 'Seed failed');
+    try {
+      const result = await startMatchingCampaign(propertyId, homatchUser.id);
+      if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
+      setCampaignActive(true);
+      setActiveJobId(result.jobId);
+      toast.success('Matching campaign started — live results loading…');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to start matching');
+    } finally {
+      setCampaignLoading(false);
     }
   };
 
@@ -528,31 +507,19 @@ function MatchesContent() {
           </div>
         )}
 
-        {/* DEMO mode banner — dev only, never shown in production */}
-        {isDev && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-            <FlaskConical className="h-4 w-4 text-yellow-400 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-yellow-400">DEV — DEMO mode</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {demoSeeded
-                  ? 'Demo matches loaded. Unlock flow, credit deduction, and campaign states use real app logic.'
-                  : 'No real provider keys configured. Seed demo signals to test the full match → unlock → credits flow.'}
-              </p>
-            </div>
-            {!demoSeeded && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10 text-xs h-8 gap-1.5 shrink-0"
-                onClick={handleSeedDemo}
-                disabled={seedingDemo}
-              >
-                {seedingDemo ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
-                {seedingDemo ? 'Seeding...' : 'Seed Demo Matches'}
-              </Button>
-            )}
-          </div>
+        {/* Live job progress panel */}
+        {activeJobId && (
+          <MatchingJobProgress
+            jobId={activeJobId}
+            onComplete={(job) => {
+              if (job.matches_created > 0) {
+                toast.success(`Matching complete — ${job.matches_created} match${job.matches_created !== 1 ? 'es' : ''} found`);
+                loadData();
+              } else if (job.status === 'partially_completed') {
+                toast.warning('Matching partially completed — check events for details');
+              }
+            }}
+          />
         )}
 
         {/* Filters */}

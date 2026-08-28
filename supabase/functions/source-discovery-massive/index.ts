@@ -8,7 +8,7 @@ Deno.serve(async(req:Request)=>{
  const url=Deno.env.get('SUPABASE_URL')!,key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,db=createClient(url,key);
  try{
   const auth=req.headers.get('authorization')||''; if(auth.replace(/^Bearer\s+/i,'')!==key)return json({error:'Internal only'},403);
-  const {propertyId,maxWebQueries=90,maxFacebookGroups=2500}=await req.json(); if(!propertyId)return json({error:'propertyId required'},400);
+  const {propertyId,maxWebQueries=90,maxFacebookGroups=400}=await req.json(); if(!propertyId)return json({error:'propertyId required'},400);
   const {data:p}=await db.from('properties').select(`id,transaction_type,property_type,title,facts:property_facts!property_id(country,country_code,city,district,neighborhood,description,original_description)`).eq('id',propertyId).maybeSingle(); if(!p)return json({error:'Property not found'},404);
   const f=Array.isArray(p.facts)?p.facts[0]:p.facts; const country=String(f?.country_code||f?.country||'GE').toUpperCase(); const city=String(f?.city||'Tbilisi'); const district=String(f?.district||'');
   const roots=rootsFor(String(p.transaction_type||''),String(p.property_type||'PROPERTY'),city,district);
@@ -17,18 +17,20 @@ Deno.serve(async(req:Request)=>{
   let inserted=0,duplicates=0; const platforms:Record<string,number>={};
   for(const r of serp.results){const c=classify(r.url);if(!c)continue;const u=canonical(r.url,c.platform);if(!u)continue;const ok=await saveSource(db,c.platform,c.type,u,r.title||u,country,'DATAFORSEO_DISCOVERY');if(ok){inserted++;platforms[c.platform]=(platforms[c.platform]||0)+1}else duplicates++;}
 
-  let fbFound=0,fbInserted=0,fbError:string|null=null;
+  let fbFound=0,fbInserted=0,fbError:string|null=null;let keywordBatch:string[]=[];
   try{
    const token=Deno.env.get('APIFY_API_TOKEN')!; if(token){
-    const kws=[...new Set(roots.map(x=>x.replace(/^site:\S+\s+/,'').trim()))].slice(0,40);
-    const per=Math.max(10,Math.min(500,Math.ceil(Number(maxFacebookGroups||2500)/Math.max(1,kws.length))));
-    const items=await runActor(token,'scraper-engine~facebook-groups-search-scraper',{startUrls:kws,maxItems:per,proxyConfiguration:{useApifyProxy:false}},165000);
+    const allKws=[...new Set(roots.map(x=>x.replace(/^site:\S+\s+/,'').trim()))];
+    const batchSize=Math.min(8,allKws.length);const cycle=Math.floor(Date.now()/(6*3600_000));const start=(cycle*batchSize)%Math.max(1,allKws.length);
+    keywordBatch=Array.from({length:batchSize},(_,i)=>allKws[(start+i)%allKws.length]);
+    const per=Math.max(10,Math.min(75,Math.ceil(Number(maxFacebookGroups||400)/Math.max(1,keywordBatch.length))));
+    const items=await runActor(token,'scraper-engine~facebook-groups-search-scraper',{startUrls:keywordBatch,maxItems:per,proxyConfiguration:{useApifyProxy:false}},145000);
     fbFound=items.length;
     for(const x of items){const u=canonical(x.url||x.groupUrl||'','FACEBOOK');if(!u)continue;const ok=await saveSource(db,'FACEBOOK','FACEBOOK_GROUP',u,x.name||x.groupName||u,country,'APIFY_GROUP_DISCOVERY');if(ok)fbInserted++;}
    }
   }catch(e){fbError=e instanceof Error?e.message:String(e)}
-  await db.from('cost_events').insert([{provider:'DATAFORSEO',operation_type:'SOURCE_DISCOVERY_MASSIVE',source:`public-web results=${serp.results.length} inserted=${inserted}`,market:country,units:siteQueries.length,cost_usd:serp.cost,success:true,cache_hit:false,property_id:propertyId},{provider:'APIFY',operation_type:'FACEBOOK_GROUP_DISCOVERY',source:fbError?`error:${fbError.slice(0,180)}`:`found=${fbFound} inserted=${fbInserted}`,market:country,units:fbFound,cost_usd:0,success:!fbError,cache_hit:false,property_id:propertyId}]);
-  return json({success:true,roots:roots.length,webQueries:siteQueries.length,webResults:serp.results.length,sourcesInserted:inserted,duplicates,platforms,facebook:{found:fbFound,inserted:fbInserted,error:fbError}});
+  await db.from('cost_events').insert([{provider:'DATAFORSEO',operation_type:'SOURCE_DISCOVERY_MASSIVE',source:`public-web results=${serp.results.length} inserted=${inserted}`,market:country,units:siteQueries.length,cost_usd:serp.cost,success:true,cache_hit:false,property_id:propertyId},{provider:'APIFY',operation_type:'FACEBOOK_GROUP_DISCOVERY',source:fbError?`error:${fbError.slice(0,180)}`:`keywords=${keywordBatch.length} found=${fbFound} inserted=${fbInserted}`,market:country,units:fbFound,cost_usd:0,success:!fbError,cache_hit:false,property_id:propertyId}]);
+  return json({success:true,roots:roots.length,webQueries:siteQueries.length,webResults:serp.results.length,sourcesInserted:inserted,duplicates,platforms,facebook:{keywords:keywordBatch,found:fbFound,inserted:fbInserted,error:fbError}});
  }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
 });
 

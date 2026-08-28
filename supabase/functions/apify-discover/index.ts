@@ -5,9 +5,11 @@ const CORS={
   'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
 };
 
-const APIFY_BASE='https://api.apify.com/v2/acts';
+const APIFY_BASE='https://api.apify.com/v2/actors';
 const FB_ACTOR='lofomachines~facebook-groups-posts-search-scraper';
-const TG_ACTOR='lofomachines~telegram-keyword-search-scraper';
+const TG_PRIMARY='i-scraper~telegram-keyword-search';
+const TG_FALLBACK='lofomachines~telegram-keyword-search-scraper';
+const THREADS_ACTOR='bovi~threads-posts-scraper';
 
 Deno.serve(async (req:Request)=>{
   if(req.method==='OPTIONS') return new Response('ok',{headers:CORS});
@@ -35,56 +37,118 @@ Deno.serve(async (req:Request)=>{
     const facts=Array.isArray(prop.property_facts)?prop.property_facts[0]:prop.property_facts;
     const city=facts?.city||'Tbilisi';
     const district=facts?.district||'';
-    const keywords=[
-      `looking to buy apartment ${city} ${district}`.trim(),
-      `looking for apartment ${city} ${district}`.trim(),
-      `ищу квартиру ${city} ${district}`.trim(),
-      `куплю квартиру ${city} ${district}`.trim(),
-      `ვეძებ ბინას ${city} ${district}`.trim(),
-      `ვიყიდი ბინას ${city} ${district}`.trim(),
+    const price=facts?.total_price||null;
+    const currency=facts?.currency||'USD';
+    const bedrooms=facts?.bedrooms||null;
+
+    const keywordSets=buildBuyerIntentQueries({city,district,price,currency,bedrooms});
+    const flatKeywords=keywordSets.flatMap(x=>x.queries);
+    const resultLimit=Math.max(10,Math.min(30,maxPerPlatform));
+
+    const jobs:Promise<any>[]=[
+      safeActor('facebook',()=>runActor(apifyToken,FB_ACTOR,{keywords:flatKeywords.slice(0,8),afterDate:'last_month',maxPosts:100,countryCode:'ge'})),
+      safeActor('telegram_primary',()=>runActor(apifyToken,TG_PRIMARY,{
+        queries:flatKeywords.slice(0,12).map(text=>({text,mode:'allWords'})),
+        intent:`Find public messages from people actively looking to buy, rent or invest in residential property in ${city}${district?`, ${district}`:''}. Exclude agents advertising properties, developers, news and generic promotional posts.`,
+        languages:['en','ru','ka','tr','ar','he'],
+        maxResultsPerQuery:resultLimit,
+        clusterResults:true,
+        searchGlobalWeb:true,
+      })),
+      safeActor('telegram_fallback',()=>runActor(apifyToken,TG_FALLBACK,{mode:'keyword',keywords:flatKeywords.slice(0,8),afterDate:'30 days',countryCode:'ge',maxResultsPerKeyword:resultLimit})),
+      ...flatKeywords.slice(0,6).map((keyword,i)=>safeActor(`threads_${i}`,()=>runActor(apifyToken,THREADS_ACTOR,{keyword}))),
     ];
 
-    const [fb,tg]=await Promise.all([
-      runActor(apifyToken,FB_ACTOR,{keywords,maxPosts:Math.min(30,maxPerPlatform)}),
-      runActor(apifyToken,TG_ACTOR,{mode:'keyword',keywords,afterDate:'30 days',maxResultsPerKeyword:Math.min(30,maxPerPlatform)}),
-    ]);
+    const settled=await Promise.all(jobs);
+    const fb=itemsFrom(settled,'facebook');
+    const tg=dedupeItems([...itemsFrom(settled,'telegram_primary'),...itemsFrom(settled,'telegram_fallback')]);
+    const threads=dedupeItems(settled.filter(x=>String(x.name).startsWith('threads_')).flatMap(x=>x.items||[]));
 
     const fbSource=await ensureSource(admin,'FACEBOOK','FACEBOOK_GROUP','APIFY_DISCOVERY_FACEBOOK','Facebook public groups discovery','https://www.facebook.com/groups/');
     const tgSource=await ensureSource(admin,'TELEGRAM','TELEGRAM_GROUP','APIFY_DISCOVERY_TELEGRAM','Telegram public discovery','https://t.me/');
+    const thSource=await ensureSource(admin,'OTHER','WEBSITE','APIFY_DISCOVERY_THREADS','Threads public keyword discovery','https://www.threads.net/');
 
     const fbStats=await saveItems(admin,fb,'FACEBOOK',fbSource,(x:any)=>({
-      externalId:String(x.post_url||x.id||''),
-      sourceUrl:String(x.post_url||x.url||''),
+      externalId:String(x.post_url||x.facebookUrl||x.id||''),
+      sourceUrl:String(x.post_url||x.facebookUrl||x.url||''),
       text:String(x.text||x.message||''),
-      authorName:String(x.author_name||x.authorName||''),
+      authorName:String(x.author_name||x.authorName||x.user?.name||''),
       authorUrl:x.author_id?`https://www.facebook.com/${x.author_id}`:null,
-      publishedAt:x.date||x.publishedAt||null,
+      publishedAt:x.date||x.time||x.publishedAt||null,
     }));
 
     const tgStats=await saveItems(admin,tg,'TELEGRAM',tgSource,(x:any)=>({
-      externalId:String(x.id||x.message_id||x.source_url||''),
-      sourceUrl:String(x.source_url||x.post_url||x.url||''),
+      externalId:String(x.id||x.messageId||x.message_id||x.messageUrl||x.source_url||''),
+      sourceUrl:String(x.messageUrl||x.source_url||x.post_url||x.url||''),
       text:String(x.text||x.message||''),
-      authorName:String(x.source_name||x.author||x.channel_name||''),
-      authorUrl:String(x.source_url||''),
-      publishedAt:x.date||x.published_at||null,
+      authorName:String(x.channelTitle||x.source_name||x.author||x.channel_name||''),
+      authorUrl:String(x.channelUrl||x.source_url||''),
+      publishedAt:x.publishedAt||x.date||x.published_at||null,
     }));
 
+    const thStats=await saveItems(admin,threads,'OTHER',thSource,(x:any)=>({
+      externalId:String(x.post_id||x.id||x.code||x.post_url||''),
+      sourceUrl:String(x.post_url||x.url||''),
+      text:String(x.text||x.caption||''),
+      authorName:String(x.author_username||x.username||''),
+      authorUrl:x.author_username?`https://www.threads.net/@${String(x.author_username).replace(/^@/,'')}`:null,
+      publishedAt:x.taken_at||x.postedAt||x.timestamp||null,
+    }));
+
+    const errors=settled.filter(x=>x.error).map(x=>({name:x.name,error:x.error}));
     await admin.from('cost_events').insert([
-      {provider:'APIFY',operation_type:'DISCOVER_FACEBOOK',source:'keyword-discovery',market:'GE',units:fb.length,cost_usd:0,success:true,cache_hit:false,property_id:propertyId},
-      {provider:'APIFY',operation_type:'DISCOVER_TELEGRAM',source:'keyword-discovery',market:'GE',units:tg.length,cost_usd:0,success:true,cache_hit:false,property_id:propertyId},
+      {provider:'APIFY',operation_type:'DISCOVER_FACEBOOK',source:'keyword-discovery',market:'GE',units:fb.length,cost_usd:0,success:!errors.some(x=>x.name==='facebook'),cache_hit:false,property_id:propertyId},
+      {provider:'APIFY',operation_type:'DISCOVER_TELEGRAM',source:'keyword-discovery',market:'GE',units:tg.length,cost_usd:0,success:!errors.some(x=>x.name.startsWith('telegram_')),cache_hit:false,property_id:propertyId},
+      {provider:'APIFY',operation_type:'DISCOVER_THREADS',source:'keyword-discovery',market:'GE',units:threads.length,cost_usd:0,success:!errors.some(x=>x.name.startsWith('threads_')),cache_hit:false,property_id:propertyId},
     ]);
 
-    return json({success:true,facebook:{found:fb.length,...fbStats},telegram:{found:tg.length,...tgStats}});
+    return json({
+      success:true,
+      queries:keywordSets,
+      facebook:{found:fb.length,...fbStats},
+      telegram:{found:tg.length,...tgStats},
+      threads:{found:threads.length,...thStats},
+      actorErrors:errors,
+    });
   }catch(e){
     console.error('apify-discover',e);
     return json({error:e instanceof Error?e.message:String(e)},500);
   }
 });
 
+function buildBuyerIntentQueries({city,district,price,currency,bedrooms}:{city:string,district:string,price:any,currency:string,bedrooms:any}){
+  const loc=[district,city].filter(Boolean).join(' ');
+  const budget=price?`${Math.round(Number(price)*0.8)}-${Math.round(Number(price)*1.2)} ${currency}`:'';
+  const bed=bedrooms?`${bedrooms} bedroom`:'';
+  return [
+    {language:'en',queries:[`looking to buy apartment ${loc}`,`want to buy ${bed} apartment ${city}`.replace(/\s+/g,' ').trim(),`apartment wanted ${city} ${budget}`.trim()]},
+    {language:'ru',queries:[`ищу квартиру ${loc}`,`хочу купить квартиру ${city}`,`куплю квартиру ${loc}`]},
+    {language:'ka',queries:[`ვეძებ ბინას ${loc}`,`ვიყიდი ბინას ${loc}`,`მინდა ბინის ყიდვა ${city}`]},
+    {language:'tr',queries:[`${city} daire satın almak istiyorum`,`${city} satılık daire arıyorum`]},
+    {language:'ar',queries:[`أبحث عن شقة للشراء في ${city}`,`أريد شراء شقة في ${city}`]},
+    {language:'he',queries:[`מחפש דירה לקנייה ב${city}`,`רוצה לקנות דירה ב${city}`]},
+  ];
+}
+
+async function safeActor(name:string,fn:()=>Promise<any[]>){
+  try{return {name,items:await fn(),error:null}}catch(e){
+    console.error('Apify actor failed',name,e);
+    return {name,items:[],error:e instanceof Error?e.message:String(e)};
+  }
+}
+
+function itemsFrom(results:any[],name:string){return results.find(x=>x.name===name)?.items||[]}
+function dedupeItems(items:any[]){
+  const seen=new Set<string>();
+  return items.filter((x:any)=>{const k=String(x.url||x.post_url||x.messageUrl||x.source_url||x.id||x.post_id||JSON.stringify(x).slice(0,180));if(seen.has(k))return false;seen.add(k);return true;});
+}
+
 async function runActor(token:string,actor:string,input:any){
-  const r=await fetch(`${APIFY_BASE}/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=90&memory=512`,{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),signal:AbortSignal.timeout(100000)
+  const r=await fetch(`${APIFY_BASE}/${actor}/run-sync-get-dataset-items?timeout=100&memory=512`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+    body:JSON.stringify(input),
+    signal:AbortSignal.timeout(110000)
   });
   if(!r.ok) throw new Error(`Apify ${actor} failed ${r.status}: ${(await r.text()).slice(0,500)}`);
   const data=await r.json();

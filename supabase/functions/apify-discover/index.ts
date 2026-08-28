@@ -5,7 +5,7 @@ const CORS={
   'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
 };
 
-const APIFY_BASE='https://api.apify.com/v2/actors';
+const APIFY_BASE='https://api.apify.com/v2/acts';
 const FB_ACTOR='lofomachines~facebook-groups-posts-search-scraper';
 const TG_ACTOR='lofomachines~telegram-keyword-search-scraper';
 
@@ -83,14 +83,7 @@ Deno.serve(async (req:Request)=>{
       {provider:'APIFY',operation_type:'DISCOVER_TELEGRAM',source:'keyword-discovery',market:'GE',units:tg.length,cost_usd:0,success:!errors.some(x=>x.name==='telegram'),cache_hit:false,property_id:propertyId},
     ]);
 
-    return json({
-      success:true,
-      internal:isInternal,
-      keywords,
-      facebook:{found:fb.length,...fbStats},
-      telegram:{found:tg.length,...tgStats},
-      actorErrors:errors,
-    });
+    return json({success:true,internal:isInternal,keywords,facebook:{found:fb.length,...fbStats},telegram:{found:tg.length,...tgStats},actorErrors:errors});
   }catch(e){
     console.error('apify-discover',e);
     return json({error:e instanceof Error?e.message:String(e)},500);
@@ -123,8 +116,8 @@ async function safeActor(name:string,fn:()=>Promise<any[]>){
 function itemsFrom(results:any[],name:string){return results.find(x=>x.name===name)?.items||[]}
 
 async function runActor(token:string,actor:string,input:any){
-  const r=await fetch(`${APIFY_BASE}/${actor}/run-sync-get-dataset-items?timeout=120&memory=512`,{
-    method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify(input),signal:AbortSignal.timeout(125000)
+  const r=await fetch(`${APIFY_BASE}/${actor}/run-sync-get-dataset-items?timeout=100&memory=512`,{
+    method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify(input),signal:AbortSignal.timeout(105000)
   });
   if(!r.ok) throw new Error(`Apify ${actor} failed ${r.status}: ${(await r.text()).slice(0,700)}`);
   const data=await r.json();

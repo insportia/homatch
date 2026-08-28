@@ -7,9 +7,7 @@ const CORS={
 
 const APIFY_BASE='https://api.apify.com/v2/actors';
 const FB_ACTOR='lofomachines~facebook-groups-posts-search-scraper';
-const TG_PRIMARY='i-scraper~telegram-keyword-search';
-const TG_FALLBACK='lofomachines~telegram-keyword-search-scraper';
-const THREADS_ACTOR='bovi~threads-posts-scraper';
+const TG_ACTOR='lofomachines~telegram-keyword-search-scraper';
 
 Deno.serve(async (req:Request)=>{
   if(req.method==='OPTIONS') return new Response('ok',{headers:CORS});
@@ -21,93 +19,76 @@ Deno.serve(async (req:Request)=>{
     const apifyToken=Deno.env.get('APIFY_API_TOKEN')!;
     if(!apifyToken) return json({error:'APIFY_API_TOKEN not configured'},500);
 
-    const userClient=createClient(supabaseUrl,anon,{global:{headers:{Authorization:auth}}});
-    const {data:{user}}=await userClient.auth.getUser();
-    if(!user) return json({error:'Unauthorized'},401);
-
-    const {propertyId,maxPerPlatform=20}=await req.json().catch(()=>({}));
+    const {propertyId,maxPerPlatform=30}=await req.json().catch(()=>({}));
     if(!propertyId) return json({error:'propertyId required'},400);
 
     const admin=createClient(supabaseUrl,serviceKey);
-    const {data:homatchUser}=await admin.from('users').select('id').eq('auth_id',user.id).maybeSingle();
-    if(!homatchUser) return json({error:'Homatch user not found'},403);
-    const {data:prop}=await admin.from('properties').select('id,user_id,title,transaction_type,property_type,property_facts(city,district,country,bedrooms,total_price,currency)').eq('id',propertyId).maybeSingle();
-    if(!prop || prop.user_id!==homatchUser.id) return json({error:'Property not found'},404);
+    const bearer=auth.replace(/^Bearer\s+/i,'');
+    const isInternal=bearer===serviceKey;
+    let homatchUserId:string|null=null;
+
+    if(!isInternal){
+      const userClient=createClient(supabaseUrl,anon,{global:{headers:{Authorization:auth}}});
+      const {data:{user}}=await userClient.auth.getUser();
+      if(!user) return json({error:'Unauthorized'},401);
+      const {data:homatchUser}=await admin.from('users').select('id').eq('auth_id',user.id).maybeSingle();
+      if(!homatchUser) return json({error:'Homatch user not found'},403);
+      homatchUserId=homatchUser.id;
+    }
+
+    const {data:prop}=await admin.from('properties')
+      .select('id,user_id,title,transaction_type,property_type,property_facts(city,district,country,bedrooms,total_price,currency)')
+      .eq('id',propertyId).maybeSingle();
+    if(!prop) return json({error:'Property not found'},404);
+    if(!isInternal && prop.user_id!==homatchUserId) return json({error:'Property not found'},404);
 
     const facts=Array.isArray(prop.property_facts)?prop.property_facts[0]:prop.property_facts;
     const city=facts?.city||'Tbilisi';
     const district=facts?.district||'';
-    const price=facts?.total_price||null;
-    const currency=facts?.currency||'USD';
-    const bedrooms=facts?.bedrooms||null;
+    const keywords=buildBuyerIntentQueries(city,district);
+    const limit=Math.max(10,Math.min(50,Number(maxPerPlatform)||30));
 
-    const keywordSets=buildBuyerIntentQueries({city,district,price,currency,bedrooms});
-    const flatKeywords=keywordSets.flatMap(x=>x.queries);
-    const resultLimit=Math.max(10,Math.min(30,maxPerPlatform));
+    const settled=await Promise.all([
+      safeActor('facebook',()=>runActor(apifyToken,FB_ACTOR,{keywords:keywords.slice(0,10),maxPosts:limit,countryCode:'ge'})),
+      safeActor('telegram',()=>runActor(apifyToken,TG_ACTOR,{mode:'keyword',keywords:keywords.slice(0,10),afterDate:'30 days',countryCode:'ge',maxResultsPerKeyword:limit})),
+    ]);
 
-    const jobs:Promise<any>[]=[
-      safeActor('facebook',()=>runActor(apifyToken,FB_ACTOR,{keywords:flatKeywords.slice(0,8),afterDate:'last_month',maxPosts:100,countryCode:'ge'})),
-      safeActor('telegram_primary',()=>runActor(apifyToken,TG_PRIMARY,{
-        queries:flatKeywords.slice(0,12).map(text=>({text,mode:'allWords'})),
-        intent:`Find public messages from people actively looking to buy, rent or invest in residential property in ${city}${district?`, ${district}`:''}. Exclude agents advertising properties, developers, news and generic promotional posts.`,
-        languages:['en','ru','ka','tr','ar','he'],
-        maxResultsPerQuery:resultLimit,
-        clusterResults:true,
-        searchGlobalWeb:true,
-      })),
-      safeActor('telegram_fallback',()=>runActor(apifyToken,TG_FALLBACK,{mode:'keyword',keywords:flatKeywords.slice(0,8),afterDate:'30 days',countryCode:'ge',maxResultsPerKeyword:resultLimit})),
-      ...flatKeywords.slice(0,6).map((keyword,i)=>safeActor(`threads_${i}`,()=>runActor(apifyToken,THREADS_ACTOR,{keyword}))),
-    ];
-
-    const settled=await Promise.all(jobs);
     const fb=itemsFrom(settled,'facebook');
-    const tg=dedupeItems([...itemsFrom(settled,'telegram_primary'),...itemsFrom(settled,'telegram_fallback')]);
-    const threads=dedupeItems(settled.filter(x=>String(x.name).startsWith('threads_')).flatMap(x=>x.items||[]));
+    const tg=itemsFrom(settled,'telegram');
+    const errors=settled.filter(x=>x.error).map(x=>({name:x.name,error:x.error}));
 
     const fbSource=await ensureSource(admin,'FACEBOOK','FACEBOOK_GROUP','APIFY_DISCOVERY_FACEBOOK','Facebook public groups discovery','https://www.facebook.com/groups/');
     const tgSource=await ensureSource(admin,'TELEGRAM','TELEGRAM_GROUP','APIFY_DISCOVERY_TELEGRAM','Telegram public discovery','https://t.me/');
-    const thSource=await ensureSource(admin,'OTHER','WEBSITE','APIFY_DISCOVERY_THREADS','Threads public keyword discovery','https://www.threads.net/');
 
     const fbStats=await saveItems(admin,fb,'FACEBOOK',fbSource,(x:any)=>({
       externalId:String(x.post_url||x.facebookUrl||x.id||''),
       sourceUrl:String(x.post_url||x.facebookUrl||x.url||''),
-      text:String(x.text||x.message||''),
+      text:String(x.text||x.message||x.post_text||''),
       authorName:String(x.author_name||x.authorName||x.user?.name||''),
-      authorUrl:x.author_id?`https://www.facebook.com/${x.author_id}`:null,
+      authorUrl:String(x.author_url||x.authorUrl||''),
       publishedAt:x.date||x.time||x.publishedAt||null,
     }));
 
     const tgStats=await saveItems(admin,tg,'TELEGRAM',tgSource,(x:any)=>({
-      externalId:String(x.id||x.messageId||x.message_id||x.messageUrl||x.source_url||''),
-      sourceUrl:String(x.messageUrl||x.source_url||x.post_url||x.url||''),
-      text:String(x.text||x.message||''),
-      authorName:String(x.channelTitle||x.source_name||x.author||x.channel_name||''),
-      authorUrl:String(x.channelUrl||x.source_url||''),
-      publishedAt:x.publishedAt||x.date||x.published_at||null,
+      externalId:String(x.id||x.message_id||x.messageId||x.source_url||x.url||''),
+      sourceUrl:String(x.source_url||x.post_url||x.messageUrl||x.url||''),
+      text:String(x.text||x.message||x.content||''),
+      authorName:String(x.source_name||x.author||x.channel_name||x.channelTitle||''),
+      authorUrl:String(x.source_url||x.channelUrl||''),
+      publishedAt:x.date||x.published_at||x.publishedAt||null,
     }));
 
-    const thStats=await saveItems(admin,threads,'OTHER',thSource,(x:any)=>({
-      externalId:String(x.post_id||x.id||x.code||x.post_url||''),
-      sourceUrl:String(x.post_url||x.url||''),
-      text:String(x.text||x.caption||''),
-      authorName:String(x.author_username||x.username||''),
-      authorUrl:x.author_username?`https://www.threads.net/@${String(x.author_username).replace(/^@/,'')}`:null,
-      publishedAt:x.taken_at||x.postedAt||x.timestamp||null,
-    }));
-
-    const errors=settled.filter(x=>x.error).map(x=>({name:x.name,error:x.error}));
     await admin.from('cost_events').insert([
       {provider:'APIFY',operation_type:'DISCOVER_FACEBOOK',source:'keyword-discovery',market:'GE',units:fb.length,cost_usd:0,success:!errors.some(x=>x.name==='facebook'),cache_hit:false,property_id:propertyId},
-      {provider:'APIFY',operation_type:'DISCOVER_TELEGRAM',source:'keyword-discovery',market:'GE',units:tg.length,cost_usd:0,success:!errors.some(x=>x.name.startsWith('telegram_')),cache_hit:false,property_id:propertyId},
-      {provider:'APIFY',operation_type:'DISCOVER_THREADS',source:'keyword-discovery',market:'GE',units:threads.length,cost_usd:0,success:!errors.some(x=>x.name.startsWith('threads_')),cache_hit:false,property_id:propertyId},
+      {provider:'APIFY',operation_type:'DISCOVER_TELEGRAM',source:'keyword-discovery',market:'GE',units:tg.length,cost_usd:0,success:!errors.some(x=>x.name==='telegram'),cache_hit:false,property_id:propertyId},
     ]);
 
     return json({
       success:true,
-      queries:keywordSets,
+      internal:isInternal,
+      keywords,
       facebook:{found:fb.length,...fbStats},
       telegram:{found:tg.length,...tgStats},
-      threads:{found:threads.length,...thStats},
       actorErrors:errors,
     });
   }catch(e){
@@ -116,41 +97,36 @@ Deno.serve(async (req:Request)=>{
   }
 });
 
-function buildBuyerIntentQueries({city,district,price,currency,bedrooms}:{city:string,district:string,price:any,currency:string,bedrooms:any}){
+function buildBuyerIntentQueries(city:string,district:string){
   const loc=[district,city].filter(Boolean).join(' ');
-  const budget=price?`${Math.round(Number(price)*0.8)}-${Math.round(Number(price)*1.2)} ${currency}`:'';
-  const bed=bedrooms?`${bedrooms} bedroom`:'';
   return [
-    {language:'en',queries:[`looking to buy apartment ${loc}`,`want to buy ${bed} apartment ${city}`.replace(/\s+/g,' ').trim(),`apartment wanted ${city} ${budget}`.trim()]},
-    {language:'ru',queries:[`ищу квартиру ${loc}`,`хочу купить квартиру ${city}`,`куплю квартиру ${loc}`]},
-    {language:'ka',queries:[`ვეძებ ბინას ${loc}`,`ვიყიდი ბინას ${loc}`,`მინდა ბინის ყიდვა ${city}`]},
-    {language:'tr',queries:[`${city} daire satın almak istiyorum`,`${city} satılık daire arıyorum`]},
-    {language:'ar',queries:[`أبحث عن شقة للشراء في ${city}`,`أريد شراء شقة في ${city}`]},
-    {language:'he',queries:[`מחפש דירה לקנייה ב${city}`,`רוצה לקנות דירה ב${city}`]},
+    `looking to buy apartment ${city}`,
+    `looking for apartment ${city}`,
+    `want to buy property ${city}`,
+    `ищу квартиру ${city}`,
+    `куплю квартиру ${city}`,
+    `хочу купить квартиру ${loc}`,
+    `ვეძებ ბინას ${city}`,
+    `ვიყიდი ბინას ${city}`,
+    `${city} daire satın almak istiyorum`,
+    `أبحث عن شقة للشراء في ${city}`,
   ];
 }
 
 async function safeActor(name:string,fn:()=>Promise<any[]>){
   try{return {name,items:await fn(),error:null}}catch(e){
-    console.error('Apify actor failed',name,e);
-    return {name,items:[],error:e instanceof Error?e.message:String(e)};
+    const error=e instanceof Error?e.message:String(e);
+    console.error('Apify actor failed',name,error);
+    return {name,items:[],error};
   }
 }
-
 function itemsFrom(results:any[],name:string){return results.find(x=>x.name===name)?.items||[]}
-function dedupeItems(items:any[]){
-  const seen=new Set<string>();
-  return items.filter((x:any)=>{const k=String(x.url||x.post_url||x.messageUrl||x.source_url||x.id||x.post_id||JSON.stringify(x).slice(0,180));if(seen.has(k))return false;seen.add(k);return true;});
-}
 
 async function runActor(token:string,actor:string,input:any){
-  const r=await fetch(`${APIFY_BASE}/${actor}/run-sync-get-dataset-items?timeout=100&memory=512`,{
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-    body:JSON.stringify(input),
-    signal:AbortSignal.timeout(110000)
+  const r=await fetch(`${APIFY_BASE}/${actor}/run-sync-get-dataset-items?timeout=120&memory=512`,{
+    method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify(input),signal:AbortSignal.timeout(125000)
   });
-  if(!r.ok) throw new Error(`Apify ${actor} failed ${r.status}: ${(await r.text()).slice(0,500)}`);
+  if(!r.ok) throw new Error(`Apify ${actor} failed ${r.status}: ${(await r.text()).slice(0,700)}`);
   const data=await r.json();
   return Array.isArray(data)?data:[];
 }
@@ -170,7 +146,7 @@ async function saveItems(admin:any,items:any[],platform:string,sourceId:string,m
     if(text.length<20){filtered++;continue;}
     const fp=await fingerprint(text);
     const {error}=await admin.from('raw_signals').insert({source_id:sourceId,platform,external_id:m.externalId||m.sourceUrl||fp,source_url:m.sourceUrl||null,author_public_name:m.authorName||null,author_public_url:m.authorUrl||null,original_text:text,language:null,published_at:m.publishedAt||null,content_fingerprint:fp,provider:'APIFY',classification_status:'PENDING',mock_mode:false});
-    if(error?.code==='23505') skipped++; else if(error) {console.error(error); skipped++;} else inserted++;
+    if(error?.code==='23505') skipped++; else if(error){console.error('raw_signal insert',error);skipped++;} else inserted++;
   }
   return {inserted,skipped,filtered};
 }
@@ -180,5 +156,4 @@ async function fingerprint(text:string){
   const hash=await crypto.subtle.digest('SHA-256',bytes);
   return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);
 }
-
 function json(data:any,status=200){return new Response(JSON.stringify(data),{status,headers:{...CORS,'Content-Type':'application/json'}})}

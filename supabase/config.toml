@@ -1,0 +1,5 @@
+# Edge Function authentication overrides.
+# The continuous worker is invoked by pg_cron/pg_net and authenticates the
+# request inside the function using the private x-cron-token stored server-side.
+[functions.continuous-matching-worker]
+verify_jwt = false

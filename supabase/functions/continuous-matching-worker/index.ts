@@ -1,8 +1,84 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, x-cron-token'};
-const json=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,'Content-Type':'application/json'}});
-const scalar=(v:any,d:any)=>{if(v===null||v===undefined)return d;if(typeof v==='string'){try{return JSON.parse(v)}catch{return v}}return v};
-Deno.serve(async(req:Request)=>{if(req.method==='OPTIONS')return new Response('ok',{headers:CORS});const base=Deno.env.get('SUPABASE_URL')!,key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,db=createClient(base,key);try{const token=req.headers.get('x-cron-token')||'';const {data:s}=await db.from('admin_settings').select('value').eq('key','continuous_worker_token').maybeSingle();const expected=typeof s?.value==='string'?s.value:String(s?.value||'').replace(/^\"|\"$/g,'');if(!expected||token!==expected)return json({error:'Forbidden'},403);EdgeRuntime.waitUntil(run(db,base,key));return json({success:true,started:true,mode:'internal-first-property-scoped-external-fallback'})}catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}});
-async function setting(db:any,k:string,d:any){const {data}=await db.from('admin_settings').select('value').eq('key',k).maybeSingle();return scalar(data?.value,d)}
-async function run(db:any,base:string,key:string){const threshold=Number(await setting(db,'external_discovery_strong_score',70));const minStrong=Number(await setting(db,'external_discovery_min_strong_matches',3));const freshHours=Number(await setting(db,'external_discovery_fresh_hours',24));const enabled=Boolean(await setting(db,'external_discovery_enabled',false));const kill=Boolean(await setting(db,'provider_kill_switch',true));const maxProps=Math.max(0,Number(await setting(db,'external_discovery_max_properties_per_tick',4)));const maxJobs=Math.min(25,Math.max(1,Number(await setting(db,'external_discovery_max_jobs_per_property_tick',10))));let externalProps=0;const freshSince=new Date(Date.now()-freshHours*3600000).toISOString();const {data:camps}=await db.from('matching_campaigns').select(`id,property_id,status,property:properties!property_id(id,matching_status,facts:property_facts!property_id(country,country_code))`).eq('status','ACTIVE');for(const c of camps||[]){try{const p=Array.isArray(c.property)?c.property[0]:c.property;if(!p||p.matching_status!=='ACTIVE')continue;const f=Array.isArray(p.facts)?p.facts[0]:p.facts,country=String(f?.country_code||f?.country||'GE').toUpperCase();try{await invoke(base,key,'classify-signals-v2',{batchSize:500,market:country},150000)}catch(e){console.error('classify',e)}try{await invoke(base,key,'run-matching-v2',{propertyId:c.property_id,campaignId:c.id,intentProfileBatchSize:1500},150000)}catch(e){console.error('match',e)}const {count}=await db.from('matches').select('id',{count:'exact',head:true}).eq('property_id',c.property_id).gte('match_score',threshold).gte('created_at',freshSince);const strong=count||0;if(strong>=minStrong){console.log('internal sufficient',{propertyId:c.property_id,strong});continue}if(!enabled||kill||externalProps>=maxProps){console.log('external deferred',{propertyId:c.property_id,strong,enabled,kill,externalProps,maxProps});continue}const {data:jobs,error}=await db.rpc('claim_external_discovery_jobs_for_property',{p_property_id:c.property_id,p_limit:maxJobs});if(error){console.error('claim',error);continue}if(!(jobs||[]).length){console.log('no eligible external jobs',{propertyId:c.property_id});continue}externalProps++;console.log('external fallback claimed',{propertyId:c.property_id,jobs:(jobs||[]).length});}catch(e){console.error('campaign',e)}}}
-async function invoke(base:string,key:string,fn:string,body:any,timeout:number){const r=await fetch(`${base}/functions/v1/${fn}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,apikey:key,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});const t=await r.text();let d:any={};try{d=JSON.parse(t)}catch{d={raw:t}}if(!r.ok)throw new Error(`${fn} ${r.status}: ${d?.error||t}`);return d}
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-token',
+};
+const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+  status,
+  headers: { ...CORS, 'Content-Type': 'application/json' },
+});
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const baseUrl = Deno.env.get('SUPABASE_URL')!;
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const db = createClient(baseUrl, serviceKey);
+  try {
+    const expected = String(await setting(db, 'continuous_worker_token', ''));
+    if (!expected || req.headers.get('x-cron-token') !== expected) return json({ error: 'Forbidden' }, 403);
+    EdgeRuntime.waitUntil(run(db, baseUrl, serviceKey));
+    return json({ success: true, started: true, mode: 'internal-first-controlled-external-consumer' });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+  }
+});
+
+async function run(db: any, baseUrl: string, serviceKey: string) {
+  const threshold = Number(await setting(db, 'external_discovery_strong_score', 70));
+  const minStrong = Number(await setting(db, 'external_discovery_min_strong_matches', 3));
+  const freshHours = Number(await setting(db, 'external_discovery_fresh_hours', 24));
+  const enabled = await setting(db, 'external_discovery_enabled', false) === true;
+  const kill = await setting(db, 'provider_kill_switch', true) !== false;
+  const maxProperties = Math.max(0, Number(await setting(db, 'external_discovery_max_properties_per_tick', 4)));
+  const maxJobs = Math.min(25, Math.max(1, Number(await setting(db, 'external_discovery_max_jobs_per_property_tick', 10))));
+  const freshSince = new Date(Date.now() - freshHours * 3600000).toISOString();
+  let externalProperties = 0;
+  const { data: campaigns, error } = await db.from('matching_campaigns').select(`id,property_id,status,property:properties!property_id(id,matching_status)`).eq('status', 'ACTIVE');
+  if (error) throw error;
+
+  for (const campaign of campaigns || []) {
+    try {
+      const property = Array.isArray(campaign.property) ? campaign.property[0] : campaign.property;
+      if (!property || property.matching_status !== 'ACTIVE') continue;
+      await invoke(baseUrl, serviceKey, 'run-matching-v2', { propertyId: campaign.property_id, campaignId: campaign.id, intentProfileBatchSize: 2500 }, 150000);
+      const { count, error: countError } = await db.from('matches').select('id', { count: 'exact', head: true }).eq('property_id', campaign.property_id).gte('match_score', threshold).gte('created_at', freshSince);
+      if (countError) throw countError;
+      const strong = Number(count || 0);
+      if (strong >= minStrong) {
+        console.log('internal sufficient', { propertyId: campaign.property_id, strong });
+        continue;
+      }
+      if (!enabled || kill || externalProperties >= maxProperties) {
+        console.log('external deferred', { propertyId: campaign.property_id, strong, enabled, kill });
+        continue;
+      }
+      externalProperties++;
+      const result = await invoke(baseUrl, serviceKey, 'discovery-queue-worker', { mode: 'execute', propertyId: campaign.property_id, campaignId: campaign.id, limit: maxJobs }, 300000);
+      console.log('controlled external consumer', { propertyId: campaign.property_id, result });
+    } catch (error) {
+      console.error('continuous campaign', campaign.property_id, error instanceof Error ? error.message : String(error));
+    }
+  }
+}
+
+async function invoke(baseUrl: string, serviceKey: string, functionName: string, body: any, timeout: number) {
+  const response = await fetch(`${baseUrl}/functions/v1/${functionName}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeout),
+  });
+  const text = await response.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  if (!response.ok && response.status !== 423) throw new Error(`${functionName} ${response.status}: ${data?.error || text}`);
+  return data;
+}
+async function setting(db: any, key: string, fallback: any) {
+  const { data, error } = await db.from('admin_settings').select('value').eq('key', key).maybeSingle();
+  if (error) throw error;
+  if (data?.value === null || data?.value === undefined) return fallback;
+  if (typeof data.value === 'string') { try { return JSON.parse(data.value); } catch { return data.value; } }
+  return data.value;
+}

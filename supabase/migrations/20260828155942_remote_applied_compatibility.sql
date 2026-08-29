@@ -1,0 +1,2 @@
+-- Remote migration already applied directly to production before GitHub became source of truth.
+-- Kept as a history marker so Supabase CLI local and remote migration versions stay aligned.

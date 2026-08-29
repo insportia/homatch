@@ -1,0 +1,2 @@
+-- Synced production migration marker: continuous_matching_hourly_scheduler.
+-- Production schema is already applied; this file keeps Git migration history aligned.

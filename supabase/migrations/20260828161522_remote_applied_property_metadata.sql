@@ -1,0 +1,2 @@
+-- Remote migration already applied directly to production before GitHub became source of truth.
+-- History marker only.

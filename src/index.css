@@ -1,0 +1,175 @@
+/* stylelint-disable */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Homatch Design System — Premium dark PropTech SaaS
+   Vibe: Dieter Rams functionalism × warm amber signal
+   All colors in HSL.
+*/
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+
+    /* === HOMATCH DARK TOKENS === */
+    /* Background family: deep near-black */
+    --background: 222 25% 6%;        /* #0B0F19 deep navy-black */
+    --foreground: 210 20% 90%;       /* #E3E8F0 near-white text */
+
+    --card: 222 20% 9%;              /* #0F172A card surface */
+    --card-foreground: 210 20% 90%;
+
+    --popover: 222 20% 9%;
+    --popover-foreground: 210 20% 90%;
+
+    /* Primary: warm amber/gold — the signal color */
+    --primary: 38 92% 55%;           /* #F5A623 warm amber */
+    --primary-foreground: 222 25% 6%; /* near-black on amber */
+
+    /* Secondary: muted surface */
+    --secondary: 222 18% 14%;        /* #1C2436 elevated surface */
+    --secondary-foreground: 210 15% 75%;
+
+    --muted: 222 18% 12%;            /* slightly raised */
+    --muted-foreground: 215 12% 48%; /* #6B7BA0 subdued text */
+
+    /* Accent: subtle gold tint */
+    --accent: 40 70% 42%;            /* #B8810A deeper gold */
+    --accent-foreground: 210 20% 90%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 90%;
+
+    --border: 222 18% 16%;           /* #1F2937 subtle border */
+    --input: 222 18% 14%;
+    --ring: 38 92% 55%;              /* amber focus ring */
+
+    /* Charts */
+    --chart-1: 38 92% 55%;
+    --chart-2: 197 60% 48%;
+    --chart-3: 142 55% 45%;
+    --chart-4: 280 50% 60%;
+    --chart-5: 15 75% 58%;
+
+    /* Sidebar tokens */
+    --sidebar-background: 222 22% 7%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 38 92% 55%;
+    --sidebar-primary-foreground: 222 25% 6%;
+    --sidebar-accent: 222 18% 12%;
+    --sidebar-accent-foreground: 210 20% 85%;
+    --sidebar-border: 222 18% 14%;
+    --sidebar-ring: 38 92% 55%;
+
+    /* Semantic extras */
+    --success: 142 60% 42%;
+    --warning: 38 92% 55%;
+    --info: 197 60% 48%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(38 92% 55%) 0%, hsl(28 85% 48%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(222 20% 9%) 0%, hsl(222 22% 11%) 100%);
+    --gradient-amber-glow: radial-gradient(ellipse at 50% 0%, hsl(38 92% 55% / 0.12) 0%, transparent 60%);
+
+    /* Shadows — minimal per design */
+    --shadow-card: 0 1px 3px hsl(222 25% 3% / 0.5);
+    --shadow-hover: 0 4px 16px hsl(38 92% 55% / 0.08);
+    --shadow-amber: 0 0 24px hsl(38 92% 55% / 0.15);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'Montserrat', system-ui, sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-weight: 400;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* RTL support */
+  [dir="rtl"] {
+    text-align: right;
+  }
+
+  /* Scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar { width: 6px; height: 6px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background-color: hsl(var(--border)); border-radius: 3px; }
+}
+
+@layer utilities {
+  /* Gradient text */
+  .gradient-text {
+    background-image: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Amber glow overlay */
+  .amber-glow {
+    position: relative;
+  }
+  .amber-glow::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--gradient-amber-glow);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Card amber border on hover */
+  .card-hover {
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .card-hover:hover {
+    border-color: hsl(38 92% 55% / 0.3);
+    box-shadow: var(--shadow-hover);
+  }
+
+  /* Status badges */
+  .status-active {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    background: hsl(142 60% 42% / 0.15);
+    color: hsl(142 60% 55%);
+    border: 1px solid hsl(142 60% 42% / 0.3);
+  }
+  .status-paused {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
+  }
+  .status-low-balance {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    background: hsl(38 92% 55% / 0.15);
+    color: hsl(38 92% 65%);
+    border: 1px solid hsl(38 92% 55% / 0.3);
+  }
+  .status-private {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    background: hsl(280 50% 60% / 0.15);
+    color: hsl(280 50% 70%);
+    border: 1px solid hsl(280 50% 60% / 0.3);
+  }
+}

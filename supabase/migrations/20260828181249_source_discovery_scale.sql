@@ -1,0 +1,2 @@
+-- Synced production migration marker: source_discovery_scale.
+-- Production schema is already applied; this file keeps Git migration history aligned.

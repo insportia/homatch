@@ -1,0 +1,82 @@
+import React from 'react';
+import type { ReactNode } from 'react';
+import HomePage from './pages/HomePage';
+import LoginPage from './pages/auth/LoginPage';
+import SignupPage from './pages/auth/SignupPage';
+import AuthCallbackPage from './pages/auth/AuthCallbackPage';
+import PrivacyPage from './pages/PrivacyPage';
+import TermsPage from './pages/TermsPage';
+import DashboardPage from './pages/DashboardPage';
+import ActivityPage from './pages/ActivityPage';
+import NotificationsPage from './pages/NotificationsPage';
+import AddPropertyPage from './pages/property/AddPropertyPage';
+import URLImportPage from './pages/property/URLImportPage';
+import PrivateListingPage from './pages/property/PrivateListingPage';
+import PropertyDetailPage from './pages/property/PropertyDetailPage';
+import MatchesPage from './pages/property/MatchesPage';
+import CreditsPage from './pages/CreditsPage';
+import AdminLayout from './components/layouts/AdminLayout';
+import AdminOverviewPage from './pages/admin/AdminOverviewPage';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminPropertiesPage from './pages/admin/AdminPropertiesPage';
+import AdminCampaignsPage from './pages/admin/AdminCampaignsPage';
+import AdminMarketsPage from './pages/admin/AdminMarketsPage';
+import AdminSourcesPage from './pages/admin/AdminSourcesPage';
+import AdminSignalsPage from './pages/admin/AdminSignalsPage';
+import AdminMatchesPage from './pages/admin/AdminMatchesPage';
+import AdminCreditsPage from './pages/admin/AdminCreditsPage';
+import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
+import AdminProvidersPage from './pages/admin/AdminProvidersPage';
+import AdminPricingPage from './pages/admin/AdminPricingPage';
+import AdminSpendCapsPage from './pages/admin/AdminSpendCapsPage';
+import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
+import AdminSettingsPage from './pages/admin/AdminSettingsPage';
+import AdminHealthPage from './pages/admin/AdminHealthPage';
+
+export interface RouteConfig {
+  name: string;
+  path: string;
+  element: ReactNode;
+  visible?: boolean;
+  public?: boolean;
+  adminOnly?: boolean;
+}
+
+const adminWrap = (page: ReactNode) => <AdminLayout>{page}</AdminLayout>;
+
+export const routes: RouteConfig[] = [
+  // Public
+  { name: 'Home',              path: '/',                         element: <HomePage />,          public: true },
+  { name: 'Login',             path: '/auth/login',               element: <LoginPage />,         public: true },
+  { name: 'Signup',            path: '/auth/signup',              element: <SignupPage />,        public: true },
+  { name: 'Auth Callback',     path: '/auth/callback',            element: <AuthCallbackPage />,  public: true },
+  { name: 'Privacy Policy',   path: '/privacy',                  element: <PrivacyPage />,       public: true },
+  { name: 'Terms of Service', path: '/terms',                    element: <TermsPage />,         public: true },
+  // Customer
+  { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
+  { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
+  { name: 'Notifications',     path: '/notifications',            element: <NotificationsPage /> },
+  { name: 'Credits',           path: '/credits',                  element: <CreditsPage /> },
+  { name: 'Add Property',      path: '/property/add',             element: <AddPropertyPage /> },
+  { name: 'Import Property',   path: '/property/import',          element: <URLImportPage /> },
+  { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },
+  { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
+  { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
+  // Admin (wrapped in AdminLayout which enforces is_admin server-side)
+  { name: 'Admin Overview',    path: '/admin',                    element: adminWrap(<AdminOverviewPage />),    adminOnly: true },
+  { name: 'Admin Users',       path: '/admin/users',              element: adminWrap(<AdminUsersPage />),       adminOnly: true },
+  { name: 'Admin Properties',  path: '/admin/properties',         element: adminWrap(<AdminPropertiesPage />),  adminOnly: true },
+  { name: 'Admin Campaigns',   path: '/admin/campaigns',          element: adminWrap(<AdminCampaignsPage />),   adminOnly: true },
+  { name: 'Admin Markets',     path: '/admin/markets',            element: adminWrap(<AdminMarketsPage />),     adminOnly: true },
+  { name: 'Admin Sources',     path: '/admin/sources',            element: adminWrap(<AdminSourcesPage />),     adminOnly: true },
+  { name: 'Admin Signals',     path: '/admin/signals',            element: adminWrap(<AdminSignalsPage />),     adminOnly: true },
+  { name: 'Admin Matches',     path: '/admin/matches',            element: adminWrap(<AdminMatchesPage />),     adminOnly: true },
+  { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },
+  { name: 'Admin Payments',    path: '/admin/payments',           element: adminWrap(<AdminPaymentsPage />),    adminOnly: true },
+  { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
+  { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
+  { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },
+  { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },
+  { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
+  { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
+];

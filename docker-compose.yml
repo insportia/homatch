@@ -1,0 +1,113 @@
+version: '3.9'
+
+services:
+  # ── Frontend app ─────────────────────────────────────────────────────────────
+  app:
+    build: .
+    container_name: homatch-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    networks:
+      - homatch-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── PostgreSQL (for self-hosted / post-migration) ─────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: homatch-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-homatch}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD required}
+      POSTGRES_DB: ${DB_NAME:-homatch}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - homatch-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-homatch}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Worker / Scheduler (runs exportable job functions) ──────────────────────
+  worker:
+    image: denoland/deno:alpine-1.40.0
+    container_name: homatch-worker
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./supabase/functions/_shared:/app/_shared:ro
+      - ./worker/scheduler.ts:/app/scheduler.ts:ro
+    env_file:
+      - .env
+    command: >
+      deno run
+        --allow-net
+        --allow-env
+        --allow-read
+        /app/scheduler.ts
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - homatch-net
+
+  # ── Nginx reverse proxy with SSL termination ──────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: homatch-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - app
+    networks:
+      - homatch-net
+
+  # ── MinIO S3-compatible object storage (optional — for private photo storage) ──
+  storage:
+    image: minio/minio:latest
+    container_name: homatch-storage
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY required for storage}
+    volumes:
+      - storage-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - homatch-net
+    profiles:
+      - storage
+
+volumes:
+  db-data:
+  storage-data:
+  nginx-logs:
+
+networks:
+  homatch-net:
+    driver: bridge

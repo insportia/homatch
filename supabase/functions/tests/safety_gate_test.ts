@@ -202,24 +202,24 @@ Deno.test('safety_gate: inactive property is blocked', async () => {
 
 // 10. Property-scoped claim: job belongs to different property is rejected
 Deno.test('property_scoped_claim: cross-property claim is invalid', () => {
-  const jobPropertyId = 'prop-A';
-  const claimerPropertyId = 'prop-B';
+  const jobPropertyId: string = 'prop-A';
+  const claimerPropertyId: string = 'prop-B';
   const isValid = jobPropertyId === claimerPropertyId;
   assertEquals(isValid, false, 'Property B must not claim Property A jobs');
 });
 
 // 11. Property-scoped claim: same property claim is valid
 Deno.test('property_scoped_claim: same property claim is valid', () => {
-  const jobPropertyId = 'prop-A';
-  const claimerPropertyId = 'prop-A';
+  const jobPropertyId: string = 'prop-A';
+  const claimerPropertyId: string = 'prop-A';
   const isValid = jobPropertyId === claimerPropertyId;
   assertEquals(isValid, true, 'Property A can claim its own jobs');
 });
 
 // 12. Claim token mismatch is rejected
 Deno.test('claim_token: mismatch is rejected', () => {
-  const storedToken = 'abc-123-valid';
-  const providedToken = 'xyz-456-invalid';
+  const storedToken: string = 'abc-123-valid';
+  const providedToken: string = 'xyz-456-invalid';
   assertEquals(storedToken === providedToken, false, 'Mismatched claim token must be rejected');
 });
 
@@ -231,7 +231,7 @@ Deno.test('claim_token: match is accepted', () => {
 
 // 14. Queue status gate: non-PROCESSING job cannot be completed
 Deno.test('queue_lifecycle: non-PROCESSING job rejected for completion', () => {
-  const jobStatus = 'DONE'; // already completed
+  const jobStatus: string = 'DONE'; // already completed
   const canComplete = jobStatus === 'PROCESSING';
   assertEquals(canComplete, false, 'Cannot complete a non-PROCESSING job');
 });

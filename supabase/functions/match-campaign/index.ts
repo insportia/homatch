@@ -600,7 +600,7 @@ function normaliseCountryToISO(raw:string):string{
 const NORM_DEMAND_TYPES=new Set(['BUY','RENT','INVEST','RELOCATE_BUY','RELOCATE_RENT']);
 function postAIFilter(intent:AIIntentResult,property:{country:string;transaction_type?:string|null},recencyDays:number,maxRecencyDays=90):FilterResult{
   if(!NORM_DEMAND_TYPES.has(intent.intentType))return{pass:false,reason:`non_demand:${intent.intentType}`};
-  if(intent.intentConfidence<0.25)return{pass:false,reason:`low_confidence:${intent.intentConfidence.toFixed(2)}`};
+  if(intent.intentConfidence<0.65)return{pass:false,reason:`low_confidence:${intent.intentConfidence.toFixed(2)}`};
   // Normalise country to ISO-2 before comparing — OpenAI may return full names
   const ic=normaliseCountryToISO(intent.country??'').toUpperCase();
   const pc=property.country.toUpperCase();
@@ -1409,6 +1409,7 @@ Deno.serve(async (req) => {
           signal_id:           signal.id,
           job_id:              jobId,
           tier:                currentTier,
+          query_pack_id:       signal.query_pack_id ?? null,
           intent_type:         intent.intentType,
           country:             intent.country ?? snap.country,
           region:              intent.region ?? null,
@@ -1463,9 +1464,32 @@ Deno.serve(async (req) => {
           return;
         }
 
-        await sb.from('raw_signals')
-          .update({ classification_status: 'CLASSIFIED' })
+        const { error: signalClassifyErr } = await sb.from('raw_signals')
+          .update({
+            classification_status: 'CLASSIFIED',
+            intent_type: intent.intentType,
+            intent_json: intent,
+          })
           .eq('id', signal.id);
+
+        const { error: scopeErr } = await sb.from('property_signal_candidates').upsert({
+          property_id: propertyId,
+          signal_id: signal.id,
+          acquisition_cost_usd: Number(intent.costUsd ?? 0),
+          last_seen_at: new Date().toISOString(),
+          metadata: { job_id: jobId, tier: currentTier, source: 'match-campaign' },
+        }, { onConflict: 'property_id,signal_id' });
+
+        if (signalClassifyErr || scopeErr) {
+          const persistenceError = signalClassifyErr?.message ?? scopeErr?.message ?? 'candidate_scope_failed';
+          if (profile) {
+            await sb.from('intent_profiles')
+              .update({ score_label: 'rejected', rejection_reason: `candidate_scope:${persistenceError}`.slice(0, 500) })
+              .eq('id', profile.id);
+          }
+          await emitEvent(sb, jobId, 'CANDIDATE_SCOPE_ERROR', persistenceError);
+          return;
+        }
 
         if (profile) allSignalIds.push(signal.id);
         classified++;
@@ -1542,7 +1566,7 @@ Deno.serve(async (req) => {
 
       // Get source for recency
       const { data: signalRow } = await sb.from('raw_signals')
-        .select('published_at').eq('id', profile.signal_id ?? '').maybeSingle();
+        .select('published_at,platform').eq('id', profile.signal_id ?? '').maybeSingle();
       const publishedAt = signalRow?.published_at ?? null;
 
       const unlockPrice = calculateUnlockPrice(strength, {
@@ -1564,8 +1588,8 @@ Deno.serve(async (req) => {
       const previewExcerpt = (profile.original_text ?? profile.translated_text ?? '')
         .slice(0, 80).trim() + '…';
 
-      const bedsStr = profile.bedrooms_min
-        ? `${profile.bedrooms_min}${profile.bedrooms_max ? `–${profile.bedrooms_max}` : '+'}`
+      const previewBedrooms = profile.bedrooms_min
+        ? Number(profile.bedrooms_min)
         : null;
 
       const { error: matchErr } = await sb.from('matches').insert({
@@ -1591,26 +1615,29 @@ Deno.serve(async (req) => {
         score_freshness:      profile.score_freshness,
         score_quality:        profile.score_quality,
         score_contact:        profile.score_contact,
-        preview_platform:     (platform_for_match(profile)) as string,
+        preview_platform:     String(signalRow?.platform ?? 'OTHER').toUpperCase(),
         preview_language:     profile.language ?? null,
         preview_city:         profile.city ?? null,
         preview_budget_min:   profile.budget_min ?? null,
         preview_budget_max:   profile.budget_max ?? null,
         preview_currency:     profile.currency ?? null,
-        preview_bedrooms:     bedsStr,
+        preview_bedrooms:     previewBedrooms,
         preview_excerpt:      previewExcerpt,
         preview_recency:      formatRecency(recencyHours),
       });
 
-      if (!matchErr) {
+      if (matchErr) {
+        await emitEvent(sb, jobId, 'MATCH_INSERT_ERROR', matchErr.message, {
+          intentProfileId: profile.id,
+          signalId: profile.signal_id,
+        });
+      } else {
         matchesCreated++;
       }
     }
 
     // ── 9. Zero-result guard ──────────────────────────────
-    const jobStatus = matchesCreated === 0 && totalCandidates === 0
-      ? (allSignalIds.length > 0 ? 'partially_completed' : 'partially_completed')
-      : 'completed';
+    const jobStatus = matchesCreated > 0 ? 'completed' : 'partially_completed';
 
     // ── 10. Finalise job ──────────────────────────────────
     await updateJob(sb, jobId, {

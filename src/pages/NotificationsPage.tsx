@@ -154,9 +154,10 @@ function NotificationsContent() {
               ))}
             </div>
           ) : notifications.length === 0 ? (
-            <div className="p-12 text-center">
-              <Bell className="h-8 w-8 text-muted-foreground/20 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">{t('notif_empty')}</p>
+            <div className="p-12 text-center space-y-3">
+              <Bell className="h-8 w-8 text-muted-foreground/20 mx-auto mb-1" />
+              <p className="text-sm text-muted-foreground">{t('empty_no_notifications_title')}</p>
+              <p className="text-xs text-muted-foreground/60">{t('empty_no_notifications_desc')}</p>
             </div>
           ) : (
             notifications.map(n => (

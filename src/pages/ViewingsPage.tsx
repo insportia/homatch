@@ -347,9 +347,14 @@ export default function ViewingsPage() {
                   ? Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
                   : (tab === 'incoming' ? incoming : mine).length === 0
                     ? (
-                      <div className="text-center py-12 text-muted-foreground">
-                        <CalendarDays className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                        <p className="text-sm">{t('viewing_empty')}</p>
+                      <div className="text-center py-12 text-muted-foreground space-y-3">
+                        <CalendarDays className="h-10 w-10 mx-auto opacity-30" />
+                        <p className="text-sm">{t('empty_no_viewings_title')}</p>
+                        <p className="text-xs text-muted-foreground/70">{t('empty_no_viewings_desc')}</p>
+                        <Button size="sm" variant="outline" className="border-border mt-1"
+                          onClick={() => setNewOpen(true)}>
+                          <Plus className="h-4 w-4 mr-1.5" /> {t('empty_no_viewings_cta')}
+                        </Button>
                       </div>
                     )
                     : (tab === 'incoming' ? incoming : mine).map(v => (

@@ -150,9 +150,10 @@ function ActivityContent() {
               ))}
             </div>
           ) : events.length === 0 ? (
-            <div className="p-12 text-center">
-              <Activity className="h-8 w-8 text-muted-foreground/20 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">{t('activity_empty')}</p>
+            <div className="p-12 text-center space-y-3">
+              <Activity className="h-8 w-8 text-muted-foreground/20 mx-auto mb-1" />
+              <p className="text-sm text-muted-foreground">{t('empty_no_activity_title')}</p>
+              <p className="text-xs text-muted-foreground/60">{t('empty_no_activity_desc')}</p>
             </div>
           ) : (
             <div className="p-4">

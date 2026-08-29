@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { useLanguage } from '@/contexts/LanguageContext';
 import {
   Search, Shield, Building2, FileText, AlertTriangle, CheckCircle2,
   Clock, Info, ExternalLink, ChevronRight, Loader2, MapPin,
@@ -35,8 +36,8 @@ interface VerifyResult {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
-function labelConfig(t: DataLabel) {
-  switch (t) {
+function labelConfig(type: DataLabel) {
+  switch (type) {
     case 'official':         return { color: 'bg-green-500/10 text-green-400 border-green-500/20', icon: '🏛', text: 'Official/Public' };
     case 'source-reported':  return { color: 'bg-blue-500/10 text-blue-400 border-blue-500/20',   icon: '📋', text: 'Source-Reported' };
     case 'ai-inference':     return { color: 'bg-amber-500/10 text-amber-400 border-amber-500/20', icon: '🤖', text: 'AI Inference' };
@@ -129,33 +130,58 @@ function buildDemoResult(tab: string, query: string): VerifyResult {
 // ── Main Component ────────────────────────────────────────────
 export default function VerifyPage() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState('property');
-  const [query, setQuery] = useState('');
+  const location = useLocation();
+  const { t } = useLanguage();
+
+  // Accept pre-filled tab + query from navigation state (e.g. from PropertyDetail "Verify")
+  const navState = location.state as { tab?: string; query?: string } | undefined;
+
+  const [tab, setTab] = useState(navState?.tab ?? 'property');
+  const [query, setQuery] = useState(navState?.query ?? '');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [showDocOrder, setShowDocOrder] = useState(false);
 
+  // Also support ?tab= query param from homepage "Check a Developer" button
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['property', 'cadastral', 'developer', 'project'].includes(tabParam)) {
+      setTab(tabParam);
+    }
+  }, [location.search]);
+
+  // Auto-search if navigated with a query
+  useEffect(() => {
+    if (navState?.query) {
+      handleSearch(navState.query, navState.tab ?? 'property');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const tabLabels: Record<string, string> = {
-    property:  'Property',
-    cadastral: 'Cadastral Code',
-    developer: 'Developer',
-    project:   'Project',
+    property:  t('verify_tab_property'),
+    cadastral: t('verify_tab_cadastral'),
+    developer: t('verify_tab_developer'),
+    project:   t('verify_tab_project'),
   };
 
   const placeholders: Record<string, string> = {
-    property:  'Enter address, property URL or listing ID…',
-    cadastral: 'Enter cadastral code (e.g. 01.19.06.012.047)…',
-    developer: 'Enter developer or company name…',
-    project:   'Enter project name…',
+    property:  t('verify_search_property_ph'),
+    cadastral: t('verify_search_cadastral_ph'),
+    developer: t('verify_search_developer_ph'),
+    project:   t('verify_search_project_ph'),
   };
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  const handleSearch = async (q?: string, activeTab?: string) => {
+    const searchQuery = (q ?? query).trim();
+    const searchTab = activeTab ?? tab;
+    if (!searchQuery) return;
     setLoading(true);
     setResult(null);
-    // Simulate async verification
-    await new Promise(r => setTimeout(r, 1500));
-    setResult(buildDemoResult(tab, query.trim()));
+    // Simulate async verification (replace with real API call)
+    await new Promise(r => setTimeout(r, 1400));
+    setResult(buildDemoResult(searchTab, searchQuery));
     setLoading(false);
   };
 
@@ -170,11 +196,9 @@ export default function VerifyPage() {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Shield className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">Verification Center</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t('verify_title')}</h1>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Check property records, cadastral data, developer trust and project history before you decide.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('verify_subtitle')}</p>
           <div className="flex items-center gap-2 mt-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
             <Info className="h-4 w-4 text-amber-400 shrink-0" />
             <p className="text-xs text-amber-400/90">
@@ -186,14 +210,15 @@ export default function VerifyPage() {
         {/* Search tabs */}
         <Tabs value={tab} onValueChange={v => { setTab(v); setResult(null); setQuery(''); }}>
           <TabsList className="grid grid-cols-4 bg-secondary border border-border w-full">
-            {['property', 'cadastral', 'developer', 'project'].map(k => (
-              <TabsTrigger key={k} value={k} className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            {(['property', 'cadastral', 'developer', 'project'] as const).map(k => (
+              <TabsTrigger key={k} value={k}
+                className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                 {tabLabels[k]}
               </TabsTrigger>
             ))}
           </TabsList>
 
-          {['property', 'cadastral', 'developer', 'project'].map(k => (
+          {(['property', 'cadastral', 'developer', 'project'] as const).map(k => (
             <TabsContent key={k} value={k} className="mt-4">
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -206,16 +231,18 @@ export default function VerifyPage() {
                     className="pl-9 bg-secondary border-border"
                   />
                 </div>
-                <Button onClick={handleSearch} disabled={!query.trim() || loading}
+                <Button onClick={() => handleSearch()} disabled={!query.trim() || loading}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
+                  {loading
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : t('verify_btn_search')}
                 </Button>
               </div>
             </TabsContent>
           ))}
         </Tabs>
 
-        {/* Results */}
+        {/* Loading */}
         {loading && (
           <div className="flex flex-col items-center gap-3 py-12">
             <Loader2 className="h-8 w-8 text-primary animate-spin" />
@@ -223,26 +250,27 @@ export default function VerifyPage() {
           </div>
         )}
 
+        {/* Results */}
         {result && !loading && (
-          <div className="space-y-4 animate-fade-in">
+          <div className="space-y-4">
             {/* Trust score card */}
             <Card className="border-border bg-card">
               <CardContent className="pt-6">
                 <div className="flex flex-col md:flex-row gap-6 items-start">
                   {result.trustScore !== undefined && (
-                    <TrustRing score={result.trustScore} label={result.trustLabel ?? ''} />
+                    <TrustRing score={result.trustScore} label={result.trustLabel ?? t('verify_trust_label')} />
                   )}
                   <div className="flex-1 min-w-0 space-y-3">
                     <div>
                       <h2 className="font-semibold text-foreground text-base truncate">{result.query}</h2>
                       <div className="flex items-center gap-2 mt-1">
                         <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Last checked {result.lastChecked}</span>
+                        <span className="text-xs text-muted-foreground">{t('verify_last_checked')} {result.lastChecked}</span>
                       </div>
                     </div>
-
                     {result.riskIndicators.length > 0 && (
                       <div className="space-y-1.5">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t('verify_risk_indicators')}</p>
                         {result.riskIndicators.map((ri, i) => (
                           <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/15">
                             <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
@@ -251,11 +279,13 @@ export default function VerifyPage() {
                         ))}
                       </div>
                     )}
-
-                    <div className="flex flex-wrap gap-1.5">
-                      {result.sources.map(s => (
-                        <Badge key={s} variant="secondary" className="text-[10px] border-border">{s}</Badge>
-                      ))}
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{t('verify_data_sources')}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {result.sources.map(s => (
+                          <Badge key={s} variant="secondary" className="text-[10px] border-border">{s}</Badge>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -278,12 +308,12 @@ export default function VerifyPage() {
             {/* Data legend */}
             <Card className="border-border bg-card">
               <CardContent className="pt-4 pb-4">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Data Source Legend</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">{t('verify_data_sources')} Legend</p>
                 <div className="flex flex-wrap gap-2">
-                  {(['official', 'source-reported', 'ai-inference', 'unavailable'] as DataLabel[]).map(t => {
-                    const cfg = labelConfig(t);
+                  {(['official', 'source-reported', 'ai-inference', 'unavailable'] as DataLabel[]).map(type => {
+                    const cfg = labelConfig(type);
                     return (
-                      <span key={t} className={`text-[10px] px-2 py-1 rounded border font-medium ${cfg.color}`}>
+                      <span key={type} className={`text-[10px] px-2 py-1 rounded border font-medium ${cfg.color}`}>
                         {cfg.icon} {cfg.text}
                       </span>
                     );
@@ -307,13 +337,15 @@ export default function VerifyPage() {
                       </div>
                     </div>
                     {!showDocOrder ? (
-                      <Button size="sm" variant="outline" className="border-primary/40 text-primary hover:bg-primary/10 shrink-0"
+                      <Button size="sm" variant="outline"
+                        className="border-primary/40 text-primary hover:bg-primary/10 shrink-0"
                         onClick={() => setShowDocOrder(true)}>
                         Order Extract
                       </Button>
                     ) : (
                       <div className="flex gap-2 flex-wrap">
-                        <Button size="sm" variant="ghost" onClick={() => setShowDocOrder(false)} className="border border-border text-muted-foreground">
+                        <Button size="sm" variant="ghost" onClick={() => setShowDocOrder(false)}
+                          className="border border-border text-muted-foreground">
                           Cancel
                         </Button>
                         <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90"
@@ -332,13 +364,13 @@ export default function VerifyPage() {
               <TrendingUp className="h-5 w-5 text-primary shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">Want deeper analysis?</p>
-                <p className="text-xs text-muted-foreground">Ask Homatch AI about this {result.kind}.</p>
+                <p className="text-xs text-muted-foreground">{t('verify_ask_ai')} ({result.kind})</p>
               </div>
               <Button size="sm" variant="ghost" className="border border-border shrink-0"
                 onClick={() => navigate('/ai', {
                   state: {
                     context: { type: result.kind, data: { query: result.query } },
-                    prompt: `Tell me more about "${result.query}" — any red flags?`,
+                    prompt: `Tell me more about "${result.query}" — any red flags or concerns I should know about?`,
                   },
                 })}>
                 Ask AI <ChevronRight className="h-3.5 w-3.5 ml-1" />
@@ -349,21 +381,29 @@ export default function VerifyPage() {
 
         {/* Empty / intro state */}
         {!loading && !result && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-            {[
-              { icon: MapPin,    title: 'Property Check',    desc: 'Cadastral match, area discrepancy, ownership, encumbrances' },
-              { icon: FileText,  title: 'Cadastral Lookup',  desc: 'Retrieve official record by cadastral code' },
-              { icon: Building2, title: 'Developer Profile', desc: 'Company history, project completion, risk indicators' },
-              { icon: Search,    title: 'Project Status',    desc: 'Active permits, construction progress, delivery history' },
-            ].map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
-                <Icon className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
-                </div>
-              </div>
-            ))}
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground text-center">{t('verify_empty_desc')}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+              {[
+                { icon: MapPin,    title: t('verify_tab_property'),   desc: 'Cadastral match, area discrepancy, ownership, encumbrances',   tab: 'property'  },
+                { icon: FileText,  title: t('verify_tab_cadastral'),  desc: 'Retrieve official record by cadastral code',                    tab: 'cadastral' },
+                { icon: Building2, title: t('verify_tab_developer'),  desc: 'Company history, project completion, risk indicators',          tab: 'developer' },
+                { icon: Search,    title: t('verify_tab_project'),    desc: 'Active permits, construction progress, delivery history',       tab: 'project'   },
+              ].map(({ icon: Icon, title, desc, tab: targetTab }) => (
+                <button
+                  key={title}
+                  type="button"
+                  onClick={() => setTab(targetTab)}
+                  className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-primary/5 transition-colors text-left group"
+                >
+                  <Icon className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

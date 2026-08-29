@@ -19,7 +19,7 @@ import {
   MapPin, BedDouble, Bath,
   Building2, ExternalLink, Zap, ArrowLeft, Trash2,
   CheckCircle2, AlertCircle, Lock, Layers,
-  Play, Pause, Loader2, ChevronRight,
+  Play, Pause, Loader2, ChevronRight, Bot, TrendingDown, Shield,
 } from 'lucide-react';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
@@ -507,6 +507,46 @@ function PropertyDetailContent() {
           <div className="space-y-4">
             <MatchabilityPanel score={score} improvements={improvements} />
             {id && <PropertyTrustBadge propertyId={id} />}
+
+            {/* AI / Verify quick actions */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Quick Actions</p>
+              <Button
+                size="sm"
+                className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90 justify-start"
+                onClick={() => navigate('/ai', {
+                  state: {
+                    context: { type: 'property', id, title: property.title ?? 'This property' },
+                    prompt: `Tell me about this property: ${property.title ?? ''} ${locationParts ? `in ${locationParts}` : ''}`.trim(),
+                  },
+                })}
+              >
+                <Bot className="h-4 w-4 shrink-0" /> Ask Homatch AI
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-2 border-border justify-start"
+                onClick={() => navigate('/ai', {
+                  state: {
+                    context: { type: 'property', id, title: property.title ?? 'This property' },
+                    prompt: `Find the same property cheaper: ${property.title ?? ''} ${facts?.total_price ? `listed at ${Number(facts.total_price).toLocaleString()} ${facts.currency ?? ''}` : ''}`.trim(),
+                  },
+                })}
+              >
+                <TrendingDown className="h-4 w-4 shrink-0 text-primary" /> Find Better Deal
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-2 border-border justify-start"
+                onClick={() => navigate('/verify', {
+                  state: { query: property.title ?? locationParts, tab: 'property' },
+                })}
+              >
+                <Shield className="h-4 w-4 shrink-0 text-primary" /> Verify Property
+              </Button>
+            </div>
 
             {/* Campaign Controls */}
             {homatchUser && id && (

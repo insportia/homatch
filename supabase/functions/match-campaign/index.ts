@@ -479,7 +479,8 @@ const SCORER_DEMAND_TYPES=new Set(['BUY','RENT','INVEST','RELOCATE_BUY','RELOCAT
 function hardRejectionReason(property:PropertySnapshot,intent:AIIntentResult):string|null{
   if(!SCORER_DEMAND_TYPES.has(intent.intentType))return`supply_or_noise:${intent.intentType}`;
   if(intent.intentConfidence<0.25)return`low_confidence:${intent.intentConfidence.toFixed(2)}`;
-  const pc=(property.country??'GE').toUpperCase(),ic=(intent.country??'').toUpperCase();
+  const pc=normaliseCountryToISO(property.country??'GE');
+  const ic=normaliseCountryToISO(intent.country??'');
   if(ic&&ic!==pc)return`country_mismatch:property=${pc},intent=${ic}`;
   const pt=property.transaction_type?.toUpperCase(),it=intent.transactionType?.toUpperCase();
   if(pt&&it){const saleR=new Set(['SALE','BUY','INVESTMENT','INVEST']),rentR=new Set(['RENT']);
@@ -947,6 +948,8 @@ Deno.serve(async (req) => {
     let totalCandidates = 0;
     let totalQueryPacksCreated = 0;
     let totalQueriesRun = 0;
+    let totalClassified = 0;
+    let totalFilteredOut = 0;
     const allSignalIds: string[] = [];
 
     while (currentTier <= MAX_TIERS && totalCandidates < MAX_CANDIDATES_PER_JOB) {
@@ -1265,7 +1268,10 @@ Deno.serve(async (req) => {
       let filteredOut = 0;
       let openaiCost = 0;
 
-      for (const signal of pendingSignals ?? []) {
+      const classificationQueue = pendingSignals ?? [];
+      for (let batchStart = 0; batchStart < classificationQueue.length; batchStart += 5) {
+        const batch = classificationQueue.slice(batchStart, batchStart + 5);
+        await Promise.all(batch.map(async (signal) => {
         // Cheap pre-filter
         const cf = cheapFilter(signal.original_text);
         if (!cf.pass) {
@@ -1273,13 +1279,13 @@ Deno.serve(async (req) => {
             .update({ classification_status: 'FILTERED_OUT', rejection_reason: cf.reason })
             .eq('id', signal.id);
           filteredOut++;
-          continue;
+          return;
         }
 
         // Spend cap for OpenAI
         if (!(await isProviderAllowed(sb, 'OPENAI'))) {
           await emitEvent(sb, jobId, 'OPENAI_CAP', 'OpenAI spend cap reached — stopping classification');
-          break;
+          return;
         }
 
         let intent;
@@ -1300,7 +1306,7 @@ Deno.serve(async (req) => {
             .update({ classification_status: 'ERROR' })
             .eq('id', signal.id);
           await emitEvent(sb, jobId, 'CLASSIFY_ERROR', `OpenAI error: ${msg.slice(0,100)}`);
-          continue;
+          return;
         }
 
         // Log OpenAI cost per signal
@@ -1321,7 +1327,7 @@ Deno.serve(async (req) => {
             .update({ classification_status: 'FILTERED_OUT', rejection_reason: paf.reason })
             .eq('id', signal.id);
           filteredOut++;
-          continue;
+          return;
         }
 
         // Compute dedup hash + score
@@ -1342,7 +1348,7 @@ Deno.serve(async (req) => {
             .update({ classification_status: 'FILTERED_OUT', rejection_reason: components.rejectionReason })
             .eq('id', signal.id);
           filteredOut++;
-          continue;
+          return;
         }
 
         // Check for semantic near-duplicate by dedup_hash
@@ -1363,7 +1369,7 @@ Deno.serve(async (req) => {
             .update({ classification_status: 'CLASSIFIED' })
             .eq('id', signal.id);
           classified++;
-          continue;
+          return;
         }
 
         // Insert IntentProfile
@@ -1417,7 +1423,7 @@ Deno.serve(async (req) => {
 
         if (ipErr) {
           await emitEvent(sb, jobId, 'INTENT_INSERT_ERROR', ipErr.message);
-          continue;
+          return;
         }
 
         await sb.from('raw_signals')
@@ -1426,7 +1432,16 @@ Deno.serve(async (req) => {
 
         if (profile) allSignalIds.push(signal.id);
         classified++;
+        }));
       }
+
+      totalClassified += classified;
+      totalFilteredOut += filteredOut;
+      await updateJob(sb, jobId, {
+        signals_classified: totalClassified,
+        signals_rejected: totalFilteredOut,
+        candidates_after_filter: totalCandidates,
+      });
 
       if (openaiCost > 0) {
         await logCost(sb, 'OPENAI', 'CLASSIFY_BATCH', openaiCost, true, { job_id: jobId });
@@ -1563,7 +1578,8 @@ Deno.serve(async (req) => {
     // ── 10. Finalise job ──────────────────────────────────
     await updateJob(sb, jobId, {
       status:              jobStatus,
-      signals_classified:  totalCandidates,
+      signals_classified:  totalClassified,
+      signals_rejected:    totalFilteredOut,
       candidates_after_filter: totalCandidates,
       matches_created:     matchesCreated,
       completed_at:        new Date().toISOString(),

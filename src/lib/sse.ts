@@ -17,8 +17,6 @@ export function createSSEHook(options: SSEOptions): AfterResponseHook {
       if (!done) { done = true; options.onCompleted?.(err); }
     };
 
-    // Homatch AI now uses OpenAI Responses API and may return one JSON response.
-    // Normalize it to the legacy chunk shape so existing chat UI remains compatible.
     const contentType = response.headers.get('content-type') ?? '';
     if (contentType.includes('application/json')) {
       try {
@@ -66,6 +64,7 @@ export interface StreamRequestOptions {
   functionUrl: string;
   requestBody: unknown;
   supabaseAnonKey: string;
+  accessToken?: string;
   onData: (data: string) => void;
   onComplete: () => void;
   onError: (error: Error) => void;
@@ -73,7 +72,7 @@ export interface StreamRequestOptions {
 }
 
 export async function sendStreamRequest(options: StreamRequestOptions): Promise<void> {
-  const { functionUrl, requestBody, supabaseAnonKey, onData, onComplete, onError, signal } = options;
+  const { functionUrl, requestBody, supabaseAnonKey, accessToken, onData, onComplete, onError, signal } = options;
 
   const sseHook = createSSEHook({
     onData,
@@ -85,7 +84,7 @@ export async function sendStreamRequest(options: StreamRequestOptions): Promise<
     await ky.post(functionUrl, {
       json: requestBody,
       headers: {
-        Authorization: `Bearer ${supabaseAnonKey}`,
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         apikey: supabaseAnonKey,
         'Content-Type': 'application/json',
       },

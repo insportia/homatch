@@ -29,6 +29,7 @@ import {
   Bot,
   Shield,
   Building2,
+  Megaphone,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 
@@ -38,6 +39,7 @@ const navItems = [
   { key: 'nav_chat',          path: '/chat',           icon: MessageSquare },
   { key: 'nav_viewings',      path: '/viewings',       icon: CalendarDays },
   { key: 'nav_active_search', path: '/active-search',  icon: Search },
+  { key: 'nav_outreach',      path: '/outreach',       icon: Megaphone },
   { key: 'nav_verify',        path: '/verify',         icon: Shield },
   { key: 'nav_credits',       path: '/credits',        icon: Coins },
 ];

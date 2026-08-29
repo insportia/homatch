@@ -699,6 +699,279 @@ export const SUPPORTED_LANGUAGES: { code: SupportedLanguage; label: string; nati
 
 // --- Georgia Locations ---
 
+// ── Phase 7: Community & Outreach Engine ─────────────────────
+
+export type CommunityPlatform = 'TELEGRAM' | 'FACEBOOK' | 'VK' | 'REDDIT' | 'LINKEDIN' | 'THREADS' | 'OTHER';
+export type PostingPolicy = 'OPEN' | 'APPROVAL_REQUIRED' | 'CLOSED' | 'UNKNOWN';
+export type CommunityRecStatus = 'PENDING' | 'OPEN' | 'POST_GENERATED' | 'COPIED' | 'POSTED' | 'SKIPPED';
+export type SocialPostStatus = 'DRAFT' | 'REVIEWED' | 'POSTED' | 'SKIPPED' | 'CANCELLED';
+export type SocialPostMode = 'manual' | 'ai_draft' | 'shorter' | 'professional' | 'investor' | 'buyer' | 'translate';
+export type OutreachCampaignType = 'EMAIL' | 'SMS' | 'AI_CALL' | 'COMMUNITY' | 'DIRECT_MATCH' | 'MULTI_CHANNEL';
+export type OutreachCampaignStatus = 'DRAFT' | 'READY' | 'SCHEDULED' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
+export type OutreachProvider = 'WIX' | 'AWS_SES' | 'RETELL' | 'VAPI' | 'TWILIO' | 'MOCK';
+export type OutreachQueueStatus = 'PENDING' | 'SUPPRESSED' | 'QUEUED' | 'SENDING' | 'SENT' | 'DELIVERED' | 'FAILED' | 'BOUNCED' | 'COMPLAINED' | 'OPTED_OUT';
+export type AiCallStatus = 'DRAFT' | 'QUEUED' | 'DIALING' | 'ANSWERED' | 'NO_ANSWER' | 'BUSY' | 'FAILED' | 'COMPLETED' | 'OPTED_OUT';
+export type ContactListStatus = 'PENDING' | 'ANALYZING' | 'READY' | 'FAILED' | 'ARCHIVED';
+export type LeadType = 'BUYER' | 'INVESTOR' | 'AGENT' | 'TENANT' | 'OTHER' | 'UNKNOWN';
+export type PhoneConfidence = 'HIGH' | 'MEDIUM' | 'LOW' | 'UNRESOLVED';
+export type AdminRoleType = 'SUPER_ADMIN' | 'SUPPORT_ADMIN' | 'BILLING_ADMIN' | 'READ_ONLY';
+export type ConsentStatus = 'active' | 'withdrawn';
+
+export interface Community {
+  id: string;
+  platform: CommunityPlatform;
+  canonical_id: string;
+  canonical_url: string;
+  name: string;
+  description?: string;
+  language?: string;
+  country?: string;
+  region?: string;
+  city?: string;
+  tags?: string[];
+  topics?: string[];
+  member_count?: number;
+  posting_policy?: PostingPolicy;
+  allows_auto_post?: boolean;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CommunityRecommendation {
+  id: string;
+  property_id: string;
+  community_id: string;
+  owner_id: string;
+  score: number;
+  rationale: Record<string, unknown>;
+  status: CommunityRecStatus;
+  posted_at?: string;
+  campaign_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Joined fields
+  platform?: CommunityPlatform;
+  name?: string;
+  canonical_url?: string;
+  member_count?: number;
+  language?: string;
+  country?: string;
+  city?: string;
+  posting_policy?: PostingPolicy;
+  tags?: string[];
+}
+
+export interface SocialPost {
+  id: string;
+  owner_id: string;
+  property_id?: string;
+  community_id?: string;
+  recommendation_id?: string;
+  platform: string;
+  language: string;
+  content: string;
+  content_version?: number;
+  generation_mode?: SocialPostMode;
+  status: SocialPostStatus;
+  posted_at?: string;
+  campaign_id?: string;
+  ai_instructions?: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ContactList {
+  id: string;
+  owner_id: string;
+  name: string;
+  description?: string;
+  source_filename?: string;
+  source_format?: 'CSV' | 'XLSX' | 'JSON' | 'MANUAL';
+  raw_storage_path?: string;
+  total_rows?: number;
+  valid_rows?: number;
+  invalid_rows?: number;
+  duplicate_rows?: number;
+  missing_email?: number;
+  missing_phone?: number;
+  segments?: Array<{ name: string; count: number; criteria: Record<string, unknown> }>;
+  column_map?: Record<string, string>;
+  import_status: ContactListStatus;
+  retention_until?: string;
+  terms_consent_id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Contact {
+  id: string;
+  list_id: string;
+  owner_id: string;
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  phone_raw?: string;
+  company?: string;
+  country?: string;
+  city?: string;
+  language?: string;
+  budget_min?: number;
+  budget_max?: number;
+  currency?: string;
+  lead_type?: LeadType;
+  tags?: string[];
+  notes?: string;
+  custom_fields?: Record<string, unknown>;
+  raw_row?: Record<string, unknown>;
+  email_valid?: boolean;
+  phone_valid?: boolean;
+  phone_e164_confidence?: PhoneConfidence;
+  country_inferred?: boolean;
+  language_inferred?: boolean;
+  is_duplicate?: boolean;
+  validation_flags?: string[];
+  do_not_contact?: boolean;
+  do_not_call?: boolean;
+  unsubscribed?: boolean;
+  suppressed?: boolean;
+  created_at?: string;
+}
+
+export interface OutreachCampaign {
+  id: string;
+  owner_id: string;
+  name: string;
+  campaign_type: OutreachCampaignType;
+  status: OutreachCampaignStatus;
+  property_id?: string;
+  contact_list_id?: string;
+  subject?: string;
+  html_body?: string;
+  text_body?: string;
+  language?: string;
+  sender_name?: string;
+  sender_email?: string;
+  reply_to?: string;
+  ai_instructions?: string;
+  scheduled_at?: string;
+  provider?: OutreachProvider;
+  audience_count?: number;
+  sent_count?: number;
+  delivered_count?: number;
+  open_count?: number;
+  click_count?: number;
+  bounce_count?: number;
+  complaint_count?: number;
+  unsubscribe_count?: number;
+  cost_estimate_usd?: number;
+  cost_actual_usd?: number;
+  call_script?: string;
+  call_agent_config?: Record<string, unknown>;
+  sms_template?: string;
+  approved_by?: string;
+  approved_at?: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AiCallRecord {
+  id: string;
+  campaign_id?: string;
+  owner_id: string;
+  contact_id?: string;
+  phone_number: string;
+  status: AiCallStatus;
+  provider?: OutreachProvider;
+  provider_call_id?: string;
+  agent_config?: Record<string, unknown>;
+  language?: string;
+  duration_sec?: number;
+  transcript?: string;
+  summary?: string;
+  detected_language?: string;
+  intent?: string;
+  qualification_score?: number;
+  lead_score?: number;
+  follow_up_needed?: boolean;
+  follow_up_notes?: string;
+  cost_usd?: number;
+  call_started_at?: string;
+  call_ended_at?: string;
+  created_at?: string;
+}
+
+export interface AdminRole {
+  id: string;
+  user_id: string;
+  role: AdminRoleType;
+  granted_by?: string;
+  granted_at?: string;
+  revoked_at?: string;
+  notes?: string;
+}
+
+export interface AdminAuditEvent {
+  id: string;
+  admin_id: string;
+  target_id?: string;
+  action: string;
+  entity_type?: string;
+  entity_id?: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface ImpersonationSession {
+  id: string;
+  admin_id: string;
+  target_user_id: string;
+  reason: string;
+  started_at?: string;
+  ended_at?: string;
+}
+
+export interface TermsConsent {
+  id: string;
+  user_id: string;
+  terms_version: string;
+  privacy_version: string;
+  legal_purpose: string;
+  accepted_at?: string;
+  status: ConsentStatus;
+  withdrawn_at?: string;
+}
+
+export interface CostPreview {
+  channel: string;
+  unit_count: number;
+  unit_label: string;
+  unit_price: number;
+  total_estimate_usd: number;
+  breakdown: string;
+  requires_approval: boolean;
+  approval_threshold_usd: number;
+}
+
+export interface ImpersonationBanner {
+  message: string;
+  admin_email: string;
+  reason: string;
+}
+
+export interface User360 {
+  user: User | null;
+  properties: Array<{ id: string; title: string; property_type: string; status: string; created_at: string }>;
+  campaigns: Array<{ id: string; name: string; campaign_type: string; status: string; audience_count: number; cost_estimate_usd: number; created_at: string }>;
+  contact_lists: Array<{ id: string; name: string; import_status: string; total_rows: number; valid_rows: number; created_at: string }>;
+  credits: { balance: number; lifetime_purchased: number; lifetime_spent: number } | null;
+  ai_conversations: Array<{ id: string; created_at: string }>;
+  recent_cost_events: Array<{ event_type: string; amount_usd: number; created_at: string }>;
+}
+
 export interface GeoLocation {
   country: string;
   region?: string;

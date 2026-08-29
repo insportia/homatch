@@ -390,7 +390,7 @@ class ApifyProvider{
   async startRun(req:SocialCollectRequest):Promise<ApifyRunMeta>{
     const actorId=this.actorId(req.platform);
     if(!actorId)throw new Error(`No Actor ID configured for ${req.platform}`);
-    const r=await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${this.token}&memory=512`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildActorInput(req)),signal:AbortSignal.timeout(15_000)});
+    const r=await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${this.token}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildActorInput(req)),signal:AbortSignal.timeout(15_000)});
     if(!r.ok){const b=await r.text().catch(()=>'');throw new Error(`Apify start run failed (${req.platform}): ${r.status} ${b.slice(0,200)}`);}
     const j=await r.json();const d=j.data??j;
     return{runId:d.id,datasetId:d.defaultDatasetId??null,status:(d.status as ApifyRunMeta['status'])?? 'RUNNING',startedAt:d.startedAt??new Date().toISOString()};
@@ -1353,7 +1353,7 @@ Deno.serve(async (req) => {
 
         // Check for semantic near-duplicate by dedup_hash
         const { data: dupProfile } = await sb.from('intent_profiles')
-          .select('id').eq('dedup_hash', dHash).maybeSingle();
+          .select('id').eq('job_id', jobId).eq('dedup_hash', dHash).maybeSingle();
 
         if (dupProfile) {
           // Merge evidence link into existing profile — append signal id if not already present
@@ -1422,6 +1422,12 @@ Deno.serve(async (req) => {
         }).select('id').single();
 
         if (ipErr) {
+          await sb.from('raw_signals')
+            .update({
+              classification_status: 'ERROR',
+              rejection_reason: `intent_persist:${ipErr.message}`.slice(0, 500),
+            })
+            .eq('id', signal.id);
           await emitEvent(sb, jobId, 'INTENT_INSERT_ERROR', ipErr.message);
           return;
         }

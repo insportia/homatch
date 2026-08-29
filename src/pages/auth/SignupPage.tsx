@@ -89,7 +89,9 @@ export default function SignupPage() {
       {/* Left panel */}
       <div className="hidden md:flex md:w-1/2 bg-card border-r border-border flex-col justify-between p-10 relative overflow-hidden">
         <div className="amber-glow absolute inset-0 pointer-events-none" />
-        <HomatchLogo size="md" className="relative z-10" />
+        <Link to="/" className="relative z-10 w-fit">
+          <HomatchLogo size="md" />
+        </Link>
         <div className="relative z-10 space-y-4">
           <h2 className="text-2xl font-semibold text-foreground text-balance">
             Your property. <span className="text-primary">The right people.</span>
@@ -106,7 +108,7 @@ export default function SignupPage() {
       {/* Right panel */}
       <div className="flex-1 flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border md:border-0">
-          <div className="md:hidden"><HomatchLogo size="sm" /></div>
+          <Link to="/" className="md:hidden"><HomatchLogo size="sm" /></Link>
           <div className="ml-auto"><LanguageSwitcher /></div>
         </div>
 

@@ -143,7 +143,14 @@ export default function HomePage() {
       {/* Public nav */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="flex items-center h-14 px-4 md:px-8 gap-4 max-w-7xl mx-auto">
-          <HomatchLogo size="sm" />
+          <button
+            type="button"
+            onClick={() => { navigate('/'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            className="shrink-0 cursor-pointer"
+            aria-label="Homatch home"
+          >
+            <HomatchLogo size="sm" />
+          </button>
           <div className="flex-1" />
           <LanguageSwitcher />
           <nav className="hidden md:flex items-center gap-2">
@@ -531,7 +538,14 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-border py-8 px-4">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <HomatchLogo size="sm" />
+          <button
+            type="button"
+            onClick={() => { navigate('/'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            className="cursor-pointer"
+            aria-label="Homatch home"
+          >
+            <HomatchLogo size="sm" />
+          </button>
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
             <button type="button" onClick={() => navigate('/privacy')} className="hover:text-foreground transition-colors">Privacy</button>
             <button type="button" onClick={() => navigate('/terms')} className="hover:text-foreground transition-colors">Terms</button>

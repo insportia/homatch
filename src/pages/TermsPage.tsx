@@ -269,7 +269,9 @@ export default function TermsPage() {
       {/* ── Footer ───────────────────────────────────────────── */}
       <footer className="border-t border-border/50 px-4 py-5">
         <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2">
-          <HomatchLogo size="sm" />
+          <Link to="/">
+            <HomatchLogo size="sm" />
+          </Link>
           <div className="flex items-center gap-4">
             <Link to="/privacy" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors">Privacy Policy</Link>
             <Link to="/terms" className="text-xs text-primary">Terms of Service</Link>

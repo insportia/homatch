@@ -86,6 +86,54 @@ export default function ContactListsPage() {
     else { toast.success(t('contacts_deleted')); load(); }
   };
 
+  const [exportingId, setExportingId] = useState<string | null>(null);
+
+  const handleExport = async (list: ContactList) => {
+    setExportingId(list.id);
+    try {
+      const columns = [
+        'full_name', 'email', 'phone', 'company', 'country', 'city',
+        'language', 'budget_min', 'budget_max', 'currency', 'lead_type',
+        'tags', 'notes', 'email_valid', 'phone_valid', 'is_duplicate',
+      ] as const;
+      const { data, error } = await supabase.from('contacts')
+        .select(columns.join(','))
+        .eq('list_id', list.id)
+        .order('created_at', { ascending: true })
+        .limit(20000);
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      if (rows.length === 0) {
+        toast.info(t('contacts_export_empty'));
+        return;
+      }
+      const escape = (v: unknown) => {
+        if (v == null) return '';
+        const s = Array.isArray(v) ? v.join('; ') : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const csv = [
+        columns.join(','),
+        ...rows.map((r: Record<string, unknown>) => columns.map(c => escape(r[c])).join(',')),
+      ].join('\n');
+      const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${list.name.replace(/[^a-z0-9-_]+/gi, '_')}_contacts.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(t('contacts_export_success'));
+    } catch (err) {
+      toast.error(t('contacts_export_error'));
+      console.error(err);
+    } finally {
+      setExportingId(null);
+    }
+  };
+
   return (
     <RouteGuard>
       <AppLayout>
@@ -153,8 +201,9 @@ export default function ContactListsPage() {
                         </div>
                         <div className="flex gap-1 shrink-0">
                         <Button variant="ghost" size="sm" className="h-8 px-2 text-xs"
-                            onClick={() => toast.info('Export coming soon')}>
-                            <Download className="h-3.5 w-3.5" />
+                            disabled={exportingId === list.id}
+                            onClick={() => handleExport(list)}>
+                            {exportingId === list.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                           </Button>
                           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-destructive hover:text-destructive"
                             onClick={() => handleDelete(list.id)}>

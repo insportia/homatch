@@ -35,6 +35,8 @@ export default function EmailCampaignsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: '', subject: '', text_body: '', language: 'en' });
+  const [previewCampaign, setPreviewCampaign] = useState<OutreachCampaign | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!homatchUser) return;
@@ -56,6 +58,23 @@ export default function EmailCampaignsPage() {
   }, [homatchUser]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handlePreview = async (campaignId: string) => {
+    setPreviewLoadingId(campaignId);
+    try {
+      const { data, error } = await supabase.from('outreach_campaigns')
+        .select('id,name,status,subject,html_body,text_body,sender_name,sender_email,language')
+        .eq('id', campaignId)
+        .single();
+      if (error) throw error;
+      setPreviewCampaign(data as OutreachCampaign);
+    } catch (err) {
+      toast.error(t('email_preview_error'));
+      console.error(err);
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  };
 
   const handleCreate = async () => {
     if (!form.name.trim()) return;
@@ -130,7 +149,9 @@ export default function EmailCampaignsPage() {
                         </div>
                       </div>
                       <div className="flex gap-1 shrink-0">
-                        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => toast.info('Preview coming soon')}><Eye className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="sm" className="h-8 px-2" disabled={previewLoadingId === c.id} onClick={() => handlePreview(c.id)}>
+                          {previewLoadingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -162,6 +183,33 @@ export default function EmailCampaignsPage() {
               <Button onClick={handleCreate} disabled={creating || !form.name.trim()}>
                 {creating && <Loader2 className="h-4 w-4 me-2 animate-spin" />}{t('general_create')}
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!previewCampaign} onOpenChange={(open) => !open && setPreviewCampaign(null)}>
+          <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-primary" />
+                {previewCampaign?.name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="rounded-lg border border-border p-3 space-y-1 text-xs text-muted-foreground">
+                <p><span className="font-medium text-foreground">{t('email_subject')}:</span> {previewCampaign?.subject || '—'}</p>
+                {(previewCampaign?.sender_name || previewCampaign?.sender_email) && (
+                  <p><span className="font-medium text-foreground">{t('email_from')}:</span> {previewCampaign?.sender_name} {previewCampaign?.sender_email ? `<${previewCampaign.sender_email}>` : ''}</p>
+                )}
+              </div>
+              <div className="rounded-lg bg-secondary/50 border border-border p-4 max-h-80 overflow-y-auto">
+                {previewCampaign?.html_body
+                  ? <div className="text-sm text-foreground" dangerouslySetInnerHTML={{ __html: previewCampaign.html_body }} />
+                  : <p className="text-sm text-foreground whitespace-pre-wrap">{previewCampaign?.text_body || t('email_preview_empty')}</p>}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPreviewCampaign(null)}>{t('general_close')}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

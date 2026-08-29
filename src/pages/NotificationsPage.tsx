@@ -9,18 +9,29 @@ import {
   getNotifications, markNotificationRead, markAllNotificationsRead
 } from '@/services/api';
 import type { Notification } from '@/types/types';
-import { Bell, CheckCheck, Zap, Unlock, CreditCard, PauseCircle } from 'lucide-react';
+import {
+  Bell, CheckCheck, Zap, Unlock, CreditCard, PauseCircle,
+  MessageSquare, Eye, CheckCircle, XCircle, AlertCircle,
+} from 'lucide-react';
 
-// Notification type → icon + accent color
+// Notification type → icon + accent color (covers all DB enum values)
 const NOTIF_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  IMPORT_COMPLETED:   { icon: Bell,        color: 'text-green-400',        bg: 'bg-green-400/10' },
-  IMPORT_FAILED:      { icon: Bell,        color: 'text-destructive',      bg: 'bg-destructive/10' },
-  MATCHING_STARTED:   { icon: Zap,         color: 'text-primary',          bg: 'bg-primary/10' },
-  MATCHING_PAUSED:    { icon: PauseCircle, color: 'text-muted-foreground', bg: 'bg-secondary' },
-  MATCH_AVAILABLE:    { icon: Zap,         color: 'text-yellow-400',       bg: 'bg-yellow-400/10' },
-  CREDITS_TOPPED_UP:  { icon: CreditCard,  color: 'text-green-400',        bg: 'bg-green-400/10' },
-  CAMPAIGN_PAUSED:    { icon: PauseCircle, color: 'text-muted-foreground', bg: 'bg-secondary' },
-  DEFAULT:            { icon: Bell,        color: 'text-muted-foreground', bg: 'bg-secondary' },
+  IMPORT_COMPLETED:    { icon: Bell,          color: 'text-green-400',        bg: 'bg-green-400/10' },
+  IMPORT_FAILED:       { icon: AlertCircle,   color: 'text-destructive',      bg: 'bg-destructive/10' },
+  MATCHING_STARTED:    { icon: Zap,           color: 'text-primary',          bg: 'bg-primary/10' },
+  MATCHING_PAUSED:     { icon: PauseCircle,   color: 'text-muted-foreground', bg: 'bg-secondary' },
+  // Legacy value — kept for old rows
+  MATCH_AVAILABLE:     { icon: Zap,           color: 'text-yellow-400',       bg: 'bg-yellow-400/10' },
+  MATCH_FOUND:         { icon: Zap,           color: 'text-yellow-400',       bg: 'bg-yellow-400/10' },
+  LOW_CREDITS:         { icon: CreditCard,    color: 'text-orange-400',       bg: 'bg-orange-400/10' },
+  CREDITS_TOPPED_UP:   { icon: CreditCard,    color: 'text-green-400',        bg: 'bg-green-400/10' },
+  CAMPAIGN_PAUSED:     { icon: PauseCircle,   color: 'text-muted-foreground', bg: 'bg-secondary' },
+  NEW_MESSAGE:         { icon: MessageSquare, color: 'text-primary',          bg: 'bg-primary/10' },
+  VIEWING_REQUEST:     { icon: Eye,           color: 'text-blue-400',         bg: 'bg-blue-400/10' },
+  VIEWING_ACCEPTED:    { icon: CheckCircle,   color: 'text-green-400',        bg: 'bg-green-400/10' },
+  VIEWING_DECLINED:    { icon: XCircle,       color: 'text-destructive',      bg: 'bg-destructive/10' },
+  VIEWING_CANCELLED:   { icon: XCircle,       color: 'text-muted-foreground', bg: 'bg-secondary' },
+  DEFAULT:             { icon: Bell,          color: 'text-muted-foreground', bg: 'bg-secondary' },
 };
 
 function NotifItem({
@@ -104,14 +115,38 @@ function NotificationsContent() {
 
   const handleNotifClick = (notif: Notification) => {
     const meta = notif.metadata as Record<string, unknown> | null;
-    // Navigate to relevant page based on notification type
-    if (notif.type === 'MATCH_AVAILABLE' || notif.type === 'MATCH_UNLOCKED') {
-      const propId = notif.property_id ?? meta?.property_id;
-      if (propId) navigate(`/property/${propId}/matches`);
-    } else if (notif.type === 'CREDITS_TOPPED_UP' || notif.type === 'CREDITS_LOW') {
-      navigate('/credits');
-    } else if (notif.property_id) {
-      navigate(`/property/${notif.property_id}`);
+
+    // Durable nav_path from DB (set by EF) takes precedence
+    if (notif.nav_path) {
+      navigate(notif.nav_path);
+      return;
+    }
+
+    // Fallback routing by type
+    switch (notif.type) {
+      case 'MATCH_FOUND':
+      case 'MATCH_AVAILABLE': {
+        const propId = notif.property_id ?? meta?.property_id;
+        if (propId) navigate(`/property/${propId}/matches`);
+        break;
+      }
+      case 'NEW_MESSAGE': {
+        const convId = meta?.conversation_id;
+        navigate(convId ? `/chat?conv=${convId}` : '/chat');
+        break;
+      }
+      case 'VIEWING_REQUEST':
+      case 'VIEWING_ACCEPTED':
+      case 'VIEWING_DECLINED':
+      case 'VIEWING_CANCELLED':
+        navigate('/viewings');
+        break;
+      case 'CREDITS_TOPPED_UP':
+      case 'LOW_CREDITS':
+        navigate('/credits');
+        break;
+      default:
+        if (notif.property_id) navigate(`/property/${notif.property_id}`);
     }
   };
 
@@ -124,7 +159,9 @@ function NotificationsContent() {
           <div>
             <h1 className="text-xl font-semibold text-foreground">{t('notif_title')}</h1>
             {unread > 0 && (
-              <p className="text-sm text-muted-foreground mt-0.5">{unread} unread</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {t('notif_unread_count').replace('{{n}}', String(unread))}
+              </p>
             )}
           </div>
           {unread > 0 && (
@@ -135,7 +172,7 @@ function NotificationsContent() {
               className="gap-1.5 text-sm text-muted-foreground hover:text-foreground border border-border"
             >
               <CheckCheck className="h-4 w-4" />
-              Mark all read
+              {t('notif_mark_all_read')}
             </Button>
           )}
         </div>

@@ -409,7 +409,7 @@ async function notifyNewMatches(
 
     await supabase.from('notifications').insert({
       user_id: userId,
-      type: 'MATCH_AVAILABLE',
+      type: 'MATCH_FOUND',
       title: `New ${m.signal_strength} match found`,
       body: `A strong buyer intent matched your property.`,
       property_id: m.property_id,
@@ -419,7 +419,7 @@ async function notifyNewMatches(
     await supabase.from('activity_events').insert({
       user_id: userId,
       property_id: m.property_id,
-      event_type: 'MATCH_AVAILABLE',
+      event_type: 'MATCH_FOUND',
       metadata: { match_id: m.id, signal_strength: m.signal_strength },
     });
   }

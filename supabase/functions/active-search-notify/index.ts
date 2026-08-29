@@ -27,10 +27,10 @@ Deno.serve(async (req) => {
       for (const sub of subs ?? []) {
         await supabase.from('notifications').insert({
           user_id: sub.user_id,
-          type: 'MATCH_AVAILABLE',
+          type: 'MATCH_FOUND',
           title: 'New property match',
           body: 'A new property matching your search has been added.',
-          is_read: false,
+          read: false,
           metadata: { property_id, trigger: 'active_search', subscription_id: sub.id },
         }).catch(() => {});
 
@@ -49,10 +49,10 @@ Deno.serve(async (req) => {
       for (const sub of subs ?? []) {
         await supabase.from('notifications').insert({
           user_id: sub.user_id,
-          type: 'MATCH_AVAILABLE',
+          type: 'MATCH_FOUND',
           title: 'New buyer/renter found',
           body: 'A new potential buyer or renter has been found for your property.',
-          is_read: false,
+          read: false,
           metadata: { signal_id, match_id: match_id || null, property_id: sub.property_id, trigger: 'active_search', subscription_id: sub.id },
         }).catch(() => {});
 

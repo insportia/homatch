@@ -35,6 +35,7 @@ function MessageStatusIcon({ status }: { status: string }) {
 
 // ── Conversation List Item ────────────────────────────────────
 function ConvItem({ conv, active, onClick, myId }: { conv: Conversation; active: boolean; onClick: () => void; myId: string }) {
+  const { t } = useLanguage();
   const initials = (conv.other_user?.full_name ?? conv.other_user?.email ?? '?')
     .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const lastMsg = conv.last_message;
@@ -71,8 +72,8 @@ function ConvItem({ conv, active, onClick, myId }: { conv: Conversation; active:
           )}
         </div>
         <p className="text-xs text-muted-foreground truncate mt-0.5">
-          {isMine && <span className="mr-1">You:</span>}
-          {lastMsg?.body ?? 'No messages yet'}
+          {isMine && <span className="mr-1">{t('chat_you_prefix')}:</span>}
+          {lastMsg?.body ?? t('chat_no_messages')}
         </p>
       </div>
     </button>
@@ -83,6 +84,7 @@ function ConvItem({ conv, active, onClick, myId }: { conv: Conversation; active:
 function ShareContactDialog({
   open, onClose, conversationId, sharerId,
 }: { open: boolean; onClose: () => void; conversationId: string; sharerId: string }) {
+  const { t } = useLanguage();
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [telegram, setTelegram] = useState('');
@@ -91,11 +93,15 @@ function ShareContactDialog({
   const handleShare = async () => {
     setLoading(true);
     try {
-      await shareContactInfo(conversationId, sharerId, { phone: phone || undefined, whatsapp: whatsapp || undefined, telegram: telegram || undefined });
-      toast.success('Contact info shared');
+      await shareContactInfo(conversationId, sharerId, {
+        phone: phone || undefined,
+        whatsapp: whatsapp || undefined,
+        telegram: telegram || undefined,
+      });
+      toast.success(t('chat_share_toast_ok'));
       onClose();
     } catch {
-      toast.error('Failed to share contact');
+      toast.error(t('chat_share_toast_fail'));
     } finally {
       setLoading(false);
     }
@@ -105,27 +111,27 @@ function ShareContactDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
         <DialogHeader>
-          <DialogTitle>Share Contact Info</DialogTitle>
+          <DialogTitle>{t('chat_share_contact_title')}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">Only share when you are ready. The other party will see what you provide.</p>
+        <p className="text-sm text-muted-foreground">{t('chat_share_contact_desc')}</p>
         <div className="space-y-3 mt-2">
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
+            <label className="text-xs text-muted-foreground mb-1 block">{t('chat_share_phone_label')}</label>
             <Input placeholder="+995 5XX XXX XXX" value={phone} onChange={e => setPhone(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">WhatsApp</label>
+            <label className="text-xs text-muted-foreground mb-1 block">{t('chat_share_whatsapp_label')}</label>
             <Input placeholder="+995 5XX XXX XXX" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Telegram</label>
+            <label className="text-xs text-muted-foreground mb-1 block">{t('chat_share_telegram_label')}</label>
             <Input placeholder="@username or +number" value={telegram} onChange={e => setTelegram(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>{t('cancel')}</Button>
           <Button onClick={handleShare} disabled={loading || (!phone && !whatsapp && !telegram)}>
-            {loading ? 'Sharing…' : 'Share'}
+            {loading ? t('chat_share_sharing') : t('chat_share_submit')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -187,12 +193,35 @@ function MessageThread({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Load shared contact
+  // Load shared contact + subscribe to live contact-share updates
   useEffect(() => {
+    let mounted = true;
     getContactShare(conv.id, conv.initiator_id === myId ? conv.recipient_id : conv.initiator_id)
       .then(c => {
-        if (c) setSharedContact({ phone: c.phone ?? '', whatsapp: c.whatsapp ?? '', telegram: c.telegram ?? '' });
+        if (c && mounted)
+          setSharedContact({ phone: c.phone ?? '', whatsapp: c.whatsapp ?? '', telegram: c.telegram ?? '' });
       }).catch(() => {});
+
+    // Realtime: conversation_contact_shares — so shares appear live without reload
+    const channel = supabase
+      .channel(`contact_shares:${conv.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'conversation_contact_shares',
+        filter: `conversation_id=eq.${conv.id}`,
+      }, () => {
+        // Re-fetch on any change (insert/update)
+        getContactShare(conv.id, conv.initiator_id === myId ? conv.recipient_id : conv.initiator_id)
+          .then(c => {
+            if (c && mounted)
+              setSharedContact({ phone: c.phone ?? '', whatsapp: c.whatsapp ?? '', telegram: c.telegram ?? '' });
+          }).catch(() => {});
+      })
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
   }, [conv.id, conv.initiator_id, conv.recipient_id, myId]);
 
   const handleSend = async () => {
@@ -241,10 +270,10 @@ function MessageThread({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setShareOpen(true)}>
-                <Phone className="h-4 w-4 mr-2" /> Share Contact
+                <Phone className="h-4 w-4 mr-2" /> {t('chat_share_contact')}
               </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive">
-                <AlertTriangle className="h-4 w-4 mr-2" /> Report
+                <AlertTriangle className="h-4 w-4 mr-2" /> {t('chat_report')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -256,7 +285,7 @@ function MessageThread({
         <div className="px-4 py-2 bg-primary/5 border-b border-primary/20 flex items-center gap-3 text-xs text-primary shrink-0">
           <Phone className="h-3 w-3 shrink-0" />
           <span className="truncate">
-            Contact shared —{' '}
+            {t('chat_contact_shared_banner')} —{' '}
             {[sharedContact.phone && `📞 ${sharedContact.phone}`, sharedContact.whatsapp && `WhatsApp: ${sharedContact.whatsapp}`, sharedContact.telegram && `TG: ${sharedContact.telegram}`].filter(Boolean).join(' · ')}
           </span>
         </div>
@@ -436,7 +465,7 @@ export default function ChatPage() {
               : (
                 <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
                   <MessageSquare className="h-12 w-12 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">Select a conversation to start chatting</p>
+                  <p className="text-sm text-muted-foreground">{t('chat_select_prompt')}</p>
                 </div>
               )
             }

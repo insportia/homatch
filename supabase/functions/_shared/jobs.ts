@@ -460,7 +460,7 @@ export async function sendNotifications(ctx: JobContext): Promise<JobResult> {
     try {
       // In-app notification
       await ctx.supabase.from('notifications').insert({
-        user_id: userId, type: 'MATCH_AVAILABLE',
+        user_id: userId, type: 'MATCH_FOUND',
         title: 'New match found',
         body: `A new ${match.signal_strength} match is available for ${match.properties?.title ?? 'your property'}.`,
         metadata: { match_id: match.id, property_id: match.property_id, strength: match.signal_strength },

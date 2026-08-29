@@ -58,10 +58,17 @@ export type NotificationType =
   | 'LOW_CREDITS'
   | 'CREDITS_LOW'
   | 'MATCH_FOUND'
-  | 'MATCH_AVAILABLE'
+  | 'MATCH_AVAILABLE'   // legacy rows only
   | 'MATCH_UNLOCKED'
   | 'CREDITS_TOPPED_UP'
-  | 'CAMPAIGN_PAUSED';
+  | 'CAMPAIGN_PAUSED'
+  | 'NEW_MESSAGE'
+  | 'VIEWING_REQUEST'
+  | 'VIEWING_ACCEPTED'
+  | 'VIEWING_DECLINED'
+  | 'VIEWING_CANCELLED'
+  | 'VIEWING_COMPLETED'
+  | 'SYSTEM';
 export type ConditionType = 'NEW' | 'GOOD' | 'NEEDS_RENOVATION' | 'UNDER_CONSTRUCTION';
 export type BuildingType = 'PANEL' | 'BRICK' | 'MONOLITH' | 'WOOD' | 'OTHER';
 export type HeatingType = 'CENTRAL' | 'GAS' | 'ELECTRIC' | 'NONE' | 'OTHER';
@@ -665,6 +672,9 @@ export interface Notification {
   body?: string;
   read: boolean;
   property_id?: string;
+  entity_type?: string;
+  entity_id?: string;
+  nav_path?: string;
   metadata?: Record<string, unknown>;
   created_at: string;
 }

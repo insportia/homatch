@@ -47,14 +47,17 @@ Deno.serve(async (req) => {
       }).select('*').single();
       if (vrErr) throw vrErr;
 
-      // Notify owner
+      // Notify owner with correct type and durable nav link
       await supabase.from('notifications').insert({
-        user_id: prop.user_id,
-        type: 'MATCH_AVAILABLE',
-        title: 'Viewing request',
-        body: 'A buyer/renter has requested a viewing of your property.',
-        is_read: false,
-        metadata: { viewing_request_id: vr.id },
+        user_id:     prop.user_id,
+        type:        'VIEWING_REQUEST',
+        title:       'Viewing request',
+        body:        'A buyer/renter has requested a viewing of your property.',
+        read:        false,
+        entity_type: 'viewing_request',
+        entity_id:   vr.id,
+        nav_path:    `/viewings`,
+        metadata:    { viewing_request_id: vr.id, property_id },
       }).catch(() => {});
 
       return new Response(JSON.stringify({ viewing_request: vr }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -100,19 +103,32 @@ Deno.serve(async (req) => {
       .update(updates).eq('id', viewing_request_id).select('*').single();
     if (updErr) throw updErr;
 
-    // Notify the other party
+    // Notify the other party with correct type and durable nav link
     const notifyUserId = isOwner ? vr.requester_id : vr.owner_id;
+    const notifTypeMap: Record<string, string> = {
+      accept:             'VIEWING_ACCEPTED',
+      decline:            'VIEWING_DECLINED',
+      propose_reschedule: 'VIEWING_REQUEST',
+      cancel:             'VIEWING_CANCELLED',
+      complete:           'VIEWING_COMPLETED',
+    };
     const actionLabels: Record<string, string> = {
-      accept: 'Viewing accepted', decline: 'Viewing declined',
-      propose_reschedule: 'Reschedule proposed', cancel: 'Viewing cancelled', complete: 'Viewing completed',
+      accept:             'Viewing accepted',
+      decline:            'Viewing declined',
+      propose_reschedule: 'Reschedule proposed',
+      cancel:             'Viewing cancelled',
+      complete:           'Viewing completed',
     };
     await supabase.from('notifications').insert({
-      user_id: notifyUserId,
-      type: 'MATCH_AVAILABLE',
-      title: actionLabels[action] || 'Viewing update',
-      body: `Your viewing request status changed to ${t.new_status}.`,
-      is_read: false,
-      metadata: { viewing_request_id },
+      user_id:     notifyUserId,
+      type:        notifTypeMap[action] ?? 'VIEWING_REQUEST',
+      title:       actionLabels[action] ?? 'Viewing update',
+      body:        `Your viewing request status changed to ${t.new_status}.`,
+      read:        false,
+      entity_type: 'viewing_request',
+      entity_id:   viewing_request_id,
+      nav_path:    `/viewings`,
+      metadata:    { viewing_request_id, new_status: t.new_status },
     }).catch(() => {});
 
     return new Response(JSON.stringify({ viewing_request: updated }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

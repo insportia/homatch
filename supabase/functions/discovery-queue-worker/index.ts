@@ -1,7 +1,404 @@
+/**
+ * discovery-queue-worker — Phase 6 hardened rewrite
+ *
+ * Property-scoped claims via claim_discovery_jobs_scoped RPC (SKIP LOCKED).
+ * Server-side safety gate checked BEFORE any provider call.
+ * Bounded batches from admin_settings.max_jobs_per_property_tick.
+ * Claim-token-gated completion via complete_discovery_job RPC.
+ * Dry-run: full simulation, zero real provider calls, $0 cost.
+ *
+ * SAFETY INVARIANT: external_discovery_enabled=false + kill_switch=true
+ * means this function returns immediately with no real provider calls.
+ *
+ * Queue table: discovery_query_queue (Phase 6b migration)
+ */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, x-cron-token'};
-const json=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,'Content-Type':'application/json'}});
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-token',
+};
+const json = (d: unknown, s = 200) =>
+  new Response(JSON.stringify(d), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
+
+// Apify actor IDs per platform
+const ACTORS: Record<string, string> = {
+  FACEBOOK: 'lofomachines~facebook-groups-posts-search-scraper',
+  TELEGRAM: 'lofomachines~telegram-keyword-search-scraper',
+  REDDIT:   'outspoken_strategy~reddit-posts-search-scraper',
+  THREADS:  'webdata_labs~threads-scraper',
+};
+const TERMINAL = new Set(['SUCCEEDED','FAILED','ABORTED','TIMED-OUT']);
+const WEB_PLATFORMS = new Set(['WEB','VK','INSTAGRAM']);
+const ACTOR_PLATFORMS = new Set(['FACEBOOK','TELEGRAM','REDDIT','THREADS']);
+
+// ── Settings loader ───────────────────────────────────────────────
+interface QueueSettings {
+  external_discovery_enabled: boolean;
+  provider_kill_switch: boolean;
+  dry_run_mode: boolean;
+  max_jobs: number;
+}
+
+async function loadQueueSettings(db: ReturnType<typeof createClient>): Promise<QueueSettings> {
+  const { data } = await db.from('admin_settings').select('key,value')
+    .in('key',['external_discovery_enabled','provider_kill_switch','dry_run_mode','max_jobs_per_property_tick']);
+  const raw: Record<string,string> = {};
+  for (const r of data ?? []) raw[r.key] = String(r.value ?? '').replace(/^"|"$/g,'');
+  return {
+    external_discovery_enabled: raw['external_discovery_enabled'] === 'true',
+    provider_kill_switch:        raw['provider_kill_switch'] !== 'false',
+    dry_run_mode:                raw['dry_run_mode'] === 'true',
+    max_jobs:                    Math.max(1, Math.min(28, Number(raw['max_jobs_per_property_tick'] ?? 10))),
+  };
+}
+
+// ── Main handler ──────────────────────────────────────────────────
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
+  const base  = Deno.env.get('SUPABASE_URL')!;
+  const key   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const apify = Deno.env.get('APIFY_API_TOKEN') ?? '';
+  const db    = createClient(base, key);
+
+  try {
+    // Internal-only: called by continuous-matching-worker with service role
+    const auth = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+    if (auth !== key) return json({ error: 'Internal only' }, 403);
+
+    const body       = await req.json().catch(() => ({}));
+    const propertyId = String(body.propertyId ?? '');
+    if (!propertyId) return json({ error: 'propertyId required' }, 400);
+    const runId   = String(body.runId ?? crypto.randomUUID());
+    const dryRun  = body.dryRun === true;
+
+    // ── GATE 1: Load settings — safety check FIRST ────────────
+    const settings = await loadQueueSettings(db);
+
+    // Safety invariant: if not enabled or kill_switch active → return immediately
+    if (!settings.external_discovery_enabled) {
+      console.log(JSON.stringify({ event: 'gate_blocked', runId, propertyId, reason: 'external_discovery_enabled=false' }));
+      return json({ success: true, blocked: true, reason: 'external_discovery_enabled=false', jobs_processed: 0 });
+    }
+    if (settings.provider_kill_switch) {
+      console.log(JSON.stringify({ event: 'gate_blocked', runId, propertyId, reason: 'provider_kill_switch=true' }));
+      return json({ success: true, blocked: true, reason: 'provider_kill_switch=true', jobs_processed: 0 });
+    }
+
+    const isDryRun = dryRun || settings.dry_run_mode;
+    const maxJobs  = settings.max_jobs;
+
+    // ── GATE 2: Property must be ACTIVE ───────────────────────
+    const { data: prop } = await db.from('properties').select('id,matching_status').eq('id',propertyId).maybeSingle();
+    if (!prop || prop.matching_status !== 'ACTIVE') {
+      return json({ success: true, blocked: true, reason: `Property not ACTIVE`, jobs_processed: 0 });
+    }
+
+    // ── Claim jobs property-scoped (SKIP LOCKED RPC) ──────────
+    const { data: claimed, error: claimErr } = await db.rpc('claim_discovery_jobs_scoped', {
+      p_property_id: propertyId,
+      p_run_id:      runId,
+      p_max_jobs:    maxJobs,
+    });
+    if (claimErr) throw claimErr;
+
+    const jobs: Record<string,unknown>[] = claimed ?? [];
+    if (!jobs.length) {
+      return json({ success: true, propertyId, runId, jobs_claimed: 0, jobs_processed: 0, dry_run: isDryRun });
+    }
+
+    console.log(JSON.stringify({ event: 'jobs_claimed', runId, propertyId, count: jobs.length, dry_run: isDryRun }));
+
+    let completed = 0, failed = 0, retried = 0;
+    let totalCandidates = 0, totalNewSignals = 0, totalCostUsd = 0;
+
+    for (const job of jobs) {
+      const jobId      = String(job['id']);
+      const claimToken = String(job['claim_token'] ?? '');
+      const platform   = String(job['platform'] ?? '');
+      const query      = String(job['query'] ?? '');
+      const language   = String(job['language'] ?? 'en');
+      const attempt    = Number(job['attempts'] ?? 1);
+
+      // ── Dry-run: simulate without real call ──────────────
+      if (isDryRun) {
+        const mockResult = { candidates: 3, newSignals: 2, costUsd: 0 };
+        await db.rpc('complete_discovery_job', {
+          p_job_id: jobId, p_claim_token: claimToken,
+          p_success: true, p_result_count: mockResult.candidates, p_cost_usd: 0,
+        });
+        totalCandidates += mockResult.candidates;
+        totalNewSignals += mockResult.newSignals;
+        completed++;
+        console.log(JSON.stringify({ event: 'dry_run_job_done', runId, jobId, platform, query: query.slice(0,60) }));
+        continue;
+      }
+
+      try {
+        let result: { candidates: number; newSignals: number; costUsd: number };
+
+        if (WEB_PLATFORMS.has(platform)) {
+          result = await processWebJob(base, key, propertyId, jobId, query, platform, language);
+        } else if (ACTOR_PLATFORMS.has(platform)) {
+          if (!apify) {
+            await db.rpc('complete_discovery_job', {
+              p_job_id: jobId, p_claim_token: claimToken,
+              p_success: false, p_error_msg: 'APIFY_API_TOKEN not configured',
+            });
+            failed++;
+            continue;
+          }
+          result = await processApifyJob(db, apify, propertyId, jobId, query, platform, language, attempt);
+        } else {
+          await db.rpc('complete_discovery_job', {
+            p_job_id: jobId, p_claim_token: claimToken,
+            p_success: false, p_error_msg: `Unsupported platform: ${platform}`,
+          });
+          failed++;
+          continue;
+        }
+
+        const ok = await db.rpc('complete_discovery_job', {
+          p_job_id: jobId, p_claim_token: claimToken,
+          p_success: true, p_result_count: result.candidates, p_cost_usd: result.costUsd,
+        });
+
+        if (ok.data === false) {
+          console.error(JSON.stringify({ event: 'complete_job_rejected', runId, jobId, reason: 'claim mismatch or not PROCESSING' }));
+          failed++;
+          continue;
+        }
+
+        totalCandidates += result.candidates;
+        totalNewSignals += result.newSignals;
+        totalCostUsd    += result.costUsd;
+        completed++;
+
+        console.log(JSON.stringify({
+          event: 'job_done', runId, jobId, platform, candidates: result.candidates,
+          new_signals: result.newSignals, cost_usd: result.costUsd,
+        }));
+
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const isTransient = /timeout|429|5[0-9][0-9]/.test(msg);
+        await db.rpc('complete_discovery_job', {
+          p_job_id: jobId, p_claim_token: claimToken,
+          p_success: false, p_error_msg: msg.slice(0, 500),
+        });
+        isTransient ? retried++ : failed++;
+        console.error(JSON.stringify({ event: 'job_error', runId, jobId, platform, error: msg, transient: isTransient }));
+      }
+    }
+
+    return json({
+      success: true, propertyId, runId, dry_run: isDryRun,
+      jobs_claimed: jobs.length, jobs_completed: completed,
+      jobs_failed: failed, jobs_retried: retried,
+      candidates_linked: totalCandidates,
+      new_raw_signals: totalNewSignals,
+      cost_usd: totalCostUsd,
+    });
+
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+// ── Web job via dataforseo-search EF ─────────────────────────────
+async function processWebJob(
+  base: string, key: string, propertyId: string, jobId: string,
+  query: string, platform: string, language: string,
+): Promise<{ candidates: number; newSignals: number; costUsd: number }> {
+  const site = platform === 'VK' ? 'site:vk.com ' : platform === 'INSTAGRAM' ? 'site:instagram.com ' : '';
+  const r = await fetch(`${base}/functions/v1/dataforseo-search`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${key}`, apikey: key, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ propertyId, queryId: jobId, queries: [`${site}${query}`], language, country: 'GE' }),
+    signal:  AbortSignal.timeout(90_000),
+  });
+  const t = await r.text();
+  if (!r.ok) throw new Error(`dataforseo-search ${r.status}: ${t.slice(0,300)}`);
+  const d = JSON.parse(t) as Record<string,unknown>;
+  return {
+    candidates: Number(d['candidatesLinked'] ?? d['signalsInserted'] ?? 0),
+    newSignals:  Number(d['signalsInserted'] ?? 0),
+    costUsd:     Number(d['costUsd'] ?? 0),
+  };
+}
+
+// ── Apify async job (fire-and-track) ─────────────────────────────
+async function processApifyJob(
+  db: ReturnType<typeof createClient>,
+  token: string,
+  propertyId: string, jobId: string, query: string, platform: string, language: string, attempt: number,
+): Promise<{ candidates: number; newSignals: number; costUsd: number }> {
+  const actor = ACTORS[platform];
+  if (!actor) throw new Error(`No Apify actor for platform ${platform}`);
+
+  const input = buildActorInput(platform, query, language);
+  const runResp = await fetch(`https://api.apify.com/v2/acts/${actor}/runs?memory=1024&timeout=900`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify(input),
+    signal:  AbortSignal.timeout(20_000),
+  });
+  if (!runResp.ok) throw new Error(`Apify start ${runResp.status}: ${(await runResp.text()).slice(0,350)}`);
+  const runData = ((await runResp.json()) as Record<string,unknown>)['data'] as Record<string,unknown> ?? {};
+  const runId = String(runData['id'] ?? '');
+
+  // Update job with run ID for later polling (requeue as PENDING won't happen here;
+  // the RPC sets next_run_at so the next tick picks it up to poll)
+  await db.from('discovery_query_queue').update({
+    external_run_id: runId,
+    dataset_id: (runData['defaultDatasetId'] as string) ?? null,
+    provider: 'APIFY',
+    actor_id: actor,
+    metadata: { lastStatus: runData['status'] ?? 'READY', attempt },
+  }).eq('id', jobId);
+
+  // For async actors we don't wait inline — poll on next invocation
+  // Return 0 candidates for now; polling will complete it
+  return { candidates: 0, newSignals: 0, costUsd: 0 };
+}
+
+function buildActorInput(platform: string, query: string, language: string): Record<string,unknown> {
+  const lang = language.toLowerCase();
+  if (platform === 'FACEBOOK') return { keywords: [query], afterDate: 'last_month', maxPosts: 150, countryCode: 'ge' };
+  if (platform === 'TELEGRAM') return { mode: 'keyword', keywords: [query], afterDate: '1 month', countryCode: 'ge', languageCode: lang, maxResultsPerKeyword: 150 };
+  if (platform === 'THREADS')  return { mode: 'search', searchQueries: [query], maxPosts: 120, postedAfter: new Date(Date.now()-45*86400_000).toISOString() };
+  if (platform === 'REDDIT')   return { queries: [query], sort: 'new', numberOfPosts: 120, timeFilter: 'month' };
+  return { query };
+}
+
+// ── Signal text helpers ───────────────────────────────────────────
+function signalText(x: Record<string,unknown>): string {
+  return String(x['text']??x['message']??x['post_text']??x['content']??x['selftext']??x['body']??x['title']??x['caption']??x['description']??'').trim();
+}
+
+async function fingerprint(t: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t.toLowerCase().replace(/\s+/g,' ').trim().slice(0,1200)));
+  return Array.from(new Uint8Array(buf)).map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);
+}
+
+function canonUrl(platform: string, raw: string): string {
+  try {
+    if (platform === 'FACEBOOK') { const m = new URL(raw).pathname.match(/\/groups\/([^/]+)/); return m ? `https://www.facebook.com/groups/${m[1]}/` : ''; }
+    if (platform === 'TELEGRAM') { const parts = new URL(raw).pathname.split('/').filter(x=>x&&x!=='s'); return parts[0] ? `https://t.me/${parts[0]}` : ''; }
+  } catch { return ''; }
+  return raw;
+}
+
+// Ingest items from an Apify dataset result
+async function ingestItems(
+  db: ReturnType<typeof createClient>,
+  propertyId: string, jobId: string, platform: string, language: string,
+  items: Record<string,unknown>[], runCostUsd: number,
+): Promise<{ candidates: number; newSignals: number; sources: number }> {
+  const usable = items.filter(x => signalText(x).length >= 20);
+  const share  = usable.length ? runCostUsd / usable.length : 0;
+  let candidates = 0, newSignals = 0, sources = 0;
+
+  for (const x of usable) {
+    const text   = signalText(x);
+    const fp     = await fingerprint(text);
+    const srcUrl = String(x['group_url']??x['channelUrl']??x['channel_url']??x['sourceUrl']??x['source_url']??'');
+    const canonSrc = canonUrl(platform, srcUrl);
+
+    // Ensure source exists
+    let sourceId: string | null = null;
+    if (canonSrc) {
+      const { data: existSrc } = await db.from('source_registry').select('id').eq('url', canonSrc).maybeSingle();
+      if (existSrc?.id) {
+        sourceId = existSrc.id;
+      } else {
+        const srcType = platform === 'FACEBOOK' ? 'FACEBOOK_GROUP' : platform === 'TELEGRAM' ? 'TELEGRAM_GROUP' : platform === 'REDDIT' ? 'FORUM' : 'WEBSITE';
+        const { data: newSrc } = await db.from('source_registry').insert({
+          platform: dbPlatform(platform), source_type: srcType, url: canonSrc,
+          external_id: canonSrc, name: String(x['group_name']??x['channelTitle']??x['channel_title']??canonSrc).slice(0,240),
+          country_code: 'GE', language, active: true, priority: 75, quality_score: 6, provider: 'APIFY',
+        }).select('id').single();
+        if (newSrc) { sourceId = newSrc.id; sources++; }
+      }
+    }
+    if (!sourceId) {
+      const ext = `QUEUE_${platform}_${language}`;
+      const { data: synth } = await db.from('source_registry').select('id').eq('external_id', ext).maybeSingle();
+      if (synth?.id) { sourceId = synth.id; }
+      else {
+        const { data: newSynth } = await db.from('source_registry').insert({
+          platform: dbPlatform(platform), source_type: 'WEBSITE', external_id: ext,
+          name: `${platform} queue discovery`, url: `https://homatch.live/source/${ext.toLowerCase()}`,
+          country_code: 'GE', language, active: true, priority: 50, quality_score: 4, provider: 'APIFY',
+        }).select('id').single();
+        if (newSynth) sourceId = newSynth.id;
+      }
+    }
+
+    // Dedup: externalId + canonical URL + fingerprint
+    const extId = String(x['id']??x['message_id']??x['messageId']??x['postId']??x['facebookId']??x['post_url']??fp);
+    const dbPlat = dbPlatform(platform);
+
+    const { data: existing } = await db.from('raw_signals').select('id')
+      .eq('platform', dbPlat).eq('external_id', extId).maybeSingle();
+
+    let signalId: string;
+    if (existing?.id) {
+      signalId = existing.id;
+      await db.from('raw_signals').update({
+        last_seen_at: new Date().toISOString(),
+        ...(sourceId ? { source_id: sourceId } : {}),
+      }).eq('id', signalId);
+    } else {
+      const { data: created, error: insErr } = await db.from('raw_signals').insert({
+        source_id: sourceId, platform: dbPlat, external_id: extId,
+        source_url:          String(x['post_url']??x['messageUrl']??x['message_url']??x['url']??'') || null,
+        author_public_name:  String(x['author_name']??x['author']??x['username']??x['ownerName']??'') || null,
+        author_public_url:   String(x['author_url']??x['authorUrl']??x['channelUrl']??'') || null,
+        original_text: text, language,
+        published_at: normalizeDate(x['date']??x['published_at']??x['publishedAt']??x['created_at']??x['timestamp']),
+        content_fingerprint: fp,
+        provider: 'APIFY',
+        classification_status: 'PENDING',
+        mock_mode: false,
+      }).select('id').single();
+
+      if (insErr) {
+        // Race condition — try fetching
+        const { data: race } = await db.from('raw_signals').select('id').eq('platform', dbPlat).eq('external_id', extId).maybeSingle();
+        if (!race?.id) continue;
+        signalId = race.id;
+      } else {
+        signalId = created!.id;
+        newSignals++;
+      }
+    }
+
+    // Link candidate to property (upsert — dedup by property+signal)
+    const { error: linkErr } = await db.from('property_signal_candidates').upsert({
+      property_id: propertyId, signal_id: signalId, query_id: jobId,
+      acquisition_cost_usd: share, last_seen_at: new Date().toISOString(),
+      metadata: { platform, language, job_id: jobId },
+    }, { onConflict: 'property_id,signal_id', ignoreDuplicates: false });
+
+    if (!linkErr) candidates++;
+  }
+  return { candidates, newSignals, sources };
+}
+
+function dbPlatform(p: string): string {
+  if (p === 'REDDIT') return 'FORUM';
+  if (p === 'THREADS') return 'OTHER';
+  return p;
+}
+
+function normalizeDate(v: unknown): string | null {
+  if (!v) return null;
+  if (typeof v === 'number') return new Date(v > 1e12 ? v : v * 1000).toISOString();
+  const d = new Date(String(v));
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
 const APIFY='https://api.apify.com/v2';
 const ACTORS:Record<string,string>={
   FACEBOOK:'lofomachines~facebook-groups-posts-search-scraper',

@@ -93,16 +93,18 @@ Deno.serve(async (req) => {
     // Update message status to DELIVERED
     await supabase.from('messages').update({ status: 'DELIVERED', delivered_at: new Date().toISOString() }).eq('id', message.id);
 
-    // First contact: create in-app notification
-    if (isFirstContact) {
-      await supabase.from('notifications').insert({
-        user_id: recipient_id,
-        type: 'MATCH_AVAILABLE',
-        title: 'New message',
-        body: 'You have a new message from a Homatch user.',
-        is_read: false,
-      }).catch(() => {}); // non-fatal
-    }
+    // Notify recipient on every new message (not just first contact)
+    await supabase.from('notifications').insert({
+      user_id:     recipient_id,
+      type:        'NEW_MESSAGE',
+      title:       'New message',
+      body:        'You have a new message.',
+      read:        false,
+      entity_type: 'conversation',
+      entity_id:   convId,
+      nav_path:    `/chat?conv=${convId}`,
+      metadata:    { conversation_id: convId, sender_id: sender.id },
+    }).catch(() => {}); // non-fatal
 
     return new Response(JSON.stringify({ message, conversation_id: convId, first_contact: isFirstContact }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

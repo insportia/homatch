@@ -1748,7 +1748,7 @@ async function notifyStrongMatches(
     try {
       await sb.from('notifications').insert({
         user_id:     userId,
-        type:        'MATCH_AVAILABLE',
+        type:        'MATCH_FOUND',
         title:       `New ${m.signal_strength} match found`,
         body:        'A strong buyer intent signal matched your property.',
         property_id: propertyId,

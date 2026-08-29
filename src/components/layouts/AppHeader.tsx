@@ -207,13 +207,13 @@ export function AppHeader() {
                       <Link to="/property/add" onClick={() => setMobileOpen(false)}>
                         <div className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm min-h-12 text-muted-foreground hover:bg-sidebar-accent">
                           <PlusCircle className="h-4 w-4 shrink-0" />
-                          {t('nav_add')} Property
+                          {t('nav_add_property')}
                         </div>
                       </Link>
                       <Link to="/verify" onClick={() => setMobileOpen(false)}>
                         <div className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm min-h-12 text-muted-foreground hover:bg-sidebar-accent">
                           <Shield className="h-4 w-4 shrink-0" />
-                          Verify Property
+                          {t('nav_verify')}
                         </div>
                       </Link>
                     </nav>

@@ -20,6 +20,9 @@ const en = {
   nav_ai: 'AI',
   nav_verify: 'Verify',
   nav_sell: 'Sell / Find Buyers',
+  nav_add_property: 'Add Property',
+  dash_ask_ai_property: 'Ask AI about this property',
+  ai_floating_label: 'Ask Homatch AI',
 
   // AI Page
   ai_title: 'Homatch AI',
@@ -682,6 +685,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   nav_ai: 'AI',
   nav_verify: 'გადამოწმება',
   nav_sell: 'გაყიდვა / მყიდველების პოვნა',
+  nav_add_property: 'ქონების დამატება',
+  dash_ask_ai_property: 'AI-ს ამ ქონებაზე კითხვა',
+  ai_floating_label: 'Homatch AI-ს კითხვა',
 
   // AI Page
   ai_title: 'Homatch AI',
@@ -1114,6 +1120,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   nav_ai: 'AI',
   nav_verify: 'Проверка',
   nav_sell: 'Продать / Найти покупателей',
+  nav_add_property: 'Добавить объект',
+  dash_ask_ai_property: 'Спросить AI об этом объекте',
+  ai_floating_label: 'Спросить Homatch AI',
 
   // AI Page
   ai_title: 'Homatch AI',
@@ -1541,6 +1550,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   nav_ai: 'AI',
   nav_verify: 'Doğrula',
   nav_sell: 'Sat / Alıcı Bul',
+  nav_add_property: 'Mülk Ekle',
+  dash_ask_ai_property: 'Bu mülk hakkında AI\'ya sor',
+  ai_floating_label: 'Homatch AI\'ya sor',
 
   // AI Page
   ai_title: 'Homatch AI',
@@ -1924,6 +1936,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   nav_ai: 'الذكاء الاصطناعي',
   nav_verify: 'التحقق',
   nav_sell: 'بيع / إيجاد مشترين',
+  nav_add_property: 'إضافة عقار',
+  dash_ask_ai_property: 'اسأل الذكاء الاصطناعي عن هذا العقار',
+  ai_floating_label: 'اسأل Homatch AI',
 
   // AI Page
   ai_title: 'Homatch AI',
@@ -2304,6 +2319,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   nav_ai: 'בינה מלאכותית',
   nav_verify: 'אימות',
   nav_sell: 'מכור / מצא קונים',
+  nav_add_property: 'הוסף נכס',
+  dash_ask_ai_property: 'שאל AI על הנכס הזה',
+  ai_floating_label: 'שאל את Homatch AI',
 
   // AI Page
   ai_title: 'Homatch AI',

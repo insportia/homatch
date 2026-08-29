@@ -101,11 +101,19 @@ function PropertyCard({ prop, run, onDelete }: { prop: Property; run?: MatchingR
         {/* Quick AI action */}
         <button
           type="button"
-          onClick={e => { e.stopPropagation(); }}
+          onClick={e => {
+            e.stopPropagation();
+            navigate('/ai', {
+              state: {
+                context: { type: 'property', data: { id: prop.id, title: prop.title, city: facts?.city } },
+                prompt: `Tell me about this property: ${prop.title ?? facts?.city ?? prop.id}`,
+              },
+            });
+          }}
           className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/50 hover:border-primary/40 hover:bg-primary/5 transition-colors text-xs text-muted-foreground hover:text-foreground"
         >
           <Bot className="h-3 w-3 text-primary shrink-0" />
-          Ask AI about this property
+          {t('dash_ask_ai_property')}
           <ArrowRight className="h-3 w-3 ml-auto text-muted-foreground/40" />
         </button>
       </div>
@@ -437,15 +445,15 @@ function DashboardContent() {
         {!loading && properties.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
             {[
-              { icon: Bot,          label: 'Ask Homatch AI',   path: '/ai' },
-              { icon: Shield,       label: 'Verify Property',  path: '/verify' },
-              { icon: Bell,         label: 'Active Search',    path: '/active-search' },
-              { icon: CalendarDays, label: 'Viewings',         path: '/viewings' },
-            ].map(({ icon: Icon, label, path }) => (
+              { icon: Bot,          labelKey: 'nav_ai'           as const, path: '/ai' },
+              { icon: Shield,       labelKey: 'nav_verify'       as const, path: '/verify' },
+              { icon: Bell,         labelKey: 'nav_active_search' as const, path: '/active-search' },
+              { icon: CalendarDays, labelKey: 'nav_viewings'     as const, path: '/viewings' },
+            ].map(({ icon: Icon, labelKey, path }) => (
               <button key={path} type="button" onClick={() => navigate(path)}
                 className="flex items-center gap-2 p-3 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-primary/5 transition-colors text-sm text-muted-foreground hover:text-foreground">
                 <Icon className="h-4 w-4 text-primary shrink-0" />
-                <span className="truncate">{label}</span>
+                <span className="truncate">{t(labelKey)}</span>
               </button>
             ))}
           </div>

@@ -11,7 +11,7 @@ import type { SpendCapStatus, SpendCapConfig } from '@/types/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-const PROVIDERS = ['global', 'dataforseo', 'apify', 'zenrows', 'scrapingbee', 'brightdata', 'openai'] as const;
+const PROVIDERS = ['global', 'dataforseo', 'apify', 'zenrows', 'scrapingbee', 'brightdata', 'openai', 'resend', 'twilio', 'retell'] as const;
 
 export default function AdminSpendCapsPage() {
   const [caps, setCaps] = useState<SpendCapStatus[]>([]);

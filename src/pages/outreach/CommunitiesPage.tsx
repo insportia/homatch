@@ -37,7 +37,7 @@ export default function CommunitiesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase.from('communities')
+      let query = supabase.from('community_directory')
         .select('id,platform,canonical_id,canonical_url,name,description,language,country,city,tags,member_count,posting_policy,is_active,created_at')
         .eq('is_active', true)
         .order('member_count', { ascending: false })

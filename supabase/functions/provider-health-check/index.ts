@@ -122,6 +122,29 @@ serve(async (req: Request) => {
         if (!success) lastError = `HTTP ${r.status}`;
         break;
       }
+      case 'TWILIO': {
+        const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
+        const token = Deno.env.get('TWILIO_AUTH_TOKEN');
+        if (!sid || !token) { status = 'NOT_CONFIGURED'; break; }
+        const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}.json`, {
+          headers: { Authorization: `Basic ${btoa(`${sid}:${token}`)}` },
+        });
+        success = r.ok;
+        status = success ? 'REAL_TEST_PASSED' : 'ERROR';
+        if (!success) lastError = `HTTP ${r.status}`;
+        break;
+      }
+      case 'RETELL': {
+        const key = Deno.env.get('RETELL_API_KEY');
+        if (!key) { status = 'NOT_CONFIGURED'; break; }
+        const r = await fetch('https://api.retellai.com/list-agents', {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+        success = r.ok;
+        status = success ? 'REAL_TEST_PASSED' : 'ERROR';
+        if (!success) lastError = `HTTP ${r.status}`;
+        break;
+      }
       default:
         status = 'NOT_CONFIGURED';
     }

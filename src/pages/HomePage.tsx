@@ -9,7 +9,7 @@ import {
   ArrowRight, Search, Sparkles, Shield, Building2, Home, Users, Globe,
   Zap, Lock, TrendingDown, Copy, BarChart2, ShieldCheck, Bot,
   MessageSquare, Bell, Eye, CheckCircle2, ChevronDown, ChevronUp,
-  ExternalLink, Star, Clock, MapPin,
+  ExternalLink, Star, Clock, MapPin, Mail, PhoneCall,
 } from 'lucide-react';
 import { useState } from 'react';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
@@ -26,18 +26,25 @@ const DEMO_MATCHES = [
 
 // ── Features ──────────────────────────────────────────────────
 const FEATURES = [
-  { icon: Bot,          title: 'AI PROPERTY SEARCH',       desc: 'Describe what you need in plain language. Homatch searches internal and external sources.' },
-  { icon: Users,        title: 'BUYER ↔ SELLER MATCHING',  desc: 'Upload your property once. AI finds qualified demand. Sellers and buyers both benefit.' },
-  { icon: Globe,        title: 'MULTI-SOURCE DISCOVERY',   desc: 'One request covers Homatch network, property portals, social groups and forums.' },
-  { icon: TrendingDown, title: 'FIND SAME PROPERTY CHEAPER', desc: 'Paste any listing — Homatch finds the same property listed cheaper across other sources.' },
-  { icon: Copy,         title: 'DUPLICATE DETECTION',      desc: 'Identify duplicate listings and inflated prices before you pay.' },
-  { icon: ShieldCheck,  title: 'HOMATCH TRUST SCORE',      desc: 'Every listing is scored for consistency, data quality and potential red flags.' },
-  { icon: Search,       title: 'CADASTRAL VERIFICATION',   desc: 'Verify cadastral records, ownership status and area discrepancies before you decide.' },
-  { icon: BarChart2,    title: 'DEVELOPER TRUST PROFILE',  desc: 'Check developer history, active permits, project completion and public risk indicators.' },
-  { icon: Bell,         title: 'ACTIVE AI SEARCH',         desc: 'Set once. AI keeps watching and alerts you when new matches appear.' },
-  { icon: MessageSquare,title: 'REAL-TIME CHAT',           desc: 'Connect directly with matched buyers, renters or sellers in-app.' },
-  { icon: Eye,          title: 'VIEWING REQUESTS',         desc: 'Schedule property viewings directly through Homatch.' },
-  { icon: Globe,        title: 'MULTILINGUAL DISCOVERY',   desc: 'Search in Georgian, Russian, English, Turkish, Arabic and Hebrew.' },
+  { icon: Bot,          title: 'AI PROPERTY SEARCH',       desc: 'Describe what you need in plain language. Homatch searches internal and external sources.', route: '/ai' },
+  { icon: Users,        title: 'BUYER ↔ SELLER MATCHING',  desc: 'Upload your property once. AI finds qualified demand. Sellers and buyers both benefit.', route: '/property/add' },
+  { icon: Globe,        title: 'MULTI-SOURCE DISCOVERY',   desc: 'One request covers Homatch network, property portals, social groups and forums.', route: '/ai' },
+  { icon: TrendingDown, title: 'FIND SAME PROPERTY CHEAPER', desc: 'Paste any listing — Homatch finds the same property listed cheaper across other sources.', route: '/property/import' },
+  { icon: Copy,         title: 'DUPLICATE DETECTION',      desc: 'Identify duplicate listings and inflated prices before you pay.', route: '/property/import' },
+  { icon: ShieldCheck,  title: 'HOMATCH TRUST SCORE',      desc: 'Every listing is scored for consistency, data quality and potential red flags.', route: '/verify' },
+  { icon: Search,       title: 'CADASTRAL VERIFICATION',   desc: 'Verify cadastral records, ownership status and area discrepancies before you decide.', route: '/verify' },
+  { icon: BarChart2,    title: 'DEVELOPER TRUST PROFILE',  desc: 'Check developer history, active permits, project completion and public risk indicators.', route: '/verify?tab=developer' },
+  { icon: Bell,         title: 'ACTIVE AI SEARCH',         desc: 'Set once. AI keeps watching and alerts you when new matches appear.', route: '/active-search' },
+  { icon: MessageSquare,title: 'REAL-TIME CHAT',           desc: 'Connect directly with matched buyers, renters or sellers in-app.', route: '/chat' },
+  { icon: Eye,          title: 'VIEWING REQUESTS',         desc: 'Schedule property viewings directly through Homatch.', route: '/viewings' },
+  { icon: Globe,        title: 'MULTILINGUAL DISCOVERY',   desc: 'Search in Georgian, Russian, English, Turkish, Arabic and Hebrew.', route: null },
+];
+
+// ── AI Outreach Engine showcase (new) ───────────────────────────
+const OUTREACH_CARDS = [
+  { icon: PhoneCall, title: 'AI Call Center', desc: 'AI dials qualified leads, talks live, transcribes and summarizes every call automatically.', route: '/outreach/calls', tag: 'Live calls' },
+  { icon: Mail,      title: 'Email Campaigns', desc: 'Launch templated outreach to your contact lists with live delivery tracking.', route: '/outreach/email', tag: 'Automated' },
+  { icon: MessageSquare, title: 'SMS Campaigns', desc: 'Reach leads by text with real-time sent/delivered counters as it happens.', route: '/outreach/sms', tag: 'Real-time' },
 ];
 
 // ── Buyer flow steps ──────────────────────────────────────────
@@ -240,15 +247,82 @@ export default function HomePage() {
             <h2 className="text-2xl font-bold text-foreground">Everything in One Place</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {FEATURES.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="p-4 rounded-xl border border-border bg-card hover:border-primary/30 transition-colors group">
-                <Icon className="h-5 w-5 text-primary mb-3" />
-                <p className="text-xs font-bold text-foreground underline decoration-primary decoration-1 underline-offset-2 mb-1.5">
-                  {title}
-                </p>
-                <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
-              </div>
+            {FEATURES.map(({ icon: Icon, title, desc, route }) => {
+              const clickable = Boolean(route);
+              return (
+                <div
+                  key={title}
+                  role={clickable ? 'button' : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  onClick={clickable ? () => navigate(session ? route! : '/auth/signup') : undefined}
+                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(session ? route! : '/auth/signup'); } } : undefined}
+                  className={`text-left p-4 rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-hover hover:-translate-y-0.5 transition-all group ${clickable ? 'cursor-pointer' : ''}`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <Icon className="h-5 w-5 text-primary" />
+                    {clickable && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-primary/70 group-hover:translate-x-0.5 transition-all" />}
+                  </div>
+                  <p className="text-xs font-bold text-foreground underline decoration-primary decoration-1 underline-offset-2 mb-1.5">
+                    {title}
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── AI OUTREACH ENGINE (new) ── */}
+      <section className="py-16 px-4 border-t border-border bg-card/20">
+        <div className="max-w-5xl mx-auto space-y-8">
+          <div className="text-center">
+            <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5 mb-3">
+              <Sparkles className="h-3 w-3" /> New
+            </Badge>
+            <h2 className="text-2xl font-bold text-foreground">AI Outreach Engine</h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-xl mx-auto">
+              Homatch doesn't just find leads — it reaches them. AI-driven calls, emails and texts, tracked live.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {OUTREACH_CARDS.map(({ icon: Icon, title, desc, route, tag }) => (
+              <button
+                key={title}
+                type="button"
+                onClick={() => navigate(session ? route : '/auth/signup')}
+                className="text-left p-5 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-hover hover:-translate-y-0.5 transition-all group relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="relative w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Icon className="h-5 w-5 text-primary" />
+                    <span className="absolute inset-0 rounded-xl border border-primary/30 animate-ping opacity-0 group-hover:opacity-100" />
+                  </div>
+                  <Badge variant="secondary" className="text-[10px] border-border">{tag}</Badge>
+                </div>
+                <p className="text-sm font-bold text-foreground mb-1.5">{title}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed mb-3">{desc}</p>
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-primary opacity-80 group-hover:opacity-100">
+                  Open <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </button>
             ))}
+          </div>
+          {/* Mini live-call teaser */}
+          <div className="max-w-md mx-auto rounded-2xl border border-border bg-card p-4 flex items-center gap-3">
+            <div className="relative w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+              <PhoneCall className="h-4 w-4 text-green-400" />
+              <span className="absolute inset-0 rounded-full border-2 border-green-400/40 animate-ping" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-foreground">AI is calling a lead right now</p>
+              <p className="text-[11px] text-muted-foreground">Live status, transcript &amp; recording — right after the call ends</p>
+            </div>
+            <div className="flex items-end gap-0.5 h-5 shrink-0" aria-hidden>
+              {[0, 1, 2, 3].map(i => (
+                <span key={i} className="w-1 rounded-full bg-green-400/70 animate-pulse" style={{ height: `${6 + (i % 3) * 4}px`, animationDelay: `${i * 120}ms` }} />
+              ))}
+            </div>
           </div>
         </div>
       </section>

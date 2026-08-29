@@ -10,16 +10,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-type AdminRole = 'SUPER_ADMIN' | 'SUPPORT_ADMIN' | 'BILLING_ADMIN' | 'READ_ONLY';
-const ALLOWED_ROLES: AdminRole[] = ['SUPER_ADMIN', 'SUPPORT_ADMIN', 'BILLING_ADMIN', 'READ_ONLY'];
+// NOTE: this app uses a single users.is_admin boolean everywhere else
+// (Admin Providers/Spend Caps/Signals/Sources pages all gate on it) rather
+// than a granular multi-role RBAC system. admin-user360 previously checked
+// a separate admin_roles table that was never created in this database —
+// every call 403'd. We reuse the existing is_admin flag here for
+// consistency; if finer-grained roles (SUPPORT_ADMIN vs BILLING_ADMIN etc.)
+// are wanted later, admin_roles can be reintroduced as a real, populated
+// table and this check swapped back.
 const SENSITIVE_OPS = ['export_contacts', 'delete_list', 'export_campaign', 'impersonate'];
 
-async function verifyAdminRole(supabase: ReturnType<typeof createClient>, userId: string, minRole?: AdminRole[]): Promise<{ ok: boolean; roles: AdminRole[] }> {
-  const { data } = await supabase.from('admin_roles')
-    .select('role').eq('user_id', userId).is('revoked_at', null);
-  const roles = (data ?? []).map((r: { role: AdminRole }) => r.role).filter((r: AdminRole) => ALLOWED_ROLES.includes(r));
-  const ok = minRole ? minRole.some((r) => roles.includes(r)) : roles.length > 0;
-  return { ok, roles };
+async function verifyAdminRole(supabase: ReturnType<typeof createClient>, authUserId: string): Promise<{ ok: boolean }> {
+  const { data } = await supabase.from('users').select('is_admin').eq('auth_id', authUserId).maybeSingle();
+  return { ok: data?.is_admin === true };
 }
 
 serve(async (req) => {
@@ -38,25 +41,23 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
-    const { ok: isAdmin, roles } = await verifyAdminRole(serviceClient, user.id);
+    const { ok: isAdmin } = await verifyAdminRole(serviceClient, user.id);
     if (!isAdmin) return new Response(JSON.stringify({ error: 'Forbidden: admin role required' }), { status: 403, headers: corsHeaders });
 
     const url = new URL(req.url);
     const action = url.searchParams.get('action') ?? (req.method === 'POST' ? (await req.clone().json().then((b: { action?: string }) => b.action).catch(() => '')) : '');
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
 
-    // Audit sensitive ops
+    // Audit sensitive ops — any is_admin user may perform them (no granular
+    // roles), but every one is recorded in admin_audit_log.
     if (SENSITIVE_OPS.includes(action)) {
-      const isSuperOrSupport = roles.includes('SUPER_ADMIN') || roles.includes('SUPPORT_ADMIN');
-      if (!isSuperOrSupport) return new Response(JSON.stringify({ error: 'Forbidden: SUPER_ADMIN or SUPPORT_ADMIN required for this action' }), { status: 403, headers: corsHeaders });
-
-      await serviceClient.rpc('log_admin_audit', {
-        p_admin_id: user.id,
-        p_target_id: body.target_user_id ?? null,
-        p_action: action,
-        p_entity_type: body.entity_type ?? null,
-        p_entity_id: body.entity_id ?? null,
-        p_metadata: { roles, action, ...body },
+      await serviceClient.from('admin_audit_log').insert({
+        admin_id: user.id,
+        target_id: body.target_user_id ?? null,
+        action,
+        entity_type: body.entity_type ?? null,
+        entity_id: body.entity_id ?? null,
+        metadata: { action, ...body },
       });
     }
 
@@ -77,12 +78,14 @@ serve(async (req) => {
 
       const [userRes, propertiesRes, campaignsRes, listsRes, creditRes, aiRes, costRes] = await Promise.all([
         serviceClient.from('users').select('*').eq('id', target_user_id).maybeSingle(),
-        serviceClient.from('properties').select('id,title,property_type,transaction_type,status,created_at').eq('owner_id', target_user_id).order('created_at', { ascending: false }).limit(20),
+        serviceClient.from('properties').select('id,title,property_type,transaction_type,status,created_at').eq('user_id', target_user_id).order('created_at', { ascending: false }).limit(20),
         serviceClient.from('outreach_campaigns').select('id,name,campaign_type,status,created_at,audience_count,cost_estimate_usd').eq('owner_id', target_user_id).order('created_at', { ascending: false }).limit(20),
-        serviceClient.from('contact_lists').select('id,name,import_status,total_rows,valid_rows,created_at').eq('owner_id', target_user_id).order('created_at', { ascending: false }).limit(20),
+        serviceClient.from('outreach_contact_lists').select('id,name,import_status,total_rows,valid_rows,created_at').eq('owner_id', target_user_id).order('created_at', { ascending: false }).limit(20),
         serviceClient.from('credit_accounts').select('balance,lifetime_purchased,lifetime_spent').eq('user_id', target_user_id).maybeSingle(),
         serviceClient.from('ai_conversations').select('id,created_at').eq('user_id', target_user_id).order('created_at', { ascending: false }).limit(5),
-        serviceClient.from('cost_events').select('event_type,amount_usd,created_at').eq('user_id', target_user_id).order('created_at', { ascending: false }).limit(20),
+        serviceClient.from('cost_events').select('operation_type,cost_usd,timestamp,property_id').in('property_id',
+          (await serviceClient.from('properties').select('id').eq('user_id', target_user_id).limit(200)).data?.map((p: { id: string }) => p.id) ?? []
+        ).order('timestamp', { ascending: false }).limit(20),
       ]);
 
       return new Response(JSON.stringify({

@@ -38,6 +38,10 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
+    const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
+    if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
+    const ownerInternalId = profileRow.id;
+
     const {
       property_id, community_id, language = 'en',
       mode = 'ai_draft',  // 'manual'|'ai_draft'|'shorter'|'professional'|'investor'|'buyer'|'translate'
@@ -56,14 +60,14 @@ serve(async (req) => {
 
     // Fetch property + verify ownership
     const { data: property } = await supabase.from('properties')
-      .select('id,owner_id,title,description,property_type,transaction_type,price,currency,country,city,address')
-      .eq('id', property_id).eq('owner_id', user.id).maybeSingle();
+      .select('id,user_id,title,description,property_type,transaction_type,price,currency,country,city,address')
+      .eq('id', property_id).eq('user_id', ownerInternalId).maybeSingle();
     if (!property) return new Response(JSON.stringify({ error: 'Property not found or forbidden' }), { status: 404, headers: corsHeaders });
 
     // Fetch community if provided
     let community: { platform: string; name: string; language: string; posting_policy: string } | null = null;
     if (community_id) {
-      const { data: c } = await supabase.from('communities')
+      const { data: c } = await supabase.from('community_directory')
         .select('platform,name,language,posting_policy').eq('id', community_id).maybeSingle();
       community = c;
     }

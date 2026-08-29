@@ -94,17 +94,33 @@ function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => vo
   );
 }
 
+const PAGE_SIZE = 100;
+
 export default function AdminSignalsPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [status, setStatus] = useState('ALL');
   const [reprocessing, setReprocessing] = useState(false);
   const [selectedSignal, setSelectedSignal] = useState<any | null>(null);
+  const [hasMore, setHasMore] = useState(true);
 
   const load = () => {
     setLoading(true);
-    getAdminSignals(100, 0, status === 'ALL' ? undefined : status)
-      .then(setItems).finally(() => setLoading(false));
+    getAdminSignals(PAGE_SIZE, 0, status === 'ALL' ? undefined : status)
+      .then(data => {
+        setItems(data);
+        setHasMore(data.length === PAGE_SIZE);
+      }).finally(() => setLoading(false));
+  };
+
+  const loadMore = () => {
+    setLoadingMore(true);
+    getAdminSignals(PAGE_SIZE, items.length, status === 'ALL' ? undefined : status)
+      .then(data => {
+        setItems(prev => [...prev, ...data]);
+        setHasMore(data.length === PAGE_SIZE);
+      }).finally(() => setLoadingMore(false));
   };
 
   useEffect(load, [status]);
@@ -237,6 +253,15 @@ export default function AdminSignalsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {hasMore && !loading && items.length > 0 && (
+        <div className="flex justify-center">
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={loadMore} disabled={loadingMore}>
+            <RefreshCw className={`h-3.5 w-3.5 ${loadingMore ? 'animate-spin' : ''}`} />
+            {loadingMore ? 'Loading…' : `Load More (showing ${items.length})`}
+          </Button>
+        </div>
+      )}
 
       {selectedSignal && (
         <SignalDetailModal signal={selectedSignal} onClose={() => setSelectedSignal(null)} />

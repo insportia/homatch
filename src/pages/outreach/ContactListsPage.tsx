@@ -38,7 +38,7 @@ export default function ContactListsPage() {
     if (!homatchUser) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('contact_lists')
+      const { data, error } = await supabase.from('outreach_contact_lists')
         .select('id,name,description,import_status,total_rows,valid_rows,invalid_rows,duplicate_rows,missing_email,missing_phone,source_format,created_at,updated_at')
         .eq('owner_id', homatchUser.id)
         .order('created_at', { ascending: false })
@@ -59,7 +59,7 @@ export default function ContactListsPage() {
     if (!newName.trim() || !homatchUser) return;
     setCreating(true);
     try {
-      const { error } = await supabase.from('contact_lists').insert({
+      const { error } = await supabase.from('outreach_contact_lists').insert({
         owner_id: homatchUser.id,
         name: newName.trim(),
         description: newDesc.trim() || null,
@@ -81,7 +81,7 @@ export default function ContactListsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm(t('contacts_delete_confirm'))) return;
-    const { error } = await supabase.from('contact_lists').delete().eq('id', id);
+    const { error } = await supabase.from('outreach_contact_lists').delete().eq('id', id);
     if (error) toast.error(t('contacts_delete_error'));
     else { toast.success(t('contacts_deleted')); load(); }
   };
@@ -96,7 +96,7 @@ export default function ContactListsPage() {
         'language', 'budget_min', 'budget_max', 'currency', 'lead_type',
         'tags', 'notes', 'email_valid', 'phone_valid', 'is_duplicate',
       ] as const;
-      const { data, error } = await supabase.from('contacts')
+      const { data, error } = await supabase.from('outreach_contacts')
         .select(columns.join(','))
         .eq('list_id', list.id)
         .order('created_at', { ascending: true })

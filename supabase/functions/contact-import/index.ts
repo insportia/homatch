@@ -94,6 +94,10 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
+    const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
+    if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
+    const ownerId = profileRow.id;
+
     const {
       list_id,
       raw_rows,          // array of raw row objects from parsed CSV/XLSX
@@ -105,8 +109,8 @@ serve(async (req) => {
     if (!Array.isArray(raw_rows)) return new Response(JSON.stringify({ error: 'raw_rows must be array' }), { status: 400, headers: corsHeaders });
 
     // Verify list ownership
-    const { data: list } = await supabase.from('contact_lists')
-      .select('id,owner_id').eq('id', list_id).eq('owner_id', user.id).maybeSingle();
+    const { data: list } = await supabase.from('outreach_contact_lists')
+      .select('id,owner_id').eq('id', list_id).eq('owner_id', ownerId).maybeSingle();
     if (!list) return new Response(JSON.stringify({ error: 'List not found or forbidden' }), { status: 404, headers: corsHeaders });
 
     // Normalize headers
@@ -188,7 +192,7 @@ serve(async (req) => {
 
       return {
         list_id,
-        owner_id: user.id,
+        owner_id: ownerId,
         full_name: String(row.full_name ?? '').trim() || null,
         email,
         phone: phone,
@@ -241,13 +245,13 @@ serve(async (req) => {
     let inserted = 0;
     for (let i = 0; i < contactRows.length; i += batchSize) {
       const batch = contactRows.slice(i, i + batchSize);
-      const { error: insErr } = await supabase.from('contacts').insert(batch);
+      const { error: insErr } = await supabase.from('outreach_contacts').insert(batch);
       if (insErr) console.error('[contact-import] insert batch error:', insErr.message);
       else inserted += batch.length;
     }
 
     // Update list stats
-    await supabase.from('contact_lists').update({
+    await supabase.from('outreach_contact_lists').update({
       total_rows: processedRows.length,
       valid_rows: validCount,
       invalid_rows: invalidCount,

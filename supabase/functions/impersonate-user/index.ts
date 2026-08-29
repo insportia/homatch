@@ -26,12 +26,13 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
-    // Check SUPER_ADMIN or SUPPORT_ADMIN role
-    const { data: roleRows } = await serviceClient.from('admin_roles')
-      .select('role').eq('user_id', user.id).is('revoked_at', null)
-      .in('role', ['SUPER_ADMIN', 'SUPPORT_ADMIN']);
-    if (!roleRows?.length) {
-      return new Response(JSON.stringify({ error: 'Forbidden: SUPER_ADMIN or SUPPORT_ADMIN role required' }), { status: 403, headers: corsHeaders });
+    // Admin check — reuses the same users.is_admin boolean the rest of the
+    // app gates on (this function previously checked a separate admin_roles
+    // table that was never populated in this database, so it always 403'd).
+    const { data: adminRow } = await serviceClient.from('users')
+      .select('is_admin').eq('auth_id', user.id).maybeSingle();
+    if (!adminRow?.is_admin) {
+      return new Response(JSON.stringify({ error: 'Forbidden: admin required' }), { status: 403, headers: corsHeaders });
     }
 
     // Check impersonation enabled

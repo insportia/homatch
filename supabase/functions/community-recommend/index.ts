@@ -27,6 +27,10 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
+    const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
+    if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
+    const ownerId = profileRow.id;
+
     const { property_id, limit = 20 } = await req.json();
     if (!property_id) return new Response(JSON.stringify({ error: 'property_id required' }), { status: 400, headers: corsHeaders });
 
@@ -48,11 +52,11 @@ serve(async (req) => {
 
     // Verify ownership
     const { data: ownership } = await supabase.from('properties')
-      .select('owner_id').eq('id', property_id).eq('owner_id', user.id).maybeSingle();
+      .select('user_id').eq('id', property_id).eq('user_id', ownerId).maybeSingle();
     if (!ownership) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: corsHeaders });
 
     // Load internal community index
-    const { data: communities } = await supabase.from('communities')
+    const { data: communities } = await supabase.from('community_directory')
       .select('id,platform,canonical_id,canonical_url,name,language,country,city,tags,topics,member_count,posting_policy')
       .eq('is_active', true)
       .order('member_count', { ascending: false })
@@ -65,13 +69,13 @@ serve(async (req) => {
       const upsertRows = ranked.map((r) => ({
         property_id,
         community_id: r.community_id,
-        owner_id: user.id,
+        owner_id: ownerId,
         score: r.score,
         rationale: r.rationale,
         status: 'PENDING',
         updated_at: new Date().toISOString(),
       }));
-      await supabase.from('community_recommendations')
+      await supabase.from('property_community_recommendations')
         .upsert(upsertRows, { onConflict: 'property_id,community_id', ignoreDuplicates: false });
     }
 

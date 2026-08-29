@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
+import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
 import {
   getMatches, getMatchCounts, unlockMatch, markMatchPreviewed,
   getUnlockedMatch, startMatchingCampaign, pauseMatchingCampaign,
@@ -640,6 +641,9 @@ function MatchesContent() {
             <TabsTrigger value="unlocked">{t('matches_filter_unlocked')}</TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* Broaden the search: outbound links to major Georgian real-estate sites */}
+        <ExternalSitesCard />
 
         {/* Match list */}
         {loading ? (

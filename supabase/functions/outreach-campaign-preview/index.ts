@@ -28,6 +28,10 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
+    const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
+    if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
+    const ownerId = profileRow.id;
+
     const body = await req.json();
     const {
       campaign_type, name, property_id, contact_list_id,
@@ -77,7 +81,7 @@ serve(async (req) => {
 
     // Create DRAFT campaign
     const { data: campaign, error: insertErr } = await supabase.from('outreach_campaigns').insert({
-      owner_id: user.id,
+      owner_id: ownerId,
       name,
       campaign_type,
       status: 'DRAFT',

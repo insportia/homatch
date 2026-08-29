@@ -147,6 +147,9 @@ export interface SpendCapConfig {
   scrapingbee: number;
   brightdata: number;
   openai: number;
+  resend: number;
+  twilio: number;
+  retell: number;
 }
 
 export interface SpendCapStatus {

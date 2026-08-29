@@ -1,178 +1,23 @@
-// unlock-external-contact Edge Function
-// POST { match_id, idempotency_key }
-// Returns pre-unlock info before confirmation; on confirm=true deducts credits and reveals contact
+// unlock-external-contact — authenticated external match reveal
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-
-  try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
-
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-    const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
-    if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
-
-    const { data: actor } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
-    if (!actor) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: corsHeaders });
-
-    const { match_id, idempotency_key, confirm } = await req.json();
-    if (!match_id) return new Response(JSON.stringify({ error: 'match_id required' }), { status: 400, headers: corsHeaders });
-
-    // Get match and its intent profile
-    const { data: match } = await supabase.from('matches')
-      .select('*, intent_profiles(*)')
-      .eq('id', match_id).maybeSingle();
-    if (!match) return new Response(JSON.stringify({ error: 'Match not found' }), { status: 404, headers: corsHeaders });
-
-    // Check this is an external signal (not internal Homatch user)
-    // Internal users connect via chat — external_contact_unlocks are for non-Homatch signals
-    const intentProfile = match.intent_profiles;
-    const isExternalSignal = intentProfile && !intentProfile.homatch_user_id;
-    if (!isExternalSignal) {
-      return new Response(JSON.stringify({ error: 'Internal Homatch users connect via Chat, not contact unlock.' }), { status: 400, headers: corsHeaders });
-    }
-
-    // Get PAYG price for external unlock
-    const { data: pricing } = await supabase.from('payg_pricing_operations')
-      .select('customer_price, actual_cost, currency')
-      .eq('provider', 'SYSTEM').eq('operation', 'EXTERNAL_UNLOCK').maybeSingle();
-    const customerPrice = pricing?.customer_price ?? 1.0;
-    const actualCost = pricing?.actual_cost ?? 0.5;
-
-    // Build pre-unlock summary (no contact details)
-    const leadType = intentProfile?.classified_type ?? 'POSSIBLE_BUYER';
-    const isUncertain = leadType.startsWith('POSSIBLE_');
-    const preUnlockInfo = {
-      match_score: match.score ?? 0,
-      lead_type: leadType,
-      lead_label: isUncertain ? (leadType === 'POSSIBLE_RENTER' ? 'Possible Renter' : 'Possible Buyer') : leadType.replace('_', ' '),
-      is_confirmed: !isUncertain,
-      location: intentProfile?.location_label ?? intentProfile?.city ?? 'Unknown',
-      transaction: intentProfile?.transaction_type ?? match.transaction_type ?? 'Unknown',
-      budget_min: intentProfile?.budget_min,
-      budget_max: intentProfile?.budget_max,
-      budget_currency: intentProfile?.budget_currency,
-      requirements: intentProfile?.requirements_summary,
-      source: intentProfile?.source_name ?? match.source ?? 'External',
-      confidence: match.confidence ?? intentProfile?.confidence_score ?? 0,
-      freshness_days: intentProfile?.signal_age_days,
-      customer_price: customerPrice,
-      currency: pricing?.currency ?? 'USD',
-      already_unlocked: false,
-    };
-
-    // Check idempotency — already unlocked?
-    if (idempotency_key) {
-      const { data: existing } = await supabase.from('external_contact_unlocks')
-        .select('*').eq('idempotency_key', idempotency_key).maybeSingle();
-      if (existing?.unlocked_at) {
-        return new Response(JSON.stringify({
-          ...preUnlockInfo,
-          already_unlocked: true,
-          contact: {
-            phone: existing.contact_phone,
-            email: existing.contact_email,
-            whatsapp: existing.contact_whatsapp,
-            telegram: existing.contact_telegram,
-          },
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-    }
-
-    // Return preview without confirming
-    if (!confirm) {
-      return new Response(JSON.stringify({ preview: preUnlockInfo }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // === CONFIRMED UNLOCK ===
-    if (!idempotency_key) return new Response(JSON.stringify({ error: 'idempotency_key required for confirm' }), { status: 400, headers: corsHeaders });
-
-    // Check credit balance
-    const { data: creditAccount } = await supabase.from('credit_accounts')
-      .select('balance').eq('user_id', actor.id).maybeSingle();
-    const balance = creditAccount?.balance ?? 0;
-    if (balance < customerPrice) {
-      return new Response(JSON.stringify({ error: 'Insufficient credits', required: customerPrice, balance }), { status: 402, headers: corsHeaders });
-    }
-
-    // Atomic: deduct credits + record unlock
-    // Deduct from credit account
-    const { error: deductErr } = await supabase.from('credit_accounts')
-      .update({ balance: balance - customerPrice }).eq('user_id', actor.id);
-    if (deductErr) throw deductErr;
-
-    // Immutable ledger entry
-    await supabase.from('credit_ledger').insert({
-      user_id: actor.id,
-      amount: -customerPrice,
-      type: 'USAGE',
-      description: `External contact unlock — Match ${match_id}`,
-      reference_id: match_id,
-    }).catch(() => {});
-
-    // Record cost event
-    await supabase.from('cost_events').insert({
-      user_id: actor.id,
-      provider: 'SYSTEM',
-      operation: 'EXTERNAL_UNLOCK',
-      actual_cost: actualCost,
-      customer_price: customerPrice,
-      reference_id: match_id,
-    }).catch(() => {});
-
-    // Record unlock with contact details
-    const { data: unlock, error: unlockErr } = await supabase.from('external_contact_unlocks').insert({
-      user_id: actor.id,
-      match_id,
-      signal_id: intentProfile?.id,
-      lead_type: leadType,
-      match_score: match.score,
-      location_label: preUnlockInfo.location,
-      transaction: preUnlockInfo.transaction,
-      budget_min: preUnlockInfo.budget_min,
-      budget_max: preUnlockInfo.budget_max,
-      budget_currency: preUnlockInfo.budget_currency,
-      requirements: preUnlockInfo.requirements,
-      source: preUnlockInfo.source,
-      confidence: preUnlockInfo.confidence,
-      freshness_days: preUnlockInfo.freshness_days,
-      contact_phone: intentProfile?.contact_phone,
-      contact_email: intentProfile?.contact_email,
-      contact_whatsapp: intentProfile?.contact_whatsapp,
-      contact_telegram: intentProfile?.contact_telegram,
-      credits_charged: customerPrice,
-      actual_cost: actualCost,
-      idempotency_key,
-      unlocked_at: new Date().toISOString(),
-    }).select('*').single();
-    if (unlockErr) throw unlockErr;
-
-    // Mark match as unlocked
-    await supabase.from('matches').update({ is_unlocked: true, unlocked_at: new Date().toISOString() }).eq('id', match_id).catch(() => {});
-
-    return new Response(JSON.stringify({
-      ...preUnlockInfo,
-      already_unlocked: false,
-      contact: {
-        phone: unlock.contact_phone,
-        email: unlock.contact_email,
-        whatsapp: unlock.contact_whatsapp,
-        telegram: unlock.contact_telegram,
-      },
-      credits_charged: customerPrice,
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-  } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  }
+const corsHeaders={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
+const respond=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json'}});
+Deno.serve(async(req)=>{
+ if(req.method==='OPTIONS') return new Response('ok',{headers:corsHeaders});
+ if(req.method!=='POST') return respond({error:'Method not allowed'},405);
+ try{
+  const authHeader=req.headers.get('Authorization'); if(!authHeader) return respond({error:'Unauthorized'},401);
+  const supabase=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const {data:{user},error:authErr}=await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i,'')); if(authErr||!user) return respond({error:'Unauthorized'},401);
+  const {data:actor}=await supabase.from('users').select('id').eq('auth_id',user.id).maybeSingle(); if(!actor) return respond({error:'User not found'},404);
+  const {match_id,confirm}=await req.json(); if(!match_id) return respond({error:'match_id required'},400);
+  const {data:match}=await supabase.from('matches').select('id,match_score,signal_strength,intent_confidence,unlock_price_credits,status,signal_id,intent_profile_id,preview_platform,preview_language,preview_city,preview_budget_min,preview_budget_max,preview_currency,preview_bedrooms,preview_excerpt,preview_recency').eq('id',match_id).maybeSingle();
+  if(!match) return respond({error:'Match not found'},404); if(!match.signal_id) return respond({error:'Internal Homatch users connect via Chat, not contact unlock.'},400);
+  const preview={match_score:match.match_score,signal_strength:match.signal_strength,confidence:match.intent_confidence,location:match.preview_city,source:match.preview_platform,language:match.preview_language,budget_min:match.preview_budget_min,budget_max:match.preview_budget_max,budget_currency:match.preview_currency,bedrooms:match.preview_bedrooms,excerpt:match.preview_excerpt,freshness:match.preview_recency,customer_price:match.unlock_price_credits,currency:'credits',already_unlocked:match.status==='UNLOCKED'};
+  if(!confirm) return respond({preview});
+  const {data:result,error:unlockErr}=await supabase.rpc('atomic_external_match_unlock',{p_user_id:actor.id,p_match_id:match_id}).maybeSingle();
+  if(unlockErr){const msg=unlockErr.message||''; if(msg.includes('INSUFFICIENT_CREDITS')) return respond({error:'Insufficient credits',required:match.unlock_price_credits},402); console.error('atomic unlock failed',unlockErr); return respond({error:'Unlock failed. No credits were charged.'},500);}
+  const {data:unlock}=await supabase.from('match_unlocks').select('full_signal_text,full_source_url,full_profile_url,full_intent_json').eq('id',result.unlock_id).single();
+  return respond({...preview,already_unlocked:result.already_unlocked,credits_charged:result.credits_charged,balance_after:result.balance_after,contact:{source_url:unlock?.full_source_url??null,profile_url:unlock?.full_profile_url??null},full_signal_text:unlock?.full_signal_text??null,full_intent:unlock?.full_intent_json??null});
+ }catch(err){console.error(err); return respond({error:'Unexpected unlock error. No credits were charged unless an unlock record was committed.'},500);}
 });

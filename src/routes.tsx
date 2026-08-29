@@ -22,9 +22,18 @@ import DeveloperProfilePage from './pages/DeveloperProfilePage';
 import AIPage from './pages/AIPage';
 import VerifyPage from './pages/VerifyPage';
 import PartnersPage from './pages/PartnersPage';
+// Outreach pages
+import OutreachHubPage from './pages/outreach/OutreachHubPage';
+import CommunitiesPage from './pages/outreach/CommunitiesPage';
+import ContactListsPage from './pages/outreach/ContactListsPage';
+import EmailCampaignsPage from './pages/outreach/EmailCampaignsPage';
+import SmsCampaignsPage from './pages/outreach/SmsCampaignsPage';
+import AiCallCenterPage from './pages/outreach/AiCallCenterPage';
+// Admin pages
 import AdminLayout from './components/layouts/AdminLayout';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminUser360Page from './pages/admin/AdminUser360Page';
 import AdminPropertiesPage from './pages/admin/AdminPropertiesPage';
 import AdminCampaignsPage from './pages/admin/AdminCampaignsPage';
 import AdminMarketsPage from './pages/admin/AdminMarketsPage';
@@ -58,12 +67,11 @@ export const routes: RouteConfig[] = [
   { name: 'Login',             path: '/auth/login',               element: <LoginPage />,         public: true },
   { name: 'Signup',            path: '/auth/signup',              element: <SignupPage />,        public: true },
   { name: 'Auth Callback',     path: '/auth/callback',            element: <AuthCallbackPage />,  public: true },
-  { name: 'Privacy Policy',   path: '/privacy',                  element: <PrivacyPage />,       public: true },
-  { name: 'Terms of Service', path: '/terms',                    element: <TermsPage />,         public: true },
-  // New product pages (public)
+  { name: 'Privacy Policy',    path: '/privacy',                  element: <PrivacyPage />,       public: true },
+  { name: 'Terms of Service',  path: '/terms',                    element: <TermsPage />,         public: true },
   { name: 'AI Assistant',      path: '/ai',                       element: <AIPage />,            public: false },
-  { name: 'Verify',            path: '/verify',                   element: <VerifyPage />,         public: true },
-  { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,       public: true },
+  { name: 'Verify',            path: '/verify',                   element: <VerifyPage />,        public: true },
+  { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
   { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
@@ -78,9 +86,17 @@ export const routes: RouteConfig[] = [
   { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },
   { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
   { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
+  // Outreach
+  { name: 'Outreach Hub',      path: '/outreach',                 element: <OutreachHubPage /> },
+  { name: 'Communities',       path: '/outreach/communities',     element: <CommunitiesPage /> },
+  { name: 'Contact Lists',     path: '/outreach/contact-lists',   element: <ContactListsPage /> },
+  { name: 'Email Campaigns',   path: '/outreach/email',           element: <EmailCampaignsPage /> },
+  { name: 'SMS Campaigns',     path: '/outreach/sms',             element: <SmsCampaignsPage /> },
+  { name: 'AI Call Center',    path: '/outreach/calls',           element: <AiCallCenterPage /> },
   // Admin (wrapped in AdminLayout which enforces is_admin server-side)
   { name: 'Admin Overview',    path: '/admin',                    element: adminWrap(<AdminOverviewPage />),    adminOnly: true },
   { name: 'Admin Users',       path: '/admin/users',              element: adminWrap(<AdminUsersPage />),       adminOnly: true },
+  { name: 'Admin User 360',    path: '/admin/user360',            element: adminWrap(<AdminUser360Page />),     adminOnly: true },
   { name: 'Admin Properties',  path: '/admin/properties',         element: adminWrap(<AdminPropertiesPage />),  adminOnly: true },
   { name: 'Admin Campaigns',   path: '/admin/campaigns',          element: adminWrap(<AdminCampaignsPage />),   adminOnly: true },
   { name: 'Admin Markets',     path: '/admin/markets',            element: adminWrap(<AdminMarketsPage />),     adminOnly: true },

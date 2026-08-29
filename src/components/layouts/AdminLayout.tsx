@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Building2, Zap, Globe, Radio,
   Activity, Puzzle, CreditCard, Receipt, Server, Settings2,
   ShieldAlert, Wrench, ChevronLeft, Menu, X, AlertTriangle,
-  SlidersHorizontal, HeartPulse,
+  SlidersHorizontal, HeartPulse, UserSearch,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,21 +13,23 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { getSpendCapStatus } from '@/services/api';
 import type { SpendCapStatus } from '@/types/types';
 import { cn } from '@/lib/utils';
+import { ImpersonationBannerBar } from '@/components/admin/ImpersonationBannerBar';
 
 const NAV = [
-  { path: '/admin',              label: 'Overview',         icon: LayoutDashboard },
-  { path: '/admin/users',        label: 'Users',            icon: Users },
-  { path: '/admin/properties',   label: 'Properties',       icon: Building2 },
-  { path: '/admin/campaigns',    label: 'Campaigns',        icon: Zap },
-  { path: '/admin/markets',      label: 'Markets',          icon: Globe },
-  { path: '/admin/sources',      label: 'Sources',          icon: Radio },
-  { path: '/admin/signals',      label: 'Signals',          icon: Activity },
-  { path: '/admin/matches',      label: 'Matches',          icon: Puzzle },
-  { path: '/admin/credits',      label: 'Credits',          icon: CreditCard },
-  { path: '/admin/payments',     label: 'Payments',         icon: Receipt },
-  { path: '/admin/providers',    label: 'Provider Health',  icon: Server },
-  { path: '/admin/pricing',      label: 'Pricing Config',   icon: Settings2 },
-  { path: '/admin/spend-caps',   label: 'Spend Caps',       icon: ShieldAlert },
+  { path: '/admin',              label: 'Overview',           icon: LayoutDashboard },
+  { path: '/admin/users',        label: 'Users',              icon: Users },
+  { path: '/admin/user360',      label: 'User 360°',          icon: UserSearch },
+  { path: '/admin/properties',   label: 'Properties',         icon: Building2 },
+  { path: '/admin/campaigns',    label: 'Campaigns',          icon: Zap },
+  { path: '/admin/markets',      label: 'Markets',            icon: Globe },
+  { path: '/admin/sources',      label: 'Sources',            icon: Radio },
+  { path: '/admin/signals',      label: 'Signals',            icon: Activity },
+  { path: '/admin/matches',      label: 'Matches',            icon: Puzzle },
+  { path: '/admin/credits',      label: 'Credits',            icon: CreditCard },
+  { path: '/admin/payments',     label: 'Payments',           icon: Receipt },
+  { path: '/admin/providers',    label: 'Provider Health',    icon: Server },
+  { path: '/admin/pricing',      label: 'Pricing Config',     icon: Settings2 },
+  { path: '/admin/spend-caps',   label: 'Spend Caps',         icon: ShieldAlert },
   { path: '/admin/diagnostics',  label: 'Import Diagnostics', icon: Wrench },
   { path: '/admin/sponsored',    label: 'Sponsored Ads',      icon: Activity },
   { path: '/admin/settings',     label: 'Settings',           icon: SlidersHorizontal },
@@ -106,6 +108,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex min-h-screen w-full bg-background">
+      <ImpersonationBannerBar />
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border">
         <SidebarContent capWarnings={capWarnings} />

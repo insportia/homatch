@@ -619,6 +619,7 @@ function MatchesContent() {
         {activeJobId && (
           <MatchingJobProgress
             jobId={activeJobId}
+            propertyId={propertyId}
             onComplete={(job) => {
               if (job.matches_created > 0) {
                 toast.success(`Matching complete — ${job.matches_created} match${job.matches_created !== 1 ? 'es' : ''} found`);

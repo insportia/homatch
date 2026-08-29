@@ -7,7 +7,7 @@ on:
 # Prevent concurrent deployments
 concurrency:
   group: deploy-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   SUPABASE_PROJECT_REF: ptxajsjhobhvsfhmutjn

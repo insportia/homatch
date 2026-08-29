@@ -19,6 +19,9 @@ import ChatPage from './pages/ChatPage';
 import ViewingsPage from './pages/ViewingsPage';
 import ActiveSearchPage from './pages/ActiveSearchPage';
 import DeveloperProfilePage from './pages/DeveloperProfilePage';
+import AIPage from './pages/AIPage';
+import VerifyPage from './pages/VerifyPage';
+import PartnersPage from './pages/PartnersPage';
 import AdminLayout from './components/layouts/AdminLayout';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
@@ -34,6 +37,7 @@ import AdminProvidersPage from './pages/admin/AdminProvidersPage';
 import AdminPricingPage from './pages/admin/AdminPricingPage';
 import AdminSpendCapsPage from './pages/admin/AdminSpendCapsPage';
 import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
+import AdminSponsoredPage from './pages/admin/AdminSponsoredPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AdminHealthPage from './pages/admin/AdminHealthPage';
 
@@ -56,6 +60,10 @@ export const routes: RouteConfig[] = [
   { name: 'Auth Callback',     path: '/auth/callback',            element: <AuthCallbackPage />,  public: true },
   { name: 'Privacy Policy',   path: '/privacy',                  element: <PrivacyPage />,       public: true },
   { name: 'Terms of Service', path: '/terms',                    element: <TermsPage />,         public: true },
+  // New product pages (public)
+  { name: 'AI Assistant',      path: '/ai',                       element: <AIPage />,            public: false },
+  { name: 'Verify',            path: '/verify',                   element: <VerifyPage />,         public: true },
+  { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,       public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
   { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
@@ -85,6 +93,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },
+  { name: 'Admin Sponsored',   path: '/admin/sponsored',          element: adminWrap(<AdminSponsoredPage />),   adminOnly: true },
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
 ];

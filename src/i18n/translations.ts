@@ -17,6 +17,9 @@ const en = {
   nav_logout: 'Sign Out',
   nav_login: 'Sign In',
   nav_signup: 'Get Started',
+  nav_ai: 'AI',
+  nav_verify: 'Verify',
+  nav_sell: 'Sell / Find Buyers',
 
   // Homepage
   hero_badge: 'AI Property Matching',
@@ -319,6 +322,7 @@ const en = {
   admin_nav_pricing: 'Pricing Config',
   admin_nav_spend_caps: 'Spend Caps',
   admin_nav_diagnostics: 'Import Diagnostics',
+  admin_nav_sponsored: 'Sponsored Ads',
   admin_panel_title: 'Admin Panel',
   admin_back_to_app: 'Back to App',
 

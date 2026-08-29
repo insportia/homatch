@@ -29,6 +29,7 @@ const NAV = [
   { path: '/admin/pricing',      label: 'Pricing Config',   icon: Settings2 },
   { path: '/admin/spend-caps',   label: 'Spend Caps',       icon: ShieldAlert },
   { path: '/admin/diagnostics',  label: 'Import Diagnostics', icon: Wrench },
+  { path: '/admin/sponsored',    label: 'Sponsored Ads',      icon: Activity },
   { path: '/admin/settings',     label: 'Settings',           icon: SlidersHorizontal },
   { path: '/admin/health',       label: 'System Health',      icon: HeartPulse },
 ];

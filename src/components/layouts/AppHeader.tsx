@@ -26,16 +26,20 @@ import {
   MessageSquare,
   CalendarDays,
   Search,
+  Bot,
+  Shield,
+  Building2,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 
 const navItems = [
   { key: 'nav_dashboard',     path: '/dashboard',      icon: LayoutDashboard },
+  { key: 'nav_ai',            path: '/ai',             icon: Bot,         highlight: true },
   { key: 'nav_chat',          path: '/chat',           icon: MessageSquare },
   { key: 'nav_viewings',      path: '/viewings',       icon: CalendarDays },
   { key: 'nav_active_search', path: '/active-search',  icon: Search },
+  { key: 'nav_verify',        path: '/verify',         icon: Shield },
   { key: 'nav_credits',       path: '/credits',        icon: Coins },
-  { key: 'nav_activity',      path: '/activity',       icon: Activity },
 ];
 
 export function AppHeader() {
@@ -108,11 +112,22 @@ export function AppHeader() {
                 )}
               </Button>
 
-              {/* Add property */}
+              {/* Ask AI shortcut */}
               <Button
                 variant="ghost"
                 size="sm"
                 className="hidden md:flex gap-1.5 text-primary hover:text-primary h-8"
+                onClick={() => navigate('/ai')}
+              >
+                <Bot className="h-4 w-4" />
+                <span className="text-xs font-medium">Ask AI</span>
+              </Button>
+
+              {/* Add property */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden md:flex gap-1.5 text-muted-foreground hover:text-foreground h-8"
                 onClick={() => navigate('/property/add')}
               >
                 <PlusCircle className="h-4 w-4" />
@@ -166,28 +181,39 @@ export function AppHeader() {
                       <HomatchLogo size="sm" />
                     </div>
                     <nav className="flex-1 p-3 space-y-1">
-                      {navItems.map(item => (
-                        <Link
-                          key={item.path}
-                          to={item.path}
-                          onClick={() => setMobileOpen(false)}
-                        >
-                          <div
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm min-h-12 ${
-                              isActive(item.path)
-                                ? 'bg-secondary text-foreground font-medium'
-                                : 'text-sidebar-foreground hover:bg-sidebar-accent'
-                            }`}
+                      {navItems.map(item => {
+                        const highlight = item.key === 'nav_ai';
+                        return (
+                          <Link
+                            key={item.path}
+                            to={item.path}
+                            onClick={() => setMobileOpen(false)}
                           >
-                            <item.icon className="h-4 w-4 shrink-0" />
-                            {t(item.key)}
-                          </div>
-                        </Link>
-                      ))}
+                            <div
+                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm min-h-12 ${
+                                isActive(item.path)
+                                  ? 'bg-secondary text-foreground font-medium'
+                                  : highlight
+                                  ? 'text-primary font-medium hover:bg-sidebar-accent'
+                                  : 'text-sidebar-foreground hover:bg-sidebar-accent'
+                              }`}
+                            >
+                              <item.icon className={`h-4 w-4 shrink-0 ${highlight ? 'text-primary' : ''}`} />
+                              {t(item.key)}
+                            </div>
+                          </Link>
+                        );
+                      })}
                       <Link to="/property/add" onClick={() => setMobileOpen(false)}>
-                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm min-h-12 text-primary hover:bg-sidebar-accent font-medium">
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm min-h-12 text-muted-foreground hover:bg-sidebar-accent">
                           <PlusCircle className="h-4 w-4 shrink-0" />
                           {t('nav_add')} Property
+                        </div>
+                      </Link>
+                      <Link to="/verify" onClick={() => setMobileOpen(false)}>
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm min-h-12 text-muted-foreground hover:bg-sidebar-accent">
+                          <Shield className="h-4 w-4 shrink-0" />
+                          Verify Property
                         </div>
                       </Link>
                     </nav>

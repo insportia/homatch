@@ -1,499 +1,544 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { HomatchLogo } from '@/components/common/HomatchLogo';
-import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
-  ArrowRight, Search, Lock, Zap, Globe, Users, TrendingUp, Home,
-  MapPin, ChevronDown, ChevronUp, Star, Unlock,
+  ArrowRight, Search, Sparkles, Shield, Building2, Home, Users, Globe,
+  Zap, Lock, TrendingDown, Copy, BarChart2, ShieldCheck, Bot,
+  MessageSquare, Bell, Eye, CheckCircle2, ChevronDown, ChevronUp,
+  ExternalLink, Star, Clock, MapPin,
 } from 'lucide-react';
+import { useState } from 'react';
+import { HomatchLogo } from '@/components/common/HomatchLogo';
+import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
-// ── Who Homatch Finds ─────────────────────────────────────────
-const WHO_ITEMS = [
-  { icon: Home, key: 'who_buyer' },
-  { icon: TrendingUp, key: 'who_investor' },
-  { icon: Users, key: 'who_tenant' },
-  { icon: MapPin, key: 'who_relocating' },
-] as const;
+// ── Demo match cards ──────────────────────────────────────────
+const DEMO_MATCHES = [
+  { score: 94, label: 'Exceptional', price: '$142,000', area: '76 m²', beds: 2, source: 'Homatch', location: 'Vake, Tbilisi', trustHigh: true, badge: 'Internal Match' },
+  { score: 87, label: 'Strong',      price: '$138,500', area: '74 m²', beds: 2, source: 'myhome.ge', location: 'Vake, Tbilisi', trustHigh: true, badge: 'Verified Listing' },
+  { score: 79, label: 'Good',        price: '$148,000', area: '81 m²', beds: 2, source: 'ss.ge', location: 'Saburtalo, Tbilisi', trustHigh: false, badge: 'External' },
+];
 
-// ── Where Homatch Searches ────────────────────────────────────
-const WHERE_ITEMS = [
-  { label: 'Public Web', sub: 'Google · Bing · News' },
-  { label: 'Facebook', sub: 'Public Groups & Pages' },
-  { label: 'Telegram', sub: 'Public Groups & Supergroups' },
-  { label: 'Instagram', sub: 'Public Content' },
-  { label: 'VK', sub: 'Public Communities' },
-  { label: 'Forums', sub: 'Real-Estate Boards' },
-] as const;
+// ── Features ──────────────────────────────────────────────────
+const FEATURES = [
+  { icon: Bot,          title: 'AI PROPERTY SEARCH',       desc: 'Describe what you need in plain language. Homatch searches internal and external sources.' },
+  { icon: Users,        title: 'BUYER ↔ SELLER MATCHING',  desc: 'Upload your property once. AI finds qualified demand. Sellers and buyers both benefit.' },
+  { icon: Globe,        title: 'MULTI-SOURCE DISCOVERY',   desc: 'One request covers Homatch network, property portals, social groups and forums.' },
+  { icon: TrendingDown, title: 'FIND SAME PROPERTY CHEAPER', desc: 'Paste any listing — Homatch finds the same property listed cheaper across other sources.' },
+  { icon: Copy,         title: 'DUPLICATE DETECTION',      desc: 'Identify duplicate listings and inflated prices before you pay.' },
+  { icon: ShieldCheck,  title: 'HOMATCH TRUST SCORE',      desc: 'Every listing is scored for consistency, data quality and potential red flags.' },
+  { icon: Search,       title: 'CADASTRAL VERIFICATION',   desc: 'Verify cadastral records, ownership status and area discrepancies before you decide.' },
+  { icon: BarChart2,    title: 'DEVELOPER TRUST PROFILE',  desc: 'Check developer history, active permits, project completion and public risk indicators.' },
+  { icon: Bell,         title: 'ACTIVE AI SEARCH',         desc: 'Set once. AI keeps watching and alerts you when new matches appear.' },
+  { icon: MessageSquare,title: 'REAL-TIME CHAT',           desc: 'Connect directly with matched buyers, renters or sellers in-app.' },
+  { icon: Eye,          title: 'VIEWING REQUESTS',         desc: 'Schedule property viewings directly through Homatch.' },
+  { icon: Globe,        title: 'MULTILINGUAL DISCOVERY',   desc: 'Search in Georgian, Russian, English, Turkish, Arabic and Hebrew.' },
+];
 
-// ── Demo Match fixture ────────────────────────────────────────
-const DEMO_MATCH = {
-  score: 91,
-  strength: 'STRONG',
-  platform: 'Telegram',
-  language: 'RU',
-  city: 'Tbilisi · Vake',
-  budget: '$130,000–$160,000',
-  bedrooms: '2+',
-  recency: '3h ago',
-  excerpt: 'Ищу 2-комнатную квартиру в Ваке или Сабуртало…',
-  unlockPrice: 3.5,
-};
+// ── Buyer flow steps ──────────────────────────────────────────
+const BUYER_FLOW = [
+  { step: 'Tell AI', desc: 'Describe your needs in any language' },
+  { step: 'Homatch Matches', desc: 'Internal network searched first (free)' },
+  { step: 'External Discovery', desc: 'Portals & social sources if needed' },
+  { step: 'Ranked Results', desc: 'Sorted by match score + trust' },
+  { step: 'Connect', desc: 'Chat, view, verify — in one place' },
+];
+
+const SELLER_FLOW = [
+  { step: 'Upload / Import', desc: 'Add your property once' },
+  { step: 'Demand Found', desc: 'Internal buyers/renters matched first' },
+  { step: 'External Signals', desc: 'Social + forum buyer intent scanned' },
+  { step: 'Ranked Demand', desc: 'Qualified leads ranked by fit' },
+  { step: 'Unlock & Connect', desc: 'Chat or unlock external contacts' },
+];
+
+// ── How it works ──────────────────────────────────────────────
+const HOW_STEPS = [
+  { icon: Search,       step: '01 SEARCH',  title: 'One Request. Many Sources.', desc: 'Tell Homatch what you need. AI searches internal listings, then external sources — portals, Telegram, Facebook and more.' },
+  { icon: Zap,          step: '02 MATCH',   title: 'AI Ranks Every Result',      desc: 'Each result gets a Match Score, Trust Score and duplicate check. Internal matches appear first.' },
+  { icon: MessageSquare,step: '03 CONNECT', title: 'Chat, View, Unlock',         desc: 'Internal users connect directly. External contacts are previewed before unlock. Real-time chat and viewing scheduling included.' },
+  { icon: ShieldCheck,  step: '04 VERIFY',  title: 'Before You Pay, Verify',     desc: 'Check cadastral records, developer history, area discrepancies and risk indicators from the Verification Center.' },
+];
+
+// ── Pricing ───────────────────────────────────────────────────
+const PLANS = [
+  { name: 'FREE', price: '$0', period: '/month', features: ['5 AI searches/month', '3 property matches', 'Basic Trust Score', 'Verification Center access'], highlight: false },
+  { name: 'PLUS', price: '$4.90', period: '/month', features: ['50 AI searches/month', 'Unlimited matches', 'Full Trust Score', 'Active AI Search', 'Real-time Chat'], highlight: true },
+  { name: 'PRO',  price: '$9.90', period: '/month', features: ['Unlimited AI searches', 'Priority matching', 'Developer Profiles', 'PAYG external contacts', 'Viewing requests', 'Export & API'], highlight: false },
+];
 
 // ── FAQ ───────────────────────────────────────────────────────
-const FAQ_ITEMS = [
-  { q: 'faq_q1', a: 'faq_a1' },
-  { q: 'faq_q2', a: 'faq_a2' },
-  { q: 'faq_q3', a: 'faq_a3' },
-  { q: 'faq_q4', a: 'faq_a4' },
-  { q: 'faq_q5', a: 'faq_a5' },
-] as const;
+const FAQ = [
+  { q: 'What makes Homatch different from a listing portal?', a: 'Homatch is not a listing portal. It is an AI matching platform that works for both sides: buyers/renters tell AI what they need and Homatch finds supply; sellers/landlords upload once and Homatch finds demand. We search across internal and external sources, compare duplicates and help you verify before you decide.' },
+  { q: 'How does AI property search work?', a: 'Type or speak what you need in any language. Homatch AI interprets your requirements, searches the internal network first, then scans external sources like property portals and social groups. Results are ranked by match score, trust and freshness.' },
+  { q: 'What is the Trust Score?', a: 'Each listing is evaluated for consistency across sources, area discrepancies, duplicate images, data freshness and cadastral match. The output is a confidence label and risk indicators — not a guarantee, but a useful signal before you commit.' },
+  { q: 'Can I verify a property before buying?', a: 'Yes. The Verification Center lets you search by property address, cadastral code, developer name or project. You can see official records, source-reported data, AI inference and what is unavailable — clearly labeled.' },
+  { q: 'How does seller/landlord matching work?', a: 'Add or import your property. Homatch builds a demand profile and scans internal buyers/renters first. If more demand is needed, external sources are searched. Qualified leads are ranked and previewed before you unlock contact details.' },
+  { q: 'Is Active AI Search really automatic?', a: 'Yes. Set your criteria once and Homatch keeps running. When new matching properties or buyer signals appear, you get notified automatically — no need to check manually.' },
+];
 
-// Strength bar colours
-const STRENGTH_CFG = {
-  POTENTIAL: { color: 'text-muted-foreground', bg: 'bg-muted', bars: 1 },
-  GOOD:      { color: 'text-blue-400',         bg: 'bg-blue-500', bars: 2 },
-  STRONG:    { color: 'text-primary',          bg: 'bg-primary', bars: 3 },
-  VERY_STRONG: { color: 'text-primary',        bg: 'bg-primary', bars: 4 },
-  EXCEPTIONAL: { color: 'text-primary',        bg: 'bg-primary', bars: 5 },
-} as const;
-
-function SignalBars({ strength }: { strength: keyof typeof STRENGTH_CFG }) {
-  const cfg = STRENGTH_CFG[strength] ?? STRENGTH_CFG.POTENTIAL;
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="flex items-end gap-0.5 h-4">
-      {[1,2,3,4,5].map(i => (
-        <div
-          key={i}
-          className={`w-1 rounded-sm transition-colors ${i <= cfg.bars ? cfg.bg : 'bg-muted'}`}
-          style={{ height: `${40 + i * 12}%` }}
-        />
-      ))}
+    <div className="border-b border-border/50 last:border-0">
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between py-4 text-left gap-4 hover:text-primary transition-colors"
+        aria-expanded={open}>
+        <span className="text-sm font-medium text-foreground">{q}</span>
+        {open ? <ChevronUp className="h-4 w-4 shrink-0 text-primary" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+      </button>
+      {open && <p className="text-sm text-muted-foreground pb-4 leading-relaxed">{a}</p>}
     </div>
   );
 }
 
-function FaqItem({ q, a, t }: { q: string; a: string; t: (k: string) => string }) {
-  const [open, setOpen] = useState(false);
+function MatchScoreBars({ score }: { score: number }) {
+  const color = score >= 90 ? 'bg-green-500' : score >= 80 ? 'bg-primary' : 'bg-blue-500';
   return (
-    <div className="border-b border-border/50 last:border-0">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between py-4 text-left gap-4 hover:text-primary transition-colors"
-        aria-expanded={open}
-      >
-        <span className="text-sm font-medium text-foreground">{t(q)}</span>
-        {open
-          ? <ChevronUp className="h-4 w-4 shrink-0 text-primary" />
-          : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
-      </button>
-      {open && (
-        <p className="text-sm text-muted-foreground pb-4 leading-relaxed">{t(a)}</p>
-      )}
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${score}%` }} />
+      </div>
+      <span className={`text-xs font-bold tabular-nums ${score >= 90 ? 'text-green-400' : score >= 80 ? 'text-primary' : 'text-blue-400'}`}>{score}%</span>
     </div>
   );
 }
 
 export default function HomePage() {
   const { session } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { t } = useLanguage();
   const navigate = useNavigate();
+  const [aiInput, setAiInput] = useState('');
   const [url, setUrl] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Restore pending URL if redirected back after auth
-  useEffect(() => {
-    const pending = sessionStorage.getItem(PENDING_URL_KEY);
-    if (pending) {
-      setUrl(pending);
-      sessionStorage.removeItem(PENDING_URL_KEY);
+  const handleAISubmit = () => {
+    const text = aiInput.trim();
+    if (!text) return;
+    if (!session) {
+      sessionStorage.setItem(PENDING_URL_KEY, text);
+      navigate('/auth/login');
+      return;
     }
-  }, []);
+    navigate('/ai', { state: { prompt: text } });
+  };
 
-  const handleAnalyse = () => {
+  const handleUrlSubmit = () => {
     const trimmed = url.trim();
-    if (!trimmed) { inputRef.current?.focus(); return; }
+    if (!trimmed) return;
     if (!session) {
       sessionStorage.setItem(PENDING_URL_KEY, trimmed);
-      navigate('/auth/login?intent=analyse');
+      navigate('/auth/login');
       return;
     }
     navigate(`/property/import?url=${encodeURIComponent(trimmed)}`);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleAnalyse();
-  };
-
-  const handleCreatePrivate = () => {
-    if (!session) {
-      sessionStorage.setItem('homatch_pending_url', '');
-      navigate('/auth/login?intent=private');
-      return;
-    }
-    navigate('/property/create');
-  };
-
-  const steps = [
-    { icon: Search, title: t('hero_step1_title'), desc: t('hero_step1_desc') },
-    { icon: Zap,    title: t('hero_step2_title'), desc: t('hero_step2_desc') },
-    { icon: Lock,   title: t('hero_step3_title'), desc: t('hero_step3_desc') },
-    { icon: Unlock, title: t('hero_step4_title'), desc: t('hero_step4_desc') },
-  ];
-
   return (
-    <div className="flex flex-col min-h-screen bg-background overflow-x-hidden">
-
-      {/* ── Top bar ─────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-4 md:px-8 h-14 border-b border-border/50 shrink-0 sticky top-0 z-40 bg-background/95 backdrop-blur-sm">
-        <HomatchLogo size="sm" />
-        <div className="flex items-center gap-2 shrink-0">
+    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+      {/* Public nav */}
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
+        <div className="flex items-center h-14 px-4 md:px-8 gap-4 max-w-7xl mx-auto">
+          <HomatchLogo size="sm" />
+          <div className="flex-1" />
           <LanguageSwitcher />
+          <nav className="hidden md:flex items-center gap-2">
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-sm" onClick={() => navigate('/verify')}>
+              Verify
+            </Button>
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-sm" onClick={() => navigate('/partners')}>
+              Partners
+            </Button>
+          </nav>
           {session ? (
-            <Link to="/dashboard">
-              <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground h-8 text-sm">
-                {t('nav_dashboard')} →
-              </Button>
-            </Link>
+            <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => navigate('/dashboard')}>
+              Dashboard
+            </Button>
           ) : (
-            <>
-              <Link to="/auth/login">
-                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground h-8 text-sm hidden md:inline-flex">
-                  {t('auth_signin')}
-                </Button>
-              </Link>
-              <Link to="/auth/signup">
-                <Button size="sm" className="h-8 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
-                  {t('nav_signup')}
-                </Button>
-              </Link>
-            </>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground hidden md:flex" onClick={() => navigate('/auth/login')}>Sign In</Button>
+              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => navigate('/auth/signup')}>Get Started</Button>
+            </div>
           )}
         </div>
       </header>
 
-      <main className="flex-1">
+      {/* ── HERO ── */}
+      <section className="relative pt-16 pb-20 px-4 overflow-hidden">
+        {/* Background grain */}
+        <div className="absolute inset-0 bg-gradient-to-b from-primary/4 via-transparent to-transparent pointer-events-none" />
+        <div className="max-w-3xl mx-auto text-center space-y-6 relative">
+          <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5">
+            <Sparkles className="h-3 w-3" /> AI Real Estate Platform
+          </Badge>
+          <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight tracking-tight text-balance">
+            <span className="gradient-text">HOMATCH</span> — AI Real Estate{' '}
+            <span className="underline decoration-primary decoration-2 underline-offset-4">Search, Match</span>{' '}
+            &amp; Verification
+          </h1>
+          <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto text-pretty">
+            Tell Homatch what you need. We search, match, compare and help you verify — across internal listings and external sources.
+          </p>
 
-        {/* ── Hero ────────────────────────────────────────────── */}
-        <section className="flex flex-col items-center justify-center px-4 py-16 md:py-24 amber-glow">
-          <div className="w-full max-w-2xl mx-auto text-center space-y-8 relative z-10">
-
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10">
-              <Zap className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-medium text-primary tracking-wide">{t('hero_badge')}</span>
-            </div>
-
-            <div className="space-y-4">
-              <h1 className="text-3xl md:text-5xl font-semibold text-foreground leading-tight text-balance">
-                {t('hero_headline')}
-              </h1>
-              <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto text-pretty">
-                {t('hero_subheadline')}
-              </p>
-            </div>
-
-            <div className="space-y-4 w-full max-w-xl mx-auto">
-              <div className={`flex gap-2 p-1.5 rounded-xl border border-border bg-card shadow-card ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <Input
-                  ref={inputRef}
-                  value={url}
-                  onChange={e => setUrl(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={t('hero_url_placeholder')}
-                  className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm placeholder:text-muted-foreground/60 min-w-0 h-10"
-                  dir="ltr"
+          {/* AI Input */}
+          <div className="max-w-2xl mx-auto">
+            <div className="flex gap-2 p-1.5 rounded-2xl border border-primary/30 bg-card shadow-card">
+              <div className="relative flex-1">
+                <Bot className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary pointer-events-none" />
+                <input
+                  className="w-full pl-10 pr-4 py-2.5 bg-transparent text-foreground text-sm placeholder:text-muted-foreground/60 focus:outline-none"
+                  placeholder='Try: "2BR apartment in Vake under $150k" or "Find buyers for my property"'
+                  value={aiInput}
+                  onChange={e => setAiInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAISubmit()}
                 />
-                <Button
-                  onClick={handleAnalyse}
-                  className="shrink-0 h-10 px-5 font-semibold tracking-wide bg-primary text-primary-foreground hover:bg-primary/90 text-sm"
-                >
-                  {t('hero_analyse_btn')}
-                  <ArrowRight className={`h-4 w-4 ${isRTL ? 'mr-1.5 rotate-180' : 'ml-1.5'}`} />
-                </Button>
               </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-border" />
-                <span className="text-xs text-muted-foreground font-medium">{t('hero_or')}</span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-
-              <Button
-                variant="ghost"
-                onClick={handleCreatePrivate}
-                className="w-full h-10 border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/5 text-sm font-medium"
-              >
-                <Lock className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'} text-muted-foreground`} />
-                {t('hero_private_btn')}
+              <Button onClick={handleAISubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 gap-2 px-5">
+                Ask AI <ArrowRight className="h-4 w-4" />
               </Button>
-
-              <p className="text-xs text-muted-foreground/60 flex items-center justify-center gap-1.5">
-                <Globe className="h-3 w-3" />
-                {t('hero_geo_hint')}
-              </p>
             </div>
-          </div>
-        </section>
-
-        {/* ── How it works ────────────────────────────────────── */}
-        <section className="px-4 py-16 border-t border-border/40">
-          <div className="max-w-4xl mx-auto">
-            <p className="text-center text-xs font-semibold uppercase tracking-widest text-muted-foreground/60 mb-10">
-              {t('hero_how_it_works')}
+            <p className="text-[11px] text-muted-foreground/50 mt-2">
+              Works in Georgian, English, Russian, Turkish, Arabic &amp; Hebrew
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {steps.map((step, i) => (
-                <div key={i} className="relative p-5 rounded-xl border border-border bg-card hover:border-primary/30 transition-colors">
-                  <div className="flex items-start gap-3">
-                    <div className="shrink-0 w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <step.icon className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground mb-1 text-balance">{step.title}</p>
-                      <p className="text-xs text-muted-foreground leading-relaxed">{step.desc}</p>
-                    </div>
-                  </div>
-                  <span className="absolute top-3 right-4 text-xs font-bold text-muted-foreground/20">
-                    {String(i + 1).padStart(2, '0')}
-                  </span>
+          </div>
+
+          {/* 5 quick paths */}
+          <div className="flex flex-wrap gap-2 justify-center pt-2">
+            {[
+              { icon: Home,      label: 'Find a Property',        action: () => navigate(session ? '/ai' : '/auth/signup') },
+              { icon: Users,     label: 'Find Buyers / Renters',  action: () => navigate(session ? '/property/add' : '/auth/signup') },
+              { icon: ShieldCheck,label: 'Verify Property',       action: () => navigate('/verify') },
+              { icon: Building2, label: 'Check a Developer',      action: () => navigate('/verify?tab=developer') },
+              { icon: ExternalLink,label:'Paste Property Link',   action: () => navigate(session ? '/property/import' : '/auth/signup') },
+            ].map(({ icon: Icon, label, action }) => (
+              <button key={label} type="button" onClick={action}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card/60 hover:border-primary/40 hover:bg-primary/5 transition-colors text-sm text-muted-foreground hover:text-foreground">
+                <Icon className="h-3.5 w-3.5 text-primary shrink-0" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── KEY FEATURES ── */}
+      <section className="py-16 px-4 border-t border-border">
+        <div className="max-w-5xl mx-auto space-y-8">
+          <div className="text-center">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Platform Capabilities</p>
+            <h2 className="text-2xl font-bold text-foreground">Everything in One Place</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {FEATURES.map(({ icon: Icon, title, desc }) => (
+              <div key={title} className="p-4 rounded-xl border border-border bg-card hover:border-primary/30 transition-colors group">
+                <Icon className="h-5 w-5 text-primary mb-3" />
+                <p className="text-xs font-bold text-foreground underline decoration-primary decoration-1 underline-offset-2 mb-1.5">
+                  {title}
+                </p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── DUAL FLOW ── */}
+      <section className="py-16 px-4 border-t border-border bg-card/20">
+        <div className="max-w-5xl mx-auto space-y-8">
+          <div className="text-center">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Both Sides. One Platform.</p>
+            <h2 className="text-2xl font-bold text-foreground">Homatch Works for Everyone</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Buyer flow */}
+            <div className="p-5 rounded-2xl border border-border bg-card space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Home className="h-4 w-4 text-primary" />
                 </div>
-              ))}
+                <div>
+                  <p className="text-sm font-bold text-foreground">BUYER / RENTER</p>
+                  <p className="text-xs text-muted-foreground">I need to find a property</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {BUYER_FLOW.map((s, i) => (
+                  <div key={s.step} className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-semibold text-foreground">{s.step}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{s.desc}</span>
+                    </div>
+                    {i < BUYER_FLOW.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />}
+                  </div>
+                ))}
+              </div>
+              <Button size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+                onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
+                Start Searching <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+            {/* Seller flow */}
+            <div className="p-5 rounded-2xl border border-border bg-card space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-8 h-8 rounded-xl bg-accent/20 flex items-center justify-center">
+                  <Building2 className="h-4 w-4 text-accent-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-foreground">SELLER / LANDLORD</p>
+                  <p className="text-xs text-muted-foreground">I want to find buyers or renters</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {SELLER_FLOW.map((s, i) => (
+                  <div key={s.step} className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full bg-accent/20 text-accent-foreground text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-semibold text-foreground">{s.step}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{s.desc}</span>
+                    </div>
+                    {i < SELLER_FLOW.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />}
+                  </div>
+                ))}
+              </div>
+              <Button size="sm" variant="outline" className="w-full border-border gap-2"
+                onClick={() => navigate(session ? '/property/add' : '/auth/signup')}>
+                Add My Property <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ── Who Homatch finds ────────────────────────────────── */}
-        <section className="px-4 py-14 bg-card border-y border-border/40">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">{t('hero_who_title')}</p>
-              <h2 className="text-xl md:text-2xl font-semibold text-foreground text-balance">{t('hero_who_headline')}</h2>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {WHO_ITEMS.map(item => (
-                <div key={item.key} className="p-5 rounded-xl border border-border bg-background hover:border-primary/30 transition-colors text-center space-y-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mx-auto">
-                    <item.icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <p className="text-sm font-semibold text-foreground">{t(`${item.key}_title` as any)}</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{t(`${item.key}_desc` as any)}</p>
-                </div>
-              ))}
-            </div>
+      {/* ── HOW IT WORKS ── */}
+      <section className="py-16 px-4 border-t border-border">
+        <div className="max-w-5xl mx-auto space-y-8">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-foreground">
+              <span className="underline decoration-primary decoration-2 underline-offset-4">SEARCH</span>
+              {' → '}
+              <span className="underline decoration-primary decoration-2 underline-offset-4">MATCH</span>
+              {' → '}
+              <span className="underline decoration-primary decoration-2 underline-offset-4">CONNECT</span>
+              {' → '}
+              <span className="underline decoration-primary decoration-2 underline-offset-4">VERIFY</span>
+            </h2>
           </div>
-        </section>
-
-        {/* ── Where Homatch searches ───────────────────────────── */}
-        <section className="px-4 py-14 border-b border-border/40">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">{t('hero_where_title')}</p>
-              <h2 className="text-xl md:text-2xl font-semibold text-foreground text-balance">{t('hero_where_headline')}</h2>
-            </div>
-            <div className="flex flex-wrap justify-center gap-3">
-              {WHERE_ITEMS.map(item => (
-                <div key={item.label} className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors">
-                  <Globe className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <div>
-                    <p className="text-xs font-semibold text-foreground leading-none">{item.label}</p>
-                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">{item.sub}</p>
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {HOW_STEPS.map(({ icon: Icon, step, title, desc }) => (
+              <div key={step} className="p-5 rounded-2xl border border-border bg-card space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Icon className="h-5 w-5 text-primary" />
                 </div>
-              ))}
-            </div>
+                <p className="text-[10px] font-bold text-primary tracking-widest">{step}</p>
+                <p className="text-sm font-semibold text-foreground">{title}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+              </div>
+            ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ── Demo Match card ──────────────────────────────────── */}
-        <section className="px-4 py-14 bg-card border-b border-border/40">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">{t('hero_demo_title')}</p>
-              <h2 className="text-xl md:text-2xl font-semibold text-foreground text-balance">{t('hero_demo_headline')}</h2>
-              <p className="text-sm text-muted-foreground max-w-lg mx-auto text-pretty">{t('hero_demo_desc')}</p>
-            </div>
-
-            <div className="max-w-md mx-auto">
-              <div className="rounded-xl border border-primary/30 bg-background shadow-card p-5 space-y-4 relative">
-                {/* DEMO badge */}
-                <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
-                  <span className="px-3 py-0.5 rounded-full text-[10px] font-bold tracking-widest bg-primary text-primary-foreground uppercase">
-                    DEMO
-                  </span>
-                </div>
-
-                {/* Header row */}
-                <div className="flex items-center justify-between pt-1">
-                  <div className="flex items-center gap-2">
-                    <SignalBars strength="STRONG" />
-                    <span className="text-xs font-semibold text-primary">Strong signal</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">NEW</span>
-                </div>
-
-                {/* Chips */}
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    DEMO_MATCH.platform,
-                    DEMO_MATCH.language,
-                    DEMO_MATCH.city,
-                    DEMO_MATCH.budget,
-                    `${DEMO_MATCH.bedrooms} bd`,
-                    DEMO_MATCH.recency,
-                  ].map(chip => (
-                    <span key={chip} className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">
-                      {chip}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Locked excerpt */}
-                <div className="rounded-lg bg-secondary/50 border border-border/50 px-3 py-2">
-                  <p className="text-xs text-muted-foreground italic line-clamp-2 blur-[2px] select-none">
-                    {DEMO_MATCH.excerpt}
-                  </p>
-                  <div className="flex items-center gap-1 mt-1">
-                    <Lock className="h-3 w-3 text-muted-foreground/50" />
-                    <span className="text-[10px] text-muted-foreground/50">Unlock to read full signal</span>
-                  </div>
-                </div>
-
-                {/* Score row */}
-                <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                  <div className="flex items-center gap-3">
-                    <div className="text-center">
-                      <p className="text-[10px] text-muted-foreground">Match</p>
-                      <p className="text-sm font-bold text-primary">{DEMO_MATCH.score}%</p>
+      {/* ── DEMO RESULTS ── */}
+      <section className="py-16 px-4 border-t border-border bg-card/20">
+        <div className="max-w-3xl mx-auto space-y-6">
+          <div className="text-center">
+            <Badge variant="secondary" className="border-amber-500/30 text-amber-400 bg-amber-500/10 mb-3">
+              Demo — Sample Results Only
+            </Badge>
+            <h2 className="text-2xl font-bold text-foreground">See What Homatch Returns</h2>
+            <p className="text-sm text-muted-foreground mt-2">AI query: "I need a 2-bedroom apartment in Vake under $150,000"</p>
+          </div>
+          <div className="space-y-3">
+            {DEMO_MATCHES.map((m, i) => (
+              <div key={i} className="p-4 rounded-xl border border-border bg-card space-y-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-sm font-semibold text-foreground">{m.price}</span>
+                      <Badge variant="secondary" className="text-[10px] border-border">{m.source}</Badge>
+                      {m.trustHigh && (
+                        <Badge variant="secondary" className="text-[10px] bg-green-500/10 text-green-400 border-green-500/20">
+                          <ShieldCheck className="h-2.5 w-2.5 mr-1" /> High Trust
+                        </Badge>
+                      )}
+                      <Badge variant="secondary" className="text-[10px] border-border">{m.badge}</Badge>
                     </div>
-                    <div className="flex items-center gap-0.5">
-                      {[1,2,3,4,5].map(i => (
-                        <Star key={i} className={`h-3 w-3 ${i <= 4 ? 'text-primary fill-primary' : 'text-muted-foreground'}`} />
-                      ))}
-                    </div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <MapPin className="h-3 w-3 shrink-0" /> {m.location} · {m.area} · {m.beds} BR
+                    </p>
                   </div>
-                  <Button
-                    size="sm"
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-8 px-4 text-xs gap-1.5"
-                    onClick={() => navigate(session ? '/dashboard' : '/auth/signup')}
-                  >
-                    <Unlock className="h-3 w-3" />
-                    UNLOCK · {DEMO_MATCH.unlockPrice} CR
+                  <Button size="sm" variant="ghost" onClick={() => {}} className="border border-border text-muted-foreground hover:text-foreground shrink-0" disabled>
+                    <Lock className="h-3.5 w-3.5 mr-1.5" /> Unlock
                   </Button>
                 </div>
-
-                <p className="text-[10px] text-muted-foreground/40 text-center">
-                  This is a demo card. Real results appear after adding your property.
-                </p>
+                <MatchScoreBars score={m.score} />
+                <p className="text-[10px] text-muted-foreground/50 italic">⚠️ Demo data only — not real listings</p>
               </div>
-            </div>
+            ))}
           </div>
-        </section>
+          <div className="text-center">
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+              onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
+              Get Real Results <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </section>
 
-        {/* ── Private/Off-Market explanation ──────────────────── */}
-        <section className="px-4 py-14 border-b border-border/40">
-          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-            <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg border border-border bg-secondary">
-                <Lock className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-semibold text-primary uppercase tracking-wide">PRIVATE · OFF-MARKET</span>
+      {/* ── VERIFICATION TEASER ── */}
+      <section className="py-14 px-4 border-t border-border">
+        <div className="max-w-3xl mx-auto">
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-8 text-center space-y-4">
+            <ShieldCheck className="h-10 w-10 text-primary mx-auto" />
+            <h2 className="text-xl font-bold text-foreground">Before you pay, verify.</h2>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Check cadastral records, area discrepancies, developer history and risk indicators before making a commitment.
+            </p>
+            <div className="flex flex-wrap gap-2 justify-center">
+              {['Cadastral Code', 'Property Address', 'Developer Name', 'Project'].map(tag => (
+                <span key={tag} className="text-xs px-3 py-1.5 rounded-full border border-primary/30 text-primary/80 bg-primary/5">{tag}</span>
+              ))}
+            </div>
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+              onClick={() => navigate('/verify')}>
+              Open Verification Center <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHY HOMATCH ── */}
+      <section className="py-16 px-4 border-t border-border bg-card/20">
+        <div className="max-w-3xl mx-auto space-y-6">
+          <h2 className="text-2xl font-bold text-foreground text-center">Why Homatch?</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              { title: 'Stop checking portals manually', desc: 'One AI request covers Homatch, property portals, Telegram and Facebook groups simultaneously.' },
+              { title: 'Internal supply/demand first', desc: 'Your request is matched against the Homatch network before any external paid search runs.' },
+              { title: 'AI filters and ranks', desc: 'Results are sorted by relevance, freshness and trust — not by who paid to be at the top.' },
+              { title: 'Duplicates and price differences', desc: 'The same property on 3 sources at 3 prices? Homatch shows you the cheapest option.' },
+              { title: 'Verify before you decide', desc: 'Cadastral records, ownership, developer history and risk signals — all in one place.' },
+              { title: 'Active Searches work for you', desc: 'Set your criteria once and AI keeps watching. New matches arrive automatically.' },
+            ].map(({ title, desc }) => (
+              <div key={title} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
+                <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{desc}</p>
+                </div>
               </div>
-              <h2 className="text-xl md:text-2xl font-semibold text-foreground text-balance">{t('hero_private_exp_title')}</h2>
-              <p className="text-sm text-muted-foreground text-pretty leading-relaxed">{t('hero_private_exp_desc')}</p>
-            </div>
-            <div className="space-y-3">
-              {(['hero_private_bullet1','hero_private_bullet2','hero_private_bullet3'] as const).map(key => (
-                <div key={key} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 mt-1.5" />
-                  <p className="text-sm text-muted-foreground">{t(key as any)}</p>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── PRICING ── */}
+      <section className="py-16 px-4 border-t border-border">
+        <div className="max-w-4xl mx-auto space-y-8">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-foreground">Simple, Transparent Pricing</h2>
+            <p className="text-sm text-muted-foreground mt-2">Same plans for buyers, renters, sellers and landlords.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {PLANS.map(plan => (
+              <div key={plan.name} className={`p-6 rounded-2xl border flex flex-col gap-4 ${
+                plan.highlight
+                  ? 'border-primary bg-primary/5 shadow-hover'
+                  : 'border-border bg-card'
+              }`}>
+                {plan.highlight && (
+                  <Badge className="self-start bg-primary/20 text-primary border-primary/40 text-[10px]">
+                    <Star className="h-2.5 w-2.5 mr-1" /> Most Popular
+                  </Badge>
+                )}
+                <div>
+                  <p className="text-xs font-bold text-muted-foreground tracking-widest">{plan.name}</p>
+                  <p className="text-3xl font-bold text-foreground mt-1">
+                    {plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.period}</span>
+                  </p>
                 </div>
-              ))}
-            </div>
+                <ul className="space-y-2 flex-1">
+                  {plan.features.map(f => (
+                    <li key={f} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />{f}
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  className={plan.highlight ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border-border'}
+                  variant={plan.highlight ? 'default' : 'outline'}
+                  onClick={() => navigate(session ? '/credits' : '/auth/signup')}
+                >
+                  {plan.name === 'FREE' ? 'Get Started Free' : `Start ${plan.name}`}
+                </Button>
+              </div>
+            ))}
           </div>
-        </section>
-
-        {/* ── Credits explanation ──────────────────────────────── */}
-        <section className="px-4 py-14 bg-card border-b border-border/40">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">{t('hero_credits_title')}</p>
-              <h2 className="text-xl md:text-2xl font-semibold text-foreground text-balance">{t('hero_credits_headline')}</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {([
-                { icon: Zap, titleKey: 'hero_credits_c1_title', descKey: 'hero_credits_c1_desc' },
-                { icon: Star, titleKey: 'hero_credits_c2_title', descKey: 'hero_credits_c2_desc' },
-                { icon: TrendingUp, titleKey: 'hero_credits_c3_title', descKey: 'hero_credits_c3_desc' },
-              ] as const).map(({ icon: Icon, titleKey, descKey }) => (
-                <div key={titleKey} className="p-5 rounded-xl border border-border bg-background space-y-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <p className="text-sm font-semibold text-foreground">{t(titleKey as any)}</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{t(descKey as any)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── FAQ ─────────────────────────────────────────────── */}
-        <section className="px-4 py-14 border-b border-border/40">
-          <div className="max-w-2xl mx-auto">
-            <div className="text-center mb-10 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">FAQ</p>
-              <h2 className="text-xl md:text-2xl font-semibold text-foreground text-balance">{t('hero_faq_headline')}</h2>
-            </div>
-            <div className="rounded-xl border border-border bg-card px-5">
-              {FAQ_ITEMS.map(item => (
-                <FaqItem key={item.q} q={item.q} a={item.a} t={t as any} />
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── Final CTA ───────────────────────────────────────── */}
-        <section className="px-4 py-16 bg-card">
-          <div className="max-w-xl mx-auto text-center space-y-6">
-            <h2 className="text-xl md:text-2xl font-semibold text-foreground text-balance">{t('hero_cta_title')}</h2>
-            <p className="text-sm text-muted-foreground text-pretty">{t('hero_cta_desc')}</p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button
-                onClick={handleCreatePrivate}
-                className="h-11 px-8 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-sm"
-              >
-                <Lock className="h-4 w-4 mr-2" />
-                {t('hero_private_btn')}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                className="h-11 px-8 border border-border text-muted-foreground hover:text-foreground text-sm"
-              >
-                {t('hero_cta_or_import')}
-              </Button>
-            </div>
-          </div>
-        </section>
-
-      </main>
-
-      {/* ── Footer ──────────────────────────────────────────────── */}
-      <footer className="border-t border-border/50 px-4 py-5">
-        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2">
-          <HomatchLogo size="sm" />
-          <div className="flex items-center gap-4">
-            <Link to="/privacy" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors">Privacy Policy</Link>
-            <Link to="/terms" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors">Terms of Service</Link>
-          </div>
-          <p className="text-xs text-muted-foreground/50">
-            © {new Date().getFullYear()} Homatch. AI Property Matching.
+          <p className="text-center text-xs text-muted-foreground">
+            Additional external operations use Credits at actual cost ×2. No hidden fees.
           </p>
+        </div>
+      </section>
+
+      {/* ── URL IMPORT strip ── */}
+      <section className="py-10 px-4 border-t border-border bg-card/20">
+        <div className="max-w-2xl mx-auto text-center space-y-4">
+          <p className="text-sm font-semibold text-foreground">Paste any property listing URL</p>
+          <p className="text-xs text-muted-foreground">Homatch imports the details, finds duplicates and searches for a better price.</p>
+          <div className="flex gap-2">
+            <Input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleUrlSubmit()}
+              placeholder="https://myhome.ge/..."
+              className="flex-1 bg-secondary border-border text-sm"
+            />
+            <Button onClick={handleUrlSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
+              Import
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section className="py-16 px-4 border-t border-border">
+        <div className="max-w-2xl mx-auto space-y-4">
+          <h2 className="text-2xl font-bold text-foreground text-center">Frequently Asked Questions</h2>
+          <div className="rounded-2xl border border-border bg-card px-5">
+            {FAQ.map(({ q, a }) => <FaqItem key={q} q={q} a={a} />)}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section className="py-16 px-4 border-t border-border bg-primary/5">
+        <div className="max-w-xl mx-auto text-center space-y-4">
+          <Sparkles className="h-8 w-8 text-primary mx-auto" />
+          <h2 className="text-2xl font-bold text-foreground">Start with Homatch AI — free</h2>
+          <p className="text-sm text-muted-foreground">Tell us what you need. We find it, match it and help you verify it.</p>
+          <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-base px-8 py-5"
+            onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
+            Try Homatch AI Free <ArrowRight className="h-5 w-5" />
+          </Button>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-border py-8 px-4">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          <HomatchLogo size="sm" />
+          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+            <button type="button" onClick={() => navigate('/privacy')} className="hover:text-foreground transition-colors">Privacy</button>
+            <button type="button" onClick={() => navigate('/terms')} className="hover:text-foreground transition-colors">Terms</button>
+            <button type="button" onClick={() => navigate('/verify')} className="hover:text-foreground transition-colors">Verify</button>
+            <button type="button" onClick={() => navigate('/partners')} className="hover:text-foreground transition-colors">Partners</button>
+          </div>
+          <p className="text-xs text-muted-foreground">© 2026 Homatch. All rights reserved.</p>
         </div>
       </footer>
     </div>

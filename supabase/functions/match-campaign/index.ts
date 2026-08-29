@@ -59,6 +59,7 @@ interface SocialCollectRequest {
   platform: 'FACEBOOK'|'TELEGRAM'|'INSTAGRAM'|'VK';
   sourceUrl: string; sourceUrls?: string[]; externalId?: string;
   since?: string; maxItems?: number; existingRunId?: string; jobId?: string;
+  keywords?: string[]; country?: string;
 }
 interface SocialCollectResponse {
   posts: SocialPost[]; runMeta: ApifyRunMeta;
@@ -282,7 +283,7 @@ function shouldAdvanceTier(currentTier:number,usable:number,targetMin:number):bo
 }
 
 // ── INLINE: dataforseo_v2 ─────────────────────────────────────
-const LOCATION_CODES:Record<string,number>={GE:21831,TR:2792,IL:2376,AE:2784,RU:2643,US:2840,DEFAULT:21831};
+const LOCATION_CODES:Record<string,number>={GE:2268,TR:2792,IL:2376,AE:2784,RU:2643,US:2840,DEFAULT:2268};
 function dfseoLocationCode(country:string|undefined):number{
   return LOCATION_CODES[(country??'GE').toUpperCase()]??LOCATION_CODES.DEFAULT;
 }
@@ -345,13 +346,20 @@ class DataForSEOProvider{
 
 // ── INLINE: apify_v2 ──────────────────────────────────────────
 const APIFY_POLL_INTERVAL_MS=8_000,APIFY_MAX_POLLS=15,APIFY_FETCH_TIMEOUT_MS=30_000;
+const DEFAULT_APIFY_ACTORS:Record<string,string>={
+  FACEBOOK:'lofomachines~facebook-groups-posts-search-scraper',
+  TELEGRAM:'lofomachines~telegram-keyword-search-scraper',
+};
+function resolveApifyActorId(platform:string):string{
+  return getEnv(`APIFY_${platform}_ACTOR_ID`)||DEFAULT_APIFY_ACTORS[platform]||'';
+}
 function buildFBInput(req:SocialCollectRequest):Record<string,unknown>{
-  const urls=req.sourceUrls?.length?req.sourceUrls.map(u=>({url:u})):[{url:req.sourceUrl}];
-  return{startUrls:urls,maxPosts:req.maxItems??100,commentsMode:'RANKED_THREADED',proxy:{useApifyProxy:true,apifyProxyGroups:['RESIDENTIAL']}};
+  const keywords=(req.keywords??[]).slice(0,10);
+  return{keywords,maxPosts:req.maxItems??80,countryCode:(req.country??'GE').toLowerCase()};
 }
 function buildTGInput(req:SocialCollectRequest):Record<string,unknown>{
-  const urls=req.sourceUrls?.length?req.sourceUrls:[req.sourceUrl];
-  return{channelUrls:urls,maxMessages:req.maxItems??200,includeReplies:true,proxy:{useApifyProxy:true}};
+  const keywords=(req.keywords??[]).slice(0,10);
+  return{mode:'keyword',keywords,afterDate:'60 days',countryCode:(req.country??'GE').toLowerCase(),maxResultsPerKeyword:req.maxItems??80};
 }
 function buildIGInput(req:SocialCollectRequest):Record<string,unknown>{
   const urls=req.sourceUrls?.length?req.sourceUrls:[req.sourceUrl];
@@ -378,14 +386,11 @@ class ApifyProvider{
   name='APIFY';
   private token=getEnv('APIFY_API_TOKEN');
   isConfigured():boolean{return!!this.token;}
-  private actorId(platform:string):string{
-    const m:Record<string,string>={FACEBOOK:getEnv('APIFY_FACEBOOK_ACTOR_ID'),TELEGRAM:getEnv('APIFY_TELEGRAM_ACTOR_ID'),INSTAGRAM:getEnv('APIFY_INSTAGRAM_ACTOR_ID'),VK:getEnv('APIFY_VK_ACTOR_ID')};
-    return m[platform]??'';
-  }
+  private actorId(platform:string):string{return resolveApifyActorId(platform);}
   async startRun(req:SocialCollectRequest):Promise<ApifyRunMeta>{
     const actorId=this.actorId(req.platform);
     if(!actorId)throw new Error(`No Actor ID configured for ${req.platform}`);
-    const r=await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${this.token}&memory=256`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildActorInput(req)),signal:AbortSignal.timeout(15_000)});
+    const r=await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${this.token}&memory=512`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildActorInput(req)),signal:AbortSignal.timeout(15_000)});
     if(!r.ok){const b=await r.text().catch(()=>'');throw new Error(`Apify start run failed (${req.platform}): ${r.status} ${b.slice(0,200)}`);}
     const j=await r.json();const d=j.data??j;
     return{runId:d.id,datasetId:d.defaultDatasetId??null,status:(d.status as ApifyRunMeta['status'])?? 'RUNNING',startedAt:d.startedAt??new Date().toISOString()};
@@ -881,7 +886,12 @@ Deno.serve(async (req) => {
     }
 
     // ── 4. Build IntentProfile ────────────────────────────
-    await updateJob(sb, jobId, { status: 'searching_sources', started_at: new Date().toISOString() });
+    await updateJob(sb, jobId, {
+      status: 'analysing_property',
+      progress: 5,
+      current_step: 'Building property intent profile',
+      started_at: new Date().toISOString(),
+    });
     await emitEvent(sb, jobId, 'PROFILE_BUILD', 'Building intent profile from property facts');
 
     const intentProfile = buildIntentProfile(snap);
@@ -935,12 +945,20 @@ Deno.serve(async (req) => {
     // ── 7. Tier expansion loop ────────────────────────────
     let currentTier = 1;
     let totalCandidates = 0;
+    let totalQueryPacksCreated = 0;
+    let totalQueriesRun = 0;
     const allSignalIds: string[] = [];
 
     while (currentTier <= MAX_TIERS && totalCandidates < MAX_CANDIDATES_PER_JOB) {
       await emitEvent(sb, jobId, `TIER_${currentTier}_START`,
         `Starting tier ${currentTier} research`, { tier: currentTier });
-      await updateJob(sb, jobId, { current_tier: currentTier, tiers_run: currentTier });
+      await updateJob(sb, jobId, {
+        status: 'generating_queries',
+        progress: Math.min(70, 10 + (currentTier - 1) * 15),
+        current_step: `Generating Tier ${currentTier} research queries`,
+        current_tier: currentTier,
+        tiers_run: currentTier,
+      });
 
       const queryPacks = generateQueryPacks(intentProfile)
         .filter(p => p.tier === currentTier);
@@ -997,6 +1015,15 @@ Deno.serve(async (req) => {
             }
             if (qp) queryPackRows.push(qp);
           }
+
+          totalQueryPacksCreated += queryPackRows.length;
+          totalQueriesRun += queryPackRows.reduce((sum, row) => sum + row.queries.length, 0);
+          await updateJob(sb, jobId, {
+            status: 'searching_sources',
+            current_step: `Running Tier ${currentTier}: ${totalQueriesRun} queries attempted`,
+            query_packs_created: totalQueryPacksCreated,
+            queries_run: totalQueriesRun,
+          });
 
           // Run DataForSEO Live (Standard queue needs polling EF — use Live for this job)
           for (const qp of queryPackRows) {
@@ -1071,6 +1098,9 @@ Deno.serve(async (req) => {
       }
 
       // ── 7b. Apify social collection ─────────────────────
+      const socialKeywords = [...new Set(queryPacks.flatMap(pack => pack.queries)
+        .map(query => query.replace(/^site:\S+\s+/i, '').trim())
+        .filter(Boolean))].slice(0, 10);
       const platforms = ['FACEBOOK', 'TELEGRAM', 'INSTAGRAM', 'VK'] as const;
       let apifySignals = 0;
 
@@ -1098,7 +1128,7 @@ Deno.serve(async (req) => {
 
         try {
           // Check actor ID — hard-fail per platform, continue to others
-          const actorId = Deno.env.get(`APIFY_${platform}_ACTOR_ID`) ?? '';
+          const actorId = resolveApifyActorId(platform);
           if (!actorId) {
             await emitEvent(sb, jobId, `APIFY_${platform}_SKIP`,
               `APIFY_PLATFORM_NOT_CONFIGURED: APIFY_${platform}_ACTOR_ID not set — skipping`);
@@ -1113,6 +1143,8 @@ Deno.serve(async (req) => {
             existingRunId: (existingRun && existingRun.status !== 'FAILED')
               ? existingRun.run_id : undefined,
             jobId,
+            keywords: socialKeywords,
+            country: snap.country,
           };
 
           await emitEvent(sb, jobId, `APIFY_${platform}_START`,
@@ -1215,6 +1247,11 @@ Deno.serve(async (req) => {
       }
 
       // ── 7d. Classify PENDING signals for this job ──────
+      await updateJob(sb, jobId, {
+        status: 'classifying',
+        progress: Math.min(88, 65 + currentTier * 5),
+        current_step: `Classifying Tier ${currentTier} demand signals`,
+      });
       await emitEvent(sb, jobId, 'CLASSIFY_START',
         `Classifying PENDING signals for job ${jobId} (tier ${currentTier})`);
 
@@ -1423,6 +1460,11 @@ Deno.serve(async (req) => {
     }
 
     // ── 8. Create Match records ───────────────────────────
+    await updateJob(sb, jobId, {
+      status: 'ranking',
+      progress: 92,
+      current_step: `Ranking ${totalCandidates} qualified candidates`,
+    });
     await emitEvent(sb, jobId, 'MATCH_START',
       `Creating match records for ${totalCandidates} candidates`);
 
@@ -1526,6 +1568,7 @@ Deno.serve(async (req) => {
       matches_created:     matchesCreated,
       completed_at:        new Date().toISOString(),
       progress:            100,
+      current_step:        `Finished with ${matchesCreated} matches`,
     });
 
     await emitEvent(sb, jobId, 'JOB_DONE',

@@ -512,15 +512,42 @@ export async function startMatchingCampaign(
   }
   await logActivity(userId, 'MATCHING_STARTED', propertyId);
 
-  // 2. Invoke match-campaign Edge Function — returns real job ID
+  // 2. Start the long-running Edge Function without blocking the UI.
+  // The function persists matching_jobs immediately, so discover that exact row
+  // by idempotency key and return its ID while provider work continues.
   const idempotencyKey = `ui-${propertyId}-${Date.now()}`;
-  const { data, error } = await supabase.functions.invoke('match-campaign', {
+  let invocationFailure: Error | null = null;
+  const invocation = supabase.functions.invoke('match-campaign', {
     body: { propertyId, campaignId, idempotencyKey },
+  }).then(({ data, error }) => {
+    if (error) throw new Error(`match-campaign EF error: ${error.message}`);
+    if (!data?.jobId) throw new Error('match-campaign returned no jobId');
+    return { jobId: String(data.jobId), campaignId };
+  }).catch((error: unknown) => {
+    invocationFailure = error instanceof Error ? error : new Error(String(error));
+    return null;
   });
-  if (error) throw new Error(`match-campaign EF error: ${error.message}`);
-  if (!data?.jobId) throw new Error('match-campaign returned no jobId');
 
-  return { jobId: data.jobId as string, campaignId };
+  // matching_jobs is normally visible through RLS within the first second.
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const { data: createdJob } = await supabase
+      .from('matching_jobs')
+      .select('id')
+      .eq('idempotency_key', idempotencyKey)
+      .maybeSingle();
+
+    if (createdJob?.id) {
+      return { jobId: String(createdJob.id), campaignId };
+    }
+    if (invocationFailure) throw invocationFailure;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  const completed = await invocation;
+  if (!completed) {
+    throw invocationFailure ?? new Error('match-campaign did not create a matching job');
+  }
+  return completed;
 }
 export async function pauseMatchingCampaign(
   propertyId: string,

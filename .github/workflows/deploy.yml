@@ -134,6 +134,7 @@ jobs:
             "import-property"
             "match-campaign"
             "provider-health-check"
+            "external-discovery-orchestrator"
           )
           FAILED=()
           for fn in "${JWT_FUNCTIONS[@]}"; do
@@ -163,6 +164,9 @@ jobs:
             "run-matching"
             "social-collect"
             "spend-cap-check"
+            "discovery-queue-worker"
+            "continuous-matching-worker"
+            "run-matching-v2"
           )
           FAILED=()
           for fn in "${NO_JWT_FUNCTIONS[@]}"; do

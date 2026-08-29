@@ -2,6 +2,16 @@ import { useState, useRef, useCallback } from 'react';
 import { sendStreamRequest } from '@/lib/sse';
 import { supabase } from '@/db/supabase';
 
+// Resolve Supabase auth user → Homatch users.id (UUID)
+async function getHomatchUserId(authId: string): Promise<string | undefined> {
+  const { data } = await supabase
+    .from('users')
+    .select('id')
+    .eq('auth_id', authId)
+    .maybeSingle();
+  return data?.id ?? undefined;
+}
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
@@ -120,12 +130,17 @@ export function useAIChat() {
 
     let accumulated = '';
 
+    // Get current user id for DB context enrichment
+    const { data: { user } } = await supabase.auth.getUser();
+    const homatchUserId = user ? await getHomatchUserId(user.id) : undefined;
+
     await sendStreamRequest({
       functionUrl: `${SUPABASE_URL}/functions/v1/homatch-ai`,
       requestBody: {
         messages: efMessages,
-        context: pageContext.type !== 'general' ? pageContext.data : undefined,
+        context: pageContext.type !== 'general' ? pageContext.data : pageContext,
         conversationId: convId !== 'guest' ? convId : undefined,
+        userId: homatchUserId ?? undefined,
       },
       supabaseAnonKey: SUPABASE_ANON_KEY,
       onData: (raw) => {

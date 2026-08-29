@@ -45,6 +45,7 @@ function ScoreRing({ score }: { score: number }) {
 
 // ── Project Row ───────────────────────────────────────────────
 function ProjectRow({ project }: { project: DeveloperProject }) {
+  const { t } = useLanguage();
   const statusColors: Record<string, string> = {
     COMPLETED: 'text-green-400 bg-green-400/10 border-green-400/30',
     ACTIVE: 'text-primary bg-primary/10 border-primary/30',
@@ -58,13 +59,13 @@ function ProjectRow({ project }: { project: DeveloperProject }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">{project.name}</p>
         <p className="text-xs text-muted-foreground">
-          {[project.city, project.units ? `${project.units} units` : '', project.floors ? `${project.floors} floors` : '', project.completion_year ? `${project.completion_year}` : ''].filter(Boolean).join(' · ')}
+          {[project.city, project.units ? `${project.units} ${t('dev_units')}` : '', project.floors ? `${project.floors} ${t('dev_floors')}` : '', project.completion_year ? `${project.completion_year}` : ''].filter(Boolean).join(' · ')}
         </p>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         {project.commissioned && (
           <Badge className="text-[10px] h-4 px-1 bg-green-500/15 text-green-400 border-green-500/30 border">
-            <CheckCircle className="h-2.5 w-2.5 mr-0.5" /> Commissioned
+            <CheckCircle className="h-2.5 w-2.5 mr-0.5" /> {t('dev_commissioned')}
           </Badge>
         )}
         <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${cls}`}>{project.status}</span>
@@ -115,7 +116,7 @@ export default function DeveloperProfilePage() {
             <Building2 className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
             <p className="text-muted-foreground">{t('developer_not_found')}</p>
             <Button variant="secondary" className="mt-4" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4 mr-2" /> Go back
+              <ArrowLeft className="h-4 w-4 mr-2" /> {t('dev_go_back')}
             </Button>
           </div>
         </AppLayout>
@@ -198,8 +199,8 @@ export default function DeveloperProfilePage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {[
-                  { key: 'completed_projects', label: 'Completed projects', max: 5, value: Number(breakdown.completed_projects ?? 0) },
-                  { key: 'commissioned', label: 'Commissioned projects', max: 5, value: Number(breakdown.commissioned ?? 0) },
+                  { key: 'completed_projects', label: t('dev_completed_projects'), max: 5, value: Number(breakdown.completed_projects ?? 0) },
+                  { key: 'commissioned', label: t('dev_commissioned_projects'), max: 5, value: Number(breakdown.commissioned ?? 0) },
                 ].map(item => (
                   <div key={item.key}>
                     <div className="flex items-center justify-between text-xs mb-1">

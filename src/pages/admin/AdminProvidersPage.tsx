@@ -3,19 +3,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, MinusCircle } from 'lucide-react';
-import { getProviderHealth, getProviderCostBreakdown } from '@/services/api';
+import { Switch } from '@/components/ui/switch';
+import { RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, MinusCircle, Power, ShieldOff } from 'lucide-react';
+import { getProviderHealth, getProviderCostBreakdown, getAdminSettings, updateAdminSetting } from '@/services/api';
 import type { ProviderHealth, AdminProviderCostRow } from '@/types/types';
 import { format } from 'date-fns';
 import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 const STATUS_CONFIG = {
-  NOT_CONFIGURED:      { label: 'Not Configured',       color: 'bg-muted text-muted-foreground',              icon: MinusCircle },
-  MOCK:                { label: 'Mock (Dev Only)',        color: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400', icon: AlertTriangle },
-  CONFIGURED_UNVERIFIED: { label: 'Configured — Not Tested', color: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400', icon: Clock },
-  REAL_TEST_PASSED:    { label: 'Real — Test Passed',    color: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400', icon: CheckCircle2 },
-  ERROR:               { label: 'Error',                  color: 'bg-destructive/10 text-destructive',           icon: XCircle },
+  NOT_CONFIGURED:        { label: 'Not Configured',           color: 'bg-muted text-muted-foreground',              icon: MinusCircle },
+  MOCK:                  { label: 'Mock (Dev Only)',           color: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400', icon: AlertTriangle },
+  CONFIGURED_UNVERIFIED: { label: 'Configured — Not Tested',  color: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400', icon: Clock },
+  REAL_TEST_PASSED:      { label: 'Real — Test Passed',       color: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400', icon: CheckCircle2 },
+  ERROR:                 { label: 'Error',                     color: 'bg-destructive/10 text-destructive',           icon: XCircle },
 };
 
 export default function AdminProvidersPage() {
@@ -23,11 +25,33 @@ export default function AdminProvidersPage() {
   const [costs, setCosts] = useState<AdminProviderCostRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
+  // disabled_providers is a JSON array of provider names stored in admin_settings
+  const [disabledProviders, setDisabledProviders] = useState<string[]>([]);
+  const [globalKillSwitch, setGlobalKillSwitch] = useState(false);
+  const [savingKill, setSavingKill] = useState(false);
 
   const load = () => {
     setLoading(true);
-    Promise.all([getProviderHealth(), getProviderCostBreakdown()])
-      .then(([h, c]) => { setHealth(h); setCosts(c); })
+    Promise.all([getProviderHealth(), getProviderCostBreakdown(), getAdminSettings()])
+      .then(([h, c, settings]) => {
+        setHealth(h);
+        setCosts(c);
+        // Parse kill switch and disabled providers from admin_settings
+        const killSetting = settings.find(s => s.key === 'global_kill_switch');
+        if (killSetting) {
+          const v = killSetting.value;
+          setGlobalKillSwitch(v === true || v === 'true' || v === 1);
+        }
+        const disabledSetting = settings.find(s => s.key === 'disabled_providers');
+        if (disabledSetting) {
+          try {
+            const parsed = typeof disabledSetting.value === 'string'
+              ? JSON.parse(disabledSetting.value) : disabledSetting.value;
+            setDisabledProviders(Array.isArray(parsed) ? parsed : []);
+          } catch { setDisabledProviders([]); }
+        }
+      })
       .finally(() => setLoading(false));
   };
 
@@ -49,15 +73,77 @@ export default function AdminProvidersPage() {
     }
   };
 
+  const toggleProvider = async (provider: string, currentlyDisabled: boolean) => {
+    setToggling(provider);
+    try {
+      const next = currentlyDisabled
+        ? disabledProviders.filter(p => p !== provider)
+        : [...disabledProviders, provider];
+      await updateAdminSetting('disabled_providers', JSON.stringify(next));
+      setDisabledProviders(next);
+      toast.success(`${provider} ${currentlyDisabled ? 'enabled' : 'disabled'}`);
+    } catch (e: any) {
+      toast.error(`Failed to toggle provider: ${e.message}`);
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const toggleGlobalKillSwitch = async (value: boolean) => {
+    setSavingKill(true);
+    try {
+      await updateAdminSetting('global_kill_switch', value);
+      setGlobalKillSwitch(value);
+      toast[value ? 'warning' : 'success'](
+        value ? 'GLOBAL KILL SWITCH ACTIVATED — all paid providers blocked' : 'Kill switch deactivated — providers restored'
+      );
+    } catch (e: any) {
+      toast.error(`Failed to update kill switch: ${e.message}`);
+    } finally {
+      setSavingKill(false);
+    }
+  };
+
   const costByProvider: Record<string, AdminProviderCostRow> = {};
   for (const c of costs) costByProvider[c.provider] = c;
 
   return (
     <div className="space-y-6 max-w-5xl">
+      {/* Global kill switch banner */}
+      <div className={cn(
+        'flex items-center justify-between gap-4 p-4 rounded-xl border',
+        globalKillSwitch
+          ? 'bg-destructive/10 border-destructive/40'
+          : 'bg-card border-border',
+      )}>
+        <div className="flex items-center gap-3">
+          <div className={cn('p-2 rounded-lg', globalKillSwitch ? 'bg-destructive/20' : 'bg-secondary')}>
+            <ShieldOff className={cn('h-5 w-5', globalKillSwitch ? 'text-destructive' : 'text-muted-foreground')} />
+          </div>
+          <div>
+            <p className={cn('text-sm font-semibold', globalKillSwitch ? 'text-destructive' : 'text-foreground')}>
+              {globalKillSwitch ? 'GLOBAL KILL SWITCH ACTIVE — All Paid Providers Blocked' : 'Global Kill Switch'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Blocks ALL paid provider calls across the platform. Use in emergencies to prevent runaway spend.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-muted-foreground">{globalKillSwitch ? 'ON' : 'OFF'}</span>
+          <Switch
+            checked={globalKillSwitch}
+            onCheckedChange={toggleGlobalKillSwitch}
+            disabled={savingKill}
+            className={globalKillSwitch ? 'data-[state=checked]:bg-destructive' : ''}
+          />
+        </div>
+      </div>
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold">Provider Health</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Status, latency, and costs per provider. Mock ≠ Real.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Status, latency, costs and enable/disable controls per provider.</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
@@ -65,18 +151,27 @@ export default function AdminProvidersPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {loading ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-xl" />) :
+        {loading ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-48 rounded-xl" />) :
           health.map(h => {
             const cfg = STATUS_CONFIG[h.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.NOT_CONFIGURED;
             const Icon = cfg.icon;
             const cost = costByProvider[h.provider];
             const successRate = h.success_count + h.failure_count > 0
               ? Math.round((h.success_count / (h.success_count + h.failure_count)) * 100) : null;
+            const isDisabled = disabledProviders.includes(h.provider);
+
             return (
-              <Card key={h.provider} className="shadow-sm">
+              <Card key={h.provider} className={cn('shadow-sm', isDisabled && 'opacity-60 border-dashed')}>
                 <CardHeader className="pb-2 pt-4">
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-sm font-semibold">{h.provider}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-sm font-semibold">{h.provider}</CardTitle>
+                      {isDisabled && (
+                        <Badge variant="destructive" className="text-[10px] px-1.5 gap-0.5">
+                          <Power className="h-2.5 w-2.5" /> Disabled
+                        </Badge>
+                      )}
+                    </div>
                     <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>
                       <Icon className="h-3 w-3 shrink-0" />
                       <span>{cfg.label}</span>
@@ -108,11 +203,33 @@ export default function AdminProvidersPage() {
                       Last tested: {format(new Date(h.last_tested_at), 'MMM d, HH:mm')}
                     </p>
                   )}
-                  <Button variant="outline" size="sm" className="w-full text-xs gap-1.5 mt-1" disabled={testing === h.provider}
-                    onClick={() => runProviderTest(h.provider)}>
-                    {testing === h.provider ? <RefreshCw className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                    Run Test
-                  </Button>
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-xs gap-1.5"
+                      disabled={testing === h.provider}
+                      onClick={() => runProviderTest(h.provider)}
+                    >
+                      {testing === h.provider ? <RefreshCw className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                      Test
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        'flex-1 text-xs gap-1.5',
+                        isDisabled
+                          ? 'border-green-500/40 text-green-500 hover:bg-green-500/10'
+                          : 'border-destructive/40 text-destructive hover:bg-destructive/10',
+                      )}
+                      disabled={toggling === h.provider || globalKillSwitch}
+                      onClick={() => toggleProvider(h.provider, isDisabled)}
+                    >
+                      <Power className="h-3 w-3" />
+                      {toggling === h.provider ? '…' : isDisabled ? 'Enable' : 'Disable'}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -121,3 +238,5 @@ export default function AdminProvidersPage() {
     </div>
   );
 }
+
+const STATUS_CONFIG_UNUSED = null; void STATUS_CONFIG_UNUSED;

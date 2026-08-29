@@ -3,37 +3,182 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { getAdminSignals } from '@/services/api';
+import { supabase } from '@/db/supabase';
 import { format } from 'date-fns';
+import { RefreshCw, RotateCcw, Eye } from 'lucide-react';
+import { toast } from 'sonner';
 
-const STATUSES = ['ALL', 'PENDING', 'CLASSIFIED', 'REJECTED', 'NOISE'];
+const STATUSES = ['ALL', 'PENDING', 'CLASSIFIED', 'FILTERED_OUT', 'ERROR', 'NOISE'];
 const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  CLASSIFIED: 'default', PENDING: 'secondary', REJECTED: 'destructive', NOISE: 'outline',
+  CLASSIFIED: 'default',
+  PENDING: 'secondary',
+  REJECTED: 'destructive',
+  FILTERED_OUT: 'destructive',
+  ERROR: 'destructive',
+  NOISE: 'outline',
 };
+
+function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => void }) {
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-2xl max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-sm font-semibold">Signal Detail</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-xs">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">ID</p>
+              <p className="font-mono text-[11px] break-all">{signal.id}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Status</p>
+              <Badge variant={STATUS_VARIANT[signal.classification_status] ?? 'outline'} className="text-[10px]">
+                {signal.classification_status ?? '—'}
+              </Badge>
+            </div>
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Platform</p>
+              <p>{signal.platform ?? '—'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Language</p>
+              <p>{signal.language ?? '—'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Discovered</p>
+              <p>{signal.discovered_at ? format(new Date(signal.discovered_at), 'MMM d yyyy, HH:mm') : '—'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Classified</p>
+              <p>{signal.classified_at ? format(new Date(signal.classified_at), 'MMM d yyyy, HH:mm') : '—'}</p>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">Raw Text</p>
+            <div className="rounded-lg bg-secondary/50 border border-border p-3 max-h-40 overflow-y-auto">
+              <p className="whitespace-pre-wrap leading-relaxed">{signal.raw_text ?? '—'}</p>
+            </div>
+          </div>
+
+          {signal.intent_json && (
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">Intent JSON</p>
+              <pre className="rounded-lg bg-secondary/50 border border-border p-3 max-h-64 overflow-auto text-[11px] font-mono leading-relaxed">
+                {JSON.stringify(signal.intent_json, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {signal.error_message && (
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">Error</p>
+              <p className="text-destructive bg-destructive/10 rounded-lg p-2">{signal.error_message}</p>
+            </div>
+          )}
+
+          {signal.rejection_reason && (
+            <div>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">Rejection Reason</p>
+              <p className="text-amber-400 bg-amber-500/10 rounded-lg p-2">{signal.rejection_reason}</p>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function AdminSignalsPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('ALL');
+  const [reprocessing, setReprocessing] = useState(false);
+  const [selectedSignal, setSelectedSignal] = useState<any | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     getAdminSignals(100, 0, status === 'ALL' ? undefined : status)
       .then(setItems).finally(() => setLoading(false));
-  }, [status]);
+  };
+
+  useEffect(load, [status]);
+
+  const failedCount = items.filter(s =>
+    s.classification_status === 'ERROR' || s.classification_status === 'FILTERED_OUT'
+  ).length;
+
+  const handleReprocess = async () => {
+    setReprocessing(true);
+    try {
+      // First reset ERROR/FILTERED_OUT signals back to PENDING so classifier picks them up
+      const { error: resetErr } = await supabase
+        .from('raw_signals')
+        .update({ classification_status: 'PENDING', error_message: null, classified_at: null })
+        .in('classification_status', ['ERROR', 'FILTERED_OUT']);
+      if (resetErr) throw resetErr;
+
+      // Trigger classify-signals-v2 EF
+      const { error: efErr } = await supabase.functions.invoke('classify-signals-v2', {
+        body: { batchSize: 200, market: 'GE' },
+      });
+      if (efErr) throw efErr;
+
+      toast.success('Reprocessing started — signals reset to PENDING and classifier triggered.');
+      setTimeout(() => load(), 3000); // refresh after a moment
+    } catch (e: any) {
+      toast.error(`Reprocess failed: ${e.message ?? String(e)}`);
+    } finally {
+      setReprocessing(false);
+    }
+  };
 
   return (
     <div className="space-y-4 max-w-5xl">
-      <div>
-        <h1 className="text-xl font-bold">Signals</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Raw signals collected from all sources</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-bold">Signals</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Raw signals collected from all sources. {items.length} loaded.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={load} disabled={loading}>
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs border-amber-500/40 text-amber-500 hover:bg-amber-500/10"
+            onClick={handleReprocess}
+            disabled={reprocessing || failedCount === 0}
+            title={failedCount === 0 ? 'No ERROR/FILTERED_OUT signals to reprocess' : `Requeue ${failedCount} failed signals`}
+          >
+            {reprocessing
+              ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              : <RotateCcw className="h-3.5 w-3.5" />}
+            Reprocess Failed
+            {failedCount > 0 && (
+              <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500/40 text-amber-500 ml-0.5">
+                {failedCount}
+              </Badge>
+            )}
+          </Button>
+        </div>
       </div>
+
       <div className="flex flex-wrap gap-2">
         {STATUSES.map(s => (
           <Button key={s} variant={status === s ? 'default' : 'outline'} size="sm"
             className="text-xs" onClick={() => setStatus(s)}>{s}</Button>
         ))}
       </div>
+
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -45,17 +190,22 @@ export default function AdminSignalsPage() {
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Lang</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Status</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Discovered</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i}><td colSpan={5} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
+                  <tr key={i}><td colSpan={6} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
                 )) : items.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No signals found</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No signals found</td></tr>
                 ) : items.map(s => (
-                  <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                    <td className="px-4 py-2.5 max-w-[300px]">
-                      <p className="text-xs truncate">{s.raw_text?.slice(0, 120) ?? '—'}</p>
+                  <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer"
+                    onClick={() => setSelectedSignal(s)}>
+                    <td className="px-4 py-2.5 max-w-[280px]">
+                      <p className="text-xs truncate">{s.raw_text?.slice(0, 110) ?? '—'}</p>
+                      {s.error_message && (
+                        <p className="text-[10px] text-destructive truncate mt-0.5">{s.error_message.slice(0, 60)}</p>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <Badge variant="outline" className="text-[10px]">{s.platform ?? '—'}</Badge>
@@ -69,6 +219,17 @@ export default function AdminSignalsPage() {
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
                       {s.discovered_at ? format(new Date(s.discovered_at), 'MMM d, HH:mm') : '—'}
                     </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                        onClick={e => { e.stopPropagation(); setSelectedSignal(s); }}
+                        title="View details"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -76,6 +237,10 @@ export default function AdminSignalsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {selectedSignal && (
+        <SignalDetailModal signal={selectedSignal} onClose={() => setSelectedSignal(null)} />
+      )}
     </div>
   );
 }

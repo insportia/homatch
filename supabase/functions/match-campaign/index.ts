@@ -924,17 +924,13 @@ Deno.serve(async (req) => {
 
     await emitEvent(sb, jobId, 'PROVIDERS_READY', 'Providers initialised', providerStatus);
 
-    // ── 6. Validate DataForSEO creds on first use ─────────
-    {
-      const credCheck = await dfseo.validateCredentials();
-      if (!credCheck.ok) {
-        await emitEvent(sb, jobId, 'DATAFORSEO_CRED_FAIL',
-          `DataForSEO credential check failed — aborting`, { error: credCheck.error });
-        await updateJob(sb, jobId, { status: 'failed', failure_reason: 'DATAFORSEO_CRED_FAIL',
-          error_message: credCheck.error?.slice(0, 200) });
-        return new Response(JSON.stringify({ error: 'DATAFORSEO_CRED_FAIL', detail: credCheck.error }), { status: 500, headers: CORS });
-      }
-    }
+    // ── 6. DataForSEO readiness ───────────────────────────
+    // Configuration was checked above. Do not make a separate live credential
+    // probe here: a transient probe timeout is not an authentication failure.
+    // The actual search requests below validate both connectivity and task-level
+    // credentials and emit detailed DFSEO_ERROR / DFSEO_TASK_FAILED events.
+    await emitEvent(sb, jobId, 'DATAFORSEO_READY',
+      'DataForSEO configured; validating credentials through live search tasks');
 
     // ── 7. Tier expansion loop ────────────────────────────
     let currentTier = 1;

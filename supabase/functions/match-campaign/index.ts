@@ -317,29 +317,60 @@ class DataForSEOProvider{
   }
   async searchLive(queries:SearchQuery[]):Promise<SearchProviderResponse>{
     if(!this.isConfigured())throw new Error('DataForSEO not configured — credentials missing');
-    const payloads=queries.map((q,i)=>({keyword:q.q,language_code:q.language??'en',location_code:dfseoLocationCode(q.country),device:'desktop',depth:10,tag:`live:${i}`}));
-    const r=await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced',{method:'POST',headers:{Authorization:this.auth(),'Content-Type':'application/json'},body:JSON.stringify(payloads),signal:AbortSignal.timeout(60_000)});
-    if(!r.ok){const b=await r.text().catch(()=>'');throw new Error(`DFSEO HTTP ${r.status}: ${b.slice(0,200)}`);}
-    const json=await r.json();const results:SearchResult[]=[];let totalCost=0;const taskStatuses:DFSEOTaskStatus[]=[];
-    for(let ti=0;ti<(json.tasks??[]).length;ti++){
-      const task=json.tasks[ti];
-      const taskCode:number=task.status_code??0;
-      const taskMsg:string=task.status_message??'';
-      const taskCost:number=task.cost??0;totalCost+=taskCost;const q=queries[ti];
-      // Task-level failure: status_code outside 20000-20099 range means the task failed
-      if(taskCode<20000||taskCode>20099){
-        taskStatuses.push({taskId:task.id??'',keyword:q?.q??'',status:'failed',statusCode:taskCode,statusMessage:taskMsg,costUsd:taskCost,payloadHash:''});
+
+    // DataForSEO's live endpoint accepts exactly one task per HTTP request.
+    // Execute a query pack concurrently, but keep every request single-task.
+    const executions=await Promise.all(queries.map(async(q,i)=>{
+      const payload={keyword:q.q,language_code:q.language??'en',location_code:dfseoLocationCode(q.country),device:'desktop',depth:10,tag:`live:${i}`};
+      try{
+        const r=await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced',{
+          method:'POST',
+          headers:{Authorization:this.auth(),'Content-Type':'application/json'},
+          body:JSON.stringify([payload]),
+          signal:AbortSignal.timeout(60_000),
+        });
+        if(!r.ok){
+          const b=await r.text().catch(()=>'');
+          return{q,task:null,httpCode:r.status,error:`HTTP ${r.status}: ${b.slice(0,180)}`};
+        }
+        const json=await r.json();
+        return{q,task:json.tasks?.[0]??null,httpCode:r.status,error:''};
+      }catch(e:unknown){
+        return{q,task:null,httpCode:0,error:e instanceof Error?e.message:String(e)};
+      }
+    }));
+
+    const results:SearchResult[]=[];
+    const taskStatuses:DFSEOTaskStatus[]=[];
+    let totalCost=0;
+    let firstRequestId:string|undefined;
+
+    for(const execution of executions){
+      const{q,task,httpCode,error}=execution;
+      if(!task){
+        taskStatuses.push({taskId:'',keyword:q.q,status:'failed',statusCode:httpCode,statusMessage:error||'No task returned',costUsd:0,payloadHash:''});
         continue;
       }
-      taskStatuses.push({taskId:task.id??'',keyword:q?.q??'',status:'ready',statusCode:taskCode,statusMessage:taskMsg,costUsd:taskCost,payloadHash:''});
+      if(!firstRequestId)firstRequestId=task.id;
+      const taskCode:number=task.status_code??0;
+      const taskMsg:string=task.status_message??'';
+      const taskCost:number=task.cost??0;
+      totalCost+=taskCost;
+      if(taskCode<20000||taskCode>20099){
+        taskStatuses.push({taskId:task.id??'',keyword:q.q,status:'failed',statusCode:taskCode,statusMessage:taskMsg,costUsd:taskCost,payloadHash:''});
+        continue;
+      }
+      taskStatuses.push({taskId:task.id??'',keyword:q.q,status:'ready',statusCode:taskCode,statusMessage:taskMsg,costUsd:taskCost,payloadHash:''});
       for(const item of task.result?.[0]?.items??[]){
-        if(item.type!=='organic')continue;const raw=item.url??'';
-        results.push({title:item.title??'',url:raw,canonicalUrl:canonicalUrlDFSEO(raw),snippet:item.description??'',domain:item.domain??'',rankPosition:item.rank_absolute??0,publishedAt:item.timestamp??null,tier:q?.tier??1,queryText:q?.q??'',taskId:task.id});
+        if(item.type!=='organic')continue;
+        const raw=item.url??'';
+        results.push({title:item.title??'',url:raw,canonicalUrl:canonicalUrlDFSEO(raw),snippet:item.description??'',domain:item.domain??'',rankPosition:item.rank_absolute??0,publishedAt:item.timestamp??null,tier:q.tier??1,queryText:q.q,taskId:task.id});
       }
     }
+
     const failed=taskStatuses.filter(t=>t.status==='failed');
     if(failed.length>0&&results.length===0)throw new Error(`All ${failed.length} DFSEO tasks failed. First: ${failed[0].statusCode} ${failed[0].statusMessage}`);
-    return{results,taskStatuses,costUsd:totalCost,provider:'DATAFORSEO',cacheHit:false,mode:'live',requestId:json.tasks?.[0]?.id};
+    return{results,taskStatuses,costUsd:totalCost,provider:'DATAFORSEO',cacheHit:false,mode:'live',requestId:firstRequestId};
   }
   // mock() removed from production bundle — never fabricate search results
 }

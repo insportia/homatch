@@ -17,9 +17,10 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Zap, Lock, Unlock, ExternalLink, User, Globe, MapPin, DollarSign,
-  BedDouble, Clock, ChevronRight, Loader2, Play, Pause, AlertCircle,
+  BedDouble, Clock, ChevronRight, Loader2, Play, Pause, AlertCircle, MessageSquare,
 } from 'lucide-react';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import {
   getMatches, getMatchCounts, unlockMatch, markMatchPreviewed,
   getUnlockedMatch, startMatchingCampaign, pauseMatchingCampaign,
@@ -339,6 +340,8 @@ function MatchesContent() {
   const [unlockLoading, setUnlockLoading] = useState(false);
   const [unlockError, setUnlockError] = useState<{ msg: string; code?: string } | null>(null);
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
+  // External contact unlock (Phase 3)
+  const [externalUnlockMatch, setExternalUnlockMatch] = useState<Match | null>(null);
 
   // Reveal dialog
   const [revealMatch, setRevealMatch] = useState<{ match: Match; unlock: MatchUnlock } | null>(null);
@@ -375,6 +378,11 @@ function MatchesContent() {
   });
 
   const handleUnlockClick = async (match: Match) => {
+    // External signals → Phase 3 ExternalContactUnlockModal
+    if (match.is_external && !match.is_homatch_user) {
+      setExternalUnlockMatch(match);
+      return;
+    }
     if (match.status === 'UNLOCKED') {
       // Load existing unlock and reveal
       const existing = await getUnlockedMatch(match.id);
@@ -666,6 +674,23 @@ function MatchesContent() {
           match={revealMatch.match}
           unlock={revealMatch.unlock}
           onClose={() => setRevealMatch(null)}
+        />
+      )}
+
+      {/* External contact unlock modal (Phase 3) */}
+      {externalUnlockMatch && (
+        <ExternalContactUnlockModal
+          open={true}
+          matchId={externalUnlockMatch.id}
+          creditBalance={Number(creditAccount?.balance ?? 0)}
+          onClose={() => setExternalUnlockMatch(null)}
+          onUnlocked={() => {
+            setMatches(prev =>
+              prev.map(m => m.id === externalUnlockMatch!.id ? { ...m, status: 'UNLOCKED' } : m)
+            );
+            setExternalUnlockMatch(null);
+            toast.success('Contact unlocked!');
+          }}
         />
       )}
 

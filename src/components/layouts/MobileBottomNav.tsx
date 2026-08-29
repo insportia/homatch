@@ -1,13 +1,14 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { LayoutDashboard, Coins, Activity, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, CalendarDays, Search, PlusCircle } from 'lucide-react';
 
 const items = [
-  { key: 'nav_dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { key: 'nav_credits', path: '/credits', icon: Coins },
-  { key: 'nav_activity', path: '/activity', icon: Activity },
-  { key: 'nav_add', path: '/property/add', icon: PlusCircle, highlight: true },
+  { key: 'nav_dashboard',     path: '/dashboard',     icon: LayoutDashboard },
+  { key: 'nav_chat',          path: '/chat',          icon: MessageSquare },
+  { key: 'nav_viewings',      path: '/viewings',      icon: CalendarDays },
+  { key: 'nav_active_search', path: '/active-search', icon: Search },
+  { key: 'nav_add',           path: '/property/add',  icon: PlusCircle, highlight: true },
 ];
 
 export function MobileBottomNav() {

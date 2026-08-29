@@ -23,13 +23,19 @@ import {
   Menu,
   Bell,
   ChevronDown,
+  MessageSquare,
+  CalendarDays,
+  Search,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 
 const navItems = [
-  { key: 'nav_dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { key: 'nav_credits', path: '/credits', icon: Coins },
-  { key: 'nav_activity', path: '/activity', icon: Activity },
+  { key: 'nav_dashboard',     path: '/dashboard',      icon: LayoutDashboard },
+  { key: 'nav_chat',          path: '/chat',           icon: MessageSquare },
+  { key: 'nav_viewings',      path: '/viewings',       icon: CalendarDays },
+  { key: 'nav_active_search', path: '/active-search',  icon: Search },
+  { key: 'nav_credits',       path: '/credits',        icon: Coins },
+  { key: 'nav_activity',      path: '/activity',       icon: Activity },
 ];
 
 export function AppHeader() {

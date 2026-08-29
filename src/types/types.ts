@@ -514,6 +514,9 @@ export interface Match {
   unlock_price_credits: number;
   status: MatchStatus;
   mock_mode?: boolean;
+  // Whether this match is for an external (non-Homatch) signal
+  is_external?: boolean;
+  is_homatch_user?: boolean;
   // Locked preview (always safe to expose before unlock)
   preview_platform?: SignalPlatform;
   preview_language?: string;

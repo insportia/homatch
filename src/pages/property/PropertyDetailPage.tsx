@@ -240,6 +240,7 @@ function CampaignPanel({
       {activeJobId && (
         <MatchingJobProgress
           jobId={activeJobId}
+          propertyId={propertyId}
           onComplete={(job) => {
             // Refresh match counts when job finishes
             getMatchCounts(propertyId).then(onCountsRefresh);

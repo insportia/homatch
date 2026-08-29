@@ -17,7 +17,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Zap, Lock, Unlock, ExternalLink, User, Globe, MapPin, DollarSign,
-  BedDouble, Clock, ChevronRight, Loader2, Play, Pause, AlertCircle, MessageSquare,
+  BedDouble, Clock, ChevronRight, Loader2, Play, Pause, AlertCircle,
+  MessageSquare, Bot, CalendarDays,
 } from 'lucide-react';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
@@ -70,10 +71,16 @@ function LockedMatchCard({
   match,
   onUnlock,
   unlocking,
+  onAskAI,
+  onChat,
+  onRequestViewing,
 }: {
   match: Match;
   onUnlock: (m: Match) => void;
   unlocking: boolean;
+  onAskAI: (m: Match) => void;
+  onChat: (m: Match) => void;
+  onRequestViewing: (m: Match) => void;
 }) {
   const cfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
   const platformIcon = PLATFORM_ICONS[match.preview_platform ?? 'OTHER'] ?? '·';
@@ -175,27 +182,62 @@ function LockedMatchCard({
             </p>
           </div>
         </div>
-        {match.status !== 'UNLOCKED' ? (
-          <Button
-            size="sm"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-8 px-4 text-xs gap-1.5"
-            onClick={() => onUnlock(match)}
-            disabled={unlocking}
-          >
-            {unlocking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}
-            UNLOCK · {match.unlock_price_credits.toFixed(2)} CR
-          </Button>
-        ) : (
+        <div className="flex items-center gap-1.5">
+          {/* Ask AI why — always available */}
           <Button
             size="sm"
             variant="ghost"
-            className="border border-border text-xs h-8 gap-1.5"
-            onClick={() => onUnlock(match)}
+            className="border border-border text-xs h-8 gap-1 text-muted-foreground hover:text-primary"
+            onClick={() => onAskAI(match)}
+            title="Ask AI why this match is strong"
           >
-            <ChevronRight className="h-3 w-3" />
-            View Details
+            <Bot className="h-3 w-3" />
+            <span className="hidden md:inline">Why?</span>
           </Button>
-        )}
+          {match.status !== 'UNLOCKED' ? (
+            <Button
+              size="sm"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-8 px-4 text-xs gap-1.5"
+              onClick={() => onUnlock(match)}
+              disabled={unlocking}
+            >
+              {unlocking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}
+              UNLOCK · {match.unlock_price_credits.toFixed(2)} CR
+            </Button>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="border border-border text-xs h-8 gap-1 text-muted-foreground hover:text-foreground"
+                onClick={() => onChat(match)}
+                title="Start chat with this buyer"
+              >
+                <MessageSquare className="h-3 w-3" />
+                <span className="hidden md:inline">Chat</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="border border-border text-xs h-8 gap-1 text-muted-foreground hover:text-foreground"
+                onClick={() => onRequestViewing(match)}
+                title="Request a viewing"
+              >
+                <CalendarDays className="h-3 w-3" />
+                <span className="hidden md:inline">Viewing</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="border border-border text-xs h-8 gap-1.5"
+                onClick={() => onUnlock(match)}
+              >
+                <ChevronRight className="h-3 w-3" />
+                <span className="hidden md:inline">Details</span>
+              </Button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -430,6 +472,64 @@ function MatchesContent() {
     setPendingUnlock(null);
   };
 
+  // AI match explanation handler
+  const handleAskAI = useCallback((match: Match) => {
+    const reasons = match.match_reasons?.join(', ') ?? 'various factors';
+    const city = match.preview_city ?? '';
+    const budget = match.preview_budget_min || match.preview_budget_max
+      ? ` with budget ${match.preview_currency ?? '$'}${Number(match.preview_budget_min ?? 0).toLocaleString()}–${Number(match.preview_budget_max ?? 0).toLocaleString()}`
+      : '';
+    const platform = match.preview_platform ? ` from ${match.preview_platform}` : '';
+    navigate('/ai', {
+      state: {
+        context: {
+          type: 'match',
+          data: {
+            match_id: match.id,
+            match_score: match.match_score,
+            signal_strength: match.signal_strength,
+            match_reasons: match.match_reasons,
+            mismatch_reasons: match.mismatch_reasons,
+            preview_city: match.preview_city,
+            preview_budget_min: match.preview_budget_min,
+            preview_budget_max: match.preview_budget_max,
+            preview_currency: match.preview_currency,
+            preview_language: match.preview_language,
+            preview_platform: match.preview_platform,
+            intent_confidence: match.intent_confidence,
+          },
+        },
+        prompt: `This match scores ${Math.round(match.match_score)}% (${match.signal_strength}) for a buyer${city ? ` in ${city}` : ''}${budget}${platform}. The match reasons are: ${reasons}. Explain in detail why this is a ${match.signal_strength.toLowerCase()} match and what it means for my property.`,
+      },
+    });
+  }, [navigate]);
+
+  // Start chat with unlocked match buyer
+  const handleChat = useCallback((match: Match) => {
+    navigate('/chat', {
+      state: {
+        prefill: {
+          platform: match.preview_platform,
+          matchId: match.id,
+          propertyId,
+          matchScore: match.match_score,
+        },
+      },
+    });
+  }, [navigate, propertyId]);
+
+  // Request viewing from a match
+  const handleRequestViewing = useCallback((match: Match) => {
+    navigate('/viewings', {
+      state: {
+        openNew: true,
+        preselectedPropertyId: propertyId,
+        matchContext: { matchId: match.id, matchScore: match.match_score },
+      },
+    });
+  }, [navigate, propertyId]);
+
+  // Start matching campaign
   const handleStartMatching = async () => {
     if (!propertyId || !homatchUser) return;
     setCampaignLoading(true);
@@ -578,6 +678,9 @@ function MatchesContent() {
                 match={m}
                 onUnlock={handleUnlockClick}
                 unlocking={unlockLoading && pendingUnlock?.id === m.id}
+                onAskAI={handleAskAI}
+                onChat={handleChat}
+                onRequestViewing={handleRequestViewing}
               />
             ))}
           </div>

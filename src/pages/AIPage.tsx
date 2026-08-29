@@ -6,16 +6,114 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAIChat, type PageContext } from '@/hooks/useAIChat';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { supabase } from '@/db/supabase';
 import { Streamdown } from 'streamdown';
 import {
   Bot, Send, StopCircle, PlusCircle, MessageSquare, Trash2,
   Loader2, Sparkles, ChevronRight, Home, Building2, Shield, Search,
+  ExternalLink, Star, AlertTriangle,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RouteGuard } from '@/components/common/RouteGuard';
+
+// ── Evidence status badge ──────────────────────────────────────
+type EvidenceStatus = 'VERIFIED' | 'HOMATCH_DATA' | 'FOUND_ONLINE' | 'CONFLICTING' | 'UNVERIFIED';
+const EVIDENCE_CFG: Record<EvidenceStatus, { color: string; label: string }> = {
+  VERIFIED:     { color: 'bg-green-500/15 text-green-400 border-green-500/25',   label: 'VERIFIED' },
+  HOMATCH_DATA: { color: 'bg-primary/10 text-primary border-primary/20',          label: 'HOMATCH DATA' },
+  FOUND_ONLINE: { color: 'bg-blue-500/10 text-blue-400 border-blue-500/20',       label: 'FOUND ONLINE' },
+  CONFLICTING:  { color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',    label: 'CONFLICTING' },
+  UNVERIFIED:   { color: 'bg-muted text-muted-foreground border-border',          label: 'UNVERIFIED' },
+};
+function EvidenceBadge({ status }: { status: EvidenceStatus }) {
+  const cfg = EVIDENCE_CFG[status] ?? EVIDENCE_CFG.UNVERIFIED;
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${cfg.color}`}>{cfg.label}</span>;
+}
+
+// ── Research result card (parsed from streaming assistant message) ────────────
+interface ResearchReport {
+  entityName?: string;
+  entityType?: string;
+  confidence?: number;
+  summary?: string;
+  sources?: Array<{ label: string; url?: string; status: EvidenceStatus }>;
+  actions?: Array<{ id: string; label: string; path?: string; type: string }>;
+  warnings?: string[];
+  homatchData?: Record<string, unknown>;
+  publicFindings?: { riskFlags?: string[]; companyInfo?: string };
+}
+
+function ResearchCard({
+  report,
+  onNavigate,
+}: {
+  report: ResearchReport;
+  onNavigate: (p: string) => void;
+}) {
+  return (
+    <Card className="border-primary/20 bg-primary/5 mt-2">
+      <CardHeader className="pb-2 pt-4">
+        <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
+          <Star className="h-4 w-4 text-primary" />
+          <span className="font-semibold">{report.entityName ?? 'Entity'}</span>
+          {report.entityType && <Badge variant="outline" className="text-[10px]">{report.entityType}</Badge>}
+          {report.confidence !== undefined && (
+            <span className="text-xs text-muted-foreground ml-auto">Confidence: {report.confidence}%</span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 pb-4">
+        {report.summary && <p className="text-xs text-muted-foreground leading-relaxed">{report.summary}</p>}
+
+        {(report.publicFindings?.riskFlags ?? []).length > 0 && (
+          <div className="space-y-1">
+            {(report.publicFindings!.riskFlags!).map((f, i) => (
+              <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
+                <AlertTriangle className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" />
+                <span className="text-xs text-amber-400/90">{f}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(report.sources ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {report.sources!.map((s, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <EvidenceBadge status={s.status} />
+                {s.url ? (
+                  <a href={s.url} target="_blank" rel="noopener noreferrer"
+                    className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
+                    {s.label} <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                ) : <span className="text-[10px] text-muted-foreground">{s.label}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(report.actions ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {report.actions!.map(a => (
+              <Button key={a.id} size="sm" variant="outline" className="h-7 text-[11px] gap-1 border-border"
+                onClick={() => {
+                  if (a.type === 'navigate' && a.path) onNavigate(a.path);
+                  else if (a.type === 'external' && a.path) window.open(a.path, '_blank');
+                }}>
+                {a.type === 'external' ? <ExternalLink className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                {a.label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 const QUICK_PROMPTS = [
   { icon: Search,    labelKey: 'ai_prompt_find_apartment' as const },
@@ -56,8 +154,28 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
   );
 }
 
-function MessageBubble({ role, content, streaming }: { role: string; content: string; streaming?: boolean }) {
+function MessageBubble({
+  role, content, streaming, onNavigate,
+}: {
+  role: string;
+  content: string;
+  streaming?: boolean;
+  onNavigate?: (p: string) => void;
+}) {
   const isUser = role === 'user';
+
+  // Try to extract an embedded JSON research report from assistant messages
+  // The EF may embed [[RESEARCH_JSON:...]] blocks
+  let researchReport: ResearchReport | null = null;
+  let displayContent = content;
+  if (!isUser) {
+    const jsonMatch = content.match(/\[\[RESEARCH_JSON:([\s\S]*?)\]\]/);
+    if (jsonMatch) {
+      try { researchReport = JSON.parse(jsonMatch[1]); } catch { /* ignore malformed */ }
+      displayContent = content.replace(/\[\[RESEARCH_JSON:[\s\S]*?\]\]/, '').trim();
+    }
+  }
+
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       {!isUser && (
@@ -65,17 +183,22 @@ function MessageBubble({ role, content, streaming }: { role: string; content: st
           <Bot className="h-4 w-4 text-primary" />
         </div>
       )}
-      <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-        isUser
-          ? 'bg-primary text-primary-foreground rounded-tr-sm'
-          : 'bg-card border border-border text-foreground rounded-tl-sm'
-      }`}>
-        {isUser ? (
-          <span>{content}</span>
-        ) : (
-          <Streamdown parseIncompleteMarkdown isAnimating={streaming}>
-            {content}
-          </Streamdown>
+      <div className={`max-w-[80%] ${isUser ? '' : 'flex-1 min-w-0'}`}>
+        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+          isUser
+            ? 'bg-primary text-primary-foreground rounded-tr-sm'
+            : 'bg-card border border-border text-foreground rounded-tl-sm'
+        }`}>
+          {isUser ? (
+            <span>{content}</span>
+          ) : (
+            <Streamdown parseIncompleteMarkdown isAnimating={streaming}>
+              {displayContent}
+            </Streamdown>
+          )}
+        </div>
+        {researchReport && onNavigate && (
+          <ResearchCard report={researchReport} onNavigate={onNavigate} />
         )}
       </div>
     </div>
@@ -230,10 +353,10 @@ function AIPageInner() {
           ) : (
             <div className="max-w-2xl mx-auto space-y-4">
               {messages.map(m => (
-                <MessageBubble key={m.id} role={m.role} content={m.content} />
+                <MessageBubble key={m.id} role={m.role} content={m.content} onNavigate={navigate} />
               ))}
               {streaming && streamContent && (
-                <MessageBubble role="assistant" content={streamContent} streaming />
+                <MessageBubble role="assistant" content={streamContent} streaming onNavigate={navigate} />
               )}
               {streaming && !streamContent && (
                 <div className="flex gap-3">

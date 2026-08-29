@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -54,6 +55,7 @@ function ViewingCard({
   vr, myId, onAction,
 }: { vr: ViewingRequest; myId: string; onAction: (id: string, action: string, extra?: Record<string, unknown>) => Promise<void> }) {
   const isOwner = vr.owner_id === myId;
+  const { t } = useLanguage();
   const [confirming, setConfirming] = useState<string | null>(null);
   const [propDate, setPropDate] = useState('');
   const [propTime, setPropTime] = useState('');
@@ -129,29 +131,29 @@ function ViewingCard({
             {isOwner && vr.status === 'PENDING' && (
               <>
                 <Button size="sm" className="h-7 text-xs" onClick={() => setConfirming('accept')} disabled={actionLoading}>
-                  <CheckCircle className="h-3 w-3 mr-1" /> Accept
+                  <CheckCircle className="h-3 w-3 mr-1" /> {t('view_btn_accept')}
                 </Button>
                 <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => setReschedOpen(true)} disabled={actionLoading}>
-                  <RefreshCw className="h-3 w-3 mr-1" /> Reschedule
+                  <RefreshCw className="h-3 w-3 mr-1" /> {t('view_btn_reschedule')}
                 </Button>
                 <Button size="sm" variant="outline" className="h-7 text-xs text-destructive hover:text-destructive border-destructive/30" onClick={() => setConfirming('decline')} disabled={actionLoading}>
-                  Decline
+                  {t('view_btn_decline')}
                 </Button>
               </>
             )}
             {vr.status === 'RESCHEDULE_PROPOSED' && !isOwner && (
               <Button size="sm" className="h-7 text-xs" onClick={() => setConfirming('accept')} disabled={actionLoading}>
-                Accept new time
+                {t('view_btn_accept_new_time')}
               </Button>
             )}
             {(vr.status === 'PENDING' || vr.status === 'ACCEPTED' || vr.status === 'RESCHEDULE_PROPOSED') && (
               <Button size="sm" variant="outline" className="h-7 text-xs text-muted-foreground" onClick={() => setConfirming('cancel')} disabled={actionLoading}>
-                Cancel
+                {t('view_btn_cancel')}
               </Button>
             )}
             {vr.status === 'ACCEPTED' && (
               <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => setConfirming('complete')} disabled={actionLoading}>
-                <Check className="h-3 w-3 mr-1" /> Mark Complete
+                <Check className="h-3 w-3 mr-1" /> {t('view_btn_complete')}
               </Button>
             )}
           </div>
@@ -163,14 +165,14 @@ function ViewingCard({
         <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirming === 'accept' ? 'Accept viewing?' : confirming === 'decline' ? 'Decline viewing?' : confirming === 'cancel' ? 'Cancel viewing?' : 'Mark complete?'}
+              {confirming === 'accept' ? t('view_confirm_accept') : confirming === 'decline' ? t('view_confirm_decline') : confirming === 'cancel' ? t('view_confirm_cancel') : t('view_confirm_complete')}
             </AlertDialogTitle>
-            <AlertDialogDescription>This action will update the viewing request status.</AlertDialogDescription>
+            <AlertDialogDescription>{t('view_confirm_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogCancel>{t('view_confirm_go_back')}</AlertDialogCancel>
             <AlertDialogAction onClick={() => doAction(confirming!)} disabled={actionLoading}>
-              {actionLoading ? 'Processing…' : 'Confirm'}
+              {actionLoading ? t('view_processing') : t('view_confirm_do')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -179,25 +181,25 @@ function ViewingCard({
       {/* Reschedule dialog */}
       <Dialog open={reschedOpen} onOpenChange={setReschedOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
-          <DialogHeader><DialogTitle>Propose New Time</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('view_reschedule_title')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">New date</label>
+              <label className="text-xs text-muted-foreground mb-1 block">{t('view_reschedule_new_date')}</label>
               <Input type="date" value={propDate} onChange={e => setPropDate(e.target.value)} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">New time (optional)</label>
+              <label className="text-xs text-muted-foreground mb-1 block">{t('view_reschedule_new_time')}</label>
               <Input type="time" value={propTime} onChange={e => setPropTime(e.target.value)} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Note (optional)</label>
+              <label className="text-xs text-muted-foreground mb-1 block">{t('view_reschedule_note')}</label>
               <Textarea value={propNote} onChange={e => setPropNote(e.target.value)} rows={2} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReschedOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setReschedOpen(false)}>{t('view_btn_cancel')}</Button>
             <Button onClick={() => doAction('propose_reschedule', { proposed_date: propDate, proposed_time: propTime || undefined, propose_note: propNote || undefined })} disabled={!propDate || actionLoading}>
-              Propose
+              {t('view_btn_propose')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -207,14 +209,30 @@ function ViewingCard({
 }
 
 // ── New Request Dialog ────────────────────────────────────────
-function NewRequestDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+function NewRequestDialog({
+  open,
+  onClose,
+  onCreated,
+  preselectedPropertyId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+  preselectedPropertyId?: string;
+}) {
   const { homatchUser } = useAuth();
+  const { t } = useLanguage();
   const [properties, setProperties] = useState<Property[]>([]);
-  const [selectedPropertyId, setSelectedPropertyId] = useState('');
+  const [selectedPropertyId, setSelectedPropertyId] = useState(preselectedPropertyId ?? '');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Sync pre-selected property when it changes (e.g. navigated with state)
+  useEffect(() => {
+    if (preselectedPropertyId) setSelectedPropertyId(preselectedPropertyId);
+  }, [preselectedPropertyId]);
 
   useEffect(() => {
     if (!open || !homatchUser) return;
@@ -226,7 +244,7 @@ function NewRequestDialog({ open, onClose, onCreated }: { open: boolean; onClose
     setLoading(true);
     try {
       await createViewingRequest(selectedPropertyId, date, time || undefined, note || undefined);
-      toast.success('Viewing request submitted');
+      toast.success(t('view_toast_submitted'));
       onCreated();
       onClose();
     } catch (err) {
@@ -240,8 +258,8 @@ function NewRequestDialog({ open, onClose, onCreated }: { open: boolean; onClose
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
         <DialogHeader>
-          <DialogTitle>Request a Viewing</DialogTitle>
-          <DialogDescription>Choose a property and your preferred date.</DialogDescription>
+          <DialogTitle>{t('view_request_title')}</DialogTitle>
+          <DialogDescription>{t('view_request_desc')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 mt-1">
           <div>
@@ -258,22 +276,22 @@ function NewRequestDialog({ open, onClose, onCreated }: { open: boolean; onClose
             </select>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Preferred date</label>
+            <label className="text-xs text-muted-foreground mb-1 block">{t('view_date_label')}</label>
             <Input type="date" value={date} min={new Date().toISOString().split('T')[0]} onChange={e => setDate(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Preferred time (optional)</label>
+            <label className="text-xs text-muted-foreground mb-1 block">{t('view_time_label')}</label>
             <Input type="time" value={time} onChange={e => setTime(e.target.value)} />
           </div>
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Note (optional)</label>
-            <Textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="Any details for the owner…" />
+            <Textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder={t('view_note_placeholder')} />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={handleCreate} disabled={!selectedPropertyId || !date || loading}>
-            {loading ? 'Submitting…' : 'Submit Request'}
+            {loading ? t('view_submitting') : t('view_submit')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -285,9 +303,17 @@ function NewRequestDialog({ open, onClose, onCreated }: { open: boolean; onClose
 export default function ViewingsPage() {
   const { homatchUser } = useAuth();
   const { t } = useLanguage();
+  const location = useLocation();
+  const navState = location.state as {
+    openNew?: boolean;
+    preselectedPropertyId?: string;
+    matchContext?: { matchId: string; matchScore: number };
+  } | undefined;
+
   const [viewings, setViewings] = useState<ViewingRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newOpen, setNewOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(navState?.openNew ?? false);
+  const [preselectedPropId] = useState(navState?.preselectedPropertyId ?? '');
 
   const load = useCallback(async () => {
     if (!homatchUser) return;
@@ -305,7 +331,7 @@ export default function ViewingsPage() {
   const handleAction = async (id: string, action: string, extra?: Record<string, unknown>) => {
     try {
       await updateViewingRequest(id, action as 'accept' | 'decline' | 'cancel' | 'complete' | 'propose_reschedule', extra);
-      toast.success('Viewing updated');
+      toast.success(t('view_toast_updated'));
       await load();
     } catch (err) {
       toast.error(String(err));
@@ -366,7 +392,12 @@ export default function ViewingsPage() {
           </Tabs>
         </div>
 
-        <NewRequestDialog open={newOpen} onClose={() => setNewOpen(false)} onCreated={load} />
+        <NewRequestDialog
+          open={newOpen}
+          onClose={() => setNewOpen(false)}
+          onCreated={load}
+          preselectedPropertyId={preselectedPropId}
+        />
       </AppLayout>
     </RouteGuard>
   );

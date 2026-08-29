@@ -144,6 +144,7 @@ function MessageThread({
   const [shareOpen, setShareOpen] = useState(false);
   const [sharedContact, setSharedContact] = useState<Record<string, string> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { t } = useLanguage();
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
@@ -299,7 +300,7 @@ function MessageThread({
         <div className="flex items-center gap-2">
           <Input
             className="flex-1"
-            placeholder="Type a message…"
+            placeholder={t('chat_input_placeholder')}
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}

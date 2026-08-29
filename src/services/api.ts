@@ -516,6 +516,10 @@ export async function startMatchingCampaign(
   // The function persists matching_jobs immediately, so discover that exact row
   // by idempotency key and return its ID while provider work continues.
   const idempotencyKey = `ui-${propertyId}-${Date.now()}`;
+  // The Edge Function canonicalises its stored idempotency key with the user ID,
+  // so discover the newly-created row by property + launch timestamp instead of
+  // requiring the caller-supplied key to be stored verbatim.
+  const launchedAfter = new Date(Date.now() - 5_000).toISOString();
   let invocationFailure: Error | null = null;
   const invocation = supabase.functions.invoke('match-campaign', {
     body: { propertyId, campaignId, idempotencyKey },
@@ -533,7 +537,10 @@ export async function startMatchingCampaign(
     const { data: createdJob } = await supabase
       .from('matching_jobs')
       .select('id')
-      .eq('idempotency_key', idempotencyKey)
+      .eq('property_id', propertyId)
+      .gte('created_at', launchedAfter)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (createdJob?.id) {

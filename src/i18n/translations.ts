@@ -7,6 +7,9 @@ import type { SupportedLanguage } from '@/types/types';
 const en = {
   // Navigation
   nav_dashboard: 'Dashboard',
+  nav_chat: 'Messages',
+  nav_viewings: 'Viewings',
+  nav_active_search: 'Alerts',
   nav_credits: 'Credits',
   nav_activity: 'Activity',
   nav_add: 'Add',

@@ -56,7 +56,7 @@ function FallbackChain({ chain }: { chain: Array<{ strategy: string; status: str
   );
 }
 
-function ExpandableRow({ imp }: { imp: Record<string, unknown> }) {
+function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean | null | undefined | object> }) {
   const chain = (imp.fallback_chain as Array<{ strategy: string; status: string | number; size?: number; reason?: string }> | undefined) ?? [];
   const [open, setOpen] = useState(false);
   const Icon = STATUS_ICON[imp.status as string] ?? Clock;
@@ -230,7 +230,7 @@ export default function AdminDiagnosticsPage() {
                         </td>
                       </tr>
                     )
-                    : items.map(imp => <ExpandableRow key={imp.id as string} imp={imp} />)
+                    : items.map(imp => <ExpandableRow key={imp.id as string} imp={imp as Record<string, string | number | boolean | null | undefined | object>} />)
                 }
               </tbody>
             </table>

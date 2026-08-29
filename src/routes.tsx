@@ -15,6 +15,10 @@ import PrivateListingPage from './pages/property/PrivateListingPage';
 import PropertyDetailPage from './pages/property/PropertyDetailPage';
 import MatchesPage from './pages/property/MatchesPage';
 import CreditsPage from './pages/CreditsPage';
+import ChatPage from './pages/ChatPage';
+import ViewingsPage from './pages/ViewingsPage';
+import ActiveSearchPage from './pages/ActiveSearchPage';
+import DeveloperProfilePage from './pages/DeveloperProfilePage';
 import AdminLayout from './components/layouts/AdminLayout';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
@@ -57,6 +61,10 @@ export const routes: RouteConfig[] = [
   { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
   { name: 'Notifications',     path: '/notifications',            element: <NotificationsPage /> },
   { name: 'Credits',           path: '/credits',                  element: <CreditsPage /> },
+  { name: 'Chat',              path: '/chat',                     element: <ChatPage /> },
+  { name: 'Viewings',          path: '/viewings',                 element: <ViewingsPage /> },
+  { name: 'Active Search',     path: '/active-search',            element: <ActiveSearchPage /> },
+  { name: 'Developer Profile', path: '/developer/:id',            element: <DeveloperProfilePage /> },
   { name: 'Add Property',      path: '/property/add',             element: <AddPropertyPage /> },
   { name: 'Import Property',   path: '/property/import',          element: <URLImportPage /> },
   { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },

@@ -22,6 +22,8 @@ import {
   Play, Pause, Loader2, ChevronRight,
 } from 'lucide-react';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
+import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
 
 function MatchabilityPanel({ score, improvements }: { score: number; improvements: string[] }) {
   const { t } = useLanguage();
@@ -393,6 +395,9 @@ function PropertyDetailContent() {
           </div>
         )}
 
+        {/* Canonical dedup banner */}
+        {id && <CanonicalGroupBanner propertyId={id} />}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Main info */}
           <div className="md:col-span-2 space-y-5">
@@ -501,6 +506,7 @@ function PropertyDetailContent() {
           {/* Sidebar */}
           <div className="space-y-4">
             <MatchabilityPanel score={score} improvements={improvements} />
+            {id && <PropertyTrustBadge propertyId={id} />}
 
             {/* Campaign Controls */}
             {homatchUser && id && (

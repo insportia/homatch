@@ -10,12 +10,32 @@ export interface SSEOptions {
 
 export function createSSEHook(options: SSEOptions): AfterResponseHook {
   return async (request, _opts, response) => {
-    if (!response.ok || !response.body) return;
+    if (!response.ok) return;
 
     let done = false;
     const finish = (err?: Error) => {
       if (!done) { done = true; options.onCompleted?.(err); }
     };
+
+    // Homatch AI now uses OpenAI Responses API and may return one JSON response.
+    // Normalize it to the legacy chunk shape so existing chat UI remains compatible.
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      try {
+        const payload = await response.clone().json() as { text?: string };
+        if (payload?.text) {
+          options.onData(JSON.stringify({
+            candidates: [{ content: { parts: [{ text: payload.text }] } }],
+          }));
+        }
+        finish();
+      } catch (err) {
+        finish(err as Error);
+      }
+      return response;
+    }
+
+    if (!response.body) { finish(); return response; }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf8');

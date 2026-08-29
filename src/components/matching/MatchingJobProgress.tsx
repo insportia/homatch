@@ -44,10 +44,12 @@ interface EventRow {
   event_type: string;
   payload: Record<string, unknown> | null;
   created_at: string;
+  stream?: 'matching' | 'external';
 }
 
 interface Props {
   jobId: string;
+  propertyId?: string;
   onComplete?: (job: JobRow) => void;
 }
 
@@ -106,9 +108,10 @@ function eventIcon(type: string) {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function MatchingJobProgress({ jobId, onComplete }: Props) {
+export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
   const [job, setJob] = useState<JobRow | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
+  const [externalEvents, setExternalEvents] = useState<EventRow[]>([]);
   const [showAllEvents, setShowAllEvents] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completedRef = useRef(false);
@@ -131,18 +134,30 @@ export function MatchingJobProgress({ jobId, onComplete }: Props) {
       .select('id,event_type,payload,created_at')
       .eq('job_id', jobId)
       .order('created_at', { ascending: true });
-    if (data) setEvents(data as EventRow[]);
+    if (data) setEvents((data as EventRow[]).map(event => ({ ...event, stream: 'matching' })));
+  };
+
+  const loadExternalEvents = async () => {
+    if (!propertyId) return;
+    const { data } = await supabase
+      .from('external_discovery_events')
+      .select('id,event_type,payload,created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: true })
+      .limit(200);
+    if (data) setExternalEvents((data as EventRow[]).map(event => ({ ...event, stream: 'external' })));
   };
 
   // Scroll event list to bottom on new events
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [events.length]);
+  }, [events.length, externalEvents.length]);
 
   useEffect(() => {
     // Initial load
     loadJob();
     loadEvents();
+    loadExternalEvents();
 
     // Realtime: matching_jobs row changes
     const jobChannel = supabase
@@ -179,10 +194,29 @@ export function MatchingJobProgress({ jobId, onComplete }: Props) {
       })
       .subscribe();
 
+    const externalChannel = propertyId
+      ? supabase
+          .channel(`ede-${propertyId}`)
+          .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'external_discovery_events',
+            filter: `property_id=eq.${propertyId}`,
+          }, (payload) => {
+            setExternalEvents(prev => {
+              const externalEvent = { ...(payload.new as EventRow), stream: 'external' as const };
+              if (prev.some(item => item.id === externalEvent.id)) return prev;
+              return [...prev, externalEvent];
+            });
+          })
+          .subscribe()
+      : null;
+
     // Polling fallback (every 8 s) — also updates when Realtime misses events
     pollingRef.current = setInterval(async () => {
       const j = await loadJob();
       await loadEvents();
+      await loadExternalEvents();
       if (j && TERMINAL.has(j.status) && !completedRef.current) {
         completedRef.current = true;
         onComplete?.(j);
@@ -193,10 +227,11 @@ export function MatchingJobProgress({ jobId, onComplete }: Props) {
     return () => {
       supabase.removeChannel(jobChannel);
       supabase.removeChannel(evChannel);
+      if (externalChannel) supabase.removeChannel(externalChannel);
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
+  }, [jobId, propertyId]);
 
   if (!job) {
     return (
@@ -207,7 +242,9 @@ export function MatchingJobProgress({ jobId, onComplete }: Props) {
   }
 
   const isTerminal = TERMINAL.has(job.status);
-  const visibleEvents = showAllEvents ? events : events.slice(-20);
+  const timeline = [...events, ...externalEvents]
+    .sort((left, right) => left.created_at.localeCompare(right.created_at));
+  const visibleEvents = showAllEvents ? timeline : timeline.slice(-20);
 
   return (
     <div className="rounded-xl border border-border bg-card space-y-4 p-4">
@@ -273,13 +310,13 @@ export function MatchingJobProgress({ jobId, onComplete }: Props) {
       )}
 
       {/* Events log */}
-      {events.length > 0 && (
+      {timeline.length > 0 && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Events ({events.length})
+              Live process ({timeline.length})
             </span>
-            {events.length > 20 && (
+            {timeline.length > 20 && (
               <button
                 className="text-xs text-primary hover:underline flex items-center gap-1"
                 onClick={() => setShowAllEvents(v => !v)}
@@ -298,13 +335,20 @@ export function MatchingJobProgress({ jobId, onComplete }: Props) {
                     ev.event_type.includes('ERROR') || ev.event_type.includes('FAIL') || ev.event_type.includes('FATAL')
                       ? 'text-destructive' : 'text-muted-foreground'
                   )}>
-                    {ev.event_type}
+                    {ev.stream === 'external' ? 'EXTERNAL · ' : ''}{ev.event_type}
                   </span>
-                  {ev.payload?.message != null && (
-                    <span className="text-foreground/70 truncate">
-                      {String(ev.payload.message).slice(0, 120)}
-                    </span>
-                  )}
+                  <span className="text-foreground/70 truncate">
+                    {String(
+                      ev.payload?.message ??
+                      [
+                        ev.payload?.provider,
+                        ev.payload?.platform,
+                        ev.payload?.itemCount != null ? `${String(ev.payload.itemCount)} results` : null,
+                        ev.payload?.actualCostUsd != null ? `${Number(ev.payload.actualCostUsd).toFixed(4)}` : null,
+                      ].filter(Boolean).join(' · ') ??
+                      ''
+                    ).slice(0, 160)}
+                  </span>
                 </div>
               ))}
             </div>

@@ -90,14 +90,31 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          echo "Marking baseline migrations 00001–00006 as already applied..."
+          # Production predates repository-backed migration tracking. These
+          # versions were already applied directly; repair only aligns the
+          # Supabase migration ledger before pushing genuinely new migrations.
+          echo "Aligning production migration history..."
           for version in \
+            00021 \
+            00022 \
+            00023 \
+            00024 \
+            00025 \
+            00026 \
+            00029 \
+            00033 \
             20260827203146 \
             20260827205525 \
             20260827212117 \
             20260827213737 \
             20260827221926 \
-            20260828071514; do
+            20260828071514 \
+            20260829000003 \
+            20260829090000 \
+            20260829130000 \
+            20260829130100 \
+            20260829153000 \
+            20260829153100; do
             supabase migration repair "$version" \
               --status applied \
               --project-ref "$SUPABASE_PROJECT_REF" \

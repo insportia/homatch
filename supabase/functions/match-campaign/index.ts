@@ -81,18 +81,23 @@ Deno.serve(async (req: Request) => {
 
   let jobId: string | null = null;
   try {
-    const { data: authData, error: authError } = await db.auth.getUser(token);
-    if (authError || !authData.user) return json({ error: 'Unauthorized' }, 401);
-
     const body = await req.json().catch(() => ({}));
     const propertyId = String(body.propertyId || '');
     if (!propertyId) return json({ error: 'propertyId required' }, 400);
 
-    const { data: homatchUser, error: userError } = await db
-      .from('users')
-      .select('id,is_admin')
-      .eq('auth_id', authData.user.id)
-      .maybeSingle();
+    const serviceInvocation = token === serviceKey;
+    let authenticatedAuthId: string | null = null;
+    if (!serviceInvocation) {
+      const { data: authData, error: authError } = await db.auth.getUser(token);
+      if (authError || !authData.user) return json({ error: 'Unauthorized' }, 401);
+      authenticatedAuthId = authData.user.id;
+    }
+
+    let userQuery = db.from('users').select('id,is_admin');
+    userQuery = serviceInvocation
+      ? userQuery.eq('id', String(body.userId || ''))
+      : userQuery.eq('auth_id', authenticatedAuthId);
+    const { data: homatchUser, error: userError } = await userQuery.maybeSingle();
     if (userError) throw userError;
     if (!homatchUser) return json({ error: 'Homatch user not found' }, 403);
 

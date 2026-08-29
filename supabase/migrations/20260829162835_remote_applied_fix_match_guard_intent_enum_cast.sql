@@ -1,0 +1,3 @@
+-- 20260829162835_fix_match_guard_intent_enum_cast
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

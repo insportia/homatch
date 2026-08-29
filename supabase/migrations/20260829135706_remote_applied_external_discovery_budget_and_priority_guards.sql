@@ -1,0 +1,3 @@
+-- 20260829135706_external_discovery_budget_and_priority_guards
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

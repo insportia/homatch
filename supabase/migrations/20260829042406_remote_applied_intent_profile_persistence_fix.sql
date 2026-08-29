@@ -1,0 +1,3 @@
+-- 20260829042406_intent_profile_persistence_fix
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

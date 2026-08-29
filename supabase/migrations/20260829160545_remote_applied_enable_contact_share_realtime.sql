@@ -1,0 +1,3 @@
+-- 20260829160545_enable_contact_share_realtime
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

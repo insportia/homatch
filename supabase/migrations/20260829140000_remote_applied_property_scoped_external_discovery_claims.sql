@@ -1,0 +1,3 @@
+-- 20260829140000_property_scoped_external_discovery_claims
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

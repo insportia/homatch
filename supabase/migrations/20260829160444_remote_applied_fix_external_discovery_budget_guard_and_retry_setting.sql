@@ -1,0 +1,3 @@
+-- 20260829160444_fix_external_discovery_budget_guard_and_retry_setting
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

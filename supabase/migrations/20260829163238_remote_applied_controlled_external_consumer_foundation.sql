@@ -1,0 +1,3 @@
+-- 20260829163238_controlled_external_consumer_foundation
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

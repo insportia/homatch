@@ -1,0 +1,3 @@
+-- 20260829120240_normalize_message_receipt_identity
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

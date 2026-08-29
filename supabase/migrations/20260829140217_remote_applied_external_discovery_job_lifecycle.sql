@@ -1,0 +1,3 @@
+-- 20260829140217_external_discovery_job_lifecycle
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

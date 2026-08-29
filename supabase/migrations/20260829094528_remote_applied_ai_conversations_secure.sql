@@ -1,0 +1,3 @@
+-- 20260829094528_ai_conversations_secure
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

@@ -1,0 +1,3 @@
+-- 20260829073846_atomic_external_match_unlock
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

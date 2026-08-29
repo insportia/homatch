@@ -1,0 +1,3 @@
+-- 20260829125931_phase3_workflow_indexes
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

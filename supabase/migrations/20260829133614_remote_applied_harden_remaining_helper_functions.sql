@@ -1,0 +1,3 @@
+-- 20260829133614_harden_remaining_helper_functions
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

@@ -1,0 +1,3 @@
+-- 20260829135414_external_discovery_priority_and_claim_engine
+-- Applied directly to production before repository migration-history synchronization.
+-- This manifest intentionally contains no SQL; the production schema is captured by later idempotent migrations.

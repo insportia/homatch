@@ -23,6 +23,7 @@ import {
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
+import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
 import {
   getMatches, getMatchCounts, unlockMatch, markMatchPreviewed,
   getUnlockedMatch, startMatchingCampaign, pauseMatchingCampaign,
@@ -642,8 +643,11 @@ function MatchesContent() {
           </TabsList>
         </Tabs>
 
+        {/* Surface relevant communities to post the property in, with AI-drafted, translated post copy */}
+        {propertyId && <CommunityOutreachPanel propertyId={propertyId} />}
+
         {/* Broaden the search: outbound links to major Georgian real-estate sites */}
-        <ExternalSitesCard />
+        <ExternalSitesCard propertyId={propertyId} />
 
         {/* Match list */}
         {loading ? (

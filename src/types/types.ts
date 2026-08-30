@@ -704,7 +704,7 @@ export const SUPPORTED_LANGUAGES: { code: SupportedLanguage; label: string; nati
 
 // ── Phase 7: Community & Outreach Engine ─────────────────────
 
-export type CommunityPlatform = 'TELEGRAM' | 'FACEBOOK' | 'VK' | 'REDDIT' | 'LINKEDIN' | 'THREADS' | 'OTHER';
+export type CommunityPlatform = 'TELEGRAM' | 'FACEBOOK' | 'VK' | 'REDDIT' | 'LINKEDIN' | 'THREADS' | 'WHATSAPP' | 'OTHER';
 export type PostingPolicy = 'OPEN' | 'APPROVAL_REQUIRED' | 'CLOSED' | 'UNKNOWN';
 export type CommunityRecStatus = 'PENDING' | 'OPEN' | 'POST_GENERATED' | 'COPIED' | 'POSTED' | 'SKIPPED';
 export type SocialPostStatus = 'DRAFT' | 'REVIEWED' | 'POSTED' | 'SKIPPED' | 'CANCELLED';
@@ -735,7 +735,11 @@ export interface Community {
   topics?: string[];
   member_count?: number;
   posting_policy?: PostingPolicy;
+  posting_allowed?: boolean | null;
   allows_auto_post?: boolean;
+  /** primary = dedicated real-estate community; secondary = general/expat/classifieds
+   *  community where housing posts appear alongside other topics. */
+  housing_focus?: 'primary' | 'secondary';
   is_active?: boolean;
   metadata?: Record<string, unknown>;
   created_at?: string;

@@ -41,11 +41,9 @@ const FEATURES = [
 ];
 
 // ── AI Outreach Engine showcase (new) ───────────────────────────
-const OUTREACH_CARDS = [
-  { icon: PhoneCall, title: 'AI Call Center', desc: 'AI dials qualified leads, talks live, transcribes and summarizes every call automatically.', route: '/outreach/calls', tag: 'Live calls' },
-  { icon: Mail,      title: 'Email Campaigns', desc: 'Launch templated outreach to your contact lists with live delivery tracking.', route: '/outreach/email', tag: 'Automated' },
-  { icon: MessageSquare, title: 'SMS Campaigns', desc: 'Reach leads by text with real-time sent/delivered counters as it happens.', route: '/outreach/sms', tag: 'Real-time' },
-];
+const CALL_FEATURES = ['AI dials and talks to leads live — no human on the line', 'Every call transcribed and summarized automatically', 'Recordings and live status the moment a call ends'];
+const EMAIL_FEATURES = ['Personalized to each contact list, sent in seconds', 'Live sent / opened / replied counters', 'Works in all 6 supported languages'];
+const SMS_FEATURES = ['Instant delivery to qualified leads', 'Real-time delivered / failed tracking', 'Two-way — replies land straight in your inbox'];
 
 // ── Buyer flow steps ──────────────────────────────────────────
 const BUYER_FLOW = [
@@ -239,6 +237,165 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── AI OUTREACH ENGINE — 3 separate showcase blocks, right at the top ── */}
+      <section className="py-16 px-4 border-t border-border">
+        <div className="max-w-5xl mx-auto space-y-16">
+          <div className="text-center">
+            <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5 mb-3">
+              <Sparkles className="h-3 w-3" /> New
+            </Badge>
+            <h2 className="text-2xl md:text-3xl font-bold text-foreground">Homatch Doesn't Just Find Leads — It Reaches Them</h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-xl mx-auto">Three AI-driven outreach engines, each built for one job.</p>
+          </div>
+
+          {/* Block 1 — AI Call Center */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+            <div className="space-y-4 order-2 md:order-1">
+              <div className="w-11 h-11 rounded-2xl bg-green-500/10 flex items-center justify-center">
+                <PhoneCall className="h-5 w-5 text-green-400" />
+              </div>
+              <h3 className="text-xl font-bold text-foreground">AI Call Center</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">A real AI voice agent calls your leads, has the conversation, and hands you a transcript and recording — you never have to dial.</p>
+              <ul className="space-y-2">
+                {CALL_FEATURES.map(f => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Button className="bg-green-600 hover:bg-green-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/calls' : '/auth/signup')}>
+                Open AI Call Center <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="order-1 md:order-2">
+              <div className="rounded-2xl border border-border bg-card shadow-hover p-5 max-w-sm mx-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <Badge className="bg-green-500/15 text-green-400 border-green-500/30 text-[10px] gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> LIVE CALL
+                  </Badge>
+                  <span className="text-xs font-mono text-muted-foreground">02:14</span>
+                </div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="relative w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <PhoneCall className="h-5 w-5 text-primary" />
+                    <span className="absolute inset-0 rounded-full border-2 border-primary/30 animate-ping" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">Giorgi M.</p>
+                    <p className="text-xs text-muted-foreground">+995 5●● ●● ●● ●●</p>
+                  </div>
+                  <div className="flex items-end gap-0.5 h-6 ml-auto shrink-0" aria-hidden>
+                    {[0, 1, 2, 3, 4].map(i => (
+                      <span key={i} className="w-1 rounded-full bg-green-400/70 animate-pulse" style={{ height: `${8 + (i % 3) * 5}px`, animationDelay: `${i * 100}ms` }} />
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-secondary/60 border border-border p-3 space-y-1.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Live transcript</p>
+                  <p className="text-xs text-foreground leading-relaxed">"...yes, I'm still interested in the 2-bedroom in Vake. Is it still available and can we—"</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Block 2 — Email Campaigns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+            <div>
+              <div className="rounded-2xl border border-border bg-card shadow-hover overflow-hidden max-w-sm mx-auto">
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-secondary/40">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-400/60" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-400/60" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-400/60" />
+                  <span className="text-[10px] text-muted-foreground ml-2">New Campaign</span>
+                </div>
+                <div className="p-4 space-y-3">
+                  <p className="text-sm font-semibold text-foreground">Exclusive: 2BR in Vake — Priced to Sell</p>
+                  <div className="space-y-1.5">
+                    <div className="h-2 rounded bg-secondary w-full" />
+                    <div className="h-2 rounded bg-secondary w-11/12" />
+                    <div className="h-2 rounded bg-secondary w-4/5" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-foreground">142</p>
+                      <p className="text-[10px] text-muted-foreground">Sent</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-blue-400">89</p>
+                      <p className="text-[10px] text-muted-foreground">Opened</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-green-400">12</p>
+                      <p className="text-[10px] text-muted-foreground">Replied</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                <Mail className="h-5 w-5 text-blue-400" />
+              </div>
+              <h3 className="text-xl font-bold text-foreground">Email Campaigns</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">Send personalized outreach to your entire contact list in one click, and watch delivery, opens and replies update live.</p>
+              <ul className="space-y-2">
+                {EMAIL_FEATURES.map(f => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Button className="bg-blue-600 hover:bg-blue-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/email' : '/auth/signup')}>
+                Open Email Campaigns <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Block 3 — SMS Campaigns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+            <div className="space-y-4 order-2 md:order-1">
+              <div className="w-11 h-11 rounded-2xl bg-purple-500/10 flex items-center justify-center">
+                <MessageSquare className="h-5 w-5 text-purple-400" />
+              </div>
+              <h3 className="text-xl font-bold text-foreground">SMS Campaigns</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">Text leads directly — the channel with the highest read rate. Two-way replies land straight back in Homatch.</p>
+              <ul className="space-y-2">
+                {SMS_FEATURES.map(f => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-purple-400 shrink-0 mt-0.5" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Button className="bg-purple-600 hover:bg-purple-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/sms' : '/auth/signup')}>
+                Open SMS Campaigns <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="order-1 md:order-2">
+              <div className="rounded-2xl border border-border bg-card shadow-hover p-4 max-w-sm mx-auto">
+                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
+                  <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
+                    <MessageSquare className="h-4 w-4 text-purple-400" />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">Homatch</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-purple-600 text-white text-xs px-3 py-2 leading-relaxed">
+                    Hi! We found buyers interested in your Vake listing 🏠 Reply YES for details.
+                  </div>
+                  <div className="flex items-center gap-1 justify-end pr-1">
+                    <span className="text-[9px] text-muted-foreground">Delivered</span>
+                    <CheckCircle2 className="h-2.5 w-2.5 text-purple-400" />
+                  </div>
+                  <div className="max-w-[70%] rounded-2xl rounded-bl-sm bg-secondary text-foreground text-xs px-3 py-2 leading-relaxed">
+                    Yes, tell me more!
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── KEY FEATURES ── */}
       <section className="py-16 px-4 border-t border-border">
         <div className="max-w-5xl mx-auto space-y-8">
@@ -269,60 +426,6 @@ export default function HomePage() {
                 </div>
               );
             })}
-          </div>
-        </div>
-      </section>
-
-      {/* ── AI OUTREACH ENGINE (new) ── */}
-      <section className="py-16 px-4 border-t border-border bg-card/20">
-        <div className="max-w-5xl mx-auto space-y-8">
-          <div className="text-center">
-            <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5 mb-3">
-              <Sparkles className="h-3 w-3" /> New
-            </Badge>
-            <h2 className="text-2xl font-bold text-foreground">AI Outreach Engine</h2>
-            <p className="text-sm text-muted-foreground mt-2 max-w-xl mx-auto">
-              Homatch doesn't just find leads — it reaches them. AI-driven calls, emails and texts, tracked live.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {OUTREACH_CARDS.map(({ icon: Icon, title, desc, route, tag }) => (
-              <button
-                key={title}
-                type="button"
-                onClick={() => navigate(session ? route : '/auth/signup')}
-                className="text-left p-5 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-hover hover:-translate-y-0.5 transition-all group relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="relative w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Icon className="h-5 w-5 text-primary" />
-                    <span className="absolute inset-0 rounded-xl border border-primary/30 animate-ping opacity-0 group-hover:opacity-100" />
-                  </div>
-                  <Badge variant="secondary" className="text-[10px] border-border">{tag}</Badge>
-                </div>
-                <p className="text-sm font-bold text-foreground mb-1.5">{title}</p>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-3">{desc}</p>
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-primary opacity-80 group-hover:opacity-100">
-                  Open <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                </span>
-              </button>
-            ))}
-          </div>
-          {/* Mini live-call teaser */}
-          <div className="max-w-md mx-auto rounded-2xl border border-border bg-card p-4 flex items-center gap-3">
-            <div className="relative w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
-              <PhoneCall className="h-4 w-4 text-green-400" />
-              <span className="absolute inset-0 rounded-full border-2 border-green-400/40 animate-ping" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-foreground">AI is calling a lead right now</p>
-              <p className="text-[11px] text-muted-foreground">Live status, transcript &amp; recording — right after the call ends</p>
-            </div>
-            <div className="flex items-end gap-0.5 h-5 shrink-0" aria-hidden>
-              {[0, 1, 2, 3].map(i => (
-                <span key={i} className="w-1 rounded-full bg-green-400/70 animate-pulse" style={{ height: `${6 + (i % 3) * 4}px`, animationDelay: `${i * 120}ms` }} />
-              ))}
-            </div>
           </div>
         </div>
       </section>

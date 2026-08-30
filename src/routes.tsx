@@ -29,6 +29,7 @@ import ContactListsPage from './pages/outreach/ContactListsPage';
 import EmailCampaignsPage from './pages/outreach/EmailCampaignsPage';
 import SmsCampaignsPage from './pages/outreach/SmsCampaignsPage';
 import AiCallCenterPage from './pages/outreach/AiCallCenterPage';
+import OutreachInsightsPage from './pages/outreach/OutreachInsightsPage';
 // Admin pages
 import AdminLayout from './components/layouts/AdminLayout';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
@@ -93,6 +94,7 @@ export const routes: RouteConfig[] = [
   { name: 'Email Campaigns',   path: '/outreach/email',           element: <EmailCampaignsPage /> },
   { name: 'SMS Campaigns',     path: '/outreach/sms',             element: <SmsCampaignsPage /> },
   { name: 'AI Call Center',    path: '/outreach/calls',           element: <AiCallCenterPage /> },
+  { name: 'Outreach Insights', path: '/outreach/insights',        element: <OutreachInsightsPage /> },
   // Admin (wrapped in AdminLayout which enforces is_admin server-side)
   { name: 'Admin Overview',    path: '/admin',                    element: adminWrap(<AdminOverviewPage />),    adminOnly: true },
   { name: 'Admin Users',       path: '/admin/users',              element: adminWrap(<AdminUsersPage />),       adminOnly: true },

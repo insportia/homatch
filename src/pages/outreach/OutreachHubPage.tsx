@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Globe, Users, Mail, MessageSquare, Phone, Megaphone, ChevronRight } from 'lucide-react';
+import { Users, Mail, MessageSquare, Phone, Megaphone, ChevronRight, BarChart3 } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,7 +10,6 @@ import { AlertCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 const channels = [
-  { icon: Globe, labelKey: 'outreach_channel_communities', descKey: 'outreach_channel_communities_desc', path: '/outreach/communities', badge: 'outreach_badge_internal_only' },
   { icon: Users, labelKey: 'outreach_channel_contacts', descKey: 'outreach_channel_contacts_desc', path: '/outreach/contact-lists', badge: null },
   { icon: Mail, labelKey: 'outreach_channel_email', descKey: 'outreach_channel_email_desc', path: '/outreach/email', badge: 'outreach_badge_disabled' },
   { icon: MessageSquare, labelKey: 'outreach_channel_sms', descKey: 'outreach_channel_sms_desc', path: '/outreach/sms', badge: 'outreach_badge_disabled' },
@@ -37,6 +36,22 @@ export default function OutreachHubPage() {
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-xs">{t('outreach_all_disabled_banner')}</AlertDescription>
           </Alert>
+
+          <Card className="cursor-pointer hover:border-primary/40 transition-colors bg-primary/5 border-primary/20"
+            onClick={() => navigate('/outreach/insights')}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium text-sm">{t('outreach_insights_title')}</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t('outreach_insights_subtitle')}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="grid grid-cols-1 gap-3">
             {channels.map(({ icon: Icon, labelKey, descKey, path, badge }) => (

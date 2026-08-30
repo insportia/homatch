@@ -27,11 +27,19 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
-    const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
+    const { data: profileRow } = await supabase.from('users').select('id,plan').eq('auth_id', user.id).maybeSingle();
     if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
     const ownerId = profileRow.id;
+    const plan = profileRow.plan ?? 'FREE';
 
-    const { property_id, limit = 20 } = await req.json();
+    // Freemium gate: free plan sees a capped number of communities per
+    // property; PLUS/PRO see the full ranked list. This is enforced here
+    // (server-side) rather than trusting a client-supplied limit.
+    const FREE_COMMUNITY_LIMIT = 7;
+    const PAID_COMMUNITY_LIMIT = 100;
+    const maxAllowed = plan === 'FREE' ? FREE_COMMUNITY_LIMIT : PAID_COMMUNITY_LIMIT;
+
+    const { property_id } = await req.json();
     if (!property_id) return new Response(JSON.stringify({ error: 'property_id required' }), { status: 400, headers: corsHeaders });
 
     // Safety gate
@@ -44,11 +52,26 @@ serve(async (req) => {
     if (killSwitch) console.log('[community-recommend] Kill switch active — internal index only');
     if (!discoveryEnabled) console.log('[community-recommend] External discovery disabled — internal index only');
 
-    // Fetch property details
-    const { data: property } = await supabase.from('properties')
-      .select('id,country,city,transaction_type,property_type,price')
+    // Fetch property details. Location/price/language live on property_facts,
+    // not on properties itself (properties only holds transaction_type/
+    // property_type + status columns) — a prior version of this query
+    // selected country/city/price directly off properties, which don't exist
+    // there and would have made every call 404.
+    const { data: propertyRow } = await supabase.from('properties')
+      .select('id,transaction_type,property_type,property_facts(country,city,total_price,source_language,features)')
       .eq('id', property_id).maybeSingle();
-    if (!property) return new Response(JSON.stringify({ error: 'Property not found' }), { status: 404, headers: corsHeaders });
+    if (!propertyRow) return new Response(JSON.stringify({ error: 'Property not found' }), { status: 404, headers: corsHeaders });
+    const facts = (propertyRow as { property_facts?: { country?: string | null; city?: string | null; total_price?: number | null; source_language?: string | null; features?: string[] | null } | null }).property_facts ?? null;
+    const property = {
+      id: propertyRow.id,
+      transaction_type: propertyRow.transaction_type,
+      property_type: propertyRow.property_type,
+      country: facts?.country ?? null,
+      city: facts?.city ?? null,
+      price: facts?.total_price ?? null,
+      language: facts?.source_language ?? null,
+      tags: facts?.features ?? [],
+    };
 
     // Verify ownership
     const { data: ownership } = await supabase.from('properties')
@@ -57,16 +80,20 @@ serve(async (req) => {
 
     // Load internal community index
     const { data: communities } = await supabase.from('community_directory')
-      .select('id,platform,canonical_id,canonical_url,name,language,country,city,tags,topics,member_count,posting_policy')
+      .select('id,platform,canonical_id,canonical_url,name,language,country,city,tags,topics,member_count,posting_policy,posting_allowed,allows_auto_post,housing_focus')
       .eq('is_active', true)
       .order('member_count', { ascending: false })
       .limit(500);
 
-    const ranked = rankCommunities(communities ?? [], property).slice(0, limit);
+    const communityById = new Map((communities ?? []).map((c) => [c.id, c]));
+    const rankedAll = rankCommunities(communities ?? [], property);
+    const rankedTotal = rankedAll.length;
+    const rankedSlice = rankedAll.slice(0, maxAllowed);
+    const lockedCount = Math.max(0, rankedTotal - rankedSlice.length);
 
-    // Upsert recommendations
-    if (ranked.length > 0) {
-      const upsertRows = ranked.map((r) => ({
+    // Upsert recommendations (only for the communities actually shown to this user)
+    if (rankedSlice.length > 0) {
+      const upsertRows = rankedSlice.map((r) => ({
         property_id,
         community_id: r.community_id,
         owner_id: ownerId,
@@ -79,7 +106,23 @@ serve(async (req) => {
         .upsert(upsertRows, { onConflict: 'property_id,community_id', ignoreDuplicates: false });
     }
 
-    return new Response(JSON.stringify({ ranked, total: ranked.length, source: 'internal_index', external_disabled: !discoveryEnabled }), {
+    // Enrich each ranked result with the community's own details so the
+    // frontend doesn't need a second round-trip.
+    const ranked = rankedSlice.map((r) => ({
+      ...r,
+      community: communityById.get(r.community_id) ?? null,
+    }));
+
+    return new Response(JSON.stringify({
+      ranked,
+      total: ranked.length,
+      ranked_total: rankedTotal,
+      locked_count: lockedCount,
+      plan,
+      free_limit: FREE_COMMUNITY_LIMIT,
+      source: 'internal_index',
+      external_disabled: !discoveryEnabled,
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {

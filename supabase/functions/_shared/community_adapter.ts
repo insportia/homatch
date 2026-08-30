@@ -3,7 +3,7 @@
 // and a real adapter is registered.
 
 export interface CommunityRecord {
-  platform: 'TELEGRAM' | 'FACEBOOK' | 'VK' | 'REDDIT' | 'LINKEDIN' | 'THREADS' | 'OTHER';
+  platform: 'TELEGRAM' | 'FACEBOOK' | 'VK' | 'REDDIT' | 'LINKEDIN' | 'THREADS' | 'WHATSAPP' | 'OTHER';
   canonical_id: string;
   canonical_url: string;
   name: string;
@@ -17,6 +17,10 @@ export interface CommunityRecord {
   member_count?: number;
   posting_policy?: 'OPEN' | 'APPROVAL_REQUIRED' | 'CLOSED' | 'UNKNOWN';
   allows_auto_post?: boolean;
+  /** primary = dedicated real-estate community; secondary = general/expat/classifieds
+   *  community where housing posts appear alongside other topics. Defaults to
+   *  'primary' for older records that predate this column. */
+  housing_focus?: 'primary' | 'secondary';
   metadata?: Record<string, unknown>;
 }
 
@@ -61,8 +65,13 @@ export function rankCommunities(
       ? propTopics.filter((t) => commTopics.includes(t)).length / Math.max(propTopics.length, 1)
       : 0.2;
 
-    const audienceMatch =
-      (c.topics ?? []).some((t) => ['investor','investment','real estate','property'].some((k) => t.toLowerCase().includes(k))) ? 0.8 : 0.4;
+    // Dedicated real-estate communities score highest; general expat/classifieds
+    // communities (housing_focus='secondary') are still surfaced — per user
+    // request they should not be excluded — but rank lower than a dedicated
+    // group when one exists for the same location/language.
+    const audienceMatch = c.housing_focus === 'secondary'
+      ? 0.35
+      : (c.topics ?? []).some((t) => ['investor','investment','real estate','property'].some((k) => t.toLowerCase().includes(k))) ? 0.8 : 0.4;
 
     const activityScore = c.member_count
       ? Math.min(c.member_count / 50000, 1) * 0.7 + 0.3

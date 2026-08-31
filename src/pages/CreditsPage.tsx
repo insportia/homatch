@@ -14,19 +14,28 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Zap, TrendingUp, TrendingDown, CreditCard, ArrowUpRight,
-  ArrowDownRight, Clock, Loader2, ExternalLink, Info,
+  ArrowDownRight, Clock, Loader2, ExternalLink, Info, Search,
+  Send, MessageCircle, ShoppingCart, Lock, Unlock,
 } from 'lucide-react';
-import { getCreditAccount, getCreditLedger, initiateTopUp } from '@/services/api';
-import type { CreditAccount, CreditLedgerEntry, LedgerType } from '@/types/types';
+import { getCreditAccount, getCreditLedger, initiateTopUp, getResearchProducts, getMyResearchPurchases } from '@/services/api';
+import { purchaseResearchProduct } from '@/services/api3';
+import type { CreditAccount, CreditLedgerEntry, LedgerType, ResearchProduct, ResearchPurchase } from '@/types/types';
 import { toast } from 'sonner';
 
 const TOPUP_PRESETS = [30, 50, 100, 200];
 
 const LEDGER_TYPE_CONFIG: Record<LedgerType, { label: string; icon: React.ElementType; color: string }> = {
-  TOP_UP:           { label: 'Top Up',          icon: ArrowUpRight,   color: 'text-green-400' },
-  MATCH_UNLOCK:     { label: 'Match Unlock',     icon: ArrowDownRight, color: 'text-destructive' },
-  REFUND:           { label: 'Refund',           icon: ArrowUpRight,   color: 'text-blue-400' },
-  ADMIN_ADJUSTMENT: { label: 'Adjustment',       icon: ArrowUpRight,   color: 'text-muted-foreground' },
+  TOP_UP:            { label: 'Top Up',            icon: ArrowUpRight,   color: 'text-green-400' },
+  MATCH_UNLOCK:      { label: 'Match Unlock',       icon: ArrowDownRight, color: 'text-destructive' },
+  REFUND:            { label: 'Refund',             icon: ArrowUpRight,   color: 'text-blue-400' },
+  ADMIN_ADJUSTMENT:  { label: 'Adjustment',         icon: ArrowUpRight,   color: 'text-muted-foreground' },
+  SERVICE_RESERVE:   { label: 'Research — Reserved', icon: Lock,          color: 'text-amber-500' },
+  SERVICE_CAPTURE:   { label: 'Research — Confirmed', icon: ShoppingCart, color: 'text-muted-foreground' },
+  SERVICE_RELEASE:   { label: 'Research — Refunded', icon: Unlock,        color: 'text-blue-400' },
+};
+
+const PRODUCT_ICON: Record<string, React.ElementType> = {
+  TELEGRAM: Send, FACEBOOK: MessageCircle, GOOGLE: Search,
 };
 
 function LedgerRow({ entry }: { entry: CreditLedgerEntry }) {
@@ -75,16 +84,23 @@ function CreditsContent() {
   const [topUpAmount, setTopUpAmount] = useState(30);
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpResult, setTopUpResult] = useState<{ mock?: boolean; checkoutUrl?: string } | null>(null);
+  const [products, setProducts] = useState<ResearchProduct[]>([]);
+  const [purchases, setPurchases] = useState<ResearchPurchase[]>([]);
+  const [purchasing, setPurchasing] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!homatchUser) return;
     setLoading(true);
-    const [account, entries] = await Promise.all([
+    const [account, entries, prods, myPurchases] = await Promise.all([
       getCreditAccount(homatchUser.id),
       getCreditLedger(homatchUser.id),
+      getResearchProducts(),
+      getMyResearchPurchases(),
     ]);
     setCreditAccount(account);
     setLedger(entries);
+    setProducts(prods.filter(p => p.enabled));
+    setPurchases(myPurchases);
     setLoading(false);
   }, [homatchUser]);
 
@@ -122,6 +138,19 @@ function CreditsContent() {
       setTopUpResult({ mock: true, checkoutUrl: result.checkoutUrl });
     } else if (result.checkoutUrl) {
       window.location.href = result.checkoutUrl;
+    }
+  };
+
+  const handlePurchase = async (code: string) => {
+    setPurchasing(code);
+    try {
+      await purchaseResearchProduct(code);
+      toast.success(t('research_purchase_success'));
+      loadData();
+    } catch (e: any) {
+      toast.error(e?.message === 'Insufficient credits' ? t('research_purchase_insufficient') : t('research_purchase_failed'));
+    } finally {
+      setPurchasing(null);
     }
   };
 
@@ -192,6 +221,51 @@ function CreditsContent() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Research products */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              {t('research_products_title')}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">{t('research_products_desc')}</p>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-2">
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />)
+            ) : (
+              products.map(p => {
+                const Icon = PRODUCT_ICON[p.category] ?? Search;
+                const priceUsd = (p.price_cents / 100).toFixed(2);
+                const active = purchases.find(pu => pu.product_code === p.code && pu.status === 'ACTIVE');
+                return (
+                  <div key={p.code} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        ${priceUsd} · {t('research_vat_included')}
+                        {active && <span className="ms-1.5 text-primary">· {active.units_remaining.toLocaleString()} {t('research_units_remaining')}</span>}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 text-xs gap-1.5"
+                      disabled={purchasing === p.code || balance < p.price_cents / 100}
+                      onClick={() => handlePurchase(p.code)}
+                    >
+                      {purchasing === p.code ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
+                      {t('research_purchase_btn')}
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
 
         {/* Transaction history */}
         <Card className="bg-card border-border">

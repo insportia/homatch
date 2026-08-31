@@ -1,12 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { LayoutDashboard, MessageSquare, Shield, Search, Bot } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Shield, Search, Bot, Radio } from 'lucide-react';
 
 const items = [
   { key: 'nav_dashboard',     path: '/dashboard',     icon: LayoutDashboard },
   { key: 'nav_chat',          path: '/chat',          icon: MessageSquare },
   { key: 'nav_ai',            path: '/ai',            icon: Bot,    highlight: true },
+  { key: 'nav_live_chat',     path: '/live-chat',     icon: Radio },
   { key: 'nav_verify',        path: '/verify',        icon: Shield },
   { key: 'nav_active_search', path: '/active-search', icon: Search },
 ];

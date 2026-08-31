@@ -3,10 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Save, Info } from 'lucide-react';
-import { getPricingConfig, updatePricingConfig } from '@/services/api';
-import type { PricingConfig } from '@/types/types';
+import { Save, Info, Percent } from 'lucide-react';
+import { getPricingConfig, updatePricingConfig, getResearchProducts, updateResearchProduct, getVatRateBps, updateVatRateBps } from '@/services/api';
+import type { PricingConfig, ResearchProduct } from '@/types/types';
 import { toast } from 'sonner';
 
 type FieldDef = { key: keyof PricingConfig; label: string; hint: string; min: number; max: number; step: number };
@@ -30,8 +31,20 @@ export default function AdminPricingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [products, setProducts] = useState<ResearchProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [savingProduct, setSavingProduct] = useState<string | null>(null);
+  const [vatBps, setVatBps] = useState(1800);
+  const [vatDraft, setVatDraft] = useState(1800);
+  const [savingVat, setSavingVat] = useState(false);
+
   useEffect(() => {
     getPricingConfig().then(c => { setCfg(c); setDraft(c); }).finally(() => setLoading(false));
+    Promise.all([getResearchProducts(), getVatRateBps()]).then(([prods, bps]) => {
+      setProducts(prods);
+      setVatBps(bps);
+      setVatDraft(bps);
+    }).finally(() => setProductsLoading(false));
   }, []);
 
   const save = async () => {
@@ -45,6 +58,44 @@ export default function AdminPricingPage() {
       toast.error('Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveVat = async () => {
+    setSavingVat(true);
+    try {
+      await updateVatRateBps(vatDraft);
+      setVatBps(vatDraft);
+      toast.success('VAT rate updated — applies to new payments only, historical payments keep their snapshot');
+    } catch {
+      toast.error('Failed to save VAT rate');
+    } finally {
+      setSavingVat(false);
+    }
+  };
+
+  const toggleProductEnabled = async (code: string, enabled: boolean) => {
+    setSavingProduct(code);
+    try {
+      await updateResearchProduct(code, { enabled });
+      setProducts(prev => prev.map(p => (p.code === code ? { ...p, enabled } : p)));
+    } catch {
+      toast.error('Failed to update product');
+    } finally {
+      setSavingProduct(null);
+    }
+  };
+
+  const updateProductPrice = async (code: string, priceCents: number) => {
+    setSavingProduct(code);
+    try {
+      await updateResearchProduct(code, { price_cents: priceCents });
+      setProducts(prev => prev.map(p => (p.code === code ? { ...p, price_cents: priceCents } : p)));
+      toast.success('Price updated');
+    } catch {
+      toast.error('Failed to update price');
+    } finally {
+      setSavingProduct(null);
     }
   };
 
@@ -80,6 +131,62 @@ export default function AdminPricingPage() {
           <Button onClick={save} disabled={saving || loading} className="w-full gap-1.5 mt-2">
             <Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save Pricing Config'}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-1.5"><Percent className="h-4 w-4" /> VAT Rate</CardTitle>
+          <CardDescription className="text-xs">Centrally-configurable VAT rate applied to new research-product purchases. Historical payments keep their own snapshot and are never recalculated.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Input
+              type="number" min={0} max={5000} step={10}
+              value={vatDraft}
+              onChange={e => setVatDraft(Number(e.target.value))}
+              className="h-9 text-sm w-32"
+            />
+            <span className="text-xs text-muted-foreground">basis points = {(vatDraft / 100).toFixed(2)}%</span>
+          </div>
+          <Button onClick={saveVat} disabled={savingVat || vatDraft === vatBps} size="sm" className="gap-1.5">
+            <Save className="h-3.5 w-3.5" /> {savingVat ? 'Saving…' : 'Save VAT Rate'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Research Products</CardTitle>
+          <CardDescription className="text-xs">Fixed retail packages. Price is VAT-inclusive. Provider COGS is internal only — never shown to customers.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {productsLoading ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16" />) :
+            products.map(p => (
+              <div key={p.code} className="flex items-center gap-3 p-3 rounded-lg border border-border flex-wrap">
+                <div className="flex-1 min-w-[160px]">
+                  <p className="text-sm font-medium">{p.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    COGS ${(p.reference_cogs_cents / 100).toFixed(2)} · Target contribution ${(p.target_contribution_cents / 100).toFixed(2)} · VAT {(p.vat_rate_bps / 100).toFixed(0)}%
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">$</span>
+                  <Input
+                    type="number" step={0.01} defaultValue={(p.price_cents / 100).toFixed(2)}
+                    className="h-8 w-24 text-sm"
+                    onBlur={e => {
+                      const cents = Math.round(Number(e.target.value) * 100);
+                      if (cents > 0 && cents !== p.price_cents) updateProductPrice(p.code, cents);
+                    }}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Switch checked={p.enabled} disabled={savingProduct === p.code} onCheckedChange={v => toggleProductEnabled(p.code, v)} />
+                  <span className="text-xs text-muted-foreground">{p.enabled ? 'Enabled' : 'Disabled'}</span>
+                </div>
+              </div>
+            ))}
         </CardContent>
       </Card>
     </div>

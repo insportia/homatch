@@ -30,6 +30,7 @@ import {
   Shield,
   Building2,
   Megaphone,
+  Radio,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 
@@ -37,6 +38,7 @@ const navItems = [
   { key: 'nav_dashboard',     path: '/dashboard',      icon: LayoutDashboard },
   { key: 'nav_ai',            path: '/ai',             icon: Bot,         highlight: true },
   { key: 'nav_chat',          path: '/chat',           icon: MessageSquare },
+  { key: 'nav_live_chat',     path: '/live-chat',      icon: Radio },
   { key: 'nav_viewings',      path: '/viewings',       icon: CalendarDays },
   { key: 'nav_active_search', path: '/active-search',  icon: Search },
   { key: 'nav_outreach',      path: '/outreach',       icon: Megaphone },

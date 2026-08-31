@@ -9,7 +9,7 @@ import {
   ArrowRight, Search, Sparkles, Shield, Building2, Home, Users, Globe,
   Zap, Lock, TrendingDown, Copy, BarChart2, ShieldCheck, Bot,
   MessageSquare, Bell, Eye, CheckCircle2, ChevronDown, ChevronUp,
-  ExternalLink, Star, Clock, MapPin, Mail, PhoneCall,
+  ExternalLink, Star, Clock, MapPin, Mail, PhoneCall, Radio,
 } from 'lucide-react';
 import { useState } from 'react';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
@@ -36,6 +36,7 @@ const FEATURES = [
   { icon: BarChart2,    title: 'DEVELOPER TRUST PROFILE',  desc: 'Check developer history, active permits, project completion and public risk indicators.', route: '/verify?tab=developer' },
   { icon: Bell,         title: 'ACTIVE AI SEARCH',         desc: 'Set once. AI keeps watching and alerts you when new matches appear.', route: '/active-search' },
   { icon: MessageSquare,title: 'REAL-TIME CHAT',           desc: 'Connect directly with matched buyers, renters or sellers in-app.', route: '/chat' },
+  { icon: Radio,        title: 'LIVE CHAT',                desc: 'One global room for the whole Homatch community — pick a nickname and jump in.', route: '/live-chat' },
   { icon: Eye,          title: 'VIEWING REQUESTS',         desc: 'Schedule property viewings directly through Homatch.', route: '/viewings' },
   { icon: Globe,        title: 'MULTILINGUAL DISCOVERY',   desc: 'Search in Georgian, Russian, English, Turkish, Arabic and Hebrew.', route: null },
 ];
@@ -392,6 +393,31 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── LIVE CHAT — prominent, standalone from AI chat ── */}
+      <section className="py-14 px-4 border-t border-border">
+        <div className="max-w-4xl mx-auto">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(session ? '/live-chat' : '/auth/signup')}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(session ? '/live-chat' : '/auth/signup'); } }}
+            className="flex flex-col sm:flex-row items-center gap-5 p-6 sm:p-8 rounded-2xl border border-primary/20 bg-primary/5 hover:border-primary/40 hover:shadow-hover transition-all cursor-pointer group"
+          >
+            <div className="h-14 w-14 rounded-2xl bg-primary/15 flex items-center justify-center shrink-0">
+              <Radio className="h-7 w-7 text-primary" />
+            </div>
+            <div className="flex-1 text-center sm:text-left">
+              <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
+                <h3 className="text-lg font-bold text-foreground">Homatch Live Chat</h3>
+                <Badge className="bg-primary text-primary-foreground text-[10px]">LIVE</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">One global room, open to every Homatch member — pick a public nickname and talk in real time. Separate from AI Assistant and from your private conversations.</p>
+            </div>
+            <ArrowRight className="h-5 w-5 text-primary shrink-0 group-hover:translate-x-1 transition-transform hidden sm:block" />
           </div>
         </div>
       </section>

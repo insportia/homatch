@@ -16,6 +16,7 @@ import PropertyDetailPage from './pages/property/PropertyDetailPage';
 import MatchesPage from './pages/property/MatchesPage';
 import CreditsPage from './pages/CreditsPage';
 import ChatPage from './pages/ChatPage';
+import LiveChatPage from './pages/LiveChatPage';
 import ViewingsPage from './pages/ViewingsPage';
 import ActiveSearchPage from './pages/ActiveSearchPage';
 import DeveloperProfilePage from './pages/DeveloperProfilePage';
@@ -50,6 +51,7 @@ import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
 import AdminSponsoredPage from './pages/admin/AdminSponsoredPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AdminHealthPage from './pages/admin/AdminHealthPage';
+import AdminLiveChatReportsPage from './pages/admin/AdminLiveChatReportsPage';
 
 export interface RouteConfig {
   name: string;
@@ -79,6 +81,7 @@ export const routes: RouteConfig[] = [
   { name: 'Notifications',     path: '/notifications',            element: <NotificationsPage /> },
   { name: 'Credits',           path: '/credits',                  element: <CreditsPage /> },
   { name: 'Chat',              path: '/chat',                     element: <ChatPage /> },
+  { name: 'Live Chat',         path: '/live-chat',                element: <LiveChatPage /> },
   { name: 'Viewings',          path: '/viewings',                 element: <ViewingsPage /> },
   { name: 'Active Search',     path: '/active-search',            element: <ActiveSearchPage /> },
   { name: 'Developer Profile', path: '/developer/:id',            element: <DeveloperProfilePage /> },
@@ -107,6 +110,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Matches',     path: '/admin/matches',            element: adminWrap(<AdminMatchesPage />),     adminOnly: true },
   { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },
   { name: 'Admin Payments',    path: '/admin/payments',           element: adminWrap(<AdminPaymentsPage />),    adminOnly: true },
+  { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },

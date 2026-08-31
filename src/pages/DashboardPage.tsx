@@ -407,6 +407,25 @@ function DashboardContent() {
           <StatsCard label="New Matches" value={matchSummary.newCount} icon={Radio} accent={matchSummary.newCount > 0} />
         </div>
 
+        {/* Live Chat — prominent, always visible, separate from AI chat */}
+        <button
+          type="button"
+          onClick={() => navigate('/live-chat')}
+          className="w-full flex items-center gap-4 p-4 rounded-xl border border-primary/20 bg-primary/5 hover:border-primary/40 hover:bg-primary/10 transition-colors text-left"
+        >
+          <div className="h-10 w-10 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+            <Radio className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-foreground">{t('nav_live_chat')}</span>
+              <Badge className="bg-primary text-primary-foreground text-[9px] px-1.5">LIVE</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('live_chat_dashboard_desc')}</p>
+          </div>
+          <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
+        </button>
+
         {/* Live matching panels */}
         {liveRuns.map(run => <LiveMatchingPanel key={run.id} run={run} />)}
         {!liveRuns.length && Object.values(progress).filter(r => r.status === 'COMPLETED').slice(0, 1).map(run => (
@@ -446,6 +465,7 @@ function DashboardContent() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
             {[
               { icon: Bot,          labelKey: 'nav_ai'           as const, path: '/ai' },
+              { icon: Radio,        labelKey: 'nav_live_chat'    as const, path: '/live-chat' },
               { icon: Shield,       labelKey: 'nav_verify'       as const, path: '/verify' },
               { icon: Bell,         labelKey: 'nav_active_search' as const, path: '/active-search' },
               { icon: CalendarDays, labelKey: 'nav_viewings'     as const, path: '/viewings' },

@@ -174,6 +174,95 @@ export interface PricingConfig {
   multiplier_cogs: number;
 }
 
+// ── Research products / pricing / provider treasury ──────────
+export type ResearchProductCategory = 'TELEGRAM' | 'FACEBOOK' | 'GOOGLE';
+
+export interface ResearchProduct {
+  id: string;
+  code: string;
+  name: string;
+  category: ResearchProductCategory;
+  unit_count: number;
+  price_cents: number; // VAT-inclusive retail price
+  vat_rate_bps: number;
+  reference_cogs_cents: number;
+  target_contribution_cents: number;
+  currency: string;
+  enabled: boolean;
+  sort_order: number;
+}
+
+export interface ResearchPurchase {
+  id: string;
+  user_id: string;
+  product_code: string;
+  units_purchased: number;
+  units_used: number;
+  units_remaining: number;
+  price_cents_snapshot: number;
+  vat_rate_bps_snapshot: number;
+  status: 'ACTIVE' | 'EXHAUSTED' | 'EXPIRED' | 'CANCELLED';
+  created_at: string;
+}
+
+export interface ResearchProviderTreasuryRow {
+  id: string;
+  provider_code: string;
+  display_name: string;
+  enabled: boolean;
+  kill_switch: boolean;
+  billing_model: 'SUBSCRIPTION' | 'PAYG';
+  billing_currency: string;
+  reference_cost_usd_cents: number | null;
+  included_usage: number | null;
+  current_usage: number;
+  estimated_cogs_cents: number;
+  actual_cogs_cents: number | null;
+  daily_cap_cents: number | null;
+  monthly_cap_cents: number | null;
+  daily_spend_cents: number;
+  monthly_spend_cents: number;
+  health_status: 'ACTIVE' | 'DEGRADED' | 'DOWN' | 'LOCKED' | 'NOT_CONFIGURED';
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  notes: string | null;
+  effective_date: string;
+}
+
+// ── Live Chat ─────────────────────────────────────────────────
+export interface LiveChatProfile {
+  user_id: string;
+  nickname: string;
+  avatar_color: string;
+  suspended: boolean;
+  suspended_reason?: string | null;
+  last_active_at: string;
+}
+
+export interface LiveChatMessage {
+  id: string;
+  seq: number;
+  user_id: string;
+  body: string;
+  reply_to_id: string | null;
+  edited_at: string | null;
+  deleted_at: string | null;
+  hidden_by_admin: boolean;
+  hidden_reason: string | null;
+  created_at: string;
+  author?: LiveChatProfile | null;
+  reply_to?: { id: string; body: string; nickname: string } | null;
+}
+
+export interface LiveChatReport {
+  id: string;
+  message_id: string;
+  reporter_id: string;
+  reason: string;
+  status: 'PENDING' | 'DISMISSED' | 'HIDDEN' | 'USER_SUSPENDED';
+  created_at: string;
+}
+
 export interface UserPreference {
   id: string;
   user_id: string;
@@ -377,7 +466,8 @@ export type MatchStatus =
   | 'NEW' | 'PREVIEWED' | 'UNLOCKED' | 'ARCHIVED' | 'REJECTED';
 
 export type LedgerType =
-  | 'TOP_UP' | 'MATCH_UNLOCK' | 'ADMIN_ADJUSTMENT' | 'REFUND';
+  | 'TOP_UP' | 'MATCH_UNLOCK' | 'ADMIN_ADJUSTMENT' | 'REFUND'
+  | 'SERVICE_RESERVE' | 'SERVICE_CAPTURE' | 'SERVICE_RELEASE';
 
 export type PaymentStatus =
   | 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';

@@ -295,3 +295,11 @@ export async function getPAYGOperations(): Promise<PAYGOperation[]> {
   if (error) throw error;
   return data ?? [];
 }
+
+// ── RESEARCH PRODUCTS ────────────────────────────────────────────────────────
+
+export async function purchaseResearchProduct(productCode: string): Promise<{
+  success: boolean; purchaseId: string; productCode: string; unitsPurchased: number; priceCents: number;
+}> {
+  return callEF('research-purchase', { productCode });
+}

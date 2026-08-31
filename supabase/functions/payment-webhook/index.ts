@@ -1,11 +1,19 @@
 // ============================================================
 // HOMATCH — payment-webhook Edge Function
-// Handles Stripe webhook: checkout.session.completed
-// Idempotent: issues Credits exactly once per payment.
+// Handles the payment provider's webhook via the provider-agnostic
+// PaymentProvider abstraction (Master Prompt §10/§11/§14).
+// Idempotent: issues Credits exactly once per payment, verified
+// with credit_topup_atomic() (row-locked, atomic balance update +
+// ledger row — fixes a pre-existing non-atomic read-then-write race
+// in the credit_accounts update).
+//
+// Security: credits are NEVER issued from a frontend redirect or a
+// `?success=true` query param — only from this verified webhook.
 // ============================================================
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getPaymentProvider } from '../_shared/payment_provider.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -22,117 +30,103 @@ serve(async (req) => {
 
   try {
     const body = await req.text();
-    const signature = req.headers.get('stripe-signature') ?? '';
-    const webhookSecret = Deno.env.get('PAYMENT_WEBHOOK_SECRET');
+    const signature = req.headers.get('stripe-signature');
+    const provider = getPaymentProvider();
 
-    // Verify Stripe signature if configured
-    if (webhookSecret) {
-      const isValid = await verifyStripeSignature(body, signature, webhookSecret);
-      if (!isValid) {
-        return json({ error: 'Invalid webhook signature' }, 400);
-      }
+    const verification = await provider.verifyWebhook(body, signature);
+    if (!verification.valid) {
+      return json({ error: 'Invalid webhook signature' }, 400);
     }
 
-    const event = JSON.parse(body);
-    const eventType = event.type;
+    const event = verification.event;
+    const eventType = verification.eventType;
+    const eventId: string | undefined = verification.eventId;
 
     if (eventType !== 'checkout.session.completed') {
-      // Acknowledge but skip non-payment events
       return json({ received: true, processed: false, eventType });
     }
 
     const session = event.data.object;
-    const stripeSessionId = session.id;
+    const providerCheckoutId = session.id;
     const metadata = session.metadata ?? {};
     const userId: string = metadata.user_id;
     const creditsToIssue = Number(metadata.credits ?? 0);
-    const idempotencyKey: string = metadata.idempotency_key ?? stripeSessionId;
+    const idempotencyKey: string = metadata.idempotency_key ?? providerCheckoutId;
 
     if (!userId || creditsToIssue <= 0) {
-      return json({ error: 'Missing metadata in session', stripeSessionId }, 400);
+      return json({ error: 'Missing metadata in session', providerCheckoutId }, 400);
     }
 
-    // Idempotency check: find existing payment
+    // Idempotency: check both the provider event id (webhook-level
+    // dedup — Stripe can and does retry delivery) and the
+    // idempotency_key (payment-level dedup).
+    if (eventId) {
+      const { data: byEvent } = await supabaseAdmin
+        .from('payments').select('id, status').eq('provider_event_id', eventId).maybeSingle();
+      if (byEvent?.status === 'COMPLETED') {
+        return json({ received: true, processed: false, reason: 'Event already processed', paymentId: byEvent.id });
+      }
+    }
+
     const { data: existingPayment } = await supabaseAdmin
       .from('payments')
-      .select('id, status, credits_issued')
+      .select('id, status, credits_issued, total_cents')
       .eq('idempotency_key', idempotencyKey)
       .maybeSingle();
 
     if (existingPayment?.status === 'COMPLETED') {
-      // Already processed — safe to return 200 (Stripe may retry)
       return json({ received: true, processed: false, reason: 'Already completed', paymentId: existingPayment.id });
     }
 
-    // Load current credit balance
-    const { data: creditAccount } = await supabaseAdmin
-      .from('credit_accounts')
-      .select('balance')
-      .eq('user_id', userId)
-      .maybeSingle();
+    // ── ATOMIC: credit account + ledger, in one row-locked function ──
+    const { data: topupResult, error: topupErr } = await supabaseAdmin.rpc('credit_topup_atomic', {
+      p_user_id: userId,
+      p_credits: creditsToIssue,
+      p_reference: `${provider.name}:${providerCheckoutId}`,
+      p_payment_id: existingPayment?.id ?? null,
+    });
+    if (topupErr) throw new Error(`credit_topup_atomic failed: ${topupErr.message}`);
+    const { ledger_entry_id: ledgerId, balance_after: newBalance } = topupResult?.[0] ?? {};
 
-    const currentBalance = Number(creditAccount?.balance ?? 0);
-    const newBalance = currentBalance + creditsToIssue;
+    const invoiceRef = await provider.createInvoiceReference(providerCheckoutId).catch(() => null);
 
-    // ── ATOMIC: update credits + ledger + payment ────────────
+    const paymentUpdate = {
+      status: 'COMPLETED',
+      webhook_verified: !!signature,
+      provider_id: providerCheckoutId,
+      provider_event_id: eventId ?? null,
+      metadata: { checkout_id: providerCheckoutId, ledger_id: ledgerId },
+      ...(invoiceRef ? {
+        invoice_id: invoiceRef.invoiceId,
+        invoice_url: invoiceRef.invoiceUrl,
+        receipt_url: invoiceRef.receiptUrl,
+      } : {}),
+    };
 
-    // 1. Update credit account
-    const { error: creditErr } = await supabaseAdmin
-      .from('credit_accounts')
-      .update({ balance: newBalance })
-      .eq('user_id', userId);
-
-    if (creditErr) throw new Error(`Credit update failed: ${creditErr.message}`);
-
-    // 2. Ledger entry
-    const { data: ledgerEntry, error: ledgerErr } = await supabaseAdmin
-      .from('credit_ledger')
-      .insert({
-        user_id: userId,
-        amount: creditsToIssue,
-        balance_before: currentBalance,
-        balance_after: newBalance,
-        type: 'TOP_UP',
-        reference: `stripe:${stripeSessionId}`,
-        payment_id: existingPayment?.id ?? null,
-      })
-      .select('id')
-      .maybeSingle();
-
-    if (ledgerErr) throw new Error(`Ledger insert failed: ${ledgerErr.message}`);
-
-    // 3. Update payment record
     if (existingPayment) {
-      await supabaseAdmin
-        .from('payments')
-        .update({
-          status: 'COMPLETED',
-          webhook_verified: !!webhookSecret,
-          provider_id: stripeSessionId,
-          metadata: { session_id: stripeSessionId, ledger_id: ledgerEntry?.id },
-        })
-        .eq('id', existingPayment.id);
+      await supabaseAdmin.from('payments').update(paymentUpdate).eq('id', existingPayment.id);
     } else {
-      // Payment record not pre-created — insert now
       await supabaseAdmin.from('payments').insert({
         user_id: userId,
-        provider: 'stripe',
-        provider_id: stripeSessionId,
+        provider: provider.name,
+        provider_id: providerCheckoutId,
+        provider_event_id: eventId ?? null,
         amount_usd: session.amount_total ? session.amount_total / 100 : creditsToIssue,
         credits_issued: creditsToIssue,
-        status: 'COMPLETED',
-        webhook_verified: !!webhookSecret,
+        subtotal_cents: session.amount_total ?? creditsToIssue * 100,
+        vat_rate_bps: 0,
+        vat_amount_cents: 0,
+        total_cents: session.amount_total ?? creditsToIssue * 100,
         idempotency_key: idempotencyKey,
-        metadata: { session_id: stripeSessionId, ledger_id: ledgerEntry?.id },
+        ...paymentUpdate,
       });
     }
 
-    // 4. Notification
     await supabaseAdmin.from('notifications').insert({
       user_id: userId,
       type: 'CREDITS_TOPPED_UP',
       title: `${creditsToIssue} Credits added`,
-      body: `Your balance is now ${newBalance.toFixed(2)} Credits.`,
+      body: `Your balance is now ${Number(newBalance ?? 0).toFixed(2)} Credits.`,
       metadata: { credits_added: creditsToIssue, new_balance: newBalance },
     });
 
@@ -142,7 +136,6 @@ serve(async (req) => {
       metadata: { credits_added: creditsToIssue, new_balance: newBalance },
     });
 
-    // 5. Resume paused campaigns due to low balance
     await supabaseAdmin
       .from('matching_campaigns')
       .update({ status_v2: 'ACTIVE' })
@@ -161,36 +154,6 @@ serve(async (req) => {
     return json({ error: err instanceof Error ? err.message : 'Unknown error' }, 500);
   }
 });
-
-// Minimal Stripe signature verification
-async function verifyStripeSignature(
-  payload: string,
-  signature: string,
-  secret: string
-): Promise<boolean> {
-  try {
-    const parts = signature.split(',');
-    const timestamp = parts.find(p => p.startsWith('t='))?.split('=')[1];
-    const v1 = parts.find(p => p.startsWith('v1='))?.split('=')[1];
-    if (!timestamp || !v1) return false;
-
-    const signedPayload = `${timestamp}.${payload}`;
-    const key = await crypto.subtle.importKey(
-      'raw',
-      new TextEncoder().encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
-    const computed = Array.from(new Uint8Array(sig))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-    return computed === v1;
-  } catch {
-    return false;
-  }
-}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {

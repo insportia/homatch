@@ -4,9 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, MinusCircle, Power, ShieldOff } from 'lucide-react';
-import { getProviderHealth, getProviderCostBreakdown, getAdminSettings, updateAdminSetting } from '@/services/api';
-import type { ProviderHealth, AdminProviderCostRow } from '@/types/types';
+import { RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, MinusCircle, Power, ShieldOff, Landmark, Lock } from 'lucide-react';
+import { getProviderHealth, getProviderCostBreakdown, getAdminSettings, updateAdminSetting, getResearchProviderTreasury, updateResearchProvider } from '@/services/api';
+import type { ProviderHealth, AdminProviderCostRow, ResearchProviderTreasuryRow } from '@/types/types';
 import { format } from 'date-fns';
 import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
@@ -30,6 +30,9 @@ export default function AdminProvidersPage() {
   const [disabledProviders, setDisabledProviders] = useState<string[]>([]);
   const [globalKillSwitch, setGlobalKillSwitch] = useState(false);
   const [savingKill, setSavingKill] = useState(false);
+  const [treasury, setTreasury] = useState<ResearchProviderTreasuryRow[]>([]);
+  const [treasuryLoading, setTreasuryLoading] = useState(true);
+  const [togglingTreasury, setTogglingTreasury] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -56,6 +59,23 @@ export default function AdminProvidersPage() {
   };
 
   useEffect(load, []);
+
+  useEffect(() => {
+    setTreasuryLoading(true);
+    getResearchProviderTreasury().then(setTreasury).finally(() => setTreasuryLoading(false));
+  }, []);
+
+  const toggleTreasuryEnabled = async (providerCode: string, enabled: boolean) => {
+    setTogglingTreasury(providerCode);
+    try {
+      await updateResearchProvider(providerCode, { enabled, kill_switch: !enabled });
+      setTreasury(prev => prev.map(p => (p.provider_code === providerCode ? { ...p, enabled, kill_switch: !enabled } : p)));
+    } catch {
+      toast.error('Failed to update provider');
+    } finally {
+      setTogglingTreasury(null);
+    }
+  };
 
   const runProviderTest = async (provider: string) => {
     setTesting(provider);
@@ -234,6 +254,39 @@ export default function AdminProvidersPage() {
               </Card>
             );
           })}
+      </div>
+
+      {/* ── Research provider treasury (Master Prompt §21/§24) ── */}
+      <div className="flex items-center gap-2 pt-2">
+        <Landmark className="h-4 w-4 text-primary" />
+        <h2 className="text-base font-bold">Research Provider Treasury</h2>
+      </div>
+      <p className="text-xs text-muted-foreground -mt-3">Internal COGS/budget tracking for research providers (TGStat, DataForSEO, Bright Data, Apify). Never shown to customers.</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {treasuryLoading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />) :
+          treasury.map(p => (
+            <Card key={p.provider_code} className={cn('shadow-sm', !p.enabled && 'opacity-70 border-dashed')}>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{p.display_name}</p>
+                  <Badge variant="outline" className={cn('text-[10px] px-1.5', p.health_status === 'ACTIVE' ? 'border-green-500/40 text-green-500' : p.health_status === 'LOCKED' ? 'border-destructive/40 text-destructive' : '')}>
+                    {p.health_status === 'LOCKED' && <Lock className="h-2.5 w-2.5 me-1 inline" />}{p.health_status}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div><p className="text-muted-foreground">Billing</p><p className="font-medium">{p.billing_model}</p></div>
+                  <div><p className="text-muted-foreground">Reference cost</p><p className="font-medium">{p.reference_cost_usd_cents != null ? `$${(p.reference_cost_usd_cents / 100).toFixed(2)}` : '—'}</p></div>
+                  <div><p className="text-muted-foreground">Included usage</p><p className="font-medium">{p.included_usage?.toLocaleString() ?? '—'}</p></div>
+                  <div><p className="text-muted-foreground">Current usage</p><p className="font-medium">{p.current_usage.toLocaleString()}</p></div>
+                </div>
+                {p.notes && <p className="text-[11px] text-muted-foreground/80 leading-snug">{p.notes}</p>}
+                <div className="flex items-center gap-2 pt-1">
+                  <Switch checked={p.enabled} disabled={togglingTreasury === p.provider_code} onCheckedChange={v => toggleTreasuryEnabled(p.provider_code, v)} />
+                  <span className="text-xs text-muted-foreground">{p.enabled ? 'Enabled' : 'Disabled / kill switch on'}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
       </div>
     </div>
   );

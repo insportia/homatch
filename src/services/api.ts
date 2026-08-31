@@ -28,6 +28,9 @@ import type {
   SpendCapConfig,
   AdminProviderCostRow,
   PricingConfig,
+  ResearchProduct,
+  ResearchPurchase,
+  ResearchProviderTreasuryRow,
 } from '@/types/types';
 
 // ============================================================
@@ -826,6 +829,69 @@ export async function updateSpendCaps(caps: Partial<SpendCapConfig>): Promise<vo
       supabase.from('admin_settings').update({ value: v, updated_at: new Date().toISOString() }).eq('key', `spend_cap_${k}`)
     )
   );
+}
+
+// ============================================================
+// RESEARCH PRODUCTS / PRICING / PROVIDER TREASURY
+// ============================================================
+
+export async function getResearchProducts(): Promise<ResearchProduct[]> {
+  const { data } = await supabase.from('research_products').select('*').order('sort_order');
+  return (data ?? []) as ResearchProduct[];
+}
+
+export async function updateResearchProduct(code: string, patch: Partial<ResearchProduct>): Promise<void> {
+  await supabase.from('research_products').update({ ...patch, updated_at: new Date().toISOString() }).eq('code', code);
+}
+
+export async function getMyResearchPurchases(): Promise<ResearchPurchase[]> {
+  const { data } = await supabase.from('research_purchases').select('*').order('created_at', { ascending: false });
+  return (data ?? []) as ResearchPurchase[];
+}
+
+export async function getVatRateBps(): Promise<number> {
+  const { data } = await supabase.from('admin_settings').select('value').eq('key', 'vat_rate_bps').maybeSingle();
+  return Number(data?.value ?? 1800);
+}
+
+export async function updateVatRateBps(bps: number): Promise<void> {
+  await supabase.from('admin_settings').update({ value: bps, updated_at: new Date().toISOString() }).eq('key', 'vat_rate_bps');
+}
+
+export async function getResearchProviderTreasury(): Promise<ResearchProviderTreasuryRow[]> {
+  const { data } = await supabase.from('research_providers').select('*').order('provider_code');
+  return (data ?? []) as ResearchProviderTreasuryRow[];
+}
+
+export async function updateResearchProvider(providerCode: string, patch: Partial<ResearchProviderTreasuryRow>): Promise<void> {
+  await supabase.from('research_providers').update({ ...patch, updated_at: new Date().toISOString() }).eq('provider_code', providerCode);
+}
+
+// ============================================================
+// LIVE CHAT MODERATION (admin)
+// ============================================================
+
+export async function getLiveChatReports() {
+  const { data } = await supabase
+    .from('live_chat_reports')
+    .select('*, live_chat_messages(id, body, user_id, hidden_by_admin, deleted_at, created_at)')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  return data ?? [];
+}
+
+export async function dismissLiveChatReport(reportId: string): Promise<void> {
+  await supabase.from('live_chat_reports').update({ status: 'DISMISSED', resolved_at: new Date().toISOString() }).eq('id', reportId);
+}
+
+export async function hideLiveChatMessage(messageId: string, reportId: string, reason: string): Promise<void> {
+  await supabase.from('live_chat_messages').update({ hidden_by_admin: true, hidden_reason: reason }).eq('id', messageId);
+  await supabase.from('live_chat_reports').update({ status: 'HIDDEN', resolved_at: new Date().toISOString() }).eq('id', reportId);
+}
+
+export async function suspendLiveChatUser(userId: string, reportId: string, reason: string): Promise<void> {
+  await supabase.from('live_chat_profiles').update({ suspended: true, suspended_reason: reason, suspended_at: new Date().toISOString() }).eq('user_id', userId);
+  await supabase.from('live_chat_reports').update({ status: 'USER_SUSPENDED', resolved_at: new Date().toISOString() }).eq('id', reportId);
 }
 
 export function calculateMatchability(facts: Partial<PropertyFacts> | null): {

@@ -65,8 +65,8 @@ export function AppHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
       <div className="flex items-center h-14 px-4 md:px-6 gap-4 max-w-screen overflow-x-hidden">
-        {/* Logo */}
-        <Link to={session ? '/dashboard' : '/'} className="shrink-0">
+        {/* Logo — always goes to the public home page, regardless of auth state */}
+        <Link to="/" className="shrink-0">
           <HomatchLogo size="sm" />
         </Link>
 

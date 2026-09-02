@@ -8,6 +8,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { updateMyProfile } from '@/services/api';
 import { SUPPORTED_LANGUAGES } from '@/types/types';
 
 interface LanguageSwitcherProps {
@@ -16,7 +18,18 @@ interface LanguageSwitcherProps {
 
 export function LanguageSwitcher({ compact = false }: LanguageSwitcherProps) {
   const { lang, setLang } = useLanguage();
+  const { homatchUser } = useAuth();
   const current = SUPPORTED_LANGUAGES.find(l => l.code === lang);
+
+  const handleSelect = (code: typeof lang) => {
+    setLang(code);
+    // Best-effort persistence to the account so the choice follows the user
+    // to a new device/session. Never blocks the instant UI language switch,
+    // and never overwrites anything if it fails.
+    if (homatchUser?.id && homatchUser.preferred_language !== code) {
+      void updateMyProfile(homatchUser.id, { preferred_language: code });
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -34,7 +47,7 @@ export function LanguageSwitcher({ compact = false }: LanguageSwitcherProps) {
         {SUPPORTED_LANGUAGES.map(l => (
           <DropdownMenuItem
             key={l.code}
-            onClick={() => setLang(l.code)}
+            onClick={() => handleSelect(l.code)}
             className={`flex items-center justify-between cursor-pointer text-sm ${
               l.code === lang ? 'text-primary font-medium' : 'text-foreground'
             }`}

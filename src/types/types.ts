@@ -78,6 +78,7 @@ export interface User {
   avatar_url?: string;
   is_admin: boolean;
   plan?: string;
+  preferred_language?: string | null;
   created_at: string;
   updated_at: string;
 }

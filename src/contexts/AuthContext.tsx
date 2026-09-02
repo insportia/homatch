@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { supabase } from '@/db/supabase';
 import type { Session, User as SupaUser } from '@supabase/supabase-js';
 import type { User } from '@/types/types';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface AuthContextValue {
   session: Session | null;
@@ -24,6 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supaUser, setSupaUser] = useState<SupaUser | null>(null);
   const [homatchUser, setHomatchUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const { applyProfileLanguage } = useLanguage();
 
   const fetchHomatchUser = useCallback(async (authId: string) => {
     const { data } = await supabase
@@ -32,7 +34,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .eq('auth_id', authId)
       .maybeSingle();
     setHomatchUser(data ?? null);
-  }, []);
+    // Fallback-only: never overrides an explicit choice already made on this
+    // device, and only ever applies once per session (see LanguageContext).
+    if (data?.preferred_language) applyProfileLanguage(data.preferred_language);
+  }, [applyProfileLanguage]);
 
   const refreshUser = useCallback(async () => {
     if (supaUser) await fetchHomatchUser(supaUser.id);

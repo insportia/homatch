@@ -66,10 +66,10 @@ function LedgerRow({ entry }: { entry: CreditLedgerEntry }) {
         </div>
       </div>
       <div className="text-right shrink-0">
-        <p className={`text-sm font-semibold ${isDebit ? 'text-destructive' : 'text-green-400'}`}>
+        <p className={`text-sm font-semibold ${isDebit ? 'text-destructive' : 'text-green-400'}`} dir="ltr">
           {isDebit ? '' : '+'}{entry.amount.toFixed(2)} CR
         </p>
-        <p className="text-xs text-muted-foreground">{entry.balance_after.toFixed(2)} balance</p>
+        <p className="text-xs text-muted-foreground">{entry.balance_after.toFixed(2)} {t('credits_ledger_balance_suffix')}</p>
       </div>
     </div>
   );
@@ -113,18 +113,18 @@ function CreditsContent() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('topup') === 'success') {
-      toast.success('Payment successful! Credits will be added shortly.');
+      toast.success(t('credits_toast_payment_success'));
       window.history.replaceState({}, '', '/credits');
       setTimeout(loadData, 2000);
     } else if (params.get('topup') === 'cancelled') {
-      toast.info('Payment cancelled.');
+      toast.info(t('credits_toast_payment_cancelled'));
       window.history.replaceState({}, '', '/credits');
     }
-  }, [loadData]);
+  }, [loadData, t]);
 
   const handleTopUp = async () => {
     if (topUpAmount < 30) {
-      toast.error('Minimum top-up is $30.');
+      toast.error(t('credits_toast_min_topup'));
       return;
     }
     setTopUpLoading(true);
@@ -132,7 +132,7 @@ function CreditsContent() {
     setTopUpLoading(false);
 
     if (!result.success) {
-      toast.error(result.error ?? 'Failed to initiate top-up.');
+      toast.error(result.error ?? t('credits_toast_topup_failed'));
       return;
     }
 
@@ -192,9 +192,9 @@ function CreditsContent() {
                 {loading ? (
                   <div className="h-10 w-32 bg-muted rounded animate-pulse" />
                 ) : (
-                  <p className="text-4xl font-semibold text-primary">{balance.toFixed(2)}</p>
+                  <p className="text-4xl font-semibold text-primary" dir="ltr">{balance.toFixed(2)}</p>
                 )}
-                <p className="text-xs text-muted-foreground mt-1">Credits</p>
+                <p className="text-xs text-muted-foreground mt-1">{t('credits_balance_unit')}</p>
               </div>
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
                 <Zap className="h-8 w-8 text-primary" />
@@ -209,18 +209,18 @@ function CreditsContent() {
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="h-4 w-4 text-green-400" />
-                <span className="text-xs text-muted-foreground">Total topped up</span>
+                <span className="text-xs text-muted-foreground">{t('credits_stat_topped_up')}</span>
               </div>
-              <p className="text-xl font-semibold text-foreground">{totalTopUps.toFixed(2)} CR</p>
+              <p className="text-xl font-semibold text-foreground" dir="ltr">{totalTopUps.toFixed(2)} CR</p>
             </CardContent>
           </Card>
           <Card className="bg-card border-border">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingDown className="h-4 w-4 text-destructive" />
-                <span className="text-xs text-muted-foreground">Total spent</span>
+                <span className="text-xs text-muted-foreground">{t('credits_stat_spent')}</span>
               </div>
-              <p className="text-xl font-semibold text-foreground">{totalSpent.toFixed(2)} CR</p>
+              <p className="text-xl font-semibold text-foreground" dir="ltr">{totalSpent.toFixed(2)} CR</p>
             </CardContent>
           </Card>
         </div>
@@ -310,8 +310,8 @@ function CreditsContent() {
         <div className="rounded-lg border border-border/50 bg-secondary/30 p-4 flex items-start gap-3">
           <Info className="h-4 w-4 text-muted-foreground/60 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground font-medium">Credit pricing</p>
-            <p className="text-xs text-muted-foreground/70">$1 = 1 Credit · Minimum top-up: $30 · Match unlock prices vary by signal strength (0.50–5.00 CR).</p>
+            <p className="text-xs text-muted-foreground font-medium">{t('credits_pricing_title')}</p>
+            <p className="text-xs text-muted-foreground/70">{t('credits_pricing_desc')}</p>
           </div>
         </div>
       </div>
@@ -331,7 +331,7 @@ function CreditsContent() {
             /* Mock result */
             <div className="space-y-4 py-2">
               <div className="rounded-lg bg-secondary/50 border border-border p-4 space-y-2">
-                <p className="text-sm font-medium text-foreground">Mock payment session created</p>
+                <p className="text-sm font-medium text-foreground">{t('credits_mock_session_created')}</p>
                 <p className="text-xs text-muted-foreground">{t('credits_topup_mock_note')}</p>
                 {topUpResult.checkoutUrl && (
                   <Button
@@ -341,19 +341,19 @@ function CreditsContent() {
                     onClick={() => window.open(topUpResult.checkoutUrl, '_blank')}
                   >
                     <ExternalLink className="h-3 w-3" />
-                    View mock session URL
+                    {t('credits_view_mock_url')}
                   </Button>
                 )}
               </div>
               <Button onClick={() => setShowTopUp(false)} className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-                Close
+                {t('general_close')}
               </Button>
             </div>
           ) : (
             <div className="space-y-4 py-2">
               {/* Presets */}
               <div>
-                <Label className="text-xs text-muted-foreground mb-2 block">Quick select</Label>
+                <Label className="text-xs text-muted-foreground mb-2 block">{t('credits_quick_select')}</Label>
                 <div className="grid grid-cols-4 gap-2">
                   {TOPUP_PRESETS.map(amount => (
                     <button
@@ -364,6 +364,7 @@ function CreditsContent() {
                           ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border bg-secondary text-foreground hover:border-primary/50'
                       }`}
+                      dir="ltr"
                     >
                       ${amount}
                     </button>
@@ -386,7 +387,7 @@ function CreditsContent() {
                     className="pl-7 bg-secondary border-border"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">= {topUpAmount} Credits</p>
+                <p className="text-xs text-muted-foreground" dir="ltr">= {topUpAmount} {t('credits_balance_unit')}</p>
               </div>
 
               {topUpAmount < 30 && (
@@ -395,17 +396,17 @@ function CreditsContent() {
 
               <div className="rounded-lg bg-secondary/50 border border-border p-3 space-y-1">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Amount</span>
-                  <span className="font-medium text-foreground">${topUpAmount}</span>
+                  <span className="text-muted-foreground">{t('credits_amount_label')}</span>
+                  <span className="font-medium text-foreground" dir="ltr">${topUpAmount}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Credits to add</span>
-                  <span className="font-semibold text-primary">{topUpAmount} CR</span>
+                  <span className="text-muted-foreground">{t('credits_credits_to_add')}</span>
+                  <span className="font-semibold text-primary" dir="ltr">{topUpAmount} CR</span>
                 </div>
                 <Separator className="my-1 bg-border" />
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Balance after</span>
-                  <span className="font-semibold text-foreground">{(balance + topUpAmount).toFixed(2)} CR</span>
+                  <span className="text-muted-foreground">{t('credits_balance_after')}</span>
+                  <span className="font-semibold text-foreground" dir="ltr">{(balance + topUpAmount).toFixed(2)} CR</span>
                 </div>
               </div>
             </div>

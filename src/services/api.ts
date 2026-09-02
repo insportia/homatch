@@ -476,6 +476,7 @@ export interface ProfileUpdatePayload {
   nickname?: string | null;
   phone?: string | null;
   avatar_url?: string | null;
+  preferred_language?: string | null;
 }
 
 // Only ever touches non-privileged columns. is_admin/plan are additionally

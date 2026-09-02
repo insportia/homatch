@@ -15,6 +15,7 @@
 //          after a short bounded retry for transient (429 / 5xx) errors only
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { type Locale, LANGUAGE_NAMES, resolveLocaleFromBody, languageDirective } from '../_shared/locale.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -23,25 +24,13 @@ const CORS = {
 const MODEL = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-luna';
 
 // ── UI language handling ─────────────────────────────────────────────────
-// The frontend always sends the user's currently selected UI language so the
-// model's ENTIRE answer — not just the query echo — comes back in that
-// language, regardless of what language the query itself was typed in.
-type UiLang = 'en' | 'ka' | 'ru' | 'tr' | 'ar' | 'he';
-const SUPPORTED_LANGS: UiLang[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
-const LANG_NAMES: Record<UiLang, string> = {
-  en: 'English',
-  ka: 'Georgian (ქართული)',
-  ru: 'Russian (Русский)',
-  tr: 'Turkish (Türkçe)',
-  ar: 'Arabic (العربية)',
-  he: 'Hebrew (עברית)',
-};
-
-function resolveLang(input: unknown): UiLang {
-  return typeof input === 'string' && SUPPORTED_LANGS.includes(input as UiLang)
-    ? (input as UiLang)
-    : 'en';
-}
+// The frontend always sends the user's currently selected UI language (as
+// `locale`, canonical field — `language` is still accepted as a
+// backward-compatible alias, see _shared/locale.ts) so the model's ENTIRE
+// answer — not just the query echo — comes back in that language,
+// regardless of what language the query itself was typed in.
+type UiLang = Locale;
+const LANG_NAMES = LANGUAGE_NAMES;
 
 // Fixed, code-generated safety strings (never model output) must still be
 // localized — small hand-maintained dictionaries rather than a runtime
@@ -214,7 +203,7 @@ serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const rawQuery = String(body.query ?? '');
   const modeInput = String(body.type ?? '');
-  const lang = resolveLang(body.language);
+  const lang = resolveLocaleFromBody(body);
   const VALID_MODES: VerifyMode[] = ['property', 'cadastral', 'developer', 'project'];
 
   if (!VALID_MODES.includes(modeInput as VerifyMode)) {
@@ -268,11 +257,10 @@ serve(async (req) => {
   if (!key) return json({ error: 'Research provider not configured' }, 500);
 
   const modePrompt = MODE_PROMPTS[mode].replace('${QUERY}', query);
-  const langName = LANG_NAMES[lang];
   const prompt = `You are Homatch Research, an evidence-based verification assistant. ${modePrompt}
 Homatch internal data (for context only, not a source of truth for public facts): ${JSON.stringify(internal).slice(0, 30000)}
 Rules for every mode: separate HOMATCH DATA, VERIFIED (official/authoritative source only), FOUND ONLINE, CONFLICTING and UNVERIFIED. Never invent ownership, cadastral records, permits, directors, prices, availability, contacts or legal status. Never claim official/paid verification happened — paid third-party providers are disabled. Be concise: evidence, risks/red-flags, confidence, and next actions.
-LANGUAGE (mandatory): write your entire answer — every sentence and label — strictly in ${langName}. Do this regardless of what language the query, the internal data, or any source you find is written in. Do not mix languages and do not answer in English unless ${langName} is English. Source titles/quotes you cite may stay in their original language, but all of your own explanatory text must be in ${langName}.`;
+${languageDirective(lang)}`;
 
   const providerResult = await callResearchProvider(key, {
     model: MODEL,

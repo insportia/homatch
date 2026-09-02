@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { sendStreamRequest } from '@/lib/sse';
 import { supabase } from '@/db/supabase';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -24,6 +25,7 @@ export interface PageContext {
 }
 
 export function useAIChat() {
+  const { lang } = useLanguage();
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState('');
@@ -95,6 +97,10 @@ export function useAIChat() {
         messages: efMessages,
         context: pageContext.type !== 'general' ? pageContext.data : undefined,
         conversationId: convId !== 'guest' ? convId : undefined,
+        // Canonical locale field — forces the AI's entire answer into the
+        // user's currently selected UI language, independent of whatever
+        // language the message text itself happens to be typed in.
+        locale: lang,
       },
       supabaseAnonKey: SUPABASE_ANON_KEY,
       accessToken,
@@ -122,7 +128,7 @@ export function useAIChat() {
       },
       signal: abortRef.current.signal,
     });
-  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations]);
+  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, lang]);
 
   const cancelStream = useCallback(() => { abortRef.current?.abort(); setStreaming(false); setStreamContent(''); }, []);
   const resetChat = useCallback(() => { setMessages([]); setActiveConvId(null); setStreamContent(''); setPageContext({ type: 'general' }); }, []);

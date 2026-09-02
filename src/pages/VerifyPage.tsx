@@ -443,7 +443,10 @@ export default function VerifyPage() {
           // The user's currently selected UI language — the backend forces
           // its ENTIRE answer (not just an echo of the query) into this
           // language, so results read correctly regardless of what script
-          // the query itself was typed in.
+          // the query itself was typed in. `locale` is the canonical field;
+          // `language` is kept for backward compatibility with any other
+          // consumer of this same payload shape.
+          locale: lang,
           language: lang,
         },
       });

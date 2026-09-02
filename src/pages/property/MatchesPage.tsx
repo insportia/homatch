@@ -34,12 +34,15 @@ import { toast } from 'sonner';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 
+// Presentation labels are localized via `labelKey` at render time; the
+// object's own keys (EXCEPTIONAL, VERY_STRONG, …) are the stable machine
+// enum values used for lookups and never change with language.
 const STRENGTH_CONFIG = {
-  EXCEPTIONAL:  { label: 'EXCEPTIONAL',  color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', bars: 5 },
-  VERY_STRONG:  { label: 'VERY STRONG',  color: 'text-primary',    bg: 'bg-primary/10 border-primary/30',       bars: 4 },
-  STRONG:       { label: 'STRONG',        color: 'text-green-400',  bg: 'bg-green-400/10 border-green-400/30',   bars: 3 },
-  GOOD:         { label: 'GOOD',          color: 'text-blue-400',   bg: 'bg-blue-400/10 border-blue-400/30',     bars: 2 },
-  POTENTIAL:    { label: 'POTENTIAL',     color: 'text-muted-foreground', bg: 'bg-secondary border-border',      bars: 1 },
+  EXCEPTIONAL:  { labelKey: 'matches_strength_exceptional',  color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', bars: 5 },
+  VERY_STRONG:  { labelKey: 'matches_strength_very_strong',  color: 'text-primary',    bg: 'bg-primary/10 border-primary/30',       bars: 4 },
+  STRONG:       { labelKey: 'matches_strength_strong',        color: 'text-green-400',  bg: 'bg-green-400/10 border-green-400/30',   bars: 3 },
+  GOOD:         { labelKey: 'matches_strength_good',          color: 'text-blue-400',   bg: 'bg-blue-400/10 border-blue-400/30',     bars: 2 },
+  POTENTIAL:    { labelKey: 'matches_strength_potential',     color: 'text-muted-foreground', bg: 'bg-secondary border-border',      bars: 1 },
 } as const;
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -84,6 +87,7 @@ function LockedMatchCard({
   onChat: (m: Match) => void;
   onRequestViewing: (m: Match) => void;
 }) {
+  const { t } = useLanguage();
   const cfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
   const platformIcon = PLATFORM_ICONS[match.preview_platform ?? 'OTHER'] ?? '·';
   const budgetStr =
@@ -97,14 +101,14 @@ function LockedMatchCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <StrengthBars strength={match.signal_strength} />
-          <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
+          <span className={`text-xs font-semibold ${cfg.color}`}>{t(cfg.labelKey)}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {match.status === 'NEW' && (
-            <span className="text-[10px] font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded">NEW</span>
+            <span className="text-[10px] font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded">{t('matches_new_badge')}</span>
           )}
           {match.status === 'UNLOCKED' && (
-            <span className="text-[10px] font-bold bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30">UNLOCKED</span>
+            <span className="text-[10px] font-bold bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30">{t('matches_unlocked_badge')}</span>
           )}
         </div>
       </div>
@@ -137,7 +141,7 @@ function LockedMatchCard({
         {match.preview_bedrooms && (
           <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1">
             <BedDouble className="h-3 w-3" />
-            {match.preview_bedrooms} bd
+            {match.preview_bedrooms} {t('matches_bedrooms')}
           </span>
         )}
         {match.preview_recency && (
@@ -156,7 +160,7 @@ function LockedMatchCard({
           </p>
           <div className="flex items-center gap-1 mt-1">
             <Lock className="h-3 w-3 text-muted-foreground/50" />
-            <span className="text-[10px] text-muted-foreground/50">Unlock to read full signal</span>
+            <span className="text-[10px] text-muted-foreground/50">{t('matches_unlock_hint')}</span>
           </div>
         </div>
       )}
@@ -165,7 +169,7 @@ function LockedMatchCard({
       {match.mock_mode && import.meta.env.DEV && (
         <div className="flex items-center gap-1.5">
           <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 px-2 py-0.5 rounded-full">
-            DEV SIGNAL
+            {t('matches_dev_signal')}
           </span>
         </div>
       )}
@@ -174,11 +178,11 @@ function LockedMatchCard({
       <div className="flex items-center justify-between pt-1 border-t border-border/30">
         <div className="flex items-center gap-3">
           <div className="text-center">
-            <p className="text-xs text-muted-foreground">Match</p>
+            <p className="text-xs text-muted-foreground">{t('matches_score')}</p>
             <p className={`text-sm font-semibold ${cfg.color}`}>{Math.round(match.match_score)}%</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-muted-foreground">Confidence</p>
+            <p className="text-xs text-muted-foreground">{t('matches_confidence')}</p>
             <p className="text-sm font-semibold text-foreground">
               {Math.round((match.intent_confidence ?? 0) * 100)}%
             </p>
@@ -191,10 +195,10 @@ function LockedMatchCard({
             variant="ghost"
             className="border border-border text-xs h-8 gap-1 text-muted-foreground hover:text-primary"
             onClick={() => onAskAI(match)}
-            title="Ask AI why this match is strong"
+            title={t('matches_ask_ai_title')}
           >
             <Bot className="h-3 w-3" />
-            <span className="hidden md:inline">Why?</span>
+            <span className="hidden md:inline">{t('matches_why')}</span>
           </Button>
           {match.status !== 'UNLOCKED' ? (
             <Button
@@ -204,7 +208,7 @@ function LockedMatchCard({
               disabled={unlocking}
             >
               {unlocking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}
-              UNLOCK · {match.unlock_price_credits.toFixed(2)} CR
+              <span dir="ltr">{t('matches_unlock_btn')} · {match.unlock_price_credits.toFixed(2)} CR</span>
             </Button>
           ) : (
             <>
@@ -213,20 +217,20 @@ function LockedMatchCard({
                 variant="ghost"
                 className="border border-border text-xs h-8 gap-1 text-muted-foreground hover:text-foreground"
                 onClick={() => onChat(match)}
-                title="Start chat with this buyer"
+                title={t('matches_chat_title')}
               >
                 <MessageSquare className="h-3 w-3" />
-                <span className="hidden md:inline">Chat</span>
+                <span className="hidden md:inline">{t('matches_chat_btn')}</span>
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 className="border border-border text-xs h-8 gap-1 text-muted-foreground hover:text-foreground"
                 onClick={() => onRequestViewing(match)}
-                title="Request a viewing"
+                title={t('matches_viewing_title')}
               >
                 <CalendarDays className="h-3 w-3" />
-                <span className="hidden md:inline">Viewing</span>
+                <span className="hidden md:inline">{t('matches_viewing_btn')}</span>
               </Button>
               <Button
                 size="sm"
@@ -235,7 +239,7 @@ function LockedMatchCard({
                 onClick={() => onUnlock(match)}
               >
                 <ChevronRight className="h-3 w-3" />
-                <span className="hidden md:inline">Details</span>
+                <span className="hidden md:inline">{t('matches_details_btn')}</span>
               </Button>
             </>
           )}
@@ -254,6 +258,7 @@ function UnlockedMatchDialog({
   unlock: MatchUnlock;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
   const cfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
 
   return (
@@ -262,11 +267,11 @@ function UnlockedMatchDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Unlock className="h-4 w-4 text-primary" />
-            Unlocked Match
+            {t('matches_unlocked_dialog_title')}
           </DialogTitle>
           <DialogDescription>
-            <span className={`font-medium ${cfg.color}`}>{cfg.label}</span>
-            {' · '}Match score: {Math.round(match.match_score)}%
+            <span className={`font-medium ${cfg.color}`}>{t(cfg.labelKey)}</span>
+            {' · '}{t('matches_score')}: {Math.round(match.match_score)}%
           </DialogDescription>
         </DialogHeader>
 
@@ -274,7 +279,7 @@ function UnlockedMatchDialog({
           {/* Full signal text */}
           {unlock.full_signal_text && (
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Original signal</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('matches_full_signal')}</p>
               <div className="rounded-lg bg-secondary/50 border border-border p-3">
                 <p className="text-sm text-foreground whitespace-pre-wrap">{unlock.full_signal_text}</p>
               </div>
@@ -284,7 +289,7 @@ function UnlockedMatchDialog({
           {/* Translation */}
           {unlock.full_intent_json?.translated_text && (
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Translation</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('matches_translation')}</p>
               <p className="text-sm text-muted-foreground italic">{unlock.full_intent_json.translated_text}</p>
             </div>
           )}
@@ -292,18 +297,18 @@ function UnlockedMatchDialog({
           {/* Intent details */}
           {unlock.full_intent_json && (
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Intent details</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('matches_intent_details')}</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  ['Intent', unlock.full_intent_json.intent_type],
-                  ['City', unlock.full_intent_json.city],
-                  ['District', unlock.full_intent_json.district],
-                  ['Transaction', unlock.full_intent_json.transaction_type],
-                  ['Types', unlock.full_intent_json.property_types?.join(', ')],
-                  ['Budget', unlock.full_intent_json.budget_min || unlock.full_intent_json.budget_max
+                  [t('matches_intent_label'), unlock.full_intent_json.intent_type],
+                  [t('matches_city'), unlock.full_intent_json.city],
+                  [t('matches_district_label'), unlock.full_intent_json.district],
+                  [t('matches_transaction_label'), unlock.full_intent_json.transaction_type],
+                  [t('matches_types_label'), unlock.full_intent_json.property_types?.join(', ')],
+                  [t('matches_budget'), unlock.full_intent_json.budget_min || unlock.full_intent_json.budget_max
                     ? `${unlock.full_intent_json.currency ?? '$'}${Number(unlock.full_intent_json.budget_min ?? 0).toLocaleString()}–${Number(unlock.full_intent_json.budget_max ?? 0).toLocaleString()}`
                     : null],
-                  ['Bedrooms', unlock.full_intent_json.bedrooms_min != null
+                  [t('matches_bedrooms'), unlock.full_intent_json.bedrooms_min != null
                     ? `${unlock.full_intent_json.bedrooms_min}+`
                     : null],
                 ].filter(([, v]) => v).map(([k, v]) => (
@@ -319,7 +324,7 @@ function UnlockedMatchDialog({
           {/* Match reasons */}
           {match.match_reasons?.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Match reasons</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('matches_reasons')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {match.match_reasons.map((r, i) => (
                   <span key={i} className="text-xs bg-green-500/10 border border-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
@@ -340,7 +345,7 @@ function UnlockedMatchDialog({
                 onClick={() => window.open(unlock.full_source_url!, '_blank')}
               >
                 <ExternalLink className="h-3.5 w-3.5" />
-                Open Source
+                {t('matches_full_source')}
               </Button>
             )}
             {unlock.full_profile_url && (
@@ -351,13 +356,13 @@ function UnlockedMatchDialog({
                 onClick={() => window.open(unlock.full_profile_url!, '_blank')}
               >
                 <User className="h-3.5 w-3.5" />
-                Open Profile
+                {t('matches_full_profile')}
               </Button>
             )}
           </div>
 
           <p className="text-[10px] text-muted-foreground/50">
-            Charged {unlock.credits_charged} credits · Unlocked {new Date(unlock.created_at).toLocaleString()}
+            {t('matches_charged_credits', { credits: String(unlock.credits_charged) })} · {t('matches_unlocked_on', { date: new Date(unlock.created_at).toLocaleString() })}
           </p>
         </div>
       </DialogContent>
@@ -453,7 +458,7 @@ function MatchesContent() {
     setUnlockLoading(false);
 
     if (!result.success) {
-      setUnlockError({ msg: result.error ?? 'Unlock failed', code: result.errorCode });
+      setUnlockError({ msg: result.error ?? t('matches_unlock_failed'), code: result.errorCode });
       if (result.errorCode === 'INSUFFICIENT_CREDITS') {
         setShowUnlockConfirm(false);
       }
@@ -465,7 +470,7 @@ function MatchesContent() {
     if (result.newBalance !== undefined) {
       setCreditAccount(prev => prev ? { ...prev, balance: result.newBalance! } : prev);
     }
-    toast.success('Match unlocked!');
+    toast.success(t('matches_toast_unlocked'));
 
     // Open reveal dialog
     if (result.unlock) {
@@ -474,14 +479,18 @@ function MatchesContent() {
     setPendingUnlock(null);
   };
 
-  // AI match explanation handler
+  // AI match explanation handler. The prompt text itself is sent to the AI
+  // and shown in the chat UI, so it's built from translated fragments —
+  // never hardcoded English — using the user's currently selected locale.
   const handleAskAI = useCallback((match: Match) => {
-    const reasons = match.match_reasons?.join(', ') ?? 'various factors';
-    const city = match.preview_city ?? '';
-    const budget = match.preview_budget_min || match.preview_budget_max
-      ? ` with budget ${match.preview_currency ?? '$'}${Number(match.preview_budget_min ?? 0).toLocaleString()}–${Number(match.preview_budget_max ?? 0).toLocaleString()}`
+    const reasons = match.match_reasons?.join(', ') || t('matches_ai_reasons_fallback');
+    const strengthCfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
+    const strengthLabel = t(strengthCfg.labelKey);
+    const cityPart = match.preview_city ? t('matches_ai_prompt_in_city', { city: match.preview_city }) : '';
+    const budgetPart = match.preview_budget_min || match.preview_budget_max
+      ? t('matches_ai_prompt_with_budget', { budget: `${match.preview_currency ?? '$'}${Number(match.preview_budget_min ?? 0).toLocaleString()}–${Number(match.preview_budget_max ?? 0).toLocaleString()}` })
       : '';
-    const platform = match.preview_platform ? ` from ${match.preview_platform}` : '';
+    const platformPart = match.preview_platform ? t('matches_ai_prompt_from_platform', { platform: match.preview_platform }) : '';
     navigate('/ai', {
       state: {
         context: {
@@ -501,10 +510,16 @@ function MatchesContent() {
             intent_confidence: match.intent_confidence,
           },
         },
-        prompt: `This match scores ${Math.round(match.match_score)}% (${match.signal_strength}) for a buyer${city ? ` in ${city}` : ''}${budget}${platform}. The match reasons are: ${reasons}. Explain in detail why this is a ${match.signal_strength.toLowerCase()} match and what it means for my property.`,
+        prompt: t('matches_ai_prompt_base', {
+          score: String(Math.round(match.match_score)),
+          strength: strengthLabel,
+          extra: `${cityPart}${budgetPart}${platformPart}`,
+          reasons,
+          strengthLower: strengthLabel.toLowerCase(),
+        }),
       },
     });
-  }, [navigate]);
+  }, [navigate, t]);
 
   // Start chat with unlocked match buyer
   const handleChat = useCallback((match: Match) => {
@@ -540,9 +555,9 @@ function MatchesContent() {
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       setCampaignActive(true);
       setActiveJobId(result.jobId);
-      toast.success('Matching campaign started — live results loading…');
+      toast.success(t('matches_campaign_started_toast'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to start matching');
+      toast.error(e instanceof Error ? e.message : t('matches_start_failed'));
     } finally {
       setCampaignLoading(false);
     }
@@ -555,7 +570,7 @@ function MatchesContent() {
     setCampaignActive(false);
     setCampaignLoading(false);
     setShowPauseConfirm(false);
-    toast.success('Matching paused.');
+    toast.success(t('matches_paused_toast'));
   };
 
   const balance = Number(creditAccount?.balance ?? 0);
@@ -570,7 +585,7 @@ function MatchesContent() {
           <div>
             <h1 className="text-xl font-semibold text-foreground">{t('matches_title')}</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {counts.total} matches · {counts.newCount} new · {counts.strongCount} strong
+              {t('matches_header_summary', { total: String(counts.total), new: String(counts.newCount), strong: String(counts.strongCount) })}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -624,10 +639,10 @@ function MatchesContent() {
             propertyId={propertyId}
             onComplete={(job) => {
               if (job.matches_created > 0) {
-                toast.success(`Matching complete — ${job.matches_created} match${job.matches_created !== 1 ? 'es' : ''} found`);
+                toast.success(t('matches_job_complete_toast', { count: String(job.matches_created) }));
                 loadData();
               } else if (job.status === 'partially_completed') {
-                toast.warning('Matching partially completed — check events for details');
+                toast.warning(t('matches_job_partial_toast'));
               }
             }}
           />
@@ -712,16 +727,16 @@ function MatchesContent() {
             <div className="space-y-3 py-1">
               <div className="rounded-lg bg-secondary/50 border border-border p-3 space-y-1.5">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Current balance</span>
-                  <span className="font-medium text-foreground">{balance.toFixed(2)} CR</span>
+                  <span className="text-muted-foreground">{t('matches_current_balance')}</span>
+                  <span className="font-medium text-foreground" dir="ltr">{balance.toFixed(2)} CR</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Unlock price</span>
-                  <span className="font-medium text-destructive">−{unlockPrice.toFixed(2)} CR</span>
+                  <span className="text-muted-foreground">{t('matches_unlock_price')}</span>
+                  <span className="font-medium text-destructive" dir="ltr">−{unlockPrice.toFixed(2)} CR</span>
                 </div>
                 <div className="border-t border-border pt-1.5 flex justify-between text-sm">
-                  <span className="text-muted-foreground">Balance after</span>
-                  <span className={`font-semibold ${balanceAfter < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                  <span className="text-muted-foreground">{t('credits_balance_after')}</span>
+                  <span className={`font-semibold ${balanceAfter < 0 ? 'text-destructive' : 'text-foreground'}`} dir="ltr">
                     {balanceAfter.toFixed(2)} CR
                   </span>
                 </div>
@@ -772,7 +787,7 @@ function MatchesContent() {
                   ) : (
                     <Unlock className="h-4 w-4 mr-1.5" />
                   )}
-                  Confirm Unlock · {unlockPrice.toFixed(2)} CR
+                  <span dir="ltr">{t('matches_confirm_unlock_btn', { price: unlockPrice.toFixed(2) })}</span>
                 </Button>
               )}
             </DialogFooter>
@@ -801,7 +816,7 @@ function MatchesContent() {
               prev.map(m => m.id === externalUnlockMatch!.id ? { ...m, status: 'UNLOCKED' } : m)
             );
             setExternalUnlockMatch(null);
-            toast.success('Contact unlocked!');
+            toast.success(t('matches_toast_contact_unlocked'));
           }}
         />
       )}
@@ -816,7 +831,7 @@ function MatchesContent() {
           <AlertDialogFooter>
             <AlertDialogCancel className="border-border">{t('general_cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handlePauseMatching} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Pause Campaign
+              {t('matches_pause_campaign_btn')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

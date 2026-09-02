@@ -70,7 +70,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
       setCreditsCharged(result.credits_charged ?? preview.customer_price);
       setStep('revealed');
       onUnlocked?.();
-      toast.success(`Contact unlocked — ${result.credits_charged ?? preview.customer_price} credits charged`);
+      toast.success(t('unlock_toast_success', { credits: String(result.credits_charged ?? preview.customer_price) }));
     } catch (err) {
       const msg = String(err);
       if (msg.includes('Insufficient')) {
@@ -104,7 +104,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
         {step === 'loading' && (
           <div className="py-8 flex flex-col items-center gap-3">
             <div className="h-8 w-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-            <p className="text-sm text-muted-foreground">Loading lead details…</p>
+            <p className="text-sm text-muted-foreground">{t('unlock_loading_details')}</p>
           </div>
         )}
 
@@ -155,7 +155,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                   ? { icon: DollarSign, label: t('unlock_budget'), value: `${preview.budget_currency ?? 'USD'} ${preview.budget_min ? `${preview.budget_min.toLocaleString()}` : ''}${preview.budget_min && preview.budget_max ? '–' : ''}${preview.budget_max ? preview.budget_max.toLocaleString() : ''}` }
                   : null,
                 preview.freshness_days != null
-                  ? { icon: Clock, label: t('unlock_freshness'), value: `${preview.freshness_days}d ago` }
+                  ? { icon: Clock, label: t('unlock_freshness'), value: t('unlock_days_ago', { days: String(preview.freshness_days) }) }
                   : null,
                 { icon: BarChart3, label: t('unlock_confidence'), value: `${Math.round((preview.confidence ?? 0) * 100)}%` },
                 { icon: Globe, label: t('unlock_source'), value: preview.source },
@@ -190,14 +190,14 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
               </div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary px-3 py-1.5 rounded-full">
                 <Coins className="h-3.5 w-3.5" />
-                Balance: <span className="font-medium text-foreground">{creditBalance}</span>
+                {t('unlock_balance_label')}: <span className="font-medium text-foreground">{creditBalance}</span>
               </div>
             </div>
 
             {!canAfford && (
               <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-xs text-destructive flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
-                {t('unlock_insufficient')} — need {preview.customer_price}, have {creditBalance}
+                {t('unlock_insufficient')} — {t('unlock_insufficient_need_have', { need: String(preview.customer_price), have: String(creditBalance) })}
               </div>
             )}
           </div>
@@ -209,9 +209,9 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
             <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-xl">
               <Unlock className="h-5 w-5 text-primary shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-foreground">Contact revealed</p>
+                <p className="text-sm font-semibold text-foreground">{t('unlock_contact_revealed')}</p>
                 {creditsCharged > 0 && (
-                  <p className="text-xs text-muted-foreground">{creditsCharged} credits charged</p>
+                  <p className="text-xs text-muted-foreground">{t('unlock_credits_charged', { credits: String(creditsCharged) })}</p>
                 )}
               </div>
             </div>
@@ -223,8 +223,8 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                       <Phone className="h-4 w-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground">Phone</p>
-                        <p className="text-sm font-medium">{contact.phone}</p>
+                        <p className="text-[10px] text-muted-foreground">{t('profile_field_phone')}</p>
+                        <p className="text-sm font-medium" dir="ltr">{contact.phone}</p>
                       </div>
                     </div>
                   )}
@@ -232,8 +232,8 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                       <Mail className="h-4 w-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground">Email</p>
-                        <p className="text-sm font-medium">{contact.email}</p>
+                        <p className="text-[10px] text-muted-foreground">{t('profile_field_email')}</p>
+                        <p className="text-sm font-medium" dir="ltr">{contact.email}</p>
                       </div>
                     </div>
                   )}
@@ -241,8 +241,8 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                       <MessageCircle className="h-4 w-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground">WhatsApp</p>
-                        <p className="text-sm font-medium">{contact.whatsapp}</p>
+                        <p className="text-[10px] text-muted-foreground">{t('contact_whatsapp')}</p>
+                        <p className="text-sm font-medium" dir="ltr">{contact.whatsapp}</p>
                       </div>
                     </div>
                   )}
@@ -250,8 +250,8 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                       <MessageCircle className="h-4 w-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground">Telegram</p>
-                        <p className="text-sm font-medium">{contact.telegram}</p>
+                        <p className="text-[10px] text-muted-foreground">{t('contact_telegram')}</p>
+                        <p className="text-sm font-medium" dir="ltr">{contact.telegram}</p>
                       </div>
                     </div>
                   )}
@@ -274,14 +274,14 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
               </Button>
               <Button onClick={handleConfirm} disabled={confirming || !canAfford}>
                 {confirming
-                  ? <><div className="h-4 w-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin mr-2" /> Unlocking…</>
+                  ? <><div className="h-4 w-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin mr-2" /> {t('unlock_unlocking')}</>
                   : <><Unlock className="h-4 w-4 mr-2" /> {t('unlock_confirm_btn')}</>
                 }
               </Button>
             </>
           )}
           {(step === 'revealed' || step === 'error') && (
-            <Button onClick={onClose}>Close</Button>
+            <Button onClick={onClose}>{t('general_close')}</Button>
           )}
         </DialogFooter>
       </DialogContent>

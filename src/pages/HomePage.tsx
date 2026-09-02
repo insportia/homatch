@@ -18,87 +18,106 @@ import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 const PENDING_URL_KEY = 'homatch_pending_url';
 
 // ── Demo match cards ──────────────────────────────────────────
+// Machine-stable fields (score/price/area/beds/source/location/trustHigh)
+// are never translated. Only the presentation labels/badges route through
+// translation keys — the underlying data never changes by language.
 const DEMO_MATCHES = [
-  { score: 94, label: 'Exceptional', price: '$142,000', area: '76 m²', beds: 2, source: 'Homatch', location: 'Vake, Tbilisi', trustHigh: true, badge: 'Internal Match' },
-  { score: 87, label: 'Strong',      price: '$138,500', area: '74 m²', beds: 2, source: 'myhome.ge', location: 'Vake, Tbilisi', trustHigh: true, badge: 'Verified Listing' },
-  { score: 79, label: 'Good',        price: '$148,000', area: '81 m²', beds: 2, source: 'ss.ge', location: 'Saburtalo, Tbilisi', trustHigh: false, badge: 'External' },
+  { score: 94, labelKey: 'home_demo_label_exceptional', price: '$142,000', area: '76 m²', beds: 2, source: 'Homatch', location: 'Vake, Tbilisi', trustHigh: true, badgeKey: 'home_demo_badge_internal' },
+  { score: 87, labelKey: 'home_demo_label_strong',      price: '$138,500', area: '74 m²', beds: 2, source: 'myhome.ge', location: 'Vake, Tbilisi', trustHigh: true, badgeKey: 'home_demo_badge_verified' },
+  { score: 79, labelKey: 'home_demo_label_good',        price: '$148,000', area: '81 m²', beds: 2, source: 'ss.ge', location: 'Saburtalo, Tbilisi', trustHigh: false, badgeKey: 'home_demo_badge_external' },
 ];
 
-// ── Features ──────────────────────────────────────────────────
+// ── Features — every user-facing string is a translation key, never a
+// hardcoded literal, so the whole grid follows the selected language. ──
 const FEATURES = [
-  { icon: Bot,          title: 'AI PROPERTY SEARCH',       desc: 'Describe what you need in plain language. Homatch searches internal and external sources.', route: '/ai' },
-  { icon: Users,        title: 'BUYER ↔ SELLER MATCHING',  desc: 'Upload your property once. AI finds qualified demand. Sellers and buyers both benefit.', route: '/property/add' },
-  { icon: Globe,        title: 'MULTI-SOURCE DISCOVERY',   desc: 'One request covers Homatch network, property portals, social groups and forums.', route: '/ai' },
-  { icon: TrendingDown, title: 'FIND SAME PROPERTY CHEAPER', desc: 'Paste any listing — Homatch finds the same property listed cheaper across other sources.', route: '/property/import' },
-  { icon: Copy,         title: 'DUPLICATE DETECTION',      desc: 'Identify duplicate listings and inflated prices before you pay.', route: '/property/import' },
-  { icon: ShieldCheck,  title: 'HOMATCH TRUST SCORE',      desc: 'Every listing is scored for consistency, data quality and potential red flags.', route: '/verify' },
-  { icon: Search,       title: 'CADASTRAL VERIFICATION',   desc: 'Verify cadastral records, ownership status and area discrepancies before you decide.', route: '/verify' },
-  { icon: BarChart2,    title: 'DEVELOPER TRUST PROFILE',  desc: 'Check developer history, active permits, project completion and public risk indicators.', route: '/verify?tab=developer' },
-  { icon: Bell,         title: 'ACTIVE AI SEARCH',         desc: 'Set once. AI keeps watching and alerts you when new matches appear.', route: '/active-search' },
-  { icon: MessageSquare,title: 'REAL-TIME CHAT',           desc: 'Connect directly with matched buyers, renters or sellers in-app.', route: '/chat' },
-  { icon: Radio,        title: 'LIVE CHAT',                desc: 'One global room for the whole Homatch community — pick a nickname and jump in.', route: '/live-chat' },
-  { icon: Eye,          title: 'VIEWING REQUESTS',         desc: 'Schedule property viewings directly through Homatch.', route: '/viewings' },
-  { icon: Globe,        title: 'MULTILINGUAL DISCOVERY',   desc: 'Search in Georgian, Russian, English, Turkish, Arabic and Hebrew.', route: null },
+  { icon: Bot,          titleKey: 'home_feat_ai_search_title',    descKey: 'home_feat_ai_search_desc',    route: '/ai' },
+  { icon: Users,        titleKey: 'home_feat_matching_title',     descKey: 'home_feat_matching_desc',     route: '/property/add' },
+  { icon: Globe,        titleKey: 'home_feat_multisource_title',  descKey: 'home_feat_multisource_desc',  route: '/ai' },
+  { icon: TrendingDown, titleKey: 'home_feat_cheaper_title',      descKey: 'home_feat_cheaper_desc',      route: '/property/import' },
+  { icon: Copy,         titleKey: 'home_feat_duplicate_title',    descKey: 'home_feat_duplicate_desc',    route: '/property/import' },
+  { icon: ShieldCheck,  titleKey: 'home_feat_trust_title',        descKey: 'home_feat_trust_desc',        route: '/verify' },
+  { icon: Search,       titleKey: 'home_feat_cadastral_title',    descKey: 'home_feat_cadastral_desc',    route: '/verify' },
+  { icon: BarChart2,    titleKey: 'home_feat_developer_title',    descKey: 'home_feat_developer_desc',    route: '/verify?tab=developer' },
+  { icon: Bell,         titleKey: 'home_feat_active_search_title',descKey: 'home_feat_active_search_desc',route: '/active-search' },
+  { icon: MessageSquare,titleKey: 'home_feat_chat_title',         descKey: 'home_feat_chat_desc',         route: '/chat' },
+  { icon: Radio,        titleKey: 'home_feat_livechat_title',     descKey: 'home_feat_livechat_desc',     route: '/live-chat' },
+  { icon: Eye,          titleKey: 'home_feat_viewing_title',      descKey: 'home_feat_viewing_desc',      route: '/viewings' },
+  { icon: Globe,        titleKey: 'home_feat_multilingual_title', descKey: 'home_feat_multilingual_desc', route: null },
 ];
 
-// ── AI Outreach Engine showcase (new) ───────────────────────────
-const CALL_FEATURES = ['AI dials and talks to leads live — no human on the line', 'Every call transcribed and summarized automatically', 'Recordings and live status the moment a call ends'];
-const EMAIL_FEATURES = ['Personalized to each contact list, sent in seconds', 'Live sent / opened / replied counters', 'Works in all 6 supported languages'];
-const SMS_FEATURES = ['Instant delivery to qualified leads', 'Real-time delivered / failed tracking', 'Two-way — replies land straight in your inbox'];
+// ── AI Outreach Engine showcase ──────────────────────────────
+const CALL_FEATURE_KEYS = ['home_call_feature_1', 'home_call_feature_2', 'home_call_feature_3'];
+const EMAIL_FEATURE_KEYS = ['home_email_feature_1', 'home_email_feature_2', 'home_email_feature_3'];
+const SMS_FEATURE_KEYS = ['home_sms_feature_1', 'home_sms_feature_2', 'home_sms_feature_3'];
 
-// ── Buyer flow steps ──────────────────────────────────────────
+// ── Buyer / seller flow steps ────────────────────────────────
 const BUYER_FLOW = [
-  { step: 'Tell AI', desc: 'Describe your needs in any language' },
-  { step: 'Homatch Matches', desc: 'Internal network searched first (free)' },
-  { step: 'External Discovery', desc: 'Portals & social sources if needed' },
-  { step: 'Ranked Results', desc: 'Sorted by match score + trust' },
-  { step: 'Connect', desc: 'Chat, view, verify — in one place' },
+  { stepKey: 'home_buyer_step1', descKey: 'home_buyer_step1_desc' },
+  { stepKey: 'home_buyer_step2', descKey: 'home_buyer_step2_desc' },
+  { stepKey: 'home_buyer_step3', descKey: 'home_buyer_step3_desc' },
+  { stepKey: 'home_buyer_step4', descKey: 'home_buyer_step4_desc' },
+  { stepKey: 'home_buyer_step5', descKey: 'home_buyer_step5_desc' },
 ];
 
 const SELLER_FLOW = [
-  { step: 'Upload / Import', desc: 'Add your property once' },
-  { step: 'Demand Found', desc: 'Internal buyers/renters matched first' },
-  { step: 'External Signals', desc: 'Social + forum buyer intent scanned' },
-  { step: 'Ranked Demand', desc: 'Qualified leads ranked by fit' },
-  { step: 'Unlock & Connect', desc: 'Chat or unlock external contacts' },
+  { stepKey: 'home_seller_step1', descKey: 'home_seller_step1_desc' },
+  { stepKey: 'home_seller_step2', descKey: 'home_seller_step2_desc' },
+  { stepKey: 'home_seller_step3', descKey: 'home_seller_step3_desc' },
+  { stepKey: 'home_seller_step4', descKey: 'home_seller_step4_desc' },
+  { stepKey: 'home_seller_step5', descKey: 'home_seller_step5_desc' },
 ];
 
 // ── How it works ──────────────────────────────────────────────
 const HOW_STEPS = [
-  { icon: Search,       step: '01 SEARCH',  title: 'One Request. Many Sources.', desc: 'Tell Homatch what you need. AI searches internal listings, then external sources — portals, Telegram, Facebook and more.' },
-  { icon: Zap,          step: '02 MATCH',   title: 'AI Ranks Every Result',      desc: 'Each result gets a Match Score, Trust Score and duplicate check. Internal matches appear first.' },
-  { icon: MessageSquare,step: '03 CONNECT', title: 'Chat, View, Unlock',         desc: 'Internal users connect directly. External contacts are previewed before unlock. Real-time chat and viewing scheduling included.' },
-  { icon: ShieldCheck,  step: '04 VERIFY',  title: 'Before You Pay, Verify',     desc: 'Check cadastral records, developer history, area discrepancies and risk indicators from the Verification Center.' },
+  { icon: Search,        stepKey: 'home_how_1_step', titleKey: 'home_how_1_title', descKey: 'home_how_1_desc' },
+  { icon: Zap,           stepKey: 'home_how_2_step', titleKey: 'home_how_2_title', descKey: 'home_how_2_desc' },
+  { icon: MessageSquare, stepKey: 'home_how_3_step', titleKey: 'home_how_3_title', descKey: 'home_how_3_desc' },
+  { icon: ShieldCheck,   stepKey: 'home_how_4_step', titleKey: 'home_how_4_title', descKey: 'home_how_4_desc' },
 ];
 
-// ── Pricing ───────────────────────────────────────────────────
+// ── Pricing — plan codes (name) are stable identifiers used for routing
+// logic and display; only the feature copy is translated. ──
 const PLANS = [
-  { name: 'FREE', price: '$0', period: '/month', features: ['5 AI searches/month', '3 property matches', 'Basic Trust Score', 'Verification Center access'], highlight: false },
-  { name: 'PLUS', price: '$4.90', period: '/month', features: ['50 AI searches/month', 'Unlimited matches', 'Full Trust Score', 'Active AI Search', 'Real-time Chat'], highlight: true },
-  { name: 'PRO',  price: '$9.90', period: '/month', features: ['Unlimited AI searches', 'Priority matching', 'Developer Profiles', 'PAYG external contacts', 'Viewing requests', 'Export & API'], highlight: false },
+  { name: 'FREE', price: '$0', period: '/month', featureKeys: ['home_plan_free_f1', 'home_plan_free_f2', 'home_plan_free_f3', 'home_plan_free_f4'], highlight: false },
+  { name: 'PLUS', price: '$4.90', period: '/month', featureKeys: ['home_plan_plus_f1', 'home_plan_plus_f2', 'home_plan_plus_f3', 'home_plan_plus_f4', 'home_plan_plus_f5'], highlight: true },
+  { name: 'PRO',  price: '$9.90', period: '/month', featureKeys: ['home_plan_pro_f1', 'home_plan_pro_f2', 'home_plan_pro_f3', 'home_plan_pro_f4', 'home_plan_pro_f5', 'home_plan_pro_f6'], highlight: false },
 ];
 
 // ── FAQ ───────────────────────────────────────────────────────
-const FAQ = [
-  { q: 'What makes Homatch different from a listing portal?', a: 'Homatch is not a listing portal. It is an AI matching platform that works for both sides: buyers/renters tell AI what they need and Homatch finds supply; sellers/landlords upload once and Homatch finds demand. We search across internal and external sources, compare duplicates and help you verify before you decide.' },
-  { q: 'How does AI property search work?', a: 'Type or speak what you need in any language. Homatch AI interprets your requirements, searches the internal network first, then scans external sources like property portals and social groups. Results are ranked by match score, trust and freshness.' },
-  { q: 'What is the Trust Score?', a: 'Each listing is evaluated for consistency across sources, area discrepancies, duplicate images, data freshness and cadastral match. The output is a confidence label and risk indicators — not a guarantee, but a useful signal before you commit.' },
-  { q: 'Can I verify a property before buying?', a: 'Yes. The Verification Center lets you search by property address, cadastral code, developer name or project. You can see official records, source-reported data, AI inference and what is unavailable — clearly labeled.' },
-  { q: 'How does seller/landlord matching work?', a: 'Add or import your property. Homatch builds a demand profile and scans internal buyers/renters first. If more demand is needed, external sources are searched. Qualified leads are ranked and previewed before you unlock contact details.' },
-  { q: 'Is Active AI Search really automatic?', a: 'Yes. Set your criteria once and Homatch keeps running. When new matching properties or buyer signals appear, you get notified automatically — no need to check manually.' },
+const FAQ_KEYS = [
+  { qKey: 'home_faq_1_q', aKey: 'home_faq_1_a' },
+  { qKey: 'home_faq_2_q', aKey: 'home_faq_2_a' },
+  { qKey: 'home_faq_3_q', aKey: 'home_faq_3_a' },
+  { qKey: 'home_faq_4_q', aKey: 'home_faq_4_a' },
+  { qKey: 'home_faq_5_q', aKey: 'home_faq_5_a' },
+  { qKey: 'home_faq_6_q', aKey: 'home_faq_6_a' },
 ];
 
-function FaqItem({ q, a }: { q: string; a: string }) {
+// ── Why Homatch ───────────────────────────────────────────────
+const WHY_KEYS = [
+  { titleKey: 'home_why_1_title', descKey: 'home_why_1_desc' },
+  { titleKey: 'home_why_2_title', descKey: 'home_why_2_desc' },
+  { titleKey: 'home_why_3_title', descKey: 'home_why_3_desc' },
+  { titleKey: 'home_why_4_title', descKey: 'home_why_4_desc' },
+  { titleKey: 'home_why_5_title', descKey: 'home_why_5_desc' },
+  { titleKey: 'home_why_6_title', descKey: 'home_why_6_desc' },
+];
+
+// ── Verification teaser tags ────────────────────────────────────
+const VERIFY_TAG_KEYS = ['home_verify_teaser_tag_cadastral', 'home_verify_teaser_tag_address', 'home_verify_teaser_tag_developer', 'home_verify_teaser_tag_project'];
+
+function FaqItem({ qKey, aKey }: { qKey: string; aKey: string }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   return (
     <div className="border-b border-border/50 last:border-0">
       <button type="button" onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between py-4 text-left gap-4 hover:text-primary transition-colors"
         aria-expanded={open}>
-        <span className="text-sm font-medium text-foreground">{q}</span>
+        <span className="text-sm font-medium text-foreground">{t(qKey)}</span>
         {open ? <ChevronUp className="h-4 w-4 shrink-0 text-primary" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
       </button>
-      {open && <p className="text-sm text-muted-foreground pb-4 leading-relaxed">{a}</p>}
+      {open && <p className="text-sm text-muted-foreground pb-4 leading-relaxed">{t(aKey)}</p>}
     </div>
   );
 }
@@ -121,6 +140,14 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [aiInput, setAiInput] = useState('');
   const [url, setUrl] = useState('');
+
+  const QUICK_PATHS = [
+    { icon: Home,       labelKey: 'home_quick_find_property', action: () => navigate(session ? '/ai' : '/auth/signup') },
+    { icon: Users,      labelKey: 'home_quick_find_buyers',   action: () => navigate(session ? '/property/add' : '/auth/signup') },
+    { icon: ShieldCheck,labelKey: 'home_quick_verify_property', action: () => navigate('/verify') },
+    { icon: Building2,  labelKey: 'home_quick_check_developer', action: () => navigate('/verify?tab=developer') },
+    { icon: ExternalLink,labelKey:'home_quick_paste_link',    action: () => navigate(session ? '/property/import' : '/auth/signup') },
+  ];
 
   const handleAISubmit = () => {
     const text = aiInput.trim();
@@ -153,7 +180,7 @@ export default function HomePage() {
             type="button"
             onClick={() => { navigate('/'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
             className="shrink-0 cursor-pointer"
-            aria-label="Homatch home"
+            aria-label={t('home_nav_home_aria')}
           >
             <HomatchLogo size="sm" />
           </button>
@@ -161,20 +188,20 @@ export default function HomePage() {
           <LanguageSwitcher />
           <nav className="hidden md:flex items-center gap-2">
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-sm" onClick={() => navigate('/verify')}>
-              Verify
+              {t('nav_verify')}
             </Button>
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-sm" onClick={() => navigate('/partners')}>
-              Partners
+              {t('home_nav_partners')}
             </Button>
           </nav>
           {session ? (
             <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => navigate('/dashboard')}>
-              Dashboard
+              {t('nav_dashboard')}
             </Button>
           ) : (
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground hidden md:flex" onClick={() => navigate('/auth/login')}>Sign In</Button>
-              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => navigate('/auth/signup')}>Get Started</Button>
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground hidden md:flex" onClick={() => navigate('/auth/login')}>{t('nav_login')}</Button>
+              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => navigate('/auth/signup')}>{t('nav_signup')}</Button>
             </div>
           )}
         </div>
@@ -186,15 +213,15 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-b from-primary/4 via-transparent to-transparent pointer-events-none" />
         <div className="max-w-3xl mx-auto text-center space-y-6 relative">
           <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5">
-            <Sparkles className="h-3 w-3" /> AI Real Estate Platform
+            <Sparkles className="h-3 w-3" /> {t('home_hero_badge')}
           </Badge>
           <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight tracking-tight text-balance">
-            <span className="gradient-text">HOMATCH</span> — AI Real Estate{' '}
-            <span className="underline decoration-primary decoration-2 underline-offset-4">Search, Match</span>{' '}
-            &amp; Verification
+            <span className="gradient-text">HOMATCH</span> — {t('home_hero_title_lead')}{' '}
+            <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_hero_title_highlight')}</span>{' '}
+            &amp; {t('home_hero_title_verification')}
           </h1>
           <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto text-pretty">
-            Tell Homatch what you need. We search, match, compare and help you verify — across internal listings and external sources.
+            {t('home_hero_subtitle')}
           </p>
 
           {/* AI Input */}
@@ -204,34 +231,28 @@ export default function HomePage() {
                 <Bot className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary pointer-events-none" />
                 <input
                   className="w-full pl-10 pr-4 py-2.5 bg-transparent text-foreground text-sm placeholder:text-muted-foreground/60 focus:outline-none"
-                  placeholder='Try: "2BR apartment in Vake under $150k" or "Find buyers for my property"'
+                  placeholder={t('home_ai_input_placeholder')}
                   value={aiInput}
                   onChange={e => setAiInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleAISubmit()}
                 />
               </div>
               <Button onClick={handleAISubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 gap-2 px-5">
-                Ask AI <ArrowRight className="h-4 w-4" />
+                {t('nav_ask_ai_short')} <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground/50 mt-2">
-              Works in Georgian, English, Russian, Turkish, Arabic &amp; Hebrew
+              {t('home_works_in_langs')}
             </p>
           </div>
 
           {/* 5 quick paths */}
           <div className="flex flex-wrap gap-2 justify-center pt-2">
-            {[
-              { icon: Home,      label: 'Find a Property',        action: () => navigate(session ? '/ai' : '/auth/signup') },
-              { icon: Users,     label: 'Find Buyers / Renters',  action: () => navigate(session ? '/property/add' : '/auth/signup') },
-              { icon: ShieldCheck,label: 'Verify Property',       action: () => navigate('/verify') },
-              { icon: Building2, label: 'Check a Developer',      action: () => navigate('/verify?tab=developer') },
-              { icon: ExternalLink,label:'Paste Property Link',   action: () => navigate(session ? '/property/import' : '/auth/signup') },
-            ].map(({ icon: Icon, label, action }) => (
-              <button key={label} type="button" onClick={action}
+            {QUICK_PATHS.map(({ icon: Icon, labelKey, action }) => (
+              <button key={labelKey} type="button" onClick={action}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card/60 hover:border-primary/40 hover:bg-primary/5 transition-colors text-sm text-muted-foreground hover:text-foreground">
                 <Icon className="h-3.5 w-3.5 text-primary shrink-0" />
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
@@ -243,10 +264,10 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto space-y-16">
           <div className="text-center">
             <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5 mb-3">
-              <Sparkles className="h-3 w-3" /> New
+              <Sparkles className="h-3 w-3" /> {t('home_outreach_badge_new')}
             </Badge>
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground">Homatch Doesn't Just Find Leads — It Reaches Them</h2>
-            <p className="text-sm text-muted-foreground mt-2 max-w-xl mx-auto">Three AI-driven outreach engines, each built for one job.</p>
+            <h2 className="text-2xl md:text-3xl font-bold text-foreground">{t('home_outreach_title')}</h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-xl mx-auto">{t('home_outreach_subtitle')}</p>
           </div>
 
           {/* Block 1 — AI Call Center */}
@@ -255,26 +276,26 @@ export default function HomePage() {
               <div className="w-11 h-11 rounded-2xl bg-green-500/10 flex items-center justify-center">
                 <PhoneCall className="h-5 w-5 text-green-400" />
               </div>
-              <h3 className="text-xl font-bold text-foreground">AI Call Center</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">A real AI voice agent calls your leads, has the conversation, and hands you a transcript and recording — you never have to dial.</p>
+              <h3 className="text-xl font-bold text-foreground">{t('home_call_title')}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{t('home_call_desc')}</p>
               <ul className="space-y-2">
-                {CALL_FEATURES.map(f => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />{f}
+                {CALL_FEATURE_KEYS.map(k => (
+                  <li key={k} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />{t(k)}
                   </li>
                 ))}
               </ul>
               <Button className="bg-green-600 hover:bg-green-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/calls' : '/auth/signup')}>
-                Open AI Call Center <ArrowRight className="h-4 w-4" />
+                {t('home_call_cta')} <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
             <div className="order-1 md:order-2">
               <div className="rounded-2xl border border-border bg-card shadow-hover p-5 max-w-sm mx-auto">
                 <div className="flex items-center justify-between mb-4">
                   <Badge className="bg-green-500/15 text-green-400 border-green-500/30 text-[10px] gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> LIVE CALL
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> {t('home_call_live_badge')}
                   </Badge>
-                  <span className="text-xs font-mono text-muted-foreground">02:14</span>
+                  <span className="text-xs font-mono text-muted-foreground" dir="ltr">02:14</span>
                 </div>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="relative w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -283,7 +304,7 @@ export default function HomePage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">Giorgi M.</p>
-                    <p className="text-xs text-muted-foreground">+995 5●● ●● ●● ●●</p>
+                    <p className="text-xs text-muted-foreground" dir="ltr">+995 5●● ●● ●● ●●</p>
                   </div>
                   <div className="flex items-end gap-0.5 h-6 ml-auto shrink-0" aria-hidden>
                     {[0, 1, 2, 3, 4].map(i => (
@@ -292,8 +313,8 @@ export default function HomePage() {
                   </div>
                 </div>
                 <div className="rounded-xl bg-secondary/60 border border-border p-3 space-y-1.5">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Live transcript</p>
-                  <p className="text-xs text-foreground leading-relaxed">"...yes, I'm still interested in the 2-bedroom in Vake. Is it still available and can we—"</p>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t('home_call_transcript_label')}</p>
+                  <p className="text-xs text-foreground leading-relaxed">{t('home_call_transcript_text')}</p>
                 </div>
               </div>
             </div>
@@ -307,10 +328,10 @@ export default function HomePage() {
                   <span className="w-2.5 h-2.5 rounded-full bg-red-400/60" />
                   <span className="w-2.5 h-2.5 rounded-full bg-yellow-400/60" />
                   <span className="w-2.5 h-2.5 rounded-full bg-green-400/60" />
-                  <span className="text-[10px] text-muted-foreground ml-2">New Campaign</span>
+                  <span className="text-[10px] text-muted-foreground ml-2">{t('home_email_new_campaign')}</span>
                 </div>
                 <div className="p-4 space-y-3">
-                  <p className="text-sm font-semibold text-foreground">Exclusive: 2BR in Vake — Priced to Sell</p>
+                  <p className="text-sm font-semibold text-foreground">{t('home_email_subject_demo')}</p>
                   <div className="space-y-1.5">
                     <div className="h-2 rounded bg-secondary w-full" />
                     <div className="h-2 rounded bg-secondary w-11/12" />
@@ -319,15 +340,15 @@ export default function HomePage() {
                   <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
                     <div className="text-center">
                       <p className="text-sm font-bold text-foreground">142</p>
-                      <p className="text-[10px] text-muted-foreground">Sent</p>
+                      <p className="text-[10px] text-muted-foreground">{t('home_email_stat_sent')}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-bold text-blue-400">89</p>
-                      <p className="text-[10px] text-muted-foreground">Opened</p>
+                      <p className="text-[10px] text-muted-foreground">{t('home_email_stat_opened')}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-bold text-green-400">12</p>
-                      <p className="text-[10px] text-muted-foreground">Replied</p>
+                      <p className="text-[10px] text-muted-foreground">{t('home_email_stat_replied')}</p>
                     </div>
                   </div>
                 </div>
@@ -337,17 +358,17 @@ export default function HomePage() {
               <div className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center">
                 <Mail className="h-5 w-5 text-blue-400" />
               </div>
-              <h3 className="text-xl font-bold text-foreground">Email Campaigns</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Send personalized outreach to your entire contact list in one click, and watch delivery, opens and replies update live.</p>
+              <h3 className="text-xl font-bold text-foreground">{t('home_email_title')}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{t('home_email_desc')}</p>
               <ul className="space-y-2">
-                {EMAIL_FEATURES.map(f => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />{f}
+                {EMAIL_FEATURE_KEYS.map(k => (
+                  <li key={k} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />{t(k)}
                   </li>
                 ))}
               </ul>
               <Button className="bg-blue-600 hover:bg-blue-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/email' : '/auth/signup')}>
-                Open Email Campaigns <ArrowRight className="h-4 w-4" />
+                {t('home_email_cta')} <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -358,17 +379,17 @@ export default function HomePage() {
               <div className="w-11 h-11 rounded-2xl bg-purple-500/10 flex items-center justify-center">
                 <MessageSquare className="h-5 w-5 text-purple-400" />
               </div>
-              <h3 className="text-xl font-bold text-foreground">SMS Campaigns</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Text leads directly — the channel with the highest read rate. Two-way replies land straight back in Homatch.</p>
+              <h3 className="text-xl font-bold text-foreground">{t('home_sms_title')}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{t('home_sms_desc')}</p>
               <ul className="space-y-2">
-                {SMS_FEATURES.map(f => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-purple-400 shrink-0 mt-0.5" />{f}
+                {SMS_FEATURE_KEYS.map(k => (
+                  <li key={k} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-purple-400 shrink-0 mt-0.5" />{t(k)}
                   </li>
                 ))}
               </ul>
               <Button className="bg-purple-600 hover:bg-purple-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/sms' : '/auth/signup')}>
-                Open SMS Campaigns <ArrowRight className="h-4 w-4" />
+                {t('home_sms_cta')} <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
             <div className="order-1 md:order-2">
@@ -381,14 +402,14 @@ export default function HomePage() {
                 </div>
                 <div className="space-y-2">
                   <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-purple-600 text-white text-xs px-3 py-2 leading-relaxed">
-                    Hi! We found buyers interested in your Vake listing 🏠 Reply YES for details.
+                    {t('home_sms_demo_message')}
                   </div>
                   <div className="flex items-center gap-1 justify-end pr-1">
-                    <span className="text-[9px] text-muted-foreground">Delivered</span>
+                    <span className="text-[9px] text-muted-foreground">{t('home_sms_delivered')}</span>
                     <CheckCircle2 className="h-2.5 w-2.5 text-purple-400" />
                   </div>
                   <div className="max-w-[70%] rounded-2xl rounded-bl-sm bg-secondary text-foreground text-xs px-3 py-2 leading-relaxed">
-                    Yes, tell me more!
+                    {t('home_sms_demo_reply')}
                   </div>
                 </div>
               </div>
@@ -412,10 +433,10 @@ export default function HomePage() {
             </div>
             <div className="flex-1 text-center sm:text-left">
               <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                <h3 className="text-lg font-bold text-foreground">Homatch Live Chat</h3>
-                <Badge className="bg-primary text-primary-foreground text-[10px]">LIVE</Badge>
+                <h3 className="text-lg font-bold text-foreground">{t('home_livechat_title')}</h3>
+                <Badge className="bg-primary text-primary-foreground text-[10px]">{t('home_livechat_badge')}</Badge>
               </div>
-              <p className="text-sm text-muted-foreground">One global room, open to every Homatch member — pick a public nickname and talk in real time. Separate from AI Assistant and from your private conversations.</p>
+              <p className="text-sm text-muted-foreground">{t('home_livechat_desc')}</p>
             </div>
             <ArrowRight className="h-5 w-5 text-primary shrink-0 group-hover:translate-x-1 transition-transform hidden sm:block" />
           </div>
@@ -426,15 +447,15 @@ export default function HomePage() {
       <section className="py-16 px-4 border-t border-border">
         <div className="max-w-5xl mx-auto space-y-8">
           <div className="text-center">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Platform Capabilities</p>
-            <h2 className="text-2xl font-bold text-foreground">Everything in One Place</h2>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t('home_capabilities_label')}</p>
+            <h2 className="text-2xl font-bold text-foreground">{t('home_capabilities_title')}</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {FEATURES.map(({ icon: Icon, title, desc, route }) => {
+            {FEATURES.map(({ icon: Icon, titleKey, descKey, route }) => {
               const clickable = Boolean(route);
               return (
                 <div
-                  key={title}
+                  key={titleKey}
                   role={clickable ? 'button' : undefined}
                   tabIndex={clickable ? 0 : undefined}
                   onClick={clickable ? () => navigate(session ? route! : '/auth/signup') : undefined}
@@ -446,9 +467,9 @@ export default function HomePage() {
                     {clickable && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-primary/70 group-hover:translate-x-0.5 transition-all" />}
                   </div>
                   <p className="text-xs font-bold text-foreground underline decoration-primary decoration-1 underline-offset-2 mb-1.5">
-                    {title}
+                    {t(titleKey)}
                   </p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{t(descKey)}</p>
                 </div>
               );
             })}
@@ -460,8 +481,8 @@ export default function HomePage() {
       <section className="py-16 px-4 border-t border-border bg-card/20">
         <div className="max-w-5xl mx-auto space-y-8">
           <div className="text-center">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Both Sides. One Platform.</p>
-            <h2 className="text-2xl font-bold text-foreground">Homatch Works for Everyone</h2>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t('home_dual_flow_label')}</p>
+            <h2 className="text-2xl font-bold text-foreground">{t('home_dual_flow_title')}</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Buyer flow */}
@@ -471,17 +492,17 @@ export default function HomePage() {
                   <Home className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-foreground">BUYER / RENTER</p>
-                  <p className="text-xs text-muted-foreground">I need to find a property</p>
+                  <p className="text-sm font-bold text-foreground">{t('home_buyer_badge')}</p>
+                  <p className="text-xs text-muted-foreground">{t('home_buyer_subtitle')}</p>
                 </div>
               </div>
               <div className="space-y-2">
                 {BUYER_FLOW.map((s, i) => (
-                  <div key={s.step} className="flex items-center gap-3">
+                  <div key={s.stepKey} className="flex items-center gap-3">
                     <div className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</div>
                     <div className="flex-1 min-w-0">
-                      <span className="text-xs font-semibold text-foreground">{s.step}</span>
-                      <span className="text-xs text-muted-foreground ml-2">{s.desc}</span>
+                      <span className="text-xs font-semibold text-foreground">{t(s.stepKey)}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{t(s.descKey)}</span>
                     </div>
                     {i < BUYER_FLOW.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />}
                   </div>
@@ -489,7 +510,7 @@ export default function HomePage() {
               </div>
               <Button size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
                 onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
-                Start Searching <ArrowRight className="h-4 w-4" />
+                {t('home_buyer_cta')} <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
             {/* Seller flow */}
@@ -499,17 +520,17 @@ export default function HomePage() {
                   <Building2 className="h-4 w-4 text-accent-foreground" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-foreground">SELLER / LANDLORD</p>
-                  <p className="text-xs text-muted-foreground">I want to find buyers or renters</p>
+                  <p className="text-sm font-bold text-foreground">{t('home_seller_badge')}</p>
+                  <p className="text-xs text-muted-foreground">{t('home_seller_subtitle')}</p>
                 </div>
               </div>
               <div className="space-y-2">
                 {SELLER_FLOW.map((s, i) => (
-                  <div key={s.step} className="flex items-center gap-3">
+                  <div key={s.stepKey} className="flex items-center gap-3">
                     <div className="w-6 h-6 rounded-full bg-accent/20 text-accent-foreground text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</div>
                     <div className="flex-1 min-w-0">
-                      <span className="text-xs font-semibold text-foreground">{s.step}</span>
-                      <span className="text-xs text-muted-foreground ml-2">{s.desc}</span>
+                      <span className="text-xs font-semibold text-foreground">{t(s.stepKey)}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{t(s.descKey)}</span>
                     </div>
                     {i < SELLER_FLOW.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />}
                   </div>
@@ -517,7 +538,7 @@ export default function HomePage() {
               </div>
               <Button size="sm" variant="outline" className="w-full border-border gap-2"
                 onClick={() => navigate(session ? '/property/add' : '/auth/signup')}>
-                Add My Property <ArrowRight className="h-4 w-4" />
+                {t('home_seller_cta')} <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -529,24 +550,24 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto space-y-8">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-foreground">
-              <span className="underline decoration-primary decoration-2 underline-offset-4">SEARCH</span>
+              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_how_search')}</span>
               {' → '}
-              <span className="underline decoration-primary decoration-2 underline-offset-4">MATCH</span>
+              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_how_match')}</span>
               {' → '}
-              <span className="underline decoration-primary decoration-2 underline-offset-4">CONNECT</span>
+              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_how_connect')}</span>
               {' → '}
-              <span className="underline decoration-primary decoration-2 underline-offset-4">VERIFY</span>
+              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_how_verify')}</span>
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {HOW_STEPS.map(({ icon: Icon, step, title, desc }) => (
-              <div key={step} className="p-5 rounded-2xl border border-border bg-card space-y-3">
+            {HOW_STEPS.map(({ icon: Icon, stepKey, titleKey, descKey }) => (
+              <div key={stepKey} className="p-5 rounded-2xl border border-border bg-card space-y-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                   <Icon className="h-5 w-5 text-primary" />
                 </div>
-                <p className="text-[10px] font-bold text-primary tracking-widest">{step}</p>
-                <p className="text-sm font-semibold text-foreground">{title}</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                <p className="text-[10px] font-bold text-primary tracking-widest">{t(stepKey)}</p>
+                <p className="text-sm font-semibold text-foreground">{t(titleKey)}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{t(descKey)}</p>
               </div>
             ))}
           </div>
@@ -558,10 +579,10 @@ export default function HomePage() {
         <div className="max-w-3xl mx-auto space-y-6">
           <div className="text-center">
             <Badge variant="secondary" className="border-amber-500/30 text-amber-400 bg-amber-500/10 mb-3">
-              Demo — Sample Results Only
+              {t('home_demo_badge')}
             </Badge>
-            <h2 className="text-2xl font-bold text-foreground">See What Homatch Returns</h2>
-            <p className="text-sm text-muted-foreground mt-2">AI query: "I need a 2-bedroom apartment in Vake under $150,000"</p>
+            <h2 className="text-2xl font-bold text-foreground">{t('home_demo_title')}</h2>
+            <p className="text-sm text-muted-foreground mt-2">{t('home_demo_query')}</p>
           </div>
           <div className="space-y-3">
             {DEMO_MATCHES.map((m, i) => (
@@ -569,32 +590,32 @@ export default function HomePage() {
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-sm font-semibold text-foreground">{m.price}</span>
+                      <span className="text-sm font-semibold text-foreground" dir="ltr">{m.price}</span>
                       <Badge variant="secondary" className="text-[10px] border-border">{m.source}</Badge>
                       {m.trustHigh && (
                         <Badge variant="secondary" className="text-[10px] bg-green-500/10 text-green-400 border-green-500/20">
-                          <ShieldCheck className="h-2.5 w-2.5 mr-1" /> High Trust
+                          <ShieldCheck className="h-2.5 w-2.5 mr-1" /> {t('home_demo_high_trust')}
                         </Badge>
                       )}
-                      <Badge variant="secondary" className="text-[10px] border-border">{m.badge}</Badge>
+                      <Badge variant="secondary" className="text-[10px] border-border">{t(m.badgeKey)}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      <MapPin className="h-3 w-3 shrink-0" /> {m.location} · {m.area} · {m.beds} BR
+                      <MapPin className="h-3 w-3 shrink-0" /> {m.location} · {m.area} · {m.beds} {t('home_demo_br_suffix')}
                     </p>
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => {}} className="border border-border text-muted-foreground hover:text-foreground shrink-0" disabled>
-                    <Lock className="h-3.5 w-3.5 mr-1.5" /> Unlock
+                    <Lock className="h-3.5 w-3.5 mr-1.5" /> {t('home_demo_unlock')}
                   </Button>
                 </div>
                 <MatchScoreBars score={m.score} />
-                <p className="text-[10px] text-muted-foreground/50 italic">⚠️ Demo data only — not real listings</p>
+                <p className="text-[10px] text-muted-foreground/50 italic">{t('home_demo_disclaimer')}</p>
               </div>
             ))}
           </div>
           <div className="text-center">
             <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
               onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
-              Get Real Results <ArrowRight className="h-4 w-4" />
+              {t('home_demo_cta')} <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -605,18 +626,18 @@ export default function HomePage() {
         <div className="max-w-3xl mx-auto">
           <div className="rounded-2xl border border-primary/20 bg-primary/5 p-8 text-center space-y-4">
             <ShieldCheck className="h-10 w-10 text-primary mx-auto" />
-            <h2 className="text-xl font-bold text-foreground">Before you pay, verify.</h2>
+            <h2 className="text-xl font-bold text-foreground">{t('home_verify_teaser_title')}</h2>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Check cadastral records, area discrepancies, developer history and risk indicators before making a commitment.
+              {t('home_verify_teaser_desc')}
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
-              {['Cadastral Code', 'Property Address', 'Developer Name', 'Project'].map(tag => (
-                <span key={tag} className="text-xs px-3 py-1.5 rounded-full border border-primary/30 text-primary/80 bg-primary/5">{tag}</span>
+              {VERIFY_TAG_KEYS.map(tagKey => (
+                <span key={tagKey} className="text-xs px-3 py-1.5 rounded-full border border-primary/30 text-primary/80 bg-primary/5">{t(tagKey)}</span>
               ))}
             </div>
             <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
               onClick={() => navigate('/verify')}>
-              Open Verification Center <ArrowRight className="h-4 w-4" />
+              {t('home_verify_teaser_cta')} <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -625,21 +646,14 @@ export default function HomePage() {
       {/* ── WHY HOMATCH ── */}
       <section className="py-16 px-4 border-t border-border bg-card/20">
         <div className="max-w-3xl mx-auto space-y-6">
-          <h2 className="text-2xl font-bold text-foreground text-center">Why Homatch?</h2>
+          <h2 className="text-2xl font-bold text-foreground text-center">{t('home_why_title')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
-              { title: 'Stop checking portals manually', desc: 'One AI request covers Homatch, property portals, Telegram and Facebook groups simultaneously.' },
-              { title: 'Internal supply/demand first', desc: 'Your request is matched against the Homatch network before any external paid search runs.' },
-              { title: 'AI filters and ranks', desc: 'Results are sorted by relevance, freshness and trust — not by who paid to be at the top.' },
-              { title: 'Duplicates and price differences', desc: 'The same property on 3 sources at 3 prices? Homatch shows you the cheapest option.' },
-              { title: 'Verify before you decide', desc: 'Cadastral records, ownership, developer history and risk signals — all in one place.' },
-              { title: 'Active Searches work for you', desc: 'Set your criteria once and AI keeps watching. New matches arrive automatically.' },
-            ].map(({ title, desc }) => (
-              <div key={title} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
+            {WHY_KEYS.map(({ titleKey, descKey }) => (
+              <div key={titleKey} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
                 <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-semibold text-foreground">{title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{desc}</p>
+                  <p className="text-sm font-semibold text-foreground">{t(titleKey)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{t(descKey)}</p>
                 </div>
               </div>
             ))}
@@ -651,8 +665,8 @@ export default function HomePage() {
       <section className="py-16 px-4 border-t border-border">
         <div className="max-w-4xl mx-auto space-y-8">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-foreground">Simple, Transparent Pricing</h2>
-            <p className="text-sm text-muted-foreground mt-2">Same plans for buyers, renters, sellers and landlords.</p>
+            <h2 className="text-2xl font-bold text-foreground">{t('home_pricing_title')}</h2>
+            <p className="text-sm text-muted-foreground mt-2">{t('home_pricing_subtitle')}</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {PLANS.map(plan => (
@@ -663,19 +677,19 @@ export default function HomePage() {
               }`}>
                 {plan.highlight && (
                   <Badge className="self-start bg-primary/20 text-primary border-primary/40 text-[10px]">
-                    <Star className="h-2.5 w-2.5 mr-1" /> Most Popular
+                    <Star className="h-2.5 w-2.5 mr-1" /> {t('home_pricing_most_popular')}
                   </Badge>
                 )}
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground tracking-widest">{plan.name}</p>
-                  <p className="text-3xl font-bold text-foreground mt-1">
+                  <p className="text-xs font-bold text-muted-foreground tracking-widest" dir="ltr">{plan.name}</p>
+                  <p className="text-3xl font-bold text-foreground mt-1" dir="ltr">
                     {plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.period}</span>
                   </p>
                 </div>
                 <ul className="space-y-2 flex-1">
-                  {plan.features.map(f => (
-                    <li key={f} className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />{f}
+                  {plan.featureKeys.map(fk => (
+                    <li key={fk} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />{t(fk)}
                     </li>
                   ))}
                 </ul>
@@ -684,13 +698,13 @@ export default function HomePage() {
                   variant={plan.highlight ? 'default' : 'outline'}
                   onClick={() => navigate(session ? '/credits' : '/auth/signup')}
                 >
-                  {plan.name === 'FREE' ? 'Get Started Free' : `Start ${plan.name}`}
+                  {plan.name === 'FREE' ? t('home_pricing_get_started_free') : t('home_pricing_start_plan', { plan: plan.name })}
                 </Button>
               </div>
             ))}
           </div>
           <p className="text-center text-xs text-muted-foreground">
-            Additional external operations use Credits at actual cost ×2. No hidden fees.
+            {t('home_pricing_footnote')}
           </p>
         </div>
       </section>
@@ -698,18 +712,19 @@ export default function HomePage() {
       {/* ── URL IMPORT strip ── */}
       <section className="py-10 px-4 border-t border-border bg-card/20">
         <div className="max-w-2xl mx-auto text-center space-y-4">
-          <p className="text-sm font-semibold text-foreground">Paste any property listing URL</p>
-          <p className="text-xs text-muted-foreground">Homatch imports the details, finds duplicates and searches for a better price.</p>
+          <p className="text-sm font-semibold text-foreground">{t('home_url_import_title')}</p>
+          <p className="text-xs text-muted-foreground">{t('home_url_import_desc')}</p>
           <div className="flex gap-2">
             <Input
               value={url}
               onChange={e => setUrl(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleUrlSubmit()}
-              placeholder="https://myhome.ge/..."
+              placeholder={t('home_url_import_placeholder')}
+              dir="ltr"
               className="flex-1 bg-secondary border-border text-sm"
             />
             <Button onClick={handleUrlSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
-              Import
+              {t('home_url_import_button')}
             </Button>
           </div>
         </div>
@@ -718,9 +733,9 @@ export default function HomePage() {
       {/* ── FAQ ── */}
       <section className="py-16 px-4 border-t border-border">
         <div className="max-w-2xl mx-auto space-y-4">
-          <h2 className="text-2xl font-bold text-foreground text-center">Frequently Asked Questions</h2>
+          <h2 className="text-2xl font-bold text-foreground text-center">{t('home_faq_title')}</h2>
           <div className="rounded-2xl border border-border bg-card px-5">
-            {FAQ.map(({ q, a }) => <FaqItem key={q} q={q} a={a} />)}
+            {FAQ_KEYS.map(({ qKey, aKey }) => <FaqItem key={qKey} qKey={qKey} aKey={aKey} />)}
           </div>
         </div>
       </section>
@@ -729,11 +744,11 @@ export default function HomePage() {
       <section className="py-16 px-4 border-t border-border bg-primary/5">
         <div className="max-w-xl mx-auto text-center space-y-4">
           <Sparkles className="h-8 w-8 text-primary mx-auto" />
-          <h2 className="text-2xl font-bold text-foreground">Start with Homatch AI — free</h2>
-          <p className="text-sm text-muted-foreground">Tell us what you need. We find it, match it and help you verify it.</p>
+          <h2 className="text-2xl font-bold text-foreground">{t('home_cta_title')}</h2>
+          <p className="text-sm text-muted-foreground">{t('home_cta_desc')}</p>
           <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-base px-8 py-5"
             onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
-            Try Homatch AI Free <ArrowRight className="h-5 w-5" />
+            {t('home_cta_button')} <ArrowRight className="h-5 w-5" />
           </Button>
         </div>
       </section>
@@ -745,17 +760,17 @@ export default function HomePage() {
             type="button"
             onClick={() => { navigate('/'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
             className="cursor-pointer"
-            aria-label="Homatch home"
+            aria-label={t('home_nav_home_aria')}
           >
             <HomatchLogo size="sm" />
           </button>
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-            <button type="button" onClick={() => navigate('/privacy')} className="hover:text-foreground transition-colors">Privacy</button>
-            <button type="button" onClick={() => navigate('/terms')} className="hover:text-foreground transition-colors">Terms</button>
-            <button type="button" onClick={() => navigate('/verify')} className="hover:text-foreground transition-colors">Verify</button>
-            <button type="button" onClick={() => navigate('/partners')} className="hover:text-foreground transition-colors">Partners</button>
+            <button type="button" onClick={() => navigate('/privacy')} className="hover:text-foreground transition-colors">{t('home_footer_privacy')}</button>
+            <button type="button" onClick={() => navigate('/terms')} className="hover:text-foreground transition-colors">{t('home_footer_terms')}</button>
+            <button type="button" onClick={() => navigate('/verify')} className="hover:text-foreground transition-colors">{t('nav_verify')}</button>
+            <button type="button" onClick={() => navigate('/partners')} className="hover:text-foreground transition-colors">{t('home_nav_partners')}</button>
           </div>
-          <p className="text-xs text-muted-foreground">© 2026 Homatch. All rights reserved.</p>
+          <p className="text-xs text-muted-foreground">{t('home_footer_copyright', { year: String(new Date().getFullYear()) })}</p>
         </div>
       </footer>
     </div>

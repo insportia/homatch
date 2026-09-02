@@ -17,12 +17,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { getCreditAccount, getCreditLedger, getMyPayments, updateMyProfile } from '@/services/api';
-import type { CreditAccount, CreditLedgerEntry, Payment } from '@/types/types';
+import type { CreditAccount, CreditLedgerEntry, LedgerType, Payment, PaymentStatus } from '@/types/types';
 import { toast } from 'sonner';
 import {
   User as UserIcon, Mail, Phone, Calendar, Shield, Zap, CreditCard, Lock,
   Loader2, Save, ExternalLink, CheckCircle2, KeyRound, Chrome,
 } from 'lucide-react';
+
+// Every value of these two small, fixed backend enums must render as
+// localized text, never as the raw UPPER_SNAKE_CASE database value.
+const LEDGER_TYPE_KEY: Record<LedgerType, string> = {
+  TOP_UP: 'credits_type_topup',
+  MATCH_UNLOCK: 'credits_type_unlock',
+  REFUND: 'credits_type_refund',
+  ADMIN_ADJUSTMENT: 'credits_type_adjustment',
+  SERVICE_RESERVE: 'credits_type_service_reserve',
+  SERVICE_CAPTURE: 'credits_type_service_capture',
+  SERVICE_RELEASE: 'credits_type_service_release',
+};
+const PAYMENT_STATUS_KEY: Record<PaymentStatus, string> = {
+  PENDING: 'payment_status_pending',
+  COMPLETED: 'payment_status_completed',
+  FAILED: 'payment_status_failed',
+  REFUNDED: 'payment_status_refunded',
+};
 
 function initialsOf(name: string | null | undefined, email: string | undefined): string {
   const source = (name && name.trim()) || email || '?';
@@ -204,7 +222,7 @@ function ProfileContent() {
             <CardContent className="pt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> {t('profile_field_plan')}</span>
-                <Badge variant="outline" className="uppercase text-[10px]">{homatchUser.plan ?? 'FREE'}</Badge>
+                <Badge variant="outline" className="uppercase text-[10px]">{homatchUser.plan || t('profile_plan_free')}</Badge>
               </div>
               <Separator className="bg-border" />
               <div className="flex items-center justify-between">
@@ -260,9 +278,9 @@ function ProfileContent() {
               ) : (
                 <div className="divide-y divide-border/50">
                   {ledger.map((e, i) => (
-                    <div key={e.id ?? i} className="flex items-center justify-between py-2 text-xs">
-                      <span className="text-muted-foreground">{e.type.replace(/_/g, ' ')}</span>
-                      <span className={e.amount < 0 ? 'text-destructive font-medium' : 'text-green-400 font-medium'}>
+                    <div key={e.id ?? i} className="flex items-center justify-between py-2 text-xs gap-2">
+                      <span className="text-muted-foreground break-words">{t(LEDGER_TYPE_KEY[e.type] ?? 'credits_type_adjustment')}</span>
+                      <span className={`shrink-0 ${e.amount < 0 ? 'text-destructive font-medium' : 'text-green-400 font-medium'}`}>
                         {e.amount < 0 ? '' : '+'}{e.amount.toFixed(2)} CR
                       </span>
                     </div>
@@ -284,13 +302,13 @@ function ProfileContent() {
               ) : (
                 <div className="divide-y divide-border/50">
                   {payments.map(p => (
-                    <div key={p.id} className="flex items-center justify-between py-2 text-xs">
-                      <div>
-                        <p className="text-foreground">${p.amount_usd.toFixed(2)} — {p.status}</p>
+                    <div key={p.id} className="flex items-center justify-between py-2 text-xs gap-2">
+                      <div className="min-w-0">
+                        <p className="text-foreground break-words">${p.amount_usd.toFixed(2)} — {t(PAYMENT_STATUS_KEY[p.status] ?? 'payment_status_pending')}</p>
                         <p className="text-muted-foreground/70">{new Date(p.created_at).toLocaleDateString()}</p>
                       </div>
                       {p.receipt_url && (
-                        <a href={p.receipt_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                        <a href={p.receipt_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 shrink-0">
                           {t('profile_receipt')} <ExternalLink className="h-3 w-3" />
                         </a>
                       )}

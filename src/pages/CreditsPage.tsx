@@ -24,14 +24,16 @@ import { toast } from 'sonner';
 
 const TOPUP_PRESETS = [30, 50, 100, 200];
 
-const LEDGER_TYPE_CONFIG: Record<LedgerType, { label: string; icon: React.ElementType; color: string }> = {
-  TOP_UP:            { label: 'Top Up',            icon: ArrowUpRight,   color: 'text-green-400' },
-  MATCH_UNLOCK:      { label: 'Match Unlock',       icon: ArrowDownRight, color: 'text-destructive' },
-  REFUND:            { label: 'Refund',             icon: ArrowUpRight,   color: 'text-blue-400' },
-  ADMIN_ADJUSTMENT:  { label: 'Adjustment',         icon: ArrowUpRight,   color: 'text-muted-foreground' },
-  SERVICE_RESERVE:   { label: 'Research — Reserved', icon: Lock,          color: 'text-amber-500' },
-  SERVICE_CAPTURE:   { label: 'Research — Confirmed', icon: ShoppingCart, color: 'text-muted-foreground' },
-  SERVICE_RELEASE:   { label: 'Research — Refunded', icon: Unlock,        color: 'text-blue-400' },
+// Label text is localized via `labelKey` (translated at render time) rather
+// than baked in here, so every ledger type reads correctly in all 6 languages.
+const LEDGER_TYPE_CONFIG: Record<LedgerType, { labelKey: string; icon: React.ElementType; color: string }> = {
+  TOP_UP:            { labelKey: 'credits_type_topup',           icon: ArrowUpRight,   color: 'text-green-400' },
+  MATCH_UNLOCK:      { labelKey: 'credits_type_unlock',          icon: ArrowDownRight, color: 'text-destructive' },
+  REFUND:            { labelKey: 'credits_type_refund',          icon: ArrowUpRight,   color: 'text-blue-400' },
+  ADMIN_ADJUSTMENT:  { labelKey: 'credits_type_adjustment',      icon: ArrowUpRight,   color: 'text-muted-foreground' },
+  SERVICE_RESERVE:   { labelKey: 'credits_type_service_reserve', icon: Lock,           color: 'text-amber-500' },
+  SERVICE_CAPTURE:   { labelKey: 'credits_type_service_capture', icon: ShoppingCart,   color: 'text-muted-foreground' },
+  SERVICE_RELEASE:   { labelKey: 'credits_type_service_release', icon: Unlock,         color: 'text-blue-400' },
 };
 
 const PRODUCT_ICON: Record<string, React.ElementType> = {
@@ -39,6 +41,7 @@ const PRODUCT_ICON: Record<string, React.ElementType> = {
 };
 
 function LedgerRow({ entry }: { entry: CreditLedgerEntry }) {
+  const { t } = useLanguage();
   const cfg = LEDGER_TYPE_CONFIG[entry.type] ?? LEDGER_TYPE_CONFIG.ADMIN_ADJUSTMENT;
   const Icon = cfg.icon;
   const isDebit = entry.amount < 0;
@@ -52,7 +55,7 @@ function LedgerRow({ entry }: { entry: CreditLedgerEntry }) {
           <Icon className={`h-4 w-4 ${cfg.color}`} />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">{cfg.label}</p>
+          <p className="text-sm font-medium text-foreground break-words">{t(cfg.labelKey)}</p>
           {entry.reference && (
             <p className="text-xs text-muted-foreground truncate">{entry.reference}</p>
           )}

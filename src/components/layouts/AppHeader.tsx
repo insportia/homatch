@@ -106,7 +106,7 @@ export function AppHeader() {
                 size="sm"
                 className="relative h-8 w-8 p-0"
                 onClick={() => navigate('/notifications')}
-                aria-label="Notifications"
+                aria-label={t('notif_title')}
               >
                 <Bell className="h-4 w-4 text-muted-foreground" />
                 {unreadCount > 0 && (
@@ -124,7 +124,7 @@ export function AppHeader() {
                 onClick={() => navigate('/ai')}
               >
                 <Bot className="h-4 w-4" />
-                <span className="text-xs font-medium">Ask AI</span>
+                <span className="text-xs font-medium">{t('nav_ask_ai_short')}</span>
               </Button>
 
               {/* Add property */}

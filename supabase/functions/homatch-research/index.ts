@@ -22,6 +22,48 @@ const CORS = {
 };
 const MODEL = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-luna';
 
+// ── UI language handling ─────────────────────────────────────────────────
+// The frontend always sends the user's currently selected UI language so the
+// model's ENTIRE answer — not just the query echo — comes back in that
+// language, regardless of what language the query itself was typed in.
+type UiLang = 'en' | 'ka' | 'ru' | 'tr' | 'ar' | 'he';
+const SUPPORTED_LANGS: UiLang[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
+const LANG_NAMES: Record<UiLang, string> = {
+  en: 'English',
+  ka: 'Georgian (ქართული)',
+  ru: 'Russian (Русский)',
+  tr: 'Turkish (Türkçe)',
+  ar: 'Arabic (العربية)',
+  he: 'Hebrew (עברית)',
+};
+
+function resolveLang(input: unknown): UiLang {
+  return typeof input === 'string' && SUPPORTED_LANGS.includes(input as UiLang)
+    ? (input as UiLang)
+    : 'en';
+}
+
+// Fixed, code-generated safety strings (never model output) must still be
+// localized — small hand-maintained dictionaries rather than a runtime
+// translation call, since these are safety/compliance-critical and must
+// never depend on an external service being available.
+const CADASTRAL_NO_SOURCE_MSG: Record<UiLang, string> = {
+  en: 'No trustworthy public source was found for this exact cadastral code. This is expected — Georgia\'s Public Registry (napr.gov.ge) is not fully indexed by web search. Official verification directly through the Public Registry is required to confirm ownership, area, or encumbrances.',
+  ka: 'ამ ზუსტი საკადასტრო კოდისთვის სანდო საჯარო წყარო ვერ მოიძებნა. ეს ჩვეულებრივი შედეგია — საქართველოს საჯარო რეესტრი (napr.gov.ge) სრულად არ არის ინდექსირებული ვებ-ძიებაში. საკუთრების, ფართის ან დატვირთვების დასადასტურებლად საჭიროა ოფიციალური გადამოწმება უშუალოდ საჯარო რეესტრში.',
+  ru: 'Достоверный публичный источник для этого кадастрового кода не найден. Это ожидаемо — Публичный реестр Грузии (napr.gov.ge) не полностью индексируется веб-поиском. Для подтверждения собственности, площади или обременений требуется официальная проверка непосредственно в Публичном реестре.',
+  tr: 'Bu tapu kodu için güvenilir kamuya açık bir kaynak bulunamadı. Bu beklenen bir durumdur — Gürcistan Kamu Sicili (napr.gov.ge) web aramasında tam olarak dizine alınmamıştır. Mülkiyet, alan veya ipotek/haciz bilgilerini doğrulamak için doğrudan Kamu Sicili üzerinden resmi doğrulama gereklidir.',
+  ar: 'لم يُعثر على مصدر عام موثوق لهذا الرمز المساحي بالتحديد. هذا أمر متوقع — السجل العام لجورجيا (napr.gov.ge) غير مفهرس بالكامل في نتائج البحث. يلزم إجراء تحقق رسمي مباشر عبر السجل العام لتأكيد الملكية أو المساحة أو الرهون.',
+  he: 'לא נמצא מקור ציבורי מהימן עבור קוד הגוש/חלקה המדויק הזה. זו תוצאה צפויה — המרשם הציבורי של גאורגיה (napr.gov.ge) אינו מאונדקס במלואו בחיפוש ברשת. נדרש אימות רשמי ישירות מול המרשם הציבורי כדי לאשר בעלות, שטח או שעבודים.',
+};
+const CADASTRAL_NOT_OFFICIAL_WARNING: Record<UiLang, string> = {
+  en: 'Public web research is not official cadastral verification.',
+  ka: 'საჯარო ვებ-კვლევა არ წარმოადგენს საკადასტრო მონაცემების ოფიციალურ გადამოწმებას.',
+  ru: 'Публичный веб-поиск не является официальной кадастровой проверкой.',
+  tr: 'Kamuya açık web araştırması resmi tapu doğrulaması değildir.',
+  ar: 'البحث العام على الويب لا يُعد تحققاً مساحياً رسمياً.',
+  he: 'מחקר ציבורי ברשת אינו מהווה אימות רשמי של נתוני גוש/חלקה.',
+};
+
 const json = (d: unknown, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
@@ -106,8 +148,23 @@ function citationsOf(p: any) {
   for (const i of p?.output || []) {
     if (i?.type === 'message') {
       for (const c of i.content || []) {
+        const fullText: string = typeof c?.text === 'string' ? c.text : '';
         for (const a of c.annotations || []) {
-          if (a?.type === 'url_citation' && a.url) out.push({ label: a.title || a.url, url: a.url, status: 'FOUND_ONLINE' });
+          if (a?.type === 'url_citation' && a.url) {
+            // The model's own citation carries the exact span of its answer
+            // that this source backs — surface it as a real excerpt so the
+            // user can see *why* the link is relevant before opening it.
+            let excerpt = '';
+            if (
+              fullText &&
+              typeof a.start_index === 'number' &&
+              typeof a.end_index === 'number' &&
+              a.end_index > a.start_index
+            ) {
+              excerpt = fullText.slice(a.start_index, a.end_index).trim();
+            }
+            out.push({ label: a.title || a.url, url: a.url, status: 'FOUND_ONLINE', excerpt });
+          }
         }
       }
     }
@@ -157,6 +214,7 @@ serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const rawQuery = String(body.query ?? '');
   const modeInput = String(body.type ?? '');
+  const lang = resolveLang(body.language);
   const VALID_MODES: VerifyMode[] = ['property', 'cadastral', 'developer', 'project'];
 
   if (!VALID_MODES.includes(modeInput as VerifyMode)) {
@@ -210,9 +268,11 @@ serve(async (req) => {
   if (!key) return json({ error: 'Research provider not configured' }, 500);
 
   const modePrompt = MODE_PROMPTS[mode].replace('${QUERY}', query);
+  const langName = LANG_NAMES[lang];
   const prompt = `You are Homatch Research, an evidence-based verification assistant. ${modePrompt}
 Homatch internal data (for context only, not a source of truth for public facts): ${JSON.stringify(internal).slice(0, 30000)}
-Rules for every mode: separate HOMATCH DATA, VERIFIED (official/authoritative source only), FOUND ONLINE, CONFLICTING and UNVERIFIED. Never invent ownership, cadastral records, permits, directors, prices, availability, contacts or legal status. Never claim official/paid verification happened — paid third-party providers are disabled. Answer in the same language as the query. Be concise: evidence, risks/red-flags, confidence, and next actions.`;
+Rules for every mode: separate HOMATCH DATA, VERIFIED (official/authoritative source only), FOUND ONLINE, CONFLICTING and UNVERIFIED. Never invent ownership, cadastral records, permits, directors, prices, availability, contacts or legal status. Never claim official/paid verification happened — paid third-party providers are disabled. Be concise: evidence, risks/red-flags, confidence, and next actions.
+LANGUAGE (mandatory): write your entire answer — every sentence and label — strictly in ${langName}. Do this regardless of what language the query, the internal data, or any source you find is written in. Do not mix languages and do not answer in English unless ${langName} is English. Source titles/quotes you cite may stay in their original language, but all of your own explanatory text must be in ${langName}.`;
 
   const providerResult = await callResearchProvider(key, {
     model: MODEL,
@@ -254,7 +314,12 @@ Rules for every mode: separate HOMATCH DATA, VERIFIED (official/authoritative so
       officialVerificationAvailable: false,
     };
     if (!foundPublic) {
-      finalSummary = 'No trustworthy public source was found for this exact cadastral code. This is expected — Georgia\'s Public Registry (napr.gov.ge) is not fully indexed by web search. Official verification directly through the Public Registry is required to confirm ownership, area, or encumbrances.';
+      // Code-level guarantee, not a prompt request: this exact sentence is
+      // shown instead of any model-generated text so a hallucinated-but-
+      // plausible-sounding registry detail can never reach the user when no
+      // real source backs it. Localized by a fixed dictionary (never a live
+      // translation call) so it can never silently fail open into English.
+      finalSummary = CADASTRAL_NO_SOURCE_MSG[lang];
     }
   }
 
@@ -263,9 +328,12 @@ Rules for every mode: separate HOMATCH DATA, VERIFIED (official/authoritative so
     ? Math.min(95, Math.max(35, (sources.length ? 55 : 35) + (hasInternal ? 15 : 0) + Math.min(20, sources.length * 4)))
     : 15;
 
+  // Note: a generic "no evidence found" warning is deliberately NOT added
+  // here — the frontend already shows a dedicated, localized NO_EVIDENCE
+  // banner (verify_no_evidence_title/desc) for that exact case, so a second
+  // warning saying the same thing would just be noise.
   const warnings: string[] = [];
-  if (isCad) warnings.push('Public web research is not official cadastral verification.');
-  if (status === 'NO_EVIDENCE') warnings.push('No trustworthy evidence was found. This result is not a failure — it means official/manual verification is recommended.');
+  if (isCad) warnings.push(CADASTRAL_NOT_OFFICIAL_WARNING[lang]);
 
   return json({
     status,
@@ -285,7 +353,7 @@ Rules for every mode: separate HOMATCH DATA, VERIFIED (official/authoritative so
       companyInfo: mode === 'developer' ? text : undefined,
       projectInfo: mode === 'project' ? text : undefined,
       riskFlags: [],
-      newsSnippets: sources.map((s: any) => ({ title: s.label, url: s.url, snippet: '' })),
+      newsSnippets: sources.map((s: any) => ({ title: s.label, url: s.url, snippet: s.excerpt || '' })),
     },
     cadastralInfo,
     sources,

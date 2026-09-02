@@ -4,6 +4,8 @@ import HomePage from './pages/HomePage';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
 import AuthCallbackPage from './pages/auth/AuthCallbackPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import ProfilePage from './pages/ProfilePage';
 import PrivacyPage from './pages/PrivacyPage';
 import TermsPage from './pages/TermsPage';
 import DashboardPage from './pages/DashboardPage';
@@ -70,6 +72,7 @@ export const routes: RouteConfig[] = [
   { name: 'Login',             path: '/auth/login',               element: <LoginPage />,         public: true },
   { name: 'Signup',            path: '/auth/signup',              element: <SignupPage />,        public: true },
   { name: 'Auth Callback',     path: '/auth/callback',            element: <AuthCallbackPage />,  public: true },
+  { name: 'Reset Password',    path: '/auth/reset-password',      element: <ResetPasswordPage />, public: true },
   { name: 'Privacy Policy',    path: '/privacy',                  element: <PrivacyPage />,       public: true },
   { name: 'Terms of Service',  path: '/terms',                    element: <TermsPage />,         public: true },
   { name: 'AI Assistant',      path: '/ai',                       element: <AIPage />,            public: false },
@@ -80,6 +83,7 @@ export const routes: RouteConfig[] = [
   { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
   { name: 'Notifications',     path: '/notifications',            element: <NotificationsPage /> },
   { name: 'Credits',           path: '/credits',                  element: <CreditsPage /> },
+  { name: 'Profile',           path: '/profile',                  element: <ProfilePage /> },
   { name: 'Chat',              path: '/chat',                     element: <ChatPage /> },
   { name: 'Live Chat',         path: '/live-chat',                element: <LiveChatPage /> },
   { name: 'Viewings',          path: '/viewings',                 element: <ViewingsPage /> },

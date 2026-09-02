@@ -220,6 +220,12 @@ export function AppHeader() {
                           {t('nav_verify')}
                         </div>
                       </Link>
+                      <Link to="/profile" onClick={() => setMobileOpen(false)}>
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm min-h-12 text-muted-foreground hover:bg-sidebar-accent">
+                          <User className="h-4 w-4 shrink-0" />
+                          {t('nav_profile')}
+                        </div>
+                      </Link>
                     </nav>
                     <div className="p-4 border-t border-sidebar-border space-y-2">
                       <div className="px-3 py-2">

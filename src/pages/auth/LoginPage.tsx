@@ -7,8 +7,11 @@ import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Zap } from 'lucide-react';
+import { Eye, EyeOff, Zap, Loader2 } from 'lucide-react';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
@@ -24,7 +27,7 @@ function GoogleIcon() {
 }
 
 export default function LoginPage() {
-  const { signIn, signInWithGoogle, session } = useAuth();
+  const { signIn, signInWithGoogle, sendPasswordReset, session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,6 +39,10 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
 
   // Preserve intent + pending URL through OAuth redirect
   useEffect(() => {
@@ -77,6 +84,24 @@ export default function LoginPage() {
       setGoogleLoading(false);
     }
     // On success browser navigates away; loading stays true
+  };
+
+  const openForgot = () => {
+    setForgotEmail(email);
+    setForgotSent(false);
+    setShowForgot(true);
+  };
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setForgotLoading(true);
+    const { error } = await sendPasswordReset(forgotEmail.trim());
+    setForgotLoading(false);
+    // Never reveal whether the address has an account — show the same
+    // generic confirmation whether or not the email exists.
+    if (error) toast.error(error);
+    else setForgotSent(true);
   };
 
   return (
@@ -158,7 +183,7 @@ export default function LoginPage() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password" className="text-sm font-medium">{t('auth_password')}</Label>
-                  <button type="button" className="text-xs text-muted-foreground hover:text-foreground">
+                  <button type="button" onClick={openForgot} className="text-xs text-muted-foreground hover:text-foreground">
                     {t('auth_forgot_password')}
                   </button>
                 </div>
@@ -212,6 +237,47 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* Forgot password */}
+      <Dialog open={showForgot} onOpenChange={open => { setShowForgot(open); if (!open) setForgotSent(false); }}>
+        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-sm bg-card border-border">
+          <DialogHeader>
+            <DialogTitle>{t('auth_forgot_password')}</DialogTitle>
+            <DialogDescription>{t('auth_forgot_desc')}</DialogDescription>
+          </DialogHeader>
+          {forgotSent ? (
+            <div className="py-2 space-y-4">
+              <p className="text-sm text-foreground">{t('auth_forgot_sent')}</p>
+              <Button onClick={() => setShowForgot(false)} className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
+                {t('general_ok')}
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgotSubmit} className="space-y-4 py-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="forgot-email" className="text-sm">{t('auth_email')}</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  className="bg-secondary border-border h-10"
+                />
+              </div>
+              <DialogFooter className="gap-2">
+                <Button type="button" variant="ghost" className="border border-border" onClick={() => setShowForgot(false)}>
+                  {t('general_cancel')}
+                </Button>
+                <Button type="submit" disabled={forgotLoading || !forgotEmail.trim()} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                  {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('auth_forgot_submit')}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

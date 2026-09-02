@@ -13,6 +13,8 @@ interface AuthContextValue {
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<{ error: string | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -98,9 +100,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setHomatchUser(null);
   };
 
+  // Never reveals whether the email actually has an account — Supabase Auth
+  // itself returns success regardless, and we don't add our own leak on top.
+  const sendPasswordReset = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    });
+    if (error) return { error: error.message };
+    return { error: null };
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { error: error.message };
+    return { error: null };
+  };
+
   return (
     <AuthContext.Provider
-      value={{ session, supaUser, homatchUser, loading, signUp, signIn, signInWithGoogle, signOut, refreshUser }}
+      value={{ session, supaUser, homatchUser, loading, signUp, signIn, signInWithGoogle, signOut, refreshUser, sendPasswordReset, updatePassword }}
     >
       {children}
     </AuthContext.Provider>

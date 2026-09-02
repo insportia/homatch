@@ -18,6 +18,7 @@ import type {
   MatchingStatus,
   Match,
   MatchUnlock,
+  Payment,
   CreditAccount,
   CreditLedgerEntry,
   CostEvent,
@@ -454,6 +455,38 @@ export async function getCreditLedger(
 
   const { data } = await q;
   return Array.isArray(data) ? data : [];
+}
+
+export async function getMyPayments(userId: string, limit = 20): Promise<Payment[]> {
+  const { data } = await supabase
+    .from('payments')
+    .select('id, user_id, provider, amount_usd, credits_issued, status, created_at, updated_at, receipt_url, invoice_url, total_cents, currency')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return Array.isArray(data) ? (data as Payment[]) : [];
+}
+
+// ============================================================
+// PROFILE
+// ============================================================
+
+export interface ProfileUpdatePayload {
+  full_name?: string | null;
+  nickname?: string | null;
+  phone?: string | null;
+  avatar_url?: string | null;
+}
+
+// Only ever touches non-privileged columns. is_admin/plan are additionally
+// hard-protected server-side by the trg_protect_privileged_user_columns
+// trigger, which silently reverts any client-supplied change to them unless
+// the caller is service_role — this call could never elevate privileges
+// even if the payload were tampered with.
+export async function updateMyProfile(userId: string, patch: ProfileUpdatePayload): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase.from('users').update(patch).eq('id', userId);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
 }
 
 export async function initiateTopUp(amountUsd: number): Promise<{

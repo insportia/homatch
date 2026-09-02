@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { AppLayout } from '@/components/layouts/AppLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
+import { validateVerifyQuery, type VerifyMode, type VerifyReasonCode } from '@/lib/verifyValidation';
 import {
   Search, Shield, Building2, FileText, AlertTriangle, CheckCircle2,
   Clock, Info, ExternalLink, ChevronRight, Loader2, MapPin,
@@ -28,6 +29,7 @@ interface ResearchSource {
 }
 
 interface ResearchReport {
+  status?: 'OK' | 'NO_EVIDENCE';
   queryType: string;
   entityName?: string;
   entityType?: string;
@@ -122,6 +124,7 @@ function ResearchResultView({
   onNavigate: (path: string) => void;
   onVerify: () => void;
 }) {
+  const { t } = useLanguage();
   const dev = report.homatchData?.developer as Record<string, unknown> | null | undefined;
   const props = report.homatchData?.properties ?? [];
   const trustScore = dev
@@ -130,6 +133,17 @@ function ResearchResultView({
 
   return (
     <div className="space-y-4">
+      {/* No-evidence state — a valid, non-failure outcome */}
+      {report.status === 'NO_EVIDENCE' && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-secondary/60 border border-border">
+          <Info className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-foreground">{t('verify_no_evidence_title')}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('verify_no_evidence_desc')}</p>
+          </div>
+        </div>
+      )}
+
       {/* Entity header */}
       <Card className="border-border bg-card">
         <CardContent className="pt-5 pb-4">
@@ -362,45 +376,49 @@ export default function VerifyPage() {
   const { session } = useAuth();
 
   const navState = location.state as { tab?: string; query?: string } | undefined;
+  const VALID_TABS: VerifyMode[] = ['property', 'cadastral', 'developer', 'project'];
 
-  const [tab, setTab] = useState(navState?.tab ?? 'property');
+  const [tab, setTab] = useState<VerifyMode>((navState?.tab as VerifyMode) ?? 'property');
   const [query, setQuery] = useState(navState?.query ?? '');
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ResearchReport | null>(null);
   const [efError, setEfError] = useState<string | null>(null);
   const [showVerifyConfirm, setShowVerifyConfirm] = useState(false);
+  // Guards against a stale response overwriting a newer request's result
+  // when the tab or query changes while a search is still in flight.
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
-    if (tabParam && ['property', 'cadastral', 'developer', 'project'].includes(tabParam)) {
-      setTab(tabParam);
+    if (tabParam && VALID_TABS.includes(tabParam as VerifyMode)) {
+      setTab(tabParam as VerifyMode);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
-  useEffect(() => {
-    if (navState?.query) handleSearch(navState.query, navState.tab ?? 'property');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const reasonMessage = useCallback((reasonCode?: string): string => {
+    switch (reasonCode) {
+      case 'EMPTY': return t('verify_err_empty');
+      case 'TOO_SHORT': return t('verify_err_too_short');
+      case 'TOO_LONG': return t('verify_err_too_long');
+      case 'LOOKS_LIKE_QUESTION': return t('verify_err_question');
+      case 'INVALID_FORMAT': return tab === 'cadastral' ? t('verify_err_invalid_cadastral') : t('verify_err_invalid_name');
+      default: return t('verify_error_generic');
+    }
+  }, [t, tab]);
 
-  const tabLabels: Record<string, string> = {
-    property:  t('verify_tab_property'),
-    cadastral: t('verify_tab_cadastral'),
-    developer: t('verify_tab_developer'),
-    project:   t('verify_tab_project'),
-  };
+  const handleSearch = useCallback(async (overrideQuery?: string, overrideTab?: VerifyMode) => {
+    const searchTab = overrideTab ?? tab;
+    const searchQuery = overrideQuery ?? query;
+    const validation = validateVerifyQuery(searchTab, searchQuery);
+    if (!validation.valid) {
+      setEfError(reasonMessage(validation.reasonCode));
+      setReport(null);
+      return;
+    }
 
-  const placeholders: Record<string, string> = {
-    property:  t('verify_search_property_ph'),
-    cadastral: t('verify_search_cadastral_ph'),
-    developer: t('verify_search_developer_ph'),
-    project:   t('verify_search_project_ph'),
-  };
-
-  const handleSearch = useCallback(async (q?: string, activeTab?: string) => {
-    const searchQuery = (q ?? query).trim();
-    const searchTab = activeTab ?? tab;
-    if (!searchQuery) return;
+    const myRequestId = ++requestIdRef.current;
     setLoading(true);
     setReport(null);
     setEfError(null);
@@ -408,24 +426,73 @@ export default function VerifyPage() {
     try {
       const { data, error } = await supabase.functions.invoke('homatch-research', {
         body: {
-          query: searchQuery,
-          type: searchTab === 'project' ? 'developer' : searchTab,
+          query: validation.normalized,
+          type: searchTab,
           userId: session?.user?.id,
         },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (myRequestId !== requestIdRef.current) return; // a newer request has since started
+
+      if (error) {
+        let reasonCode: VerifyReasonCode | undefined;
+        let message: string | undefined;
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const body = await ctx.json();
+            reasonCode = body?.reasonCode;
+            message = body?.error;
+          } catch { /* non-JSON error body */ }
+        }
+        setEfError(reasonCode ? reasonMessage(reasonCode) : (message || t('verify_error_generic')));
+        return;
+      }
+      if (data?.error) {
+        setEfError(data.reasonCode ? reasonMessage(data.reasonCode) : data.error);
+        return;
+      }
       setReport(data as ResearchReport);
     } catch (e: any) {
+      if (myRequestId !== requestIdRef.current) return;
       console.error('Research EF error:', e);
-      setEfError(e.message ?? 'Research failed. Please try again.');
+      setEfError(t('verify_error_generic'));
     } finally {
-      setLoading(false);
+      if (myRequestId === requestIdRef.current) setLoading(false);
     }
-  }, [query, tab, session]);
+  }, [query, tab, session, reasonMessage, t]);
+
+  useEffect(() => {
+    if (navState?.query) handleSearch(navState.query, (navState.tab as VerifyMode) ?? 'property');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const tabLabels: Record<VerifyMode, string> = {
+    property:  t('verify_tab_property'),
+    cadastral: t('verify_tab_cadastral'),
+    developer: t('verify_tab_developer'),
+    project:   t('verify_tab_project'),
+  };
+
+  const placeholders: Record<VerifyMode, string> = {
+    property:  t('verify_search_property_ph'),
+    cadastral: t('verify_search_cadastral_ph'),
+    developer: t('verify_search_developer_ph'),
+    project:   t('verify_search_project_ph'),
+  };
+
+  const helperText: Record<VerifyMode, string> = {
+    property:  t('verify_helper_property'),
+    cadastral: t('verify_helper_cadastral'),
+    developer: t('verify_helper_developer'),
+    project:   t('verify_helper_project'),
+  };
+
+  const liveValidation = validateVerifyQuery(tab, query);
+  const inlineError = query.trim().length > 0 && !liveValidation.valid ? reasonMessage(liveValidation.reasonCode) : null;
+  const canSearch = liveValidation.valid && !loading;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSearch();
+    if (e.key === 'Enter' && canSearch) handleSearch();
   };
 
   const handleAskAI = (prompt: string) => {
@@ -457,7 +524,10 @@ export default function VerifyPage() {
         </div>
 
         {/* Search tabs */}
-        <Tabs value={tab} onValueChange={v => { setTab(v); setReport(null); setQuery(''); setEfError(null); }}>
+        <Tabs value={tab} onValueChange={v => {
+          requestIdRef.current++; // invalidate any in-flight request from the previous tab
+          setTab(v as VerifyMode); setReport(null); setQuery(''); setEfError(null); setLoading(false);
+        }}>
           <TabsList className="grid grid-cols-4 bg-secondary border border-border w-full">
             {(['property', 'cadastral', 'developer', 'project'] as const).map(k => (
               <TabsTrigger key={k} value={k}
@@ -474,19 +544,25 @@ export default function VerifyPage() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
                     value={query}
-                    onChange={e => setQuery(e.target.value)}
+                    onChange={e => { setQuery(e.target.value); setEfError(null); }}
                     onKeyDown={handleKeyDown}
                     placeholder={placeholders[k]}
+                    aria-invalid={!!inlineError}
                     className="pl-9 bg-secondary border-border"
                   />
                 </div>
-                <Button onClick={() => handleSearch()} disabled={!query.trim() || loading}
+                <Button onClick={() => handleSearch()} disabled={!canSearch}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
                   {loading
                     ? <Loader2 className="h-4 w-4 animate-spin" />
                     : t('verify_btn_search')}
                 </Button>
               </div>
+              {inlineError ? (
+                <p className="text-xs text-destructive mt-1.5">{inlineError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground/70 mt-1.5">{helperText[k]}</p>
+              )}
             </TabsContent>
           ))}
         </Tabs>
@@ -504,10 +580,12 @@ export default function VerifyPage() {
           <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/25">
             <XCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-destructive">Research failed</p>
+              <p className="text-sm font-medium text-destructive">{t('verify_error_generic')}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{efError}</p>
-              <Button size="sm" variant="outline" className="mt-2 border-border text-xs"
-                onClick={() => handleSearch()}>Retry</Button>
+              {liveValidation.valid && (
+                <Button size="sm" variant="outline" className="mt-2 border-border text-xs"
+                  onClick={() => handleSearch()}>{t('verify_btn_retry')}</Button>
+              )}
             </div>
           </div>
         )}

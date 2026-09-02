@@ -73,8 +73,11 @@ export interface User {
   auth_id: string;      // Supabase auth.uid()
   email: string;
   full_name?: string;
+  nickname?: string | null;
+  phone?: string | null;
   avatar_url?: string;
   is_admin: boolean;
+  plan?: string;
   created_at: string;
   updated_at: string;
 }
@@ -677,6 +680,10 @@ export interface Payment {
   webhook_verified: boolean;
   idempotency_key?: string;
   metadata?: Record<string, unknown>;
+  receipt_url?: string | null;
+  invoice_url?: string | null;
+  total_cents?: number | null;
+  currency?: string;
   created_at: string;
   updated_at: string;
 }

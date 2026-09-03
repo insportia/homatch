@@ -52,11 +52,63 @@ Deno.serve(async (req: Request) => {
     // raw_signals.property_id is legacy and is intentionally not required.
     const { data: candidateRows, error: candidateError } = await db
       .from('property_signal_candidates')
-      .select('signal_id')
+      .select('signal_id, acquisition_cost_usd')
       .eq('property_id', propertyId)
       .order('last_seen_at', { ascending: false })
       .limit(10000);
     if (candidateError) throw candidateError;
+    const acquisitionCostBySignal = new Map<string, number>();
+    for (const row of candidateRows || []) {
+      if (row.signal_id) acquisitionCostBySignal.set(row.signal_id, Number(row.acquisition_cost_usd || 0));
+    }
+
+    // PricingEngine (docs/ARCHITECTURE.md "PricingEngine" section): base price per
+    // signal_strength tier, times up to three admin-configurable multipliers. This
+    // config already exists and is editable from Admin → Pricing — but nothing ever
+    // read it: this function priced every match with an unrelated, undocumented
+    // hardcoded formula (COGS-floor × a 10/3/1 score-tier multiplier), making the
+    // admin Pricing Config page completely decorative. Defaults below match the
+    // documented defaults exactly, so an untouched admin_settings table reproduces
+    // today's documented intent, not today's actual (undocumented) behavior.
+    const PRICING_DEFAULTS: Record<string, number> = {
+      pricing_min_credits: 0.10,
+      pricing_max_credits: 10.0,
+      pricing_base_potential: 0.50,
+      pricing_base_good: 1.00,
+      pricing_base_strong: 2.00,
+      pricing_base_very_strong: 3.50,
+      pricing_base_exceptional: 5.00,
+      pricing_multiplier_recency: 1.3,
+      pricing_multiplier_source_quality: 1.2,
+      pricing_multiplier_cogs: 1.15,
+    };
+    const { data: pricingRows } = await db.from('admin_settings').select('key,value').like('key', 'pricing_%');
+    const pricing = { ...PRICING_DEFAULTS };
+    for (const row of pricingRows || []) {
+      const num = Number(row.value);
+      if (row.key in pricing && Number.isFinite(num)) pricing[row.key] = num;
+    }
+    const STRENGTH_BASE_KEY: Record<string, string> = {
+      POTENTIAL: 'pricing_base_potential',
+      GOOD: 'pricing_base_good',
+      STRONG: 'pricing_base_strong',
+      VERY_STRONG: 'pricing_base_very_strong',
+      EXCEPTIONAL: 'pricing_base_exceptional',
+    };
+    // The docs name three multipliers but don't specify their trigger conditions.
+    // Interpretation used here (disclosed so an admin can retune it):
+    //  - recency: signal published within the last 48h — a lead still fresh enough
+    //    to plausibly act on, vs. one that's gone stale.
+    //  - source quality: source_registry.quality_score (observed live range 4–8)
+    //    at or above 7 — the top of the observed range, not just "above average".
+    //  - COGS: the REAL measured cost to acquire+classify this specific signal
+    //    (property_signal_candidates.acquisition_cost_usd + intent_profiles.
+    //    ai_cost_usd) is at or above $0.02 — i.e. it came from an actual paid
+    //    discovery call, not a near-zero-cost cached/reused one (live data: median
+    //    non-zero acquisition cost is ~$0.034; classification alone is ~$0.0001).
+    const RECENCY_WINDOW_MS = 48 * 3600 * 1000;
+    const HIGH_SOURCE_QUALITY_THRESHOLD = 7;
+    const REAL_COGS_HIGH_THRESHOLD_USD = 0.02;
 
     const { data: legacyRows, error: legacyError } = await db
       .from('raw_signals')
@@ -199,12 +251,29 @@ Deno.serve(async (req: Request) => {
 
       const scored = score(property, facts, profile);
       if (scored.score < 20) { skipped++; continue; }
-      const cogs = Math.max(0.05, Number(profile.ai_cost_usd || 0.05));
-      const multiplier = scored.score >= 80 ? 10 : scored.score >= 50 ? 3 : 1;
-      const price = Math.max(0.1, Math.ceil(cogs * multiplier * 100) / 100);
       const strength = scored.score >= 90 ? 'EXCEPTIONAL' : scored.score >= 80 ? 'VERY_STRONG' : scored.score >= 65 ? 'STRONG' : scored.score >= 50 ? 'GOOD' : 'POTENTIAL';
       const published = signal.published_at ? new Date(signal.published_at) : null;
-      const recency = published && !Number.isNaN(published.getTime()) ? formatRecency((Date.now() - published.getTime()) / 3600000) : null;
+      const publishedMs = published && !Number.isNaN(published.getTime()) ? published.getTime() : null;
+      const recency = publishedMs !== null ? formatRecency((Date.now() - publishedMs) / 3600000) : null;
+
+      // Real measured COGS for THIS signal — replaces the old fake "cogs" that was
+      // always the $0.05 fallback floor (live data: real ai_cost_usd averages
+      // $0.000131, always far below that floor, so it never once actually applied).
+      const realCogs = Number(profile.ai_cost_usd || 0) + (acquisitionCostBySignal.get(profile.signal_id) || 0);
+      const sourceRow = Array.isArray(signal.source) ? signal.source[0] : signal.source;
+      const isFresh = publishedMs !== null && (Date.now() - publishedMs) <= RECENCY_WINDOW_MS;
+      const isHighQualitySource = Number(sourceRow?.quality_score || 0) >= HIGH_SOURCE_QUALITY_THRESHOLD;
+      const isCogsHigh = realCogs >= REAL_COGS_HIGH_THRESHOLD_USD;
+
+      const base = pricing[STRENGTH_BASE_KEY[strength]] ?? pricing.pricing_base_potential;
+      let rawPrice = base;
+      if (isFresh) rawPrice *= pricing.pricing_multiplier_recency;
+      if (isHighQualitySource) rawPrice *= pricing.pricing_multiplier_source_quality;
+      if (isCogsHigh) rawPrice *= pricing.pricing_multiplier_cogs;
+      const price = Math.min(pricing.pricing_max_credits, Math.max(pricing.pricing_min_credits, Math.round(rawPrice * 100) / 100));
+      // Stored as the actual combined multiplier applied (price ÷ base), for
+      // observability — replaces the old, unrelated 10/3/1 score-tier magic number.
+      const appliedMultiplier = base > 0 ? Math.round((price / base) * 100) / 100 : 1;
 
       const { error: insertError } = await db.from('matches').insert({
         property_id: property.id,
@@ -218,8 +287,8 @@ Deno.serve(async (req: Request) => {
         match_reasons: scored.reasons,
         mismatch_reasons: scored.mismatches,
         unlock_price_credits: price,
-        estimated_cogs_usd: cogs,
-        pricing_multiplier: multiplier,
+        estimated_cogs_usd: realCogs,
+        pricing_multiplier: appliedMultiplier,
         status: 'NEW',
         mock_mode: false,
         preview_platform: signal.platform || null,

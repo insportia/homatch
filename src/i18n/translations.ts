@@ -1734,6 +1734,33 @@ const en = {
   review_source_label: 'Source:',
   review_listing_id_label: 'Listing ID:',
   review_language_label: 'Language: {lang}',
+
+  // ── dropzone.tsx keys ──────────────────────────────────────────────
+  dropzone_upload_success: 'Successfully uploaded {count} file(s)',
+  dropzone_file_too_large: 'File is larger than {max} (Size: {size})',
+  dropzone_uploading_file: 'Uploading file...',
+  dropzone_failed_upload: 'Failed to upload: {message}',
+  dropzone_success_single_file: 'Successfully uploaded file',
+  dropzone_exceed_max: 'You may upload only up to {maxFiles} files, please remove {excess} file(s).',
+  dropzone_uploading: 'Uploading...',
+  dropzone_upload_files_btn: 'Upload files',
+  dropzone_upload_heading_one: 'Upload file',
+  dropzone_upload_heading_multi: 'Upload {count} files',
+  dropzone_upload_heading_generic: 'Upload files',
+  dropzone_drag_drop_prefix: 'Drag and drop or',
+  dropzone_select_one: 'select file',
+  dropzone_select_many: 'select files',
+  dropzone_to_upload_suffix: 'to upload',
+  dropzone_max_file_size: 'Maximum file size: {size}',
+
+  // ── AddPropertyPage keys ──────────────────────────────────────────────
+  addprop_subtitle: 'Choose how you want to add your property to Homatch.',
+  addprop_url_title: 'Import from URL',
+  addprop_url_desc: 'Paste a link from myhome.ge, ss.ge, or any public property listing. Homatch extracts all details automatically.',
+  addprop_url_supports: 'Supports: myhome.ge · ss.ge · agency sites · developer portals',
+  addprop_private_title: 'Create Private Listing',
+  addprop_private_desc: 'Your property isn\'t published anywhere. Enter the details manually and keep it completely private.',
+  addprop_private_note: 'No public URL required · Full privacy control',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -3402,6 +3429,33 @@ const ka: Partial<Record<TranslationKey, string>> = {
   review_source_label: 'წყარო:',
   review_listing_id_label: 'განცხადების ID:',
   review_language_label: 'ენა: {lang}',
+
+  // ── dropzone.tsx keys ──────────────────────────────────────────────
+  dropzone_upload_success: 'წარმატებით აიტვირთა {count} ფაილი',
+  dropzone_file_too_large: 'ფაილი აღემატება {max}-ს (ზომა: {size})',
+  dropzone_uploading_file: 'ფაილი იტვირთება...',
+  dropzone_failed_upload: 'ატვირთვა ვერ მოხერხდა: {message}',
+  dropzone_success_single_file: 'ფაილი წარმატებით აიტვირთა',
+  dropzone_exceed_max: 'შეგიძლიათ ატვირთოთ მაქსიმუმ {maxFiles} ფაილი, გთხოვთ, ამოშალოთ {excess} ფაილი.',
+  dropzone_uploading: 'იტვირთება...',
+  dropzone_upload_files_btn: 'ფაილების ატვირთვა',
+  dropzone_upload_heading_one: 'ფაილის ატვირთვა',
+  dropzone_upload_heading_multi: '{count} ფაილის ატვირთვა',
+  dropzone_upload_heading_generic: 'ფაილების ატვირთვა',
+  dropzone_drag_drop_prefix: 'გადმოათრიეთ ან',
+  dropzone_select_one: 'აირჩიეთ ფაილი',
+  dropzone_select_many: 'აირჩიეთ ფაილები',
+  dropzone_to_upload_suffix: 'ასატვირთად',
+  dropzone_max_file_size: 'მაქსიმალური ფაილის ზომა: {size}',
+
+  // ── AddPropertyPage keys ──────────────────────────────────────────────
+  addprop_subtitle: 'აირჩიეთ, როგორ გსურთ დაამატოთ თქვენი ქონება Homatch-ში.',
+  addprop_url_title: 'იმპორტი ბმულით',
+  addprop_url_desc: 'ჩასვით ბმული myhome.ge-დან, ss.ge-დან ან ნებისმიერი საჯარო განცხადებიდან. Homatch ავტომატურად ამოიღებს ყველა დეტალს.',
+  addprop_url_supports: 'მხარდაჭერილია: myhome.ge · ss.ge · სააგენტოების საიტები · დეველოპერების პორტალები',
+  addprop_private_title: 'პირადი განცხადების შექმნა',
+  addprop_private_desc: 'თქვენი ქონება არსად არ არის გამოქვეყნებული. შეიყვანეთ დეტალები ხელით და შეინარჩუნეთ სრული კონფიდენციალურობა.',
+  addprop_private_note: 'საჯარო ბმული საჭირო არ არის · სრული კონფიდენციალურობის კონტროლი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -5068,6 +5122,33 @@ const ru: Partial<Record<TranslationKey, string>> = {
   review_source_label: 'Источник:',
   review_listing_id_label: 'ID объявления:',
   review_language_label: 'Язык: {lang}',
+
+  // ── dropzone.tsx keys ──────────────────────────────────────────────
+  dropzone_upload_success: 'Успешно загружено файлов: {count}',
+  dropzone_file_too_large: 'Файл больше, чем {max} (размер: {size})',
+  dropzone_uploading_file: 'Загрузка файла...',
+  dropzone_failed_upload: 'Не удалось загрузить: {message}',
+  dropzone_success_single_file: 'Файл успешно загружен',
+  dropzone_exceed_max: 'Можно загрузить не более {maxFiles} файлов, удалите {excess} файл(ов).',
+  dropzone_uploading: 'Загрузка...',
+  dropzone_upload_files_btn: 'Загрузить файлы',
+  dropzone_upload_heading_one: 'Загрузить файл',
+  dropzone_upload_heading_multi: 'Загрузить файлы: {count}',
+  dropzone_upload_heading_generic: 'Загрузить файлы',
+  dropzone_drag_drop_prefix: 'Перетащите файл или',
+  dropzone_select_one: 'выберите файл',
+  dropzone_select_many: 'выберите файлы',
+  dropzone_to_upload_suffix: 'для загрузки',
+  dropzone_max_file_size: 'Максимальный размер файла: {size}',
+
+  // ── AddPropertyPage keys ──────────────────────────────────────────────
+  addprop_subtitle: 'Выберите, как вы хотите добавить объект в Homatch.',
+  addprop_url_title: 'Импорт по ссылке',
+  addprop_url_desc: 'Вставьте ссылку с myhome.ge, ss.ge или любого публичного объявления. Homatch автоматически извлечёт все детали.',
+  addprop_url_supports: 'Поддерживается: myhome.ge · ss.ge · сайты агентств · порталы застройщиков',
+  addprop_private_title: 'Создать частное объявление',
+  addprop_private_desc: 'Ваш объект нигде не публикуется. Введите данные вручную и сохраните полную приватность.',
+  addprop_private_note: 'Публичная ссылка не требуется · Полный контроль приватности',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -6732,6 +6813,33 @@ const tr: Partial<Record<TranslationKey, string>> = {
   review_source_label: 'Kaynak:',
   review_listing_id_label: 'İlan Kimliği:',
   review_language_label: 'Dil: {lang}',
+
+  // ── dropzone.tsx keys ──────────────────────────────────────────────
+  dropzone_upload_success: '{count} dosya başarıyla yüklendi',
+  dropzone_file_too_large: 'Dosya {max} boyutundan büyük (Boyut: {size})',
+  dropzone_uploading_file: 'Dosya yükleniyor...',
+  dropzone_failed_upload: 'Yükleme başarısız: {message}',
+  dropzone_success_single_file: 'Dosya başarıyla yüklendi',
+  dropzone_exceed_max: 'En fazla {maxFiles} dosya yükleyebilirsiniz, lütfen {excess} dosya kaldırın.',
+  dropzone_uploading: 'Yükleniyor...',
+  dropzone_upload_files_btn: 'Dosyaları yükle',
+  dropzone_upload_heading_one: 'Dosya yükle',
+  dropzone_upload_heading_multi: '{count} dosya yükle',
+  dropzone_upload_heading_generic: 'Dosyaları yükle',
+  dropzone_drag_drop_prefix: 'Sürükleyip bırakın veya',
+  dropzone_select_one: 'dosya seçin',
+  dropzone_select_many: 'dosyaları seçin',
+  dropzone_to_upload_suffix: 'yüklemek için',
+  dropzone_max_file_size: 'Maksimum dosya boyutu: {size}',
+
+  // ── AddPropertyPage keys ──────────────────────────────────────────────
+  addprop_subtitle: 'Mülkünüzü Homatch\'e nasıl ekleyeceğinizi seçin.',
+  addprop_url_title: 'URL\'den İçe Aktar',
+  addprop_url_desc: 'myhome.ge, ss.ge veya herhangi bir genel emlak ilanından bağlantı yapıştırın. Homatch tüm detayları otomatik olarak çıkaracaktır.',
+  addprop_url_supports: 'Destekler: myhome.ge · ss.ge · emlak ofisi siteleri · geliştirici portalları',
+  addprop_private_title: 'Özel İlan Oluştur',
+  addprop_private_desc: 'Mülkünüz hiçbir yerde yayınlanmaz. Detayları manuel olarak girin ve tamamen özel tutun.',
+  addprop_private_note: 'Genel URL gerekmez · Tam gizlilik kontrolü',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -8396,6 +8504,33 @@ const ar: Partial<Record<TranslationKey, string>> = {
   review_source_label: 'المصدر:',
   review_listing_id_label: 'رقم الإعلان:',
   review_language_label: 'اللغة: {lang}',
+
+  // ── dropzone.tsx keys ──────────────────────────────────────────────
+  dropzone_upload_success: 'تم رفع {count} ملف(ات) بنجاح',
+  dropzone_file_too_large: 'الملف أكبر من {max} (الحجم: {size})',
+  dropzone_uploading_file: 'جارٍ رفع الملف...',
+  dropzone_failed_upload: 'فشل الرفع: {message}',
+  dropzone_success_single_file: 'تم رفع الملف بنجاح',
+  dropzone_exceed_max: 'يمكنك رفع {maxFiles} ملفات كحد أقصى، يرجى إزالة {excess} ملف(ات).',
+  dropzone_uploading: 'جارٍ الرفع...',
+  dropzone_upload_files_btn: 'رفع الملفات',
+  dropzone_upload_heading_one: 'رفع ملف',
+  dropzone_upload_heading_multi: 'رفع {count} ملفات',
+  dropzone_upload_heading_generic: 'رفع الملفات',
+  dropzone_drag_drop_prefix: 'اسحب وأفلت أو',
+  dropzone_select_one: 'اختر ملفًا',
+  dropzone_select_many: 'اختر ملفات',
+  dropzone_to_upload_suffix: 'للرفع',
+  dropzone_max_file_size: 'الحد الأقصى لحجم الملف: {size}',
+
+  // ── AddPropertyPage keys ──────────────────────────────────────────────
+  addprop_subtitle: 'اختر كيف تريد إضافة عقارك إلى Homatch.',
+  addprop_url_title: 'استيراد من رابط',
+  addprop_url_desc: 'الصق رابطًا من myhome.ge أو ss.ge أو أي إعلان عقاري عام. سيستخرج Homatch جميع التفاصيل تلقائيًا.',
+  addprop_url_supports: 'يدعم: myhome.ge · ss.ge · مواقع الوكالات · بوابات المطورين',
+  addprop_private_title: 'إنشاء إعلان خاص',
+  addprop_private_desc: 'عقارك غير منشور في أي مكان. أدخل التفاصيل يدويًا واحتفظ بخصوصية كاملة.',
+  addprop_private_note: 'لا حاجة لرابط عام · تحكم كامل بالخصوصية',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -10060,6 +10195,33 @@ const he: Partial<Record<TranslationKey, string>> = {
   review_source_label: 'מקור:',
   review_listing_id_label: 'מזהה מודעה:',
   review_language_label: 'שפה: {lang}',
+
+  // ── dropzone.tsx keys ──────────────────────────────────────────────
+  dropzone_upload_success: 'הועלו בהצלחה {count} קבצים',
+  dropzone_file_too_large: 'הקובץ גדול מ-{max} (גודל: {size})',
+  dropzone_uploading_file: 'מעלה קובץ...',
+  dropzone_failed_upload: 'ההעלאה נכשלה: {message}',
+  dropzone_success_single_file: 'הקובץ הועלה בהצלחה',
+  dropzone_exceed_max: 'ניתן להעלות עד {maxFiles} קבצים, אנא הסירו {excess} קבצים.',
+  dropzone_uploading: 'מעלה...',
+  dropzone_upload_files_btn: 'העלה קבצים',
+  dropzone_upload_heading_one: 'העלה קובץ',
+  dropzone_upload_heading_multi: 'העלה {count} קבצים',
+  dropzone_upload_heading_generic: 'העלה קבצים',
+  dropzone_drag_drop_prefix: 'גררו ושחררו או',
+  dropzone_select_one: 'בחרו קובץ',
+  dropzone_select_many: 'בחרו קבצים',
+  dropzone_to_upload_suffix: 'להעלאה',
+  dropzone_max_file_size: 'גודל קובץ מרבי: {size}',
+
+  // ── AddPropertyPage keys ──────────────────────────────────────────────
+  addprop_subtitle: 'בחרו כיצד תרצו להוסיף את הנכס שלכם ל-Homatch.',
+  addprop_url_title: 'ייבוא מקישור',
+  addprop_url_desc: 'הדביקו קישור מ-myhome.ge, ss.ge או כל מודעת נכס פומבית. Homatch יחלץ את כל הפרטים אוטומטית.',
+  addprop_url_supports: 'נתמכים: myhome.ge · ss.ge · אתרי סוכנויות · פורטלים ליזמים',
+  addprop_private_title: 'יצירת מודעה פרטית',
+  addprop_private_desc: 'הנכס שלכם אינו מפורסם בשום מקום. הזינו את הפרטים ידנית ושמרו על פרטיות מלאה.',
+  addprop_private_note: 'לא נדרש קישור פומבי · שליטה מלאה בפרטיות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -17,7 +17,7 @@ function AddPropertyContent() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">{t('dash_add_property')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Choose how you want to add your property to Homatch.
+            {t('addprop_subtitle')}
           </p>
         </div>
 
@@ -34,12 +34,12 @@ function AddPropertyContent() {
               <Link2 className="h-5 w-5 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-semibold text-foreground mb-1">Import from URL</h2>
+              <h2 className="font-semibold text-foreground mb-1">{t('addprop_url_title')}</h2>
               <p className="text-sm text-muted-foreground">
-                Paste a link from myhome.ge, ss.ge, or any public property listing. Homatch extracts all details automatically.
+                {t('addprop_url_desc')}
               </p>
               <p className="text-xs text-muted-foreground/60 mt-2">
-                Supports: myhome.ge · ss.ge · agency sites · developer portals
+                {t('addprop_url_supports')}
               </p>
             </div>
             <ArrowRight className={`h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors shrink-0 mt-1 ${isRTL ? 'rotate-180' : ''}`} />
@@ -60,14 +60,14 @@ function AddPropertyContent() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <h2 className="font-semibold text-foreground">Create Private Listing</h2>
+                <h2 className="font-semibold text-foreground">{t('addprop_private_title')}</h2>
                 <span className="status-private">{t('prop_private_badge')}</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Your property isn't published anywhere. Enter the details manually and keep it completely private.
+                {t('addprop_private_desc')}
               </p>
               <p className="text-xs text-muted-foreground/60 mt-2">
-                No public URL required · Full privacy control
+                {t('addprop_private_note')}
               </p>
             </div>
             <ArrowRight className={`h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors shrink-0 mt-1 ${isRTL ? 'rotate-180' : ''}`} />

@@ -55,13 +55,14 @@ function LiveTimer({ startedAt }: { startedAt: string }) {
 }
 
 function PhoneVisual({ send }: { send: OutreachSendRow | null }) {
+  const { t } = useLanguage();
   if (!send) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10">
         <div className="h-24 w-24 rounded-full bg-muted flex items-center justify-center">
           <PhoneOff className="h-10 w-10 text-muted-foreground/40" />
         </div>
-        <p className="text-sm text-muted-foreground">No active call</p>
+        <p className="text-sm text-muted-foreground">{t('callcenter_no_active_call')}</p>
       </div>
     );
   }
@@ -90,7 +91,7 @@ function PhoneVisual({ send }: { send: OutreachSendRow | null }) {
       <div className="text-center space-y-1">
         <p className="font-mono text-lg font-semibold">{send.recipient_phone ?? '—'}</p>
         <Badge className={cn('text-[11px]', CALL_STATUS_STYLES[send.status] ?? '')} variant="outline">
-          {send.status}{send.provider === 'MOCK' ? ' (MOCK)' : ''}
+          {send.status}{send.provider === 'MOCK' ? ` ${t('callcenter_mock_suffix')}` : ''}
         </Badge>
         {isLive && send.call_started_at && (
           <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
@@ -414,7 +415,7 @@ export default function AiCallCenterPage() {
                       <p className="font-mono text-sm truncate">{s.recipient_phone ?? '—'}</p>
                       <p className="text-[11px] text-muted-foreground truncate">
                         {s.duration_sec != null ? `${Math.floor(s.duration_sec / 60)}:${String(s.duration_sec % 60).padStart(2, '0')}` : '—'}
-                        {s.provider === 'MOCK' ? ' · MOCK' : ''}
+                        {s.provider === 'MOCK' ? ` · ${t('callcenter_mock_dot_suffix')}` : ''}
                         {s.error_message ? ` · ${s.error_message}` : ''}
                       </p>
                     </div>

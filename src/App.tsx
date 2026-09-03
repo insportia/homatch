@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import IntersectObserver from '@/components/common/IntersectObserver';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { LanguageProvider } from '@/contexts/LanguageContext';
+import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { routes } from './routes';
 
 // React can throw a NotFoundError/removeChild crash when browser translation
@@ -28,15 +28,32 @@ const DomMutationGuard: React.FC = () => {
 };
 
 // ── Error Boundary ─────────────────────────────────────────────
-interface EBState { hasError: boolean; message: string }
+// message is null when the thrown error had no message — ErrorFallback below
+// substitutes a translated "Unknown error" string at render time, since this
+// static lifecycle method has no access to hooks/t().
+interface EBState { hasError: boolean; message: string | null }
+
+function ErrorFallback({ message, onRetry }: { message: string | null; onRetry: () => void }) {
+  const { t } = useLanguage();
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-background">
+      <p className="text-lg font-semibold mb-2">{t('app_error_occurred')}</p>
+      <p className="text-sm text-muted-foreground mb-4">{message ?? t('app_unknown_error')}</p>
+      <button className="text-sm underline text-primary" onClick={onRetry}>
+        {t('app_refresh_page')}
+      </button>
+    </div>
+  );
+}
+
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBState> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
-    this.state = { hasError: false, message: '' };
+    this.state = { hasError: false, message: null };
   }
 
   static getDerivedStateFromError(error: Error): EBState {
-    return { hasError: true, message: error?.message ?? 'Unknown error' };
+    return { hasError: true, message: error?.message ?? null };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
@@ -60,20 +77,14 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBSta
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-background">
-          <p className="text-lg font-semibold mb-2">An application error has occurred.</p>
-          <p className="text-sm text-muted-foreground mb-4">{this.state.message}</p>
-          <button
-            className="text-sm underline text-primary"
-            onClick={() => {
-              sessionStorage.removeItem('homatch-dom-recovery');
-              this.setState({ hasError: false, message: '' });
-              window.location.reload();
-            }}
-          >
-            Refresh the page
-          </button>
-        </div>
+        <ErrorFallback
+          message={this.state.message}
+          onRetry={() => {
+            sessionStorage.removeItem('homatch-dom-recovery');
+            this.setState({ hasError: false, message: null });
+            window.location.reload();
+          }}
+        />
       );
     }
 

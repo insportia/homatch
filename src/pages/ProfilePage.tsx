@@ -202,7 +202,7 @@ function ProfileContent() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('profile_field_phone')}</Label>
-                  <Input value={phone} onChange={e => { setPhone(e.target.value); setDirty(true); }} placeholder="+995 5xx xxx xxx" className="bg-secondary border-border" maxLength={30} />
+                  <Input value={phone} onChange={e => { setPhone(e.target.value); setDirty(true); }} placeholder={t('chat_phone_ph')} className="bg-secondary border-border" maxLength={30} dir="ltr" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs flex items-center gap-1.5"><Mail className="h-3 w-3" /> {t('profile_field_email')}</Label>

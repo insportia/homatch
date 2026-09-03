@@ -1761,6 +1761,21 @@ const en = {
   addprop_private_title: 'Create Private Listing',
   addprop_private_desc: 'Your property isn\'t published anywhere. Enter the details manually and keep it completely private.',
   addprop_private_note: 'No public URL required · Full privacy control',
+
+  // ── App.tsx keys ──────────────────────────────────────────────
+  app_error_occurred: 'An application error has occurred.',
+  app_refresh_page: 'Refresh the page',
+  app_unknown_error: 'Unknown error',
+
+  // ── misc small-file keys (AppHeader, NotFound, AiCallCenter) ──────────────────────────────────────────────
+  header_account_fallback: 'Account',
+  nf_title: 'Page Not Found',
+  nf_heading: 'ERROR',
+  nf_desc: 'The page may have been deleted or does not exist. Please check the URL is correct.',
+  nf_back_home: 'Back to home',
+  callcenter_no_active_call: 'No active call',
+  callcenter_mock_suffix: '(MOCK)',
+  callcenter_mock_dot_suffix: 'MOCK',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -3456,6 +3471,21 @@ const ka: Partial<Record<TranslationKey, string>> = {
   addprop_private_title: 'პირადი განცხადების შექმნა',
   addprop_private_desc: 'თქვენი ქონება არსად არ არის გამოქვეყნებული. შეიყვანეთ დეტალები ხელით და შეინარჩუნეთ სრული კონფიდენციალურობა.',
   addprop_private_note: 'საჯარო ბმული საჭირო არ არის · სრული კონფიდენციალურობის კონტროლი',
+
+  // ── App.tsx keys ──────────────────────────────────────────────
+  app_error_occurred: 'დაფიქსირდა აპლიკაციის შეცდომა.',
+  app_refresh_page: 'გვერდის განახლება',
+  app_unknown_error: 'უცნობი შეცდომა',
+
+  // ── misc small-file keys (AppHeader, NotFound, AiCallCenter) ──────────────────────────────────────────────
+  header_account_fallback: 'ანგარიში',
+  nf_title: 'გვერდი ვერ მოიძებნა',
+  nf_heading: 'შეცდომა',
+  nf_desc: 'გვერდი შესაძლოა წაშლილია ან არ არსებობს. გთხოვთ, გადაამოწმოთ URL-ის სისწორე.',
+  nf_back_home: 'მთავარ გვერდზე დაბრუნება',
+  callcenter_no_active_call: 'აქტიური ზარი არ არის',
+  callcenter_mock_suffix: '(სატესტო)',
+  callcenter_mock_dot_suffix: 'სატესტო',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -5149,6 +5179,21 @@ const ru: Partial<Record<TranslationKey, string>> = {
   addprop_private_title: 'Создать частное объявление',
   addprop_private_desc: 'Ваш объект нигде не публикуется. Введите данные вручную и сохраните полную приватность.',
   addprop_private_note: 'Публичная ссылка не требуется · Полный контроль приватности',
+
+  // ── App.tsx keys ──────────────────────────────────────────────
+  app_error_occurred: 'Произошла ошибка приложения.',
+  app_refresh_page: 'Обновить страницу',
+  app_unknown_error: 'Неизвестная ошибка',
+
+  // ── misc small-file keys (AppHeader, NotFound, AiCallCenter) ──────────────────────────────────────────────
+  header_account_fallback: 'Аккаунт',
+  nf_title: 'Страница не найдена',
+  nf_heading: 'ОШИБКА',
+  nf_desc: 'Возможно, страница была удалена или не существует. Проверьте правильность URL.',
+  nf_back_home: 'На главную',
+  callcenter_no_active_call: 'Нет активного звонка',
+  callcenter_mock_suffix: '(ТЕСТ)',
+  callcenter_mock_dot_suffix: 'ТЕСТ',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -6840,6 +6885,21 @@ const tr: Partial<Record<TranslationKey, string>> = {
   addprop_private_title: 'Özel İlan Oluştur',
   addprop_private_desc: 'Mülkünüz hiçbir yerde yayınlanmaz. Detayları manuel olarak girin ve tamamen özel tutun.',
   addprop_private_note: 'Genel URL gerekmez · Tam gizlilik kontrolü',
+
+  // ── App.tsx keys ──────────────────────────────────────────────
+  app_error_occurred: 'Bir uygulama hatası oluştu.',
+  app_refresh_page: 'Sayfayı yenile',
+  app_unknown_error: 'Bilinmeyen hata',
+
+  // ── misc small-file keys (AppHeader, NotFound, AiCallCenter) ──────────────────────────────────────────────
+  header_account_fallback: 'Hesap',
+  nf_title: 'Sayfa Bulunamadı',
+  nf_heading: 'HATA',
+  nf_desc: 'Sayfa silinmiş veya mevcut olmayabilir. Lütfen URL\'nin doğru olduğunu kontrol edin.',
+  nf_back_home: 'Ana sayfaya dön',
+  callcenter_no_active_call: 'Aktif çağrı yok',
+  callcenter_mock_suffix: '(TEST)',
+  callcenter_mock_dot_suffix: 'TEST',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -8531,6 +8591,21 @@ const ar: Partial<Record<TranslationKey, string>> = {
   addprop_private_title: 'إنشاء إعلان خاص',
   addprop_private_desc: 'عقارك غير منشور في أي مكان. أدخل التفاصيل يدويًا واحتفظ بخصوصية كاملة.',
   addprop_private_note: 'لا حاجة لرابط عام · تحكم كامل بالخصوصية',
+
+  // ── App.tsx keys ──────────────────────────────────────────────
+  app_error_occurred: 'حدث خطأ في التطبيق.',
+  app_refresh_page: 'تحديث الصفحة',
+  app_unknown_error: 'خطأ غير معروف',
+
+  // ── misc small-file keys (AppHeader, NotFound, AiCallCenter) ──────────────────────────────────────────────
+  header_account_fallback: 'الحساب',
+  nf_title: 'الصفحة غير موجودة',
+  nf_heading: 'خطأ',
+  nf_desc: 'ربما تم حذف الصفحة أو أنها غير موجودة. يرجى التحقق من صحة الرابط.',
+  nf_back_home: 'العودة إلى الرئيسية',
+  callcenter_no_active_call: 'لا توجد مكالمة نشطة',
+  callcenter_mock_suffix: '(تجريبي)',
+  callcenter_mock_dot_suffix: 'تجريبي',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -10222,6 +10297,21 @@ const he: Partial<Record<TranslationKey, string>> = {
   addprop_private_title: 'יצירת מודעה פרטית',
   addprop_private_desc: 'הנכס שלכם אינו מפורסם בשום מקום. הזינו את הפרטים ידנית ושמרו על פרטיות מלאה.',
   addprop_private_note: 'לא נדרש קישור פומבי · שליטה מלאה בפרטיות',
+
+  // ── App.tsx keys ──────────────────────────────────────────────
+  app_error_occurred: 'אירעה שגיאת יישום.',
+  app_refresh_page: 'רענן את הדף',
+  app_unknown_error: 'שגיאה לא ידועה',
+
+  // ── misc small-file keys (AppHeader, NotFound, AiCallCenter) ──────────────────────────────────────────────
+  header_account_fallback: 'חשבון',
+  nf_title: 'הדף לא נמצא',
+  nf_heading: 'שגיאה',
+  nf_desc: 'ייתכן שהדף נמחק או שאינו קיים. אנא בדקו שכתובת ה-URL נכונה.',
+  nf_back_home: 'חזרה לדף הבית',
+  callcenter_no_active_call: 'אין שיחה פעילה',
+  callcenter_mock_suffix: '(הדגמה)',
+  callcenter_mock_dot_suffix: 'הדגמה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

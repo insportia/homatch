@@ -155,7 +155,7 @@ export function AppHeader() {
                 <DropdownMenuContent align={isRTL ? 'start' : 'end'} className="w-48 bg-card border-border">
                   <div className="px-3 py-2">
                     <p className="text-xs font-medium text-foreground truncate">
-                      {homatchUser?.full_name ?? homatchUser?.email ?? 'Account'}
+                      {homatchUser?.full_name ?? homatchUser?.email ?? t('header_account_fallback')}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">{homatchUser?.email}</p>
                   </div>

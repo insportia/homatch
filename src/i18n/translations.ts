@@ -2185,6 +2185,9 @@ const en = {
   admin_signals_action: 'Action',
   admin_signals_view_details: 'View details',
   admin_signals_load_more: 'Load More (showing {{count}})',
+
+  // ── MatchesPage load-more pagination ──────────────────────────────────────────────
+  matches_load_more: 'Load more matches',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -4304,6 +4307,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_signals_action: 'მოქმედება',
   admin_signals_view_details: 'დეტალების ნახვა',
   admin_signals_load_more: 'მეტის ჩატვირთვა (ნაჩვენებია {{count}})',
+
+  // ── MatchesPage load-more pagination ──────────────────────────────────────────────
+  matches_load_more: 'მეტი შესატყვისის ჩატვირთვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -6421,6 +6427,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_signals_action: 'Действие',
   admin_signals_view_details: 'Просмотреть детали',
   admin_signals_load_more: 'Загрузить ещё (показано {{count}})',
+
+  // ── MatchesPage load-more pagination ──────────────────────────────────────────────
+  matches_load_more: 'Показать ещё совпадения',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -8536,6 +8545,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_signals_action: 'İşlem',
   admin_signals_view_details: 'Detayları görüntüle',
   admin_signals_load_more: 'Daha Fazla Yükle ({{count}} gösteriliyor)',
+
+  // ── MatchesPage load-more pagination ──────────────────────────────────────────────
+  matches_load_more: 'Daha fazla eşleşme yükle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -10651,6 +10663,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_signals_action: 'إجراء',
   admin_signals_view_details: 'عرض التفاصيل',
   admin_signals_load_more: 'تحميل المزيد (المعروض {{count}})',
+
+  // ── MatchesPage load-more pagination ──────────────────────────────────────────────
+  matches_load_more: 'تحميل المزيد من التطابقات',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -12766,6 +12781,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_signals_action: 'פעולה',
   admin_signals_view_details: 'הצג פרטים',
   admin_signals_load_more: 'טען עוד (מוצגים {{count}})',
+
+  // ── MatchesPage load-more pagination ──────────────────────────────────────────────
+  matches_load_more: 'טען עוד התאמות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

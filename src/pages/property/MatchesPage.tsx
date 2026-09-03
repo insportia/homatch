@@ -25,7 +25,7 @@ import { ExternalContactUnlockModal } from '@/components/matching/ExternalContac
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
 import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
 import {
-  getMatches, getMatchCounts, unlockMatch, markMatchPreviewed,
+  getMatches, getMatchCounts, nextMatchesCursor, unlockMatch, markMatchPreviewed,
   getUnlockedMatch, startMatchingCampaign, pauseMatchingCampaign,
   getCreditAccount,
 } from '@/services/api';
@@ -380,6 +380,9 @@ function MatchesContent() {
 
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const MATCHES_PAGE_SIZE = 20;
   const [counts, setCounts] = useState({ total: 0, newCount: 0, strongCount: 0 });
   const [creditAccount, setCreditAccount] = useState<CreditAccount | null>(null);
   const [filter, setFilter] = useState<'all' | 'new' | 'strong' | 'unlocked'>('all');
@@ -405,19 +408,41 @@ function MatchesContent() {
     if (!propertyId || !homatchUser) return;
     setLoading(true);
     const [matchData, countData, credits] = await Promise.all([
-      getMatches(propertyId),
+      getMatches(propertyId, undefined, MATCHES_PAGE_SIZE),
       getMatchCounts(propertyId),
       getCreditAccount(homatchUser.id),
     ]);
     setMatches(matchData);
     setCounts(countData);
     setCreditAccount(credits);
+    // getMatches() caps a page at MATCHES_PAGE_SIZE — a full page means there's
+    // likely more beyond it (confirmed or not by the next loadMore() call).
+    setHasMore(matchData.length >= MATCHES_PAGE_SIZE);
     // Detect campaign status from match data
     setCampaignActive(matchData.some(m => m.status !== 'ARCHIVED'));
     setLoading(false);
   }, [propertyId, homatchUser]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // getMatches() already supports cursor pagination (composite match_score +
+  // created_at seek cursor — see nextMatchesCursor()), but nothing called it with
+  // pagination args before, so any property with more than MATCHES_PAGE_SIZE
+  // matches silently showed only its top page forever. This wires a real
+  // "Load more" action on top of it.
+  const loadMore = useCallback(async () => {
+    if (!propertyId || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const cursor = nextMatchesCursor(matches);
+    if (!cursor) { setHasMore(false); setLoadingMore(false); return; }
+    const nextPage = await getMatches(propertyId, cursor, MATCHES_PAGE_SIZE);
+    setMatches(prev => {
+      const seen = new Set(prev.map(m => m.id));
+      return [...prev, ...nextPage.filter(m => !seen.has(m.id))];
+    });
+    setHasMore(nextPage.length >= MATCHES_PAGE_SIZE);
+    setLoadingMore(false);
+  }, [propertyId, matches, hasMore, loadingMore]);
 
   const filteredMatches = matches.filter(m => {
     if (filter === 'new') return m.status === 'NEW';
@@ -707,6 +732,14 @@ function MatchesContent() {
                 onRequestViewing={handleRequestViewing}
               />
             ))}
+            {hasMore && (
+              <div className="flex justify-center pt-2">
+                <Button variant="outline" onClick={loadMore} disabled={loadingMore} className="border-border gap-2">
+                  {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {t('matches_load_more')}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

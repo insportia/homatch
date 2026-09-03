@@ -306,7 +306,7 @@ function EmptyDashboard() {
 }
 
 // ── Context-aware top widget ──────────────────────────────────
-function DashboardHero({ name, matchCount, newCount }: { name?: string; matchCount: number; newCount: number }) {
+function DashboardHero({ name, matchCount, newCount, topPropertyId }: { name?: string; matchCount: number; newCount: number; topPropertyId: string | null }) {
   const navigate = useNavigate();
   const { t } = useLanguage();
   return (
@@ -332,9 +332,14 @@ function DashboardHero({ name, matchCount, newCount }: { name?: string; matchCou
           onClick={() => navigate('/ai')}>
           <Bot className="h-3.5 w-3.5" /> {t('nav_ask_ai_short')}
         </Button>
-        {matchCount > 0 && (
+        {matchCount > 0 && topPropertyId && (
+          // Matches are only ever shown per-property (/property/:id/matches) — there is
+          // no single "all matches" page — so this routes to whichever property has the
+          // most unseen matches (topPropertyId, computed in getUserMatchSummary). This
+          // used to navigate('/dashboard'), a no-op self-navigation since the button
+          // already lives on the dashboard.
           <Button size="sm" variant="outline" className="border-border gap-2"
-            onClick={() => navigate('/dashboard')}>
+            onClick={() => navigate(`/property/${topPropertyId}/matches`)}>
             <TrendingUp className="h-3.5 w-3.5" /> {t('dash_view_matches')}
           </Button>
         )}
@@ -350,7 +355,7 @@ function DashboardContent() {
   const navigate = useNavigate();
   const [properties, setProperties] = useState<Property[]>([]);
   const [progress, setProgress] = useState<Record<string, MatchingRunProgress>>({});
-  const [matchSummary, setMatchSummary] = useState({ total: 0, newCount: 0, bestScore: 0 });
+  const [matchSummary, setMatchSummary] = useState<{ total: number; newCount: number; bestScore: number; topPropertyId: string | null }>({ total: 0, newCount: 0, bestScore: 0, topPropertyId: null });
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -407,6 +412,7 @@ function DashboardContent() {
           name={homatchUser?.full_name}
           matchCount={matchSummary.total}
           newCount={matchSummary.newCount}
+          topPropertyId={matchSummary.topPropertyId}
         />
 
         {/* Stats */}

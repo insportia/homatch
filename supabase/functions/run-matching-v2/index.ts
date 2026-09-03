@@ -9,6 +9,18 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
   headers: { ...CORS, 'Content-Type': 'application/json' },
 });
 const DEMAND = new Set(['BUY', 'RENT', 'INVEST', 'RELOCATE_BUY', 'RELOCATE_RENT']);
+// Demand intent_type -> the set of properties.transaction_type values ('sale'|'rent'|'investment',
+// normalized) it can legitimately be satisfied by, used ONLY as a fallback when the signal's own
+// classified transaction_type is missing. Sourced from live intent_profiles data: INVEST demand has
+// been recorded against both SALE and INVESTMENT properties (investors buying to hold), never RENT —
+// so INVEST is never compatible with a rental property.
+const INTENT_TRANSACTION_FALLBACK: Record<string, string[]> = {
+  BUY: ['sale'],
+  RELOCATE_BUY: ['sale'],
+  RENT: ['rent'],
+  RELOCATE_RENT: ['rent'],
+  INVEST: ['sale', 'investment'],
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -67,7 +79,7 @@ Deno.serve(async (req: Request) => {
       const chunk = signalIds.slice(offset, offset + 200);
       const { data, error } = await db
         .from('intent_profiles')
-        .select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,created_at,signal:raw_signals!signal_id(id,platform,published_at,source_url,classification_status,intent_type,original_text,source:source_registry!source_id(quality_score))`)
+        .select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,created_at,signal:raw_signals!signal_id(id,platform,property_id,published_at,source_url,classification_status,intent_type,original_text,source:source_registry!source_id(quality_score))`)
         .in('signal_id', chunk)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -78,6 +90,10 @@ Deno.serve(async (req: Request) => {
     let created = 0;
     let skipped = 0;
     let rejectedSupply = 0;
+    let rejectedTransaction = 0;
+    let rejectedPropertyType = 0;
+    let rejectedDistrict = 0;
+    let rejectedSelfSourced = 0;
     let insertErrors = 0;
     let best = 0;
     const errors: string[] = [];
@@ -98,6 +114,77 @@ Deno.serve(async (req: Request) => {
       ) {
         skipped++;
         if (isSupplyAd(text)) rejectedSupply++;
+        continue;
+      }
+
+      // Self-sourced guard: raw_signals.property_id is the legacy link recording which
+      // signal a property was originally imported/created FROM. If that signal is the one
+      // under consideration, it is the property's own ad re-appearing as a "demand" row via
+      // re-classification drift, not a third party wanting it — hard reject, never score it.
+      if (signal.property_id && String(signal.property_id) === String(property.id)) {
+        skipped++;
+        rejectedSelfSourced++;
+        continue;
+      }
+
+      // ── Hard gates ──────────────────────────────────────────────────────
+      // Below this point, a KNOWN incompatibility on transaction type, property
+      // type, or district is a hard reject — never just a lower score. Previously
+      // these only capped the score at 49 (still >= the 20 floor), so e.g. a
+      // FOR_SALE property could "match" a RENT-seeking signal, or a Vake property
+      // could match someone who explicitly wants Saburtalo. Unknown/missing data on
+      // either side still falls through to soft scoring in score() below, since we
+      // cannot penalize what was never actually claimed.
+      const propertyTransaction = norm(property.transaction_type);
+      // INVEST is special-cased ahead of the explicit field: live data shows the
+      // classifier records intent_profiles.transaction_type as either 'SALE' or
+      // 'INVESTMENT' for the exact same kind of buy-to-invest demand (classifier
+      // granularity noise, not two different demands) — always both compatible.
+      // Every other demand type trusts its own explicit transaction_type first,
+      // since that's specific per-signal data rather than a static keyword map.
+      const explicitIntentTransaction = norm(profile.transaction_type);
+      const compatTransactions = profileIntent === 'INVEST'
+        ? INTENT_TRANSACTION_FALLBACK.INVEST
+        : explicitIntentTransaction
+        ? [explicitIntentTransaction]
+        : INTENT_TRANSACTION_FALLBACK[profileIntent] || null;
+      if (propertyTransaction && compatTransactions && !compatTransactions.includes(propertyTransaction)) {
+        skipped++;
+        rejectedTransaction++;
+        continue;
+      }
+
+      const propertyTypeNorm = norm(property.property_type);
+      // Only values that resolve into a recognized TYPE_GROUPS family count as a
+      // specific, confident claim worth gating on — a generic "real estate" or an
+      // unmapped free-text phrase is a data gap, not a stated incompatibility.
+      const intentPropertyTypesKnown = (profile.property_types || []).map(norm).filter((v: string) => typeGroupOf(v) !== -1);
+      if (
+        propertyTypeNorm &&
+        typeGroupOf(propertyTypeNorm) !== -1 &&
+        intentPropertyTypesKnown.length &&
+        !intentPropertyTypesKnown.some((value: string) => typeCompatible(propertyTypeNorm, value))
+      ) {
+        skipped++;
+        rejectedPropertyType++;
+        continue;
+      }
+
+      const propertyDistrictNorm = norm(facts?.district || facts?.neighborhood);
+      const intentDistricts = [profile.district, ...(profile.neighborhoods || [])].filter(Boolean);
+      // Only enforce the district gate when the city itself isn't already a known
+      // mismatch (a city-level mismatch is reported separately by score()) — a
+      // district gate on top of an already-wrong city would double-penalize and
+      // obscure which signal actually caused the rejection.
+      const cityKnownMismatch = !!facts?.city && !!profile.city && similar(facts.city, profile.city) === 0;
+      if (
+        propertyDistrictNorm &&
+        intentDistricts.length &&
+        !cityKnownMismatch &&
+        !intentDistricts.some((value: string) => similar(propertyDistrictNorm, value) >= 0.5)
+      ) {
+        skipped++;
+        rejectedDistrict++;
         continue;
       }
 
@@ -164,6 +251,10 @@ Deno.serve(async (req: Request) => {
       matchesCreated: created,
       matchesSkipped: skipped,
       rejectedSupply,
+      rejectedTransaction,
+      rejectedPropertyType,
+      rejectedDistrict,
+      rejectedSelfSourced,
       insertErrors,
       errors,
       bestScore: best,
@@ -208,8 +299,10 @@ function score(property: any, facts: any, profile: any) {
   if (districtMatches) { total += 5; reasons.push('District/neighborhood matches'); }
   else if (!districts.length) total += 2;
   const propertyType = norm(property.property_type);
-  const intentTypes = (profile.property_types || []).map(norm);
-  const typeKnown = propertyType && intentTypes.length;
+  // Mirrors the hard-gate filtering in the caller: only intent property-type
+  // values that resolve into a recognized family count as a specific claim.
+  const intentTypes = (profile.property_types || []).map(norm).filter((v: string) => typeGroupOf(v) !== -1);
+  const typeKnown = typeGroupOf(propertyType) !== -1 && intentTypes.length > 0;
   const typeMatches = !typeKnown || intentTypes.some((value: string) => typeCompatible(propertyType, value));
   if (!typeKnown) total += 8;
   else if (typeMatches) { total += 20; reasons.push('Property type matches'); }
@@ -232,16 +325,42 @@ function score(property: any, facts: any, profile: any) {
   total += Math.round(overlap * 10);
   if (overlap >= 0.3) reasons.push('Description/needs overlap');
   total += Math.round(Math.min(1, Number(profile.intent_confidence || 0)) * 5);
-  let final = Math.max(0, Math.min(100, Math.round(total)));
-  if (transactionKnown && !transactionMatches) final = Math.min(final, 49);
-  if (typeKnown && !typeMatches) final = Math.min(final, 49);
+  // NOTE: a known transaction or property-type mismatch used to cap `final` at 49 here.
+  // Both are now hard-rejected in the caller before score() is ever invoked, so a
+  // known mismatch on either can no longer reach this function — the cap is gone
+  // because it's now unreachable, not because the rule was relaxed.
+  const final = Math.max(0, Math.min(100, Math.round(total)));
   return { score: final, reasons, mismatches };
 }
 
 function norm(value: any) { return String(value || '').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_'); }
 function similar(left: any, right: any) { const a = norm(left), b = norm(right); if (!a || !b) return 0; return a === b || a.includes(b) || b.includes(a) ? 1 : 0; }
 function aliasCountry(value: string) { const aliases: Record<string, string> = { georgia: 'ge', საქართველო: 'ge', грузия: 'ge', turkey: 'tr', türkiye: 'tr' }; return aliases[value] || value; }
-function typeCompatible(left: string, right: string) { if (left === right) return true; const groups = [['commercial', 'office', 'retail', 'warehouse', 'hotel'], ['house', 'villa', 'townhouse'], ['apartment', 'studio', 'penthouse']]; return groups.some((group) => group.includes(left) && group.includes(right)); }
+// Canonical property-type families. Grouped (rather than exact-match) because
+// intent_property_types is free text from the LLM classifier ("2-bedroom
+// apartment", "studio apartment", "shared accommodation") — after norm() that
+// becomes e.g. "2_bedroom_apartment", which will never exactly equal or be a
+// full array member of "apartment". Matching is substring-based against each
+// group's keywords so "2_bedroom_apartment" still resolves into the apartment
+// family instead of silently falling through as "no group" (which would make
+// the type hard-gate reject a large share of real, correctly-typed demand —
+// worse than the false negatives it exists to fix).
+const TYPE_GROUPS = [
+  ['commercial', 'office', 'retail', 'warehouse', 'hotel'],
+  ['house', 'villa', 'townhouse'],
+  ['apartment', 'studio', 'penthouse'],
+  ['land', 'plot'],
+];
+function typeGroupOf(value: string): number {
+  if (!value) return -1;
+  return TYPE_GROUPS.findIndex((group) => group.some((keyword) => value === keyword || value.includes(keyword) || keyword.includes(value)));
+}
+// Two type strings are "compatible" if they resolve into the SAME recognized
+// family. A value that matches no family at all (a generic "real estate", or
+// the property_type enum's own "OTHER" catch-all) is treated as unrecognized,
+// not as a specific claim — callers must check typeGroupOf(...) !== -1
+// themselves before treating a mismatch here as a confident, gate-worthy one.
+function typeCompatible(left: string, right: string) { if (left === right) return true; const lg = typeGroupOf(left); const rg = typeGroupOf(right); return lg !== -1 && lg === rg; }
 function semanticOverlap(left: string, right: string) { const stop = new Set(['property', 'real', 'estate', 'for', 'the', 'and', 'with', 'this', 'that', 'იყიდება', 'ქირავდება', 'продажа', 'аренда']); const a = new Set(norm(left).split('_').filter((value) => value.length > 3 && !stop.has(value))); const b = new Set(norm(right).split('_').filter((value) => value.length > 3 && !stop.has(value))); if (!a.size || !b.size) return 0; let count = 0; for (const value of a) if (b.has(value)) count++; return Math.min(1, count / Math.max(3, Math.min(a.size, b.size))); }
 function redact(text: string) { const clean = text.replace(/https?:\/\/\S+/g, '[link]').replace(/@[\w.-]+/g, '[profile]').replace(/\+?\d[\d\s()-]{6,}/g, '[contact]'); return clean.slice(0, 120) + (clean.length > 120 ? '…' : ''); }
 function formatRecency(hours: number) { if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m ago`; if (hours < 24) return `${Math.round(hours)}h ago`; return `${Math.round(hours / 24)}d ago`; }

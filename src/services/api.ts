@@ -357,10 +357,33 @@ export async function getMatches(
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (cursor) q = q.lt('created_at', cursor);
+  if (cursor) {
+    // Composite seek-pagination cursor: "<match_score>|<created_at>" of the last row
+    // shown on the previous page. A plain `created_at < cursor` filter here would
+    // silently corrupt pagination — results are sorted by match_score FIRST, so a
+    // later page could skip a higher-scored-but-earlier-created row entirely, or
+    // re-show a row already seen on a previous page. This expresses the standard
+    // seek-pagination predicate for a two-column sort:
+    //   match_score < cursorScore  OR  (match_score = cursorScore AND created_at < cursorCreatedAt)
+    const separatorIndex = cursor.indexOf('|');
+    const cursorScore = Number(separatorIndex >= 0 ? cursor.slice(0, separatorIndex) : NaN);
+    const cursorCreatedAt = separatorIndex >= 0 ? cursor.slice(separatorIndex + 1) : '';
+    if (!Number.isNaN(cursorScore) && cursorCreatedAt) {
+      q = q.or(`match_score.lt.${cursorScore},and(match_score.eq.${cursorScore},created_at.lt.${cursorCreatedAt})`);
+    }
+  }
 
   const { data } = await q;
   return Array.isArray(data) ? data : [];
+}
+
+// Cursor string for the LAST row of a getMatches() page, to pass as the `cursor`
+// argument on the next call. Returns undefined when there's nothing to page from
+// (empty page) — callers should treat that as "no more pages".
+export function nextMatchesCursor(page: Match[]): string | undefined {
+  const last = page[page.length - 1];
+  if (!last) return undefined;
+  return `${last.match_score}|${last.created_at}`;
 }
 
 export async function getMatchCounts(propertyId: string): Promise<{

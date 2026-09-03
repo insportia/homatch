@@ -1,32 +1,32 @@
-// Production source lives in Supabase Edge Function `research-agent`.
-// Deployed contract: v6 staged async research pipeline.
+// Production source is deployed as Supabase Edge Function `research-agent` v7.
 //
-// Authenticated POST actions:
-//   start  { query, type: 'property'|'cadastral', language }
+// Contract:
+//   start  { action:'start', query, type:'property'|'cadastral', language }
 //   status { action:'status', jobId, language }
 //   resume { action:'resume', jobId, language }
 //
-// Pipeline is deliberately split into bounded independent calls so a single
-// long OpenAI web-research request cannot pin the whole job at one percentage:
-//   QUEUED (5)
-//   IDENTITY_RESEARCH (15) -> OFFICIAL_READY (28)
-//   OFFICIAL_RESEARCH (38) -> MARKET_READY (52)
-//   MARKET_RESEARCH (62) -> SYNTHESIS_READY (76)
-//   SYNTHESIZING (86) -> COMPLETE (100)
+// v7 removes the synchronous 70-second OpenAI research wait that caused
+// `TimeoutError: Signal timed out`. Each research phase now starts an OpenAI
+// Responses API background job (`background:true`, `store:true`) and persists
+// its response id in `research_jobs.response_id`. Subsequent short status calls
+// retrieve provider state and persist the completed phase before advancing.
+// No Supabase request remains open while web research/reasoning is running.
 //
-// VerifyPage polling of `status` advances READY stages. Each provider call has
-// a 70s abort bound, uses low reasoning, and web-search stages use low search
-// context. Intermediate JSON and evidence are persisted to research_jobs after
-// every completed stage, so later stages resume from saved work.
+// Pipeline:
+//   QUEUED -> IDENTITY_WAITING -> OFFICIAL_READY
+//   -> OFFICIAL_WAITING -> MARKET_READY
+//   -> MARKET_WAITING -> SYNTHESIS_READY
+//   -> SYNTHESIS_WAITING -> COMPLETE
 //
-// Generic absence of indexed cadastral evidence no longer pretends that a
-// CAPTCHA was encountered. Human/CAPTCHA UI must only be triggered by a real
-// future browser/computer verification event.
+// Provider start/poll network operations have only a 15s transport guard; that
+// guard does NOT limit research duration because research continues server-side.
+// Intermediate findings/evidence survive every phase and are used by the next.
 //
 // Evidence rules: public evidence only; NO EVIDENCE = NO FACT; missing evidence
-// is neutral; transliteration/spelling variants are not material conflicts;
-// only evidence-backed MEDIUM/HIGH risks reach the final report.
+// is neutral; spelling/transliteration variants are not conflicts; only
+// evidence-backed MEDIUM/HIGH risks reach the final report. Confidence is an
+// evidence class (HIGH/MEDIUM/LOW), never a fabricated numeric percentage.
 //
-// NOTE: production implementation is managed/deployed in Supabase and this
-// repository file documents the live frontend/backend contract.
+// Human/CAPTCHA UI is intentionally not triggered unless a real browser/computer
+// verification event exists; absence of indexed cadastral evidence is not CAPTCHA.
 export {};

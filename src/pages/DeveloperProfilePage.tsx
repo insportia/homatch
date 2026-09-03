@@ -213,7 +213,7 @@ export default function DeveloperProfilePage() {
                 {breakdown.has_restrictions && (
                   <div className="text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-2 flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                    This developer has recorded restrictions — review before transacting.
+                    {t('developer_has_restrictions_note')}
                   </div>
                 )}
               </CardContent>
@@ -247,7 +247,7 @@ export default function DeveloperProfilePage() {
                             {risk.summary && <p className="text-xs text-muted-foreground mt-0.5">{risk.summary}</p>}
                             {risk.url && (
                               <a href={risk.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 mt-1 hover:underline">
-                                View source <ExternalLink className="h-3 w-3" />
+                                {t('matches_full_source')} <ExternalLink className="h-3 w-3" />
                               </a>
                             )}
                           </div>
@@ -288,7 +288,7 @@ export default function DeveloperProfilePage() {
             </span>
             {dev.website && (
               <a href={dev.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                <Globe className="h-3 w-3" /> Website
+                <Globe className="h-3 w-3" /> {t('developer_website')}
               </a>
             )}
           </div>

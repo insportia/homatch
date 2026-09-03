@@ -4,11 +4,13 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
 export default function AuthCallbackPage() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   useEffect(() => {
     let cancelled = false;
@@ -105,7 +107,7 @@ export default function AuthCallbackPage() {
       <HomatchLogo size="md" />
       <div className="flex flex-col items-center gap-3">
         <span className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-        <p className="text-sm text-muted-foreground">Signing you in…</p>
+        <p className="text-sm text-muted-foreground">{t('auth_signing_in')}</p>
       </div>
     </div>
   );

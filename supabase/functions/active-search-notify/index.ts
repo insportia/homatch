@@ -28,10 +28,12 @@ Deno.serve(async (req) => {
         await supabase.from('notifications').insert({
           user_id: sub.user_id,
           type: 'MATCH_AVAILABLE',
+          // title/body are an English fallback only — the frontend renders a
+          // localized string from type + metadata.kind at display time.
           title: 'New property match',
           body: 'A new property matching your search has been added.',
           is_read: false,
-          metadata: { property_id, trigger: 'active_search', subscription_id: sub.id },
+          metadata: { property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_PROPERTY_MATCH' },
         }).catch(() => {});
 
         await supabase.from('active_search_subscriptions')
@@ -50,10 +52,12 @@ Deno.serve(async (req) => {
         await supabase.from('notifications').insert({
           user_id: sub.user_id,
           type: 'MATCH_AVAILABLE',
+          // title/body are an English fallback only — the frontend renders a
+          // localized string from type + metadata.kind at display time.
           title: 'New buyer/renter found',
           body: 'A new potential buyer or renter has been found for your property.',
           is_read: false,
-          metadata: { signal_id, match_id: match_id || null, property_id: sub.property_id, trigger: 'active_search', subscription_id: sub.id },
+          metadata: { signal_id, match_id: match_id || null, property_id: sub.property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_SIGNAL_MATCH' },
         }).catch(() => {});
 
         await supabase.from('active_search_subscriptions')

@@ -56,7 +56,7 @@ export function CanonicalGroupBanner({ propertyId }: Props) {
                   <Star className="h-3 w-3 text-primary shrink-0" />
                 )}
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">{src.source_name ?? 'Unknown source'}</p>
+                  <p className="text-xs font-medium text-foreground truncate">{src.source_name ?? t('canon_unknown_source')}</p>
                   {src.source_url && (
                     <a
                       href={src.source_url}

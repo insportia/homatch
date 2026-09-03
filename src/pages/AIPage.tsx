@@ -54,15 +54,16 @@ function ResearchCard({
   report: ResearchReport;
   onNavigate: (p: string) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <Card className="border-primary/20 bg-primary/5 mt-2">
       <CardHeader className="pb-2 pt-4">
         <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
           <Star className="h-4 w-4 text-primary" />
-          <span className="font-semibold">{report.entityName ?? 'Entity'}</span>
+          <span className="font-semibold">{report.entityName ?? t('ai_entity_default')}</span>
           {report.entityType && <Badge variant="outline" className="text-[10px]">{report.entityType}</Badge>}
           {report.confidence !== undefined && (
-            <span className="text-xs text-muted-foreground ml-auto">Confidence: {report.confidence}%</span>
+            <span className="text-xs text-muted-foreground ml-auto">{t('ai_confidence')}: {report.confidence}%</span>
           )}
         </CardTitle>
       </CardHeader>
@@ -336,7 +337,7 @@ function AIPageInner() {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Bot className="h-5 w-5 text-primary shrink-0" />
             <span className="font-semibold text-sm text-foreground truncate">{t('ai_title')}</span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Beta</Badge>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">{t('ai_beta_badge')}</Badge>
           </div>
           {messages.length > 0 && (
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
@@ -405,7 +406,7 @@ function AIPageInner() {
             )}
           </div>
           <p className="text-center text-[10px] text-muted-foreground/50 mt-2">
-            AI can make mistakes. Verify important information independently.
+            {t('ai_disclaimer')}
           </p>
         </div>
       </div>

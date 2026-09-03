@@ -34,6 +34,10 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // A phone-number format example ("+995 5XX XXX XXX") — not natural
   // language, deliberately identical in every locale.
   'chat_phone_ph',
+  // An email-address format example ("you@example.com") — not natural
+  // language, deliberately identical in every locale.
+  'auth_email_ph',
+  'ai_beta_badge', // Turkish "Beta" is the standard loanword too
 ]);
 
 // Heuristic: values that don't need translating in the first place, so an

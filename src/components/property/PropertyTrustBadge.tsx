@@ -7,13 +7,15 @@ import { Shield, ShieldAlert, ShieldCheck, AlertTriangle, CheckCircle, Info } fr
 import { getPropertyTrustScore } from '@/services/api3';
 import type { PropertyTrustScore } from '@/types/phase3';
 
-const RISK_LABELS: Record<string, string> = {
-  price_conflict: 'Price conflict across sources',
-  area_conflict: 'Area discrepancy detected',
-  location_conflict: 'Location data inconsistency',
-  duplicate_images: 'Duplicate images detected',
-  data_stale: 'Data may be stale',
-  cadastral_mismatch: 'Cadastral mismatch',
+// Stable machine keys (price_conflict, area_conflict, …) map to translated
+// labels at render time — never hardcoded per-language text here.
+const RISK_LABEL_KEYS: Record<string, string> = {
+  price_conflict: 'trust_risk_price_conflict',
+  area_conflict: 'trust_risk_area_conflict',
+  location_conflict: 'trust_risk_location_conflict',
+  duplicate_images: 'trust_risk_duplicate_images',
+  data_stale: 'trust_risk_data_stale',
+  cadastral_mismatch: 'trust_risk_cadastral_mismatch',
 };
 
 interface Props {
@@ -38,7 +40,7 @@ export function PropertyTrustBadge({ propertyId, compact = false }: Props) {
     duplicate_images: score.duplicate_images,
     data_stale: score.data_stale,
     cadastral_mismatch: score.cadastral_mismatch,
-  }).filter(([, v]) => v).map(([k]) => RISK_LABELS[k] ?? k);
+  }).filter(([, v]) => v).map(([k]) => RISK_LABEL_KEYS[k] ? t(RISK_LABEL_KEYS[k]) : k);
 
   const hasRisks = risks.length > 0;
   const scoreColor = score.score >= 75 ? 'text-green-400' : score.score >= 50 ? 'text-primary' : 'text-red-400';
@@ -99,7 +101,7 @@ function TrustPopoverContent({ score, risks, scoreColor, t }: {
         <Shield className={`h-5 w-5 ${scoreColor}`} />
         <div>
           <p className="text-sm font-semibold">{t('trust_score')}: <span className={scoreColor}>{score.score}/100</span></p>
-          <p className="text-xs text-muted-foreground capitalize">{score.confidence.toLowerCase().replace('_', ' ')} confidence</p>
+          <p className="text-xs text-muted-foreground capitalize">{score.confidence.toLowerCase().replace('_', ' ')} {t('trust_confidence_suffix')}</p>
         </div>
       </div>
 

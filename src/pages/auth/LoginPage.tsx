@@ -114,10 +114,10 @@ export default function LoginPage() {
         </Link>
         <div className="relative z-10 space-y-4">
           <h2 className="text-2xl font-semibold text-foreground text-balance">
-            Find demand. <span className="text-primary">Unlock leads.</span>
+            {t('auth_login_hero_title1')} <span className="text-primary">{t('auth_login_hero_title2')}</span>
           </h2>
           <p className="text-sm text-muted-foreground text-pretty max-w-sm">
-            Homatch scans the public web for people already expressing intent to buy, rent, or invest — then matches them to your property.
+            {t('auth_login_hero_desc')}
           </p>
         </div>
         <p className="text-xs text-muted-foreground/40 relative z-10">
@@ -173,10 +173,11 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder={t('auth_email_ph')}
                   required
                   autoComplete="email"
                   className="bg-secondary border-border h-10"
+                  dir="ltr"
                 />
               </div>
 
@@ -202,7 +203,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowPw(v => !v)}
                     className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground`}
-                    aria-label={showPw ? 'Hide password' : 'Show password'}
+                    aria-label={showPw ? t('auth_hide_password') : t('auth_show_password')}
                   >
                     {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>

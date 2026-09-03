@@ -214,7 +214,7 @@ function URLImportContent() {
               className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm"
             >
               <ArrowLeft className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} />
-              Back
+              {t('general_back')}
             </button>
             <h1 className="text-lg font-semibold text-foreground">{t('import_review_title')}</h1>
           </div>
@@ -238,7 +238,7 @@ function URLImportContent() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">{t('import_title')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Paste a link from any public property listing and Homatch will extract the details.
+            {t('import_paste_hint')}
           </p>
         </div>
 
@@ -300,7 +300,7 @@ function URLImportContent() {
             <div className="rounded-lg border border-border/50 bg-secondary/30 p-3">
               <p className="text-xs text-muted-foreground/70 flex items-center gap-1.5">
                 <ExternalLink className="h-3 w-3" />
-                Supports myhome.ge, ss.ge, agency sites, and most public property listings.
+                {t('import_supported_sites')}
               </p>
             </div>
           </div>

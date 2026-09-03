@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/db/supabase';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -64,24 +65,29 @@ function statusIcon(status: string) {
   return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
 }
 
-function statusLabel(status: string) {
-  const map: Record<string, string> = {
-    queued: 'Queued',
-    analysing_property: 'Analysing property',
-    generating_queries: 'Generating queries',
-    searching_sources: 'Searching sources',
-    collecting_results: 'Collecting results',
-    normalizing: 'Normalising',
-    deduplicating: 'Deduplicating',
-    classifying: 'Classifying',
-    ranking: 'Ranking',
-    completed: 'Completed',
-    partially_completed: 'Partially completed',
-    failed: 'Failed',
-    paused: 'Paused',
-    cancelled: 'Cancelled',
+// Stable machine status codes (queued, analysing_property, …) map to
+// translated labels via the caller's own `t` — kept as a plain function
+// (not a component) so it stays callable from non-hook contexts, with `t`
+// threaded in as a parameter instead of calling useLanguage() here.
+function statusLabel(status: string, t: (key: string) => string) {
+  const keyMap: Record<string, string> = {
+    queued: 'mjp_status_queued',
+    analysing_property: 'mjp_status_analysing',
+    generating_queries: 'mjp_status_generating_queries',
+    searching_sources: 'mjp_status_searching',
+    collecting_results: 'mjp_status_collecting',
+    normalizing: 'mjp_status_normalizing',
+    deduplicating: 'mjp_status_deduplicating',
+    classifying: 'mjp_status_classifying',
+    ranking: 'mjp_status_ranking',
+    completed: 'mjp_status_completed',
+    partially_completed: 'mjp_status_partial',
+    failed: 'mjp_status_failed',
+    paused: 'mjp_status_paused',
+    cancelled: 'mjp_status_cancelled',
   };
-  return map[status] ?? status;
+  const key = keyMap[status];
+  return key ? t(key) : status;
 }
 
 function providerBadge(key: string, value: string) {
@@ -109,6 +115,7 @@ function eventIcon(type: string) {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
+  const { t } = useLanguage();
   const [job, setJob] = useState<JobRow | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [externalEvents, setExternalEvents] = useState<EventRow[]>([]);
@@ -236,7 +243,7 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
   if (!job) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground p-4">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading job…
+        <Loader2 className="h-4 w-4 animate-spin" /> {t('mjp_loading_job')}
       </div>
     );
   }
@@ -252,7 +259,7 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {statusIcon(job.status)}
-          <span className="font-semibold text-sm truncate">{statusLabel(job.status)}</span>
+          <span className="font-semibold text-sm truncate">{statusLabel(job.status, t)}</span>
           {job.current_step && !isTerminal && (
             <span className="text-xs text-muted-foreground truncate hidden md:inline">
               — {job.current_step}
@@ -279,14 +286,14 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
       {/* Counters grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
         {[
-          { label: 'Query packs', value: job.query_packs_created },
-          { label: 'Queries run', value: job.queries_run },
-          { label: 'Signals', value: job.signals_collected },
-          { label: 'Classified', value: job.signals_classified },
-          { label: 'Rejected', value: job.signals_rejected },
-          { label: 'Candidates', value: job.candidates_after_filter },
-          { label: 'Matches', value: job.matches_created },
-          { label: 'Tiers run', value: job.tiers_run },
+          { label: t('mjp_counter_query_packs'), value: job.query_packs_created },
+          { label: t('mjp_counter_queries_run'), value: job.queries_run },
+          { label: t('mjp_counter_signals'), value: job.signals_collected },
+          { label: t('mjp_counter_classified'), value: job.signals_classified },
+          { label: t('mjp_counter_rejected'), value: job.signals_rejected },
+          { label: t('mjp_counter_candidates'), value: job.candidates_after_filter },
+          { label: t('mjp_counter_matches'), value: job.matches_created },
+          { label: t('mjp_counter_tiers_run'), value: job.tiers_run },
         ].map(({ label, value }) => (
           <div key={label} className="bg-muted/50 rounded-lg px-2 py-1.5">
             <div className="text-muted-foreground">{label}</div>
@@ -298,14 +305,14 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
       {/* Cost */}
       {job.cost_usd_total > 0 && (
         <div className="text-xs text-muted-foreground">
-          Cost so far: <span className="font-mono text-foreground">${job.cost_usd_total.toFixed(4)}</span>
+          {t('mjp_cost_so_far')}: <span className="font-mono text-foreground" dir="ltr">${job.cost_usd_total.toFixed(4)}</span>
         </div>
       )}
 
       {/* Error */}
       {job.status === 'failed' && job.error_message && (
         <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-xs text-destructive">
-          <strong>{job.failure_reason ?? 'Error'}</strong>: {job.error_message}
+          <strong>{job.failure_reason ?? t('mjp_error_fallback')}</strong>: {job.error_message}
         </div>
       )}
 
@@ -314,14 +321,14 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Live process ({timeline.length})
+              {t('mjp_live_process', { count: timeline.length })}
             </span>
             {timeline.length > 20 && (
               <button
                 className="text-xs text-primary hover:underline flex items-center gap-1"
                 onClick={() => setShowAllEvents(v => !v)}
               >
-                {showAllEvents ? <><ChevronUp className="h-3 w-3" /> Show less</> : <><ChevronDown className="h-3 w-3" /> Show all</>}
+                {showAllEvents ? <><ChevronUp className="h-3 w-3" /> {t('mjp_show_less')}</> : <><ChevronDown className="h-3 w-3" /> {t('mjp_show_all')}</>}
               </button>
             )}
           </div>
@@ -335,7 +342,7 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
                     ev.event_type.includes('ERROR') || ev.event_type.includes('FAIL') || ev.event_type.includes('FATAL')
                       ? 'text-destructive' : 'text-muted-foreground'
                   )}>
-                    {ev.stream === 'external' ? 'EXTERNAL · ' : ''}{ev.event_type}
+                    {ev.stream === 'external' ? `${t('mjp_external_prefix')} ` : ''}{ev.event_type}
                   </span>
                   <span className="text-foreground/70 truncate">
                     {String(

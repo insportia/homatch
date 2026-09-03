@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,42 +10,45 @@ import {
   ArrowRight, Shield, BarChart2, Target, Zap,
 } from 'lucide-react';
 
+// Content lives in translation keys, resolved at render time via t() —
+// only the icon and key names are static here.
 const PARTNER_CATEGORIES = [
   {
     icon: Building2,
-    title: 'Real Estate Developers',
-    desc: 'Feature your projects on Homatch with verified Trust Scores. Reach active buyers and renters at the moment of decision.',
-    placements: ['Featured Project on Homepage', 'Sponsored in Search Results', 'Developer Trust Profile Boost'],
+    titleKey: 'partners_cat1_title',
+    descKey: 'partners_cat1_desc',
+    placementKeys: ['partners_cat1_p1', 'partners_cat1_p2', 'partners_cat1_p3'],
   },
   {
     icon: Users,
-    title: 'Agencies & Brokers',
-    desc: 'Promote your listings and agency profile to verified property seekers across Tbilisi, Batumi and beyond.',
-    placements: ['Sponsored Listings in Results', 'Agency Spotlight Card', 'Premium Match Placement'],
+    titleKey: 'partners_cat2_title',
+    descKey: 'partners_cat2_desc',
+    placementKeys: ['partners_cat2_p1', 'partners_cat2_p2', 'partners_cat2_p3'],
   },
   {
     icon: Banknote,
-    title: 'Mortgage & Finance',
-    desc: 'Connect with qualified buyers at the verification and matching stage — when financing decisions are made.',
-    placements: ['Mortgage Calculator Widget', 'Property Detail Sidebar', 'Verification Center Banner'],
+    titleKey: 'partners_cat3_title',
+    descKey: 'partners_cat3_desc',
+    placementKeys: ['partners_cat3_p1', 'partners_cat3_p2', 'partners_cat3_p3'],
   },
   {
     icon: Globe2,
-    title: 'Relocation, Legal & Services',
-    desc: 'Offer your services to relocating buyers, legal review clients and property service seekers.',
-    placements: ['Services Panel in Property Detail', 'AI Assistant Recommendations', 'Onboarding Placement'],
+    titleKey: 'partners_cat4_title',
+    descKey: 'partners_cat4_desc',
+    placementKeys: ['partners_cat4_p1', 'partners_cat4_p2', 'partners_cat4_p3'],
   },
 ];
 
 const PLACEMENT_RULES = [
-  { icon: Shield,   text: 'Every sponsored placement shows a visible "Sponsored" or "Ad" label' },
-  { icon: BarChart2, text: 'Sponsored status NEVER affects Trust Score, Match Score or organic ranking' },
-  { icon: Target,   text: 'Target by market, language and date range' },
-  { icon: Zap,      text: 'Performance reports available to verified partners' },
+  { icon: Shield,    textKey: 'partners_rule1' },
+  { icon: BarChart2, textKey: 'partners_rule2' },
+  { icon: Target,    textKey: 'partners_rule3' },
+  { icon: Zap,       textKey: 'partners_rule4' },
 ];
 
 export default function PartnersPage() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -52,22 +56,22 @@ export default function PartnersPage() {
       <section className="relative border-b border-border py-16 px-4">
         <div className="max-w-3xl mx-auto text-center space-y-4">
           <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 mb-2">
-            Partner with Homatch
+            {t('partners_badge')}
           </Badge>
           <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
-            Reach Verified Real Estate Seekers
+            {t('partners_hero_title')}
           </h1>
           <p className="text-base text-muted-foreground max-w-xl mx-auto">
-            Advertise to buyers, renters, sellers and investors at the exact moment they are searching, matching and verifying on Homatch.
+            {t('partners_hero_desc')}
           </p>
           <div className="flex flex-col md:flex-row gap-3 justify-center pt-2">
             <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
               onClick={() => document.getElementById('inquiry')?.scrollIntoView({ behavior: 'smooth' })}>
-              Get in Touch <ArrowRight className="h-4 w-4" />
+              {t('partners_cta_contact')} <ArrowRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" className="border-border gap-2"
               onClick={() => navigate('/verify')}>
-              <Shield className="h-4 w-4" /> View Verification Center
+              <Shield className="h-4 w-4" /> {t('partners_cta_verify')}
             </Button>
           </div>
         </div>
@@ -77,13 +81,13 @@ export default function PartnersPage() {
       <section className="py-10 px-4 border-b border-border bg-card/30">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-5 text-center">
-            Our Advertising Principles
+            {t('partners_principles_heading')}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {PLACEMENT_RULES.map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
+            {PLACEMENT_RULES.map(({ icon: Icon, textKey }) => (
+              <div key={textKey} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
                 <Icon className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <p className="text-sm text-muted-foreground">{text}</p>
+                <p className="text-sm text-muted-foreground">{t(textKey)}</p>
               </div>
             ))}
           </div>
@@ -93,22 +97,22 @@ export default function PartnersPage() {
       {/* Partner categories */}
       <section className="py-12 px-4 border-b border-border">
         <div className="max-w-3xl mx-auto space-y-6">
-          <h2 className="text-xl font-bold text-foreground text-center">Partner Categories</h2>
+          <h2 className="text-xl font-bold text-foreground text-center">{t('partners_categories_heading')}</h2>
           <div className="space-y-4">
-            {PARTNER_CATEGORIES.map(({ icon: Icon, title, desc, placements }) => (
-              <Card key={title} className="border-border bg-card">
+            {PARTNER_CATEGORIES.map(({ icon: Icon, titleKey, descKey, placementKeys }) => (
+              <Card key={titleKey} className="border-border bg-card">
                 <CardContent className="pt-5 pb-5">
                   <div className="flex items-start gap-4">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                       <Icon className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-foreground text-sm mb-1">{title}</h3>
-                      <p className="text-sm text-muted-foreground mb-3">{desc}</p>
+                      <h3 className="font-semibold text-foreground text-sm mb-1">{t(titleKey)}</h3>
+                      <p className="text-sm text-muted-foreground mb-3">{t(descKey)}</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {placements.map(p => (
-                          <Badge key={p} variant="secondary" className="text-[10px] border-border">
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-1 text-primary" />{p}
+                        {placementKeys.map(pKey => (
+                          <Badge key={pKey} variant="secondary" className="text-[10px] border-border">
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-1 text-primary" />{t(pKey)}
                           </Badge>
                         ))}
                       </div>
@@ -125,41 +129,41 @@ export default function PartnersPage() {
       <section id="inquiry" className="py-12 px-4">
         <div className="max-w-xl mx-auto">
           <div className="text-center mb-8">
-            <h2 className="text-xl font-bold text-foreground mb-2">Express Partnership Interest</h2>
-            <p className="text-sm text-muted-foreground">Tell us about your business and we'll be in touch.</p>
+            <h2 className="text-xl font-bold text-foreground mb-2">{t('partners_inquiry_heading')}</h2>
+            <p className="text-sm text-muted-foreground">{t('partners_inquiry_subheading')}</p>
           </div>
           <Card className="border-border bg-card">
             <CardContent className="pt-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Company Name *</label>
-                  <input className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder="Acme Developers" />
+                  <label className="text-xs font-medium text-muted-foreground">{t('partners_company_label')}</label>
+                  <input className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder={t('partners_company_ph')} />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Contact Email *</label>
-                  <input type="email" className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder="you@company.com" />
+                  <label className="text-xs font-medium text-muted-foreground">{t('partners_email_label')}</label>
+                  <input type="email" dir="ltr" className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder={t('partners_email_ph')} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Partner Category</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('partners_category_label')}</label>
                 <select className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
-                  <option value="">Select category…</option>
-                  <option>Real Estate Developer</option>
-                  <option>Agency / Broker</option>
-                  <option>Mortgage / Finance</option>
-                  <option>Relocation / Legal / Services</option>
-                  <option>Other</option>
+                  <option value="">{t('partners_category_ph')}</option>
+                  <option>{t('partners_cat_option_developer')}</option>
+                  <option>{t('partners_cat_option_agency')}</option>
+                  <option>{t('partners_cat_option_mortgage')}</option>
+                  <option>{t('partners_cat_option_relocation')}</option>
+                  <option>{t('partners_cat_option_other')}</option>
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Message</label>
-                <textarea rows={3} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none" placeholder="Tell us about your goals and target markets…" />
+                <label className="text-xs font-medium text-muted-foreground">{t('partners_message_label')}</label>
+                <textarea rows={3} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none" placeholder={t('partners_message_ph')} />
               </div>
               <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
-                <Mail className="h-4 w-4" /> Send Inquiry
+                <Mail className="h-4 w-4" /> {t('partners_send_btn')}
               </Button>
               <p className="text-[10px] text-muted-foreground/60 text-center">
-                Sponsored placements are always labeled and never influence organic scores or rankings.
+                {t('partners_disclaimer')}
               </p>
             </CardContent>
           </Card>

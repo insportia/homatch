@@ -39,6 +39,8 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // An email-address format example ("you@example.com") — not natural
   // language, deliberately identical in every locale.
   'auth_email_ph',
+  'partners_email_ph', // "you@company.com" — an email-format example, not natural language.
+  'partners_company_ph', // "Acme Developers" — a fictional placeholder company name, kept as-is everywhere.
   'ai_beta_badge', // Turkish "Beta" is the standard loanword too
 ]);
 

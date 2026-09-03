@@ -31,4 +31,15 @@ export const AUDIT_ALLOWED_EXACT = new Set([
   // Demo/sample data — a person's name in a static UI mockup, not real
   // content, and names are not translated across languages.
   'Giorgi M.',
+  // An HTML numeric/named entity rendered as literal JSX text (the "©"
+  // symbol) — a typographic symbol, not natural-language prose, so it is
+  // never translated.
+  '&copy;',
+  // Legal-document literals (Terms/Privacy contact card): a bare domain and
+  // bare email addresses, shown as their own anchor text. Never translated
+  // in any language, mirroring privacy_domain_text/privacy_email_text in
+  // scripts/i18n-allowlist.mjs.
+  'homatch.live',
+  'support@homatch.live',
+  'legal@homatch.live',
 ]);

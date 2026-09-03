@@ -4,13 +4,31 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getAdminMatches } from '@/services/api';
 import { format } from 'date-fns';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const STRENGTH_VARIANT: Record<string, 'default' | 'secondary' | 'outline'> = {
   EXCEPTIONAL: 'default', VERY_STRONG: 'default', STRONG: 'default',
   GOOD: 'secondary', POTENTIAL: 'outline',
 };
 
+const STRENGTH_KEYS: Record<string, string> = {
+  EXCEPTIONAL: 'matches_strength_exceptional',
+  VERY_STRONG: 'matches_strength_very_strong',
+  STRONG: 'matches_strength_strong',
+  GOOD: 'matches_strength_good',
+  POTENTIAL: 'matches_strength_potential',
+};
+
+const MATCH_STATUS_KEYS: Record<string, string> = {
+  NEW: 'insights_status_new',
+  PREVIEWED: 'insights_status_previewed',
+  UNLOCKED: 'insights_status_unlocked',
+  ARCHIVED: 'insights_status_archived',
+  REJECTED: 'insights_status_rejected',
+};
+
 export default function AdminMatchesPage() {
+  const { t } = useLanguage();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -21,8 +39,8 @@ export default function AdminMatchesPage() {
   return (
     <div className="space-y-4 max-w-5xl">
       <div>
-        <h1 className="text-xl font-bold">Matches</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{items.length} matches across all properties</p>
+        <h1 className="text-xl font-bold">{t('admin_matches_title')}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_matches_subtitle', { count: items.length })}</p>
       </div>
       <Card>
         <CardContent className="p-0">
@@ -30,20 +48,20 @@ export default function AdminMatchesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Property</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Owner</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Score</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Strength</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Status</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Price</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Created</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_matches_property')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_matches_owner')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_matches_score')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_matches_strength')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_matches_status')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_matches_price')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_matches_created')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}><td colSpan={7} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
                 )) : items.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No matches</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">{t('admin_matches_empty')}</td></tr>
                 ) : items.map(m => (
                   <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-2.5 whitespace-nowrap max-w-[160px]">

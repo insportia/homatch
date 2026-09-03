@@ -14,31 +14,33 @@ import { getSpendCapStatus } from '@/services/api';
 import type { SpendCapStatus } from '@/types/types';
 import { cn } from '@/lib/utils';
 import { ImpersonationBannerBar } from '@/components/admin/ImpersonationBannerBar';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const NAV = [
-  { path: '/admin',              label: 'Overview',           icon: LayoutDashboard },
-  { path: '/admin/users',        label: 'Users',              icon: Users },
-  { path: '/admin/user360',      label: 'User 360°',          icon: UserSearch },
-  { path: '/admin/properties',   label: 'Properties',         icon: Building2 },
-  { path: '/admin/campaigns',    label: 'Campaigns',          icon: Zap },
-  { path: '/admin/markets',      label: 'Markets',            icon: Globe },
-  { path: '/admin/sources',      label: 'Sources',            icon: Radio },
-  { path: '/admin/signals',      label: 'Signals',            icon: Activity },
-  { path: '/admin/matches',      label: 'Matches',            icon: Puzzle },
-  { path: '/admin/credits',      label: 'Credits',            icon: CreditCard },
-  { path: '/admin/payments',     label: 'Payments',           icon: Receipt },
-  { path: '/admin/live-chat-reports', label: 'Reported Messages', icon: MessageSquareWarning },
-  { path: '/admin/providers',    label: 'Provider Health',    icon: Server },
-  { path: '/admin/pricing',      label: 'Pricing Config',     icon: Settings2 },
-  { path: '/admin/spend-caps',   label: 'Spend Caps',         icon: ShieldAlert },
-  { path: '/admin/diagnostics',  label: 'Import Diagnostics', icon: Wrench },
-  { path: '/admin/sponsored',    label: 'Sponsored Ads',      icon: Activity },
-  { path: '/admin/settings',     label: 'Settings',           icon: SlidersHorizontal },
-  { path: '/admin/health',       label: 'System Health',      icon: HeartPulse },
+  { path: '/admin',              labelKey: 'admin_nav_overview',   icon: LayoutDashboard },
+  { path: '/admin/users',        labelKey: 'admin_nav_users',      icon: Users },
+  { path: '/admin/user360',      labelKey: 'admin_nav_user360',    icon: UserSearch },
+  { path: '/admin/properties',   labelKey: 'admin_nav_properties', icon: Building2 },
+  { path: '/admin/campaigns',    labelKey: 'admin_nav_campaigns',  icon: Zap },
+  { path: '/admin/markets',      labelKey: 'admin_nav_markets',    icon: Globe },
+  { path: '/admin/sources',      labelKey: 'admin_nav_sources',    icon: Radio },
+  { path: '/admin/signals',      labelKey: 'admin_nav_signals',    icon: Activity },
+  { path: '/admin/matches',      labelKey: 'admin_nav_matches',    icon: Puzzle },
+  { path: '/admin/credits',      labelKey: 'admin_nav_credits',    icon: CreditCard },
+  { path: '/admin/payments',     labelKey: 'admin_nav_payments',   icon: Receipt },
+  { path: '/admin/live-chat-reports', labelKey: 'admin_livechat_title', icon: MessageSquareWarning },
+  { path: '/admin/providers',    labelKey: 'admin_nav_providers',  icon: Server },
+  { path: '/admin/pricing',      labelKey: 'admin_nav_pricing',    icon: Settings2 },
+  { path: '/admin/spend-caps',   labelKey: 'admin_nav_spend_caps', icon: ShieldAlert },
+  { path: '/admin/diagnostics',  labelKey: 'admin_nav_diagnostics', icon: Wrench },
+  { path: '/admin/sponsored',    labelKey: 'admin_nav_sponsored',  icon: Activity },
+  { path: '/admin/settings',     labelKey: 'admin_nav_settings',   icon: SlidersHorizontal },
+  { path: '/admin/health',       labelKey: 'admin_nav_health',     icon: HeartPulse },
 ];
 
 function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose?: () => void }) {
   const location = useLocation();
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border shrink-0">
@@ -53,7 +55,7 @@ function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose
         )}
       </div>
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        {NAV.map(({ path, label, icon: Icon }) => {
+        {NAV.map(({ path, labelKey, icon: Icon }) => {
           const active = location.pathname === path || (path !== '/admin' && location.pathname.startsWith(path));
           const isSpendCap = path === '/admin/spend-caps';
           return (
@@ -69,7 +71,7 @@ function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1 truncate">{label}</span>
+              <span className="flex-1 truncate">{t(labelKey)}</span>
               {isSpendCap && capWarnings > 0 && (
                 <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{capWarnings}</Badge>
               )}
@@ -80,7 +82,7 @@ function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose
       <div className="px-4 py-3 border-t border-sidebar-border shrink-0">
         <Link to="/dashboard">
           <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground text-xs gap-1.5">
-            <ChevronLeft className="h-3.5 w-3.5" /> Back to App
+            <ChevronLeft className="h-3.5 w-3.5" /> {t('admin_back_to_app')}
           </Button>
         </Link>
       </div>
@@ -89,6 +91,7 @@ function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { t } = useLanguage();
   const { homatchUser, loading } = useAuth();
   const navigate = useNavigate();
   const [capWarnings, setCapWarnings] = useState(0);
@@ -121,7 +124,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Invisible placeholder — actual trigger button is inside the header below */}
           <span className="sr-only" />
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-56 bg-sidebar" aria-label="Admin navigation">
+        <SheetContent side="left" className="p-0 w-56 bg-sidebar" aria-label={t('admin_nav_aria_label')}>
           <SidebarContent capWarnings={capWarnings} onClose={() => setMobileOpen(false)} />
         </SheetContent>
       </Sheet>
@@ -140,7 +143,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {capWarnings > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{capWarnings} spend cap{capWarnings > 1 ? 's' : ''} near limit</span>
+              <span>{capWarnings === 1 ? t('admin_spend_cap_warning_one', { count: capWarnings }) : t('admin_spend_cap_warning_multi', { count: capWarnings })}</span>
             </div>
           )}
         </header>

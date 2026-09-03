@@ -11,16 +11,18 @@ import { format } from 'date-fns';
 import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const STATUS_CONFIG = {
-  NOT_CONFIGURED:        { label: 'Not Configured',           color: 'bg-muted text-muted-foreground',              icon: MinusCircle },
-  MOCK:                  { label: 'Mock (Dev Only)',           color: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400', icon: AlertTriangle },
-  CONFIGURED_UNVERIFIED: { label: 'Configured — Not Tested',  color: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400', icon: Clock },
-  REAL_TEST_PASSED:      { label: 'Real — Test Passed',       color: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400', icon: CheckCircle2 },
-  ERROR:                 { label: 'Error',                     color: 'bg-destructive/10 text-destructive',           icon: XCircle },
+  NOT_CONFIGURED:        { labelKey: 'admin_providers_not_configured', color: 'bg-muted text-muted-foreground',              icon: MinusCircle },
+  MOCK:                  { labelKey: 'admin_providers_mock',           color: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400', icon: AlertTriangle },
+  CONFIGURED_UNVERIFIED: { labelKey: 'admin_providers_unverified',     color: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400', icon: Clock },
+  REAL_TEST_PASSED:      { labelKey: 'admin_providers_passed',         color: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400', icon: CheckCircle2 },
+  ERROR:                 { labelKey: 'admin_providers_error',          color: 'bg-destructive/10 text-destructive',           icon: XCircle },
 };
 
 export default function AdminProvidersPage() {
+  const { t } = useLanguage();
   const [health, setHealth] = useState<ProviderHealth[]>([]);
   const [costs, setCosts] = useState<AdminProviderCostRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,15 +144,15 @@ export default function AdminProvidersPage() {
           </div>
           <div>
             <p className={cn('text-sm font-semibold', globalKillSwitch ? 'text-destructive' : 'text-foreground')}>
-              {globalKillSwitch ? 'GLOBAL KILL SWITCH ACTIVE — All Paid Providers Blocked' : 'Global Kill Switch'}
+              {globalKillSwitch ? t('admin_providers_kill_switch_active') : t('admin_providers_kill_switch_label')}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Blocks ALL paid provider calls across the platform. Use in emergencies to prevent runaway spend.
+              {t('admin_providers_kill_switch_desc')}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-muted-foreground">{globalKillSwitch ? 'ON' : 'OFF'}</span>
+          <span className="text-xs text-muted-foreground">{globalKillSwitch ? t('admin_providers_on') : t('admin_providers_off')}</span>
           <Switch
             checked={globalKillSwitch}
             onCheckedChange={toggleGlobalKillSwitch}
@@ -162,11 +164,11 @@ export default function AdminProvidersPage() {
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold">Provider Health</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Status, latency, costs and enable/disable controls per provider.</p>
+          <h1 className="text-xl font-bold">{t('admin_providers_title')}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t('admin_providers_subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          <RefreshCw className="h-3.5 w-3.5" /> {t('admin_refresh')}
         </Button>
       </div>
 
@@ -188,28 +190,28 @@ export default function AdminProvidersPage() {
                       <CardTitle className="text-sm font-semibold">{h.provider}</CardTitle>
                       {isDisabled && (
                         <Badge variant="destructive" className="text-[10px] px-1.5 gap-0.5">
-                          <Power className="h-2.5 w-2.5" /> Disabled
+                          <Power className="h-2.5 w-2.5" /> {t('admin_markets_disabled')}
                         </Badge>
                       )}
                     </div>
                     <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>
                       <Icon className="h-3 w-3 shrink-0" />
-                      <span>{cfg.label}</span>
+                      <span>{t(cfg.labelKey)}</span>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pb-4 space-y-2">
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     <div>
-                      <p className="text-muted-foreground">Latency</p>
+                      <p className="text-muted-foreground">{t('admin_providers_latency')}</p>
                       <p className="font-medium">{h.latency_ms != null ? `${h.latency_ms}ms` : '—'}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Success</p>
+                      <p className="text-muted-foreground">{t('admin_providers_success')}</p>
                       <p className="font-medium">{successRate != null ? `${successRate}%` : '—'}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Cost (MTD)</p>
+                      <p className="text-muted-foreground">{t('admin_providers_cost_mtd')}</p>
                       <p className="font-medium">{cost ? `$${cost.total_cost_usd.toFixed(2)}` : '$0.00'}</p>
                     </div>
                   </div>
@@ -220,7 +222,7 @@ export default function AdminProvidersPage() {
                   )}
                   {h.last_tested_at && (
                     <p className="text-[10px] text-muted-foreground">
-                      Last tested: {format(new Date(h.last_tested_at), 'MMM d, HH:mm')}
+                      {t('admin_providers_last_tested')}: {format(new Date(h.last_tested_at), 'MMM d, HH:mm')}
                     </p>
                   )}
                   <div className="flex gap-2 pt-1">
@@ -232,7 +234,7 @@ export default function AdminProvidersPage() {
                       onClick={() => runProviderTest(h.provider)}
                     >
                       {testing === h.provider ? <RefreshCw className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                      Test
+                      {t('admin_providers_test_btn')}
                     </Button>
                     <Button
                       variant="outline"
@@ -247,7 +249,7 @@ export default function AdminProvidersPage() {
                       onClick={() => toggleProvider(h.provider, isDisabled)}
                     >
                       <Power className="h-3 w-3" />
-                      {toggling === h.provider ? '…' : isDisabled ? 'Enable' : 'Disable'}
+                      {toggling === h.provider ? '…' : isDisabled ? t('admin_markets_toggle_enable') : t('admin_markets_toggle_disable')}
                     </Button>
                   </div>
                 </CardContent>
@@ -259,9 +261,9 @@ export default function AdminProvidersPage() {
       {/* ── Research provider treasury (Master Prompt §21/§24) ── */}
       <div className="flex items-center gap-2 pt-2">
         <Landmark className="h-4 w-4 text-primary" />
-        <h2 className="text-base font-bold">Research Provider Treasury</h2>
+        <h2 className="text-base font-bold">{t('admin_providers_treasury_title')}</h2>
       </div>
-      <p className="text-xs text-muted-foreground -mt-3">Internal COGS/budget tracking for research providers (TGStat, DataForSEO, Bright Data, Apify). Never shown to customers.</p>
+      <p className="text-xs text-muted-foreground -mt-3">{t('admin_providers_treasury_desc')}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {treasuryLoading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />) :
           treasury.map(p => (
@@ -274,15 +276,15 @@ export default function AdminProvidersPage() {
                   </Badge>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div><p className="text-muted-foreground">Billing</p><p className="font-medium">{p.billing_model}</p></div>
-                  <div><p className="text-muted-foreground">Reference cost</p><p className="font-medium">{p.reference_cost_usd_cents != null ? `$${(p.reference_cost_usd_cents / 100).toFixed(2)}` : '—'}</p></div>
-                  <div><p className="text-muted-foreground">Included usage</p><p className="font-medium">{p.included_usage?.toLocaleString() ?? '—'}</p></div>
-                  <div><p className="text-muted-foreground">Current usage</p><p className="font-medium">{p.current_usage.toLocaleString()}</p></div>
+                  <div><p className="text-muted-foreground">{t('admin_providers_billing')}</p><p className="font-medium">{p.billing_model}</p></div>
+                  <div><p className="text-muted-foreground">{t('admin_providers_reference_cost')}</p><p className="font-medium">{p.reference_cost_usd_cents != null ? `$${(p.reference_cost_usd_cents / 100).toFixed(2)}` : '—'}</p></div>
+                  <div><p className="text-muted-foreground">{t('admin_providers_included_usage')}</p><p className="font-medium">{p.included_usage?.toLocaleString() ?? '—'}</p></div>
+                  <div><p className="text-muted-foreground">{t('admin_providers_current_usage')}</p><p className="font-medium">{p.current_usage.toLocaleString()}</p></div>
                 </div>
                 {p.notes && <p className="text-[11px] text-muted-foreground/80 leading-snug">{p.notes}</p>}
                 <div className="flex items-center gap-2 pt-1">
                   <Switch checked={p.enabled} disabled={togglingTreasury === p.provider_code} onCheckedChange={v => toggleTreasuryEnabled(p.provider_code, v)} />
-                  <span className="text-xs text-muted-foreground">{p.enabled ? 'Enabled' : 'Disabled / kill switch on'}</span>
+                  <span className="text-xs text-muted-foreground">{p.enabled ? t('admin_markets_enabled') : t('admin_providers_disabled_kill_switch')}</span>
                 </div>
               </CardContent>
             </Card>

@@ -37,7 +37,7 @@ const FEATURES = [
   { icon: Copy,         titleKey: 'home_feat_duplicate_title',    descKey: 'home_feat_duplicate_desc',    route: '/property/import' },
   { icon: ShieldCheck,  titleKey: 'home_feat_trust_title',        descKey: 'home_feat_trust_desc',        route: '/verify' },
   { icon: Search,       titleKey: 'home_feat_cadastral_title',    descKey: 'home_feat_cadastral_desc',    route: '/verify' },
-  { icon: BarChart2,    titleKey: 'home_feat_developer_title',    descKey: 'home_feat_developer_desc',    route: '/verify?tab=developer' },
+  { icon: BarChart2,    titleKey: 'home_feat_developer_title',    descKey: 'home_feat_developer_desc',    route: '/verify?tab=property' },
   { icon: Bell,         titleKey: 'home_feat_active_search_title',descKey: 'home_feat_active_search_desc',route: '/active-search' },
   { icon: MessageSquare,titleKey: 'home_feat_chat_title',         descKey: 'home_feat_chat_desc',         route: '/chat' },
   { icon: Radio,        titleKey: 'home_feat_livechat_title',     descKey: 'home_feat_livechat_desc',     route: '/live-chat' },
@@ -145,7 +145,7 @@ export default function HomePage() {
     { icon: Home,       labelKey: 'home_quick_find_property', action: () => navigate(session ? '/ai' : '/auth/signup') },
     { icon: Users,      labelKey: 'home_quick_find_buyers',   action: () => navigate(session ? '/property/add' : '/auth/signup') },
     { icon: ShieldCheck,labelKey: 'home_quick_verify_property', action: () => navigate('/verify') },
-    { icon: Building2,  labelKey: 'home_quick_check_developer', action: () => navigate('/verify?tab=developer') },
+    { icon: Building2,  labelKey: 'home_quick_check_developer', action: () => navigate('/verify?tab=property') },
     { icon: ExternalLink,labelKey:'home_quick_paste_link',    action: () => navigate(session ? '/property/import' : '/auth/signup') },
   ];
 

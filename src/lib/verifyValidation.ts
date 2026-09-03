@@ -7,11 +7,15 @@
 // can never be more permissive than the backend (or a direct API call could
 // bypass the UI's guardrails).
 //
-// Four modes only: property (verify a specific property/listing), cadastral
-// (official cadastral code lookup), developer (company/legal-entity
-// background check), project (a specific development/building).
+// Exactly two modes:
+//  - cadastral: an official Georgian cadastral code lookup (strict format gate).
+//  - property: everything else — a specific listing, a developer/company name,
+//    a project/building name, a street address, a URL, or free-text
+//    description. Company/developer/project checks used to be separate modes;
+//    they are all "identify and research this entity" and are handled by the
+//    same entity-resolution pipeline server-side, so the input gate is shared.
 
-export type VerifyMode = 'property' | 'cadastral' | 'developer' | 'project';
+export type VerifyMode = 'property' | 'cadastral';
 
 export type VerifyReasonCode =
   | 'EMPTY'
@@ -26,13 +30,27 @@ export interface VerifyValidationResult {
   normalized?: string;
 }
 
-const CADASTRAL_RE = /^\d{1,4}(\.\d{1,4}){3,9}$/;
+// Georgian cadastral codes ("საკადასტრო კოდი") are dot-separated numeric
+// segments whose count varies by what they identify: a land parcel is
+// typically 4-5 segments (e.g. 01.10.09.001), a building/apartment adds one
+// or two more (01.10.09.001.001), and a sub-unit (parking space, storage,
+// individual apartment within a building) can add a further segment
+// (01.10.09.001.001.501). We deliberately do not assume a fixed segment
+// count — 4 to 12 segments of 1-6 digits each covers every real-world
+// cadastral code shape without accepting arbitrary dotted numbers.
+const CADASTRAL_RE = /^\d{1,6}(\.\d{1,6}){3,11}$/;
+
+// A bare URL (property listing page, developer/project site, news article,
+// social profile) is always a valid "property" query regardless of its
+// content — it isn't natural language, so the question/noise heuristics
+// below don't apply to it.
+const URL_RE = /^https?:\/\/\S+$/i;
 
 // Conversational / instruction-style phrasing that should never reach the
-// research provider as a "company", "project" or "developer" name — this is
-// a heuristic guard against random unrelated questions and prompt-injection
-// attempts, not a full intent classifier. Deliberately multilingual (en/ka/
-// ru/tr/ar/he) since Homatch is used in all six.
+// research provider as an entity name or description — this is a heuristic
+// guard against random unrelated questions and prompt-injection attempts,
+// not a full intent classifier. Deliberately multilingual (en/ka/ru/tr/ar/
+// he) since Homatch is used in all six.
 const QUESTION_WORDS =
   /\b(who is|what is|why|explain|tell me|write me|generate|translate|joke|poem|story|ignore (all|previous)|system prompt|jailbreak|ვინ არის|რა არის|რატომ|ახსენი|მომიყევი|дней|кто такой|что такое|почему|расскажи|напиши|объясни|kimdir|nedir|neden|açıkla|anlat|yazı|من هو|ما هو|لماذا|اشرح|أخبرني|اكتب|מי זה|מה זה|למה|הסבר|ספר לי|כתוב)\b/iu;
 
@@ -55,22 +73,27 @@ export function validateVerifyQuery(mode: VerifyMode, rawInput: string): VerifyV
     return { valid: true, normalized: compact };
   }
 
+  // mode === 'property' — flexible entity/URL/address/description input.
   if (value.length < 2) return { valid: false, reasonCode: 'TOO_SHORT' };
 
-  // "property" covers full listing titles/addresses (e.g. passed in from a
-  // property detail page), so it gets a longer ceiling than a bare name.
-  const maxLen = mode === 'property' ? 300 : 150;
+  // Long enough for a full listing title, an address, a short developer
+  // profile blurb, or a paragraph of context pasted in by the user — but
+  // still bounded so this can't become a prompt-injection payload.
+  const maxLen = 500;
   if (value.length > maxLen) return { valid: false, reasonCode: 'TOO_LONG' };
 
-  if (/[?？]/.test(value)) return { valid: false, reasonCode: 'LOOKS_LIKE_QUESTION' };
-  if (QUESTION_WORDS.test(value)) return { valid: false, reasonCode: 'LOOKS_LIKE_QUESTION' };
+  const isUrl = URL_RE.test(value);
 
-  if (mode === 'developer' || mode === 'project') {
-    const words = value.split(' ').filter(Boolean);
-    if (words.length > 12) return { valid: false, reasonCode: 'INVALID_FORMAT' };
-    const letterDigitCount = (value.match(/[\p{L}\p{N}]/gu) ?? []).length;
-    if (letterDigitCount < value.length * 0.5) return { valid: false, reasonCode: 'INVALID_FORMAT' };
+  if (!isUrl) {
+    if (/[?？]/.test(value)) return { valid: false, reasonCode: 'LOOKS_LIKE_QUESTION' };
+    if (QUESTION_WORDS.test(value)) return { valid: false, reasonCode: 'LOOKS_LIKE_QUESTION' };
     if (!/\p{L}/u.test(value)) return { valid: false, reasonCode: 'INVALID_FORMAT' };
+    // Noise filter: reject input that's mostly punctuation/symbols rather
+    // than actual name/address/description text (e.g. keyboard-mash or
+    // stray formatting). Addresses and descriptions carry commas/periods, so
+    // the threshold is deliberately lenient.
+    const letterDigitCount = (value.match(/[\p{L}\p{N}]/gu) ?? []).length;
+    if (letterDigitCount < value.length * 0.4) return { valid: false, reasonCode: 'INVALID_FORMAT' };
   }
 
   return { valid: true, normalized: value };

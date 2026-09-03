@@ -17,10 +17,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
 import { OutreachCampaign, ContactList } from '@/types/types';
 import { toast } from 'sonner';
+import { useOutreachProviderStatus } from '@/hooks/useOutreachProviderStatus';
 
 export default function SmsCampaignsPage() {
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
+  const { status: providerStatus } = useOutreachProviderStatus();
   const [campaigns, setCampaigns] = useState<OutreachCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -121,9 +123,17 @@ export default function SmsCampaignsPage() {
               <Plus className="h-4 w-4 me-2" />{t('sms_new_campaign')}
             </Button>
           </div>
-          <Alert>
+          <Alert variant={providerStatus?.sms.real ? 'default' : undefined} className={providerStatus?.sms.real ? 'border-green-500/40 bg-green-500/5' : ''}>
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="text-xs">{t('sms_sending_disabled')}</AlertDescription>
+            <AlertDescription className="text-xs">
+              {!providerStatus
+                ? t('outreach_status_checking')
+                : providerStatus.kill_switch
+                ? t('outreach_status_kill_switch')
+                : providerStatus.sms.real
+                ? t('sms_sending_real', { provider: providerStatus.sms.provider })
+                : t('sms_sending_disabled')}
+            </AlertDescription>
           </Alert>
           {loading ? (
             <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>)}</div>

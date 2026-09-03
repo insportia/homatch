@@ -18,6 +18,7 @@ import { supabase } from '@/db/supabase';
 import { OutreachCampaign, ContactList } from '@/types/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useOutreachProviderStatus } from '@/hooks/useOutreachProviderStatus';
 
 interface OutreachSendRow {
   id: string;
@@ -123,6 +124,7 @@ const SUPPORTED_LANGS = [
 export default function AiCallCenterPage() {
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
+  const { status: providerStatus } = useOutreachProviderStatus();
   const [campaigns, setCampaigns] = useState<OutreachCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -268,9 +270,17 @@ export default function AiCallCenterPage() {
               <Plus className="h-4 w-4 me-2" />{t('call_new_campaign')}
             </Button>
           </div>
-          <Alert>
+          <Alert variant={providerStatus?.calling.real ? 'default' : undefined} className={providerStatus?.calling.real ? 'border-green-500/40 bg-green-500/5' : ''}>
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="text-xs">{t('call_calling_disabled')}</AlertDescription>
+            <AlertDescription className="text-xs">
+              {!providerStatus
+                ? t('outreach_status_checking')
+                : providerStatus.kill_switch
+                ? t('outreach_status_kill_switch')
+                : providerStatus.calling.real
+                ? t('call_calling_real', { provider: providerStatus.calling.provider })
+                : t('call_calling_disabled')}
+            </AlertDescription>
           </Alert>
           {loading ? (
             <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>)}</div>

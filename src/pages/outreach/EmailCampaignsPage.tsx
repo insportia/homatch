@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
 import { OutreachCampaign, OutreachCampaignStatus, ContactList } from '@/types/types';
 import { toast } from 'sonner';
+import { useOutreachProviderStatus } from '@/hooks/useOutreachProviderStatus';
 
 const STATUS_STYLES: Record<OutreachCampaignStatus, string> = {
   DRAFT:     'bg-muted text-muted-foreground',
@@ -31,6 +32,7 @@ const STATUS_STYLES: Record<OutreachCampaignStatus, string> = {
 export default function EmailCampaignsPage() {
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
+  const { status: providerStatus } = useOutreachProviderStatus();
   const [campaigns, setCampaigns] = useState<OutreachCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -162,9 +164,17 @@ export default function EmailCampaignsPage() {
             </Button>
           </div>
 
-          <Alert>
+          <Alert variant={providerStatus?.email.real ? 'default' : undefined} className={providerStatus?.email.real ? 'border-green-500/40 bg-green-500/5' : ''}>
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="text-xs">{t('email_sending_disabled')}</AlertDescription>
+            <AlertDescription className="text-xs">
+              {!providerStatus
+                ? t('outreach_status_checking')
+                : providerStatus.kill_switch
+                ? t('outreach_status_kill_switch')
+                : providerStatus.email.real
+                ? t('email_sending_real', { provider: providerStatus.email.provider })
+                : t('email_sending_disabled')}
+            </AlertDescription>
           </Alert>
 
           {loading ? (

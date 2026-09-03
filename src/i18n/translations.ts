@@ -2188,6 +2188,13 @@ const en = {
 
   // ── MatchesPage load-more pagination ──────────────────────────────────────────────
   matches_load_more: 'Load more matches',
+
+  // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
+  email_sending_real: 'Real email sending is ON via {provider} — messages will actually be delivered.',
+  sms_sending_real: 'Real SMS sending is ON via {provider} — messages will actually be delivered.',
+  call_calling_real: 'Real AI calling is ON via {provider} — calls will actually be placed.',
+  outreach_status_checking: 'Checking provider status…',
+  outreach_status_kill_switch: 'Global provider kill switch is ON — all sends run in simulation (MOCK) mode regardless of individual settings.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -4310,6 +4317,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   // ── MatchesPage load-more pagination ──────────────────────────────────────────────
   matches_load_more: 'მეტი შესატყვისის ჩატვირთვა',
+
+  // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
+  email_sending_real: 'რეალური ელ-ფოსტის გაგზავნა ჩართულია {provider}-ის მეშვეობით — შეტყობინებები ნამდვილად გაიგზავნება.',
+  sms_sending_real: 'რეალური SMS გაგზავნა ჩართულია {provider}-ის მეშვეობით — შეტყობინებები ნამდვილად გაიგზავნება.',
+  call_calling_real: 'რეალური AI ზარები ჩართულია {provider}-ის მეშვეობით — ზარები ნამდვილად განხორციელდება.',
+  outreach_status_checking: 'პროვაიდერის სტატუსის შემოწმება…',
+  outreach_status_kill_switch: 'გლობალური პროვაიდერის გამორთვის ღილაკი ჩართულია — ყველა გაგზავნა მუშაობს სიმულაციის (MOCK) რეჟიმში, მიუხედავად ცალკეული პარამეტრებისა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -6430,6 +6444,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   // ── MatchesPage load-more pagination ──────────────────────────────────────────────
   matches_load_more: 'Показать ещё совпадения',
+
+  // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
+  email_sending_real: 'Реальная отправка email ВКЛЮЧЕНА через {provider} — сообщения будут действительно доставлены.',
+  sms_sending_real: 'Реальная отправка SMS ВКЛЮЧЕНА через {provider} — сообщения будут действительно доставлены.',
+  call_calling_real: 'Реальные AI-звонки ВКЛЮЧЕНЫ через {provider} — звонки будут действительно совершены.',
+  outreach_status_checking: 'Проверка статуса провайдера…',
+  outreach_status_kill_switch: 'Глобальный аварийный выключатель провайдеров ВКЛЮЧЁН — все отправки выполняются в режиме симуляции (MOCK), независимо от отдельных настроек.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -8548,6 +8569,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   // ── MatchesPage load-more pagination ──────────────────────────────────────────────
   matches_load_more: 'Daha fazla eşleşme yükle',
+
+  // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
+  email_sending_real: 'Gerçek e-posta gönderimi {provider} üzerinden AÇIK — mesajlar gerçekten teslim edilecek.',
+  sms_sending_real: 'Gerçek SMS gönderimi {provider} üzerinden AÇIK — mesajlar gerçekten teslim edilecek.',
+  call_calling_real: 'Gerçek AI aramaları {provider} üzerinden AÇIK — aramalar gerçekten yapılacak.',
+  outreach_status_checking: 'Sağlayıcı durumu kontrol ediliyor…',
+  outreach_status_kill_switch: 'Genel sağlayıcı acil durdurma anahtarı AÇIK — bireysel ayarlardan bağımsız olarak tüm gönderimler simülasyon (MOCK) modunda çalışır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -10666,6 +10694,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   // ── MatchesPage load-more pagination ──────────────────────────────────────────────
   matches_load_more: 'تحميل المزيد من التطابقات',
+
+  // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
+  email_sending_real: 'إرسال البريد الإلكتروني الحقيقي مُفعّل عبر {provider} — سيتم تسليم الرسائل فعليًا.',
+  sms_sending_real: 'إرسال الرسائل النصية الحقيقي مُفعّل عبر {provider} — سيتم تسليم الرسائل فعليًا.',
+  call_calling_real: 'الاتصال الحقيقي بالذكاء الاصطناعي مُفعّل عبر {provider} — سيتم إجراء المكالمات فعليًا.',
+  outreach_status_checking: 'جارٍ التحقق من حالة المزوّد…',
+  outreach_status_kill_switch: 'مفتاح الإيقاف العام لمزوّدي الخدمة مُفعّل — تعمل جميع عمليات الإرسال في وضع المحاكاة (MOCK) بغض النظر عن الإعدادات الفردية.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -12784,6 +12819,13 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   // ── MatchesPage load-more pagination ──────────────────────────────────────────────
   matches_load_more: 'טען עוד התאמות',
+
+  // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
+  email_sending_real: 'שליחת אימייל אמיתית פעילה דרך {provider} — הודעות אכן יישלחו.',
+  sms_sending_real: 'שליחת SMS אמיתית פעילה דרך {provider} — הודעות אכן יישלחו.',
+  call_calling_real: 'שיחות AI אמיתיות פעילות דרך {provider} — שיחות אכן יתבצעו.',
+  outreach_status_checking: 'בודק את סטטוס הספק…',
+  outreach_status_kill_switch: 'מתג הכיבוי הגלובלי של הספקים מופעל — כל השליחות פועלות במצב סימולציה (MOCK) ללא קשר להגדרות הפרטניות.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

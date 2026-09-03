@@ -9,6 +9,7 @@ import {
 import { getAdminOverviewStats, getSpendCapStatus } from '@/services/api';
 import type { AdminOverviewStats, SpendCapStatus } from '@/types/types';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 function StatCard({ title, value, sub, icon: Icon, accent = false }: {
   title: string; value: string | number; sub?: string; icon: React.ElementType; accent?: boolean;
@@ -52,6 +53,7 @@ function CapBar({ cap }: { cap: SpendCapStatus }) {
 }
 
 export default function AdminOverviewPage() {
+  const { t } = useLanguage();
   const [stats, setStats] = useState<AdminOverviewStats | null>(null);
   const [caps, setCaps] = useState<SpendCapStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,67 +79,67 @@ export default function AdminOverviewPage() {
   return (
     <div className="space-y-6 max-w-6xl">
       <div>
-        <h1 className="text-xl font-bold">Admin Overview</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Platform-wide metrics for the current period</p>
+        <h1 className="text-xl font-bold">{t('admin_overview_title')}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_overview_subtitle')}</p>
       </div>
 
       {statsError && (
         <div className="rounded-lg border border-amber-400/40 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
-          Some statistics could not be loaded. Check RLS policies or database connectivity.
+          {t('admin_overview_stats_error')}
         </div>
       )}
 
       {/* Activity */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Activity</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{t('nav_activity')}</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {loading ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />) : <>
-            <StatCard title="Users"       value={fmt(stats?.total_users)}       icon={Users} />
-            <StatCard title="Properties"  value={fmt(stats?.total_properties)}  icon={Building2} />
-            <StatCard title="Campaigns"   value={fmt(stats?.total_campaigns)}   icon={Zap} />
-            <StatCard title="Raw Signals" value={fmt(stats?.raw_signals)}       icon={Activity} />
-            <StatCard title="Qualified"   value={fmt(stats?.qualified_signals)} icon={Activity} />
-            <StatCard title="Matches"     value={fmt(stats?.total_matches)}     icon={Puzzle} />
+            <StatCard title={t('admin_overview_users')}       value={fmt(stats?.total_users)}       icon={Users} />
+            <StatCard title={t('admin_overview_properties')}  value={fmt(stats?.total_properties)}  icon={Building2} />
+            <StatCard title={t('admin_overview_campaigns')}   value={fmt(stats?.total_campaigns)}   icon={Zap} />
+            <StatCard title={t('admin_overview_raw_signals')} value={fmt(stats?.raw_signals)}       icon={Activity} />
+            <StatCard title={t('admin_overview_qualified')}   value={fmt(stats?.qualified_signals)} icon={Activity} />
+            <StatCard title={t('admin_overview_matches')}     value={fmt(stats?.total_matches)}     icon={Puzzle} />
           </>}
         </div>
       </section>
 
       {/* Finance */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Finance</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{t('admin_overview_section_finance')}</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {loading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />) : <>
-            <StatCard title="Unlocks"      value={fmt(stats?.total_unlocks)}     sub={`${fmtPct(stats?.unlock_conversion_rate)} of matches`} icon={Unlock}    accent />
-            <StatCard title="Revenue"      value={fmtUsd(stats?.revenue_usd)}    sub={`${fmtUsd(stats?.credits_consumed)} consumed`}          icon={DollarSign} accent />
+            <StatCard title={t('admin_overview_unlocks')}      value={fmt(stats?.total_unlocks)}     sub={`${fmtPct(stats?.unlock_conversion_rate)} of matches`} icon={Unlock}    accent />
+            <StatCard title={t('admin_overview_revenue')}      value={fmtUsd(stats?.revenue_usd)}    sub={`${fmtUsd(stats?.credits_consumed)} consumed`}          icon={DollarSign} accent />
             <StatCard title="COGS"         value={fmtUsd(stats?.cogs_usd)}       sub="Provider costs"                                          icon={BarChart2} />
-            <StatCard title="Gross Margin" value={fmtPct(stats?.gross_margin_pct)} sub={`${fmtUsd(stats?.gross_profit_usd)} profit`}           icon={Percent}   accent />
+            <StatCard title={t('admin_overview_gross_margin')} value={fmtPct(stats?.gross_margin_pct)} sub={`${fmtUsd(stats?.gross_profit_usd)} profit`}           icon={Percent}   accent />
           </>}
         </div>
       </section>
 
       {/* Spend Caps */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Monthly Spend Caps</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{t('admin_overview_section_spend_caps')}</h2>
         <Card>
           <CardContent className="pt-5 space-y-4">
             {loading
               ? Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-7" />)
               : caps.length > 0
                 ? caps.map(cap => <CapBar key={cap.provider} cap={cap} />)
-                : <p className="text-sm text-muted-foreground">No spend cap data available.</p>}
+                : <p className="text-sm text-muted-foreground">{t('admin_overview_no_spend_caps')}</p>}
           </CardContent>
         </Card>
       </section>
 
       {/* Credits */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Credits</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{t('admin_nav_credits')}</h2>
         <div className="grid grid-cols-2 gap-3">
           {loading
             ? <><Skeleton className="h-24 rounded-xl col-span-1" /><Skeleton className="h-24 rounded-xl col-span-1" /></>
             : <>
-              <StatCard title="Credits Purchased" value={fmtUsd(stats?.credits_purchased)} icon={TrendingUp} />
-              <StatCard title="Credits Consumed"  value={fmtUsd(stats?.credits_consumed)}  icon={DollarSign} />
+              <StatCard title={t('admin_overview_credits_purchased')} value={fmtUsd(stats?.credits_purchased)} icon={TrendingUp} />
+              <StatCard title={t('admin_overview_credits_consumed')}  value={fmtUsd(stats?.credits_consumed)}  icon={DollarSign} />
             </>}
         </div>
       </section>

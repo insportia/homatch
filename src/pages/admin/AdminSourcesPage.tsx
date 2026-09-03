@@ -8,8 +8,10 @@ import { Search } from 'lucide-react';
 import { getAdminSources, toggleSourceActive } from '@/services/api';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function AdminSourcesPage() {
+  const { t } = useLanguage();
   const [sources, setSources] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -39,12 +41,12 @@ export default function AdminSourcesPage() {
   return (
     <div className="space-y-4 max-w-5xl">
       <div>
-        <h1 className="text-xl font-bold">Sources</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{sources.length} registered sources — disable poor-quality ones</p>
+        <h1 className="text-xl font-bold">{t('admin_sources_title')}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_sources_subtitle', { count: sources.length })}</p>
       </div>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input className="pl-9" placeholder="Search by URL or platform…" value={q} onChange={e => setQ(e.target.value)} />
+        <Input className="pl-9" placeholder={t('admin_sources_search_placeholder')} value={q} onChange={e => setQ(e.target.value)} />
       </div>
       <Card>
         <CardContent className="p-0">
@@ -52,19 +54,19 @@ export default function AdminSourcesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Source</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Platform</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Quality</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Members</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Last Collected</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Active</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_url')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_platform')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_quality')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_members')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_last_collected')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_active')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i}><td colSpan={6} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
                 )) : filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No sources found</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">{t('admin_sources_empty')}</td></tr>
                 ) : filtered.map(s => (
                   <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-2.5 whitespace-nowrap max-w-[220px]">

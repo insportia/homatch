@@ -11,6 +11,7 @@ import { supabase } from '@/db/supabase';
 import { format } from 'date-fns';
 import { RefreshCw, RotateCcw, Eye } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const STATUSES = ['ALL', 'PENDING', 'CLASSIFIED', 'FILTERED_OUT', 'ERROR', 'NOISE'];
 const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -23,11 +24,12 @@ const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | '
 };
 
 function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => void }) {
+  const { t } = useLanguage();
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">Signal Detail</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t('admin_signals_detail_title')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 text-xs">
           <div className="grid grid-cols-2 gap-3">
@@ -36,31 +38,31 @@ function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => vo
               <p className="font-mono text-[11px] break-all">{signal.id}</p>
             </div>
             <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Status</p>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">{t('admin_signals_status')}</p>
               <Badge variant={STATUS_VARIANT[signal.classification_status] ?? 'outline'} className="text-[10px]">
                 {signal.classification_status ?? '—'}
               </Badge>
             </div>
             <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Platform</p>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">{t('admin_signals_platform')}</p>
               <p>{signal.platform ?? '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Language</p>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">{t('admin_signals_language')}</p>
               <p>{signal.language ?? '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Discovered</p>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">{t('admin_signals_discovered')}</p>
               <p>{signal.discovered_at ? format(new Date(signal.discovered_at), 'MMM d yyyy, HH:mm') : '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Classified</p>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">{t('admin_signals_filter_classified')}</p>
               <p>{signal.classified_at ? format(new Date(signal.classified_at), 'MMM d yyyy, HH:mm') : '—'}</p>
             </div>
           </div>
 
           <div>
-            <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">Raw Text</p>
+            <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">{t('admin_signals_raw_text')}</p>
             <div className="rounded-lg bg-secondary/50 border border-border p-3 max-h-40 overflow-y-auto">
               <p className="whitespace-pre-wrap leading-relaxed">{signal.raw_text ?? '—'}</p>
             </div>
@@ -68,7 +70,7 @@ function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => vo
 
           {signal.intent_json && (
             <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">Intent JSON</p>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">{t('admin_signals_intent_json')}</p>
               <pre className="rounded-lg bg-secondary/50 border border-border p-3 max-h-64 overflow-auto text-[11px] font-mono leading-relaxed">
                 {JSON.stringify(signal.intent_json, null, 2)}
               </pre>
@@ -77,14 +79,14 @@ function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => vo
 
           {signal.error_message && (
             <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">Error</p>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">{t('admin_diagnostics_error')}</p>
               <p className="text-destructive bg-destructive/10 rounded-lg p-2">{signal.error_message}</p>
             </div>
           )}
 
           {signal.rejection_reason && (
             <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">Rejection Reason</p>
+              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">{t('admin_signals_rejection_reason')}</p>
               <p className="text-amber-400 bg-amber-500/10 rounded-lg p-2">{signal.rejection_reason}</p>
             </div>
           )}
@@ -97,6 +99,7 @@ function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => vo
 const PAGE_SIZE = 100;
 
 export default function AdminSignalsPage() {
+  const { t } = useLanguage();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -158,14 +161,14 @@ export default function AdminSignalsPage() {
     <div className="space-y-4 max-w-5xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold">Signals</h1>
+          <h1 className="text-xl font-bold">{t('admin_signals_title')}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Raw signals collected from all sources. {items.length} loaded.
+            {t('admin_signals_subtitle', { count: items.length })}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={load} disabled={loading}>
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> {t('admin_refresh')}
           </Button>
           <Button
             size="sm"
@@ -173,12 +176,12 @@ export default function AdminSignalsPage() {
             className="gap-1.5 text-xs border-amber-500/40 text-amber-500 hover:bg-amber-500/10"
             onClick={handleReprocess}
             disabled={reprocessing || failedCount === 0}
-            title={failedCount === 0 ? 'No ERROR/FILTERED_OUT signals to reprocess' : `Requeue ${failedCount} failed signals`}
+            title={failedCount === 0 ? t('admin_signals_no_failed_tooltip') : t('admin_signals_requeue_tooltip', { count: failedCount })}
           >
             {reprocessing
               ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               : <RotateCcw className="h-3.5 w-3.5" />}
-            Reprocess Failed
+            {t('admin_signals_reprocess_btn')}
             {failedCount > 0 && (
               <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500/40 text-amber-500 ml-0.5">
                 {failedCount}
@@ -201,19 +204,19 @@ export default function AdminSignalsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Excerpt</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Platform</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Lang</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Status</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Discovered</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Action</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_signals_excerpt')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_signals_platform')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_signals_lang_short')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_signals_status')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_signals_discovered')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_signals_action')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i}><td colSpan={6} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
                 )) : items.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No signals found</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">{t('admin_signals_empty')}</td></tr>
                 ) : items.map(s => (
                   <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer"
                     onClick={() => setSelectedSignal(s)}>
@@ -241,7 +244,7 @@ export default function AdminSignalsPage() {
                         size="sm"
                         className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                         onClick={e => { e.stopPropagation(); setSelectedSignal(s); }}
-                        title="View details"
+                        title={t('admin_signals_view_details')}
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
@@ -258,7 +261,7 @@ export default function AdminSignalsPage() {
         <div className="flex justify-center">
           <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={loadMore} disabled={loadingMore}>
             <RefreshCw className={`h-3.5 w-3.5 ${loadingMore ? 'animate-spin' : ''}`} />
-            {loadingMore ? 'Loading…' : `Load More (showing ${items.length})`}
+            {loadingMore ? t('general_loading') : t('admin_signals_load_more', { count: items.length })}
           </Button>
         </div>
       )}

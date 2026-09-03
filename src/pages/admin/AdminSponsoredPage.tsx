@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
 import { PlusCircle, Pencil, Trash2, ExternalLink, Loader2 } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface Placement {
   id: string;
@@ -37,6 +38,7 @@ const EMPTY: Omit<Placement, 'id'> = {
 };
 
 export default function AdminSponsoredPage() {
+  const { t } = useLanguage();
   const [placements, setPlacements] = useState<Placement[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -107,11 +109,11 @@ export default function AdminSponsoredPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Sponsored Placements</h1>
-          <p className="text-sm text-muted-foreground">Manage partner ads. Every placement must show a visible Sponsored/Ad label.</p>
+          <h1 className="text-xl font-bold text-foreground">{t('admin_sponsored_title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('admin_sponsored_subtitle')}</p>
         </div>
         <Button onClick={openNew} size="sm" className="bg-primary text-primary-foreground gap-2">
-          <PlusCircle className="h-4 w-4" /> New Placement
+          <PlusCircle className="h-4 w-4" /> {t('admin_sponsored_new_placement')}
         </Button>
       </div>
 
@@ -120,9 +122,9 @@ export default function AdminSponsoredPage() {
       ) : placements.length === 0 ? (
         <Card className="border-border bg-card">
           <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground text-sm">No sponsored placements yet.</p>
+            <p className="text-muted-foreground text-sm">{t('admin_sponsored_empty')}</p>
             <Button onClick={openNew} size="sm" className="mt-4 bg-primary text-primary-foreground gap-2">
-              <PlusCircle className="h-4 w-4" /> Create First Placement
+              <PlusCircle className="h-4 w-4" /> {t('admin_sponsored_create_first')}
             </Button>
           </CardContent>
         </Card>
@@ -137,7 +139,7 @@ export default function AdminSponsoredPage() {
                       <span className="font-medium text-sm text-foreground">{p.headline}</span>
                       <Badge variant="secondary" className="text-[10px] border-border">{p.placement}</Badge>
                       <Badge variant="secondary" className="text-[10px] border-border">{p.category}</Badge>
-                      {!p.enabled && <Badge variant="secondary" className="text-[10px] text-muted-foreground">Disabled</Badge>}
+                      {!p.enabled && <Badge variant="secondary" className="text-[10px] text-muted-foreground">{t('admin_markets_disabled')}</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground">{p.partner_name} · {p.market} · {p.language}</p>
                     {(p.start_date || p.end_date) && (
@@ -172,16 +174,16 @@ export default function AdminSponsoredPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg bg-card border-border">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Placement' : 'New Sponsored Placement'}</DialogTitle>
+            <DialogTitle>{editing ? t('admin_sponsored_edit_title') : t('admin_sponsored_new_title')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 max-h-[60vh] overflow-y-auto">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Partner Name *</Label>
+                <Label className="text-xs">{t('admin_sponsored_partner_name_label')}</Label>
                 <Input value={form.partner_name} onChange={e => f('partner_name', e.target.value)} className="bg-secondary border-border text-sm" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Category</Label>
+                <Label className="text-xs">{t('admin_sponsored_category_label')}</Label>
                 <Select value={form.category} onValueChange={v => f('category', v)}>
                   <SelectTrigger className="bg-secondary border-border text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -193,20 +195,20 @@ export default function AdminSponsoredPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Headline *</Label>
+              <Label className="text-xs">{t('admin_sponsored_headline_label')}</Label>
               <Input value={form.headline} onChange={e => f('headline', e.target.value)} className="bg-secondary border-border text-sm" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Sub-Headline</Label>
+              <Label className="text-xs">{t('admin_sponsored_subheadline_label')}</Label>
               <Input value={form.sub_headline ?? ''} onChange={e => f('sub_headline', e.target.value)} className="bg-secondary border-border text-sm" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Destination URL *</Label>
+              <Label className="text-xs">{t('admin_sponsored_destination_url_label')}</Label>
               <Input value={form.destination_url} onChange={e => f('destination_url', e.target.value)} placeholder="https://..." className="bg-secondary border-border text-sm" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Placement</Label>
+                <Label className="text-xs">{t('admin_sponsored_placement_label')}</Label>
                 <Select value={form.placement} onValueChange={v => f('placement', v)}>
                   <SelectTrigger className="bg-secondary border-border text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -217,40 +219,40 @@ export default function AdminSponsoredPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">CTA Label</Label>
+                <Label className="text-xs">{t('admin_sponsored_cta_label')}</Label>
                 <Input value={form.cta_label} onChange={e => f('cta_label', e.target.value)} className="bg-secondary border-border text-sm" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Market</Label>
-                <Input value={form.market} onChange={e => f('market', e.target.value)} placeholder="global" className="bg-secondary border-border text-sm" />
+                <Label className="text-xs">{t('admin_sponsored_market_label')}</Label>
+                <Input value={form.market} onChange={e => f('market', e.target.value)} placeholder={t('admin_sponsored_market_placeholder')} className="bg-secondary border-border text-sm" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Language</Label>
+                <Label className="text-xs">{t('admin_signals_language')}</Label>
                 <Input value={form.language} onChange={e => f('language', e.target.value)} placeholder="en" className="bg-secondary border-border text-sm" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Start Date</Label>
+                <Label className="text-xs">{t('admin_sponsored_start_date_label')}</Label>
                 <Input type="datetime-local" value={form.start_date ?? ''} onChange={e => f('start_date', e.target.value)} className="bg-secondary border-border text-sm" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">End Date</Label>
+                <Label className="text-xs">{t('admin_sponsored_end_date_label')}</Label>
                 <Input type="datetime-local" value={form.end_date ?? ''} onChange={e => f('end_date', e.target.value)} className="bg-secondary border-border text-sm" />
               </div>
             </div>
             <div className="flex items-center gap-3 pt-1">
               <Switch checked={form.enabled} onCheckedChange={v => f('enabled', v)} />
-              <Label className="text-sm text-muted-foreground">Enabled</Label>
+              <Label className="text-sm text-muted-foreground">{t('admin_markets_enabled')}</Label>
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" className="border-border" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" className="border-border" onClick={() => setOpen(false)}>{t('general_cancel')}</Button>
             <Button onClick={save} disabled={saving} className="bg-primary text-primary-foreground gap-2">
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {editing ? 'Update' : 'Create'}
+              {editing ? t('admin_sponsored_update_btn') : t('general_create')}
             </Button>
           </DialogFooter>
         </DialogContent>

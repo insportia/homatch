@@ -47,6 +47,12 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // isAutoInvariantValue URL/email heuristic doesn't already catch these).
   'privacy_domain_text', // "homatch.live"
   'privacy_email_text', // "privacy@homatch.live"
+  // A literal system market code ("global"), not natural-language prose —
+  // shown as a form placeholder demonstrating the actual DB value.
+  'admin_sponsored_market_placeholder',
+  // "Supabase API" — third-party product/brand name + standard "API"
+  // acronym; kept in Latin script in ka/ru/tr the same way "Google" is.
+  'admin_health_api_label',
 ]);
 
 // Heuristic: values that don't need translating in the first place, so an

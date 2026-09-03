@@ -10,10 +10,12 @@ import { getSpendCapStatus, updateSpendCaps } from '@/services/api';
 import type { SpendCapStatus, SpendCapConfig } from '@/types/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const PROVIDERS = ['global', 'dataforseo', 'apify', 'zenrows', 'scrapingbee', 'brightdata', 'openai', 'resend', 'twilio', 'retell'] as const;
 
 export default function AdminSpendCapsPage() {
+  const { t } = useLanguage();
   const [caps, setCaps] = useState<SpendCapStatus[]>([]);
   const [draft, setDraft] = useState<Partial<SpendCapConfig>>({});
   const [loading, setLoading] = useState(true);
@@ -52,14 +54,14 @@ export default function AdminSpendCapsPage() {
   return (
     <div className="space-y-4 max-w-2xl">
       <div>
-        <h1 className="text-xl font-bold">Spend Caps</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Monthly USD caps per provider. Warning at 80%, hard block at 100%.</p>
+        <h1 className="text-xl font-bold">{t('admin_spend_caps_title')}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_spendcaps_subtitle')}</p>
       </div>
 
       {/* Status bars */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Current Month Status</CardTitle>
+          <CardTitle className="text-sm font-semibold">{t('admin_spendcaps_current_month_status')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {loading ? Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-8" />) :
@@ -97,9 +99,9 @@ export default function AdminSpendCapsPage() {
       {/* Edit caps */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Edit Monthly Caps (USD)</CardTitle>
+          <CardTitle className="text-sm font-semibold">{t('admin_spendcaps_edit_caps_title')}</CardTitle>
           <CardDescription className="text-xs">
-            Set to a high value to effectively remove a cap. The GLOBAL cap applies across all providers combined.
+            {t('admin_spendcaps_edit_caps_description')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -127,7 +129,7 @@ export default function AdminSpendCapsPage() {
               );
             })}
           <Button onClick={save} disabled={saving || loading} className="w-full gap-1.5 mt-2">
-            <Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save Spend Caps'}
+            <Save className="h-4 w-4" /> {saving ? t('import_saving') : t('admin_spend_caps_save_btn')}
           </Button>
         </CardContent>
       </Card>

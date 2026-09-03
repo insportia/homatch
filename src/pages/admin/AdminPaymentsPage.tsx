@@ -4,12 +4,14 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getAdminPayments } from '@/services/api';
 import { format } from 'date-fns';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   COMPLETED: 'default', PENDING: 'secondary', FAILED: 'destructive', REFUNDED: 'outline',
 };
 
 export default function AdminPaymentsPage() {
+  const { t } = useLanguage();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -20,8 +22,8 @@ export default function AdminPaymentsPage() {
   return (
     <div className="space-y-4 max-w-5xl">
       <div>
-        <h1 className="text-xl font-bold">Payments</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{items.length} payment records</p>
+        <h1 className="text-xl font-bold">{t('admin_payments_title')}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_payments_subtitle', { count: items.length })}</p>
       </div>
       <Card>
         <CardContent className="p-0">
@@ -29,20 +31,20 @@ export default function AdminPaymentsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">User</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Amount</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Credits</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Provider</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Status</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Idempotency Key</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Date</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_payments_user')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_payments_amount')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_payments_credits')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_payments_provider')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_payments_status')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_payments_idempotency_key')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_payments_date')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}><td colSpan={7} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
                 )) : items.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No payments</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">{t('admin_payments_empty')}</td></tr>
                 ) : items.map(p => (
                   <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{p.users?.email ?? '—'}</td>

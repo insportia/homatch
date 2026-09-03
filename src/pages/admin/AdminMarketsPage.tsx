@@ -5,8 +5,10 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function AdminMarketsPage() {
+  const { t } = useLanguage();
   const [markets, setMarkets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,8 +33,8 @@ export default function AdminMarketsPage() {
   return (
     <div className="space-y-4 max-w-3xl">
       <div>
-        <h1 className="text-xl font-bold">Markets</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Enable or disable markets</p>
+        <h1 className="text-xl font-bold">{t('admin_markets_title')}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_markets_subtitle')}</p>
       </div>
       <Card>
         <CardContent className="p-0">
@@ -40,11 +42,11 @@ export default function AdminMarketsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Country</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Code</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Currency</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Priority</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Enabled</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_markets_country')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_markets_code')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_markets_currency')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_markets_priority')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_markets_enabled')}</th>
                 </tr>
               </thead>
               <tbody>

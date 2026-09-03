@@ -9,6 +9,7 @@ import { Save, Info, Percent } from 'lucide-react';
 import { getPricingConfig, updatePricingConfig, getResearchProducts, updateResearchProduct, getVatRateBps, updateVatRateBps } from '@/services/api';
 import type { PricingConfig, ResearchProduct } from '@/types/types';
 import { toast } from 'sonner';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type FieldDef = { key: keyof PricingConfig; label: string; hint: string; min: number; max: number; step: number };
 
@@ -26,6 +27,7 @@ const FIELDS: FieldDef[] = [
 ];
 
 export default function AdminPricingPage() {
+  const { t } = useLanguage();
   const [cfg, setCfg] = useState<PricingConfig | null>(null);
   const [draft, setDraft] = useState<PricingConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,15 +104,15 @@ export default function AdminPricingPage() {
   return (
     <div className="space-y-4 max-w-2xl">
       <div>
-        <h1 className="text-xl font-bold">Pricing Config</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Server-side pricing engine settings. No qualified match can be free.</p>
+        <h1 className="text-xl font-bold">{t('admin_pricing_title')}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_pricing_intro_desc')}</p>
       </div>
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Engine Parameters</CardTitle>
+          <CardTitle className="text-sm font-semibold">{t('admin_pricing_engine_parameters')}</CardTitle>
           <CardDescription className="text-xs flex items-start gap-1.5">
             <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            Changes take effect for new matches only. Existing unlocked matches are unaffected.
+            {t('admin_pricing_engine_params_note')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -129,15 +131,15 @@ export default function AdminPricingPage() {
               </div>
             ))}
           <Button onClick={save} disabled={saving || loading} className="w-full gap-1.5 mt-2">
-            <Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save Pricing Config'}
+            <Save className="h-4 w-4" /> {saving ? t('import_saving') : t('admin_pricing_save_btn')}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-1.5"><Percent className="h-4 w-4" /> VAT Rate</CardTitle>
-          <CardDescription className="text-xs">Centrally-configurable VAT rate applied to new research-product purchases. Historical payments keep their own snapshot and are never recalculated.</CardDescription>
+          <CardTitle className="text-sm font-semibold flex items-center gap-1.5"><Percent className="h-4 w-4" /> {t('admin_pricing_vat_rate_title')}</CardTitle>
+          <CardDescription className="text-xs">{t('admin_pricing_vat_rate_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
@@ -147,18 +149,18 @@ export default function AdminPricingPage() {
               onChange={e => setVatDraft(Number(e.target.value))}
               className="h-9 text-sm w-32"
             />
-            <span className="text-xs text-muted-foreground">basis points = {(vatDraft / 100).toFixed(2)}%</span>
+            <span className="text-xs text-muted-foreground">{t('admin_pricing_basis_points_label')} {(vatDraft / 100).toFixed(2)}%</span>
           </div>
           <Button onClick={saveVat} disabled={savingVat || vatDraft === vatBps} size="sm" className="gap-1.5">
-            <Save className="h-3.5 w-3.5" /> {savingVat ? 'Saving…' : 'Save VAT Rate'}
+            <Save className="h-3.5 w-3.5" /> {savingVat ? t('import_saving') : t('admin_pricing_save_vat_btn')}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Research Products</CardTitle>
-          <CardDescription className="text-xs">Fixed retail packages. Price is VAT-inclusive. Provider COGS is internal only — never shown to customers.</CardDescription>
+          <CardTitle className="text-sm font-semibold">{t('admin_pricing_research_products_title')}</CardTitle>
+          <CardDescription className="text-xs">{t('admin_pricing_research_products_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {productsLoading ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16" />) :
@@ -167,7 +169,7 @@ export default function AdminPricingPage() {
                 <div className="flex-1 min-w-[160px]">
                   <p className="text-sm font-medium">{p.name}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    COGS ${(p.reference_cogs_cents / 100).toFixed(2)} · Target contribution ${(p.target_contribution_cents / 100).toFixed(2)} · VAT {(p.vat_rate_bps / 100).toFixed(0)}%
+                    {t('admin_pricing_cogs_prefix')}{(p.reference_cogs_cents / 100).toFixed(2)} {t('admin_pricing_target_contribution_prefix')}{(p.target_contribution_cents / 100).toFixed(2)} {t('admin_pricing_vat_prefix')} {(p.vat_rate_bps / 100).toFixed(0)}%
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -183,7 +185,7 @@ export default function AdminPricingPage() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Switch checked={p.enabled} disabled={savingProduct === p.code} onCheckedChange={v => toggleProductEnabled(p.code, v)} />
-                  <span className="text-xs text-muted-foreground">{p.enabled ? 'Enabled' : 'Disabled'}</span>
+                  <span className="text-xs text-muted-foreground">{p.enabled ? t('admin_markets_enabled') : t('admin_markets_disabled')}</span>
                 </div>
               </div>
             ))}

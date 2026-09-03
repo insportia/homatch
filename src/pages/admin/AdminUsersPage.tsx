@@ -6,8 +6,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Shield } from 'lucide-react';
 import { getAdminUsers } from '@/services/api';
 import { format } from 'date-fns';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function AdminUsersPage() {
+  const { t } = useLanguage();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -23,12 +25,12 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-4 max-w-5xl">
       <div>
-        <h1 className="text-xl font-bold">Users</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{users.length} total registered users</p>
+        <h1 className="text-xl font-bold">{t('admin_users_title')}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_users_subtitle', { count: users.length })}</p>
       </div>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input className="pl-9" placeholder="Search by email or name…" value={q} onChange={e => setQ(e.target.value)} />
+        <Input className="pl-9" placeholder={t('admin_users_search_placeholder')} value={q} onChange={e => setQ(e.target.value)} />
       </div>
       <Card>
         <CardContent className="p-0">
@@ -36,17 +38,17 @@ export default function AdminUsersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">User</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Balance</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Role</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Joined</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_credits_user')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_users_balance')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_users_role')}</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_users_joined')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}><td colSpan={4} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
                 )) : filtered.length === 0 ? (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No users found</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">{t('admin_users_empty')}</td></tr>
                 ) : filtered.map(u => (
                   <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-2.5 whitespace-nowrap">
@@ -58,8 +60,8 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       {u.is_admin
-                        ? <Badge variant="default" className="gap-1 text-xs"><Shield className="h-3 w-3" />Admin</Badge>
-                        : <Badge variant="outline" className="text-xs">Customer</Badge>}
+                        ? <Badge variant="default" className="gap-1 text-xs"><Shield className="h-3 w-3" />{t('admin_users_admin_badge')}</Badge>
+                        : <Badge variant="outline" className="text-xs">{t('admin_users_customer_badge')}</Badge>}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">
                       {u.created_at ? format(new Date(u.created_at), 'MMM d, yyyy') : '—'}

@@ -11,6 +11,7 @@ import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface ProviderSnapshot {
   status: string;
@@ -79,6 +80,7 @@ function SpendBar({ label, spent, cap, pct, blocked }: { label: string; spent: n
 }
 
 export default function AdminHealthPage() {
+  const { t } = useLanguage();
   const [health, setHealth] = useState<HealthResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
@@ -106,14 +108,14 @@ export default function AdminHealthPage() {
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold">System Health</h1>
+          <h1 className="text-xl font-bold">{t('admin_nav_health')}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Production status snapshot — DB, Storage, Providers, Matching
+            {t('admin_health_subtitle')}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={run} disabled={loading} className="gap-1.5">
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-          {loading ? 'Checking...' : 'Run Health Check'}
+          {loading ? t('admin_health_checking') : t('admin_health_run_check')}
         </Button>
       </div>
 
@@ -138,11 +140,11 @@ export default function AdminHealthPage() {
               : <AlertTriangle className="h-8 w-8 text-amber-500 shrink-0" />}
             <div>
               <p className="text-base font-bold">
-                {health.production_status === 'HEALTHY' ? 'All systems operational' : 'Degraded — check below'}
+                {health.production_status === 'HEALTHY' ? t('admin_health_all_operational') : t('admin_health_degraded')}
               </p>
               <p className="text-xs text-muted-foreground">
-                Checked at {fmtDate(health.checked_at)}
-                {health.mock_mode_active && <span className="ml-3 font-semibold text-destructive">⚠ MOCK MODE ON</span>}
+                {t('admin_health_checked_at')} {fmtDate(health.checked_at)}
+                {health.mock_mode_active && <span className="ml-3 font-semibold text-destructive">{t('admin_health_mock_mode_on')}</span>}
               </p>
             </div>
           </CardContent>
@@ -154,7 +156,7 @@ export default function AdminHealthPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Database className="h-4 w-4 text-primary" /> Infrastructure
+              <Database className="h-4 w-4 text-primary" /> {t('admin_health_infrastructure')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -163,36 +165,36 @@ export default function AdminHealthPage() {
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <Database className="h-4 w-4 text-muted-foreground" />
-                    <span>Database (PostgreSQL)</span>
+                    <span>{t('admin_health_db_label')}</span>
                   </div>
                   <StatusDot ok={health.db_reachable} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <HardDrive className="h-4 w-4 text-muted-foreground" />
-                    <span>Storage (Supabase)</span>
+                    <span>{t('admin_health_storage_label')}</span>
                   </div>
                   <StatusDot ok={health.storage_reachable} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <Globe className="h-4 w-4 text-muted-foreground" />
-                    <span>Supabase API</span>
+                    <span>{t('admin_health_api_label')}</span>
                   </div>
                   <StatusDot ok={health.supabase_reachable} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <ShieldAlert className="h-4 w-4 text-muted-foreground" />
-                    <span>Mock mode</span>
+                    <span>{t('admin_health_mock_mode_label')}</span>
                   </div>
                   <Badge variant={health.mock_mode_active ? 'destructive' : 'outline'} className="text-[10px] px-1.5">
-                    {health.mock_mode_active ? 'ON — DANGER' : 'OFF ✓'}
+                    {health.mock_mode_active ? t('admin_health_mock_on_danger') : t('admin_health_mock_off_ok')}
                   </Badge>
                 </div>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Run health check to see status</p>
+              <p className="text-sm text-muted-foreground">{t('admin_health_run_to_see_status')}</p>
             )}
           </CardContent>
         </Card>
@@ -201,31 +203,31 @@ export default function AdminHealthPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="h-4 w-4 text-primary" /> Matching Engine
+              <Zap className="h-4 w-4 text-primary" /> {t('admin_health_matching_engine')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {loading ? <Skeleton className="h-24" /> : health ? (
               <>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Last successful run</span>
+                  <span className="text-muted-foreground">{t('admin_health_last_success_run')}</span>
                   <span className={cn('font-mono text-xs', health.last_match_run_ok ? 'text-green-500' : 'text-muted-foreground')}>
                     {fmtDate(health.last_match_run_at)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Last failed run</span>
+                  <span className="text-muted-foreground">{t('admin_health_last_failed_run')}</span>
                   <span className={cn('font-mono text-xs', health.last_failed_run_at ? 'text-destructive' : 'text-muted-foreground')}>
                     {fmtDate(health.last_failed_run_at)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Engine status</span>
+                  <span className="text-muted-foreground">{t('admin_health_engine_status')}</span>
                   <StatusDot ok={health.last_match_run_ok} degraded={!health.last_match_run_ok && !health.last_failed_run_at} />
                 </div>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Run health check to see status</p>
+              <p className="text-sm text-muted-foreground">{t('admin_health_run_to_see_status')}</p>
             )}
           </CardContent>
         </Card>
@@ -235,7 +237,7 @@ export default function AdminHealthPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Cpu className="h-4 w-4 text-primary" /> Provider Status
+            <Cpu className="h-4 w-4 text-primary" /> {t('admin_health_provider_status')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -253,18 +255,18 @@ export default function AdminHealthPage() {
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
                     {p.success_rate !== null && (
-                      <span>{p.success_rate}% success</span>
+                      <span>{t('admin_health_success_rate', { rate: p.success_rate })}</span>
                     )}
                     {p.latency_ms !== null && (
                       <span>{p.latency_ms}ms</span>
                     )}
-                    <span>{p.last_success_at ? fmtDate(p.last_success_at) : 'Never'}</span>
+                    <span>{p.last_success_at ? fmtDate(p.last_success_at) : t('as_never')}</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Run health check to see provider status</p>
+            <p className="text-sm text-muted-foreground">{t('admin_health_run_to_see_provider_status')}</p>
           )}
         </CardContent>
       </Card>
@@ -274,7 +276,7 @@ export default function AdminHealthPage() {
         <Card className={cn(health.spend_summary.global_blocked && 'border-destructive/40')}>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-primary" /> Monthly Spend (COGS)
+              <ShieldAlert className="h-4 w-4 text-primary" /> {t('admin_health_spend_title')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">

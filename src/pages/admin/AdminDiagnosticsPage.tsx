@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAdminImportDiagnostics } from '@/services/api';
 import { format } from 'date-fns';
+import { useLanguage } from '@/contexts/LanguageContext';
 import {
   CheckCircle2, XCircle, Clock, ChevronDown, ChevronRight,
   AlertTriangle, ImageOff, Layers,
@@ -57,6 +58,7 @@ function FallbackChain({ chain }: { chain: Array<{ strategy: string; status: str
 }
 
 function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean | null | undefined | object> }) {
+  const { t } = useLanguage();
   const chain = (imp.fallback_chain as Array<{ strategy: string; status: string | number; size?: number; reason?: string }> | undefined) ?? [];
   const [open, setOpen] = useState(false);
   const Icon = STATUS_ICON[imp.status as string] ?? Clock;
@@ -103,7 +105,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
         {/* missing critical */}
         <td className="px-3 py-2.5 max-w-[140px]">
           {missing.length === 0
-            ? <span className="text-green-600 dark:text-green-400 text-xs">✓ complete</span>
+            ? <span className="text-green-600 dark:text-green-400 text-xs">✓ {t('admin_diagnostics_complete')}</span>
             : <span className="text-amber-600 text-[11px] truncate block">{missing.join(', ')}</span>}
         </td>
         {/* status */}
@@ -128,19 +130,19 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
               {/* Fallback chain */}
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-muted-foreground font-medium uppercase tracking-wide text-[10px] mb-1">
-                  <Layers className="h-3 w-3" /> Fallback Chain
+                  <Layers className="h-3 w-3" /> {t('admin_diagnostics_fallback_chain')}
                 </div>
                 <FallbackChain chain={chain} />
               </div>
 
               {/* HTTP details */}
               <div className="space-y-1">
-                <p className="text-muted-foreground font-medium uppercase tracking-wide text-[10px] mb-1">HTTP Details</p>
-                <p>Status: <span className="font-mono">{String(imp.http_status ?? '—')}</span></p>
-                <p>Response size: <span className="font-mono">
+                <p className="text-muted-foreground font-medium uppercase tracking-wide text-[10px] mb-1">{t('admin_diagnostics_http_details')}</p>
+                <p>{t('admin_diagnostics_status')}: <span className="font-mono">{String(imp.http_status ?? '—')}</span></p>
+                <p>{t('admin_diagnostics_response_size')}: <span className="font-mono">
                   {imp.response_size ? `${(Number(imp.response_size) / 1024).toFixed(1)} KB` : '—'}
                 </span></p>
-                <p>Cloudflare blocked: <span className={`font-medium ${imp.cloudflare_blocked ? 'text-destructive' : 'text-green-600 dark:text-green-400'}`}>
+                <p>{t('admin_diagnostics_cloudflare_blocked')}: <span className={`font-medium ${imp.cloudflare_blocked ? 'text-destructive' : 'text-green-600 dark:text-green-400'}`}>
                   {imp.cloudflare_blocked ? 'yes' : 'no'}
                 </span></p>
               </div>
@@ -149,7 +151,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
               {(imp.error_code || imp.error_message) && (
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 text-destructive font-medium uppercase tracking-wide text-[10px] mb-1">
-                    <AlertTriangle className="h-3 w-3" /> Error
+                    <AlertTriangle className="h-3 w-3" /> {t('admin_diagnostics_error')}
                   </div>
                   <p className="text-destructive font-mono">{String(imp.error_code ?? '')}</p>
                   {imp.error_message && <p className="text-muted-foreground">{String(imp.error_message)}</p>}
@@ -160,11 +162,11 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
               {imp.photos_found !== undefined && imp.photos_found !== null && (
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 text-muted-foreground font-medium uppercase tracking-wide text-[10px] mb-1">
-                    <ImageOff className="h-3 w-3" /> Photos
+                    <ImageOff className="h-3 w-3" /> {t('match_factor_photos')}
                   </div>
                   <p>{imp.photos_found as number > 0
-                    ? `${imp.photos_found as number} listing photo(s) extracted`
-                    : 'No listing photos found'
+                    ? t('admin_diagnostics_photos_found', { count: imp.photos_found as number })
+                    : t('admin_diagnostics_photos_none')
                   }</p>
                 </div>
               )}
@@ -177,6 +179,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
 }
 
 export default function AdminDiagnosticsPage() {
+  const { t } = useLanguage();
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -187,15 +190,15 @@ export default function AdminDiagnosticsPage() {
   return (
     <div className="space-y-4 max-w-6xl">
       <div>
-        <h1 className="text-xl font-bold">Import Diagnostics</h1>
+        <h1 className="text-xl font-bold">{t('admin_diagnostics_title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Per-import pipeline log — provider used, fallback chain, extracted fields, photos
+          {t('admin_diagnostics_subtitle')}
         </p>
       </div>
       <Card>
         <CardHeader className="py-3 px-4 border-b border-border">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Fields / Photos = non-null extracted fields / listing photos found
+            {t('admin_diagnostics_fields_photos_legend')}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -205,12 +208,12 @@ export default function AdminDiagnosticsPage() {
                 <tr className="border-b border-border bg-muted/50">
                   <th className="w-6 px-3 py-2.5" />
                   <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">URL</th>
-                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Property</th>
-                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Strategy</th>
-                  <th className="text-center px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Fields/Photos</th>
-                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Missing Critical</th>
-                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Status</th>
-                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Date</th>
+                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_diagnostics_property')}</th>
+                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_diagnostics_strategy')}</th>
+                  <th className="text-center px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_diagnostics_fields_photos_col')}</th>
+                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_diagnostics_missing_critical')}</th>
+                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_diagnostics_status')}</th>
+                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_credits_date')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -226,7 +229,7 @@ export default function AdminDiagnosticsPage() {
                     ? (
                       <tr>
                         <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                          No import records yet
+                          {t('admin_diagnostics_empty')}
                         </td>
                       </tr>
                     )

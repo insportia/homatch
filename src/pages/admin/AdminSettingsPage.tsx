@@ -12,6 +12,7 @@ import { getAdminSettings, updateAdminSetting } from '@/services/api';
 import type { AdminSetting } from '@/types/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // ── Setting groups ─────────────────────────────────────────────
 const SETTING_GROUPS: { label: string; keys: string[]; danger?: boolean }[] = [
@@ -67,6 +68,7 @@ function serializeSettingValue(val: string): string {
 }
 
 export default function AdminSettingsPage() {
+  const { t } = useLanguage();
   const [settings, setSettings] = useState<AdminSetting[]>([]);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -107,13 +109,13 @@ export default function AdminSettingsPage() {
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold">Admin Settings</h1>
+          <h1 className="text-xl font-bold">{t('admin_settings_page_title')}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            All changes apply server-side immediately. No code redeployment needed.
+            {t('admin_settings_subtitle')}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={load} className="gap-1.5 text-muted-foreground">
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          <RefreshCw className="h-3.5 w-3.5" /> {t('admin_refresh')}
         </Button>
       </div>
 
@@ -122,9 +124,9 @@ export default function AdminSettingsPage() {
         <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/8 px-4 py-3">
           <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-destructive">Mock mode is ON</p>
+            <p className="text-sm font-semibold text-destructive">{t('admin_settings_mock_mode_on')}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Real provider calls are disabled. All matches are fake. Disable immediately in production.
+              {t('admin_settings_mock_mode_warning')}
             </p>
           </div>
         </div>
@@ -145,7 +147,7 @@ export default function AdminSettingsPage() {
                 </div>
                 {group.danger && (
                   <CardDescription className="text-xs text-destructive/80">
-                    Danger zone — changes affect production behavior
+                    {t('admin_settings_danger_zone')}
                   </CardDescription>
                 )}
               </CardHeader>
@@ -214,7 +216,7 @@ export default function AdminSettingsPage() {
                               className="h-8 w-8 p-0 shrink-0"
                               onClick={() => handleSave(key)}
                               disabled={isSaving}
-                              title="Save"
+                              title={t('general_save')}
                             >
                               {isSaved
                                 ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
@@ -235,8 +237,8 @@ export default function AdminSettingsPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        All settings are enforced server-side. Frontend changes do not bypass caps or limits.
-        Last updated values are stored in <code className="font-mono">admin_settings</code> table.
+        {t('admin_settings_enforcement_note')}{' '}
+        {t('admin_settings_storage_note', { table: 'admin_settings' })}
       </p>
     </div>
   );

@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/db/supabase';
 import { User360, User as HUser } from '@/types/types';
 import { toast } from 'sonner';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface UserRowItem {
   id: string;
@@ -21,6 +22,7 @@ interface UserRowItem {
 }
 
 export default function AdminUser360Page() {
+  const { t } = useLanguage();
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<UserRowItem[]>([]);
@@ -98,9 +100,9 @@ export default function AdminUser360Page() {
       <div>
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <User className="h-5 w-5 text-primary" />
-          User 360° View
+          {t('admin_user360_title')}
         </h2>
-        <p className="text-sm text-muted-foreground mt-0.5">Search users and inspect their full profile, campaigns, contacts, credits, and AI usage.</p>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('admin_user360_page_subtitle')}</p>
       </div>
 
       {/* Search */}
@@ -109,7 +111,7 @@ export default function AdminUser360Page() {
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             className="ps-9"
-            placeholder="Search by email or name…"
+            placeholder={t('admin_user360_search_placeholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -117,14 +119,14 @@ export default function AdminUser360Page() {
         </div>
         <Button onClick={handleSearch} disabled={searching || !query.trim()}>
           {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          <span className="ms-2 hidden sm:inline">Search</span>
+          <span className="ms-2 hidden sm:inline">{t('verify_btn_search')}</span>
         </Button>
       </div>
 
       {/* Results list */}
       {!selected && results.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">{results.length} result{results.length !== 1 ? 's' : ''}</p>
+          <p className="text-xs text-muted-foreground">{t('admin_user360_results_count', { count: results.length })}</p>
           {results.map((u) => (
             <Card key={u.id} className="cursor-pointer hover:border-primary/40 transition-colors"
               onClick={() => loadUser360(u.id)}>
@@ -134,8 +136,8 @@ export default function AdminUser360Page() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium truncate">{u.full_name ?? 'No name'}</span>
-                    {u.is_admin && <Badge className="text-[10px] px-1.5 bg-red-500/10 text-red-700">Admin</Badge>}
+                    <span className="text-sm font-medium truncate">{u.full_name ?? t('admin_user360_no_name')}</span>
+                    {u.is_admin && <Badge className="text-[10px] px-1.5 bg-red-500/10 text-red-700">{t('admin_users_admin_badge')}</Badge>}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                 </div>
@@ -159,7 +161,7 @@ export default function AdminUser360Page() {
       {selected && !loadingUser && (
         <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => setSelected(null)} className="gap-2 -ms-2">
-            <ArrowLeft className="h-4 w-4" />Back to results
+            <ArrowLeft className="h-4 w-4" />{t('admin_user360_back_to_results')}
           </Button>
 
           {/* User card */}
@@ -171,7 +173,7 @@ export default function AdminUser360Page() {
                     <User className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <CardTitle className="text-base">{selected.user?.full_name ?? 'No name'}</CardTitle>
+                    <CardTitle className="text-base">{selected.user?.full_name ?? t('admin_user360_no_name')}</CardTitle>
                     <p className="text-sm text-muted-foreground">{selected.user?.email}</p>
                   </div>
                 </div>
@@ -181,7 +183,7 @@ export default function AdminUser360Page() {
                   {impersonating
                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     : <Eye className="h-3.5 w-3.5" />}
-                  View as User
+                  {t('admin_user360_view_as_user')}
                 </Button>
               </div>
             </CardHeader>
@@ -197,7 +199,7 @@ export default function AdminUser360Page() {
 
           {/* Properties */}
           {selected.properties.length > 0 && (
-            <Section title="Properties" icon={<Building2 className="h-4 w-4" />}>
+            <Section title={t('admin_properties_title')} icon={<Building2 className="h-4 w-4" />}>
               {selected.properties.map((p) => (
                 <Row key={p.id} primary={p.title} secondary={`${p.property_type} · ${p.status}`} date={p.created_at} />
               ))}
@@ -206,7 +208,7 @@ export default function AdminUser360Page() {
 
           {/* Campaigns */}
           {selected.campaigns.length > 0 && (
-            <Section title="Outreach Campaigns" icon={<Mail className="h-4 w-4" />}>
+            <Section title={t('admin_user360_campaigns_title')} icon={<Mail className="h-4 w-4" />}>
               {selected.campaigns.map((c) => (
                 <Row key={c.id} primary={c.name}
                   secondary={`${c.campaign_type} · ${c.status} · ${c.audience_count ?? 0} contacts`}
@@ -217,7 +219,7 @@ export default function AdminUser360Page() {
 
           {/* Contact lists */}
           {selected.contact_lists.length > 0 && (
-            <Section title="Contact Lists" icon={<Phone className="h-4 w-4" />}>
+            <Section title={t('contacts_title')} icon={<Phone className="h-4 w-4" />}>
               {selected.contact_lists.map((l) => (
                 <Row key={l.id} primary={l.name}
                   secondary={`${l.import_status} · ${l.valid_rows ?? 0}/${l.total_rows ?? 0} valid`}
@@ -231,7 +233,7 @@ export default function AdminUser360Page() {
             <Card>
               <CardHeader className="p-4 pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />Credits & Spending
+                  <CreditCard className="h-4 w-4" />{t('admin_user360_credits_spending_title')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-0">
@@ -242,7 +244,7 @@ export default function AdminUser360Page() {
                 </div>
                 {selected.recent_cost_events.length > 0 && (
                   <div className="mt-3 space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Recent cost events</p>
+                    <p className="text-xs font-medium text-muted-foreground">{t('admin_user360_recent_cost_events')}</p>
                     {selected.recent_cost_events.slice(0, 5).map((e, i) => (
                       <div key={i} className="flex justify-between text-xs">
                         <span className="text-muted-foreground truncate">{e.event_type}</span>
@@ -259,10 +261,10 @@ export default function AdminUser360Page() {
           {selected.ai_conversations.length > 0 && (
             <Card>
               <CardHeader className="p-4 pb-2">
-                <CardTitle className="text-sm flex items-center gap-2"><Bot className="h-4 w-4" />AI Conversations ({selected.ai_conversations.length})</CardTitle>
+                <CardTitle className="text-sm flex items-center gap-2"><Bot className="h-4 w-4" />{t('admin_user360_ai_conversations_title', { count: selected.ai_conversations.length })}</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-0">
-                <p className="text-xs text-muted-foreground">Last: {new Date(selected.ai_conversations[0].created_at).toLocaleDateString()}</p>
+                <p className="text-xs text-muted-foreground">{t('admin_user360_last_label')} {new Date(selected.ai_conversations[0].created_at).toLocaleDateString()}</p>
               </CardContent>
             </Card>
           )}
@@ -270,7 +272,7 @@ export default function AdminUser360Page() {
           <Alert>
             <Shield className="h-4 w-4" />
             <AlertDescription className="text-xs">
-              All admin reads are audited. Sensitive operations (export, delete, impersonate) require SUPER_ADMIN or SUPPORT_ADMIN role.
+              {t('admin_user360_compliance_notice')}
             </AlertDescription>
           </Alert>
         </div>

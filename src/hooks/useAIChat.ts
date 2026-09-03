@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 import { sendStreamRequest } from '@/lib/sse';
 import { supabase } from '@/db/supabase';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -25,7 +26,7 @@ export interface PageContext {
 }
 
 export function useAIChat() {
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState('');
@@ -121,14 +122,31 @@ export function useAIChat() {
           await loadConversations();
         }
       },
-      onError: (err) => {
+      onError: async (err) => {
         console.error('AI stream error:', err);
         setStreaming(false);
         setStreamContent('');
+        // ky throws an HTTPError (with a `.response`) for any non-2xx status
+        // — including our own 429 rate-limit response, whose JSON body
+        // carries a real, already-localized message. Surface it instead of
+        // silently swallowing the failure (a rate limit the user never sees
+        // a reason for isn't a real feature, it's just a broken chat).
+        let message = t('general_error');
+        const httpErr = err as unknown as { response?: Response };
+        if (httpErr?.response) {
+          try {
+            const data = await httpErr.response.clone().json();
+            if (data?.error && typeof data.error === 'string') message = data.error;
+          } catch { /* non-JSON error body — keep the generic message */ }
+        }
+        toast.error(message);
+        // Roll back the optimistically-added user message so a failed send
+        // doesn't leave a message in the transcript that was never answered.
+        setMessages(prev => (prev.length && prev[prev.length - 1].id === userMsg.id) ? prev.slice(0, -1) : prev);
       },
       signal: abortRef.current.signal,
     });
-  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, lang]);
+  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, lang, t]);
 
   const cancelStream = useCallback(() => { abortRef.current?.abort(); setStreaming(false); setStreamContent(''); }, []);
   const resetChat = useCallback(() => { setMessages([]); setActiveConvId(null); setStreamContent(''); setPageContext({ type: 'general' }); }, []);

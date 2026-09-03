@@ -45,6 +45,19 @@ interface PriceState {
 // Common ISO currencies for international listings
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'GEL', 'TRY', 'AED', 'ILS', 'KZT', 'UAH', 'CHF', 'PLN', 'SEK'];
 
+// Machine-value property type codes mapped to translation keys (stable-value pattern)
+const PROPERTY_TYPE_KEYS: Record<string, string> = {
+  APARTMENT: 'prop_type_apartment',
+  HOUSE: 'prop_type_house',
+  VILLA: 'prop_type_villa',
+  COMMERCIAL: 'prop_type_commercial',
+  LAND: 'prop_type_land',
+  STUDIO: 'prop_type_studio',
+  PENTHOUSE: 'prop_type_penthouse',
+  TOWNHOUSE: 'prop_type_townhouse',
+  OTHER: 'prop_type_other',
+};
+
 function toPriceState(f: Partial<PropertyFacts>): PriceState {
   return {
     totalPrice: f.total_price != null ? String(f.total_price) : '',
@@ -180,12 +193,12 @@ export function ReviewExtractedProperty({
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
-    if (!title.trim()) errs.title = 'Title is required';
+    if (!title.trim()) errs.title = t('review_err_title_required');
     // City is now free-text — only require it's non-empty
-    if (!facts.city?.trim()) errs.city = 'City is required';
-    if (!prices.area) errs.area = 'Area is required';
+    if (!facts.city?.trim()) errs.city = t('review_err_city_required');
+    if (!prices.area) errs.area = t('review_err_area_required');
     if (!prices.totalPrice && !prices.pricePerSqm) {
-      errs.totalPrice = 'At least one price field is required';
+      errs.totalPrice = t('review_err_price_required');
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -211,10 +224,10 @@ export function ReviewExtractedProperty({
   };
 
   const missing = [
-    !title.trim() && 'Title',
-    !facts.city?.trim() && 'City',
-    !prices.area && 'Area',
-    !prices.totalPrice && !prices.pricePerSqm && 'Price',
+    !title.trim() && t('review_missing_title'),
+    !facts.city?.trim() && t('review_missing_city'),
+    !prices.area && t('review_missing_area'),
+    !prices.totalPrice && !prices.pricePerSqm && t('review_missing_price'),
   ].filter(Boolean);
 
   // Build gallery from normalized facts
@@ -231,7 +244,7 @@ export function ReviewExtractedProperty({
       {isMock && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/30">
           <span className="text-xs font-bold text-orange-400 uppercase tracking-wide">{t('import_mock_badge')}</span>
-          <span className="text-xs text-muted-foreground">— Demo data. Real import unavailable.</span>
+          <span className="text-xs text-muted-foreground">— {t('review_mock_note')}</span>
         </div>
       )}
 
@@ -260,23 +273,25 @@ export function ReviewExtractedProperty({
       {gallery.length === 0 ? (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/40 border border-border">
           <ImageOff className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
-          <span className="text-xs text-muted-foreground/60">No listing photos extracted from source</span>
+          <span className="text-xs text-muted-foreground/60">{t('review_no_photos')}</span>
         </div>
       ) : (
         <div className="space-y-2">
           <div className="rounded-lg overflow-hidden border border-border w-full bg-secondary" style={{ aspectRatio: '16/9', maxHeight: 200 }}>
-            <img src={gallery[0]} alt="Cover photo" className="w-full h-full object-cover" />
+            <img src={gallery[0]} alt={t('review_cover_photo_alt')} className="w-full h-full object-cover" />
           </div>
           {gallery.length > 1 && (
             <div className="flex gap-2 overflow-x-auto">
               {gallery.slice(1).map((imgUrl, i) => (
                 <div key={i} className="rounded border border-border overflow-hidden shrink-0 bg-secondary" style={{ width: 72, height: 54 }}>
-                  <img src={imgUrl} alt={`Photo ${i + 2}`} className="w-full h-full object-cover" />
+                  <img src={imgUrl} alt={t('review_photo_alt', { n: i + 2 })} className="w-full h-full object-cover" />
                 </div>
               ))}
             </div>
           )}
-          <p className="text-xs text-muted-foreground">{gallery.length} listing photo{gallery.length !== 1 ? 's' : ''} extracted</p>
+          <p className="text-xs text-muted-foreground">
+            {gallery.length !== 1 ? t('review_photos_extracted', { count: gallery.length }) : t('review_photo_extracted_single')}
+          </p>
         </div>
       )}
 
@@ -311,7 +326,7 @@ export function ReviewExtractedProperty({
             <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
             <SelectContent className="bg-card border-border">
               {['APARTMENT','HOUSE','VILLA','COMMERCIAL','LAND','STUDIO','PENTHOUSE','TOWNHOUSE','OTHER'].map(v => (
-                <SelectItem key={v} value={v}>{v.charAt(0) + v.slice(1).toLowerCase()}</SelectItem>
+                <SelectItem key={v} value={v}>{t(PROPERTY_TYPE_KEYS[v])}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -320,15 +335,15 @@ export function ReviewExtractedProperty({
 
       {/* Location — global free-text fields (no dropdown restriction) */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Location</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{t('review_location_heading')}</h3>
         <div className="grid grid-cols-2 gap-3">
           {/* Country — free-text */}
           <div className="space-y-1.5">
-            <Label className="text-sm">Country</Label>
+            <Label className="text-sm">{t('review_country_label')}</Label>
             <Input
               value={facts.country ?? ''}
               onChange={e => setFacts(f => ({ ...f, country: e.target.value || undefined }))}
-              placeholder="e.g. Georgia, Turkey, UAE"
+              placeholder={t('review_country_ph')}
               className="bg-secondary border-border"
             />
           </div>
@@ -341,7 +356,7 @@ export function ReviewExtractedProperty({
                 setFacts(f => ({ ...f, city: e.target.value || undefined }));
                 setErrors(er => { const n = {...er}; delete n.city; return n; });
               }}
-              placeholder="e.g. Tbilisi, Istanbul, Dubai"
+              placeholder={t('review_city_ph')}
               className={`bg-secondary border-border ${errors.city ? 'border-destructive' : ''}`}
             />
             {errors.city && <p className="text-xs text-destructive">{errors.city}</p>}
@@ -354,17 +369,17 @@ export function ReviewExtractedProperty({
             <Input
               value={facts.district ?? ''}
               onChange={e => setFacts(f => ({ ...f, district: e.target.value || undefined }))}
-              placeholder="e.g. Krtsanisi, Beşiktaş"
+              placeholder={t('review_district_ph')}
               className="bg-secondary border-border"
             />
           </div>
           {/* Neighborhood */}
           <div className="space-y-1.5">
-            <Label className="text-sm">Neighborhood</Label>
+            <Label className="text-sm">{t('form_neighborhood')}</Label>
             <Input
               value={facts.neighborhood ?? ''}
               onChange={e => setFacts(f => ({ ...f, neighborhood: e.target.value || undefined }))}
-              placeholder="e.g. Saburtalo"
+              placeholder={t('review_neighborhood_ph')}
               className="bg-secondary border-border"
             />
           </div>
@@ -374,7 +389,7 @@ export function ReviewExtractedProperty({
           <Input
             value={facts.address ?? ''}
             onChange={e => setFacts(f => ({ ...f, address: e.target.value || undefined }))}
-            placeholder="Street address"
+            placeholder={t('review_address_ph')}
             className="bg-secondary border-border"
           />
         </div>
@@ -382,7 +397,7 @@ export function ReviewExtractedProperty({
 
       {/* Price & Size */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Price & Size</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{t('review_price_size_heading')}</h3>
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1.5">
             <Label className="text-sm">{t('form_total_price')}</Label>
@@ -439,7 +454,7 @@ export function ReviewExtractedProperty({
           </div>
           {/* Rooms — total room count */}
           <div className="space-y-1.5">
-            <Label className="text-sm">Total Rooms</Label>
+            <Label className="text-sm">{t('review_total_rooms_label')}</Label>
             <Input
               type="number" step="1" min="0" max="30" inputMode="numeric"
               value={facts.rooms ?? ''}
@@ -463,7 +478,7 @@ export function ReviewExtractedProperty({
 
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-sm">Bathrooms</Label>
+            <Label className="text-sm">{t('prop_bathrooms')}</Label>
             <Input
               type="number" step="1" min="0" max="10" inputMode="numeric"
               value={facts.bathrooms ?? ''}
@@ -481,7 +496,7 @@ export function ReviewExtractedProperty({
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-sm">Total Floors</Label>
+            <Label className="text-sm">{t('review_total_floors_label')}</Label>
             <Input
               type="number" step="1" inputMode="numeric"
               value={facts.total_floors ?? ''}
@@ -506,9 +521,9 @@ export function ReviewExtractedProperty({
       {/* Diagnostic info — shown when source domain is known */}
       {facts.source_domain && (
         <div className="px-3 py-2 rounded-lg bg-secondary/30 border border-border/50 text-xs text-muted-foreground space-y-0.5">
-          <p>Source: <span className="text-foreground">{facts.source_domain}</span>
-            {facts.source_language ? ` · Language: ${facts.source_language.toUpperCase()}` : ''}</p>
-          {facts.source_listing_id && <p>Listing ID: <span className="text-foreground">{facts.source_listing_id}</span></p>}
+          <p>{t('review_source_label')} <span className="text-foreground">{facts.source_domain}</span>
+            {facts.source_language ? ` · ${t('review_language_label', { lang: facts.source_language.toUpperCase() })}` : ''}</p>
+          {facts.source_listing_id && <p>{t('review_listing_id_label')} <span className="text-foreground">{facts.source_listing_id}</span></p>}
         </div>
       )}
 

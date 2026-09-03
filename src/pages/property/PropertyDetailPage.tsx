@@ -57,7 +57,7 @@ function MatchabilityPanel({ score, improvements }: { score: number; improvement
         </div>
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">
-            {score >= 70 ? 'Excellent matchability' : score >= 40 ? 'Good — can be improved' : 'Improve to get better matches'}
+            {score >= 70 ? t('prop_matchability_excellent') : score >= 40 ? t('prop_matchability_good') : t('prop_matchability_improve')}
           </p>
         </div>
       </div>
@@ -138,9 +138,9 @@ function CampaignPanel({
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       setActive(true);
       setActiveJobId(result.jobId);
-      toast.success('Matching campaign started — live results loading…');
+      toast.success(t('matches_campaign_started_toast'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to start matching');
+      toast.error(e instanceof Error ? e.message : t('matches_start_failed'));
     } finally {
       setLoading(false);
     }
@@ -152,7 +152,7 @@ function CampaignPanel({
     setActive(false);
     setLoading(false);
     setShowPauseConfirm(false);
-    toast.success('Campaign paused.');
+    toast.success(t('matches_paused_toast'));
   };
 
   return (
@@ -175,9 +175,9 @@ function CampaignPanel({
         {/* Match stats */}
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: 'Total', value: matchCounts.total },
-            { label: 'New', value: matchCounts.newCount, highlight: matchCounts.newCount > 0 },
-            { label: 'Strong+', value: matchCounts.strongCount, highlight: matchCounts.strongCount > 0 },
+            { label: t('prop_stat_total'), value: matchCounts.total },
+            { label: t('prop_stat_new'), value: matchCounts.newCount, highlight: matchCounts.newCount > 0 },
+            { label: t('prop_stat_strong'), value: matchCounts.strongCount, highlight: matchCounts.strongCount > 0 },
           ].map(({ label, value, highlight }) => (
             <div key={label} className="rounded-lg bg-secondary/50 p-2 text-center">
               <p className={`text-lg font-semibold ${highlight ? 'text-primary' : 'text-foreground'}`}>{value}</p>
@@ -188,7 +188,7 @@ function CampaignPanel({
 
         {/* Credits indicator */}
         <div className="flex items-center justify-between text-xs px-0.5">
-          <span className="text-muted-foreground">Balance</span>
+          <span className="text-muted-foreground">{t('prop_balance_label')}</span>
           <button
             onClick={() => window.open('/credits', '_self')}
             className="flex items-center gap-1 text-primary hover:underline font-medium"
@@ -207,7 +207,7 @@ function CampaignPanel({
               onClick={onNavigateMatches}
               className="w-full border border-border text-sm h-8 gap-1.5 justify-between"
             >
-              <span>View Matches</span>
+              <span>{t('prop_view_matches')}</span>
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
           )}
@@ -245,9 +245,9 @@ function CampaignPanel({
             // Refresh match counts when job finishes
             getMatchCounts(propertyId).then(onCountsRefresh);
             if (job.matches_created > 0) {
-              toast.success(`Matching complete — ${job.matches_created} match${job.matches_created !== 1 ? 'es' : ''} found`);
+              toast.success(t('matches_job_complete_toast', { count: job.matches_created }));
             } else if (job.status === 'partially_completed') {
-              toast.warning('Matching partially completed — check events for details');
+              toast.warning(t('matches_job_partial_toast'));
             }
           }}
         />
@@ -265,7 +265,7 @@ function CampaignPanel({
               onClick={handlePauseConfirmed}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Pause Campaign
+              {t('matches_pause_campaign_btn')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -305,7 +305,7 @@ function PropertyDetailContent() {
   const handleDelete = async () => {
     if (!id) return;
     await softDeleteProperty(id);
-    toast.success('Property deleted.');
+    toast.success(t('prop_deleted_toast'));
     navigate('/dashboard');
   };
 
@@ -325,9 +325,9 @@ function PropertyDetailContent() {
     return (
       <AppLayout>
         <div className="max-w-xl mx-auto text-center py-20">
-          <p className="text-muted-foreground">Property not found.</p>
+          <p className="text-muted-foreground">{t('prop_not_found')}</p>
           <Button onClick={() => navigate('/dashboard')} className="mt-4 bg-primary text-primary-foreground">
-            Back to Dashboard
+            {t('prop_back_to_dashboard')}
           </Button>
         </div>
       </AppLayout>
@@ -349,7 +349,7 @@ function PropertyDetailContent() {
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} />
-            Dashboard
+            {t('nav_dashboard')}
           </button>
           <Button
             variant="ghost"
@@ -367,7 +367,7 @@ function PropertyDetailContent() {
           {property.cover_photo_url ? (
             <img
               src={property.cover_photo_url}
-              alt={property.title ?? 'Property'}
+              alt={property.title ?? t('prop_alt_fallback')}
               className="w-full h-full object-cover"
             />
           ) : (
@@ -405,7 +405,7 @@ function PropertyDetailContent() {
             {/* Title & location */}
             <div>
               <h1 className="text-xl font-semibold text-foreground">
-                {property.title ?? (isPrivate ? 'Private Listing' : 'Imported Property')}
+                {property.title ?? (isPrivate ? t('prop_title_private_fallback') : t('prop_title_imported_fallback'))}
               </h1>
               {locationParts && (
                 <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1.5">
@@ -430,50 +430,50 @@ function PropertyDetailContent() {
             <div className="grid grid-cols-3 gap-3">
               {facts?.total_price && (
                 <div className="rounded-lg border border-border bg-card p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Price</p>
-                  <p className="font-semibold text-foreground text-sm">
+                  <p className="text-xs text-muted-foreground mb-1">{t('prop_price_label')}</p>
+                  <p className="font-semibold text-foreground text-sm" dir="ltr">
                     {Number(facts.total_price).toLocaleString()} {facts.currency}
                   </p>
                 </div>
               )}
               {facts?.price_per_sqm && (
                 <div className="rounded-lg border border-border bg-card p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Per m²</p>
-                  <p className="font-semibold text-foreground text-sm">
+                  <p className="text-xs text-muted-foreground mb-1">{t('prop_per_sqm_label')}</p>
+                  <p className="font-semibold text-foreground text-sm" dir="ltr">
                     {Number(facts.price_per_sqm).toLocaleString()} {facts.currency}
                   </p>
                 </div>
               )}
               {facts?.area && (
                 <div className="rounded-lg border border-border bg-card p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Area</p>
-                  <p className="font-semibold text-foreground text-sm">{facts.area} m²</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t('prop_area_label')}</p>
+                  <p className="font-semibold text-foreground text-sm" dir="ltr">{facts.area} m²</p>
                 </div>
               )}
             </div>
 
             {/* Facts */}
             <div className="rounded-xl border border-border bg-card p-4">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Details</h3>
-              <FactRow icon={BedDouble} label="Bedrooms" value={facts?.bedrooms} />
-              <FactRow icon={Bath} label="Bathrooms" value={facts?.bathrooms} />
-              <FactRow icon={Layers} label="Floor" value={facts?.floor ? `${facts.floor}${facts.total_floors ? ` / ${facts.total_floors}` : ''}` : null} />
-              <FactRow icon={Building2} label="Building type" value={facts?.building_type} />
-              <FactRow icon={CheckCircle2} label="Condition" value={facts?.condition} />
-              {facts?.new_build && <FactRow icon={CheckCircle2} label="New build" value="Yes" />}
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t('prop_details_label')}</h3>
+              <FactRow icon={BedDouble} label={t('prop_bedrooms')} value={facts?.bedrooms} />
+              <FactRow icon={Bath} label={t('prop_bathrooms')} value={facts?.bathrooms} />
+              <FactRow icon={Layers} label={t('prop_floor')} value={facts?.floor ? `${facts.floor}${facts.total_floors ? ` / ${facts.total_floors}` : ''}` : null} />
+              <FactRow icon={Building2} label={t('prop_building_type')} value={facts?.building_type} />
+              <FactRow icon={CheckCircle2} label={t('prop_condition')} value={facts?.condition} />
+              {facts?.new_build && <FactRow icon={CheckCircle2} label={t('prop_new_build')} value={t('general_yes')} />}
             </div>
 
             {/* Amenities */}
             {(facts?.parking || facts?.balcony || facts?.elevator || facts?.security || facts?.furnished || facts?.air_conditioning) && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Amenities</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t('prop_amenities_label')}</p>
                 <div className="flex flex-wrap gap-2">
                   <AmenityChip label={t('prop_parking')} active={facts?.parking} />
                   <AmenityChip label={t('prop_balcony')} active={facts?.balcony} />
                   <AmenityChip label={t('prop_elevator')} active={facts?.elevator} />
                   <AmenityChip label={t('prop_security')} active={facts?.security} />
                   <AmenityChip label={t('prop_furnished')} active={facts?.furnished} />
-                  <AmenityChip label="AC" active={facts?.air_conditioning} />
+                  <AmenityChip label={t('prop_ac_label')} active={facts?.air_conditioning} />
                 </div>
               </div>
             )}
@@ -481,7 +481,7 @@ function PropertyDetailContent() {
             {/* Description */}
             {facts?.description && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Description</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t('prop_description_label')}</p>
                 <p className="text-sm text-muted-foreground leading-relaxed">{facts.description}</p>
               </div>
             )}
@@ -489,15 +489,15 @@ function PropertyDetailContent() {
             {/* Search Profile */}
             {property.search_profile && (
               <div className="rounded-xl border border-border bg-card p-4">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Search Profile</h3>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t('prop_search_profile_label')}</h3>
                 <p className="text-xs text-muted-foreground">
-                  Homatch will look for demand matching:{' '}
+                  {t('prop_search_profile_desc')}{' '}
                   {[
                     property.search_profile.transaction_type,
                     property.search_profile.city,
                     property.search_profile.district,
-                    property.search_profile.min_bedrooms ? `${property.search_profile.min_bedrooms}+ beds` : null,
-                    property.search_profile.min_price ? `from ${property.search_profile.min_price?.toLocaleString()} ${property.search_profile.currency ?? ''}` : null,
+                    property.search_profile.min_bedrooms ? t('prop_min_beds_suffix', { n: property.search_profile.min_bedrooms }) : null,
+                    property.search_profile.min_price ? t('prop_from_price_prefix', { price: property.search_profile.min_price?.toLocaleString() ?? '', currency: property.search_profile.currency ?? '' }) : null,
                   ].filter(Boolean).join(' · ')}
                 </p>
               </div>
@@ -511,18 +511,18 @@ function PropertyDetailContent() {
 
             {/* AI / Verify quick actions */}
             <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Quick Actions</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t('prop_quick_actions_label')}</p>
               <Button
                 size="sm"
                 className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90 justify-start"
                 onClick={() => navigate('/ai', {
                   state: {
-                    context: { type: 'property', id, title: property.title ?? 'This property' },
-                    prompt: `Tell me about this property: ${property.title ?? ''} ${locationParts ? `in ${locationParts}` : ''}`.trim(),
+                    context: { type: 'property', id, title: property.title ?? t('prop_title_generic_fallback') },
+                    prompt: `${t('prop_ai_about_prompt_base', { title: property.title ?? '' })} ${locationParts ? t('prop_ai_in_location', { location: locationParts }) : ''}`.trim(),
                   },
                 })}
               >
-                <Bot className="h-4 w-4 shrink-0" /> Ask Homatch AI
+                <Bot className="h-4 w-4 shrink-0" /> {t('prop_ask_ai_btn')}
               </Button>
               <Button
                 size="sm"
@@ -530,12 +530,12 @@ function PropertyDetailContent() {
                 className="w-full gap-2 border-border justify-start"
                 onClick={() => navigate('/ai', {
                   state: {
-                    context: { type: 'property', id, title: property.title ?? 'This property' },
-                    prompt: `Find the same property cheaper: ${property.title ?? ''} ${facts?.total_price ? `listed at ${Number(facts.total_price).toLocaleString()} ${facts.currency ?? ''}` : ''}`.trim(),
+                    context: { type: 'property', id, title: property.title ?? t('prop_title_generic_fallback') },
+                    prompt: `${t('prop_ai_cheaper_prompt_base', { title: property.title ?? '' })} ${facts?.total_price ? t('prop_ai_listed_at', { price: Number(facts.total_price).toLocaleString(), currency: facts.currency ?? '' }) : ''}`.trim(),
                   },
                 })}
               >
-                <TrendingDown className="h-4 w-4 shrink-0 text-primary" /> Find Better Deal
+                <TrendingDown className="h-4 w-4 shrink-0 text-primary" /> {t('prop_find_better_deal_btn')}
               </Button>
               <Button
                 size="sm"
@@ -545,7 +545,7 @@ function PropertyDetailContent() {
                   state: { query: property.title ?? locationParts, tab: 'property' },
                 })}
               >
-                <Shield className="h-4 w-4 shrink-0 text-primary" /> Verify Property
+                <Shield className="h-4 w-4 shrink-0 text-primary" /> {t('prop_verify_btn')}
               </Button>
             </div>
 

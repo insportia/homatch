@@ -25,6 +25,8 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'admin_sources_platform',
   'admin_signals_platform',
   'as_type_villa', // Turkish "Villa" is the standard loanword too
+  'prop_type_villa', // Turkish "Villa" is the standard loanword too
+  'prop_building_panel', // Turkish "Panel" is the standard loanword too
   // WhatsApp/Telegram are kept in their Latin brand spelling in Georgian,
   // Russian and Turkish (as they commonly are in everyday use in those
   // languages); Arabic and Hebrew get their own transliterated forms and

@@ -28,6 +28,44 @@ import {
 
 const MAX_PHOTOS = 5;
 
+// Machine-value property type codes mapped to translation keys (stable-value pattern)
+const PROPERTY_TYPE_KEYS: Record<string, string> = {
+  APARTMENT: 'prop_type_apartment',
+  HOUSE: 'prop_type_house',
+  VILLA: 'prop_type_villa',
+  COMMERCIAL: 'prop_type_commercial',
+  LAND: 'prop_type_land',
+  STUDIO: 'prop_type_studio',
+  PENTHOUSE: 'prop_type_penthouse',
+  OTHER: 'prop_type_other',
+};
+
+const CONDITION_KEYS: Record<string, string> = {
+  NEW: 'prop_condition_new',
+  GOOD: 'prop_condition_good',
+  NEEDS_RENOVATION: 'prop_condition_needs_renovation',
+  UNDER_CONSTRUCTION: 'prop_condition_under_construction',
+};
+
+const BUILDING_TYPE_KEYS: Record<string, string> = {
+  PANEL: 'prop_building_panel',
+  BRICK: 'prop_building_brick',
+  MONOLITH: 'prop_building_monolith',
+  WOOD: 'prop_building_wood',
+};
+
+const TRANSACTION_TYPE_KEYS: Record<string, string> = {
+  SALE: 'prop_transaction_sale',
+  RENT: 'prop_transaction_rent',
+  INVESTMENT: 'prop_transaction_investment',
+};
+
+const VISIBILITY_KEYS: Record<string, string> = {
+  PRIVATE: 'private_visibility_private',
+  AUTHENTICATED: 'private_visibility_auth',
+  PUBLIC: 'private_visibility_public',
+};
+
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 interface PhotoItem {
@@ -149,7 +187,7 @@ function PrivateListingContent() {
     if (!files) return;
     const remaining = MAX_PHOTOS - photos.length;
     if (remaining <= 0) {
-      toast.error(`Maximum ${MAX_PHOTOS} photos allowed.`);
+      toast.error(t('private_toast_max_photos', { max: MAX_PHOTOS }));
       return;
     }
     const newPhotos: PhotoItem[] = [];
@@ -162,7 +200,7 @@ function PrivateListingContent() {
       });
     });
     if (Array.from(files).length > remaining) {
-      toast.warning(`Only ${remaining} more photos allowed. Extra files were skipped.`);
+      toast.warning(t('private_toast_extra_skipped', { remaining }));
     }
     setPhotos(prev => [...prev, ...newPhotos]);
   }, [photos]);
@@ -181,9 +219,9 @@ function PrivateListingContent() {
 
   const validateStep7 = (): boolean => {
     const errs: Record<string, string> = {};
-    if (!form.city) errs.city = 'Please select a city';
-    if (!form.area) errs.area = 'Area is required';
-    if (!form.totalPrice && !form.pricePerSqm) errs.price = 'At least one price field is required';
+    if (!form.city) errs.city = t('private_err_city_required');
+    if (!form.area) errs.area = t('private_err_area_required');
+    if (!form.totalPrice && !form.pricePerSqm) errs.price = t('private_err_price_required');
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -197,7 +235,10 @@ function PrivateListingContent() {
       const propId = await createProperty({
         userId: homatchUser.id,
         sourceType: 'PRIVATE_LISTING',
-        title: form.title || `Private ${form.propertyType.toLowerCase()} in ${form.city || 'Georgia'}`,
+        title: form.title || t('private_default_title', {
+          type: t(PROPERTY_TYPE_KEYS[form.propertyType] ?? 'prop_type_other'),
+          city: form.city || t('private_default_city_fallback'),
+        }),
         transactionType: form.transactionType as any,
         propertyType: form.propertyType as any,
       });
@@ -259,20 +300,20 @@ function PrivateListingContent() {
       if (coverUrl) await updateProperty(propId, { cover_photo_url: coverUrl });
 
       await logActivity(homatchUser.id, 'PRIVATE_LISTING_CREATED', propId);
-      toast.success('Private listing created!');
+      toast.success(t('private_toast_created'));
       navigate(`/property/${propId}`);
     } catch (err: any) {
       console.error('[PrivateListing] save error:', err);
       const msg: string =
         err?.message?.includes('violates foreign key')
-          ? 'User account not found. Please sign out and back in.'
+          ? t('private_err_account_not_found')
           : err?.message?.includes('violates not-null constraint')
-          ? 'A required field is missing. Please review your listing.'
+          ? t('private_err_missing_field')
           : err?.message?.includes('invalid input value for enum')
-          ? 'An invalid option was selected. Please review your listing.'
+          ? t('private_err_invalid_option')
           : err?.message?.includes('JWT')
-          ? 'Your session has expired. Please sign in again.'
-          : err?.message ?? 'Failed to create listing. Please try again.';
+          ? t('private_err_session_expired')
+          : err?.message ?? t('private_err_generic');
       toast.error(msg);
     } finally {
       // Always clear saving — prevents infinite spinner on success AND error paths
@@ -346,7 +387,7 @@ function PrivateListingContent() {
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       {['APARTMENT','HOUSE','VILLA','COMMERCIAL','LAND','STUDIO','PENTHOUSE','OTHER'].map(v => (
-                        <SelectItem key={v} value={v}>{v.charAt(0) + v.slice(1).toLowerCase()}</SelectItem>
+                        <SelectItem key={v} value={v}>{t(PROPERTY_TYPE_KEYS[v])}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -363,7 +404,7 @@ function PrivateListingContent() {
                   <Label>{t('form_city')}</Label>
                   <Select value={form.city || 'none'} onValueChange={v => { set('city', v === 'none' ? '' : v); set('district', ''); }}>
                     <SelectTrigger className="bg-secondary border-border h-10">
-                      <SelectValue placeholder="Select city" />
+                      <SelectValue placeholder={t('private_select_city_ph')} />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
@@ -379,7 +420,7 @@ function PrivateListingContent() {
                     disabled={!form.city || cityDistricts.length === 0}
                   >
                     <SelectTrigger className="bg-secondary border-border h-10">
-                      <SelectValue placeholder="Select district" />
+                      <SelectValue placeholder={t('private_select_district_ph')} />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
@@ -457,26 +498,24 @@ function PrivateListingContent() {
                 <div className="space-y-1.5">
                   <Label>{t('form_condition')}</Label>
                   <Select value={form.condition || 'none'} onValueChange={v => set('condition', v === 'none' ? '' : v)}>
-                    <SelectTrigger className="bg-secondary border-border h-10"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectTrigger className="bg-secondary border-border h-10"><SelectValue placeholder={t('private_select_generic_ph')} /></SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
-                      <SelectItem value="NEW">New</SelectItem>
-                      <SelectItem value="GOOD">Good</SelectItem>
-                      <SelectItem value="NEEDS_RENOVATION">Needs renovation</SelectItem>
-                      <SelectItem value="UNDER_CONSTRUCTION">Under construction</SelectItem>
+                      {Object.entries(CONDITION_KEYS).map(([v, key]) => (
+                        <SelectItem key={v} value={v}>{t(key)}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label>{t('form_building_type')}</Label>
                   <Select value={form.buildingType || 'none'} onValueChange={v => set('buildingType', v === 'none' ? '' : v)}>
-                    <SelectTrigger className="bg-secondary border-border h-10"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectTrigger className="bg-secondary border-border h-10"><SelectValue placeholder={t('private_select_generic_ph')} /></SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
-                      <SelectItem value="PANEL">Panel</SelectItem>
-                      <SelectItem value="BRICK">Brick</SelectItem>
-                      <SelectItem value="MONOLITH">Monolith</SelectItem>
-                      <SelectItem value="WOOD">Wood</SelectItem>
+                      {Object.entries(BUILDING_TYPE_KEYS).map(([v, key]) => (
+                        <SelectItem key={v} value={v}>{t(key)}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -529,7 +568,7 @@ function PrivateListingContent() {
                 <label className="flex flex-col items-center justify-center border-2 border-dashed border-border rounded-xl p-8 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-colors">
                   <Upload className="h-6 w-6 text-muted-foreground mb-2" />
                   <p className="text-sm text-muted-foreground">{t('private_photos_upload')}</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">JPG, PNG, WebP · max 5MB each</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">{t('private_photo_formats_hint')}</p>
                   <input
                     type="file"
                     accept="image/*"
@@ -547,12 +586,12 @@ function PrivateListingContent() {
                     <div key={idx} className="relative rounded-lg overflow-hidden aspect-square border border-border group">
                       <img
                         src={photo.previewUrl}
-                        alt={`Photo ${idx + 1}`}
+                        alt={t('private_photo_alt', { n: idx + 1 })}
                         className="w-full h-full object-cover"
                       />
                       {photo.isCover && (
                         <div className="absolute bottom-0 inset-x-0 text-[10px] font-medium bg-primary/90 text-primary-foreground text-center py-0.5">
-                          Cover
+                          {t('private_photo_cover_badge')}
                         </div>
                       )}
                       <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -561,7 +600,7 @@ function PrivateListingContent() {
                             type="button"
                             onClick={() => setCover(idx)}
                             className="w-6 h-6 bg-background/80 rounded flex items-center justify-center hover:bg-primary hover:text-primary-foreground"
-                            title="Set as cover"
+                            title={t('private_photo_set_cover_title')}
                           >
                             <Star className="h-3 w-3" />
                           </button>
@@ -570,7 +609,7 @@ function PrivateListingContent() {
                           type="button"
                           onClick={() => removePhoto(idx)}
                           className="w-6 h-6 bg-background/80 rounded flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground"
-                          title="Remove"
+                          title={t('private_photo_remove_title')}
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -588,7 +627,7 @@ function PrivateListingContent() {
               <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
                 <Lock className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                 <p className="text-sm text-muted-foreground">
-                  Your listing is private by default. Control who can see your photos and address.
+                  {t('private_privacy_default_note')}
                 </p>
               </div>
 
@@ -621,7 +660,7 @@ function PrivateListingContent() {
           {/* Step 7: Review */}
           {step === 7 && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Review your listing</h3>
+              <h3 className="text-sm font-semibold text-foreground">{t('private_review_title')}</h3>
 
               {/* Field-level errors banner */}
               {Object.keys(fieldErrors).length > 0 && (
@@ -637,14 +676,14 @@ function PrivateListingContent() {
 
               <div className="space-y-2 text-sm">
                 {[
-                  ['Title', form.title || <span className="text-muted-foreground/50">—</span>],
-                  ['Type', `${form.transactionType} · ${form.propertyType}`],
-                  ['Location', [form.city, form.district].filter(Boolean).join(', ') || <span className="text-destructive text-xs">Required</span>],
-                  ['Price', form.totalPrice ? `${form.totalPrice} ${form.currency}` : (!form.pricePerSqm ? <span className="text-destructive text-xs">Required</span> : `${form.pricePerSqm} ${form.currency}/m²`)],
-                  ['Area', form.area ? `${form.area} m²` : <span className="text-destructive text-xs">Required</span>],
-                  ['Bedrooms', form.bedrooms || '—'],
-                  ['Photos', `${photos.length} / ${MAX_PHOTOS}`],
-                  ['Privacy', form.photoVisibility],
+                  [t('private_review_label_title'), form.title || <span className="text-muted-foreground/50">—</span>],
+                  [t('private_review_label_type'), `${t(TRANSACTION_TYPE_KEYS[form.transactionType] ?? 'prop_transaction_sale')} · ${t(PROPERTY_TYPE_KEYS[form.propertyType] ?? 'prop_type_other')}`],
+                  [t('private_review_label_location'), [form.city, form.district].filter(Boolean).join(', ') || <span className="text-destructive text-xs">{t('private_review_required')}</span>],
+                  [t('prop_price_label'), form.totalPrice ? `${form.totalPrice} ${form.currency}` : (!form.pricePerSqm ? <span className="text-destructive text-xs">{t('private_review_required')}</span> : `${form.pricePerSqm} ${form.currency}/m²`)],
+                  [t('prop_area_label'), form.area ? `${form.area} m²` : <span className="text-destructive text-xs">{t('private_review_required')}</span>],
+                  [t('prop_bedrooms'), form.bedrooms || '—'],
+                  [t('private_review_label_photos'), `${photos.length} / ${MAX_PHOTOS}`],
+                  [t('private_review_label_privacy'), t(VISIBILITY_KEYS[form.photoVisibility] ?? 'private_visibility_private')],
                 ].map(([label, value]) => (
                   <div key={String(label)} className="flex items-center justify-between py-1.5 border-b border-border/40 last:border-0">
                     <span className="text-muted-foreground">{label}</span>
@@ -655,7 +694,7 @@ function PrivateListingContent() {
               <div className="flex items-center gap-2 mt-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
                 <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                 <p className="text-xs text-muted-foreground">
-                  Your listing will be created privately. Homatch will start building your search profile.
+                  {t('private_review_final_note')}
                 </p>
               </div>
             </div>
@@ -692,7 +731,7 @@ function PrivateListingContent() {
               {saving ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  Creating…
+                  {t('private_creating')}
                 </span>
               ) : t('private_submit')}
             </Button>

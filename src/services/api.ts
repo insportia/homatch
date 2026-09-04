@@ -807,7 +807,13 @@ export async function getSpendCapStatus(): Promise<SpendCapStatus[]> {
   }
   // Sum all for global
   const globalSpent = Object.values(spent).reduce((a, b) => a + b, 0);
-  const providers = ['global', 'dataforseo', 'apify', 'zenrows', 'scrapingbee', 'brightdata', 'openai'];
+  // Derive the provider list from whatever spend_cap_* settings actually
+  // exist rather than a hardcoded list -- the previous hardcoded list
+  // (dataforseo/apify/zenrows/scrapingbee/brightdata/openai) predated the
+  // outreach providers (resend/twilio/retell) and silently never showed
+  // their live spend/blocked status here even though AdminSpendCapsPage
+  // lets an admin set caps for them and cost_events has real RETELL rows.
+  const providers = ['global', ...Object.keys(caps).filter((p) => p !== 'global').sort()];
   return providers.map(p => {
     const capUsd = caps[p] ?? 999999;
     const spentUsd = p === 'global' ? globalSpent : (spent[p] ?? 0);

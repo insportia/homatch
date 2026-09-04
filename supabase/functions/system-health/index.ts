@@ -73,14 +73,21 @@ Deno.serve(async (req: Request) => {
   }, {});
 
   // ── 4. Last matching runs ────────────────────────────────────
+  // matching_campaigns.status/status_v2 describe campaign LIFECYCLE
+  // (active/paused/archived), not whether a match RUN succeeded -- neither
+  // enum even has an 'ERROR' or 'COMPLETED'... wait, campaign_status has no
+  // 'COMPLETED'/'ERROR' value at all, so the previous version of this check
+  // could never detect a failed run. matching_jobs is the real per-run
+  // pipeline table (status: completed/partially_completed/failed/...,
+  // populated by run-matching-v2), so that's the correct source for this.
   const { data: recentRuns } = await supabase
-    .from('matching_campaigns')
-    .select('updated_at, status')
+    .from('matching_jobs')
+    .select('updated_at, completed_at, status, error_message')
     .order('updated_at', { ascending: false })
     .limit(20);
 
-  const lastOk = (recentRuns ?? []).find(r => r.status === 'ACTIVE' || r.status === 'COMPLETED');
-  const lastFailed = (recentRuns ?? []).find(r => r.status === 'ERROR');
+  const lastOk = (recentRuns ?? []).find(r => r.status === 'completed' || r.status === 'partially_completed');
+  const lastFailed = (recentRuns ?? []).find(r => r.status === 'failed');
 
   // ── 5. Spend cap snapshot ───────────────────────────────────
   const monthStart = new Date();

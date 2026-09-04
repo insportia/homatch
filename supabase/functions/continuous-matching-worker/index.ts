@@ -34,7 +34,14 @@ async function run(db: any, baseUrl: string, serviceKey: string) {
   const maxJobs = Math.min(25, Math.max(1, Number(await setting(db, 'external_discovery_max_jobs_per_property_tick', 10))));
   const freshSince = new Date(Date.now() - freshHours * 3600000).toISOString();
   let externalProperties = 0;
-  const { data: campaigns, error } = await db.from('matching_campaigns').select(`id,property_id,status,property:properties!property_id(id,matching_status)`).eq('status', 'ACTIVE');
+  // NOTE: matching_campaigns has two status columns from a schema migration
+  // (legacy text `status`, default 'PENDING', never updated by real write
+  // paths; enum `status_v2`, actually set to 'ACTIVE' by match-campaign and
+  // payment-webhook). Filtering on legacy `status` here meant this cron
+  // worker matched zero real campaigns -- only demo-seeded rows (which set
+  // both columns) ever showed up. Filter on status_v2, the column real
+  // campaigns actually carry.
+  const { data: campaigns, error } = await db.from('matching_campaigns').select(`id,property_id,status_v2,property:properties!property_id(id,matching_status)`).eq('status_v2', 'ACTIVE');
   if (error) throw error;
 
   for (const campaign of campaigns || []) {

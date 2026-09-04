@@ -52,7 +52,7 @@ export default function AdminPaymentsPage() {
                       ${Number(p.amount_usd ?? 0).toFixed(2)}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs font-mono">
-                      {p.credits_granted != null ? Number(p.credits_granted).toFixed(2) : '—'}
+                      {p.credits_issued != null ? Number(p.credits_issued).toFixed(2) : '—'}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <Badge variant="outline" className="text-[10px]">{p.provider ?? '—'}</Badge>

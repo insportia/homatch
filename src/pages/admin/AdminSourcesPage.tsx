@@ -57,22 +57,21 @@ export default function AdminSourcesPage() {
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_url')}</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_platform')}</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_quality')}</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_members')}</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_last_collected')}</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground whitespace-nowrap">{t('admin_sources_active')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i}><td colSpan={6} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
+                  <tr key={i}><td colSpan={5} className="px-4 py-2"><Skeleton className="h-5 w-full" /></td></tr>
                 )) : filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">{t('admin_sources_empty')}</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">{t('admin_sources_empty')}</td></tr>
                 ) : filtered.map(s => (
                   <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-2.5 whitespace-nowrap max-w-[220px]">
                       <a href={s.url} target="_blank" rel="noopener noreferrer"
                         className="text-primary hover:underline truncate block text-xs">{s.url ?? '—'}</a>
-                      {s.display_name && <div className="text-xs text-muted-foreground truncate">{s.display_name}</div>}
+                      {s.name && <div className="text-xs text-muted-foreground truncate">{s.name}</div>}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <Badge variant="outline" className="text-[10px]">{s.platform ?? '—'}</Badge>
@@ -84,9 +83,6 @@ export default function AdminSourcesPage() {
                         </div>
                         <span className="text-xs text-muted-foreground">{qScore(s).toFixed(1)}</span>
                       </div>
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">
-                      {s.member_count != null ? s.member_count.toLocaleString() : '—'}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">
                       {s.last_collected_at ? format(new Date(s.last_collected_at), 'MMM d, HH:mm') : '—'}

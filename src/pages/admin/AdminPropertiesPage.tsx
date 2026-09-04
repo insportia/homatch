@@ -63,7 +63,7 @@ export default function AdminPropertiesPage() {
                       {[p.property_facts?.city, p.property_facts?.country_code].filter(Boolean).join(', ') || '—'}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant="outline" className="text-[10px]">{p.property_facts?.property_type ?? '—'}</Badge>
+                      <Badge variant="outline" className="text-[10px]">{p.property_type ?? '—'}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <Badge variant="secondary" className="text-[10px]">{p.source_type ?? '—'}</Badge>

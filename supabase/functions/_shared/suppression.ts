@@ -82,6 +82,39 @@ function checkCallingWindow(_country?: string | null): boolean {
   return false;
 }
 
+// ── Unsubscribe link signing (Task #64) ─────────────────────────
+// One-click email unsubscribe needs a link a recipient can click with no
+// Supabase session — so it can't be auth-gated. Instead it's a signed token:
+// HMAC-SHA256(contact_id) using the service role key as key material (the
+// same "reuse an existing server-only secret for HMAC" pattern retell-webhook
+// already uses for its signature check — the digest that leaves the server
+// reveals nothing about the key, so this doesn't need a brand-new secret to
+// be configured). Verified server-side in outreach-unsubscribe; a forged or
+// tampered contact id/token pair will not produce a matching digest.
+//
+// NOTE: both actual consumers (outreach-send, which signs; outreach-unsubscribe,
+// which verifies) currently carry their own inlined copy of these two
+// functions rather than importing them from here — a multi-file edge
+// function deploy that included this shared file proved fragile in this
+// sandbox's deploy tool (see the comment atop outreach-unsubscribe/index.ts).
+// Kept here anyway as the canonical, documented version — keep all three
+// copies in sync if the signing scheme ever changes.
+export async function signUnsubscribeToken(contactId: string, secret: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(contactId));
+  return Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function verifyUnsubscribeToken(contactId: string, token: string, secret: string): Promise<boolean> {
+  const expected = await signUnsubscribeToken(contactId, secret);
+  if (expected.length !== token.length) return false;
+  // Constant-time-ish compare (length already checked equal above).
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ token.charCodeAt(i);
+  return diff === 0;
+}
+
 /** Normalize phone to E.164 with confidence scoring */
 export function normalizePhone(
   raw: string,

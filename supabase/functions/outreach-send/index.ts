@@ -17,6 +17,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Same HMAC helper as _shared/suppression.ts's signUnsubscribeToken (and the
+// inlined copy in outreach-unsubscribe/index.ts, which verifies this token).
+// Duplicated here rather than imported: this function already has a working
+// multi-file deploy bundling outreach_providers.ts and spend_cap.ts, but
+// adding a third shared file for one small function proved fragile in this
+// sandbox's deploy tool during testing, so it's kept self-contained instead.
+// Keep in sync with the other two copies if the signing scheme changes.
+async function signUnsubscribeToken(contactId: string, secret: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(contactId));
+  return Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 const BATCH_SIZE = 40;
 
 serve(async (req) => {
@@ -145,10 +159,22 @@ serve(async (req) => {
       };
 
       if (channel === 'EMAIL' && emailAdapter) {
+        // Task #64: every outreach email must carry a working one-click
+        // unsubscribe link — outreach_contacts.unsubscribed was already
+        // enforced (checked below, and by checkEligibility in
+        // _shared/suppression.ts) but nothing could ever set it, because no
+        // email ever contained a link and no endpoint existed to handle a
+        // click. Token is per-contact HMAC-SHA256, verified server-side in
+        // outreach-unsubscribe — a contact can only unsubscribe themselves.
+        const unsubToken = await signUnsubscribeToken(contact.id, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+        const unsubUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/outreach-unsubscribe?contact=${encodeURIComponent(contact.id)}&token=${unsubToken}`;
+        const bodyHtml = campaign.html_body || `<p>${(campaign.text_body || '').replace(/\n/g, '<br/>')}</p>`;
+        const htmlWithFooter = `${bodyHtml}\n<hr style="margin-top:24px;border:none;border-top:1px solid #e5e5e5"/>\n<p style="font-size:11px;color:#888;margin-top:12px">Homatch &middot; <a href="${unsubUrl}" style="color:#888">Unsubscribe</a></p>`;
+        const textWithFooter = campaign.text_body ? `${campaign.text_body}\n\n---\nUnsubscribe: ${unsubUrl}` : undefined;
         const result = await emailAdapter.send({
           to: contact.email!, subject: campaign.subject || campaign.name,
-          html: campaign.html_body || `<p>${(campaign.text_body || '').replace(/\n/g, '<br/>')}</p>`,
-          text: campaign.text_body || undefined,
+          html: htmlWithFooter,
+          text: textWithFooter,
           from_name: campaign.sender_name || 'Homatch', from_email: campaign.sender_email || undefined,
           reply_to: campaign.reply_to || undefined, campaign_id,
         });

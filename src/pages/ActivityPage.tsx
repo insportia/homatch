@@ -10,6 +10,7 @@ import {
   Zap, PauseCircle, Trash2, Activity,
   Unlock, CreditCard, Play,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const EVENT_ICONS: Record<string, React.ElementType> = {
   PROPERTY_ADDED:          PlusCircle,
@@ -125,11 +126,11 @@ function ActivityContent() {
 
   useEffect(() => {
     if (!homatchUser) return;
-    getActivityEvents(homatchUser.id, 50).then(data => {
-      setEvents(data);
-      setLoading(false);
-    });
-  }, [homatchUser]);
+    getActivityEvents(homatchUser.id, 50)
+      .then(data => { setEvents(data); })
+      .catch(() => { toast.error(t('activity_load_error')); })
+      .finally(() => setLoading(false));
+  }, [homatchUser, t]);
 
   return (
     <AppLayout>

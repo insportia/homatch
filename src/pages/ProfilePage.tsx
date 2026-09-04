@@ -93,10 +93,18 @@ function ProfileContent() {
   // ── Identity (Google vs password) ───────────────────────────
   const [identities, setIdentities] = useState<string[] | null>(null);
   useEffect(() => {
-    supabase.auth.getUserIdentities().then(({ data }) => {
+    supabase.auth.getUserIdentities().then(({ data, error }) => {
+      if (error) throw error;
       setIdentities((data?.identities ?? []).map(i => i.provider));
+    }).catch((err) => {
+      // Previously unchecked: on failure `identities` stayed null forever,
+      // which makes hasGoogle/hasEmailAuth both silently default to false —
+      // that can hide the "change password" section from a real email/
+      // password user. Surface it instead of failing silently.
+      console.error('[ProfilePage] failed to load identities:', err);
+      toast.error(t('profile_identities_load_error'));
     });
-  }, [session]);
+  }, [session, t]);
   const hasGoogle = identities?.includes('google') ?? false;
   const hasEmailAuth = identities?.includes('email') ?? false;
 

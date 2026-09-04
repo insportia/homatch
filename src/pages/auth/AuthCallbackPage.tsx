@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { toast } from 'sonner';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
@@ -16,48 +17,68 @@ export default function AuthCallbackPage() {
     let cancelled = false;
 
     async function handleCallback() {
-      // ── Step 1: Exchange PKCE code if present in the URL ──────────────
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
+      try {
+        // ── Step 1: Exchange PKCE code if present in the URL ──────────────
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
 
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          console.error('[auth/callback] PKCE exchange failed:', error.message);
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error('[auth/callback] PKCE exchange failed:', error.message);
+          }
+        }
+
+        // ── Step 2: Get the resulting session ─────────────────────────────
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session || cancelled) {
+          // Fallback: wait for onAuthStateChange (covers hash-based implicit flow)
+          const { data: listener } = supabase.auth.onAuthStateChange(async (event, s) => {
+            if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && s && !cancelled) {
+              listener.subscription.unsubscribe();
+              try {
+                await ensureUserRow(s.user.id, s.user.email, s.user.user_metadata);
+                redirect();
+              } catch (err) {
+                console.error('[auth/callback] failed after sign-in event:', err);
+                if (!cancelled) { toast.error(t('auth_callback_failed')); navigate('/login', { replace: true }); }
+              }
+            }
+          });
+
+          // Timeout fallback after 8 s
+          const t = setTimeout(() => {
+            if (!cancelled) {
+              listener.subscription.unsubscribe();
+              navigate('/dashboard', { replace: true });
+            }
+          }, 8000);
+
+          return () => {
+            cancelled = true;
+            clearTimeout(t);
+            listener.subscription.unsubscribe();
+          };
+        }
+
+        // ── Step 3: Session obtained — ensure row + redirect ──────────────
+        await ensureUserRow(session.user.id, session.user.email, session.user.user_metadata);
+        redirect();
+      } catch (err) {
+        // Previously unhandled: a thrown error anywhere above (a network
+        // blip during the PKCE exchange or the users-row lookup/insert)
+        // left the promise returned by handleCallback() rejected with
+        // nothing to catch it — the user was stuck on this spinner forever
+        // with no error and no way forward. Now falls back to the login
+        // page with a visible error instead of hanging indefinitely.
+        console.error('[auth/callback] unexpected error:', err);
+        if (!cancelled) {
+          toast.error(t('auth_callback_failed'));
+          navigate('/login', { replace: true });
         }
       }
-
-      // ── Step 2: Get the resulting session ─────────────────────────────
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session || cancelled) {
-        // Fallback: wait for onAuthStateChange (covers hash-based implicit flow)
-        const { data: listener } = supabase.auth.onAuthStateChange(async (event, s) => {
-          if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && s && !cancelled) {
-            listener.subscription.unsubscribe();
-            await ensureUserRow(s.user.id, s.user.email, s.user.user_metadata);
-            redirect();
-          }
-        });
-
-        // Timeout fallback after 8 s
-        const t = setTimeout(() => {
-          if (!cancelled) {
-            listener.subscription.unsubscribe();
-            navigate('/dashboard', { replace: true });
-          }
-        }, 8000);
-
-        return () => {
-          cancelled = true;
-          clearTimeout(t);
-          listener.subscription.unsubscribe();
-        };
-      }
-
-      // ── Step 3: Session obtained — ensure row + redirect ──────────────
-      await ensureUserRow(session.user.id, session.user.email, session.user.user_metadata);
-      redirect();
+      return undefined;
     }
 
     async function ensureUserRow(

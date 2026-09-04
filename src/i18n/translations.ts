@@ -146,6 +146,7 @@ const en = {
   empty_no_activity_desc: 'Your recent platform activity will appear here.',
   empty_no_notifications_title: 'No notifications',
   empty_no_notifications_desc: 'You are all caught up.',
+  notif_load_error: 'Failed to load notifications',
 
   // Homepage
   hero_badge: 'AI Property Matching',
@@ -332,6 +333,7 @@ const en = {
 
   // Activity
   activity_title: 'Activity',
+  activity_load_error: 'Failed to load activity',
   activity_empty: 'No activity yet.',
   activity_property_added: 'Property added',
   activity_import_started: 'Import started',
@@ -431,6 +433,7 @@ const en = {
   nav_live_chat: 'Live Chat',
   live_chat_dashboard_desc: 'Chat live with the whole Homatch community',
   live_chat_title: 'Live Chat',
+  live_chat_profile_load_error: 'Failed to load your Live Chat profile',
   live_chat_subtitle: 'One global room for everyone on Homatch',
   live_chat_nickname_title: 'Choose your nickname',
   live_chat_nickname_desc: "This is the name other members will see in Live Chat. Your email and phone stay private.",
@@ -496,6 +499,7 @@ const en = {
   profile_save: 'Save Changes',
   profile_save_success: 'Profile updated.',
   profile_save_failed: 'Could not save changes.',
+  profile_identities_load_error: 'Could not load your sign-in methods.',
   profile_manage_billing: 'Manage Billing',
   profile_payment_history: 'Payment History',
   profile_no_payments: 'No payments yet.',
@@ -1592,6 +1596,7 @@ const en = {
   auth_hide_password: 'Hide password',
   auth_show_password: 'Show password',
   auth_signing_in: 'Signing you in…',
+  auth_callback_failed: 'Sign-in failed. Please try again.',
 
   // ── AI Page ──────────────────────────────────────────────
   ai_confidence: 'Confidence',
@@ -2415,6 +2420,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   empty_no_activity_desc: 'თქვენი ბოლო აქტივობა აქ გამოჩნდება.',
   empty_no_notifications_title: 'შეტყობინება არ არის',
   empty_no_notifications_desc: 'ყველა შეტყობინება წაკითხულია.',
+  notif_load_error: 'შეტყობინებების ჩატვირთვა ვერ მოხერხდა',
 
   // Homepage hero
   hero_badge: 'AI-ქონების შეთავსება',
@@ -2607,6 +2613,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   // Activity
   activity_title: 'აქტივობა',
+  activity_load_error: 'აქტივობის ჩატვირთვა ვერ მოხერხდა',
   activity_empty: 'აქტივობა არ არის.',
   activity_property_added: 'ქონება დაემატა',
   activity_import_started: 'იმპორტი დაიწყო',
@@ -2750,6 +2757,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   nav_live_chat: 'ლაივ ჩატი',
   live_chat_dashboard_desc: 'ესაუბრეთ Homatch-ის მთელ საზოგადოებას',
   live_chat_title: 'ლაივ ჩატი',
+  live_chat_profile_load_error: 'თქვენი ლაივ ჩატის პროფილის ჩატვირთვა ვერ მოხერხდა',
   live_chat_subtitle: 'ერთი საერთო ოთახი Homatch-ის ყველა მომხმარებლისთვის',
   live_chat_nickname_title: 'აირჩიეთ მეტსახელი',
   live_chat_nickname_desc: 'ეს სახელი გამოჩნდება სხვა მომხმარებლებისთვის ლაივ ჩატში. თქვენი ელფოსტა და ტელეფონი კონფიდენციალურია.',
@@ -2812,6 +2820,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   profile_save: 'ცვლილებების შენახვა',
   profile_save_success: 'პროფილი განახლდა.',
   profile_save_failed: 'ცვლილებების შენახვა ვერ მოხერხდა.',
+  profile_identities_load_error: 'შესვლის მეთოდების ჩატვირთვა ვერ მოხერხდა.',
   profile_manage_billing: 'ბილინგის მართვა',
   profile_payment_history: 'გადახდების ისტორია',
   profile_no_payments: 'გადახდები ჯერ არ არის.',
@@ -3797,6 +3806,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   auth_hide_password: 'პაროლის დამალვა',
   auth_show_password: 'პაროლის ჩვენება',
   auth_signing_in: 'შედიხართ სისტემაში…',
+  auth_callback_failed: 'შესვლა ვერ მოხერხდა. სცადეთ ხელახლა.',
 
   // ── AI Page ──────────────────────────────────────────────
   ai_confidence: 'სანდოობა',
@@ -4618,6 +4628,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   empty_no_activity_desc: 'Ваша последняя активность появится здесь.',
   empty_no_notifications_title: 'Уведомлений нет',
   empty_no_notifications_desc: 'Вы всё прочитали.',
+  notif_load_error: 'Не удалось загрузить уведомления',
 
   // Hero
   hero_badge: 'AI-подбор недвижимости',
@@ -4788,6 +4799,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   // Activity
   activity_title: 'Активность',
+  activity_load_error: 'Не удалось загрузить активность',
   activity_empty: 'Пока нет активности.',
   activity_property_added: 'Объект добавлен',
   activity_import_started: 'Импорт начат',
@@ -4928,6 +4940,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   nav_live_chat: 'Живой чат',
   live_chat_dashboard_desc: 'Общайтесь со всем сообществом Homatch',
   live_chat_title: 'Живой чат',
+  live_chat_profile_load_error: 'Не удалось загрузить ваш профиль живого чата',
   live_chat_subtitle: 'Одна общая комната для всех пользователей Homatch',
   live_chat_nickname_title: 'Выберите никнейм',
   live_chat_nickname_desc: 'Это имя увидят другие участники в Живом чате. Ваш email и телефон останутся приватными.',
@@ -4983,6 +4996,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   profile_save: 'Сохранить изменения',
   profile_save_success: 'Профиль обновлён.',
   profile_save_failed: 'Не удалось сохранить изменения.',
+  profile_identities_load_error: 'Не удалось загрузить способы входа.',
   profile_manage_billing: 'Управление биллингом',
   profile_payment_history: 'История платежей',
   profile_no_payments: 'Платежей пока нет.',
@@ -6000,6 +6014,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   auth_hide_password: 'Скрыть пароль',
   auth_show_password: 'Показать пароль',
   auth_signing_in: 'Выполняется вход…',
+  auth_callback_failed: 'Не удалось войти. Попробуйте ещё раз.',
 
   // ── AI Page ──────────────────────────────────────────────
   ai_confidence: 'Уверенность',
@@ -6821,6 +6836,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   empty_no_activity_desc: 'Son platform aktiviteniz burada görünecek.',
   empty_no_notifications_title: 'Bildirim yok',
   empty_no_notifications_desc: 'Her şeyi okudunuz.',
+  notif_load_error: 'Bildirimler yüklenemedi',
 
   // Hero
   hero_badge: 'AI Mülk Eşleştirme',
@@ -6946,6 +6962,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   // Activity
   activity_title: 'Aktivite',
+  activity_load_error: 'Aktivite yüklenemedi',
   activity_empty: 'Henüz aktivite yok.',
   activity_property_added: 'Mülk eklendi',
   activity_import_completed: 'İçe aktarma tamamlandı',
@@ -7053,6 +7070,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   profile_save: 'Değişiklikleri Kaydet',
   profile_save_success: 'Profil güncellendi.',
   profile_save_failed: 'Değişiklikler kaydedilemedi.',
+  profile_identities_load_error: 'Giriş yöntemleriniz yüklenemedi.',
   profile_manage_billing: 'Faturayı Yönet',
   profile_payment_history: 'Ödeme Geçmişi',
   profile_no_payments: 'Henüz ödeme yok.',
@@ -7213,6 +7231,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   nav_live_chat: 'Canlı Sohbet',
   live_chat_dashboard_desc: "Homatch'in tüm topluluğuyla canlı sohbet edin",
   live_chat_title: 'Canlı Sohbet',
+  live_chat_profile_load_error: 'Canlı Sohbet profiliniz yüklenemedi',
   live_chat_subtitle: "Homatch'teki herkes için tek bir genel oda",
   live_chat_nickname_title: 'Takma adınızı seçin',
   live_chat_nickname_desc: 'Diğer üyeler Canlı Sohbette bu adı görecek. E-postanız ve telefonunuz gizli kalır.',
@@ -8201,6 +8220,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   auth_hide_password: 'Şifreyi gizle',
   auth_show_password: 'Şifreyi göster',
   auth_signing_in: 'Giriş yapılıyor…',
+  auth_callback_failed: 'Giriş başarısız oldu. Lütfen tekrar deneyin.',
 
   // ── AI Page ──────────────────────────────────────────────
   ai_confidence: 'Güven',
@@ -9022,6 +9042,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   empty_no_activity_desc: 'سيظهر نشاطك الأخير هنا.',
   empty_no_notifications_title: 'لا توجد إشعارات',
   empty_no_notifications_desc: 'لقد اطّلعت على كل شيء.',
+  notif_load_error: 'فشل تحميل الإشعارات',
 
   // Hero
   hero_badge: 'مطابقة العقارات بالذكاء الاصطناعي',
@@ -9144,6 +9165,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   // Activity
   activity_title: 'النشاط',
+  activity_load_error: 'فشل تحميل النشاط',
   activity_empty: 'لا يوجد نشاط بعد.',
   activity_property_added: 'تمت إضافة العقار',
   activity_import_completed: 'اكتمل الاستيراد',
@@ -9247,6 +9269,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   profile_save: 'حفظ التغييرات',
   profile_save_success: 'تم تحديث الملف الشخصي.',
   profile_save_failed: 'تعذر حفظ التغييرات.',
+  profile_identities_load_error: 'تعذر تحميل طرق تسجيل الدخول الخاصة بك.',
   profile_manage_billing: 'إدارة الفوترة',
   profile_payment_history: 'سجل المدفوعات',
   profile_no_payments: 'لا توجد مدفوعات بعد.',
@@ -9411,6 +9434,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   nav_live_chat: 'الدردشة المباشرة',
   live_chat_dashboard_desc: 'تحدث مباشرة مع مجتمع Homatch بأكمله',
   live_chat_title: 'الدردشة المباشرة',
+  live_chat_profile_load_error: 'تعذر تحميل ملف الدردشة المباشرة الخاص بك',
   live_chat_subtitle: 'غرفة عامة واحدة لجميع مستخدمي Homatch',
   live_chat_nickname_title: 'اختر اسمك المستعار',
   live_chat_nickname_desc: 'هذا هو الاسم الذي سيراه الأعضاء الآخرون في الدردشة المباشرة. يبقى بريدك الإلكتروني ورقم هاتفك خاصين.',
@@ -10402,6 +10426,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   auth_hide_password: 'إخفاء كلمة المرور',
   auth_show_password: 'إظهار كلمة المرور',
   auth_signing_in: 'جارٍ تسجيل الدخول…',
+  auth_callback_failed: 'فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.',
 
   // ── AI Page ──────────────────────────────────────────────
   ai_confidence: 'مستوى الثقة',
@@ -11223,6 +11248,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   empty_no_activity_desc: 'הפעילות האחרונה שלך תופיע כאן.',
   empty_no_notifications_title: 'אין התראות',
   empty_no_notifications_desc: 'קראת הכל.',
+  notif_load_error: 'טעינת ההתראות נכשלה',
 
   // Hero
   hero_badge: 'התאמת נכסים בבינה מלאכותית',
@@ -11345,6 +11371,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   // Activity
   activity_title: 'פעילות',
+  activity_load_error: 'טעינת הפעילות נכשלה',
   activity_empty: 'אין פעילות עדיין.',
   activity_property_added: 'נכס נוסף',
   activity_import_completed: 'ייבוא הושלם',
@@ -11444,6 +11471,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   profile_save: 'שמור שינויים',
   profile_save_success: 'הפרופיל עודכן.',
   profile_save_failed: 'לא ניתן לשמור שינויים.',
+  profile_identities_load_error: 'לא ניתן היה לטעון את שיטות ההתחברות שלך.',
   profile_manage_billing: 'נהל חיוב',
   profile_payment_history: 'היסטוריית תשלומים',
   profile_no_payments: 'אין תשלומים עדיין.',
@@ -11614,6 +11642,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   nav_live_chat: 'צ׳אט חי',
   live_chat_dashboard_desc: 'שוחחו בזמן אמת עם כל קהילת Homatch',
   live_chat_title: 'צ׳אט חי',
+  live_chat_profile_load_error: 'טעינת פרופיל הצ׳אט החי שלך נכשלה',
   live_chat_subtitle: 'חדר גלובלי אחד לכל משתמשי Homatch',
   live_chat_nickname_title: 'בחרו כינוי',
   live_chat_nickname_desc: 'זהו השם שחברים אחרים יראו בצ׳אט החי. האימייל והטלפון שלכם נשארים פרטיים.',
@@ -12603,6 +12632,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   auth_hide_password: 'הסתר סיסמה',
   auth_show_password: 'הצג סיסמה',
   auth_signing_in: 'מתחבר…',
+  auth_callback_failed: 'ההתחברות נכשלה. נסה/י שוב.',
 
   // ── AI Page ──────────────────────────────────────────────
   ai_confidence: 'רמת ביטחון',

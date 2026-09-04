@@ -127,9 +127,12 @@ export default function LiveChatPage() {
 
   useEffect(() => {
     if (!homatchUser) return;
-    getMyLiveChatProfile(homatchUser.id).then(p => { setProfile(p); setProfileLoading(false); });
-    getMyBlockedUserIds(homatchUser.id).then(setBlocked);
-  }, [homatchUser]);
+    getMyLiveChatProfile(homatchUser.id)
+      .then(p => { setProfile(p); })
+      .catch(() => { toast.error(t('live_chat_profile_load_error')); })
+      .finally(() => setProfileLoading(false));
+    getMyBlockedUserIds(homatchUser.id).then(setBlocked).catch(() => { console.error('[LiveChatPage] failed to load blocked users'); });
+  }, [homatchUser, t]);
 
   const loadInitial = useCallback(async () => {
     setLoading(true);

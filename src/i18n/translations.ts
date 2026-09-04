@@ -2244,6 +2244,10 @@ const en = {
   // ── Admin Health History (Task #65) ──────────────────────────────────────────────
   admin_health_history_title: 'Recent health checks',
   admin_health_history_empty: 'No health checks recorded yet',
+
+  // ── Verify Source Quality Breakdown (Task #56) ──────────────────────────────────────────────
+  verify_source_quality_label: 'Source quality',
+  verify_source_quality_ratio: '{{n}}/{{total}} official or registry sources',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -4422,6 +4426,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   // ── Admin Health History (Task #65) ──────────────────────────────────────────────
   admin_health_history_title: 'ბოლო შემოწმებები',
   admin_health_history_empty: 'სისტემის შემოწმებები ჯერ არ ჩატარებულა',
+
+  // ── Verify Source Quality Breakdown (Task #56) ──────────────────────────────────────────────
+  verify_source_quality_label: 'წყაროების ხარისხი',
+  verify_source_quality_ratio: '{{n}}/{{total}} ოფიციალური ან სარეესტრო წყარო',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -6598,6 +6606,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   // ── Admin Health History (Task #65) ──────────────────────────────────────────────
   admin_health_history_title: 'Последние проверки системы',
   admin_health_history_empty: 'Проверок системы пока не было',
+
+  // ── Verify Source Quality Breakdown (Task #56) ──────────────────────────────────────────────
+  verify_source_quality_label: 'Качество источников',
+  verify_source_quality_ratio: '{{n}}/{{total}} официальных или реестровых источников',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -8772,6 +8784,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   // ── Admin Health History (Task #65) ──────────────────────────────────────────────
   admin_health_history_title: 'Son sistem kontrolleri',
   admin_health_history_empty: 'Henüz kaydedilmiş sistem kontrolü yok',
+
+  // ── Verify Source Quality Breakdown (Task #56) ──────────────────────────────────────────────
+  verify_source_quality_label: 'Kaynak kalitesi',
+  verify_source_quality_ratio: '{{n}}/{{total}} resmi veya sicil kaynağı',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -10946,6 +10962,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   // ── Admin Health History (Task #65) ──────────────────────────────────────────────
   admin_health_history_title: 'آخر فحوصات النظام',
   admin_health_history_empty: 'لم يتم تسجيل أي فحوصات نظام بعد',
+
+  // ── Verify Source Quality Breakdown (Task #56) ──────────────────────────────────────────────
+  verify_source_quality_label: 'جودة المصادر',
+  verify_source_quality_ratio: '{{n}}/{{total}} مصادر رسمية أو سجلية',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -13120,6 +13140,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   // ── Admin Health History (Task #65) ──────────────────────────────────────────────
   admin_health_history_title: 'בדיקות תקינות אחרונות',
   admin_health_history_empty: 'טרם נרשמו בדיקות תקינות',
+
+  // ── Verify Source Quality Breakdown (Task #56) ──────────────────────────────────────────────
+  verify_source_quality_label: 'איכות המקורות',
+  verify_source_quality_ratio: '{{n}}/{{total}} מקורות רשמיים או ממרשם',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

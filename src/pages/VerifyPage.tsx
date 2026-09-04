@@ -496,6 +496,35 @@ function ResearchResultView({
             <CardTitle className="text-sm">{t('verify_data_sources')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2.5">
+            {/* Source-quality breakdown — a real aggregate of the evidenceLevel
+                every source below already carries (classifyDomain() in
+                homatch-research), not a new signal invented for this view. */}
+            {(() => {
+              const levels: SourceEvidenceLevel[] = ['OFFICIAL', 'MUNICIPAL', 'REGISTRY', 'WEB_INDEXED'];
+              const counts = levels.map((lv) => ({ lv, n: report.sources.filter((s) => (s.evidenceLevel ?? 'WEB_INDEXED') === lv).length }));
+              const total = report.sources.length;
+              const nonWeb = counts.filter((c) => c.lv !== 'WEB_INDEXED').reduce((sum, c) => sum + c.n, 0);
+              return (
+                <div className="space-y-1.5 pb-2.5 border-b border-border/30">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">{t('verify_source_quality_label')}</span>
+                    <span className="font-medium">{t('verify_source_quality_ratio', { n: nonWeb, total })}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden flex">
+                    {counts.filter((c) => c.n > 0).map((c) => (
+                      <div key={c.lv} className={SOURCE_LEVEL_CONFIG[c.lv].color.split(' ')[0]} style={{ width: `${(c.n / total) * 100}%` }} />
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {counts.filter((c) => c.n > 0).map((c) => (
+                      <span key={c.lv} className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <SourceLevelBadge level={c.lv} /> × {c.n}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {report.sources.map((src, i) => (
               <div key={i} className="flex flex-col gap-1 text-xs pb-2 border-b border-border/30 last:border-0 last:pb-0">
                 <div className="flex items-center gap-2 flex-wrap">

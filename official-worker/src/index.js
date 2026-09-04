@@ -51,7 +51,16 @@ function safeUrl(u){try{const x=new URL(u);return['http:','https:'].includes(x.p
 // like the tbilisi.gov.ge portal chrome" read was inferred from page TEXT
 // content only, not from confirmed iframe structure.
 function snippetAround(haystack,needle,radius=90){if(!haystack||!needle)return null;const i=haystack.indexOf(needle);if(i<0)return null;return haystack.slice(Math.max(0,i-radius),i+needle.length+radius).replace(/\s+/g,' ').trim()}
-const text=async(p,n=120000)=>{try{return(await p.locator('body').innerText({timeout:10000})).slice(0,n)}catch{return''}};async function visible(x){try{return await x.count()&&await x.isVisible()}catch{return false}}
+// text() (2026-09-04 fix): was reading ONLY the top-level document's body,
+// which is why a real, confirmed submission on TAS (searchControlUsed:
+// input[name*="cad" i], submitAction: ENTER_KEY, job f7cba28c-...) still
+// produced an EMPTY resultContext and SUBMITTED_UNCONFIRMED — the actual
+// ExtJS result content renders inside the docs.tbilisi.gov.ge iframe, which
+// this never looked at. Now aggregates innerText across every frame
+// Playwright sees (same frame set pageLinks()/fillAny() already use via
+// contexts()), so a result rendered inside an embedded app is actually
+// visible to the evidence-gating logic instead of silently invisible.
+const text=async(p,n=120000)=>{const parts=[];for(const f of contexts(p)){try{parts.push(await f.locator('body').innerText({timeout:8000}))}catch{}}return parts.join('\n').slice(0,n)};async function visible(x){try{return await x.count()&&await x.isVisible()}catch{return false}}
 async function challenge(p){for(const f of p.frames()){for(const s of ['iframe[src*="recaptcha" i]','iframe[src*="hcaptcha" i]','iframe[src*="turnstile" i]','.g-recaptcha','.h-captcha','.cf-turnstile','[class*="captcha" i]','[id*="captcha" i]','[role="checkbox"][aria-label*="robot" i]']){const x=f.locator(s).first();if(await visible(x))return{frame:f,el:x,matched:s}}const b=(await f.locator('body').innerText().catch(()=>'' )).slice(0,15000).toLowerCase();if(/verify you are human|i am not a robot|i'm not a robot|captcha|მე არ ვარ რობოტი|არ ვარ რობოტი/.test(b)){const x=f.locator('iframe,input,button,[role="checkbox"],[role="dialog"]').first();if(await visible(x))return{frame:f,el:x,matched:'text-fallback'}}}return null}const contexts=p=>[p.mainFrame(),...p.frames().filter(f=>f!==p.mainFrame())];
 // fillAny: the specific `hints` selectors are tried first (highest
 // confidence — these are the actual cadastral/property-search fields we

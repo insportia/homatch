@@ -422,18 +422,47 @@ app.post('/debug/msmap',auth,async(req,res)=>{
         clickResult={attempted:false,note:'no visible element containing the query prefix was found to click'};
       }
     }
+    // Round 3 (same live session — after confirming the suggestion click
+    // genuinely re-centers the map and draws the selected parcel's boundary
+    // polygon, coordinates+zoom changed and ~260 new WMS/tile requests
+    // fired): the mandate's "open details" step means clicking the drawn
+    // feature itself, the way a human exploring a GIS map would, to see
+    // whether an attribute popup (owner/area/registration data, or document
+    // links) appears. The map recenters ON the selected feature, so its
+    // centroid sits at (or very near) the exact center of the map viewport
+    // — clicking there is the standard, non-guessing way to hit it without
+    // needing per-parcel pixel geometry.
+    let featureClickResult={attempted:false};
+    let afterFeatureClickShot=null,afterFeatureClickTextSnippet=null;
+    if(clickResult.ok){
+      try{
+        const mapBox=await p.locator('.ol-viewport, .leaflet-container, canvas').first().boundingBox();
+        const cx=mapBox?Math.round(mapBox.x+mapBox.width/2):731,cy=mapBox?Math.round(mapBox.y+mapBox.height/2):520;
+        const netFeature=[];
+        const onFeature=r=>{const u=r.url();if(!ASSET_EXT.test(u))netFeature.push({method:r.method(),url:u})};
+        p.on('request',onFeature);
+        await p.mouse.click(cx,cy);
+        await p.waitForTimeout(2000);
+        p.off('request',onFeature);
+        featureClickResult={attempted:true,clickedAt:{x:cx,y:cy},mapBoxFound:!!mapBox,networkDuringFeatureClick:netFeature.slice(0,40)};
+        afterFeatureClickShot=(await p.screenshot({type:'png'})).toString('base64');
+        const fullFeatureText=await text(p);
+        afterFeatureClickTextSnippet=fullFeatureText.slice(0,3000);
+      }catch(e){featureClickResult={attempted:true,error:String(e)}}
+    }
     await ctx.close();
     const id=crypto.randomUUID();
-    debugJobs.set(id,{beforeShot,afterShot,afterClickShot,createdAt:now()});
+    debugJobs.set(id,{beforeShot,afterShot,afterClickShot,afterFeatureClickShot,createdAt:now()});
     const screenshotUrls={before:`/debug/${id}/screenshot?which=before`,after:`/debug/${id}/screenshot?which=after`};
     if(afterClickShot)screenshotUrls.afterClick=`/debug/${id}/screenshot?which=afterClick`;
-    res.json({id,query:q,candidates,buttons,netPre:netPre.slice(0,60),netDuringSearch:netDuring,searchAttempt,afterTextSnippet:snippetAround(afterText,q.split('.').slice(0,5).join('.'),600)||afterText.slice(0,3000),optionElsFound:optionEls,clickResult,afterClickTextSnippet,screenshotUrls});
+    if(afterFeatureClickShot)screenshotUrls.afterFeatureClick=`/debug/${id}/screenshot?which=afterFeatureClick`;
+    res.json({id,query:q,candidates,buttons,netPre:netPre.slice(0,60),netDuringSearch:netDuring,searchAttempt,afterTextSnippet:snippetAround(afterText,q.split('.').slice(0,5).join('.'),600)||afterText.slice(0,3000),optionElsFound:optionEls,clickResult,afterClickTextSnippet,featureClickResult,afterFeatureClickTextSnippet,screenshotUrls});
   }catch(e){
     res.status(500).json({error:String(e)});
   }finally{
     await browser?.close().catch(()=>{});
   }
 });
-app.get('/debug/:id/screenshot',auth,(req,res)=>{const d=debugJobs.get(req.params.id);if(!d)return res.status(404).json({error:'not found'});const which=req.query.which;const b64=which==='afterClick'?d.afterClickShot:which==='after'?d.afterShot:d.beforeShot;if(!b64)return res.status(404).json({error:'no screenshot for that stage on this job'});const buf=Buffer.from(b64,'base64');res.setHeader('Content-Type','image/png');res.send(buf)});
+app.get('/debug/:id/screenshot',auth,(req,res)=>{const d=debugJobs.get(req.params.id);if(!d)return res.status(404).json({error:'not found'});const which=req.query.which;const b64=which==='afterFeatureClick'?d.afterFeatureClickShot:which==='afterClick'?d.afterClickShot:which==='after'?d.afterShot:d.beforeShot;if(!b64)return res.status(404).json({error:'no screenshot for that stage on this job'});const buf=Buffer.from(b64,'base64');res.setHeader('Content-Type','image/png');res.send(buf)});
 async function auth(req,res,next){const h=String(req.headers.authorization||'');if(TOKEN&&h===`Bearer ${TOKEN}`)return next();if(SUPABASE_URL&&h.startsWith('Bearer ')){try{const k=String(req.headers.apikey||'');if(!k)return res.status(401).json({error:'apikey required'});if((await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{Authorization:h,apikey:k}})).ok)return next()}catch{}}return res.status(401).json({error:'unauthorized'})}
 app.listen(PORT,'0.0.0.0',()=>console.log(`homatch-official-worker 1.4.0 listening on ${PORT}`));

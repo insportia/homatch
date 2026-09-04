@@ -99,6 +99,10 @@ async function executeControlledJobs(db: any, baseUrl: string, serviceKey: strin
   if (enabled !== true || kill !== false) {
     return { success: true, blocked: true, processed: 0, reason: 'EXTERNAL_DISCOVERY_SAFETY_LOCK' };
   }
+  const disabledProvidersRaw = await setting(db, 'provider_disabled_list', []);
+  const disabledProviders = Array.isArray(disabledProvidersRaw)
+    ? disabledProvidersRaw.map((value: unknown) => String(value).toUpperCase())
+    : [];
   const configuredMax = Number(await setting(db, 'external_discovery_max_jobs_per_property_tick', 10));
   const requested = Number(body.limit || configuredMax);
   const limit = Math.min(25, Math.max(1, requested || 1));
@@ -121,7 +125,7 @@ async function executeControlledJobs(db: any, baseUrl: string, serviceKey: strin
       });
       if (guardError) throw guardError;
       if (allowed !== true) throw new ProviderError('EXECUTION_GUARD_REJECTED', true, 423);
-      const execution = await executeProvider(job, Number(await setting(db, 'external_consumer_max_results', 100)));
+      const execution = await executeProvider(job, Number(await setting(db, 'external_consumer_max_results', 100)), disabledProviders);
       const accountedCost = execution.costUsd > 0 ? execution.costUsd : Number(job.estimated_cost_usd || 0);
       const { data: persisted, error: persistError } = await db.rpc('persist_external_discovery_results', {
         p_job_id: job.id,
@@ -145,8 +149,16 @@ async function executeControlledJobs(db: any, baseUrl: string, serviceKey: strin
   return { success: failures.length === 0, blocked: false, processed: completed.length + failures.length, completed, failures };
 }
 
-async function executeProvider(job: any, maxResults: number) {
+async function executeProvider(job: any, maxResults: number, disabledProviders: string[] = []) {
   const provider = String(job.provider || '').toUpperCase();
+  // Per-provider admin disable (AdminProvidersPage's per-card toggle, backed by
+  // admin_settings.provider_disabled_list) used to be read here but never
+  // actually enforced — a provider an admin had switched off in the UI would
+  // still run. The master provider_kill_switch above is a separate, coarser
+  // circuit breaker; this is the finer-grained one the admin UI promises.
+  if (disabledProviders.includes(provider)) {
+    throw new ProviderError(`PROVIDER_DISABLED_BY_ADMIN: ${provider}`, false, 423);
+  }
   if (provider === 'DATAFORSEO') return executeDataForSEO(job, maxResults);
   if (provider === 'APIFY') return executeApify(job, maxResults);
   throw new ProviderError(`UNSUPPORTED_PROVIDER: ${provider}`, false, 400);

@@ -28,10 +28,11 @@ export default function AdminProvidersPage() {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
-  // disabled_providers is a JSON array of provider names stored in admin_settings
+  // provider_disabled_list is a JSON array of provider names stored in admin_settings
   const [disabledProviders, setDisabledProviders] = useState<string[]>([]);
   const [globalKillSwitch, setGlobalKillSwitch] = useState(false);
   const [savingKill, setSavingKill] = useState(false);
+  const [applyingPreset, setApplyingPreset] = useState<string | null>(null);
   const [treasury, setTreasury] = useState<ResearchProviderTreasuryRow[]>([]);
   const [treasuryLoading, setTreasuryLoading] = useState(true);
   const [togglingTreasury, setTogglingTreasury] = useState<string | null>(null);
@@ -42,13 +43,19 @@ export default function AdminProvidersPage() {
       .then(([h, c, settings]) => {
         setHealth(h);
         setCosts(c);
-        // Parse kill switch and disabled providers from admin_settings
-        const killSetting = settings.find(s => s.key === 'global_kill_switch');
+        // Parse kill switch and disabled providers from admin_settings. These
+        // are the real keys the matching pipeline (match-campaign,
+        // discovery-queue-worker) actually reads — this page used to read
+        // 'global_kill_switch'/'disabled_providers', keys nothing ever wrote
+        // or checked, so the switch shown here was always OFF regardless of
+        // the real (correctly locked) provider_kill_switch value, and toggling
+        // it had zero effect on anything.
+        const killSetting = settings.find(s => s.key === 'provider_kill_switch');
         if (killSetting) {
           const v = killSetting.value;
           setGlobalKillSwitch(v === true || v === 'true' || v === 1);
         }
-        const disabledSetting = settings.find(s => s.key === 'disabled_providers');
+        const disabledSetting = settings.find(s => s.key === 'provider_disabled_list');
         if (disabledSetting) {
           try {
             const parsed = typeof disabledSetting.value === 'string'
@@ -101,7 +108,7 @@ export default function AdminProvidersPage() {
       const next = currentlyDisabled
         ? disabledProviders.filter(p => p !== provider)
         : [...disabledProviders, provider];
-      await updateAdminSetting('disabled_providers', JSON.stringify(next));
+      await updateAdminSetting('provider_disabled_list', next);
       setDisabledProviders(next);
       toast.success(`${provider} ${currentlyDisabled ? 'enabled' : 'disabled'}`);
     } catch (e: any) {
@@ -114,7 +121,7 @@ export default function AdminProvidersPage() {
   const toggleGlobalKillSwitch = async (value: boolean) => {
     setSavingKill(true);
     try {
-      await updateAdminSetting('global_kill_switch', value);
+      await updateAdminSetting('provider_kill_switch', value);
       setGlobalKillSwitch(value);
       toast[value ? 'warning' : 'success'](
         value ? 'GLOBAL KILL SWITCH ACTIVATED — all paid providers blocked' : 'Kill switch deactivated — providers restored'
@@ -123,6 +130,49 @@ export default function AdminProvidersPage() {
       toast.error(`Failed to update kill switch: ${e.message}`);
     } finally {
       setSavingKill(false);
+    }
+  };
+
+  // Named bundles over the real settings match-campaign / discovery-queue-worker
+  // actually read (external_discovery_enabled, provider_kill_switch,
+  // provider_disabled_list, external_discovery_strong_score,
+  // external_discovery_min_strong_matches) — not a separate, decorative
+  // concept. APIFY is the only provider behind the social-platform scrapers
+  // (Facebook/Telegram/Reddit/Threads); DATAFORSEO is the only one behind web
+  // search — so "web only" concretely means disabling APIFY.
+  const PRESETS = {
+    locked: {
+      labelKey: 'admin_providers_preset_locked',
+      settings: { external_discovery_enabled: false, provider_kill_switch: true, provider_disabled_list: [] as string[], external_discovery_strong_score: 70, external_discovery_min_strong_matches: 3 },
+    },
+    balanced: {
+      labelKey: 'admin_providers_preset_balanced',
+      settings: { external_discovery_enabled: true, provider_kill_switch: false, provider_disabled_list: [] as string[], external_discovery_strong_score: 70, external_discovery_min_strong_matches: 3 },
+    },
+    web_only: {
+      labelKey: 'admin_providers_preset_web_only',
+      settings: { external_discovery_enabled: true, provider_kill_switch: false, provider_disabled_list: ['APIFY'] as string[], external_discovery_strong_score: 70, external_discovery_min_strong_matches: 3 },
+    },
+  } as const;
+
+  const applyPreset = async (presetKey: keyof typeof PRESETS) => {
+    setApplyingPreset(presetKey);
+    try {
+      const preset = PRESETS[presetKey];
+      await Promise.all([
+        updateAdminSetting('external_discovery_enabled', preset.settings.external_discovery_enabled),
+        updateAdminSetting('provider_kill_switch', preset.settings.provider_kill_switch),
+        updateAdminSetting('provider_disabled_list', preset.settings.provider_disabled_list),
+        updateAdminSetting('external_discovery_strong_score', preset.settings.external_discovery_strong_score),
+        updateAdminSetting('external_discovery_min_strong_matches', preset.settings.external_discovery_min_strong_matches),
+      ]);
+      setGlobalKillSwitch(preset.settings.provider_kill_switch);
+      setDisabledProviders(preset.settings.provider_disabled_list);
+      toast.success(t('admin_providers_preset_applied', { name: t(preset.labelKey) }));
+    } catch (e: any) {
+      toast.error(`Failed to apply preset: ${e.message}`);
+    } finally {
+      setApplyingPreset(null);
     }
   };
 
@@ -161,6 +211,31 @@ export default function AdminProvidersPage() {
           />
         </div>
       </div>
+
+      {/* External discovery presets — one-click bundles over the same real settings above */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold">{t('admin_providers_presets_title')}</CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">{t('admin_providers_presets_desc')}</p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {(Object.keys(PRESETS) as (keyof typeof PRESETS)[]).map(key => (
+            <Button
+              key={key}
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={applyingPreset !== null}
+              onClick={() => applyPreset(key)}
+            >
+              {applyingPreset === key
+                ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                : key === 'locked' ? <Lock className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+              {t(PRESETS[key].labelKey)}
+            </Button>
+          ))}
+        </CardContent>
+      </Card>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>

@@ -91,6 +91,7 @@ export default function DeveloperProfilePage() {
         setDev(d);
         if (d && 'was_stale' in d) setWasStale((d as DeveloperProfile & { was_stale: boolean }).was_stale);
       })
+      .catch(err => { console.error('[DeveloperProfilePage] failed to load profile:', err); })
       .finally(() => setLoading(false));
   }, [id]);
 

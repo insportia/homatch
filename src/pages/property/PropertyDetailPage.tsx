@@ -243,7 +243,9 @@ function CampaignPanel({
           propertyId={propertyId}
           onComplete={(job) => {
             // Refresh match counts when job finishes
-            getMatchCounts(propertyId).then(onCountsRefresh);
+            getMatchCounts(propertyId).then(onCountsRefresh).catch(err => {
+              console.error('[PropertyDetailPage] failed to refresh match counts:', err);
+            });
             if (job.matches_created > 0) {
               toast.success(t('matches_job_complete_toast', { count: job.matches_created }));
             } else if (job.status === 'partially_completed') {

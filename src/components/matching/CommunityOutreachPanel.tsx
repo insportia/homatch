@@ -58,7 +58,11 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
   useEffect(() => {
     if (!propertyId) return;
     supabase.from('properties').select('cover_photo_url').eq('id', propertyId).maybeSingle()
-      .then(({ data }) => setCoverPhotoUrl(data?.cover_photo_url ?? null));
+      .then(({ data, error }) => {
+        if (error) throw error;
+        setCoverPhotoUrl(data?.cover_photo_url ?? null);
+      })
+      .catch(err => { console.error('[CommunityOutreachPanel] failed to load cover photo:', err); });
   }, [propertyId]);
 
   const load = useCallback(async () => {

@@ -551,6 +551,10 @@ const en = {
   comm_results: 'communities',
   comm_empty_title: 'No communities yet',
   comm_empty_desc: 'Communities will appear here once added to the internal index by an administrator.',
+  comm_recommend_dialog_title: 'Recommend "{{name}}" for which property?',
+  comm_no_properties: 'You have no properties yet. Add one first.',
+  comm_recommend_success: 'Community recommended for that property.',
+  comm_recommend_error: 'Could not save the recommendation. Please try again.',
   comm_recommend_btn: 'Recommend for Property',
   comm_load_error: 'Failed to load communities',
   // Outreach Hub
@@ -1826,6 +1830,9 @@ const en = {
   partners_message_ph: 'Tell us about your goals and target markets…',
   partners_send_btn: 'Send Inquiry',
   partners_disclaimer: 'Sponsored placements are always labeled and never influence organic scores or rankings.',
+  partners_email_required_error: 'Please enter an email address.',
+  partners_submit_success: 'Thanks — your inquiry has been sent. We\'ll be in touch soon.',
+  partners_submit_error: 'Something went wrong sending your inquiry. Please try again.',
 
   // ── Verify Center v2 — cadastral timeline, registry, reputation, evidence levels ──────────────────────────────────────────────
   verify_timeline_title: 'Timeline',
@@ -2891,6 +2898,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   comm_results: 'კომუნიტი',
   comm_empty_title: 'კომუნიტები ჯერ არ არის',
   comm_empty_desc: 'კომუნიტები გამოჩნდება, როდესაც ადმინისტრატორი დაამატებს შიდა ინდექსში.',
+  comm_recommend_dialog_title: '"{{name}}" რომელი ქონებისთვის რეკომენდირდეს?',
+  comm_no_properties: 'თქვენ ჯერ არ გაქვთ დამატებული ქონება. ჯერ დაამატეთ ერთი.',
+  comm_recommend_success: 'კომუნიტი რეკომენდირებულია ამ ქონებისთვის.',
+  comm_recommend_error: 'რეკომენდაციის შენახვა ვერ მოხერხდა. სცადეთ ხელახლა.',
   comm_recommend_btn: 'ქონებისთვის რეკომენდაცია',
   comm_load_error: 'კომუნიტების ჩატვირთვა ვერ მოხერხდა',
   outreach_title: 'ზრდა და გავრცელება',
@@ -4008,6 +4019,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   partners_message_ph: 'გვიამბეთ თქვენს მიზნებსა და სამიზნე ბაზრებზე…',
   partners_send_btn: 'მოთხოვნის გაგზავნა',
   partners_disclaimer: 'სპონსორირებული განთავსებები ყოველთვის მონიშნულია და არასდროს ახდენს გავლენას ორგანულ ქულებზე ან რანჟირებაზე.',
+  partners_email_required_error: 'გთხოვთ შეიყვანოთ ელფოსტის მისამართი.',
+  partners_submit_success: 'გმადლობთ — თქვენი მოთხოვნა გაიგზავნა. მალე დაგიკავშირდებით.',
+  partners_submit_error: 'მოთხოვნის გაგზავნისას მოხდა შეცდომა. გთხოვთ სცადოთ ხელახლა.',
 
   // ── Verify Center v2 — cadastral timeline, registry, reputation, evidence levels ──────────────────────────────────────────────
   verify_timeline_title: 'ქრონოლოგია',
@@ -5066,6 +5080,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   comm_results: 'сообществ',
   comm_empty_title: 'Сообществ пока нет',
   comm_empty_desc: 'Сообщества появятся здесь после добавления в индекс администратором.',
+  comm_recommend_dialog_title: 'Для какого объекта рекомендовать «{{name}}»?',
+  comm_no_properties: 'У вас пока нет объектов. Сначала добавьте один.',
+  comm_recommend_success: 'Сообщество рекомендовано для этого объекта.',
+  comm_recommend_error: 'Не удалось сохранить рекомендацию. Попробуйте ещё раз.',
   comm_recommend_btn: 'Рекомендовать для объекта',
   comm_load_error: 'Ошибка загрузки сообществ',
   outreach_title: 'Рост и охват',
@@ -6188,6 +6206,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   partners_message_ph: 'Расскажите о своих целях и целевых рынках…',
   partners_send_btn: 'Отправить заявку',
   partners_disclaimer: 'Спонсируемые размещения всегда помечены и никогда не влияют на органические оценки или рейтинг.',
+  partners_email_required_error: 'Пожалуйста, введите адрес электронной почты.',
+  partners_submit_success: 'Спасибо — ваш запрос отправлен. Мы скоро свяжемся с вами.',
+  partners_submit_error: 'Не удалось отправить запрос. Пожалуйста, попробуйте ещё раз.',
 
   // ── Verify Center v2 — cadastral timeline, registry, reputation, evidence levels ──────────────────────────────────────────────
   verify_timeline_title: 'Хроника',
@@ -7202,6 +7223,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   comm_results: 'topluluk',
   comm_empty_title: 'Henüz topluluk yok',
   comm_empty_desc: 'Topluluklar, yönetici dahili dizine ekledikten sonra görünecektir.',
+  comm_recommend_dialog_title: '"{{name}}" hangi mülk için önerilsin?',
+  comm_no_properties: 'Henüz mülkünüz yok. Önce bir tane ekleyin.',
+  comm_recommend_success: 'Topluluk bu mülk için önerildi.',
+  comm_recommend_error: 'Öneri kaydedilemedi. Lütfen tekrar deneyin.',
   comm_recommend_btn: 'Mülk için Öner',
   comm_load_error: 'Topluluklar yüklenemedi',
   outreach_title: 'Büyüme ve Erişim',
@@ -8366,6 +8391,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   partners_message_ph: 'Hedefleriniz ve hedef pazarlarınız hakkında bilgi verin…',
   partners_send_btn: 'Talep Gönder',
   partners_disclaimer: 'Sponsorlu yerleşimler her zaman etiketlenir ve organik puanları veya sıralamaları asla etkilemez.',
+  partners_email_required_error: 'Lütfen bir e-posta adresi girin.',
+  partners_submit_success: 'Teşekkürler — talebiniz gönderildi. Yakında sizinle iletişime geçeceğiz.',
+  partners_submit_error: 'Talebiniz gönderilirken bir sorun oluştu. Lütfen tekrar deneyin.',
 
   // ── Verify Center v2 — cadastral timeline, registry, reputation, evidence levels ──────────────────────────────────────────────
   verify_timeline_title: 'Zaman Çizelgesi',
@@ -9377,6 +9405,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   comm_results: 'مجتمعات',
   comm_empty_title: 'لا توجد مجتمعات بعد',
   comm_empty_desc: 'ستظهر المجتمعات هنا بعد إضافتها إلى الفهرس من قِبل المسؤول.',
+  comm_recommend_dialog_title: 'لأي عقار تريد التوصية بـ"{{name}}"؟',
+  comm_no_properties: 'ليس لديك أي عقارات بعد. أضف واحدًا أولاً.',
+  comm_recommend_success: 'تمت التوصية بالمجتمع لهذا العقار.',
+  comm_recommend_error: 'تعذر حفظ التوصية. يرجى المحاولة مرة أخرى.',
   comm_recommend_btn: 'توصية للعقار',
   comm_load_error: 'فشل تحميل المجتمعات',
   outreach_title: 'النمو والتواصل',
@@ -10544,6 +10576,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   partners_message_ph: 'أخبرنا عن أهدافك وأسواقك المستهدفة…',
   partners_send_btn: 'إرسال الطلب',
   partners_disclaimer: 'الإعلانات الممولة تُعلَّم دائمًا ولا تؤثر أبدًا على الدرجات أو الترتيب العضوي.',
+  partners_email_required_error: 'يرجى إدخال عنوان بريد إلكتروني.',
+  partners_submit_success: 'شكرًا لك — تم إرسال طلبك. سنتواصل معك قريبًا.',
+  partners_submit_error: 'حدث خطأ أثناء إرسال طلبك. يرجى المحاولة مرة أخرى.',
 
   // ── Verify Center v2 — cadastral timeline, registry, reputation, evidence levels ──────────────────────────────────────────────
   verify_timeline_title: 'الجدول الزمني',
@@ -11557,6 +11592,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   comm_results: 'קהילות',
   comm_empty_title: 'אין קהילות עדיין',
   comm_empty_desc: 'קהילות יופיעו כאן לאחר הוספתן לאינדקס על ידי מנהל.',
+  comm_recommend_dialog_title: 'עבור איזה נכס להמליץ על "{{name}}"?',
+  comm_no_properties: 'עדיין אין לך נכסים. הוסף/י אחד תחילה.',
+  comm_recommend_success: 'הקהילה הומלצה עבור הנכס הזה.',
+  comm_recommend_error: 'לא ניתן לשמור את ההמלצה. נסה/י שוב.',
   comm_recommend_btn: 'המלץ לנכס',
   comm_load_error: 'טעינת הקהילות נכשלה',
   outreach_title: 'צמיחה ופנייה',
@@ -12722,6 +12761,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   partners_message_ph: 'ספרו לנו על המטרות והשווקים המבוקשים שלכם…',
   partners_send_btn: 'שלח פנייה',
   partners_disclaimer: 'מיקומים ממומנים תמיד מסומנים ולעולם אינם משפיעים על ציונים אורגניים או דירוגים.',
+  partners_email_required_error: 'אנא הזן כתובת אימייל.',
+  partners_submit_success: 'תודה — הפנייה שלך נשלחה. ניצור איתך קשר בקרוב.',
+  partners_submit_error: 'אירעה שגיאה בשליחת הפנייה. אנא נסה שוב.',
 
   // ── Verify Center v2 — cadastral timeline, registry, reputation, evidence levels ──────────────────────────────────────────────
   verify_timeline_title: 'ציר זמן',

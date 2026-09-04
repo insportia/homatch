@@ -3,12 +3,103 @@
 // External discovery is DISABLED (community_discovery_enabled=false).
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { rankCommunities } from '../_shared/community_adapter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Inlined from ../_shared/community_adapter.ts rather than imported: multi-file
+// deploys with a _shared/ import have repeatedly produced broken bundled
+// entrypoints in this sandbox's deploy tool (same issue documented in
+// outreach-unsubscribe/index.ts). Keep this in sync with
+// _shared/community_adapter.ts's rankCommunities if either changes.
+interface CommunityRecordForRanking {
+  country?: string | null;
+  city?: string | null;
+  language?: string | null;
+  tags?: string[] | null;
+  topics?: string[] | null;
+  member_count?: number | null;
+  posting_policy?: string | null;
+  housing_focus?: 'primary' | 'secondary' | null;
+}
+interface CommunityRanking {
+  community_id: string;
+  score: number;
+  rationale: {
+    location_match: number;
+    type_match: number;
+    language_match: number;
+    audience_match: number;
+    topic_match: number;
+    activity_score: number;
+    summary: string;
+  };
+}
+function rankCommunities(
+  communities: Array<{ id: string } & CommunityRecordForRanking>,
+  property: {
+    country?: string | null;
+    city?: string | null;
+    language?: string | null;
+    transaction_type?: string | null;
+    property_type?: string | null;
+    price?: number | null;
+    tags?: string[];
+  }
+): CommunityRanking[] {
+  return communities.map((c) => {
+    const locationMatch =
+      (c.country && property.country && c.country.toLowerCase() === property.country.toLowerCase() ? 0.5 : 0) +
+      (c.city && property.city && c.city.toLowerCase() === property.city.toLowerCase() ? 0.5 : 0);
+
+    const langMatch = c.language && property.language && c.language.split('-')[0] === property.language.split('-')[0] ? 1 : 0.3;
+
+    const propTopics = (property.tags ?? []).map((t) => t.toLowerCase());
+    const commTopics = (c.topics ?? []).concat(c.tags ?? []).map((t) => t.toLowerCase());
+    const topicMatch = propTopics.length && commTopics.length
+      ? propTopics.filter((t) => commTopics.includes(t)).length / Math.max(propTopics.length, 1)
+      : 0.2;
+
+    // Dedicated real-estate communities score highest; general expat/classifieds
+    // communities (housing_focus='secondary') are still surfaced — per user
+    // request they should not be excluded — but rank lower than a dedicated
+    // group when one exists for the same location/language.
+    const audienceMatch = c.housing_focus === 'secondary'
+      ? 0.35
+      : (c.topics ?? []).some((t) => ['investor','investment','real estate','property'].some((k) => t.toLowerCase().includes(k))) ? 0.8 : 0.4;
+
+    const activityScore = c.member_count
+      ? Math.min(c.member_count / 50000, 1) * 0.7 + 0.3
+      : 0.3;
+
+    const typeMatch = c.posting_policy === 'OPEN' ? 1.0 : c.posting_policy === 'APPROVAL_REQUIRED' ? 0.6 : 0.2;
+
+    const score = parseFloat((
+      locationMatch * 0.30 +
+      langMatch * 0.20 +
+      topicMatch * 0.20 +
+      audienceMatch * 0.15 +
+      activityScore * 0.10 +
+      typeMatch * 0.05
+    ).toFixed(2));
+
+    return {
+      community_id: c.id,
+      score: Math.min(score, 1.0),
+      rationale: {
+        location_match: parseFloat(locationMatch.toFixed(2)),
+        type_match: parseFloat(typeMatch.toFixed(2)),
+        language_match: parseFloat(langMatch.toFixed(2)),
+        audience_match: parseFloat(audienceMatch.toFixed(2)),
+        topic_match: parseFloat(topicMatch.toFixed(2)),
+        activity_score: parseFloat(activityScore.toFixed(2)),
+        summary: `loc=${(locationMatch * 100).toFixed(0)}% lang=${(langMatch * 100).toFixed(0)}% topic=${(topicMatch * 100).toFixed(0)}%`,
+      },
+    };
+  }).sort((a, b) => b.score - a.score);
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -96,14 +187,21 @@ serve(async (req) => {
       const upsertRows = rankedSlice.map((r) => ({
         property_id,
         community_id: r.community_id,
-        owner_id: ownerId,
+        // NOTE: owner_id references auth.users(id), not public.users(id) —
+        // `ownerId` above is the public.users profile row id (a different
+        // UUID for the same person). Using it here always violated the FK
+        // and the upsert result was never checked, so every recommendation
+        // silently failed to persist (0 rows ever landed in this table).
+        // The real auth user id is `user.id` from the JWT.
+        owner_id: user.id,
         score: r.score,
         rationale: r.rationale,
         status: 'PENDING',
         updated_at: new Date().toISOString(),
       }));
-      await supabase.from('property_community_recommendations')
+      const { error: upsertErr } = await supabase.from('property_community_recommendations')
         .upsert(upsertRows, { onConflict: 'property_id,community_id', ignoreDuplicates: false });
+      if (upsertErr) console.error('[community-recommend] failed to persist recommendations:', upsertErr);
     }
 
     // Enrich each ranked result with the community's own details so the

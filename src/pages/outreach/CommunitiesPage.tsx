@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Users, Search, Globe, MapPin, Tag, ExternalLink, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
+import { Users, Search, Globe, MapPin, Tag, ExternalLink, RefreshCw, Loader2, AlertCircle, Building2 } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { Button } from '@/components/ui/button';
@@ -10,9 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
-import { Community, CommunityPlatform } from '@/types/types';
+import { getProperties } from '@/services/api';
+import { Community, CommunityPlatform, Property } from '@/types/types';
 import { toast } from 'sonner';
 
 const PLATFORM_COLORS: Record<CommunityPlatform, string> = {
@@ -27,12 +29,57 @@ const PLATFORM_COLORS: Record<CommunityPlatform, string> = {
 
 export default function CommunitiesPage() {
   const { t } = useLanguage();
-  const navigate = useNavigate();
+  const { supaUser, homatchUser } = useAuth();
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [countryFilter, setCountryFilter] = useState<string>('all');
+
+  // "Recommend for Property" picker state
+  const [recommendTarget, setRecommendTarget] = useState<Community | null>(null);
+  const [myProperties, setMyProperties] = useState<Property[]>([]);
+  const [loadingMyProperties, setLoadingMyProperties] = useState(false);
+  const [recommendingId, setRecommendingId] = useState<string | null>(null);
+
+  const openRecommendDialog = useCallback(async (community: Community) => {
+    setRecommendTarget(community);
+    if (!homatchUser) return;
+    setLoadingMyProperties(true);
+    try {
+      const props = await getProperties(homatchUser.id);
+      setMyProperties(props);
+    } catch (err) {
+      toast.error(t('comm_load_error'));
+      console.error(err);
+    } finally {
+      setLoadingMyProperties(false);
+    }
+  }, [homatchUser, t]);
+
+  const recommendForProperty = useCallback(async (propertyId: string) => {
+    if (!recommendTarget || !supaUser) return;
+    setRecommendingId(propertyId);
+    try {
+      const { error } = await supabase.from('property_community_recommendations').upsert({
+        property_id: propertyId,
+        community_id: recommendTarget.id,
+        owner_id: supaUser.id,
+        score: 1,
+        rationale: { summary: 'Manually recommended from Community Directory' },
+        status: 'PENDING',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'property_id,community_id', ignoreDuplicates: false });
+      if (error) throw error;
+      toast.success(t('comm_recommend_success'));
+      setRecommendTarget(null);
+    } catch (err) {
+      toast.error(t('comm_recommend_error'));
+      console.error(err);
+    } finally {
+      setRecommendingId(null);
+    }
+  }, [recommendTarget, supaUser, t]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -175,7 +222,7 @@ export default function CommunitiesPage() {
                     )}
                     <div className="flex gap-2 pt-1">
                       <Button variant="outline" size="sm" className="text-xs h-7 flex-1"
-                        onClick={() => navigate(`/outreach/communities/${c.id}`)}>
+                        onClick={() => openRecommendDialog(c)}>
                         {t('comm_recommend_btn')}
                       </Button>
                       <Button variant="ghost" size="sm" className="text-xs h-7 px-2"
@@ -189,6 +236,37 @@ export default function CommunitiesPage() {
             </div>
           )}
         </div>
+
+        {/* Property picker for "Recommend for Property" */}
+        <Dialog open={!!recommendTarget} onOpenChange={(open) => { if (!open) setRecommendTarget(null); }}>
+          <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-sm font-semibold">
+                {t('comm_recommend_dialog_title', { name: recommendTarget?.name ?? '' })}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-1.5 max-h-80 overflow-y-auto">
+              {loadingMyProperties ? (
+                Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)
+              ) : myProperties.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">{t('comm_no_properties')}</p>
+              ) : (
+                myProperties.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => recommendForProperty(p.id)}
+                    disabled={recommendingId === p.id}
+                    className="w-full flex items-center gap-2.5 p-2.5 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-start disabled:opacity-60"
+                  >
+                    <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm flex-1 min-w-0 truncate">{p.title}</span>
+                    {recommendingId === p.id && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+                  </button>
+                ))
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </AppLayout>
     </RouteGuard>
   );

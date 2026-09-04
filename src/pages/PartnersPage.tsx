@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { supabase } from '@/db/supabase';
+import { toast } from 'sonner';
 import {
   Building2, Users, Banknote, Globe2, CheckCircle2, Mail,
-  ArrowRight, Shield, BarChart2, Target, Zap,
+  ArrowRight, Shield, BarChart2, Target, Zap, Loader2,
 } from 'lucide-react';
 
 // Content lives in translation keys, resolved at render time via t() —
@@ -49,6 +51,39 @@ const PLACEMENT_RULES = [
 export default function PartnersPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [company, setCompany] = useState('');
+  const [email, setEmail] = useState('');
+  const [category, setCategory] = useState('');
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      toast.error(t('partners_email_required_error'));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.from('partner_inquiries').insert({
+        company: company.trim() || null,
+        email: email.trim(),
+        category: category || null,
+        message: message.trim() || null,
+      });
+      if (error) throw error;
+      toast.success(t('partners_submit_success'));
+      setCompany('');
+      setEmail('');
+      setCategory('');
+      setMessage('');
+    } catch (err) {
+      console.error(err);
+      toast.error(t('partners_submit_error'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -133,39 +168,41 @@ export default function PartnersPage() {
             <p className="text-sm text-muted-foreground">{t('partners_inquiry_subheading')}</p>
           </div>
           <Card className="border-border bg-card">
-            <CardContent className="pt-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">{t('partners_company_label')}</label>
-                  <input className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder={t('partners_company_ph')} />
+            <form onSubmit={handleSubmit}>
+              <CardContent className="pt-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">{t('partners_company_label')}</label>
+                    <input value={company} onChange={(e) => setCompany(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder={t('partners_company_ph')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">{t('partners_email_label')}</label>
+                    <input type="email" required dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder={t('partners_email_ph')} />
+                  </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">{t('partners_email_label')}</label>
-                  <input type="email" dir="ltr" className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder={t('partners_email_ph')} />
+                  <label className="text-xs font-medium text-muted-foreground">{t('partners_category_label')}</label>
+                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+                    <option value="">{t('partners_category_ph')}</option>
+                    <option>{t('partners_cat_option_developer')}</option>
+                    <option>{t('partners_cat_option_agency')}</option>
+                    <option>{t('partners_cat_option_mortgage')}</option>
+                    <option>{t('partners_cat_option_relocation')}</option>
+                    <option>{t('partners_cat_option_other')}</option>
+                  </select>
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">{t('partners_category_label')}</label>
-                <select className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
-                  <option value="">{t('partners_category_ph')}</option>
-                  <option>{t('partners_cat_option_developer')}</option>
-                  <option>{t('partners_cat_option_agency')}</option>
-                  <option>{t('partners_cat_option_mortgage')}</option>
-                  <option>{t('partners_cat_option_relocation')}</option>
-                  <option>{t('partners_cat_option_other')}</option>
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">{t('partners_message_label')}</label>
-                <textarea rows={3} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none" placeholder={t('partners_message_ph')} />
-              </div>
-              <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
-                <Mail className="h-4 w-4" /> {t('partners_send_btn')}
-              </Button>
-              <p className="text-[10px] text-muted-foreground/60 text-center">
-                {t('partners_disclaimer')}
-              </p>
-            </CardContent>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">{t('partners_message_label')}</label>
+                  <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none" placeholder={t('partners_message_ph')} />
+                </div>
+                <Button type="submit" disabled={submitting} className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} {t('partners_send_btn')}
+                </Button>
+                <p className="text-[10px] text-muted-foreground/60 text-center">
+                  {t('partners_disclaimer')}
+                </p>
+              </CardContent>
+            </form>
           </Card>
         </div>
       </section>

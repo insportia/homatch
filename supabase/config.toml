@@ -3,3 +3,9 @@
 # request inside the function using the private x-cron-token stored server-side.
 [functions.continuous-matching-worker]
 verify_jwt = false
+
+[functions.property-intelligence]
+verify_jwt = true
+
+[functions.property-intelligence-status]
+verify_jwt = true

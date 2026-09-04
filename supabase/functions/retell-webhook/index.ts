@@ -23,6 +23,35 @@ const STATUS_MAP: Record<string, string> = {
   registered: 'DIALING', ongoing: 'ANSWERED', ended: 'COMPLETED', error: 'FAILED',
 };
 
+// Call-based DNC detection (Task #68, part 2): checkEligibility() in
+// _shared/suppression.ts has always treated outreach_contacts.do_not_call as
+// a hard stop before ever dialing someone again — but nothing in the system
+// could set that flag from what actually happened ON a call. A recipient
+// saying "don't call me again" mid-call had no effect on future campaigns.
+// This is a plain-text substring scan of the real transcript/summary Retell
+// already returns (not a fabricated signal) against phrases across every
+// language this app supports — deliberately conservative multi-word phrases
+// rather than single words, to avoid a false match on an unrelated sentence.
+const DNC_PHRASES = [
+  // English
+  "don't call", 'do not call', 'stop calling', 'remove my number', 'take me off your list', 'no more calls', 'never call me',
+  // Russian
+  'не звоните', 'не звони мне', 'уберите мой номер', 'перестаньте звонить', 'больше не звоните',
+  // Georgian
+  'აღარ დამირეკოთ', 'ნუ მირეკავთ', 'ამომშალეთ ნომერი',
+  // Turkish
+  'beni aramayın', 'aramayı durdurun', 'numaramı listeden çıkarın', 'bir daha arama',
+  // Arabic
+  'لا تتصل بي', 'توقف عن الاتصال', 'احذف رقمي', 'لا تتصلوا بي مرة أخرى',
+  // Hebrew
+  'אל תתקשרו אלי', 'תפסיקו להתקשר', 'תורידו את המספר שלי',
+];
+
+function containsDncPhrase(text: string): boolean {
+  const lower = text.toLowerCase();
+  return DNC_PHRASES.some((phrase) => lower.includes(phrase.toLowerCase()));
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
@@ -71,6 +100,18 @@ serve(async (req) => {
     if (payload?.call?.call_analysis?.call_summary) update.summary = String(payload.call.call_analysis.call_summary).slice(0, 4000);
 
     await supabase.from('outreach_sends').update(update).eq('id', sendRow.id);
+
+    // Call-based DNC detection — only meaningful once we have the real
+    // transcript/summary text to scan (not on the earlier 'registered'/
+    // 'ongoing' events, which carry neither).
+    const scanText = [call?.transcript, payload?.call?.call_analysis?.call_summary].filter(Boolean).join('\n');
+    if (scanText && sendRow.contact_id && containsDncPhrase(String(scanText))) {
+      const { error: dncError } = await supabase.from('outreach_contacts')
+        .update({ do_not_call: true, suppressed_reason: 'requested_no_more_calls_on_call' })
+        .eq('id', sendRow.contact_id);
+      if (dncError) console.error('[retell-webhook] failed to set do_not_call:', dncError);
+      else console.log('[retell-webhook] do_not_call set from call content for contact', sendRow.contact_id);
+    }
 
     // Book real per-minute cost once we know the duration (call_ended / call_analyzed only)
     if (durationSec !== undefined && (event === 'call_ended' || event === 'call_analyzed')) {

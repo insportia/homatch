@@ -325,5 +325,76 @@ app.get('/research/:id',auth,(req,res)=>{const j=jobs.get(req.params.id);return 
 app.get('/research/:id/screenshot',auth,async(req,res)=>{const s=sessions.get(req.params.id);if(!s)return res.status(404).json({error:'active human session not found'});const cap=await challenge(s.p);const PAD=40;let clip=null,offsetX=0,offsetY=0;if(cap){try{const box=await cap.el.boundingBox();if(box){const vp=s.p.viewportSize()||{width:1440,height:1000};const x=Math.max(0,Math.floor(box.x-PAD)),y=Math.max(0,Math.floor(box.y-PAD));const w=Math.min(vp.width-x,Math.ceil(box.width+PAD*2)),h=Math.min(vp.height-y,Math.ceil(box.height+PAD*2));if(w>0&&h>0){clip={x,y,width:w,height:h};offsetX=x;offsetY=y}}}catch{}}const img=clip?await s.p.screenshot({type:'jpeg',quality:85,clip}):await s.p.screenshot({type:'jpeg',quality:80});res.json({image:`data:image/jpeg;base64,${img.toString('base64')}`,width:clip?clip.width:1440,height:clip?clip.height:1000,offsetX,offsetY,cropped:!!clip,url:s.p.url(),source:s.key,captcha:true})});
 app.post('/research/:id/action',auth,async(req,res)=>{const s=sessions.get(req.params.id);if(!s)return res.status(404).json({error:'active human session not found'});const x=Number(req.body.x)+Number(req.body.offsetX||0),y=Number(req.body.y)+Number(req.body.offsetY||0);await s.p.mouse.click(x,y);await s.p.waitForTimeout(700);s.expires=Date.now()+TTL;res.json({ok:true,captcha:!!(await challenge(s.p)),url:s.p.url()})});
 app.post('/research/:id/resume',auth,async(req,res)=>{const j=jobs.get(req.params.id),s=sessions.get(req.params.id);if(!j||!s)return res.status(404).json({error:'active human session not found'});if(await challenge(s.p))return res.status(409).json({error:'human verification is not complete'});let sr=s.sr;if(!sr?.submitted){const ar=await runAdapter(s.key,s.p,s.query,s.ctx);if(ar.activePage)s.p=ar.activePage;sr={...ar,query:s.query}}if(await challenge(s.p))return res.status(409).json({error:'human verification required after search submission'});if(!sr.submitted)return res.status(422).json({error:'cadastral search could not be submitted after verification'});const r=await collect(s.p,s.key,sr);j.results=j.results.filter(x=>x.source!==s.key);j.results.push(r);j.humanVerification=null;await s.ctx.close().catch(()=>{});sessions.delete(j.id);run(j,j.sourceIndex+1,s.browser);res.status(202).json({accepted:true,jobId:j.id,status:'RUNNING'})});
+// ── MSMAP diagnostic capability (2026-09-04, per mandate point 1) ─────────
+// msmap's searchText field fills+verifies+submits with no detectable network
+// call or text change (job d3a3fed1-... / dabcce1) — genuinely unknown
+// whether it's the wrong field, needs a different submit mechanism (an icon/
+// button click instead of Enter), or requires selecting a cadastral search
+// MODE first. This sandbox's own browser cannot reach ms.gov.ge at all (the
+// agent proxy blocks it), so the only way to actually SEE this SPA's real UI
+// is through the already-deployed worker itself: this endpoint drives a real
+// browser to msmap.gov.ge, takes before/after screenshots, dumps every
+// candidate input AND every clickable button/icon (with class/aria/title —
+// real DOM inspection, not a guess), and records the exact network requests
+// fired during a real fill+submit attempt (fetch/XHR only, static assets
+// filtered out) — network-level proof of whether ANYTHING happened, exactly
+// like the DWR-proof approach that solved TAS. Screenshots are stored
+// server-side (debugJobs) and fetched separately as raw images so they can
+// be saved to a file and actually looked at, not just described in JSON.
+async function domClickables(p){const out=[];for(const f of contexts(p)){try{const els=await f.locator('button, [role="button"], a, i[class], span[class*="icon" i], [class*="search" i], [class*="btn" i]').evaluateAll(els=>els.slice(0,80).map(e=>{const r=e.getBoundingClientRect();return{tag:e.tagName,text:(e.textContent||'').trim().slice(0,60),title:e.getAttribute('title'),ariaLabel:e.getAttribute('aria-label'),className:String(e.className||'').slice(0,140),id:e.id||null,visible:r.width>0&&r.height>0,x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)}}))}catch{continue}out.push(...els.map(e=>({...e,frameUrl:f.url()})).filter(e=>e.visible))}return out}
+const ASSET_EXT=/\.(png|jpe?g|svg|gif|woff2?|ttf|css|ico|mp4)(\?|$)/i;
+app.post('/debug/msmap',auth,async(req,res)=>{
+  const q=String(req.body?.query||'01.18.06.019.055.03.01.501').trim();
+  let browser=null;
+  try{
+    browser=await chromium.launch({headless:true,args:['--disable-dev-shm-usage','--no-sandbox']});
+    const ctx=await browser.newContext({locale:'ka-GE',viewport:{width:1440,height:1000}});
+    const p=await ctx.newPage();
+    const netPre=[];
+    const onPre=r=>{const u=r.url();if(!ASSET_EXT.test(u))netPre.push({method:r.method(),url:u})};
+    p.on('request',onPre);
+    await p.goto(SOURCES.msmap.url,{waitUntil:'domcontentloaded',timeout:45000});
+    await p.waitForTimeout(2500);
+    try{await p.waitForLoadState('networkidle',{timeout:8000})}catch{}
+    p.off('request',onPre);
+    const beforeShot=(await p.screenshot({type:'png'})).toString('base64');
+    const candidates=await scanCandidateInputs(p);
+    const buttons=await domClickables(p);
+    let searchAttempt={attempted:false};
+    const netDuring=[];
+    const onDuring=r=>{const u=r.url();if(!ASSET_EXT.test(u))netDuring.push({method:r.method(),url:u})};
+    const target=p.locator('input[name="searchText"]').first();
+    if(await visible(target)){
+      p.on('request',onDuring);
+      await target.fill(q);
+      await p.waitForTimeout(300);
+      const filledVal=(await target.inputValue().catch(()=>'')).trim();
+      // Look for a real search-trigger control near the field (icon/button),
+      // ranked before falling back to Enter — mirrors how a human would
+      // actually operate this UI (click the magnifying-glass icon), not just
+      // press a key and hope.
+      let clickedSel=null;
+      for(const sel of ['button[class*="search" i]','[class*="search-icon" i]','i[class*="search" i]','[aria-label*="ძებნა" i]','[title*="ძებნა" i]','[aria-label*="search" i]']){
+        const icon=p.locator(sel).first();
+        if(await visible(icon)){try{await icon.click({timeout:3000});clickedSel=sel;break}catch{}}
+      }
+      if(!clickedSel){await target.press('Enter').catch(()=>{})}
+      await p.waitForTimeout(3500);
+      p.off('request',onDuring);
+      searchAttempt={attempted:true,filledValueVerified:filledVal.replace(/\s/g,'')===q.replace(/\s/g,''),submitMethod:clickedSel?`CLICK ${clickedSel}`:'ENTER_KEY'};
+    }
+    const afterShot=(await p.screenshot({type:'png'})).toString('base64');
+    const afterText=await text(p);
+    await ctx.close();
+    const id=crypto.randomUUID();
+    debugJobs.set(id,{beforeShot,afterShot,createdAt:now()});
+    res.json({id,query:q,candidates,buttons,netPre:netPre.slice(0,60),netDuringSearch:netDuring,searchAttempt,afterTextSnippet:afterText.slice(0,3000),screenshotUrls:{before:`/debug/${id}/screenshot?which=before`,after:`/debug/${id}/screenshot?which=after`}});
+  }catch(e){
+    res.status(500).json({error:String(e)});
+  }finally{
+    await browser?.close().catch(()=>{});
+  }
+});
+app.get('/debug/:id/screenshot',auth,(req,res)=>{const d=debugJobs.get(req.params.id);if(!d)return res.status(404).json({error:'not found'});const b64=req.query.which==='after'?d.afterShot:d.beforeShot;const buf=Buffer.from(b64,'base64');res.setHeader('Content-Type','image/png');res.send(buf)});
 async function auth(req,res,next){const h=String(req.headers.authorization||'');if(TOKEN&&h===`Bearer ${TOKEN}`)return next();if(SUPABASE_URL&&h.startsWith('Bearer ')){try{const k=String(req.headers.apikey||'');if(!k)return res.status(401).json({error:'apikey required'});if((await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{Authorization:h,apikey:k}})).ok)return next()}catch{}}return res.status(401).json({error:'unauthorized'})}
 app.listen(PORT,'0.0.0.0',()=>console.log(`homatch-official-worker 1.4.0 listening on ${PORT}`));

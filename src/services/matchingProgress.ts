@@ -1,55 +1,68 @@
 import { supabase } from '@/db/supabase';
+import { MATCHING_JOB_TERMINAL_STATUSES } from '@/components/matching/MatchingJobProgress';
 
-export interface MatchingRunProgress {
+// Live matching-run status, sourced from the real `matching_jobs` table (the
+// one the actual matching pipeline — run-matching-v2 / the continuous worker
+// — writes to). This used to read from a separate `matching_run_progress`
+// table that belonged to an older, now-disabled pipeline (see
+// supabase/functions/seed-demo-matches, which now returns 423 and writes
+// nothing); that table stopped being written to entirely, so anything
+// reading it silently went stale. `matching_jobs` is the one real system.
+export interface LiveMatchingJob {
   id: string;
   property_id: string;
-  campaign_id?: string | null;
-  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PAUSED';
-  stage: string;
-  progress_percent: number;
-  sources: Record<string, string>;
-  counters: Record<string, any>;
-  search_profile?: Record<string, any> | null;
-  message?: string | null;
-  error?: string | null;
-  started_at: string;
-  updated_at: string;
-  completed_at?: string | null;
+  status: string;
+  progress: number;
+  current_step: string | null;
+  query_packs_created: number;
+  queries_run: number;
+  signals_collected: number;
+  signals_classified: number;
+  signals_rejected: number;
+  candidates_after_filter: number;
+  matches_created: number;
+  tiers_run: number;
+  provider_results: Record<string, string> | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
 }
 
-export async function getLatestMatchingProgress(propertyId: string): Promise<MatchingRunProgress | null> {
-  const { data } = await supabase
-    .from('matching_run_progress')
-    .select('*')
-    .eq('property_id', propertyId)
-    .order('started_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data ?? null;
+const TERMINAL = new Set<string>(MATCHING_JOB_TERMINAL_STATUSES);
+export function isMatchingJobLive(status: string): boolean {
+  return !TERMINAL.has(status);
 }
 
-export async function getLatestProgressForProperties(propertyIds: string[]): Promise<Record<string, MatchingRunProgress>> {
+const JOB_COLUMNS = 'id,property_id,status,progress,current_step,query_packs_created,queries_run,signals_collected,signals_classified,signals_rejected,candidates_after_filter,matches_created,tiers_run,provider_results,started_at,completed_at,created_at';
+
+/** Latest matching_jobs row (any status) for each of the given properties, keyed by property_id. */
+export async function getLatestProgressForProperties(propertyIds: string[]): Promise<Record<string, LiveMatchingJob>> {
   if (!propertyIds.length) return {};
-  const { data } = await supabase
-    .from('matching_run_progress')
-    .select('*')
+  const { data, error } = await supabase
+    .from('matching_jobs')
+    .select(JOB_COLUMNS)
     .in('property_id', propertyIds)
-    .order('started_at', { ascending: false });
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error('[matchingProgress] failed to load matching_jobs:', error);
+    return {};
+  }
 
-  const out: Record<string, MatchingRunProgress> = {};
-  for (const row of Array.isArray(data) ? data : []) {
-    if (!out[row.property_id]) out[row.property_id] = row as MatchingRunProgress;
+  const out: Record<string, LiveMatchingJob> = {};
+  for (const row of (data ?? []) as LiveMatchingJob[]) {
+    if (!out[row.property_id]) out[row.property_id] = row;
   }
   return out;
 }
 
 export async function getUserMatchSummary(propertyIds: string[]) {
   if (!propertyIds.length) return { total: 0, newCount: 0, bestScore: 0, topPropertyId: null as string | null };
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('matches')
     .select('id,status,match_score,property_id')
     .in('property_id', propertyIds)
     .neq('status', 'REJECTED');
+  if (error) console.error('[matchingProgress] failed to load match summary:', error);
   const rows = Array.isArray(data) ? data : [];
 
   // The dashboard's "View Matches" action is aggregate (matches across every

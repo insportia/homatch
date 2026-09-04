@@ -1,40 +1,33 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
-const json=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,'Content-Type':'application/json'}});
-
-async function invoke(base:string,key:string,fn:string,body:any,timeout=120000){const r=await fetch(`${base}/functions/v1/${fn}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,apikey:key,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});const t=await r.text();let d:any={};try{d=JSON.parse(t)}catch{d={raw:t}}if(!r.ok)throw new Error(`${fn} ${r.status}: ${d?.error||t}`);return d}
-
-Deno.serve(async(req:Request)=>{
- if(req.method==='OPTIONS')return new Response('ok',{headers:CORS});
- const url=Deno.env.get('SUPABASE_URL')!,anon=Deno.env.get('SUPABASE_ANON_KEY')!,serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,auth=req.headers.get('authorization')??'';
- try{
-  const uc=createClient(url,anon,{global:{headers:{Authorization:auth}}});const{data:{user}}=await uc.auth.getUser();if(!user)return json({error:'Unauthorized'},401);
-  const db=createClient(url,serviceKey);const{propertyId}=await req.json();if(!propertyId)return json({error:'propertyId required'},400);
-  const{data:u}=await db.from('users').select('id').eq('auth_id',user.id).maybeSingle();if(!u)return json({error:'Homatch user not found'},403);
-  const{data:p}=await db.from('properties').select(`id,user_id,matching_status,transaction_type,property_type,facts:property_facts!property_id(country,country_code,city)`).eq('id',propertyId).eq('user_id',u.id).eq('is_deleted',false).maybeSingle();if(!p)return json({error:'Property not found'},404);
-  let{data:campaign}=await db.from('matching_campaigns').select('id').eq('property_id',propertyId).maybeSingle();if(campaign?.id)await db.from('matching_campaigns').update({status:'ACTIVE',status_v2:'ACTIVE'}).eq('id',campaign.id);else{const c=await db.from('matching_campaigns').insert({property_id:propertyId,user_id:u.id,status:'ACTIVE',status_v2:'ACTIVE'}).select('id').single();if(c.error)throw c.error;campaign=c.data}
-  await db.from('properties').update({matching_status:'ACTIVE'}).eq('id',propertyId);
-  await db.from('matching_run_progress').update({status:'PAUSED',stage:'SUPERSEDED',message:'Superseded by a newer matching run',updated_at:new Date().toISOString(),completed_at:new Date().toISOString()}).eq('property_id',propertyId).eq('status','RUNNING');
-  const{data:run,error:runErr}=await db.from('matching_run_progress').insert({property_id:propertyId,user_id:u.id,campaign_id:campaign.id,status:'RUNNING',stage:'INITIALIZING',progress_percent:2,message:'Preparing AI matching engine',sources:{google:'waiting',facebook:'waiting',telegram:'waiting',threads:'waiting',instagram:'indexed-search',vk:'indexed-search',reddit:'indexed-search',forums:'indexed-search'},counters:{candidates:0,signals:0,classified:0,matches:0}}).select('id').single();if(runErr)throw runErr;
-  const task=runPipeline({url,serviceKey,db,propertyId,userId:u.id,campaignId:campaign.id,runId:run.id,property:p});
-  // @ts-ignore Supabase Edge Runtime background task
-  EdgeRuntime.waitUntil(task);
-  return json({success:true,started:true,real:true,runId:run.id,campaignId:campaign.id});
- }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
+// LEGACY / DISABLED — this file's source used to be a full matching-pipeline
+// orchestrator (generate-search-profile → dataforseo-search → apify-discover
+// → classify-signals-v2 → run-matching-v2), reporting fine-grained progress
+// into a `matching_run_progress` table. It has been intentionally disabled
+// in production (see the deployed version below) because invoking it could
+// trigger real, paid discovery calls (DataForSEO, Apify) outside of the
+// controlled, budget-aware matching flow. The real, live matching pipeline
+// runs through `run-matching-v2` and reports progress into `matching_jobs` /
+// `matching_job_events` (see src/components/matching/MatchingJobProgress.tsx
+// and src/services/matchingProgress.ts) — that is now the one and only
+// progress-tracking system; `matching_run_progress` has been dropped.
+//
+// This file is kept in the repo (rather than deleting the function) only so
+// the frontend's `seedDemoMatches()` wrapper (src/services/api.ts), which has
+// no callers anywhere in the UI, keeps resolving to an honest, explicit
+// "disabled" response instead of a 404. Do not restore the old pipeline logic
+// here without re-adding the necessary cost/rate controls first.
+Deno.serve(async (req: Request) => {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Content-Type': 'application/json',
+  };
+  if (req.method === 'OPTIONS') return new Response('ok', { headers });
+  return new Response(
+    JSON.stringify({
+      success: false,
+      legacyPaidPipelineBlocked: true,
+      error: 'Legacy seed/matching launcher is disabled because it could trigger paid discovery. Use internal matching and the controlled external fallback workflow.',
+    }),
+    { status: 423, headers },
+  );
 });
-
-async function runPipeline(ctx:any){const{url,serviceKey,db,propertyId,userId,campaignId,runId,property}=ctx;const facts=Array.isArray(property.facts)?property.facts[0]:property.facts;const country=String(facts?.country_code||facts?.country||'GE').toUpperCase();try{
- await progress(db,runId,8,'ANALYZING_PROPERTY','AI is reading property type, transaction, location, price and description');
- const prof=await invoke(url,serviceKey,'generate-search-profile',{propertyId});const profile=prof.profile||{};await progress(db,runId,18,'SEARCH_PROFILE_READY','AI search profile generated',{search_profile:profile});
- const searchRuns:any[]=[];const langs=['en','ru','ka','tr','ar','he'];let done=0;
- for(const lang of langs){const qs=Array.isArray(profile.queries?.[lang])?profile.queries[lang].slice(0,10):[];if(qs.length){try{searchRuns.push({...await invoke(url,serviceKey,'dataforseo-search',{propertyId,queries:qs,language:lang,country}),language:lang})}catch(e){searchRuns.push({language:lang,error:String(e)})}}done++;const found=searchRuns.reduce((n,r)=>n+Number(r.resultsFound||0),0);const ins=searchRuns.reduce((n,r)=>n+Number(r.signalsInserted||0),0);await progress(db,runId,18+Math.round(done/langs.length*27),'WEB_DISCOVERY',`Searching public web in ${done}/${langs.length} languages`,{sources:{google:'searching'},counters:{webCandidates:found,webSignals:ins}})}
- const flat=langs.flatMap(l=>Array.isArray(profile.queries?.[l])?profile.queries[l]:[]).slice(0,30);await progress(db,runId,48,'SOCIAL_DISCOVERY','Searching public social sources',{sources:{google:'done',facebook:'searching',telegram:'searching',threads:'searching',instagram:'indexed-search',vk:'indexed-search',reddit:'indexed-search',forums:'indexed-search'}});
- let apify:any={};try{apify=await invoke(url,serviceKey,'apify-discover',{propertyId,queries:flat,maxPerPlatform:25},120000)}catch(e){apify={error:String(e)}}
- const socialFound=Number(apify?.facebook?.found||0)+Number(apify?.telegram?.found||0)+Number(apify?.threads?.found||0);const socialInserted=Number(apify?.facebook?.inserted||0)+Number(apify?.telegram?.inserted||0)+Number(apify?.threads?.inserted||0);await progress(db,runId,68,'AI_CLASSIFICATION','AI is separating demand from listings, ads and noise',{sources:{facebook:apify?.facebook?'done':'error',telegram:apify?.telegram?'done':'error',threads:apify?.threads?'done':'error'},counters:{socialCandidates:socialFound,socialSignals:socialInserted}});
- const cls=await invoke(url,serviceKey,'classify-signals-v2',{batchSize:400,market:country},120000);await progress(db,runId,86,'MATCH_SCORING','Scoring every qualified demand signal from 20% to 100%',{counters:{classified:Number(cls.classified||0),filtered:Number(cls.filteredOut||0)}});
- const match=await invoke(url,serviceKey,'run-matching-v2',{propertyId,campaignId,intentProfileBatchSize:500},120000);const dfsFound=searchRuns.reduce((n,r)=>n+Number(r.resultsFound||0),0),dfsInserted=searchRuns.reduce((n,r)=>n+Number(r.signalsInserted||0),0);
- await db.from('matching_run_progress').update({status:'COMPLETED',stage:'COMPLETE',progress_percent:100,message:`Matching complete — ${Number(match.matchesCreated||0)} new matches`,sources:{google:'done',facebook:apify?.facebook?'done':'error',telegram:apify?.telegram?'done':'error',threads:apify?.threads?'done':'error',instagram:'indexed-via-google',vk:'indexed-via-google',reddit:'indexed-via-google',forums:'indexed-via-google'},counters:{webCandidates:dfsFound,webSignals:dfsInserted,socialCandidates:socialFound,socialSignals:socialInserted,classified:Number(cls.classified||0),filtered:Number(cls.filteredOut||0),matches:Number(match.matchesCreated||0),bestScore:Number(match.bestScore||0),buckets:match.buckets||{}},updated_at:new Date().toISOString(),completed_at:new Date().toISOString()}).eq('id',runId);
- await db.from('activity_events').insert({user_id:userId,property_id:propertyId,event_type:'MATCHING_STARTED',metadata:{mode:'REAL_V2',run_id:runId,web_candidates:dfsFound,social_candidates:socialFound,classified:Number(cls.classified||0),matches_created:Number(match.matchesCreated||0),best_score:Number(match.bestScore||0),buckets:match.buckets||{}}});
- }catch(e){await db.from('matching_run_progress').update({status:'FAILED',stage:'FAILED',message:'Matching run failed',error:e instanceof Error?e.message:String(e),updated_at:new Date().toISOString(),completed_at:new Date().toISOString()}).eq('id',runId);console.error('matching pipeline',e)}}
-
-async function progress(db:any,id:string,pct:number,stage:string,message:string,extra:any={}){const patch:any={progress_percent:pct,stage,message,updated_at:new Date().toISOString()};if(extra.sources)patch.sources=extra.sources;if(extra.counters)patch.counters=extra.counters;if(extra.search_profile)patch.search_profile=extra.search_profile;await db.from('matching_run_progress').update(patch).eq('id',id)}

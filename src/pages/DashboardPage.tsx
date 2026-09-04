@@ -13,34 +13,35 @@ import {
   PlusCircle, MapPin, DollarSign, Maximize2, BedDouble, Zap, Trash2,
   ExternalLink, LayoutGrid, Building2, Search, Brain, Globe2, CheckCircle2,
   Loader2, Radio, ShieldCheck, Bot, Shield, MessageSquare, Bell, CalendarDays,
-  Sparkles, ArrowRight, TrendingUp, Users,
+  Sparkles, ArrowRight, TrendingUp, Users, Database, Layers, Filter,
 } from 'lucide-react';
 import { getProperties, softDeleteProperty } from '@/services/api';
 import {
-  getLatestProgressForProperties, getUserMatchSummary,
-  type MatchingRunProgress,
+  getLatestProgressForProperties, getUserMatchSummary, isMatchingJobLive,
+  type LiveMatchingJob,
 } from '@/services/matchingProgress';
+import { statusLabel as jobStatusLabel, providerBadge, MATCHING_JOB_STEP_ORDER } from '@/components/matching/MatchingJobProgress';
 import type { Property } from '@/types/types';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 
 // ── Sub-components (unchanged from Phase 3) ──────────────────
-function StatusBadge({ status, run }: { status: string; run?: MatchingRunProgress }) {
+function StatusBadge({ status, run }: { status: string; run?: LiveMatchingJob }) {
   const { t } = useLanguage();
-  if (run?.status === 'RUNNING') return <span className="status-active">{t('dash_status_ai_searching', { percent: run.progress_percent })}</span>;
+  if (run && isMatchingJobLive(run.status)) return <span className="status-active">{t('dash_status_ai_searching', { percent: run.progress })}</span>;
   if (status === 'ACTIVE') return <span className="status-active">{t('dash_status_matching_active')}</span>;
   if (status === 'PAUSED') return <span className="status-paused">{t('dash_status_paused_caps')}</span>;
   return <span className="status-paused">{t('dash_status_draft')}</span>;
 }
 
-function PropertyCard({ prop, run, onDelete }: { prop: Property; run?: MatchingRunProgress; onDelete: (id: string) => void }) {
+function PropertyCard({ prop, run, onDelete }: { prop: Property; run?: LiveMatchingJob; onDelete: (id: string) => void }) {
   const navigate = useNavigate();
   const { t, isRTL } = useLanguage();
   const facts = prop.facts;
   const isPrivate = prop.source_type === 'PRIVATE_LISTING';
   const locationParts = [facts?.district, facts?.city, facts?.country].filter(Boolean).join(', ');
-  const running = run?.status === 'RUNNING';
-  const score = running ? run.progress_percent : (prop.matchability_score ?? 0);
+  const running = !!run && isMatchingJobLive(run.status);
+  const score = running ? run.progress : (prop.matchability_score ?? 0);
   const scoreColor = running ? 'text-primary' : score >= 80 ? 'text-green-400' : score >= 50 ? 'text-primary' : 'text-muted-foreground';
   const label = running ? t('dash_label_ai_progress') : t('dash_label_best_match');
 
@@ -94,8 +95,8 @@ function PropertyCard({ prop, run, onDelete }: { prop: Property; run?: MatchingR
           <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
             <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${score}%` }} />
           </div>
-          {running && run?.message && <p className="text-[11px] text-muted-foreground truncate">{run.message}</p>}
-          {!running && run?.status === 'COMPLETED' && Number(run.counters?.matches ?? 0) === 0 && (
+          {running && run?.current_step && <p className="text-[11px] text-muted-foreground truncate">{run.current_step}</p>}
+          {!running && run?.status === 'completed' && run.matches_created === 0 && (
             <p className="text-[11px] text-muted-foreground">{t('dash_last_scan_no_matches')}</p>
           )}
         </div>
@@ -134,32 +135,18 @@ function StatsCard({ label, value, icon: Icon, accent = false }: { label: string
   );
 }
 
-// Platform names (Facebook, Telegram, Instagram, VK, Reddit) are third-party
-// brand names — never translated, same as everywhere else in the app.
-const SOURCE_LABEL_KEYS: Record<string, string> = {
-  google: 'dash_source_public_web', forums: 'dash_source_forums',
-};
-const SOURCE_BRAND_LABELS: Record<string, string> = {
-  facebook: 'Facebook', telegram: 'Telegram', threads: 'Threads',
-  instagram: 'Instagram', vk: 'VK', reddit: 'Reddit',
+// Icons for each real matching_jobs lifecycle step, in MATCHING_JOB_STEP_ORDER.
+const STEP_ICONS: Record<string, React.ElementType> = {
+  queued: Loader2, analysing_property: Brain, generating_queries: Search,
+  searching_sources: Globe2, collecting_results: Database, normalizing: Layers,
+  deduplicating: Filter, classifying: ShieldCheck, ranking: TrendingUp,
 };
 
-function LiveMatchingPanel({ run }: { run: MatchingRunProgress }) {
+function LiveMatchingPanel({ run }: { run: LiveMatchingJob }) {
   const { t } = useLanguage();
-  const sources = run.sources || {};
-  const counters = run.counters || {};
-  const running = run.status === 'RUNNING';
-  const stages = [
-    ['ANALYZING_PROPERTY', t('dash_stage_property_analysis'), Brain],
-    ['SEARCH_PROFILE_READY', t('dash_stage_search_profile'), Search],
-    ['WEB_DISCOVERY', t('dash_stage_web_discovery'), Globe2],
-    ['SOCIAL_DISCOVERY', t('dash_stage_social_discovery'), Radio],
-    ['AI_CLASSIFICATION', t('dash_stage_demand_classification'), ShieldCheck],
-    ['MATCH_SCORING', t('dash_stage_match_scoring'), Zap],
-  ] as const;
-  const order = stages.map(s => s[0]);
-  const currentIndex = order.indexOf(run.stage as typeof order[number]);
-  const statusLabel = running ? t('dash_status_live') : run.status === 'COMPLETED' ? t('dash_status_completed') : run.status === 'FAILED' ? t('dash_status_failed') : run.status === 'PAUSED' ? t('as_status_paused') : run.status;
+  const running = isMatchingJobLive(run.status);
+  const currentIndex = MATCHING_JOB_STEP_ORDER.indexOf(run.status as typeof MATCHING_JOB_STEP_ORDER[number]);
+  const label = jobStatusLabel(run.status, t);
 
   return (
     <div className="rounded-xl border border-primary/30 bg-card overflow-hidden">
@@ -170,55 +157,49 @@ function LiveMatchingPanel({ run }: { run: MatchingRunProgress }) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-sm">{t('dash_ai_matching_title')} {statusLabel}</h3>
+              <h3 className="font-semibold text-sm">{t('dash_ai_matching_title')} {label}</h3>
               {running && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase tracking-wider">{t('dash_status_live')}</span>}
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">{run.message || run.stage}</p>
+            {run.current_step && <p className="text-xs text-muted-foreground mt-0.5 truncate">{run.current_step}</p>}
           </div>
         </div>
-        <span className="text-xl font-semibold text-primary">{run.progress_percent}%</span>
+        <span className="text-xl font-semibold text-primary">{run.progress}%</span>
       </div>
-      <div className="h-1 bg-secondary"><div className="h-full bg-primary transition-all duration-500" style={{ width: `${run.progress_percent}%` }} /></div>
+      <div className="h-1 bg-secondary"><div className="h-full bg-primary transition-all duration-500" style={{ width: `${run.progress}%` }} /></div>
       <div className="p-4 md:p-5 grid md:grid-cols-2 gap-5">
         <div className="space-y-2.5">
           <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">{t('dash_ai_process_label')}</p>
-          {stages.map(([key, label, Icon], idx) => {
-            const done = run.status === 'COMPLETED' || (currentIndex >= 0 && idx < currentIndex);
-            const active = run.stage === key;
+          {MATCHING_JOB_STEP_ORDER.map((key, idx) => {
+            const Icon = STEP_ICONS[key] ?? Loader2;
+            const done = run.status === 'completed' || (running && currentIndex >= 0 && idx < currentIndex);
+            const active = run.status === key;
             return (
               <div key={key} className="flex items-center gap-2 text-xs">
                 <div className={`w-5 h-5 rounded-full flex items-center justify-center ${done ? 'bg-green-500/10 text-green-400' : active ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'}`}>
                   {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : active ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Icon className="w-3 h-3" />}
                 </div>
-                <span className={active ? 'text-foreground font-medium' : 'text-muted-foreground'}>{label}</span>
+                <span className={active ? 'text-foreground font-medium' : 'text-muted-foreground'}>{jobStatusLabel(key, t)}</span>
               </div>
             );
           })}
         </div>
         <div className="space-y-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">{t('dash_sources_label')}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(sources).map(([key, value]) => (
-                <span key={key} className={`text-[10px] px-2 py-1 rounded-md border ${String(value).includes('done') ? 'border-green-500/20 bg-green-500/5 text-green-400' : String(value).includes('error') ? 'border-destructive/20 bg-destructive/5 text-destructive' : 'border-border bg-secondary/40 text-muted-foreground'}`}>
-                  {(SOURCE_LABEL_KEYS[key] ? t(SOURCE_LABEL_KEYS[key]) : SOURCE_BRAND_LABELS[key]) || key}: {String(value).split('-').join(' ')}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <MiniMetric label={t('dash_metric_web_candidates')} value={counters.webCandidates ?? 0} />
-            <MiniMetric label={t('dash_metric_social_candidates')} value={counters.socialCandidates ?? 0} />
-            <MiniMetric label={t('dash_metric_qualified_demand')} value={counters.classified ?? 0} />
-            <MiniMetric label={t('dash_metric_matches_20')} value={counters.matches ?? 0} />
-          </div>
-          {counters.buckets && (
-            <div className="flex gap-2 text-[10px] text-muted-foreground">
-              <span>20–49%: {counters.buckets['20-49'] ?? 0}</span>
-              <span>50–79%: {counters.buckets['50-79'] ?? 0}</span>
-              <span>80%+: {counters.buckets['80-100'] ?? 0}</span>
+          {run.provider_results && Object.keys(run.provider_results).length > 0 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">{t('dash_sources_label')}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(run.provider_results).map(([k, v]) => providerBadge(k, v))}
+              </div>
             </div>
           )}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <MiniMetric label={t('mjp_counter_query_packs')} value={run.query_packs_created} />
+            <MiniMetric label={t('mjp_counter_signals')} value={run.signals_collected} />
+            <MiniMetric label={t('mjp_counter_classified')} value={run.signals_classified} />
+            <MiniMetric label={t('mjp_counter_candidates')} value={run.candidates_after_filter} />
+            <MiniMetric label={t('mjp_counter_matches')} value={run.matches_created} />
+            <MiniMetric label={t('mjp_counter_tiers_run')} value={run.tiers_run} />
+          </div>
         </div>
       </div>
     </div>
@@ -354,7 +335,7 @@ function DashboardContent() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [properties, setProperties] = useState<Property[]>([]);
-  const [progress, setProgress] = useState<Record<string, MatchingRunProgress>>({});
+  const [progress, setProgress] = useState<Record<string, LiveMatchingJob>>({});
   const [matchSummary, setMatchSummary] = useState<{ total: number; newCount: number; bestScore: number; topPropertyId: string | null }>({ total: 0, newCount: 0, bestScore: 0, topPropertyId: null });
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -381,7 +362,7 @@ function DashboardContent() {
   }, [homatchUser, refresh]);
 
   const liveRuns = useMemo(() =>
-    Object.values(progress).filter(r => r.status === 'RUNNING').sort((a, b) => b.started_at.localeCompare(a.started_at)),
+    Object.values(progress).filter(r => isMatchingJobLive(r.status)).sort((a, b) => b.created_at.localeCompare(a.created_at)),
     [progress]);
   const activeCount = properties.filter(p => p.matching_status === 'ACTIVE').length;
 
@@ -444,7 +425,7 @@ function DashboardContent() {
 
         {/* Live matching panels */}
         {liveRuns.map(run => <LiveMatchingPanel key={run.id} run={run} />)}
-        {!liveRuns.length && Object.values(progress).filter(r => r.status === 'COMPLETED').slice(0, 1).map(run => (
+        {!liveRuns.length && Object.values(progress).filter(r => r.status === 'completed').slice(0, 1).map(run => (
           <LiveMatchingPanel key={run.id} run={run} />
         ))}
 

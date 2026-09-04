@@ -56,7 +56,19 @@ interface Props {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const TERMINAL = new Set(['completed', 'partially_completed', 'failed', 'cancelled', 'paused']);
+// Exported so other views showing matching_jobs state (e.g. the Dashboard's
+// live-matching card) render the exact same status vocabulary instead of
+// re-deriving their own — the two used to drift out of sync when the
+// Dashboard read from a different, now-removed progress table entirely.
+export const MATCHING_JOB_TERMINAL_STATUSES = ['completed', 'partially_completed', 'failed', 'cancelled', 'paused'] as const;
+const TERMINAL = new Set<string>(MATCHING_JOB_TERMINAL_STATUSES);
+
+// The non-terminal lifecycle order, in the sequence a job actually moves
+// through — used to render a step-by-step progress stepper.
+export const MATCHING_JOB_STEP_ORDER = [
+  'queued', 'analysing_property', 'generating_queries', 'searching_sources',
+  'collecting_results', 'normalizing', 'deduplicating', 'classifying', 'ranking',
+] as const;
 
 function statusIcon(status: string) {
   if (status === 'completed') return <CheckCircle2 className="h-4 w-4 text-green-500" />;
@@ -69,7 +81,7 @@ function statusIcon(status: string) {
 // translated labels via the caller's own `t` — kept as a plain function
 // (not a component) so it stays callable from non-hook contexts, with `t`
 // threaded in as a parameter instead of calling useLanguage() here.
-function statusLabel(status: string, t: (key: string) => string) {
+export function statusLabel(status: string, t: (key: string) => string) {
   const keyMap: Record<string, string> = {
     queued: 'mjp_status_queued',
     analysing_property: 'mjp_status_analysing',
@@ -90,7 +102,7 @@ function statusLabel(status: string, t: (key: string) => string) {
   return key ? t(key) : status;
 }
 
-function providerBadge(key: string, value: string) {
+export function providerBadge(key: string, value: string) {
   const color =
     value === 'LIVE' ? 'bg-green-500/15 text-green-700 border-green-300' :
     value === 'FAILED' ? 'bg-destructive/15 text-destructive border-destructive/30' :

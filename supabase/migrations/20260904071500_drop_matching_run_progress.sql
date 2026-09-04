@@ -1,0 +1,14 @@
+-- matching_run_progress belonged to an earlier matching-pipeline design
+-- (orchestrated end-to-end inside what is now the disabled seed-demo-matches
+-- function) that has since been fully superseded by matching_jobs /
+-- matching_job_events, which the real, live matching pipeline
+-- (run-matching-v2 + the continuous worker) actually writes to.
+--
+-- Verified before dropping: no foreign key references matching_run_progress
+-- from any other table, the only writer (seed-demo-matches) has been
+-- rewritten to a disabled 423 stub that touches no tables, and the only
+-- frontend readers (src/services/matchingProgress.ts, used by
+-- DashboardPage.tsx) have been rewired to read matching_jobs instead — so
+-- this table had become silently stale (nothing kept writing to it) while
+-- the Dashboard's "live matching" card still tried to read from it.
+drop table if exists public.matching_run_progress;

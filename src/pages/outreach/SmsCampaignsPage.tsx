@@ -41,8 +41,11 @@ export default function SmsCampaignsPage() {
         .order('created_at', { ascending: false }).limit(50);
       if (error) throw error;
       setCampaigns(Array.isArray(data) ? data as OutreachCampaign[] : []);
+    } catch (err) {
+      toast.error(t('sms_campaigns_load_error'));
+      console.error(err);
     } finally { setLoading(false); }
-  }, [homatchUser]);
+  }, [homatchUser, t]);
 
   const loadContactLists = useCallback(async () => {
     if (!homatchUser) return;

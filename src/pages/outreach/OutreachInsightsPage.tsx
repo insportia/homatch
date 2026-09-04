@@ -20,14 +20,23 @@ interface CampaignRow {
   created_at: string;
 }
 
-interface HotLeadRow {
+// NOTE: this used to query a table called `ai_call_records` with columns
+// lead_score/qualification_score/follow_up_needed and a `contacts` relation
+// — none of which exist anywhere in this schema (verified against live
+// information_schema). No lead-scoring pipeline exists in retell-webhook
+// either (it only ever writes status/transcript/summary/duration/cost to
+// outreach_sends). Since the query error was never checked, this always
+// silently rendered "no hot leads" for every user. Replaced with the real
+// AI_CALL rows from outreach_sends, ordered by recency instead of a score
+// that was never computed anywhere.
+interface RecentCallRow {
   id: string;
-  phone_number: string;
+  recipient_phone: string | null;
   status: string;
-  lead_score: number | null;
-  qualification_score: number | null;
-  follow_up_needed: boolean | null;
-  contacts: { full_name: string | null } | null;
+  summary: string | null;
+  duration_sec: number | null;
+  created_at: string;
+  outreach_contacts: { full_name: string | null } | null;
   outreach_campaigns: { name: string | null; property_id: string | null; properties: { title: string | null } | null } | null;
 }
 
@@ -55,22 +64,23 @@ export default function OutreachInsightsPage() {
   const [matchStatusCounts, setMatchStatusCounts] = useState<Record<string, number>>({});
   const [commStatusCounts, setCommStatusCounts] = useState<Record<string, number>>({});
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
-  const [hotLeads, setHotLeads] = useState<HotLeadRow[]>([]);
+  const [recentCalls, setRecentCalls] = useState<RecentCallRow[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [propsRes, matchesRes, commRes, campaignsRes, leadsRes] = await Promise.all([
+      const [propsRes, matchesRes, commRes, campaignsRes, callsRes] = await Promise.all([
         supabase.from('properties').select('id', { count: 'exact', head: true }).eq('is_deleted', false),
         supabase.from('matches').select('status').limit(2000),
         supabase.from('property_community_recommendations').select('status').limit(2000),
         supabase.from('outreach_campaigns')
           .select('id,name,campaign_type,status,sent_count,open_count,reply_count,created_at')
           .order('created_at', { ascending: false }).limit(20),
-        supabase.from('ai_call_records')
-          .select('id,phone_number,status,lead_score,qualification_score,follow_up_needed,contacts(full_name),outreach_campaigns(name,property_id,properties(title))')
-          .order('lead_score', { ascending: false, nullsFirst: false })
+        supabase.from('outreach_sends')
+          .select('id,recipient_phone,status,summary,duration_sec,created_at,outreach_contacts(full_name),outreach_campaigns(name,property_id,properties(title))')
+          .eq('channel', 'AI_CALL')
+          .order('created_at', { ascending: false })
           .limit(15),
       ]);
       if (cancelled) return;
@@ -92,7 +102,7 @@ export default function OutreachInsightsPage() {
       setCommStatusCounts(cStatus);
 
       setCampaigns((campaignsRes.data ?? []) as CampaignRow[]);
-      setHotLeads((leadsRes.data ?? []) as unknown as HotLeadRow[]);
+      setRecentCalls((callsRes.data ?? []) as unknown as RecentCallRow[]);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -100,7 +110,7 @@ export default function OutreachInsightsPage() {
 
   const totalMatches = Object.values(matchStatusCounts).reduce((a, b) => a + b, 0);
   const postedCount = commStatusCounts['POSTED'] ?? 0;
-  const hotLeadCount = hotLeads.filter((l) => (l.lead_score ?? 0) >= 70).length;
+  const answeredCallCount = recentCalls.filter((c) => c.status === 'ANSWERED' || c.status === 'COMPLETED').length;
 
   const commBuckets: Record<string, number> = {};
   for (const [status, count] of Object.entries(commStatusCounts)) {
@@ -111,7 +121,7 @@ export default function OutreachInsightsPage() {
   const statTiles = [
     { icon: Home, labelKey: 'insights_stat_properties', value: propertyCount },
     { icon: Target, labelKey: 'insights_stat_matches', value: totalMatches },
-    { icon: Flame, labelKey: 'insights_stat_hot_leads', value: hotLeadCount },
+    { icon: Flame, labelKey: 'insights_stat_hot_leads', value: answeredCallCount },
     { icon: Users, labelKey: 'insights_stat_communities_posted', value: postedCount },
   ];
 
@@ -176,24 +186,21 @@ export default function OutreachInsightsPage() {
                   <p className="text-sm font-semibold flex items-center gap-2">
                     <PhoneCall className="h-4 w-4 text-primary" />{t('insights_hot_leads_title')}
                   </p>
-                  {hotLeads.length === 0 ? (
+                  {recentCalls.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-2">{t('insights_hot_leads_none')}</p>
                   ) : (
                     <div className="space-y-2">
-                      {hotLeads.map((l) => (
-                        <div key={l.id} className="flex items-center gap-3 rounded-lg border border-border p-2.5">
+                      {recentCalls.map((c) => (
+                        <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border p-2.5">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-sm font-medium truncate">{l.contacts?.full_name ?? l.phone_number}</p>
-                              {l.outreach_campaigns?.properties?.title && (
-                                <span className="text-[11px] text-muted-foreground truncate">— {l.outreach_campaigns.properties.title}</span>
-                              )}
-                              {l.follow_up_needed && (
-                                <Badge className="text-[9px] px-1 py-0 bg-amber-500/15 text-amber-500 border-amber-500/30">{t('insights_follow_up_badge')}</Badge>
+                              <p className="text-sm font-medium truncate">{c.outreach_contacts?.full_name ?? c.recipient_phone ?? '—'}</p>
+                              {c.outreach_campaigns?.properties?.title && (
+                                <span className="text-[11px] text-muted-foreground truncate">— {c.outreach_campaigns.properties.title}</span>
                               )}
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                              {l.lead_score != null ? `${l.lead_score}/100` : '—'} · {l.status}
+                            <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                              {c.status}{c.duration_sec ? ` · ${Math.round(c.duration_sec / 60)}m` : ''}{c.summary ? ` · ${c.summary}` : ''}
                             </p>
                           </div>
                         </div>

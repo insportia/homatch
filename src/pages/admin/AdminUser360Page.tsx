@@ -201,7 +201,7 @@ export default function AdminUser360Page() {
           {selected.properties.length > 0 && (
             <Section title={t('admin_properties_title')} icon={<Building2 className="h-4 w-4" />}>
               {selected.properties.map((p) => (
-                <Row key={p.id} primary={p.title} secondary={`${p.property_type} · ${p.status}`} date={p.created_at} />
+                <Row key={p.id} primary={p.title} secondary={`${p.property_type} · ${p.matching_status}`} date={p.created_at} />
               ))}
             </Section>
           )}
@@ -247,8 +247,8 @@ export default function AdminUser360Page() {
                     <p className="text-xs font-medium text-muted-foreground">{t('admin_user360_recent_cost_events')}</p>
                     {selected.recent_cost_events.slice(0, 5).map((e, i) => (
                       <div key={i} className="flex justify-between text-xs">
-                        <span className="text-muted-foreground truncate">{e.event_type}</span>
-                        <span className="font-medium shrink-0 ms-2">${Number(e.amount_usd).toFixed(4)}</span>
+                        <span className="text-muted-foreground truncate">{e.operation_type}</span>
+                        <span className="font-medium shrink-0 ms-2">${Number(e.cost_usd).toFixed(4)}</span>
                       </div>
                     ))}
                   </div>

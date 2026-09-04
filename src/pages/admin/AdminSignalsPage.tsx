@@ -55,16 +55,12 @@ function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => vo
               <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">{t('admin_signals_discovered')}</p>
               <p>{signal.discovered_at ? format(new Date(signal.discovered_at), 'MMM d yyyy, HH:mm') : '—'}</p>
             </div>
-            <div>
-              <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">{t('admin_signals_filter_classified')}</p>
-              <p>{signal.classified_at ? format(new Date(signal.classified_at), 'MMM d yyyy, HH:mm') : '—'}</p>
-            </div>
           </div>
 
           <div>
             <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">{t('admin_signals_raw_text')}</p>
             <div className="rounded-lg bg-secondary/50 border border-border p-3 max-h-40 overflow-y-auto">
-              <p className="whitespace-pre-wrap leading-relaxed">{signal.raw_text ?? '—'}</p>
+              <p className="whitespace-pre-wrap leading-relaxed">{signal.original_text ?? '—'}</p>
             </div>
           </div>
 
@@ -138,7 +134,7 @@ export default function AdminSignalsPage() {
       // First reset ERROR/FILTERED_OUT signals back to PENDING so classifier picks them up
       const { error: resetErr } = await supabase
         .from('raw_signals')
-        .update({ classification_status: 'PENDING', error_message: null, classified_at: null })
+        .update({ classification_status: 'PENDING', error_message: null })
         .in('classification_status', ['ERROR', 'FILTERED_OUT']);
       if (resetErr) throw resetErr;
 
@@ -221,7 +217,7 @@ export default function AdminSignalsPage() {
                   <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer"
                     onClick={() => setSelectedSignal(s)}>
                     <td className="px-4 py-2.5 max-w-[280px]">
-                      <p className="text-xs truncate">{s.raw_text?.slice(0, 110) ?? '—'}</p>
+                      <p className="text-xs truncate">{s.original_text?.slice(0, 110) ?? '—'}</p>
                       {s.error_message && (
                         <p className="text-[10px] text-destructive truncate mt-0.5">{s.error_message.slice(0, 60)}</p>
                       )}

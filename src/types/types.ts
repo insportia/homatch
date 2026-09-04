@@ -1069,12 +1069,12 @@ export interface ImpersonationBanner {
 
 export interface User360 {
   user: User | null;
-  properties: Array<{ id: string; title: string; property_type: string; status: string; created_at: string }>;
+  properties: Array<{ id: string; title: string; property_type: string; matching_status: string; created_at: string }>;
   campaigns: Array<{ id: string; name: string; campaign_type: string; status: string; audience_count: number; cost_estimate_usd: number; created_at: string }>;
   contact_lists: Array<{ id: string; name: string; import_status: string; total_rows: number; valid_rows: number; created_at: string }>;
   credits: { balance: number; lifetime_purchased: number; lifetime_spent: number } | null;
   ai_conversations: Array<{ id: string; created_at: string }>;
-  recent_cost_events: Array<{ event_type: string; amount_usd: number; created_at: string }>;
+  recent_cost_events: Array<{ operation_type: string; cost_usd: number; timestamp: string; property_id: string }>;
 }
 
 export interface GeoLocation {

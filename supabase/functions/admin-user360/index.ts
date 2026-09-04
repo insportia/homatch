@@ -76,24 +76,41 @@ serve(async (req) => {
       const { target_user_id } = body;
       if (!target_user_id) return new Response(JSON.stringify({ error: 'target_user_id required' }), { status: 400, headers: corsHeaders });
 
-      const [userRes, propertiesRes, campaignsRes, listsRes, creditRes, aiRes, costRes] = await Promise.all([
+      const [userRes, propertiesRes, campaignsRes, listsRes, creditRes, ledgerRes, aiRes, costRes] = await Promise.all([
         serviceClient.from('users').select('*').eq('id', target_user_id).maybeSingle(),
-        serviceClient.from('properties').select('id,title,property_type,transaction_type,status,created_at').eq('user_id', target_user_id).order('created_at', { ascending: false }).limit(20),
+        // NOTE: properties has no `status` column — the lifecycle field is `matching_status`.
+        serviceClient.from('properties').select('id,title,property_type,transaction_type,matching_status,created_at').eq('user_id', target_user_id).order('created_at', { ascending: false }).limit(20),
         serviceClient.from('outreach_campaigns').select('id,name,campaign_type,status,created_at,audience_count,cost_estimate_usd').eq('owner_id', target_user_id).order('created_at', { ascending: false }).limit(20),
         serviceClient.from('outreach_contact_lists').select('id,name,import_status,total_rows,valid_rows,created_at').eq('owner_id', target_user_id).order('created_at', { ascending: false }).limit(20),
-        serviceClient.from('credit_accounts').select('balance,lifetime_purchased,lifetime_spent').eq('user_id', target_user_id).maybeSingle(),
+        // credit_accounts only stores the current balance — no lifetime_purchased/lifetime_spent
+        // columns exist on this table (a prior version of this query referenced them and always
+        // errored, silently nulling out the entire credits block for every user). Those lifetime
+        // totals are derived below from credit_ledger, which does record real purchase/spend history.
+        serviceClient.from('credit_accounts').select('balance').eq('user_id', target_user_id).maybeSingle(),
+        serviceClient.from('credit_ledger').select('type,amount').eq('user_id', target_user_id).limit(1000),
         serviceClient.from('ai_conversations').select('id,created_at').eq('user_id', target_user_id).order('created_at', { ascending: false }).limit(5),
         serviceClient.from('cost_events').select('operation_type,cost_usd,timestamp,property_id').in('property_id',
           (await serviceClient.from('properties').select('id').eq('user_id', target_user_id).limit(200)).data?.map((p: { id: string }) => p.id) ?? []
         ).order('timestamp', { ascending: false }).limit(20),
       ]);
 
+      const ledgerRows = ledgerRes.data ?? [];
+      const lifetimePurchased = ledgerRows
+        .filter((r: { type: string }) => r.type === 'TOP_UP')
+        .reduce((sum: number, r: { amount: number }) => sum + Number(r.amount), 0);
+      const lifetimeSpent = ledgerRows
+        .filter((r: { type: string }) => r.type === 'MATCH_UNLOCK' || r.type === 'SERVICE_CAPTURE')
+        .reduce((sum: number, r: { amount: number }) => sum + Math.abs(Number(r.amount)), 0);
+      const credits = creditRes.data
+        ? { balance: creditRes.data.balance, lifetime_purchased: lifetimePurchased, lifetime_spent: lifetimeSpent }
+        : null;
+
       return new Response(JSON.stringify({
         user: userRes.data,
         properties: propertiesRes.data ?? [],
         campaigns: campaignsRes.data ?? [],
         contact_lists: listsRes.data ?? [],
-        credits: creditRes.data,
+        credits,
         ai_conversations: aiRes.data ?? [],
         recent_cost_events: costRes.data ?? [],
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

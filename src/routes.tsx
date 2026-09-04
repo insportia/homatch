@@ -40,6 +40,7 @@ import AdminUsersPage from './pages/admin/AdminUsersPage';
 import AdminUser360Page from './pages/admin/AdminUser360Page';
 import AdminPropertiesPage from './pages/admin/AdminPropertiesPage';
 import AdminCampaignsPage from './pages/admin/AdminCampaignsPage';
+import AdminOutreachPage from './pages/admin/AdminOutreachPage';
 import AdminMarketsPage from './pages/admin/AdminMarketsPage';
 import AdminSourcesPage from './pages/admin/AdminSourcesPage';
 import AdminSignalsPage from './pages/admin/AdminSignalsPage';
@@ -108,6 +109,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin User 360',    path: '/admin/user360',            element: adminWrap(<AdminUser360Page />),     adminOnly: true },
   { name: 'Admin Properties',  path: '/admin/properties',         element: adminWrap(<AdminPropertiesPage />),  adminOnly: true },
   { name: 'Admin Campaigns',   path: '/admin/campaigns',          element: adminWrap(<AdminCampaignsPage />),   adminOnly: true },
+  { name: 'Admin Outreach',    path: '/admin/outreach',           element: adminWrap(<AdminOutreachPage />),    adminOnly: true },
   { name: 'Admin Markets',     path: '/admin/markets',            element: adminWrap(<AdminMarketsPage />),     adminOnly: true },
   { name: 'Admin Sources',     path: '/admin/sources',            element: adminWrap(<AdminSourcesPage />),     adminOnly: true },
   { name: 'Admin Signals',     path: '/admin/signals',            element: adminWrap(<AdminSignalsPage />),     adminOnly: true },

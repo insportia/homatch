@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Building2, Zap, Globe, Radio,
   Activity, Puzzle, CreditCard, Receipt, Server, Settings2,
   ShieldAlert, Wrench, ChevronLeft, Menu, X, AlertTriangle,
-  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning,
+  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,7 @@ const NAV = [
   { path: '/admin/user360',      labelKey: 'admin_nav_user360',    icon: UserSearch },
   { path: '/admin/properties',   labelKey: 'admin_nav_properties', icon: Building2 },
   { path: '/admin/campaigns',    labelKey: 'admin_nav_campaigns',  icon: Zap },
+  { path: '/admin/outreach',     labelKey: 'admin_nav_outreach',   icon: Send },
   { path: '/admin/markets',      labelKey: 'admin_nav_markets',    icon: Globe },
   { path: '/admin/sources',      labelKey: 'admin_nav_sources',    icon: Radio },
   { path: '/admin/signals',      labelKey: 'admin_nav_signals',    icon: Activity },

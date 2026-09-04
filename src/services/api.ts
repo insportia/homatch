@@ -733,6 +733,94 @@ export async function getAdminCampaigns(limit = 50, offset = 0) {
   return data ?? [];
 }
 
+export interface AdminOutreachChannelStats {
+  channel: 'EMAIL' | 'SMS' | 'AI_CALL';
+  sent: number;
+  success: number;
+  failed: number;
+  cost_usd: number;
+}
+
+export interface AdminOutreachCampaignRow {
+  id: string;
+  name: string;
+  campaign_type: string;
+  status: string;
+  sent_count: number;
+  cost_actual_usd: number;
+  created_at: string;
+  owner_email: string | null;
+}
+
+export interface AdminOutreachOverview {
+  channels: AdminOutreachChannelStats[];
+  total_campaigns: number;
+  total_sends: number;
+  total_cost_usd: number;
+  recent_campaigns: AdminOutreachCampaignRow[];
+}
+
+// Cross-user Email/SMS/AI_CALL campaign observability. Was completely absent
+// at the admin level before this (Task #65 audit) -- AdminCampaignsPage
+// queries matching_campaigns, an unrelated sponsored-placement feature; the
+// only other admin-adjacent read of outreach_campaigns was a single-user
+// drill-down in admin-user360. outreach_campaigns.owner_id references
+// auth.users, not public.users, so it can't be embedded via `users(email)`
+// like matching_campaigns/payments/matches can -- resolved with a manual
+// auth_id -> email lookup instead.
+export async function getAdminOutreachOverview(limit = 50): Promise<AdminOutreachOverview> {
+  const [campaignsRes, sendsRes] = await Promise.all([
+    supabase.from('outreach_campaigns')
+      .select('id, name, campaign_type, status, sent_count, cost_actual_usd, created_at, owner_id')
+      .order('created_at', { ascending: false })
+      .limit(limit),
+    // Capped at 5000 most-recent sends rather than an unbounded full-table
+    // scan -- fine for "recent channel performance" observability; a true
+    // all-time rollup at higher volume should move to a server-side
+    // aggregate (count()/sum() RPC) instead of fetching rows client-side.
+    supabase.from('outreach_sends').select('channel, status, cost_usd').order('created_at', { ascending: false }).limit(5000),
+  ]);
+
+  const campaigns = campaignsRes.data ?? [];
+  const sends = sendsRes.data ?? [];
+
+  const ownerIds = Array.from(new Set(campaigns.map((c) => c.owner_id).filter(Boolean)));
+  const emailByAuthId: Record<string, string> = {};
+  if (ownerIds.length > 0) {
+    const { data: owners } = await supabase.from('users').select('auth_id, email').in('auth_id', ownerIds);
+    for (const o of owners ?? []) {
+      if (o.auth_id) emailByAuthId[o.auth_id] = o.email;
+    }
+  }
+
+  const CHANNELS: Array<'EMAIL' | 'SMS' | 'AI_CALL'> = ['EMAIL', 'SMS', 'AI_CALL'];
+  const SUCCESS_STATUSES = new Set(['SENT', 'DELIVERED', 'DIALING', 'ANSWERED', 'COMPLETED']);
+  const channels: AdminOutreachChannelStats[] = CHANNELS.map((channel) => {
+    const rows = sends.filter((s) => s.channel === channel);
+    const failed = rows.filter((s) => s.status === 'FAILED').length;
+    const success = rows.filter((s) => SUCCESS_STATUSES.has(s.status)).length;
+    const cost_usd = rows.reduce((sum, s) => sum + Number(s.cost_usd ?? 0), 0);
+    return { channel, sent: rows.length, success, failed, cost_usd: Math.round(cost_usd * 100) / 100 };
+  });
+
+  return {
+    channels,
+    total_campaigns: campaigns.length,
+    total_sends: sends.length,
+    total_cost_usd: Math.round(channels.reduce((s, c) => s + c.cost_usd, 0) * 100) / 100,
+    recent_campaigns: campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      campaign_type: c.campaign_type,
+      status: c.status,
+      sent_count: c.sent_count ?? 0,
+      cost_actual_usd: Number(c.cost_actual_usd ?? 0),
+      created_at: c.created_at,
+      owner_email: c.owner_id ? emailByAuthId[c.owner_id] ?? null : null,
+    })),
+  };
+}
+
 export async function getAdminSources(limit = 100, offset = 0) {
   const { data } = await supabase.from('source_registry')
     .select('*')

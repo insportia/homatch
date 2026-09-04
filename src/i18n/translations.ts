@@ -2218,6 +2218,28 @@ const en = {
   contacts_import_success: 'Imported {count} contacts',
   contacts_import_error: 'Import failed',
   contacts_import_choose_another: 'Choose a different file',
+
+  // ── Admin Outreach Observability (Task #65) ──────────────────────────────────────────────
+  admin_nav_outreach: 'Outreach',
+  admin_outreach_title: 'Outreach Observability',
+  admin_outreach_subtitle: 'Cross-user Email, SMS and AI Call campaign performance',
+  admin_outreach_channel_email: 'Email',
+  admin_outreach_channel_sms: 'SMS',
+  admin_outreach_channel_call: 'AI Call',
+  admin_outreach_sent: 'sent',
+  admin_outreach_success_rate: 'success',
+  admin_outreach_failed: 'failed',
+  admin_outreach_spent: 'spent this period',
+  admin_outreach_recent_campaigns: 'Recent campaigns',
+  admin_outreach_recent_campaigns_desc: 'Most recent Email/SMS/AI Call campaigns across all users',
+  admin_outreach_col_name: 'Campaign',
+  admin_outreach_col_owner: 'Owner',
+  admin_outreach_col_type: 'Type',
+  admin_outreach_col_status: 'Status',
+  admin_outreach_col_sent: 'Sent',
+  admin_outreach_col_cost: 'Cost',
+  admin_outreach_col_created: 'Created',
+  admin_outreach_empty: 'No outreach campaigns yet',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -4370,6 +4392,28 @@ const ka: Partial<Record<TranslationKey, string>> = {
   contacts_import_success: 'იმპორტირებულია {count} კონტაქტი',
   contacts_import_error: 'იმპორტი ვერ მოხერხდა',
   contacts_import_choose_another: 'სხვა ფაილის არჩევა',
+
+  // ── Admin Outreach Observability (Task #65) ──────────────────────────────────────────────
+  admin_nav_outreach: 'აუთრიჩი',
+  admin_outreach_title: 'აუთრიჩის მონიტორინგი',
+  admin_outreach_subtitle: 'ელ-ფოსტის, SMS და AI ზარების კამპანიების შედეგები ყველა მომხმარებელზე',
+  admin_outreach_channel_email: 'ელ-ფოსტა',
+  admin_outreach_channel_sms: 'SMS',
+  admin_outreach_channel_call: 'AI ზარი',
+  admin_outreach_sent: 'გაგზავნილი',
+  admin_outreach_success_rate: 'წარმატებული',
+  admin_outreach_failed: 'ჩავარდნილი',
+  admin_outreach_spent: 'დახარჯული ამ პერიოდში',
+  admin_outreach_recent_campaigns: 'ბოლო კამპანიები',
+  admin_outreach_recent_campaigns_desc: 'ბოლო Email/SMS/AI ზარის კამპანიები ყველა მომხმარებელზე',
+  admin_outreach_col_name: 'კამპანია',
+  admin_outreach_col_owner: 'მფლობელი',
+  admin_outreach_col_type: 'ტიპი',
+  admin_outreach_col_status: 'სტატუსი',
+  admin_outreach_col_sent: 'გაგზავნილი',
+  admin_outreach_col_cost: 'ღირებულება',
+  admin_outreach_col_created: 'შექმნილია',
+  admin_outreach_empty: 'აუთრიჩის კამპანიები ჯერ არ არის',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -6520,6 +6564,28 @@ const ru: Partial<Record<TranslationKey, string>> = {
   contacts_import_success: 'Импортировано контактов: {count}',
   contacts_import_error: 'Ошибка импорта',
   contacts_import_choose_another: 'Выбрать другой файл',
+
+  // ── Admin Outreach Observability (Task #65) ──────────────────────────────────────────────
+  admin_nav_outreach: 'Рассылки',
+  admin_outreach_title: 'Мониторинг рассылок',
+  admin_outreach_subtitle: 'Эффективность Email, SMS и AI-звонков по всем пользователям',
+  admin_outreach_channel_email: 'Эл. почта',
+  admin_outreach_channel_sms: 'SMS',
+  admin_outreach_channel_call: 'AI-звонок',
+  admin_outreach_sent: 'отправлено',
+  admin_outreach_success_rate: 'успешно',
+  admin_outreach_failed: 'не удалось',
+  admin_outreach_spent: 'потрачено за период',
+  admin_outreach_recent_campaigns: 'Последние кампании',
+  admin_outreach_recent_campaigns_desc: 'Последние кампании Email/SMS/AI-звонков по всем пользователям',
+  admin_outreach_col_name: 'Кампания',
+  admin_outreach_col_owner: 'Владелец',
+  admin_outreach_col_type: 'Тип',
+  admin_outreach_col_status: 'Статус',
+  admin_outreach_col_sent: 'Отправлено',
+  admin_outreach_col_cost: 'Стоимость',
+  admin_outreach_col_created: 'Создано',
+  admin_outreach_empty: 'Пока нет кампаний рассылок',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -8668,6 +8734,28 @@ const tr: Partial<Record<TranslationKey, string>> = {
   contacts_import_success: '{count} kişi içe aktarıldı',
   contacts_import_error: 'İçe aktarma başarısız',
   contacts_import_choose_another: 'Farklı bir dosya seç',
+
+  // ── Admin Outreach Observability (Task #65) ──────────────────────────────────────────────
+  admin_nav_outreach: 'Erişim',
+  admin_outreach_title: 'Erişim Gözlemi',
+  admin_outreach_subtitle: 'Tüm kullanıcılarda Email, SMS ve AI Arama kampanya performansı',
+  admin_outreach_channel_email: 'E-posta',
+  admin_outreach_channel_sms: 'SMS',
+  admin_outreach_channel_call: 'AI Arama',
+  admin_outreach_sent: 'gönderildi',
+  admin_outreach_success_rate: 'başarılı',
+  admin_outreach_failed: 'başarısız',
+  admin_outreach_spent: 'bu dönemde harcanan',
+  admin_outreach_recent_campaigns: 'Son kampanyalar',
+  admin_outreach_recent_campaigns_desc: 'Tüm kullanıcılardaki en son Email/SMS/AI Arama kampanyaları',
+  admin_outreach_col_name: 'Kampanya',
+  admin_outreach_col_owner: 'Sahibi',
+  admin_outreach_col_type: 'Tür',
+  admin_outreach_col_status: 'Durum',
+  admin_outreach_col_sent: 'Gönderildi',
+  admin_outreach_col_cost: 'Maliyet',
+  admin_outreach_col_created: 'Oluşturuldu',
+  admin_outreach_empty: 'Henüz erişim kampanyası yok',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -10816,6 +10904,28 @@ const ar: Partial<Record<TranslationKey, string>> = {
   contacts_import_success: 'تم استيراد {count} جهة اتصال',
   contacts_import_error: 'فشل الاستيراد',
   contacts_import_choose_another: 'اختيار ملف آخر',
+
+  // ── Admin Outreach Observability (Task #65) ──────────────────────────────────────────────
+  admin_nav_outreach: 'التواصل',
+  admin_outreach_title: 'مراقبة حملات التواصل',
+  admin_outreach_subtitle: 'أداء حملات البريد الإلكتروني والرسائل النصية والمكالمات الذكية عبر جميع المستخدمين',
+  admin_outreach_channel_email: 'البريد الإلكتروني',
+  admin_outreach_channel_sms: 'الرسائل النصية',
+  admin_outreach_channel_call: 'مكالمة ذكية',
+  admin_outreach_sent: 'تم الإرسال',
+  admin_outreach_success_rate: 'ناجح',
+  admin_outreach_failed: 'فشل',
+  admin_outreach_spent: 'المُنفق هذه الفترة',
+  admin_outreach_recent_campaigns: 'أحدث الحملات',
+  admin_outreach_recent_campaigns_desc: 'أحدث حملات البريد الإلكتروني/الرسائل/المكالمات الذكية عبر جميع المستخدمين',
+  admin_outreach_col_name: 'الحملة',
+  admin_outreach_col_owner: 'المالك',
+  admin_outreach_col_type: 'النوع',
+  admin_outreach_col_status: 'الحالة',
+  admin_outreach_col_sent: 'المرسل',
+  admin_outreach_col_cost: 'التكلفة',
+  admin_outreach_col_created: 'تاريخ الإنشاء',
+  admin_outreach_empty: 'لا توجد حملات تواصل بعد',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -12964,6 +13074,28 @@ const he: Partial<Record<TranslationKey, string>> = {
   contacts_import_success: 'יובאו {count} אנשי קשר',
   contacts_import_error: 'הייבוא נכשל',
   contacts_import_choose_another: 'בחר קובץ אחר',
+
+  // ── Admin Outreach Observability (Task #65) ──────────────────────────────────────────────
+  admin_nav_outreach: 'פנייה',
+  admin_outreach_title: 'מעקב אחר קמפייני פנייה',
+  admin_outreach_subtitle: 'ביצועי קמפייני אימייל, SMS ושיחות AI בכל המשתמשים',
+  admin_outreach_channel_email: 'אימייל',
+  admin_outreach_channel_sms: 'SMS',
+  admin_outreach_channel_call: 'שיחת AI',
+  admin_outreach_sent: 'נשלחו',
+  admin_outreach_success_rate: 'הצלחה',
+  admin_outreach_failed: 'נכשלו',
+  admin_outreach_spent: 'הוצא בתקופה זו',
+  admin_outreach_recent_campaigns: 'קמפיינים אחרונים',
+  admin_outreach_recent_campaigns_desc: 'קמפייני אימייל/SMS/שיחת AI אחרונים בכל המשתמשים',
+  admin_outreach_col_name: 'קמפיין',
+  admin_outreach_col_owner: 'בעלים',
+  admin_outreach_col_type: 'סוג',
+  admin_outreach_col_status: 'סטטוס',
+  admin_outreach_col_sent: 'נשלחו',
+  admin_outreach_col_cost: 'עלות',
+  admin_outreach_col_created: 'נוצר',
+  admin_outreach_empty: 'אין עדיין קמפייני פנייה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -283,13 +283,21 @@ export default function ActiveSearchPage() {
   useEffect(() => { load(); }, [load]);
 
   const handleToggle = async (id: string, active: boolean) => {
-    await toggleActiveSearch(id, active).catch(err => toast.error(String(err)));
-    setSubs(prev => prev.map(s => s.id === id ? { ...s, is_active: active } : s));
+    try {
+      await toggleActiveSearch(id, active);
+      setSubs(prev => prev.map(s => s.id === id ? { ...s, is_active: active } : s));
+    } catch (err) {
+      toast.error(String(err));
+    }
   };
 
   const handleDelete = async (id: string) => {
-    await deleteActiveSearch(id).catch(err => toast.error(String(err)));
-    setSubs(prev => prev.filter(s => s.id !== id));
+    try {
+      await deleteActiveSearch(id);
+      setSubs(prev => prev.filter(s => s.id !== id));
+    } catch (err) {
+      toast.error(String(err));
+    }
   };
 
   const demandSubs = subs.filter(s => s.side === 'DEMAND');

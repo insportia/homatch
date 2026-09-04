@@ -166,6 +166,21 @@ export async function getViewingRequests(
   return data ?? [];
 }
 
+export async function reportConversation(
+  conversationId: string,
+  reporterId: string,
+  reason: string,
+  details?: string,
+): Promise<void> {
+  const { error } = await supabase.from('conversation_reports').insert({
+    conversation_id: conversationId,
+    reporter_id: reporterId,
+    reason,
+    details: details || null,
+  });
+  if (error) throw error;
+}
+
 // ── EXTERNAL CONTACT UNLOCK ──────────────────────────────────────────────────
 
 export async function previewExternalUnlock(
@@ -277,11 +292,16 @@ export async function createActiveSearch(
 }
 
 export async function toggleActiveSearch(id: string, isActive: boolean): Promise<void> {
-  await supabase.from('active_search_subscriptions').update({ is_active: isActive }).eq('id', id);
+  // NOTE: the Supabase result's `error` was previously discarded entirely,
+  // so this never actually rejected — a caller's .catch() was dead code and
+  // an RLS denial or any other write failure looked identical to success.
+  const { error } = await supabase.from('active_search_subscriptions').update({ is_active: isActive }).eq('id', id);
+  if (error) throw error;
 }
 
 export async function deleteActiveSearch(id: string): Promise<void> {
-  await supabase.from('active_search_subscriptions').delete().eq('id', id);
+  const { error } = await supabase.from('active_search_subscriptions').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // ── PAYG PRICING ─────────────────────────────────────────────────────────────

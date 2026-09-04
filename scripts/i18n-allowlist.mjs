@@ -42,6 +42,7 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'partners_email_ph', // "you@company.com" — an email-format example, not natural language.
   'partners_company_ph', // "Acme Developers" — a fictional placeholder company name, kept as-is everywhere.
   'ai_beta_badge', // Turkish "Beta" is the standard loanword too
+  'chat_report_reason_spam', // Turkish "Spam" is the standard loanword too
   // Legal-document literals: a bare domain and a bare email address, never
   // translated in any language (not prefixed with https://, so the
   // isAutoInvariantValue URL/email heuristic doesn't already catch these).

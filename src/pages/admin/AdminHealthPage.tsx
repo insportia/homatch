@@ -28,6 +28,15 @@ interface SpendByProvider {
   blocked: boolean;
 }
 
+interface HealthLogRow {
+  id: string;
+  checked_at: string;
+  db_reachable: boolean;
+  storage_reachable: boolean;
+  supabase_reachable: boolean;
+  notes: string | null;
+}
+
 interface HealthResult {
   checked_at: string;
   production_status: 'HEALTHY' | 'DEGRADED';
@@ -84,6 +93,25 @@ export default function AdminHealthPage() {
   const [health, setHealth] = useState<HealthResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
+  const [history, setHistory] = useState<HealthLogRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    // system-health writes one row here per check (see its own "Persist to
+    // system_health_log" step) but nothing ever read it back before this --
+    // the page only ever showed the single most recent live check, so an
+    // intermittent failure between manual checks was invisible. RLS
+    // (admin_health_log_admin_read) already allows admins to select this
+    // directly, no edge function needed.
+    const { data } = await supabase
+      .from('system_health_log')
+      .select('id, checked_at, db_reachable, storage_reachable, supabase_reachable, notes')
+      .order('checked_at', { ascending: false })
+      .limit(20);
+    setHistory((data ?? []) as HealthLogRow[]);
+    setHistoryLoading(false);
+  };
 
   const run = async () => {
     setLoading(true);
@@ -92,6 +120,7 @@ export default function AdminHealthPage() {
       const { data, error: fnErr } = await supabase.functions.invoke('system-health', {});
       if (fnErr) throw fnErr;
       setHealth(data as HealthResult);
+      loadHistory();
     } catch (e: any) {
       setError(e.message ?? 'Health check failed');
       toast.error('Health check failed');
@@ -100,7 +129,7 @@ export default function AdminHealthPage() {
     }
   };
 
-  useEffect(() => { run(); }, []);
+  useEffect(() => { run(); loadHistory(); }, []);
 
   const fmtDate = (d: string | null) => d ? format(new Date(d), 'MMM d, HH:mm') : '—';
 
@@ -293,6 +322,39 @@ export default function AdminHealthPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Health check history */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" /> {t('admin_health_history_title')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {historyLoading ? (
+            <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8" />)}</div>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('admin_health_history_empty')}</p>
+          ) : (
+            <div className="space-y-1.5">
+              {history.map((row) => {
+                const ok = row.db_reachable && row.storage_reachable && row.supabase_reachable;
+                return (
+                  <div key={row.id} className="flex items-center justify-between gap-3 py-1.5 border-b border-border/30 last:border-0 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <StatusDot ok={ok} />
+                      <span className="font-mono text-xs text-muted-foreground">{fmtDate(row.checked_at)}</span>
+                    </div>
+                    {row.notes && (
+                      <span className="text-xs text-destructive truncate max-w-[280px]">{row.notes}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -2240,6 +2240,10 @@ const en = {
   admin_outreach_col_cost: 'Cost',
   admin_outreach_col_created: 'Created',
   admin_outreach_empty: 'No outreach campaigns yet',
+
+  // ── Admin Health History (Task #65) ──────────────────────────────────────────────
+  admin_health_history_title: 'Recent health checks',
+  admin_health_history_empty: 'No health checks recorded yet',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -4414,6 +4418,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_outreach_col_cost: 'ღირებულება',
   admin_outreach_col_created: 'შექმნილია',
   admin_outreach_empty: 'აუთრიჩის კამპანიები ჯერ არ არის',
+
+  // ── Admin Health History (Task #65) ──────────────────────────────────────────────
+  admin_health_history_title: 'ბოლო შემოწმებები',
+  admin_health_history_empty: 'სისტემის შემოწმებები ჯერ არ ჩატარებულა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -6586,6 +6594,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_outreach_col_cost: 'Стоимость',
   admin_outreach_col_created: 'Создано',
   admin_outreach_empty: 'Пока нет кампаний рассылок',
+
+  // ── Admin Health History (Task #65) ──────────────────────────────────────────────
+  admin_health_history_title: 'Последние проверки системы',
+  admin_health_history_empty: 'Проверок системы пока не было',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -8756,6 +8768,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_outreach_col_cost: 'Maliyet',
   admin_outreach_col_created: 'Oluşturuldu',
   admin_outreach_empty: 'Henüz erişim kampanyası yok',
+
+  // ── Admin Health History (Task #65) ──────────────────────────────────────────────
+  admin_health_history_title: 'Son sistem kontrolleri',
+  admin_health_history_empty: 'Henüz kaydedilmiş sistem kontrolü yok',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -10926,6 +10942,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_outreach_col_cost: 'التكلفة',
   admin_outreach_col_created: 'تاريخ الإنشاء',
   admin_outreach_empty: 'لا توجد حملات تواصل بعد',
+
+  // ── Admin Health History (Task #65) ──────────────────────────────────────────────
+  admin_health_history_title: 'آخر فحوصات النظام',
+  admin_health_history_empty: 'لم يتم تسجيل أي فحوصات نظام بعد',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -13096,6 +13116,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_outreach_col_cost: 'עלות',
   admin_outreach_col_created: 'נוצר',
   admin_outreach_empty: 'אין עדיין קמפייני פנייה',
+
+  // ── Admin Health History (Task #65) ──────────────────────────────────────────────
+  admin_health_history_title: 'בדיקות תקינות אחרונות',
+  admin_health_history_empty: 'טרם נרשמו בדיקות תקינות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

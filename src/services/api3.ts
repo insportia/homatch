@@ -4,7 +4,7 @@ import type {
   Conversation, Message, ContactShare, ViewingRequest,
   ExternalContactUnlock, ExternalUnlockPreview,
   PropertyTrustScore, CanonicalPropertyGroup,
-  DeveloperProfile, PAYGOperation, ActiveSearchSubscription,
+  DeveloperProfile, ActiveSearchSubscription,
 } from '@/types/phase3';
 
 // ── HELPERS ─────────────────────────────────────────────────────────────────
@@ -304,19 +304,15 @@ export async function deleteActiveSearch(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ── PAYG PRICING ─────────────────────────────────────────────────────────────
-
-export async function getPAYGOperations(): Promise<PAYGOperation[]> {
-  const { data, error } = await supabase
-    .from('payg_pricing_operations')
-    .select('*')
-    .eq('is_active', true)
-    .order('provider');
-  if (error) throw error;
-  return data ?? [];
-}
-
 // ── RESEARCH PRODUCTS ────────────────────────────────────────────────────────
+// (A PAYG PRICING section used to live here: getPAYGOperations() queried a
+// `payg_pricing_operations` table that was never created — it had zero
+// callers anywhere in the app and would have thrown "relation does not
+// exist" on every call. The real, live pricing engine is
+// getPricingConfig()/updatePricingConfig() below in api.ts, backed by real
+// `pricing_*` admin_settings keys that run-matching-v2 actually reads —
+// see AdminPricingPage.tsx. Removed rather than built out: nothing in the
+// UI ever referenced this table or awaited building it.)
 
 export async function purchaseResearchProduct(productCode: string): Promise<{
   success: boolean; purchaseId: string; productCode: string; unitsPurchased: number; priceCents: number;

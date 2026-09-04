@@ -190,17 +190,6 @@ export interface DeveloperProject {
   notes?: string;
 }
 
-export interface PAYGOperation {
-  id: string;
-  provider: string;
-  operation: string;
-  actual_cost: number;
-  markup_multiplier: number;
-  customer_price: number;
-  currency: string;
-  is_active: boolean;
-}
-
 export interface ActiveSearchSubscription {
   id: string;
   user_id: string;

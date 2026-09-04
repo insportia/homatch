@@ -385,16 +385,55 @@ app.post('/debug/msmap',auth,async(req,res)=>{
     }
     const afterShot=(await p.screenshot({type:'png'})).toString('base64');
     const afterText=await text(p);
+    // Round 2 (2026-09-04 — same live diagnostic session, extended after the
+    // first call proved searchText fires a real POST to
+    // core-api/v1/search/unified-search and renders a genuine Angular
+    // Material autocomplete dropdown with a matching "რეგისტრირებული
+    // მიწის ნაკვეთები" (registered land parcel) suggestion — visible in the
+    // after-screenshot but NOT in afterText's first 3000 chars (the page's
+    // own layers-tree list is huge and comes first in body order, burying
+    // the dropdown text past the slice cutoff). Per the mandate: a human
+    // would now CLICK that suggestion and inspect what appears — so this
+    // dumps every ARIA option/listbox item actually on screen and clicks
+    // the first one whose text contains the query, then captures a third
+    // screenshot + a longer, targeted text snippet plus any further network
+    // calls that click fires (e.g. a parcel-detail lookup).
+    const optionEls=await p.locator('[role="option"], [role="listbox"] *, .mat-mdc-autocomplete-panel *, mat-option').evaluateAll(els=>els.slice(0,40).map(e=>({tag:e.tagName,role:e.getAttribute('role'),text:(e.textContent||'').trim().slice(0,120)})).filter(x=>x.text)).catch(()=>[]);
+    let clickResult={attempted:false};
+    let afterClickShot=null,afterClickTextSnippet=null;
+    if(afterText.replace(/\s/g,'').includes(q.slice(0,15).replace(/\s/g,''))||optionEls.length){
+      const netAfterClick=[];
+      const onAfterClick=r=>{const u=r.url();if(!ASSET_EXT.test(u))netAfterClick.push({method:r.method(),url:u})};
+      const prefix=q.split('.').slice(0,5).join('.');
+      const opt=p.locator(`text=${prefix}`).first();
+      if(await visible(opt).catch(()=>false)){
+        p.on('request',onAfterClick);
+        try{
+          await opt.click({timeout:5000});
+          await p.waitForTimeout(2500);
+          clickResult={attempted:true,clickedTextPrefix:prefix,ok:true};
+        }catch(e){clickResult={attempted:true,clickedTextPrefix:prefix,ok:false,error:String(e)}}
+        p.off('request',onAfterClick);
+        clickResult.networkDuringClick=netAfterClick;
+        afterClickShot=(await p.screenshot({type:'png'})).toString('base64');
+        const fullAfterClickText=await text(p);
+        afterClickTextSnippet=snippetAround(fullAfterClickText,prefix,600)||fullAfterClickText.slice(0,3000);
+      }else{
+        clickResult={attempted:false,note:'no visible element containing the query prefix was found to click'};
+      }
+    }
     await ctx.close();
     const id=crypto.randomUUID();
-    debugJobs.set(id,{beforeShot,afterShot,createdAt:now()});
-    res.json({id,query:q,candidates,buttons,netPre:netPre.slice(0,60),netDuringSearch:netDuring,searchAttempt,afterTextSnippet:afterText.slice(0,3000),screenshotUrls:{before:`/debug/${id}/screenshot?which=before`,after:`/debug/${id}/screenshot?which=after`}});
+    debugJobs.set(id,{beforeShot,afterShot,afterClickShot,createdAt:now()});
+    const screenshotUrls={before:`/debug/${id}/screenshot?which=before`,after:`/debug/${id}/screenshot?which=after`};
+    if(afterClickShot)screenshotUrls.afterClick=`/debug/${id}/screenshot?which=afterClick`;
+    res.json({id,query:q,candidates,buttons,netPre:netPre.slice(0,60),netDuringSearch:netDuring,searchAttempt,afterTextSnippet:snippetAround(afterText,q.split('.').slice(0,5).join('.'),600)||afterText.slice(0,3000),optionElsFound:optionEls,clickResult,afterClickTextSnippet,screenshotUrls});
   }catch(e){
     res.status(500).json({error:String(e)});
   }finally{
     await browser?.close().catch(()=>{});
   }
 });
-app.get('/debug/:id/screenshot',auth,(req,res)=>{const d=debugJobs.get(req.params.id);if(!d)return res.status(404).json({error:'not found'});const b64=req.query.which==='after'?d.afterShot:d.beforeShot;const buf=Buffer.from(b64,'base64');res.setHeader('Content-Type','image/png');res.send(buf)});
+app.get('/debug/:id/screenshot',auth,(req,res)=>{const d=debugJobs.get(req.params.id);if(!d)return res.status(404).json({error:'not found'});const which=req.query.which;const b64=which==='afterClick'?d.afterClickShot:which==='after'?d.afterShot:d.beforeShot;if(!b64)return res.status(404).json({error:'no screenshot for that stage on this job'});const buf=Buffer.from(b64,'base64');res.setHeader('Content-Type','image/png');res.send(buf)});
 async function auth(req,res,next){const h=String(req.headers.authorization||'');if(TOKEN&&h===`Bearer ${TOKEN}`)return next();if(SUPABASE_URL&&h.startsWith('Bearer ')){try{const k=String(req.headers.apikey||'');if(!k)return res.status(401).json({error:'apikey required'});if((await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{Authorization:h,apikey:k}})).ok)return next()}catch{}}return res.status(401).json({error:'unauthorized'})}
 app.listen(PORT,'0.0.0.0',()=>console.log(`homatch-official-worker 1.4.0 listening on ${PORT}`));

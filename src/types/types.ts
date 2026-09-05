@@ -1109,3 +1109,57 @@ export interface PendingAnalysis {
   url: string;
   timestamp: number;
 }
+
+// --- Transaction case CRM (post-due-diligence: offer -> contract -> closing) ---
+
+export type TransactionCaseStage =
+  | 'DUE_DILIGENCE'
+  | 'OFFER_MADE'
+  | 'UNDER_CONTRACT'
+  | 'CLOSING'
+  | 'CLOSED'
+  | 'ABANDONED';
+
+export interface TransactionCaseChecklistItem {
+  label: string;
+  done: boolean;
+}
+
+export interface TransactionCase {
+  id: string;
+  user_id: string;
+  property_id: string | null;
+  research_job_id: string | null;
+  title: string;
+  stage: TransactionCaseStage;
+  counterparty_name: string | null;
+  counterparty_contact: string | null;
+  offer_amount: number | null;
+  offer_currency: string | null;
+  target_closing_date: string | null;
+  notes: string | null;
+  checklist: TransactionCaseChecklistItem[];
+  current_version: number;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+// Database-computed, never client-supplied: see trg_transaction_case_version_snapshot.
+export interface TransactionCaseVersion {
+  id: string;
+  case_id: string;
+  version: number;
+  snapshot: TransactionCase;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface TransactionCaseEvent {
+  id: string;
+  case_id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+}

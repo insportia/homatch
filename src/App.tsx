@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { MotionConfig } from 'motion/react';
 import IntersectObserver from '@/components/common/IntersectObserver';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -94,23 +95,29 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBSta
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <LanguageProvider>
-        <AuthProvider>
-          <DomMutationGuard />
-          <IntersectObserver />
-          <ErrorBoundary>
-            <Routes>
-              {routes.map((route, index) => (
-                <Route key={index} path={route.path} element={route.element} />
-              ))}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </ErrorBoundary>
-          <Toaster richColors position="top-right" />
-        </AuthProvider>
-      </LanguageProvider>
-    </Router>
+    // reducedMotion="user" makes every motion.* animation (opacity/y/blur
+    // reveals, hover variants, etc.) across the app snap straight to its
+    // end state for people with prefers-reduced-motion — set once here
+    // instead of gating every individual component.
+    <MotionConfig reducedMotion="user">
+      <Router>
+        <LanguageProvider>
+          <AuthProvider>
+            <DomMutationGuard />
+            <IntersectObserver />
+            <ErrorBoundary>
+              <Routes>
+                {routes.map((route, index) => (
+                  <Route key={index} path={route.path} element={route.element} />
+                ))}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </ErrorBoundary>
+            <Toaster richColors position="top-right" />
+          </AuthProvider>
+        </LanguageProvider>
+      </Router>
+    </MotionConfig>
   );
 };
 

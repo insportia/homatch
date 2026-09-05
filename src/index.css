@@ -155,4 +155,16 @@
     color: hsl(280 50% 70%);
     border: 1px solid hsl(280 50% 60% / 0.3);
   }
+
+  /* Homepage AI input focus — a single amber sweep, transform-only. */
+  @keyframes homepage-ai-scan-sweep {
+    from { transform: translateX(-120%); }
+    to { transform: translateX(320%); }
+  }
+  .ai-scan-sweep {
+    animation: homepage-ai-scan-sweep 1.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ai-scan-sweep { animation: none; display: none; }
+  }
 }

@@ -11,9 +11,14 @@ import {
   MessageSquare, Bell, Eye, CheckCircle2, ChevronDown, ChevronUp,
   ExternalLink, Star, Clock, MapPin, Mail, PhoneCall, Radio,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { PropertyDigitalTwinSection } from '@/components/home/PropertyDigitalTwin';
+import { MotionReveal } from '@/components/home/MotionReveal';
+import { useMagneticHover } from '@/hooks/useMagneticHover';
+import { useTiltHover } from '@/hooks/useTiltHover';
+import { useCountUp } from '@/hooks/useCountUp';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
@@ -134,12 +139,48 @@ function MatchScoreBars({ score }: { score: number }) {
   );
 }
 
+/** Desktop-only tilt + cursor-follow highlight, restrained per the premium
+ *  motion spec (no aggressive rotation). A plain, static wrapper on touch. */
+function TiltCard({ children, className }: { children: React.ReactNode; className?: string }) {
+  const ref = useTiltHover<HTMLDivElement>(3);
+  return (
+    <div
+      ref={ref}
+      className={className}
+      style={{
+        background: 'radial-gradient(180px circle at var(--tilt-x, 50%) var(--tilt-y, 50%), hsl(38 92% 55% / 0.06), transparent 70%)',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Stat number that counts up from 0 once it scrolls into view. */
+function CountUpStat({ value, className }: { value: number; className?: string }) {
+  const { ref, value: display } = useCountUp(value);
+  return <p ref={ref as any} className={className} dir="ltr">{display}</p>;
+}
+
 export default function HomePage() {
   const { session } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [aiInput, setAiInput] = useState('');
   const [url, setUrl] = useState('');
+  const [aiFocused, setAiFocused] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const askAiBtnRef = useMagneticHover<HTMLButtonElement>(0.25, 7);
+  const ctaBtnRef = useMagneticHover<HTMLButtonElement>(0.2, 8);
+
+  // Navbar gains a touch more blur/shadow once the page has scrolled a bit —
+  // a class toggle from one passive listener, not a per-frame style write.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const QUICK_PATHS = [
     { icon: Home,       labelKey: 'home_quick_find_property', action: () => navigate(session ? '/ai' : '/auth/signup') },
@@ -174,7 +215,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       {/* Public nav */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
+      <header className={`sticky top-0 z-50 border-b bg-background/95 backdrop-blur-sm transition-shadow duration-300 ${scrolled ? 'border-border shadow-card backdrop-blur-md' : 'border-border/60'}`}>
         <div className="flex items-center h-14 px-4 md:px-8 gap-4 max-w-7xl mx-auto">
           <button
             type="button"
@@ -212,52 +253,72 @@ export default function HomePage() {
         {/* Background grain */}
         <div className="absolute inset-0 bg-gradient-to-b from-primary/4 via-transparent to-transparent pointer-events-none" />
         <div className="max-w-3xl mx-auto text-center space-y-6 relative">
-          <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5">
-            <Sparkles className="h-3 w-3" /> {t('home_hero_badge')}
-          </Badge>
-          <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight tracking-tight text-balance">
-            <span className="gradient-text">HOMATCH</span> — {t('home_hero_title_lead')}{' '}
-            <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_hero_title_highlight')}</span>{' '}
-            &amp; {t('home_hero_title_verification')}
-          </h1>
-          <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto text-pretty">
-            {t('home_hero_subtitle')}
-          </p>
+          <MotionReveal mode="mount" distance={10}>
+            <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5">
+              <Sparkles className="h-3 w-3" /> {t('home_hero_badge')}
+            </Badge>
+          </MotionReveal>
+          <MotionReveal mode="mount" delay={0.08} distance={14}>
+            <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight tracking-tight text-balance">
+              <span className="gradient-text">HOMATCH</span> — {t('home_hero_title_lead')}{' '}
+              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_hero_title_highlight')}</span>{' '}
+              &amp; {t('home_hero_title_verification')}
+            </h1>
+          </MotionReveal>
+          <MotionReveal mode="mount" delay={0.16}>
+            <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto text-pretty">
+              {t('home_hero_subtitle')}
+            </p>
+          </MotionReveal>
 
           {/* AI Input */}
-          <div className="max-w-2xl mx-auto">
-            <div className="flex gap-2 p-1.5 rounded-2xl border border-primary/30 bg-card shadow-card">
-              <div className="relative flex-1">
-                <Bot className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary pointer-events-none" />
-                <input
-                  className="w-full pl-10 pr-4 py-2.5 bg-transparent text-foreground text-sm placeholder:text-muted-foreground/60 focus:outline-none"
-                  placeholder={t('home_ai_input_placeholder')}
-                  value={aiInput}
-                  onChange={e => setAiInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAISubmit()}
-                />
+          <MotionReveal mode="mount" delay={0.24}>
+            <div className="max-w-2xl mx-auto">
+              <div
+                data-focused={aiFocused || undefined}
+                className="relative flex gap-2 p-1.5 rounded-2xl border bg-card shadow-card transition-all duration-300 overflow-hidden border-primary/30 data-[focused]:border-primary/70 data-[focused]:shadow-[var(--shadow-amber)]"
+              >
+                {aiFocused && (
+                  <span aria-hidden className="ai-scan-sweep pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
+                )}
+                <div className="relative flex-1">
+                  <Bot className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary pointer-events-none" />
+                  <input
+                    className="w-full pl-10 pr-4 py-2.5 bg-transparent text-foreground text-sm placeholder:text-muted-foreground/60 focus:outline-none"
+                    placeholder={t('home_ai_input_placeholder')}
+                    value={aiInput}
+                    onChange={e => setAiInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAISubmit()}
+                    onFocus={() => setAiFocused(true)}
+                    onBlur={() => setAiFocused(false)}
+                  />
+                </div>
+                <Button ref={askAiBtnRef} onClick={handleAISubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 gap-2 px-5">
+                  {t('nav_ask_ai_short')} <ArrowRight className="h-4 w-4" />
+                </Button>
               </div>
-              <Button onClick={handleAISubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 gap-2 px-5">
-                {t('nav_ask_ai_short')} <ArrowRight className="h-4 w-4" />
-              </Button>
+              <p className="text-[11px] text-muted-foreground/50 mt-2">
+                {t('home_works_in_langs')}
+              </p>
             </div>
-            <p className="text-[11px] text-muted-foreground/50 mt-2">
-              {t('home_works_in_langs')}
-            </p>
-          </div>
+          </MotionReveal>
 
           {/* 5 quick paths */}
-          <div className="flex flex-wrap gap-2 justify-center pt-2">
-            {QUICK_PATHS.map(({ icon: Icon, labelKey, action }) => (
-              <button key={labelKey} type="button" onClick={action}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card/60 hover:border-primary/40 hover:bg-primary/5 transition-colors text-sm text-muted-foreground hover:text-foreground">
-                <Icon className="h-3.5 w-3.5 text-primary shrink-0" />
-                {t(labelKey)}
-              </button>
-            ))}
-          </div>
+          <MotionReveal mode="mount" delay={0.32}>
+            <div className="flex flex-wrap gap-2 justify-center pt-2">
+              {QUICK_PATHS.map(({ icon: Icon, labelKey, action }) => (
+                <button key={labelKey} type="button" onClick={action}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card/60 hover:border-primary/40 hover:bg-primary/5 transition-colors text-sm text-muted-foreground hover:text-foreground">
+                  <Icon className="h-3.5 w-3.5 text-primary shrink-0" />
+                  {t(labelKey)}
+                </button>
+              ))}
+            </div>
+          </MotionReveal>
         </div>
       </section>
+
+      <PropertyDigitalTwinSection />
 
       {/* ── AI OUTREACH ENGINE — 3 separate showcase blocks, right at the top ── */}
       <section className="py-16 px-4 border-t border-border">
@@ -339,15 +400,15 @@ export default function HomePage() {
                   </div>
                   <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
                     <div className="text-center">
-                      <p className="text-sm font-bold text-foreground">142</p>
+                      <CountUpStat value={142} className="text-sm font-bold text-foreground" />
                       <p className="text-[10px] text-muted-foreground">{t('home_email_stat_sent')}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-bold text-blue-400">89</p>
+                      <CountUpStat value={89} className="text-sm font-bold text-blue-400" />
                       <p className="text-[10px] text-muted-foreground">{t('home_email_stat_opened')}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-bold text-green-400">12</p>
+                      <CountUpStat value={12} className="text-sm font-bold text-green-400" />
                       <p className="text-[10px] text-muted-foreground">{t('home_email_stat_replied')}</p>
                     </div>
                   </div>
@@ -446,31 +507,35 @@ export default function HomePage() {
       {/* ── KEY FEATURES ── */}
       <section className="py-16 px-4 border-t border-border">
         <div className="max-w-5xl mx-auto space-y-8">
-          <div className="text-center">
+          <MotionReveal className="text-center">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t('home_capabilities_label')}</p>
             <h2 className="text-2xl font-bold text-foreground">{t('home_capabilities_title')}</h2>
-          </div>
+          </MotionReveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {FEATURES.map(({ icon: Icon, titleKey, descKey, route }) => {
+            {FEATURES.map(({ icon: Icon, titleKey, descKey, route }, i) => {
               const clickable = Boolean(route);
               return (
-                <div
-                  key={titleKey}
-                  role={clickable ? 'button' : undefined}
-                  tabIndex={clickable ? 0 : undefined}
-                  onClick={clickable ? () => navigate(session ? route! : '/auth/signup') : undefined}
-                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(session ? route! : '/auth/signup'); } } : undefined}
-                  className={`text-left p-4 rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-hover hover:-translate-y-0.5 transition-all group ${clickable ? 'cursor-pointer' : ''}`}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <Icon className="h-5 w-5 text-primary" />
-                    {clickable && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-primary/70 group-hover:translate-x-0.5 transition-all" />}
-                  </div>
-                  <p className="text-xs font-bold text-foreground underline decoration-primary decoration-1 underline-offset-2 mb-1.5">
-                    {t(titleKey)}
-                  </p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{t(descKey)}</p>
-                </div>
+                <MotionReveal key={titleKey} delay={Math.min(i, 6) * 0.04} distance={12}>
+                  <TiltCard
+                    className={`text-left p-4 rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-hover transition-colors group ${clickable ? 'cursor-pointer' : ''}`}
+                  >
+                    <div
+                      role={clickable ? 'button' : undefined}
+                      tabIndex={clickable ? 0 : undefined}
+                      onClick={clickable ? () => navigate(session ? route! : '/auth/signup') : undefined}
+                      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(session ? route! : '/auth/signup'); } } : undefined}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <Icon className="h-5 w-5 text-primary" />
+                        {clickable && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-primary/70 group-hover:translate-x-0.5 transition-all" />}
+                      </div>
+                      <p className="text-xs font-bold text-foreground underline decoration-primary decoration-1 underline-offset-2 mb-1.5">
+                        {t(titleKey)}
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{t(descKey)}</p>
+                    </div>
+                  </TiltCard>
+                </MotionReveal>
               );
             })}
           </div>
@@ -646,16 +711,18 @@ export default function HomePage() {
       {/* ── WHY HOMATCH ── */}
       <section className="py-16 px-4 border-t border-border bg-card/20">
         <div className="max-w-3xl mx-auto space-y-6">
-          <h2 className="text-2xl font-bold text-foreground text-center">{t('home_why_title')}</h2>
+          <MotionReveal><h2 className="text-2xl font-bold text-foreground text-center">{t('home_why_title')}</h2></MotionReveal>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {WHY_KEYS.map(({ titleKey, descKey }) => (
-              <div key={titleKey} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
-                <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{t(titleKey)}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{t(descKey)}</p>
+            {WHY_KEYS.map(({ titleKey, descKey }, i) => (
+              <MotionReveal key={titleKey} delay={Math.min(i, 6) * 0.04} distance={12}>
+                <div className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
+                  <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{t(titleKey)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{t(descKey)}</p>
+                  </div>
                 </div>
-              </div>
+              </MotionReveal>
             ))}
           </div>
         </div>
@@ -664,43 +731,45 @@ export default function HomePage() {
       {/* ── PRICING ── */}
       <section className="py-16 px-4 border-t border-border">
         <div className="max-w-4xl mx-auto space-y-8">
-          <div className="text-center">
+          <MotionReveal className="text-center">
             <h2 className="text-2xl font-bold text-foreground">{t('home_pricing_title')}</h2>
             <p className="text-sm text-muted-foreground mt-2">{t('home_pricing_subtitle')}</p>
-          </div>
+          </MotionReveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {PLANS.map(plan => (
-              <div key={plan.name} className={`p-6 rounded-2xl border flex flex-col gap-4 ${
-                plan.highlight
-                  ? 'border-primary bg-primary/5 shadow-hover'
-                  : 'border-border bg-card'
-              }`}>
-                {plan.highlight && (
-                  <Badge className="self-start bg-primary/20 text-primary border-primary/40 text-[10px]">
-                    <Star className="h-2.5 w-2.5 mr-1" /> {t('home_pricing_most_popular')}
-                  </Badge>
-                )}
-                <div>
-                  <p className="text-xs font-bold text-muted-foreground tracking-widest" dir="ltr">{plan.name}</p>
-                  <p className="text-3xl font-bold text-foreground mt-1" dir="ltr">
-                    {plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.period}</span>
-                  </p>
-                </div>
-                <ul className="space-y-2 flex-1">
-                  {plan.featureKeys.map(fk => (
-                    <li key={fk} className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />{t(fk)}
-                    </li>
-                  ))}
-                </ul>
-                <Button
-                  className={plan.highlight ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border-border'}
-                  variant={plan.highlight ? 'default' : 'outline'}
-                  onClick={() => navigate(session ? '/credits' : '/auth/signup')}
-                >
-                  {plan.name === 'FREE' ? t('home_pricing_get_started_free') : t('home_pricing_start_plan', { plan: plan.name })}
-                </Button>
-              </div>
+            {PLANS.map((plan, i) => (
+              <MotionReveal key={plan.name} delay={i * 0.06} distance={14}>
+                <TiltCard className={`p-6 rounded-2xl border flex flex-col gap-4 h-full ${
+                  plan.highlight
+                    ? 'border-primary bg-primary/5 shadow-hover'
+                    : 'border-border bg-card'
+                }`}>
+                  {plan.highlight && (
+                    <Badge className="self-start bg-primary/20 text-primary border-primary/40 text-[10px]">
+                      <Star className="h-2.5 w-2.5 mr-1" /> {t('home_pricing_most_popular')}
+                    </Badge>
+                  )}
+                  <div>
+                    <p className="text-xs font-bold text-muted-foreground tracking-widest" dir="ltr">{plan.name}</p>
+                    <p className="text-3xl font-bold text-foreground mt-1" dir="ltr">
+                      {plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.period}</span>
+                    </p>
+                  </div>
+                  <ul className="space-y-2 flex-1">
+                    {plan.featureKeys.map(fk => (
+                      <li key={fk} className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />{t(fk)}
+                      </li>
+                    ))}
+                  </ul>
+                  <Button
+                    className={plan.highlight ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border-border'}
+                    variant={plan.highlight ? 'default' : 'outline'}
+                    onClick={() => navigate(session ? '/credits' : '/auth/signup')}
+                  >
+                    {plan.name === 'FREE' ? t('home_pricing_get_started_free') : t('home_pricing_start_plan', { plan: plan.name })}
+                  </Button>
+                </TiltCard>
+              </MotionReveal>
             ))}
           </div>
           <p className="text-center text-xs text-muted-foreground">
@@ -746,7 +815,7 @@ export default function HomePage() {
           <Sparkles className="h-8 w-8 text-primary mx-auto" />
           <h2 className="text-2xl font-bold text-foreground">{t('home_cta_title')}</h2>
           <p className="text-sm text-muted-foreground">{t('home_cta_desc')}</p>
-          <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-base px-8 py-5"
+          <Button ref={ctaBtnRef} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-base px-8 py-5"
             onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
             {t('home_cta_button')} <ArrowRight className="h-5 w-5" />
           </Button>

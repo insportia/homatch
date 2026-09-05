@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { AppWrapper } from "./components/common/PageMeta.tsx";
 import "./index.css";
+import "./homepage-motion.css";
 
 Sentry.init({
   dsn: import.meta.env['VITE_SENTRY_DSN'] as string | undefined,

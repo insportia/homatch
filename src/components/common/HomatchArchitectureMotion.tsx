@@ -1,22 +1,23 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Building2, FileCheck2, ScanSearch, ShieldCheck } from 'lucide-react';
 
 export const HomatchArchitectureMotion: React.FC = () => {
-  const ref = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(false);
+  const { pathname } = useLocation();
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) { setActive(true); return; }
-    const observer = new IntersectionObserver(([entry]) => setActive(entry.isIntersecting), { threshold: 0.22 });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
+    if (pathname !== '/') return;
+    const onScroll = () => setVisible(window.scrollY < Math.max(760, window.innerHeight * 1.05));
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [pathname]);
+
+  if (pathname !== '/') return null;
 
   return (
-    <div ref={ref} className={`hm-architecture ${active ? 'is-active' : ''}`} aria-hidden="true">
+    <div className={`hm-architecture ${visible ? 'is-active' : ''}`} aria-hidden="true">
       <div className="hm-architecture__aura" />
       <div className="hm-architecture__grid" />
       <div className="hm-architecture__orbit hm-architecture__orbit--one" />

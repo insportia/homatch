@@ -142,13 +142,13 @@ function MobileTwin() {
   const glowOpacity = phase === 'synthesis' ? 0.9 : 0;
 
   return (
-    <div ref={wrapRef} className="md:hidden py-10 px-4">
+    <div ref={wrapRef} className="md:hidden py-10 px-4 overflow-x-hidden">
       <div className="text-center space-y-3 mb-6">
         <p className="text-xs font-semibold text-primary uppercase tracking-widest">{t('home_twin_eyebrow')}</p>
         <h2 className="text-2xl font-bold text-foreground leading-tight text-balance">{t('home_twin_title')}</h2>
         <p className="text-sm text-muted-foreground leading-relaxed text-pretty">{t('home_twin_subtitle')}</p>
       </div>
-      <div className="relative max-w-sm mx-auto overflow-hidden">
+      <div className="relative max-w-sm mx-auto">
         <BuildingIllustration
           layerMotion={{
             foundation: layerFor('foundation'),

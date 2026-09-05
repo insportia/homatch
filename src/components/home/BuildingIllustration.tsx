@@ -35,12 +35,19 @@ const PHASE_TRANSITION = { duration: 0.9, ease: [0.22, 1, 0.36, 1] as const };
 // Graphite + amber palette lifted straight from the design tokens in
 // index.css (hsl(222 * ) for the structure, hsl(38 92% 55%) amber for the
 // intelligence accents) — no new colors introduced.
+// NOTE: these are set as raw SVG presentation attributes (fill=/stroke=),
+// not via `style`, so they go through the SVG attribute color grammar
+// rather than the CSS4 parser — that grammar doesn't accept the modern
+// space-separated hsl(H S% L%) form used elsewhere in this codebase (e.g.
+// index.css, which is real CSS). An unparseable fill/stroke silently falls
+// back to its SVG initial value (fill: black, stroke: none), which is
+// exactly the "invisible black building" bug this comma syntax fixes.
 const FACE = {
-  top: 'hsl(222 16% 24%)',
-  topRoof: 'hsl(38 45% 30%)',
-  left: 'hsl(222 20% 15%)',
-  right: 'hsl(222 24% 10%)',
-  stroke: 'hsl(38 60% 55% / 0.35)',
+  top: 'hsl(222, 16%, 24%)',
+  topRoof: 'hsl(38, 45%, 30%)',
+  left: 'hsl(222, 20%, 15%)',
+  right: 'hsl(222, 24%, 10%)',
+  stroke: 'hsla(38, 60%, 55%, 0.35)',
 };
 
 function Layer({ id, x, y, rotate, roof, animated }: { id: LayerKey; x: Num; y: Num; rotate: Num; roof?: boolean; animated?: boolean }) {
@@ -76,12 +83,12 @@ function ParcelGrid() {
       <clipPath id={clipId}>
         <polygon points={f.top} />
       </clipPath>
-      <g clipPath={`url(#${clipId})`} stroke="hsl(38 70% 55% / 0.28)" strokeWidth={1} strokeDasharray="3 4">
+      <g clipPath={`url(#${clipId})`} stroke="hsla(38, 70%, 55%, 0.28)" strokeWidth={1} strokeDasharray="3 4">
         {[-2, -1, 0, 1, 2].map(i => (
           <line key={`a${i}`} x1={f.center.x - 200 + i * 40} y1={f.center.y - 200} x2={f.center.x + 200 + i * 40} y2={f.center.y + 200} />
         ))}
       </g>
-      <polygon points={f.top} fill="none" stroke="hsl(38 80% 60% / 0.5)" strokeWidth={1.2} strokeDasharray="5 5" />
+      <polygon points={f.top} fill="none" stroke="hsla(38, 80%, 60%, 0.5)" strokeWidth={1.2} strokeDasharray="5 5" />
     </g>
   );
 }
@@ -135,8 +142,8 @@ export function BuildingIllustration({
             return (
               <g key={key}>
                 <line x1={x1} y1={y1} x2={x2} y2={y1}
-                  stroke="hsl(38 90% 60% / 0.4)" strokeWidth={1} strokeDasharray="2 4" />
-                <circle cx={x1} cy={y1} r={2.5} fill="hsl(38 92% 60%)" />
+                  stroke="hsla(38, 90%, 60%, 0.4)" strokeWidth={1} strokeDasharray="2 4" />
+                <circle cx={x1} cy={y1} r={2.5} fill="hsl(38, 92%, 60%)" />
               </g>
             );
           })}
@@ -145,7 +152,7 @@ export function BuildingIllustration({
         {/* scanning plane */}
         <motion.rect
           x={40} width={VIEW.w - 80} height={3} rx={1.5}
-          fill="hsl(38 92% 60%)"
+          fill="hsl(38, 92%, 60%)"
           {...(scanProps as any)}
           style={{ ...(animated ? {} : (scanProps as any).style), filter: 'drop-shadow(0 0 6px hsl(38 92% 55% / 0.8))' }}
         />

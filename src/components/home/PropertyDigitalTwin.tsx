@@ -212,9 +212,10 @@ function StaticTwin() {
 
 export function PropertyDigitalTwinSection() {
   const reduce = useReducedMotion();
+  const { t } = useLanguage();
   if (reduce) return <StaticTwin />;
   return (
-    <section className="relative border-t border-border bg-card/10" aria-label="Property digital twin">
+    <section className="relative border-t border-border bg-card/10" aria-label={t('home_twin_section_aria')}>
       <DesktopTwin />
       <MobileTwin />
     </section>

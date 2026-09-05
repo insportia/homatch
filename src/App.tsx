@@ -27,6 +27,10 @@ const DomMutationGuard: React.FC = () => {
   return null;
 };
 
+// ── Error Boundary ─────────────────────────────────────────────
+// message is null when the thrown error had no message — ErrorFallback below
+// substitutes a translated "Unknown error" string at render time, since this
+// static lifecycle method has no access to hooks/t().
 interface EBState { hasError: boolean; message: string | null }
 
 function ErrorFallback({ message, onRetry }: { message: string | null; onRetry: () => void }) {
@@ -52,14 +56,19 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBSta
     return { hasError: true, message: error?.message ?? null };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
+  componentDidCatch(error: Error, info: React.ReactInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
-    const isDomRemovalError = error?.name === 'NotFoundError' || /removeChild|not a child of this node/i.test(error?.message ?? '');
+
+    const isDomRemovalError =
+      error?.name === 'NotFoundError' ||
+      /removeChild|not a child of this node/i.test(error?.message ?? '');
+
     if (isDomRemovalError && sessionStorage.getItem('homatch-dom-recovery') !== '1') {
       sessionStorage.setItem('homatch-dom-recovery', '1');
       window.location.reload();
       return;
     }
+
     sessionStorage.removeItem('homatch-dom-recovery');
   }
 
@@ -76,6 +85,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBSta
         />
       );
     }
+
     return this.props.children;
   }
 }

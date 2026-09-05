@@ -158,4 +158,80 @@
 // runs a single, real, deterministic EnregWorkflow lookup for a name/idCode
 // supplied directly by a caller — the mechanism this v20 change above
 // depends on.
+//
+// v20 -> v21 (2026-09-05, "HOMATCH — FINAL PRODUCTION BUILD MASTER PROMPT"
+// — a much larger due-diligence mandate superseding prior Verify prompts).
+// Scoped to what's tractable within research-agent + VerifyPage.tsx WITHOUT
+// touching the official-worker's live browser adapters this round (no new
+// TAS/MSMAP/MyGov/ENREG selector work — that needs real site inspection
+// this sandbox cannot do blind):
+// - STRICT FACT GATE (the mandate's 5-question test) is now spelled out in
+//   BASE, with the exact required localized fallback sentence ("ზუსტი
+//   მიმდინარე სტატუსი საჯარო მტკიცებულებით ვერ დადასტურდა.") for any
+//   high-impact fact (ownership/restrictions/commissioning/seller-authority/
+//   etc.) that fails it — never a guessed date or status.
+// - Commissioning/exploitation: project profile now carries three distinct
+//   fields — declaredCompletionTarget / observedConstructionStatus /
+//   commissioningStatus — instead of one blurred constructionStatus.
+//   commissioningStatus can only be OFFICIALLY_CONFIRMED with a cited
+//   evidenceUrl; it is never inferred from sold units, renovation, or
+//   portal "delivered" claims.
+// - rightsAndRestrictions: a dedicated field distinguishing NOT_CONFIRMED
+//   ("current official confirmation is still required") from
+//   NONE_FOUND_IN_CHECKED_SOURCE ("no material registered restriction was
+//   identified in the current evidence retrieved at [timestamp]") from
+//   RESTRICTION_IDENTIFIED — since seizure/attachment is transaction-
+//   critical and "not yet checked" must never collapse into "guaranteed
+//   clean".
+// - dueDiligenceCoverage: HIGH/MEDIUM/LIMITED plus real counts
+//   (officialSourcesChecked, documentsRead, companyRecords,
+//   marketComparables, socialSources, materialMismatches,
+//   outstandingConfirmations) replaces any purchase-decision framing —
+//   this measures research completeness, never transaction safety. BASE
+//   now explicitly bans "safe to buy" / "100% clean" / "guaranteed safe" /
+//   any safety probability in any string Gemini returns. The frontend's
+//   top badge now reads this field instead of overallConfidence.
+// - linkLabel added to sources/documents/comparables ("View official
+//   source" / "View document" / "View listing") for canonical-link
+//   display; VerifyPage.tsx renders it instead of a bare icon.
+// Explicitly NOT attempted this pass (each is a genuinely separate, large
+// subsystem, not a small follow-up): contract upload/parsing/Georgian-law-
+// grounded review and contract↔property/counterparty cross-check; CRM/
+// transaction-case persistence with versioning/"what changed" UI;
+// land-specific workflow; a utilities matrix; developer financing/banking
+// research; developer portfolio expansion beyond companyProfile's existing
+// relatedProjects; any new live-site browser adapter/selector work for
+// My.gov Service 176, ENREG people/history, or TAS chronology.
+//
+// v22 (2026-09-05, same master due-diligence mandate — "CUSTOMER VS ADMIN:
+// never expose internal enums/FSM states/selector failures/raw stack traces
+// to the customer, only to admin diagnostics"). Found by reading the full
+// result_json of the user's own real live retest job
+// (1b94fdbc-0cd4-4669-bd26-6de40b158f36, 01.18.06.019.055.03.01.603) end to
+// end: every prior round only stripped internal fields from what
+// VerifyPage.tsx's JSX *renders* and from customerSafeReportForAi()'s
+// AI-chat handoff — but the raw HTTP response body the edge function
+// returns for the 'status'/'resume'/'skip' action still carried the FULL
+// browserOfficial object verbatim (raw TAS/MSMAP FSM state names like "TAS
+// FSM reached ALL_RESULTS_EXHAUSTED", raw selector-failure diagnostics like
+// "NO_SELECTOR_MATCHED_OR_CLICK_FAILED candidateCounts={...}", internal
+// confidence-heuristic strings), plus entityConfidence/numeric confidence/
+// the officialSources* breakdown arrays/officialVerificationComplete/stage/
+// researchProvider/costUsage/internal _worker,_cost,_enregEntityRequestedFor,
+// _captchaReturnStage bookkeeping — all visible to any customer opening
+// their browser's Network tab, regardless of what the page chose to render.
+// New sanitizeForCustomer(job) strips exactly those fields from
+// result_json, applied immediately before the wire response is returned,
+// but ONLY when job.status === 'COMPLETE' — it must never run for
+// WAITING_HUMAN/RUNNING/any other in-progress status, because the
+// frontend's CAPTCHA resume/skip flow reads result_json._worker.jobId, and
+// advance()/pollBrowser/pollEnregEntity read these same internal fields
+// back out of result_json on the NEXT invocation to keep driving the job —
+// stripping them early would break the job, not just hide diagnostics from
+// a finished one. The database row itself is left completely untouched
+// (full diagnostics remain queryable there for admin support/debugging);
+// only the customer-facing HTTP body changes.
+// Verified via byte-for-byte diff between this deploy's local source file
+// and the content Supabase returns for the live function (no transcription
+// drift, unlike the harmless single-field drift accepted in v21).
 export {};

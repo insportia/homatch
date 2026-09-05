@@ -212,8 +212,19 @@ export default function HomePage() {
     navigate(`/property/import?url=${encodeURIComponent(trimmed)}`);
   };
 
+  // No overflow-x-hidden on the root div below: body already sets it
+  // globally (index.css), and body/html get the browser's special
+  // root-scroller exemption from the CSS overflow-x/y "auto" substitution
+  // rule. Putting the same overflow-x-hidden on an ordinary nested div does
+  // NOT get that exemption — it makes this div the nearest ancestor with an
+  // overflow value other than visible, which silently neutralizes
+  // `position: sticky` for every descendant (the header's own sticky nav,
+  // and PropertyDigitalTwinSection's scroll-pinned building, both depend on
+  // real sticky behavior). Confirmed live: with it present, the twin's
+  // sticky wrapper computed `position: sticky` correctly but its bounding
+  // rect still tracked -scrollY 1:1 instead of pinning.
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Public nav */}
       <header className={`sticky top-0 z-50 border-b bg-background/95 backdrop-blur-sm transition-shadow duration-300 ${scrolled ? 'border-border shadow-card backdrop-blur-md' : 'border-border/60'}`}>
         <div className="flex items-center h-14 px-4 md:px-8 gap-4 max-w-7xl mx-auto">

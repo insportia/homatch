@@ -1,9 +1,10 @@
-// Production source: Supabase Edge Function `research-agent` v14.
+// Production source: Supabase Edge Function `research-agent` v16.
 // Gemini-first Property Intelligence pipeline. The deployed source is authoritative.
 // Contract:
 // start {action:'start',query,type:'property'|'cadastral',language|locale}
 // status {action:'status',jobId,language|locale}
 // resume {action:'resume',jobId,language|locale}
+// skip   {action:'skip',jobId,language|locale} — see v16 note below.
 // Pipeline: IDENTITY -> OFFICIAL -> MARKET -> SYNTHESIS -> COMPLETE.
 // Provider: Gemini Interactions API with Google Search + URL Context for evidence collection.
 // Security: JWT required, server-side GEMINI_API_KEY only, owner-scoped research_jobs.
@@ -33,4 +34,30 @@
 //   to result.historicalComparison; both prompts instruct Gemini to restate
 //   only its addedInNewer/removedFromOlder arrays verbatim, never to infer a
 //   change beyond that structured diff.
+//
+// v15/v16 (2026-09-05, Verify research-graph pivot — CAPTCHA skip support):
+// - New `action:'skip'` (mirrors 'resume'): brings a WAITING_HUMAN job's
+//   research_jobs.stage back to RUNNING/BROWSER_WAITING so pollBrowser()
+//   resumes, without requiring the human-verification challenge to be
+//   completed. The frontend's ResearchCaptchaModal calls the official-worker's
+//   own new `POST /research/:id/skip` endpoint directly (worker job id)
+//   BEFORE invoking this action, which is what actually marks that source's
+//   result SKIPPED_HUMAN_VERIFICATION and continues the worker's run(); this
+//   action's own best-effort call to the same worker endpoint (tolerating a
+//   404, meaning "already skipped by the modal") is a safety net only.
+// - wf() now tolerates a 404 from the worker (in addition to the existing
+//   409) on /resume and /skip calls — the worker session may already have
+//   been closed by the frontend's direct call before research-agent's own
+//   call reaches it; this is a normal race, not an error.
+// - officialVerificationSummary() adds a dedicated `officialSourcesSkipped`
+//   bucket for SKIPPED_HUMAN_VERIFICATION results — deliberately excluded
+//   from officialSourcesNotVerified so a user-chosen skip is never rendered
+//   as a generic "could not be verified" technical failure. Carried through
+//   to the final result as officialSourcesSkipped.
+// - Both the OFFICIAL and SYNTHESIS prompts now explain SKIPPED_HUMAN_VERIFICATION
+//   semantics explicitly and require the exact disclosure phrasing: "<source>
+//   — verification incomplete. Human verification was required and this
+//   source was skipped. The report below is based on the other successfully
+//   researched sources." — and instruct Gemini never to conflate a skip with
+//   a technical failure or a confirmed negative result.
 export {};

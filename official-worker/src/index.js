@@ -7,6 +7,7 @@ import { EntityLedger, extractEntityCandidates } from './lib/entityDiscovery.js'
 import { classifyDocumentLink, detectPagination, MAX_VIEWER_PAGES } from './lib/documentReader.js';
 import { NavigationStack } from './lib/navigationStack.js';
 import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps } from './lib/steps.js';
+import { computeMsmapTraversal, computeTasTraversal, computeMygovTraversal, computeEnregTraversal } from './lib/traversal.js';
 const app=express();
 const ALLOWED_ORIGINS=new Set(['https://homatch.live','https://www.homatch.live']);
 app.use((req,res,next)=>{const origin=String(req.headers.origin||'');if(origin&&(ALLOWED_ORIGINS.has(origin)||/^https:\/\/homatch-[a-z0-9-]+-insportia\.vercel\.app$/i.test(origin))){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin')}res.setHeader('Access-Control-Allow-Headers','authorization,apikey,content-type');res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');if(req.method==='OPTIONS')return res.sendStatus(204);next()});app.use(express.json({limit:'1mb'}));
@@ -188,7 +189,7 @@ async function waitForResultSignal(f,beforeText,qRaw,{timeoutMs=10000,pollMs=500
 // says. When opts.networkPattern is set, interact() arms a
 // page.waitForResponse() for it BEFORE the click/Enter and reports whether
 // a matching response actually arrived.
-async function interact(p,q,hints,opts={}){const{fallback=false,exclude=null,networkPattern=null}=opts;const trace=[{action:'OPEN',url:p.url()}];for(const f of contexts(p)){if(f!==p.mainFrame())trace.push({action:'ENTER_FRAME',frameUrl:f.url()});for(const s of hints){const x=f.locator(s).first();try{if(await visible(x)){if(exclude&&await exclude(x)){trace.push({action:'SKIP_EXCLUDED',selector:s});continue}await x.fill(q);const val=(await x.inputValue().catch(()=>'' )).replace(/\s/g,'');const verified=val===q.replace(/\s/g,'');trace.push({action:'FILL',selector:s,scope:'HINT',verified});if(verified){const before=await f.locator('body').innerText({timeout:5000}).catch(()=>'' );const netPromise=networkPattern?p.waitForResponse(r=>networkPattern.test(r.url()),{timeout:9000}).then(r=>({matched:true,url:r.url(),status:r.status()})).catch(()=>({matched:false})):null;const sub=await submitNear(p,{frame:f,el:x});const net=netPromise?await netPromise:null;trace.push({action:'SUBMIT',method:sub.method,clicked:sub.ok,network:net});return{found:true,frame:f,el:x,selector:s,scope:'HINT',before,sub,net,trace}}}}catch{}}}if(fallback){for(const f of contexts(p)){const inputs=f.locator('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),textarea');const n=Math.min(await inputs.count().catch(()=>0),40);for(let i=0;i<n;i++){const x=inputs.nth(i);if(!await visible(x))continue;const inChrome=await x.evaluate(el=>!!el.closest('header, nav, [role="banner"], [role="navigation"]')).catch(()=>false);if(inChrome)continue;if(exclude&&await exclude(x))continue;const m=((await x.getAttribute('placeholder'))+' '+(await x.getAttribute('name'))+' '+(await x.getAttribute('id'))+' '+(await x.getAttribute('aria-label'))).toLowerCase();if(/საკადასტრო|cadast|cadastr|parcel|უძრავ|ძიება|search/.test(m)){try{await x.fill(q);const val=(await x.inputValue()).replace(/\s/g,'');if(val===q.replace(/\s/g,'')){trace.push({action:'FILL',selector:m,scope:'FALLBACK',verified:true});const before=await f.locator('body').innerText({timeout:5000}).catch(()=>'' );const sub=await submitNear(p,{frame:f,el:x});trace.push({action:'SUBMIT',method:sub.method,clicked:sub.ok});return{found:true,frame:f,el:x,selector:m,scope:'FALLBACK',before,sub,trace}}}catch{}}}}}return{found:false,trace}}
+async function interact(p,q,hints,opts={}){const{fallback=false,exclude=null,networkPattern=null}=opts;const trace=[{action:'OPEN',url:p.url()}];for(const f of contexts(p)){if(f!==p.mainFrame())trace.push({action:'ENTER_FRAME',frameUrl:f.url()});for(const s of hints){const x=f.locator(s).first();try{if(await visible(x)){if(exclude&&await exclude(x)){trace.push({action:'SKIP_EXCLUDED',selector:s});continue}await x.fill(q);const val=(await x.inputValue().catch(()=>'' )).replace(/\s/g,'');const verified=val===q.replace(/\s/g,'');trace.push({action:'FILL',selector:s,scope:'HINT',verified});if(verified){const before=await f.locator('body').innerText({timeout:5000}).catch(()=>'' );const netPromise=networkPattern?p.waitForResponse(r=>networkPattern.test(r.url()),{timeout:9000}).then(r=>({matched:true,url:r.url(),status:r.status()})).catch(()=>({matched:false})):null;const sub=await submitNear(p,{frame:f,el:x});const net=netPromise?await netPromise:null;trace.push({action:'SUBMIT',method:sub.method,clicked:sub.ok,network:net});return{found:true,frame:f,el:x,selector:s,scope:'HINT',contextConfidence:'HINT_MATCH',before,sub,net,trace}}}}catch{}}}if(fallback){for(const f of contexts(p)){const inputs=f.locator('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),textarea');const n=Math.min(await inputs.count().catch(()=>0),40);for(let i=0;i<n;i++){const x=inputs.nth(i);if(!await visible(x))continue;const inChrome=await x.evaluate(el=>!!el.closest('header, nav, [role="banner"], [role="navigation"]')).catch(()=>false);if(inChrome)continue;if(exclude&&await exclude(x))continue;const m=((await x.getAttribute('placeholder'))+' '+(await x.getAttribute('name'))+' '+(await x.getAttribute('id'))+' '+(await x.getAttribute('aria-label'))).toLowerCase();if(/საკადასტრო|cadast|cadastr|parcel|უძრავ|ძიება|search/.test(m)){try{await x.fill(q);const val=(await x.inputValue()).replace(/\s/g,'');if(val===q.replace(/\s/g,'')){trace.push({action:'FILL',selector:m,scope:'FALLBACK',verified:true});const before=await f.locator('body').innerText({timeout:5000}).catch(()=>'' );const sub=await submitNear(p,{frame:f,el:x});trace.push({action:'SUBMIT',method:sub.method,clicked:sub.ok});return{found:true,frame:f,el:x,selector:m,scope:'FALLBACK',contextConfidence:'GENERIC_KEYWORD_MATCH',before,sub,trace}}}catch{}}}}}return{found:false,trace}}
 // submitNear now reports HOW it submitted (button label matched, or a plain
 // Enter keypress) instead of a bare boolean — this is the SUBMIT_ACTION field
 // requested for per-source diagnostics, so a human reviewer can tell "clicked
@@ -223,7 +224,15 @@ async function tasAdapter(p,q){const hit=await interact(p,q,['input[placeholder*
 // in the service page's raw HTML even when Playwright's own frame list
 // didn't include it — job 4fddea39-...) and, if found, opens it directly in
 // a fresh page in the same browser context and retries there.
-async function mygovAdapter(p,q,ctx){const hints=['input[placeholder*="საკადასტრო" i]','input[name*="cad" i]','input[id*="cad" i]'];let hit=await interact(p,q,hints);let activePage=null,candidateInputs=null;if(!hit.found){const poll=await pollForIframe(p,/reestri\.gov\.ge|naprweb/i,{timeoutMs:15000,pollMs:1000});hit.trace.push({action:'DOM_IFRAME_SCAN',srcs:poll.srcs,waitedMs:poll.waitedMs,found:poll.found});const target=poll.found?poll.src:null;if(target){let full=target;try{full=new URL(target,p.url()).toString()}catch{}const p2=await ctx.newPage();try{await p2.goto(full,{waitUntil:'domcontentloaded',timeout:30000});await p2.waitForTimeout(2000);hit.trace.push({action:'DIRECT_NAVIGATE',url:full});const hit2=await interact(p2,q,hints);hit.trace.push(...hit2.trace);if(hit2.found){hit=hit2;activePage=p2}else{const retry=await candidateRankedRetry(p2,q);hit.trace.push({action:'CANDIDATE_SCAN',candidates:retry.candidates});candidateInputs=retry.candidates;if(retry.found){hit.trace.push(...retry.trace);hit=retry;activePage=p2}else{hit.trace.push({action:'NO_SAFE_CANDIDATE',note:'naprweb Angular app reached but no candidate input matched or verified'});await p2.close().catch(()=>{})}}}catch(e){hit.trace.push({action:'DIRECT_NAVIGATE_FAILED',error:String(e)});await p2.close().catch(()=>{})}}}if(!hit.found)return{adapter:'MYGOV_SERVICE',found:false,trace:hit.trace,activePage,candidateInputs};const sig=await waitForResultSignal(hit.frame,hit.before,q);hit.trace.push({action:'RESULT',changed:sig.changed,signal:sig.signal,queryEchoed:sig.queryEchoed,waitedMs:sig.waitedMs});return{adapter:'MYGOV_SERVICE',found:true,submitted:hit.sub.ok,submitAction:hit.sub.method,frameUrl:hit.frame.url(),searchControlUsed:hit.selector,fillVerified:true,resultChanged:sig.changed,resultTextAfter:sig.after,trace:hit.trace,activePage,candidateInputs}}
+async function mygovAdapter(p,q,ctx){const hints=['input[placeholder*="საკადასტრო" i]','input[name*="cad" i]','input[id*="cad" i]'];let hit=await interact(p,q,hints);let activePage=null,candidateInputs=null;if(!hit.found){const poll=await pollForIframe(p,/reestri\.gov\.ge|naprweb/i,{timeoutMs:15000,pollMs:1000});hit.trace.push({action:'DOM_IFRAME_SCAN',srcs:poll.srcs,waitedMs:poll.waitedMs,found:poll.found});const target=poll.found?poll.src:null;if(target){let full=target;try{full=new URL(target,p.url()).toString()}catch{}const p2=await ctx.newPage();try{await p2.goto(full,{waitUntil:'domcontentloaded',timeout:30000});await p2.waitForTimeout(2000);hit.trace.push({action:'DIRECT_NAVIGATE',url:full});const hit2=await interact(p2,q,hints);hit.trace.push(...hit2.trace);if(hit2.found){hit=hit2;activePage=p2}else{const retry=await candidateRankedRetry(p2,q);hit.trace.push({action:'CANDIDATE_SCAN',candidates:retry.candidates});candidateInputs=retry.candidates;if(retry.found){hit.trace.push(...retry.trace);hit=retry;activePage=p2}else{hit.trace.push({action:'NO_SAFE_CANDIDATE',note:'naprweb Angular app reached but no candidate input matched or verified'});await p2.close().catch(()=>{})}}}catch(e){hit.trace.push({action:'DIRECT_NAVIGATE_FAILED',error:String(e)});await p2.close().catch(()=>{})}}}const registryAppOpened=!!activePage;if(!hit.found)return{adapter:'MYGOV_SERVICE',found:false,trace:hit.trace,activePage,candidateInputs,service176Opened:true,registryAppOpened};const sig=await waitForResultSignal(hit.frame,hit.before,q);hit.trace.push({action:'RESULT',changed:sig.changed,signal:sig.signal,queryEchoed:sig.queryEchoed,waitedMs:sig.waitedMs,contextConfidence:hit.contextConfidence||null});
+// correctSearchContext (2026-09-05, direct fix for the false NO_RESULT_
+// CONFIRMED bug): only a known-good HINT selector or a candidate that
+// specifically looked like a CADASTRAL field is trusted as "the real
+// search context was reached" — a SEARCH_FIELD_MATCH/FILTER_FIELD_MATCH/
+// GENERIC_FIELD_MATCH guess (any input the ranked scanner merely settled
+// for) is explicitly NOT trusted, however the page text reads afterward.
+const correctSearchContext=['HINT_MATCH','CADASTRAL_FIELD_MATCH'].includes(hit.contextConfidence);
+return{adapter:'MYGOV_SERVICE',found:true,submitted:hit.sub.ok,submitAction:hit.sub.method,frameUrl:hit.frame.url(),searchControlUsed:hit.selector,fillVerified:true,resultChanged:sig.changed,resultTextAfter:sig.after,trace:hit.trace,activePage,candidateInputs,contextConfidence:hit.contextConfidence||null,correctSearchContext,service176Opened:true,registryAppOpened}}
 // MSMAP: confirmed live (job 4fddea39-...) that the only control matching
 // the old generic hints (input[placeholder="ძიება"]) is the MAP LAYERS PANEL
 // filter box — entering the cadastral code there left the full
@@ -259,7 +268,19 @@ function looksLikeFilterField(c){return/filter/i.test(c.name||'')||/filter/i.tes
 // generalized so mygov's naprweb Angular app (reachable this round for the
 // first time, but its internal field names are still unknown) gets the
 // same real, ranked-by-evidence retry instead of a blind guess.
-async function candidateRankedRetry(page,q,opts={}){const candidates=await scanCandidateInputs(page);const usable=opts.excludeLayers?candidates.filter(c=>!c.isLayersPanel):candidates;const ranked=[...usable.filter(looksLikeCadastralField),...usable.filter(c=>!looksLikeCadastralField(c)&&looksLikeSearchField(c)),...usable.filter(c=>!looksLikeCadastralField(c)&&!looksLikeSearchField(c)&&!looksLikeFilterField(c)),...usable.filter(c=>!looksLikeCadastralField(c)&&!looksLikeSearchField(c)&&looksLikeFilterField(c))];const guessSels=dedupe(ranked.map(c=>c.name?`input[name="${c.name}"]`:c.id?`#${c.id}`:c.placeholder?`input[placeholder="${c.placeholder}"]`:null).filter(Boolean),x=>x);if(!guessSels.length)return{found:false,candidates};const hit=await interact(page,q,guessSels);return{...hit,candidates}}
+// Context-confidence tiers (2026-09-05, per the explicit MyGov false-
+// negative fix): a field found only by generic keyword-ranking is NOT the
+// same quality of evidence as a known-good hint selector — the user's
+// critique proved a wrong-field guess on naprweb.reestri.gov.ge produced a
+// confident (and false) "no matching record" with no CAPTCHA ever appearing.
+// Every candidate selector this function tries is now tagged with the tier
+// it came from, and whichever selector interact() actually fills+submits
+// carries that tier forward as `contextConfidence` on the returned hit, so
+// collect() can refuse to treat a CADASTRAL_FIELD_MATCH-or-weaker result as
+// trustworthy confirm/deny evidence.
+function candidateTier(c){if(looksLikeCadastralField(c))return'CADASTRAL_FIELD_MATCH';if(looksLikeSearchField(c))return'SEARCH_FIELD_MATCH';if(looksLikeFilterField(c))return'FILTER_FIELD_MATCH';return'GENERIC_FIELD_MATCH'}
+function candidateSelector(c){return c.name?`input[name="${c.name}"]`:c.id?`#${c.id}`:c.placeholder?`input[placeholder="${c.placeholder}"]`:null}
+async function candidateRankedRetry(page,q,opts={}){const candidates=await scanCandidateInputs(page);const usable=opts.excludeLayers?candidates.filter(c=>!c.isLayersPanel):candidates;const ranked=[...usable.filter(looksLikeCadastralField),...usable.filter(c=>!looksLikeCadastralField(c)&&looksLikeSearchField(c)),...usable.filter(c=>!looksLikeCadastralField(c)&&!looksLikeSearchField(c)&&!looksLikeFilterField(c)),...usable.filter(c=>!looksLikeCadastralField(c)&&!looksLikeSearchField(c)&&looksLikeFilterField(c))];const tierBySelector=new Map();for(const c of ranked){const sel=candidateSelector(c);if(sel&&!tierBySelector.has(sel))tierBySelector.set(sel,candidateTier(c))}const guessSels=dedupe(ranked.map(candidateSelector).filter(Boolean),x=>x);if(!guessSels.length)return{found:false,candidates};const hit=await interact(page,q,guessSels);const contextConfidence=hit.found?(tierBySelector.get(hit.selector)||'GENERIC_FIELD_MATCH'):null;return{...hit,contextConfidence,candidates}}
 // MSMAP v2 (2026-09-04, round 7 — determined via live /debug/msmap
 // diagnostics, jobs 399b27ef-.../782be699-...): every earlier round assumed
 // the wrong thing — that a result would show up as changed TEXT in the page
@@ -303,7 +324,7 @@ async function msmapSuggestion(p,q,{timeoutMs=5000,pollMs=400}={}){const segs=q.
 // been exercised against the real site. This is LOCAL-SYNTAX-CHECKED ONLY,
 // NOT LIVE VERIFIED — report it as such, never as tested.
 async function msmapDeepDive(p){
-  const trace={layersEnabled:false,identifyToolActivated:false,parcelClicked:false,infoPopupOpened:false,naprLinkOpened:false,latestInformationOpened:false,extraPageText:null};
+  const trace={layersEnabled:false,identifyToolActivated:false,parcelClicked:false,infoPopupOpened:false,naprLinkOpened:false,latestInformationOpened:false,extraPageText:null,documentsRead:false,documents:[]};
   try{
     const panel=p.getByText('საკადასტრო მონაცემები',{exact:false}).first();
     if(await panel.count().catch(()=>0)){
@@ -341,6 +362,19 @@ async function msmapDeepDive(p){
         const latest=target.getByText('უახლესი ინფორმაცია',{exact:false}).first();
         if(await latest.count().catch(()=>0)){await latest.click({timeout:3000}).catch(()=>{});await target.waitForTimeout(1000).catch(()=>{});trace.latestInformationOpened=true}
         trace.extraPageText=await text(target).catch(()=>null);
+        // Open the NAPR/registry page's OWN child documents too (2026-09-05
+        // fix — previously this deep-dive read only the page's TEXT and
+        // never followed any document link it exposed, so a MSMAP result
+        // could never contribute anything to `documents`/`documentsRead`
+        // even when "უახლესი ინფორმაცია" genuinely listed retrievable
+        // documents). Reuses the same classification/PDF/online-viewer
+        // logic as the primary pdfEvidence() path, scoped to this separate
+        // page so it never disturbs the calling adapter's own `p`.
+        try{
+          const napLinks=await pageLinks(target);
+          const napDocs=await pdfEvidence(target,napLinks);
+          if(napDocs.length){trace.documents=napDocs;trace.documentsRead=napDocs.some(d=>d.parsed&&d.textExtractionAvailable)}
+        }catch{}
         if(naprPage&&naprPage!==p)await naprPage.close().catch(()=>{});
       }
     }
@@ -379,13 +413,140 @@ async function msmapAdapter(p,q){
   hit.trace.push({action:'RESULT',usedFallbackCandidate,networkConfirmed:netConfirmed,suggestionFound:sug.found,suggestionPrefix:sug.prefix||null,suggestionClicked:clicked,mapRedrawConfirmed:mapConfirmed,mapRedrawRequestCount:netFeatureCount,layersEnabled:deepDive?.layersEnabled||false,identifyToolActivated:deepDive?.identifyToolActivated||false,parcelClicked:deepDive?.parcelClicked||false,infoPopupOpened:deepDive?.infoPopupOpened||false,naprLinkOpened:deepDive?.naprLinkOpened||false,latestInformationOpened:deepDive?.latestInformationOpened||false});
   const forceStatus=sug.found?'SEARCH_CONFIRMED':(netConfirmed?'NO_RESULT_CONFIRMED':undefined);
   const forceReason=sug.found?`MSMAP's unified-search suggested a match at cadastral prefix ${sug.prefix}${mapConfirmed?`, and selecting it triggered ${netFeatureCount} map-redraw request(s) (geoserver/tileserver) confirming the parcel was located and its boundary drawn`:' (selecting it did not trigger a detectable map redraw, but the suggestion itself is the network-generated search result)'}${deepDive?.naprLinkOpened?`; the NAPR/Public Registry link was additionally opened from the parcel's info popup${deepDive.latestInformationOpened?' and its "უახლესი ინფორმაცია" (latest information) section was opened':''} (best-effort, not live-verified in this environment)`:''}`:(netConfirmed?'MSMAP\'s unified-search ran (network-confirmed POST to core-api/v1/search/unified-search) and returned no matching suggestion at any cadastral-segment prefix of the query':undefined);
-  return{adapter:'MSMAP_SPA_SUGGESTION',found:true,submitted:!!hit.sub?.ok,submitAction:hit.sub?.method||null,frameUrl:hit.frame?.url?hit.frame.url():null,searchControlUsed:hit.selector,fillVerified:true,resultChanged:sug.found||netConfirmed,networkConfirmed:netConfirmed,resultTextAfter:forceReason||null,forceStatus,forceReason,trace:hit.trace,candidateInputs:usedFallbackCandidate?hit.candidates:null,naprDeepDive:deepDive}
+  // IMPORTANT (2026-09-05, per the explicit critique): `forceStatus` above
+  // still governs the top-level evidence-status enum (a suggestion + a
+  // network-confirmed map redraw IS real, causal proof that a search ran
+  // and matched something — that part of the old logic was correct). What
+  // was wrong is treating that alone as equivalent to COMPLETED research.
+  // These explicit fields are what msmapTraversal() in collect() consumes
+  // to compute the separate, honest traversal-completeness state — a
+  // suggestion click or map redraw alone can now never produce anything
+  // better than RESULTS_DISCOVERED on that dimension.
+  return{adapter:'MSMAP_SPA_SUGGESTION',found:true,submitted:!!hit.sub?.ok,submitAction:hit.sub?.method||null,frameUrl:hit.frame?.url?hit.frame.url():null,searchControlUsed:hit.selector,fillVerified:true,resultChanged:sug.found||netConfirmed,networkConfirmed:netConfirmed,resultTextAfter:forceReason||null,forceStatus,forceReason,trace:hit.trace,candidateInputs:usedFallbackCandidate?hit.candidates:null,naprDeepDive:deepDive,suggestionFound:sug.found,suggestionClicked:clicked,mapRedrawConfirmed:mapConfirmed}
 }
-// Generic fallback adapter (enreg, napr) — keeps the pre-existing
-// header/nav-scoped fallback-scan behaviour these sources always relied on;
-// no source-specific selectors are known for them yet.
+// Generic fallback adapter (napr) — keeps the pre-existing header/nav-scoped
+// fallback-scan behaviour this source always relied on; no source-specific
+// selectors are known for it yet (and napr.gov.ge has no accessible public
+// search entry point at all — see the SOURCES.mygov comment above).
 async function genericAdapter(p,q){const hit=await interact(p,q,[],{fallback:true});if(!hit.found)return{adapter:'GENERIC',found:false,trace:hit.trace};const sig=await waitForResultSignal(hit.frame,hit.before,q);hit.trace.push({action:'RESULT',changed:sig.changed,signal:sig.signal,queryEchoed:sig.queryEchoed,waitedMs:sig.waitedMs});return{adapter:'GENERIC',found:true,submitted:hit.sub.ok,submitAction:hit.sub.method,frameUrl:hit.frame.url(),searchControlUsed:hit.selector,fillVerified:true,resultChanged:sig.changed,resultTextAfter:sig.after,trace:hit.trace}}
-async function runAdapter(key,p,q,ctx){if(key==='tas')return tasAdapter(p,q);if(key==='msmap')return msmapAdapter(p,q);if(key==='mygov')return mygovAdapter(p,q,ctx);return genericAdapter(p,q)}
+// ── ENREG adapter (2026-09-05 — per the explicit "implement the full ENREG
+// workflow" instruction): entrepreneur/non-entrepreneur registry, triggered
+// only by a DISCOVERED_ENTITY (a company name+id-code found on another
+// source), never as a primary cadastral search of its own. Every prior
+// version of this adapter was literally the plain genericAdapter() — a
+// header/nav fallback scan with zero ENREG-specific logic — which is why
+// entitiesQueued/searchMethod/exactEntityMatched/... never existed as real,
+// evidenced fields. This is a real, structured implementation of the exact
+// step sequence the spec requires: search by id-code (preferred) or name ->
+// verify an EXACT match (not just "a" result) -> open its info/details
+// icon -> handle any verification interstitial -> open the entity's own
+// page -> find and open its latest application -> open its prepared
+// documents -> open its latest registry extract and read it in full ->
+// read whatever other historically-relevant records remain on the page.
+// HONESTY NOTE (same as msmapDeepDive above): this sandbox cannot reach
+// enreg.reestri.gov.ge at all, so none of the selectors/locators below have
+// been exercised against the real site — this is LOCAL-SYNTAX-CHECKED
+// ONLY, built from the registry's well-established Georgian terminology
+// and this codebase's own resilient-locator idioms (getByText over brittle
+// CSS classes), NOT LIVE VERIFIED. Every step that cannot be located simply
+// stops the chain at that point (recorded honestly in the returned
+// enregTraversal object) rather than guessing or fabricating success.
+async function enregAdapter(p,q,ctx,extra={}){
+  const forEntity=extra?.forEntity||null;
+  const idCode=forEntity?.idCode||(/^[0-9-]{6,}$/.test(String(q||'').trim())?q:null);
+  const name=forEntity?.name||(idCode?null:q)||null;
+  const searchMethod=idCode?'ID_CODE':(name?'NAME':null);
+  const searchValue=idCode||name||q||null;
+  const trace=[{action:'OPEN',url:p.url()}];
+  const et={entitiesQueued:1,searchMethod,searchValue,exactEntityMatched:false,infoIconClicked:false,verificationStepCompleted:true,entityPageOpened:false,latestApplicationDate:null,latestApplicationOpened:false,preparedDocumentsOpened:false,latestRegistryExtractOpened:false,fullExtractRead:false,historicalRelevantRecordsRead:false};
+  if(!searchValue)return{adapter:'ENREG',found:false,trace,enregTraversal:et};
+  const idHints=['input[placeholder*="საიდენტიფიკაციო" i]','input[name*="ident" i]','input[name*="code" i]','input[id*="ident" i]','input[id*="code" i]'];
+  const nameHints=['input[placeholder*="დასახელება" i]','input[placeholder*="სახელ" i]','input[name*="name" i]','input[id*="name" i]'];
+  const hints=idCode?idHints:nameHints;
+  let hit=await interact(p,searchValue,hints);
+  if(!hit.found&&idCode){hit=await interact(p,searchValue,nameHints);}
+  if(!hit.found){const retry=await candidateRankedRetry(p,searchValue);trace.push({action:'CANDIDATE_SCAN',candidates:retry.candidates});if(!retry.found)return{adapter:'ENREG',found:false,trace:[...trace,...retry.trace],candidateInputs:retry.candidates,enregTraversal:et};hit=retry}
+  trace.push(...hit.trace);
+  const sig=await waitForResultSignal(hit.frame,hit.before,searchValue);
+  trace.push({action:'RESULT',changed:sig.changed,signal:sig.signal,queryEchoed:sig.queryEchoed,waitedMs:sig.waitedMs});
+  let activePage=p;
+  // exactEntityMatched: the id-code (strongest) or, failing that, the exact
+  // name string must appear verbatim in the result area — a substring hit
+  // on a shorter/partial code is deliberately NOT accepted as a match.
+  const resultText=sig.after||'';
+  const exactEntityMatched=idCode?resultText.replace(/\s/g,'').includes(String(idCode).replace(/\s/g,'')):(name?resultText.includes(name):false);
+  et.exactEntityMatched=exactEntityMatched;
+  if(!sig.changed||!exactEntityMatched)return{adapter:'ENREG',found:true,submitted:hit.sub.ok,submitAction:hit.sub.method,frameUrl:hit.frame?.url?.(),searchControlUsed:hit.selector,fillVerified:true,resultChanged:sig.changed,resultTextAfter:resultText,trace,enregTraversal:et};
+  try{
+    const rowLocator=(idCode?p.getByText(idCode,{exact:false}):p.getByText(name,{exact:false})).first();
+    const row=await rowLocator.count().catch(()=>0)?rowLocator:null;
+    const infoIcon=(row?row.locator('xpath=ancestor::tr[1]//a | ancestor::li[1]//a | ancestor::div[1]//a').first():p.locator('a,button').filter({hasText:/ინფორმაცია|დეტალ|info|i\b/i}).first());
+    if(await infoIcon.count().catch(()=>0)){
+      const newPagePromise=p.context().waitForEvent('page',{timeout:4000}).catch(()=>null);
+      await infoIcon.click({timeout:4000}).catch(()=>{});
+      await p.waitForTimeout(1200);
+      const newPage=await newPagePromise;
+      if(newPage){activePage=newPage;await activePage.waitForTimeout(800).catch(()=>{})}
+      et.infoIconClicked=true;
+      trace.push({action:'INFO_ICON_CLICKED',openedNewPage:!!newPage});
+    }
+  }catch(e){trace.push({action:'INFO_ICON_FAILED',error:String(e)})}
+  const cap=await challenge(activePage).catch(()=>null);
+  et.verificationStepCompleted=!cap;
+  if(cap)return{adapter:'ENREG',found:true,submitted:true,submitAction:hit.sub.method,frameUrl:hit.frame?.url?.(),searchControlUsed:hit.selector,fillVerified:true,resultChanged:sig.changed,resultTextAfter:resultText,trace,activePage,enregTraversal:et};
+  try{
+    const entityText=await text(activePage).catch(()=>'');
+    // A real entity page shows registration/status detail beyond the bare
+    // search-result row — require BOTH the id-code/name AND at least one
+    // registry-specific detail phrase to call the page genuinely "opened",
+    // rather than assuming any post-click page change is the entity page.
+    et.entityPageOpened=!!entityText&&(idCode?entityText.replace(/\s/g,'').includes(String(idCode).replace(/\s/g,'')):entityText.includes(name||''))&&/რეგისტრაცი|სტატუსი|საიდენტიფიკაციო/i.test(entityText);
+    trace.push({action:'ENTITY_PAGE_CHECK',entityPageOpened:et.entityPageOpened,url:activePage.url()});
+  }catch{}
+  if(!et.entityPageOpened)return{adapter:'ENREG',found:true,submitted:true,submitAction:hit.sub.method,frameUrl:hit.frame?.url?.(),searchControlUsed:hit.selector,fillVerified:true,resultChanged:sig.changed,resultTextAfter:resultText,trace,activePage,enregTraversal:et};
+  // latestApplicationDate/latestApplicationOpened: find the "განცხადებები"
+  // (applications) section, pick the most recent date actually printed in
+  // it (never invented), and open that entry.
+  try{
+    const appsSection=activePage.getByText('განცხადებ',{exact:false}).first();
+    if(await appsSection.count().catch(()=>0)){
+      const sectionText=await appsSection.locator('xpath=ancestor::div[1] | ancestor::section[1]').first().innerText().catch(()=>'')||await text(activePage);
+      const dates=[...sectionText.matchAll(/\b\d{1,2}[.\/]\d{1,2}[.\/]\d{4}\b/g)].map(m=>m[0]);
+      if(dates.length){
+        const withParsed=dates.map(d=>({d,t:parseFlexDate(d)})).filter(x=>x.t);
+        withParsed.sort((a,b)=>b.t-a.t);
+        et.latestApplicationDate=withParsed[0]?.d||dates[0];
+        const latestEl=activePage.getByText(et.latestApplicationDate,{exact:false}).first();
+        if(await latestEl.count().catch(()=>0)){await latestEl.click({timeout:3000}).catch(()=>{});await activePage.waitForTimeout(800);et.latestApplicationOpened=true;trace.push({action:'LATEST_APPLICATION_OPENED',date:et.latestApplicationDate})}
+      }
+    }
+  }catch(e){trace.push({action:'LATEST_APPLICATION_FAILED',error:String(e)})}
+  try{
+    const prepared=activePage.getByText('მომზადებული დოკუმენტ',{exact:false}).first();
+    if(await prepared.count().catch(()=>0)){await prepared.click({timeout:3000}).catch(()=>{});await activePage.waitForTimeout(800);et.preparedDocumentsOpened=true;trace.push({action:'PREPARED_DOCUMENTS_OPENED'})}
+  }catch(e){trace.push({action:'PREPARED_DOCUMENTS_FAILED',error:String(e)})}
+  try{
+    const extractLink=activePage.getByText('ამონაწერი',{exact:false}).first();
+    if(await extractLink.count().catch(()=>0)){
+      const newPagePromise=activePage.context().waitForEvent('page',{timeout:4000}).catch(()=>null);
+      await extractLink.click({timeout:3000}).catch(()=>{});
+      await activePage.waitForTimeout(1200);
+      const extractPage=(await newPagePromise)||activePage;
+      et.latestRegistryExtractOpened=true;
+      const extractText=await text(extractPage).catch(()=>'');
+      et.fullExtractRead=!!extractText&&extractText.trim().length>60;
+      trace.push({action:'REGISTRY_EXTRACT_OPENED',textLength:extractText.length});
+      if(extractPage!==activePage)activePage=extractPage;
+    }
+  }catch(e){trace.push({action:'REGISTRY_EXTRACT_FAILED',error:String(e)})}
+  // historicalRelevantRecordsRead: honest only when every earlier stage in
+  // the chain that could structurally exist actually completed — this is
+  // deliberately NOT set true just because we reached this line.
+  et.historicalRelevantRecordsRead=!!(et.latestApplicationOpened&&et.preparedDocumentsOpened&&et.latestRegistryExtractOpened&&et.fullExtractRead);
+  const finalText=await text(activePage).catch(()=>resultText);
+  return{adapter:'ENREG',found:true,submitted:true,submitAction:hit.sub.method,frameUrl:hit.frame?.url?.(),searchControlUsed:hit.selector,fillVerified:true,resultChanged:true,resultTextAfter:finalText,trace,activePage,enregTraversal:et};
+}
+async function runAdapter(key,p,q,ctx,extra){if(key==='tas')return tasAdapter(p,q);if(key==='msmap')return msmapAdapter(p,q);if(key==='mygov')return mygovAdapter(p,q,ctx);if(key==='enreg')return enregAdapter(p,q,ctx,extra);return genericAdapter(p,q)}
 async function pageLinks(p){const out=[];for(const f of contexts(p)){try{out.push(...await f.locator('a[href]').evaluateAll(as=>as.slice(0,300).map(a=>({label:(a.textContent||'').trim().slice(0,240),url:a.href})).filter(x=>/^https?:/i.test(x.url))))}catch{}}return [...new Map(out.map(x=>[x.url,x])).values()]}
 // onlineViewerEvidence() (2026-09-05, per the DOCUMENT READER correction):
 // when a document link is not a direct downloadable file, a real official
@@ -498,8 +659,47 @@ async function collect(p,key,sr,ledger){const src=SOURCES[key],ls=await pageLink
 // the automatic ENREG-per-entity follow-up in run().
 const naprExtraText=sr?.naprDeepDive?.extraPageText||'';
 const discoveredEntities=[...extractEntityCandidates(pageText),...docs.flatMap(d=>d.text?extractEntityCandidates(d.text):[]),...(naprExtraText?extractEntityCandidates(naprExtraText):[])];
-if(ledger){ledger.scanText(pageText,{source:key,sourceDocument:p.url(),retrievedAt:now()});for(const d of docs)if(d.text)ledger.scanText(d.text,{source:key,sourceDocument:d.url,documentDate:d.date||null,retrievedAt:now()});if(naprExtraText)ledger.scanText(naprExtraText,{source:key,sourceDocument:'NAPR_DEEP_DIVE',retrievedAt:now()})}const foundControl=!!sr?.found,fillVerified=!!sr?.fillVerified,submitted=!!sr?.submitted,resultChanged=!!sr?.resultChanged,proven=resultChanged?(sr.resultTextAfter||''):'',pt=proven.replace(/\s/g,''),noResultMatch=resultChanged?NO_RESULT_PATTERNS.find(re=>re.test(proven)):null,noResult=!!noResultMatch,echoesQuery=resultChanged&&submitted&&(pt.includes(q)||docs.some(d=>d.text?.replace(/\s/g,'').includes(q))),totalFound=resultChanged?totalFoundCount(proven):null;let status,resultConfirmed=false,noResultConfirmed=false,authRequired=false,blocked=false,resultContext=null;if(cap){status='WAITING_HUMAN';resultContext='human-verification interstitial blocked further evaluation'}else if(!foundControl){blocked=looksBlocked(pageText);authRequired=!blocked&&looksAuthGated(pageText);status=blocked?'BLOCKED':(authRequired?'AUTH_REQUIRED':'SEARCH_CONTROL_NOT_FOUND');resultContext=blocked?snippetAround(pageText,(pageText.match(new RegExp(BLOCK_HINTS.map(r=>r.source).join('|'),'i'))||[])[0]||''):(authRequired?snippetAround(pageText,(pageText.match(new RegExp(AUTH_HINTS.map(r=>r.source).join('|'),'i'))||[])[0]||''):null)}else if(!fillVerified||!submitted){status='SUBMIT_FAILED'}else if(sr?.forceStatus==='SEARCH_CONFIRMED'){status='SEARCH_CONFIRMED';resultConfirmed=true;resultContext=sr.forceReason||resultContext}else if(sr?.forceStatus==='NO_RESULT_CONFIRMED'){status='NO_RESULT_CONFIRMED';noResultConfirmed=true;resultContext=sr.forceReason||resultContext}else if(!resultChanged){status='SUBMITTED_UNCONFIRMED';resultContext='the exact query was verified in the correct field and the search was submitted, but no new result signal (count/no-result phrase/query echo) appeared in the result area afterward — no causal proof of a completed search'}else if(noResult){status='NO_RESULT_CONFIRMED';noResultConfirmed=true;resultContext=snippetAround(proven,noResultMatch.exec(proven)?.[0]||'')}else if(totalFound!==null&&totalFound>0){status='SEARCH_CONFIRMED';resultConfirmed=true;resultContext=`სულ მოიძებნა (total found): ${totalFound}`}else if(echoesQuery){status='SEARCH_CONFIRMED';resultConfirmed=true;resultContext=snippetAround(proven,qRaw)||snippetAround(proven,q)}else{status='SUBMITTED_UNCONFIRMED';resultContext='the result area changed after submission but no recognizable positive/negative signal was found in it'}
-return{source:key,sourceName:src.name,sourceClass:src.class,sourceUrl:src.url,startUrl:src.url,finalUrl:p.url(),frameUrls:p.frames().map(f=>f.url()),domIframeSrcs:await domIframes(p),adapter:sr?.adapter||null,frameUrl:sr?.frameUrl||null,searchControlUsed:sr?.searchControlUsed||null,queryEntered:foundControl?qRaw:null,submitAction:sr?.submitAction||null,fillVerified,resultChanged,interactionTrace:sr?.trace||[],candidateInputs:sr?.candidateInputs||null,resultContext,retrievalMethod:submitted?'OFFICIAL_FORM_RESULT':'NO_VERIFIED_SEARCH',searchControlFound:foundControl,submitted,submissionConfirmed:submitted&&resultChanged,resultConfirmed,noResultConfirmed,authRequired,blocked,searched:submitted,resultValidated:resultConfirmed,status,captcha:!!cap,retrievedAt:now(),pageText,links:ls,documents:docs,documentsDiscovered:ls.filter(isRealDocumentLink).length,documentsExtracted:docs.filter(d=>d.parsed).length,documentLinks:ls.filter(isRealDocumentLink),discoveredEntities,forEntity:sr?.forEntity||null,originalCadastralCode:sr?.originalCadastralCode||null,resolvedSearchCadastralCode:sr?.resolvedSearchCadastralCode||null,cadastralFallbackAttempts:sr?.cadastralFallbackAttempts||null,naprDeepDive:sr?.naprDeepDive||null,resultRowExhaustion:sr?.resultRowExhaustion?{rowsVisited:sr.resultRowExhaustion.rowsVisited,rowDocumentsRead:sr.resultRowExhaustion.rowDocuments?.length||0,trace:sr.resultRowExhaustion.trace}:null,error:status==='SEARCH_CONTROL_NOT_FOUND'?'source adapter could not locate a matching search control':status==='SUBMIT_FAILED'?'source adapter located the control but could not submit the search':status==='BLOCKED'?'the source actively refused/blocked this request (access-denied, rate-limit, or WAF-style page) — not a selector-matching failure':null}}
+if(ledger){ledger.scanText(pageText,{source:key,sourceDocument:p.url(),retrievedAt:now()});for(const d of docs)if(d.text)ledger.scanText(d.text,{source:key,sourceDocument:d.url,documentDate:d.date||null,retrievedAt:now()});if(naprExtraText)ledger.scanText(naprExtraText,{source:key,sourceDocument:'NAPR_DEEP_DIVE',retrievedAt:now()})}const foundControl=!!sr?.found,fillVerified=!!sr?.fillVerified,submitted=!!sr?.submitted,resultChanged=!!sr?.resultChanged,proven=resultChanged?(sr.resultTextAfter||''):'',pt=proven.replace(/\s/g,''),noResultMatch=resultChanged?NO_RESULT_PATTERNS.find(re=>re.test(proven)):null,noResult=!!noResultMatch,echoesQuery=resultChanged&&submitted&&(pt.includes(q)||docs.some(d=>d.text?.replace(/\s/g,'').includes(q))),totalFound=resultChanged?totalFoundCount(proven):null;
+// WEAK_CONTEXT gate (2026-09-05, direct fix for the MyGov false NO_RESULT
+// bug): a result reached only via a low-confidence generic/candidate scan
+// (never a known-good hint selector, and — for MyGov specifically — not
+// even a cadastral-keyword-matched candidate) must NEVER independently
+// produce NO_RESULT_CONFIRMED or SEARCH_CONFIRMED from generic body text,
+// however the page happens to read. `sr.correctSearchContext===false`
+// (set explicitly by mygovAdapter) is the strongest, most specific case;
+// WEAK_CONTEXT_TIERS is the general form of the same rule for any other
+// adapter that ever falls back to a low-confidence field guess.
+const WEAK_CONTEXT_TIERS=new Set(['SEARCH_FIELD_MATCH','GENERIC_FIELD_MATCH','FILTER_FIELD_MATCH','GENERIC_KEYWORD_MATCH']);
+const wrongSearchContext=sr?.correctSearchContext===false||(sr?.contextConfidence&&WEAK_CONTEXT_TIERS.has(sr.contextConfidence));
+let status,resultConfirmed=false,noResultConfirmed=false,authRequired=false,blocked=false,resultContext=null;if(cap){status='WAITING_HUMAN';resultContext='human-verification interstitial blocked further evaluation'}else if(!foundControl){blocked=looksBlocked(pageText);authRequired=!blocked&&looksAuthGated(pageText);status=blocked?'BLOCKED':(authRequired?'AUTH_REQUIRED':'SEARCH_CONTROL_NOT_FOUND');resultContext=blocked?snippetAround(pageText,(pageText.match(new RegExp(BLOCK_HINTS.map(r=>r.source).join('|'),'i'))||[])[0]||''):(authRequired?snippetAround(pageText,(pageText.match(new RegExp(AUTH_HINTS.map(r=>r.source).join('|'),'i'))||[])[0]||''):null)}else if(!fillVerified||!submitted){status='SUBMIT_FAILED'}else if(sr?.forceStatus==='SEARCH_CONFIRMED'){status='SEARCH_CONFIRMED';resultConfirmed=true;resultContext=sr.forceReason||resultContext}else if(sr?.forceStatus==='NO_RESULT_CONFIRMED'){status='NO_RESULT_CONFIRMED';noResultConfirmed=true;resultContext=sr.forceReason||resultContext}else if(!resultChanged){status='SUBMITTED_UNCONFIRMED';resultContext='the exact query was verified in the correct field and the search was submitted, but no new result signal (count/no-result phrase/query echo) appeared in the result area afterward — no causal proof of a completed search'}else if(wrongSearchContext){status='WRONG_SEARCH_CONTEXT';resultContext=`the field that was filled+submitted was only located by a low-confidence fallback scan (contextConfidence=${sr?.contextConfidence||'unknown'}), not a known-good/cadastral-specific control — the source's own confirm/deny text below cannot be trusted as genuine evidence of this exact query, and contributes ZERO confirmed facts`}else if(noResult){status='NO_RESULT_CONFIRMED';noResultConfirmed=true;resultContext=snippetAround(proven,noResultMatch.exec(proven)?.[0]||'')}else if(totalFound!==null&&totalFound>0){status='SEARCH_CONFIRMED';resultConfirmed=true;resultContext=`სულ მოიძებნა (total found): ${totalFound}`}else if(echoesQuery){status='SEARCH_CONFIRMED';resultConfirmed=true;resultContext=snippetAround(proven,qRaw)||snippetAround(proven,q)}else{status='SUBMITTED_UNCONFIRMED';resultContext='the result area changed after submission but no recognizable positive/negative signal was found in it'}
+// ── Structured per-source traversal object (2026-09-05, per the explicit
+// critique: "the source must explicitly report its traversal state" and
+// "do not allow synthesis to treat SEARCH_CONFIRMED as equivalent to
+// completed research"). Computed by the PURE, unit-tested calculators in
+// ./lib/traversal.js from real counts/flags only — never guessed. This is
+// ADDITIVE: the top-level `status` enum above is unchanged in shape/
+// meaning (existing frontend/synthesis consumers keep working), and
+// `traversal` is the new field downstream synthesis MUST consult before
+// treating a source's research as complete.
+const rre=sr?.resultRowExhaustion||null;
+const skippedReasonsCount=rre?.skippedReasons?.length||0;
+const rowsVisited=rre?.rowsVisited||0;
+const rowDocumentsReadCount=rre?.rowDocuments?.length||0;
+let traversal=null;
+if(key==='msmap'){
+  const dd=sr?.naprDeepDive||null;
+  traversal=computeMsmapTraversal({queryEntered:foundControl,suggestionSelected:!!sr?.suggestionFound,layersEnabled:!!dd?.layersEnabled,identifyActivated:!!dd?.identifyToolActivated,parcelClicked:!!dd?.parcelClicked,infoPopupOpened:!!dd?.infoPopupOpened,naprOpened:!!dd?.naprLinkOpened,latestInformationOpened:!!dd?.latestInformationOpened,documentsRead:!!dd?.documentsRead,noResultConfirmed,captcha:!!cap,blocked,authRequired,searchControlNotFound:status==='SEARCH_CONTROL_NOT_FOUND',submitFailed:status==='SUBMIT_FAILED',failed:false})
+}else if(key==='tas'){
+  const discovered=totalFound!==null?totalFound:(rre?.rowsDiscoveredBySelector??null);
+  traversal=computeTasTraversal({originalCadastralCode:sr?.originalCadastralCode||null,resolvedSearchCadastralCode:sr?.resolvedSearchCadastralCode||null,searchSubmitted:submitted,resultsDiscovered:discovered,resultsVisited:rowsVisited,documentsDiscovered:rowsVisited,documentsRead:rowDocumentsReadCount,skippedReasonsCount,noResultConfirmed,captcha:!!cap,blocked,authRequired,searchControlNotFound:status==='SEARCH_CONTROL_NOT_FOUND',submitFailed:status==='SUBMIT_FAILED',failed:false})
+}else if(key==='mygov'){
+  const discovered=totalFound!==null?totalFound:(rre?rre.rowsDiscoveredBySelector:null);
+  traversal=computeMygovTraversal({service176Opened:!!sr?.service176Opened,registryAppOpened:!!sr?.registryAppOpened,correctSearchContext:sr?.correctSearchContext===true,queryEntered:foundControl,searchSubmitted:submitted,captchaEncountered:!!cap||!!sr?.captchaEncounteredEver,humanCompleted:!!sr?.humanVerificationCompleted,humanSkipped:false,resultsDiscovered:discovered,resultsVisited:rowsVisited,documentsRead:rowDocumentsReadCount,noResultConfirmed,captcha:!!cap,blocked,authRequired,searchControlNotFound:status==='SEARCH_CONTROL_NOT_FOUND',submitFailed:status==='SUBMIT_FAILED',wrongSearchContext,failed:false})
+}else if(key==='enreg'){
+  const ed=sr?.enregTraversal||{};
+  traversal=computeEnregTraversal({...ed,noResultConfirmed,captcha:!!cap,blocked,authRequired,searchControlNotFound:status==='SEARCH_CONTROL_NOT_FOUND',submitFailed:status==='SUBMIT_FAILED',failed:false})
+}
+return{source:key,sourceName:src.name,sourceClass:src.class,sourceUrl:src.url,startUrl:src.url,finalUrl:p.url(),frameUrls:p.frames().map(f=>f.url()),domIframeSrcs:await domIframes(p),adapter:sr?.adapter||null,frameUrl:sr?.frameUrl||null,searchControlUsed:sr?.searchControlUsed||null,queryEntered:foundControl?qRaw:null,submitAction:sr?.submitAction||null,fillVerified,resultChanged,interactionTrace:sr?.trace||[],candidateInputs:sr?.candidateInputs||null,contextConfidence:sr?.contextConfidence||null,wrongSearchContext,resultContext,retrievalMethod:submitted?'OFFICIAL_FORM_RESULT':'NO_VERIFIED_SEARCH',searchControlFound:foundControl,submitted,submissionConfirmed:submitted&&resultChanged,resultConfirmed,noResultConfirmed,authRequired,blocked,searched:submitted,resultValidated:resultConfirmed,status,traversal,captcha:!!cap,retrievedAt:now(),pageText,links:ls,documents:docs,documentsDiscovered:ls.filter(isRealDocumentLink).length,documentsExtracted:docs.filter(d=>d.parsed).length,documentLinks:ls.filter(isRealDocumentLink),discoveredEntities,forEntity:sr?.forEntity||null,originalCadastralCode:sr?.originalCadastralCode||null,resolvedSearchCadastralCode:sr?.resolvedSearchCadastralCode||null,cadastralFallbackAttempts:sr?.cadastralFallbackAttempts||null,naprDeepDive:sr?.naprDeepDive||null,resultRowExhaustion:rre?{rowsVisited:rre.rowsVisited,rowDocumentsRead:rre.rowDocuments?.length||0,rowsDiscoveredBySelector:rre.rowsDiscoveredBySelector??null,rowStrategy:rre.rowStrategy||null,skippedReasons:rre.skippedReasons||[],trace:rre.trace}:null,error:status==='SEARCH_CONTROL_NOT_FOUND'?'source adapter could not locate a matching search control':status==='SUBMIT_FAILED'?'source adapter located the control but could not submit the search':status==='BLOCKED'?'the source actively refused/blocked this request (access-denied, rate-limit, or WAF-style page) — not a selector-matching failure':status==='WRONG_SEARCH_CONTEXT'?'the search field used was not confirmed as the correct/authoritative control for this source — no confirm/deny evidence was accepted from it':null}}
 async function hold(browser,ctx,p,job,key,sr,ledger,step){sessions.set(job.id,{browser,ctx,p,key,step:step||{type:'source',key},query:sr?.query||job.query,sr,ledger,expires:Date.now()+TTL});return{r:await collect(p,key,sr,ledger),keep:true}}
 /** True when a job result `r` was produced by exactly this step — used to
  * replace the right array entry on retry/resume without conflating a
@@ -541,35 +741,109 @@ const HEAVY_APP_SOURCES=new Set(['tas','mygov']);
 // than site-specific classes, since this sandbox cannot reach tas.ge or
 // my.gov.ge to observe real markup — NOT LIVE VERIFIED.
 const MAX_RESULT_ROWS=25;
+// exhaustResultRows (2026-09-05, round 2 — direct fix for the production
+// discrepancy the user flagged: "18 municipal records found" via TAS's own
+// "სულ მოიძებნა: 18" grid counter, but ZERO rows or documents were actually
+// opened). The most likely real cause: TAS's result grid is an ExtJS
+// component, and ExtJS grid rows are near-universally rendered WITHOUT a
+// single <a href> anywhere in the row — the whole row is a plain element
+// with a click/dblclick handler that opens a detail view (a modal window,
+// or navigation inside the same DWR-backed iframe). The original selector
+// required `:has(a)`, so on a real ExtJS grid it would have matched ZERO
+// rows every single time, independent of how many the grid's own counter
+// reported — explaining exactly the "18 discovered, 0 visited" symptom.
+// This now tries the anchor-based path FIRST (still the correct approach
+// for simple list-style results, e.g. a plain HTML result list), and only
+// when that selector matches nothing falls back to a GRID-ROW path that
+// opens each row via double-click and inspects whatever appears next (a
+// new page/tab, an in-page modal/dialog, or in-place content change) —
+// mirroring how a human actually operates an ExtJS grid. Every row this
+// function could not find/open at all is counted honestly rather than
+// silently treated as visited; MAX_RESULT_ROWS overflow and a row that
+// truly produced no detectable content afterward are recorded as explicit,
+// named skip reasons (per the SOURCE_EXHAUSTED rule: "every remaining item
+// has an explicit inaccessible/skipped reason") — everything else stays an
+// honest, un-exhausted gap. NOT LIVE VERIFIED (this sandbox cannot reach
+// tas.ge/my.gov.ge) — report as best-effort, never as tested.
+const GRID_ROW_SELECTOR='[role="row"], .x-grid-row, tr[class*="x-grid" i], [class*="grid-row" i], [class*="grid" i] tbody tr';
+async function openRowDetail(p,row,label){
+  const before=await text(p).catch(()=>'');
+  const newPagePromise=p.context().waitForEvent('page',{timeout:4000}).catch(()=>null);
+  try{await row.dblclick({timeout:3000})}catch{try{await row.click({timeout:2000})}catch{}}
+  await p.waitForTimeout(900);
+  const newPage=await newPagePromise;
+  if(newPage){
+    await newPage.waitForTimeout(1000).catch(()=>{});
+    const t=await text(newPage).catch(()=>'');
+    const u=newPage.url();
+    await newPage.close().catch(()=>{});
+    return t&&t.trim().length>20?{url:u,text:t}:null;
+  }
+  const modal=p.locator('[role="dialog"],.x-window,[class*="modal" i]').first();
+  if(await modal.count().catch(()=>0)){
+    const t=await modal.innerText().catch(()=>'');
+    const closeBtn=modal.locator('[aria-label*="close" i],.x-tool-close,button:has-text("×"),button:has-text("Close")').first();
+    if(await closeBtn.count().catch(()=>0))await closeBtn.click({timeout:2000}).catch(()=>{});
+    else await p.keyboard.press('Escape').catch(()=>{});
+    await p.waitForTimeout(300);
+    return t&&t.trim().length>20?{url:p.url(),text:t}:null;
+  }
+  const after=await text(p).catch(()=>'');
+  if(after&&after!==before&&after.trim().length>20)return{url:p.url(),text:after};
+  return null;
+}
 async function exhaustResultRows(p,key){
   const nav=new NavigationStack(`${key.toUpperCase()}_RESULTS`);
   const rowDocuments=[];
+  const skippedReasons=[];
   try{
-    const rows=p.locator('table tr:has(a),ul li:has(a),ol li:has(a),[class*="result" i]:has(a),[class*="row" i]:has(a)');
-    const count=Math.min(await rows.count().catch(()=>0),MAX_RESULT_ROWS);
-    for(let i=0;i<count;i++){
-      const row=rows.nth(i),link=row.locator('a').first();
-      const href=await link.getAttribute('href').catch(()=>null);
-      const label=(await link.innerText().catch(()=>'').then(s=>s?.trim()))||`row-${i}`;
-      if(!href||/^javascript:|^#$/.test(href))continue;
-      let full=href;try{full=new URL(href,p.url()).toString()}catch{}
-      if(!nav.enter(label,full))continue; // already visited this exact row/link — loop guard
-      const cls=classifyDocumentLink({url:full,label},{pageUrl:p.url()});
-      if(!cls.worthOpening){nav.back();continue}
+    const anchorRows=p.locator('table tr:has(a),ul li:has(a),ol li:has(a),[class*="result" i]:has(a),[class*="row" i]:has(a)');
+    const anchorCount=Math.min(await anchorRows.count().catch(()=>0),MAX_RESULT_ROWS);
+    if(anchorCount>0){
+      for(let i=0;i<anchorCount;i++){
+        const row=anchorRows.nth(i),link=row.locator('a').first();
+        const href=await link.getAttribute('href').catch(()=>null);
+        const label=(await link.innerText().catch(()=>'').then(s=>s?.trim()))||`row-${i}`;
+        if(!href||/^javascript:|^#$/.test(href)){skippedReasons.push({label,reason:'NO_USABLE_HREF'});continue}
+        let full=href;try{full=new URL(href,p.url()).toString()}catch{}
+        if(!nav.enter(label,full))continue; // already visited this exact row/link — loop guard
+        const cls=classifyDocumentLink({url:full,label},{pageUrl:p.url()});
+        if(!cls.worthOpening){nav.back();continue}
+        try{
+          const rowPage=await p.context().newPage();
+          await rowPage.goto(full,{waitUntil:'domcontentloaded',timeout:20000});
+          await rowPage.waitForTimeout(1000);
+          const rowText=await text(rowPage).catch(()=>'');
+          if(rowText&&rowText.trim().length>20)rowDocuments.push({url:full,label,text:rowText.slice(0,50000),source:`${key}_result_row`,parsed:true,type:'RESULT_ROW'});
+          else skippedReasons.push({label,reason:'ROW_PAGE_PRODUCED_NO_TEXT'});
+          await rowPage.close().catch(()=>{});
+        }catch(e){skippedReasons.push({label,reason:`ROW_OPEN_FAILED: ${String(e).slice(0,120)}`})}
+        nav.back();
+      }
+      return{rowDocuments,trace:nav.trace(),rowsVisited:nav.visitedCount(),rowsDiscoveredBySelector:anchorCount,skippedReasons,rowStrategy:'ANCHOR_BASED'};
+    }
+    // No anchor-based rows at all — try the ExtJS/grid-row path.
+    const gridRows=p.locator(GRID_ROW_SELECTOR);
+    const gridCount=Math.min(await gridRows.count().catch(()=>0),MAX_RESULT_ROWS);
+    for(let i=0;i<gridCount;i++){
+      const row=gridRows.nth(i);
+      const label=(await row.innerText().catch(()=>'').then(s=>s?.trim().slice(0,140)))||`grid-row-${i}`;
+      if(!label.trim()){skippedReasons.push({label:`grid-row-${i}`,reason:'EMPTY_ROW_TEXT'});continue}
+      if(!nav.enter(label,`${key}-grid-row-${i}-${label.slice(0,40)}`))continue;
       try{
-        const rowPage=await p.context().newPage();
-        await rowPage.goto(full,{waitUntil:'domcontentloaded',timeout:20000});
-        await rowPage.waitForTimeout(1000);
-        const rowText=await text(rowPage).catch(()=>'');
-        if(rowText)rowDocuments.push({url:full,label,text:rowText.slice(0,50000),source:`${key}_result_row`,parsed:true,type:'RESULT_ROW'});
-        await rowPage.close().catch(()=>{});
-      }catch{}
+        const detail=await openRowDetail(p,row,label);
+        if(detail)rowDocuments.push({url:detail.url,label,text:detail.text.slice(0,50000),source:`${key}_result_row`,parsed:true,type:'RESULT_ROW'});
+        else skippedReasons.push({label,reason:'ROW_INTERACTION_PRODUCED_NO_DETECTABLE_CONTENT'});
+      }catch(e){skippedReasons.push({label,reason:`ROW_OPEN_FAILED: ${String(e).slice(0,120)}`})}
       nav.back();
     }
-  }catch{}
-  return{rowDocuments,trace:nav.trace(),rowsVisited:nav.visitedCount()};
+    if(gridCount>=MAX_RESULT_ROWS)skippedReasons.push({label:'(overflow)',reason:'ROW_LIMIT_CAP_REACHED'});
+    return{rowDocuments,trace:nav.trace(),rowsVisited:nav.visitedCount(),rowsDiscoveredBySelector:gridCount,skippedReasons,rowStrategy:gridCount>0?'GRID_ROW_DBLCLICK':'NO_ROW_SELECTOR_MATCHED'};
+  }catch{
+    return{rowDocuments,trace:nav.trace(),rowsVisited:nav.visitedCount(),rowsDiscoveredBySelector:0,skippedReasons,rowStrategy:'ERROR'};
+  }
 }
-async function one(browser,job,key,queryOverride,ledger,extraResultFields,step){const q=queryOverride||job.query,src=SOURCES[key],ctx=await browser.newContext({locale:'ka-GE',acceptDownloads:true,viewport:{width:1440,height:1000}}),p=await ctx.newPage();try{await p.goto(src.url,{waitUntil:'domcontentloaded',timeout:45000});await p.waitForTimeout(1500);if(HEAVY_APP_SOURCES.has(key)){try{await p.waitForLoadState('networkidle',{timeout:8000})}catch{}await p.waitForTimeout(1500)}if(await challenge(p))return hold(browser,ctx,p,job,key,{found:false,submitted:false,query:q,adapter:`${key.toUpperCase()}_PRESEARCH`,...extraResultFields},ledger,step);const ar=await runAdapter(key,p,q,ctx),activePage=ar.activePage||p;let sr={...ar,query:q,...extraResultFields};if(await challenge(activePage))return hold(browser,ctx,activePage,job,key,sr,ledger,step);if((key==='tas'||key==='mygov')&&sr.resultChanged&&sr.submitted){try{sr={...sr,resultRowExhaustion:await exhaustResultRows(activePage,key)}}catch{}}const r=await collect(activePage,key,sr,ledger);await ctx.close();return{r,keep:false}}catch(e){await ctx.close().catch(()=>{});return{r:{source:key,sourceName:src.name,sourceClass:src.class,sourceUrl:src.url,startUrl:src.url,finalUrl:null,frameUrls:[],searchControlUsed:null,queryEntered:null,submitAction:null,resultContext:null,status:'FAILED',searched:false,resultConfirmed:false,noResultConfirmed:false,resultValidated:false,discoveredEntities:[],forEntity:extraResultFields?.forEntity||null,error:String(e),retrievedAt:now(),pageText:'',links:[],documents:[]},keep:false}}}
+async function one(browser,job,key,queryOverride,ledger,extraResultFields,step){const q=queryOverride||job.query,src=SOURCES[key],ctx=await browser.newContext({locale:'ka-GE',acceptDownloads:true,viewport:{width:1440,height:1000}}),p=await ctx.newPage();try{await p.goto(src.url,{waitUntil:'domcontentloaded',timeout:45000});await p.waitForTimeout(1500);if(HEAVY_APP_SOURCES.has(key)){try{await p.waitForLoadState('networkidle',{timeout:8000})}catch{}await p.waitForTimeout(1500)}if(await challenge(p))return hold(browser,ctx,p,job,key,{found:false,submitted:false,query:q,adapter:`${key.toUpperCase()}_PRESEARCH`,...extraResultFields},ledger,step);const ar=await runAdapter(key,p,q,ctx,extraResultFields),activePage=ar.activePage||p;let sr={...ar,query:q,...extraResultFields};if(await challenge(activePage))return hold(browser,ctx,activePage,job,key,sr,ledger,step);if((key==='tas'||key==='mygov')&&sr.resultChanged&&sr.submitted){try{sr={...sr,resultRowExhaustion:await exhaustResultRows(activePage,key)}}catch{}}const r=await collect(activePage,key,sr,ledger);await ctx.close();return{r,keep:false}}catch(e){await ctx.close().catch(()=>{});const failedTraversal=key==='msmap'?computeMsmapTraversal({failed:true}):key==='tas'?computeTasTraversal({failed:true}):key==='mygov'?computeMygovTraversal({failed:true}):key==='enreg'?computeEnregTraversal({failed:true}):null;return{r:{source:key,sourceName:src.name,sourceClass:src.class,sourceUrl:src.url,startUrl:src.url,finalUrl:null,frameUrls:[],searchControlUsed:null,queryEntered:null,submitAction:null,resultContext:null,status:'FAILED',traversal:failedTraversal,searched:false,resultConfirmed:false,noResultConfirmed:false,resultValidated:false,discoveredEntities:[],forEntity:extraResultFields?.forEntity||null,error:String(e),retrievedAt:now(),pageText:'',links:[],documents:[]},keep:false}}}
 // TAS parent/base-cadastral fallback (2026-09-05, per the explicit TAS
 // spec section): tries the ORIGINAL query first — it is never skipped —
 // and only escalates to shorter parent-parcel candidates when the full
@@ -651,7 +925,7 @@ async function run(job,start=0,browser=null){
   }
 }
 setInterval(async()=>{for(const[id,s]of sessions)if(Date.now()>s.expires){await s.ctx.close().catch(()=>{});await s.browser.close().catch(()=>{});sessions.delete(id)}},30000).unref();
-app.get('/health',(_q,r)=>r.json({ok:true,service:'homatch-official-worker',version:'1.6.0',playwright:true,pdfExtraction:true,onlineViewerReading:true,documentIntegrity:'sha256+title+date',historicalComparison:true,cadastralParentFallback:true,entityDiscovery:true,navigationStackTraversal:true,humanVerificationSkip:true,sourceAdapters:['tas-frame-aware+cadastral-parent-fallback','msmap-spa-suggestion','mygov-service+dom-iframe-fallback','enreg-entity-triggered','generic'],statuses:['SEARCH_CONFIRMED','NO_RESULT_CONFIRMED','SUBMITTED_UNCONFIRMED','SUBMIT_FAILED','AUTH_REQUIRED','SEARCH_CONTROL_NOT_FOUND','BLOCKED','WAITING_HUMAN','SKIPPED_HUMAN_VERIFICATION','FAILED'],humanSessionControls:true,humanSessionSkip:true,evidenceValidation:true,evidenceModel:'v3.5-research-graph-entity-discovery-2026-09-05'}));
+app.get('/health',(_q,r)=>r.json({ok:true,service:'homatch-official-worker',version:'1.7.0',playwright:true,pdfExtraction:true,onlineViewerReading:true,documentIntegrity:'sha256+title+date',historicalComparison:true,cadastralParentFallback:true,entityDiscovery:true,navigationStackTraversal:true,humanVerificationSkip:true,sourceAdapters:['tas-frame-aware+cadastral-parent-fallback+extjs-grid-dblclick','msmap-spa-suggestion+18step-deepdive-gated-traversal','mygov-service+dom-iframe-fallback+context-confidence-gated','enreg-entity-triggered+structured-workflow','generic'],statuses:['SEARCH_CONFIRMED','NO_RESULT_CONFIRMED','SUBMITTED_UNCONFIRMED','SUBMIT_FAILED','AUTH_REQUIRED','SEARCH_CONTROL_NOT_FOUND','BLOCKED','WAITING_HUMAN','SKIPPED_HUMAN_VERIFICATION','WRONG_SEARCH_CONTEXT','FAILED'],traversalStatuses:['NOT_STARTED','SEARCH_CONFIRMED','RESULTS_DISCOVERED','RESULTS_TRAVERSED','DOCUMENTS_TRAVERSED','SOURCE_EXHAUSTED','WAITING_HUMAN','SKIPPED_HUMAN_VERIFICATION','BLOCKED','AUTH_REQUIRED','SEARCH_CONTROL_NOT_FOUND','SUBMIT_FAILED','WRONG_SEARCH_CONTEXT','FAILED'],structuredTraversal:true,humanSessionControls:true,humanSessionSkip:true,evidenceValidation:true,evidenceModel:'v4-structured-traversal-gating-2026-09-05'}));
 app.post('/research',auth,(req,res)=>{const mode=req.body?.mode==='property'?'property':'cadastral',query=mode==='cadastral'?String(req.body?.query||'').trim().replace(/\s/g,''):String(req.body?.query||'').trim();if(!query)return res.status(400).json({error:'query required'});const id=crypto.randomUUID(),j={id,query,mode,status:'QUEUED',stage:'QUEUED',sourceIndex:0,results:[],createdAt:now(),updatedAt:now()};jobs.set(id,j);run(j);res.status(202).json({accepted:true,jobId:id,status:j.status})});
 app.get('/research/:id',auth,(req,res)=>{const j=jobs.get(req.params.id);return j?res.json(j):res.status(404).json({error:'not found'})});
 // Screenshot cropping (2026-09-04 fix): previously always returned the full
@@ -666,7 +940,7 @@ app.get('/research/:id',auth,(req,res)=>{const j=jobs.get(req.params.id);return 
 // POST /research/:id/action already does with req.body.offsetX/offsetY.
 app.get('/research/:id/screenshot',auth,async(req,res)=>{const s=sessions.get(req.params.id);if(!s)return res.status(404).json({error:'active human session not found'});const cap=await challenge(s.p);const PAD=40;let clip=null,offsetX=0,offsetY=0;if(cap){try{const box=await cap.el.boundingBox();if(box){const vp=s.p.viewportSize()||{width:1440,height:1000};const x=Math.max(0,Math.floor(box.x-PAD)),y=Math.max(0,Math.floor(box.y-PAD));const w=Math.min(vp.width-x,Math.ceil(box.width+PAD*2)),h=Math.min(vp.height-y,Math.ceil(box.height+PAD*2));if(w>0&&h>0){clip={x,y,width:w,height:h};offsetX=x;offsetY=y}}}catch{}}const img=clip?await s.p.screenshot({type:'jpeg',quality:85,clip}):await s.p.screenshot({type:'jpeg',quality:80});res.json({image:`data:image/jpeg;base64,${img.toString('base64')}`,width:clip?clip.width:1440,height:clip?clip.height:1000,offsetX,offsetY,cropped:!!clip,url:s.p.url(),source:s.key,captcha:true})});
 app.post('/research/:id/action',auth,async(req,res)=>{const s=sessions.get(req.params.id);if(!s)return res.status(404).json({error:'active human session not found'});const x=Number(req.body.x)+Number(req.body.offsetX||0),y=Number(req.body.y)+Number(req.body.offsetY||0);await s.p.mouse.click(x,y);await s.p.waitForTimeout(700);s.expires=Date.now()+TTL;res.json({ok:true,captcha:!!(await challenge(s.p)),url:s.p.url()})});
-app.post('/research/:id/resume',auth,async(req,res)=>{const j=jobs.get(req.params.id),s=sessions.get(req.params.id);if(!j||!s)return res.status(404).json({error:'active human session not found'});if(await challenge(s.p))return res.status(409).json({error:'human verification is not complete'});let sr=s.sr;if(!sr?.submitted){const ar=await runAdapter(s.key,s.p,s.query,s.ctx);if(ar.activePage)s.p=ar.activePage;sr={...ar,query:s.query}}if(await challenge(s.p))return res.status(409).json({error:'human verification required after search submission'});if(!sr.submitted)return res.status(422).json({error:'cadastral search could not be submitted after verification'});const ledger=s.ledger||entityLedgers.get(j.id);const r=await collect(s.p,s.key,sr,ledger);j.results=j.results.filter(x=>!stepMatchesResult(s.step,x));j.results.push(r);j.humanVerification=null;await s.ctx.close().catch(()=>{});sessions.delete(j.id);run(j,j.sourceIndex+1,s.browser);res.status(202).json({accepted:true,jobId:j.id,status:'RUNNING'})});
+app.post('/research/:id/resume',auth,async(req,res)=>{const j=jobs.get(req.params.id),s=sessions.get(req.params.id);if(!j||!s)return res.status(404).json({error:'active human session not found'});if(await challenge(s.p))return res.status(409).json({error:'human verification is not complete'});let sr=s.sr;if(!sr?.submitted){const ar=await runAdapter(s.key,s.p,s.query,s.ctx);if(ar.activePage)s.p=ar.activePage;sr={...ar,query:s.query}}if(await challenge(s.p))return res.status(409).json({error:'human verification required after search submission'});if(!sr.submitted)return res.status(422).json({error:'cadastral search could not be submitted after verification'});sr={...sr,captchaEncounteredEver:true,humanVerificationCompleted:true};const ledger=s.ledger||entityLedgers.get(j.id);const r=await collect(s.p,s.key,sr,ledger);j.results=j.results.filter(x=>!stepMatchesResult(s.step,x));j.results.push(r);j.humanVerification=null;await s.ctx.close().catch(()=>{});sessions.delete(j.id);run(j,j.sourceIndex+1,s.browser);res.status(202).json({accepted:true,jobId:j.id,status:'RUNNING'})});
 // SKIP (2026-09-05, per the explicit "user must be able to skip a
 // CAPTCHA-gated source" requirement): marks the held session's step as
 // SKIPPED_HUMAN_VERIFICATION rather than NO_RESULT — a skip must never be
@@ -675,7 +949,14 @@ app.post('/research/:id/resume',auth,async(req,res)=>{const j=jobs.get(req.param
 // (other primary sources, and any entity-triggered ENREG steps already
 // queued) still completes. The final report is responsible for
 // disclosing this skip so it never silently reads as "clean".
-app.post('/research/:id/skip',auth,async(req,res)=>{const j=jobs.get(req.params.id),s=sessions.get(req.params.id);if(!j||!s)return res.status(404).json({error:'active human session not found'});const src=SOURCES[s.key]||{};const r={source:s.key,sourceName:src.name||s.key,sourceClass:src.class||null,sourceUrl:src.url||s.p.url(),startUrl:src.url||null,finalUrl:s.p.url(),frameUrls:[],searchControlUsed:null,queryEntered:s.query||null,submitAction:null,resultContext:null,status:'SKIPPED_HUMAN_VERIFICATION',searched:false,resultConfirmed:false,noResultConfirmed:false,resultValidated:false,discoveredEntities:[],forEntity:s.step?.type==='entity_enreg'?{name:s.step.name,idCode:s.step.idCode}:null,error:null,retrievedAt:now(),pageText:'',links:[],documents:[],skippedHumanVerification:true};j.results=j.results.filter(x=>!stepMatchesResult(s.step,x));j.results.push(r);j.humanVerification=null;await s.ctx.close().catch(()=>{});const browser=s.browser;sessions.delete(j.id);run(j,j.sourceIndex+1,browser);res.status(202).json({accepted:true,jobId:j.id,status:'RUNNING',skipped:s.key})});
+app.post('/research/:id/skip',auth,async(req,res)=>{const j=jobs.get(req.params.id),s=sessions.get(req.params.id);if(!j||!s)return res.status(404).json({error:'active human session not found'});const src=SOURCES[s.key]||{};
+// traversal (2026-09-05): a skip must be reported as SKIPPED_HUMAN_
+// VERIFICATION on this source's OWN traversal dimension too, exactly like
+// the top-level status — never silently absent, and never confusable with
+// SOURCE_EXHAUSTED (nothing was actually confirmed).
+const skipInput={skippedHumanVerification:true,captcha:false,captchaEncountered:true,humanSkipped:true};
+const traversal=s.key==='msmap'?computeMsmapTraversal(skipInput):s.key==='tas'?computeTasTraversal(skipInput):s.key==='mygov'?computeMygovTraversal({...skipInput,service176Opened:true,registryAppOpened:!!s.sr?.activePage}):s.key==='enreg'?computeEnregTraversal(skipInput):null;
+const r={source:s.key,sourceName:src.name||s.key,sourceClass:src.class||null,sourceUrl:src.url||s.p.url(),startUrl:src.url||null,finalUrl:s.p.url(),frameUrls:[],searchControlUsed:null,queryEntered:s.query||null,submitAction:null,resultContext:null,status:'SKIPPED_HUMAN_VERIFICATION',traversal,searched:false,resultConfirmed:false,noResultConfirmed:false,resultValidated:false,discoveredEntities:[],forEntity:s.step?.type==='entity_enreg'?{name:s.step.name,idCode:s.step.idCode}:null,error:null,retrievedAt:now(),pageText:'',links:[],documents:[],skippedHumanVerification:true};j.results=j.results.filter(x=>!stepMatchesResult(s.step,x));j.results.push(r);j.humanVerification=null;await s.ctx.close().catch(()=>{});const browser=s.browser;sessions.delete(j.id);run(j,j.sourceIndex+1,browser);res.status(202).json({accepted:true,jobId:j.id,status:'RUNNING',skipped:s.key})});
 // ── MSMAP diagnostic capability (2026-09-04, per mandate point 1) ─────────
 // msmap's searchText field fills+verifies+submits with no detectable network
 // call or text change (job d3a3fed1-... / dabcce1) — genuinely unknown

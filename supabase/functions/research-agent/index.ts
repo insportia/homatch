@@ -1,4 +1,4 @@
-// Production source: Supabase Edge Function `research-agent` v16.
+// Production source: Supabase Edge Function `research-agent` v18.
 // Gemini-first Property Intelligence pipeline. The deployed source is authoritative.
 // Contract:
 // start {action:'start',query,type:'property'|'cadastral',language|locale}
@@ -60,4 +60,39 @@
 //   source was skipped. The report below is based on the other successfully
 //   researched sources." — and instruct Gemini never to conflate a skip with
 //   a technical failure or a confirmed negative result.
+//
+// v17->v18 (2026-09-05, per the user's live-test critique of the actual
+// Verify report for 01.18.06.019.055.03.01.603 — "customer report must
+// never expose internal engineering telemetry" and "never a raw
+// vertexaisearch.cloud.google.com/... URL when canonical is resolvable"):
+// - REMOVED the hardcoded, English-only, ALL-CAPS "⚠️ OFFICIAL VERIFICATION
+//   INCOMPLETE — no government/registry source could be directly confirmed
+//   for this query." summary prefix — it was also factually wrong whenever
+//   a source WAS confirmed but only partially traversed. Replaced with
+//   verificationCaveat(), a per-language (ka/en/ru/tr/ar/he) natural-prose
+//   caveat that distinguishes "nothing confirmed" from "confirmed but not
+//   fully explored" (naming the affected sources) using the same
+//   officialSourcesPartiallyTraversed data that already existed.
+// - Added resolveCanonicalUrl()/resolveSourceUrls(): every
+//   vertexaisearch.cloud.google.com/grounding-api-redirect/... URL in the
+//   evidence bundle is now followed server-side (HEAD, falling back to a
+//   body-cancelled GET) and replaced with wherever it actually resolves,
+//   with a generic/"Untitled" label replaced by that page's own hostname.
+//   Best-effort — an unresolvable redirect is left as-is rather than
+//   breaking the source list.
+// - Frontend (src/pages/VerifyPage.tsx) companion fixes in the same pass:
+//   the "Confidence: LOW" badge (raw English label + raw enum) now renders
+//   a natural Georgian phrase; OfficialStatusCard's per-source status label
+//   map now covers WRONG_SEARCH_CONTEXT explicitly and, structurally, falls
+//   back to "ვერ დადასტურდა" instead of the raw enum string for ANY future
+//   unmapped status; the "Homatch AI-ს კითხვა" follow-up button no longer
+//   hands the AI chat the raw `browserOfficial` object (FSM states,
+//   resultContext strings like "MSMAP FSM reached PARCEL_FOCUSED",
+//   traversal internals) — this was the confirmed actual leak path for the
+//   PARCEL_FOCUSED/WRONG_SEARCH_CONTEXT/RESULTS_DISCOVERED tokens the user
+//   saw, since none of those strings are rendered anywhere in the page's
+//   own JSX. A new PartiallyTraversedCard now discloses (in natural
+//   Georgian, never via the raw traversal-status enum) when a confirmed
+//   source was not fully explored, using officialSourcesPartiallyTraversed
+//   data that previously existed on the wire but was never shown.
 export {};

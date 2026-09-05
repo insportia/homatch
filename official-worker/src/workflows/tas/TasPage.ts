@@ -43,7 +43,7 @@ export class TasPage {
     };
   }
 
-  async exhaustResultRows(page: Page) {
-    return exhaustResultRows(page, 'tas');
+  async exhaustResultRows(page: Page, expectedCount: number | null = null) {
+    return exhaustResultRows(page, 'tas', { expectedCount });
   }
 }

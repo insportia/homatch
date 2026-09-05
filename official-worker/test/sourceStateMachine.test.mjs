@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { SourceStateMachine } from '../.tstest-build/state/SourceState.js';
 import { MSMAP_GRAPH, MSMAP_LINEAR } from '../.tstest-build/workflows/msmap/MsMapState.js';
 import { TAS_GRAPH } from '../.tstest-build/workflows/tas/TasState.js';
-import { MYGOV_GRAPH } from '../.tstest-build/workflows/mygov/MyGovState.js';
+import { MYGOV_GRAPH, newMyGovFsm } from '../.tstest-build/workflows/mygov/MyGovState.js';
 import { ENREG_GRAPH, ENREG_LINEAR } from '../.tstest-build/workflows/enreg/EnregState.js';
 
 test('SourceStateMachine: a declared transition succeeds and is recorded', () => {
@@ -86,4 +86,60 @@ test('ENREG graph: the 25-state sequence is fully linear and in the mandated ord
 test('ENREG graph: RESULTS_RETURNED can fall through to NO_RESULT_CONFIRMED (a real negative) as well as forward progress', () => {
   assert.ok(ENREG_GRAPH['RESULTS_RETURNED'].includes('NO_RESULT_CONFIRMED'));
   assert.ok(ENREG_GRAPH['RESULTS_RETURNED'].includes('CORRECT_ENTITY_MATCHED'));
+});
+
+// --- Regression: the confirmed live MyGov crash (job
+// 197b4520-2446-4f3d-8688-54a8229db3b3, query 01.18.06.019.055.03.01.603) ---
+// MyGovWorkflow.ts used to call `fsm.transition('SEARCH_SUBMITTED')` (and,
+// on a separate never-yet-exercised path, `fsm.transition('EXPLICIT_ACCESS_
+// FAILURE')`) directly from REGISTRY_APPLICATION_OPENED whenever the search
+// context was low-confidence — neither is a declared edge from that state,
+// so every low-confidence-context MyGov run threw IllegalTransitionError,
+// producing the FAILED status with a completely empty trace:[] the customer
+// saw. These tests exercise the FSM through the EXACT transition sequences
+// the fixed workflow now performs for each branch and assert neither
+// throws — a change to MyGovWorkflow.ts that reintroduces an illegal jump
+// here fails immediately and loudly, instead of only in a live browser run.
+test('MyGov FSM: the low-confidence/WRONG_SEARCH_CONTEXT branch never illegally jumps through SEARCH_SUBMITTED (the confirmed crash)', () => {
+  const fsm = newMyGovFsm();
+  fsm.transition('SERVICE_176_OPENED');
+  fsm.transition('SERVICE_APPLICATION_DISCOVERED');
+  fsm.transition('REGISTRY_APPLICATION_OPENED');
+  // correctContext === false: go straight to the generic operational
+  // WRONG_SEARCH_CONTEXT status — never through CADASTRAL_INPUT_FOUND/
+  // CADASTRAL_ENTERED/SEARCH_SUBMITTED/POST_SEARCH_STATE, which would
+  // falsely claim a context we do not trust.
+  assert.doesNotThrow(() => fsm.transition('WRONG_SEARCH_CONTEXT', 'low-confidence fallback field'));
+  assert.equal(fsm.state, 'WRONG_SEARCH_CONTEXT');
+});
+
+test('MyGov FSM: the low-confidence branch may also legally reach WAITING_HUMAN (captcha checked before declaring wrong context)', () => {
+  const fsm = newMyGovFsm();
+  fsm.transition('SERVICE_176_OPENED');
+  fsm.transition('SERVICE_APPLICATION_DISCOVERED');
+  fsm.transition('REGISTRY_APPLICATION_OPENED');
+  assert.doesNotThrow(() => fsm.transition('WAITING_HUMAN', 'captcha detected before context was confirmed'));
+});
+
+test('MyGov FSM: the trusted-context happy path walks PROPERTY_SEARCH_CONTEXT_CONFIRMED -> CADASTRAL_INPUT_FOUND -> CADASTRAL_ENTERED -> SEARCH_SUBMITTED -> POST_SEARCH_STATE without throwing', () => {
+  const fsm = newMyGovFsm();
+  fsm.transition('SERVICE_176_OPENED');
+  fsm.transition('SERVICE_APPLICATION_DISCOVERED');
+  fsm.transition('REGISTRY_APPLICATION_OPENED');
+  assert.doesNotThrow(() => {
+    fsm.transition('PROPERTY_SEARCH_CONTEXT_CONFIRMED');
+    fsm.transition('CADASTRAL_INPUT_FOUND');
+    fsm.transition('CADASTRAL_ENTERED');
+    fsm.transition('SEARCH_SUBMITTED');
+    fsm.transition('POST_SEARCH_STATE');
+  });
+  assert.equal(fsm.state, 'POST_SEARCH_STATE');
+});
+
+test('MyGov FSM: the (currently unreachable but no-longer-illegal) "registry app never really opened" fallback lands on the generic SEARCH_CONTROL_NOT_FOUND, not the restricted EXPLICIT_ACCESS_FAILURE dead end', () => {
+  const fsm = newMyGovFsm();
+  fsm.transition('SERVICE_176_OPENED');
+  fsm.transition('SERVICE_APPLICATION_DISCOVERED');
+  fsm.transition('REGISTRY_APPLICATION_OPENED');
+  assert.doesNotThrow(() => fsm.transition('SEARCH_CONTROL_NOT_FOUND', 'registry application never opened'));
 });

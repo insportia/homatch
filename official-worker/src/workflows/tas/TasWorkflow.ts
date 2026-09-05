@@ -90,18 +90,56 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     // whatever `resultsDiscovered` this run could actually establish.
     fsm.transition('RESULT_QUEUE_CREATED');
     fsm.transition('RESULT_OPENED');
-    const exhaustion = await pageObj.exhaustResultRows(page);
+    let exhaustion = await pageObj.exhaustResultRows(page, resultsDiscovered);
     fsm.transition('CHILDREN_ENUMERATED', `${exhaustion.rowsDiscoveredBySelector} row(s) found by ${exhaustion.rowStrategy}`);
-    for (const d of exhaustion.rowDocuments) if (entities && d.rawText) entities.scanText(d.rawText, { source: 'tas', sourceDocument: d.url, retrievedAt: new Date().toISOString() });
 
-    const finalDiscovered = resultsDiscovered != null ? resultsDiscovered : exhaustion.rowsDiscoveredBySelector;
-    const invariantInput = {
+    let finalDiscovered = resultsDiscovered != null ? resultsDiscovered : exhaustion.rowsDiscoveredBySelector;
+    let invariantInput = {
       resultsDiscovered: finalDiscovered,
       resultsVisited: exhaustion.rowsVisited,
       skippedReasonsCount: exhaustion.skippedReasons.length,
       documentsDiscovered: exhaustion.rowsVisited,
       documentsRead: exhaustion.rowDocuments.length,
     };
+
+    // Never accept "gate blocked, so just report the incomplete state" as
+    // final (mandate: "if resultsDiscovered=24 and resultsVisited=16 then
+    // TAS_EXHAUSTED must be programmatically impossible" — AND the workflow
+    // must actually keep working toward completeness, not merely report the
+    // honest shortfall). One bounded re-pass over a fresh DOM query recovers
+    // from transient render/timing gaps; it is not a substitute for a real
+    // root-cause fix, so both the original attempt's strategy and this
+    // retry's are recorded in the trace either way.
+    if (!canMarkTasExhausted(invariantInput) && exhaustion.rowsVisited < finalDiscovered) {
+      trace.record({
+        stateBefore: fsm.state,
+        action: 'RETRY_EXHAUSTION',
+        actualOutcome: `visited=${exhaustion.rowsVisited} of discovered=${finalDiscovered} (strategy=${exhaustion.rowStrategy}) — retrying row traversal`,
+        stateAfter: fsm.state,
+      });
+      const retry = await pageObj.exhaustResultRows(page, finalDiscovered);
+      const seenUrls = new Set(exhaustion.rowDocuments.map((d: any) => d.url));
+      const mergedDocs = exhaustion.rowDocuments.slice();
+      for (const d of retry.rowDocuments) if (!seenUrls.has(d.url)) { mergedDocs.push(d); seenUrls.add(d.url); }
+      exhaustion = {
+        rowDocuments: mergedDocs,
+        trace: [...exhaustion.trace, ...retry.trace],
+        rowsVisited: Math.max(exhaustion.rowsVisited, retry.rowsVisited),
+        rowsDiscoveredBySelector: Math.max(exhaustion.rowsDiscoveredBySelector, retry.rowsDiscoveredBySelector),
+        skippedReasons: [...exhaustion.skippedReasons, ...retry.skippedReasons],
+        rowStrategy: `${exhaustion.rowStrategy}+RETRY:${retry.rowStrategy}`,
+      };
+      finalDiscovered = resultsDiscovered != null ? resultsDiscovered : exhaustion.rowsDiscoveredBySelector;
+      invariantInput = {
+        resultsDiscovered: finalDiscovered,
+        resultsVisited: exhaustion.rowsVisited,
+        skippedReasonsCount: exhaustion.skippedReasons.length,
+        documentsDiscovered: exhaustion.rowsVisited,
+        documentsRead: exhaustion.rowDocuments.length,
+      };
+    }
+
+    for (const d of exhaustion.rowDocuments) if (entities && d.rawText) entities.scanText(d.rawText, { source: 'tas', sourceDocument: d.url, retrievedAt: new Date().toISOString() });
     if (exhaustion.rowDocuments.length > 0) fsm.transition('CHILD_DOCUMENT_OPENED');
     if (exhaustion.rowDocuments.length > 0) fsm.transition('DOCUMENT_READ');
     if (exhaustion.rowDocuments.length > 0) fsm.transition('RETURN_TO_RESULT');

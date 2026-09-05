@@ -22,6 +22,7 @@ import {
   SEARCH_INPUT_SELECTOR,
   UNIFIED_SEARCH_NETWORK_PATTERN,
   IDENTIFY_BUTTON_SELECTOR,
+  IDENTIFY_BUTTON_SELECTOR_FALLBACKS,
   MAP_CANVAS_SELECTOR,
   INFO_POPUP_SELECTOR,
   NAPR_LINK_TEXT,
@@ -144,18 +145,33 @@ export class MsMapPage {
     return { layer1, layer2 };
   }
 
-  async activateIdentify(page: Page): Promise<boolean> {
-    try {
-      const btn = (page as any).locator(IDENTIFY_BUTTON_SELECTOR).first();
-      if (await btn.count().catch(() => 0)) {
-        await btn.click({ timeout: 3000 }).catch(() => {});
+  /** Returns not just whether identify mode was activated, but which
+   * selector actually matched (or none) and how many candidates each
+   * selector found — the exact diagnostic the mandate asks for
+   * ("inspect... to find why"), since a click that throws must never be
+   * silently treated as success (the confirmed bug: the previous version
+   * returned `true` merely because a matching element existed, even when
+   * `.click()` itself failed and was swallowed by a bare `.catch(() => {})`). */
+  async activateIdentify(page: Page): Promise<{ activated: boolean; matchedSelector: string | null; candidateCounts: Record<string, number> }> {
+    const candidateCounts: Record<string, number> = {};
+    const selectors = [IDENTIFY_BUTTON_SELECTOR, ...IDENTIFY_BUTTON_SELECTOR_FALLBACKS];
+    for (const sel of selectors) {
+      try {
+        const btn = (page as any).locator(sel).first();
+        const count = await (page as any).locator(sel).count().catch(() => 0);
+        candidateCounts[sel] = count;
+        if (!count) continue;
+        await btn.click({ timeout: 3000 });
         await (page as any).waitForTimeout(500);
-        return true;
+        return { activated: true, matchedSelector: sel, candidateCounts };
+      } catch {
+        /* this selector matched an element but the click itself failed —
+         * an honest false, not a silently-assumed success; try the next
+         * candidate rather than giving up immediately. */
+        continue;
       }
-    } catch {
-      /* not found */
     }
-    return false;
+    return { activated: false, matchedSelector: null, candidateCounts };
   }
 
   async clickParcelCenter(page: Page): Promise<boolean> {

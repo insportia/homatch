@@ -38,14 +38,18 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
     if (!opts.skipGoto) await pageObj.goto(page);
     fsm.transition('MAP_OPENED');
     finalUrl = (page as any).url();
+    trace.record({ stateBefore: null, action: 'GOTO', target: SOURCE_META.url, actualOutcome: 'MAP_OPENED', stateAfter: fsm.state, url: finalUrl });
 
     const cap = await challenge(page);
+    trace.record({ stateBefore: fsm.state, action: 'CAPTCHA_CHECK', actualOutcome: cap ? 'CAPTCHA_DETECTED' : 'NO_CAPTCHA', stateAfter: fsm.state });
     if (cap) {
       fsm.transition('WAITING_HUMAN', 'captcha detected before search');
       return buildResult(fsm.state, signals, documents, trace, finalText, finalUrl, null, query);
     }
 
-    if (await pageObj.expandCadastralSection(page)) fsm.transition('CADASTRAL_SECTION_EXPANDED');
+    const expanded = await pageObj.expandCadastralSection(page);
+    trace.record({ stateBefore: fsm.state, action: 'EXPAND_CADASTRAL_SECTION', actualOutcome: expanded ? 'PANEL_FOUND' : 'PANEL_NOT_FOUND', stateAfter: fsm.state });
+    if (expanded) fsm.transition('CADASTRAL_SECTION_EXPANDED');
     else {
       stop('CADASTRAL_SECTION_EXPANDED assertion failed — panel not found');
     }
@@ -53,6 +57,7 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
     if (fsm.state === 'CADASTRAL_SECTION_EXPANDED') {
       const layers = await pageObj.enableRequiredLayers(page);
       signals.layersEnabled = assert.assertRequiredLayersEnabled(layers.layer1, layers.layer2);
+      trace.record({ stateBefore: fsm.state, action: 'ENABLE_LAYERS', actualOutcome: `layer1=${layers.layer1} layer2=${layers.layer2}`, stateAfter: fsm.state });
       if (signals.layersEnabled) fsm.transition('REQUIRED_LAYERS_ENABLED');
       else stop('assertRequiredLayersEnabled failed');
     }
@@ -74,6 +79,7 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
     fsm.transition('CADASTRAL_ENTERED');
 
     const sug = await pageObj.waitForSuggestion(page, query);
+    trace.record({ stateBefore: fsm.state, action: 'WAIT_FOR_SUGGESTION', actualOutcome: sug.found ? `MATCHED_PREFIX:${sug.prefix}` : 'NO_SUGGESTION', stateAfter: fsm.state });
     if (sug.found) fsm.transition('SUGGESTIONS_LOADED');
     else {
       // A causally-proven search (network-confirmed unified-search POST)
@@ -88,6 +94,7 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
       fsm.transition('CORRECT_SUGGESTION_SELECTED', `matched at prefix ${sug.prefix}`);
       signals.suggestionSelected = true;
       signals.parcelClicked = clickRes.clicked;
+      trace.record({ stateBefore: fsm.state, action: 'CLICK_SUGGESTION', actualOutcome: `clicked=${clickRes.clicked} mapRedrawRequests=${clickRes.requestCount}`, stateAfter: fsm.state });
       if (assert.assertParcelFocused(clickRes.clicked, clickRes.mapRedrawConfirmed)) {
         fsm.transition('PARCEL_FOCUSED', `${clickRes.requestCount} map-redraw request(s) confirmed`);
       } else {
@@ -96,8 +103,15 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
       }
     }
 
-    const identifyActivated = await pageObj.activateIdentify(page);
-    signals.identifyActivated = assert.assertIdentifyModeActive(identifyActivated);
+    const identifyRes = await pageObj.activateIdentify(page);
+    signals.identifyActivated = assert.assertIdentifyModeActive(identifyRes.activated);
+    trace.record({
+      stateBefore: fsm.state,
+      action: 'ACTIVATE_IDENTIFY',
+      target: identifyRes.matchedSelector,
+      actualOutcome: identifyRes.activated ? `ACTIVATED_VIA:${identifyRes.matchedSelector}` : `NO_SELECTOR_MATCHED_OR_CLICK_FAILED candidateCounts=${JSON.stringify(identifyRes.candidateCounts)}`,
+      stateAfter: fsm.state,
+    });
     if (signals.identifyActivated) fsm.transition('IDENTIFY_ACTIVATED');
     else {
       stop('assertIdentifyModeActive failed');
@@ -106,6 +120,7 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
 
     const parcelClicked = await pageObj.clickParcelCenter(page);
     signals.parcelClicked = parcelClicked;
+    trace.record({ stateBefore: fsm.state, action: 'CLICK_PARCEL_CENTER', actualOutcome: parcelClicked ? 'CLICKED' : 'MAP_ELEMENT_NOT_FOUND', stateAfter: fsm.state });
     if (parcelClicked) fsm.transition('PARCEL_CLICKED');
     else {
       stop('PARCEL_CLICKED failed — map element/boundingBox not found');
@@ -114,6 +129,7 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
 
     const popupRes = await pageObj.openInfoPopupAndNaprLink(page);
     signals.infoPopupOpened = assert.assertParcelInfoPopupVisible(popupRes.popupOpened);
+    trace.record({ stateBefore: fsm.state, action: 'OPEN_INFO_POPUP', actualOutcome: `popupOpened=${popupRes.popupOpened} naprOpened=${popupRes.naprOpened}`, stateAfter: fsm.state });
     if (signals.infoPopupOpened) fsm.transition('INFO_POPUP_OPENED');
     else {
       stop('assertParcelInfoPopupVisible failed');
@@ -130,9 +146,11 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
     fsm.transition('NAPR_OPENED');
     const target = popupRes.target as Page;
     finalUrl = (target as any).url();
+    trace.record({ stateBefore: 'NAPR_ACTION_FOUND', action: 'NAPR_OPENED', actualOutcome: popupRes.isNewPage ? 'NEW_PAGE' : 'SAME_PAGE', stateAfter: fsm.state, url: finalUrl });
 
     const latestOpened = await pageObj.openLatestInformation(target);
     signals.latestInformationOpened = assert.assertLatestInformationOpened(latestOpened);
+    trace.record({ stateBefore: fsm.state, action: 'OPEN_LATEST_INFORMATION', actualOutcome: latestOpened ? 'OPENED' : 'LABEL_NOT_FOUND', stateAfter: fsm.state, url: finalUrl });
     if (signals.latestInformationOpened) fsm.transition('LATEST_INFORMATION_OPENED');
     else {
       stop('assertLatestInformationOpened failed');
@@ -144,9 +162,12 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
     documents = await pageObj.readChildDocuments(target);
     signals.documentsRead = documents.some((d: any) => d.complete);
     fsm.transition('RELEVANT_CHILDREN_ENUMERATED', `${documents.length} document(s) found`);
+    trace.record({ stateBefore: 'LATEST_INFORMATION_OPENED', action: 'READ_CHILD_DOCUMENTS', actualOutcome: `discovered=${documents.length} complete=${documents.filter((d: any) => d.complete).length}`, stateAfter: fsm.state });
     if (signals.documentsRead || documents.length === 0) {
       fsm.transition('RELEVANT_CHILDREN_TRAVERSED');
-      if (canMarkMsmapExhausted(signals)) fsm.transition('MSMAP_EXHAUSTED');
+      const exhausted = canMarkMsmapExhausted(signals);
+      trace.record({ stateBefore: 'RELEVANT_CHILDREN_TRAVERSED', action: 'GATE', target: 'canMarkMsmapExhausted', expectedOutcome: 'MSMAP_EXHAUSTED', actualOutcome: exhausted ? 'MSMAP_EXHAUSTED' : 'BLOCKED_BY_canMarkMsmapExhausted', stateAfter: fsm.state });
+      if (exhausted) fsm.transition('MSMAP_EXHAUSTED');
     }
 
     finalText = await pageObj.readText(target);
@@ -169,6 +190,7 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
 
     return buildResult(fsm.state, signals, documents, trace, finalText, finalUrl, null, query);
   } catch (e) {
+    trace.record({ stateBefore: fsm.state, action: 'EXCEPTION', actualOutcome: String(e).slice(0, 300), stateAfter: 'FAILED' });
     return buildResult('FAILED', signals, documents, trace, finalText, finalUrl, String(e), query);
   }
 

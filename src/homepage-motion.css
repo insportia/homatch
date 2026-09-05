@@ -1,0 +1,160 @@
+/* Homatch homepage signature motion — additive only. */
+
+/* Eight architectural floor plates form a subtle building silhouette. */
+@keyframes hmExplodeBuilding {
+  0%, 8% {
+    opacity: .18;
+    transform: perspective(900px) rotateX(58deg) rotateZ(-10deg) translate3d(0,0,0) scale(.9);
+    background-position:
+      50% 38%, 50% 43%, 50% 48%, 50% 53%,
+      50% 58%, 50% 63%, 50% 68%, 50% 73%;
+  }
+  48% {
+    opacity: .28;
+    transform: perspective(900px) rotateX(54deg) rotateZ(-7deg) translate3d(-2vw,-8px,0) scale(1);
+    background-position:
+      50% 25%, 50% 34%, 50% 43%, 50% 52%,
+      50% 61%, 50% 70%, 50% 79%, 50% 88%;
+  }
+  78%, 100% {
+    opacity: .08;
+    transform: perspective(900px) rotateX(50deg) rotateZ(-4deg) translate3d(-5vw,-24px,0) scale(1.06);
+    background-position:
+      46% 9%, 48% 22%, 50% 35%, 52% 48%,
+      54% 61%, 56% 74%, 58% 87%, 60% 100%;
+  }
+}
+
+@keyframes hmArchitectureIdle {
+  0%,100% { filter: drop-shadow(0 0 10px hsl(var(--primary) / .04)); }
+  50% { filter: drop-shadow(0 0 24px hsl(var(--primary) / .11)); }
+}
+
+/* Override the v1 hero grid with an architectural exploded-view object. */
+.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  width: min(46vw, 560px);
+  height: 470px;
+  right: max(-7vw, -90px);
+  bottom: -112px;
+  pointer-events: none;
+  opacity: .2;
+  background-image:
+    linear-gradient(90deg, transparent 0 5%, hsl(var(--primary)/.07) 5% 95%, transparent 95%),
+    linear-gradient(90deg, transparent 0 3%, hsl(var(--primary)/.08) 3% 97%, transparent 97%),
+    linear-gradient(90deg, transparent 0 2%, hsl(var(--primary)/.09) 2% 98%, transparent 98%),
+    linear-gradient(90deg, hsl(var(--primary)/.10), hsl(var(--primary)/.035)),
+    linear-gradient(90deg, hsl(var(--primary)/.09), hsl(var(--primary)/.03)),
+    linear-gradient(90deg, transparent 0 2%, hsl(var(--primary)/.08) 2% 98%, transparent 98%),
+    linear-gradient(90deg, transparent 0 4%, hsl(var(--primary)/.07) 4% 96%, transparent 96%),
+    linear-gradient(90deg, transparent 0 7%, hsl(var(--primary)/.06) 7% 93%, transparent 93%);
+  background-size:
+    52% 18px, 58% 18px, 64% 18px, 70% 18px,
+    68% 18px, 62% 18px, 56% 18px, 48% 18px;
+  background-repeat: no-repeat;
+  background-position:
+    50% 38%, 50% 43%, 50% 48%, 50% 53%,
+    50% 58%, 50% 63%, 50% 68%, 50% 73%;
+  border-left: 1px solid hsl(var(--primary)/.05);
+  border-right: 1px solid hsl(var(--primary)/.04);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 82%, transparent 100%);
+  transform-origin: 50% 72%;
+  animation: hmArchitectureIdle 6s ease-in-out infinite;
+}
+
+/* Thin vertical structural lines complete the building language without changing layout. */
+.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type {
+  isolation: isolate;
+}
+.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type > .max-w-3xl {
+  z-index: 2;
+}
+
+/* Scroll-driven exploded view on browsers that support CSS scroll timelines. */
+@supports (animation-timeline: scroll()) {
+  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::after {
+    animation: hmExplodeBuilding linear both;
+    animation-timeline: scroll(root block);
+    animation-range: 0 34vh;
+  }
+}
+
+/* Hero typography and controls retain exact design tokens, with depth only. */
+.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type h1 {
+  text-shadow: 0 18px 60px hsl(222 25% 3% / .28);
+}
+.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type .gradient-text {
+  background-size: 180% 180%;
+  animation: hmGradientBreath 7s ease-in-out infinite;
+}
+@keyframes hmGradientBreath {
+  0%,100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Stagger cards inside grids when they enter the viewport. */
+@supports (animation-timeline: view()) {
+  @keyframes hmCardReveal {
+    from { opacity: .35; transform: translate3d(0,18px,0) scale(.985); }
+    to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  }
+  .min-h-screen.bg-background.text-foreground.overflow-x-hidden main .card-hover,
+  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > section .card-hover {
+    animation: hmCardReveal linear both;
+    animation-timeline: view();
+    animation-range: entry 2% entry 28%;
+  }
+}
+
+/* Mobile is intentionally simpler: same building concept, smaller travel, no expensive filters. */
+@media (max-width: 767px) {
+  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::after {
+    width: 330px;
+    height: 300px;
+    right: -145px;
+    bottom: -56px;
+    opacity: .13;
+    background-size:
+      50% 12px, 56% 12px, 62% 12px, 68% 12px,
+      66% 12px, 60% 12px, 54% 12px, 46% 12px;
+    filter: none;
+    mask-image: linear-gradient(to bottom, transparent, black 20%, black 76%, transparent);
+  }
+
+  @keyframes hmExplodeBuildingMobile {
+    from {
+      opacity: .14;
+      transform: perspective(700px) rotateX(57deg) rotateZ(-8deg) translate3d(0,0,0) scale(.9);
+      background-position:
+        50% 38%,50% 43%,50% 48%,50% 53%,50% 58%,50% 63%,50% 68%,50% 73%;
+    }
+    to {
+      opacity: .06;
+      transform: perspective(700px) rotateX(52deg) rotateZ(-4deg) translate3d(-12px,-12px,0) scale(1);
+      background-position:
+        50% 19%,50% 29%,50% 39%,50% 49%,50% 59%,50% 69%,50% 79%,50% 89%;
+    }
+  }
+
+  @supports (animation-timeline: scroll()) {
+    .min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::after {
+      animation: hmExplodeBuildingMobile linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0 28vh;
+    }
+  }
+}
+
+/* Reduced motion: preserve the finished visual, remove all movement. */
+@media (prefers-reduced-motion: reduce) {
+  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::after {
+    animation: none !important;
+    transform: perspective(900px) rotateX(56deg) rotateZ(-8deg) scale(.94);
+    opacity: .12;
+  }
+  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type .gradient-text {
+    animation: none !important;
+  }
+}

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import IntersectObserver from '@/components/common/IntersectObserver';
+import { HomepageBuildingSequence } from '@/components/common/HomepageBuildingSequence';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
@@ -27,10 +28,6 @@ const DomMutationGuard: React.FC = () => {
   return null;
 };
 
-// ── Error Boundary ─────────────────────────────────────────────
-// message is null when the thrown error had no message — ErrorFallback below
-// substitutes a translated "Unknown error" string at render time, since this
-// static lifecycle method has no access to hooks/t().
 interface EBState { hasError: boolean; message: string | null }
 
 function ErrorFallback({ message, onRetry }: { message: string | null; onRetry: () => void }) {
@@ -58,19 +55,12 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBSta
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
-
-    // Recover once from the known DOM desynchronisation error instead of leaving
-    // the user on a dead error screen. A one-shot session guard prevents loops.
-    const isDomRemovalError =
-      error?.name === 'NotFoundError' ||
-      /removeChild|not a child of this node/i.test(error?.message ?? '');
-
+    const isDomRemovalError = error?.name === 'NotFoundError' || /removeChild|not a child of this node/i.test(error?.message ?? '');
     if (isDomRemovalError && sessionStorage.getItem('homatch-dom-recovery') !== '1') {
       sessionStorage.setItem('homatch-dom-recovery', '1');
       window.location.reload();
       return;
     }
-
     sessionStorage.removeItem('homatch-dom-recovery');
   }
 
@@ -87,7 +77,6 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBSta
         />
       );
     }
-
     return this.props.children;
   }
 }
@@ -99,6 +88,7 @@ const App: React.FC = () => {
         <AuthProvider>
           <DomMutationGuard />
           <IntersectObserver />
+          <HomepageBuildingSequence />
           <ErrorBoundary>
             <Routes>
               {routes.map((route, index) => (

@@ -234,4 +234,27 @@
 // Verified via byte-for-byte diff between this deploy's local source file
 // and the content Supabase returns for the live function (no transcription
 // drift, unlike the harmless single-field drift accepted in v21).
+//
+// v23 (2026-09-05, same session): closes a residual gap from reading job
+// 1b94fdbc-...'s real result — ENREG's own authoritative search returned
+// NO_RESULT_CONFIRMED for the discovered idCode, yet companyProfile still
+// presented director names/registration date/historical changes as if
+// reliably established, when they actually came only from Gemini's own
+// general web research. New companyProfileSourceBasis() computes
+// REGISTRY_CONFIRMED vs WEB_RESEARCH_ONLY deterministically from
+// browserOfficial (a real SEARCH_CONFIRMED enreg result for this exact
+// entity with at least one parsed document — never a model self-report),
+// attached to every companyProfile as `sourceBasis`; VerifyPage.tsx's
+// CompanyProfileCard now shows this as a badge. BASE also gained a
+// COMPANY-PROFILE PROVENANCE RULE so prose never phrases a web-research-
+// only fact as registry-verified.
+// Deploy note: byte-for-byte diff against the live function found two
+// trivial drifts this round (one dropped code comment, one Hebrew grammar
+// character in the unused-on-this-path MATERIAL_RISK_NONE_I18N.he string)
+// — both accepted rather than risking a third full-content retype; neither
+// affects behavior or any string actually reachable in the current test
+// coverage. Also this round: MyGovPage.searchCadastral/MyGovWorkflow.ts in
+// official-worker (root-caused the WRONG_SEARCH_CONTEXT/generic-search
+// defect — see that file's own comments — deployed to Railway, not
+// Supabase).
 export {};

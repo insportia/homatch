@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import IntersectObserver from '@/components/common/IntersectObserver';
-import { HomepageBuildingSequence } from '@/components/common/HomepageBuildingSequence';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
@@ -88,7 +87,6 @@ const App: React.FC = () => {
         <AuthProvider>
           <DomMutationGuard />
           <IntersectObserver />
-          <HomepageBuildingSequence />
           <ErrorBoundary>
             <Routes>
               {routes.map((route, index) => (

@@ -148,7 +148,7 @@ function MobileTwin() {
         <h2 className="text-2xl font-bold text-foreground leading-tight text-balance">{t('home_twin_title')}</h2>
         <p className="text-sm text-muted-foreground leading-relaxed text-pretty">{t('home_twin_subtitle')}</p>
       </div>
-      <div className="relative max-w-sm mx-auto">
+      <div className="relative max-w-sm mx-auto overflow-hidden">
         <BuildingIllustration
           layerMotion={{
             foundation: layerFor('foundation'),

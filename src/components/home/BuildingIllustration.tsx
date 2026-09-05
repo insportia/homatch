@@ -104,7 +104,7 @@ export function BuildingIllustration({
     : { style: { y: scanY, opacity: scanOpacity } };
 
   return (
-    <div className={className} style={{ position: 'relative', width: '100%', aspectRatio: `${VIEW.w} / ${VIEW.h}` }}>
+    <div className={className} style={{ position: 'relative', width: '100%', aspectRatio: `${VIEW.w} / ${VIEW.h}`, overflow: 'hidden' }}>
       {/* Pre-blurred static glow image — only its opacity animates. */}
       <motion.div
         aria-hidden

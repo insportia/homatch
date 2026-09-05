@@ -56,7 +56,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBSta
     return { hasError: true, message: error?.message ?? null };
   }
 
-  componentDidCatch(error: Error, info: React.ReactInfo) {
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
 
     const isDomRemovalError =

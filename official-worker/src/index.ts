@@ -52,9 +52,10 @@ app.get('/health', (_q: any, r: any) =>
   r.json({
     ok: true,
     service: 'homatch-official-worker',
-    version: '2.0.0',
+    version: '2.1.0',
     playwright: true,
     architecture: 'deterministic-fsm-orchestrator-2026-09-05',
+    standaloneEntityEnreg: true,
     pdfExtraction: true,
     onlineViewerReading: true,
     documentIntegrity: 'sha256+title+date',
@@ -88,6 +89,23 @@ app.post('/research', auth, (req: any, res: any) => {
 app.get('/research/:id', auth, (req: any, res: any) => {
   const j = orchestrator.getJob(req.params.id);
   return j ? res.json(j) : res.status(404).json({ error: 'not found' });
+});
+
+// POST /research/enreg-entity — the closed-loop fix for a confirmed gap:
+// a legal entity (developer/owner company) discovered by research-agent's
+// own web research (Gemini google_search, not this worker's own browser
+// session) has no browser-retrieved document text for EntityQueue to scan,
+// so the normal "auto-ENREG once every primary source finishes" path never
+// sees it. This lets a caller directly request a single, real, deterministic
+// ENREG lookup for a name/idCode found some other way — same EnregWorkflow
+// FSM, same CAPTCHA WAITING_HUMAN/resume/skip lifecycle, polled the same way
+// via GET /research/:id, as any other job.
+app.post('/research/enreg-entity', auth, (req: any, res: any) => {
+  const name = String(req.body?.name || '').trim();
+  const idCode = req.body?.idCode ? String(req.body.idCode).trim() : null;
+  if (!name && !idCode) return res.status(400).json({ error: 'name or idCode required' });
+  const job = orchestrator.startEntity(name || idCode!, idCode);
+  res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
 });
 
 app.get('/research/:id/screenshot', auth, async (req: any, res: any) => {

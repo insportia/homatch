@@ -7,7 +7,7 @@
 // steps onto the SAME array — this is mandate Section 16's "Entity Queue"
 // integration ("do not interrupt current document traversal ... finish
 // current document, then orchestrator processes entity queue").
-export type StepDescriptor = { type: 'source'; key: 'tas' | 'msmap' | 'mygov' | 'enreg' | 'napr' } | { type: 'entity_enreg'; idCode: string; name: string };
+export type StepDescriptor = { type: 'source'; key: 'tas' | 'msmap' | 'mygov' | 'enreg' | 'napr' } | { type: 'entity_enreg'; idCode: string | null; name: string };
 
 export interface ResearchJob {
   id: string;

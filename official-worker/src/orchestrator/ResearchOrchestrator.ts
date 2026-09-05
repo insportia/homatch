@@ -86,6 +86,33 @@ export class ResearchOrchestrator {
     return job;
   }
 
+  /** startEntity() — the closed-loop fix for the confirmed production gap:
+   * a legal entity (developer/owner company) discovered by research-agent's
+   * OWN web research (Gemini google_search during the OFFICIAL/MARKET
+   * stage) never appears in ANY browser-retrieved page/document text this
+   * worker scanned, so EntityQueue.scanText() never sees it and the normal
+   * primary-step-completion auto-ENREG trigger (buildEntitySteps() in run())
+   * never fires for it — ENREG research silently never happens for exactly
+   * the entities a customer report most needs it for (mandate: "a
+   * discovered company MUST automatically create a company research
+   * branch"). This starts a real job whose ONLY step is a single
+   * entity_enreg lookup for a name/idCode handed in directly, running
+   * through the exact same deterministic EnregWorkflow FSM, CAPTCHA
+   * WAITING_HUMAN pause, and resume/skip lifecycle as any other job — a
+   * caller (research-agent) polls it via the ordinary GET /research/:id. */
+  startEntity(name: string, idCode: string | null): ResearchJob {
+    const id = randomUUID();
+    const step: StepDescriptor = { type: 'entity_enreg', idCode: idCode || name, name };
+    const job: ResearchJob = { id, query: idCode || name, mode: 'cadastral', status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], steps: [step], createdAt: now(), updatedAt: now() };
+    this.jobs.set(id, job);
+    this.run(job).catch((e) => {
+      job.status = 'FAILED';
+      job.stage = 'FAILED';
+      job.error = String(e);
+    });
+    return job;
+  }
+
   private ledgerFor(jobId: string): EvidenceLedger {
     let l = this.ledgers.get(jobId);
     if (!l) {
@@ -111,7 +138,7 @@ export class ResearchOrchestrator {
     const page = await ctx.newPage();
 
     const key = step.type === 'entity_enreg' ? 'enreg' : step.key;
-    const query = step.type === 'entity_enreg' ? step.idCode : job.query;
+    const query = step.type === 'entity_enreg' ? step.idCode || step.name : job.query;
     const forEntity = step.type === 'entity_enreg' ? { name: step.name, idCode: step.idCode } : null;
 
     try {

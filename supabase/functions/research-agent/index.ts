@@ -1,11 +1,14 @@
-// Production source: Supabase Edge Function `research-agent` v18.
+// Production source: Supabase Edge Function `research-agent` v20 (the
+// version counter jumped 18->20 because a placeholder deploy was made and
+// immediately corrected in the same session — v19 was never a real,
+// intentional revision; v20 is authoritative).
 // Gemini-first Property Intelligence pipeline. The deployed source is authoritative.
 // Contract:
 // start {action:'start',query,type:'property'|'cadastral',language|locale}
 // status {action:'status',jobId,language|locale}
 // resume {action:'resume',jobId,language|locale}
 // skip   {action:'skip',jobId,language|locale} — see v16 note below.
-// Pipeline: IDENTITY -> OFFICIAL -> MARKET -> SYNTHESIS -> COMPLETE.
+// Pipeline: IDENTITY -> OFFICIAL -> ENREG_CHECK_PENDING -> [ENREG_ENTITY_WAITING] -> MARKET -> SYNTHESIS -> COMPLETE.
 // Provider: Gemini Interactions API with Google Search + URL Context for evidence collection.
 // Security: JWT required, server-side GEMINI_API_KEY only, owner-scoped research_jobs.
 // Research rule: NO EVIDENCE = NO FACT; missing evidence is neutral; interactive official forms are never represented as directly verified.
@@ -95,4 +98,64 @@
 //   Georgian, never via the raw traversal-status enum) when a confirmed
 //   source was not fully explored, using officialSourcesPartiallyTraversed
 //   data that previously existed on the wire but was never shown.
+//
+// v18->v20 (2026-09-05, per the user's follow-up "STOP AND CORRECT" mandate
+// on the SAME 01.18.06.019.055.03.01.603 live result — the v18 fixes above
+// were confirmed still insufficient: soft hedging sentences and per-source
+// status disclosure were themselves the leak, not just raw enum badges):
+// - verificationCaveat() is GONE, replaced by coverageNote() — a single
+//   fixed neutral line shown ONLY when literally no official source was
+//   confirmed at all; the "confirmed but partially traversed" case is no
+//   longer narrated to the customer in ANY form.
+// - traversalNote() and the OFFICIAL/SYNTHESIS prompts now explicitly and
+//   repeatedly forbid mentioning search fields, forms, browsers, retries,
+//   verification attempts, or any internal state in ANY customer string —
+//   not just badges/labels, prose too (the confirmed new leak: "search
+//   field could not be confirmed" / "documents were not directly read").
+// - New `overallConfidence` field: a fully deterministic HIGH/MEDIUM/LOW
+//   computed from whether any source was CONFIRMED, whether it was FULLY
+//   traversed, and whether a real document was actually read — replacing
+//   direct exposure of Gemini's own self-asserted identity confidence,
+//   which is what produced "HIGH confidence" alongside admittedly-unread
+//   TAS documents and an unchecked NAPR.
+// - companyProfile and a new `project`/`projectProfile` object both use
+//   much richer schemas (idCode/legalForm/registrationDate/status/
+//   directors/representatives/historicalChanges/relatedProjects; project
+//   website/buildings/floors/architect/contractors/amenities/construction
+//   status) — mandate items 10/11.
+// - market.comparables is now an array of structured objects (not free
+//   strings), and sanitizeComparables()/isHomepageRoot() strip any specific
+//   listingId/price/pricePerSqm whose only backing URL is a bare homepage
+//   root (e.g. https://myhome.ge/, https://ss.ge/) — mandate items 12/14.
+// - NEW closed-loop ENREG trigger: a company discovered only through
+//   Gemini's own web research (OFFICIAL stage's companyProfile) — as
+//   opposed to one this worker's own browser session scanned out of
+//   retrieved document text — now triggers a real POST
+//   /research/enreg-entity call to the worker (a new endpoint backing a
+//   real, deterministic EnregWorkflow run with the same CAPTCHA/resume/
+//   skip lifecycle as any other source) via a new ENREG_CHECK_PENDING /
+//   ENREG_ENTITY_WAITING pipeline stage inserted between OFFICIAL and
+//   MARKET — mandate items 8/9. This is the direct fix for
+//   "შპს მილენიო გრუპი / 404670272 was discovered but never became an
+//   ENREG research branch."
+// - materialRisks always carries a `note`; when no evidenced risk exists it
+//   is one fixed neutral sentence, never our own missing-evidence
+//   explanation dressed up as a property risk — mandate item 17.
+// - Frontend (src/pages/VerifyPage.tsx) companion rewrite in the same pass:
+//   OfficialStatusCard and PartiallyTraversedCard are REMOVED entirely
+//   (both were themselves leak surfaces, however careful the phrasing) and
+//   replaced by a single-line CoverageNote bound to coverageNote; the
+//   confidence badge now reads overallConfidence, never the raw model
+//   self-assessment; new ProjectProfileCard/CompanyProfileCard/
+//   ComparablesCard/MaterialRisksCard render the richer structured data;
+//   customerSafeReportForAi() strips the internal fields this page itself
+//   no longer renders (officialSourcesChecked/NotVerified/Skipped/
+//   PartiallyTraversed, raw entityConfidence, internal numeric confidence)
+//   so the AI-chat follow-up can never re-leak them either.
+//
+// official-worker companion change in the same pass: a new
+// POST /research/enreg-entity endpoint (ResearchOrchestrator.startEntity())
+// runs a single, real, deterministic EnregWorkflow lookup for a name/idCode
+// supplied directly by a caller — the mechanism this v20 change above
+// depends on.
 export {};

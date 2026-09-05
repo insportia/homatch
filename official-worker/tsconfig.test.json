@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "outDir": ".tstest-build",
+    "esModuleInterop": true,
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/index.ts",
+    "src/orchestrator/ResearchOrchestrator.ts",
+    "src/browser/BrowserSession.ts",
+    "src/browser/ResultRowExhauster.ts",
+    "src/documents/OnlineDocumentReader.ts",
+    "src/documents/PdfDocumentReader.ts",
+    "src/workflows/msmap/MsMapPage.ts",
+    "src/workflows/msmap/MsMapWorkflow.ts",
+    "src/workflows/tas/TasPage.ts",
+    "src/workflows/tas/TasWorkflow.ts",
+    "src/workflows/mygov/MyGovPage.ts",
+    "src/workflows/mygov/MyGovWorkflow.ts",
+    "src/workflows/enreg/EnregPage.ts",
+    "src/workflows/enreg/EnregWorkflow.ts",
+    "src/workflows/generic/GenericWorkflow.ts"
+  ]
+}

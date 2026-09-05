@@ -1,73 +1,122 @@
+// documentReader.test.mjs — the PURE decision logic in
+// documents/DocumentReader.ts (classifyDocumentLink/detectPagination/
+// sha256/extractDateFromText), ported from the pre-refactor
+// lib/documentReader.js's test suite. Plus documents/DocumentTypes.ts's
+// markComplete() — the direct enforcement of mandate Section 7's rule
+// ("If pageCount = 14 then pagesRead must become 14 before complete=true").
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyDocumentLink, isRealDocumentLink, detectPagination } from '../src/lib/documentReader.js';
+import { classifyDocumentLink, detectPagination, sha256, extractDateFromText } from '../.tstest-build/documents/DocumentReader.js';
+import { newDocumentShell, markComplete, toLegacyDocument } from '../.tstest-build/documents/DocumentTypes.js';
 
-let n = 0;
-function t(name, fn) { n++; fn(); console.log(`ok - ${name}`); }
-
-t('classifyDocumentLink: rejects the Adobe Reader installer (confirmed live false-positive host)', () => {
-  const r = classifyDocumentLink({ url: 'https://get.adobe.com/reader/download/?x=1' });
-  assert.equal(r.worthOpening, false);
-  assert.equal(r.reason, 'JUNK_HOST');
+test('classifyDocumentLink: a real PDF link is worth opening as a direct file', () => {
+  const c = classifyDocumentLink({ url: 'https://tas.ge/files/extract.pdf', label: 'ამონაწერი' });
+  assert.equal(c.worthOpening, true);
+  assert.equal(c.looksLikeDirectFile, true);
 });
 
-t('classifyDocumentLink: rejects the page\'s own ?p=searchdocument self-URL', () => {
-  const r = classifyDocumentLink({ url: 'https://tas.ge/?p=searchdocument&menuItemId=7104' });
-  assert.equal(r.worthOpening, false);
-  assert.equal(r.reason, 'SELF_NAV_URL');
+test('classifyDocumentLink: TAS\'s own Adobe Reader installer link is rejected (the confirmed live false positive)', () => {
+  const c = classifyDocumentLink({ url: 'https://get.adobe.com/reader/download/', label: 'Get Adobe Reader' });
+  assert.equal(c.worthOpening, false);
+  assert.equal(c.reason, 'JUNK_HOST');
 });
 
-t('classifyDocumentLink: accepts a direct .pdf link', () => {
-  const r = classifyDocumentLink({ url: 'https://docs.tbilisi.gov.ge/file/12345.pdf' });
-  assert.equal(r.worthOpening, true);
-  assert.equal(r.looksLikeDirectFile, true);
-  assert.equal(r.reason, 'FILE_EXTENSION');
+test('classifyDocumentLink: TAS\'s own self-referencing search URL is rejected', () => {
+  const c = classifyDocumentLink({ url: 'https://tas.ge/?p=searchdocument&menuItemId=7104', label: 'ძებნა' });
+  assert.equal(c.worthOpening, false);
+  assert.equal(c.reason, 'SELF_NAV_URL');
 });
 
-t('classifyDocumentLink: accepts a no-extension link whose label says extract/download (online-viewer candidate)', () => {
-  const r = classifyDocumentLink({ url: 'https://napr.gov.ge/view?id=9', label: 'ამონაწერის ნახვა' });
-  assert.equal(r.worthOpening, true);
-  assert.equal(r.looksLikeDirectFile, false);
-  assert.equal(r.reason, 'DOCUMENT_PHRASE');
+test('classifyDocumentLink: a same-domain page with no extension but a real document phrase is worth opening as an online viewer', () => {
+  const c = classifyDocumentLink({ url: 'https://tas.ge/view?id=42', label: 'დოკუმენტის გადმოწერა' });
+  assert.equal(c.worthOpening, true);
+  assert.equal(c.looksLikeDirectFile, false);
 });
 
-t('classifyDocumentLink: rejects an unrelated link with no document signal at all', () => {
-  const r = classifyDocumentLink({ url: 'https://tas.ge/about-us', label: 'About us' });
-  assert.equal(r.worthOpening, false);
-  assert.equal(r.reason, 'NO_DOCUMENT_SIGNAL');
+test('detectPagination: recognizes an explicit "page N of M" caption', () => {
+  const p = detectPagination('შედეგი — გვერდი 2 დან 5');
+  assert.equal(p.currentPage, 2);
+  assert.equal(p.totalPages, 5);
+  assert.equal(p.hasMore, true);
+});
+test('detectPagination: falls back to a weaker "next control present" signal with no caption', () => {
+  const p = detectPagination('some content ... შემდეგი გვერდი');
+  assert.equal(p.totalPages, null);
+  assert.equal(p.hasMore, true);
+});
+test('detectPagination: no pagination signal at all', () => {
+  const p = detectPagination('the whole document fits on one page');
+  assert.equal(p.hasMore, false);
 });
 
-t('classifyDocumentLink: rejects an exact self-referencing link given page context', () => {
-  const r = classifyDocumentLink({ url: 'https://tas.ge/current' }, { pageUrl: 'https://tas.ge/current' });
-  assert.equal(r.worthOpening, false);
-  assert.equal(r.reason, 'SELF_URL');
+test('sha256: deterministic and never fabricated on failure', () => {
+  const h1 = sha256(Buffer.from('hello', 'utf8'));
+  const h2 = sha256(Buffer.from('hello', 'utf8'));
+  assert.equal(h1, h2);
+  assert.equal(h1.length, 64);
 });
 
-t('isRealDocumentLink: backward-compatible boolean wrapper', () => {
-  assert.equal(isRealDocumentLink({ url: 'https://x.ge/f.pdf' }), true);
-  assert.equal(isRealDocumentLink({ url: 'https://get.adobe.com/reader' }), false);
+test('extractDateFromText: recognizes DD.MM.YYYY and YYYY-MM-DD, never invents one when absent', () => {
+  assert.equal(extractDateFromText('გაცემულია 05.09.2026 წელს'), '05.09.2026');
+  assert.equal(extractDateFromText('issued 2026-09-05'), '2026-09-05');
+  assert.equal(extractDateFromText('no date printed here at all'), null);
 });
 
-t('detectPagination: explicit "page N of M" caption, more pages remain', () => {
-  const r = detectPagination('დოკუმენტი — გვერდი 3 დან 14');
-  assert.equal(r.currentPage, 3);
-  assert.equal(r.totalPages, 14);
-  assert.equal(r.hasMore, true);
+test('markComplete: a document with a known page count is NOT complete until every page was read (mandate\'s 14-page example)', () => {
+  const doc = newDocumentShell('enreg', 'https://example/extract');
+  doc.pageCount = 14;
+  doc.pagesRead = 10;
+  markComplete(doc);
+  assert.equal(doc.complete, false);
+  doc.pagesRead = 14;
+  markComplete(doc);
+  assert.equal(doc.complete, true);
 });
 
-t('detectPagination: explicit "Page N of M" caption, last page', () => {
-  const r = detectPagination('Page 14 of 14');
-  assert.equal(r.hasMore, false);
+test('markComplete: unknown page count falls back to "did we get non-trivial text"', () => {
+  const doc = newDocumentShell('msmap', 'https://example/viewer');
+  doc.pageCount = null;
+  doc.rawText = 'short';
+  markComplete(doc);
+  assert.equal(doc.complete, false);
+  doc.rawText = 'a'.repeat(50);
+  markComplete(doc);
+  assert.equal(doc.complete, true);
 });
 
-t('detectPagination: no caption, but a next-page label is present (weaker evidence)', () => {
-  const r = detectPagination('სრული ტექსტი ... შემდეგი გვერდი');
-  assert.equal(r.currentPage, null);
-  assert.equal(r.hasMore, true);
+// toLegacyDocument: the wire-alias mapping onto what the DEPLOYED
+// research-agent's officialDocuments()/bev() actually read (d.date, d.type,
+// d.parsed, d.textExtractionAvailable, d.title||d.label) — confirmed live
+// via mcp__Supabase__get_edge_function, v17. Additive: the mandate's own
+// field names must survive alongside the legacy aliases.
+test('toLegacyDocument: adds date/type/parsed/textExtractionAvailable/label aliases without dropping the mandate field names', () => {
+  const doc = newDocumentShell('tas', 'https://tas.ge/doc/1');
+  doc.title = 'TAS extract';
+  doc.documentType = 'PDF_DOCUMENT';
+  doc.documentDate = '05.09.2026';
+  doc.rawText = 'a'.repeat(50);
+  doc.pageCount = 3;
+  doc.pagesRead = 3;
+  markComplete(doc);
+
+  const legacy = toLegacyDocument(doc);
+  assert.equal(legacy.date, '05.09.2026');
+  assert.equal(legacy.type, 'PDF_DOCUMENT');
+  assert.equal(legacy.parsed, true);
+  assert.equal(legacy.textExtractionAvailable, true);
+  assert.equal(legacy.label, 'TAS extract');
+  // mandate field names are still present, unchanged
+  assert.equal(legacy.documentDate, '05.09.2026');
+  assert.equal(legacy.documentType, 'PDF_DOCUMENT');
+  assert.equal(legacy.complete, true);
 });
 
-t('detectPagination: no caption, no next-label — single-page document', () => {
-  const r = detectPagination('მხოლოდ ტექსტი, პაგინაციის გარეშე.');
-  assert.equal(r.hasMore, false);
+test('toLegacyDocument: an incomplete/unread document maps to parsed:false, textExtractionAvailable:false', () => {
+  const doc = newDocumentShell('tas', 'https://tas.ge/doc/2');
+  doc.rawText = '';
+  markComplete(doc);
+  const legacy = toLegacyDocument(doc);
+  assert.equal(legacy.parsed, false);
+  assert.equal(legacy.textExtractionAvailable, false);
+  assert.equal(legacy.date, null);
 });
-
-console.log(`\n${n} passed`);

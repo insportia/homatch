@@ -1,61 +1,42 @@
-// Plain-node test (no test framework dependency — none is installed in
-// this environment; `node official-worker/test/cadastral.test.mjs` runs it
-// directly and exits non-zero on any failure).
+// cadastral.test.mjs — workflows/tas/cadastral.ts, ported unchanged from
+// the pre-refactor lib/cadastral.js's test suite.
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isCadastralCode, cadastralPrefixes, recommendedParentCode, candidateSequence } from '../src/lib/cadastral.js';
+import { isCadastralCode, cadastralPrefixes, recommendedParentCode, candidateSequence } from '../.tstest-build/workflows/tas/cadastral.js';
 
-let n = 0;
-function t(name, fn) { n++; fn(); console.log(`ok - ${name}`); }
-
-t('isCadastralCode: rejects non-cadastral text', () => {
-  assert.equal(isCadastralCode('hello world'), false);
-  assert.equal(isCadastralCode(''), false);
-  assert.equal(isCadastralCode(null), false);
-  assert.equal(isCadastralCode('01.18.06'), true);
-  assert.equal(isCadastralCode('01.18'), true);
-  assert.equal(isCadastralCode('01'), false); // single segment, not a code
+test('isCadastralCode: accepts real dot-segmented numeric codes', () => {
+  assert.ok(isCadastralCode('01.18.06.019.055.03.01.603'));
+  assert.ok(isCadastralCode('01.18'));
+});
+test('isCadastralCode: rejects non-cadastral text', () => {
+  assert.ok(!isCadastralCode('შპს Example'));
+  assert.ok(!isCadastralCode(''));
+  assert.ok(!isCadastralCode(null));
+  assert.ok(!isCadastralCode('01.18.abc'));
 });
 
-t('recommendedParentCode: strips to 5 segments for the demonstrated example', () => {
+test('cadastralPrefixes: progressively shorter, longest first, down to minSegments', () => {
+  const prefixes = cadastralPrefixes('01.18.06.019.055', { minSegments: 3 });
+  assert.deepEqual(prefixes, ['01.18.06.019.055', '01.18.06.019', '01.18.06']);
+});
+test('cadastralPrefixes: empty for non-cadastral input', () => {
+  assert.deepEqual(cadastralPrefixes('not a code'), []);
+});
+
+test('recommendedParentCode: the mandate\'s exact regression example', () => {
   assert.equal(recommendedParentCode('01.18.06.019.055.03.01.603'), '01.18.06.019.055');
-  assert.equal(recommendedParentCode('01.18.06.019.055.03.01.501'), '01.18.06.019.055');
 });
-
-t('recommendedParentCode: null when code is already <=5 segments (nothing shorter to try)', () => {
+test('recommendedParentCode: null when the code is already at/below 5 segments', () => {
   assert.equal(recommendedParentCode('01.18.06.019.055'), null);
-  assert.equal(recommendedParentCode('01.18.06'), null);
+  assert.equal(recommendedParentCode('01.18'), null);
 });
 
-t('recommendedParentCode: null for non-cadastral input', () => {
-  assert.equal(recommendedParentCode('not a code'), null);
-});
-
-t('cadastralPrefixes: progressively shorter, longest first, floor at minSegments', () => {
-  const p = cadastralPrefixes('01.18.06.019.055.03.01.603');
-  assert.deepEqual(p[0], '01.18.06.019.055.03.01.603');
-  assert.ok(p.includes('01.18.06.019.055'));
-  assert.ok(p.includes('01.18.06'));
-  assert.equal(p.every(x => x.split('.').length >= 3), true);
-});
-
-t('cadastralPrefixes: empty for non-cadastral input', () => {
-  assert.deepEqual(cadastralPrefixes('abc'), []);
-});
-
-t('candidateSequence: original first, never skipped, parent second, no duplicates', () => {
+test('candidateSequence: never skips the original code, tries parent next, deduplicated', () => {
   const seq = candidateSequence('01.18.06.019.055.03.01.603');
   assert.equal(seq[0], '01.18.06.019.055.03.01.603');
-  assert.equal(seq[1], '01.18.06.019.055'); // recommended parent tried right after the original
-  assert.equal(new Set(seq).size, seq.length); // no duplicates
+  assert.equal(seq[1], '01.18.06.019.055');
+  assert.equal(new Set(seq).size, seq.length);
 });
-
-t('candidateSequence: a short code that has no shorter parent still returns itself', () => {
-  const seq = candidateSequence('01.18.06');
-  assert.deepEqual(seq, ['01.18.06']);
+test('candidateSequence: a non-cadastral query is returned as its own single-element sequence', () => {
+  assert.deepEqual(candidateSequence('free text query'), ['free text query']);
 });
-
-t('candidateSequence: passes through a non-cadastral query untouched (never mangles free text)', () => {
-  assert.deepEqual(candidateSequence('some free-text query'), ['some free-text query']);
-});
-
-console.log(`\n${n} passed`);

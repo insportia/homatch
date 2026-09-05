@@ -34,7 +34,11 @@ export async function runMyGovWorkflow(page: Page, ctx: any, query: string, enti
     // "SERVICE_APPLICATION_DISCOVERED" means we found SOMETHING worth
     // trying next, not that it was the right context yet (that assertion
     // comes later, at PROPERTY_SEARCH_CONTEXT_CONFIRMED).
-    let searchRes = await pageObj.searchCadastral(page, query);
+    // v22 fix: no generic fallback scan on the outer service page — a weak
+    // match there (e.g. my.gov.ge's own site-wide header search box) must
+    // never short-circuit registry-iframe discovery. See MyGovPage.
+    // searchCadastral's comment for the full root-cause trail.
+    let searchRes = await pageObj.searchCadastral(page, query, { allowGenericFallback: false });
     let activePage: Page = page;
     let registryAppOpened = false;
     let usedIframe = false;
@@ -59,7 +63,10 @@ export async function runMyGovWorkflow(page: Page, ctx: any, query: string, enti
       }
       activePage = reg.activePage;
       fsm.transition('REGISTRY_APPLICATION_OPENED');
-      searchRes = await pageObj.searchCadastral(activePage, query);
+      // Now genuinely inside the naprweb registry app — a broad candidate
+      // scan here is safe (single-purpose page), so the generic fallback is
+      // allowed on this second attempt only.
+      searchRes = await pageObj.searchCadastral(activePage, query, { allowGenericFallback: true });
     } else {
       registryAppOpened = true;
       fsm.transition('SERVICE_APPLICATION_DISCOVERED');

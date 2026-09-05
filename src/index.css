@@ -91,11 +91,17 @@
     min-height: 2.25rem;
   }
 
-  [dir="rtl"] { text-align: right; }
+  [dir="rtl"] {
+    text-align: right;
+  }
+
   [dir="rtl"] .ml-auto { margin-left: 0; margin-right: auto; }
   [dir="rtl"] .mr-auto { margin-right: 0; margin-left: auto; }
 
-  * { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
   *::-webkit-scrollbar { width: 6px; height: 6px; }
   *::-webkit-scrollbar-track { background: transparent; }
   *::-webkit-scrollbar-thumb { background-color: hsl(var(--border)); border-radius: 3px; }
@@ -110,77 +116,43 @@
   }
 
   .amber-glow { position: relative; }
-  .amber-glow::before { content: ''; position: absolute; inset: 0; background: var(--gradient-amber-glow); pointer-events: none; z-index: 0; }
+  .amber-glow::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--gradient-amber-glow);
+    pointer-events: none;
+    z-index: 0;
+  }
 
   .card-hover { transition: border-color 200ms ease, box-shadow 200ms ease; }
-  .card-hover:hover { border-color: hsl(38 92% 55% / 0.3); box-shadow: var(--shadow-hover); }
-
-  .status-active { @apply text-xs font-medium px-2 py-0.5 rounded-full; background: hsl(142 60% 42% / 0.15); color: hsl(142 60% 55%); border: 1px solid hsl(142 60% 42% / 0.3); }
-  .status-paused { @apply text-xs font-medium px-2 py-0.5 rounded-full; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border)); }
-  .status-low-balance { @apply text-xs font-medium px-2 py-0.5 rounded-full; background: hsl(38 92% 55% / 0.15); color: hsl(38 92% 65%); border: 1px solid hsl(38 92% 55% / 0.3); }
-  .status-private { @apply text-xs font-medium px-2 py-0.5 rounded-full; background: hsl(280 50% 60% / 0.15); color: hsl(280 50% 70%); border: 1px solid hsl(280 50% 60% / 0.3); }
-}
-
-/* ── Homepage Motion v1 ───────────────────────────────────────
-   Pure enhancement layer: no layout/copy/color-token changes.
-   Scoped to the public homepage signature (header + first section).
-*/
-@keyframes hmHeroIn { from { opacity:0; transform:translate3d(0,18px,0); filter:blur(8px) } to { opacity:1; transform:none; filter:blur(0) } }
-@keyframes hmFloat { 0%,100% { transform:translate3d(0,0,0) } 50% { transform:translate3d(0,-7px,0) } }
-@keyframes hmPulse { 0%,100% { opacity:.18; transform:scale(.94) } 50% { opacity:.42; transform:scale(1.04) } }
-@keyframes hmScan { from { transform:translate3d(-140%,0,0) } to { transform:translate3d(240%,0,0) } }
-@keyframes hmBuildingDrift { 0%,100% { transform:perspective(900px) rotateX(60deg) rotateZ(-14deg) translate3d(0,0,0); opacity:.14 } 50% { transform:perspective(900px) rotateX(58deg) rotateZ(-12deg) translate3d(10px,-8px,0); opacity:.22 } }
-
-/* Hero ambient intelligence field */
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::before {
-  content:''; position:absolute; width:min(72vw,820px); aspect-ratio:1; left:50%; top:-42%; translate:-50% 0;
-  border-radius:50%; pointer-events:none; opacity:.72;
-  background:radial-gradient(circle, hsl(var(--primary)/.12) 0%, hsl(var(--primary)/.035) 34%, transparent 68%);
-  filter:blur(2px); animation:hmPulse 7s ease-in-out infinite; will-change:transform,opacity;
-}
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::after {
-  content:''; position:absolute; width:min(64vw,700px); height:360px; right:-9vw; bottom:-105px; pointer-events:none;
-  background-image:linear-gradient(hsl(var(--primary)/.11) 1px,transparent 1px),linear-gradient(90deg,hsl(var(--primary)/.11) 1px,transparent 1px);
-  background-size:34px 34px; mask-image:linear-gradient(to bottom,transparent 0%,black 28%,transparent 92%);
-  transform-origin:center; animation:hmBuildingDrift 11s ease-in-out infinite; will-change:transform,opacity;
-}
-
-/* Existing hero content gets a premium staged entrance */
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type > .max-w-3xl { animation:hmHeroIn .8s cubic-bezier(.2,.8,.2,1) both; }
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type h1 { animation:hmHeroIn .9s .08s cubic-bezier(.2,.8,.2,1) both; }
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type p { animation:hmHeroIn .9s .16s cubic-bezier(.2,.8,.2,1) both; }
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type .rounded-2xl { position:relative; overflow:hidden; transition:transform .35s cubic-bezier(.2,.8,.2,1),border-color .35s,box-shadow .35s; }
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type .rounded-2xl:focus-within { transform:translateY(-2px) scale(1.006); border-color:hsl(var(--primary)/.55); box-shadow:0 12px 42px hsl(var(--primary)/.10),0 0 0 1px hsl(var(--primary)/.10); }
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type .rounded-2xl::after { content:''; position:absolute; inset:0 auto 0 0; width:32%; pointer-events:none; background:linear-gradient(90deg,transparent,hsl(var(--primary)/.08),transparent); animation:hmScan 7s ease-in-out infinite; }
-
-/* Cards keep the existing palette but gain depth */
-.min-h-screen.bg-background.text-foreground.overflow-x-hidden .card-hover { transform:translateZ(0); transition:transform .32s cubic-bezier(.2,.8,.2,1),border-color .25s ease,box-shadow .32s ease; }
-@media (hover:hover) and (pointer:fine) {
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden .card-hover:hover { transform:translate3d(0,-4px,0) scale(1.008); box-shadow:0 16px 42px hsl(222 25% 3%/.42),0 5px 20px hsl(var(--primary)/.07); }
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden button:not([disabled]) { transition:transform .2s ease,background-color .2s ease,border-color .2s ease,color .2s ease,box-shadow .2s ease; }
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden button:not([disabled]):hover { transform:translateY(-1px); }
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden button:not([disabled]):active { transform:translateY(0) scale(.985); }
-}
-
-/* Native scroll-driven reveal where supported; gracefully static elsewhere. */
-@supports (animation-timeline:view()) {
-  @keyframes hmSectionReveal { from { opacity:.28; transform:translate3d(0,26px,0); filter:blur(3px) } to { opacity:1; transform:none; filter:blur(0) } }
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > section:not(:first-of-type) > div {
-    animation:hmSectionReveal linear both; animation-timeline:view(); animation-range:entry 5% entry 32%;
+  .card-hover:hover {
+    border-color: hsl(38 92% 55% / 0.3);
+    box-shadow: var(--shadow-hover);
   }
-}
 
-/* Mobile: same visual language, lighter geometry and zero overflow. */
-@media (max-width:767px) {
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::before { width:115vw; top:-25%; opacity:.5; }
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type::after { width:92vw; height:250px; right:-30vw; bottom:-65px; background-size:28px 28px; opacity:.7; animation-duration:14s; }
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden .card-hover:hover { transform:none; }
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden > header + section:first-of-type .rounded-2xl:focus-within { transform:translateY(-1px); }
-}
-
-/* Accessibility + battery/performance fallback. */
-@media (prefers-reduced-motion:reduce) {
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden *,
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden *::before,
-  .min-h-screen.bg-background.text-foreground.overflow-x-hidden *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.001ms !important; }
+  .status-active {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    background: hsl(142 60% 42% / 0.15);
+    color: hsl(142 60% 55%);
+    border: 1px solid hsl(142 60% 42% / 0.3);
+  }
+  .status-paused {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
+  }
+  .status-low-balance {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    background: hsl(38 92% 55% / 0.15);
+    color: hsl(38 92% 65%);
+    border: 1px solid hsl(38 92% 55% / 0.3);
+  }
+  .status-private {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    background: hsl(280 50% 60% / 0.15);
+    color: hsl(280 50% 70%);
+    border: 1px solid hsl(280 50% 60% / 0.3);
+  }
 }

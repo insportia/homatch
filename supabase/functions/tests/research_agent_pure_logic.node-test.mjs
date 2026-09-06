@@ -1021,3 +1021,98 @@ test('calculateMarketPosition: UNKNOWN when no comparable carries a usable numer
   assert.equal(r.position, 'UNKNOWN');
   assert.equal(r.marketMedianPricePerSqm, null);
 });
+
+// ---- sanitizeCustomerReport() / CUSTOMER_REPORT_STRIP_KEYS / sanitizeForCustomer()
+// (2026-09-06 correction) — copied verbatim from index.ts. Explicit product
+// requirement: the customer HTTP response must never expose which worker/
+// source/provider produced a finding (source, sourceName, sourceUrl, url,
+// finalUrl, startUrl, retrievalMethod, browserOfficial, trace,
+// officialSourceCoverage, or any of the officialSources* counters) —
+// wherever nested — while everything persisted to result_json (the
+// internal DB/admin copy) stays completely unchanged.
+const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial', 'source', 'sourceName']);
+function sanitizeCustomerReport(value) {
+  if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (CUSTOMER_REPORT_STRIP_KEYS.has(k)) continue;
+      out[k] = sanitizeCustomerReport(v);
+    }
+    return out;
+  }
+  return value;
+}
+function sanitizeForCustomer(job) {
+  if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
+  const r = sanitizeCustomerReport({ ...job.result_json });
+  delete r.browserOfficial;
+  delete r.entityConfidence;
+  delete r.confidence;
+  delete r.officialSourceCoverage;
+  delete r.officialSourcesChecked;
+  delete r.officialSourcesConfirmedFound;
+  delete r.officialSourcesConfirmedNoResult;
+  delete r.officialSourcesNotVerified;
+  delete r.officialSourcesSkipped;
+  delete r.officialSourcesPartiallyTraversed;
+  delete r.officialVerificationComplete;
+  delete r.stage;
+  delete r.researchProvider;
+  delete r.costUsage;
+  delete r._worker;
+  delete r._cost;
+  delete r._enregEntityRequestedFor;
+  delete r._financialEntityRequestedFor;
+  delete r._financialQueue;
+  delete r._financialReturnStage;
+  delete r._captchaReturnStage;
+  return { ...job, result_json: r };
+}
+
+test('sanitizeForCustomer: strips source/sourceName wherever nested (documents, market comparables, officialDocumentsRetrieved, reconciledIdentity provenance), not just top-level', () => {
+  const job = {
+    status: 'COMPLETE',
+    result_json: {
+      officialSourceCoverage: [{ source: 'tas_map', sourceName: 'TAS Map', customerStatus: 'SUCCESS' }],
+      officialDocumentsRetrieved: [{ source: 'mygov', sourceName: 'MyGov', url: 'https://my.gov.ge/x', title: 'ამონაწერი' }],
+      market: { comparables: [{ source: 'myhome.ge', url: 'https://myhome.ge/y', price: '150000' }] },
+      reconciledIdentity: { project: 'Villion', provenance: { project: [{ source: 'identity', url: null }, { source: 'myhome.ge', url: 'https://myhome.ge/z' }] } },
+      summary: 'A clean summary with no leaks.',
+    },
+  };
+  const out = sanitizeForCustomer(job);
+  assert.equal(out.result_json.officialSourceCoverage, undefined);
+  assert.equal(out.result_json.officialDocumentsRetrieved[0].source, undefined);
+  assert.equal(out.result_json.officialDocumentsRetrieved[0].sourceName, undefined);
+  assert.equal(out.result_json.officialDocumentsRetrieved[0].url, undefined);
+  assert.equal(out.result_json.officialDocumentsRetrieved[0].title, 'ამონაწერი'); // real finding text survives
+  assert.equal(out.result_json.market.comparables[0].source, undefined);
+  assert.equal(out.result_json.market.comparables[0].url, undefined);
+  assert.equal(out.result_json.market.comparables[0].price, '150000'); // real finding survives
+  assert.equal(out.result_json.reconciledIdentity.provenance.project[0].source, undefined);
+  assert.equal(out.result_json.reconciledIdentity.provenance.project[1].source, undefined);
+  assert.equal(out.result_json.summary, 'A clean summary with no leaks.');
+});
+
+test('sanitizeForCustomer: never mutates the original job/result_json object — internal DB/admin evidence keeps every field', () => {
+  const job = {
+    status: 'COMPLETE',
+    result_json: {
+      officialSourceCoverage: [{ source: 'tas_map', sourceName: 'TAS Map', customerStatus: 'SUCCESS' }],
+      officialDocumentsRetrieved: [{ source: 'mygov', sourceName: 'MyGov', url: 'https://my.gov.ge/x' }],
+      browserOfficial: { results: [{ source: 'tas_map', status: 'SEARCH_CONFIRMED' }] },
+    },
+  };
+  const before = JSON.parse(JSON.stringify(job));
+  sanitizeForCustomer(job);
+  assert.deepEqual(job, before); // the input object itself is untouched — only a copy is stripped
+});
+
+test('sanitizeForCustomer: a non-COMPLETE job (e.g. WAITING_HUMAN) is returned unchanged — internal fields like _worker must survive for resume()/advance() to keep reading them', () => {
+  const job = { status: 'WAITING_HUMAN', result_json: { _worker: { jobId: 'abc' }, source: 'tas_map' } };
+  const out = sanitizeForCustomer(job);
+  assert.equal(out, job);
+  assert.equal(out.result_json._worker.jobId, 'abc');
+  assert.equal(out.result_json.source, 'tas_map');
+});

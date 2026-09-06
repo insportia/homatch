@@ -2102,14 +2102,17 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     officialSourcesNotVerified: officialStatus.officialSourcesNotVerified,
     officialSourcesSkipped: officialStatus.officialSourcesSkipped,
     officialSourcesPartiallyTraversed: officialStatus.officialSourcesPartiallyTraversed,
-    // v26: the ONE customer-safe field this pipeline was missing — a
-    // truthful per-source status list built from officialSourceCoverage(),
-    // safe by construction (only the 6-value customerStatus enum + display
-    // name, see its own comment above), so unlike the raw fields just
-    // above it, sanitizeForCustomer() intentionally does NOT strip this
-    // one. This is what lets the frontend show "MS Map: Retrieved / TAS:
-    // Technical issue — not completed / My.gov: Checked — no result"
-    // instead of a single opaque "1 official source checked".
+    // v26 (superseded 2026-09-06 by explicit product requirement — see
+    // sanitizeForCustomer() below): originally a customer-safe per-source
+    // status list built from officialSourceCoverage() (only the 6-value
+    // customerStatus enum + display name), meant to let the frontend show
+    // "MS Map: Retrieved / TAS: Technical issue — not completed / My.gov:
+    // Checked — no result" instead of a single opaque "1 official source
+    // checked". Still computed and persisted here for internal/admin use
+    // (result_json is unchanged), but the product requirement is that the
+    // customer response must not expose which worker/provider produced a
+    // finding at all — sanitizeForCustomer() now deletes this field
+    // wholesale from the copy actually returned to the customer.
     officialSourceCoverage: officialSourceCoverage(prior.browserOfficial, l),
     identifiedParent: i.identifiedParent || null,
     // v25: for a cadastral-mode job, the exact unit code is deterministically
@@ -2311,23 +2314,32 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
 // technical/URL-shaped keys named below, wherever they appear, however
 // deeply nested.
 //
-// Deliberately narrower than a blanket "strip source/sourceName
-// everywhere": officialSourceCoverage() (this file, above) already
-// produces its own `source`/`sourceName` fields specifically so the
-// customer sees a real, neutral, localized display name instead of the
-// internal adapter key — the audit that produced this pass confirmed that
-// output shape is already correct. Recursively deleting every `source`/
-// `sourceName` key in the whole payload would silently break that
-// already-working, explicitly-verified feature, not fix a gap — so those
-// two keys are intentionally NOT in this list. What IS: every raw-URL
-// field shape used anywhere in this schema (matching, on the server side,
-// the exact same key set VerifyPage.tsx's own pre-existing
-// stripUrlFields() already uses client-side for the AI-chat handoff —
-// url/evidenceUrl/verificationUrl/linkLabel — so both paths agree on what
-// "customer-safe" means), plus the two purely internal/diagnostic fields
-// (retrievalMethod, trace) that mean nothing to a customer and were never
-// meant to cross the HTTP boundary at all.
-const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial']);
+// 2026-09-06 correction (explicit product requirement, same day as the
+// pass above): the earlier version of this Set deliberately left `source`/
+// `sourceName` out, reasoning that officialSourceCoverage()'s own
+// customer-facing `source`/`sourceName` fields (a real, neutral, localized
+// display name) would be broken by a blanket recursive strip. That
+// exception was wrong — the customer report must communicate the actual
+// findings, not which worker/provider produced them, and
+// officialSourceCoverage is now deleted WHOLESALE at the top level in
+// sanitizeForCustomer() below (it was already hidden from every rendered
+// card per the v26 "CUSTOMER-VALUE CLEANUP" mandate, so removing the raw
+// field from the HTTP payload too changes nothing the customer could see).
+// With that field gone entirely, there is no remaining legitimate
+// customer-facing use of `source`/`sourceName` left for this recursive
+// strip to break, so both are now included below alongside every other
+// raw-URL/worker-attribution field shape used anywhere in this schema
+// (matching, on the server side, the exact same key set VerifyPage.tsx's
+// own pre-existing stripUrlFields() already uses client-side for the
+// AI-chat handoff — url/evidenceUrl/verificationUrl/linkLabel — so both
+// paths agree on what "customer-safe" means), plus the purely internal/
+// diagnostic fields (retrievalMethod, trace) that mean nothing to a
+// customer and were never meant to cross the HTTP boundary at all.
+// This only ever runs against a COPY of result_json built for the HTTP
+// response (see sanitizeForCustomer() below) — it never touches what is
+// persisted to the research_jobs row, so internal DB/admin evidence keeps
+// every one of these fields unchanged.
+const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial', 'source', 'sourceName']);
 
 function sanitizeCustomerReport<T>(value: T): T {
   if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v)) as unknown as T;
@@ -2348,6 +2360,15 @@ function sanitizeForCustomer(job: any): any {
   delete r.browserOfficial;
   delete r.entityConfidence;
   delete r.confidence;
+  // 2026-09-06 correction: officialSourceCoverage (the per-source
+  // SUCCESS/NO_RESULT/CAPTCHA_REQUIRED/... breakdown) is worker/source
+  // technical state, not a customer finding — already hidden from every
+  // rendered card (v26 "CUSTOMER-VALUE CLEANUP") and from the AI-chat
+  // handoff (customerSafeReportForAi() in VerifyPage.tsx); now also
+  // removed from the raw HTTP payload so it never reaches the customer at
+  // all. Computed and persisted in result_json unchanged for internal/
+  // admin use — only this response copy loses it.
+  delete r.officialSourceCoverage;
   delete r.officialSourcesChecked;
   delete r.officialSourcesConfirmedFound;
   delete r.officialSourcesConfirmedNoResult;

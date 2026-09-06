@@ -1189,4 +1189,17 @@ export interface ResearchJobRecord {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  // Verify History sidebar fields (20260906130000_research_jobs_verify_history.sql):
+  // title/deleted_at are plain user-set columns; the rest are STORED generated
+  // columns extracted from result_json so the history list can search/filter/
+  // display without ever fetching the full per-row dossier.
+  title: string | null;
+  deleted_at: string | null;
+  entity_name: string | null;
+  project_name: string | null;
+  address: string | null;
+  developer_name: string | null;
+  company_name: string | null;
+  coverage_level: string | null;
+  outstanding_count: number | null;
 }

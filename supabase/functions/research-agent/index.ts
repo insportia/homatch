@@ -298,4 +298,75 @@
 // trivial drifts); contract review subsystem and further live browser
 // adapter/selector work for ENREG/TAS/MSMAP remain out of scope, same
 // reasoning as v21.
+//
+// v25 (2026-09-06, "HOMATCH VERIFY — FINAL PRODUCTION COMPLETION PASS" —
+// closes the mandate's single biggest named regression: "MARKET/public
+// research can discover high-quality project/developer/address/company
+// evidence, but that evidence currently does not reliably enrich the
+// structured identity used by the final report." Root cause: the
+// deterministic evidence gate (hasStructuredIdentity) only ever looked at
+// IDENTITY's own output — MARKET's comparables were never fed back into
+// anything the gate could see, so a project/developer that only became
+// clear from market comparables (the mandate's own Krtsanisi St 6 / Villion
+// / Millennio Group example) stayed invisible and the top-card fields
+// rendered blank. Five deterministic changes, verified via `tsc --noEmit`
+// (strict) against the deployed function's exact shape and an 11/11-passing
+// Node unit suite (research_agent_pure_logic.node-test.mjs, includes the
+// mandate's mandatory Villion regression fixture) since this file cannot
+// run end-to-end in a sandbox without live Gemini/browser/CAPTCHA access:
+// 1. reconcileIdentity(): a real cross-stage entity reconciliation layer —
+//    gathers project/address/developer candidates from IDENTITY's project
+//    object, OFFICIAL's companyProfile, and MARKET's comparables (each
+//    tagged by source hostname so independence is counted correctly, never
+//    three listings on one portal counted as three sources), and promotes a
+//    merged identity to HIGH/MEDIUM/LOW confidence with full per-field
+//    provenance — never a bare invented number.
+// 2. hasStructuredIdentity() now also accepts a MEDIUM/HIGH reconciled
+//    identity (a LOW/single-source mention still may not license the
+//    narrative to state a project/developer as fact) — the direct fix for
+//    the blank Project/Address/Developer top-card case.
+// 3. The secondary ENREG lookup (pickEnregCandidate/startEnregEntity/
+//    pollEnregEntity) now also fires for a developer reconciliation
+//    promotes to MEDIUM+ that OFFICIAL's own companyProfile never named,
+//    generalized via an explicit `_enregReturnStage` (MARKET_READY vs
+//    SYNTHESIS_READY) instead of the previous hardcoded MARKET_READY.
+// 4. sourceCategory(): real host-based categorization (OFFICIAL_REGISTRY/
+//    OFFICIAL_DOCUMENT/OFFICIAL_MAP/DEVELOPER_PRIMARY/MARKET_LISTING/MEDIA/
+//    SOCIAL/PUBLIC_GROUP/PUBLIC_FORUM/OTHER_PUBLIC) replacing
+//    dueDiligenceCoverage()'s old `!evidenceLevel.startsWith('OFFICIAL')`
+//    heuristic, which miscounted MyHome/SS/Korter/developer/bank pages as
+//    "social" — socialSources now counts only genuine SOCIAL/PUBLIC_GROUP
+//    items, with new sibling counters (marketListingSources,
+//    developerPrimarySources, mediaSources, forumSources,
+//    otherPublicSources) exposed alongside it.
+// 5. semanticDedupe(): riskFlags/unverified/conflicts are deduplicated by
+//    normalized keyword-overlap (overlap coefficient, not Jaccard — Jaccard
+//    under-scores a short paraphrase fully contained in a longer, more
+//    detailed sentence), not just exact string equality — fixes "official
+//    commissioning not confirmed" appearing multiple times worded slightly
+//    differently across stages.
+// Also: for a cadastral-mode job, exactUnit.code is now deterministically
+// forced back to the literal user-supplied query (never Gemini's own
+// transcription) — the mandate's other named regression: the exact unit
+// (e.g. 01.18.06.019.055.03.01.603) must never silently drift toward an
+// easier-to-find parent/base parcel (01.18.06.019.055) merely because
+// evidence was easier to find there. Deploy note: byte-for-byte diff of the
+// live function against this content after deploy found ZERO drift.
+//
+// Frontend (same pass, VerifyPage.tsx / researchJobs.ts / types.ts —
+// separate from this function): reconciledIdentity, utilitiesMatrix, and
+// landProfile (the last two shipped on the wire since v24 but never
+// rendered) are now all displayed; exactUnit is now shown as a visually
+// distinct PRIMARY subject from identifiedParent (a legitimate parent/base
+// parcel is shown separately, never merged into one line); the 5 new
+// dueDiligenceCoverage counters from point 4 above are rendered on the
+// coverage card. A global Verify History sidebar was added (native to
+// /verify, not a separate page, not a /cases replacement) — every research
+// run a user has ever started, searchable/filterable by title/cadastral/
+// address/project/company/type, renamable, soft-deletable — backed by
+// supabase/migrations/20260906130000_research_jobs_verify_history.sql
+// (title/deleted_at columns + generated display columns extracted from
+// result_json, so the list never needs to fetch a full dossier just to
+// render). Opening a history entry remains a plain status read — zero new
+// research cost — exactly like the existing per-case history list.
 export {};

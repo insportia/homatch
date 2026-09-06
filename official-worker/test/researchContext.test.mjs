@@ -25,14 +25,28 @@ test('stepMatchesResult: a primary source step matches only a non-entity result 
 });
 
 test('stepMatchesResult: an entity-triggered step matches only the SAME entity\'s enreg result, not the primary one', () => {
-  const step = { type: 'entity_enreg', idCode: '405123456', name: 'შპს Example' };
+  const step = { type: 'entity', source: 'enreg', idCode: '405123456', name: 'შპს Example' };
   assert.ok(stepMatchesResult(step, { source: 'enreg', forEntity: { idCode: '405123456' } }));
   assert.ok(!stepMatchesResult(step, { source: 'enreg', forEntity: { idCode: '999999999' } }));
   assert.ok(!stepMatchesResult(step, { source: 'enreg', forEntity: null }));
 });
 
+// 2026-09-06, "FINANCIAL SOURCE EXPANSION" mandate: the same generalized
+// entity-step shape now also serves rstax/debtor — a match must require the
+// SOURCE to line up too, not just the idCode, since research-agent can
+// trigger an enreg, rstax, AND debtor lookup for the exact same company
+// idCode in the same job, and each must only ever consume its OWN result.
+test('stepMatchesResult: entity steps for different sources (rstax vs debtor) on the SAME idCode never cross-match', () => {
+  const rstaxStep = { type: 'entity', source: 'rstax', idCode: '404670272', name: 'შპს Example' };
+  const debtorStep = { type: 'entity', source: 'debtor', idCode: '404670272', name: 'შპს Example' };
+  assert.ok(stepMatchesResult(rstaxStep, { source: 'rstax', forEntity: { idCode: '404670272' } }));
+  assert.ok(!stepMatchesResult(rstaxStep, { source: 'debtor', forEntity: { idCode: '404670272' } }));
+  assert.ok(stepMatchesResult(debtorStep, { source: 'debtor', forEntity: { idCode: '404670272' } }));
+  assert.ok(!stepMatchesResult(debtorStep, { source: 'rstax', forEntity: { idCode: '404670272' } }));
+});
+
 test('primaryStepsRemain: true while a source-type step is still pending, false once all consumed', () => {
-  const steps = [{ type: 'source', key: 'tas' }, { type: 'source', key: 'msmap' }, { type: 'entity_enreg', idCode: '1', name: 'x' }];
+  const steps = [{ type: 'source', key: 'tas' }, { type: 'source', key: 'msmap' }, { type: 'entity', source: 'enreg', idCode: '1', name: 'x' }];
   assert.ok(primaryStepsRemain(steps, 1));
   assert.ok(!primaryStepsRemain(steps, 2));
 });
@@ -47,5 +61,9 @@ test('buildEntitySteps: bounded by maxEntities, only confirmed (id-code) entitie
   const steps = buildEntitySteps(entities, 2);
   assert.equal(steps.length, 2);
   assert.deepEqual(steps.map((s) => s.idCode), ['1', '2']);
-  assert.ok(steps.every((s) => s.type === 'entity_enreg'));
+  // buildEntitySteps remains enreg-only by design (see ResearchContext.ts's
+  // own comment) — rstax/debtor are triggered only via the separate
+  // closed-loop startEntity() path for the one research-agent-selected
+  // primary company, never auto-queued for every text-scanned candidate.
+  assert.ok(steps.every((s) => s.type === 'entity' && s.source === 'enreg'));
 });

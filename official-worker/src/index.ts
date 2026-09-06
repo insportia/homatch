@@ -64,7 +64,7 @@ app.get('/health', (_q: any, r: any) =>
     entityDiscovery: true,
     navigationStackTraversal: true,
     humanVerificationSkip: true,
-    sourceWorkflows: ['msmap:MsMapWorkflow (18-state FSM)', 'tas:TasWorkflow (branch+loop FSM)', 'mygov:MyGovWorkflow (context-gated FSM)', 'enreg:EnregWorkflow (25-state linear FSM)', 'napr/property-enreg:GenericWorkflow (no dedicated FSM — no spec exists for these)'],
+    sourceWorkflows: ['msmap:MsMapWorkflow (18-state FSM)', 'tas:TasWorkflow (branch+loop FSM)', 'mygov:MyGovWorkflow (context-gated FSM)', 'enreg:EnregWorkflow (25-state linear FSM)', 'rstax/debtor:FinancialSourceWorkflow (flat, identifier-only, no name search)', 'napr/property-enreg:GenericWorkflow (no dedicated FSM — no spec exists for these)'],
     statuses: ['SEARCH_CONFIRMED', 'NO_RESULT_CONFIRMED', 'SUBMITTED_UNCONFIRMED', 'SUBMIT_FAILED', 'AUTH_REQUIRED', 'SEARCH_CONTROL_NOT_FOUND', 'BLOCKED', 'WAITING_HUMAN', 'SKIPPED_HUMAN_VERIFICATION', 'WRONG_SEARCH_CONTEXT', 'FAILED'],
     traversalStatuses: ['NOT_STARTED', 'SEARCH_CONFIRMED', 'RESULTS_DISCOVERED', 'RESULTS_TRAVERSED', 'DOCUMENTS_TRAVERSED', 'SOURCE_EXHAUSTED', 'WAITING_HUMAN', 'SKIPPED_HUMAN_VERIFICATION', 'BLOCKED', 'AUTH_REQUIRED', 'SEARCH_CONTROL_NOT_FOUND', 'SUBMIT_FAILED', 'WRONG_SEARCH_CONTEXT', 'FAILED'],
     structuredTraversal: true,
@@ -108,6 +108,32 @@ app.post('/research/enreg-entity', auth, (req: any, res: any) => {
   res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
 });
 
+// POST /research/rstax-entity and /research/debtor-entity — the same
+// closed-loop shape as /research/enreg-entity above, for the two new
+// "FINANCIAL/COMPANY SOURCE EXPANSION" sources (RS Taxpayers Registry,
+// MyGov Debtor Registry). Unlike ENREG, NEITHER source exposes a
+// name-search field (confirmed live — see workflows/financial/selectors.ts),
+// so idCode is REQUIRED here, not merely preferred: a caller with only a
+// company/developer NAME and no national/company ID has nothing a real
+// search on either registry could use, and must not silently probe a name
+// into a TIN-only field. `name` is accepted only for the job's own
+// query/display label.
+app.post('/research/rstax-entity', auth, (req: any, res: any) => {
+  const name = String(req.body?.name || '').trim();
+  const idCode = req.body?.idCode ? String(req.body.idCode).trim() : null;
+  if (!idCode) return res.status(400).json({ error: 'idCode required — RS Taxpayers Registry has no name-search field' });
+  const job = orchestrator.startEntity(name || idCode, idCode, 'rstax');
+  res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
+});
+
+app.post('/research/debtor-entity', auth, (req: any, res: any) => {
+  const name = String(req.body?.name || '').trim();
+  const idCode = req.body?.idCode ? String(req.body.idCode).trim() : null;
+  if (!idCode) return res.status(400).json({ error: 'idCode required — MyGov Debtor Registry has no name-search field' });
+  const job = orchestrator.startEntity(name || idCode, idCode, 'debtor');
+  res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
+});
+
 app.get('/research/:id/screenshot', auth, async (req: any, res: any) => {
   const s = orchestrator.getSession(req.params.id);
   if (!s) return res.status(404).json({ error: 'active human session not found' });
@@ -136,7 +162,7 @@ app.get('/research/:id/screenshot', auth, async (req: any, res: any) => {
     }
   }
   const img = clip ? await s.page.screenshot({ type: 'jpeg', quality: 85, clip }) : await s.page.screenshot({ type: 'jpeg', quality: 80 });
-  res.json({ image: `data:image/jpeg;base64,${img.toString('base64')}`, width: clip ? clip.width : 1440, height: clip ? clip.height : 1000, offsetX, offsetY, cropped: !!clip, url: s.page.url(), source: s.step.type === 'entity_enreg' ? 'enreg' : s.step.key, captcha: true });
+  res.json({ image: `data:image/jpeg;base64,${img.toString('base64')}`, width: clip ? clip.width : 1440, height: clip ? clip.height : 1000, offsetX, offsetY, cropped: !!clip, url: s.page.url(), source: s.step.type === 'entity' ? s.step.source : s.step.key, captcha: true });
 });
 
 app.post('/research/:id/action', auth, async (req: any, res: any) => {

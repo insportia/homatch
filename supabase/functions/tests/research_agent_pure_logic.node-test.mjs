@@ -1,22 +1,30 @@
 // research_agent_pure_logic.node-test.mjs — regression tests for the
 // deterministic (non-LLM, non-Deno-API) logic inside the `research-agent`
-// Supabase Edge Function, v25.
+// Supabase Edge Function, v28.
 //
 // IMPORTANT — why this file is Node, not Deno, unlike its neighbors in this
 // directory: research-agent's actual source is a Deno.serve() handler using
-// `jsr:` imports and Gemini/Playwright network calls, and — per this
-// project's own operating history — its real, authoritative source lives
-// ONLY in the deployed Supabase Edge Function (project ptxajsjhobhvsfhmutjn,
-// function slug `research-agent`); the checked-in
-// supabase/functions/research-agent/index.ts is a changelog-only stub. A
-// Deno-based end-to-end test would need a live Gemini key, live
-// official-worker browser sessions, and CAPTCHA solving, none of which are
-// available in most CI/dev environments. What CAN be verified without any
-// of that is the function's deterministic, pure-logic pieces — the code that
-// decides confidence tiers, source categories, and deduplication with no
-// LLM/network call involved. Each function below is copied verbatim from the
-// deployed v25 source; keep it in sync whenever those functions change in
+// `jsr:` imports and Gemini/Playwright network calls. A Deno-based
+// end-to-end test would need a live Gemini key, live official-worker
+// browser sessions, and CAPTCHA solving, none of which are available in
+// most CI/dev environments. What CAN be verified without any of that is the
+// function's deterministic, pure-logic pieces — the code that decides
+// confidence tiers, source categories, and deduplication with no
+// LLM/network call involved. Each function below is copied verbatim from
+// the deployed source; keep it in sync whenever those functions change in
 // the live function (see the function's own version-history comment block).
+//
+// PROVENANCE CORRECTION (2026-09-06, v28 pass): this comment previously
+// claimed "the checked-in supabase/functions/research-agent/index.ts is a
+// changelog-only stub" — a prior pass's own accepted convention after the
+// real ~1580-line source had, at some point, stopped being kept in the
+// git-tracked file (only its comment header survived). That was found and
+// fixed this pass: index.ts is now restored from the live v27 deployment
+// and is kept as the genuine, real, byte-for-byte-in-sync source going
+// forward — see index.ts's own v28 header comment. This file remains Node
+// (not a direct import of index.ts) purely because index.ts is a Deno
+// module with `jsr:` specifiers Node cannot resolve, not because index.ts
+// is no longer real.
 // Run with: node --test supabase/functions/tests/research_agent_pure_logic.node-test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,7 +36,7 @@ function dedupe(a, k) {
   return [...new Map(a.map((x) => [k(x), x])).values()];
 }
 
-const OFFICIAL_HOST_RE = /(?:^|\.)(gov\.ge|tas\.ge|napr\.gov\.ge|ms\.gov\.ge|reestri\.gov\.ge|my\.gov\.ge|enreg\.reestri\.gov\.ge)$/i;
+const OFFICIAL_HOST_RE = /(?:^|\.)(gov\.ge|tas\.ge|napr\.gov\.ge|ms\.gov\.ge|reestri\.gov\.ge|my\.gov\.ge|enreg\.reestri\.gov\.ge|rs\.ge)$/i;
 const PROPERTY_PORTAL_HOST_RE = /(?:^|\.)(myhome\.ge|ss\.ge|home\.ss\.ge|korter\.ge|mymarket\.ge|adjaranet\.com|livo\.ge|place\.ge)$/i;
 const SOCIAL_HOST_RE = /(?:^|\.)(facebook\.com|fb\.com|instagram\.com|tiktok\.com|youtube\.com|youtu\.be|t\.me|telegram\.me|twitter\.com|x\.com|linkedin\.com)$/i;
 const MEDIA_HOST_RE = /(?:^|\.)(civil\.ge|netgazeti\.ge|publika\.ge|1tv\.ge|imedinews\.ge|interpressnews\.ge|rustavi2\.ge|bpn\.ge|forbes\.ge|business-media\.ge)$/i;
@@ -145,6 +153,9 @@ test('sourceCategory: government/registry hosts are OFFICIAL_*, ms.gov.ge is spe
 });
 test('sourceCategory: an unrecognized host is OTHER_PUBLIC, never guessed into SOCIAL', () => {
   assert.equal(sourceCategory('https://random-blog.example/post'), 'OTHER_PUBLIC');
+});
+test('sourceCategory: rs.ge (RS Taxpayers Registry, v28) is OFFICIAL_REGISTRY, not OTHER_PUBLIC', () => {
+  assert.equal(sourceCategory('https://www.rs.ge/TaxpayersRegistry'), 'OFFICIAL_REGISTRY');
 });
 
 // ---- reconcileIdentity tests (includes the mandate's mandatory Villion fixture) ----
@@ -288,4 +299,102 @@ test('officialSourceCoverage: a source that was never dispatched never appears a
   const coverage = officialSourceCoverage({ results: [{ source: 'msmap', sourceName: 'MS Map', status: 'SEARCH_CONFIRMED' }] });
   assert.equal(coverage.length, 1);
   assert.equal(coverage.some((c) => c.source === 'tas'), false);
+});
+
+// isLoginPageUrl() (v27, "CUSTOMER-VALUE REPORT CLEANUP" mandate: "Never
+// show login pages as customer evidence"). Copied verbatim from the deployed
+// v27 source.
+function isLoginPageUrl(u) {
+  if (!u) return false;
+  try {
+    const x = new URL(u);
+    const host = x.hostname.replace(/^www\./i, '');
+    const path = x.pathname.toLowerCase();
+    if (/^(facebook\.com|fb\.com|m\.facebook\.com)$/i.test(host) && /login/i.test(path)) return true;
+    if (/^accounts\.google\.com$/i.test(host)) return true;
+    if (/^(instagram\.com)$/i.test(host) && /^\/accounts\/login/i.test(path)) return true;
+    if (/^(twitter\.com|x\.com)$/i.test(host) && /^\/(i\/flow\/login|login)/i.test(path)) return true;
+    if (/^linkedin\.com$/i.test(host) && /^\/(login|checkpoint)/i.test(path)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+test('isLoginPageUrl: recognizes real login/auth entry-point shapes, never a normal content page', () => {
+  assert.equal(isLoginPageUrl('https://www.facebook.com/login.php?next=%2Fsomepage'), true);
+  assert.equal(isLoginPageUrl('https://accounts.google.com/signin/v2/identifier'), true);
+  assert.equal(isLoginPageUrl('https://www.instagram.com/accounts/login/'), true);
+  assert.equal(isLoginPageUrl('https://twitter.com/login'), true);
+  assert.equal(isLoginPageUrl('https://www.linkedin.com/login'), true);
+  // Real, readable content pages on the same platforms must NEVER be
+  // misclassified as login walls just because the platform can require one.
+  assert.equal(isLoginPageUrl('https://www.facebook.com/VillionKrtsanisi/posts/123456'), false);
+  assert.equal(isLoginPageUrl('https://myhome.ge/en/pr/12345/'), false);
+  assert.equal(isLoginPageUrl(null), false);
+});
+
+// ---- alreadyHasResultFor / pickFinancialCandidate (v28, "FINANCIAL/COMPANY
+// SOURCE EXPANSION") tests — copied verbatim from the deployed v28 source.
+// These cover the mandate's core adaptive/non-blind requirement for the two
+// new sources: RS Taxpayers Registry ('rstax') and MyGov Debtor Registry
+// ('debtor') must NEVER fire on a bare company name (neither exposes a
+// name-search field — confirmed live), only on a concrete idCode already
+// evidenced by companyProfile, and must never re-fire once a matching
+// result already exists.
+
+function alreadyHasResultFor(browserOfficial, source, idCode, name) {
+  const results = browserOfficial?.results || [];
+  return results.some((r) => {
+    if (r.source !== source) return false;
+    if (idCode && r.forEntity?.idCode) return r.forEntity.idCode === idCode;
+    if (!idCode && name && r.forEntity?.name) return normalizeLoose(r.forEntity.name) === normalizeLoose(name);
+    return false;
+  });
+}
+function pickFinancialCandidate(prior, source) {
+  const cp = prior.official?.companyProfile;
+  if (source === 'enreg') {
+    if (cp && (cp.name || cp.idCode)) {
+      if (!alreadyHasResultFor(prior.browserOfficial, 'enreg', cp.idCode || null, cp.name || null)) return { name: cp.name || cp.idCode, idCode: cp.idCode || null };
+    }
+    const ri = prior.reconciledIdentity;
+    if (ri?.developer && ['MEDIUM', 'HIGH'].includes(ri.confidence)) {
+      if (!alreadyHasResultFor(prior.browserOfficial, 'enreg', null, ri.developer)) return { name: ri.developer, idCode: null };
+    }
+    return null;
+  }
+  const idCode = cp?.idCode || null;
+  if (!idCode) return null;
+  if (alreadyHasResultFor(prior.browserOfficial, source, idCode, null)) return null;
+  return { name: cp?.name || idCode, idCode };
+}
+
+test('pickFinancialCandidate: rstax/debtor NEVER fire on a bare company name — no idCode means no candidate, even when enreg would happily search by name', () => {
+  const prior = { official: { companyProfile: { name: 'შპს მილენიო გრუპი', idCode: null } } };
+  assert.equal(pickFinancialCandidate(prior, 'rstax'), null);
+  assert.equal(pickFinancialCandidate(prior, 'debtor'), null);
+  // enreg, by contrast, DOES accept the bare name (its own search supports it).
+  assert.deepEqual(pickFinancialCandidate(prior, 'enreg'), { name: 'შპს მილენიო გრუპი', idCode: null });
+});
+test('pickFinancialCandidate: rstax/debtor fire on a concrete evidenced idCode', () => {
+  const prior = { official: { companyProfile: { name: 'შპს მილენიო გრუპი', idCode: '404670272' } } };
+  assert.deepEqual(pickFinancialCandidate(prior, 'rstax'), { name: 'შპს მილენიო გრუპი', idCode: '404670272' });
+  assert.deepEqual(pickFinancialCandidate(prior, 'debtor'), { name: 'შპს მილენიო გრუპი', idCode: '404670272' });
+});
+test('pickFinancialCandidate: never re-fires once a matching result for that exact source+idCode already exists', () => {
+  const prior = {
+    official: { companyProfile: { name: 'შპს მილენიო გრუპი', idCode: '404670272' } },
+    browserOfficial: { results: [{ source: 'rstax', forEntity: { name: 'შპს მილენიო გრუპი', idCode: '404670272' } }] },
+  };
+  assert.equal(pickFinancialCandidate(prior, 'rstax'), null);
+  // A rstax result must never be mistaken for covering debtor too — each
+  // source's own queue slot is independent.
+  assert.deepEqual(pickFinancialCandidate(prior, 'debtor'), { name: 'შპს მილენიო გრუპი', idCode: '404670272' });
+});
+test('pickFinancialCandidate: no companyProfile at all -> no candidate for any of the three sources (never invented)', () => {
+  const prior = {};
+  assert.equal(pickFinancialCandidate(prior, 'enreg'), null);
+  assert.equal(pickFinancialCandidate(prior, 'rstax'), null);
+  assert.equal(pickFinancialCandidate(prior, 'debtor'), null);
 });

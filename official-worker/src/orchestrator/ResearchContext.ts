@@ -7,7 +7,17 @@
 // steps onto the SAME array — this is mandate Section 16's "Entity Queue"
 // integration ("do not interrupt current document traversal ... finish
 // current document, then orchestrator processes entity queue").
-export type StepDescriptor = { type: 'source'; key: 'tas' | 'msmap' | 'mygov' | 'enreg' | 'napr' } | { type: 'entity_enreg'; idCode: string | null; name: string };
+// StepDescriptor's entity variant (2026-09-06, "ADAPTIVE RESEARCH ENGINE /
+// FINANCIAL SOURCE EXPANSION" mandate): generalized from the original
+// enreg-only `entity_enreg` shape to `{type:'entity', source, ...}` so the
+// SAME startEntity()/runStep()/resume()/skip() machinery serves the two new
+// financial sources (RS Taxpayers Registry / MyGov Debtor Registry) without
+// a parallel copy of this bookkeeping per source. Safe to rename internally
+// — the WIRE contract research-agent depends on (`result.source === 'enreg'`
+// + `result.forEntity`) is unaffected, since it was already computed from
+// `key`/`forEntity` at the point a result crosses into job.results, never
+// from this type's own tag.
+export type StepDescriptor = { type: 'source'; key: 'tas' | 'msmap' | 'mygov' | 'enreg' | 'napr' } | { type: 'entity'; source: 'enreg' | 'rstax' | 'debtor'; idCode: string | null; name: string };
 
 export interface ResearchJob {
   id: string;
@@ -42,7 +52,7 @@ export function buildInitialSteps(job: Pick<ResearchJob, 'mode'>): StepDescripto
  * ABSENCE of forEntity for a primary-source step. */
 export function stepMatchesResult(step: StepDescriptor | undefined, r: { source: string; forEntity?: { idCode: string | null } | null }): boolean {
   if (!step) return false;
-  if (step.type === 'entity_enreg') return r.source === 'enreg' && r.forEntity?.idCode === step.idCode;
+  if (step.type === 'entity') return r.source === step.source && r.forEntity?.idCode === step.idCode;
   return r.source === step.key && !r.forEntity;
 }
 
@@ -53,9 +63,19 @@ export function primaryStepsRemain(steps: StepDescriptor[], fromIndex: number): 
   return steps.slice(fromIndex).some((s) => s.type === 'source');
 }
 
+// Unchanged in effect from before this generalization: the in-job
+// EntityQueue auto-trigger (fired once every PRIMARY step has reported —
+// see ResearchOrchestrator.run()) still only ever queues 'enreg' lookups.
+// RS Taxpayers / MyGov Debtor are deliberately NOT auto-fired here for
+// every text-scanned entity (that would be 2 extra real browser sessions
+// per candidate, most of them irrelevant) — they are instead triggered
+// only for the SAME single primary developer/company entity research-agent
+// already decided was worth an ENREG lookup, via the closed-loop
+// /research/rstax-entity and /research/debtor-entity endpoints (mirroring
+// /research/enreg-entity — see index.ts and ResearchOrchestrator.startEntity()).
 export function buildEntitySteps(confirmedEntities: { identificationCode: string | null; name: string }[], maxEntities: number): StepDescriptor[] {
   return confirmedEntities
     .filter((e) => e.identificationCode)
     .slice(0, maxEntities)
-    .map((e) => ({ type: 'entity_enreg', idCode: e.identificationCode as string, name: e.name }));
+    .map((e) => ({ type: 'entity', source: 'enreg', idCode: e.identificationCode as string, name: e.name }));
 }

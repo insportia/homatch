@@ -228,11 +228,35 @@ export class ResearchOrchestrator {
         if (keep) {
           job.status = 'WAITING_HUMAN';
           job.stage = 'CAPTCHA_REQUIRED';
+          // preserveHumanSession() shape, per the 2026-09-06 CAPTCHA/human-
+          // verification UX mandate ("write it more strictly so it doesn't
+          // accidentally leave a small/cropped CAPTCHA"): any CAPTCHA/
+          // human-verification screen must be shown large enough for a
+          // human to solve comfortably — desktop approx. 900-1100px wide,
+          // max 90vh, scrollable and uncropped; mobile full-screen. The
+          // SAME browser/context/page/session (this job's `sessions` Map
+          // entry, keyed by `job.id`) is preserved and resumed after
+          // successful human verification — see resume()/skip() below,
+          // which never call newContext()/newPage()/goto(sourceUrl)/
+          // restartWorker(). `sessionId` is `job.id` itself: it is exactly
+          // the identifier the frontend already uses (as `jobId`) to
+          // address this same paused session via /research/:id/*.
+          // recommendedWidth/recommendedMaxHeight/fullInteractiveSession/
+          // scrollable are UX hints for any consumer of this contract; the
+          // current frontend (ResearchCaptchaModal.tsx's v30 CAPTCHA UX
+          // overhaul) already independently renders within these bounds
+          // (sm:w-[min(1100px,94vw)] sm:max-h-[90vh], scrollable image
+          // area, uncropped <img>, full-screen on mobile).
           job.humanVerification = {
+            sessionId: job.id,
             source: step.type === 'entity' ? step.source : step.key,
             step,
             url: result.finalUrl || result.sourceUrl,
             expiresAt: new Date(Date.now() + TTL).toISOString(),
+            recommendedWidth: 1100,
+            recommendedMaxHeight: '90vh',
+            fullInteractiveSession: true,
+            scrollable: true,
             message: 'წყარომ მოითხოვა ადამიანის დადასტურება. დაასრულეთ ეს შემოწმება ან გამოტოვეთ ეს წყარო — იგივე სესია ავტომატურად გაგრძელდება ან კვლევა გააგრძელებს დანარჩენ წყაროებზე.',
           };
           return;

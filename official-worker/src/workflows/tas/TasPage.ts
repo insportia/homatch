@@ -1,13 +1,14 @@
 // TasPage.ts — the TAS Page Object. Ported from the pre-refactor
-// tasAdapter() in index.js; row/document traversal delegates to the shared
-// browser/ResultRowExhauster.ts (used identically by MyGovPage — both
-// sources expose a result list that must be fully opened/read/returned).
+// tasAdapter() in index.js; row/document traversal uses TAS's OWN
+// TasResultExhauster.ts (forked out of the former shared
+// browser/ResultRowExhauster.ts per the "one source = one worker = one real
+// live contract" mandate — TAS no longer shares this code with MyGov).
 //
 // Playwright-touching — NOT unit-testable in this sandbox. Local-syntax-
 // checked via `tsc --noEmit` only.
 import type { Page } from 'playwright';
 import { interact, waitForResultSignal, hasNoResultPhrase, totalFoundCount, pollForSelectorVisible } from '../../browser/BrowserSession.js';
-import { exhaustResultRows } from '../../browser/ResultRowExhauster.js';
+import { exhaustTasResultRows } from './TasResultExhauster.js';
 import { CADASTRAL_INPUT_SELECTORS, DWR_NETWORK_PATTERN, TAS_URL, TAS_SEARCH_MENU_LABEL } from './selectors.js';
 
 export class TasPage {
@@ -79,6 +80,6 @@ export class TasPage {
   }
 
   async exhaustResultRows(page: Page, expectedCount: number | null = null) {
-    return exhaustResultRows(page, 'tas', { expectedCount });
+    return exhaustTasResultRows(page, expectedCount);
   }
 }

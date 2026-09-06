@@ -9,7 +9,7 @@ import type { Page } from 'playwright';
 import { newMyGovFsm } from './MyGovState.js';
 import { MyGovPage } from './MyGovPage.js';
 import { canMarkMygovExhausted, assertCorrectSearchContext, assertPropertySearchContextConfirmed } from './assertions.js';
-import { exhaustResultRows } from '../../browser/ResultRowExhauster.js';
+import { exhaustMygovResultRows } from './MyGovResultExhauster.js';
 import { BrowserTrace } from '../../browser/BrowserTrace.js';
 import { challenge } from '../../browser/BrowserSession.js';
 import { computeMygovTraversal } from '../../state/transitions.js';
@@ -181,7 +181,7 @@ export async function runMyGovWorkflow(page: Page, ctx: any, query: string, enti
     }
 
     fsm.transition('RESULTS_RETURNED');
-    const exhaustion = await exhaustResultRows(activePage, 'mygov');
+    const exhaustion = await exhaustMygovResultRows(activePage);
     fsm.transition('RESULTS_ENUMERATED', `${exhaustion.rowsDiscoveredBySelector} row(s) found`);
     trace.record({
       stateBefore: 'RESULTS_RETURNED',

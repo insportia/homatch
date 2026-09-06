@@ -1,13 +1,19 @@
-// RowExhaustionHeuristics.ts — the PURE decision logic pulled out of
-// browser/ResultRowExhauster.ts specifically so it is unit-testable without
-// a browser. This is the direct regression-test target for the confirmed
-// production bug: TAS's anchor-based row selector matched the site's own
-// 13-item nav menu (an incidental `<ul><li><a>` structure completely
-// unrelated to the ExtJS results grid, which renders with NO <a> anywhere —
-// see workflows/tas/selectors.ts) and `exhaustResultRows` trusted that pass
-// as "the results, fully visited" — reporting 13 visited / 0 documents read
-// against a real 24 discovered, and never even trying the grid-row
-// fallback strategy that would have found the actual results.
+// RowExhaustionHeuristics.ts — the PURE decision logic shared, as
+// infrastructure, by TAS's and MyGov's own independent row-traversal
+// modules (workflows/tas/TasResultExhauster.ts and
+// workflows/mygov/MyGovResultExhauster.ts — forked apart from the former
+// single shared browser/ResultRowExhauster.ts per the "one source = one
+// worker" mandate; this file holds no per-source search-decision logic, so
+// it stays a shared primitive like BrowserSession.ts's challenge()).
+// Pulled out specifically so it is unit-testable without a browser. This is
+// the direct regression-test target for the confirmed production bug:
+// TAS's anchor-based row selector matched the site's own 13-item nav menu
+// (an incidental `<ul><li><a>` structure completely unrelated to the ExtJS
+// results grid, which renders with NO <a> anywhere — see
+// workflows/tas/selectors.ts) and the exhauster trusted that pass as "the
+// results, fully visited" — reporting 13 visited / 0 documents read against
+// a real 24 discovered, and never even trying the grid-row fallback
+// strategy that would have found the actual results.
 //
 // `anchorPassLooksReal` is the gate that now prevents this: an anchor-based
 // pass is only trusted once it produced at least one real document AND (when

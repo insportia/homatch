@@ -4,10 +4,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps } from '../.tstest-build/orchestrator/ResearchContext.js';
 
-test('buildInitialSteps: cadastral mode is tas/msmap/mygov', () => {
+// Order per the 2026-09-06 "Fix Homatch Verify by implementing this exact
+// pipeline in code" mandate: TAS Map -> TAS Document -> NAPR Property.
+test('buildInitialSteps: cadastral mode is msmap/tas/mygov (TAS Map -> TAS Document -> NAPR Property)', () => {
   assert.deepEqual(
     buildInitialSteps({ mode: 'cadastral' }).map((s) => s.key),
-    ['tas', 'msmap', 'mygov']
+    ['msmap', 'tas', 'mygov']
   );
 });
 test('buildInitialSteps: property mode is enreg/msmap/napr', () => {

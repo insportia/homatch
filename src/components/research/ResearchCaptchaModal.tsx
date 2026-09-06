@@ -17,6 +17,19 @@ export function ResearchCaptchaModal({open,jobId,site,onComplete,onSkip,onClose}
  // no object-fit stretching) so the only real defect was the container
  // around it being too small; scrolling (not clipping) is the fallback when
  // a challenge is still bigger than the available area.
+ //
+ // 2026-09-06 mandate (verbatim requirement this component satisfies): "Any
+ // CAPTCHA/human-verification screen must be shown large enough for a human
+ // to solve comfortably: desktop approx. 900-1100px wide, max 90vh,
+ // scrollable and uncropped; mobile full-screen. Preserve and resume the
+ // exact same browser/context/page/session after successful human
+ // verification." The session-preservation half of that sentence is backend
+ // behavior (official-worker/src/orchestrator/ResearchOrchestrator.ts's
+ // resume()/skip(), which never call newContext()/newPage()/goto(sourceUrl)/
+ // restartWorker() — see that file's own comment on the WAITING_HUMAN
+ // `job.humanVerification` payload for the matching sessionId/
+ // recommendedWidth/recommendedMaxHeight/fullInteractiveSession/scrollable
+ // contract); this component is the sizing half.
  return <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4">
    <div className="w-full h-full sm:h-auto sm:w-[min(1100px,94vw)] sm:max-h-[90vh] rounded-none sm:rounded-2xl border-0 sm:border border-border bg-background shadow-2xl overflow-hidden flex flex-col">
      <div className="px-5 py-4 border-b flex items-center gap-3 bg-card shrink-0">

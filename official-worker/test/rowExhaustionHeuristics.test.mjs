@@ -1,17 +1,19 @@
 // rowExhaustionHeuristics.test.mjs — regression test for the confirmed
 // live TAS bug (job 197b4520-2446-4f3d-8688-54a8229db3b3, cadastral code
 // 01.18.06.019.055.03.01.603): TAS's own result counter reported 24
-// results, but browser/ResultRowExhauster.ts's anchor-based row selector
-// matched only the site's 13-item top nav menu (an incidental
-// `<ul><li><a>` structure — TAS's real ExtJS grid renders with NO <a>
-// anywhere, see workflows/tas/selectors.ts) and returned that as "the
-// results, fully visited," reading zero real documents from any of them.
+// results, but the anchor-based row selector (now in TAS's own
+// workflows/tas/TasResultExhauster.ts, forked from the former shared
+// browser/ResultRowExhauster.ts) matched only the site's 13-item top nav
+// menu (an incidental `<ul><li><a>` structure — TAS's real ExtJS grid
+// renders with NO <a> anywhere, see workflows/tas/selectors.ts) and
+// returned that as "the results, fully visited," reading zero real
+// documents from any of them.
 //
 // anchorPassLooksReal is the gate that must now reject that exact shape of
 // pass (some rows "visited," no real documents, far short of the source's
-// own reported count) so exhaustResultRows falls through to the ExtJS
-// grid-row strategy instead of reporting nav-menu noise as complete
-// research.
+// own reported count) so exhaustTasResultRows/exhaustMygovResultRows fall
+// through to the ExtJS grid-row strategy instead of reporting nav-menu
+// noise as complete research.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { anchorPassLooksReal } from '../.tstest-build/browser/RowExhaustionHeuristics.js';

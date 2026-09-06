@@ -39,8 +39,20 @@ export interface ResearchJob {
   _entityStepsAppended?: boolean;
 }
 
+// Cadastral-mode order (2026-09-06, "Fix Homatch Verify by implementing
+// this exact pipeline in code" mandate): TAS Map -> TAS Document -> NAPR
+// Property, matching the mandate's stated TasMapWorker -> TasDocumentWorker
+// -> NaprPropertyWorker sequence. Each primary step is independent of the
+// others' result data (see ResearchOrchestrator.runStep()'s dispatch — every
+// key is called with the same job `query`, never a previous step's output),
+// and the shared EntityQueue is only mined for follow-up steps once ALL
+// primary steps have reported (primaryStepsRemain, below) — so reordering
+// this array changes only presentation/traversal order, not correctness.
+// Property-mode order is left unchanged (the mandate's worker list does not
+// give an unambiguous property-mode sequence, and enreg/msmap/napr already
+// matches its own established behavior).
 export function buildInitialSteps(job: Pick<ResearchJob, 'mode'>): StepDescriptor[] {
-  const keys: StepDescriptor['type'] extends never ? never : Array<'tas' | 'msmap' | 'mygov' | 'enreg' | 'napr'> = job.mode === 'cadastral' ? ['tas', 'msmap', 'mygov'] : ['enreg', 'msmap', 'napr'];
+  const keys: StepDescriptor['type'] extends never ? never : Array<'tas' | 'msmap' | 'mygov' | 'enreg' | 'napr'> = job.mode === 'cadastral' ? ['msmap', 'tas', 'mygov'] : ['enreg', 'msmap', 'napr'];
   return keys.map((key) => ({ type: 'source', key }) as StepDescriptor);
 }
 

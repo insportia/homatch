@@ -71,14 +71,18 @@ export function detectPagination(text: string | null | undefined): PaginationInf
  * never turn into an unbounded crawl. */
 export const MAX_VIEWER_PAGES = 25;
 
-const DATE_PATTERNS = [/\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/, /\b(\d{4})[-.](\d{1,2})[-.](\d{1,2})\b/];
+// 2026-09 "report intelligence v2" mandate, Section 13: this used to
+// recognize only DD.MM.YYYY/YYYY-MM-DD, so any TAS document dated in
+// Georgian prose ("2023 წლის 29 ოქტომბერი") silently got documentDate=null
+// — starving HistoricalComparison.ts's ">=2 dated documents" gate of
+// evidence that was actually printed on the page. parseAnyDate() (shared
+// with ENREG's latest-application-date selection) also recognizes those
+// forms and normalizes every match to ISO yyyy-mm-dd, which
+// HistoricalComparison's own date parser already accepts (its YYYY-MM-DD
+// branch).
+import { parseAnyDate } from '../util/dateParse.js';
 export function extractDateFromText(t: string | null | undefined): string | null {
-  if (!t) return null;
-  for (const re of DATE_PATTERNS) {
-    const m = re.exec(t);
-    if (m) return m[0];
-  }
-  return null;
+  return parseAnyDate(t);
 }
 
 import { createHash } from 'node:crypto';

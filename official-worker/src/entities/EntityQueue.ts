@@ -13,6 +13,7 @@
 // confirmed() once between primary-source steps), not by this class.
 import { EntityDeduplicator, type EntityCandidate } from './EntityDeduplicator.js';
 import type { ResearchEntity, EntityDiscoveryRef } from './EntityTypes.js';
+import { isValidCompanyCandidate } from './EntityValidation.js';
 
 // Georgian legal-entity markers this recognizes (deliberately conservative
 // — real markers actually used in registry documents):
@@ -20,7 +21,17 @@ import type { ResearchEntity, EntityDiscoveryRef } from './EntityTypes.js';
 //   სს    - სააქციო საზოგადოება (JSC)
 //   ააიპ  - non-profit legal entity
 //   ინდივიდუალური მეწარმე - individual entrepreneur
-const ENTITY_MARKER = /(?:შპს|ააიპ|სს|ინდივიდუალურ(?:ი|ი\s*მეწარმე))/;
+//
+// 2026-09 "report intelligence v2" mandate, Section 5 regression (real
+// production job 1aa45cdf-a5cf-4dcc-b7a9-524cedb596ae): the previous
+// pattern's individual-entrepreneur alternative, `ინდივიდუალურ(?:ი|ი\s*
+// მეწარმე)`, matched the bare adjective "ინდივიდუალური" ("individual") ON
+// ITS OWN via its first branch — so a construction-permit phrase like
+// "ინდივიდუალური საცხოვრებელი სახლის მშენებლობისა" ("[permit for]
+// individual residential house construction") was misread as a
+// LEGAL_ENTITY candidate. "მეწარმე" (entrepreneur) is now mandatory
+// alongside "ინდივიდუალურ*" — the adjective alone can never match.
+const ENTITY_MARKER = /(?:შპს|ააიპ|სს|ინდივიდუალურ(?:ი|მა|ის|ს)?\s+მეწარმე)/;
 const ENTITY_NAME_RE = new RegExp(`(${ENTITY_MARKER.source})\\s*[«"“”'„“]?\\s*([^,.;\\n()«»"“”]{2,80})`, 'g');
 // Georgian legal-entity id codes are 9-digit numbers; only accepted within
 // a short window of a matched entity name (same sentence/line), never as a
@@ -41,7 +52,13 @@ export function extractEntityCandidates(text: string | null | undefined, { windo
     const end = Math.min(text.length, m.index + m[0].length + windowChars);
     const window = text.slice(start, end);
     const idMatch = ID_CODE_RE.exec(window);
-    out.push({ name: rawName, idCode: idMatch ? idMatch[1] : null });
+    const idCode = idMatch ? idMatch[1] : null;
+    // Secondary guard (Section 5): even with the marker regex tightened,
+    // require the full candidate to independently look like a company
+    // before queueing it — never a description of a permit/project that
+    // merely happens to contain a legal-form word.
+    if (!isValidCompanyCandidate(rawName, idCode, window)) continue;
+    out.push({ name: rawName, idCode });
   }
   return out;
 }
@@ -62,6 +79,18 @@ export class EntityQueue {
 
   all(): ResearchEntity[] {
     return this.dedup.all();
+  }
+
+  getById(idCode: string): ResearchEntity | undefined {
+    return this.dedup.getById(idCode);
+  }
+
+  /** See EntityDeduplicator.mergePreviousName() — folds a company's own
+   * former/previous registered name into its existing record instead of
+   * letting it surface as a separate "discovered related company". */
+  recordPreviousName(idCode: string | null | undefined, previousName: string, opts: { from?: string | null; to?: string | null } = {}): void {
+    if (!idCode || !previousName) return;
+    this.dedup.mergePreviousName(idCode, previousName, opts);
   }
 
   /** Entities with a confirmed identification code — the only ones ENREG

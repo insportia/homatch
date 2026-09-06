@@ -79,9 +79,12 @@ export async function runTasMapWorker(page: Page, query: string, ledger?: Eviden
     // flow (that concept belonged only to the old ms.gov.ge direct-nav UI).
     fsm.transition('CADASTRAL_SECTION_EXPANDED', 'tas.ge map popup exposes the layer tree directly, no separate panel toggle');
 
-    const layerResults = await pageObj.enableRequiredLayers(mapPage);
+    const { results: layerResults, diagnostics: layerDiagnostics } = await pageObj.enableRequiredLayers(mapPage);
     signals.layersEnabled = assert.assertAllRequiredLayersEnabled(layerResults);
-    trace.record({ stateBefore: fsm.state, action: 'ENABLE_LAYERS', actualOutcome: JSON.stringify(layerResults), stateAfter: fsm.state });
+    // layerDiagnostics (treeNodeCount/expandedNodeCount/matchedLayers/
+    // checkboxBefore/checkboxAfter) is internal-only — recorded in the
+    // trace for debugging a live run, never forwarded to customer UI.
+    trace.record({ stateBefore: fsm.state, action: 'ENABLE_LAYERS', actualOutcome: JSON.stringify({ layerResults, layerDiagnostics }), stateAfter: fsm.state });
     // Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8: when the
     // required layers failed to enable, execution used to fall through
     // unconditionally into `fsm.transition('SEARCH_CONTROL_READY', ...)`

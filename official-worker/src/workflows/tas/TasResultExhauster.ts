@@ -195,7 +195,6 @@ const ANCHOR_ROW_SELECTOR =
  * no equivalent for. */
 export async function exhaustTasResultRows(scope: Page | any, expectedCount: number | null = null): Promise<TasRowExhaustionResult> {
   const ownerPage: Page = typeof (scope as any)?.page === 'function' ? (scope as any).page() : (scope as Page);
-  const nav = new NavigationStack('TAS_RESULTS');
   const rowDocuments: TasRowExhaustionResult['rowDocuments'] = [];
   const skippedReasons: TasRowExhaustionResult['skippedReasons'] = [];
   try {
@@ -203,16 +202,30 @@ export async function exhaustTasResultRows(scope: Page | any, expectedCount: num
     const anchorRows = (scope as any).locator(ANCHOR_ROW_SELECTOR);
     const anchorCount = Math.min(await anchorRows.count().catch(() => 0), MAX_RESULT_ROWS);
     let anchorPassAttempted = false;
-    let anchorVisitedCount = 0;
     if (anchorCount > 0) {
       anchorPassAttempted = true;
       const anchorDocs: TasRowExhaustionResult['rowDocuments'] = [];
       const anchorSkips: TasRowExhaustionResult['skippedReasons'] = [];
+      // 2026-09 "report intelligence v2" mandate, Section 2: real production
+      // job 1aa45cdf-a5cf-4dcc-b7a9-524cedb596ae showed rowsVisited (19)
+      // EXCEEDING resultsDiscovered (18) — impossible by construction once
+      // visited is tracked as a SUBSET of one canonical discovered-key set
+      // per pass, rather than one NavigationStack instance accumulating
+      // visits across BOTH the anchor pass and the grid-row fallback pass
+      // (the old shared `nav` counted anchor-pass visits into the same
+      // total even when the anchor pass was later rejected as page-chrome,
+      // not real results — see anchorPassLooksReal below). Each pass now
+      // gets its own key sets and its own NavigationStack.
+      const anchorNav = new NavigationStack('TAS_RESULTS_ANCHOR');
+      const anchorDiscoveredKeys = new Set<string>();
+      const anchorVisitedKeys = new Set<string>();
       for (let i = 0; i < anchorCount; i++) {
         const row = anchorRows.nth(i);
         const link = row.locator('a').first();
         const href = await link.getAttribute('href').catch(() => null);
         const label = ((await link.innerText().catch(() => '')) as string)?.trim() || `row-${i}`;
+        const key = href ? `href:${href}` : `idx:${i}:${label}`;
+        anchorDiscoveredKeys.add(key);
         if (!href || /^javascript:|^#$/.test(href)) {
           anchorSkips.push({ label, reason: 'NO_USABLE_HREF' });
           continue;
@@ -223,10 +236,10 @@ export async function exhaustTasResultRows(scope: Page | any, expectedCount: num
         } catch {
           /* keep href as-is */
         }
-        if (!nav.enter(label, full)) continue;
+        if (!anchorNav.enter(label, full)) continue;
         const cls = classifyDocumentLink({ url: full, label }, { pageUrl: scopeUrl() });
         if (!cls.worthOpening) {
-          nav.back();
+          anchorNav.back();
           continue;
         }
         try {
@@ -236,6 +249,7 @@ export async function exhaustTasResultRows(scope: Page | any, expectedCount: num
           const rowText = await pageText(rowPage).catch(() => '');
           if (rowText && rowText.trim().length > 20) {
             anchorDocs.push({ url: full, label, rawText: rowText.slice(0, 50000), source: `${SOURCE}_result_row`, complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 });
+            anchorVisitedKeys.add(key);
             const nested = await readNestedDocuments(rowPage, rowPage, full);
             if (nested.length) anchorDocs.push(...nested);
           } else anchorSkips.push({ label, reason: 'ROW_PAGE_PRODUCED_NO_TEXT' });
@@ -243,52 +257,65 @@ export async function exhaustTasResultRows(scope: Page | any, expectedCount: num
         } catch (e) {
           anchorSkips.push({ label, reason: `ROW_OPEN_FAILED: ${String(e).slice(0, 120)}` });
         }
-        nav.back();
+        anchorNav.back();
       }
-      anchorVisitedCount = nav.visitedCount();
+      const anchorVisitedCount = anchorVisitedKeys.size;
+      const anchorDiscoveredCount = anchorDiscoveredKeys.size;
       if (anchorPassLooksReal(anchorVisitedCount, anchorDocs.length, expectedCount, MAX_RESULT_ROWS)) {
         rowDocuments.push(...anchorDocs);
         skippedReasons.push(...anchorSkips);
-        return { rowDocuments, trace: nav.trace(), rowsVisited: anchorVisitedCount, rowsDiscoveredBySelector: anchorCount, skippedReasons, rowStrategy: 'ANCHOR_BASED' };
+        return { rowDocuments, trace: anchorNav.trace(), rowsVisited: anchorVisitedCount, rowsDiscoveredBySelector: anchorDiscoveredCount, skippedReasons, rowStrategy: 'ANCHOR_BASED' };
       }
-      rowDocuments.push(...anchorDocs);
+      // Rejected as likely page-chrome (nav/menu), not real results — kept
+      // ONLY as a diagnostic summary line. Its documents are never merged
+      // into the real result set the grid-row fallback below produces —
+      // doing so would silently mix nav-menu junk into genuine TAS
+      // documents and inflate the counters this fix exists to make honest.
       skippedReasons.push(...anchorSkips, {
         label: '(anchor-pass)',
         reason: `ANCHOR_PASS_LIKELY_PAGE_CHROME_NOT_RESULTS: visited=${anchorVisitedCount} documentsFound=${anchorDocs.length} expectedResults=${expectedCount ?? 'unknown'} — falling back to grid-row strategy`,
       });
     }
+    const gridNav = new NavigationStack('TAS_RESULTS_GRID');
     const gridRows = (scope as any).locator(GRID_ROW_SELECTOR);
     const gridCount = Math.min(await gridRows.count().catch(() => 0), MAX_RESULT_ROWS);
+    const gridDiscoveredKeys = new Set<string>();
+    const gridVisitedKeys = new Set<string>();
     for (let i = 0; i < gridCount; i++) {
       const row = gridRows.nth(i);
       const label = (((await row.innerText().catch(() => '')) as string)?.trim().slice(0, 140)) || `grid-row-${i}`;
+      const key = `grid:${i}:${label}`;
+      gridDiscoveredKeys.add(key);
       if (!label.trim()) {
         skippedReasons.push({ label: `grid-row-${i}`, reason: 'EMPTY_ROW_TEXT' });
         continue;
       }
-      if (!nav.enter(label, `${SOURCE}-grid-row-${i}-${label.slice(0, 40)}`)) continue;
+      if (!gridNav.enter(label, `${SOURCE}-grid-row-${i}-${label.slice(0, 40)}`)) continue;
       try {
         const detail = await openTasChild(scope, ownerPage, row);
         if (detail) {
           rowDocuments.push({ url: detail.url, label, rawText: detail.text.slice(0, 50000), source: `${SOURCE}_result_row`, complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 });
+          gridVisitedKeys.add(key);
           if (detail.nestedDocs?.length) rowDocuments.push(...detail.nestedDocs);
         } else skippedReasons.push({ label, reason: 'ROW_INTERACTION_PRODUCED_NO_DETECTABLE_CONTENT' });
       } catch (e) {
         skippedReasons.push({ label, reason: `ROW_OPEN_FAILED: ${String(e).slice(0, 120)}` });
       }
-      nav.back();
+      gridNav.back();
     }
     if (gridCount >= MAX_RESULT_ROWS) skippedReasons.push({ label: '(overflow)', reason: 'ROW_LIMIT_CAP_REACHED' });
     const strategy = anchorPassAttempted ? (gridCount > 0 ? 'GRID_ROW_DBLCLICK_AFTER_ANCHOR_REJECTED' : 'NO_GRID_MATCH_AFTER_ANCHOR_REJECTED') : gridCount > 0 ? 'GRID_ROW_DBLCLICK' : 'NO_ROW_SELECTOR_MATCHED';
     return {
       rowDocuments,
-      trace: nav.trace(),
-      rowsVisited: nav.visitedCount(),
-      rowsDiscoveredBySelector: Math.max(anchorPassAttempted ? anchorCount : 0, gridCount),
+      trace: gridNav.trace(),
+      // Invariant: rowsVisited can never exceed rowsDiscoveredBySelector —
+      // gridVisitedKeys is constructed as a subset of gridDiscoveredKeys.
+      rowsVisited: gridVisitedKeys.size,
+      rowsDiscoveredBySelector: gridDiscoveredKeys.size,
       skippedReasons,
       rowStrategy: strategy,
     };
   } catch {
-    return { rowDocuments, trace: nav.trace(), rowsVisited: nav.visitedCount(), rowsDiscoveredBySelector: 0, skippedReasons, rowStrategy: 'ERROR' };
+    return { rowDocuments, trace: [], rowsVisited: 0, rowsDiscoveredBySelector: 0, skippedReasons, rowStrategy: 'ERROR' };
   }
 }

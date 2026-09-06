@@ -104,7 +104,13 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     let exhaustion = await pageObj.exhaustResultRows(resultScope, resultsDiscovered);
     fsm.transition('CHILDREN_ENUMERATED', `${exhaustion.rowsDiscoveredBySelector} row(s) found by ${exhaustion.rowStrategy}`);
 
-    let finalDiscovered = resultsDiscovered != null ? resultsDiscovered : exhaustion.rowsDiscoveredBySelector;
+    // 2026-09 "report intelligence v2" mandate, Section 2: never let the
+    // reported "discovered" count be smaller than the number of rows we
+    // actually, concretely visited — TAS's own "total results" banner text
+    // is one signal among others, not infallible, and a customer/log-facing
+    // "19 visited of 18 discovered" is a self-contradiction regardless of
+    // which upstream signal produced it.
+    let finalDiscovered = Math.max(resultsDiscovered != null ? resultsDiscovered : exhaustion.rowsDiscoveredBySelector, exhaustion.rowsVisited);
     let invariantInput = {
       resultsDiscovered: finalDiscovered,
       resultsVisited: exhaustion.rowsVisited,

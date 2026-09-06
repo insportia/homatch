@@ -1023,25 +1023,63 @@ test('calculateMarketPosition: UNKNOWN when no comparable carries a usable numer
 });
 
 // ---- sanitizeCustomerReport() / CUSTOMER_REPORT_STRIP_KEYS / sanitizeForCustomer()
-// (2026-09-06 correction) — copied verbatim from index.ts. Explicit product
-// requirement: the customer HTTP response must never expose which worker/
-// source/provider produced a finding (source, sourceName, sourceUrl, url,
-// finalUrl, startUrl, retrievalMethod, browserOfficial, trace,
-// officialSourceCoverage, or any of the officialSources* counters) —
-// wherever nested — while everything persisted to result_json (the
-// internal DB/admin copy) stays completely unchanged.
+// (2026-09 "report intelligence v2" mandate + addendum — copied verbatim
+// from index.ts, UPDATED this pass to match the real current source).
+// Explicit product requirement: the customer HTTP response must never
+// expose which worker/source/provider produced a finding (source,
+// sourceName, sourceUrl, url, finalUrl, startUrl, retrievalMethod,
+// browserOfficial, trace, officialSourceCoverage, or any of the
+// officialSources* counters) — wherever nested, AND must never contain an
+// ordinary provider/domain name or internal technical vocabulary EMBEDDED
+// inside a prose string (sanitizeCustomerString, new this pass) — while
+// everything persisted to result_json (the internal DB/admin copy) stays
+// completely unchanged. CUSTOMER_FACING_URL_KEYS is the addendum's one
+// named exception: a hand-verified OFFICIAL GOVERNMENT portal URL inside a
+// manualVerificationActions card must survive (never treated as a raw
+// leaked source URL).
 const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial', 'source', 'sourceName']);
-function sanitizeCustomerReport(value) {
-  if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v));
+const FORBIDDEN_SOURCE_NAME_RE =
+  /\b(myhome(?:\.ge)?|ss\.ge|home\.ge|korter(?:\.ge)?|estatehub(?:\.ge)?|villion\.ge|place\.ge|livo\.ge|myestate\.ge|address\.ge|lalafo(?:\.ge)?|OLX|LinkedIn|Facebook|Instagram|YouTube|Google(?:\s+Search)?|OpenAI)(?:-[ა-ჰ]+)?(?![a-zA-Z0-9])/gi;
+const TECHNICAL_LEAK_RE =
+  /\b(iframe not found|SUBMIT_FAILED|SEARCH_CONTROL_NOT_FOUND|FRAME_NOT_FOUND|WAITING_HUMAN|SKIPPED_HUMAN_VERIFICATION|worker failed|technical failure|illegal transition|IllegalTransitionError|selector not found|browser error|Playwright|FSM state|FSM|source coverage|worker status|NO_RESULT_CONFIRMED|SEARCH_CONFIRMED|resultConfirmed|noResultConfirmed)\b/g;
+function sanitizeCustomerString(input) {
+  if (!input) return input;
+  let s = input;
+  s = s.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/gi, '$1');
+  s = s.replace(/https?:\/\/\S+/gi, '');
+  s = s.replace(/\((?:via\s+)?[^()]*(?:myhome|ss\.ge|home\.ge|korter|estatehub|villion\.ge|linkedin|facebook|instagram)[^()]*\)/gi, '');
+  s = s.replace(FORBIDDEN_SOURCE_NAME_RE, '');
+  s = s.replace(TECHNICAL_LEAK_RE, '');
+  s = s
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;])/g, '$1')
+    .replace(/^[\s,;.-]+|[\s,;-]+$/g, '')
+    .trim();
+  return s;
+}
+const CUSTOMER_FACING_URL_KEYS = new Set(['officialPortalUrl']);
+function sanitizeCustomerReport(value, key) {
+  if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v, key));
   if (value && typeof value === 'object') {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
       if (CUSTOMER_REPORT_STRIP_KEYS.has(k)) continue;
-      out[k] = sanitizeCustomerReport(v);
+      out[k] = sanitizeCustomerReport(v, k);
     }
     return out;
   }
+  if (typeof value === 'string') return key && CUSTOMER_FACING_URL_KEYS.has(key) ? value : sanitizeCustomerString(value);
   return value;
+}
+const FORBIDDEN_LEAK_TOKENS = ['myhome', 'korter', 'estatehub', 'home.ge', 'ss.ge', 'villion.ge', 'linkedin', 'facebook', 'utm_source', 'sourceurl', 'sourcename', 'retrievalmethod', 'playwright', 'iframe not found', 'submit_failed', 'frame_not_found', 'technical failure'];
+function findLeaks(customerJson) {
+  const raw = JSON.stringify(customerJson).toLowerCase();
+  return FORBIDDEN_LEAK_TOKENS.filter((token) => raw.includes(token));
+}
+function assertNoLeaks(customerJson) {
+  const leaks = findLeaks(customerJson);
+  if (leaks.length) throw new Error(`CUSTOMER_LEAK:${leaks.join(',')}`);
 }
 function sanitizeForCustomer(job) {
   if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
@@ -1067,6 +1105,16 @@ function sanitizeForCustomer(job) {
   delete r._financialQueue;
   delete r._financialReturnStage;
   delete r._captchaReturnStage;
+  const leaks = findLeaks(r);
+  if (leaks.length) {
+    let raw = JSON.stringify(r);
+    for (const token of leaks) raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '');
+    try {
+      return { ...job, result_json: JSON.parse(raw) };
+    } catch {
+      /* fall through */
+    }
+  }
   return { ...job, result_json: r };
 }
 
@@ -1115,4 +1163,262 @@ test('sanitizeForCustomer: a non-COMPLETE job (e.g. WAITING_HUMAN) is returned u
   assert.equal(out, job);
   assert.equal(out.result_json._worker.jobId, 'abc');
   assert.equal(out.result_json.source, 'tas_map');
+});
+
+// ---- sanitizeCustomerString() / findLeaks() / assertNoLeaks() (addendum
+// Sections 5/6/7/10/12) — content-level companion to the key-level strip
+// above: a provider name, raw URL, markdown link, or technical-failure
+// phrase embedded INSIDE a prose sentence must never reach the customer,
+// even though no field name matches CUSTOMER_REPORT_STRIP_KEYS.
+
+test('sanitizeCustomerString: strips a markdown link down to its label, a bare raw URL entirely, an ordinary provider name, and a technical-failure phrase — while leaving real prose intact', () => {
+  assert.equal(sanitizeCustomerString('იხილეთ ბინა [MyHome-ზე](https://myhome.ge/listing/1)'), 'იხილეთ ბინა');
+  assert.equal(sanitizeCustomerString('სრული ინფორმაცია: https://ss.ge/en/x?utm_source=abc'), 'სრული ინფორმაცია:');
+  assert.equal(sanitizeCustomerString('პროექტი გამოქვეყნებულია Korter-ზე და Facebook-ზე'), 'პროექტი გამოქვეყნებულია და');
+  assert.equal(sanitizeCustomerString('worker failed with SUBMIT_FAILED during search'), 'with during search');
+  assert.equal(sanitizeCustomerString('შენობა 8 სართულიანია, პარკინგით და ეზოთი'), 'შენობა 8 სართულიანია, პარკინგით და ეზოთი');
+});
+test('sanitizeCustomerString: a normal sentence with nothing to remove keeps its trailing period intact (regression: the cleanup step must never eat legitimate sentence punctuation, only orphaned separators left behind by an actual removal)', () => {
+  assert.equal(sanitizeCustomerString('A clean summary with no leaks.'), 'A clean summary with no leaks.');
+  assert.equal(sanitizeCustomerString('ობიექტი მდებარეობს კარგ ლოკაციაზე.'), 'ობიექტი მდებარეობს კარგ ლოკაციაზე.');
+});
+test('sanitizeCustomerString: null/empty input never throws', () => {
+  assert.equal(sanitizeCustomerString(null), null);
+  assert.equal(sanitizeCustomerString(''), '');
+});
+
+test('sanitizeCustomerReport: CUSTOMER_FACING_URL_KEYS keeps a hand-verified official portal URL intact by key name, while an ordinary string field holding a raw URL is still stripped (the exact bug a key-blind sanitizer would introduce)', () => {
+  const out = sanitizeCustomerReport({ officialPortalUrl: 'https://enreg.reestri.gov.ge', someOtherNote: 'see https://myhome.ge/listing/1 for details' });
+  assert.equal(out.officialPortalUrl, 'https://enreg.reestri.gov.ge');
+  assert.equal(out.someOtherNote, 'see for details');
+});
+
+test('findLeaks: detects every forbidden token anywhere in the JSON, case-insensitively; assertNoLeaks throws a CUSTOMER_LEAK error naming them', () => {
+  const dirty = { note: 'Listed on MyHome and Korter', tech: 'SUBMIT_FAILED' };
+  const leaks = findLeaks(dirty);
+  assert.ok(leaks.includes('myhome'));
+  assert.ok(leaks.includes('korter'));
+  assert.ok(leaks.includes('submit_failed'));
+  assert.throws(() => assertNoLeaks(dirty), /^Error: CUSTOMER_LEAK:/);
+});
+test('findLeaks: a genuinely clean customer object has zero leaks; assertNoLeaks does not throw', () => {
+  const clean = { summary: 'ობიექტი მდებარეობს კარგ ლოკაციაზე.', market: { activeMedianPricePerSqm: '1900' } };
+  assert.deepEqual(findLeaks(clean), []);
+  assert.doesNotThrow(() => assertNoLeaks(clean));
+});
+
+// ---- computeMarketRanges() / calculateMarketPosition() (mandate item 10,
+// addendum Section 8) — market price must be a RANGE (active min/median/max
+// distinct from a developer's marketing "starting" price and from a
+// historical/expired reference), never one collapsed stale number, and only
+// ACTIVE + RESIDENTIAL comparables may ever drive a *current* figure.
+
+// parseNumericPricePerSqm/median/calculateMarketPosition are already
+// defined above (line ~958) from the pre-existing "final alignment pass"
+// test section — reused here rather than redeclared.
+function computeMarketRanges(comparables) {
+  const list = Array.isArray(comparables) ? comparables : [];
+  const isResidential = (c) => !c?.propertyType || c.propertyType === 'RESIDENTIAL';
+  const active = list.filter((c) => c?.listingStatus === 'ACTIVE' && isResidential(c));
+  const historical = list.filter((c) => ['EXPIRED', 'REMOVED', 'SOLD'].includes(c?.listingStatus) && isResidential(c));
+  const activeValues = active.map((c) => parseNumericPricePerSqm(c?.pricePerSqm)).filter((n) => n != null);
+  const historicalValues = historical.map((c) => parseNumericPricePerSqm(c?.pricePerSqm)).filter((n) => n != null);
+  return {
+    activeMinPricePerSqm: activeValues.length ? Math.min(...activeValues) : null,
+    activeMedianPricePerSqm: median(activeValues),
+    activeMaxPricePerSqm: activeValues.length ? Math.max(...activeValues) : null,
+    activeComparablesUsed: activeValues.length,
+    historicalMedianPricePerSqm: median(historicalValues),
+    historicalComparablesUsed: historicalValues.length,
+  };
+}
+
+test('computeMarketRanges: an expired listing never pulls the active range, a commercial listing never enters a residential range, and an UNKNOWN-status listing enters neither bucket', () => {
+  const comparables = [
+    { pricePerSqm: '1850', listingStatus: 'ACTIVE', propertyType: 'RESIDENTIAL' },
+    { pricePerSqm: '1900', listingStatus: 'ACTIVE', propertyType: 'RESIDENTIAL' },
+    { pricePerSqm: '2100', listingStatus: 'ACTIVE', propertyType: 'RESIDENTIAL' },
+    { pricePerSqm: '1200', listingStatus: 'EXPIRED', propertyType: 'RESIDENTIAL' },
+    { pricePerSqm: '3000', listingStatus: 'ACTIVE', propertyType: 'COMMERCIAL' },
+    { pricePerSqm: '1750', listingStatus: 'UNKNOWN', propertyType: 'RESIDENTIAL' },
+  ];
+  const ranges = computeMarketRanges(comparables);
+  assert.equal(ranges.activeComparablesUsed, 3);
+  assert.equal(ranges.activeMinPricePerSqm, 1850);
+  assert.equal(ranges.activeMedianPricePerSqm, 1900);
+  assert.equal(ranges.activeMaxPricePerSqm, 2100);
+  assert.equal(ranges.historicalComparablesUsed, 1);
+  assert.equal(ranges.historicalMedianPricePerSqm, 1200);
+});
+test('computeMarketRanges: no comparables at all -> every figure null, zero counts, never a fabricated range', () => {
+  const ranges = computeMarketRanges([]);
+  assert.deepEqual(ranges, { activeMinPricePerSqm: null, activeMedianPricePerSqm: null, activeMaxPricePerSqm: null, activeComparablesUsed: 0, historicalMedianPricePerSqm: null, historicalComparablesUsed: 0 });
+});
+test('calculateMarketPosition: a developer STARTING price (excluded upstream by passing targetPricePerSqm=null) never yields a false PREMIUM/DISCOUNT — position is UNKNOWN', () => {
+  const active = [{ pricePerSqm: '1850' }, { pricePerSqm: '1900' }, { pricePerSqm: '2100' }];
+  const pos = calculateMarketPosition({ targetPricePerSqm: null, comparables: active });
+  assert.equal(pos.position, 'UNKNOWN');
+  assert.equal(pos.marketMedianPricePerSqm, 1900);
+});
+test('calculateMarketPosition: a real CURRENT_LISTING subject price is correctly classified against the active-only median', () => {
+  const active = [{ pricePerSqm: '1850' }, { pricePerSqm: '1900' }, { pricePerSqm: '2100' }];
+  const pos = calculateMarketPosition({ targetPricePerSqm: 2200, comparables: active });
+  assert.equal(pos.position, 'PREMIUM');
+});
+
+// ---- buildLegalStatusMatrix() / buildManualVerificationActions() (mandate
+// item 16 / item 8, addendum Sections 1-3) — copied verbatim (English-locale
+// slice; full 6-locale objects are covered by the i18n coverage checks
+// elsewhere in this repo). Replaces one broad "clean" conclusion with 6
+// independently evidenced categories, each with a concrete action card for
+// every unresolved gap.
+
+const LEGAL_STATUS_CATEGORY_EN = {
+  companyRegistration: 'Company registration', debtorRegistry: 'Debtor registry', taxpayerStatus: 'Taxpayer status',
+  propertyEncumbrances: 'Property encumbrances', constructionPermissions: 'Construction permissions', commissioning: 'Commissioning',
+};
+const LEGAL_STATUS_EXPLANATION_EN = {
+  CONFIRMED_POSITIVE: 'Confirmed by a public source — no adverse evidence was found.',
+  CONFIRMED_ATTENTION: 'Confirmed by a public source, but this requires additional attention.',
+  NOT_CONFIRMED: 'Not yet confirmed by public sources at this stage.',
+  HUMAN_VERIFICATION_REQUIRED: 'Requires additional human verification — the automated check could not be completed.',
+};
+function legalStatusEntry(category, status) {
+  return { status, label: LEGAL_STATUS_CATEGORY_EN[category], note: LEGAL_STATUS_EXPLANATION_EN[status] };
+}
+function sourceOutcome(officialStatus, source) {
+  if ((officialStatus?.officialSourcesConfirmedFound || []).some((r) => r.source === source)) return 'FOUND';
+  if ((officialStatus?.officialSourcesConfirmedNoResult || []).some((r) => r.source === source)) return 'NO_RESULT';
+  if ((officialStatus?.officialSourcesSkipped || []).some((r) => r.source === source)) return 'SKIPPED';
+  return 'NOT_VERIFIED';
+}
+function classifyOfficialDocumentKind(doc) {
+  const text = `${doc?.title || ''} ${doc?.type || ''}`;
+  if (/(ექსპლუატაციაში\s*მიღებ|დასრულების\s*აქტ|commissioning|completion\s*act)/i.test(text)) return 'COMMISSIONING';
+  if (/(მშენებლობის\s*ნებართვ|ნებართვა|building\s*permit|construction\s*permit)/i.test(text)) return 'PERMIT';
+  return 'OTHER';
+}
+function buildLegalStatusMatrix(officialStatus, opts) {
+  const outcome = (source) => sourceOutcome(officialStatus, source);
+  const tasDocs = (opts.officialDocs || []).filter((d) => d.source === 'tas');
+  const hasPermitDoc = tasDocs.some((d) => classifyOfficialDocumentKind(d) === 'PERMIT');
+  const hasCommissioningDoc = tasDocs.some((d) => classifyOfficialDocumentKind(d) === 'COMMISSIONING');
+  const enregOutcome = outcome('enreg');
+  const companyRegistrationStatus = enregOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : enregOutcome === 'FOUND' ? (opts.companyLiquidationSuspected ? 'CONFIRMED_ATTENTION' : 'CONFIRMED_POSITIVE') : 'NOT_CONFIRMED';
+  const debtorOutcome = outcome('debtor');
+  const debtorRegistryStatus = debtorOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : debtorOutcome === 'FOUND' ? 'CONFIRMED_ATTENTION' : debtorOutcome === 'NO_RESULT' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+  const rstaxOutcome = outcome('rstax');
+  const taxpayerStatusValue = rstaxOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : rstaxOutcome === 'FOUND' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+  const registrySkipped = outcome('mygov') === 'SKIPPED' || outcome('napr') === 'SKIPPED';
+  const propertyEncumbrancesStatus =
+    opts.rightsAndRestrictionsStatus === 'RESTRICTION_IDENTIFIED' ? 'CONFIRMED_ATTENTION' : opts.rightsAndRestrictionsStatus === 'NONE_FOUND_IN_CHECKED_SOURCE' ? 'CONFIRMED_POSITIVE' : registrySkipped ? 'HUMAN_VERIFICATION_REQUIRED' : 'NOT_CONFIRMED';
+  const tasOutcome = outcome('tas');
+  const constructionPermissionsStatus = tasOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : hasPermitDoc ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+  const commissioningStatus = tasOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : hasCommissioningDoc ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+  return {
+    companyRegistration: legalStatusEntry('companyRegistration', companyRegistrationStatus),
+    debtorRegistry: legalStatusEntry('debtorRegistry', debtorRegistryStatus),
+    taxpayerStatus: legalStatusEntry('taxpayerStatus', taxpayerStatusValue),
+    propertyEncumbrances: legalStatusEntry('propertyEncumbrances', propertyEncumbrancesStatus),
+    constructionPermissions: legalStatusEntry('constructionPermissions', constructionPermissionsStatus),
+    commissioning: legalStatusEntry('commissioning', commissioningStatus),
+  };
+}
+const CATEGORY_TO_PORTAL = { companyRegistration: 'enreg', debtorRegistry: 'debtor', taxpayerStatus: 'rstax', propertyEncumbrances: 'napr', constructionPermissions: 'tas', commissioning: 'tas' };
+const OFFICIAL_PORTAL_TEST = {
+  enreg: 'https://enreg.reestri.gov.ge', napr: 'https://napr.gov.ge', rstax: 'https://rs.ge', debtor: 'https://enforce.gov.ge', tas: 'https://tas.ge', mygov: 'https://my.gov.ge',
+};
+function buildManualVerificationActions(matrix) {
+  const out = [];
+  for (const category of Object.keys(matrix)) {
+    const entry = matrix[category];
+    if (entry.status !== 'NOT_CONFIRMED' && entry.status !== 'HUMAN_VERIFICATION_REQUIRED') continue;
+    out.push({ id: category, officialPortalUrl: OFFICIAL_PORTAL_TEST[CATEGORY_TO_PORTAL[category]] || null });
+  }
+  return out;
+}
+
+test('buildLegalStatusMatrix: the confirmed-working production baseline shape (enreg/mygov/tas found, debtor no-result, rstax never checked) — company registration and encumbrances positive, debtor positive (no debt found), taxpayer and commissioning not confirmed', () => {
+  const officialStatus = { officialSourcesConfirmedFound: [{ source: 'enreg' }, { source: 'mygov' }, { source: 'tas' }], officialSourcesConfirmedNoResult: [{ source: 'debtor' }], officialSourcesSkipped: [] };
+  const officialDocs = [{ source: 'tas', title: '2019 წლის მშენებლობის ნებართვა' }, { source: 'tas', title: 'TAS decision 2022' }];
+  const matrix = buildLegalStatusMatrix(officialStatus, { officialDocs, companyLiquidationSuspected: false, debtorRecordFound: false, rightsAndRestrictionsStatus: 'NONE_FOUND_IN_CHECKED_SOURCE' });
+  assert.equal(matrix.companyRegistration.status, 'CONFIRMED_POSITIVE');
+  assert.equal(matrix.debtorRegistry.status, 'CONFIRMED_POSITIVE');
+  assert.equal(matrix.taxpayerStatus.status, 'NOT_CONFIRMED');
+  assert.equal(matrix.propertyEncumbrances.status, 'CONFIRMED_POSITIVE');
+  assert.equal(matrix.constructionPermissions.status, 'CONFIRMED_POSITIVE');
+  assert.equal(matrix.commissioning.status, 'NOT_CONFIRMED');
+  const actions = buildManualVerificationActions(matrix);
+  assert.deepEqual(actions.map((a) => a.id).sort(), ['commissioning', 'taxpayerStatus']);
+});
+test('buildLegalStatusMatrix: a FOUND debtor record is always CONFIRMED_ATTENTION (never silently positive), a suspected liquidation escalates company registration to CONFIRMED_ATTENTION, and a skipped human-verification source is always HUMAN_VERIFICATION_REQUIRED', () => {
+  const officialStatus = { officialSourcesConfirmedFound: [{ source: 'enreg' }, { source: 'debtor' }], officialSourcesConfirmedNoResult: [], officialSourcesSkipped: [{ source: 'rstax' }] };
+  const matrix = buildLegalStatusMatrix(officialStatus, { officialDocs: [], companyLiquidationSuspected: true, debtorRecordFound: true, rightsAndRestrictionsStatus: 'RESTRICTION_IDENTIFIED' });
+  assert.equal(matrix.companyRegistration.status, 'CONFIRMED_ATTENTION');
+  assert.equal(matrix.debtorRegistry.status, 'CONFIRMED_ATTENTION');
+  assert.equal(matrix.taxpayerStatus.status, 'HUMAN_VERIFICATION_REQUIRED');
+  assert.equal(matrix.propertyEncumbrances.status, 'CONFIRMED_ATTENTION');
+  // A manual-verification card is only ever built for a GAP (NOT_CONFIRMED /
+  // HUMAN_VERIFICATION_REQUIRED) — an already-confirmed ATTENTION finding is
+  // surfaced via materialAdverseFindings/riskFlags instead, never re-flagged
+  // here with a "go verify this yourself" card.
+  const actions = buildManualVerificationActions(matrix);
+  assert.ok(!actions.some((a) => a.id === 'companyRegistration' || a.id === 'debtorRegistry' || a.id === 'propertyEncumbrances'));
+  assert.ok(actions.some((a) => a.id === 'taxpayerStatus'));
+});
+test('buildManualVerificationActions: every action card carries a hand-verified OFFICIAL government portal URL, never an ordinary research-provider domain', () => {
+  const officialStatus = { officialSourcesConfirmedFound: [], officialSourcesConfirmedNoResult: [], officialSourcesSkipped: [] };
+  const matrix = buildLegalStatusMatrix(officialStatus, { officialDocs: [], companyLiquidationSuspected: false, debtorRecordFound: false, rightsAndRestrictionsStatus: 'NOT_CONFIRMED' });
+  const actions = buildManualVerificationActions(matrix);
+  assert.equal(actions.length, 6); // nothing was confirmed at all -> every category needs a card
+  for (const a of actions) {
+    assert.ok(a.officialPortalUrl, `${a.id} should carry a portal URL`);
+    assert.ok(/\.gov\.ge|rs\.ge|tas\.ge/i.test(a.officialPortalUrl), `${a.id} portal must be an official .gov.ge/rs.ge/tas.ge domain, got ${a.officialPortalUrl}`);
+    assert.ok(!/myhome|korter|villion|ss\.ge/i.test(a.officialPortalUrl));
+  }
+});
+
+// ---- validateCustomerLink() / applyLinkValidation() (addendum Sections
+// 1-2) — copied verbatim from index.ts, with global fetch mocked so the
+// test is deterministic and network-free. A dead/unreachable portal link
+// must be hidden entirely (never shown broken); a live one is kept as-is.
+
+async function validateCustomerLinkWithFetch(fetchImpl, url) {
+  try {
+    const r = await fetchImpl(url, { method: 'GET' });
+    return r.status < 400;
+  } catch {
+    return false;
+  }
+}
+async function applyLinkValidationWithFetch(fetchImpl, actions) {
+  return Promise.all(
+    actions.map(async (a) => {
+      if (!a.officialPortalUrl) return a;
+      const ok = await validateCustomerLinkWithFetch(fetchImpl, a.officialPortalUrl);
+      return ok ? a : { ...a, officialPortalUrl: null, officialPortalLabel: null };
+    })
+  );
+}
+
+test('applyLinkValidation: a live official portal link is kept; a dead one (404/network error) is stripped to null rather than shown broken', async () => {
+  const fakeFetch = async (url) => {
+    if (url === 'https://enreg.reestri.gov.ge') return { status: 200 };
+    if (url === 'https://dead-portal.gov.ge') return { status: 404 };
+    throw new Error('network error');
+  };
+  const actions = [
+    { id: 'companyRegistration', officialPortalUrl: 'https://enreg.reestri.gov.ge', officialPortalLabel: 'Registry' },
+    { id: 'taxpayerStatus', officialPortalUrl: 'https://dead-portal.gov.ge', officialPortalLabel: 'Dead' },
+    { id: 'debtorRegistry', officialPortalUrl: 'https://unreachable.gov.ge', officialPortalLabel: 'Unreachable' },
+  ];
+  const out = await applyLinkValidationWithFetch(fakeFetch, actions);
+  assert.equal(out[0].officialPortalUrl, 'https://enreg.reestri.gov.ge');
+  assert.equal(out[1].officialPortalUrl, null);
+  assert.equal(out[1].officialPortalLabel, null);
+  assert.equal(out[2].officialPortalUrl, null);
+});
+test('applyLinkValidation: a card with no officialPortalUrl at all passes through unchanged (never invents a link)', async () => {
+  const out = await applyLinkValidationWithFetch(async () => ({ status: 200 }), [{ id: 'x', officialPortalUrl: null }]);
+  assert.equal(out[0].officialPortalUrl, null);
 });

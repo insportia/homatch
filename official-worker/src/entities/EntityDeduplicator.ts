@@ -65,6 +65,7 @@ export class EntityDeduplicator {
         type: candidate.type || 'LEGAL_ENTITY',
         name: candidate.name,
         identificationCode: idCode,
+        previousNames: [],
         discoveredFrom: [],
         enregStatus: 'NOT_QUEUED',
       };
@@ -79,6 +80,7 @@ export class EntityDeduplicator {
         type: candidate.type || 'LEGAL_ENTITY',
         name: candidate.name,
         identificationCode: idCode,
+        previousNames: [],
         discoveredFrom: [],
         enregStatus: 'NOT_QUEUED',
       };
@@ -98,5 +100,47 @@ export class EntityDeduplicator {
 
   all(): ResearchEntity[] {
     return [...new Set([...this.byId.values(), ...this.byName.values()])];
+  }
+
+  getById(idCode: string): ResearchEntity | undefined {
+    return this.byId.get(idCode);
+  }
+
+  /**
+   * Records a former/previous registered name for the company identified by
+   * `idCode` (mandate Section 6: "company ID is the identity anchor"). If a
+   * SEPARATE phantom record already exists under that previous name's
+   * normalized key (because it was discovered as a bare name mention before
+   * its link to this company ID was known — exactly the real production
+   * bug), that phantom is absorbed into the real record instead of being
+   * left as a second, unlinked "discovered company": its discovery
+   * references and any previousNames it had already collected are merged
+   * in, and the name key is repointed at the real record so it drops out of
+   * all() on its own. A no-op when idCode is unknown or the "previous" name
+   * is actually just the current name restated.
+   */
+  mergePreviousName(idCode: string, previousName: string, opts: { from?: string | null; to?: string | null } = {}): void {
+    const rec = this.byId.get(idCode);
+    if (!rec) return;
+    const nameKey = normalizeName(previousName);
+    if (!nameKey || nameKey === normalizeName(rec.name)) return;
+
+    if (!rec.previousNames.some((p) => normalizeName(p.name) === nameKey)) {
+      rec.previousNames.push({ name: previousName, from: opts.from ?? null, to: opts.to ?? null });
+    }
+
+    const phantom = this.byName.get(nameKey);
+    if (phantom && phantom !== rec) {
+      rec.discoveredFrom.push(...phantom.discoveredFrom);
+      for (const pn of phantom.previousNames || []) {
+        if (!rec.previousNames.some((p) => normalizeName(p.name) === normalizeName(pn.name))) rec.previousNames.push(pn);
+      }
+      // Phantom's own idCode (if any) was already required to differ from
+      // idCode here (same-idCode would have made it `rec` itself via
+      // byId.get()), so it is left untouched in byId — only the shared name
+      // key is repointed. A genuinely different real company must never be
+      // silently absorbed just because it once shared a name string.
+      if (!phantom.identificationCode) this.byName.set(nameKey, rec);
+    }
   }
 }

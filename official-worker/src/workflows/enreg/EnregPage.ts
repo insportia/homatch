@@ -10,6 +10,7 @@ import { interact, waitForResultSignal, challenge, text as pageText, candidateRa
 import { readOnlineDocument } from '../../documents/OnlineDocumentReader.js';
 import { ID_CODE_INPUT_HINTS, NAME_INPUT_HINTS } from './selectors.js';
 import { ENREG_URL, ENREG_APPLICATIONS_LABEL, ENREG_PREPARED_DOCS_LABEL, ENREG_EXTRACT_LABEL, ENREG_VERIFY_BUTTON_LABEL } from './EnregState.js';
+import { extractAllDates } from '../../util/dateParse.js';
 
 export class EnregPage {
   async goto(page: Page): Promise<void> {
@@ -122,7 +123,12 @@ export class EnregPage {
       const appsSection = (page as any).getByText(ENREG_APPLICATIONS_LABEL.slice(0, 8), { exact: false }).first();
       if (!(await appsSection.count().catch(() => 0))) return [];
       const sectionText = (await appsSection.locator('xpath=ancestor::div[1] | ancestor::section[1]').first().innerText().catch(() => '')) || (await pageText(page as any));
-      return [...sectionText.matchAll(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g)].map((m) => m[0]);
+      // Georgian-prose application dates ("29 ოქტომბერი 2023"), not just
+      // numeric DD.MM.YYYY, must be recognized here too — a numeric-only
+      // scan would leave a Georgian-dated applications list looking
+      // date-empty, which selectLatestApplicationDate (assertions.ts) would
+      // then have nothing to pick a real "latest" from.
+      return extractAllDates(sectionText);
     } catch {
       return [];
     }

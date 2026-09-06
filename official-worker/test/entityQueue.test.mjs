@@ -72,6 +72,49 @@ test('EntityQueue.add: a real numeric idCode is still stored normally alongside 
   assert.equal(q.all()[0].identificationCode, '404670272');
 });
 
+// Real production job 1aa45cdf-a5cf-4dcc-b7a9-524cedb596ae regression: a
+// construction-permit phrase containing the bare adjective "ინდივიდუალური"
+// ("individual") was misread as a LEGAL_ENTITY candidate.
+test('extractEntityCandidates: a construction-permit phrase is never mistaken for a company name', () => {
+  const out = extractEntityCandidates('გაიცა ნებართვა ინდივიდუალური საცხოვრებელი სახლის მშენებლობისათვის ნაკვეთზე.');
+  assert.equal(out.length, 0);
+});
+test('extractEntityCandidates: "ინდივიდუალური მეწარმე" (individual entrepreneur) is still recognized', () => {
+  const out = extractEntityCandidates('განმცხადებელია ინდივიდუალური მეწარმე გიორგი გიორგაძე, საიდენტიფიკაციო კოდი 01234567890.');
+  assert.equal(out.length, 1);
+  assert.match(out[0].name, /^ინდივიდუალური მეწარმე/);
+});
+
+// Company name-history reconciliation (mandate Section 6): "company ID is
+// the identity anchor" — a former/previous registered name discovered
+// BEFORE its link to the real company ID was known must be absorbed into
+// that company's record once the link is established, never left as a
+// second, separate "discovered related company".
+test('EntityQueue.recordPreviousName: absorbs a phantom name-only entity into the real company once linked by idCode', () => {
+  const q = new EntityQueue();
+  // Discovered first, out of context, with no id code nearby — exactly how
+  // a "former name" mention on a registry extract page reads before this
+  // fix, since it has no legal-form marker either.
+  q.add({ name: 'ქეი-ელ გრუპი', idCode: null });
+  q.add({ name: 'შპს მილენიო გრუპი', idCode: '404670272' });
+  assert.equal(q.all().length, 2, 'sanity: two separate records before reconciliation');
+
+  q.recordPreviousName('404670272', 'ქეი-ელ გრუპი');
+
+  const all = q.all();
+  assert.equal(all.length, 1, 'the phantom former-name record must be absorbed, not left as a second company');
+  const merged = all[0];
+  assert.equal(merged.name, 'შპს მილენიო გრუპი');
+  assert.equal(merged.identificationCode, '404670272');
+  assert.deepEqual(merged.previousNames.map((p) => p.name), ['ქეი-ელ გრუპი']);
+});
+test('EntityQueue.recordPreviousName: never merges a previous name into an unrelated idCode, and ignores an unknown idCode', () => {
+  const q = new EntityQueue();
+  q.add({ name: 'შპს მილენიო გრუპი', idCode: '404670272' });
+  q.recordPreviousName('999999999', 'რაიმე სახელი'); // unknown idCode — no-op
+  assert.equal(q.all()[0].previousNames.length, 0);
+});
+
 test('EntityQueue: notYetQueued/markQueued bookkeeping (mandate Section 16 entity-queue flow)', () => {
   const q = new EntityQueue();
   q.add({ name: 'შპს A', idCode: '111111111' });

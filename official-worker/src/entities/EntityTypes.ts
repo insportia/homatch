@@ -19,6 +19,16 @@ export interface EntityDiscoveryRef {
   retrievedAt: string | null;
 }
 
+/** One former/previous registered name for the SAME company (mandate
+ * Section 6: "company ID is the identity anchor" — a name change must
+ * never render as a separate discovered company). Dates are optional
+ * because ENREG's own extract page does not always print them. */
+export interface PreviousNameRecord {
+  name: string;
+  from?: string | null;
+  to?: string | null;
+}
+
 export interface ResearchEntity {
   id: string;
   type: EntityType;
@@ -28,6 +38,10 @@ export interface ResearchEntity {
    * elsewhere (mandate: "name-only entities queue as incomplete candidates
    * and get merged/upgraded when an ID appears later"). */
   identificationCode: string | null;
+  /** Former registered name(s) of this SAME company (by identificationCode),
+   * discovered on ENREG's own entity/extract page. Never a separate entity
+   * record — see EntityDeduplicator.mergePreviousName(). */
+  previousNames: PreviousNameRecord[];
   discoveredFrom: EntityDiscoveryRef[];
   enregStatus: EnregEntityStatus;
 }

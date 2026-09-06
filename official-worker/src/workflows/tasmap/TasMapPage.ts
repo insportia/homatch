@@ -53,80 +53,139 @@ const SOURCE = 'TAS_MAP';
 // wants documents actually read, not an unbounded crawl.
 const MAX_TOTAL_DOCS = 80;
 
-/** Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8 proved every
- * required layer reads back `false` (ENABLE_LAYERS: all 6 layers false)
- * against the LIVE map DOM. Root cause, confirmed against
- * msmap-recording.spec.ts line 12 — the recording clicks an expand-arrow
- * on an unnamed parent tree node BEFORE ever touching a required-layer
- * checkbox — is that the Angular Material `mat-tree` only renders
- * REQUIRED_LAYER_1/REQUIRED_LAYER_2 (and the category node) as DOM
- * treeitems once their ancestor node(s) have been expanded; nothing in
- * this file ever expanded the tree first, so `getByRole('treeitem',
- * {name}).count()` was always 0. This walks the CDK Tree's own standard
- * accessibility attribute (`[role="treeitem"][aria-expanded="false"]` —
- * not a recording artifact: it is the same real attribute Angular
- * Material stamps on every collapsed tree node, in any run) and expands
- * collapsed nodes one at a time until the target treeitem exists and is
- * visible, or nothing is left to expand. Never assumes a fixed nesting
- * depth or node order. */
-async function revealTreeitem(page: Page, name: string, maxExpansions = 60): Promise<boolean> {
-  const target = () => (page as any).getByRole('treeitem', { name }).first();
-  const isReady = async () => (await target().count().catch(() => 0)) > 0 && (await target().isVisible().catch(() => false));
-  if (await isReady()) return true;
-  for (let i = 0; i < maxExpansions; i++) {
-    const collapsed = (page as any).locator('[role="treeitem"][aria-expanded="false"]').first();
-    if (!(await collapsed.count().catch(() => 0))) break;
-    const toggle = collapsed.locator('.mat-icon,svg').first();
-    const clickTarget = (await toggle.count().catch(() => 0)) ? toggle : collapsed;
-    await clickTarget.click({ timeout: 1500 }).catch(() => {});
-    await (page as any).waitForTimeout(250);
-    if (await isReady()) return true;
-  }
-  return isReady();
+// 2026-09 "report intelligence v2" mandate, Section 1: real production job
+// 1aa45cdf-a5cf-4dcc-b7a9-524cedb596ae proved required layers STILL read
+// back false even after the previous fix (revealTreeitem's round-based
+// expansion, which only ever expanded ancestors of ONE target at a time).
+// Root cause this replaces: relying on Playwright's `getByRole('treeitem',
+// {name})` accessible-name match at all. Angular Material's computed
+// accessible name for a CDK tree node can diverge from what is actually
+// rendered as visible text (extra icon/badge text nodes folded in or out,
+// aria-label overrides, whitespace/dash normalization differences) — so a
+// label that is visually present can still fail an accessible-name lookup.
+// This instead does its own plain `innerText()` scan across every tree
+// node (never Playwright's name-matching semantics), normalized for
+// whitespace/dash-variant/case, matched exact-first then substring — and
+// expands EVERY collapsed node it can find, repeatedly, before searching,
+// rather than expanding just enough to reveal one target.
+const TREE_NODE_SELECTOR = '[role="treeitem"], mat-tree-node, mat-nested-tree-node';
+
+export interface LayerDiagnostics {
+  treeNodeCount: number;
+  expandedNodeCount: number;
+  matchedLayers: string[];
+  missingLayers: string[];
+  checkboxBefore: Record<string, boolean | null>;
+  checkboxAfter: Record<string, boolean | null>;
 }
 
-async function checkTreeitemCheckbox(page: Page, name: string): Promise<boolean> {
-  try {
-    await revealTreeitem(page, name);
-    const item = (page as any).getByRole('treeitem', { name }).first();
-    if (!(await item.count().catch(() => 0))) return false;
-    // Prefer a real scoped checkbox <input> — more robust than the
-    // recording's own `.getByLabel('')` pattern (an empty accessible-name
-    // match), which is fragile if the real markup's aria wiring differs
-    // slightly between runs.
-    const checkbox = item.locator('input[type="checkbox"]').first();
-    if (await checkbox.count().catch(() => 0)) {
-      try {
-        if (!(await checkbox.isChecked().catch(() => false))) await checkbox.check({ timeout: 3000 });
-        return true;
-      } catch {
-        /* fall through to the recording's own getByLabel pattern */
+function normalizeLayerText(s: string): string {
+  return s
+    .replace(/\s+/g, ' ')
+    .replace(/[–—-]/g, '-')
+    .trim()
+    .toLowerCase();
+}
+
+/** Expands every collapsed tree node it can find, repeatedly, until a full
+ * pass makes no further changes or maxRounds is hit — makes the WHOLE tree
+ * visible up front so a required-layer label nested under any category, at
+ * any depth, is guaranteed discoverable by a plain node scan afterward.
+ * Never assumes a fixed nesting depth, node order, or category name. */
+async function expandAllMaterialTreeNodes(page: Page, maxRounds = 12): Promise<{ expandedNodeCount: number; finalNodeCount: number }> {
+  let expandedNodeCount = 0;
+  let finalNodeCount = 0;
+  for (let round = 0; round < maxRounds; round++) {
+    const nodes = (page as any).locator(TREE_NODE_SELECTOR);
+    const count = await nodes.count().catch(() => 0);
+    finalNodeCount = count;
+    let changed = false;
+    for (let i = 0; i < count; i++) {
+      const node = nodes.nth(i);
+      // aria-expanded may live on the node itself (the standard CDK tree
+      // pattern) or on an inner toggle — checked in that order, never
+      // assumed to be in only one place.
+      let expandedAttr = await node.getAttribute('aria-expanded').catch(() => null);
+      let toggleTarget = node;
+      if (expandedAttr === null) {
+        const toggle = node.locator('button[aria-expanded], [aria-expanded]').first();
+        if (await toggle.count().catch(() => 0)) {
+          expandedAttr = await toggle.getAttribute('aria-expanded').catch(() => null);
+          toggleTarget = toggle;
+        }
+      }
+      if (expandedAttr === 'false') {
+        const icon = node.locator('.mat-icon, svg, button').first();
+        const clickTarget = (await icon.count().catch(() => 0)) ? icon : toggleTarget;
+        await clickTarget.click({ timeout: 1500, force: true }).catch(() => {});
+        await (page as any).waitForTimeout(200);
+        changed = true;
+        expandedNodeCount++;
       }
     }
-    try {
-      await item.getByLabel('').check({ timeout: 3000 });
-      return true;
-    } catch {
-      return false;
-    }
-  } catch {
-    return false;
+    if (!changed) break;
   }
+  return { expandedNodeCount, finalNodeCount };
 }
 
-async function expandTreeitem(page: Page, name: string): Promise<boolean> {
-  try {
-    await revealTreeitem(page, name);
-    const item = (page as any).getByRole('treeitem', { name }).first();
-    if (!(await item.count().catch(() => 0))) return false;
-    const toggle = item.locator('svg,.mat-icon').first();
-    if (!(await toggle.count().catch(() => 0))) return false;
-    await toggle.click({ timeout: 3000 }).catch(() => {});
-    await (page as any).waitForTimeout(400);
-    return true;
-  } catch {
-    return false;
+/** Finds the tree node whose own rendered text matches `requested`,
+ * normalized for whitespace/dash-variant/case. Exact-normalized match is
+ * preferred; a substring match in either direction is accepted as a
+ * fallback so a label rendered with extra surrounding text (a count badge,
+ * a checkbox-state suffix) still resolves. Never guesses a match against
+ * unrelated text — returns null when nothing matches at all. */
+async function findLayerNode(page: Page, requested: string): Promise<{ node: any; matchedLabel: string } | null> {
+  const target = normalizeLayerText(requested);
+  const nodes = (page as any).locator(TREE_NODE_SELECTOR);
+  const count = await nodes.count().catch(() => 0);
+  let bestSubstring: { node: any; matchedLabel: string } | null = null;
+  for (let i = 0; i < count; i++) {
+    const node = nodes.nth(i);
+    const raw = (await node.innerText().catch(() => '')) as string;
+    const text = normalizeLayerText(raw);
+    if (!text) continue;
+    if (text === target) return { node, matchedLabel: raw.trim() };
+    if (!bestSubstring && (text.includes(target) || target.includes(text))) bestSubstring = { node, matchedLabel: raw.trim() };
   }
+  return bestSubstring;
+}
+
+/** Reads a node's checkbox checked-state — the real DOM/ARIA state, never
+ * inferred from "the click call did not throw". Prefers a scoped native
+ * `<input type="checkbox">`'s `.checked`; falls back to `aria-checked` on
+ * a `role="checkbox"` descendant. */
+async function readCheckedState(node: any): Promise<boolean | null> {
+  const input = node.locator('input[type="checkbox"], mat-checkbox input').first();
+  if (await input.count().catch(() => 0)) {
+    const checked = await input.isChecked().catch(() => null);
+    if (checked !== null) return checked;
+  }
+  const roleCheckbox = node.locator('[role="checkbox"]').first();
+  if (await roleCheckbox.count().catch(() => 0)) {
+    const aria = await roleCheckbox.getAttribute('aria-checked').catch(() => null);
+    if (aria === 'true') return true;
+    if (aria === 'false') return false;
+  }
+  return null;
+}
+
+/** Ensures a layer's checkbox ends up checked, verifying ACTUAL before/
+ * after state rather than trusting that a click "succeeded" — the exact
+ * production gap this replaces (a click reported no error while the
+ * checkbox never actually became checked). Clicks a scoped native
+ * checkbox input when present; otherwise a `role="checkbox"` descendant;
+ * otherwise the node itself as a last resort (some Angular Material
+ * checkboxes toggle on a click anywhere in their ripple area). */
+async function ensureLayerChecked(page: Page, node: any): Promise<{ before: boolean | null; after: boolean | null }> {
+  const before = await readCheckedState(node);
+  if (before === true) return { before, after: true };
+  const input = node.locator('input[type="checkbox"], mat-checkbox input').first();
+  const roleCheckbox = node.locator('[role="checkbox"]').first();
+  const clickTarget = (await input.count().catch(() => 0)) ? input : (await roleCheckbox.count().catch(() => 0)) ? roleCheckbox : node;
+  await clickTarget.click({ timeout: 3000, force: true }).catch(() => {});
+  await (page as any).waitForTimeout(250);
+  const after = await readCheckedState(node);
+  return { before, after };
 }
 
 export class TasMapPage {
@@ -232,20 +291,63 @@ export class TasMapPage {
   }
 
   /** The mandate's exact 7-item required-layer list: 2 root layers checked
-   * directly, then the "თბილისის ელექტრონული განცხადებები" category
-   * expanded (best-effort — it has no checkbox of its own) to reveal its 4
-   * checkable sub-items. Returns a per-layer result map so the caller can
-   * report exactly which named layer failed, never one opaque boolean. */
-  async enableRequiredLayers(mapPage: Page): Promise<Record<string, boolean>> {
-    const results: Record<string, boolean> = {};
-    results[REQUIRED_LAYER_1] = await checkTreeitemCheckbox(mapPage, REQUIRED_LAYER_1);
-    results[REQUIRED_LAYER_2] = (await checkTreeitemCheckbox(mapPage, REQUIRED_LAYER_2)) || (await checkTreeitemCheckbox(mapPage, REQUIRED_LAYER_2_PREFIX));
-    await expandTreeitem(mapPage, REQUIRED_LAYER_CATEGORY);
-    await (mapPage as any).waitForTimeout(400);
-    for (const sub of REQUIRED_CATEGORY_SUBLAYERS) {
-      results[sub] = await checkTreeitemCheckbox(mapPage, sub);
+   * directly, plus the 4 checkable sub-items under the "თბილისის
+   * ელექტრონული განცხადებები" category. Expands the ENTIRE tree first
+   * (never just enough ancestors to reveal one target), then locates each
+   * required label by its own rendered text (never Playwright's
+   * accessible-name matching — see the module comment above) and verifies
+   * its checkbox's real before/after state. Returns both the per-layer
+   * result map (unchanged shape — assertAllRequiredLayersEnabled and the
+   * caller's "missing layers" reporting both key off this) and a
+   * diagnostics object for internal debugging only; diagnostics must never
+   * be forwarded to customer-facing UI. */
+  async enableRequiredLayers(mapPage: Page): Promise<{ results: Record<string, boolean>; diagnostics: LayerDiagnostics }> {
+    let expandedNodeCount = 0;
+    const first = await expandAllMaterialTreeNodes(mapPage);
+    expandedNodeCount += first.expandedNodeCount;
+
+    // The category itself is expanded (best-effort — it has no checkbox of
+    // its own) so its sub-items exist as tree nodes at all, then the tree
+    // is expanded again in case that reveals further nested nodes.
+    const categoryNode = await findLayerNode(mapPage, REQUIRED_LAYER_CATEGORY);
+    if (categoryNode) {
+      const toggle = categoryNode.node.locator('.mat-icon, svg, button').first();
+      const clickTarget = (await toggle.count().catch(() => 0)) ? toggle : categoryNode.node;
+      await clickTarget.click({ timeout: 2000, force: true }).catch(() => {});
+      await (mapPage as any).waitForTimeout(400);
     }
-    return results;
+    const second = await expandAllMaterialTreeNodes(mapPage);
+    expandedNodeCount += second.expandedNodeCount;
+
+    const results: Record<string, boolean> = {};
+    const matchedLayers: string[] = [];
+    const missingLayers: string[] = [];
+    const checkboxBefore: Record<string, boolean | null> = {};
+    const checkboxAfter: Record<string, boolean | null> = {};
+
+    const requiredLabels = [REQUIRED_LAYER_1, REQUIRED_LAYER_2, ...REQUIRED_CATEGORY_SUBLAYERS];
+    for (const label of requiredLabels) {
+      const found = (await findLayerNode(mapPage, label)) || (label === REQUIRED_LAYER_2 ? await findLayerNode(mapPage, REQUIRED_LAYER_2_PREFIX) : null);
+      if (!found) {
+        results[label] = false;
+        missingLayers.push(label);
+        checkboxBefore[label] = null;
+        checkboxAfter[label] = null;
+        continue;
+      }
+      matchedLayers.push(found.matchedLabel);
+      const { before, after } = await ensureLayerChecked(mapPage, found.node);
+      checkboxBefore[label] = before;
+      checkboxAfter[label] = after;
+      results[label] = after === true;
+      if (after !== true) missingLayers.push(label);
+    }
+
+    const finalNodeCount = await (mapPage as any).locator(TREE_NODE_SELECTOR).count().catch(() => 0);
+    return {
+      results,
+      diagnostics: { treeNodeCount: finalNodeCount, expandedNodeCount, matchedLayers, missingLayers, checkboxBefore, checkboxAfter },
+    };
   }
 
   async activateIdentify(mapPage: Page): Promise<{ activated: boolean; matchedSelector: string | null }> {

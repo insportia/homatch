@@ -56,10 +56,21 @@ test('sha256: deterministic and never fabricated on failure', () => {
   assert.equal(h1.length, 64);
 });
 
-test('extractDateFromText: recognizes DD.MM.YYYY and YYYY-MM-DD, never invents one when absent', () => {
-  assert.equal(extractDateFromText('გაცემულია 05.09.2026 წელს'), '05.09.2026');
+test('extractDateFromText: recognizes DD.MM.YYYY and YYYY-MM-DD, normalized to ISO, never invents one when absent', () => {
+  assert.equal(extractDateFromText('გაცემულია 05.09.2026 წელს'), '2026-09-05');
   assert.equal(extractDateFromText('issued 2026-09-05'), '2026-09-05');
   assert.equal(extractDateFromText('no date printed here at all'), null);
+});
+
+// Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8 / 1aa45cdf-a5cf-
+// 4dcc-b7a9-524cedb596ae regression: TAS official documents are commonly
+// dated in Georgian prose, not numeric DD.MM.YYYY — these were silently
+// left undated (documentDate=null), starving HistoricalComparison's
+// ">=2 dated documents" gate of evidence that was genuinely on the page.
+test('extractDateFromText: recognizes Georgian prose dates ("29 ოქტომბერი 2023" / "2023 წლის 29 ოქტომბერი")', () => {
+  assert.equal(extractDateFromText('გაცემულია 29 ოქტომბერი 2023 წელს'), '2023-10-29');
+  assert.equal(extractDateFromText('2023 წლის 29 ოქტომბერს მიღებულ იქნა გადაწყვეტილება'), '2023-10-29');
+  assert.equal(extractDateFromText('12 ივნისს, 2022 დამტკიცდა'), '2022-06-12');
 });
 
 test('markComplete: a document with a known page count is NOT complete until every page was read (mandate\'s 14-page example)', () => {

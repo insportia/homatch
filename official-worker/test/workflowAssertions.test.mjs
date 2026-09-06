@@ -67,3 +67,8 @@ test('enreg.assertExactEntityMatch: an id-code match requires the exact code, no
 test('enreg.selectLatestApplicationDate: max(date), never the first row (mandate\'s explicit rule)', () => {
   assert.equal(enreg.selectLatestApplicationDate(['01.01.2020', '15.03.2025', '30.06.2022']), '15.03.2025');
 });
+// Real production job 1aa45cdf-a5cf-4dcc-b7a9-524cedb596ae mandate: an
+// applications list is not guaranteed to only print numeric dates.
+test('enreg.selectLatestApplicationDate: recognizes Georgian prose dates mixed with numeric ones', () => {
+  assert.equal(enreg.selectLatestApplicationDate(['12.06.2022', '2023 წლის 29 ოქტომბერი', '01.01.2020']), '2023 წლის 29 ოქტომბერი');
+});

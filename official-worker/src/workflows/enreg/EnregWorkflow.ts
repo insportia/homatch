@@ -19,6 +19,7 @@ import { computeEnregTraversal } from '../../state/transitions.js';
 import { WorkflowPreconditionError } from '../../errors/WorkflowErrors.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 import { looksLikeCompanyId } from '../../entities/EntityValidation.js';
+import { extractPrimaryIdCode, extractPreviousCompanyNames } from '../../entities/EntityHistory.js';
 import type { LegacySourceResult, WorkflowResult } from '../WorkflowResult.js';
 
 const SOURCE_META = { name: 'Entrepreneur Registry', class: 'OFFICIAL_REGISTRY', url: 'https://enreg.reestri.gov.ge/main.php?m=new_index' };
@@ -54,6 +55,21 @@ async function runOneAttempt(
 ): Promise<AttemptOutcome> {
   const fsm = newEnregFsm();
   const none: AttemptOutcome = { fsmState: 'START', matched: false, infoIconClicked: false, documents: [], error: null, latestApplicationDate: null, fullChain: false };
+
+  // Mandate Section 6: fold a company's own former/previous registered
+  // name into its existing record (keyed by identificationCode) instead of
+  // letting EntityQueue.scanText()'s generic name scan create a second,
+  // unlinked "discovered related company" for it. Anchored to the searched
+  // idCode when this attempt WAS an ID_CODE search; otherwise falls back to
+  // whatever identification code the entity's own page prints (a NAME
+  // search still lands on that company's own extract, which carries its
+  // own idCode regardless of how it was found).
+  const recordNameHistory = (text: string | null | undefined) => {
+    if (!entities || !text) return;
+    const anchorIdCode = method === 'ID_CODE' ? value : extractPrimaryIdCode(text);
+    if (!anchorIdCode) return;
+    for (const prev of extractPreviousCompanyNames(text)) entities.recordPreviousName(anchorIdCode, prev);
+  };
 
   if (!skipGoto) await pageObj.goto(page);
   fsm.transition('ENREG_OPENED');
@@ -128,6 +144,7 @@ async function runOneAttempt(
   fsm.transition('ENTITY_PAGE_OPENED');
   fsm.transition('ENTITY_PAGE_READ');
   if (entities) entities.scanText(entityPage.text, { source: 'enreg', sourceDocument: activePage.url(), retrievedAt: new Date().toISOString() });
+  recordNameHistory(entityPage.text);
 
   const dates = await pageObj.findLatestApplicationDate(activePage);
   if (!dates.length) {
@@ -162,7 +179,10 @@ async function runOneAttempt(
   else {
     return { ...none, fsmState: 'REGISTRY_EXTRACT_OPENED', matched: true, infoIconClicked: true, documents, error: 'extract opened but not fully read', latestApplicationDate: latestDate };
   }
-  if (extractRes.doc?.rawText && entities) entities.scanText(extractRes.doc.rawText, { source: 'enreg', sourceDocument: extractRes.doc.url, documentDate: extractRes.doc.documentDate, retrievedAt: new Date().toISOString() });
+  if (extractRes.doc?.rawText && entities) {
+    entities.scanText(extractRes.doc.rawText, { source: 'enreg', sourceDocument: extractRes.doc.url, documentDate: extractRes.doc.documentDate, retrievedAt: new Date().toISOString() });
+    recordNameHistory(extractRes.doc.rawText);
+  }
 
   // "historically-relevant records" beyond the latest extract: honest only
   // when every earlier stage genuinely completed (never merely because we

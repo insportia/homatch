@@ -1012,6 +1012,43 @@ function calculateMarketPosition({ targetPricePerSqm, comparables }: { targetPri
   return { marketMedianPricePerSqm, premiumPct, position, comparablesUsed: values.length };
 }
 
+interface MarketRangeResult {
+  activeMinPricePerSqm: number | null;
+  activeMedianPricePerSqm: number | null;
+  activeMaxPricePerSqm: number | null;
+  activeComparablesUsed: number;
+  historicalMedianPricePerSqm: number | null;
+  historicalComparablesUsed: number;
+}
+
+// computeMarketRanges() (2026-09 "report intelligence v2" mandate item 10 /
+// addendum Section 8): a market price MUST be a range, never one stale
+// fixed number, and an EXPIRED/REMOVED/SOLD listing must never dominate a
+// CURRENT price figure. Comparables are split by the LISTING STATUS the
+// MARKET-stage model evidenced per comparable (see prompt() 'MARKET'):
+// only ACTIVE + RESIDENTIAL comparables ever drive the "what's on the
+// market right now" min/median/max; EXPIRED/REMOVED/SOLD comparables are
+// kept ONLY as a separately labeled historical reference, never blended
+// into the active range. UNKNOWN status is excluded from both buckets
+// (conservative by design — an unconfirmed listing can never silently
+// inflate either figure).
+function computeMarketRanges(comparables: any[]): MarketRangeResult {
+  const list = Array.isArray(comparables) ? comparables : [];
+  const isResidential = (c: any) => !c?.propertyType || c.propertyType === 'RESIDENTIAL';
+  const active = list.filter((c) => c?.listingStatus === 'ACTIVE' && isResidential(c));
+  const historical = list.filter((c) => ['EXPIRED', 'REMOVED', 'SOLD'].includes(c?.listingStatus) && isResidential(c));
+  const activeValues = active.map((c) => parseNumericPricePerSqm(c?.pricePerSqm)).filter((n): n is number => n != null);
+  const historicalValues = historical.map((c) => parseNumericPricePerSqm(c?.pricePerSqm)).filter((n): n is number => n != null);
+  return {
+    activeMinPricePerSqm: activeValues.length ? Math.min(...activeValues) : null,
+    activeMedianPricePerSqm: median(activeValues),
+    activeMaxPricePerSqm: activeValues.length ? Math.max(...activeValues) : null,
+    activeComparablesUsed: activeValues.length,
+    historicalMedianPricePerSqm: median(historicalValues),
+    historicalComparablesUsed: historicalValues.length,
+  };
+}
+
 // UNVERIFIED_FALLBACK_I18N (v21, master due-diligence mandate): the exact
 // required sentence for any high-impact fact (ownership, restrictions,
 // commissioning, seller authority, etc.) that fails the STRICT FACT GATE.
@@ -1205,9 +1242,10 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
       `Research actual public listing/post URLs and comparables: same building/project first, then street/micro-location, similar area/rooms/condition/floor. Include MyHome, SS, developer/project/agency sites, public social pages/posts, news, reviews/forums where accessible. ` +
       `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt, sameProject (true only when literally the same building/project as the subject). If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. pricePerSqm (both here and in "subject" below) MUST be a plain numeric string in the SAME currency unit per square meter (no thousands separators, currency symbols or ranges) whenever you have a specific number — a deterministic step downstream computes the median/premium from these numbers directly, so a non-numeric or approximate value here simply will not be counted rather than being parsed loosely. ` +
-      `SUBJECT PROPERTY'S OWN PRICE (separate from comparables): if — and only if — you find the subject property's own price/price-per-sqm specifically evidenced (its own listing, an official document, or public reporting), return it in "subject" below with the exact evidence URL. Never estimate or infer it from comparables; leave every field null when no such evidence exists for THIS specific property. ` +
+      `LISTING STATUS (mandatory per comparable — market price MUST reflect what is on the market NOW, never a stale figure): set "listingStatus" from what the page/evidence actually shows — "ACTIVE" only when the listing itself currently reads as available/on the market (no "sold"/"removed"/"no longer available"/"archived" marker, and not a stale page you cannot confirm is still live), "EXPIRED" or "REMOVED" or "SOLD" when the evidence itself says so, otherwise "UNKNOWN" (the safe default when you genuinely cannot tell — never guess ACTIVE just because a page loaded). Also set "propertyType" ("RESIDENTIAL","COMMERCIAL","LAND","OTHER") whenever the evidence supports it. Only ACTIVE + RESIDENTIAL comparables may ever be used for a *current* price range — everything else exists only for historical/contextual reference, so do not skip this field to save effort. ` +
+      `SUBJECT PROPERTY'S OWN PRICE (separate from comparables): if — and only if — you find the subject property's own price/price-per-sqm specifically evidenced (its own listing, an official document, or public reporting), return it in "subject" below with the exact evidence URL, AND classify it with "priceType": "STARTING" when this is a developer's marketing "starting from" / "from" price for the project (never a specific unit's actual price), "CURRENT_LISTING" when it is a specific unit's own live asking price, "SOLD" when evidence shows it already sold at this price, or "OFFICIAL_DOCUMENT" when it comes from a registry/permit/contract document rather than a marketplace listing. A "STARTING" price must never be presented or treated as the property's current median/typical price — keep it a distinct, separately labeled figure. Never estimate or infer any of this from comparables; leave every field null when no such evidence exists for THIS specific property. ` +
       `PRICE-DRIVER EVIDENCE (mandatory, qualitative only — you do NOT compute a median, a percentage, or a CHEAPER/NORMAL/PREMIUM classification; a deterministic step downstream does that arithmetic from the numeric comparables/subject fields above): list the concrete, evidence-backed factors relevant to how this property's price compares to its market, grounded only in evidence already gathered this run (Identity/Official/PublicResearch above, or your own comparables): construction completion stage, remaining inventory/scarcity, availability of internal/developer installment financing, construction materials and structural system, architecture/design and architect reputation, developer reputation, parking availability, floor/view/layout, amenities, location/micro-location, bank financing availability, and current supply of comparable listings. Never state a price driver you cannot support with evidence gathered this run — omit it instead. ` +
-      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"sameProject":boolean}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
+      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"sameProject":boolean,"listingStatus":"ACTIVE"|"EXPIRED"|"REMOVED"|"SOLD"|"UNKNOWN","propertyType":"RESIDENTIAL"|"COMMERCIAL"|"LAND"|"OTHER"|null}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null,"priceType":"STARTING"|"CURRENT_LISTING"|"SOLD"|"OFFICIAL_DOCUMENT"|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
     );
   }
 
@@ -1750,6 +1788,340 @@ function computeMaterialAdverseFindings(
   for (const c of materialConflicts) out.push({ description: c.description });
   return out;
 }
+
+// ---------------------------------------------------------------------
+// 2026-09 "report intelligence v2" mandate item 16: a single broad "clean"
+// conclusion is replaced by 6 INDEPENDENTLY evidenced categories, each
+// resolved to exactly one of 4 states. Built entirely from signals this
+// file already computes deterministically (officialVerificationSummary's
+// per-source buckets, rightsAndRestrictions, debtorRecordFound,
+// companyLiquidationSuspected) — never from the model's own prose, and
+// never upgraded to CONFIRMED_POSITIVE just because a worker page loaded
+// (addendum: "SOURCE FAILURE ≠ PROPERTY RISK", "NO EVIDENCE = NO FACT").
+type LegalStatusValue = 'CONFIRMED_POSITIVE' | 'CONFIRMED_ATTENTION' | 'NOT_CONFIRMED' | 'HUMAN_VERIFICATION_REQUIRED';
+interface LegalStatusEntry {
+  status: LegalStatusValue;
+  label: string;
+  note: string;
+}
+interface LegalStatusMatrix {
+  companyRegistration: LegalStatusEntry;
+  debtorRegistry: LegalStatusEntry;
+  taxpayerStatus: LegalStatusEntry;
+  propertyEncumbrances: LegalStatusEntry;
+  constructionPermissions: LegalStatusEntry;
+  commissioning: LegalStatusEntry;
+}
+const LEGAL_STATUS_CATEGORY_I18N: Record<keyof LegalStatusMatrix, Record<string, string>> = {
+  companyRegistration: { ka: 'კომპანიის რეგისტრაცია', en: 'Company registration', ru: 'Регистрация компании', tr: 'Şirket tescili', ar: 'تسجيل الشركة', he: 'רישום החברה' },
+  debtorRegistry: { ka: 'მოვალეთა რეესტრი', en: 'Debtor registry', ru: 'Реестр должников', tr: 'Borçlular sicili', ar: 'سجل المدينين', he: 'מרשם החייבים' },
+  taxpayerStatus: { ka: 'გადასახადის გადამხდელის სტატუსი', en: 'Taxpayer status', ru: 'Статус налогоплательщика', tr: 'Vergi mükellefi durumu', ar: 'حالة دافع الضرائب', he: 'סטטוס משלם המסים' },
+  propertyEncumbrances: { ka: 'საკუთრების შეზღუდვები/ტვირთები', en: 'Property encumbrances', ru: 'Обременения на имущество', tr: 'Mülkiyet üzerindeki kısıtlamalar', ar: 'أعباء الملكية', he: 'שעבודים על הנכס' },
+  constructionPermissions: { ka: 'მშენებლობის ნებართვები', en: 'Construction permissions', ru: 'Разрешения на строительство', tr: 'İnşaat izinleri', ar: 'تصاريح البناء', he: 'היתרי בנייה' },
+  commissioning: { ka: 'ექსპლუატაციაში მიღება', en: 'Commissioning', ru: 'Ввод в эксплуатацию', tr: 'İşletmeye alma', ar: 'التشغيل والتسليم', he: 'קבלת טופס אכלוס' },
+};
+const LEGAL_STATUS_EXPLANATION_I18N: Record<LegalStatusValue, Record<string, string>> = {
+  CONFIRMED_POSITIVE: { ka: 'დადასტურებულია საჯარო წყაროთი — უარყოფითი მტკიცებულება არ გამოვლენილა.', en: 'Confirmed by a public source — no adverse evidence was found.', ru: 'Подтверждено публичным источником — неблагоприятных данных не обнаружено.', tr: 'Kamuya açık bir kaynakla doğrulandı — olumsuz bir kanıt bulunamadı.', ar: 'تم التأكيد من مصدر عام — لم يتم العثور على أي دليل سلبي.', he: 'אושר על ידי מקור ציבורי — לא נמצאה ראיה שלילית.' },
+  CONFIRMED_ATTENTION: { ka: 'დადასტურებულია საჯარო წყაროთი, თუმცა საჭიროებს დამატებით ყურადღებას.', en: 'Confirmed by a public source, but this requires additional attention.', ru: 'Подтверждено публичным источником, однако требует дополнительного внимания.', tr: 'Kamuya açık bir kaynakla doğrulandı, ancak ek dikkat gerektiriyor.', ar: 'تم التأكيد من مصدر عام، لكنه يتطلب اهتمامًا إضافيًا.', he: 'אושר על ידי מקור ציבורי, אך הדבר דורש תשומת לב נוספת.' },
+  NOT_CONFIRMED: { ka: 'ამ ეტაპზე საჯარო წყაროებით ვერ დადასტურდა.', en: 'Not yet confirmed by public sources at this stage.', ru: 'На данном этапе публичными источниками не подтверждено.', tr: 'Bu aşamada kamuya açık kaynaklarla doğrulanamadı.', ar: 'لم يتم تأكيده بعد من خلال مصادر عامة في هذه المرحلة.', he: 'טרם אושר על ידי מקורות ציבוריים בשלב זה.' },
+  HUMAN_VERIFICATION_REQUIRED: { ka: 'საჭიროებს დამატებით ვერიფიკაციას — ავტომატური შემოწმება ვერ დასრულდა.', en: 'Requires additional human verification — the automated check could not be completed.', ru: 'Требуется дополнительная проверка вручную — автоматическая проверка не может быть завершена.', tr: 'Ek insan doğrulaması gerektirir — otomatik kontrol tamamlanamadı.', ar: 'يتطلب تحققًا بشريًا إضافيًا — تعذر إكمال الفحص الآلي.', he: 'נדרש אימות אנושי נוסף — הבדיקה האוטומטית לא הושלמה.' },
+};
+function legalStatusEntry(category: keyof LegalStatusMatrix, status: LegalStatusValue, lang: string): LegalStatusEntry {
+  return {
+    status,
+    label: LEGAL_STATUS_CATEGORY_I18N[category][lang] || LEGAL_STATUS_CATEGORY_I18N[category].en,
+    note: LEGAL_STATUS_EXPLANATION_I18N[status][lang] || LEGAL_STATUS_EXPLANATION_I18N[status].en,
+  };
+}
+/** Mirrors officialVerificationSummary()'s own bucketing for one `source`
+ * key so this matrix can never disagree with the officialStatus already
+ * shown elsewhere in the same report. */
+function sourceOutcome(officialStatus: any, source: string): 'FOUND' | 'NO_RESULT' | 'SKIPPED' | 'NOT_VERIFIED' {
+  if ((officialStatus?.officialSourcesConfirmedFound || []).some((r: any) => r.source === source)) return 'FOUND';
+  if ((officialStatus?.officialSourcesConfirmedNoResult || []).some((r: any) => r.source === source)) return 'NO_RESULT';
+  if ((officialStatus?.officialSourcesSkipped || []).some((r: any) => r.source === source)) return 'SKIPPED';
+  return 'NOT_VERIFIED';
+}
+// classifyOfficialDocumentKind() — a deliberately narrow, keyword-based
+// classifier over a TAS document's own title/type text. This is a stopgap:
+// the mandate's fuller ask (item 9 — parse every official document into
+// structured date/type/K1-K2-K3/height/floors/permit-number fields) is a
+// larger, separate extraction pipeline not built yet. Until that exists,
+// this is the most honest signal available for whether a *general
+// construction permit* vs a *commissioning/completion act* was actually
+// retrieved — never a guess when the title carries neither marker.
+function classifyOfficialDocumentKind(doc: { title?: string | null; type?: string | null }): 'PERMIT' | 'COMMISSIONING' | 'OTHER' {
+  const text = `${doc?.title || ''} ${doc?.type || ''}`;
+  if (/(ექსპლუატაციაში\s*მიღებ|დასრულების\s*აქტ|commissioning|completion\s*act)/i.test(text)) return 'COMMISSIONING';
+  if (/(მშენებლობის\s*ნებართვ|ნებართვა|building\s*permit|construction\s*permit)/i.test(text)) return 'PERMIT';
+  return 'OTHER';
+}
+function buildLegalStatusMatrix(
+  officialStatus: any,
+  opts: { officialDocs: any[]; companyLiquidationSuspected: boolean; debtorRecordFound: boolean; rightsAndRestrictionsStatus: string },
+  lang: string
+): LegalStatusMatrix {
+  const outcome = (source: string) => sourceOutcome(officialStatus, source);
+  const tasDocs = (opts.officialDocs || []).filter((d: any) => d.source === 'tas');
+  const hasPermitDoc = tasDocs.some((d: any) => classifyOfficialDocumentKind(d) === 'PERMIT');
+  const hasCommissioningDoc = tasDocs.some((d: any) => classifyOfficialDocumentKind(d) === 'COMMISSIONING');
+
+  const enregOutcome = outcome('enreg');
+  const companyRegistrationStatus: LegalStatusValue =
+    enregOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : enregOutcome === 'FOUND' ? (opts.companyLiquidationSuspected ? 'CONFIRMED_ATTENTION' : 'CONFIRMED_POSITIVE') : 'NOT_CONFIRMED';
+
+  const debtorOutcome = outcome('debtor');
+  const debtorRegistryStatus: LegalStatusValue =
+    debtorOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : debtorOutcome === 'FOUND' ? 'CONFIRMED_ATTENTION' : debtorOutcome === 'NO_RESULT' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+
+  const rstaxOutcome = outcome('rstax');
+  const taxpayerStatusValue: LegalStatusValue = rstaxOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : rstaxOutcome === 'FOUND' ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+
+  // Property encumbrances draws on rightsAndRestrictions (the more precise,
+  // already-evidence-gated signal — see prompt() OFFICIAL_COLLECTION) rather
+  // than raw source-level success, but still defers to a skipped
+  // mygov/napr human-verification step when that is the actual reason
+  // nothing was confirmed.
+  const registrySkipped = outcome('mygov') === 'SKIPPED' || outcome('napr') === 'SKIPPED';
+  const propertyEncumbrancesStatus: LegalStatusValue =
+    opts.rightsAndRestrictionsStatus === 'RESTRICTION_IDENTIFIED'
+      ? 'CONFIRMED_ATTENTION'
+      : opts.rightsAndRestrictionsStatus === 'NONE_FOUND_IN_CHECKED_SOURCE'
+        ? 'CONFIRMED_POSITIVE'
+        : registrySkipped
+          ? 'HUMAN_VERIFICATION_REQUIRED'
+          : 'NOT_CONFIRMED';
+
+  const tasOutcome = outcome('tas');
+  const constructionPermissionsStatus: LegalStatusValue = tasOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : hasPermitDoc ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+  const commissioningStatus: LegalStatusValue = tasOutcome === 'SKIPPED' ? 'HUMAN_VERIFICATION_REQUIRED' : hasCommissioningDoc ? 'CONFIRMED_POSITIVE' : 'NOT_CONFIRMED';
+
+  return {
+    companyRegistration: legalStatusEntry('companyRegistration', companyRegistrationStatus, lang),
+    debtorRegistry: legalStatusEntry('debtorRegistry', debtorRegistryStatus, lang),
+    taxpayerStatus: legalStatusEntry('taxpayerStatus', taxpayerStatusValue, lang),
+    propertyEncumbrances: legalStatusEntry('propertyEncumbrances', propertyEncumbrancesStatus, lang),
+    constructionPermissions: legalStatusEntry('constructionPermissions', constructionPermissionsStatus, lang),
+    commissioning: legalStatusEntry('commissioning', commissioningStatus, lang),
+  };
+}
+
+// ---------------------------------------------------------------------
+// 2026-09 mandate item 8 / addendum Section 1-3: ManualVerificationAction —
+// every unresolved CRITICAL gap (HUMAN_VERIFICATION_REQUIRED or, for the
+// two hard-legal categories, NOT_CONFIRMED) gets one concrete, actionable
+// card instead of a bare "not confirmed" label. Each action names an
+// OFFICIAL government portal only (never an ordinary research provider —
+// the one explicit exception the source-name ban allows) and every such
+// portal URL is drawn from a small FIXED allowlist below rather than
+// anything model-generated, so it can never carry a stray tracking
+// parameter or a dead deep link the model hallucinated.
+interface ManualVerificationAction {
+  id: string;
+  title: string;
+  reason: string;
+  steps: string[];
+  requestedDocument: string | null;
+  officialPortalUrl: string | null;
+  officialPortalLabel: string | null;
+  aiUploadPrompt: string;
+}
+// OFFICIAL_PORTAL_I18N: fixed, hand-verified homepage/section URLs for the
+// government portals this product ever references. A homepage-level URL
+// (never a deep link that could go stale) — CustomerLinkValidation (see
+// validateCustomerLink() below) is applied to these too before they are
+// ever shown, so a portal that itself becomes unreachable degrades to
+// "no link" rather than a dead link.
+const OFFICIAL_PORTAL: Record<string, { url: string; label: Record<string, string> }> = {
+  enreg: { url: 'https://enreg.reestri.gov.ge', label: { ka: 'მეწარმეთა და არასამეწარმეო (არაკომერციული) იურიდიული პირების რეესტრი', en: 'Entrepreneurial and Non-Commercial Legal Entities Registry', ru: 'Реестр предпринимателей', tr: 'Ticari Sicil Portalı', ar: 'سجل الشركات', he: 'מרשם החברות' } },
+  napr: { url: 'https://napr.gov.ge', label: { ka: 'საჯარო რეესტრის ეროვნული სააგენტო', en: 'National Agency of Public Registry', ru: 'Национальное агентство публичного реестра', tr: 'Kamu Sicil Ulusal Ajansı', ar: 'الوكالة الوطنية للسجل العام', he: 'הסוכנות הלאומית למרשם הציבורי' } },
+  rstax: { url: 'https://rs.ge', label: { ka: 'შემოსავლების სამსახური', en: 'Revenue Service', ru: 'Служба доходов', tr: 'Gelir İdaresi', ar: 'خدمة الإيرادات', he: 'רשות ההכנסות' } },
+  debtor: { url: 'https://enforce.gov.ge', label: { ka: 'აღსრულების ეროვნული ბიურო — მოვალეთა რეესტრი', en: 'National Bureau of Enforcement — Debtor Registry', ru: 'Национальное бюро принудительного исполнения — реестр должников', tr: 'Ulusal İcra Bürosu — Borçlular Sicili', ar: 'المكتب الوطني للتنفيذ — سجل المدينين', he: 'הלשכה הלאומית לאכיפה — מרשם החייבים' } },
+  tas: { url: 'https://tas.ge', label: { ka: 'მშენებლობის ნებართვისა და ტექნიკური საბჭოს პორტალი', en: 'Construction Permits and Technical Council Portal', ru: 'Портал разрешений на строительство', tr: 'İnşaat İzinleri Portalı', ar: 'بوابة تصاريح البناء', he: 'פורטל היתרי בנייה' } },
+  mygov: { url: 'https://my.gov.ge', label: { ka: 'საჯარო სერვისების ერთიანი პორტალი (my.gov.ge)', en: 'my.gov.ge — Unified Public Services Portal', ru: 'my.gov.ge — единый портал госуслуг', tr: 'my.gov.ge — Kamu Hizmetleri Portalı', ar: 'my.gov.ge — بوابة الخدمات العامة', he: 'my.gov.ge — פורטל השירותים הממשלתיים' } },
+};
+const MANUAL_ACTION_COPY_I18N: Record<string, Record<string, { title: string; reason: string; steps: string[]; requestedDocument: string; aiUploadPrompt: string }>> = {
+  companyRegistration: {
+    ka: {
+      title: 'კომპანიის რეგისტრაციის დამატებითი გადამოწმება',
+      reason: 'კომპანიის რეგისტრაციის მონაცემები საჯარო წყაროებით ავტომატურად ვერ დადასტურდა.',
+      steps: ['გახსენით მეწარმეთა რეესტრის ოფიციალური გვერდი.', 'მოძებნეთ კომპანია სახელით ან საიდენტიფიკაციო კოდით.', 'გადაამოწმეთ სტატუსი და დირექტორთა შემადგენლობა.'],
+      requestedDocument: 'ამონაწერი მეწარმეთა რეესტრიდან',
+      aiUploadPrompt: 'თუ უკვე გაქვთ ამონაწერი, ატვირთეთ ის აქ და Homatch AI გაანალიზებს.',
+    },
+    en: {
+      title: 'Additional company-registration verification',
+      reason: 'Company registration data could not be automatically confirmed from public sources.',
+      steps: ['Open the official Entrepreneurial Registry page.', 'Search for the company by name or identification code.', 'Verify its status and current directors.'],
+      requestedDocument: 'Extract from the Entrepreneurial Registry',
+      aiUploadPrompt: 'If you already have the registry extract, upload it here and Homatch AI will analyze it.',
+    },
+  },
+  debtorRegistry: {
+    ka: {
+      title: 'მოვალეთა რეესტრის დამატებითი გადამოწმება',
+      reason: 'მოვალეთა რეესტრში შემოწმება ავტომატურად ვერ დასრულდა.',
+      steps: ['გახსენით აღსრულების ეროვნული ბიუროს ოფიციალური გვერდი.', 'მოძებნეთ პირი/კომპანია სახელით ან საიდენტიფიკაციო კოდით.'],
+      requestedDocument: 'მოვალეთა რეესტრის ცნობა',
+      aiUploadPrompt: 'თუ უკვე გაქვთ ცნობა, ატვირთეთ ის აქ და Homatch AI გაანალიზებს.',
+    },
+    en: {
+      title: 'Additional debtor-registry verification',
+      reason: 'The Debtor Registry check could not be completed automatically.',
+      steps: ['Open the National Bureau of Enforcement official page.', 'Search for the person/company by name or identification code.'],
+      requestedDocument: 'Debtor Registry certificate',
+      aiUploadPrompt: 'If you already have the certificate, upload it here and Homatch AI will analyze it.',
+    },
+  },
+  taxpayerStatus: {
+    ka: {
+      title: 'გადასახადის გადამხდელის სტატუსის გადამოწმება',
+      reason: 'გადასახადის გადამხდელის სტატუსი საჯარო წყაროთი ავტომატურად ვერ დადასტურდა.',
+      steps: ['გახსენით შემოსავლების სამსახურის ოფიციალური გვერდი.', 'მოძებნეთ საიდენტიფიკაციო კოდით.'],
+      requestedDocument: 'ცნობა გადასახადის გადამხდელის სტატუსის შესახებ',
+      aiUploadPrompt: 'თუ უკვე გაქვთ ცნობა, ატვირთეთ ის აქ და Homatch AI გაანალიზებს.',
+    },
+    en: {
+      title: 'Taxpayer-status verification',
+      reason: 'Taxpayer status could not be automatically confirmed from a public source.',
+      steps: ['Open the Revenue Service official page.', 'Search by identification code.'],
+      requestedDocument: 'Taxpayer status certificate',
+      aiUploadPrompt: 'If you already have the certificate, upload it here and Homatch AI will analyze it.',
+    },
+  },
+  propertyEncumbrances: {
+    ka: {
+      title: 'საკუთრების უფლების უახლესი ამონაწერის გადამოწმება',
+      reason: 'საკუთრების უფლებისა და შესაძლო შეზღუდვების უახლესი სტატუსი საჯარო წყაროთი სრულად ვერ დადასტურდა.',
+      steps: ['გახსენით საჯარო რეესტრის ეროვნული სააგენტოს ოფიციალური გვერდი.', 'მოითხოვეთ უძრავი ქონების უახლესი ამონაწერი საკადასტრო კოდით.'],
+      requestedDocument: 'უძრავი ქონების ამონაწერი (საკუთრება/შეზღუდვები)',
+      aiUploadPrompt: 'თუ უკვე გაქვთ ამონაწერი, ატვირთეთ ის აქ და Homatch AI გაანალიზებს.',
+    },
+    en: {
+      title: 'Latest ownership-extract verification',
+      reason: 'The latest ownership and encumbrance status could not be fully confirmed from public sources.',
+      steps: ['Open the National Agency of Public Registry official page.', 'Request the current property extract using the cadastral code.'],
+      requestedDocument: 'Property extract (ownership/encumbrances)',
+      aiUploadPrompt: 'If you already have the extract, upload it here and Homatch AI will analyze it.',
+    },
+  },
+  constructionPermissions: {
+    ka: {
+      title: 'მშენებლობის ნებართვის დამატებითი გადამოწმება',
+      reason: 'მშენებლობის ნებართვის დოკუმენტი საჯარო წყაროთი ავტომატურად ვერ მოიძებნა.',
+      steps: ['გახსენით მშენებლობის ნებართვების პორტალის ოფიციალური გვერდი.', 'მოძებნეთ საკადასტრო კოდით ან მისამართით.'],
+      requestedDocument: 'მშენებლობის ნებართვა',
+      aiUploadPrompt: 'თუ უკვე გაქვთ ნებართვის დოკუმენტი, ატვირთეთ ის აქ და Homatch AI გაანალიზებს.',
+    },
+    en: {
+      title: 'Additional construction-permit verification',
+      reason: 'A construction permit document could not be automatically located from a public source.',
+      steps: ['Open the Construction Permits Portal official page.', 'Search using the cadastral code or address.'],
+      requestedDocument: 'Construction permit',
+      aiUploadPrompt: 'If you already have the permit document, upload it here and Homatch AI will analyze it.',
+    },
+  },
+  commissioning: {
+    ka: {
+      title: 'ექსპლუატაციაში მიღების დამატებითი გადამოწმება',
+      reason: 'ობიექტის ექსპლუატაციაში მიღების ოფიციალური აქტი საჯარო წყაროთი ავტომატურად ვერ მოიძებნა — ფიზიკური დასრულება არ ნიშნავს ავტომატურად ოფიციალურ ექსპლუატაციაში მიღებას.',
+      steps: ['გახსენით მშენებლობის ნებართვების პორტალის ოფიციალური გვერდი.', 'მოძებნეთ ობიექტის ექსპლუატაციაში მიღების აქტი საკადასტრო კოდით.'],
+      requestedDocument: 'ექსპლუატაციაში მიღების აქტი',
+      aiUploadPrompt: 'თუ უკვე გაქვთ აქტი, ატვირთეთ ის აქ და Homatch AI გაანალიზებს.',
+    },
+    en: {
+      title: 'Additional commissioning verification',
+      reason: 'An official commissioning/completion act could not be automatically located from a public source — physical completion does not by itself mean official commissioning.',
+      steps: ['Open the Construction Permits Portal official page.', 'Search for the commissioning act using the cadastral code.'],
+      requestedDocument: 'Commissioning/completion act',
+      aiUploadPrompt: 'If you already have the act, upload it here and Homatch AI will analyze it.',
+    },
+  },
+};
+const CATEGORY_TO_PORTAL: Record<keyof LegalStatusMatrix, string> = {
+  companyRegistration: 'enreg',
+  debtorRegistry: 'debtor',
+  taxpayerStatus: 'rstax',
+  propertyEncumbrances: 'napr',
+  constructionPermissions: 'tas',
+  commissioning: 'tas',
+};
+// buildManualVerificationActions() (mandate item 8, addendum Sections 1-3):
+// one card per unresolved category from the legal status matrix — never a
+// bare "not confirmed" label with no path forward. A category that already
+// reached CONFIRMED_POSITIVE or CONFIRMED_ATTENTION never gets a card here
+// (ATTENTION items are already surfaced via materialAdverseFindings/
+// riskFlags — a manual-verification card is for closing an evidence GAP,
+// not for re-flagging an already-confirmed adverse finding).
+function buildManualVerificationActions(matrix: LegalStatusMatrix, lang: string): ManualVerificationAction[] {
+  const l = MANUAL_ACTION_COPY_I18N.companyRegistration[lang] ? lang : 'en';
+  const out: ManualVerificationAction[] = [];
+  for (const category of Object.keys(matrix) as (keyof LegalStatusMatrix)[]) {
+    const entry = matrix[category];
+    if (entry.status !== 'NOT_CONFIRMED' && entry.status !== 'HUMAN_VERIFICATION_REQUIRED') continue;
+    const copy = MANUAL_ACTION_COPY_I18N[category][l] || MANUAL_ACTION_COPY_I18N[category].en;
+    const portalKey = CATEGORY_TO_PORTAL[category];
+    const portal = OFFICIAL_PORTAL[portalKey];
+    out.push({
+      id: category,
+      title: copy.title,
+      reason: copy.reason,
+      steps: copy.steps,
+      requestedDocument: copy.requestedDocument,
+      officialPortalUrl: portal?.url || null,
+      officialPortalLabel: portal ? portal.label[l] || portal.label.en : null,
+      aiUploadPrompt: copy.aiUploadPrompt,
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------
+// CustomerLinkValidation (addendum Sections 1-2): every customer-facing
+// clickable link — including an OFFICIAL GOVERNMENT portal link inside a
+// manual-verification card — must be live-verified before it is ever
+// rendered; a dead/unreachable link must be hidden, never shown broken.
+// This is deliberately scoped to the small, FIXED set of OFFICIAL_PORTAL
+// URLs above (see buildManualVerificationActions()) — no other
+// customer-facing clickable link currently exists anywhere else in this
+// report (comparables/sources never render `url` to the customer; see
+// CUSTOMER_REPORT_STRIP_KEYS), so there is nothing else to validate yet.
+// A short in-memory TTL cache avoids re-checking the same handful of
+// government homepages on every single job completion in a warm isolate.
+const PORTAL_LINK_CACHE = new Map<string, { ok: boolean; checkedAt: number }>();
+const PORTAL_LINK_CACHE_TTL_MS = 10 * 60 * 1000;
+async function validateCustomerLink(url: string): Promise<boolean> {
+  const cached = PORTAL_LINK_CACHE.get(url);
+  if (cached && Date.now() - cached.checkedAt < PORTAL_LINK_CACHE_TTL_MS) return cached.ok;
+  let ok = false;
+  try {
+    const r = await fetch(url, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(6000) });
+    // This only catches the unambiguous, addendum-named cases (network
+    // failure, 404/410, 5xx) — it cannot see through a government page
+    // that still responds 200 with a generic error shell.
+    ok = r.status < 400;
+  } catch {
+    ok = false;
+  }
+  PORTAL_LINK_CACHE.set(url, { ok, checkedAt: Date.now() });
+  return ok;
+}
+/** Applies validateCustomerLink() to every action's officialPortalUrl in
+ * parallel; a card whose link fails validation keeps its
+ * title/reason/steps/requestedDocument/aiUploadPrompt but loses the link —
+ * it is never simply dropped, since the manual-verification guidance
+ * itself is still valid even when this run could not confirm the portal is
+ * currently reachable. */
+async function applyLinkValidation(actions: ManualVerificationAction[]): Promise<ManualVerificationAction[]> {
+  return Promise.all(
+    actions.map(async (a) => {
+      if (!a.officialPortalUrl) return a;
+      const ok = await validateCustomerLink(a.officialPortalUrl);
+      return ok ? a : { ...a, officialPortalUrl: null, officialPortalLabel: null };
+    })
+  );
+}
+
 function computeOverallAssessment(
   gatedConfidence: 'HIGH' | 'MEDIUM' | 'LOW',
   coverage: any,
@@ -2054,6 +2426,13 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const coverage = dueDiligenceCoverage(officialStatus, officialDocs, companyProfile, { comparables: sanitizeComparables(mr.market?.comparables || []) }, ev, conflictsAll, unverifiedAll, prior.browserOfficial);
   const companyLiquidation = companyLiquidationSuspected(companyProfile);
   const materialAdverseFindings = computeMaterialAdverseFindings(riskFlags, materialConflicts, rightsAndRestrictions, debtorRecordFound, companyLiquidation, l);
+  // legalStatus / manualVerificationActions (mandate item 16 + item 8,
+  // addendum Sections 1-3): replaces the single hardcoded
+  // `requiresManualVerification: false` below with a real, per-category
+  // evidence matrix plus one concrete action card for every category that
+  // did not reach a confirmed state.
+  const legalStatus = buildLegalStatusMatrix(officialStatus, { officialDocs, companyLiquidationSuspected: companyLiquidation.suspected, debtorRecordFound, rightsAndRestrictionsStatus: rrStatus }, l);
+  const manualVerificationActions = await applyLinkValidation(buildManualVerificationActions(legalStatus, l));
 
   // overallAssessment (v30): keyStrengths/itemsToVerify are the model's own
   // authored lists (bound by the SYNTHESIS prompt's KEY STRENGTHS/ITEMS TO
@@ -2160,18 +2539,42 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     documents: o.documents || [],
     officialDocumentsRetrieved: officialDocs,
     historicalComparison: prior.browserOfficial?.historicalComparison || null,
-    // priceDrivers (2026-09-06 "final alignment pass" mandate): positioning/
+    // priceDrivers (2026-09-06 "final alignment pass" mandate, extended by
+    // the "report intelligence v2" addendum Section 8): positioning/
     // marketMedianPricePerSqm/premiumPct are now ALWAYS computed by
     // calculateMarketPosition()/median() (pure JS, above) from the real
-    // numeric comparables the MARKET stage gathered — never LLM-estimated.
-    // `reasoning` stays qualitative color the model supplies
-    // (priceDriverEvidence), never the classification itself.
+    // numeric comparables the MARKET stage gathered — never LLM-estimated —
+    // and, per the addendum, ONLY from comparables the model itself
+    // evidenced as ACTIVE + RESIDENTIAL (see computeMarketRanges()'s own
+    // comment): an expired/removed/sold listing can no longer silently
+    // pull the "current" figure in either direction. startingPricePerSqm
+    // (a developer's marketing "from" price) and historicalMedianPricePerSqm
+    // (stale listings) are kept as their own separately labeled fields —
+    // never collapsed into marketMedianPricePerSqm. `reasoning` stays
+    // qualitative color the model supplies (priceDriverEvidence), never the
+    // classification itself.
     market: (() => {
       const sanitizedComparables = sanitizeComparables(mr.market?.comparables || []);
-      const marketPosition = calculateMarketPosition({ targetPricePerSqm: parseNumericPricePerSqm(mr.market?.subject?.pricePerSqm), comparables: sanitizedComparables });
+      const ranges = computeMarketRanges(sanitizedComparables);
+      const activeResidentialOnly = sanitizedComparables.filter((c: any) => c?.listingStatus === 'ACTIVE' && (!c?.propertyType || c.propertyType === 'RESIDENTIAL'));
+      const subjectPriceType: string | null = mr.market?.subject?.priceType || null;
+      const subjectPricePerSqm = parseNumericPricePerSqm(mr.market?.subject?.pricePerSqm);
+      // A developer's marketing "starting from" price is never a current
+      // market-position signal — only an actual current listing/sale price
+      // (or an undeclared subject price, kept backward-compatible) is
+      // compared against the active range.
+      const positionTargetPrice = subjectPriceType === 'STARTING' ? null : subjectPricePerSqm;
+      const marketPosition = calculateMarketPosition({ targetPricePerSqm: positionTargetPrice, comparables: activeResidentialOnly });
       return {
         priceEvidence: mr.market?.priceEvidence || [],
         comparables: sanitizedComparables,
+        startingPricePerSqm: subjectPriceType === 'STARTING' && subjectPricePerSqm != null ? String(subjectPricePerSqm) : null,
+        activeMinPricePerSqm: ranges.activeMinPricePerSqm != null ? String(ranges.activeMinPricePerSqm) : null,
+        activeMedianPricePerSqm: ranges.activeMedianPricePerSqm != null ? String(ranges.activeMedianPricePerSqm) : null,
+        activeMaxPricePerSqm: ranges.activeMaxPricePerSqm != null ? String(ranges.activeMaxPricePerSqm) : null,
+        activeComparablesUsed: ranges.activeComparablesUsed,
+        historicalMedianPricePerSqm: ranges.historicalMedianPricePerSqm != null ? String(ranges.historicalMedianPricePerSqm) : null,
+        historicalComparablesUsed: ranges.historicalComparablesUsed,
         priceDrivers: {
           positioning: marketPosition.position,
           marketMedianPricePerSqm: marketPosition.marketMedianPricePerSqm != null ? String(marketPosition.marketMedianPricePerSqm) : null,
@@ -2197,7 +2600,13 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     unverified: unverifiedAll,
     sources: ev,
     browserOfficial: prior.browserOfficial || null,
-    requiresManualVerification: false,
+    // legalStatus / manualVerificationActions (mandate item 16 + item 8):
+    // requiresManualVerification is now a REAL derived flag (true whenever
+    // at least one category needs a human step or is genuinely unconfirmed)
+    // instead of a permanently hardcoded false.
+    legalStatus,
+    manualVerificationActions,
+    requiresManualVerification: manualVerificationActions.length > 0,
     researchProvider: 'openai+playwright',
     costUsage: prior._cost,
     stage: 'COMPLETE',
@@ -2341,17 +2750,130 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
 // every one of these fields unchanged.
 const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial', 'source', 'sourceName']);
 
-function sanitizeCustomerReport<T>(value: T): T {
-  if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v)) as unknown as T;
+// ---------------------------------------------------------------------
+// 2026-09 "report intelligence v2" mandate addendum, Sections 5/6/7/10/12:
+// CUSTOMER_REPORT_STRIP_KEYS above only ever removed named KEYS from
+// structured JSON — it never looked at the CONTENT of a string value, so a
+// brand/domain name, a raw URL, or a technical-failure phrase the LLM wrote
+// straight into a prose sentence (officialEvidence[], facts[], an
+// executiveSummary, etc.) passed through completely unaffected. The prompt
+// itself asks the model not to do this (BASE's "SOURCE-ANONYMITY RULE"),
+// but the addendum is explicit: "Do not rely on sanitizer alone" for the
+// generation side, AND "do not rely on the prompt alone" for the sanitizer
+// side either — this is the second, code-level layer that does not depend
+// on model compliance.
+//
+// Ordinary public-research provider/platform names that must never reach
+// the customer, whatever field or sentence they appear in (the one
+// exception — an official GOVERNMENT portal named inside a manual
+// verification action — is handled separately by buildManualVerificationActions()
+// and is never routed through this generic prose stripper).
+// Trailing `(?:-[ა-ჰ]+)?` consumes a Georgian grammatical case suffix
+// glued directly onto a foreign brand name with a hyphen — a very common
+// pattern in Georgian prose ("Facebook-ზე" = "on Facebook", "Korter-ზე" =
+// "on Korter") — so the whole glued token is removed as one leak, never
+// leaving an orphaned "-ზე" fragment behind. The trailing boundary is a
+// negative lookahead for a following ASCII letter/digit (never `\b`,
+// which — per this file's own established Georgian-`\b` bug pattern
+// elsewhere — does not reliably bound against adjacent Georgian text).
+const FORBIDDEN_SOURCE_NAME_RE =
+  /\b(myhome(?:\.ge)?|ss\.ge|home\.ge|korter(?:\.ge)?|estatehub(?:\.ge)?|villion\.ge|place\.ge|livo\.ge|myestate\.ge|address\.ge|lalafo(?:\.ge)?|OLX|LinkedIn|Facebook|Instagram|YouTube|Google(?:\s+Search)?|OpenAI)(?:-[ა-ჰ]+)?(?![a-zA-Z0-9])/gi;
+
+// Internal worker/FSM/technical vocabulary that must never reach a customer
+// payload (addendum Section 5) — matched as whole phrases/tokens so it
+// cannot accidentally eat an unrelated Georgian sentence.
+const TECHNICAL_LEAK_RE =
+  /\b(iframe not found|SUBMIT_FAILED|SEARCH_CONTROL_NOT_FOUND|FRAME_NOT_FOUND|WAITING_HUMAN|SKIPPED_HUMAN_VERIFICATION|worker failed|technical failure|illegal transition|IllegalTransitionError|selector not found|browser error|Playwright|FSM state|FSM|source coverage|worker status|NO_RESULT_CONFIRMED|SEARCH_CONFIRMED|resultConfirmed|noResultConfirmed)\b/g;
+
+/** Strips brand/domain names, markdown links, raw URLs, parenthetical
+ * source attributions, and internal technical vocabulary out of a single
+ * customer-facing string — the content-level companion to
+ * CUSTOMER_REPORT_STRIP_KEYS's key-level stripping. Collapses the leftover
+ * whitespace/punctuation debris a removal leaves behind so the sentence
+ * still reads naturally. */
+function sanitizeCustomerString(input: string): string {
+  if (!input) return input;
+  let s = input;
+  // Markdown links -> label only: "[ბრენდის სახელი](https://...)" -> "ბრენდის სახელი"
+  s = s.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/gi, '$1');
+  // Raw URLs of any kind.
+  s = s.replace(/https?:\/\/\S+/gi, '');
+  // "(source.domain)" / "(via SomeProvider)" style parenthetical attribution.
+  s = s.replace(/\((?:via\s+)?[^()]*(?:myhome|ss\.ge|home\.ge|korter|estatehub|villion\.ge|linkedin|facebook|instagram)[^()]*\)/gi, '');
+  s = s.replace(FORBIDDEN_SOURCE_NAME_RE, '');
+  s = s.replace(TECHNICAL_LEAK_RE, '');
+  // Collapse whitespace/punctuation left behind by the removals above
+  // (double spaces, orphaned "()" or " — " fragments, stray commas/hyphens
+  // at either end). A trailing "." is deliberately EXCLUDED from this
+  // cleanup — unlike a stray comma/semicolon/hyphen, a lone trailing
+  // period is normal, correct sentence punctuation on a string that had
+  // nothing removed from it at all, and must never be eaten (this was a
+  // real bug caught by this file's own regression test: "A clean summary
+  // with no leaks." must survive with its period intact).
+  s = s
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;])/g, '$1')
+    .replace(/^[\s,;.-]+|[\s,;-]+$/g, '')
+    .trim();
+  return s;
+}
+
+// CUSTOMER_FACING_URL_KEYS: the one exception to sanitizeCustomerString's
+// blanket raw-URL stripping. `officialPortalUrl` (see OFFICIAL_PORTAL /
+// buildManualVerificationActions() above) is a hand-verified GOVERNMENT
+// portal URL — the addendum's explicit exception to "never show a raw
+// URL"/"never name a source" (Sections 1-3: "even official government
+// portal links... must still be validated and shown, with a neutral
+// label"). Every other string field, whatever its key, still gets the
+// full sanitizeCustomerString treatment.
+const CUSTOMER_FACING_URL_KEYS = new Set(['officialPortalUrl']);
+function sanitizeCustomerReport<T>(value: T, key?: string): T {
+  if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v, key)) as unknown as T;
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (CUSTOMER_REPORT_STRIP_KEYS.has(k)) continue;
-      out[k] = sanitizeCustomerReport(v);
+      out[k] = sanitizeCustomerReport(v, k);
     }
     return out as T;
   }
+  if (typeof value === 'string') return (key && CUSTOMER_FACING_URL_KEYS.has(key) ? value : sanitizeCustomerString(value)) as unknown as T;
   return value;
+}
+
+// assertNoLeaks() (mandate addendum Section 12/13) — a last-resort net,
+// never the primary defense (sanitizeCustomerString/CUSTOMER_REPORT_STRIP_KEYS
+// above are). Exported so a Deno test can call it directly against a fixed
+// forbidden-token list; the runtime path below (sanitizeForCustomer) uses
+// the non-throwing findLeaks() so a residual leak degrades gracefully
+// (logged + stripped) instead of turning into a 500 for the customer.
+const FORBIDDEN_LEAK_TOKENS = [
+  'myhome',
+  'korter',
+  'estatehub',
+  'home.ge',
+  'ss.ge',
+  'villion.ge',
+  'linkedin',
+  'facebook',
+  'utm_source',
+  'sourceurl',
+  'sourcename',
+  'retrievalmethod',
+  'playwright',
+  'iframe not found',
+  'submit_failed',
+  'frame_not_found',
+  'technical failure',
+];
+function findLeaks(customerJson: unknown): string[] {
+  const raw = JSON.stringify(customerJson).toLowerCase();
+  return FORBIDDEN_LEAK_TOKENS.filter((token) => raw.includes(token));
+}
+export function assertNoLeaks(customerJson: unknown): void {
+  const leaks = findLeaks(customerJson);
+  if (leaks.length) throw new Error(`CUSTOMER_LEAK:${leaks.join(',')}`);
 }
 
 function sanitizeForCustomer(job: any): any {
@@ -2390,6 +2912,25 @@ function sanitizeForCustomer(job: any): any {
   delete r._financialQueue;
   delete r._financialReturnStage;
   delete r._captchaReturnStage;
+  // Last-resort safety net (mandate addendum Section 12): sanitizeCustomerReport
+  // above is the real defense (key removal + sanitizeCustomerString on every
+  // string leaf) — this only catches whatever that missed. Never throws in
+  // production (a leak must never turn into a 500 for the customer): it
+  // logs for admin follow-up and best-effort re-redacts the JSON text
+  // itself so the response body genuinely does not carry the token, even
+  // though the resulting field may read awkwardly until the real cause is
+  // fixed upstream.
+  const leaks = findLeaks(r);
+  if (leaks.length) {
+    console.error(`research-agent: sanitizeForCustomer residual leak (job ${job.id}): ${leaks.join(', ')}`);
+    let raw = JSON.stringify(r);
+    for (const token of leaks) raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '');
+    try {
+      return { ...job, result_json: JSON.parse(raw) };
+    } catch {
+      /* fall through and return the pre-redaction object rather than a broken response */
+    }
+  }
   return { ...job, result_json: r };
 }
 

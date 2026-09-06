@@ -38,27 +38,7 @@ import { challenge, waitForResultSignal, hasNoResultPhrase } from '../../browser
 import { RSTAX_URL, RSTAX_ID_INPUT_SELECTORS, RSTAX_CAPTCHA_BLOCK_PHRASE, RSTAX_SOURCE_META } from './selectors.js';
 import type { LegacySourceResult, RsTaxpayerPublicData } from '../WorkflowResult.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
-
-/** Best-effort deterministic label:value extraction from the result page's
- * visible text — mandate Section 12's structured-fields requirement. Every
- * field is nullable; a label this run cannot confidently locate is left
- * null rather than guessed. Never AI-assisted (mandate: "AI is never
- * authoritative for a deterministic workflow decision"). */
-function parseRsTaxpayerFields(text: string, idCode: string): RsTaxpayerPublicData {
-  const grab = (labelPattern: RegExp): string | null => {
-    const m = labelPattern.exec(text);
-    return m ? m[1].trim().replace(/\s+/g, ' ').slice(0, 300) : null;
-  };
-  const otherPublicFields: Record<string, string> = {};
-  const identificationCode = grab(/საიდენტიფიკაციო\s*(?:კოდი|ნომერი)?\s*[:։]?\s*([0-9-]{6,})/i) || (text.includes(idCode) ? idCode : null);
-  const taxpayerName = grab(/(?:დასახელება|სახელწოდება|გადამხდელის\s*დასახელება)\s*[:։]\s*([^\n]{2,200})/i);
-  const legalForm = grab(/სამართლებრივი\s*ფორმა\s*[:։]\s*([^\n]{2,120})/i);
-  const status = grab(/სტატუსი\s*[:։]\s*([^\n]{2,80})/i);
-  const registrationDate = grab(/რეგისტრაციის\s*თარიღი\s*[:։]\s*([0-9./\-]{6,20})/i);
-  const vatStatus = grab(/დღგ[\s-]*(?:გადამხდელი|სტატუსი)?\s*[:։]\s*([^\n]{2,80})/i);
-  const address = grab(/მისამართი\s*[:։]\s*([^\n]{2,250})/i);
-  return { identificationCode, taxpayerName, legalForm, status, registrationDate, vatStatus, address, otherPublicFields };
-}
+import { parseRsTaxpayerFields, hasParsedTaxpayerEvidence } from './RsTaxpayerParsing.js';
 
 function buildResult(
   status: string,
@@ -78,6 +58,10 @@ function buildResult(
     resultContext: opts.resultText || opts.error || null,
     resultConfirmed: status === 'SEARCH_CONFIRMED',
     noResultConfirmed: status === 'NO_RESULT_CONFIRMED',
+    // SEARCH_CONFIRMED is the status the report treats as "RS Taxpayers
+    // registry evidence obtained" — resultValidated must therefore require
+    // the same real-parsed-field proof as SEARCH_CONFIRMED itself (see
+    // hasParsedTaxpayerEvidence()), never just "a new signal appeared".
     resultValidated: status === 'SEARCH_CONFIRMED',
     status,
     // No dedicated FSM/traversal ladder — RS Taxpayers is a single flat
@@ -168,8 +152,23 @@ export async function runRsTaxpayerWorker(
     if (!sig.changed) {
       return buildResult('SUBMITTED_UNCONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, error: 'search submitted but no new result signal appeared' });
     }
-    const status = hasNoResultPhrase(sig.after) ? 'NO_RESULT_CONFIRMED' : 'SEARCH_CONFIRMED';
-    const taxpayerData = status === 'SEARCH_CONFIRMED' ? parseRsTaxpayerFields(sig.after, idCode) : null;
+    const noResult = hasNoResultPhrase(sig.after);
+    const candidateData = noResult ? null : parseRsTaxpayerFields(sig.after, idCode);
+    let status: string;
+    let taxpayerData: RsTaxpayerPublicData | null;
+    if (noResult) {
+      status = 'NO_RESULT_CONFIRMED';
+      taxpayerData = null;
+    } else if (hasParsedTaxpayerEvidence(candidateData)) {
+      status = 'SEARCH_CONFIRMED';
+      taxpayerData = candidateData;
+    } else {
+      // A new signal appeared and it's not a recognized no-result phrase,
+      // but nothing we can confidently call a real taxpayer field parsed
+      // out of it either — never claim RS success on page-load alone.
+      status = 'SUBMITTED_UNPARSED';
+      taxpayerData = null;
+    }
     // Feed whatever names/ids this result page actually carries into the
     // shared EntityQueue — mandate Section 12's "wire the previously-unused
     // entities parameter" fix. Never interrupts this worker's own result;
@@ -177,7 +176,14 @@ export async function runRsTaxpayerWorker(
     if (entities && status === 'SEARCH_CONFIRMED' && sig.after) {
       entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
     }
-    return buildResult(status, { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, taxpayerData });
+    return buildResult(status, {
+      forEntity,
+      selector: usedSelector,
+      value: idCode,
+      resultText: sig.after,
+      taxpayerData,
+      error: status === 'SUBMITTED_UNPARSED' ? 'search submitted and page changed, but no parseable taxpayer fields were found — not treated as confirmed evidence' : null,
+    });
   } catch (e) {
     return buildResult('FAILED', { forEntity, error: String(e) });
   }

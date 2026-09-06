@@ -82,13 +82,33 @@ export async function runTasMapWorker(page: Page, query: string, ledger?: Eviden
     const layerResults = await pageObj.enableRequiredLayers(mapPage);
     signals.layersEnabled = assert.assertAllRequiredLayersEnabled(layerResults);
     trace.record({ stateBefore: fsm.state, action: 'ENABLE_LAYERS', actualOutcome: JSON.stringify(layerResults), stateAfter: fsm.state });
-    if (signals.layersEnabled) fsm.transition('REQUIRED_LAYERS_ENABLED');
-    else stop(`assertAllRequiredLayersEnabled failed — missing: ${Object.keys(layerResults).filter((k) => !layerResults[k]).join(', ')}`);
+    // Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8: when the
+    // required layers failed to enable, execution used to fall through
+    // unconditionally into `fsm.transition('SEARCH_CONTROL_READY', ...)`
+    // below — illegal from the un-advanced CADASTRAL_SECTION_EXPANDED
+    // state (stop() only records a trace event, it never returns), which
+    // threw IllegalTransitionError and masked the real, honest "missing
+    // required layers" reason behind a technical FSM crash. Terminalize
+    // cleanly instead: a missing-layers failure is a real, reportable
+    // outcome (mandate: "the worker must return the REAL reason ... not
+    // overwrite it with IllegalTransitionError"), and FAILED is a legal
+    // operational transition from ANY linear state (ResearchState.ts's
+    // buildLinearGraph gives every non-terminal state an edge to every
+    // OPERATIONAL_STATUSES entry, FAILED included).
+    if (signals.layersEnabled) {
+      fsm.transition('REQUIRED_LAYERS_ENABLED');
+    } else {
+      const missing = Object.keys(layerResults).filter((k) => !layerResults[k]);
+      const reason = `missing required layers: ${missing.join(', ')}`;
+      stop(`assertAllRequiredLayersEnabled failed — ${reason}`);
+      fsm.transition('FAILED', reason);
+      return buildResult('FAILED', signals, documents, trace, finalText, finalUrl, reason, query);
+    }
 
-    // Search-control readiness/cadastral entry proceed even if the layers
-    // step stalled — the search box is independent UI, same reasoning the
-    // pre-existing MSMAP adapter used — but layersEnabled stays honestly
-    // false in the traversal snapshot either way.
+    // Search-control readiness/cadastral entry proceed independently of the
+    // layers step — the search box is independent UI, same reasoning the
+    // pre-existing MSMAP adapter used — reached only once layers genuinely
+    // enabled (the branch above returns early otherwise).
     fsm.transition('SEARCH_CONTROL_READY', 'search box is independent of the layers panel');
     const entered = await pageObj.enterCadastralInMap(mapPage, query);
     signals.queryEntered = entered.found;

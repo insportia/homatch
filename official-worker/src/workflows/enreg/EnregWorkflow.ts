@@ -18,6 +18,7 @@ import { BrowserTrace } from '../../browser/BrowserTrace.js';
 import { computeEnregTraversal } from '../../state/transitions.js';
 import { WorkflowPreconditionError } from '../../errors/WorkflowErrors.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
+import { looksLikeCompanyId } from '../../entities/EntityValidation.js';
 import type { LegacySourceResult, WorkflowResult } from '../WorkflowResult.js';
 
 const SOURCE_META = { name: 'Entrepreneur Registry', class: 'OFFICIAL_REGISTRY', url: 'https://enreg.reestri.gov.ge/main.php?m=new_index' };
@@ -183,9 +184,21 @@ async function runOneAttempt(
   return { fsmState: fsm.state, matched: true, infoIconClicked: true, documents, error: null, latestApplicationDate: latestDate, fullChain: true };
 }
 
-export async function runEnregWorkflow(page: Page, forEntity: { name: string; idCode: string | null } | null, entities?: EntityQueue, opts: { skipGoto?: boolean } = {}): Promise<LegacySourceResult> {
+export async function runEnregWorkflow(page: Page, rawEntity: { name: string; idCode: string | null } | null, entities?: EntityQueue, opts: { skipGoto?: boolean } = {}): Promise<LegacySourceResult> {
   const trace = new BrowserTrace('enreg');
   const pageObj = new EnregPage();
+  // Required invariant (real production job 08379309-bb2e-4ac6-9d97-
+  // 727edb3af2b8): "A company name must NEVER be copied into idCode."
+  // Re-validated here as the last line of defense regardless of what the
+  // caller (ResearchOrchestrator.startEntity / the primary 'enreg' step's
+  // own construction) already sanitized — this is the one place a
+  // corrupted idCode actually causes a wrong-method search (ID_CODE
+  // against a name string, exactly the confirmed live bug:
+  // forEntity:{name:"Millenio Group",idCode:"Millenio Group"},
+  // searchMethod:"ID_CODE"). A rejected idCode here still leaves
+  // forEntity.name intact, so the ORG_NAME ("ორგ. დასახელება") search
+  // path below fires normally instead.
+  const forEntity = rawEntity ? { name: rawEntity.name, idCode: looksLikeCompanyId(rawEntity.idCode) ? rawEntity.idCode : null } : null;
   const hasIdentifier = !!forEntity?.idCode;
   const primaryMethod: 'ID_CODE' | 'NAME' | null = forEntity ? (hasIdentifier ? 'ID_CODE' : 'NAME') : null;
   const primaryValue = forEntity ? forEntity.idCode || forEntity.name : null;

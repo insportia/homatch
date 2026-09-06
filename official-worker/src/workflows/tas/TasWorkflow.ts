@@ -7,7 +7,7 @@ import type { Page } from 'playwright';
 import { newTasFsm } from './TasState.js';
 import { TasPage } from './TasPage.js';
 import { canMarkTasExhausted, assertSearchSubmitted } from './assertions.js';
-import { candidateSequence, isCadastralCode } from './cadastral.js';
+import { candidateSequence, isCadastralCode, hasMeaningfulTasResults } from './cadastral.js';
 import { BrowserTrace } from '../../browser/BrowserTrace.js';
 import { challenge } from '../../browser/BrowserSession.js';
 import { computeTasTraversal } from '../../state/transitions.js';
@@ -57,25 +57,27 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     // full code came back a CONFIRMED empty — never merely because the form
     // failed to operate (that is a control problem, not a granularity one).
     let attempts = [{ cadastralCodeTried: resolved, resultsDiscovered: searchRes.resultsDiscovered, noResultConfirmed: !!searchRes.noResultConfirmed }];
-    if (searchRes.noResultConfirmed && candidates.length > 1) {
-      fsm.transition('PARENT_CODE_RESOLUTION', 'full code confirmed empty — trying parent parcel candidates');
+    if (!hasMeaningfulTasResults(searchRes) && candidates.length > 1) {
+      fsm.transition('PARENT_CODE_RESOLUTION', 'full code had no meaningful results — trying parent/base-parcel candidates');
       for (const candidate of candidates.slice(1)) {
         fsm.transition('PARENT_CODE_ENTERED', candidate);
         const retry = await pageObj.searchCadastral(page, candidate);
         attempts.push({ cadastralCodeTried: candidate, resultsDiscovered: retry.resultsDiscovered, noResultConfirmed: !!retry.noResultConfirmed });
         if (!retry.found || !assertSearchSubmitted(retry.submitted, retry.networkConfirmed)) continue;
         fsm.transition('PARENT_SEARCH_SUBMITTED');
-        if (!retry.noResultConfirmed) {
-          searchRes = retry;
-          resolved = candidate;
-          break;
-        }
+        // Adopt the latest genuinely-submitted attempt regardless of
+        // outcome (so a run where every candidate confirms empty still
+        // reports the LAST one tried, per the mandate's exact fixture),
+        // but stop iterating the moment one actually finds something.
+        searchRes = retry;
+        resolved = candidate;
+        if (hasMeaningfulTasResults(retry)) break;
       }
     }
 
     fsm.transition('RESULT_SET_CAPTURED');
     const resultsDiscovered = searchRes.resultsDiscovered;
-    if (searchRes.noResultConfirmed || resultsDiscovered === 0) {
+    if (!hasMeaningfulTasResults(searchRes)) {
       fsm.transition('RESULT_QUEUE_CREATED', 'zero relevant items — nothing to traverse');
       fsm.transition('RESULT_OPENED');
       fsm.transition('CHILDREN_ENUMERATED');

@@ -9,6 +9,7 @@
 // storage shape moved to the new ResearchEntity type and explicit
 // EnregEntityStatus.
 import type { ResearchEntity, EntityDiscoveryRef, EntityType } from './EntityTypes.js';
+import { looksLikeCompanyId } from './EntityValidation.js';
 
 export const normalizeName = (n: string | null | undefined): string =>
   String(n || '')
@@ -45,7 +46,16 @@ export class EntityDeduplicator {
     if (!candidate?.name) return null;
     const nameKey = normalizeName(candidate.name);
     if (!nameKey) return null;
-    const existingById = candidate.idCode ? this.byId.get(candidate.idCode) : undefined;
+    // Required invariant (2026-09-06 production-trace mandate): never let a
+    // name (or any other non-numeric string) masquerade as a registry
+    // identification code inside the EntityQueue — confirmed()/
+    // notYetQueued() treat identificationCode !== null as "safe to search
+    // deterministically by ID_CODE" and to auto-queue for
+    // RS_TAXPAYER/DEBTOR (neither of which has a name fallback of its
+    // own), so a corrupted idCode here would silently propagate well
+    // beyond ENREG.
+    const idCode = looksLikeCompanyId(candidate.idCode) ? candidate.idCode : null;
+    const existingById = idCode ? this.byId.get(idCode) : undefined;
     const existingByName = this.byName.get(nameKey);
     let rec = existingById || existingByName;
 
@@ -54,25 +64,25 @@ export class EntityDeduplicator {
         id: nextId(),
         type: candidate.type || 'LEGAL_ENTITY',
         name: candidate.name,
-        identificationCode: candidate.idCode || null,
+        identificationCode: idCode,
         discoveredFrom: [],
         enregStatus: 'NOT_QUEUED',
       };
       this.byName.set(nameKey, rec);
       if (rec.identificationCode) this.byId.set(rec.identificationCode, rec);
-    } else if (candidate.idCode && !rec.identificationCode) {
-      rec.identificationCode = candidate.idCode;
+    } else if (idCode && !rec.identificationCode) {
+      rec.identificationCode = idCode;
       this.byId.set(rec.identificationCode, rec);
-    } else if (candidate.idCode && rec.identificationCode && rec.identificationCode !== candidate.idCode) {
+    } else if (idCode && rec.identificationCode && rec.identificationCode !== idCode) {
       rec = {
         id: nextId(),
         type: candidate.type || 'LEGAL_ENTITY',
         name: candidate.name,
-        identificationCode: candidate.idCode,
+        identificationCode: idCode,
         discoveredFrom: [],
         enregStatus: 'NOT_QUEUED',
       };
-      this.byId.set(candidate.idCode, rec);
+      this.byId.set(idCode, rec);
     }
 
     rec.discoveredFrom.push({

@@ -17,6 +17,7 @@ import { runRsTaxpayerWorker } from '../workflows/financial/RsTaxpayerWorker.js'
 import { runDebtorWorker } from '../workflows/financial/DebtorWorker.js';
 import { runGenericWorkflow } from '../workflows/generic/GenericWorkflow.js';
 import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
+import { looksLikeCompanyId } from '../entities/EntityValidation.js';
 import { challenge } from '../browser/BrowserSession.js';
 import { buildHistoricalComparison } from '../documents/HistoricalComparison.js';
 import { toLegacyDocument } from '../documents/DocumentTypes.js';
@@ -120,14 +121,23 @@ export class ResearchOrchestrator {
    * two sources at all. */
   startEntity(name: string, idCode: string | null, source: 'enreg' | 'rstax' | 'debtor' = 'enreg'): ResearchJob {
     const id = randomUUID();
-    // Only 'enreg' falls back to searching by bare name when idCode is
-    // absent (it has a real name-search field). rstax/debtor have none —
-    // keep idCode genuinely null for them rather than smuggling a company
-    // NAME into the step's idCode field, which RsTaxpayerWorker/
-    // DebtorWorker would otherwise try to type into a TIN/ID input. A null
-    // idCode there resolves to a clean, honest "no identifier" result,
-    // never a guess.
-    const stepIdCode = source === 'enreg' ? idCode || name : idCode;
+    // Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8: this used
+    // to fall back to `idCode || name` for 'enreg', which copied the
+    // company NAME into the idCode field whenever idCode was null/absent —
+    // confirmed live as `forEntity: { name: "Millenio Group", idCode:
+    // "Millenio Group" }`, which then made runEnregWorkflow's own
+    // hasIdentifier/searchMethod selection treat a NAME as an ID_CODE
+    // search value (`searchMethod: "ID_CODE"`, `searchValue: "Millenio
+    // Group"`). Required invariant: idCode must be a real numeric
+    // registry ID or null — NEVER a name, for any source. Leaving it
+    // honestly null here is exactly what makes ENREG's own, already-
+    // correct NAME fallback (driven by `forEntity.name` directly) fire —
+    // nothing else needs to change for that to work. rstax/debtor still
+    // get idCode as given (validated the same way) since they have no
+    // name-search field of their own — a non-numeric idCode there
+    // resolves to a clean, honest "no identifier" precondition skip in
+    // RsTaxpayerWorker/DebtorWorker, never a name typed into a TIN input.
+    const stepIdCode = looksLikeCompanyId(idCode) ? (idCode as string) : null;
     const step: StepDescriptor = { type: 'entity', source, idCode: stepIdCode, name };
     const job: ResearchJob = { id, query: stepIdCode || name, mode: 'cadastral', status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], steps: [step], createdAt: now(), updatedAt: now() };
     this.jobs.set(id, job);

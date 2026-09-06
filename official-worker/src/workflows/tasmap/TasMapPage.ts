@@ -53,8 +53,41 @@ const SOURCE = 'TAS_MAP';
 // wants documents actually read, not an unbounded crawl.
 const MAX_TOTAL_DOCS = 80;
 
+/** Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8 proved every
+ * required layer reads back `false` (ENABLE_LAYERS: all 6 layers false)
+ * against the LIVE map DOM. Root cause, confirmed against
+ * msmap-recording.spec.ts line 12 — the recording clicks an expand-arrow
+ * on an unnamed parent tree node BEFORE ever touching a required-layer
+ * checkbox — is that the Angular Material `mat-tree` only renders
+ * REQUIRED_LAYER_1/REQUIRED_LAYER_2 (and the category node) as DOM
+ * treeitems once their ancestor node(s) have been expanded; nothing in
+ * this file ever expanded the tree first, so `getByRole('treeitem',
+ * {name}).count()` was always 0. This walks the CDK Tree's own standard
+ * accessibility attribute (`[role="treeitem"][aria-expanded="false"]` —
+ * not a recording artifact: it is the same real attribute Angular
+ * Material stamps on every collapsed tree node, in any run) and expands
+ * collapsed nodes one at a time until the target treeitem exists and is
+ * visible, or nothing is left to expand. Never assumes a fixed nesting
+ * depth or node order. */
+async function revealTreeitem(page: Page, name: string, maxExpansions = 60): Promise<boolean> {
+  const target = () => (page as any).getByRole('treeitem', { name }).first();
+  const isReady = async () => (await target().count().catch(() => 0)) > 0 && (await target().isVisible().catch(() => false));
+  if (await isReady()) return true;
+  for (let i = 0; i < maxExpansions; i++) {
+    const collapsed = (page as any).locator('[role="treeitem"][aria-expanded="false"]').first();
+    if (!(await collapsed.count().catch(() => 0))) break;
+    const toggle = collapsed.locator('.mat-icon,svg').first();
+    const clickTarget = (await toggle.count().catch(() => 0)) ? toggle : collapsed;
+    await clickTarget.click({ timeout: 1500 }).catch(() => {});
+    await (page as any).waitForTimeout(250);
+    if (await isReady()) return true;
+  }
+  return isReady();
+}
+
 async function checkTreeitemCheckbox(page: Page, name: string): Promise<boolean> {
   try {
+    await revealTreeitem(page, name);
     const item = (page as any).getByRole('treeitem', { name }).first();
     if (!(await item.count().catch(() => 0))) return false;
     // Prefer a real scoped checkbox <input> — more robust than the
@@ -83,6 +116,7 @@ async function checkTreeitemCheckbox(page: Page, name: string): Promise<boolean>
 
 async function expandTreeitem(page: Page, name: string): Promise<boolean> {
   try {
+    await revealTreeitem(page, name);
     const item = (page as any).getByRole('treeitem', { name }).first();
     if (!(await item.count().catch(() => 0))) return false;
     const toggle = item.locator('svg,.mat-icon').first();

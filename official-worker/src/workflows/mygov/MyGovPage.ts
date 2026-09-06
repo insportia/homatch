@@ -49,8 +49,26 @@ export class MyGovPage {
     try {
       const link = (page as any).locator('a').filter({ hasText: PROPERTY_SEARCH_LINK_TEXT }).first();
       if (!(await link.count().catch(() => 0))) return { clicked: false };
+      const beforeUrl = (page as any).url();
       await link.click({ timeout: 5000 });
-      await (page as any).waitForTimeout(1500);
+      // Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8: the click
+      // triggers the SAME-PAGE Angular SPA route transition confirmed by
+      // the trace itself (services/10 -> services/10/service/176, no
+      // popup) — a flat `waitForTimeout(1500)` here raced that transition
+      // on a slower render, so resolveRegistryFrame() below could start
+      // polling before the new route (and its #main-routing-container) had
+      // even been swapped into the DOM, misreporting FRAME_NOT_FOUND for
+      // what was really "not rendered yet." Wait on the real DOM condition
+      // (the URL actually changing) first; the previous fixed delay is
+      // kept only as an honest fallback for the rarer case where the URL
+      // genuinely does not change (e.g. hash-only routing).
+      try {
+        await (page as any).waitForURL((url: URL) => url.toString() !== beforeUrl, { timeout: 8000 });
+      } catch {
+        /* URL may legitimately not change on some renders — fall through */
+      }
+      await (page as any).waitForLoadState('domcontentloaded', { timeout: 8000 }).catch(() => {});
+      await (page as any).waitForTimeout(500);
       return { clicked: true };
     } catch {
       return { clicked: false };
@@ -60,9 +78,28 @@ export class MyGovPage {
   /** Resolves the naprweb Angular app's real Frame via `.contentFrame()` on
    * `#main-routing-container iframe` — the one mechanism every step of the
    * real recorded flow actually uses. Polls because the app (behind an
-   * invisible reCAPTCHA on some renders) can take a few seconds to mount. */
-  async resolveRegistryFrame(page: Page, { timeoutMs = 20000, pollMs = 1000 }: { timeoutMs?: number; pollMs?: number } = {}): Promise<Frame | null> {
+   * invisible reCAPTCHA on some renders) can take a few seconds to mount.
+   * 2026-09-06 production-trace fix: the real failure
+   * (RESOLVE_REGISTRY_FRAME -> FRAME_NOT_FOUND, "naprweb registry app
+   * (#main-routing-container iframe) not reached") was never an
+   * architecture problem — napr-recording.spec.ts confirms this exact
+   * same-page/`.contentFrame()` mechanism is correct — so this keeps it
+   * unchanged and only makes the WAIT itself more robust: a real
+   * Playwright `.waitFor({state:'attached'})` on the iframe element up
+   * front (so a container that simply has not been created yet is
+   * distinguished from one that will never appear), a longer default
+   * timeout, and a faster poll — never a reversion to the old
+   * iframe-src+`ctx.newPage()` implementation. */
+  async resolveRegistryFrame(page: Page, { timeoutMs = 30000, pollMs = 500 }: { timeoutMs?: number; pollMs?: number } = {}): Promise<Frame | null> {
     const start = Date.now();
+    try {
+      await (page as any)
+        .locator(MAIN_ROUTING_IFRAME_SELECTOR)
+        .first()
+        .waitFor({ state: 'attached', timeout: timeoutMs });
+    } catch {
+      return null;
+    }
     while (Date.now() - start < timeoutMs) {
       try {
         const handle = (page as any).locator(MAIN_ROUTING_IFRAME_SELECTOR).first();

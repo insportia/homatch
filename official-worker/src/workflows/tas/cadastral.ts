@@ -77,3 +77,20 @@ export function candidateSequence(code: string, opts: { minSegments?: number } =
   }
   return out;
 }
+
+/** Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8: TasWorkflow's
+ * parent/base-parcel fallback used to trigger ONLY on
+ * `searchRes.noResultConfirmed` — but TasPage.searchCadastral() can
+ * independently report `resultsDiscovered: 0` with `noResultConfirmed:
+ * false` (a literal "0" count read from the page with no textual
+ * no-result phrase matched), exactly the observed trace for
+ * 01.18.06.019.055.03.01.601: resultsDiscovered=0, resultsVisited=0, yet
+ * the fallback never fired and cadastralFallbackAttempts contained only
+ * the one exact-code attempt. This is the single, consistent "did this
+ * attempt actually find something" definition TasWorkflow now uses for
+ * the fallback trigger, the fallback loop's own break condition, and the
+ * final exhaustion decision — so the three can never again silently
+ * disagree about what counts as a real result. */
+export function hasMeaningfulTasResults(sr: { resultsDiscovered: number | null; noResultConfirmed?: boolean }): boolean {
+  return !sr.noResultConfirmed && typeof sr.resultsDiscovered === 'number' && sr.resultsDiscovered > 0;
+}

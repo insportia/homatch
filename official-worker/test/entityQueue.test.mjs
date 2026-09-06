@@ -49,6 +49,29 @@ test('EntityQueue.scanText: records discovery metadata for downstream audit', ()
   assert.equal(e.discoveredFrom[0].sourceDocument, 'https://tas.ge/doc/1');
 });
 
+// Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8 regression: the
+// bug was a NAME landing in the idCode field before ever reaching the
+// EntityQueue (ResearchOrchestrator.startEntity()'s own idCode||name
+// fallback) — but EntityDeduplicator.merge() is the shared choke point
+// every discovery path (scanText, add()) goes through, so it independently
+// guards against a name-shaped idCode ever becoming identificationCode too.
+// confirmed()/notYetQueued() trust identificationCode !== null as "safe to
+// auto-queue for RS_TAXPAYER/DEBTOR", which have no name fallback of their
+// own — this must never be corruptible from any entry point.
+test('EntityQueue.add: a name-shaped idCode is never stored as identificationCode', () => {
+  const q = new EntityQueue();
+  q.add({ name: 'Millenio Group', idCode: 'Millenio Group' });
+  assert.equal(q.confirmed().length, 0);
+  assert.equal(q.incomplete().length, 1);
+  assert.equal(q.all()[0].identificationCode, null);
+});
+test('EntityQueue.add: a real numeric idCode is still stored normally alongside the guard', () => {
+  const q = new EntityQueue();
+  q.add({ name: 'შპს Millenio Group', idCode: '404670272' });
+  assert.equal(q.confirmed().length, 1);
+  assert.equal(q.all()[0].identificationCode, '404670272');
+});
+
 test('EntityQueue: notYetQueued/markQueued bookkeeping (mandate Section 16 entity-queue flow)', () => {
   const q = new EntityQueue();
   q.add({ name: 'შპს A', idCode: '111111111' });

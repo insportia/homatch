@@ -8,10 +8,10 @@
 import type { Page } from 'playwright';
 import { interact, waitForResultSignal, hasNoResultPhrase, totalFoundCount } from '../../browser/BrowserSession.js';
 import { exhaustResultRows } from '../../browser/ResultRowExhauster.js';
-import { CADASTRAL_INPUT_SELECTORS, DWR_NETWORK_PATTERN, TAS_URL } from './selectors.js';
+import { CADASTRAL_INPUT_SELECTORS, DWR_NETWORK_PATTERN, TAS_URL, TAS_SEARCH_MENU_LABEL } from './selectors.js';
 
 export class TasPage {
-  async goto(page: Page): Promise<void> {
+  async goto(page: Page): Promise<{ searchMenuClicked: boolean }> {
     await (page as any).goto(TAS_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await (page as any).waitForTimeout(1500);
     try {
@@ -20,6 +20,27 @@ export class TasPage {
       /* the heavy ExtJS/DWR app can take longer than networkidle allows */
     }
     await (page as any).waitForTimeout(1500);
+    // Best-effort reproduction of the manual entry path (click
+    // "სამსახურის პასუხის მოძებნა") on top of the already-confirmed-live
+    // deep link above — see the selector's own comment for why this is
+    // additive/non-blocking rather than a replacement for the direct URL.
+    const searchMenuClicked = await this.clickSearchMenuIfPresent(page);
+    return { searchMenuClicked };
+  }
+
+  async clickSearchMenuIfPresent(page: Page): Promise<boolean> {
+    try {
+      const menuItem = (page as any).getByText(TAS_SEARCH_MENU_LABEL, { exact: false }).first();
+      if (await menuItem.count().catch(() => 0)) {
+        await menuItem.click({ timeout: 3000 }).catch(() => {});
+        await (page as any).waitForTimeout(1000).catch(() => {});
+        return true;
+      }
+    } catch {
+      /* label not present on this page state — the direct URL already
+       * landed on the search form, which is the expected/confirmed case */
+    }
+    return false;
   }
 
   async searchCadastral(page: Page, code: string) {

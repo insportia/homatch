@@ -16,7 +16,7 @@ import { computeMygovTraversal } from '../../state/transitions.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 import type { LegacySourceResult, WorkflowResult } from '../WorkflowResult.js';
 
-const SOURCE_META = { name: 'NAPR — საჯარო რეესტრის ეროვნული სააგენტო (MY.GOV.GE სერვისი 176 → naprweb.reestri.gov.ge)', class: 'OFFICIAL_GOVERNMENT', url: 'https://www.my.gov.ge/ka-ge/services/5/service/176' };
+const SOURCE_META = { name: 'NAPR — საჯარო რეესტრის ეროვნული სააგენტო (MY.GOV.GE სერვისი 176 → naprweb.reestri.gov.ge)', class: 'OFFICIAL_GOVERNMENT', url: 'https://www.my.gov.ge/ka-ge/services/10/service/176' };
 
 export async function runMyGovWorkflow(page: Page, ctx: any, query: string, entities?: EntityQueue, opts: { skipGoto?: boolean } = {}): Promise<LegacySourceResult> {
   const fsm = newMyGovFsm();

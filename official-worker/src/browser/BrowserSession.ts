@@ -164,7 +164,13 @@ export async function waitForResultSignal(f: any, beforeText: string, qRaw: stri
 
 export async function submitNear(p: any, hit: { frame: any; el: Locator } | null): Promise<{ ok: boolean; method: string | null }> {
   if (!hit) return { ok: false, method: null };
-  for (const re of [/მოძებნა/i, /ძიება/i, /search/i, /შემდეგ/i, /დადასტურება/i]) {
+  // /ძებნა/i is its own pattern, not covered by /მოძებნა/i: TAS's own
+  // search button is labeled plainly "ძებნა" ("mo-ZEBna" vs "ZEBna" —
+  // different word, not a substring of one another), so without it a
+  // button matching only this exact label fell through to Enter-key
+  // submission instead of a real click (confirmed by reading TAS's search
+  // form UI text, which uses "ძებნა" specifically).
+  for (const re of [/მოძებნა/i, /ძებნა/i, /ძიება/i, /search/i, /შემდეგ/i, /დადასტურება/i]) {
     for (const role of ['button', 'link']) {
       const x = hit.frame.getByRole(role, { name: re }).first();
       try {

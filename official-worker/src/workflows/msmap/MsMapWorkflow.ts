@@ -23,7 +23,7 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
   const fsm = newMsMapFsm();
   const trace = new BrowserTrace('msmap');
   const pageObj = new MsMapPage();
-  const signals: Record<string, any> = { queryEntered: false, suggestionSelected: false, layersEnabled: false, identifyActivated: false, parcelClicked: false, infoPopupOpened: false, naprOpened: false, latestInformationOpened: false, documentsRead: false };
+  const signals: Record<string, any> = { queryEntered: false, suggestionSelected: false, layersEnabled: false, identifyActivated: false, parcelClicked: false, infoPopupOpened: false, parcelValidated: false, naprOpened: false, latestInformationOpened: false, documentsRead: false };
   let documents: any[] = [];
   let finalText = '';
   let finalUrl: string | null = null;
@@ -129,7 +129,14 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
 
     const popupRes = await pageObj.openInfoPopupAndNaprLink(page);
     signals.infoPopupOpened = assert.assertParcelInfoPopupVisible(popupRes.popupOpened);
-    trace.record({ stateBefore: fsm.state, action: 'OPEN_INFO_POPUP', actualOutcome: `popupOpened=${popupRes.popupOpened} naprOpened=${popupRes.naprOpened}`, stateAfter: fsm.state });
+    // "Validate that the opened parcel is the intended parcel" — checked
+    // against the popup's own text, but deliberately non-blocking (see
+    // assertParcelMatchesQuery's header comment): this sandbox has never
+    // been able to confirm the popup's real text markup live, so a false
+    // negative here downgrades the evidence-ledger claim below rather than
+    // stopping an otherwise-successful MSMAP traversal.
+    signals.parcelValidated = assert.assertParcelMatchesQuery(popupRes.extraText, query);
+    trace.record({ stateBefore: fsm.state, action: 'OPEN_INFO_POPUP', actualOutcome: `popupOpened=${popupRes.popupOpened} naprOpened=${popupRes.naprOpened} parcelValidated=${signals.parcelValidated}`, stateAfter: fsm.state });
     if (signals.infoPopupOpened) fsm.transition('INFO_POPUP_OPENED');
     else {
       stop('assertParcelInfoPopupVisible failed');
@@ -182,9 +189,14 @@ export async function runMsMapWorkflow(page: Page, query: string, ledger?: Evide
         source: SOURCE_META.name,
         sourceClass: 'OFFICIAL',
         sourceUrl: SOURCE_META.url,
-        confidence: signals.parcelClicked ? 0.95 : 0.6,
-        verificationState: signals.parcelClicked ? 'VERIFIED' : 'UNVERIFIED',
-        supportingText: `suggestion prefix ${sug.prefix}`,
+        // parcelValidated (the opened parcel-info popup's own text actually
+        // named this cadastral code/prefix) is the strongest available
+        // signal that the right parcel was opened, not just that a click
+        // landed somewhere on the map — it takes priority over the older
+        // parcelClicked-only confidence tiers.
+        confidence: signals.parcelValidated ? 0.98 : signals.parcelClicked ? 0.85 : 0.6,
+        verificationState: signals.parcelValidated ? 'VERIFIED' : signals.parcelClicked ? 'UNVERIFIED' : 'UNVERIFIED',
+        supportingText: signals.parcelValidated ? `parcel-info popup confirmed cadastral prefix ${sug.prefix}` : `suggestion prefix ${sug.prefix}`,
       });
     }
 

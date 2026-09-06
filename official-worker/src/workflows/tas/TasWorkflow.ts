@@ -22,7 +22,10 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
   const pageObj = new TasPage();
 
   try {
-    if (!opts.skipGoto) await pageObj.goto(page);
+    if (!opts.skipGoto) {
+      const gotoRes = await pageObj.goto(page);
+      trace.record({ stateBefore: null, action: 'GOTO', target: SOURCE_META.url, actualOutcome: `TAS_OPENED searchMenuClicked=${gotoRes.searchMenuClicked}`, stateAfter: 'TAS_OPENED' });
+    }
     fsm.transition('TAS_OPENED');
 
     const cap = await challenge(page);

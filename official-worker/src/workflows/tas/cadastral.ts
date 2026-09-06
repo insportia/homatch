@@ -48,18 +48,30 @@ export function recommendedParentCode(code: string): string | null {
   return segs.length > 5 ? segs.slice(0, 5).join('.') : null;
 }
 
-/** The full ordered sequence TasWorkflow's PARENT_CODE_RESOLUTION should
- * try: the original code first (never skipped), then the recommended
- * 5-segment parent (if different/shorter), then every other progressively
- * shorter prefix down to minSegments, deduplicated. */
+/** The full ordered sequence TasWorkflow should try. TAS's document/
+ * application history is filed against the BASE/PARENT parcel far more
+ * often than a full unit-level code, so the base parcel (the recommended
+ * 5-segment parent, when the code has more than 5 segments) is the FIRST
+ * candidate tried — not a fallback attempted only after an empty full-code
+ * search. When the input code has 5 or fewer segments it already IS the
+ * base parcel (recommendedParentCode returns null), so it is used directly
+ * with no truncation at all, matching the mandate's explicit "if the user
+ * already entered the base parcel, do not strip it further."
+ *
+ * The full original code is NEVER discarded — it is always the second
+ * candidate (tried only if the base parcel's own search comes back a
+ * confirmed empty), and TasWorkflow keeps both originalCadastralCode and
+ * resolvedSearchCadastralCode explicit regardless of which candidate the
+ * results actually came from. */
 export function candidateSequence(code: string, opts: { minSegments?: number } = {}): string[] {
   if (!isCadastralCode(code)) return [code];
   const original = code.trim();
   const parent = recommendedParentCode(original);
   const rest = cadastralPrefixes(original, opts);
-  const seen = new Set([original]);
-  const out = [original];
-  for (const c of [parent, ...rest]) {
+  const primary = parent || original;
+  const seen = new Set([primary]);
+  const out = [primary];
+  for (const c of [original, ...rest]) {
     if (c && !seen.has(c)) {
       seen.add(c);
       out.push(c);

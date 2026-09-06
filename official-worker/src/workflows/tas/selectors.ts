@@ -4,6 +4,15 @@
 export const CADASTRAL_INPUT_SELECTORS = ['input[placeholder*="საკადასტრო" i]', 'input[name*="cad" i]', 'input[id*="cad" i]'];
 export const DWR_NETWORK_PATTERN = /\/dwr\//i;
 export const TAS_URL = 'https://tas.ge/?p=searchdocument&menuItemId=7104';
+// The manual workflow this menuItemId was reverse-engineered from starts by
+// clicking this exact menu entry rather than landing on the URL directly.
+// The deep link above is the already-confirmed-live entry point, so it
+// stays primary; this label is used only for a best-effort, non-blocking
+// click after landing (see TasPage.goto) in case the ExtJS app's own JS
+// state needs that click to fully initialize the search form/session —
+// never a hard requirement, since this sandbox cannot confirm live whether
+// it's actually still needed on top of the direct URL.
+export const TAS_SEARCH_MENU_LABEL = 'სამსახურის პასუხის მოძებნა';
 
 // ExtJS grid rows render with NO <a href> anywhere (confirmed live — this
 // is exactly why the pre-refactor anchor-only selector matched 0 rows on a

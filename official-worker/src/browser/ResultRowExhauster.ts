@@ -14,12 +14,80 @@ import type { Page } from 'playwright';
 import { text as pageText } from './BrowserSession.js';
 import { NavigationStack } from './NavigationStack.js';
 import { classifyDocumentLink } from '../documents/DocumentReader.js';
+import { readPdfDocument } from '../documents/PdfDocumentReader.js';
+import { readOnlineDocument } from '../documents/OnlineDocumentReader.js';
 import { anchorPassLooksReal } from './RowExhaustionHeuristics.js';
 
 const GRID_ROW_SELECTOR = '[role="row"], .x-grid-row, tr[class*="x-grid" i], [class*="grid-row" i], [class*="grid" i] tbody tr';
 const MAX_RESULT_ROWS = 25;
+// Cap on nested attachments opened PER result row (not per source) — a
+// result row's own text is already captured as one document regardless, so
+// this only bounds how many of ITS attached files/decisions/plans get
+// opened too. Bounded deliberately: the mandate wants attachments actually
+// read, not an unbounded crawl of every link a page happens to expose.
+const MAX_NESTED_DOCS_PER_ROW = 6;
 
-async function openRowDetail(p: Page, row: any): Promise<{ url: string; text: string } | null> {
+/** Collects `{url,label}` for every <a href> reachable from `target`, which
+ * may be a Page (walks every frame — a row opened as a new tab/page) or a
+ * Locator scoped to one element (an in-page modal/dialog — walking `page`'s
+ * own frames would also pick up unrelated page chrome). Mirrors
+ * MsMapPage.ts's pageLinks(), generalized to accept either. */
+async function collectLinks(target: any): Promise<{ url: string; label: string }[]> {
+  const out: { url: string; label: string }[] = [];
+  const isPage = typeof target?.frames === 'function';
+  const frames = isPage ? [target.mainFrame(), ...target.frames().filter((f: any) => f !== target.mainFrame())] : [target];
+  for (const f of frames) {
+    try {
+      out.push(
+        ...(await f.locator('a[href]').evaluateAll((as: any[]) =>
+          as
+            .slice(0, 300)
+            .map((a) => ({ label: (a.textContent || '').trim().slice(0, 240), url: a.href }))
+            .filter((x: any) => /^https?:/i.test(x.url))
+        ))
+      );
+    } catch {
+      /* frame/locator not readable */
+    }
+  }
+  return [...new Map(out.map((x) => [x.url, x])).values()];
+}
+
+/** "Opened every relevant result" is not the same as "read what's inside
+ * it" (mandate: nested/attached documents — PDFs, decisions, plans — must
+ * actually be opened and read too, not just the outer row's own visible
+ * text). `requestPage` is the Page used for readPdfDocument's
+ * page.request.get()/context() calls — for a modal, `target` itself has no
+ * `.request`, so the caller's own page is passed separately. */
+async function readNestedDocuments(target: any, requestPage: Page, pageUrl: string, source: string): Promise<RowExhaustionResult['rowDocuments']> {
+  try {
+    const links = await collectLinks(target);
+    const docs: RowExhaustionResult['rowDocuments'] = [];
+    for (const l of links) {
+      const cls = classifyDocumentLink(l, { pageUrl });
+      if (!cls.worthOpening) continue;
+      const doc = cls.looksLikeDirectFile
+        ? await readPdfDocument(requestPage, l, `${source}_attachment`)
+        : await readOnlineDocument(requestPage, l, `${source}_attachment`);
+      docs.push({
+        url: doc.url,
+        label: l.label || doc.title || doc.url,
+        rawText: (doc.rawText || '').slice(0, 50000),
+        source: `${source}_result_row_attachment`,
+        complete: !!doc.complete,
+        documentType: doc.documentType || (cls.looksLikeDirectFile ? 'PDF_DOCUMENT' : 'ONLINE_DOCUMENT'),
+        pagesRead: doc.pagesRead || 0,
+        pageCount: doc.pageCount || 0,
+      });
+      if (docs.length >= MAX_NESTED_DOCS_PER_ROW) break;
+    }
+    return docs;
+  } catch {
+    return [];
+  }
+}
+
+async function openRowDetail(p: Page, row: any, sourceLabel: string): Promise<{ url: string; text: string; nestedDocs: RowExhaustionResult['rowDocuments'] } | null> {
   const before = await pageText(p as any).catch(() => '');
   const newPagePromise = (p as any)
     .context()
@@ -40,20 +108,22 @@ async function openRowDetail(p: Page, row: any): Promise<{ url: string; text: st
     await newPage.waitForTimeout(1000).catch(() => {});
     const t = await pageText(newPage).catch(() => '');
     const u = newPage.url();
+    const nestedDocs = t && t.trim().length > 20 ? await readNestedDocuments(newPage, newPage, u, sourceLabel) : [];
     await newPage.close().catch(() => {});
-    return t && t.trim().length > 20 ? { url: u, text: t } : null;
+    return t && t.trim().length > 20 ? { url: u, text: t, nestedDocs } : null;
   }
   const modal = (p as any).locator('[role="dialog"],.x-window,[class*="modal" i]').first();
   if (await modal.count().catch(() => 0)) {
     const t = await modal.innerText().catch(() => '');
+    const nestedDocs = t && t.trim().length > 20 ? await readNestedDocuments(modal, p, (p as any).url(), sourceLabel) : [];
     const closeBtn = modal.locator('[aria-label*="close" i],.x-tool-close,button:has-text("×"),button:has-text("Close")').first();
     if (await closeBtn.count().catch(() => 0)) await closeBtn.click({ timeout: 2000 }).catch(() => {});
     else await (p as any).keyboard.press('Escape').catch(() => {});
     await (p as any).waitForTimeout(300);
-    return t && t.trim().length > 20 ? { url: (p as any).url(), text: t } : null;
+    return t && t.trim().length > 20 ? { url: (p as any).url(), text: t, nestedDocs } : null;
   }
   const after = await pageText(p as any).catch(() => '');
-  if (after && after !== before && after.trim().length > 20) return { url: (p as any).url(), text: after };
+  if (after && after !== before && after.trim().length > 20) return { url: (p as any).url(), text: after, nestedDocs: [] };
   return null;
 }
 
@@ -131,9 +201,15 @@ export async function exhaustResultRows(page: Page, sourceLabel: string, opts: {
           await rowPage.goto(full, { waitUntil: 'domcontentloaded', timeout: 20000 });
           await rowPage.waitForTimeout(1000);
           const rowText = await pageText(rowPage).catch(() => '');
-          if (rowText && rowText.trim().length > 20)
+          if (rowText && rowText.trim().length > 20) {
             anchorDocs.push({ url: full, label, rawText: rowText.slice(0, 50000), source: `${sourceLabel}_result_row`, complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 });
-          else anchorSkips.push({ label, reason: 'ROW_PAGE_PRODUCED_NO_TEXT' });
+            // Mandate: whatever is still clickable inside this row's own page
+            // (documents/PDFs/scans/attachments/decisions/plans/drawings/
+            // responses/linked applications) must be opened and read too —
+            // not just the outer row's own visible text.
+            const nested = await readNestedDocuments(rowPage, rowPage, full, sourceLabel);
+            if (nested.length) anchorDocs.push(...nested);
+          } else anchorSkips.push({ label, reason: 'ROW_PAGE_PRODUCED_NO_TEXT' });
           await rowPage.close().catch(() => {});
         } catch (e) {
           anchorSkips.push({ label, reason: `ROW_OPEN_FAILED: ${String(e).slice(0, 120)}` });
@@ -170,9 +246,11 @@ export async function exhaustResultRows(page: Page, sourceLabel: string, opts: {
       }
       if (!nav.enter(label, `${sourceLabel}-grid-row-${i}-${label.slice(0, 40)}`)) continue;
       try {
-        const detail = await openRowDetail(page, row);
-        if (detail) rowDocuments.push({ url: detail.url, label, rawText: detail.text.slice(0, 50000), source: `${sourceLabel}_result_row`, complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 });
-        else skippedReasons.push({ label, reason: 'ROW_INTERACTION_PRODUCED_NO_DETECTABLE_CONTENT' });
+        const detail = await openRowDetail(page, row, sourceLabel);
+        if (detail) {
+          rowDocuments.push({ url: detail.url, label, rawText: detail.text.slice(0, 50000), source: `${sourceLabel}_result_row`, complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 });
+          if (detail.nestedDocs?.length) rowDocuments.push(...detail.nestedDocs);
+        } else skippedReasons.push({ label, reason: 'ROW_INTERACTION_PRODUCED_NO_DETECTABLE_CONTENT' });
       } catch (e) {
         skippedReasons.push({ label, reason: `ROW_OPEN_FAILED: ${String(e).slice(0, 120)}` });
       }

@@ -195,8 +195,13 @@ export class MsMapPage {
     try {
       const popup = (page as any).locator(INFO_POPUP_SELECTOR).first();
       if (!(await popup.count().catch(() => 0))) return { popupOpened: false, naprOpened: false, target: page, extraText: null };
+      // Read the popup's own text before following the NAPR link — this is
+      // the only place we can confirm the popup actually describes the
+      // parcel the user searched (see assertParcelMatchesQuery), since once
+      // the NAPR link is followed the popup itself is gone.
+      const extraText = await popup.innerText({ timeout: 2000 }).catch(() => null);
       const naprLink = popup.locator('a,button').filter({ hasText: NAPR_LINK_TEXT }).first();
-      if (!(await naprLink.count().catch(() => 0))) return { popupOpened: true, naprOpened: false, target: page, extraText: null };
+      if (!(await naprLink.count().catch(() => 0))) return { popupOpened: true, naprOpened: false, target: page, extraText };
       const [naprPage] = await Promise.all([
         (page as any)
           .context()
@@ -206,7 +211,7 @@ export class MsMapPage {
       ]);
       const target = naprPage || page;
       await target.waitForTimeout(1500).catch(() => {});
-      return { popupOpened: true, naprOpened: true, target, extraText: null, isNewPage: !!naprPage };
+      return { popupOpened: true, naprOpened: true, target, extraText, isNewPage: !!naprPage };
     } catch {
       return { popupOpened: false, naprOpened: false, target: page, extraText: null };
     }

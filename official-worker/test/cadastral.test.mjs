@@ -31,10 +31,10 @@ test('recommendedParentCode: null when the code is already at/below 5 segments',
   assert.equal(recommendedParentCode('01.18'), null);
 });
 
-test('candidateSequence: never skips the original code, tries parent next, deduplicated', () => {
+test('candidateSequence: tries the base/parent parcel FIRST (mandate: TAS must search the base cadastral, not the full unit code), never skips the original code, deduplicated', () => {
   const seq = candidateSequence('01.18.06.019.055.03.01.603');
-  assert.equal(seq[0], '01.18.06.019.055.03.01.603');
-  assert.equal(seq[1], '01.18.06.019.055');
+  assert.equal(seq[0], '01.18.06.019.055');
+  assert.ok(seq.includes('01.18.06.019.055.03.01.603'), 'original full code must still appear in the sequence, never dropped');
   assert.equal(new Set(seq).size, seq.length);
 });
 test('candidateSequence: a non-cadastral query is returned as its own single-element sequence', () => {

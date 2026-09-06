@@ -1139,6 +1139,11 @@ export interface TransactionCase {
   target_closing_date: string | null;
   notes: string | null;
   checklist: TransactionCaseChecklistItem[];
+  // Normalized property/entity identity (cadastral code, or entity name+type)
+  // used to find-or-create exactly one case per property per user instead of
+  // creating a duplicate on every research run — see
+  // computeResearchDedupeKey() in services/transactionCases.ts.
+  dedupe_key: string | null;
   current_version: number;
   created_at: string;
   updated_at: string;
@@ -1162,4 +1167,26 @@ export interface TransactionCaseEvent {
   payload: Record<string, unknown>;
   created_by: string | null;
   created_at: string;
+}
+
+// A row of research_jobs (the Verify due-diligence pipeline), as read back
+// by the client for case-history purposes only — this is deliberately NOT
+// the full shape research-agent works with server-side, just the columns
+// the /cases and Verify UIs need to list and reopen past reports.
+// result_json is typed loosely (VerifyPage owns the real report shape) —
+// omitted entirely from list queries and only fetched when opening one
+// specific report, since it can be a large dossier.
+export interface ResearchJobRecord {
+  id: string;
+  mode: string;
+  query: string;
+  status: string;
+  stage: string;
+  error: string | null;
+  result_json: Record<string, unknown> | null;
+  case_id: string | null;
+  supersedes_job_id: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }

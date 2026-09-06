@@ -17,6 +17,7 @@ import type {
   TransactionCaseStage,
   TransactionCaseVersion,
 } from '@/types/types';
+import { linkResearchJobToCase } from '@/services/researchJobs';
 
 export async function listTransactionCases(userId: string): Promise<TransactionCase[]> {
   const { data, error } = await supabase
@@ -51,6 +52,7 @@ export interface CreateTransactionCaseInput {
   target_closing_date?: string | null;
   notes?: string | null;
   checklist?: TransactionCaseChecklistItem[];
+  dedupe_key?: string | null;
 }
 
 export async function createTransactionCase(input: CreateTransactionCaseInput): Promise<TransactionCase> {
@@ -80,6 +82,7 @@ export type TransactionCaseUpdatableFields = Partial<
     | 'target_closing_date'
     | 'notes'
     | 'checklist'
+    | 'dedupe_key'
   >
 >;
 
@@ -144,4 +147,86 @@ export async function addTransactionCaseEvent(
     .single();
   if (error) throw error;
   return data as TransactionCaseEvent;
+}
+
+// ── research <-> case persistence ──────────────────────────────────────────
+//
+// Everything below is what makes a Verify research report "stick": found by
+// VerifyPage.tsx right after a research-agent job reaches COMPLETE, so the
+// report is saved into exactly one Transaction Case per property per user,
+// visible under /cases, reopenable without a rerun, and versioned (old
+// report kept, new report chained on top) on every "Refresh Research".
+
+// Derives a stable identity for the property/entity a completed report is
+// about, from data research-agent already puts on the report — never from
+// the free-text search query the user typed (which can vary run to run for
+// the same property). Prefers the cadastral code (digits+dots only, so
+// "01.18.06.019.055.03.01.603" and a copy-pasted version with stray spaces
+// dedupe to the same key); falls back to a normalized entity name+type when
+// no cadastral code was identified (e.g. a company-only lookup).
+export function computeResearchDedupeKey(report: {
+  identifiedParent?: { code?: string | null } | null;
+  entityName?: string | null;
+  entityType?: string | null;
+}): string {
+  const code = (report.identifiedParent?.code || '').trim();
+  if (code) return `cad:${code.replace(/[^0-9.]/g, '')}`;
+  const name = (report.entityName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!name) return '';
+  const type = (report.entityType || 'entity').trim().toLowerCase();
+  return `name:${type}:${name}`;
+}
+
+export async function findTransactionCaseByDedupeKey(
+  userId: string,
+  dedupeKey: string
+): Promise<TransactionCase | null> {
+  if (!dedupeKey) return null;
+  const { data, error } = await supabase
+    .from('transaction_cases')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('dedupe_key', dedupeKey)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data ?? null) as TransactionCase | null;
+}
+
+export interface AttachResearchToCaseInput {
+  userId: string;
+  dedupeKey: string;
+  title: string;
+  jobId: string;
+  propertyId?: string | null;
+  // Set only when this run is a "Refresh Research" of an existing case's
+  // report — the job it replaces. Left undefined/null for a first-time run.
+  supersedesJobId?: string | null;
+}
+
+// Find-or-create the ONE case for this property/entity for this user, then
+// point both sides of the link at the newest research run:
+//   - transaction_cases.research_job_id -> the new job (so /cases and
+//     "reopen without rerun" always resolve to the latest report), which
+//     also bumps the case's own current_version via the existing
+//     transaction_case_before_write/version_snapshot triggers.
+//   - research_jobs.case_id -> this case, so every run ever attached
+//     (this one and every prior one) can be listed by case_id.
+// The old job row is never touched — it keeps existing, in full, exactly
+// as research-agent left it, openable by its own id at any time.
+export async function attachResearchToCase(input: AttachResearchToCaseInput): Promise<TransactionCase> {
+  const { userId, dedupeKey, title, jobId, propertyId, supersedesJobId } = input;
+  const existing = dedupeKey ? await findTransactionCaseByDedupeKey(userId, dedupeKey) : null;
+  const kase = existing
+    ? await updateTransactionCase(existing.id, { research_job_id: jobId })
+    : await createTransactionCase({
+        user_id: userId,
+        title,
+        property_id: propertyId ?? null,
+        research_job_id: jobId,
+        dedupe_key: dedupeKey || null,
+      });
+  await linkResearchJobToCase(jobId, kase.id, supersedesJobId ?? null);
+  return kase;
 }

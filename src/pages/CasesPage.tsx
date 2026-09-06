@@ -12,16 +12,23 @@
 //   view. That richer view, and any UI for transaction_case_events (an
 //   activity/audit trail distinct from the version snapshots), are not
 //   built yet.
-// - No linking UI to an existing property/research_job row yet (the
-//   columns exist and are nullable; a case created here always has
-//   property_id/research_job_id = null). Wiring a "Track this deal" entry
-//   point from PropertyDetailPage/VerifyPage is a natural next step, not
-//   done in this pass.
-// All data access goes through transactionCases.ts, which goes through
-// ordinary RLS — no service-role bypass, consistent with the rest of the
-// authenticated app.
+// - Research linkage (2026-09-06): a case now shows every Verify research
+//   report ever run for it (research_jobs.case_id — see
+//   20260906120000_research_case_persistence.sql) with an "Open Report"
+//   link that reopens a past report WITHOUT re-running research (VerifyPage
+//   loads it with a plain status read keyed off ?job=<id>), plus a
+//   Run/Refresh Research entry point into VerifyPage. The attach itself
+//   (auto-creating or finding this case from a completed report, by a
+//   normalized property/entity dedupe key) happens on the VerifyPage side —
+//   see attachResearchToCase() in transactionCases.ts — so a case here can
+//   already have research_job_id/dedupe_key set before the user ever opens
+//   this page.
+// All data access goes through transactionCases.ts / researchJobs.ts, both
+// of which go through ordinary RLS — no service-role bypass, consistent
+// with the rest of the authenticated app.
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -45,17 +52,30 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '@/components/ui/alert-dialog';
-import { Briefcase, Plus, X, Trash2, History, Handshake } from 'lucide-react';
+import { Briefcase, Plus, X, Trash2, History, Handshake, FileSearch } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   listTransactionCases, createTransactionCase, updateTransactionCase,
   deleteTransactionCase, listTransactionCaseVersions,
 } from '@/services/transactionCases';
+import { listResearchJobsForCase } from '@/services/researchJobs';
 import type {
   TransactionCase, TransactionCaseStage, TransactionCaseChecklistItem,
-  TransactionCaseVersion, TransactionCaseUpdatableFields,
+  TransactionCaseVersion, TransactionCaseUpdatableFields, ResearchJobRecord,
 } from '@/types/types';
+
+// Never render research_jobs.status/stage directly — those are internal
+// pipeline states (CREATED/RUNNING/WAITING_HUMAN/CAPTCHA_REQUIRED/...) and
+// this app's standing rule is that internal engineering/automation
+// telemetry never reaches customer-facing UI (see VerifyPage's
+// CoverageNote/customerSafeReportForAi). Every non-terminal status collapses
+// to one neutral "in progress" label.
+function jobStatusLabel(status: string, t: (k: string) => string): string {
+  if (status === 'COMPLETE') return t('cases_report_status_ready');
+  if (status === 'FAILED') return t('cases_report_status_failed');
+  return t('cases_report_status_in_progress');
+}
 
 const STAGES: TransactionCaseStage[] = [
   'DUE_DILIGENCE', 'OFFER_MADE', 'UNDER_CONTRACT', 'CLOSING', 'CLOSED', 'ABANDONED',
@@ -148,12 +168,14 @@ function CaseDetailSheet({
   onChanged: () => void;
 }) {
   const { t } = useLanguage();
+  const nav = useNavigate();
   const [draft, setDraft] = useState<TransactionCase | null>(caseItem);
   const [newItem, setNewItem] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [versions, setVersions] = useState<TransactionCaseVersion[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [jobs, setJobs] = useState<ResearchJobRecord[]>([]);
   const stageLabel = useStageLabel();
 
   useEffect(() => { setDraft(caseItem); setShowHistory(false); }, [caseItem]);
@@ -162,6 +184,14 @@ function CaseDetailSheet({
     if (!showHistory || !caseItem) return;
     listTransactionCaseVersions(caseItem.id).then(setVersions).catch(() => setVersions([]));
   }, [showHistory, caseItem]);
+
+  // Every Verify research report ever attached to this case, newest first —
+  // loaded whenever a different case is opened so "Open Report" always
+  // reflects the current case's own history, not a stale previous one.
+  useEffect(() => {
+    if (!caseItem) { setJobs([]); return; }
+    listResearchJobsForCase(caseItem.id).then(setJobs).catch(() => setJobs([]));
+  }, [caseItem]);
 
   if (!draft) return null;
 
@@ -250,6 +280,42 @@ function CaseDetailSheet({
                 ))}
             </div>
           )}
+
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <FileSearch className="h-3.5 w-3.5" />{t('cases_research_section_title')}
+              </span>
+              {draft.research_job_id && (
+                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => nav(`/verify?job=${draft.research_job_id}`)}>
+                  {t('cases_open_report_button')}
+                </Button>
+              )}
+            </div>
+            {jobs.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('cases_no_research_yet')}</p>
+            ) : (
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {jobs.map((j) => (
+                  <button
+                    key={j.id}
+                    type="button"
+                    onClick={() => nav(`/verify?job=${j.id}`)}
+                    className="flex items-center justify-between gap-2 text-xs w-full text-start hover:text-primary"
+                  >
+                    <span className="truncate">
+                      {new Date(j.created_at).toLocaleString()}
+                      {j.id === draft.research_job_id ? ` · ${t('cases_report_current_badge')}` : ''}
+                    </span>
+                    <span className="text-muted-foreground shrink-0">{jobStatusLabel(j.status, t)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <Button variant="outline" size="sm" className="text-xs h-7 w-full" onClick={() => nav('/verify')}>
+              {draft.research_job_id ? t('cases_refresh_research_button') : t('cases_run_research_button')}
+            </Button>
+          </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">{t('cases_field_title')}</label>
@@ -409,6 +475,7 @@ function CaseCard({ item, onOpen }: { item: TransactionCase; onOpen: () => void 
 export default function CasesPage() {
   const { homatchUser } = useAuth();
   const { t } = useLanguage();
+  const [searchParams] = useSearchParams();
   const [cases, setCases] = useState<TransactionCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [newOpen, setNewOpen] = useState(false);
@@ -425,6 +492,15 @@ export default function CasesPage() {
   }, [homatchUser]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Deep link from VerifyPage's "Open in My Deals" (/cases?case=<id>) —
+  // opens that case's detail sheet once the list has loaded.
+  useEffect(() => {
+    const wantedId = searchParams.get('case');
+    if (!wantedId || cases.length === 0) return;
+    const found = cases.find((c) => c.id === wantedId);
+    if (found) setSelected(found);
+  }, [searchParams, cases]);
 
   return (
     <RouteGuard>

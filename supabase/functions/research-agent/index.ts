@@ -257,4 +257,45 @@
 // official-worker (root-caused the WRONG_SEARCH_CONTEXT/generic-search
 // defect — see that file's own comments — deployed to Railway, not
 // Supabase).
+//
+// v24 (2026-09-06, same master mandate — picking up four of the items the
+// v21 comment above explicitly left unattempted: utilities matrix, land-
+// specific workflow, developer financing/banking research, developer
+// portfolio expansion). All four are prompt-and-schema additions only —
+// none required a new browser adapter/selector, so all are within this
+// round's safe scope; none required an official-worker change:
+// - IDENTITY prompt: if the model finds publicly evidenced bank/developer
+//   financing for the exact project (a bank's own published partner-project
+//   list, or a developer page naming a partner bank), it is added to
+//   project.facts as an ordinary evidenced fact — never invented or assumed
+//   from "this is common practice for new developments."
+// - New utilitiesMatrix (electricity/water/gas/sewage/internet), each
+//   CONFIRMED_CONNECTED / CONFIRMED_NOT_CONNECTED only when the source text
+//   explicitly says so, else NOT_MENTIONED — never inferred from the
+//   building looking complete or from other units' listings. Returned as
+//   null (not five NOT_MENTIONED entries) when nothing at all discusses
+//   utilities for this unit.
+// - New landProfile (landCategory/permittedUse/buildabilityNote, each with
+//   its source URL) — populated only when the subject is a land parcel AND
+//   a real cadastral/registry document (TAS/NAPR/MSMAP) was actually read
+//   this run; otherwise null, never a guess or an object of nulls.
+// - OFFICIAL prompt's companyProfile guidance gained a portfolio-expansion
+//   sentence: relatedProjects should reflect the developer's full evidenced
+//   portfolio where the research surfaces it, not just the one project the
+//   user asked about — still subject to the existing evidence rules (no
+//   invented project names).
+// - finish() carries i.utilitiesMatrix and o.landProfile through to the
+//   final result unchanged; sanitizeForCustomer() does not touch either
+//   (it only deletes an explicit named list of internal fields, and these
+//   are not on it).
+// Deliberately NOT done this round: neither field is rendered anywhere in
+// VerifyPage.tsx yet (both are present on the wire, un-surfaced in the UI —
+// a natural next step, not started); no live research run has exercised
+// either new field (verified here only the way v21/v22/v23 were: tsc
+// --noEmit against the deployed function's exact shape, plus a byte-diff of
+// the live function against this file after deploy — that byte-diff came
+// back fully identical this round, zero drift, unlike v23's two accepted
+// trivial drifts); contract review subsystem and further live browser
+// adapter/selector work for ENREG/TAS/MSMAP remain out of scope, same
+// reasoning as v21.
 export {};

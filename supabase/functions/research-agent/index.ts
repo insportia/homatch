@@ -912,6 +912,8 @@ const BASE =
   'COMPANY-PROFILE PROVENANCE RULE: company details (directors, registration date, status, historical ownership changes) gathered only from general web research — not from a registry document you actually read — must never be phrased as if independently confirmed by the Entrepreneur Registry. Say they are publicly reported, not registry-verified, unless the specific evidence came from a registry document. ' +
   'FINANCIAL/DEBT REGISTRY RULE (v30): RS Taxpayers Registry, the MyGov Debtor Registry, and the Property Registry/NAPR are THREE SEPARATE SCOPES — never mix their conclusions. RS is taxpayer/tax-status information only. The MyGov Debtor Registry is a debtor-record check for the specific person/company only. Ownership, mortgage, seizure, and other registered-restriction findings belong ONLY to the Property Registry/NAPR evidence elsewhere in this report — never attach ownership/mortgage/cadastral/commissioning caution to a debtor-registry or tax-registry finding. For RS Taxpayers Registry: a NO_RESULT_CONFIRMED result proves ONLY that this one exact verified search returned no matching record — phrase it neutrally as "no matching record was found in this specific registry search for this identifier," never as "no tax debt" or "clean." For the MyGov Debtor Registry specifically: an exact-identifier NO_RESULT_CONFIRMED IS a genuinely positive result, but ONLY within that registry\'s own narrow scope — state plainly that no debtor-registry record was found for this exact identifier and that this is a positive indicator within the scope of checking this specific registry; never extend that positive framing into any claim about property ownership, cadastral rights, mortgages, official commissioning, or the person/company\'s overall financial standing. If the MyGov Debtor Registry instead returns a confirmed matching record, do not phrase it neutrally — flag it for the customer\'s ATTENTION and state plainly that the record/details require review before assessing any transaction impact. ' +
   'ASSET-CLASS SCOPE RULE (v28): do not force developer/company research onto a property whose evidence indicates a private individual resale, a private house, or a rental with no developer/company actually involved — only populate companyProfile when a real company/developer is evidenced for THIS property; a bare absence of company involvement is not itself a fact worth stating. ' +
+  'CONFLICT SEVERITY RULE (v36): every entry in `conflicts` must be classified "MATERIAL" or "MINOR" — never left ambiguous. "MATERIAL" means two credible sources (especially official/registry ones) directly contradict each other on entity identity, legal/registration status, ownership, a registered restriction, or another fact that would change a buyer\'s decision. "MINOR" means an ordinary discrepancy between marketing/listing sources (a different unit count, a slightly different completion date, a different floor count between two portals) that does not bear on legality or identity. Default to "MINOR" whenever genuinely unsure — never inflate an everyday marketing discrepancy into "MATERIAL" merely because it is a discrepancy. Most reports should have zero MATERIAL conflicts. ' +
+  'REPORT TONE RULE (v36): write as a professional property-intelligence analyst speaking to a buyer/investor, in natural, confident prose — never as an audit log. Do not mention workers, sources by internal name, search coverage, technical failures, automation, or research mechanics anywhere in any string. Do not mention or imply a URL, link, or citation inside prose text — evidence links are handled separately by the product, never inside your sentences. Missing or not-yet-retrieved evidence is never phrased as suspicious or adverse — state it once, plainly and neutrally, as something that can still be confirmed, and do not repeat the same gap in more than one place in your output. Positive evidence should read as positive, not hedged into sounding uncertain. Reserve cautionary language strictly for an actual adverse finding (a registered restriction, a debtor record, a company in liquidation, a genuinely material conflict, or comparable direct evidence of a problem) — never for an absent document. ' +
   'Return JSON only.';
 
 function officialStatusLine(browserOfficial: any): string {
@@ -980,7 +982,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       `HARD RULE: populate companyProfile/documents[].facts ONLY with values directly traceable to a cited document or the direct browser evidence payload above — never state a specific code, project name, address, or developer/company name as if confirmed unless it appears verbatim in that evidence. If you cannot confirm a value, leave it null/omit it rather than guessing. Never cite a bare homepage root URL (no path beyond "/") as if it were a specific document — only a real deep link.\n` +
       `RIGHTS/RESTRICTIONS: only from directly cited registry evidence above, list any registered ownership share, mortgage, registered obligation, servitude/easement, usufruct, superficies, registered lease, public-law restriction, seizure/attachment, or tax lien actually stated for this exact property. If nothing was directly confirmed either way, status must be "NOT_CONFIRMED" (never invent "none exist" and never claim it is guaranteed free of restrictions) — only use "NONE_FOUND_IN_CHECKED_SOURCE" when a confirmed direct search on an authoritative source returned no restriction for this exact record.\n` +
       `LAND PROFILE (only when the subject is a land parcel, not a building unit): from a cadastral/registry document you actually read this run (TAS/NAPR/MSMAP — the browser evidence payload above, never a general web page), report landCategory (the registered land-use/zoning category exactly as stated, e.g. agricultural/residential/commercial/industrial), permittedUse (any registered buildability or use restriction stated), and buildabilityNote (any registered building-density/coefficient limit stated), each with the source document's URL. Return landProfile as null — not a guess, not an object of nulls — whenever the subject is not land, or no cadastral document was actually read this run.\n` +
-      `Return {"officialEvidence":string[],"companyProfile":{"name":string|null,"idCode":string|null,"legalForm":string|null,"registrationDate":string|null,"status":string|null,"directors":string[],"representatives":string[],"historicalChanges":string[],"relatedProjects":string[],"summary":string|null}|null,"landProfile":{"landCategory":string|null,"permittedUse":string|null,"buildabilityNote":string|null,"source":string|null}|null,"rightsAndRestrictions":{"status":"NOT_CONFIRMED"|"NONE_FOUND_IN_CHECKED_SOURCE"|"RESTRICTION_IDENTIFIED","items":string[]}|null,"documents":[{"title":string,"url":string,"date":string|null,"facts":string[]}],"facts":string[],"unverified":string[],"conflicts":string[]}.`
+      `Return {"officialEvidence":string[],"companyProfile":{"name":string|null,"idCode":string|null,"legalForm":string|null,"registrationDate":string|null,"status":string|null,"directors":string[],"representatives":string[],"historicalChanges":string[],"relatedProjects":string[],"summary":string|null}|null,"landProfile":{"landCategory":string|null,"permittedUse":string|null,"buildabilityNote":string|null,"source":string|null}|null,"rightsAndRestrictions":{"status":"NOT_CONFIRMED"|"NONE_FOUND_IN_CHECKED_SOURCE"|"RESTRICTION_IDENTIFIED","items":string[]}|null,"documents":[{"title":string,"url":string,"date":string|null,"facts":string[]}],"facts":string[],"unverified":string[],"conflicts":[{"description":string,"severity":"MATERIAL"|"MINOR"}]}.`
     );
   }
 
@@ -1001,10 +1003,11 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     `If browserOfficial.results contains an Entrepreneur Registry (enreg) entry — including one tagged with a forEntity (a company looked up specifically because it was discovered elsewhere in this research) — read its documents' extracted text/facts directly and use it to build or improve companyProfile (legal form, registration date, status, directors, representatives, historical changes) with the same schema OFFICIAL used. If it materially improves on the evidence-bundle's existing companyProfile, return your own improved companyProfile; otherwise omit the field and the existing one is kept.\n` +
     `If no risk worth flagging is evidenced, riskFlags may be empty — in that case you do not need to write anything about it; a fixed neutral sentence is added automatically. Never fill riskFlags with our own inability to verify a source.\n` +
     `For rights/restrictions/seizure specifically, distinguish clearly: "No material registered restriction was identified in the current evidence retrieved at [timestamp]" (evidence checked, nothing found) is NOT the same as "Current official confirmation is still required" (nothing was actually checked) — never write or imply "guaranteed free of restrictions" or "clean property" in either case.\n` +
-    `HARD RULE (STRUCTURED EVIDENCE IS AUTHORITATIVE): executiveSummary may state a specific cadastral code, company/entity name, developer, or project name ONLY when that exact value already appears in identity.identifiedParent, identity.project, official.companyProfile, or a cited document/officialEvidence entry in the evidence above. If none of those carry a specific code/project/address/developer, describe the property only by what the evidence actually supports rather than inventing or inferring one from context — this is enforced separately by a deterministic code-level check after this response. Keep executiveSummary short and scene-setting (what this property/entity is, in 1-3 sentences) — do NOT restate specific unresolved items in it; those belong ONLY in itemsToVerify below, stated once.\n` +
+    `HARD RULE (STRUCTURED EVIDENCE IS AUTHORITATIVE): executiveSummary may state a specific cadastral code, company/entity name, developer, or project name ONLY when that exact value already appears in identity.identifiedParent, identity.project, official.companyProfile, or a cited document/officialEvidence entry in the evidence above. If none of those carry a specific code/project/address/developer, describe the property only by what the evidence actually supports rather than inventing or inferring one from context — this is enforced separately by a deterministic code-level check after this response. executiveSummary is the report's opening narrative (see EXECUTIVE SUMMARY instruction below for length/tone) — do NOT restate specific unresolved items in it; those belong ONLY in itemsToVerify below, stated once.\n` +
     `KEY STRENGTHS (v30): separately from officialEvidence/publicEvidence, list 3-5 short, concrete, evidence-backed positive/useful facts a customer would actually care about — e.g. identity/project corroboration, an official source returning a clean or confirmed result, a bank or developer relationship with public evidence, current market comparables, a registry search returning no matching adverse record. Each entry must already be traceable to a fact/officialEvidence/publicEvidence item above — never invent a new one here. Order strongest/most official first. Return [] if genuinely nothing rises to this level (rare) — never pad it.\n` +
-    `ITEMS TO VERIFY (v30): separately, list AT MOST 4 short items describing what remains genuinely unresolved and is material to a transaction decision (e.g. official commissioning not independently confirmed, latest NAPR ownership/restriction extract still needed, a source skipped because human verification was not completed). State each ONCE, plainly, with no repeated hedging language — this is the single place the report names unresolved items, so do not also re-explain them at length elsewhere in this response. Never include here anything already resolved as a genuine positive (a debtor-registry no-result belongs in keyStrengths or officialEvidence, not here). Return [] only if there is truly nothing left to verify.\n` +
-    `Return {"executiveSummary":string,"entity":{"name":string,"type":string,"confidence":"HIGH"|"MEDIUM"|"LOW"},"keyStrengths":string[],"itemsToVerify":string[],"officialEvidence":string[],"publicEvidence":string[],"conflicts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[],"companyProfile":{"name":string|null,"idCode":string|null,"legalForm":string|null,"registrationDate":string|null,"status":string|null,"directors":string[],"representatives":string[],"historicalChanges":string[],"relatedProjects":string[],"summary":string|null}|null}.`
+    `ITEMS TO VERIFY (v30): separately, list AT MOST 4 short items describing what remains genuinely unresolved and is material to a transaction decision (e.g. official commissioning not independently confirmed, latest NAPR ownership/restriction extract still needed, a source skipped because human verification was not completed). State each ONCE, plainly, with no repeated hedging language — this is the single place the report names unresolved items, so do not also re-explain them at length elsewhere in this response, and never mention the same gap (e.g. commissioning) anywhere else in executiveSummary, facts, or riskFlags. Never include here anything already resolved as a genuine positive (a debtor-registry no-result belongs in keyStrengths or officialEvidence, not here) and never phrase a missing document as if it were a suspicious finding — a calm, neutral "can still be confirmed with an updated extract" framing, stated once, is enough. Return [] only if there is truly nothing left to verify.\n` +
+    `EXECUTIVE SUMMARY (v36): write 4-8 sentences of natural, professional Georgian-analyst-style prose (translated into the requested language) that reads as one flowing narrative, not a bullet dump — identity and project context, the overall shape of the evidence gathered, one sentence on the registry/financial checks performed and their outcome (framed positively when they came back clean), and a closing sentence on market position when evidence supports it. Do not front-load a single unresolved item as if it were the headline; let the proportion of positive-vs-outstanding evidence set the tone. Never write "safe to buy" or a percentage.\n` +
+    `Return {"executiveSummary":string,"entity":{"name":string,"type":string,"confidence":"HIGH"|"MEDIUM"|"LOW"},"keyStrengths":string[],"itemsToVerify":string[],"officialEvidence":string[],"publicEvidence":string[],"conflicts":[{"description":string,"severity":"MATERIAL"|"MINOR"}],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[],"companyProfile":{"name":string|null,"idCode":string|null,"legalForm":string|null,"registrationDate":string|null,"status":string|null,"directors":string[],"representatives":string[],"historicalChanges":string[],"relatedProjects":string[],"summary":string|null}|null}.`
   );
 }
 
@@ -1182,6 +1185,17 @@ function companyProfileSourceBasis(companyProfile: any, browserOfficial: any): '
   });
   if (!match) return 'WEB_RESEARCH_ONLY';
   return (match.documents || []).some((d: any) => d.parsed) ? 'REGISTRY_CONFIRMED' : 'WEB_RESEARCH_ONLY';
+}
+// companyLiquidationSuspected() (v36): a deterministic, keyword-based check
+// over a REGISTRY_CONFIRMED companyProfile.status only (never a
+// web-research-only status, which is not authoritative enough to drive an
+// ATTENTION_REQUIRED assessment) — the one other genuinely adverse signal
+// this pipeline can detect without relying on the model's own judgment.
+const LIQUIDATION_STATUS_RE = /ლიკვიდაცი|გაკოტრებ|გაუქმებულ|liquidat|bankrupt|insolven|dissolved|cancelled|revoked/i;
+function companyLiquidationSuspected(companyProfile: any): { suspected: boolean; note?: string } {
+  if (!companyProfile || companyProfile.sourceBasis !== 'REGISTRY_CONFIRMED' || !companyProfile.status) return { suspected: false };
+  if (LIQUIDATION_STATUS_RE.test(String(companyProfile.status))) return { suspected: true, note: String(companyProfile.status) };
+  return { suspected: false };
 }
 const FINANCIAL_ENDPOINT: Record<'enreg' | 'rstax' | 'debtor', string> = {
   enreg: '/research/enreg-entity',
@@ -1366,7 +1380,7 @@ function overallConfidence(identityConfidence: string | undefined, officialStatu
 // HIGH/MEDIUM/LIMITED — which measures how much of the research was
 // actually completed, plus the real counts behind it, never a claim about
 // whether the transaction itself is safe.
-function dueDiligenceCoverage(officialStatus: any, officialDocs: any[], companyProfile: any, market: any, ev: any[], conflicts: string[], unverified: string[], browserOfficial?: any): any {
+function dueDiligenceCoverage(officialStatus: any, officialDocs: any[], companyProfile: any, market: any, ev: any[], conflicts: { description: string; severity: string }[], unverified: string[], browserOfficial?: any): any {
   const officialSourcesChecked = officialStatus.officialSourcesChecked.length;
   const documentsRead = officialDocs.filter((d: any) => d.parsed).length;
   // v26 (mandate's "FIX COVERAGE FROM STRUCTURED STATES, NOT LLM TEXT"):
@@ -1425,48 +1439,107 @@ function dueDiligenceCoverage(officialStatus: any, officialDocs: any[], companyP
   };
 }
 
-// computeOverallAssessment() (v30, mandate: "REPORT UX — stop making a
-// single missing confirmation (e.g. official commissioning) the headline
-// story when the surrounding evidence is abundant and largely positive").
-// This is intentionally a deterministic, code-level gate over structured
-// signals — never the model's own self-report — for exactly the same
-// reason overallConfidence()/dueDiligenceCoverage() are deterministic:
-// the level a customer sees must be reproducible from real evidence
-// counts, not from how the SYNTHESIS prompt happened to phrase things.
-// Never returns anything resembling "safe to buy" — this is a coverage/
-// evidence-quality signal (POSITIVE/GENERALLY_POSITIVE_WITH_ITEMS_TO_
-// VERIFY/MIXED/CAUTION), not a legal or transactional guarantee.
-type OverallAssessmentLevel = 'POSITIVE' | 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY' | 'MIXED' | 'CAUTION';
+// computeOverallAssessment() (v36 rewrite, mandate: "THE REPORT MUST NOT
+// CONTRADICT ITSELF" — the previous 4-level scale could show a CAUTION/
+// MIXED badge while the body text simultaneously said no material risk was
+// found, because the badge was driven by generic `conflicts` (which mixed
+// in ordinary marketing-detail discrepancies) while the risk sentence was
+// driven only by riskFlags. Both are now derived from ONE shared
+// `materialAdverseFindings` list computed here — the badge and the "no
+// material issue" sentence can therefore never disagree again, by
+// construction. This stays a deterministic, code-level gate over
+// structured signals — never the model's own self-report. Never returns
+// anything resembling "safe to buy" — this is a due-diligence-evidence
+// signal, not a legal or transactional guarantee. A missing/not-yet-
+// retrieved document is NEVER, by itself, a material adverse finding.
+type OverallAssessmentLevel = 'VERY_POSITIVE' | 'POSITIVE' | 'GENERALLY_POSITIVE' | 'NEUTRAL_MIXED' | 'ATTENTION_REQUIRED';
+interface MaterialAdverseFinding {
+  description: string;
+}
+const RESTRICTION_FOUND_FALLBACK_I18N: Record<string, string> = {
+  ka: 'რეესტრში დაფიქსირდა რეგისტრირებული შეზღუდვა ან დატვირთვა — საჭიროებს დეტალურ გადამოწმებას გარიგებამდე.',
+  en: 'A registered restriction or encumbrance was identified in the registry — this needs detailed review before the transaction.',
+  ru: 'В реестре обнаружено зарегистрированное ограничение или обременение — требуется детальная проверка перед сделкой.',
+  tr: 'Sicilde tescilli bir kısıtlama veya takyidat tespit edildi — işlemden önce ayrıntılı incelenmelidir.',
+  ar: 'تم رصد قيد أو عبء مسجل في السجل — يتطلب مراجعة تفصيلية قبل الصفقة.',
+  he: 'זוהתה הגבלה או שעבוד רשומים במרשם — יש לבדוק זאת לעומק לפני העסקה.',
+};
+const DEBTOR_RECORD_FOUND_I18N: Record<string, string> = {
+  ka: 'მოვალეთა რეესტრში ამ იდენტიფიკატორზე ჩანაწერი დაფიქსირდა — დეტალები საჭიროებს გადამოწმებას გარიგებამდე.',
+  en: 'A matching record was found in the Debtor Registry for this identifier — the details need review before the transaction.',
+  ru: 'В реестре должников найдена запись по этому идентификатору — детали требуют проверки перед сделкой.',
+  tr: 'Bu kimlik için Borçlular Sicilinde eşleşen bir kayıt bulundu — ayrıntılar işlemden önce incelenmelidir.',
+  ar: 'تم العثور على سجل مطابق في سجل المدينين لهذا المعرف — يجب مراجعة التفاصيل قبل الصفقة.',
+  he: 'נמצאה רשומה תואמת במרשם החייבים עבור מזהה זה — יש לבדוק את הפרטים לפני העסקה.',
+};
+const COMPANY_STATUS_NOT_ACTIVE_I18N: Record<string, string> = {
+  ka: 'რეესტრში დაფიქსირებული კომპანიის სტატუსი არ არის აქტიური — საჭიროებს დამატებით გადამოწმებას.',
+  en: "The company's registered status is not active — this needs additional review.",
+  ru: 'Зарегистрированный статус компании не является активным — требуется дополнительная проверка.',
+  tr: 'Şirketin tescilli durumu aktif değil — ek inceleme gereklidir.',
+  ar: 'الحالة المسجلة للشركة ليست نشطة — يتطلب مراجعة إضافية.',
+  he: 'הסטטוס הרשום של החברה אינו פעיל — יש צורך בבדיקה נוספת.',
+};
+function computeMaterialAdverseFindings(
+  riskFlags: { severity: 'LOW' | 'MEDIUM' | 'HIGH'; description: string }[],
+  materialConflicts: { description: string; severity: string }[],
+  rightsAndRestrictions: { status: string; items?: string[] },
+  debtorRecordFound: boolean,
+  companyLiquidationSuspected: { suspected: boolean; note?: string },
+  l: string
+): MaterialAdverseFinding[] {
+  const out: MaterialAdverseFinding[] = [];
+  for (const r of riskFlags) if (r.severity === 'HIGH') out.push({ description: r.description });
+  if (rightsAndRestrictions.status === 'RESTRICTION_IDENTIFIED') {
+    for (const it of rightsAndRestrictions.items || []) out.push({ description: it });
+    if (!rightsAndRestrictions.items?.length) out.push({ description: RESTRICTION_FOUND_FALLBACK_I18N[l] || RESTRICTION_FOUND_FALLBACK_I18N.en });
+  }
+  if (debtorRecordFound) out.push({ description: DEBTOR_RECORD_FOUND_I18N[l] || DEBTOR_RECORD_FOUND_I18N.en });
+  if (companyLiquidationSuspected.suspected) out.push({ description: COMPANY_STATUS_NOT_ACTIVE_I18N[l] || COMPANY_STATUS_NOT_ACTIVE_I18N.en });
+  for (const c of materialConflicts) out.push({ description: c.description });
+  return out;
+}
 function computeOverallAssessment(
   gatedConfidence: 'HIGH' | 'MEDIUM' | 'LOW',
   coverage: any,
   riskFlags: { severity: 'LOW' | 'MEDIUM' | 'HIGH'; description: string }[],
-  conflictsAll: string[],
-  rightsAndRestrictions: { status: string },
-  itemsToVerifyCount: number
+  minorConflictsCount: number,
+  materialAdverseFindingsCount: number,
+  itemsToVerifyCount: number,
+  keyStrengthsCount: number
 ): OverallAssessmentLevel {
-  const highRisks = riskFlags.filter((r) => r.severity === 'HIGH').length;
   const mediumRisks = riskFlags.filter((r) => r.severity === 'MEDIUM').length;
-  // CAUTION: a genuinely serious, evidenced problem — never merely "a fact
-  // is still unconfirmed" (that is what ITEMS TO VERIFY is for).
-  if (highRisks >= 1 || rightsAndRestrictions.status === 'RESTRICTION_IDENTIFIED' || conflictsAll.length >= 2) {
-    return 'CAUTION';
+  // ATTENTION_REQUIRED: the ONLY level driven by materialAdverseFindings —
+  // an actual evidenced adverse fact (a real restriction, a debtor record,
+  // a company not in active status, a genuinely material conflict, or a
+  // HIGH-severity risk). Never triggered by a merely-missing document.
+  if (materialAdverseFindingsCount >= 1) {
+    return 'ATTENTION_REQUIRED';
   }
-  // MIXED: some real friction in the evidence itself (a contradiction, or
-  // several medium risks, or thin coverage combined with low confidence) —
-  // more than "a few things to double-check before transacting".
-  if (conflictsAll.length >= 1 || mediumRisks >= 2 || (coverage.level === 'LIMITED' && gatedConfidence === 'LOW')) {
-    return 'MIXED';
+  // NEUTRAL_MIXED: no material adverse finding, but real friction/noise in
+  // the evidence itself (several medium risks, several ordinary marketing
+  // discrepancies, or thin coverage combined with low confidence).
+  if (mediumRisks >= 2 || minorConflictsCount >= 2 || (coverage.level === 'LIMITED' && gatedConfidence === 'LOW')) {
+    return 'NEUTRAL_MIXED';
   }
-  // POSITIVE: the strict, rare case — strong confirmed identity, at least
-  // one official source actually retrieved, coverage not LIMITED, zero
-  // risk flags, zero conflicts, and nothing left for the customer to
-  // verify before a transaction. Anything short of this is the common
-  // "generally positive, but still verify these specific items" case.
-  if (gatedConfidence === 'HIGH' && coverage.officialSourcesRetrieved > 0 && coverage.level !== 'LIMITED' && riskFlags.length === 0 && conflictsAll.length === 0 && itemsToVerifyCount === 0) {
+  const clean = riskFlags.length === 0 && minorConflictsCount === 0;
+  // VERY_POSITIVE: strong confirmed identity, comprehensive coverage,
+  // multiple official sources actually retrieved, several key strengths,
+  // and nothing at all left for the customer to verify.
+  if (gatedConfidence === 'HIGH' && coverage.level === 'HIGH' && coverage.officialSourcesRetrieved >= 2 && clean && itemsToVerifyCount === 0 && keyStrengthsCount >= 3) {
+    return 'VERY_POSITIVE';
+  }
+  // POSITIVE: strong confirmed identity, at least one official source
+  // actually retrieved, coverage not LIMITED, clean evidence, and nothing
+  // left for the customer to verify before a transaction.
+  if (gatedConfidence === 'HIGH' && coverage.officialSourcesRetrieved > 0 && coverage.level !== 'LIMITED' && clean && itemsToVerifyCount === 0) {
     return 'POSITIVE';
   }
-  return 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY';
+  // GENERALLY_POSITIVE: the common case — no adverse finding, no real
+  // friction, but a handful of items still worth confirming before a
+  // transaction (e.g. a document not yet retrieved). This is the default,
+  // not a downgrade — most healthy reports land here.
+  return 'GENERALLY_POSITIVE';
 }
 
 // ── Hard synthesis gate (unchanged from v18): a deterministic, code-level
@@ -1650,7 +1723,17 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const mr = prior.marketResearch || {};
   const oc = ev.filter((x: any) => String(x.evidenceLevel).startsWith('OFFICIAL')).length;
   const wc = ev.length - oc;
-  const numericConfidence = Math.min(95, Math.max(20, 35 + oc * 10 + Math.min(wc, 5) * 5 - (z.conflicts?.length || 0) * 8));
+  // normalizeConflicts() (v36): SYNTHESIS/OFFICIAL now emit
+  // {description,severity} objects (see CONFLICT SEVERITY RULE above), but
+  // this defensively accepts a legacy bare string too (treated as MINOR —
+  // never inflate an unclassified entry into something that could drive
+  // ATTENTION_REQUIRED).
+  const normalizeConflicts = (raw: any[]): { description: string; severity: 'MATERIAL' | 'MINOR' }[] =>
+    (raw || [])
+      .map((c: any) => (typeof c === 'string' ? { description: c, severity: 'MINOR' as const } : { description: String(c?.description || ''), severity: c?.severity === 'MATERIAL' ? ('MATERIAL' as const) : ('MINOR' as const) }))
+      .filter((c) => c.description.trim());
+  const zConflictsNorm = normalizeConflicts(z.conflicts);
+  const numericConfidence = Math.min(95, Math.max(20, 35 + oc * 10 + Math.min(wc, 5) * 5 - zConflictsNorm.filter((c) => c.severity === 'MATERIAL').length * 15 - zConflictsNorm.filter((c) => c.severity === 'MINOR').length * 5));
   const officialStatus = officialVerificationSummary(prior.browserOfficial);
   const officialDocs = officialDocuments(prior.browserOfficial);
   const identityConfidence = z.entity?.confidence || i.entity?.confidence || 'LOW';
@@ -1672,7 +1755,18 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // model's own self-report.
   const companyProfile = rawCompanyProfile ? { ...rawCompanyProfile, sourceBasis: companyProfileSourceBasis(rawCompanyProfile, prior.browserOfficial) } : null;
   const unverifiedAll = semanticDedupe(dedupe([...(i.unverified || []), ...(o.unverified || []), ...(mr.unverified || []), ...(z.unverified || [])], (x: any) => x), (x: any) => String(x || ''));
-  const conflictsAll = semanticDedupe(dedupe([...(o.conflicts || []), ...(z.conflicts || [])], (x: any) => x), (x: any) => String(x || ''));
+  const conflictsAll = semanticDedupe(
+    dedupe([...normalizeConflicts(o.conflicts), ...zConflictsNorm], (x) => `${x.severity}:${x.description}`),
+    (x) => x.description
+  );
+  const materialConflicts = conflictsAll.filter((c) => c.severity === 'MATERIAL');
+  const minorConflicts = conflictsAll.filter((c) => c.severity === 'MINOR');
+  // debtorRecordFound (v36): the one genuinely adverse signal this pipeline
+  // can detect deterministically from the MyGov Debtor Registry adapter's
+  // own terminal state — SEARCH_CONFIRMED means the exact-identifier search
+  // found a matching debtor record (NO_RESULT_CONFIRMED is the positive,
+  // non-adverse case and never reaches here). Never inferred from prose.
+  const debtorRecordFound = (prior.browserOfficial?.results || []).some((r: any) => r.source === 'debtor' && r.status === 'SEARCH_CONFIRMED');
   // rightsAndRestrictions (v21, mandate: seizure/attachment is transaction-
   // critical — "no restriction found" and "not yet checked" must never be
   // collapsed into the same sentence, and neither may ever become "clean" /
@@ -1691,6 +1785,8 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     asOf: now(),
   };
   const coverage = dueDiligenceCoverage(officialStatus, officialDocs, companyProfile, { comparables: sanitizeComparables(mr.market?.comparables || []) }, ev, conflictsAll, unverifiedAll, prior.browserOfficial);
+  const companyLiquidation = companyLiquidationSuspected(companyProfile);
+  const materialAdverseFindings = computeMaterialAdverseFindings(riskFlags, materialConflicts, rightsAndRestrictions, debtorRecordFound, companyLiquidation, l);
 
   // overallAssessment (v30): keyStrengths/itemsToVerify are the model's own
   // authored lists (bound by the SYNTHESIS prompt's KEY STRENGTHS/ITEMS TO
@@ -1708,7 +1804,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     itemsToVerify = [...itemsToVerify, UNRESOLVED_RIGHTS_GAP_I18N[l] || UNRESOLVED_RIGHTS_GAP_I18N.en].slice(0, 4);
   }
   const overallAssessment = {
-    level: computeOverallAssessment(gatedConfidence, coverage, riskFlags, conflictsAll, rightsAndRestrictions, itemsToVerify.length),
+    level: computeOverallAssessment(gatedConfidence, coverage, riskFlags, minorConflicts.length, materialAdverseFindings.length, itemsToVerify.length, keyStrengths.length),
     keyStrengths,
     itemsToVerify,
   };
@@ -1784,8 +1880,15 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     reviews: mr.reviews || null,
     officialEvidence: z.officialEvidence?.length ? z.officialEvidence : o.officialEvidence || [],
     publicEvidence: z.publicEvidence?.length ? z.publicEvidence : mr.publicEvidence || [],
+    // conflicts/materialAdverseFindings (v36): kept in result_json for
+    // internal/admin visibility only — the customer-facing report never
+    // renders a raw "conflicts" list (see VerifyPage.tsx); the note text
+    // here is now derived from the SAME materialAdverseFindings signal that
+    // drives overallAssessment.level, so the two can never contradict each
+    // other again.
     conflicts: conflictsAll,
-    materialRisks: { riskFlags, note: riskFlags.length ? '' : MATERIAL_RISK_NONE_I18N[l] || MATERIAL_RISK_NONE_I18N.en },
+    materialAdverseFindings,
+    materialRisks: { riskFlags, note: materialAdverseFindings.length ? '' : MATERIAL_RISK_NONE_I18N[l] || MATERIAL_RISK_NONE_I18N.en },
     publicFindings: { riskFlags }, // kept for backward compatibility with older clients
     unverified: unverifiedAll,
     sources: ev,

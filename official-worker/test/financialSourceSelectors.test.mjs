@@ -1,15 +1,20 @@
 // financialSourceSelectors.test.mjs — RS Taxpayers Registry / MyGov Debtor
 // Registry selector constants (workflows/financial/selectors.ts), added by
 // the "FINANCIAL/COMPANY SOURCE EXPANSION" mandate section. These two
-// sources are deliberately NOT full per-source FSMs (see
-// FinancialSourceWorkflow.ts's own header) and — like every other
-// *Workflow.ts driver in this codebase (TAS/MSMap/MyGov/ENREG/Generic) —
-// are not unit-mocked at the Playwright-Page level here; that behavior is
-// covered by the live browser verification recorded in selectors.ts's own
-// comments plus this codebase's established convention of testing the pure
-// logic layer, not the browser-driving layer, in this suite. What IS pure
-// and safely testable without a DOM lib / Page mock is the actual selector
-// and phrase-matching data these two sources depend on.
+// sources are each their own independent worker (RsTaxpayerWorker.ts /
+// DebtorWorker.ts, split out of the earlier shared FinancialSourceWorkflow.ts
+// by the "REBUILD THE CUSTOMER REPORT + OFFICIAL WORKERS AS SEPARATE
+// DETERMINISTIC PIPELINES" mandate — "one source = one worker = one real
+// live contract", never a function parameterized by a source-key string),
+// deliberately NOT full per-source FSMs (see each worker's own header) and
+// — like every other *Workflow.ts/*Worker.ts driver in this codebase
+// (TAS/MSMap/MyGov/ENREG/Generic) — not unit-mocked at the Playwright-Page
+// level here; that behavior is covered by the live browser verification
+// recorded in selectors.ts's own comments plus this codebase's established
+// convention of testing the pure logic layer, not the browser-driving
+// layer, in this suite. What IS pure and safely testable without a DOM
+// lib / Page mock is the actual selector and phrase-matching data these two
+// independent workers each depend on.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {

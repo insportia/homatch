@@ -448,51 +448,192 @@ test('sourceCategory (v30): official/portal/social classification is unchanged b
   assert.equal(sourceCategoryV30('https://www.myhome.ge/listing/123'), 'MARKET_LISTING');
 });
 
-// computeOverallAssessment() (v30, "REPORT UX" mandate) — copied verbatim.
-function computeOverallAssessment(gatedConfidence, coverage, riskFlags, conflictsAll, rightsAndRestrictions, itemsToVerifyCount) {
-  const highRisks = riskFlags.filter((r) => r.severity === 'HIGH').length;
+// computeOverallAssessment() / computeMaterialAdverseFindings() /
+// companyLiquidationSuspected() / normalizeConflicts() (v36 rewrite,
+// mandate: "THE REPORT MUST NOT CONTRADICT ITSELF" — the previous 4-level
+// scale could show a CAUTION/MIXED badge while the body text simultaneously
+// said no material risk was found, because the badge was driven by generic
+// `conflicts` (which mixed in ordinary marketing-detail discrepancies)
+// while the risk sentence was driven only by riskFlags. Both are now
+// derived from ONE shared `materialAdverseFindings` list — the badge and
+// the "no material issue" sentence can therefore never disagree again, by
+// construction. All four functions below are copied verbatim from the
+// deployed v36 source (RESTRICTION_FOUND_FALLBACK_I18N/
+// DEBTOR_RECORD_FOUND_I18N/COMPANY_STATUS_NOT_ACTIVE_I18N trimmed to the
+// two locales exercised here — ka/en — since the full six-locale objects
+// are identical in shape and covered by the i18n key-count check elsewhere
+// in this repo).
+
+const RESTRICTION_FOUND_FALLBACK_I18N = {
+  ka: 'რეესტრში დაფიქსირდა რეგისტრირებული შეზღუდვა ან დატვირთვა — საჭიროებს დეტალურ გადამოწმებას გარიგებამდე.',
+  en: 'A registered restriction or encumbrance was identified in the registry — this needs detailed review before the transaction.',
+};
+const DEBTOR_RECORD_FOUND_I18N = {
+  ka: 'მოვალეთა რეესტრში ამ იდენტიფიკატორზე ჩანაწერი დაფიქსირდა — დეტალები საჭიროებს გადამოწმებას გარიგებამდე.',
+  en: 'A matching record was found in the Debtor Registry for this identifier — the details need review before the transaction.',
+};
+const COMPANY_STATUS_NOT_ACTIVE_I18N = {
+  ka: 'რეესტრში დაფიქსირებული კომპანიის სტატუსი არ არის აქტიური — საჭიროებს დამატებით გადამოწმებას.',
+  en: "The company's registered status is not active — this needs additional review.",
+};
+function computeMaterialAdverseFindings(riskFlags, materialConflicts, rightsAndRestrictions, debtorRecordFound, companyLiquidationSuspected, l) {
+  const out = [];
+  for (const r of riskFlags) if (r.severity === 'HIGH') out.push({ description: r.description });
+  if (rightsAndRestrictions.status === 'RESTRICTION_IDENTIFIED') {
+    for (const it of rightsAndRestrictions.items || []) out.push({ description: it });
+    if (!rightsAndRestrictions.items?.length) out.push({ description: RESTRICTION_FOUND_FALLBACK_I18N[l] || RESTRICTION_FOUND_FALLBACK_I18N.en });
+  }
+  if (debtorRecordFound) out.push({ description: DEBTOR_RECORD_FOUND_I18N[l] || DEBTOR_RECORD_FOUND_I18N.en });
+  if (companyLiquidationSuspected.suspected) out.push({ description: COMPANY_STATUS_NOT_ACTIVE_I18N[l] || COMPANY_STATUS_NOT_ACTIVE_I18N.en });
+  for (const c of materialConflicts) out.push({ description: c.description });
+  return out;
+}
+function computeOverallAssessment(gatedConfidence, coverage, riskFlags, minorConflictsCount, materialAdverseFindingsCount, itemsToVerifyCount, keyStrengthsCount) {
   const mediumRisks = riskFlags.filter((r) => r.severity === 'MEDIUM').length;
-  if (highRisks >= 1 || rightsAndRestrictions.status === 'RESTRICTION_IDENTIFIED' || conflictsAll.length >= 2) return 'CAUTION';
-  if (conflictsAll.length >= 1 || mediumRisks >= 2 || (coverage.level === 'LIMITED' && gatedConfidence === 'LOW')) return 'MIXED';
-  if (gatedConfidence === 'HIGH' && coverage.officialSourcesRetrieved > 0 && coverage.level !== 'LIMITED' && riskFlags.length === 0 && conflictsAll.length === 0 && itemsToVerifyCount === 0) return 'POSITIVE';
-  return 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY';
+  if (materialAdverseFindingsCount >= 1) return 'ATTENTION_REQUIRED';
+  if (mediumRisks >= 2 || minorConflictsCount >= 2 || (coverage.level === 'LIMITED' && gatedConfidence === 'LOW')) return 'NEUTRAL_MIXED';
+  const clean = riskFlags.length === 0 && minorConflictsCount === 0;
+  if (gatedConfidence === 'HIGH' && coverage.level === 'HIGH' && coverage.officialSourcesRetrieved >= 2 && clean && itemsToVerifyCount === 0 && keyStrengthsCount >= 3) return 'VERY_POSITIVE';
+  if (gatedConfidence === 'HIGH' && coverage.officialSourcesRetrieved > 0 && coverage.level !== 'LIMITED' && clean && itemsToVerifyCount === 0) return 'POSITIVE';
+  return 'GENERALLY_POSITIVE';
+}
+const LIQUIDATION_STATUS_RE = /ლიკვიდაცი|გაკოტრებ|გაუქმებულ|liquidat|bankrupt|insolven|dissolved|cancelled|revoked/i;
+function companyLiquidationSuspected(companyProfile) {
+  if (!companyProfile || companyProfile.sourceBasis !== 'REGISTRY_CONFIRMED' || !companyProfile.status) return { suspected: false };
+  if (LIQUIDATION_STATUS_RE.test(String(companyProfile.status))) return { suspected: true, note: String(companyProfile.status) };
+  return { suspected: false };
+}
+function normalizeConflicts(raw) {
+  return (raw || [])
+    .map((c) => (typeof c === 'string' ? { description: c, severity: 'MINOR' } : { description: String(c?.description || ''), severity: c?.severity === 'MATERIAL' ? 'MATERIAL' : 'MINOR' }))
+    .filter((c) => c.description.trim());
 }
 
-test('computeOverallAssessment: a HIGH-severity risk flag alone forces CAUTION, regardless of everything else', () => {
-  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [{ severity: 'HIGH', description: 'x' }], [], { status: 'NOT_CONFIRMED' }, 0);
-  assert.equal(lvl, 'CAUTION');
+// ---- computeMaterialAdverseFindings + companyLiquidationSuspected +
+// normalizeConflicts ----
+
+test('computeMaterialAdverseFindings: a missing/not-yet-retrieved document alone is NEVER a finding — empty riskFlags/conflicts/restriction/debtor/liquidation yields zero findings', () => {
+  const out = computeMaterialAdverseFindings([], [], { status: 'NOT_CONFIRMED' }, false, { suspected: false }, 'en');
+  assert.deepEqual(out, []);
 });
-test('computeOverallAssessment: an identified registered restriction forces CAUTION even with zero risk flags', () => {
-  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], [], { status: 'RESTRICTION_IDENTIFIED' }, 0);
-  assert.equal(lvl, 'CAUTION');
+test('computeMaterialAdverseFindings: a HIGH-severity risk flag becomes a finding; a LOW/MEDIUM one never does', () => {
+  const out = computeMaterialAdverseFindings([{ severity: 'HIGH', description: 'Seizure recorded' }, { severity: 'MEDIUM', description: 'ordinary note' }], [], { status: 'NOT_CONFIRMED' }, false, { suspected: false }, 'en');
+  assert.deepEqual(out, [{ description: 'Seizure recorded' }]);
 });
-test('computeOverallAssessment: 2+ unresolved conflicts forces CAUTION', () => {
-  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], ['a', 'b'], { status: 'NOT_CONFIRMED' }, 0);
-  assert.equal(lvl, 'CAUTION');
+test('computeMaterialAdverseFindings: an identified restriction with explicit items uses those items verbatim, never the generic fallback', () => {
+  const out = computeMaterialAdverseFindings([], [], { status: 'RESTRICTION_IDENTIFIED', items: ['Mortgage registered in favor of Bank X'] }, false, { suspected: false }, 'en');
+  assert.deepEqual(out, [{ description: 'Mortgage registered in favor of Bank X' }]);
 });
-test('computeOverallAssessment: exactly 1 conflict is MIXED, not CAUTION', () => {
-  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], ['a'], { status: 'NOT_CONFIRMED' }, 0);
-  assert.equal(lvl, 'MIXED');
+test('computeMaterialAdverseFindings: an identified restriction with NO items falls back to the localized generic sentence, in the requested locale', () => {
+  const outKa = computeMaterialAdverseFindings([], [], { status: 'RESTRICTION_IDENTIFIED', items: [] }, false, { suspected: false }, 'ka');
+  assert.deepEqual(outKa, [{ description: RESTRICTION_FOUND_FALLBACK_I18N.ka }]);
+  const outFr = computeMaterialAdverseFindings([], [], { status: 'RESTRICTION_IDENTIFIED' }, false, { suspected: false }, 'fr');
+  assert.deepEqual(outFr, [{ description: RESTRICTION_FOUND_FALLBACK_I18N.en }], 'unrecognized locale must fall back to en, never a raw key');
 });
-test('computeOverallAssessment: 2+ MEDIUM risk flags (no HIGH) is MIXED', () => {
-  const lvl = computeOverallAssessment('MEDIUM', { level: 'MEDIUM', officialSourcesRetrieved: 1 }, [{ severity: 'MEDIUM', description: 'a' }, { severity: 'MEDIUM', description: 'b' }], [], { status: 'NOT_CONFIRMED' }, 0);
-  assert.equal(lvl, 'MIXED');
+test('computeMaterialAdverseFindings: a confirmed debtor record becomes a localized finding', () => {
+  const out = computeMaterialAdverseFindings([], [], { status: 'NOT_CONFIRMED' }, true, { suspected: false }, 'ka');
+  assert.deepEqual(out, [{ description: DEBTOR_RECORD_FOUND_I18N.ka }]);
 });
-test('computeOverallAssessment: LIMITED coverage + LOW confidence (thin research) is MIXED even with no risk/conflicts', () => {
-  const lvl = computeOverallAssessment('LOW', { level: 'LIMITED', officialSourcesRetrieved: 0 }, [], [], { status: 'NOT_CONFIRMED' }, 0);
-  assert.equal(lvl, 'MIXED');
+test('computeMaterialAdverseFindings: suspected company liquidation becomes a localized finding', () => {
+  const out = computeMaterialAdverseFindings([], [], { status: 'NOT_CONFIRMED' }, false, { suspected: true, note: 'ლიკვიდაციის პროცესშია' }, 'en');
+  assert.deepEqual(out, [{ description: COMPANY_STATUS_NOT_ACTIVE_I18N.en }]);
 });
-test('computeOverallAssessment: the strict POSITIVE case — HIGH confidence, an official source retrieved, non-LIMITED coverage, zero risks/conflicts/itemsToVerify', () => {
-  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 1 }, [], [], { status: 'NONE_FOUND_IN_CHECKED_SOURCE' }, 0);
+test('computeMaterialAdverseFindings: MATERIAL conflicts pass through by description; combines every signal together in order', () => {
+  const out = computeMaterialAdverseFindings(
+    [{ severity: 'HIGH', description: 'HIGH risk' }],
+    [{ description: 'Two official sources disagree on legal owner', severity: 'MATERIAL' }],
+    { status: 'RESTRICTION_IDENTIFIED', items: ['Restriction X'] },
+    true,
+    { suspected: true, note: 'x' },
+    'en'
+  );
+  assert.deepEqual(out, [
+    { description: 'HIGH risk' },
+    { description: 'Restriction X' },
+    { description: DEBTOR_RECORD_FOUND_I18N.en },
+    { description: COMPANY_STATUS_NOT_ACTIVE_I18N.en },
+    { description: 'Two official sources disagree on legal owner' },
+  ]);
+});
+
+test('companyLiquidationSuspected: never suspects a company profile that is not REGISTRY_CONFIRMED, even if status text looks alarming (web research is never enough to allege liquidation)', () => {
+  assert.deepEqual(companyLiquidationSuspected({ sourceBasis: 'WEB_RESEARCH_ONLY', status: 'ლიკვიდაციის პროცესშია' }), { suspected: false });
+  assert.deepEqual(companyLiquidationSuspected(null), { suspected: false });
+  assert.deepEqual(companyLiquidationSuspected({ sourceBasis: 'REGISTRY_CONFIRMED' }), { suspected: false }, 'no status at all is never suspected');
+});
+test('companyLiquidationSuspected: a REGISTRY_CONFIRMED profile with an active status is never suspected', () => {
+  assert.deepEqual(companyLiquidationSuspected({ sourceBasis: 'REGISTRY_CONFIRMED', status: 'აქტიური' }), { suspected: false });
+});
+test('companyLiquidationSuspected: a REGISTRY_CONFIRMED profile with a liquidation/bankruptcy status (Georgian or English) is suspected, carrying the raw status as note', () => {
+  assert.deepEqual(companyLiquidationSuspected({ sourceBasis: 'REGISTRY_CONFIRMED', status: 'ლიკვიდაციის პროცესშია' }), { suspected: true, note: 'ლიკვიდაციის პროცესშია' });
+  assert.deepEqual(companyLiquidationSuspected({ sourceBasis: 'REGISTRY_CONFIRMED', status: 'In bankruptcy proceedings' }), { suspected: true, note: 'In bankruptcy proceedings' });
+});
+
+test('normalizeConflicts: a legacy bare string is defensively treated as MINOR, never inflated to MATERIAL', () => {
+  assert.deepEqual(normalizeConflicts(['some old-shape conflict']), [{ description: 'some old-shape conflict', severity: 'MINOR' }]);
+});
+test('normalizeConflicts: an object with severity MATERIAL is kept MATERIAL; anything else (missing/garbled) defaults to MINOR', () => {
+  assert.deepEqual(normalizeConflicts([{ description: 'a', severity: 'MATERIAL' }, { description: 'b', severity: 'garbage' }, { description: 'c' }]), [
+    { description: 'a', severity: 'MATERIAL' },
+    { description: 'b', severity: 'MINOR' },
+    { description: 'c', severity: 'MINOR' },
+  ]);
+});
+test('normalizeConflicts: entries with an empty/whitespace-only description are dropped; null/undefined input never throws', () => {
+  assert.deepEqual(normalizeConflicts([{ description: '   ' }, { description: 'real one' }]), [{ description: 'real one', severity: 'MINOR' }]);
+  assert.deepEqual(normalizeConflicts(null), []);
+  assert.deepEqual(normalizeConflicts(undefined), []);
+});
+
+// ---- computeOverallAssessment (v36, 5-level scale) ----
+
+test('computeOverallAssessment: >=1 materialAdverseFindingsCount always forces ATTENTION_REQUIRED, regardless of everything else being otherwise pristine', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], 0, 1, 0, 5);
+  assert.equal(lvl, 'ATTENTION_REQUIRED');
+});
+test('computeOverallAssessment: zero materialAdverseFindingsCount NEVER yields ATTENTION_REQUIRED even with messy evidence (the exact contradiction bug this rewrite fixes)', () => {
+  const lvl = computeOverallAssessment('LOW', { level: 'LIMITED', officialSourcesRetrieved: 0 }, [{ severity: 'MEDIUM', description: 'a' }, { severity: 'MEDIUM', description: 'b' }], 3, 0, 4, 0);
+  assert.notEqual(lvl, 'ATTENTION_REQUIRED');
+});
+test('computeOverallAssessment: a missing/not-yet-retrieved document (itemsToVerify > 0) alone never drives ATTENTION_REQUIRED or NEUTRAL_MIXED', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 2 }, [], 0, 0, 3, 0);
+  assert.equal(lvl, 'GENERALLY_POSITIVE');
+});
+test('computeOverallAssessment: 2+ MEDIUM risk flags (no material finding) is NEUTRAL_MIXED', () => {
+  const lvl = computeOverallAssessment('MEDIUM', { level: 'MEDIUM', officialSourcesRetrieved: 1 }, [{ severity: 'MEDIUM', description: 'a' }, { severity: 'MEDIUM', description: 'b' }], 0, 0, 0, 0);
+  assert.equal(lvl, 'NEUTRAL_MIXED');
+});
+test('computeOverallAssessment: 2+ MINOR conflicts (no material finding) is NEUTRAL_MIXED, never ATTENTION_REQUIRED', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 2 }, [], 2, 0, 0, 0);
+  assert.equal(lvl, 'NEUTRAL_MIXED');
+});
+test('computeOverallAssessment: exactly 1 MINOR conflict is not enough for NEUTRAL_MIXED by itself', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 2 }, [], 1, 0, 0, 0);
+  assert.notEqual(lvl, 'NEUTRAL_MIXED');
+});
+test('computeOverallAssessment: LIMITED coverage + LOW confidence (thin research, no adverse finding) is NEUTRAL_MIXED', () => {
+  const lvl = computeOverallAssessment('LOW', { level: 'LIMITED', officialSourcesRetrieved: 0 }, [], 0, 0, 0, 0);
+  assert.equal(lvl, 'NEUTRAL_MIXED');
+});
+test('computeOverallAssessment: VERY_POSITIVE requires HIGH confidence, HIGH coverage, >=2 official sources retrieved, clean evidence, zero itemsToVerify, and >=3 key strengths', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 2 }, [], 0, 0, 0, 3);
+  assert.equal(lvl, 'VERY_POSITIVE');
+});
+test('computeOverallAssessment: falling short on key strengths (only 2) keeps it at POSITIVE, not VERY_POSITIVE', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 2 }, [], 0, 0, 0, 2);
   assert.equal(lvl, 'POSITIVE');
 });
-test('computeOverallAssessment: HIGH confidence but itemsToVerify still non-empty is NOT POSITIVE — falls to the common GENERALLY_POSITIVE case (the exact mandate scenario: abundant positive evidence, one thing still to check)', () => {
-  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], [], { status: 'NOT_CONFIRMED' }, 1);
-  assert.equal(lvl, 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY');
+test('computeOverallAssessment: the strict POSITIVE case — HIGH confidence, an official source retrieved, non-LIMITED coverage, clean evidence, nothing left to verify', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'MEDIUM', officialSourcesRetrieved: 1 }, [], 0, 0, 0, 0);
+  assert.equal(lvl, 'POSITIVE');
 });
-test('computeOverallAssessment: the common default — LOW/MEDIUM confidence, no serious risk — is GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY, never CAUTION', () => {
-  const lvl = computeOverallAssessment('MEDIUM', { level: 'MEDIUM', officialSourcesRetrieved: 1 }, [{ severity: 'LOW', description: 'x' }], [], { status: 'NOT_CONFIRMED' }, 2);
-  assert.equal(lvl, 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY');
+test('computeOverallAssessment: HIGH confidence but itemsToVerify still non-empty is NOT POSITIVE — falls to the common GENERALLY_POSITIVE default (the exact mandate scenario: abundant positive evidence, one thing still to check)', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], 0, 0, 1, 0);
+  assert.equal(lvl, 'GENERALLY_POSITIVE');
+});
+test('computeOverallAssessment: the common default — LOW/MEDIUM confidence, no serious risk, no material finding — is GENERALLY_POSITIVE, never ATTENTION_REQUIRED/NEUTRAL_MIXED', () => {
+  const lvl = computeOverallAssessment('MEDIUM', { level: 'MEDIUM', officialSourcesRetrieved: 1 }, [{ severity: 'LOW', description: 'x' }], 0, 0, 2, 0);
+  assert.equal(lvl, 'GENERALLY_POSITIVE');
 });
 
 // localizedSourceName() / officialSourceCoverage() (v30) — copied verbatim.

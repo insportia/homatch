@@ -64,7 +64,7 @@ app.get('/health', (_q: any, r: any) =>
     entityDiscovery: true,
     navigationStackTraversal: true,
     humanVerificationSkip: true,
-    sourceWorkflows: ['msmap:MsMapWorkflow (18-state FSM)', 'tas:TasWorkflow (branch+loop FSM)', 'mygov:MyGovWorkflow (context-gated FSM)', 'enreg:EnregWorkflow (25-state linear FSM)', 'rstax/debtor:FinancialSourceWorkflow (flat, identifier-only, no name search)', 'napr/property-enreg:GenericWorkflow (no dedicated FSM — no spec exists for these)'],
+    sourceWorkflows: ['msmap:MsMapWorkflow (18-state FSM)', 'tas:TasWorkflow (branch+loop FSM)', 'mygov:MyGovWorkflow (context-gated FSM)', 'enreg:EnregWorkflow (25-state linear FSM)', 'rstax:RsTaxpayerWorker (independent, flat, identifier-only, no name search)', 'debtor:DebtorWorker (independent, flat, identifier-only, no name search)', 'napr/property-enreg:GenericWorkflow (no dedicated FSM — no spec exists for these)'],
     statuses: ['SEARCH_CONFIRMED', 'NO_RESULT_CONFIRMED', 'SUBMITTED_UNCONFIRMED', 'SUBMIT_FAILED', 'AUTH_REQUIRED', 'SEARCH_CONTROL_NOT_FOUND', 'BLOCKED', 'WAITING_HUMAN', 'SKIPPED_HUMAN_VERIFICATION', 'WRONG_SEARCH_CONTEXT', 'FAILED'],
     traversalStatuses: ['NOT_STARTED', 'SEARCH_CONFIRMED', 'RESULTS_DISCOVERED', 'RESULTS_TRAVERSED', 'DOCUMENTS_TRAVERSED', 'SOURCE_EXHAUSTED', 'WAITING_HUMAN', 'SKIPPED_HUMAN_VERIFICATION', 'BLOCKED', 'AUTH_REQUIRED', 'SEARCH_CONTROL_NOT_FOUND', 'SUBMIT_FAILED', 'WRONG_SEARCH_CONTEXT', 'FAILED'],
     structuredTraversal: true,

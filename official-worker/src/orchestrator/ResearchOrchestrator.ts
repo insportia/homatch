@@ -13,7 +13,8 @@ import { runMsMapWorkflow } from '../workflows/msmap/MsMapWorkflow.js';
 import { runTasWorkflow } from '../workflows/tas/TasWorkflow.js';
 import { runMyGovWorkflow } from '../workflows/mygov/MyGovWorkflow.js';
 import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
-import { runFinancialSourceWorkflow, type FinancialSourceKey } from '../workflows/financial/FinancialSourceWorkflow.js';
+import { runRsTaxpayerWorker } from '../workflows/financial/RsTaxpayerWorker.js';
+import { runDebtorWorker } from '../workflows/financial/DebtorWorker.js';
 import { runGenericWorkflow } from '../workflows/generic/GenericWorkflow.js';
 import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
 import { challenge } from '../browser/BrowserSession.js';
@@ -102,21 +103,26 @@ export class ResearchOrchestrator {
    * WAITING_HUMAN pause, and resume/skip lifecycle as any other job — a
    * caller (research-agent) polls it via the ordinary GET /research/:id.
    *
-   * `source` (2026-09-06, "FINANCIAL SOURCE EXPANSION" mandate): generalized
-   * from enreg-only to also serve 'rstax'/'debtor' — same closed-loop shape,
-   * same CAPTCHA/resume/skip lifecycle, driven by runFinancialSourceWorkflow
-   * instead of runEnregWorkflow. idCode is REQUIRED (not name-fallback-able)
-   * for rstax/debtor since neither exposes a name search (see
-   * FinancialSourceWorkflow.ts) — a caller with only a name and no idCode
-   * should not call this for those two sources at all. */
+   * `source` (2026-09-06, "FINANCIAL SOURCE EXPANSION" mandate, later split
+   * into independent workers per the "REBUILD THE CUSTOMER REPORT + OFFICIAL
+   * WORKERS AS SEPARATE DETERMINISTIC PIPELINES" mandate): generalized from
+   * enreg-only to also serve 'rstax'/'debtor' — same closed-loop shape, same
+   * CAPTCHA/resume/skip lifecycle, driven by runRsTaxpayerWorker/
+   * runDebtorWorker (each its own independent worker, not a shared
+   * source-key-parameterized function) instead of runEnregWorkflow. idCode
+   * is REQUIRED (not name-fallback-able) for rstax/debtor since neither
+   * exposes a name search (see RsTaxpayerWorker.ts/DebtorWorker.ts) — a
+   * caller with only a name and no idCode should not call this for those
+   * two sources at all. */
   startEntity(name: string, idCode: string | null, source: 'enreg' | 'rstax' | 'debtor' = 'enreg'): ResearchJob {
     const id = randomUUID();
     // Only 'enreg' falls back to searching by bare name when idCode is
     // absent (it has a real name-search field). rstax/debtor have none —
     // keep idCode genuinely null for them rather than smuggling a company
-    // NAME into the step's idCode field, which FinancialSourceWorkflow
-    // would otherwise try to type into a TIN input. A null idCode there
-    // resolves to a clean, honest "no identifier" result, never a guess.
+    // NAME into the step's idCode field, which RsTaxpayerWorker/
+    // DebtorWorker would otherwise try to type into a TIN/ID input. A null
+    // idCode there resolves to a clean, honest "no identifier" result,
+    // never a guess.
     const stepIdCode = source === 'enreg' ? idCode || name : idCode;
     const step: StepDescriptor = { type: 'entity', source, idCode: stepIdCode, name };
     const job: ResearchJob = { id, query: stepIdCode || name, mode: 'cadastral', status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], steps: [step], createdAt: now(), updatedAt: now() };
@@ -163,7 +169,8 @@ export class ResearchOrchestrator {
       else if (key === 'msmap') result = await runMsMapWorkflow(page, query, ledger, entities);
       else if (key === 'mygov') result = await runMyGovWorkflow(page, ctx, query, entities);
       else if (key === 'enreg') result = await runEnregWorkflow(page, forEntity || { name: query, idCode: /^[0-9-]{6,}$/.test(String(query || '').trim()) ? query : null }, entities);
-      else if (key === 'rstax' || key === 'debtor') result = await runFinancialSourceWorkflow(page, key as FinancialSourceKey, forEntity, entities);
+      else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities);
+      else if (key === 'debtor') result = await runDebtorWorker(page, forEntity, entities);
       else result = await runGenericWorkflow(page, key, NAPR_META, query);
 
       const isWaitingHuman = result?.status === 'WAITING_HUMAN';
@@ -281,7 +288,7 @@ export class ResearchOrchestrator {
         finalResult = await runEnregWorkflow(session.page, forEntity, entities, { skipGoto: true });
       } else if (key === 'rstax' || key === 'debtor') {
         const forEntity = session.step.type === 'entity' ? { name: session.step.name, idCode: session.step.idCode } : null;
-        finalResult = await runFinancialSourceWorkflow(session.page, key as FinancialSourceKey, forEntity, entities, { skipGoto: true });
+        finalResult = key === 'rstax' ? await runRsTaxpayerWorker(session.page, forEntity, entities, { skipGoto: true }) : await runDebtorWorker(session.page, forEntity, entities, { skipGoto: true });
       } else {
         finalResult = await runGenericWorkflow(session.page, key, NAPR_META, session.query);
       }

@@ -31,6 +31,7 @@
     "src/workflows/enreg/EnregPage.ts",
     "src/workflows/enreg/EnregWorkflow.ts",
     "src/workflows/generic/GenericWorkflow.ts",
-    "src/workflows/financial/FinancialSourceWorkflow.ts"
+    "src/workflows/financial/RsTaxpayerWorker.ts",
+    "src/workflows/financial/DebtorWorker.ts"
   ]
 }

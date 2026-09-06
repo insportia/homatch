@@ -381,7 +381,60 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 // 6. materialRisks always carries a `note`; when no evidenced risk exists it
 //    is a single fixed neutral sentence, never our own missing-evidence
 //    explanation dressed up as a property risk.
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
+// v29 URGENT PRODUCTION FIX (2026-09-06) — CORS/transport only, no research
+// workflow logic touched. Root cause (reproduced live, not guessed): a real
+// authenticated POST from https://www.homatch.live got PAST auth (a valid
+// session reaches this code, confirmed via a live test call) and then threw
+// an uncaught exception somewhere in the QUEUED->advance()->launch() chain
+// (this file's own advance() wraps most of its body in try/catch, but every
+// branch does `return xxx(...)` — an un-awaited returned promise — so a
+// LATER rejection from that promise is not caught by advance()'s own try;
+// it instead surfaces when the top-level handler `await`s advance()).
+// Because the previous version of this file had NO try/catch around its
+// Deno.serve handler at all, that exception reached Deno's default
+// unhandled-exception path, and Supabase's edge gateway substitutes its own
+// generic `sb-error-code: EDGE_FUNCTION_ERROR` / plain-text "Internal Server
+// Error" response for that case — which carries NO Access-Control-Allow-
+// Origin header whatsoever (confirmed live: OPTIONS preflight and even a
+// bad-JWT 401 from the gateway itself both DO carry CORS headers already;
+// only this uncaught-exception path was missing them). The browser then
+// correctly reports this as "blocked by CORS policy" even though the true
+// defect is a transport-layer gap, not a CORS header design flaw.
+// Fix, deliberately scoped to transport only:
+//   1. A named allow-list (production origin + localhost dev, explicit
+//      reflection — never a bare wildcard) replaces the old '*' constant.
+//   2. Access-Control-Allow-Methods / -Max-Age added; -Allow-Headers widened
+//      to include x-supabase-api-version.
+//   3. CORS headers are now computed ONCE per request from that request's
+//      own Origin header and closed over by a request-scoped `json`, so
+//      every response in this invocation (2xx/4xx/5xx alike) carries them —
+//      including the NEW top-level try/catch below, which is the actual
+//      fix for the reported bug: it guarantees a JSON 500 WITH CORS headers
+//      instead of a naked, header-less crash, no matter what throws inside.
+// verify_jwt was investigated and left at `true`: live testing (a real
+// confirmed-email test user, a real session JWT) showed the gateway lets a
+// valid Authorization header straight through to this code (the crash above
+// only happens strictly AFTER a successful sb.auth.getUser()), and even the
+// gateway's own bad-JWT 401 already carries Access-Control-Allow-Origin —
+// so verify_jwt is not the blocking layer here and disabling it would be an
+// unrelated, unproven auth-surface change.
+const PROD_ORIGIN = 'https://www.homatch.live';
+const ALLOWED_ORIGINS = new Set([PROD_ORIGIN, 'https://homatch.live']);
+const DEV_ORIGIN_RE = /^https?:\/\/localhost(:\d+)?$/;
+function corsHeadersFor(origin: string | null): Record<string, string> {
+  const allowOrigin = origin && (ALLOWED_ORIGINS.has(origin) || DEV_ORIGIN_RE.test(origin)) ? origin : PROD_ORIGIN;
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-api-version',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+  };
+}
+// Module-level defaults kept only as an inert fallback shape (nothing below
+// references these directly — every real call site inside Deno.serve uses
+// the request-scoped CORS/json defined at the top of that handler).
+const CORS = corsHeadersFor(null);
 const json = (x: unknown, s = 200) => new Response(JSON.stringify(x), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 type Mode = 'property' | 'cadastral';
@@ -1657,71 +1710,92 @@ function sanitizeForCustomer(job: any): any {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
-  const a = req.headers.get('Authorization');
-  if (!a) return json({ error: 'Authentication required' }, 401);
-  const sb = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
-  const {
-    data: { user },
-  } = await sb.auth.getUser(a.replace(/^Bearer\s+/i, ''));
-  if (!user) return json({ error: 'Invalid session' }, 401);
-  const b = await req.json().catch(() => ({}));
-  const action = String(b.action || 'start');
-  const lang = LANG[String(b.locale || b.language)] ? String(b.locale || b.language) : 'en';
-  const key = Deno.env.get('GEMINI_API_KEY');
-  const model = Deno.env.get('GEMINI_DISCOVERY_MODEL') || 'gemini-3.8-flash';
-  if (!key) return json({ error: 'Gemini not configured' }, 503);
+  // v29: CORS headers computed per-request from THIS request's own Origin,
+  // then closed over by a request-scoped `json` that shadows the module-
+  // level one for the rest of this invocation only (see the v29 comment
+  // above the module-level CORS/json for why this is safe: every json()
+  // call site in this file lives lexically inside this handler).
+  const CORS = corsHeadersFor(req.headers.get('origin'));
+  const json = (x: unknown, s = 200) => new Response(JSON.stringify(x), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  // Mandate: OPTIONS must be handled before ANY auth/body parsing.
+  if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: CORS });
+  // v29: everything below was already the full, unmodified request-handling
+  // logic — it is now wrapped in a top-level try/catch purely so that ANY
+  // uncaught exception (e.g. a rejection surfacing from advance()/launch())
+  // still returns a normal JSON response WITH these same CORS headers,
+  // instead of letting Deno's default unhandled-exception path replace it
+  // with Supabase's gateway's own headerless 500 — the actual, reproduced
+  // cause of the "blocked by CORS policy" reports. No research-workflow
+  // logic below this line was changed.
+  try {
+    const a = req.headers.get('Authorization');
+    if (!a) return json({ error: 'Authentication required' }, 401);
+    const sb = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+    const {
+      data: { user },
+    } = await sb.auth.getUser(a.replace(/^Bearer\s+/i, ''));
+    if (!user) return json({ error: 'Invalid session' }, 401);
+    const b = await req.json().catch(() => ({}));
+    const action = String(b.action || 'start');
+    const lang = LANG[String(b.locale || b.language)] ? String(b.locale || b.language) : 'en';
+    const key = Deno.env.get('GEMINI_API_KEY');
+    const model = Deno.env.get('GEMINI_DISCOVERY_MODEL') || 'gemini-3.8-flash';
+    if (!key) return json({ error: 'Gemini not configured' }, 503);
 
-  if (action === 'status' || action === 'resume' || action === 'skip') {
-    const id = String(b.jobId || '');
-    let { data: j } = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
-    if (!j) return json({ error: 'Job not found' }, 404);
+    if (action === 'status' || action === 'resume' || action === 'skip') {
+      const id = String(b.jobId || '');
+      let { data: j } = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+      if (!j) return json({ error: 'Job not found' }, 404);
 
-    if (action === 'resume' && j.status === 'WAITING_HUMAN') {
-      const wid = j.result_json?._worker?.jobId;
-      if (!wid) return json({ error: 'Browser session missing' }, 409);
-      const r = await wf(`/research/${wid}/resume`, 'POST', {});
-      if (r.code === 409) return json({ error: 'CAPTCHA not completed', captcha: j.captcha }, 409);
-      // v19: restore whichever stage was paused (the primary browser job or
-      // the entity-triggered ENREG job) instead of hardcoding BROWSER_WAITING
-      // — the earlier v18 behavior would have silently routed an ENREG
-      // entity CAPTCHA resume back into pollBrowser() against the WRONG
-      // (already-closed) worker job id.
-      const returnStage = j.result_json?._captchaReturnStage || 'BROWSER_WAITING';
-      await sb.from('research_jobs').update({ status: 'RUNNING', stage: returnStage, captcha: {}, updated_at: now() }).eq('id', id);
-      j = { ...j, status: 'RUNNING', stage: returnStage };
-    }
-    if (action === 'skip' && j.status === 'WAITING_HUMAN') {
-      const wid = j.result_json?._worker?.jobId;
-      if (wid) {
-        try {
-          await wf(`/research/${wid}/skip`, 'POST', {});
-        } catch {
-          /* the frontend's modal likely already called this directly — a 404 here is a normal race, not an error */
-        }
+      if (action === 'resume' && j.status === 'WAITING_HUMAN') {
+        const wid = j.result_json?._worker?.jobId;
+        if (!wid) return json({ error: 'Browser session missing' }, 409);
+        const r = await wf(`/research/${wid}/resume`, 'POST', {});
+        if (r.code === 409) return json({ error: 'CAPTCHA not completed', captcha: j.captcha }, 409);
+        // v19: restore whichever stage was paused (the primary browser job or
+        // the entity-triggered ENREG job) instead of hardcoding BROWSER_WAITING
+        // — the earlier v18 behavior would have silently routed an ENREG
+        // entity CAPTCHA resume back into pollBrowser() against the WRONG
+        // (already-closed) worker job id.
+        const returnStage = j.result_json?._captchaReturnStage || 'BROWSER_WAITING';
+        await sb.from('research_jobs').update({ status: 'RUNNING', stage: returnStage, captcha: {}, updated_at: now() }).eq('id', id);
+        j = { ...j, status: 'RUNNING', stage: returnStage };
       }
-      const returnStage = j.result_json?._captchaReturnStage || 'BROWSER_WAITING';
-      await sb.from('research_jobs').update({ status: 'RUNNING', stage: returnStage, captcha: {}, updated_at: now() }).eq('id', id);
-      j = { ...j, status: 'RUNNING', stage: returnStage };
+      if (action === 'skip' && j.status === 'WAITING_HUMAN') {
+        const wid = j.result_json?._worker?.jobId;
+        if (wid) {
+          try {
+            await wf(`/research/${wid}/skip`, 'POST', {});
+          } catch {
+            /* the frontend's modal likely already called this directly — a 404 here is a normal race, not an error */
+          }
+        }
+        const returnStage = j.result_json?._captchaReturnStage || 'BROWSER_WAITING';
+        await sb.from('research_jobs').update({ status: 'RUNNING', stage: returnStage, captcha: {}, updated_at: now() }).eq('id', id);
+        j = { ...j, status: 'RUNNING', stage: returnStage };
+      }
+      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN'].includes(j.status)) {
+        await advance(sb, key, model, j, lang);
+        const r = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+        j = r.data || j;
+      }
+      // v22: strip internal diagnostics from the wire response for finished jobs
+      // (see sanitizeForCustomer above). The DB row itself is left untouched —
+      // full browserOfficial/cost/provider diagnostics remain queryable there
+      // for admin support/debugging, only the customer-facing HTTP body changes.
+      return json(sanitizeForCustomer(j));
     }
-    if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN'].includes(j.status)) {
-      await advance(sb, key, model, j, lang);
-      const r = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
-      j = r.data || j;
-    }
-    // v22: strip internal diagnostics from the wire response for finished jobs
-    // (see sanitizeForCustomer above). The DB row itself is left untouched —
-    // full browserOfficial/cost/provider diagnostics remain queryable there
-    // for admin support/debugging, only the customer-facing HTTP body changes.
-    return json(sanitizeForCustomer(j));
-  }
 
-  const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';
-  const q = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
-  if (!q) return json({ error: 'Query required' }, 400);
-  if (mode === 'cadastral' && !CAD.test(q)) return json({ error: 'Invalid cadastral code' }, 400);
-  const { data: j, error } = await sb.from('research_jobs').insert({ user_id: user.id, mode, query: q, status: 'CREATED', stage: 'QUEUED', progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
-  if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);
-  await advance(sb, key, model, j, lang);
-  return json({ accepted: true, jobId: j.id }, 202);
+    const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';
+    const q = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
+    if (!q) return json({ error: 'Query required' }, 400);
+    if (mode === 'cadastral' && !CAD.test(q)) return json({ error: 'Invalid cadastral code' }, 400);
+    const { data: j, error } = await sb.from('research_jobs').insert({ user_id: user.id, mode, query: q, status: 'CREATED', stage: 'QUEUED', progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
+    if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);
+    await advance(sb, key, model, j, lang);
+    return json({ accepted: true, jobId: j.id }, 202);
+  } catch (e) {
+    console.error('research-agent: unhandled exception reached the top-level handler', e);
+    return json({ error: 'Internal server error', detail: String((e as any)?.message || e) }, 500);
+  }
 });

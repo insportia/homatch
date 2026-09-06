@@ -201,3 +201,91 @@ test('semanticDedupe: unrelated findings (different subject matter) are kept sep
   const out = semanticDedupe(items, (x) => x.description);
   assert.equal(out.length, 2);
 });
+
+// ---- customerSourceStatus / officialSourceCoverage / dueDiligenceCoverage
+// (new) tests — v26, "HOMATCH VERIFY — FIX THE ACTUAL BROKEN RUNTIME
+// WORKFLOW, NOT THE PROMPT". These verify the fix for the confirmed
+// production bug where a job that dispatched 3 official adapters (TAS/
+// MSMAP/My.gov) with 1 success and 2 technical failures reported
+// "officialSourcesChecked: 1" with the other 2 completely invisible —
+// copied verbatim from the deployed v26 source.
+
+function customerSourceStatus(rawStatus) {
+  switch (rawStatus) {
+    case 'SEARCH_CONFIRMED':
+      return 'SUCCESS';
+    case 'NO_RESULT_CONFIRMED':
+      return 'NO_RESULT';
+    case 'SKIPPED_HUMAN_VERIFICATION':
+    case 'WAITING_HUMAN':
+      return 'CAPTCHA_REQUIRED';
+    case 'BLOCKED':
+      return 'BLOCKED';
+    case 'SUBMIT_FAILED':
+    case 'AUTH_REQUIRED':
+    case 'SEARCH_CONTROL_NOT_FOUND':
+    case 'WRONG_SEARCH_CONTEXT':
+    case 'SUBMITTED_UNCONFIRMED':
+    case 'FAILED':
+    case 'TIMEOUT':
+    case 'PARSE_FAILED':
+      return 'TECHNICAL_FAILED';
+    default:
+      return 'NOT_CONFIRMED';
+  }
+}
+function officialSourceCoverage(browserOfficial) {
+  const results = browserOfficial?.results || [];
+  return results.map((r) => ({ source: r.source, sourceName: r.sourceName || r.source, customerStatus: customerSourceStatus(r.status) }));
+}
+function dueDiligenceCoverageOfficialCounts(browserOfficial) {
+  const officialResults = browserOfficial?.results || [];
+  return {
+    officialSourcesAttempted: officialResults.length,
+    officialSourcesRetrieved: officialResults.filter((r) => r.status === 'SEARCH_CONFIRMED').length,
+    technicalFailures: officialResults.filter((r) => customerSourceStatus(r.status) === 'TECHNICAL_FAILED').length,
+  };
+}
+
+test('customerSourceStatus: maps every real worker terminal status to one of the 6 mandated customer-safe categories, never passing a raw enum through', () => {
+  assert.equal(customerSourceStatus('SEARCH_CONFIRMED'), 'SUCCESS');
+  assert.equal(customerSourceStatus('NO_RESULT_CONFIRMED'), 'NO_RESULT');
+  assert.equal(customerSourceStatus('SKIPPED_HUMAN_VERIFICATION'), 'CAPTCHA_REQUIRED');
+  assert.equal(customerSourceStatus('WAITING_HUMAN'), 'CAPTCHA_REQUIRED');
+  assert.equal(customerSourceStatus('BLOCKED'), 'BLOCKED');
+  for (const raw of ['SUBMIT_FAILED', 'AUTH_REQUIRED', 'SEARCH_CONTROL_NOT_FOUND', 'WRONG_SEARCH_CONTEXT', 'SUBMITTED_UNCONFIRMED', 'FAILED']) {
+    assert.equal(customerSourceStatus(raw), 'TECHNICAL_FAILED', `expected ${raw} -> TECHNICAL_FAILED`);
+  }
+  assert.equal(customerSourceStatus(undefined), 'NOT_CONFIRMED');
+  assert.equal(customerSourceStatus('SOME_FUTURE_UNKNOWN_STATUS'), 'NOT_CONFIRMED');
+});
+
+test('REGRESSION FIXTURE — 3 dispatched adapters, 1 success + 2 technical failures: attempted=3, retrieved=1, technicalFailures=2 (the exact production bug this pass fixes: officialSourcesChecked alone reported only 1, with zero visibility into the other 2)', () => {
+  const browserOfficial = {
+    results: [
+      { source: 'msmap', sourceName: 'MS Map', status: 'SEARCH_CONFIRMED' },
+      { source: 'tas', sourceName: 'TAS', status: 'SEARCH_CONTROL_NOT_FOUND' },
+      { source: 'mygov', sourceName: 'My.gov / NAPR', status: 'SUBMIT_FAILED' },
+    ],
+  };
+  const counts = dueDiligenceCoverageOfficialCounts(browserOfficial);
+  assert.equal(counts.officialSourcesAttempted, 3);
+  assert.equal(counts.officialSourcesRetrieved, 1);
+  assert.equal(counts.technicalFailures, 2);
+  const coverage = officialSourceCoverage(browserOfficial);
+  assert.deepEqual(
+    coverage.map((c) => c.customerStatus),
+    ['SUCCESS', 'TECHNICAL_FAILED', 'TECHNICAL_FAILED']
+  );
+  // Every entry must carry ONLY the neutral enum + display name — never the
+  // raw internal status string leaking through (mandate: "A source URL
+  // being known or displayed MUST NEVER equal SUCCESS", and no internal
+  // FSM state may reach the customer).
+  for (const c of coverage) assert.equal(Object.prototype.hasOwnProperty.call(c, 'status'), false);
+});
+
+test('officialSourceCoverage: a source that was never dispatched never appears at all (never fabricated as NOT_CONFIRMED filler)', () => {
+  const coverage = officialSourceCoverage({ results: [{ source: 'msmap', sourceName: 'MS Map', status: 'SEARCH_CONFIRMED' }] });
+  assert.equal(coverage.length, 1);
+  assert.equal(coverage.some((c) => c.source === 'tas'), false);
+});

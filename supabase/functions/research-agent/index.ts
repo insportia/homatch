@@ -369,4 +369,136 @@
 // result_json, so the list never needs to fetch a full dossier just to
 // render). Opening a history entry remains a plain status read — zero new
 // research cost — exactly like the existing per-case history list.
+//
+// v26 (2026-09-06, "HOMATCH VERIFY — FIX THE ACTUAL BROKEN RUNTIME WORKFLOW,
+// NOT THE PROMPT" — the user's explicit instruction was to trace and fix the
+// real runtime/data-flow bugs behind two production-critical symptoms, NOT
+// to touch prompts. Traced end-to-end (SUBMIT -> research-agent -> official-
+// worker adapters -> returned per-source states -> evidence persistence ->
+// synthesis -> report snapshot -> COMPLETE -> history query) before changing
+// anything, per the mandate's explicit "do not guess" instruction:
+//
+// BUG 1 — "Official sources checked = 1, Documents read = 0" while the
+// report still listed TAS/MSMap/NAPR/ENREG links (source discovery was being
+// confused with successful official execution). Root cause, confirmed by
+// reading this file's own dueDiligenceCoverage()/sanitizeForCustomer(): (a)
+// dueDiligenceCoverage() only ever summed 2 of the ~10 real terminal worker
+// statuses (officialVerificationSummary() already correctly buckets ALL of
+// them, but almost none of those buckets reached the customer-facing
+// coverage object); (b) sanitizeForCustomer() unconditionally deleted the
+// one field (officialSourcesNotVerified) that WOULD have shown the
+// technical-failure sources, as an over-correction from the v22 telemetry-
+// leak fix. A source URL being known/displayed was never supposed to equal
+// SUCCESS, but there was no deterministic customer-safe field distinguishing
+// "actually executed and confirmed" from "merely discovered/cited" — so the
+// frontend had nothing correct to render even before this fix.
+// Fixed with new deterministic (never LLM-authored) accounting, computed
+// directly from browserOfficial.results (the worker's real per-adapter
+// terminal states) exactly as the mandate required:
+// - customerSourceStatus(rawStatus): a pure function mapping every real
+//   worker terminal status to exactly one of 6 customer-safe categories
+//   (SUCCESS / NO_RESULT / CAPTCHA_REQUIRED / BLOCKED / TECHNICAL_FAILED /
+//   NOT_CONFIRMED) — SEARCH_CONFIRMED/NO_RESULT_CONFIRMED are the only two
+//   that ever map to SUCCESS/NO_RESULT; everything else (SUBMIT_FAILED,
+//   AUTH_REQUIRED, SEARCH_CONTROL_NOT_FOUND, WRONG_SEARCH_CONTEXT, FAILED,
+//   BLOCKED, WAITING_HUMAN) maps to TECHNICAL_FAILED/CAPTCHA_REQUIRED/
+//   BLOCKED/NOT_CONFIRMED — never to SUCCESS.
+// - officialSourceCoverage(browserOfficial): one row per adapter actually
+//   DISPATCHED this run ({source, sourceName, customerStatus}) — a source
+//   never dispatched never appears at all, so "known/cited" can never be
+//   mistaken for "checked". Exposed as a new top-level officialSourceCoverage
+//   array that sanitizeForCustomer() deliberately does NOT strip.
+// - dueDiligenceCoverage() extended with officialSourcesAttempted (every
+//   dispatched adapter), officialSourcesRetrieved (SUCCESS only),
+//   technicalFailures (TECHNICAL_FAILED/BLOCKED, kept separate from any
+//   property-risk finding — a failed adapter is never translated into a
+//   restriction/risk statement), and documentsDiscovered vs the existing
+//   documentsRead (documentsRead increments ONLY for an actually-retrieved-
+//   and-parsed document, never a homepage/search URL — unchanged behavior,
+//   now just correctly surfaced alongside the new counts).
+// - Fixed a second, independent leak in bev(): the per-source evidence-
+//   bundle builder was copying the worker's raw internal `status` string
+//   (e.g. "WRONG_SEARCH_CONTEXT") directly onto customer-facing sources[]/
+//   evidence_bundle[] entries — invisible to sanitizeForCustomer() because
+//   that function only strips top-level result_json keys, never fields
+//   nested inside array items. Replaced with a synthesized, customer-safe
+//   retrievalMethod (OFFICIAL_WORKER_VERIFIED / OFFICIAL_WORKER_CHECKED /
+//   OFFICIAL_WORKER_ATTEMPTED). Gemini's own Google-Search-grounding
+//   citations are now tagged retrievalMethod:'GEMINI_GROUNDED' so the
+//   frontend can finally distinguish "worker actually executed this" from
+//   "Gemini found/cited this" — previously rendered with equal visual
+//   weight, which was the direct cause of "4 official-domain links but only
+//   1 checked" reading as contradictory.
+// - Ownership/mortgage/seizure logic itself was deliberately NOT changed:
+//   rightsAndRestrictions' existing NOT_CONFIRMED fallback ("current
+//   official confirmation is still required") was already correct and is
+//   left exactly as-is — the bug was execution/accounting/persistence, not
+//   the ownership conclusion, per the mandate's explicit "do not fix
+//   ownership by hallucinating it" instruction.
+// - Added one narrowly-scoped UTILITY TARIFF/BILLING RULE sentence to the
+//   existing STRICT FACT GATE prompt block (not a prompt rewrite — one
+//   clause, same pattern as the existing COMMISSIONING/EXPLOITATION RULE):
+//   an unverified commissioning status must never be chained into a stated
+//   utility-tariff consequence (e.g. "may be charged at non-residential
+//   tariff before commissioning") unless a concrete source directly
+//   supports that specific claim for this project — removing the
+//   unsupported claim the user flagged from the live report.
+//
+// BUG 2 — Verify History/persistence: the latest completed research did not
+// appear in History, and a browser refresh lost the completed report,
+// because the UI relied on transient client/job state rather than
+// persistence being the source of truth. Traced (not guessed) to a single
+// root cause shared by both symptoms, in VerifyPage.tsx + a Postgres trigger
+// pair, NOT in this function — research-agent itself was already persisting
+// every job/status/result_json write correctly the whole time:
+// - research_jobs.user_id is the raw Supabase AUTH uid (written server-side
+//   by this function via sb.auth.getUser(), matched by RLS as
+//   auth.uid() = user_id). transaction_cases.user_id is public.users.id — a
+//   SEPARATE, independently-generated uuid for the same person. VerifyPage's
+//   history sidebar was calling listVerifyHistory(homatchUser.id) — the
+//   users.id space — against a table keyed by the auth-uid space, so the
+//   query matched zero rows for every user, always. Fixed by switching to
+//   supaUser.id (the real auth uid) for every listVerifyHistory() call.
+// - The SAME id-space mismatch, mirrored the other way, made the two
+//   ownership-validation trigger functions added by
+//   20260905222923_transaction_case_crm.sql (research_job_validate_case_link/
+//   transaction_case_validate_job_link) structurally impossible to satisfy
+//   for ANY user — confirmed live: transaction_cases had zero rows in
+//   production and every recent research_jobs row had case_id=null, even
+//   though the underlying report data was persisted correctly. This is why
+//   a completed report could never get attached to a case, which in turn
+//   starved the history/reopen path of the case-linked route. Fixed via
+//   supabase/migrations/20260906140000_fix_research_case_user_id_space.sql
+//   (CREATE OR REPLACE on both trigger functions to resolve through
+//   public.users.auth_id before comparing — same security intent, correct
+//   id spaces; no RLS policy touched or weakened).
+// - Refresh losing the completed report: the `?job=<id>` URL param was only
+//   ever written inside the case-attach effect, gated on homatchUser being
+//   loaded AND (before the trigger fix above) attachResearchToCase()
+//   succeeding — coupling "can this browser recover the report on refresh"
+//   to a best-effort CRM side-effect that could legitimately fail or lag.
+//   Fixed by moving the URL sync into run() itself, firing the instant a
+//   jobId exists (covering a still-RUNNING job, not only a COMPLETE one) —
+//   research-agent's own status/resume actions already reconstruct full
+//   state from the persisted research_jobs row for any existing jobId, so
+//   this was a pure frontend wiring fix, not a new persistence mechanism.
+// None of this required inventing new tables/functions/architecture — the
+// mandate's own warning against a "parallel architecture" was heeded:
+// research_jobs was already the single durable source of truth end to end;
+// the bugs were in what read/wrote it, not in whether it existed.
+// Verified: tsc --noEmit --strict against this exact deployed shape (zero
+// errors); a Node unit suite covering customerSourceStatus/
+// officialSourceCoverage/dueDiligenceCoverage's new counts, including a
+// fixture with 3 dispatched adapters (1 success, 2 technical failures)
+// asserting attempted=3/retrieved=1/technicalFailures=2 and that no raw
+// `status` field ever appears on a coverage entry; a byte-for-byte diff of
+// the live deployed function against this file after deploy (zero drift);
+// and a live SQL round-trip against the mandate's own real regression-
+// fixture job (03fe92cc-68e2-4d2c-b396-fd6ed0f88f08) proving both the
+// corrected listVerifyHistory query and the corrected case-link triggers
+// now succeed against real production data, where both were previously
+// guaranteed to fail for every user. A brand-new end-to-end live run
+// through real CAPTCHA, and "Refresh Research" V1/V2 + mid-run-refresh
+// reconnection, could not be exercised non-interactively in this sandbox —
+// see the delivery report for the exact test coverage actually executed.
 export {};

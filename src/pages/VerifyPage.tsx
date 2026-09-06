@@ -7,7 +7,17 @@ type Mode='property'|'cadastral';type SourceCategory='OFFICIAL_REGISTRY'|'OFFICI
 // typed and must always be shown as the PRIMARY subject, distinct from
 // `identifiedParent` (which may legitimately be a parent/base parcel TAS
 // found evidence for) — the two must never be visually merged into one line.
-type Provenance={source:string;url?:string|null};type ReconciledIdentity={project?:string|null;address?:string|null;developer?:string|null;confidence?:'HIGH'|'MEDIUM'|'LOW';independentSourceCount?:number;provenance?:{project?:Provenance[];address?:Provenance[];developer?:Provenance[]}};type UtilityStatus={status?:'CONFIRMED_CONNECTED'|'CONFIRMED_NOT_CONNECTED'|'NOT_MENTIONED';note?:string|null};type UtilitiesMatrix={electricity?:UtilityStatus;water?:UtilityStatus;gas?:UtilityStatus;sewage?:UtilityStatus;internet?:UtilityStatus};type LandProfile={landCategory?:string|null;permittedUse?:string|null;buildabilityNote?:string|null;source?:string|null};type ExactUnit={code?:string|null;verified?:boolean;note?:string|null};
+// Provenance (2026-09-06 UI-only correction): `source`/`sourceName`/`url`
+// are now stripped from the customer-facing payload server-side (the
+// research-agent sanitizer's own explicit product requirement — the
+// customer report must never expose which worker/provider produced a
+// finding), so this type no longer treats those as customer-safe display
+// fields. `label`/`description`/`confidence` are optional, forward-looking
+// slots for a genuinely customer-safe display value should one ever be
+// added server-side; today's reconcileIdentity() does not send any of
+// them, which is expected and handled by ProvenanceList below (no chip
+// renders rather than falling back to source/sourceName/url).
+type Provenance={source?:string;url?:string|null;label?:string|null;description?:string|null;confidence?:string|null};type ReconciledIdentity={project?:string|null;address?:string|null;developer?:string|null;confidence?:'HIGH'|'MEDIUM'|'LOW';independentSourceCount?:number;provenance?:{project?:Provenance[];address?:Provenance[];developer?:Provenance[]}};type UtilityStatus={status?:'CONFIRMED_CONNECTED'|'CONFIRMED_NOT_CONNECTED'|'NOT_MENTIONED';note?:string|null};type UtilitiesMatrix={electricity?:UtilityStatus;water?:UtilityStatus;gas?:UtilityStatus;sewage?:UtilityStatus;internet?:UtilityStatus};type LandProfile={landCategory?:string|null;permittedUse?:string|null;buildabilityNote?:string|null;source?:string|null};type ExactUnit={code?:string|null;verified?:boolean;note?:string|null};
 // OverallAssessment (v30, "REPORT UX" mandate): a deterministic, code-
 // computed level (see research-agent's computeOverallAssessment()) plus the
 // model's own evidence-traceable keyStrengths/itemsToVerify lists — this is
@@ -79,7 +89,16 @@ function LandProfileCard({lp}:{lp?:LandProfile|null}){const{t}=useLanguage();if(
 // it always renders when a reconciledIdentity object exists so the evidence
 // trail is never hidden even if projectProfile shows the same value.
 const reconciledConfidenceLabel=(c:string|undefined,t:(k:string)=>string)=>({HIGH:t('verify_reconciled_confidence_high'),MEDIUM:t('verify_reconciled_confidence_medium'),LOW:t('verify_reconciled_confidence_low')}[String(c||'').toUpperCase()]||t('verify_reconciled_confidence_low'));
-function ProvenanceList({items}:{items?:Provenance[]}){if(!items?.length)return null;return <div className="flex flex-wrap gap-1.5">{items.map((p,i)=><span key={i} className="text-[11px] text-muted-foreground">{p.source}</span>)}</div>}
+// 2026-09-06 UI-only correction: the customer sanitizer now strips
+// source/sourceName/url wherever nested (see research-agent's
+// CUSTOMER_REPORT_STRIP_KEYS), so a provenance entry arriving here never
+// carries a provider/worker name or link — rendering p.source (as this
+// used to) would show an empty chip, not a provider name. Customer-facing
+// provenance must never display which source/provider produced a finding,
+// so this never falls back to source/sourceName/url; it only ever shows a
+// genuinely customer-safe display value (label/description/confidence),
+// and renders nothing at all for an entry that has none — no empty chip.
+function ProvenanceList({items}:{items?:Provenance[]}){const visible=(items||[]).filter(p=>Boolean(p.label||p.description||p.confidence));if(!visible.length)return null;return <div className="flex flex-wrap gap-1.5">{visible.map((p,i)=><span key={i} className="text-[11px] text-muted-foreground">{clean((p.label||p.description||p.confidence)||undefined)}</span>)}</div>}
 function ReconciledIdentityCard({ri}:{ri?:ReconciledIdentity|null}){const{t}=useLanguage();if(!ri||!(ri.project||ri.address||ri.developer))return null;const rows:[string,string|undefined|null,Provenance[]|undefined][]=[[t('verify_project_row_address'),ri.address,ri.provenance?.address],[t('verify_reconciled_row_project'),ri.project,ri.provenance?.project],[t('verify_project_row_developer'),ri.developer,ri.provenance?.developer]];return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide flex items-center gap-2 flex-wrap"><span>{t('verify_reconciled_title')}</span><Badge variant={ri.confidence==='HIGH'?'default':'outline'} className="normal-case font-normal">{reconciledConfidenceLabel(ri.confidence,t)}</Badge></CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-xs text-muted-foreground">{t('verify_reconciled_explainer')}</p><div className="space-y-2 text-sm">{rows.filter(([,v])=>v).map(([k,v,prov])=><div key={k} className="space-y-1"><div>{k}: {clean(v as string)}</div><ProvenanceList items={prov}/></div>)}</div></CardContent></Card>}
 // IdentifiedPropertyCard (v25 fix — mandate's other named regression: the
 // exact cadastral unit the user searched for must ALWAYS stay the visually

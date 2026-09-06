@@ -53,7 +53,10 @@ test('primaryStepsRemain: true while a source-type step is still pending, false 
   assert.ok(!primaryStepsRemain(steps, 2));
 });
 
-test('buildEntitySteps: bounded by maxEntities, only confirmed (id-code) entities, name-only never queued', () => {
+// 2026-09-06, "Fix Homatch Verify by implementing this exact pipeline in
+// code" mandate: buildEntitySteps now chains EnregWorker -> RsTaxpayerWorker
+// -> DebtorWorker (in that order) for each bounded entity, not enreg alone.
+test('buildEntitySteps: bounded by maxEntities (companies, not steps), only confirmed (id-code) entities, name-only never queued', () => {
   const entities = [
     { identificationCode: '1', name: 'A' },
     { identificationCode: null, name: 'B (incomplete)' },
@@ -61,11 +64,30 @@ test('buildEntitySteps: bounded by maxEntities, only confirmed (id-code) entitie
     { identificationCode: '3', name: 'D' },
   ];
   const steps = buildEntitySteps(entities, 2);
-  assert.equal(steps.length, 2);
-  assert.deepEqual(steps.map((s) => s.idCode), ['1', '2']);
-  // buildEntitySteps remains enreg-only by design (see ResearchContext.ts's
-  // own comment) — rstax/debtor are triggered only via the separate
-  // closed-loop startEntity() path for the one research-agent-selected
-  // primary company, never auto-queued for every text-scanned candidate.
-  assert.ok(steps.every((s) => s.type === 'entity' && s.source === 'enreg'));
+  // 2 companies * 3 sources (enreg/rstax/debtor) each = 6 steps.
+  assert.equal(steps.length, 6);
+  assert.ok(steps.every((s) => s.type === 'entity'));
+});
+
+test('buildEntitySteps: emits enreg -> rstax -> debtor in that exact order, for the SAME idCode/name, per entity', () => {
+  const steps = buildEntitySteps([{ identificationCode: '405123456', name: 'შპს Example' }], 3);
+  assert.deepEqual(
+    steps.map((s) => s.source),
+    ['enreg', 'rstax', 'debtor']
+  );
+  assert.ok(steps.every((s) => s.idCode === '405123456' && s.name === 'შპს Example'));
+});
+
+test('buildEntitySteps: multiple entities each get their own full enreg->rstax->debtor triple, in entity order', () => {
+  const steps = buildEntitySteps(
+    [
+      { identificationCode: '1', name: 'A' },
+      { identificationCode: '2', name: 'B' },
+    ],
+    5
+  );
+  assert.deepEqual(
+    steps.map((s) => `${s.idCode}:${s.source}`),
+    ['1:enreg', '1:rstax', '1:debtor', '2:enreg', '2:rstax', '2:debtor']
+  );
 });

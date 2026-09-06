@@ -438,7 +438,129 @@ const CORS = corsHeadersFor(null);
 const json = (x: unknown, s = 200) => new Response(JSON.stringify(x), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 type Mode = 'property' | 'cadastral';
-type Stage = 'IDENTITY' | 'OFFICIAL' | 'MARKET' | 'SYNTHESIS';
+// Stage (2026-09-06, "Fix Homatch Verify by implementing this exact
+// pipeline in code" mandate): PUBLIC_RESEARCH is now a REAL stage, inserted
+// between official-evidence collection and MARKET — never folded into
+// MARKET's own prompt. 'OFFICIAL' renamed to 'OFFICIAL_COLLECTION' to match
+// the mandate's own naming (job.stage labels like 'OFFICIAL_READY' /
+// 'ENREG_CHECK_PENDING' are unchanged internal state-machine labels, not
+// part of this type). IDENTITY is kept (not in the mandate's literal type
+// block) because assetClass/project identity is a real upstream dependency
+// PUBLIC_RESEARCH's own identifiers rely on — removing it would be exactly
+// the kind of property-model redesign this mandate explicitly forbids.
+type Stage = 'IDENTITY' | 'OFFICIAL_COLLECTION' | 'PUBLIC_RESEARCH' | 'MARKET' | 'SYNTHESIS';
+// PUBLIC_RESEARCH_TARGETS — the mandate's own ~40-item research-target list,
+// verbatim. One PUBLIC_RESEARCH prompt instructs the model to search every
+// identifier (cadastral code, parent code, address, project name, company
+// name/id, aliases) against every target below, in Georgian/English/Russian
+// — matching how IDENTITY/OFFICIAL_COLLECTION/MARKET already work (one
+// instructive prompt + web_search tool + a structured schema), not a new
+// per-query orchestration primitive this codebase does not otherwise use.
+const PUBLIC_RESEARCH_TARGETS = [
+  'architect',
+  'architecture studio',
+  'founders owners participants',
+  'directors representatives',
+  'company history',
+  'previous projects',
+  'contractors',
+  'construction companies',
+  'engineers',
+  'suppliers',
+  'facade',
+  'windows',
+  'elevators',
+  'structural system',
+  'construction materials',
+  'insulation',
+  'MEP (mechanical/electrical/plumbing)',
+  'energy efficiency',
+  'seismic design',
+  'amenities',
+  'landscaping',
+  'parking',
+  'bank financing',
+  'partners',
+  'construction start',
+  'construction chronology',
+  'progress history',
+  'current physical status',
+  'quality',
+  'developer reputation',
+  'architect reputation',
+  'complaints',
+  'disputes',
+  'court records',
+  'media coverage',
+  'Facebook',
+  'Instagram',
+  'LinkedIn',
+  'YouTube',
+  'TikTok',
+  'Telegram',
+  'forums',
+  'reviews',
+];
+// PUBLIC_RESEARCH_FIELDS — the mandate's own ~35-field structured schema,
+// verbatim (43 keys as literally listed). Used both to build the prompt's
+// Return{...} schema string and to deterministically normalize the model's
+// response (normalizePublicResearchStructured, below) so every key is
+// always present as null or [] — "no evidence = null/[]", never omitted,
+// never left as a stray/partial shape.
+const PUBLIC_RESEARCH_ARRAY_FIELDS = [
+  'foundersOwnersParticipants',
+  'directorsRepresentatives',
+  'previousProjects',
+  'contractors',
+  'constructionCompanies',
+  'engineers',
+  'suppliers',
+  'amenities',
+  'partners',
+  'qualitySignals',
+  'architectReputationSignals',
+  'complaints',
+  'disputes',
+  'legalPublicFootprint',
+  'mediaCoverage',
+  'socialPublicFootprint',
+  'awardsRecognition',
+  'facts',
+] as const;
+const PUBLIC_RESEARCH_SCALAR_FIELDS = [
+  'project',
+  'developer',
+  'legalCompany',
+  'companyId',
+  'companyHistory',
+  'architect',
+  'architectStudio',
+  'architectReputation',
+  'facade',
+  'windows',
+  'elevators',
+  'structuralSystem',
+  'constructionMaterials',
+  'insulation',
+  'MEP',
+  'energyEfficiency',
+  'seismicDesign',
+  'landscaping',
+  'parking',
+  'financingBank',
+  'constructionStart',
+  'chronology',
+  'progressHistory',
+  'currentPhysicalStatus',
+  'developerReputation',
+] as const;
+function normalizePublicResearchStructured(z: any): Record<string, any> {
+  const src = z && typeof z === 'object' ? z : {};
+  const out: Record<string, any> = {};
+  for (const k of PUBLIC_RESEARCH_SCALAR_FIELDS) out[k] = typeof src[k] === 'string' && src[k].trim() ? src[k].trim() : null;
+  for (const k of PUBLIC_RESEARCH_ARRAY_FIELDS) out[k] = Array.isArray(src[k]) ? src[k].filter((x: any) => typeof x === 'string' && x.trim()) : [];
+  return out;
+}
 
 const CAD = /^\d{1,6}(\.\d{1,6}){3,11}$/;
 const LANG: Record<string, string> = { ka: 'Georgian', en: 'English', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew' };
@@ -914,6 +1036,7 @@ const BASE =
   'ASSET-CLASS SCOPE RULE (v28): do not force developer/company research onto a property whose evidence indicates a private individual resale, a private house, or a rental with no developer/company actually involved — only populate companyProfile when a real company/developer is evidenced for THIS property; a bare absence of company involvement is not itself a fact worth stating. ' +
   'CONFLICT SEVERITY RULE (v36): every entry in `conflicts` must be classified "MATERIAL" or "MINOR" — never left ambiguous. "MATERIAL" means two credible sources (especially official/registry ones) directly contradict each other on entity identity, legal/registration status, ownership, a registered restriction, or another fact that would change a buyer\'s decision. "MINOR" means an ordinary discrepancy between marketing/listing sources (a different unit count, a slightly different completion date, a different floor count between two portals) that does not bear on legality or identity. Default to "MINOR" whenever genuinely unsure — never inflate an everyday marketing discrepancy into "MATERIAL" merely because it is a discrepancy. Most reports should have zero MATERIAL conflicts. ' +
   'REPORT TONE RULE (v36): write as a professional property-intelligence analyst speaking to a buyer/investor, in natural, confident prose — never as an audit log. Do not mention workers, sources by internal name, search coverage, technical failures, automation, or research mechanics anywhere in any string. Do not mention or imply a URL, link, or citation inside prose text — evidence links are handled separately by the product, never inside your sentences. Missing or not-yet-retrieved evidence is never phrased as suspicious or adverse — state it once, plainly and neutrally, as something that can still be confirmed, and do not repeat the same gap in more than one place in your output. Positive evidence should read as positive, not hedged into sounding uncertain. Reserve cautionary language strictly for an actual adverse finding (a registered restriction, a debtor record, a company in liquidation, a genuinely material conflict, or comparable direct evidence of a problem) — never for an absent document. ' +
+  'SOURCE-ANONYMITY RULE (2026-09-06 pipeline mandate): never name a specific website/platform/portal by brand (e.g. MyHome, SS.ge, Korter, Facebook, Instagram, or any other named site) in any prose string you return — a specific brand name belongs only in the structured evidence/sources data the product manages separately, never inside officialEvidence/publicEvidence/facts/executiveSummary/riskFlags text. Refer to such findings only generically, e.g. "based on publicly available information" (translate this exact meaning into the requested answer language). ' +
   'Return JSON only.';
 
 function officialStatusLine(browserOfficial: any): string {
@@ -963,7 +1086,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     );
   }
 
-  if (s === 'OFFICIAL') {
+  if (s === 'OFFICIAL_COLLECTION') {
     const statusLine = officialStatusLine(p.browserOfficial);
     const trav = traversalNote(p.browserOfficial);
     const hist = p.browserOfficial?.historicalComparison;
@@ -986,19 +1109,59 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     );
   }
 
-  if (s === 'MARKET') {
+  // PUBLIC_RESEARCH (2026-09-06 pipeline mandate) — a REAL stage, not folded
+  // into MARKET's prompt. Runs AFTER official evidence collection (browser
+  // workers + the enreg/rstax/debtor closed-loop chain) has finished — see
+  // advance()'s ENREG_CHECK_PENDING -> ... -> PUBLIC_RESEARCH_READY routing.
+  if (s === 'PUBLIC_RESEARCH') {
+    const i = p.identity || {};
+    const o = p.official || {};
+    const ri = p.reconciledIdentity || {};
+    const identifiers = Array.from(
+      new Set(
+        [
+          j.mode === 'cadastral' ? j.query : null,
+          i.identifiedParent?.code || null,
+          i.project?.address || i.identifiedParent?.address || ri.address || null,
+          i.project?.name || ri.project || null,
+          o.companyProfile?.name || i.project?.developer || ri.developer || null,
+          o.companyProfile?.idCode || null,
+          ...(Array.isArray(i.project?.aliases) ? i.project.aliases : []),
+          // discoveredEntities (mandate item 4): companies/persons
+          // official-worker's own EntityQueue found across ALL documents
+          // this job read — a genuine identifier lead PUBLIC_RESEARCH would
+          // otherwise never see (IDENTITY/OFFICIAL_COLLECTION only ever
+          // reasoned about the ONE company officialCollection itself named).
+          ...(Array.isArray(p.browserOfficial?.discoveredEntities) ? p.browserOfficial.discoveredEntities.map((e: any) => e?.name).filter(Boolean) : []),
+        ].filter((x) => typeof x === 'string' && x.trim())
+      )
+    );
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. ` +
-      `Research actual public listing/post URLs and comparables: same building/project first, then street/micro-location, similar area/rooms/condition/floor. Include MyHome, SS, developer/project/agency sites, public social pages/posts, news, reviews/forums where accessible. ` +
-      `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt. If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. ` +
-      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null}]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
+      `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. Official=${JSON.stringify(o).slice(0, 12000)}.\n` +
+      `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${PUBLIC_RESEARCH_TARGETS.join(', ')}.\n` +
+      `For every field below, populate it ONLY when your search actually surfaced supporting evidence for THIS exact project/company/property — never guess, never fill a field with a generic industry statement, never invent a name. No evidence for a field = null (or [] for list fields) — never omit the key and never pad with a placeholder string. Prefer specific names/dates/facts over vague description. Each list field should contain short, concrete, evidence-backed entries (e.g. a real person/company name with their role, not a generic sentence).\n` +
+      `If you discover a legal company (developer/owner) — by exact name or identification code — that was not already present in Official.companyProfile above, populate companyId/legalCompany with it as precisely as the evidence supports; a downstream deterministic step (not you) decides whether this triggers any further registry lookup.\n` +
+      `Return {"project":string|null,"developer":string|null,"legalCompany":string|null,"companyId":string|null,"foundersOwnersParticipants":string[],"directorsRepresentatives":string[],"companyHistory":string|null,"previousProjects":string[],"architect":string|null,"architectStudio":string|null,"architectReputation":string|null,"contractors":string[],"constructionCompanies":string[],"engineers":string[],"suppliers":string[],"facade":string|null,"windows":string|null,"elevators":string|null,"structuralSystem":string|null,"constructionMaterials":string|null,"insulation":string|null,"MEP":string|null,"energyEfficiency":string|null,"seismicDesign":string|null,"amenities":string[],"landscaping":string|null,"parking":string|null,"financingBank":string|null,"partners":string[],"constructionStart":string|null,"chronology":string|null,"progressHistory":string|null,"currentPhysicalStatus":string|null,"qualitySignals":string[],"developerReputation":string|null,"architectReputationSignals":string[],"complaints":string[],"disputes":string[],"legalPublicFootprint":string[],"mediaCoverage":string[],"socialPublicFootprint":string[],"awardsRecognition":string[],"facts":string[],"unverified":string[]}.`
     );
   }
 
-  // SYNTHESIS
+  if (s === 'MARKET') {
+    return (
+      `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
+      `Research actual public listing/post URLs and comparables: same building/project first, then street/micro-location, similar area/rooms/condition/floor. Include MyHome, SS, developer/project/agency sites, public social pages/posts, news, reviews/forums where accessible. ` +
+      `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt, sameProject (true only when literally the same building/project as the subject). If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. ` +
+      `PRICE-DRIVER REASONING (mandatory): from the comparables you gathered (weighting same-project ones first, then nearby/similar ones), estimate a market median price-per-sqm and classify the subject property's own evidenced price as "CHEAPER", "NORMAL", "PREMIUM", or "UNKNOWN" (when no subject price is evidenced) relative to that median. Explain WHY, grounded only in evidence already gathered this run (Identity/Official/PublicResearch above, or your own comparables): construction completion stage, remaining inventory/scarcity, availability of internal/developer installment financing, construction materials and structural system, architecture/design and architect reputation, developer reputation, parking availability, floor/view/layout, amenities, location/micro-location, bank financing availability, and current supply of comparable listings. Never state a price driver you cannot support with evidence gathered this run — omit it instead. ` +
+      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"sameProject":boolean}],"priceDrivers":{"positioning":"CHEAPER"|"NORMAL"|"PREMIUM"|"UNKNOWN","marketMedianPricePerSqm":string|null,"reasoning":string[]}},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
+    );
+  }
+
+  // SYNTHESIS — never performs its own web_search (see launch()'s
+  // `s !== 'SYNTHESIS'` tools gate): it synthesizes only what
+  // IDENTITY/OFFICIAL_COLLECTION/PUBLIC_RESEARCH/MARKET already gathered.
   const trav = traversalNote(p.browserOfficial);
   return (
-    `${BASE}\nAnswer strings in ${L}. Query=${q}. Synthesize ONLY this collected evidence=${JSON.stringify(p).slice(0, 52000)}. Introduce no new facts.\n` +
+    `${BASE}\nAnswer strings in ${L}. Query=${q}. Synthesize ONLY this collected evidence=${JSON.stringify(p).slice(0, 52000)}. Introduce no new facts. This includes publicResearch above (developer/company background, architect, contractors, construction quality/materials, chronology/current status, reputation, amenities) — weave genuinely evidenced items from it into officialEvidence/publicEvidence/facts/keyStrengths as appropriate; a field left null/[] there means no evidence exists and must not be mentioned at all.\n` +
+    `CUSTOMER-FACING SOURCE WORDING (mandatory, applies to every string field you return): never name a specific website/platform/portal by brand (e.g. MyHome, SS.ge, Korter, Facebook, Instagram, or any other named site) anywhere in prose — refer to public-web findings only generically, e.g. "based on publicly available information" (translate this exact meaning into the requested answer language; the Georgian equivalent is "საჯაროდ არსებული ინფორმაციის საფუძველზე"). Never reference a worker/adapter name, a technical/coverage state, or a citation/link inside prose — those are handled entirely outside your output.\n` +
     `When describing official/registry results, distinguish (1) a confirmed positive match, (2) a source whose exact verified search returned no matching record — phrase this as "no matching record was found for this search", NEVER as "the property/record does not exist" — from (3) a source that was skipped because the user chose not to complete a human-verification step, phrased plainly as "<sourceName> — verification incomplete. Human verification was required and this source was skipped. The report below is based on the other successfully researched sources." Any other source state (blocked, technical failure, wrong search context, etc.) must simply be left out of officialEvidence/facts entirely — never explained, never named, never hedged about.${trav}\n` +
     `If browserOfficial.results contains an Entrepreneur Registry (enreg) entry — including one tagged with a forEntity (a company looked up specifically because it was discovered elsewhere in this research) — read its documents' extracted text/facts directly and use it to build or improve companyProfile (legal form, registration date, status, directors, representatives, historical changes) with the same schema OFFICIAL used. If it materially improves on the evidence-bundle's existing companyProfile, return your own improved companyProfile; otherwise omit the field and the existing one is kept.\n` +
     `If no risk worth flagging is evidenced, riskFlags may be empty — in that case you do not need to write anything about it; a fixed neutral sentence is added automatically. Never fill riskFlags with our own inability to verify a source.\n` +
@@ -1058,7 +1221,7 @@ async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string
   const p = await createOpenAIResponse(k, m, prompt(s, j, j.result_json || {}, l), s !== 'SYNTHESIS');
   return sb
     .from('research_jobs')
-    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL' ? 46 : s === 'MARKET' ? 72 : 90, provider: 'openai' }, error: null, updated_at: now() })
+    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai' }, error: null, updated_at: now() })
     .eq('id', j.id);
 }
 async function startBrowser(sb: any, j: any): Promise<any> {
@@ -1125,7 +1288,17 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   if (w.status === 'FAILED') throw new Error(w.error || 'browser failed');
   if (w.status !== 'COMPLETE') return;
   const p = j.result_json || {};
-  p.browserOfficial = { results: w.results || [], completedAt: w.completedAt || now(), historicalComparison: w.historicalComparison || null };
+  // discoveredEntities (2026-09-06 pipeline mandate item 4 — "merge
+  // discovered ... entities ... into the SAME existing ResearchContext/
+  // property model"): official-worker's own EntityQueue (see
+  // official-worker/src/entities/EntityQueue.ts) already accumulates every
+  // company/person name+idCode found across ALL browser-worker documents
+  // this job read — job.discoveredEntities is computed once at job
+  // COMPLETE. This was being computed on the worker side and then silently
+  // discarded here; now carried through so PUBLIC_RESEARCH's own identifier
+  // list (see prompt()) and the final customer-facing report (see finish())
+  // can both use it — never a new, parallel entity list.
+  p.browserOfficial = { results: w.results || [], completedAt: w.completedAt || now(), historicalComparison: w.historicalComparison || null, discoveredEntities: w.discoveredEntities || [] };
   return sb
     .from('research_jobs')
     .update({ status: 'CREATED', stage: 'OFFICIAL_READY', result_json: p, evidence_bundle: dedupe([...(j.evidence_bundle || []), ...bev(w)], (x) => x.url), captcha: {}, progress: { phase: 'official_browser_complete', percent: 44, provider: 'playwright' }, updated_at: now() })
@@ -1202,22 +1375,36 @@ const FINANCIAL_ENDPOINT: Record<'enreg' | 'rstax' | 'debtor', string> = {
   rstax: '/research/rstax-entity',
   debtor: '/research/debtor-entity',
 };
-// pickFinancialCandidate() (v25 as pickEnregCandidate, generalized v28):
+// pickFinancialCandidate() (v25 as pickEnregCandidate, generalized v28,
+// extended again 2026-09-06 for PUBLIC_RESEARCH):
 // - 'enreg' also considers reconcileIdentity()'s promoted developer
 //   (MEDIUM+ confidence only — a LOW/unconfirmed mention must not spend a
-//   real browser-automation lookup) when OFFICIAL's own companyProfile
-//   named none — the direct fix for a developer that only becomes clear
-//   from MARKET comparables never getting a real ENREG lookup at all. ENREG
-//   also accepts a bare name (its own search field supports name search).
-// - 'rstax'/'debtor' (v28, NEW): unlike enreg, NEITHER exposes a name-search
+//   real browser-automation lookup) when OFFICIAL_COLLECTION's own
+//   companyProfile named none — the direct fix for a developer that only
+//   becomes clear from MARKET comparables never getting a real ENREG lookup
+//   at all. ENREG also accepts a bare name (its own search field supports
+//   name search).
+// - THIRD tier (2026-09-06 pipeline mandate: "If PublicResearch finds ONE
+//   new strongly-supported company ID not already checked: ENREG -> RS ->
+//   DEBTOR once only, then continue to MARKET"): a company PUBLIC_RESEARCH
+//   discovered (companyId/legalCompany/developer) that neither
+//   companyProfile nor reconciledIdentity ever named. Deliberately computed
+//   the SAME deterministic way as the other two tiers — never trusting a
+//   model-self-reported "newLegalEntity" flag directly (same reasoning as
+//   companyProfileSourceBasis() elsewhere in this file) — alreadyHasResultFor
+//   is what actually enforces "not already checked" and "once only".
+// - 'rstax'/'debtor' (v28): unlike enreg, NEITHER exposes a name-search
 //   field (confirmed live — see official-worker's workflows/financial/
-//   selectors.ts) — a lookup is only ever material when a concrete
-//   companyProfile.idCode is already evidenced, never guessed from a bare
-//   name. This is also what keeps these two from ever firing for a private
-//   individual: companyProfile only ever carries a company/developer
-//   identity, never a person's.
+//   selectors.ts) — a lookup is only ever material when a concrete idCode is
+//   already evidenced (from companyProfile OR, now, publicResearch),  never
+//   guessed from a bare name. This is also what keeps these two from ever
+//   firing for a private individual: neither companyProfile nor
+//   publicResearch ever carries a person's personal ID, only a company's.
 function pickFinancialCandidate(prior: any, source: 'enreg' | 'rstax' | 'debtor'): { name: string; idCode: string | null } | null {
   const cp = prior.official?.companyProfile;
+  const pr = prior.publicResearch;
+  const prIdCode: string | null = pr?.companyId || null;
+  const prName: string | null = pr?.legalCompany || pr?.developer || null;
   if (source === 'enreg') {
     if (cp && (cp.name || cp.idCode)) {
       if (!alreadyHasResultFor(prior.browserOfficial, 'enreg', cp.idCode || null, cp.name || null)) return { name: cp.name || cp.idCode, idCode: cp.idCode || null };
@@ -1226,25 +1413,32 @@ function pickFinancialCandidate(prior: any, source: 'enreg' | 'rstax' | 'debtor'
     if (ri?.developer && ['MEDIUM', 'HIGH'].includes(ri.confidence)) {
       if (!alreadyHasResultFor(prior.browserOfficial, 'enreg', null, ri.developer)) return { name: ri.developer, idCode: null };
     }
+    if (prIdCode || prName) {
+      if (!alreadyHasResultFor(prior.browserOfficial, 'enreg', prIdCode, prName)) return { name: prName || (prIdCode as string), idCode: prIdCode };
+    }
     return null;
   }
-  const idCode = cp?.idCode || null;
+  const idCode = cp?.idCode || prIdCode || null;
   if (!idCode) return null;
   if (alreadyHasResultFor(prior.browserOfficial, source, idCode, null)) return null;
-  return { name: cp?.name || idCode, idCode };
+  return { name: cp?.name || prName || idCode, idCode };
 }
-// _financialReturnStage (v25 as _enregReturnStage, generalized v28): the
-// ULTIMATE destination once the whole enreg->rstax->debtor chain finishes —
-// 'MARKET_READY' for the OFFICIAL-stage trigger, 'SYNTHESIS_READY' for the
-// MARKET/reconciliation-stage trigger. Persisted once per chain run so each
+// _financialReturnStage (v25 as _enregReturnStage, generalized v28, extended
+// 2026-09-06): the ULTIMATE destination once the whole enreg->rstax->debtor
+// chain finishes — 'PUBLIC_RESEARCH_READY' for the OFFICIAL_COLLECTION-stage
+// trigger (official evidence's own discovered company, checked BEFORE
+// public research runs — "official evidence MUST finish first"),
+// 'MARKET_READY' for the PUBLIC_RESEARCH-stage trigger (a company public
+// research alone discovered), 'SYNTHESIS_READY' for the MARKET/
+// reconciliation-stage trigger. Persisted once per chain run so each
 // individual source's CAPTCHA pause/resume doesn't need to re-derive it.
-async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' | 'debtor', name: string, idCode: string | null, returnStage: 'MARKET_READY' | 'SYNTHESIS_READY'): Promise<any> {
+async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' | 'debtor', name: string, idCode: string | null, returnStage: 'PUBLIC_RESEARCH_READY' | 'MARKET_READY' | 'SYNTHESIS_READY'): Promise<any> {
   const r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode });
   const p = j.result_json || {};
   p._worker = { jobId: r.data.jobId };
   p._financialEntityRequestedFor = { source, name, idCode };
   p._financialReturnStage = returnStage;
-  return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'MARKET_READY' ? 58 : 86, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
+  return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'PUBLIC_RESEARCH_READY' ? 50 : returnStage === 'MARKET_READY' ? 70 : 86, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
 }
 // processFinancialQueue() (v28, NEW): drives `_financialQueue` (initialized
 // to ['enreg','rstax','debtor'] by whichever CHECK_PENDING stage entered the
@@ -1258,7 +1452,8 @@ async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' |
 async function processFinancialQueue(sb: any, j: any): Promise<any> {
   const prior = j.result_json || {};
   const queue: ('enreg' | 'rstax' | 'debtor')[] = Array.isArray(prior._financialQueue) ? [...prior._financialQueue] : [];
-  const returnStage: 'MARKET_READY' | 'SYNTHESIS_READY' = prior._financialReturnStage === 'SYNTHESIS_READY' ? 'SYNTHESIS_READY' : 'MARKET_READY';
+  const returnStage: 'PUBLIC_RESEARCH_READY' | 'MARKET_READY' | 'SYNTHESIS_READY' =
+    prior._financialReturnStage === 'SYNTHESIS_READY' ? 'SYNTHESIS_READY' : prior._financialReturnStage === 'PUBLIC_RESEARCH_READY' ? 'PUBLIC_RESEARCH_READY' : 'MARKET_READY';
   while (queue.length) {
     const source = queue.shift()!;
     const cand = pickFinancialCandidate(prior, source);
@@ -1693,12 +1888,28 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     prior.identity = z;
     return sb.from('research_jobs').update({ status: 'CREATED', stage: 'BROWSER_READY', response_id: null, result_json: prior, evidence_bundle: ev, progress: { phase: 'identity_complete', percent: 28 }, updated_at: now() }).eq('id', j.id);
   }
-  if (s === 'OFFICIAL') {
+  if (s === 'OFFICIAL_COLLECTION') {
     prior.official = z;
     // v19: route through ENREG_CHECK_PENDING instead of straight to
-    // MARKET_READY so advance() gets a chance to trigger the closed-loop
-    // entity ENREG lookup before market research begins.
+    // PUBLIC_RESEARCH_READY so advance() gets a chance to trigger the
+    // closed-loop entity ENREG/RS/Debtor chain for OFFICIAL_COLLECTION's own
+    // discovered company BEFORE public research begins — "official evidence
+    // MUST finish first" (2026-09-06 pipeline mandate).
     return sb.from('research_jobs').update({ status: 'CREATED', stage: 'ENREG_CHECK_PENDING', response_id: null, result_json: prior, evidence_bundle: ev, documents: z.documents || [], progress: { phase: 'official_complete', percent: 55 }, updated_at: now() }).eq('id', j.id);
+  }
+  if (s === 'PUBLIC_RESEARCH') {
+    // normalizePublicResearchStructured() (see its own comment) guarantees
+    // every one of the mandate's ~35 fields is present as null/[] — "no
+    // evidence = null/[]", never a stray partial shape the rest of the
+    // pipeline (pickFinancialCandidate, MARKET's prompt, SYNTHESIS) has to
+    // guess about.
+    prior.publicResearch = normalizePublicResearchStructured(z);
+    // Route through PUBLIC_RESEARCH_CHECK_PENDING so advance() gets a chance
+    // to run the mandate's second entity-discovery trigger — "If
+    // PublicResearch finds ONE new strongly-supported company ID not already
+    // checked: ENREG -> RS -> DEBTOR once only, then continue to MARKET" —
+    // before MARKET research begins.
+    return sb.from('research_jobs').update({ status: 'CREATED', stage: 'PUBLIC_RESEARCH_CHECK_PENDING', response_id: null, result_json: prior, evidence_bundle: ev, progress: { phase: 'public_research_complete', percent: 66 }, updated_at: now() }).eq('id', j.id);
   }
   if (s === 'MARKET') {
     prior.marketResearch = z;
@@ -1870,13 +2081,31 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
         }
       : null,
     reconciledIdentity,
+    // discoveredEntities (mandate item 4 — "merge discovered ... entities
+    // ... into the SAME existing ResearchContext/property model"): a
+    // reduced, customer-safe shape (name + registry id only — never the
+    // worker's own internal id/enregStatus/discoveredFrom bookkeeping).
+    discoveredEntities: (prior.browserOfficial?.discoveredEntities || []).map((e: any) => ({ name: e?.name || null, identificationCode: e?.identificationCode || null })).filter((e: any) => e.name),
     utilitiesMatrix: i.utilitiesMatrix || null,
     landProfile: o.landProfile || null,
     companyProfile,
+    // publicResearch (2026-09-06 pipeline mandate): the PUBLIC_RESEARCH
+    // stage's own ~35-field structured object (architect, contractors,
+    // construction quality/materials, chronology/current status,
+    // reputation, amenities, etc.), normalized so every field is always
+    // present as null/[] — safe to expose directly (no URLs live in this
+    // schema; source URLs stay only in `sources`/evidence_bundle, per "keep
+    // all source URLs internally only"). null when PUBLIC_RESEARCH never
+    // ran (e.g. a job that failed before reaching that stage).
+    publicResearch: prior.publicResearch || null,
     documents: o.documents || [],
     officialDocumentsRetrieved: officialDocs,
     historicalComparison: prior.browserOfficial?.historicalComparison || null,
-    market: { priceEvidence: mr.market?.priceEvidence || [], comparables: sanitizeComparables(mr.market?.comparables || []) },
+    // priceDrivers (2026-09-06 mandate): MARKET's own price-positioning
+    // reasoning (CHEAPER/NORMAL/PREMIUM/UNKNOWN + evidenced reasoning list)
+    // — additive alongside the existing priceEvidence/comparables shape so
+    // no existing frontend rendering of `market` needs to change.
+    market: { priceEvidence: mr.market?.priceEvidence || [], comparables: sanitizeComparables(mr.market?.comparables || []), priceDrivers: mr.market?.priceDrivers || null },
     reviews: mr.reviews || null,
     officialEvidence: z.officialEvidence?.length ? z.officialEvidence : o.officialEvidence || [],
     publicEvidence: z.publicEvidence?.length ? z.publicEvidence : mr.publicEvidence || [],
@@ -1908,25 +2137,53 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     if (j.status === 'CREATED' && j.stage === 'QUEUED') return launch(sb, k, m, j, 'IDENTITY', l);
     if (j.status === 'CREATED' && j.stage === 'BROWSER_READY') return startBrowser(sb, j);
     if (j.stage === 'BROWSER_WAITING') return pollBrowser(sb, j);
-    if (j.status === 'CREATED' && j.stage === 'OFFICIAL_READY') return launch(sb, k, m, j, 'OFFICIAL', l);
-    // v28: ENREG_CHECK_PENDING now seeds the generalized financial queue
-    // (enreg -> rstax -> debtor, see processFinancialQueue) instead of
-    // running only a single enreg lookup — the ultimate destination
-    // (MARKET_READY) is unchanged, only what happens on the way there grew.
+    // Production execution path (2026-09-06 "Fix Homatch Verify by
+    // implementing this exact pipeline in code" mandate): the browser-worker
+    // steps (TasMapWorker -> TasDocumentWorker -> NaprPropertyWorker ->
+    // EnregWorker -> RsTaxpayerWorker -> DebtorWorker, official-worker's own
+    // cadastral-mode step order + EntityQueue-triggered financial chain —
+    // see official-worker/src/orchestrator/ResearchContext.ts) all complete
+    // inside ONE BROWSER_WAITING/pollBrowser() job before this reaches
+    // OFFICIAL_READY at all — "official evidence MUST finish first" is
+    // structural, not a scheduling hint. From here: OFFICIAL_COLLECTION (this
+    // worker's OWN AI read of that evidence) -> its own enreg/rstax/debtor
+    // closed-loop chain for whatever company IT found -> PUBLIC_RESEARCH (a
+    // REAL stage) -> PUBLIC_RESEARCH's OWN enreg/rstax/debtor chain for a
+    // NEW company IT found -> MARKET -> MARKET's reconciliation chain -> ONE
+    // final SYNTHESIS (no web_search — see launch()'s `s !== 'SYNTHESIS'`).
+    if (j.status === 'CREATED' && j.stage === 'OFFICIAL_READY') return launch(sb, k, m, j, 'OFFICIAL_COLLECTION', l);
+    // ENREG_CHECK_PENDING seeds the generalized financial queue (enreg ->
+    // rstax -> debtor, see processFinancialQueue) for OFFICIAL_COLLECTION's
+    // own discovered company. Destination is now PUBLIC_RESEARCH_READY, not
+    // MARKET_READY — PUBLIC_RESEARCH is a real stage in between.
     if (j.status === 'CREATED' && j.stage === 'ENREG_CHECK_PENDING') {
+      const prior = j.result_json || {};
+      prior._financialQueue = ['enreg', 'rstax', 'debtor'];
+      prior._financialReturnStage = 'PUBLIC_RESEARCH_READY';
+      return processFinancialQueue(sb, { ...j, result_json: prior });
+    }
+    if (j.stage === 'FINANCIAL_ENTITY_WAITING') return pollFinancialEntity(sb, j);
+    if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_READY') return launch(sb, k, m, j, 'PUBLIC_RESEARCH', l);
+    // PUBLIC_RESEARCH_CHECK_PENDING (2026-09-06 mandate): "If PublicResearch
+    // finds ONE new strongly-supported company ID not already checked:
+    // ENREG -> RS -> DEBTOR once only, then continue to MARKET." Same
+    // processFinancialQueue()/pickFinancialCandidate() machinery as the
+    // OFFICIAL_COLLECTION trigger above — alreadyHasResultFor() is what
+    // actually enforces "not already checked" / "once only", so a company
+    // already covered by the first chain is never looked up again here.
+    if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_CHECK_PENDING') {
       const prior = j.result_json || {};
       prior._financialQueue = ['enreg', 'rstax', 'debtor'];
       prior._financialReturnStage = 'MARKET_READY';
       return processFinancialQueue(sb, { ...j, result_json: prior });
     }
-    if (j.stage === 'FINANCIAL_ENTITY_WAITING') return pollFinancialEntity(sb, j);
     if (j.status === 'CREATED' && j.stage === 'MARKET_READY') return launch(sb, k, m, j, 'MARKET', l);
     // v25 (enreg-only) / v28 (generalized): the reconciliation-driven
     // secondary financial-queue trigger (mandate section 6's "MARKET
     // discovers Millennio Group" example) — runs after MARKET's own
     // finish() has already computed prior.reconciledIdentity. Never
-    // re-triggers a lookup ENREG_CHECK_PENDING's pass through the queue
-    // already ran (see alreadyHasResultFor inside pickFinancialCandidate).
+    // re-triggers a lookup either earlier chain already ran (see
+    // alreadyHasResultFor inside pickFinancialCandidate).
     if (j.status === 'CREATED' && j.stage === 'RECONCILIATION_CHECK_PENDING') {
       const prior = j.result_json || {};
       prior._financialQueue = ['enreg', 'rstax', 'debtor'];
@@ -1934,7 +2191,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       return processFinancialQueue(sb, { ...j, result_json: prior });
     }
     if (j.status === 'CREATED' && j.stage === 'SYNTHESIS_READY') return launch(sb, k, m, j, 'SYNTHESIS', l);
-    const a = String(j.stage || '').match(/^(IDENTITY|OFFICIAL|MARKET|SYNTHESIS)_WAITING$/);
+    const a = String(j.stage || '').match(/^(IDENTITY|OFFICIAL_COLLECTION|PUBLIC_RESEARCH|MARKET|SYNTHESIS)_WAITING$/);
     if (!a || !j.response_id) return;
     // OpenAI Responses API statuses: queued/in_progress (poll again — falls
     // through both branches below, matching this function's existing

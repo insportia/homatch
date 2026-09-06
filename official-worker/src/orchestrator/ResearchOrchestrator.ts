@@ -34,7 +34,11 @@ function legacyDocuments(result: any): any {
 const now = () => new Date().toISOString();
 const TTL = 15 * 60 * 1000;
 // Bounds an otherwise-unbounded research graph — a document mentioning many
-// unrelated companies must never turn one Verify into dozens of ENREG jobs.
+// unrelated companies must never turn one Verify into dozens of ENREG/RS/
+// Debtor jobs. Counts COMPANIES, not steps: buildEntitySteps() now emits a
+// full enreg->rstax->debtor triple per bounded company (2026-09-06 pipeline
+// mandate), so this caps at most MAX_AUTO_ENREG_ENTITIES * 3 auto-queued
+// entity steps.
 const MAX_AUTO_ENREG_ENTITIES = 3;
 
 const NAPR_META = { name: 'NAPR', class: 'OFFICIAL_REGISTRY', url: 'https://napr.gov.ge/' };

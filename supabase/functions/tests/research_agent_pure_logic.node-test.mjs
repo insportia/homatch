@@ -352,8 +352,17 @@ function alreadyHasResultFor(browserOfficial, source, idCode, name) {
     return false;
   });
 }
+// pickFinancialCandidate (2026-09-06, "Fix Homatch Verify by implementing
+// this exact pipeline in code" mandate — copied verbatim from index.ts's
+// updated version): adds a THIRD tier sourced from prior.publicResearch,
+// implementing "If PublicResearch finds ONE new strongly-supported company
+// ID not already checked: ENREG -> RS -> DEBTOR once only, then continue to
+// MARKET."
 function pickFinancialCandidate(prior, source) {
   const cp = prior.official?.companyProfile;
+  const pr = prior.publicResearch;
+  const prIdCode = pr?.companyId || null;
+  const prName = pr?.legalCompany || pr?.developer || null;
   if (source === 'enreg') {
     if (cp && (cp.name || cp.idCode)) {
       if (!alreadyHasResultFor(prior.browserOfficial, 'enreg', cp.idCode || null, cp.name || null)) return { name: cp.name || cp.idCode, idCode: cp.idCode || null };
@@ -362,12 +371,15 @@ function pickFinancialCandidate(prior, source) {
     if (ri?.developer && ['MEDIUM', 'HIGH'].includes(ri.confidence)) {
       if (!alreadyHasResultFor(prior.browserOfficial, 'enreg', null, ri.developer)) return { name: ri.developer, idCode: null };
     }
+    if (prIdCode || prName) {
+      if (!alreadyHasResultFor(prior.browserOfficial, 'enreg', prIdCode, prName)) return { name: prName || prIdCode, idCode: prIdCode };
+    }
     return null;
   }
-  const idCode = cp?.idCode || null;
+  const idCode = cp?.idCode || prIdCode || null;
   if (!idCode) return null;
   if (alreadyHasResultFor(prior.browserOfficial, source, idCode, null)) return null;
-  return { name: cp?.name || idCode, idCode };
+  return { name: cp?.name || prName || idCode, idCode };
 }
 
 test('pickFinancialCandidate: rstax/debtor NEVER fire on a bare company name — no idCode means no candidate, even when enreg would happily search by name', () => {
@@ -397,6 +409,99 @@ test('pickFinancialCandidate: no companyProfile at all -> no candidate for any o
   assert.equal(pickFinancialCandidate(prior, 'enreg'), null);
   assert.equal(pickFinancialCandidate(prior, 'rstax'), null);
   assert.equal(pickFinancialCandidate(prior, 'debtor'), null);
+});
+
+// ---- pickFinancialCandidate's THIRD tier (2026-09-06 pipeline mandate):
+// a company PUBLIC_RESEARCH alone discovered, when companyProfile and
+// reconciledIdentity named none.
+test('pickFinancialCandidate: falls through to a PUBLIC_RESEARCH-discovered company when companyProfile/reconciledIdentity found none', () => {
+  const prior = { publicResearch: { companyId: '405999888', legalCompany: 'შპს ახალი კომპანია' } };
+  assert.deepEqual(pickFinancialCandidate(prior, 'enreg'), { name: 'შპს ახალი კომპანია', idCode: '405999888' });
+  assert.deepEqual(pickFinancialCandidate(prior, 'rstax'), { name: 'შპს ახალი კომპანია', idCode: '405999888' });
+  assert.deepEqual(pickFinancialCandidate(prior, 'debtor'), { name: 'შპს ახალი კომპანია', idCode: '405999888' });
+});
+test('pickFinancialCandidate: companyProfile takes priority over publicResearch — never overridden by a weaker later signal', () => {
+  const prior = {
+    official: { companyProfile: { name: 'შპს ორიგინალი', idCode: '111111111' } },
+    publicResearch: { companyId: '405999888', legalCompany: 'შპს ახალი კომპანია' },
+  };
+  assert.deepEqual(pickFinancialCandidate(prior, 'enreg'), { name: 'შპს ორიგინალი', idCode: '111111111' });
+  assert.deepEqual(pickFinancialCandidate(prior, 'rstax'), { name: 'შპს ორიგინალი', idCode: '111111111' });
+});
+test('pickFinancialCandidate: PUBLIC_RESEARCH tier never re-fires once already checked ("once only")', () => {
+  const prior = {
+    publicResearch: { companyId: '405999888', legalCompany: 'შპს ახალი კომპანია' },
+    browserOfficial: { results: [{ source: 'enreg', forEntity: { name: 'შპს ახალი კომპანია', idCode: '405999888' } }] },
+  };
+  assert.equal(pickFinancialCandidate(prior, 'enreg'), null);
+  // rstax/debtor are independent queue slots — still fire even though enreg
+  // already ran for this exact company.
+  assert.deepEqual(pickFinancialCandidate(prior, 'rstax'), { name: 'შპს ახალი კომპანია', idCode: '405999888' });
+});
+test('pickFinancialCandidate: a publicResearch entry with no companyId/legalCompany/developer never becomes a candidate', () => {
+  const prior = { publicResearch: { companyId: null, legalCompany: null, developer: null } };
+  assert.equal(pickFinancialCandidate(prior, 'enreg'), null);
+  assert.equal(pickFinancialCandidate(prior, 'rstax'), null);
+});
+
+// ---- normalizePublicResearchStructured (2026-09-06 pipeline mandate) —
+// copied verbatim from index.ts. Guarantees every one of the mandate's own
+// ~35-field (43-key) PUBLIC_RESEARCH schema is always present as null/[],
+// "no evidence = null/[]", never a stray partial shape or an extra
+// hallucinated key.
+const PUBLIC_RESEARCH_ARRAY_FIELDS = [
+  'foundersOwnersParticipants', 'directorsRepresentatives', 'previousProjects', 'contractors',
+  'constructionCompanies', 'engineers', 'suppliers', 'amenities', 'partners', 'qualitySignals',
+  'architectReputationSignals', 'complaints', 'disputes', 'legalPublicFootprint', 'mediaCoverage',
+  'socialPublicFootprint', 'awardsRecognition', 'facts',
+];
+const PUBLIC_RESEARCH_SCALAR_FIELDS = [
+  'project', 'developer', 'legalCompany', 'companyId', 'companyHistory', 'architect', 'architectStudio',
+  'architectReputation', 'facade', 'windows', 'elevators', 'structuralSystem', 'constructionMaterials',
+  'insulation', 'MEP', 'energyEfficiency', 'seismicDesign', 'landscaping', 'parking', 'financingBank',
+  'constructionStart', 'chronology', 'progressHistory', 'currentPhysicalStatus', 'developerReputation',
+];
+function normalizePublicResearchStructured(z) {
+  const src = z && typeof z === 'object' ? z : {};
+  const out = {};
+  for (const k of PUBLIC_RESEARCH_SCALAR_FIELDS) out[k] = typeof src[k] === 'string' && src[k].trim() ? src[k].trim() : null;
+  for (const k of PUBLIC_RESEARCH_ARRAY_FIELDS) out[k] = Array.isArray(src[k]) ? src[k].filter((x) => typeof x === 'string' && x.trim()) : [];
+  return out;
+}
+
+test('normalizePublicResearchStructured: exactly the mandate\'s 43 fields are always present, nothing more, nothing less', () => {
+  const out = normalizePublicResearchStructured({});
+  const keys = Object.keys(out).sort();
+  const expected = [...PUBLIC_RESEARCH_SCALAR_FIELDS, ...PUBLIC_RESEARCH_ARRAY_FIELDS].sort();
+  assert.deepEqual(keys, expected);
+  assert.equal(keys.length, 43);
+});
+test('normalizePublicResearchStructured: empty/missing input -> every scalar null, every array []', () => {
+  const out = normalizePublicResearchStructured(null);
+  for (const k of PUBLIC_RESEARCH_SCALAR_FIELDS) assert.equal(out[k], null, `${k} should be null`);
+  for (const k of PUBLIC_RESEARCH_ARRAY_FIELDS) assert.deepEqual(out[k], [], `${k} should be []`);
+});
+test('normalizePublicResearchStructured: real evidenced values pass through unchanged', () => {
+  const out = normalizePublicResearchStructured({
+    architect: 'გიორგი ბერიძე',
+    companyId: '405123456',
+    contractors: ['შპს მშენებელი 1', 'შპს მშენებელი 2'],
+    facts: ['სახურავი დასრულებულია 2025 წელს'],
+  });
+  assert.equal(out.architect, 'გიორგი ბერიძე');
+  assert.equal(out.companyId, '405123456');
+  assert.deepEqual(out.contractors, ['შპს მშენებელი 1', 'შპს მშენებელი 2']);
+  assert.deepEqual(out.facts, ['სახურავი დასრულებულია 2025 წელს']);
+});
+test('normalizePublicResearchStructured: non-string scalars and non-array/junk-item lists are discarded, never crash', () => {
+  const out = normalizePublicResearchStructured({ architect: 42, contractors: 'not an array', amenities: [1, 'real amenity', null, '  '] });
+  assert.equal(out.architect, null);
+  assert.deepEqual(out.contractors, []);
+  assert.deepEqual(out.amenities, ['real amenity']);
+});
+test('normalizePublicResearchStructured: a stray/hallucinated extra key from the model is dropped, never carried through', () => {
+  const out = normalizePublicResearchStructured({ architect: 'X', totallyMadeUpField: 'should not appear' });
+  assert.equal(out.totallyMadeUpField, undefined);
 });
 
 // ---- v30 additions: OpenAI Responses API migration + PUBLIC_SEARCH source

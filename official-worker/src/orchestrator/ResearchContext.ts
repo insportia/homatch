@@ -75,19 +75,33 @@ export function primaryStepsRemain(steps: StepDescriptor[], fromIndex: number): 
   return steps.slice(fromIndex).some((s) => s.type === 'source');
 }
 
-// Unchanged in effect from before this generalization: the in-job
-// EntityQueue auto-trigger (fired once every PRIMARY step has reported —
-// see ResearchOrchestrator.run()) still only ever queues 'enreg' lookups.
-// RS Taxpayers / MyGov Debtor are deliberately NOT auto-fired here for
-// every text-scanned entity (that would be 2 extra real browser sessions
-// per candidate, most of them irrelevant) — they are instead triggered
-// only for the SAME single primary developer/company entity research-agent
-// already decided was worth an ENREG lookup, via the closed-loop
-// /research/rstax-entity and /research/debtor-entity endpoints (mirroring
-// /research/enreg-entity — see index.ts and ResearchOrchestrator.startEntity()).
+// 2026-09-06, "Fix Homatch Verify by implementing this exact pipeline in
+// code" mandate: the fixed cadastral-mode production execution path is
+// TasMapWorker -> TasDocumentWorker -> NaprPropertyWorker -> EnregWorker ->
+// RsTaxpayerWorker -> DebtorWorker -> PublicResearchWorker ->
+// MarketResearchWorker -> Synthesis, with "official evidence MUST finish
+// first." The in-job EntityQueue auto-trigger (fired once every PRIMARY
+// browser step has reported — see ResearchOrchestrator.run()) now queues
+// the full EnregWorker -> RsTaxpayerWorker -> DebtorWorker triple, in that
+// order, for each bounded entity — not enreg alone as before this mandate.
+// Still bounded by maxEntities (a document mentioning many unrelated
+// companies must never turn one Verify into dozens of ENREG/RS/Debtor
+// jobs); in the common case (one developer/owner company confirmed) this
+// produces exactly the mandate's Enreg->Rstax->Debtor sub-sequence. The
+// SEPARATE closed-loop /research/enreg-entity, /research/rstax-entity,
+// /research/debtor-entity endpoints (ResearchOrchestrator.startEntity())
+// remain for the mandate's second, independent trigger: research-agent's
+// own PUBLIC_RESEARCH stage discovering ONE new strongly-supported company
+// ID that never appeared in any browser-retrieved text this worker scanned
+// (so EntityQueue.scanText() could never have seen it) — research-agent
+// calls all three endpoints in sequence for that one entity, once, before
+// continuing to MARKET.
 export function buildEntitySteps(confirmedEntities: { identificationCode: string | null; name: string }[], maxEntities: number): StepDescriptor[] {
-  return confirmedEntities
-    .filter((e) => e.identificationCode)
-    .slice(0, maxEntities)
-    .map((e) => ({ type: 'entity', source: 'enreg', idCode: e.identificationCode as string, name: e.name }));
+  const steps: StepDescriptor[] = [];
+  for (const e of confirmedEntities.filter((x) => x.identificationCode).slice(0, maxEntities)) {
+    for (const source of ['enreg', 'rstax', 'debtor'] as const) {
+      steps.push({ type: 'entity', source, idCode: e.identificationCode as string, name: e.name });
+    }
+  }
+  return steps;
 }

@@ -24,7 +24,10 @@ import ActiveSearchPage from './pages/ActiveSearchPage';
 import DeveloperProfilePage from './pages/DeveloperProfilePage';
 import AIPage from './pages/AIPage';
 import VerifyPage from './pages/VerifyPage';
-import CasesPage from './pages/CasesPage';
+// CasesPage import removed (2026-09-06 "REMOVE MY DEALS/CASES" mandate) —
+// the /cases route below is intentionally not registered. The file itself
+// is left in place (dormant), not deleted, in case this product surface
+// is revisited later.
 import PartnersPage from './pages/PartnersPage';
 // Outreach pages
 import OutreachHubPage from './pages/outreach/OutreachHubPage';
@@ -79,7 +82,8 @@ export const routes: RouteConfig[] = [
   { name: 'Terms of Service',  path: '/terms',                    element: <TermsPage />,         public: true },
   { name: 'AI Assistant',      path: '/ai',                       element: <AIPage />,            public: false },
   { name: 'Verify',            path: '/verify',                   element: <VerifyPage />,        public: true },
-  { name: 'My Deals',          path: '/cases',                    element: <CasesPage /> },
+  // 'My Deals' / '/cases' route intentionally removed from the product
+  // (2026-09-06 mandate) — see the CasesPage import comment above.
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },

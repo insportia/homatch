@@ -89,7 +89,7 @@ export class ResearchOrchestrator {
 
   /** startEntity() — the closed-loop fix for the confirmed production gap:
    * a legal entity (developer/owner company) discovered by research-agent's
-   * OWN web research (Gemini google_search during the OFFICIAL/MARKET
+   * OWN web research (OpenAI web_search during the OFFICIAL/MARKET
    * stage) never appears in ANY browser-retrieved page/document text this
    * worker scanned, so EntityQueue.scanText() never sees it and the normal
    * primary-step-completion auto-ENREG trigger (buildEntitySteps() in run())

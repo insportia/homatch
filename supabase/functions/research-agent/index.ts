@@ -501,9 +501,31 @@ function customerSourceStatus(rawStatus: string | null | undefined): 'SUCCESS' |
 // `officialSourceCoverage` — safe by construction (only the 6-value
 // customerStatus enum and the source's own display name, never a raw FSM
 // state or error string), so it needs no sanitizeForCustomer() stripping.
-function officialSourceCoverage(browserOfficial: any): { source: string; sourceName: string; customerStatus: string }[] {
+// SOURCE_NAME_I18N (v30, mandate item 5 — "never show raw source IDs like
+// rstax to customers; use 'Revenue Service — გადასახადის გადამხდელთა
+// რეესტრი' / 'MyGov — მოვალეთა რეესტრი'"). officialSourceCoverage() is the
+// one field of this pipeline explicitly kept customer-safe (see its own
+// comment at the call site), so its sourceName must be a real localized,
+// human name — never the internal adapter key (r.source, e.g. "rstax",
+// "debtor", "enreg", "tas", "msmap") — in whatever locale the request asked
+// for. Keyed by the worker's own stable adapter id, not by sourceName text,
+// so this never depends on exactly how the worker phrased its English name.
+const SOURCE_NAME_I18N: Record<string, Record<string, string>> = {
+  tas: { ka: 'TAS — საჯარო რეესტრის საინფორმაციო სისტემა', en: 'TAS — Public Registry Information System', ru: 'TAS — информационная система публичного реестра', tr: 'TAS — Kamu Sicili Bilgi Sistemi', ar: 'TAS — نظام معلومات السجل العام', he: 'TAS — מערכת מידע של המרשם הציבורי' },
+  msmap: { ka: 'საჯარო რეესტრის საკადასტრო რუკა (MS Map)', en: 'Public Registry Cadastral Map (MS Map)', ru: 'Кадастровая карта публичного реестра (MS Map)', tr: 'Kamu Sicili Kadastro Haritası (MS Map)', ar: 'خريطة السجل العقاري العامة (MS Map)', he: 'מפת הקדסטר של המרשם הציבורי (MS Map)' },
+  napr: { ka: 'საჯარო რეესტრი — უძრავი ქონების რეესტრი (NAPR)', en: 'Public Registry — Real Estate Registry (NAPR)', ru: 'Публичный реестр — реестр недвижимости (NAPR)', tr: 'Kamu Sicili — Taşınmaz Sicili (NAPR)', ar: 'السجل العام — سجل العقارات (NAPR)', he: 'המרשם הציבורי — מרשם המקרקעין (NAPR)' },
+  enreg: { ka: 'მეწარმეთა და არასამეწარმეო (არაკომერციული) იურიდიული პირების რეესტრი', en: 'Entrepreneurial and Non-Entrepreneurial Legal Entities Registry', ru: 'Реестр предпринимательских и непредпринимательских юридических лиц', tr: 'Ticari ve Ticari Olmayan Tüzel Kişiler Sicili', ar: 'سجل الكيانات القانونية التجارية وغير التجارية', he: 'מרשם התאגידים העסקיים והלא-עסקיים' },
+  rstax: { ka: 'შემოსავლების სამსახური — გადასახადის გადამხდელთა რეესტრი', en: 'Revenue Service — Taxpayers Registry', ru: 'Служба доходов — реестр налогоплательщиков', tr: 'Gelirler Servisi — Vergi Mükellefleri Sicili', ar: 'مصلحة الإيرادات — سجل دافعي الضرائب', he: 'רשות ההכנסות — מרשם משלמי המסים' },
+  debtor: { ka: 'MyGov — მოვალეთა რეესტრი', en: 'MyGov — Debtor Registry', ru: 'MyGov — реестр должников', tr: 'MyGov — Borçlular Sicili', ar: 'MyGov — سجل المدينين', he: 'MyGov — מרשם החייבים' },
+};
+function localizedSourceName(sourceKey: string | undefined, fallbackName: string, locale: string): string {
+  const entry = SOURCE_NAME_I18N[String(sourceKey || '').toLowerCase()];
+  if (!entry) return fallbackName; // unrecognized adapter key: fall back to the worker's own human name, never the raw key itself (fallbackName is always r.sourceName || r.source, and r.source is only ever used here as a lookup key, not rendered)
+  return entry[locale] || entry.en;
+}
+function officialSourceCoverage(browserOfficial: any, locale = 'en'): { source: string; sourceName: string; customerStatus: string }[] {
   const results = browserOfficial?.results || [];
-  return results.map((r: any) => ({ source: r.source, sourceName: r.sourceName || r.source, customerStatus: customerSourceStatus(r.status) }));
+  return results.map((r: any) => ({ source: r.source, sourceName: localizedSourceName(r.source, r.sourceName || r.source, locale), customerStatus: customerSourceStatus(r.status) }));
 }
 
 function safeUrl(u: string): string | null {
@@ -583,6 +605,22 @@ const PROPERTY_PORTAL_HOST_RE = /(?:^|\.)(myhome\.ge|ss\.ge|home\.ss\.ge|korter\
 const SOCIAL_HOST_RE = /(?:^|\.)(facebook\.com|fb\.com|instagram\.com|tiktok\.com|youtube\.com|youtu\.be|t\.me|telegram\.me|twitter\.com|x\.com|linkedin\.com)$/i;
 const MEDIA_HOST_RE = /(?:^|\.)(civil\.ge|netgazeti\.ge|publika\.ge|1tv\.ge|imedinews\.ge|interpressnews\.ge|rustavi2\.ge|bpn\.ge|forbes\.ge|business-media\.ge)$/i;
 const FORUM_HOST_RE = /(?:^|\.)(reddit\.com|forum\.ge|forums\.ge)$/i;
+// v30 addition (mandate item 4 — "public search as a legitimate but
+// distinct source class"): a search-engine RESULTS page is never a
+// document/registry/listing/article in itself — it is, at best, evidence
+// that a general web search corroborated something, with no single
+// citable deep source behind it. Kept strictly separate from OTHER_PUBLIC
+// (an unrecognized-but-real page) so the customer-facing label can say
+// "საჯარო ძიება" (Public Search) instead of implying a real page was read.
+const SEARCH_ENGINE_HOST_RE = /(?:^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|search\.yahoo\.com|yandex\.[a-z.]+)$/i;
+function isSearchResultsUrl(url: string, host: string): boolean {
+  if (!SEARCH_ENGINE_HOST_RE.test(host)) return false;
+  try {
+    return /\/search\b/i.test(new URL(url).pathname) || /(?:^|[?&])q=/i.test(new URL(url).search);
+  } catch {
+    return true;
+  }
+}
 type SourceCategory =
   | 'OFFICIAL_REGISTRY'
   | 'OFFICIAL_DOCUMENT'
@@ -594,6 +632,7 @@ type SourceCategory =
   | 'SOCIAL'
   | 'PUBLIC_GROUP'
   | 'PUBLIC_FORUM'
+  | 'PUBLIC_SEARCH'
   | 'OTHER_PUBLIC';
 function sourceCategory(url: string | null | undefined, hint?: { isDocument?: boolean; isMap?: boolean; isDeveloperPrimary?: boolean }): SourceCategory {
   if (!url) return 'OTHER_PUBLIC';
@@ -609,6 +648,7 @@ function sourceCategory(url: string | null | undefined, hint?: { isDocument?: bo
     return 'OFFICIAL_REGISTRY';
   }
   if (hint?.isDeveloperPrimary) return 'DEVELOPER_PRIMARY';
+  if (isSearchResultsUrl(url, host)) return 'PUBLIC_SEARCH';
   if (PROPERTY_PORTAL_HOST_RE.test(host)) return 'MARKET_LISTING';
   if (SOCIAL_HOST_RE.test(host)) return /facebook\.com\/groups|t\.me\/joinchat|t\.me\/\+/i.test(url) ? 'PUBLIC_GROUP' : 'SOCIAL';
   if (MEDIA_HOST_RE.test(host)) return 'MEDIA';
@@ -688,20 +728,30 @@ function parse(t: string): any {
     return {};
   }
 }
-function txt(p: any): string {
+// extractOpenAIText()/extractOpenAISources() (v30, "REMOVE GEMINI COMPLETELY
+// AND MIGRATE RESEARCH AI TO OPENAI" mandate). OpenAI's Responses API shapes
+// a completed response as `output: [...]`, where a message item has
+// `type: 'message'` and `content: [{type:'output_text', text, annotations}]`
+// — replacing the old Gemini "interactions" shape (`steps[].type ===
+// 'model_output'` / `content[].type === 'text'`). Web-search citations are
+// `content[].annotations[].type === 'url_citation'` with `url`/`title`
+// fields — the SAME shape this file's citation handling already used, so
+// resolveSourceUrls()/isLoginPageUrl()/sourceCategory() below needed no
+// changes at all.
+function extractOpenAIText(p: any): string {
   let t = '';
-  for (const s of p?.steps || []) if (s?.type === 'model_output') for (const c of s?.content || []) if (c?.type === 'text') t += c.text || '';
+  for (const o of p?.output || []) if (o?.type === 'message') for (const c of o?.content || []) if (c?.type === 'output_text') t += c.text || '';
   return t;
 }
-function srcs(p: any): any[] {
+function extractOpenAISources(p: any): any[] {
   const o: any[] = [];
-  for (const s of p?.steps || [])
-    if (s?.type === 'model_output')
-      for (const c of s?.content || [])
+  for (const item of p?.output || [])
+    if (item?.type === 'message')
+      for (const c of item?.content || [])
         for (const a of c?.annotations || [])
           if (a?.type === 'url_citation' && a?.url) {
             const u = safeUrl(a.url);
-            if (u) o.push({ label: a.title || u, url: u, evidenceLevel: official(u) ? 'OFFICIAL' : 'WEB_RETRIEVED', retrievalMethod: 'GEMINI_GROUNDED' });
+            if (u) o.push({ label: a.title || u, url: u, evidenceLevel: official(u) ? 'OFFICIAL' : 'WEB_RETRIEVED', retrievalMethod: 'OPENAI_WEB_SEARCH' });
           }
   return dedupe(o, (x) => x.url);
 }
@@ -798,6 +848,57 @@ const UNVERIFIED_FALLBACK_I18N: Record<string, string> = {
   ar: 'تعذر تأكيد الحالة الحالية الدقيقة بأدلة عامة.',
   he: 'לא ניתן היה לאשר את הסטטוס הנוכחי המדויק באמצעות ראיות ציבוריות.',
 };
+// GENERIC_CONFIG_ERROR_I18N (v30): shown to the customer ONLY when a
+// required server-side secret (currently OPENAI_API_KEY) is missing — a
+// deliberately generic, localized "temporary issue" message. The real
+// reason is logged server-side (console.error) for admin diagnostics only;
+// it must never appear in the customer-facing response body.
+const GENERIC_CONFIG_ERROR_I18N: Record<string, string> = {
+  ka: 'ამჟამად დროებითი ტექნიკური შეფერხებაა. გთხოვთ სცადოთ ცოტა ხანში.',
+  en: 'A temporary technical issue occurred. Please try again shortly.',
+  ru: 'Произошла временная техническая неполадка. Пожалуйста, попробуйте снова через некоторое время.',
+  tr: 'Geçici bir teknik sorun oluştu. Lütfen kısa süre sonra tekrar deneyin.',
+  ar: 'حدثت مشكلة فنية مؤقتة. يرجى المحاولة مرة أخرى بعد قليل.',
+  he: 'אירעה תקלה טכנית זמנית. אנא נסו שוב בקרוב.',
+};
+// UNRESOLVED_RIGHTS_GAP_I18N (v30): the guaranteed fallback line inserted
+// into itemsToVerify when rightsAndRestrictions.status is still
+// NOT_CONFIRMED and the model's own itemsToVerify list did not already
+// name that gap — see the overallAssessment wiring in finish(). Kept
+// neutral (not "no restriction found", not "safe") per the same rule as
+// rightsAndRestrictions.statement itself.
+const UNRESOLVED_RIGHTS_GAP_I18N: Record<string, string> = {
+  ka: 'უძრავი ქონების უახლესი რეესტრის ამონაწერი (საკუთრება, შეზღუდვები, დატვირთვები) ჯერ არ არის ცალსახად დადასტურებული — გირჩევთ გადაამოწმოთ გარიგებამდე.',
+  en: 'A current registry extract confirming exact ownership and any restrictions/encumbrances has not yet been independently confirmed — verify this before the transaction.',
+  ru: 'Актуальная выписка из реестра, подтверждающая точное право собственности и наличие ограничений/обременений, пока не подтверждена независимо — проверьте это до сделки.',
+  tr: 'Tam mülkiyeti ve olası kısıtlama/yükümlülükleri doğrulayan güncel bir sicil kaydı henüz bağımsız olarak teyit edilmedi — işlemden önce bunu doğrulayın.',
+  ar: 'لم يتم بعد التأكد بشكل مستقل من مستخرج السجل الحالي الذي يثبت الملكية الدقيقة وأي قيود/التزامات — يرجى التحقق من ذلك قبل إتمام الصفقة.',
+  he: 'תמצית מרשם עדכנית המאשרת בעלות מדויקת והגבלות/שעבודים אפשריים עדיין לא אומתה באופן עצמאי — יש לוודא זאת לפני העסקה.',
+};
+// RR_NOT_CONFIRMED_I18N / RR_NONE_FOUND_I18N (v30 fix — mandate item 5:
+// "Never show English fallback text ... inside a Georgian report"). These
+// two sentences used to be hardcoded English regardless of the request's
+// own locale `l` — a genuine, exactly-named bug in the mandate's own worked
+// example ("Current official confirmation is still required."). Now
+// localized the same way every other customer-facing fixed sentence in
+// this file already is (see GENERIC_CONFIG_ERROR_I18N / MATERIAL_RISK_
+// NONE_I18N above).
+const RR_NOT_CONFIRMED_I18N: Record<string, string> = {
+  ka: 'ამჟამად საჭიროა ოფიციალური დადასტურება.',
+  en: 'Current official confirmation is still required.',
+  ru: 'В настоящее время требуется официальное подтверждение.',
+  tr: 'Şu anda resmi teyit hâlâ gereklidir.',
+  ar: 'لا يزال التأكيد الرسمي مطلوبًا حاليًا.',
+  he: 'עדיין נדרש אישור רשמי נוכחי.',
+};
+const RR_NONE_FOUND_I18N: Record<string, (ts: string) => string> = {
+  ka: (ts) => `მოძიებულ მიმდინარე მტკიცებულებაში (${ts}) არსებითი რეგისტრირებული შეზღუდვა არ გამოვლენილა.`,
+  en: (ts) => `No material registered restriction was identified in the current evidence retrieved at ${ts}.`,
+  ru: (ts) => `В текущих полученных на ${ts} доказательствах существенных зарегистрированных ограничений не выявлено.`,
+  tr: (ts) => `${ts} tarihinde alınan güncel kanıtlarda önemli bir kayıtlı kısıtlama tespit edilmedi.`,
+  ar: (ts) => `لم يتم تحديد أي قيد مسجل جوهري في الأدلة الحالية التي تم الحصول عليها في ${ts}.`,
+  he: (ts) => `לא זוהתה הגבלה רשומה מהותית בראיות הנוכחיות שהתקבלו בתאריך ${ts}.`,
+};
 const BASE =
   'You are Homatch Property Intelligence, an automated real-estate due-diligence engine. NO EVIDENCE = NO FACT. UNKNOWN ≠ NO. TECHNICAL FAILURE ≠ PROPERTY RISK. MARKETING CLAIM ≠ VERIFIED FACT. SEARCH RESULT ≠ DOCUMENT READ. OLD INFORMATION ≠ CURRENT INFORMATION. Missing public evidence is neutral, not a risk. Search snippets are leads, not facts. Never invent ownership, cadastral facts, permits, prices, company relationships, reviews or legal status. Similar names do not prove identity. Prefer primary records, exact deep URLs and dates. ' +
   'STRICT FACT GATE — apply this to every ownership, seller-authority, co-ownership, mortgage, seizure/attachment, public-law restriction, tax lien, registered obligation, company status, director/representative, construction-completion, commissioning/exploitation, utility-subscription, developer-financing, or bank-relationship claim before writing it as fact: (1) is there an authoritative or sufficiently reliable source; (2) was the relevant evidence actually retrieved/read (not just found in a search result); (3) is it specific to this exact property/person/company/project; (4) is it current enough for the claim; (5) does the source actually state it, not merely imply it. If ANY answer is no, do not present it as fact — write it as unverified and use this EXACT sentence for the gap (never a guessed date or status): "' +
@@ -809,7 +910,7 @@ const BASE =
   'ABSOLUTE RULE — NEVER, under any circumstances, in ANY string you return (executiveSummary, facts, officialEvidence, publicEvidence, unverified, riskFlags[].description, or any other field): mention a search field, form, selector, browser, automation attempt, retry, verification attempt, CAPTCHA mechanics, or any internal system/engineering process. Our own inability to complete a technical step is NEVER a fact about the property, the company, or the market — it must simply be omitted, never explained, apologized for, or turned into a hedge like "could not be confirmed due to X" or "was not directly read". Either state a confirmed fact, or say nothing about that angle at all. ' +
   'ABSOLUTE RULE — a bare homepage URL (e.g. https://myhome.ge/, https://ss.ge/, https://facebook.com/somepage with no further path) is NEVER a specific citation. You may say general listings/pages appear to exist on such a site, but you must NEVER attach a specific listing ID, exact price, or specific unit detail to a homepage URL — only to a real deep link you actually retrieved. ' +
   'COMPANY-PROFILE PROVENANCE RULE: company details (directors, registration date, status, historical ownership changes) gathered only from general web research — not from a registry document you actually read — must never be phrased as if independently confirmed by the Entrepreneur Registry. Say they are publicly reported, not registry-verified, unless the specific evidence came from a registry document. ' +
-  'FINANCIAL/DEBT REGISTRY RULE (v28): a NO_RESULT_CONFIRMED result from the RS Taxpayers Registry or the MyGov Debtor Registry proves ONLY that this one exact verified search on that specific registry returned no matching record for that identifier — NEVER state or imply "no tax debt", "no debts", "clean", "debt-free", or any assurance about the company\'s overall financial standing. If you mention either registry\'s result at all, phrase it only as: no matching record was found in this specific registry search for this identifier. ' +
+  'FINANCIAL/DEBT REGISTRY RULE (v30): RS Taxpayers Registry, the MyGov Debtor Registry, and the Property Registry/NAPR are THREE SEPARATE SCOPES — never mix their conclusions. RS is taxpayer/tax-status information only. The MyGov Debtor Registry is a debtor-record check for the specific person/company only. Ownership, mortgage, seizure, and other registered-restriction findings belong ONLY to the Property Registry/NAPR evidence elsewhere in this report — never attach ownership/mortgage/cadastral/commissioning caution to a debtor-registry or tax-registry finding. For RS Taxpayers Registry: a NO_RESULT_CONFIRMED result proves ONLY that this one exact verified search returned no matching record — phrase it neutrally as "no matching record was found in this specific registry search for this identifier," never as "no tax debt" or "clean." For the MyGov Debtor Registry specifically: an exact-identifier NO_RESULT_CONFIRMED IS a genuinely positive result, but ONLY within that registry\'s own narrow scope — state plainly that no debtor-registry record was found for this exact identifier and that this is a positive indicator within the scope of checking this specific registry; never extend that positive framing into any claim about property ownership, cadastral rights, mortgages, official commissioning, or the person/company\'s overall financial standing. If the MyGov Debtor Registry instead returns a confirmed matching record, do not phrase it neutrally — flag it for the customer\'s ATTENTION and state plainly that the record/details require review before assessing any transaction impact. ' +
   'ASSET-CLASS SCOPE RULE (v28): do not force developer/company research onto a property whose evidence indicates a private individual resale, a private house, or a rental with no developer/company actually involved — only populate companyProfile when a real company/developer is evidenced for THIS property; a bare absence of company involvement is not itself a fact worth stating. ' +
   'Return JSON only.';
 
@@ -900,12 +1001,21 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     `If browserOfficial.results contains an Entrepreneur Registry (enreg) entry — including one tagged with a forEntity (a company looked up specifically because it was discovered elsewhere in this research) — read its documents' extracted text/facts directly and use it to build or improve companyProfile (legal form, registration date, status, directors, representatives, historical changes) with the same schema OFFICIAL used. If it materially improves on the evidence-bundle's existing companyProfile, return your own improved companyProfile; otherwise omit the field and the existing one is kept.\n` +
     `If no risk worth flagging is evidenced, riskFlags may be empty — in that case you do not need to write anything about it; a fixed neutral sentence is added automatically. Never fill riskFlags with our own inability to verify a source.\n` +
     `For rights/restrictions/seizure specifically, distinguish clearly: "No material registered restriction was identified in the current evidence retrieved at [timestamp]" (evidence checked, nothing found) is NOT the same as "Current official confirmation is still required" (nothing was actually checked) — never write or imply "guaranteed free of restrictions" or "clean property" in either case.\n` +
-    `HARD RULE (STRUCTURED EVIDENCE IS AUTHORITATIVE): executiveSummary may state a specific cadastral code, company/entity name, developer, or project name ONLY when that exact value already appears in identity.identifiedParent, identity.project, official.companyProfile, or a cited document/officialEvidence entry in the evidence above. If none of those carry a specific code/project/address/developer, describe the property only by what the evidence actually supports rather than inventing or inferring one from context — this is enforced separately by a deterministic code-level check after this response.\n` +
-    `Return {"executiveSummary":string,"entity":{"name":string,"type":string,"confidence":"HIGH"|"MEDIUM"|"LOW"},"officialEvidence":string[],"publicEvidence":string[],"conflicts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[],"companyProfile":{"name":string|null,"idCode":string|null,"legalForm":string|null,"registrationDate":string|null,"status":string|null,"directors":string[],"representatives":string[],"historicalChanges":string[],"relatedProjects":string[],"summary":string|null}|null}.`
+    `HARD RULE (STRUCTURED EVIDENCE IS AUTHORITATIVE): executiveSummary may state a specific cadastral code, company/entity name, developer, or project name ONLY when that exact value already appears in identity.identifiedParent, identity.project, official.companyProfile, or a cited document/officialEvidence entry in the evidence above. If none of those carry a specific code/project/address/developer, describe the property only by what the evidence actually supports rather than inventing or inferring one from context — this is enforced separately by a deterministic code-level check after this response. Keep executiveSummary short and scene-setting (what this property/entity is, in 1-3 sentences) — do NOT restate specific unresolved items in it; those belong ONLY in itemsToVerify below, stated once.\n` +
+    `KEY STRENGTHS (v30): separately from officialEvidence/publicEvidence, list 3-5 short, concrete, evidence-backed positive/useful facts a customer would actually care about — e.g. identity/project corroboration, an official source returning a clean or confirmed result, a bank or developer relationship with public evidence, current market comparables, a registry search returning no matching adverse record. Each entry must already be traceable to a fact/officialEvidence/publicEvidence item above — never invent a new one here. Order strongest/most official first. Return [] if genuinely nothing rises to this level (rare) — never pad it.\n` +
+    `ITEMS TO VERIFY (v30): separately, list AT MOST 4 short items describing what remains genuinely unresolved and is material to a transaction decision (e.g. official commissioning not independently confirmed, latest NAPR ownership/restriction extract still needed, a source skipped because human verification was not completed). State each ONCE, plainly, with no repeated hedging language — this is the single place the report names unresolved items, so do not also re-explain them at length elsewhere in this response. Never include here anything already resolved as a genuine positive (a debtor-registry no-result belongs in keyStrengths or officialEvidence, not here). Return [] only if there is truly nothing left to verify.\n` +
+    `Return {"executiveSummary":string,"entity":{"name":string,"type":string,"confidence":"HIGH"|"MEDIUM"|"LOW"},"keyStrengths":string[],"itemsToVerify":string[],"officialEvidence":string[],"publicEvidence":string[],"conflicts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[],"companyProfile":{"name":string|null,"idCode":string|null,"legalForm":string|null,"registrationDate":string|null,"status":string|null,"directors":string[],"representatives":string[],"historicalChanges":string[],"relatedProjects":string[],"summary":string|null}|null}.`
   );
 }
 
-async function gf(url: string, init: any): Promise<any> {
+// v30: OpenAI Responses API only — Gemini is no longer called anywhere in
+// this file. `openaiFetch` is the same retry-with-backoff wrapper the old
+// `gf` was (unchanged behavior, renamed for provenance); createOpenAIResponse
+// POSTs a background response (mandate: "background=true so the existing
+// persisted async research_jobs/status-poll architecture remains non-
+// blocking") and getOpenAIResponse polls it by id. Auth is a Bearer header
+// (OpenAI), not Gemini's x-goog-api-key header.
+async function openaiFetch(url: string, init: any): Promise<any> {
   let last = '';
   for (let i = 0; i < 4; i++) {
     const r = await fetch(url, { ...init, signal: AbortSignal.timeout(25000) });
@@ -915,15 +1025,18 @@ async function gf(url: string, init: any): Promise<any> {
     if (![429, 500, 502, 503, 504].includes(r.status)) throw new Error(last);
     await new Promise((x) => setTimeout(x, 700 * 2 ** i));
   }
-  throw new Error(`Gemini retry exhausted ${last}`);
+  throw new Error(`OpenAI retry exhausted ${last}`);
 }
-async function cg(k: string, m: string, i: string, tools = true): Promise<any> {
+async function createOpenAIResponse(k: string, m: string, i: string, tools = true): Promise<any> {
   const b: any = { model: m, input: i, background: true };
-  if (tools) b.tools = [{ type: 'google_search' }, { type: 'url_context' }];
-  return gf('https://generativelanguage.googleapis.com/v1beta/interactions', { method: 'POST', headers: { 'x-goog-api-key': k, 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  // Mandate: use ONLY the web_search tool (not Gemini's two-tool
+  // google_search+url_context shape) — reasoning effort left at the API's
+  // default for the main synthesis model rather than forced to max/xhigh.
+  if (tools) b.tools = [{ type: 'web_search' }];
+  return openaiFetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
 }
-async function gg(k: string, id: string): Promise<any> {
-  return gf(`https://generativelanguage.googleapis.com/v1beta/interactions/${encodeURIComponent(id)}`, { headers: { 'x-goog-api-key': k } });
+async function getOpenAIResponse(k: string, id: string): Promise<any> {
+  return openaiFetch(`https://api.openai.com/v1/responses/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${k}` } });
 }
 async function wf(path: string, method = 'GET', body?: any): Promise<{ code: number; data: any }> {
   const r = await fetch(`${WORKER}${path}`, { method, headers: { Authorization: `Bearer ${WT}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(30000) });
@@ -939,10 +1052,10 @@ async function wf(path: string, method = 'GET', body?: any): Promise<{ code: num
 }
 
 async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string): Promise<any> {
-  const p = await cg(k, m, prompt(s, j, j.result_json || {}, l), s !== 'SYNTHESIS');
+  const p = await createOpenAIResponse(k, m, prompt(s, j, j.result_json || {}, l), s !== 'SYNTHESIS');
   return sb
     .from('research_jobs')
-    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL' ? 46 : s === 'MARKET' ? 72 : 90, provider: 'gemini' }, error: null, updated_at: now() })
+    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL' ? 46 : s === 'MARKET' ? 72 : 90, provider: 'openai' }, error: null, updated_at: now() })
     .eq('id', j.id);
 }
 async function startBrowser(sb: any, j: any): Promise<any> {
@@ -966,9 +1079,10 @@ function bev(w: any): any[] {
       // fields nested inside sources[]/evidence_bundle[] items). Replaced
       // with a synthesized, always customer-safe retrievalMethod so the
       // frontend can tell "Homatch's own worker actually retrieved/
-      // checked this" apart from a mere Gemini search-grounding citation
-      // (srcs(), tagged GEMINI_GROUNDED) without ever exposing which raw
-      // internal state produced it.
+      // checked this" apart from a mere AI web-search-grounding citation
+      // (extractOpenAISources(), tagged OPENAI_WEB_SEARCH since the v30
+      // Gemini->OpenAI migration) without ever exposing which raw internal
+      // state produced it.
       e.push({ label: x.sourceName || x.source, url: u, evidenceLevel: x.sourceClass || 'OFFICIAL', retrievalMethod: x.retrievalMethod || (x.status === 'SEARCH_CONFIRMED' ? 'OFFICIAL_WORKER_VERIFIED' : x.status === 'NO_RESULT_CONFIRMED' ? 'OFFICIAL_WORKER_CHECKED' : 'OFFICIAL_WORKER_ATTEMPTED'), retrievedAt: x.retrievedAt, sourceCategory: sourceCategory(u, { isMap }) });
     }
     const docs = (x.documents || []).length ? x.documents : x.documentLinks || [];
@@ -1284,6 +1398,7 @@ function dueDiligenceCoverage(officialStatus: any, officialDocs: any[], companyP
   const developerPrimarySources = byCategory(['DEVELOPER_PRIMARY']);
   const mediaSources = byCategory(['MEDIA']);
   const forumSources = byCategory(['PUBLIC_FORUM']);
+  const publicSearchSources = byCategory(['PUBLIC_SEARCH']);
   const otherPublicSources = byCategory(['OTHER_PUBLIC']);
   let level: 'HIGH' | 'MEDIUM' | 'LIMITED' = 'LIMITED';
   if (officialSourcesChecked > 0 && officialStatus.officialVerificationComplete && documentsRead > 0) level = 'HIGH';
@@ -1303,10 +1418,55 @@ function dueDiligenceCoverage(officialStatus: any, officialDocs: any[], companyP
     developerPrimarySources,
     mediaSources,
     forumSources,
+    publicSearchSources,
     otherPublicSources,
     materialMismatches: conflicts.length,
     outstandingConfirmations: unverified.length,
   };
+}
+
+// computeOverallAssessment() (v30, mandate: "REPORT UX — stop making a
+// single missing confirmation (e.g. official commissioning) the headline
+// story when the surrounding evidence is abundant and largely positive").
+// This is intentionally a deterministic, code-level gate over structured
+// signals — never the model's own self-report — for exactly the same
+// reason overallConfidence()/dueDiligenceCoverage() are deterministic:
+// the level a customer sees must be reproducible from real evidence
+// counts, not from how the SYNTHESIS prompt happened to phrase things.
+// Never returns anything resembling "safe to buy" — this is a coverage/
+// evidence-quality signal (POSITIVE/GENERALLY_POSITIVE_WITH_ITEMS_TO_
+// VERIFY/MIXED/CAUTION), not a legal or transactional guarantee.
+type OverallAssessmentLevel = 'POSITIVE' | 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY' | 'MIXED' | 'CAUTION';
+function computeOverallAssessment(
+  gatedConfidence: 'HIGH' | 'MEDIUM' | 'LOW',
+  coverage: any,
+  riskFlags: { severity: 'LOW' | 'MEDIUM' | 'HIGH'; description: string }[],
+  conflictsAll: string[],
+  rightsAndRestrictions: { status: string },
+  itemsToVerifyCount: number
+): OverallAssessmentLevel {
+  const highRisks = riskFlags.filter((r) => r.severity === 'HIGH').length;
+  const mediumRisks = riskFlags.filter((r) => r.severity === 'MEDIUM').length;
+  // CAUTION: a genuinely serious, evidenced problem — never merely "a fact
+  // is still unconfirmed" (that is what ITEMS TO VERIFY is for).
+  if (highRisks >= 1 || rightsAndRestrictions.status === 'RESTRICTION_IDENTIFIED' || conflictsAll.length >= 2) {
+    return 'CAUTION';
+  }
+  // MIXED: some real friction in the evidence itself (a contradiction, or
+  // several medium risks, or thin coverage combined with low confidence) —
+  // more than "a few things to double-check before transacting".
+  if (conflictsAll.length >= 1 || mediumRisks >= 2 || (coverage.level === 'LIMITED' && gatedConfidence === 'LOW')) {
+    return 'MIXED';
+  }
+  // POSITIVE: the strict, rare case — strong confirmed identity, at least
+  // one official source actually retrieved, coverage not LIMITED, zero
+  // risk flags, zero conflicts, and nothing left for the customer to
+  // verify before a transaction. Anything short of this is the common
+  // "generally positive, but still verify these specific items" case.
+  if (gatedConfidence === 'HIGH' && coverage.officialSourcesRetrieved > 0 && coverage.level !== 'LIMITED' && riskFlags.length === 0 && conflictsAll.length === 0 && itemsToVerifyCount === 0) {
+    return 'POSITIVE';
+  }
+  return 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY';
 }
 
 // ── Hard synthesis gate (unchanged from v18): a deterministic, code-level
@@ -1450,8 +1610,8 @@ function applyEvidenceGate(result: any, identity: any, official: any, reconciled
 }
 
 async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any> {
-  const z = parse(txt(p));
-  const sources = srcs(p);
+  const z = parse(extractOpenAIText(p));
+  const sources = extractOpenAISources(p);
   const prior = j.result_json || {};
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
   prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
@@ -1526,11 +1686,32 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
       rrStatus === 'RESTRICTION_IDENTIFIED'
         ? ''
         : rrStatus === 'NONE_FOUND_IN_CHECKED_SOURCE'
-        ? `No material registered restriction was identified in the current evidence retrieved at ${now()}.`
-        : 'Current official confirmation is still required.',
+        ? (RR_NONE_FOUND_I18N[l] || RR_NONE_FOUND_I18N.en)(now())
+        : RR_NOT_CONFIRMED_I18N[l] || RR_NOT_CONFIRMED_I18N.en,
     asOf: now(),
   };
   const coverage = dueDiligenceCoverage(officialStatus, officialDocs, companyProfile, { comparables: sanitizeComparables(mr.market?.comparables || []) }, ev, conflictsAll, unverifiedAll, prior.browserOfficial);
+
+  // overallAssessment (v30): keyStrengths/itemsToVerify are the model's own
+  // authored lists (bound by the SYNTHESIS prompt's KEY STRENGTHS/ITEMS TO
+  // VERIFY instructions above — each entry must already be traceable to a
+  // fact/officialEvidence/publicEvidence item), deduped and capped here in
+  // code. A genuinely unresolved rights/restrictions or official-status gap
+  // must never silently vanish from the report just because the model's own
+  // list happened to omit it — so we guarantee at least one mention of it
+  // here if the model didn't already include an equivalent item, without
+  // ever inflating the list with padding.
+  const keyStrengths = dedupe((z.keyStrengths || []).filter((x: any) => typeof x === 'string' && x.trim()), (x: string) => x.trim().toLowerCase()).slice(0, 5);
+  let itemsToVerify = dedupe((z.itemsToVerify || []).filter((x: any) => typeof x === 'string' && x.trim()), (x: string) => x.trim().toLowerCase()).slice(0, 4);
+  const rightsGapAlreadyMentioned = itemsToVerify.some((x: string) => /restrict|mortgage|encumbr|rights|commission|ownership|შეზღუდვ|რეგისტრაც|დამძიმებ|საკუთრებ|ექსპლუატაცი/i.test(x));
+  if (rightsAndRestrictions.status === 'NOT_CONFIRMED' && !rightsGapAlreadyMentioned) {
+    itemsToVerify = [...itemsToVerify, UNRESOLVED_RIGHTS_GAP_I18N[l] || UNRESOLVED_RIGHTS_GAP_I18N.en].slice(0, 4);
+  }
+  const overallAssessment = {
+    level: computeOverallAssessment(gatedConfidence, coverage, riskFlags, conflictsAll, rightsAndRestrictions, itemsToVerify.length),
+    keyStrengths,
+    itemsToVerify,
+  };
 
   let result: any = {
     status: 'OK',
@@ -1549,6 +1730,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     confidence: numericConfidence,
     summary: z.executiveSummary || '',
     coverageNote: note,
+    overallAssessment,
     rightsAndRestrictions,
     officialVerificationComplete: officialStatus.officialVerificationComplete,
     officialSourcesChecked: officialStatus.officialSourcesChecked,
@@ -1565,7 +1747,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // one. This is what lets the frontend show "MS Map: Retrieved / TAS:
     // Technical issue — not completed / My.gov: Checked — no result"
     // instead of a single opaque "1 official source checked".
-    officialSourceCoverage: officialSourceCoverage(prior.browserOfficial),
+    officialSourceCoverage: officialSourceCoverage(prior.browserOfficial, l),
     identifiedParent: i.identifiedParent || null,
     // v25: for a cadastral-mode job, the exact unit code is deterministically
     // forced back to the literal user-supplied query — never Gemini's own
@@ -1609,7 +1791,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     sources: ev,
     browserOfficial: prior.browserOfficial || null,
     requiresManualVerification: false,
-    researchProvider: 'gemini+playwright',
+    researchProvider: 'openai+playwright',
     costUsage: prior._cost,
     stage: 'COMPLETE',
     searchedAt: now(),
@@ -1651,9 +1833,13 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     if (j.status === 'CREATED' && j.stage === 'SYNTHESIS_READY') return launch(sb, k, m, j, 'SYNTHESIS', l);
     const a = String(j.stage || '').match(/^(IDENTITY|OFFICIAL|MARKET|SYNTHESIS)_WAITING$/);
     if (!a || !j.response_id) return;
-    const p = await gg(k, j.response_id);
+    // OpenAI Responses API statuses: queued/in_progress (poll again — falls
+    // through both branches below, matching this function's existing
+    // "no-op, caller re-polls later" behavior), completed, failed,
+    // cancelled, incomplete.
+    const p = await getOpenAIResponse(k, j.response_id);
     if (p.status === 'completed') return finish(sb, j, a[1] as Stage, p, l);
-    if (['failed', 'cancelled', 'incomplete'].includes(p.status)) throw new Error(`Gemini ${p.status}`);
+    if (['failed', 'cancelled', 'incomplete'].includes(p.status)) throw new Error(`OpenAI ${p.status}: ${JSON.stringify(p?.error || p?.incomplete_details || '').slice(0, 300)}`);
   } catch (e) {
     const s = String(e);
     const retry = /429|500|502|503|504|timeout|temporar/i.test(s);
@@ -1738,9 +1924,25 @@ Deno.serve(async (req) => {
     const b = await req.json().catch(() => ({}));
     const action = String(b.action || 'start');
     const lang = LANG[String(b.locale || b.language)] ? String(b.locale || b.language) : 'en';
-    const key = Deno.env.get('GEMINI_API_KEY');
-    const model = Deno.env.get('GEMINI_DISCOVERY_MODEL') || 'gemini-3.8-flash';
-    if (!key) return json({ error: 'Gemini not configured' }, 503);
+    // v30: Gemini removed entirely — OpenAI Responses API only, per the
+    // "REMOVE GEMINI COMPLETELY AND MIGRATE RESEARCH AI TO OPENAI" mandate.
+    // OPENAI_FAST_MODEL is read and available for a future cheap
+    // classification/entity-normalization call ("only when genuinely
+    // necessary") but no call site uses it yet this pass — the existing
+    // four-stage flow (IDENTITY/OFFICIAL/MARKET/SYNTHESIS) is unchanged and
+    // all four still use the main research model.
+    const key = Deno.env.get('OPENAI_API_KEY');
+    const model = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
+    const fastModel = Deno.env.get('OPENAI_FAST_MODEL') || 'gpt-5.6-luna';
+    void fastModel;
+    if (!key) {
+      // Mandate: fail clearly, never silently fall back to any other
+      // provider — but the CUSTOMER never sees the internal reason
+      // ("OpenAI not configured" is an admin/ops fact, not something to
+      // leak in a CORS-intact response). Admin logs get the real cause.
+      console.error('research-agent: OPENAI_API_KEY is not configured in this project\'s Edge Function secrets — refusing the request rather than calling any other provider.');
+      return json({ error: GENERIC_CONFIG_ERROR_I18N[lang] || GENERIC_CONFIG_ERROR_I18N.en }, 503);
+    }
 
     if (action === 'status' || action === 'resume' || action === 'skip') {
       const id = String(b.jobId || '');

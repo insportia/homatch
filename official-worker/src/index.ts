@@ -93,7 +93,7 @@ app.get('/research/:id', auth, (req: any, res: any) => {
 
 // POST /research/enreg-entity — the closed-loop fix for a confirmed gap:
 // a legal entity (developer/owner company) discovered by research-agent's
-// own web research (Gemini google_search, not this worker's own browser
+// own web research (OpenAI web_search, not this worker's own browser
 // session) has no browser-retrieved document text for EntityQueue to scan,
 // so the normal "auto-ENREG once every primary source finishes" path never
 // sees it. This lets a caller directly request a single, real, deterministic

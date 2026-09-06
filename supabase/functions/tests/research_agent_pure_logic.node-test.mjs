@@ -398,3 +398,307 @@ test('pickFinancialCandidate: no companyProfile at all -> no candidate for any o
   assert.equal(pickFinancialCandidate(prior, 'rstax'), null);
   assert.equal(pickFinancialCandidate(prior, 'debtor'), null);
 });
+
+// ---- v30 additions: OpenAI Responses API migration + PUBLIC_SEARCH source
+// category + computeOverallAssessment() + localized officialSourceCoverage
+// names — copied verbatim from the deployed v30 source. See index.ts's own
+// v30 comments for the full "REMOVE GEMINI COMPLETELY AND MIGRATE RESEARCH
+// AI TO OPENAI" + "CORRECT THE LIVE PRODUCT NOW" mandate context.
+
+const SEARCH_ENGINE_HOST_RE = /(?:^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|search\.yahoo\.com|yandex\.[a-z.]+)$/i;
+function isSearchResultsUrl(url, host) {
+  if (!SEARCH_ENGINE_HOST_RE.test(host)) return false;
+  try {
+    return /\/search\b/i.test(new URL(url).pathname) || /(?:^|[?&])q=/i.test(new URL(url).search);
+  } catch {
+    return true;
+  }
+}
+function sourceCategoryV30(url, hint) {
+  if (!url) return 'OTHER_PUBLIC';
+  let host = '';
+  try {
+    host = new URL(url).hostname.replace(/^www\./i, '');
+  } catch {
+    return 'OTHER_PUBLIC';
+  }
+  if (OFFICIAL_HOST_RE.test(host)) {
+    if (hint?.isMap || /ms\.gov\.ge$/i.test(host)) return 'OFFICIAL_MAP';
+    if (hint?.isDocument) return 'OFFICIAL_DOCUMENT';
+    return 'OFFICIAL_REGISTRY';
+  }
+  if (hint?.isDeveloperPrimary) return 'DEVELOPER_PRIMARY';
+  if (isSearchResultsUrl(url, host)) return 'PUBLIC_SEARCH';
+  if (PROPERTY_PORTAL_HOST_RE.test(host)) return 'MARKET_LISTING';
+  if (SOCIAL_HOST_RE.test(host)) return /facebook\.com\/groups|t\.me\/joinchat|t\.me\/\+/i.test(url) ? 'PUBLIC_GROUP' : 'SOCIAL';
+  if (MEDIA_HOST_RE.test(host)) return 'MEDIA';
+  if (FORUM_HOST_RE.test(host)) return 'PUBLIC_FORUM';
+  return 'OTHER_PUBLIC';
+}
+
+test('sourceCategory (v30): a search-engine results URL is PUBLIC_SEARCH, never OTHER_PUBLIC or a real citation', () => {
+  assert.equal(sourceCategoryV30('https://www.google.com/search?q=villion+krtsanisi'), 'PUBLIC_SEARCH');
+  assert.equal(sourceCategoryV30('https://www.bing.com/search?q=millennio+group'), 'PUBLIC_SEARCH');
+});
+test('sourceCategory (v30): a specific Google Maps/Docs URL (not a /search results page) is NOT swept into PUBLIC_SEARCH', () => {
+  assert.notEqual(sourceCategoryV30('https://www.google.com/maps/place/Villion'), 'PUBLIC_SEARCH');
+});
+test('sourceCategory (v30): official/portal/social classification is unchanged by the PUBLIC_SEARCH addition', () => {
+  assert.equal(sourceCategoryV30('https://tas.ge/?p=searchdocument'), 'OFFICIAL_REGISTRY');
+  assert.equal(sourceCategoryV30('https://www.myhome.ge/listing/123'), 'MARKET_LISTING');
+});
+
+// computeOverallAssessment() (v30, "REPORT UX" mandate) — copied verbatim.
+function computeOverallAssessment(gatedConfidence, coverage, riskFlags, conflictsAll, rightsAndRestrictions, itemsToVerifyCount) {
+  const highRisks = riskFlags.filter((r) => r.severity === 'HIGH').length;
+  const mediumRisks = riskFlags.filter((r) => r.severity === 'MEDIUM').length;
+  if (highRisks >= 1 || rightsAndRestrictions.status === 'RESTRICTION_IDENTIFIED' || conflictsAll.length >= 2) return 'CAUTION';
+  if (conflictsAll.length >= 1 || mediumRisks >= 2 || (coverage.level === 'LIMITED' && gatedConfidence === 'LOW')) return 'MIXED';
+  if (gatedConfidence === 'HIGH' && coverage.officialSourcesRetrieved > 0 && coverage.level !== 'LIMITED' && riskFlags.length === 0 && conflictsAll.length === 0 && itemsToVerifyCount === 0) return 'POSITIVE';
+  return 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY';
+}
+
+test('computeOverallAssessment: a HIGH-severity risk flag alone forces CAUTION, regardless of everything else', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [{ severity: 'HIGH', description: 'x' }], [], { status: 'NOT_CONFIRMED' }, 0);
+  assert.equal(lvl, 'CAUTION');
+});
+test('computeOverallAssessment: an identified registered restriction forces CAUTION even with zero risk flags', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], [], { status: 'RESTRICTION_IDENTIFIED' }, 0);
+  assert.equal(lvl, 'CAUTION');
+});
+test('computeOverallAssessment: 2+ unresolved conflicts forces CAUTION', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], ['a', 'b'], { status: 'NOT_CONFIRMED' }, 0);
+  assert.equal(lvl, 'CAUTION');
+});
+test('computeOverallAssessment: exactly 1 conflict is MIXED, not CAUTION', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], ['a'], { status: 'NOT_CONFIRMED' }, 0);
+  assert.equal(lvl, 'MIXED');
+});
+test('computeOverallAssessment: 2+ MEDIUM risk flags (no HIGH) is MIXED', () => {
+  const lvl = computeOverallAssessment('MEDIUM', { level: 'MEDIUM', officialSourcesRetrieved: 1 }, [{ severity: 'MEDIUM', description: 'a' }, { severity: 'MEDIUM', description: 'b' }], [], { status: 'NOT_CONFIRMED' }, 0);
+  assert.equal(lvl, 'MIXED');
+});
+test('computeOverallAssessment: LIMITED coverage + LOW confidence (thin research) is MIXED even with no risk/conflicts', () => {
+  const lvl = computeOverallAssessment('LOW', { level: 'LIMITED', officialSourcesRetrieved: 0 }, [], [], { status: 'NOT_CONFIRMED' }, 0);
+  assert.equal(lvl, 'MIXED');
+});
+test('computeOverallAssessment: the strict POSITIVE case — HIGH confidence, an official source retrieved, non-LIMITED coverage, zero risks/conflicts/itemsToVerify', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 1 }, [], [], { status: 'NONE_FOUND_IN_CHECKED_SOURCE' }, 0);
+  assert.equal(lvl, 'POSITIVE');
+});
+test('computeOverallAssessment: HIGH confidence but itemsToVerify still non-empty is NOT POSITIVE — falls to the common GENERALLY_POSITIVE case (the exact mandate scenario: abundant positive evidence, one thing still to check)', () => {
+  const lvl = computeOverallAssessment('HIGH', { level: 'HIGH', officialSourcesRetrieved: 3 }, [], [], { status: 'NOT_CONFIRMED' }, 1);
+  assert.equal(lvl, 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY');
+});
+test('computeOverallAssessment: the common default — LOW/MEDIUM confidence, no serious risk — is GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY, never CAUTION', () => {
+  const lvl = computeOverallAssessment('MEDIUM', { level: 'MEDIUM', officialSourcesRetrieved: 1 }, [{ severity: 'LOW', description: 'x' }], [], { status: 'NOT_CONFIRMED' }, 2);
+  assert.equal(lvl, 'GENERALLY_POSITIVE_WITH_ITEMS_TO_VERIFY');
+});
+
+// localizedSourceName() / officialSourceCoverage() (v30) — copied verbatim.
+// Mandate item 5: "Never show raw source IDs like rstax to customers."
+const SOURCE_NAME_I18N = {
+  tas: { ka: 'TAS — საჯარო რეესტრის საინფორმაციო სისტემა', en: 'TAS — Public Registry Information System' },
+  rstax: { ka: 'შემოსავლების სამსახური — გადასახადის გადამხდელთა რეესტრი', en: 'Revenue Service — Taxpayers Registry' },
+  debtor: { ka: 'MyGov — მოვალეთა რეესტრი', en: 'MyGov — Debtor Registry' },
+};
+function localizedSourceName(sourceKey, fallbackName, locale) {
+  const entry = SOURCE_NAME_I18N[String(sourceKey || '').toLowerCase()];
+  if (!entry) return fallbackName;
+  return entry[locale] || entry.en;
+}
+function officialSourceCoverageV30(browserOfficial, locale = 'en') {
+  const results = browserOfficial?.results || [];
+  return results.map((r) => ({ source: r.source, sourceName: localizedSourceName(r.source, r.sourceName || r.source, locale), customerStatus: customerSourceStatus(r.status) }));
+}
+
+test('officialSourceCoverage (v30): rstax/debtor get real localized names in Georgian, never the raw adapter key', () => {
+  const cov = officialSourceCoverageV30({ results: [
+    { source: 'rstax', sourceName: 'RS Taxpayers Registry', status: 'NO_RESULT_CONFIRMED' },
+    { source: 'debtor', sourceName: 'MyGov Debtor Registry', status: 'NO_RESULT_CONFIRMED' },
+  ] }, 'ka');
+  assert.equal(cov[0].sourceName, 'შემოსავლების სამსახური — გადასახადის გადამხდელთა რეესტრი');
+  assert.equal(cov[1].sourceName, 'MyGov — მოვალეთა რეესტრი');
+  for (const c of cov) {
+    assert.notEqual(c.sourceName, 'rstax');
+    assert.notEqual(c.sourceName, 'debtor');
+  }
+});
+test('officialSourceCoverage (v30): falls back to English name when locale is unrecognized/unset, never the raw key', () => {
+  const cov = officialSourceCoverageV30({ results: [{ source: 'tas', sourceName: 'TAS', status: 'SEARCH_CONFIRMED' }] });
+  assert.equal(cov[0].sourceName, 'TAS — Public Registry Information System');
+});
+test('officialSourceCoverage (v30): an unrecognized future adapter key falls back to the worker\'s own sourceName, still never a bare key alone if sourceName was provided', () => {
+  const cov = officialSourceCoverageV30({ results: [{ source: 'futureadapter', sourceName: 'Future Adapter Registry', status: 'SEARCH_CONFIRMED' }] }, 'ka');
+  assert.equal(cov[0].sourceName, 'Future Adapter Registry');
+});
+
+// ---- OpenAI Responses API migration tests (v30) — extractOpenAIText/
+// extractOpenAISources copied verbatim; createOpenAIResponse/
+// getOpenAIResponse/openaiFetch re-implemented against a stubbed
+// global.fetch so no real network call is made. These are the mandate's
+// explicit testing requirement: "mock a completed response, in_progress,
+// failed, incomplete, web-search citations, usage extraction, malformed
+// output, retryable 429/5xx" and "confirm Gemini endpoints are never
+// called by Verify tests."
+
+function safeUrlTest(u) {
+  try {
+    const x = new URL(u);
+    return ['http:', 'https:'].includes(x.protocol) ? x.toString() : null;
+  } catch {
+    return null;
+  }
+}
+function officialTest(u) {
+  try {
+    return /(gov\.ge|tas\.ge|napr\.gov\.ge|ms\.gov\.ge|reestri\.gov\.ge)$/i.test(new URL(u).hostname);
+  } catch {
+    return false;
+  }
+}
+function dedupeSimple(o, k) {
+  return [...new Map(o.map((x) => [k(x), x])).values()];
+}
+function extractOpenAIText(p) {
+  let t = '';
+  for (const o of p?.output || []) if (o?.type === 'message') for (const c of o?.content || []) if (c?.type === 'output_text') t += c.text || '';
+  return t;
+}
+function extractOpenAISources(p) {
+  const o = [];
+  for (const item of p?.output || [])
+    if (item?.type === 'message')
+      for (const c of item?.content || [])
+        for (const a of c?.annotations || [])
+          if (a?.type === 'url_citation' && a?.url) {
+            const u = safeUrlTest(a.url);
+            if (u) o.push({ label: a.title || u, url: u, evidenceLevel: officialTest(u) ? 'OFFICIAL' : 'WEB_RETRIEVED', retrievalMethod: 'OPENAI_WEB_SEARCH' });
+          }
+  return dedupeSimple(o, (x) => x.url);
+}
+
+test('extractOpenAIText: concatenates output_text content across message items', () => {
+  const p = { output: [{ type: 'message', content: [{ type: 'output_text', text: 'Hello ' }, { type: 'output_text', text: 'world.' }] }] };
+  assert.equal(extractOpenAIText(p), 'Hello world.');
+});
+test('extractOpenAIText: ignores non-message output items (e.g. reasoning/tool-call items) and malformed/missing output', () => {
+  assert.equal(extractOpenAIText({ output: [{ type: 'reasoning', content: [{ type: 'output_text', text: 'should not appear' }] }] }), '');
+  assert.equal(extractOpenAIText({}), '');
+  assert.equal(extractOpenAIText(null), '');
+});
+test('extractOpenAISources: extracts url_citation annotations, tags them OPENAI_WEB_SEARCH, dedupes by URL', () => {
+  const p = { output: [{ type: 'message', content: [{ type: 'output_text', text: 'x', annotations: [
+    { type: 'url_citation', url: 'https://tas.ge/doc/1', title: 'TAS Document' },
+    { type: 'url_citation', url: 'https://myhome.ge/listing/2', title: 'Listing' },
+    { type: 'url_citation', url: 'https://tas.ge/doc/1', title: 'TAS Document (dup)' },
+  ] }] }] };
+  const srcs = extractOpenAISources(p);
+  assert.equal(srcs.length, 2);
+  assert.ok(srcs.every((s) => s.retrievalMethod === 'OPENAI_WEB_SEARCH'));
+  assert.equal(srcs.find((s) => s.url === 'https://tas.ge/doc/1').evidenceLevel, 'OFFICIAL');
+  assert.equal(srcs.find((s) => s.url === 'https://myhome.ge/listing/2').evidenceLevel, 'WEB_RETRIEVED');
+});
+test('extractOpenAISources: never fabricates a source from a non-url_citation annotation or an annotation with no url', () => {
+  const p = { output: [{ type: 'message', content: [{ type: 'output_text', text: 'x', annotations: [{ type: 'file_citation', file_id: 'f1' }, { type: 'url_citation' }] }] }] };
+  assert.equal(extractOpenAISources(p).length, 0);
+});
+
+// Stub-fetch based tests for the retry/backoff wrapper + endpoint shape.
+async function openaiFetchTest(url, init, fetchImpl) {
+  let last = '';
+  for (let i = 0; i < 4; i++) {
+    const r = await fetchImpl(url, init);
+    const t = await r.text();
+    if (r.ok) return JSON.parse(t);
+    last = `${r.status}: ${t.slice(0, 400)}`;
+    if (![429, 500, 502, 503, 504].includes(r.status)) throw new Error(last);
+  }
+  throw new Error(`OpenAI retry exhausted ${last}`);
+}
+function fakeResponse(status, body) {
+  return { ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(body) };
+}
+
+test('createOpenAIResponse shape: posts to api.openai.com/v1/responses with background:true, tools:[web_search], Bearer auth — never Gemini\'s endpoint/header shape', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return fakeResponse(200, { id: 'resp_1', status: 'queued' });
+  };
+  const k = 'sk-test', m = 'gpt-5.6-terra', i = 'Research this property.';
+  const body = { model: m, input: i, background: true, tools: [{ type: 'web_search' }] };
+  const result = await openaiFetchTest('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, fetchImpl);
+  assert.equal(result.status, 'queued');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.openai.com/v1/responses');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer sk-test');
+  const sentBody = JSON.parse(calls[0].init.body);
+  assert.equal(sentBody.background, true);
+  assert.deepEqual(sentBody.tools, [{ type: 'web_search' }]);
+  assert.ok(!calls[0].url.includes('generativelanguage.googleapis.com'), 'must never call the Gemini endpoint');
+  assert.ok(!('x-goog-api-key' in calls[0].init.headers), 'must never send Gemini\'s auth header style');
+});
+test('getOpenAIResponse shape: GETs api.openai.com/v1/responses/{id} with Bearer auth', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return fakeResponse(200, { id: 'resp_1', status: 'completed', output: [] });
+  };
+  const result = await openaiFetchTest('https://api.openai.com/v1/responses/resp_1', { headers: { Authorization: 'Bearer sk-test' } }, fetchImpl);
+  assert.equal(result.status, 'completed');
+  assert.equal(calls[0].url, 'https://api.openai.com/v1/responses/resp_1');
+});
+test('openaiFetch retry behavior: retries on 429/5xx and eventually succeeds', async () => {
+  let attempt = 0;
+  const fetchImpl = async () => {
+    attempt++;
+    if (attempt < 3) return fakeResponse(429, { error: 'rate limited' });
+    return fakeResponse(200, { id: 'resp_2', status: 'completed' });
+  };
+  const result = await openaiFetchTest('https://api.openai.com/v1/responses/resp_2', {}, fetchImpl);
+  assert.equal(result.status, 'completed');
+  assert.equal(attempt, 3);
+});
+test('openaiFetch retry behavior: a non-retryable 4xx (e.g. 401/400) throws immediately, no retry loop', async () => {
+  let attempt = 0;
+  const fetchImpl = async () => {
+    attempt++;
+    return fakeResponse(401, { error: 'invalid api key' });
+  };
+  await assert.rejects(() => openaiFetchTest('https://api.openai.com/v1/responses', {}, fetchImpl), /401/);
+  assert.equal(attempt, 1);
+});
+test('openaiFetch retry behavior: persistent 5xx exhausts all 4 attempts then throws', async () => {
+  let attempt = 0;
+  const fetchImpl = async () => {
+    attempt++;
+    return fakeResponse(503, { error: 'unavailable' });
+  };
+  await assert.rejects(() => openaiFetchTest('https://api.openai.com/v1/responses', {}, fetchImpl), /OpenAI retry exhausted/);
+  assert.equal(attempt, 4);
+});
+
+// advance()'s status-branching (v30): OpenAI's queued/in_progress/completed/
+// failed/cancelled/incomplete statuses must all be handled — copied
+// verbatim (simplified to the pure branch logic, no DB calls).
+function classifyOpenAIStatus(p) {
+  if (p.status === 'completed') return 'DONE';
+  if (['queued', 'in_progress'].includes(p.status)) return 'POLL_AGAIN';
+  if (['failed', 'cancelled', 'incomplete'].includes(p.status)) return 'ERROR';
+  return 'UNKNOWN';
+}
+test('classifyOpenAIStatus: handles every documented OpenAI Responses API status, including the async-poll states Gemini never had under these exact names', () => {
+  assert.equal(classifyOpenAIStatus({ status: 'completed' }), 'DONE');
+  assert.equal(classifyOpenAIStatus({ status: 'queued' }), 'POLL_AGAIN');
+  assert.equal(classifyOpenAIStatus({ status: 'in_progress' }), 'POLL_AGAIN');
+  assert.equal(classifyOpenAIStatus({ status: 'failed' }), 'ERROR');
+  assert.equal(classifyOpenAIStatus({ status: 'cancelled' }), 'ERROR');
+  assert.equal(classifyOpenAIStatus({ status: 'incomplete' }), 'ERROR');
+});
+test('malformed/empty OpenAI output never throws when extracting text/sources — degrades to empty rather than crashing the job', () => {
+  assert.equal(extractOpenAIText({ output: null }), '');
+  assert.deepEqual(extractOpenAISources({ output: undefined }), []);
+  assert.doesNotThrow(() => extractOpenAIText(undefined));
+  assert.doesNotThrow(() => extractOpenAISources(undefined));
+});

@@ -1,0 +1,31 @@
+import { test, expect } from '@playwright/test';
+
+test('test', async ({ page }) => {
+  await page.goto('https://my.gov.ge/');
+  await page.goto('https://my.gov.ge/ka-ge/services/10');
+  await page.locator('a').filter({ hasText: 'უძრავი ქონების რეესტრში განაცხადების ძებნა უძრავი ქონების რეესტრში განაცხადების ' }).click();
+  await page.locator('#main-routing-container iframe').contentFrame().locator('#input_5').click();
+  await page.locator('#main-routing-container iframe').contentFrame().locator('#input_5').press('ControlOrMeta+ვ');
+  await page.locator('#main-routing-container iframe').contentFrame().locator('#input_5').fill('01.18.06.019.055.03.01.603');
+  await page.locator('#main-routing-container iframe').contentFrame().getByRole('button', { name: 'განცხადების ძებნა' }).click();
+  await page.locator('#main-routing-container iframe').contentFrame().getByRole('button', { name: 'განცხადება 892024345197' }).click();
+  await page.frameLocator().getByRole('checkbox', { name: 'მე არ ვარ რობოტი' }).click();
+  await page.frameLocator().locator('[id="1"]').click();
+  await page.frameLocator().locator('[id="7"]').click();
+  await page.frameLocator().locator('[id="3"]').click();
+  await page.frameLocator().getByRole('button', { name: 'დადასტურება' }).click();
+  await page.frameLocator().locator('[id="3"]').click();
+  await page.frameLocator().getByRole('button', { name: 'დადასტურება' }).click();
+  await page.frameLocator().locator('[id="1"]').click();
+  await page.frameLocator().locator('[id="4"]').click();
+  await page.frameLocator().locator('[id="3"]').click();
+  await page.frameLocator().locator('[id="8"]').click();
+  await page.frameLocator().getByRole('button', { name: 'დადასტურება' }).click();
+  const page1Promise = page.waitForEvent('popup');
+  await page.locator('#main-routing-container iframe').contentFrame().getByRole('button', { name: 'მომზადებული დოკუმენტი: ამონაწერი საჯარო რეესტრიდან' }).click();
+  const page1 = await page1Promise;
+  const page2Promise = page.waitForEvent('popup');
+  await page.locator('#main-routing-container iframe').contentFrame().getByRole('button', { name: 'დოკუმენტი: სარეგისტრაციო წარმოება დასრულებულია 9 სექ 2024 15:' }).click();
+  const page2 = await page2Promise;
+  await page.locator('.goback').click();
+});

@@ -100,6 +100,32 @@ export async function pollForIframe(p: any, pattern: RegExp, { timeoutMs = 15000
   return { found: false, srcs, waitedMs: Date.now() - start };
 }
 
+/** Polls every frame (contexts(p)) for any of `selectors` to become visible,
+ * over a bounded window — used right after a real link click that reloads a
+ * page embedding a cross-origin ExtJS/JS-framework app (TAS's
+ * docs.tbilisi.gov.ge iframe): the iframe element itself can be present in
+ * the DOM immediately while its own JS-rendered form fields are not, and a
+ * fixed sleep is either too short (this sandbox's own environment) or
+ * wastefully long (nothing to wait for). Never a substitute for interact()'s
+ * own real matching — just gives the FIRST search attempt a fair chance to
+ * find a control that genuinely exists, rather than racing page load. */
+export async function pollForSelectorVisible(p: any, selectors: string[], { timeoutMs = 12000, pollMs = 400 }: { timeoutMs?: number; pollMs?: number } = {}): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    for (const f of contexts(p)) {
+      for (const s of selectors) {
+        try {
+          if (await visible(f.locator(s).first())) return true;
+        } catch {
+          /* frame mid-navigation or selector invalid in this frame — try the next one */
+        }
+      }
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  return false;
+}
+
 const NO_RESULT_PATTERNS = [
   /ჩანაწერი\s*ვერ\s*მოიძებნა/i,
   /ვერ\s*მოიძებნა/i,

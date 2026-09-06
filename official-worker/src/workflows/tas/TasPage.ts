@@ -6,7 +6,7 @@
 // Playwright-touching — NOT unit-testable in this sandbox. Local-syntax-
 // checked via `tsc --noEmit` only.
 import type { Page } from 'playwright';
-import { interact, waitForResultSignal, hasNoResultPhrase, totalFoundCount } from '../../browser/BrowserSession.js';
+import { interact, waitForResultSignal, hasNoResultPhrase, totalFoundCount, pollForSelectorVisible } from '../../browser/BrowserSession.js';
 import { exhaustResultRows } from '../../browser/ResultRowExhauster.js';
 import { CADASTRAL_INPUT_SELECTORS, DWR_NETWORK_PATTERN, TAS_URL, TAS_SEARCH_MENU_LABEL } from './selectors.js';
 
@@ -25,6 +25,20 @@ export class TasPage {
     // deep link above — see the selector's own comment for why this is
     // additive/non-blocking rather than a replacement for the direct URL.
     const searchMenuClicked = await this.clickSearchMenuIfPresent(page);
+    // Live-confirmed 2026-09-06: this label is a real <a href> pointing at
+    // the SAME URL already loaded, so clicking it (when present) triggers a
+    // genuine page reload of the outer tas.ge page — which tears down and
+    // re-embeds the docs.tbilisi.gov.ge ExtJS iframe from scratch. The old
+    // fixed waitForTimeout(1000) inside clickSearchMenuIfPresent gave that
+    // iframe's JS-rendered form no positive confirmation it had actually
+    // re-initialized before the caller proceeds to search — a plausible
+    // direct cause of the production SEARCH_CONTROL_NOT_FOUND result (the
+    // real field, input[name*="cad" i], was confirmed live to exist and work
+    // correctly once actually rendered). This poll gives the FIRST search
+    // attempt a genuine positive signal the control exists, bounded so a
+    // page that never re-embeds the iframe still proceeds (interact() itself
+    // then does the real, authoritative check).
+    if (searchMenuClicked) await pollForSelectorVisible(page as any, CADASTRAL_INPUT_SELECTORS, { timeoutMs: 12000 });
     return { searchMenuClicked };
   }
 

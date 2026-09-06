@@ -54,6 +54,14 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // "Supabase API" — third-party product/brand name + standard "API"
   // acronym; kept in Latin script in ka/ru/tr the same way "Google" is.
   'admin_health_api_label',
+  // "v{{n}}" — a version-number format ("v1", "v2"…), not natural language;
+  // identical in every locale the same way a date or percentage format is.
+  'cases_version_badge',
+  // Russian real-estate/M&A usage commonly keeps "due diligence" in Latin
+  // script rather than translating it (same pattern as Turkish "Villa"/
+  // "Platform" above) — ka/tr/ar/he all carry their own real translations
+  // for this key, so this can't be hiding a missing one elsewhere.
+  'cases_stage_due_diligence',
 ]);
 
 // Heuristic: values that don't need translating in the first place, so an

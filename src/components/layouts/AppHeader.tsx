@@ -31,6 +31,7 @@ import {
   Building2,
   Megaphone,
   Radio,
+  Briefcase,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 
@@ -43,6 +44,7 @@ const navItems = [
   { key: 'nav_active_search', path: '/active-search',  icon: Search },
   { key: 'nav_outreach',      path: '/outreach',       icon: Megaphone },
   { key: 'nav_verify',        path: '/verify',         icon: Shield },
+  { key: 'nav_cases',         path: '/cases',          icon: Briefcase },
   { key: 'nav_credits',       path: '/credits',        icon: Coins },
 ];
 

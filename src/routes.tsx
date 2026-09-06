@@ -24,6 +24,7 @@ import ActiveSearchPage from './pages/ActiveSearchPage';
 import DeveloperProfilePage from './pages/DeveloperProfilePage';
 import AIPage from './pages/AIPage';
 import VerifyPage from './pages/VerifyPage';
+import CasesPage from './pages/CasesPage';
 import PartnersPage from './pages/PartnersPage';
 // Outreach pages
 import OutreachHubPage from './pages/outreach/OutreachHubPage';
@@ -78,6 +79,7 @@ export const routes: RouteConfig[] = [
   { name: 'Terms of Service',  path: '/terms',                    element: <TermsPage />,         public: true },
   { name: 'AI Assistant',      path: '/ai',                       element: <AIPage />,            public: false },
   { name: 'Verify',            path: '/verify',                   element: <VerifyPage />,        public: true },
+  { name: 'My Deals',          path: '/cases',                    element: <CasesPage /> },
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },

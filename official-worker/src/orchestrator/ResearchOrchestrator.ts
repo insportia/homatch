@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { EvidenceLedger } from '../evidence/EvidenceLedger.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
-import { runMsMapWorkflow } from '../workflows/msmap/MsMapWorkflow.js';
+import { runTasMapWorker } from '../workflows/tasmap/TasMapWorker.js';
 import { runTasWorkflow } from '../workflows/tas/TasWorkflow.js';
 import { runMyGovWorkflow } from '../workflows/mygov/MyGovWorkflow.js';
 import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
@@ -170,7 +170,7 @@ export class ResearchOrchestrator {
     try {
       let result: any;
       if (key === 'tas') result = await runTasWorkflow(page, query, job.mode, entities);
-      else if (key === 'msmap') result = await runMsMapWorkflow(page, query, ledger, entities);
+      else if (key === 'TAS_MAP') result = await runTasMapWorker(page, query, ledger, entities);
       else if (key === 'mygov') result = await runMyGovWorkflow(page, ctx, query, entities);
       else if (key === 'enreg') result = await runEnregWorkflow(page, forEntity || { name: query, idCode: /^[0-9-]{6,}$/.test(String(query || '').trim()) ? query : null }, entities);
       else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities);
@@ -309,7 +309,7 @@ export class ResearchOrchestrator {
     let finalResult: any = null;
     try {
       if (key === 'tas') finalResult = await runTasWorkflow(session.page, session.query, job.mode, entities, { skipGoto: true });
-      else if (key === 'msmap') finalResult = await runMsMapWorkflow(session.page, session.query, ledger, entities, { skipGoto: true });
+      else if (key === 'TAS_MAP') finalResult = await runTasMapWorker(session.page, session.query, ledger, entities, { skipGoto: true });
       else if (key === 'mygov') finalResult = await runMyGovWorkflow(session.page, session.ctx, session.query, entities, { skipGoto: true });
       else if (key === 'enreg') {
         const forEntity = session.step.type === 'entity' ? { name: session.step.name, idCode: session.step.idCode } : { name: session.query, idCode: null };

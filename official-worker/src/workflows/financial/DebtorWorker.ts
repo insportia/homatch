@@ -39,7 +39,24 @@ import { DEBTOR_URL, DEBTOR_ID_INPUT_SELECTORS, DEBTOR_SOURCE_META } from './sel
 import type { LegacySourceResult } from '../WorkflowResult.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 
-function buildResult(status: string, opts: { selector?: string | null; value?: string | null; resultText?: string | null; error?: string | null; forEntity: { name: string; idCode: string | null } | null }): LegacySourceResult {
+/** 2026-09-06 "final alignment pass" mandate: an explicit, code-computed
+ * interpretation of the debtor-registry result — never left for the
+ * customer report generator to infer from the raw status string alone. A
+ * confirmed NO_RESULT (not listed as a debtor) is the POSITIVE outcome for
+ * a property buyer; a confirmed SEARCH result (a real debtor record) needs
+ * a human's attention. Any other status (technical failure, still waiting
+ * on human verification, etc.) is neither — null, not a guess. */
+function computeRegistryInterpretation(status: string): 'POSITIVE_WITHIN_DEBTOR_REGISTRY_SCOPE' | 'ATTENTION_REQUIRED' | null {
+  if (status === 'NO_RESULT_CONFIRMED') return 'POSITIVE_WITHIN_DEBTOR_REGISTRY_SCOPE';
+  if (status === 'SEARCH_CONFIRMED') return 'ATTENTION_REQUIRED';
+  return null;
+}
+
+function buildResult(
+  status: string,
+  opts: { selector?: string | null; value?: string | null; resultText?: string | null; error?: string | null; forEntity: { name: string; idCode: string | null } | null }
+): LegacySourceResult {
+  const registryInterpretation = computeRegistryInterpretation(status);
   return {
     source: 'debtor',
     sourceName: DEBTOR_SOURCE_META.name,
@@ -66,13 +83,15 @@ function buildResult(status: string, opts: { selector?: string | null; value?: s
     discoveredEntities: [],
     forEntity: opts.forEntity,
     error: opts.error || null,
+    registryInterpretation,
+    ...(registryInterpretation ? { debtorRecordFound: status === 'SEARCH_CONFIRMED' } : {}),
   };
 }
 
 export async function runDebtorWorker(
   page: Page,
   forEntity: { name: string; idCode: string | null } | null,
-  _entities?: EntityQueue,
+  entities?: EntityQueue,
   opts: { skipGoto?: boolean } = {}
 ): Promise<LegacySourceResult> {
   const idCode = forEntity?.idCode ? String(forEntity.idCode).trim() : null;
@@ -143,6 +162,13 @@ export async function runDebtorWorker(
       return buildResult('SUBMITTED_UNCONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, error: 'search submitted but no new result signal appeared' });
     }
     const status = hasNoResultPhrase(sig.after) ? 'NO_RESULT_CONFIRMED' : 'SEARCH_CONFIRMED';
+    // Feed whatever names/ids this result page actually carries into the
+    // shared EntityQueue — mandate's "wire the previously-unused entities
+    // parameter" fix. Never interrupts this worker's own result; purely
+    // additive bookkeeping for the orchestrator's later entity pass.
+    if (entities && status === 'SEARCH_CONFIRMED' && sig.after) {
+      entities.scanText(sig.after, { source: 'debtor', sourceDocument: DEBTOR_SOURCE_META.url, retrievedAt: new Date().toISOString() });
+    }
     return buildResult(status, { forEntity, selector: usedSelector, value: idCode, resultText: sig.after });
   } catch (e) {
     return buildResult('FAILED', { forEntity, error: String(e) });

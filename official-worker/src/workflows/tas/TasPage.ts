@@ -79,7 +79,13 @@ export class TasPage {
     };
   }
 
-  async exhaustResultRows(page: Page, expectedCount: number | null = null) {
-    return exhaustTasResultRows(page, expectedCount);
+  /** `scope` should be the real Frame searchCadastral() returned
+   * (`searchRes.frame`) whenever the search field/results actually live
+   * inside docs.tbilisi.gov.ge's embedded iframe — passing the outer
+   * `page` here in that case is the confirmed production bug
+   * (Page.locator() cannot see into iframe content). Falls back to `page`
+   * only when no frame is available (e.g. a genuine top-level render). */
+  async exhaustResultRows(scope: Page | any, expectedCount: number | null = null) {
+    return exhaustTasResultRows(scope, expectedCount);
   }
 }

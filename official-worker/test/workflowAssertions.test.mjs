@@ -5,20 +5,30 @@
 // FSM, so a regression here is a regression in the actual gating logic.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as msmap from '../.tstest-build/workflows/msmap/assertions.js';
+import * as tasmap from '../.tstest-build/workflows/tasmap/assertions.js';
 import * as tas from '../.tstest-build/workflows/tas/assertions.js';
 import * as mygov from '../.tstest-build/workflows/mygov/assertions.js';
 import * as enreg from '../.tstest-build/workflows/enreg/assertions.js';
 
-// ── MSMAP ────────────────────────────────────────────────────────────────
-test('msmap.assertRequiredLayersEnabled: both named layers must be on', () => {
-  assert.equal(msmap.assertRequiredLayersEnabled(true, true), true);
-  assert.equal(msmap.assertRequiredLayersEnabled(true, false), false);
-  assert.equal(msmap.assertRequiredLayersEnabled(false, false), false);
+// ── TAS_MAP ──────────────────────────────────────────────────────────────
+test('tasmap.assertRequiredLayersEnabled: both named layers must be on', () => {
+  assert.equal(tasmap.assertRequiredLayersEnabled(true, true), true);
+  assert.equal(tasmap.assertRequiredLayersEnabled(true, false), false);
+  assert.equal(tasmap.assertRequiredLayersEnabled(false, false), false);
 });
-test('msmap.assertParcelFocused: a click with no confirmed map redraw does NOT count (the exact reported bug)', () => {
-  assert.equal(msmap.assertParcelFocused(true, false), false);
-  assert.equal(msmap.assertParcelFocused(true, true), true);
+test('tasmap.assertParcelFocused: a click with no confirmed map redraw does NOT count (the exact reported bug)', () => {
+  assert.equal(tasmap.assertParcelFocused(true, false), false);
+  assert.equal(tasmap.assertParcelFocused(true, true), true);
+});
+test('tasmap.assertAllRequiredLayersEnabled: every one of the 6 required layers must be true', () => {
+  assert.equal(tasmap.assertAllRequiredLayersEnabled({ a: true, b: true }), true);
+  assert.equal(tasmap.assertAllRequiredLayersEnabled({ a: true, b: false }), false);
+  assert.equal(tasmap.assertAllRequiredLayersEnabled({}), false);
+});
+test('tasmap.assertSectionsTraversed: all available sections must be opened', () => {
+  assert.equal(tasmap.assertSectionsTraversed(3, 3), true);
+  assert.equal(tasmap.assertSectionsTraversed(2, 3), false);
+  assert.equal(tasmap.assertSectionsTraversed(0, 0), true);
 });
 
 // ── TAS ──────────────────────────────────────────────────────────────────

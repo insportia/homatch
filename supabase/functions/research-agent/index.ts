@@ -629,12 +629,16 @@ function customerSourceStatus(rawStatus: string | null | undefined): 'SUCCESS' |
 // one field of this pipeline explicitly kept customer-safe (see its own
 // comment at the call site), so its sourceName must be a real localized,
 // human name — never the internal adapter key (r.source, e.g. "rstax",
-// "debtor", "enreg", "tas", "msmap") — in whatever locale the request asked
-// for. Keyed by the worker's own stable adapter id, not by sourceName text,
-// so this never depends on exactly how the worker phrased its English name.
+// "debtor", "enreg", "tas", "TAS_MAP") — in whatever locale the request asked
+// for. Keyed by the worker's own stable adapter id (lowercased — this
+// lookup always lowercases r.source first), not by sourceName text, so this
+// never depends on exactly how the worker phrased its English name.
+// 'msmap' is retired (2026-09-06 "final alignment pass" mandate) — 'tas_map'
+// is the one real source (the map popup opened FROM tas.ge), not a second
+// entry kept alongside it.
 const SOURCE_NAME_I18N: Record<string, Record<string, string>> = {
   tas: { ka: 'TAS — საჯარო რეესტრის საინფორმაციო სისტემა', en: 'TAS — Public Registry Information System', ru: 'TAS — информационная система публичного реестра', tr: 'TAS — Kamu Sicili Bilgi Sistemi', ar: 'TAS — نظام معلومات السجل العام', he: 'TAS — מערכת מידע של המרשם הציבורי' },
-  msmap: { ka: 'საჯარო რეესტრის საკადასტრო რუკა (MS Map)', en: 'Public Registry Cadastral Map (MS Map)', ru: 'Кадастровая карта публичного реестра (MS Map)', tr: 'Kamu Sicili Kadastro Haritası (MS Map)', ar: 'خريطة السجل العقاري العامة (MS Map)', he: 'מפת הקדסטר של המרשם הציבורי (MS Map)' },
+  tas_map: { ka: 'საჯარო რეესტრის საკადასტრო რუკა (TAS Map)', en: 'Public Registry Cadastral Map (TAS Map)', ru: 'Кадастровая карта публичного реестра (TAS Map)', tr: 'Kamu Sicili Kadastro Haritası (TAS Map)', ar: 'خريطة السجل العقاري العامة (TAS Map)', he: 'מפת הקדסטר של המרשם הציבורי (TAS Map)' },
   napr: { ka: 'საჯარო რეესტრი — უძრავი ქონების რეესტრი (NAPR)', en: 'Public Registry — Real Estate Registry (NAPR)', ru: 'Публичный реестр — реестр недвижимости (NAPR)', tr: 'Kamu Sicili — Taşınmaz Sicili (NAPR)', ar: 'السجل العام — سجل العقارات (NAPR)', he: 'המרשם הציבורי — מרשם המקרקעין (NAPR)' },
   enreg: { ka: 'მეწარმეთა და არასამეწარმეო (არაკომერციული) იურიდიული პირების რეესტრი', en: 'Entrepreneurial and Non-Entrepreneurial Legal Entities Registry', ru: 'Реестр предпринимательских и непредпринимательских юридических лиц', tr: 'Ticari ve Ticari Olmayan Tüzel Kişiler Sicili', ar: 'سجل الكيانات القانونية التجارية وغير التجارية', he: 'מרשם התאגידים העסקיים והלא-עסקיים' },
   rstax: { ka: 'შემოსავლების სამსახური — გადასახადის გადამხდელთა რეესტრი', en: 'Revenue Service — Taxpayers Registry', ru: 'Служба доходов — реестр налогоплательщиков', tr: 'Gelirler Servisi — Vergi Mükellefleri Sicili', ar: 'مصلحة الإيرادات — سجل دافعي الضرائب', he: 'רשות ההכנסות — מרשם משלמי המסים' },
@@ -957,6 +961,57 @@ function sanitizeComparables(list: any[]): any[] {
     .filter(Boolean);
 }
 
+// median()/calculateMarketPosition() (2026-09-06 "final alignment pass"
+// mandate): MARKET's price positioning used to be entirely LLM-estimated
+// ("estimate a market median price-per-sqm and classify... relative to
+// that median") — no deterministic arithmetic existed anywhere in this
+// codebase. These two pure functions are that deterministic step: the LLM
+// (see the MARKET prompt above) now only GATHERS numeric evidence
+// (comparables[].pricePerSqm, subject.pricePerSqm) and qualitative
+// priceDriverEvidence; the median/percentage/classification themselves are
+// always computed here, in code, from real numbers — never asked of or
+// trusted from the model.
+function parseNumericPricePerSqm(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v !== 'string') return null;
+  const cleaned = v.replace(/[,\s]/g, '').match(/-?\d+(\.\d+)?/);
+  if (!cleaned) return null;
+  const n = Number(cleaned[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function median(values: number[]): number | null {
+  const nums = values.filter((n) => typeof n === 'number' && Number.isFinite(n)).sort((a, b) => a - b);
+  if (nums.length === 0) return null;
+  const mid = Math.floor(nums.length / 2);
+  return nums.length % 2 === 0 ? (nums[mid - 1] + nums[mid]) / 2 : nums[mid];
+}
+
+interface MarketPositionResult {
+  marketMedianPricePerSqm: number | null;
+  premiumPct: number | null;
+  position: 'PREMIUM' | 'DISCOUNT' | 'MARKET_RANGE' | 'UNKNOWN';
+  comparablesUsed: number;
+}
+
+/** Deterministic classification: PREMIUM when the subject's own evidenced
+ * price-per-sqm is more than 7% above the comparables' median, DISCOUNT
+ * when more than 7% below, MARKET_RANGE otherwise. UNKNOWN (never a
+ * guessed classification) whenever either the subject's own price or a
+ * usable comparables median is missing — the exact "UNKNOWN when no
+ * subject price is evidenced" rule the old prompt asked the LLM to honor
+ * itself, now enforced in code regardless of what the LLM returns. */
+function calculateMarketPosition({ targetPricePerSqm, comparables }: { targetPricePerSqm: number | null; comparables: Array<{ pricePerSqm?: unknown }> }): MarketPositionResult {
+  const values = (comparables || []).map((c) => parseNumericPricePerSqm(c?.pricePerSqm)).filter((n): n is number => n != null);
+  const marketMedianPricePerSqm = median(values);
+  if (targetPricePerSqm == null || marketMedianPricePerSqm == null || marketMedianPricePerSqm === 0) {
+    return { marketMedianPricePerSqm, premiumPct: null, position: 'UNKNOWN', comparablesUsed: values.length };
+  }
+  const premiumPct = ((targetPricePerSqm - marketMedianPricePerSqm) / marketMedianPricePerSqm) * 100;
+  const position: MarketPositionResult['position'] = premiumPct > 7 ? 'PREMIUM' : premiumPct < -7 ? 'DISCOUNT' : 'MARKET_RANGE';
+  return { marketMedianPricePerSqm, premiumPct, position, comparablesUsed: values.length };
+}
+
 // UNVERIFIED_FALLBACK_I18N (v21, master due-diligence mandate): the exact
 // required sentence for any high-impact fact (ownership, restrictions,
 // commissioning, seller authority, etc.) that fails the STRICT FACT GATE.
@@ -1149,9 +1204,10 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     return (
       `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
       `Research actual public listing/post URLs and comparables: same building/project first, then street/micro-location, similar area/rooms/condition/floor. Include MyHome, SS, developer/project/agency sites, public social pages/posts, news, reviews/forums where accessible. ` +
-      `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt, sameProject (true only when literally the same building/project as the subject). If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. ` +
-      `PRICE-DRIVER REASONING (mandatory): from the comparables you gathered (weighting same-project ones first, then nearby/similar ones), estimate a market median price-per-sqm and classify the subject property's own evidenced price as "CHEAPER", "NORMAL", "PREMIUM", or "UNKNOWN" (when no subject price is evidenced) relative to that median. Explain WHY, grounded only in evidence already gathered this run (Identity/Official/PublicResearch above, or your own comparables): construction completion stage, remaining inventory/scarcity, availability of internal/developer installment financing, construction materials and structural system, architecture/design and architect reputation, developer reputation, parking availability, floor/view/layout, amenities, location/micro-location, bank financing availability, and current supply of comparable listings. Never state a price driver you cannot support with evidence gathered this run — omit it instead. ` +
-      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"sameProject":boolean}],"priceDrivers":{"positioning":"CHEAPER"|"NORMAL"|"PREMIUM"|"UNKNOWN","marketMedianPricePerSqm":string|null,"reasoning":string[]}},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
+      `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt, sameProject (true only when literally the same building/project as the subject). If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. pricePerSqm (both here and in "subject" below) MUST be a plain numeric string in the SAME currency unit per square meter (no thousands separators, currency symbols or ranges) whenever you have a specific number — a deterministic step downstream computes the median/premium from these numbers directly, so a non-numeric or approximate value here simply will not be counted rather than being parsed loosely. ` +
+      `SUBJECT PROPERTY'S OWN PRICE (separate from comparables): if — and only if — you find the subject property's own price/price-per-sqm specifically evidenced (its own listing, an official document, or public reporting), return it in "subject" below with the exact evidence URL. Never estimate or infer it from comparables; leave every field null when no such evidence exists for THIS specific property. ` +
+      `PRICE-DRIVER EVIDENCE (mandatory, qualitative only — you do NOT compute a median, a percentage, or a CHEAPER/NORMAL/PREMIUM classification; a deterministic step downstream does that arithmetic from the numeric comparables/subject fields above): list the concrete, evidence-backed factors relevant to how this property's price compares to its market, grounded only in evidence already gathered this run (Identity/Official/PublicResearch above, or your own comparables): construction completion stage, remaining inventory/scarcity, availability of internal/developer installment financing, construction materials and structural system, architecture/design and architect reputation, developer reputation, parking availability, floor/view/layout, amenities, location/micro-location, bank financing availability, and current supply of comparable listings. Never state a price driver you cannot support with evidence gathered this run — omit it instead. ` +
+      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"sameProject":boolean}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
     );
   }
 
@@ -1234,7 +1290,7 @@ async function startBrowser(sb: any, j: any): Promise<any> {
 function bev(w: any): any[] {
   const e: any[] = [];
   for (const x of w?.results || []) {
-    const isMap = x.source === 'msmap';
+    const isMap = x.source === 'TAS_MAP';
     if (x.finalUrl || x.sourceUrl) {
       const u = x.finalUrl || x.sourceUrl;
       // v26: this used to also carry the raw `status` value straight from
@@ -2101,11 +2157,27 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     documents: o.documents || [],
     officialDocumentsRetrieved: officialDocs,
     historicalComparison: prior.browserOfficial?.historicalComparison || null,
-    // priceDrivers (2026-09-06 mandate): MARKET's own price-positioning
-    // reasoning (CHEAPER/NORMAL/PREMIUM/UNKNOWN + evidenced reasoning list)
-    // — additive alongside the existing priceEvidence/comparables shape so
-    // no existing frontend rendering of `market` needs to change.
-    market: { priceEvidence: mr.market?.priceEvidence || [], comparables: sanitizeComparables(mr.market?.comparables || []), priceDrivers: mr.market?.priceDrivers || null },
+    // priceDrivers (2026-09-06 "final alignment pass" mandate): positioning/
+    // marketMedianPricePerSqm/premiumPct are now ALWAYS computed by
+    // calculateMarketPosition()/median() (pure JS, above) from the real
+    // numeric comparables the MARKET stage gathered — never LLM-estimated.
+    // `reasoning` stays qualitative color the model supplies
+    // (priceDriverEvidence), never the classification itself.
+    market: (() => {
+      const sanitizedComparables = sanitizeComparables(mr.market?.comparables || []);
+      const marketPosition = calculateMarketPosition({ targetPricePerSqm: parseNumericPricePerSqm(mr.market?.subject?.pricePerSqm), comparables: sanitizedComparables });
+      return {
+        priceEvidence: mr.market?.priceEvidence || [],
+        comparables: sanitizedComparables,
+        priceDrivers: {
+          positioning: marketPosition.position,
+          marketMedianPricePerSqm: marketPosition.marketMedianPricePerSqm != null ? String(marketPosition.marketMedianPricePerSqm) : null,
+          premiumPct: marketPosition.premiumPct,
+          comparablesUsed: marketPosition.comparablesUsed,
+          reasoning: Array.isArray(mr.market?.priceDriverEvidence) ? mr.market.priceDriverEvidence : Array.isArray(mr.market?.priceDrivers?.reasoning) ? mr.market.priceDrivers.reasoning : [],
+        },
+      };
+    })(),
     reviews: mr.reviews || null,
     officialEvidence: z.officialEvidence?.length ? z.officialEvidence : o.officialEvidence || [],
     publicEvidence: z.publicEvidence?.length ? z.publicEvidence : mr.publicEvidence || [],
@@ -2225,9 +2297,54 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
 // read the very same internal fields back out of result_json on the NEXT
 // invocation to keep driving the job — stripping them early would break the
 // job, not just hide diagnostics from a finished one.
+// sanitizeCustomerReport() (2026-09-06 "final alignment pass" mandate): the
+// confirmed remaining gap after sanitizeForCustomer() above — that function
+// only deletes whole TOP-LEVEL admin-only keys (browserOfficial, stage,
+// etc.); it never reaches into customer-facing nested structures like
+// market.comparables[], officialDocumentsRetrieved[], sources[], or
+// documents[], each of which can carry raw source URLs and internal
+// worker-attribution strings even though VerifyPage.tsx's own JSX chooses
+// not to render them — visible to anyone opening the browser's Network tab
+// regardless of what the page draws. This recursively walks the ENTIRE
+// customer-facing object (arrays and plain objects only — it never
+// descends into or mutates anything else) and deletes exactly the
+// technical/URL-shaped keys named below, wherever they appear, however
+// deeply nested.
+//
+// Deliberately narrower than a blanket "strip source/sourceName
+// everywhere": officialSourceCoverage() (this file, above) already
+// produces its own `source`/`sourceName` fields specifically so the
+// customer sees a real, neutral, localized display name instead of the
+// internal adapter key — the audit that produced this pass confirmed that
+// output shape is already correct. Recursively deleting every `source`/
+// `sourceName` key in the whole payload would silently break that
+// already-working, explicitly-verified feature, not fix a gap — so those
+// two keys are intentionally NOT in this list. What IS: every raw-URL
+// field shape used anywhere in this schema (matching, on the server side,
+// the exact same key set VerifyPage.tsx's own pre-existing
+// stripUrlFields() already uses client-side for the AI-chat handoff —
+// url/evidenceUrl/verificationUrl/linkLabel — so both paths agree on what
+// "customer-safe" means), plus the two purely internal/diagnostic fields
+// (retrievalMethod, trace) that mean nothing to a customer and were never
+// meant to cross the HTTP boundary at all.
+const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial']);
+
+function sanitizeCustomerReport<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v)) as unknown as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (CUSTOMER_REPORT_STRIP_KEYS.has(k)) continue;
+      out[k] = sanitizeCustomerReport(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 function sanitizeForCustomer(job: any): any {
   if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
-  const r: any = { ...job.result_json };
+  const r: any = sanitizeCustomerReport({ ...job.result_json });
   delete r.browserOfficial;
   delete r.entityConfidence;
   delete r.confidence;

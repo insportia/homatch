@@ -17,7 +17,7 @@
 // + `result.forEntity`) is unaffected, since it was already computed from
 // `key`/`forEntity` at the point a result crosses into job.results, never
 // from this type's own tag.
-export type StepDescriptor = { type: 'source'; key: 'tas' | 'msmap' | 'mygov' | 'enreg' | 'napr' } | { type: 'entity'; source: 'enreg' | 'rstax' | 'debtor'; idCode: string | null; name: string };
+export type StepDescriptor = { type: 'source'; key: 'tas' | 'TAS_MAP' | 'mygov' | 'enreg' | 'napr' } | { type: 'entity'; source: 'enreg' | 'rstax' | 'debtor'; idCode: string | null; name: string };
 
 export interface ResearchJob {
   id: string;
@@ -49,10 +49,13 @@ export interface ResearchJob {
 // primary steps have reported (primaryStepsRemain, below) — so reordering
 // this array changes only presentation/traversal order, not correctness.
 // Property-mode order is left unchanged (the mandate's worker list does not
-// give an unambiguous property-mode sequence, and enreg/msmap/napr already
+// give an unambiguous property-mode sequence, and enreg/TAS_MAP/napr already
 // matches its own established behavior).
+// 'msmap' is retired here (2026-09-06 "final alignment pass" mandate) —
+// 'TAS_MAP' is the one real source (the map popup opened FROM tas.ge), not a
+// second source kept alongside it.
 export function buildInitialSteps(job: Pick<ResearchJob, 'mode'>): StepDescriptor[] {
-  const keys: StepDescriptor['type'] extends never ? never : Array<'tas' | 'msmap' | 'mygov' | 'enreg' | 'napr'> = job.mode === 'cadastral' ? ['msmap', 'tas', 'mygov'] : ['enreg', 'msmap', 'napr'];
+  const keys: StepDescriptor['type'] extends never ? never : Array<'tas' | 'TAS_MAP' | 'mygov' | 'enreg' | 'napr'> = job.mode === 'cadastral' ? ['TAS_MAP', 'tas', 'mygov'] : ['enreg', 'TAS_MAP', 'napr'];
   return keys.map((key) => ({ type: 'source', key }) as StepDescriptor);
 }
 

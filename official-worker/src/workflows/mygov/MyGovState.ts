@@ -77,5 +77,7 @@ export function newMyGovFsm(): SourceStateMachine<MyGovState> {
 
 // Kept in sync with workflows/mygov/selectors.ts's MYGOV_URL (the one
 // actually imported by MyGovPage.ts) — not currently imported elsewhere,
-// but must never drift from the exact mandated entry point.
-export const MYGOV_URL = 'https://www.my.gov.ge/ka-ge/services/10/service/176';
+// but must never drift from the exact mandated entry point. 2026-09-06
+// "final alignment pass": the real recorded flow starts at the service
+// GROUP page, not the service/176 deep link.
+export const MYGOV_URL = 'https://my.gov.ge/ka-ge/services/10';

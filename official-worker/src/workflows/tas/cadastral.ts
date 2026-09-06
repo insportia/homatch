@@ -48,30 +48,28 @@ export function recommendedParentCode(code: string): string | null {
   return segs.length > 5 ? segs.slice(0, 5).join('.') : null;
 }
 
-/** The full ordered sequence TasWorkflow should try. TAS's document/
- * application history is filed against the BASE/PARENT parcel far more
- * often than a full unit-level code, so the base parcel (the recommended
- * 5-segment parent, when the code has more than 5 segments) is the FIRST
- * candidate tried — not a fallback attempted only after an empty full-code
- * search. When the input code has 5 or fewer segments it already IS the
- * base parcel (recommendedParentCode returns null), so it is used directly
- * with no truncation at all, matching the mandate's explicit "if the user
- * already entered the base parcel, do not strip it further."
+/** The full ordered sequence TasWorkflow should try. 2026-09-06 "final
+ * alignment pass" mandate: the FULL, EXACT code the user/property actually
+ * carries is the FIRST candidate tried, always — it is the real identifier
+ * and TAS's search frequently does resolve it directly. The base/parent
+ * parcel (the recommended 5-segment parent, when the code has more than 5
+ * segments) is tried only as a FALLBACK, after the full code's own search
+ * comes back a confirmed empty — not tried first as a guess. When the input
+ * code has 5 or fewer segments it already IS the base parcel
+ * (recommendedParentCode returns null), so there is nothing to add as a
+ * distinct fallback.
  *
- * The full original code is NEVER discarded — it is always the second
- * candidate (tried only if the base parcel's own search comes back a
- * confirmed empty), and TasWorkflow keeps both originalCadastralCode and
- * resolvedSearchCadastralCode explicit regardless of which candidate the
- * results actually came from. */
+ * Neither candidate is ever discarded — TasWorkflow keeps both
+ * originalCadastralCode and resolvedSearchCadastralCode explicit regardless
+ * of which candidate the results actually came from. */
 export function candidateSequence(code: string, opts: { minSegments?: number } = {}): string[] {
   if (!isCadastralCode(code)) return [code];
   const original = code.trim();
   const parent = recommendedParentCode(original);
   const rest = cadastralPrefixes(original, opts);
-  const primary = parent || original;
-  const seen = new Set([primary]);
-  const out = [primary];
-  for (const c of [original, ...rest]) {
+  const seen = new Set([original]);
+  const out = [original];
+  for (const c of [...(parent ? [parent] : []), ...rest]) {
     if (c && !seen.has(c)) {
       seen.add(c);
       out.push(c);

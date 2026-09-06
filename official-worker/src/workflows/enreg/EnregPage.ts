@@ -9,7 +9,7 @@ import type { Page } from 'playwright';
 import { interact, waitForResultSignal, challenge, text as pageText, candidateRankedRetry } from '../../browser/BrowserSession.js';
 import { readOnlineDocument } from '../../documents/OnlineDocumentReader.js';
 import { ID_CODE_INPUT_HINTS, NAME_INPUT_HINTS } from './selectors.js';
-import { ENREG_URL, ENREG_APPLICATIONS_LABEL, ENREG_PREPARED_DOCS_LABEL, ENREG_EXTRACT_LABEL } from './EnregState.js';
+import { ENREG_URL, ENREG_APPLICATIONS_LABEL, ENREG_PREPARED_DOCS_LABEL, ENREG_EXTRACT_LABEL, ENREG_VERIFY_BUTTON_LABEL } from './EnregState.js';
 
 export class EnregPage {
   async goto(page: Page): Promise<void> {
@@ -77,11 +77,35 @@ export class EnregPage {
     }
   }
 
+  /** 2026-09-06 "final alignment pass" mandate fix: interact()'s own
+   * nearest-submit-control auto-click is a GENERIC heuristic (nearest
+   * button/Enter-key) — it is not guaranteed to hit the real, exact
+   * "შემოწმება" verification button on every render, and a silent
+   * near-miss here (submitting via Enter, or clicking an unrelated nearby
+   * control) would look identical to a real submit in the trace. This now
+   * explicitly locates and clicks the button by its exact known label
+   * after the fill, and only falls back to interact()'s own auto-submit
+   * signal if that exact button genuinely isn't present. */
   async submitVerificationValue(page: Page, value: string): Promise<boolean> {
     try {
-      const hit = await interact(page as any, value, ['input[name*="verif" i]', 'input[id*="verif" i]', 'input[type="text"]']);
+      // skipSubmit: true — submitNear()'s own generic label patterns
+      // (/ძებნა/, /ძიება/, /დადასტურება/, .../search/) do not include
+      // "შემოწმება" at all, so it would silently fall through to an
+      // ENTER_KEY press instead of a real button click. Fill only here,
+      // then explicitly click the exact verification button by its real
+      // label — the direct fix for that gap.
+      const hit = await interact(page as any, value, ['input[name*="verif" i]', 'input[id*="verif" i]', 'input[type="text"]'], { skipSubmit: true });
       if (!hit.found) return false;
-      return true; // interact() already submits on a verified fill
+      const verifyBtn = (page as any).getByRole('button', { name: ENREG_VERIFY_BUTTON_LABEL }).first();
+      if (await verifyBtn.count().catch(() => 0)) {
+        await verifyBtn.click({ timeout: 3000 });
+        return true;
+      }
+      // No exact-labeled button found on this render — fall back to
+      // pressing Enter in the now-filled field rather than leaving the
+      // value un-submitted.
+      await (hit.el as any)?.press('Enter').catch(() => {});
+      return true;
     } catch {
       return false;
     }

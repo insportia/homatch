@@ -76,4 +76,30 @@ export interface LegacySourceResult {
   /** NEW — the honest, FSM-derived summary (admin/debug only, mandate
    * Section 22/25). Never shown to the customer report generator. */
   workflowResult?: WorkflowResult;
+  /** NEW (2026-09-06 "final alignment pass", RS Taxpayers Registry) —
+   * structured public fields parsed from the result page, rather than only
+   * the raw resultContext text. Optional/nullable: a field this run could
+   * not confidently parse is left null/empty, never guessed. */
+  taxpayerData?: RsTaxpayerPublicData | null;
+  /** NEW (2026-09-06 "final alignment pass", MyGov Debtor Registry) —
+   * explicit, code-computed interpretation of the debtor-registry result,
+   * never left for the customer report generator to infer from the raw
+   * status string alone. */
+  registryInterpretation?: 'POSITIVE_WITHIN_DEBTOR_REGISTRY_SCOPE' | 'ATTENTION_REQUIRED' | null;
+  debtorRecordFound?: boolean;
+}
+
+/** RS Taxpayers Registry's own structured public-record shape (mandate
+ * Section 12): parsed best-effort from the result page's visible text —
+ * every field is nullable, and anything recognized but not one of the
+ * named fields below is kept in otherPublicFields rather than dropped. */
+export interface RsTaxpayerPublicData {
+  identificationCode: string | null;
+  taxpayerName: string | null;
+  legalForm: string | null;
+  status: string | null;
+  registrationDate: string | null;
+  vatStatus: string | null;
+  address: string | null;
+  otherPublicFields: Record<string, string>;
 }

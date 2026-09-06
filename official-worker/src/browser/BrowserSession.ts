@@ -245,9 +245,9 @@ export async function interact(
   p: any,
   q: string,
   hints: string[],
-  opts: { fallback?: boolean; exclude?: ((x: Locator) => Promise<boolean>) | null; networkPattern?: RegExp | null } = {}
+  opts: { fallback?: boolean; exclude?: ((x: Locator) => Promise<boolean>) | null; networkPattern?: RegExp | null; skipSubmit?: boolean } = {}
 ): Promise<InteractHit> {
-  const { fallback = false, exclude = null, networkPattern = null } = opts;
+  const { fallback = false, exclude = null, networkPattern = null, skipSubmit = false } = opts;
   const trace: any[] = [{ action: 'OPEN', url: p.url() }];
   for (const f of contexts(p)) {
     if (f !== p.mainFrame()) trace.push({ action: 'ENTER_FRAME', frameUrl: f.url() });
@@ -271,9 +271,9 @@ export async function interact(
                   .then((r: any) => ({ matched: true, url: r.url(), status: r.status() }))
                   .catch(() => ({ matched: false }))
               : null;
-            const sub = await submitNear(p, { frame: f, el: x });
+            const sub = skipSubmit ? { ok: false, method: null } : await submitNear(p, { frame: f, el: x });
             const net = netPromise ? await netPromise : null;
-            trace.push({ action: 'SUBMIT', method: sub.method, clicked: sub.ok, network: net });
+            trace.push({ action: skipSubmit ? 'FILL_ONLY' : 'SUBMIT', method: sub.method, clicked: sub.ok, network: net });
             return { found: true, frame: f, el: x, selector: s, scope: 'HINT', contextConfidence: 'HINT_MATCH', before, sub, net, trace };
           }
         }
@@ -308,8 +308,8 @@ export async function interact(
             if (val === q.replace(/\s/g, '')) {
               trace.push({ action: 'FILL', selector: m, scope: 'FALLBACK', verified: true });
               const before = await f.locator('body').innerText({ timeout: 5000 }).catch(() => '');
-              const sub = await submitNear(p, { frame: f, el: x });
-              trace.push({ action: 'SUBMIT', method: sub.method, clicked: sub.ok });
+              const sub = skipSubmit ? { ok: false, method: null } : await submitNear(p, { frame: f, el: x });
+              trace.push({ action: skipSubmit ? 'FILL_ONLY' : 'SUBMIT', method: sub.method, clicked: sub.ok });
               return { found: true, frame: f, el: x, selector: m, scope: 'FALLBACK', contextConfidence: 'GENERIC_KEYWORD_MATCH', before, sub, trace };
             }
           } catch {

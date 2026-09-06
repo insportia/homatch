@@ -74,7 +74,7 @@ test('markComplete: a document with a known page count is NOT complete until eve
 });
 
 test('markComplete: unknown page count falls back to "did we get non-trivial text"', () => {
-  const doc = newDocumentShell('msmap', 'https://example/viewer');
+  const doc = newDocumentShell('TAS_MAP', 'https://example/viewer');
   doc.pageCount = null;
   doc.rawText = 'short';
   markComplete(doc);

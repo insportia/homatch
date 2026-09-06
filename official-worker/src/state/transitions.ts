@@ -91,6 +91,41 @@ export function computeMsmapTraversal(input: MsmapTraversalInput = {}) {
   return { ...base, status: 'RESULTS_TRAVERSED' };
 }
 
+// ── TAS_MAP (2026-09-06 "final alignment pass": the tas.ge-opened map popup,
+// retiring the old direct-ms.gov.ge MSMAP identity — one source, not two) ──
+export interface TasMapTraversalInput extends MsmapTraversalInput {
+  /** Per-section discovered/visited/skipped counts from
+   * TasMapPage.traverseSections(). A section absent for this parcel reports
+   * discovered=0 and is trivially satisfied — never a silent skip. */
+  sections?: { label: string; discovered: number; visited: number; skipped: number }[];
+}
+
+function sectionsFullyTraversed(sections: TasMapTraversalInput['sections']): boolean {
+  if (!sections || sections.length === 0) return true;
+  return sections.every((s) => Math.max(0, s.discovered - s.visited - s.skipped) === 0);
+}
+
+/** The literal mandate example, TAS_MAP form: "CORRECT_SUGGESTION_SELECTED
+ * or PARCEL_FOCUSED DOES NOT mean map research is complete." Exhaustion
+ * requires the FULL popup->NAPR->latest-info->documents chain AND every
+ * discovered section's rows fully accounted for (visited+skipped ===
+ * discovered) — OR a causally-proven confirmed-empty search. */
+export function canMarkTasMapExhausted(s: TasMapTraversalInput): boolean {
+  if (s.noResultConfirmed && !s.suggestionSelected) return true;
+  return !!(s.suggestionSelected && s.infoPopupOpened && s.naprOpened && s.latestInformationOpened && s.documentsRead && sectionsFullyTraversed(s.sections));
+}
+
+export function computeTasMapTraversal(input: TasMapTraversalInput = {}) {
+  const inner = computeMsmapTraversal(input);
+  if (inner.status === 'SOURCE_EXHAUSTED' && !canMarkTasMapExhausted(input)) {
+    return { ...inner, status: input.suggestionSelected ? 'RESULTS_TRAVERSED' : inner.status };
+  }
+  if (inner.status !== 'SOURCE_EXHAUSTED' && canMarkTasMapExhausted(input)) {
+    return { ...inner, status: 'SOURCE_EXHAUSTED' };
+  }
+  return inner;
+}
+
 // ── TAS ──────────────────────────────────────────────────────────────────
 export interface TasTraversalInput extends OperationalInput {
   originalCadastralCode?: string | null;

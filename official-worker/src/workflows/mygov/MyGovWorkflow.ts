@@ -1,24 +1,36 @@
-// MyGovWorkflow.ts — the source mandate Section 9 says needs "special
+// MyGovWorkflow.ts — mandate Section 9's source that "must receive special
 // attention because current production repeatedly enters the wrong
-// context." WRONG_SEARCH_CONTEXT is reached whenever the field that was
-// actually filled+submitted came only from a low-confidence candidate
-// guess (assertCorrectSearchContext fails) — the source's own confirm/deny
-// text is then explicitly untrusted, and CONFIRMED_ZERO_RESULTS/
-// MYGOV_EXHAUSTED become structurally unreachable (canMarkMygovExhausted).
-import type { Page } from 'playwright';
+// context." 2026-09-06 "final alignment pass": rewritten to match the
+// live-recorded real flow (napr-recording.spec.ts, repo root) exactly —
+// https://my.gov.ge/ka-ge/services/10 -> click the real property-search
+// link (SAME page, no popup) -> the naprweb Angular app renders into
+// `#main-routing-container iframe` -> every subsequent step is a
+// `.contentFrame()` locator against that ONE iframe, on the SAME page/tab
+// the CAPTCHA lifecycle already tracks. WRONG_SEARCH_CONTEXT stays an
+// OPERATIONAL error state — the source's own confirm/deny text is untrusted
+// whenever the field used was only a low-confidence fallback guess, and
+// CONFIRMED_ZERO_RESULTS/MYGOV_EXHAUSTED remain structurally unreachable
+// from there (canMarkMygovExhausted, state/transitions.ts).
+import type { Page, Frame } from 'playwright';
 import { newMyGovFsm } from './MyGovState.js';
 import { MyGovPage } from './MyGovPage.js';
 import { canMarkMygovExhausted, assertCorrectSearchContext, assertPropertySearchContextConfirmed } from './assertions.js';
-import { exhaustMygovResultRows } from './MyGovResultExhauster.js';
+import { classifyDocumentLink } from '../../documents/DocumentReader.js';
+import { readPdfDocument } from '../../documents/PdfDocumentReader.js';
+import { readOnlineDocument } from '../../documents/OnlineDocumentReader.js';
+import { text as pageText } from '../../browser/BrowserSession.js';
 import { BrowserTrace } from '../../browser/BrowserTrace.js';
 import { challenge } from '../../browser/BrowserSession.js';
 import { computeMygovTraversal } from '../../state/transitions.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 import type { LegacySourceResult, WorkflowResult } from '../WorkflowResult.js';
+import { MAX_DOCUMENTS_PER_APPLICATION } from './selectors.js';
 
-const SOURCE_META = { name: 'NAPR — საჯარო რეესტრის ეროვნული სააგენტო (MY.GOV.GE სერვისი 176 → naprweb.reestri.gov.ge)', class: 'OFFICIAL_GOVERNMENT', url: 'https://www.my.gov.ge/ka-ge/services/10/service/176' };
+const SOURCE_META = { name: 'NAPR — საჯარო რეესტრის ეროვნული სააგენტო (MY.GOV.GE სერვისი 10 → naprweb.reestri.gov.ge)', class: 'OFFICIAL_GOVERNMENT', url: 'https://my.gov.ge/ka-ge/services/10' };
+const MAX_TOTAL_DOCS = 60;
 
 export async function runMyGovWorkflow(page: Page, ctx: any, query: string, entities?: EntityQueue, opts: { skipGoto?: boolean } = {}): Promise<LegacySourceResult> {
+  void ctx; // no longer opens a separate context/page — kept for call-site compatibility
   const fsm = newMyGovFsm();
   const trace = new BrowserTrace('mygov');
   const pageObj = new MyGovPage();
@@ -29,69 +41,34 @@ export async function runMyGovWorkflow(page: Page, ctx: any, query: string, enti
     fsm.transition('SERVICE_176_OPENED');
     trace.record({ stateBefore: 'START', action: 'STATE', actualOutcome: 'SERVICE_176_OPENED', stateAfter: fsm.state, url: (page as any).url() });
 
-    // Try the service page's own known-good field first — only when THAT
-    // fails do we go looking for the naprweb registry iframe. Either way,
-    // "SERVICE_APPLICATION_DISCOVERED" means we found SOMETHING worth
-    // trying next, not that it was the right context yet (that assertion
-    // comes later, at PROPERTY_SEARCH_CONTEXT_CONFIRMED).
-    // v22 fix: no generic fallback scan on the outer service page — a weak
-    // match there (e.g. my.gov.ge's own site-wide header search box) must
-    // never short-circuit registry-iframe discovery. See MyGovPage.
-    // searchCadastral's comment for the full root-cause trail.
-    let searchRes = await pageObj.searchCadastral(page, query, { allowGenericFallback: false });
-    let activePage: Page = page;
-    let registryAppOpened = false;
-    let usedIframe = false;
-
-    if (!searchRes.found) {
-      fsm.transition('SERVICE_APPLICATION_DISCOVERED', 'no field on the top-level service page — polling for the naprweb iframe');
-      trace.record({ stateBefore: 'SERVICE_176_OPENED', action: 'SEARCH_FIELD_PROBE', actualOutcome: 'NOT_FOUND_ON_SERVICE_PAGE', stateAfter: fsm.state, url: (page as any).url() });
-      const reg = await pageObj.openRegistryApplication(page, ctx);
-      registryAppOpened = reg.registryAppOpened;
-      usedIframe = true;
-      trace.record({
-        stateBefore: fsm.state,
-        action: 'REGISTRY_IFRAME_DISCOVERY',
-        actualOutcome: reg.registryAppOpened ? 'IFRAME_FOUND_AND_OPENED' : 'IFRAME_NOT_FOUND',
-        stateAfter: fsm.state,
-        url: reg.activePage ? (reg.activePage as any).url() : null,
-      });
-      if (!reg.registryAppOpened || !reg.activePage) {
-        fsm.transition('SEARCH_CONTROL_NOT_FOUND');
-        trace.record({ stateBefore: 'SERVICE_APPLICATION_DISCOVERED', action: 'STATE', actualOutcome: 'SEARCH_CONTROL_NOT_FOUND', stateAfter: fsm.state, url: (page as any).url() });
-        return buildResult('SEARCH_CONTROL_NOT_FOUND', false, false, null, trace, query, null, 'naprweb registry app not reached');
-      }
-      activePage = reg.activePage;
-      fsm.transition('REGISTRY_APPLICATION_OPENED');
-      // Now genuinely inside the naprweb registry app — a broad candidate
-      // scan here is safe (single-purpose page), so the generic fallback is
-      // allowed on this second attempt only.
-      searchRes = await pageObj.searchCadastral(activePage, query, { allowGenericFallback: true });
-    } else {
-      registryAppOpened = true;
-      fsm.transition('SERVICE_APPLICATION_DISCOVERED');
-      fsm.transition('REGISTRY_APPLICATION_OPENED', 'top-level service page itself carried the cadastral field');
+    if (!opts.skipGoto) {
+      const linkRes = await pageObj.openPropertySearchLink(page);
+      trace.record({ stateBefore: fsm.state, action: 'OPEN_PROPERTY_SEARCH_LINK', actualOutcome: linkRes.clicked ? 'CLICKED' : 'LINK_NOT_FOUND', stateAfter: fsm.state, url: (page as any).url() });
     }
-    trace.record({
-      stateBefore: 'SERVICE_APPLICATION_DISCOVERED',
-      action: 'STATE',
-      actualOutcome: 'REGISTRY_APPLICATION_OPENED',
-      stateAfter: fsm.state,
-      url: (activePage as any).url(),
-      target: usedIframe ? 'naprweb.reestri.gov.ge (via Service 176 iframe)' : 'my.gov.ge service 176 page itself',
-    });
+    fsm.transition('SERVICE_APPLICATION_DISCOVERED');
+
+    // The naprweb app renders into #main-routing-container iframe ON THE
+    // SAME PAGE — never a separate page opened to the iframe's raw src
+    // (the confirmed production mismatch this pass fixes).
+    const frame: Frame | null = await pageObj.resolveRegistryFrame(page);
+    const registryAppOpened = !!frame;
+    trace.record({ stateBefore: fsm.state, action: 'RESOLVE_REGISTRY_FRAME', actualOutcome: registryAppOpened ? 'FRAME_RESOLVED' : 'FRAME_NOT_FOUND', stateAfter: fsm.state, url: (page as any).url() });
+    if (!registryAppOpened || !frame) {
+      fsm.transition('SEARCH_CONTROL_NOT_FOUND');
+      return buildResult('SEARCH_CONTROL_NOT_FOUND', false, false, null, trace, query, (page as any).url(), 'naprweb registry app (#main-routing-container iframe) not reached');
+    }
+    fsm.transition('REGISTRY_APPLICATION_OPENED');
 
     if (!assertPropertySearchContextConfirmed(true, registryAppOpened)) {
-      // Not reachable today (both branches above already guarantee
-      // registryAppOpened===true by the time we get here, or return early)
-      // — kept as a real, LEGAL transition rather than a latent crash so a
-      // future change to assertPropertySearchContextConfirmed can't silently
-      // reintroduce the IllegalTransitionError this file used to throw here.
       fsm.transition('SEARCH_CONTROL_NOT_FOUND');
-      trace.record({ stateBefore: 'REGISTRY_APPLICATION_OPENED', action: 'ASSERT', target: 'assertPropertySearchContextConfirmed', actualOutcome: 'FAILED', stateAfter: fsm.state, url: (activePage as any).url() });
-      return buildResult('SEARCH_CONTROL_NOT_FOUND', true, registryAppOpened, null, trace, query, (activePage as any).url(), 'registry application never opened');
+      trace.record({ stateBefore: 'REGISTRY_APPLICATION_OPENED', action: 'ASSERT', target: 'assertPropertySearchContextConfirmed', actualOutcome: 'FAILED', stateAfter: fsm.state, url: (page as any).url() });
+      return buildResult('SEARCH_CONTROL_NOT_FOUND', true, registryAppOpened, null, trace, query, (page as any).url(), 'registry application never opened');
     }
 
+    // Inside the naprweb frame the whole document IS the registry's own
+    // single-purpose search UI, so a broad candidate scan is safe if the
+    // known-good hints (#input_5 / ng-model) don't match.
+    const searchRes = await pageObj.searchCadastral(frame, query, { allowGenericFallback: true });
     const correctContext = assertCorrectSearchContext(searchRes.contextConfidence || null);
     trace.record({
       stateBefore: fsm.state,
@@ -99,41 +76,20 @@ export async function runMyGovWorkflow(page: Page, ctx: any, query: string, enti
       target: searchRes.found ? `contextConfidence=${searchRes.contextConfidence || 'unknown'}` : null,
       actualOutcome: searchRes.found ? (correctContext ? 'TRUSTED_FIELD' : 'LOW_CONFIDENCE_FIELD') : 'NO_FIELD_FOUND',
       stateAfter: fsm.state,
-      url: (activePage as any).url(),
+      url: (page as any).url(),
     });
     if (!searchRes.found) {
       fsm.transition('SEARCH_CONTROL_NOT_FOUND');
-      return buildResult('SEARCH_CONTROL_NOT_FOUND', true, registryAppOpened, null, trace, query, (activePage as any).url(), 'no field found even inside the registry app');
+      return buildResult('SEARCH_CONTROL_NOT_FOUND', true, registryAppOpened, null, trace, query, (page as any).url(), 'no field found even inside the registry frame');
     }
 
-    // A weak/generic candidate-scan field (correctContext===false) must NOT
-    // be walked through the trusted happy-path states
-    // (PROPERTY_SEARCH_CONTEXT_CONFIRMED -> CADASTRAL_INPUT_FOUND ->
-    // CADASTRAL_ENTERED -> SEARCH_SUBMITTED -> POST_SEARCH_STATE) at all —
-    // those states assert a context we do not actually trust. It goes
-    // straight to the generic WRONG_SEARCH_CONTEXT operational status
-    // instead (legal from REGISTRY_APPLICATION_OPENED — see
-    // MyGovState.ts's attachOperational). This replaces the old code path
-    // that tried `fsm.transition('SEARCH_SUBMITTED', ...)` directly from
-    // REGISTRY_APPLICATION_OPENED, which is not a declared edge and threw
-    // IllegalTransitionError on every low-confidence-context run (the
-    // confirmed cause of this source's production FAILED/trace:[] result).
     if (!correctContext) {
-      const capBeforeSubmit = await challenge(activePage);
+      const capBeforeSubmit = await challenge(page);
       if (capBeforeSubmit) {
         fsm.transition('WAITING_HUMAN', 'captcha detected while search context was still unconfirmed');
-        trace.record({ stateBefore: 'REGISTRY_APPLICATION_OPENED', action: 'CAPTCHA_CHECK', actualOutcome: 'CAPTCHA_DETECTED', stateAfter: fsm.state, url: (activePage as any).url() });
-        return buildResult('WAITING_HUMAN', true, registryAppOpened, false, trace, query, (activePage as any).url(), null, searchRes.contextConfidence || null);
+        return buildResult('WAITING_HUMAN', true, registryAppOpened, false, trace, query, (page as any).url(), null, searchRes.contextConfidence || null);
       }
       fsm.transition('WRONG_SEARCH_CONTEXT', `the field used was only located by a low-confidence fallback scan (contextConfidence=${searchRes.contextConfidence || 'unknown'})`);
-      trace.record({
-        stateBefore: 'REGISTRY_APPLICATION_OPENED',
-        action: 'STATE',
-        actualOutcome: 'WRONG_SEARCH_CONTEXT',
-        stateAfter: fsm.state,
-        url: (activePage as any).url(),
-        target: `contextConfidence=${searchRes.contextConfidence || 'unknown'}`,
-      });
       return buildResult(
         'WRONG_SEARCH_CONTEXT',
         true,
@@ -141,64 +97,128 @@ export async function runMyGovWorkflow(page: Page, ctx: any, query: string, enti
         false,
         trace,
         query,
-        (activePage as any).url(),
+        (page as any).url(),
         `the field used was only located by a low-confidence fallback scan (contextConfidence=${searchRes.contextConfidence || 'unknown'})`,
         searchRes.contextConfidence || null
       );
     }
 
-    // PROPERTY_SEARCH_CONTEXT_CONFIRMED is only reached with a trusted
-    // field — the direct fix for "a generic candidate guess produced a
-    // confident false NO_RESULT with no CAPTCHA ever appearing."
     fsm.transition('PROPERTY_SEARCH_CONTEXT_CONFIRMED');
     fsm.transition('CADASTRAL_INPUT_FOUND');
     fsm.transition('CADASTRAL_ENTERED');
-    trace.record({ stateBefore: 'REGISTRY_APPLICATION_OPENED', action: 'CADASTRAL_ENTERED', target: query, actualOutcome: 'FILLED', stateAfter: fsm.state, url: (activePage as any).url() });
+    // Belt-and-suspenders explicit click by the exact recorded label, in
+    // case interact()'s own generic submit click did not already fire it.
+    if (!searchRes.submitted) await pageObj.clickApplicationSearchButton(frame);
     fsm.transition('SEARCH_SUBMITTED', searchRes.submitAction ? `submitted via ${searchRes.submitAction}` : undefined);
-    trace.record({ stateBefore: 'CADASTRAL_ENTERED', action: 'SEARCH_SUBMITTED', actualOutcome: searchRes.submitted ? 'SUBMITTED' : 'SUBMIT_UNCONFIRMED', stateAfter: fsm.state, url: (activePage as any).url() });
     fsm.transition('POST_SEARCH_STATE');
 
-    const cap = await challenge(activePage);
-    trace.record({ stateBefore: 'POST_SEARCH_STATE', action: 'CAPTCHA_CHECK', actualOutcome: cap ? 'CAPTCHA_DETECTED' : 'NO_CAPTCHA', stateAfter: fsm.state, url: (activePage as any).url() });
+    const cap = await challenge(page);
+    trace.record({ stateBefore: 'POST_SEARCH_STATE', action: 'CAPTCHA_CHECK', actualOutcome: cap ? 'CAPTCHA_DETECTED' : 'NO_CAPTCHA', stateAfter: fsm.state, url: (page as any).url() });
     if (cap) {
       fsm.transition('HUMAN_VERIFICATION_REQUIRED');
       fsm.transition('WAITING_HUMAN');
-      return buildResult('WAITING_HUMAN', true, registryAppOpened, correctContext, trace, query, (activePage as any).url(), null, searchRes.contextConfidence || null);
+      return buildResult('WAITING_HUMAN', true, registryAppOpened, correctContext, trace, query, (page as any).url(), null, searchRes.contextConfidence || null);
     }
 
     if (!searchRes.resultChanged) {
       fsm.transition('EXPLICIT_ACCESS_FAILURE', 'no new result signal after submit');
-      trace.record({ stateBefore: 'POST_SEARCH_STATE', action: 'RESULT_SIGNAL', actualOutcome: 'NO_CHANGE_AFTER_SUBMIT', stateAfter: fsm.state, url: (activePage as any).url() });
-      return buildResult('SUBMIT_FAILED', true, registryAppOpened, true, trace, query, (activePage as any).url(), 'search submitted but no new result signal appeared');
+      return buildResult('SUBMIT_FAILED', true, registryAppOpened, true, trace, query, (page as any).url(), 'search submitted but no new result signal appeared');
     }
 
     const noResultConfirmed = /ვერ\s*მოიძებნა|not\s*found|no\s*results?/i.test(searchRes.resultText || '');
-    trace.record({ stateBefore: 'POST_SEARCH_STATE', action: 'RESULT_SIGNAL', actualOutcome: noResultConfirmed ? 'CONFIRMED_ZERO_RESULTS' : 'RESULTS_RETURNED', stateAfter: fsm.state, url: (activePage as any).url() });
     if (noResultConfirmed) {
       fsm.transition('CONFIRMED_ZERO_RESULTS');
       fsm.transition('MYGOV_EXHAUSTED');
-      return buildResult('MYGOV_EXHAUSTED', true, registryAppOpened, true, trace, query, (activePage as any).url(), null, searchRes.contextConfidence || null, 0);
+      return buildResult('MYGOV_EXHAUSTED', true, registryAppOpened, true, trace, query, (page as any).url(), null, searchRes.contextConfidence || null, 0);
     }
 
     fsm.transition('RESULTS_RETURNED');
-    const exhaustion = await exhaustMygovResultRows(activePage);
-    fsm.transition('RESULTS_ENUMERATED', `${exhaustion.rowsDiscoveredBySelector} row(s) found`);
-    trace.record({
-      stateBefore: 'RESULTS_RETURNED',
-      action: 'RESULTS_ENUMERATED',
-      actualOutcome: `strategy=${exhaustion.rowStrategy} discovered=${exhaustion.rowsDiscoveredBySelector} visited=${exhaustion.rowsVisited} documents=${exhaustion.rowDocuments.length}`,
-      stateAfter: fsm.state,
-      url: (activePage as any).url(),
-    });
-    for (const skip of exhaustion.skippedReasons) trace.record({ stateBefore: fsm.state, action: 'ROW_SKIPPED', target: skip.label, actualOutcome: skip.reason, stateAfter: fsm.state });
-    for (const d of exhaustion.rowDocuments) if (entities && d.rawText) entities.scanText(d.rawText, { source: 'mygov', sourceDocument: d.url, retrievedAt: new Date().toISOString() });
-    const invariant = { service176Opened: true, registryAppOpened, correctSearchContext: true, queryEntered: true, searchSubmitted: true, resultsDiscovered: exhaustion.rowsDiscoveredBySelector, resultsVisited: exhaustion.rowsVisited, documentsRead: exhaustion.rowDocuments.length };
+
+    // Dynamic per-application, per-document traversal — never a fixed
+    // application-number or document list (mandate: the recording's
+    // "განცხადება 892024345197" / "მომზადებული დოკუმენტი: ..." labels are
+    // per-search/per-run text, not stable identifiers).
+    const applications = await pageObj.enumerateApplications(frame);
+    trace.record({ stateBefore: 'RESULTS_RETURNED', action: 'ENUMERATE_APPLICATIONS', actualOutcome: `discovered=${applications.length}`, stateAfter: fsm.state, url: (page as any).url() });
+
+    const documents: any[] = [];
+    let applicationsVisited = 0;
+    const skippedReasons: { label: string; reason: string }[] = [];
+    for (const app of applications) {
+      if (documents.length >= MAX_TOTAL_DOCS) {
+        skippedReasons.push({ label: app.label, reason: 'MAX_TOTAL_DOCS_REACHED' });
+        continue;
+      }
+      const opened = await pageObj.openApplication(frame, app.label);
+      trace.record({ stateBefore: fsm.state, action: 'OPEN_APPLICATION', target: app.label, actualOutcome: opened ? 'OPENED' : 'CLICK_FAILED', stateAfter: fsm.state, url: (page as any).url() });
+      if (!opened) {
+        skippedReasons.push({ label: app.label, reason: 'OPEN_FAILED' });
+        continue;
+      }
+      // The real Google reCAPTCHA gate most often appears here (recording:
+      // right after the first application is opened) — left entirely to
+      // the existing challenge()/WAITING_HUMAN lifecycle, never solved
+      // here. Resuming re-enters this same loop on the same, now-verified
+      // page/frame, so an already-cleared application is simply re-opened
+      // (idempotent) and its documents enumerated normally.
+      const capAtApp = await challenge(page);
+      if (capAtApp) {
+        fsm.transition('WAITING_HUMAN', `captcha detected opening application ${app.label}`);
+        return buildResult(
+          'WAITING_HUMAN',
+          true,
+          registryAppOpened,
+          true,
+          trace,
+          query,
+          (page as any).url(),
+          null,
+          searchRes.contextConfidence || null,
+          applications.length,
+          applicationsVisited,
+          documents
+        );
+      }
+      applicationsVisited++;
+      const docButtons = await pageObj.enumeratePreparedDocuments(frame);
+      let docsThisApp = 0;
+      for (const docBtn of docButtons) {
+        if (docsThisApp >= MAX_DOCUMENTS_PER_APPLICATION || documents.length >= MAX_TOTAL_DOCS) break;
+        const popup = await pageObj.openPreparedDocument(page, frame, docBtn.label);
+        if (!popup) {
+          skippedReasons.push({ label: `${app.label} — ${docBtn.label}`, reason: 'DOCUMENT_POPUP_DID_NOT_OPEN' });
+          continue;
+        }
+        const url = popup.url();
+        const cls = classifyDocumentLink({ url, label: docBtn.label }, { pageUrl: url });
+        const doc = cls.looksLikeDirectFile ? await readPdfDocument(popup, { url, label: docBtn.label }, 'mygov_prepared_document') : await readOnlineDocument(popup, { url, label: docBtn.label }, 'mygov_prepared_document');
+        await popup.close().catch(() => {});
+        if (doc?.rawText && doc.rawText.trim().length > 20) {
+          documents.push({ url: doc.url, label: docBtn.label, rawText: doc.rawText.slice(0, 50000), source: 'mygov_prepared_document', complete: !!doc.complete, documentType: doc.documentType || (cls.looksLikeDirectFile ? 'PDF_DOCUMENT' : 'ONLINE_DOCUMENT'), pagesRead: doc.pagesRead || 0, pageCount: doc.pageCount || 0 });
+          docsThisApp++;
+        } else {
+          skippedReasons.push({ label: `${app.label} — ${docBtn.label}`, reason: 'DOCUMENT_PRODUCED_NO_TEXT' });
+        }
+      }
+      if (docButtons.length === 0) {
+        // The application's own detail text is still real evidence even
+        // when it exposes no separately-downloadable document.
+        const detailText = await pageText(frame as any).catch(() => '');
+        if (detailText && detailText.trim().length > 20) documents.push({ url: (page as any).url(), label: app.label, rawText: detailText.slice(0, 50000), source: 'mygov_application_detail', complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 });
+      }
+    }
+
+    for (const skip of skippedReasons) trace.record({ stateBefore: fsm.state, action: 'ROW_SKIPPED', target: skip.label, actualOutcome: skip.reason, stateAfter: fsm.state });
+    for (const d of documents) if (entities && d.rawText) entities.scanText(d.rawText, { source: 'mygov', sourceDocument: d.url, retrievedAt: new Date().toISOString() });
+
+    fsm.transition('RESULTS_ENUMERATED', `${applications.length} application(s) found`);
+    const invariant = { service176Opened: true, registryAppOpened, correctSearchContext: true, queryEntered: true, searchSubmitted: true, resultsDiscovered: applications.length, resultsVisited: applicationsVisited, documentsRead: documents.length };
     fsm.transition('RESULTS_TRAVERSED');
     const exhausted = canMarkMygovExhausted(invariant);
     trace.record({ stateBefore: 'RESULTS_TRAVERSED', action: 'GATE', target: 'canMarkMygovExhausted', actualOutcome: exhausted ? 'MYGOV_EXHAUSTED' : 'BLOCKED_BY_canMarkMygovExhausted', expectedOutcome: 'MYGOV_EXHAUSTED', stateAfter: fsm.state });
     if (exhausted) fsm.transition('MYGOV_EXHAUSTED');
 
-    return buildResult(fsm.state, true, registryAppOpened, true, trace, query, (activePage as any).url(), null, searchRes.contextConfidence || null, exhaustion.rowsDiscoveredBySelector, exhaustion.rowsVisited, exhaustion.rowDocuments);
+    return buildResult(fsm.state, true, registryAppOpened, true, trace, query, (page as any).url(), null, searchRes.contextConfidence || null, applications.length, applicationsVisited, documents);
   } catch (e) {
     trace.record({ stateBefore: fsm.state, action: 'EXCEPTION', actualOutcome: String(e).slice(0, 300), stateAfter: 'FAILED' });
     return buildResult('FAILED', false, false, null, trace, query, null, String(e));

@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SourceStateMachine } from '../.tstest-build/state/SourceState.js';
-import { MSMAP_GRAPH, MSMAP_LINEAR } from '../.tstest-build/workflows/msmap/MsMapState.js';
+import { TAS_MAP_GRAPH, TAS_MAP_LINEAR } from '../.tstest-build/workflows/tasmap/TasMapState.js';
 import { TAS_GRAPH } from '../.tstest-build/workflows/tas/TasState.js';
 import { MYGOV_GRAPH, newMyGovFsm } from '../.tstest-build/workflows/mygov/MyGovState.js';
 import { ENREG_GRAPH, ENREG_LINEAR } from '../.tstest-build/workflows/enreg/EnregState.js';
@@ -27,20 +27,20 @@ test('SourceStateMachine: an undeclared transition throws IllegalTransitionError
   assert.equal(fsm.state, 'A'); // unchanged — the illegal call never mutated state
 });
 
-test('MSMAP graph: no edge skips directly from an early discovery state to MSMAP_EXHAUSTED', () => {
+test('TAS_MAP graph: no edge skips directly from an early discovery state to TAS_MAP_EXHAUSTED', () => {
   const early = ['CORRECT_SUGGESTION_SELECTED', 'PARCEL_FOCUSED', 'SUGGESTIONS_LOADED', 'CADASTRAL_ENTERED'];
   for (const s of early) {
-    assert.ok(!MSMAP_GRAPH[s].includes('MSMAP_EXHAUSTED'), `${s} must not have a direct edge to MSMAP_EXHAUSTED`);
+    assert.ok(!TAS_MAP_GRAPH[s].includes('TAS_MAP_EXHAUSTED'), `${s} must not have a direct edge to TAS_MAP_EXHAUSTED`);
   }
 });
 
-test('MSMAP graph: the terminal state has no outgoing edges', () => {
-  assert.deepEqual(MSMAP_GRAPH['MSMAP_EXHAUSTED'], []);
+test('TAS_MAP graph: the terminal state has no outgoing edges', () => {
+  assert.deepEqual(TAS_MAP_GRAPH['TAS_MAP_EXHAUSTED'], []);
 });
 
-test('MSMAP graph: every consecutive pair in the mandated sequence is a legal edge', () => {
-  for (let i = 0; i < MSMAP_LINEAR.length - 1; i++) {
-    assert.ok(MSMAP_GRAPH[MSMAP_LINEAR[i]].includes(MSMAP_LINEAR[i + 1]), `${MSMAP_LINEAR[i]} -> ${MSMAP_LINEAR[i + 1]} must be legal`);
+test('TAS_MAP graph: every consecutive pair in the mandated sequence is a legal edge', () => {
+  for (let i = 0; i < TAS_MAP_LINEAR.length - 1; i++) {
+    assert.ok(TAS_MAP_GRAPH[TAS_MAP_LINEAR[i]].includes(TAS_MAP_LINEAR[i + 1]), `${TAS_MAP_LINEAR[i]} -> ${TAS_MAP_LINEAR[i + 1]} must be legal`);
   }
 });
 

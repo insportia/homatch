@@ -93,7 +93,13 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     // whatever `resultsDiscovered` this run could actually establish.
     fsm.transition('RESULT_QUEUE_CREATED');
     fsm.transition('RESULT_OPENED');
-    let exhaustion = await pageObj.exhaustResultRows(page, resultsDiscovered);
+    // The real production bug this fixes: searchCadastral() already resolves
+    // and returns the actual Frame the results render in (docs.tbilisi.gov.ge's
+    // embedded ExtJS iframe, not necessarily the outer tas.ge page) — passing
+    // the outer `page` here instead discards that and silently searches the
+    // wrong document (Page.locator() never sees into iframe content).
+    const resultScope = searchRes.frame || page;
+    let exhaustion = await pageObj.exhaustResultRows(resultScope, resultsDiscovered);
     fsm.transition('CHILDREN_ENUMERATED', `${exhaustion.rowsDiscoveredBySelector} row(s) found by ${exhaustion.rowStrategy}`);
 
     let finalDiscovered = resultsDiscovered != null ? resultsDiscovered : exhaustion.rowsDiscoveredBySelector;
@@ -120,7 +126,7 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
         actualOutcome: `visited=${exhaustion.rowsVisited} of discovered=${finalDiscovered} (strategy=${exhaustion.rowStrategy}) — retrying row traversal`,
         stateAfter: fsm.state,
       });
-      const retry = await pageObj.exhaustResultRows(page, finalDiscovered);
+      const retry = await pageObj.exhaustResultRows(resultScope, finalDiscovered);
       const seenUrls = new Set(exhaustion.rowDocuments.map((d: any) => d.url));
       const mergedDocs = exhaustion.rowDocuments.slice();
       for (const d of retry.rowDocuments) if (!seenUrls.has(d.url)) { mergedDocs.push(d); seenUrls.add(d.url); }

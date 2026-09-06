@@ -36,10 +36,34 @@
 import type { Page } from 'playwright';
 import { challenge, waitForResultSignal, hasNoResultPhrase } from '../../browser/BrowserSession.js';
 import { RSTAX_URL, RSTAX_ID_INPUT_SELECTORS, RSTAX_CAPTCHA_BLOCK_PHRASE, RSTAX_SOURCE_META } from './selectors.js';
-import type { LegacySourceResult } from '../WorkflowResult.js';
+import type { LegacySourceResult, RsTaxpayerPublicData } from '../WorkflowResult.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 
-function buildResult(status: string, opts: { selector?: string | null; value?: string | null; resultText?: string | null; error?: string | null; forEntity: { name: string; idCode: string | null } | null }): LegacySourceResult {
+/** Best-effort deterministic label:value extraction from the result page's
+ * visible text — mandate Section 12's structured-fields requirement. Every
+ * field is nullable; a label this run cannot confidently locate is left
+ * null rather than guessed. Never AI-assisted (mandate: "AI is never
+ * authoritative for a deterministic workflow decision"). */
+function parseRsTaxpayerFields(text: string, idCode: string): RsTaxpayerPublicData {
+  const grab = (labelPattern: RegExp): string | null => {
+    const m = labelPattern.exec(text);
+    return m ? m[1].trim().replace(/\s+/g, ' ').slice(0, 300) : null;
+  };
+  const otherPublicFields: Record<string, string> = {};
+  const identificationCode = grab(/საიდენტიფიკაციო\s*(?:კოდი|ნომერი)?\s*[:։]?\s*([0-9-]{6,})/i) || (text.includes(idCode) ? idCode : null);
+  const taxpayerName = grab(/(?:დასახელება|სახელწოდება|გადამხდელის\s*დასახელება)\s*[:։]\s*([^\n]{2,200})/i);
+  const legalForm = grab(/სამართლებრივი\s*ფორმა\s*[:։]\s*([^\n]{2,120})/i);
+  const status = grab(/სტატუსი\s*[:։]\s*([^\n]{2,80})/i);
+  const registrationDate = grab(/რეგისტრაციის\s*თარიღი\s*[:։]\s*([0-9./\-]{6,20})/i);
+  const vatStatus = grab(/დღგ[\s-]*(?:გადამხდელი|სტატუსი)?\s*[:։]\s*([^\n]{2,80})/i);
+  const address = grab(/მისამართი\s*[:։]\s*([^\n]{2,250})/i);
+  return { identificationCode, taxpayerName, legalForm, status, registrationDate, vatStatus, address, otherPublicFields };
+}
+
+function buildResult(
+  status: string,
+  opts: { selector?: string | null; value?: string | null; resultText?: string | null; error?: string | null; forEntity: { name: string; idCode: string | null } | null; taxpayerData?: RsTaxpayerPublicData | null }
+): LegacySourceResult {
   return {
     source: 'rstax',
     sourceName: RSTAX_SOURCE_META.name,
@@ -66,13 +90,14 @@ function buildResult(status: string, opts: { selector?: string | null; value?: s
     discoveredEntities: [],
     forEntity: opts.forEntity,
     error: opts.error || null,
+    taxpayerData: opts.taxpayerData ?? null,
   };
 }
 
 export async function runRsTaxpayerWorker(
   page: Page,
   forEntity: { name: string; idCode: string | null } | null,
-  _entities?: EntityQueue,
+  entities?: EntityQueue,
   opts: { skipGoto?: boolean } = {}
 ): Promise<LegacySourceResult> {
   const idCode = forEntity?.idCode ? String(forEntity.idCode).trim() : null;
@@ -144,7 +169,15 @@ export async function runRsTaxpayerWorker(
       return buildResult('SUBMITTED_UNCONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, error: 'search submitted but no new result signal appeared' });
     }
     const status = hasNoResultPhrase(sig.after) ? 'NO_RESULT_CONFIRMED' : 'SEARCH_CONFIRMED';
-    return buildResult(status, { forEntity, selector: usedSelector, value: idCode, resultText: sig.after });
+    const taxpayerData = status === 'SEARCH_CONFIRMED' ? parseRsTaxpayerFields(sig.after, idCode) : null;
+    // Feed whatever names/ids this result page actually carries into the
+    // shared EntityQueue — mandate Section 12's "wire the previously-unused
+    // entities parameter" fix. Never interrupts this worker's own result;
+    // purely additive bookkeeping for the orchestrator's later entity pass.
+    if (entities && status === 'SEARCH_CONFIRMED' && sig.after) {
+      entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
+    }
+    return buildResult(status, { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, taxpayerData });
   } catch (e) {
     return buildResult('FAILED', { forEntity, error: String(e) });
   }

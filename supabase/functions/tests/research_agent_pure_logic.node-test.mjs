@@ -274,7 +274,7 @@ test('customerSourceStatus: maps every real worker terminal status to one of the
 test('REGRESSION FIXTURE — 3 dispatched adapters, 1 success + 2 technical failures: attempted=3, retrieved=1, technicalFailures=2 (the exact production bug this pass fixes: officialSourcesChecked alone reported only 1, with zero visibility into the other 2)', () => {
   const browserOfficial = {
     results: [
-      { source: 'msmap', sourceName: 'MS Map', status: 'SEARCH_CONFIRMED' },
+      { source: 'TAS_MAP', sourceName: 'TAS Map', status: 'SEARCH_CONFIRMED' },
       { source: 'tas', sourceName: 'TAS', status: 'SEARCH_CONTROL_NOT_FOUND' },
       { source: 'mygov', sourceName: 'My.gov / NAPR', status: 'SUBMIT_FAILED' },
     ],
@@ -296,7 +296,7 @@ test('REGRESSION FIXTURE — 3 dispatched adapters, 1 success + 2 technical fail
 });
 
 test('officialSourceCoverage: a source that was never dispatched never appears at all (never fabricated as NOT_CONFIRMED filler)', () => {
-  const coverage = officialSourceCoverage({ results: [{ source: 'msmap', sourceName: 'MS Map', status: 'SEARCH_CONFIRMED' }] });
+  const coverage = officialSourceCoverage({ results: [{ source: 'TAS_MAP', sourceName: 'TAS Map', status: 'SEARCH_CONFIRMED' }] });
   assert.equal(coverage.length, 1);
   assert.equal(coverage.some((c) => c.source === 'tas'), false);
 });
@@ -947,4 +947,77 @@ test('malformed/empty OpenAI output never throws when extracting text/sources �
   assert.deepEqual(extractOpenAISources({ output: undefined }), []);
   assert.doesNotThrow(() => extractOpenAIText(undefined));
   assert.doesNotThrow(() => extractOpenAISources(undefined));
+});
+
+// median()/calculateMarketPosition() (2026-09-06 "final alignment pass"
+// mandate): MARKET's price positioning used to be entirely LLM-estimated —
+// no deterministic arithmetic existed anywhere in this codebase. Copied
+// verbatim from index.ts (see that file's own comment for the full
+// rationale) — the LLM now only gathers numeric evidence; this is the
+// deterministic step that turns it into marketMedian/premiumPct/position.
+function parseNumericPricePerSqm(v) {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v !== 'string') return null;
+  const cleaned = v.replace(/[,\s]/g, '').match(/-?\d+(\.\d+)?/);
+  if (!cleaned) return null;
+  const n = Number(cleaned[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function median(values) {
+  const nums = values.filter((n) => typeof n === 'number' && Number.isFinite(n)).sort((a, b) => a - b);
+  if (nums.length === 0) return null;
+  const mid = Math.floor(nums.length / 2);
+  return nums.length % 2 === 0 ? (nums[mid - 1] + nums[mid]) / 2 : nums[mid];
+}
+function calculateMarketPosition({ targetPricePerSqm, comparables }) {
+  const values = (comparables || []).map((c) => parseNumericPricePerSqm(c?.pricePerSqm)).filter((n) => n != null);
+  const marketMedianPricePerSqm = median(values);
+  if (targetPricePerSqm == null || marketMedianPricePerSqm == null || marketMedianPricePerSqm === 0) {
+    return { marketMedianPricePerSqm, premiumPct: null, position: 'UNKNOWN', comparablesUsed: values.length };
+  }
+  const premiumPct = ((targetPricePerSqm - marketMedianPricePerSqm) / marketMedianPricePerSqm) * 100;
+  const position = premiumPct > 7 ? 'PREMIUM' : premiumPct < -7 ? 'DISCOUNT' : 'MARKET_RANGE';
+  return { marketMedianPricePerSqm, premiumPct, position, comparablesUsed: values.length };
+}
+
+test('median: odd and even-length arrays, empty array', () => {
+  assert.equal(median([3, 1, 2]), 2);
+  assert.equal(median([1, 2, 3, 4]), 2.5);
+  assert.equal(median([]), null);
+  assert.equal(median([42]), 42);
+});
+test('parseNumericPricePerSqm: plain numbers, thousands separators, and non-numeric junk', () => {
+  assert.equal(parseNumericPricePerSqm('1200'), 1200);
+  assert.equal(parseNumericPricePerSqm('1,200.50'), 1200.5);
+  assert.equal(parseNumericPricePerSqm(1500), 1500);
+  assert.equal(parseNumericPricePerSqm('N/A'), null);
+  assert.equal(parseNumericPricePerSqm(null), null);
+  assert.equal(parseNumericPricePerSqm('-100'), null); // non-positive rejected
+});
+test('calculateMarketPosition: subject clearly above comparables median -> PREMIUM, computed from real numbers not an LLM guess', () => {
+  const r = calculateMarketPosition({ targetPricePerSqm: 2000, comparables: [{ pricePerSqm: '1000' }, { pricePerSqm: '1100' }, { pricePerSqm: '1050' }] });
+  assert.equal(r.marketMedianPricePerSqm, 1050);
+  assert.equal(r.position, 'PREMIUM');
+  assert.ok(r.premiumPct > 7);
+  assert.equal(r.comparablesUsed, 3);
+});
+test('calculateMarketPosition: subject clearly below comparables median -> DISCOUNT', () => {
+  const r = calculateMarketPosition({ targetPricePerSqm: 800, comparables: [{ pricePerSqm: '1000' }, { pricePerSqm: '1000' }] });
+  assert.equal(r.position, 'DISCOUNT');
+  assert.ok(r.premiumPct < -7);
+});
+test('calculateMarketPosition: subject within +/-7% of median -> MARKET_RANGE, never PREMIUM/DISCOUNT for a near-median price', () => {
+  const r = calculateMarketPosition({ targetPricePerSqm: 1030, comparables: [{ pricePerSqm: '1000' }, { pricePerSqm: '1000' }] });
+  assert.equal(r.position, 'MARKET_RANGE');
+});
+test('calculateMarketPosition: UNKNOWN (never a guessed classification) when the subject price is not evidenced', () => {
+  const r = calculateMarketPosition({ targetPricePerSqm: null, comparables: [{ pricePerSqm: '1000' }, { pricePerSqm: '1200' }] });
+  assert.equal(r.position, 'UNKNOWN');
+  assert.equal(r.premiumPct, null);
+  assert.equal(r.marketMedianPricePerSqm, 1100); // still reported as a fact from comparables alone
+});
+test('calculateMarketPosition: UNKNOWN when no comparable carries a usable numeric pricePerSqm, even with a subject price', () => {
+  const r = calculateMarketPosition({ targetPricePerSqm: 1500, comparables: [{ pricePerSqm: null }, { pricePerSqm: 'contact for price' }] });
+  assert.equal(r.position, 'UNKNOWN');
+  assert.equal(r.marketMedianPricePerSqm, null);
 });

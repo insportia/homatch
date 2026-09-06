@@ -6,16 +6,16 @@ import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySt
 
 // Order per the 2026-09-06 "Fix Homatch Verify by implementing this exact
 // pipeline in code" mandate: TAS Map -> TAS Document -> NAPR Property.
-test('buildInitialSteps: cadastral mode is msmap/tas/mygov (TAS Map -> TAS Document -> NAPR Property)', () => {
+test('buildInitialSteps: cadastral mode is TAS_MAP/tas/mygov (TAS Map -> TAS Document -> NAPR Property)', () => {
   assert.deepEqual(
     buildInitialSteps({ mode: 'cadastral' }).map((s) => s.key),
-    ['msmap', 'tas', 'mygov']
+    ['TAS_MAP', 'tas', 'mygov']
   );
 });
-test('buildInitialSteps: property mode is enreg/msmap/napr', () => {
+test('buildInitialSteps: property mode is enreg/TAS_MAP/napr', () => {
   assert.deepEqual(
     buildInitialSteps({ mode: 'property' }).map((s) => s.key),
-    ['enreg', 'msmap', 'napr']
+    ['enreg', 'TAS_MAP', 'napr']
   );
 });
 
@@ -48,7 +48,7 @@ test('stepMatchesResult: entity steps for different sources (rstax vs debtor) on
 });
 
 test('primaryStepsRemain: true while a source-type step is still pending, false once all consumed', () => {
-  const steps = [{ type: 'source', key: 'tas' }, { type: 'source', key: 'msmap' }, { type: 'entity', source: 'enreg', idCode: '1', name: 'x' }];
+  const steps = [{ type: 'source', key: 'tas' }, { type: 'source', key: 'TAS_MAP' }, { type: 'entity', source: 'enreg', idCode: '1', name: 'x' }];
   assert.ok(primaryStepsRemain(steps, 1));
   assert.ok(!primaryStepsRemain(steps, 2));
 });

@@ -1,40 +1,7 @@
 // RsTaxpayerWorker.ts — RS Taxpayers Registry ('rstax'), rs.ge, as its OWN
-// fully independent worker. Split out of the old FinancialSourceWorkflow.ts
-// (2026-09-06, "HOMATCH VERIFY — REBUILD THE CUSTOMER REPORT + OFFICIAL
-// WORKERS AS SEPARATE DETERMINISTIC PIPELINES" mandate): "one source = one
-// worker = one real live contract" — NOT a shared function parameterized by
-// a source-name key, even when (as here) two sources happen to share the
-// same page shape. This file owns its own URL, its own confirmed selector
-// (`#tin`), its own submit control, its own CAPTCHA-block phrase, and its
-// own result-read — nothing here is chosen by branching on a source-key
-// string at runtime.
-//
-// Real, live-confirmed contract (2026-09-06, via the user's own connected
-// browser — see this file's sibling selectors.ts for the original
-// inspection notes): a stable `<input id="tin">`, a real
-// `<button id="btnSearch1">ძებნა</button>`, and a normal-size (always
-// visible, not invisible) `div.g-recaptcha` that blocks the search
-// client-side with the exact banner "გთხოვთ მონიშნოთ უსაფრთხოების
-// ღილაკი!" whenever the checkbox has not been ticked — a distinct
-// "blocked, not yet searched" signal that must never be misread as a
-// confirmed empty registry result (mandate: "TECHNICAL FAILURE ≠ PROPERTY
-// RISK"), and is therefore checked BEFORE any no-result-phrase evaluation.
-//
-// Deliberately still uses a small set of genuinely source-agnostic DOM
-// primitives from BrowserSession.ts (challenge()/waitForResultSignal()/
-// contexts()) — those are frame-safe text/CAPTCHA infrastructure, not "how
-// do I search rs.ge" decision logic, and rewriting them per worker would be
-// pure duplication with no independence benefit. What this file does NOT
-// use is BrowserSession's generic interact()/submitNear() control flow —
-// the actual field fill and button click below are direct Playwright calls
-// against this source's own known selector, so a change to how some other
-// source searches can never silently change how this one does.
-//
-// RS Taxpayers exposes only a single national/company TIN field — no
-// name-only search (confirmed live) — so a candidate with no idCode is a
-// clean, honest precondition skip, never a guessed name-field attempt.
+// fully independent worker.
 import type { Page } from 'playwright';
-import { challenge, waitForResultSignal, hasNoResultPhrase } from '../../browser/BrowserSession.js';
+import { waitForResultSignal, hasNoResultPhrase } from '../../browser/BrowserSession.js';
 import { RSTAX_URL, RSTAX_ID_INPUT_SELECTORS, RSTAX_CAPTCHA_BLOCK_PHRASE, RSTAX_SOURCE_META } from './selectors.js';
 import type { LegacySourceResult, RsTaxpayerPublicData } from '../WorkflowResult.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
@@ -58,16 +25,8 @@ function buildResult(
     resultContext: opts.resultText || opts.error || null,
     resultConfirmed: status === 'SEARCH_CONFIRMED',
     noResultConfirmed: status === 'NO_RESULT_CONFIRMED',
-    // SEARCH_CONFIRMED is the status the report treats as "RS Taxpayers
-    // registry evidence obtained" — resultValidated must therefore require
-    // the same real-parsed-field proof as SEARCH_CONFIRMED itself (see
-    // hasParsedTaxpayerEvidence()), never just "a new signal appeared".
     resultValidated: status === 'SEARCH_CONFIRMED',
     status,
-    // No dedicated FSM/traversal ladder — RS Taxpayers is a single flat
-    // identifier-in, result-out search with no nested applications/
-    // documents list to enumerate, so there is nothing real for a
-    // traversal object to describe.
     traversal: null,
     retrievedAt: new Date().toISOString(),
     documents: [],
@@ -76,6 +35,39 @@ function buildResult(
     error: opts.error || null,
     taxpayerData: opts.taxpayerData ?? null,
   };
+}
+
+/**
+ * RS uses a normal, always-visible reCAPTCHA widget. Merely seeing
+ * `.g-recaptcha` therefore does NOT mean the human step is still pending.
+ * The live-verified flow is:
+ *   TIN -> Search #1 -> human solves CAPTCHA -> Search #2 -> result.
+ *
+ * We only observe the solved state; we never solve or bypass the CAPTCHA.
+ */
+async function rsCaptchaSolved(page: Page): Promise<boolean> {
+  try {
+    const token = await (page as any).locator('textarea[name="g-recaptcha-response"]').first().inputValue().catch(() => '');
+    if (String(token || '').trim()) return true;
+  } catch {
+    /* continue with iframe state check */
+  }
+
+  try {
+    const frames = (page as any).frames();
+    for (const frame of frames) {
+      if (!/recaptcha/i.test(String(frame.url?.() || ''))) continue;
+      const anchor = frame.locator('#recaptcha-anchor').first();
+      if (await anchor.count().catch(() => 0)) {
+        const checked = await anchor.getAttribute('aria-checked').catch(() => null);
+        if (checked === 'true') return true;
+      }
+    }
+  } catch {
+    /* unresolved means not proven solved */
+  }
+
+  return false;
 }
 
 export async function runRsTaxpayerWorker(
@@ -95,9 +87,6 @@ export async function runRsTaxpayerWorker(
       await (page as any).waitForTimeout(1500);
     }
 
-    // Own selector resolution: try each confirmed candidate directly
-    // against the top-level page (rs.ge's TIN field is not framed) rather
-    // than delegating to a shared hint-scanning primitive.
     let usedSelector: string | null = null;
     for (const sel of RSTAX_ID_INPUT_SELECTORS) {
       const x = (page as any).locator(sel).first();
@@ -108,7 +97,7 @@ export async function runRsTaxpayerWorker(
           break;
         }
       } catch {
-        /* this candidate selector isn't present — try the next confirmed one */
+        /* try next confirmed selector */
       }
     }
     if (!usedSelector) {
@@ -117,9 +106,9 @@ export async function runRsTaxpayerWorker(
 
     const before = await (page as any).mainFrame().locator('body').innerText({ timeout: 5000 }).catch(() => '');
 
-    // Own submit control: rs.ge's own confirmed real button (#btnSearch1,
-    // labeled "ძებნა"), clicked directly — never the shared submitNear()
-    // role-scan.
+    // Exact source-owned submit control. On the initial pass this is Search
+    // #1 (which exposes the CAPTCHA gate). On same-session resume after the
+    // user solves CAPTCHA, this is Search #2 (which returns the real result).
     const btn = (page as any).locator('#btnSearch1').first();
     let submitted = false;
     try {
@@ -128,7 +117,7 @@ export async function runRsTaxpayerWorker(
         submitted = true;
       }
     } catch {
-      /* fall through to Enter-key fallback below */
+      /* fall through to Enter fallback */
     }
     if (!submitted) {
       try {
@@ -138,24 +127,30 @@ export async function runRsTaxpayerWorker(
         return buildResult('SUBMIT_FAILED', { forEntity, selector: usedSelector, value: idCode, error: 'submit failed' });
       }
     }
+
     await (page as any).waitForTimeout(1000);
 
-    // Own CAPTCHA gate: rs.ge's own confirmed always-visible g-recaptcha
-    // blocks every unsolved search with a distinct client-side banner —
-    // checked BEFORE any no-result-phrase evaluation so a blocked search
-    // can never be misread as a confirmed empty registry result.
-    const cap = await challenge(page as any);
     const sig = await waitForResultSignal((page as any).mainFrame(), before, idCode);
-    if (cap || RSTAX_CAPTCHA_BLOCK_PHRASE.test(sig.after)) {
+    const solved = await rsCaptchaSolved(page);
+
+    // Source-specific CAPTCHA gate. The generic challenge() detector cannot
+    // be used here because RS keeps the reCAPTCHA widget visible even AFTER
+    // it has been solved; doing so caused an endless WAITING_HUMAN loop on
+    // resume. A visible widget is pending only when it is not proven solved,
+    // or when RS explicitly says the security button must still be checked.
+    if (RSTAX_CAPTCHA_BLOCK_PHRASE.test(sig.after) || (!solved && /g-recaptcha|recaptcha/i.test(await (page as any).locator('body').innerHTML().catch(() => '')))) {
       return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after }), status: 'WAITING_HUMAN' };
     }
+
     if (!sig.changed) {
       return buildResult('SUBMITTED_UNCONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, error: 'search submitted but no new result signal appeared' });
     }
+
     const noResult = hasNoResultPhrase(sig.after);
     const candidateData = noResult ? null : parseRsTaxpayerFields(sig.after, idCode);
     let status: string;
     let taxpayerData: RsTaxpayerPublicData | null;
+
     if (noResult) {
       status = 'NO_RESULT_CONFIRMED';
       taxpayerData = null;
@@ -163,19 +158,14 @@ export async function runRsTaxpayerWorker(
       status = 'SEARCH_CONFIRMED';
       taxpayerData = candidateData;
     } else {
-      // A new signal appeared and it's not a recognized no-result phrase,
-      // but nothing we can confidently call a real taxpayer field parsed
-      // out of it either — never claim RS success on page-load alone.
       status = 'SUBMITTED_UNPARSED';
       taxpayerData = null;
     }
-    // Feed whatever names/ids this result page actually carries into the
-    // shared EntityQueue — mandate Section 12's "wire the previously-unused
-    // entities parameter" fix. Never interrupts this worker's own result;
-    // purely additive bookkeeping for the orchestrator's later entity pass.
+
     if (entities && status === 'SEARCH_CONFIRMED' && sig.after) {
       entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
     }
+
     return buildResult(status, {
       forEntity,
       selector: usedSelector,

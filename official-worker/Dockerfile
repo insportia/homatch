@@ -5,4 +5,4 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src
 ENV NODE_ENV=production
-CMD ["npm","start"]
+CMD ["xvfb-run","-a","npm","start"]

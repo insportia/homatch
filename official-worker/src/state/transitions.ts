@@ -98,6 +98,16 @@ export interface TasMapTraversalInput extends MsmapTraversalInput {
    * TasMapPage.traverseSections(). A section absent for this parcel reports
    * discovered=0 and is trivially satisfied — never a silent skip. */
   sections?: { label: string; discovered: number; visited: number; skipped: number }[];
+  /** 2026-09-07 re-audit fix: whether the clicked/highlighted parcel's own
+   * cadastral code was actually confirmed (via assertParcelMatchesQuery
+   * comparing the info-window text against the searched code) to match the
+   * target parcel — NOT merely that some parcel got highlighted or clicked.
+   * Previously computed by TasMapWorker.ts but never consumed here, so a
+   * wrong-parcel click could still reach SOURCE_EXHAUSTED as long as the
+   * rest of the popup->NAPR->documents chain completed on that WRONG
+   * parcel. "Map centered/highlighted alone must not be PASS" applies with
+   * equal force to "map highlighted the wrong parcel". */
+  parcelValidated?: boolean;
 }
 
 function sectionsFullyTraversed(sections: TasMapTraversalInput['sections']): boolean {
@@ -107,12 +117,14 @@ function sectionsFullyTraversed(sections: TasMapTraversalInput['sections']): boo
 
 /** The literal mandate example, TAS_MAP form: "CORRECT_SUGGESTION_SELECTED
  * or PARCEL_FOCUSED DOES NOT mean map research is complete." Exhaustion
- * requires the FULL popup->NAPR->latest-info->documents chain AND every
- * discovered section's rows fully accounted for (visited+skipped ===
- * discovered) — OR a causally-proven confirmed-empty search. */
+ * requires the FULL popup->NAPR->latest-info->documents chain, the clicked
+ * parcel's cadastral code actually confirmed against the searched code
+ * (parcelValidated), AND every discovered section's rows fully accounted
+ * for (visited+skipped === discovered) — OR a causally-proven
+ * confirmed-empty search. */
 export function canMarkTasMapExhausted(s: TasMapTraversalInput): boolean {
   if (s.noResultConfirmed && !s.suggestionSelected) return true;
-  return !!(s.suggestionSelected && s.infoPopupOpened && s.naprOpened && s.latestInformationOpened && s.documentsRead && sectionsFullyTraversed(s.sections));
+  return !!(s.suggestionSelected && s.infoPopupOpened && s.parcelValidated && s.naprOpened && s.latestInformationOpened && s.documentsRead && sectionsFullyTraversed(s.sections));
 }
 
 export function computeTasMapTraversal(input: TasMapTraversalInput = {}) {

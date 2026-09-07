@@ -9,9 +9,11 @@ import assert from 'node:assert/strict';
 import {
   computeMsmapTraversal,
   computeTasTraversal,
+  computeTasMapTraversal,
   computeMygovTraversal,
   computeEnregTraversal,
   canMarkMsmapExhausted,
+  canMarkTasMapExhausted,
   canMarkTasExhausted,
   canMarkMygovExhausted,
   canMarkEnregExhausted,
@@ -51,6 +53,48 @@ test('msmap: confirmed-empty search with nothing to traverse -> SOURCE_EXHAUSTED
 test('msmap: captcha wins over any ladder progress', () => {
   const t = computeMsmapTraversal({ queryEntered: true, suggestionSelected: true, infoPopupOpened: true, naprOpened: true, latestInformationOpened: true, documentsRead: true, captcha: true });
   assert.equal(t.status, 'WAITING_HUMAN');
+});
+
+// ── TAS_MAP (2026-09-07 re-audit: no coverage existed for this function at
+// all before this pass, despite it carrying the same hard-invariant
+// character as the other three sources) ────────────────────────────────────
+const TAS_MAP_FULL_CHAIN = {
+  queryEntered: true,
+  suggestionSelected: true,
+  layersEnabled: true,
+  identifyActivated: true,
+  parcelClicked: true,
+  infoPopupOpened: true,
+  parcelValidated: true,
+  naprOpened: true,
+  latestInformationOpened: true,
+  documentsRead: true,
+};
+
+test('tasMap: full chain including a CONFIRMED-MATCHING parcel -> SOURCE_EXHAUSTED', () => {
+  assert.equal(canMarkTasMapExhausted(TAS_MAP_FULL_CHAIN), true);
+  assert.equal(computeTasMapTraversal(TAS_MAP_FULL_CHAIN).status, 'SOURCE_EXHAUSTED');
+});
+
+test('tasMap: THE RE-AUDIT BUG — full popup->NAPR->documents chain on a parcel that FAILED cadastral validation must NOT be exhausted', () => {
+  const wrongParcel = { ...TAS_MAP_FULL_CHAIN, parcelValidated: false };
+  assert.equal(canMarkTasMapExhausted(wrongParcel), false, 'a wrong/unconfirmed parcel must never be reported as a fully exhausted, correct result');
+  assert.notEqual(computeTasMapTraversal(wrongParcel).status, 'SOURCE_EXHAUSTED');
+});
+
+test('tasMap: parcelValidated simply absent (assertParcelMatchesQuery never ran) is treated the same as failed — never exhausted by omission', () => {
+  const { parcelValidated, ...noValidation } = TAS_MAP_FULL_CHAIN;
+  assert.equal(canMarkTasMapExhausted(noValidation), false);
+});
+
+test('tasMap: a discovered section with unread rows blocks exhaustion even with a validated parcel', () => {
+  const input = { ...TAS_MAP_FULL_CHAIN, sections: [{ label: 'permits', discovered: 3, visited: 1, skipped: 0 }] };
+  assert.equal(canMarkTasMapExhausted(input), false);
+});
+
+test('tasMap: confirmed-empty search with nothing to traverse -> SOURCE_EXHAUSTED regardless of parcelValidated', () => {
+  const t = computeTasMapTraversal({ queryEntered: true, suggestionSelected: false, noResultConfirmed: true });
+  assert.equal(t.status, 'SOURCE_EXHAUSTED');
 });
 
 // ── TAS ──────────────────────────────────────────────────────────────────

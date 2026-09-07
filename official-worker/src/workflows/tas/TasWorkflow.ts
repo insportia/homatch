@@ -1,8 +1,13 @@
-// TasWorkflow.ts — drives TasPage.ts through TasState.ts's FSM, including
-// the parent-cadastral-code fallback (cadastral.ts) and the full
-// discover-then-traverse-every-row chain. TAS_EXHAUSTED is only reachable
-// when canMarkTasExhausted() genuinely holds — the direct fix for "18
-// discovered via TAS's own counter, 0 rows/documents opened."
+// TasWorkflow.ts — deterministic TAS document workflow.
+//
+// TAS search still discovers the source's full result count, but the product
+// traversal policy is intentionally bounded to the latest <=10 dated records.
+// TasResultExhauster owns that live-verified selection: if <=10 exist it
+// processes all; if more exist it walks backward from the last pagination
+// page until it has enough candidates, then sorts by actual DD/MM/YYYY DESC.
+// Completion therefore means every SELECTED latest record was processed — not
+// that an unbounded historical archive was opened. The source's full count is
+// retained in trace/resultContext for auditability.
 import type { Page } from 'playwright';
 import { newTasFsm } from './TasState.js';
 import { TasPage } from './TasPage.js';
@@ -14,9 +19,19 @@ import { computeTasTraversal } from '../../state/transitions.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 import type { LegacySourceResult, WorkflowResult } from '../WorkflowResult.js';
 
-const SOURCE_META = { name: 'TAS', class: 'OFFICIAL_GOVERNMENT', url: 'https://tas.ge/?p=searchdocument&menuItemId=7104' };
+const SOURCE_META = {
+  name: 'TAS',
+  class: 'OFFICIAL_GOVERNMENT',
+  url: 'https://tas.ge/?p=searchdocument&menuItemId=7104',
+};
 
-export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral' | 'property', entities?: EntityQueue, opts: { skipGoto?: boolean } = {}): Promise<LegacySourceResult> {
+export async function runTasWorkflow(
+  page: Page,
+  query: string,
+  mode: 'cadastral' | 'property',
+  entities?: EntityQueue,
+  opts: { skipGoto?: boolean } = {},
+): Promise<LegacySourceResult> {
   const fsm = newTasFsm();
   const trace = new BrowserTrace('tas');
   const pageObj = new TasPage();
@@ -24,7 +39,13 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
   try {
     if (!opts.skipGoto) {
       const gotoRes = await pageObj.goto(page);
-      trace.record({ stateBefore: null, action: 'GOTO', target: SOURCE_META.url, actualOutcome: `TAS_OPENED searchMenuClicked=${gotoRes.searchMenuClicked}`, stateAfter: 'TAS_OPENED' });
+      trace.record({
+        stateBefore: null,
+        action: 'GOTO',
+        target: SOURCE_META.url,
+        actualOutcome: `TAS_OPENED searchMenuClicked=${gotoRes.searchMenuClicked}`,
+        stateAfter: 'TAS_OPENED',
+      });
     }
     fsm.transition('TAS_OPENED');
 
@@ -35,50 +56,70 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     }
 
     fsm.transition('CADASTRAL_FORM_FOUND', 'proceeding to search — a missing control is reported at FULL_CODE_ENTERED');
-    // 2026-09-07 Verify mandate, source-routing rule "TAS=parent/base": the
-    // FIRST candidate here is already the base/parent parcel (or the code
-    // exactly as supplied, if it already IS the base parcel) — never the
-    // full apartment/unit-level code. See cadastral.ts's own header for why
-    // this reverses the prior "full code first" design. `original` stays
-    // the exact code the caller passed in, untouched, for the final
-    // result's originalCadastralCode — it is never itself searched here
-    // unless it happens to equal the base parcel already.
+
+    // TAS searches the base/parent parcel first. The exact apartment/unit code
+    // remains the untouched original identifier for downstream provenance.
     const candidates = mode === 'cadastral' ? candidateSequence(query) : [query];
     const original = query;
     let resolved = candidates[0];
     let searchRes = await pageObj.searchCadastral(page, resolved);
-    trace.record({ stateBefore: 'CADASTRAL_FORM_FOUND', action: 'SEARCH', target: resolved, actualOutcome: searchRes.found ? 'SUBMITTED' : 'CONTROL_NOT_FOUND', stateAfter: null });
+
+    trace.record({
+      stateBefore: 'CADASTRAL_FORM_FOUND',
+      action: 'SEARCH',
+      target: resolved,
+      actualOutcome: searchRes.found ? 'SUBMITTED' : 'CONTROL_NOT_FOUND',
+      stateAfter: null,
+    });
 
     if (!searchRes.found) {
       fsm.transition('SEARCH_CONTROL_NOT_FOUND');
-      return buildResult('SEARCH_CONTROL_NOT_FOUND', original, resolved, null, 0, 0, 0, [], trace, query, original, null, 'search control not found');
+      return buildResult(
+        'SEARCH_CONTROL_NOT_FOUND',
+        original,
+        resolved,
+        null,
+        0,
+        0,
+        0,
+        [],
+        trace,
+        query,
+        original,
+        null,
+        'search control not found',
+      );
     }
+
     fsm.transition('FULL_CODE_ENTERED');
     if (!assertSearchSubmitted(searchRes.submitted, searchRes.networkConfirmed)) {
       fsm.transition('SUBMIT_FAILED');
       return buildResult('SUBMIT_FAILED', original, resolved, null, 0, 0, 0, [], trace, query, original, null, 'submit failed');
     }
+
     fsm.transition('FULL_SEARCH_SUBMITTED');
     fsm.transition('FULL_RESULTS_INSPECTED');
 
-    // Escalate to a progressively broader (never narrower/unit-level)
-    // fallback candidate ONLY when the base/parent parcel's own search came
-    // back a CONFIRMED empty — never merely because the form failed to
-    // operate (that is a control problem, not a granularity one). The full
-    // apartment/unit-level code is never one of these candidates.
-    let attempts = [{ cadastralCodeTried: resolved, resultsDiscovered: searchRes.resultsDiscovered, noResultConfirmed: !!searchRes.noResultConfirmed }];
+    let attempts = [
+      {
+        cadastralCodeTried: resolved,
+        resultsDiscovered: searchRes.resultsDiscovered,
+        noResultConfirmed: !!searchRes.noResultConfirmed,
+      },
+    ];
+
     if (!hasMeaningfulTasResults(searchRes) && candidates.length > 1) {
       fsm.transition('PARENT_CODE_RESOLUTION', 'base/parent parcel had no meaningful results — trying broader fallback candidates');
       for (const candidate of candidates.slice(1)) {
         fsm.transition('PARENT_CODE_ENTERED', candidate);
         const retry = await pageObj.searchCadastral(page, candidate);
-        attempts.push({ cadastralCodeTried: candidate, resultsDiscovered: retry.resultsDiscovered, noResultConfirmed: !!retry.noResultConfirmed });
+        attempts.push({
+          cadastralCodeTried: candidate,
+          resultsDiscovered: retry.resultsDiscovered,
+          noResultConfirmed: !!retry.noResultConfirmed,
+        });
         if (!retry.found || !assertSearchSubmitted(retry.submitted, retry.networkConfirmed)) continue;
         fsm.transition('PARENT_SEARCH_SUBMITTED');
-        // Adopt the latest genuinely-submitted attempt regardless of
-        // outcome (so a run where every candidate confirms empty still
-        // reports the LAST one tried, per the mandate's exact fixture),
-        // but stop iterating the moment one actually finds something.
         searchRes = retry;
         resolved = candidate;
         if (hasMeaningfulTasResults(retry)) break;
@@ -86,7 +127,8 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     }
 
     fsm.transition('RESULT_SET_CAPTURED');
-    const resultsDiscovered = searchRes.resultsDiscovered;
+    const sourceResultsDiscovered = searchRes.resultsDiscovered;
+
     if (!hasMeaningfulTasResults(searchRes)) {
       fsm.transition('RESULT_QUEUE_CREATED', 'zero relevant items — nothing to traverse');
       fsm.transition('RESULT_OPENED');
@@ -96,95 +138,141 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
       fsm.transition('NEXT_RESULT');
       fsm.transition('ALL_RESULTS_EXHAUSTED');
       fsm.transition('TAS_EXHAUSTED');
-      return buildResult('TAS_EXHAUSTED', original, resolved, 0, 0, 0, 0, [], trace, query, original, null, null, attempts);
+      return buildResult('TAS_EXHAUSTED', original, resolved, 0, 0, 0, 0, [], trace, query, original, null, null, attempts, 0, 0);
     }
 
-    // A result set with an unknown discovered count (selector/count both
-    // failed) or one that IS known: either way we still attempt to open
-    // every row we can find — the traversal snapshot honestly reports
-    // whatever `resultsDiscovered` this run could actually establish.
     fsm.transition('RESULT_QUEUE_CREATED');
     fsm.transition('RESULT_OPENED');
-    // The real production bug this fixes: searchCadastral() already resolves
-    // and returns the actual Frame the results render in (docs.tbilisi.gov.ge's
-    // embedded ExtJS iframe, not necessarily the outer tas.ge page) — passing
-    // the outer `page` here instead discards that and silently searches the
-    // wrong document (Page.locator() never sees into iframe content).
-    const resultScope = searchRes.frame || page;
-    let exhaustion = await pageObj.exhaustResultRows(resultScope, resultsDiscovered);
-    fsm.transition('CHILDREN_ENUMERATED', `${exhaustion.rowsDiscoveredBySelector} row(s) found by ${exhaustion.rowStrategy}`);
 
-    // 2026-09 "report intelligence v2" mandate, Section 2: never let the
-    // reported "discovered" count be smaller than the number of rows we
-    // actually, concretely visited — TAS's own "total results" banner text
-    // is one signal among others, not infallible, and a customer/log-facing
-    // "19 visited of 18 discovered" is a self-contradiction regardless of
-    // which upstream signal produced it.
-    let finalDiscovered = Math.max(resultsDiscovered != null ? resultsDiscovered : exhaustion.rowsDiscoveredBySelector, exhaustion.rowsVisited);
+    // searchCadastral() returns the real ExtJS Frame whenever the grid lives
+    // inside docs.tbilisi.gov.ge. Page.locator() cannot pierce that iframe.
+    const resultScope = searchRes.frame || page;
+    let exhaustion = await pageObj.exhaustResultRows(resultScope, sourceResultsDiscovered);
+
+    fsm.transition(
+      'CHILDREN_ENUMERATED',
+      `${exhaustion.rowsDiscoveredBySelector} latest row(s) selected by ${exhaustion.rowStrategy}`,
+    );
+
+    const sourceTotal = exhaustion.sourceTotalResults ?? sourceResultsDiscovered;
+    let selectedTarget = exhaustion.selectionTarget ?? exhaustion.rowsDiscoveredBySelector;
+    let completeDocuments = exhaustion.rowDocuments.filter((d: any) => !!d.complete).length;
+
+    trace.record({
+      stateBefore: fsm.state,
+      action: 'LATEST_SELECTION_POLICY',
+      actualOutcome: `sourceTotal=${sourceTotal ?? 'unknown'} selectedTarget=${selectedTarget} pages=${(exhaustion.selectionPagesVisited || []).join(',') || 'n/a'}`,
+      stateAfter: fsm.state,
+    });
+
+    // IMPORTANT: the completeness gate is evaluated against the intentional
+    // latest-record target, not the entire historical source count. Failed
+    // selected rows are NOT converted into harmless skips: skippedReasonsCount
+    // stays zero in the invariant so an unread selected row blocks exhaustion.
     let invariantInput = {
-      resultsDiscovered: finalDiscovered,
+      resultsDiscovered: selectedTarget,
       resultsVisited: exhaustion.rowsVisited,
-      skippedReasonsCount: exhaustion.skippedReasons.length,
-      documentsDiscovered: exhaustion.rowsVisited,
-      documentsRead: exhaustion.rowDocuments.length,
+      skippedReasonsCount: 0,
+      documentsDiscovered: exhaustion.rowDocuments.length,
+      documentsRead: completeDocuments,
     };
 
-    // Never accept "gate blocked, so just report the incomplete state" as
-    // final (mandate: "if resultsDiscovered=24 and resultsVisited=16 then
-    // TAS_EXHAUSTED must be programmatically impossible" — AND the workflow
-    // must actually keep working toward completeness, not merely report the
-    // honest shortfall). One bounded re-pass over a fresh DOM query recovers
-    // from transient render/timing gaps; it is not a substitute for a real
-    // root-cause fix, so both the original attempt's strategy and this
-    // retry's are recorded in the trace either way.
-    if (!canMarkTasExhausted(invariantInput) && exhaustion.rowsVisited < finalDiscovered) {
+    // One bounded retry only when the live-verified target was not fully read.
+    // Healthy runs do not pay this cost.
+    if (!canMarkTasExhausted(invariantInput)) {
       trace.record({
         stateBefore: fsm.state,
-        action: 'RETRY_EXHAUSTION',
-        actualOutcome: `visited=${exhaustion.rowsVisited} of discovered=${finalDiscovered} (strategy=${exhaustion.rowStrategy}) — retrying row traversal`,
+        action: 'RETRY_LATEST_SELECTION',
+        actualOutcome: `visited=${exhaustion.rowsVisited}/${selectedTarget} documents=${completeDocuments}/${exhaustion.rowDocuments.length}`,
         stateAfter: fsm.state,
       });
-      const retry = await pageObj.exhaustResultRows(resultScope, finalDiscovered);
-      const seenUrls = new Set(exhaustion.rowDocuments.map((d: any) => d.url));
+
+      const retry = await pageObj.exhaustResultRows(resultScope, sourceResultsDiscovered);
       const mergedDocs = exhaustion.rowDocuments.slice();
-      for (const d of retry.rowDocuments) if (!seenUrls.has(d.url)) { mergedDocs.push(d); seenUrls.add(d.url); }
+      const seen = new Set(
+        mergedDocs.map((d: any) => `${String(d.url || '').replace(/[?#].*$/, '')}|${d.documentType}|${d.pageCount}|${String(d.rawText || '').length}|${String(d.rawText || '').slice(0, 160)}`),
+      );
+      for (const d of retry.rowDocuments) {
+        const key = `${String(d.url || '').replace(/[?#].*$/, '')}|${d.documentType}|${d.pageCount}|${String(d.rawText || '').length}|${String(d.rawText || '').slice(0, 160)}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          mergedDocs.push(d);
+        }
+      }
+
       exhaustion = {
+        ...exhaustion,
         rowDocuments: mergedDocs,
         trace: [...exhaustion.trace, ...retry.trace],
         rowsVisited: Math.max(exhaustion.rowsVisited, retry.rowsVisited),
         rowsDiscoveredBySelector: Math.max(exhaustion.rowsDiscoveredBySelector, retry.rowsDiscoveredBySelector),
         skippedReasons: [...exhaustion.skippedReasons, ...retry.skippedReasons],
         rowStrategy: `${exhaustion.rowStrategy}+RETRY:${retry.rowStrategy}`,
+        sourceTotalResults: retry.sourceTotalResults ?? exhaustion.sourceTotalResults,
+        selectionTarget: Math.max(exhaustion.selectionTarget || 0, retry.selectionTarget || 0),
+        selectionPagesVisited: [...new Set([...(exhaustion.selectionPagesVisited || []), ...(retry.selectionPagesVisited || [])])],
       };
-      finalDiscovered = resultsDiscovered != null ? resultsDiscovered : exhaustion.rowsDiscoveredBySelector;
+
+      selectedTarget = exhaustion.selectionTarget ?? exhaustion.rowsDiscoveredBySelector;
+      completeDocuments = exhaustion.rowDocuments.filter((d: any) => !!d.complete).length;
       invariantInput = {
-        resultsDiscovered: finalDiscovered,
+        resultsDiscovered: selectedTarget,
         resultsVisited: exhaustion.rowsVisited,
-        skippedReasonsCount: exhaustion.skippedReasons.length,
-        documentsDiscovered: exhaustion.rowsVisited,
-        documentsRead: exhaustion.rowDocuments.length,
+        skippedReasonsCount: 0,
+        documentsDiscovered: exhaustion.rowDocuments.length,
+        documentsRead: completeDocuments,
       };
     }
 
-    for (const d of exhaustion.rowDocuments) if (entities && d.rawText) entities.scanText(d.rawText, { source: 'tas', sourceDocument: d.url, retrievedAt: new Date().toISOString() });
+    for (const d of exhaustion.rowDocuments) {
+      if (entities && d.rawText) {
+        entities.scanText(d.rawText, {
+          source: 'tas',
+          sourceDocument: d.url,
+          retrievedAt: new Date().toISOString(),
+        });
+      }
+    }
+
     if (exhaustion.rowDocuments.length > 0) fsm.transition('CHILD_DOCUMENT_OPENED');
-    if (exhaustion.rowDocuments.length > 0) fsm.transition('DOCUMENT_READ');
+    if (completeDocuments > 0) fsm.transition('DOCUMENT_READ');
     if (exhaustion.rowDocuments.length > 0) fsm.transition('RETURN_TO_RESULT');
     if (exhaustion.rowDocuments.length > 0) fsm.transition('NEXT_CHILD');
     fsm.transition('RESULT_EXHAUSTED');
     fsm.transition('RETURN_TO_RESULT_LIST');
     fsm.transition('NEXT_RESULT');
     fsm.transition('ALL_RESULTS_EXHAUSTED');
+
     if (canMarkTasExhausted(invariantInput)) {
       fsm.transition('TAS_EXHAUSTED');
     } else {
-      // Structurally CANNOT reach TAS_EXHAUSTED — this is the exact
-      // mandate invariant ("18 discovered, 16 visited MUST make
-      // TAS_EXHAUSTED impossible") enforced here, not merely tested.
-      trace.record({ stateBefore: 'ALL_RESULTS_EXHAUSTED', action: 'GATE', expectedOutcome: 'TAS_EXHAUSTED', actualOutcome: 'BLOCKED_BY_canMarkTasExhausted', stateAfter: 'ALL_RESULTS_EXHAUSTED' });
+      trace.record({
+        stateBefore: 'ALL_RESULTS_EXHAUSTED',
+        action: 'GATE',
+        expectedOutcome: 'TAS_EXHAUSTED',
+        actualOutcome: 'BLOCKED_BY_latest_selection_completeness',
+        stateAfter: 'ALL_RESULTS_EXHAUSTED',
+      });
     }
 
-    return buildResult(fsm.state, original, resolved, finalDiscovered, exhaustion.rowsVisited, exhaustion.rowsVisited, exhaustion.rowDocuments.length, exhaustion.rowDocuments, trace, query, original, null, null, attempts, exhaustion.skippedReasons.length);
+    return buildResult(
+      fsm.state,
+      original,
+      resolved,
+      selectedTarget,
+      exhaustion.rowsVisited,
+      exhaustion.rowDocuments.length,
+      completeDocuments,
+      exhaustion.rowDocuments,
+      trace,
+      query,
+      original,
+      null,
+      null,
+      attempts,
+      exhaustion.skippedReasons.length,
+      sourceTotal,
+    );
   } catch (e) {
     return buildResult('FAILED', isCadastralCode(query) ? query : null, null, null, 0, 0, 0, [], trace, query, query, String(e));
   }
@@ -204,7 +292,8 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     error: string | null = null,
     _msg?: string | null,
     cadastralFallbackAttempts?: any[],
-    skippedReasonsCount = 0
+    skippedReasonsCount = 0,
+    sourceTotalResults: number | null = null,
   ): LegacySourceResult {
     const traversal = computeTasTraversal({
       originalCadastralCode: original,
@@ -220,7 +309,16 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
       submitFailed: state === 'SUBMIT_FAILED',
       failed: state === 'FAILED',
     });
-    const legacyStatus = traversal.status === 'SOURCE_EXHAUSTED' ? (resultsDiscovered === 0 ? 'NO_RESULT_CONFIRMED' : 'SEARCH_CONFIRMED') : traversal.status === 'RESULTS_DISCOVERED' || traversal.status === 'RESULTS_TRAVERSED' ? 'SEARCH_CONFIRMED' : traversal.status;
+
+    const legacyStatus =
+      traversal.status === 'SOURCE_EXHAUSTED'
+        ? resultsDiscovered === 0
+          ? 'NO_RESULT_CONFIRMED'
+          : 'SEARCH_CONFIRMED'
+        : traversal.status === 'RESULTS_DISCOVERED' || traversal.status === 'RESULTS_TRAVERSED'
+          ? 'SEARCH_CONFIRMED'
+          : traversal.status;
+
     const workflowResult: WorkflowResult = {
       source: 'tas',
       state,
@@ -230,10 +328,11 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
       visitedItems: resultsVisited,
       discoveredDocuments: documentsDiscovered,
       readDocuments: documentsRead,
-      unvisitedRelevantItems: traversal.unvisitedRelevantItems,
+      unvisitedRelevantItems: traversal.unvisitedRelevantItems as number | null,
       evidenceIds: [],
       trace: tr.all,
     };
+
     return {
       source: 'tas',
       sourceName: SOURCE_META.name,
@@ -245,7 +344,7 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
       searchControlUsed: state === 'SEARCH_CONTROL_NOT_FOUND' ? null : 'input[name*="cad" i]',
       queryEntered: state === 'SEARCH_CONTROL_NOT_FOUND' ? null : q,
       submitAction: state === 'SEARCH_CONTROL_NOT_FOUND' ? null : 'ENTER_KEY',
-      resultContext: `TAS FSM reached ${state}`,
+      resultContext: `TAS FSM reached ${state}; latest-policy selected=${resultsDiscovered ?? 'unknown'}; source-total=${sourceTotalResults ?? 'unknown'}; newest evidence is authoritative for current state, older records remain historical context`,
       resultConfirmed: legacyStatus === 'SEARCH_CONFIRMED',
       noResultConfirmed: legacyStatus === 'NO_RESULT_CONFIRMED',
       resultValidated: legacyStatus === 'SEARCH_CONFIRMED',

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import IntersectObserver from '@/components/common/IntersectObserver';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -108,6 +109,7 @@ const App: React.FC = () => {
             </Routes>
           </ErrorBoundary>
           <Toaster richColors position="top-right" />
+          <SpeedInsights />
         </AuthProvider>
       </LanguageProvider>
     </Router>

@@ -332,8 +332,6 @@ export async function runMyGovWorkflow(
         continue;
       }
 
-      // Prepared-document visibility is a stronger post-human success signal
-      // than a CAPTCHA iframe that may remain mounted after the solve.
       const preparedReady = await pageObj.preparedExtractReady(frame);
       const capAtApp = preparedReady ? false : await challenge(page);
 
@@ -424,7 +422,7 @@ export async function runMyGovWorkflow(
       documentsRead: documents.length,
     };
 
-    fsm.transition('RESULTS_TRAVERED' as any);
+    fsm.transition('RESULTS_TRAVERSED');
     const exhausted = canMarkMygovExhausted(invariant);
     trace.record({
       stateBefore: 'RESULTS_TRAVERSED',
@@ -511,9 +509,6 @@ export async function runMyGovWorkflow(
       ? await readPdfDocument(opened, { url, label }, 'mygov_prepared_document')
       : await readOnlineDocument(opened, { url, label }, 'mygov_prepared_document');
 
-    // Popup documents are closed after reading. If the registry used same-page
-    // navigation, never close the main research page/context here; the
-    // orchestrator owns and closes that browser when the job completes.
     if (opened !== currentPage) await opened.close().catch(() => {});
 
     if (!doc?.rawText || doc.rawText.trim().length <= 20) return null;

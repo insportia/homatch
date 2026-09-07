@@ -1,321 +1,559 @@
-// TasResultExhauster.ts — TAS's OWN result-row/document traversal.
+// TasResultExhauster.ts — TAS-specific, live-verified latest-record traversal.
 //
-// Forked out of the former shared browser/ResultRowExhauster.ts per the
-// "REBUILD THE CUSTOMER REPORT + OFFICIAL WORKERS AS SEPARATE DETERMINISTIC
-// PIPELINES" mandate ("one source = one worker = one real live contract" —
-// never a function shared across sources via a sourceLabel string; the
-// mandate explicitly names "ResultRowExhauster for TAS" in its DO-NOT list).
-// TAS no longer imports or calls the shared exhauster at all — this file is
-// TAS's own, independently evolvable copy.
+// Contract verified manually against tas.ge / docs.tbilisi.gov.ge on
+// 2026-09-07:
+//   1) search result rows contain AR number + DD/MM/YYYY;
+//   2) if <=10 results exist, inspect all of them;
+//   3) if >10 exist, move to the last result page and work backwards only
+//      as far as needed to collect the latest 10 candidates;
+//   4) sort those candidates by real date DESC (newest first);
+//   5) open each selected AR in the SAME Playwright context;
+//   6) the real detail content lives in iframe.page-iframe whose URL is
+//      docs.tbilisi.gov.ge/architect/public.html?docId=...;
+//   7) read the full iframe body, scroll all lazy/ExtJS containers to bottom,
+//      then click every exact ExtJS button whose inner span text is
+//      "შედეგის ნახვა";
+//   8) fully parse opened PDFs (all pages, no text truncation);
+//   9) duplicate result buttons/documents are deduped before persistence;
+//  10) no eye-icon traversal — deliberately removed from the product contract.
 //
-// The traversal ALGORITHM itself (anchor-rows-first, ExtJS-grid-row
-// double-click fallback, anchorPassLooksReal() gating which pass is
-// trusted) is preserved verbatim from the shared version rather than
-// rewritten against new, unverified selectors: that algorithm was itself
-// built and live-verified directly against TAS's real production DOM (see
-// the ANCHOR_ROW_SELECTOR comment below — the nav-menu false-positive bug
-// it guards against was found and fixed AGAINST TAS specifically), so
-// forking it here is a real architectural change (TAS now owns this code
-// and can evolve it independently of MyGov) without gambling working,
-// live-tested behavior on a same-day rewrite this pass had no way to
-// re-verify live. A genuinely TAS-specific real-iframe traversal
-// (enumerateTasResultsInRealIframe / openTasResultFromIframe /
-// enumerateTasResultChildren, per the mandate's naming) is the natural next
-// step for this file, but belongs in a pass that can be checked against the
-// live tas.ge/docs.tbilisi.gov.ge DOM rather than guessed blind.
-//
-// Playwright-touching — NOT unit-testable in this sandbox. Local-syntax-
-// checked via `tsc --noEmit` only. The pure decision logic this file
-// depends on (anchorPassLooksReal) is unit-tested independently in
-// browser/RowExhaustionHeuristics.ts / test/rowExhaustionHeuristics.test.mjs.
-import type { Page } from 'playwright';
-import { text as pageText } from '../../browser/BrowserSession.js';
-import { NavigationStack } from '../../browser/NavigationStack.js';
-import { classifyDocumentLink } from '../../documents/DocumentReader.js';
+// The browser/context lifecycle is NOT owned here. ResearchOrchestrator
+// closes each non-WAITING_HUMAN step context and closes the shared browser at
+// job completion; CAPTCHA/human verification is the only intentional hold.
+import type { Frame, Page } from 'playwright';
 import { readPdfDocument } from '../../documents/PdfDocumentReader.js';
-import { readOnlineDocument } from '../../documents/OnlineDocumentReader.js';
-import { anchorPassLooksReal } from '../../browser/RowExhaustionHeuristics.js';
 
-const GRID_ROW_SELECTOR = '[role="row"], .x-grid-row, tr[class*="x-grid" i], [class*="grid-row" i], [class*="grid" i] tbody tr';
-const MAX_RESULT_ROWS = 25;
-// Cap on nested attachments opened PER result row — bounded deliberately:
-// the mandate wants attachments actually read, not an unbounded crawl.
-const MAX_NESTED_DOCS_PER_ROW = 6;
+const GRID_ROW_SELECTOR =
+  '[role="row"], .x-grid-row, tr[class*="x-grid" i], [class*="grid-row" i], [class*="grid" i] tbody tr';
+const MAX_SELECTED_RESULTS = 10;
+const RESULT_BUTTON_TEXT = 'შედეგის ნახვა';
 const SOURCE = 'tas';
 
-/** Collects `{url,label}` for every <a href> reachable from `target` (a Page
- * — walks every frame — or a Locator scoped to one element/modal). */
-async function collectLinks(target: any): Promise<{ url: string; label: string }[]> {
-  const out: { url: string; label: string }[] = [];
-  const isPage = typeof target?.frames === 'function';
-  const frames = isPage ? [target.mainFrame(), ...target.frames().filter((f: any) => f !== target.mainFrame())] : [target];
-  for (const f of frames) {
-    try {
-      out.push(
-        ...(await f.locator('a[href]').evaluateAll((as: any[]) =>
-          as
-            .slice(0, 300)
-            .map((a) => ({ label: (a.textContent || '').trim().slice(0, 240), url: a.href }))
-            .filter((x: any) => /^https?:/i.test(x.url))
-        ))
-      );
-    } catch {
-      /* frame/locator not readable */
-    }
-  }
-  return [...new Map(out.map((x) => [x.url, x])).values()];
-}
+type TasRowMeta = {
+  ar: string;
+  date: string;
+  timestamp: number;
+  text: string;
+  page: number;
+};
 
-async function readNestedDocuments(target: any, requestPage: Page, pageUrl: string): Promise<TasRowExhaustionResult['rowDocuments']> {
-  try {
-    const links = await collectLinks(target);
-    const docs: TasRowExhaustionResult['rowDocuments'] = [];
-    for (const l of links) {
-      const cls = classifyDocumentLink(l, { pageUrl });
-      if (!cls.worthOpening) continue;
-      const doc = cls.looksLikeDirectFile
-        ? await readPdfDocument(requestPage, l, `${SOURCE}_attachment`)
-        : await readOnlineDocument(requestPage, l, `${SOURCE}_attachment`);
-      docs.push({
-        url: doc.url,
-        label: l.label || doc.title || doc.url,
-        rawText: (doc.rawText || '').slice(0, 50000),
-        source: `${SOURCE}_result_row_attachment`,
-        complete: !!doc.complete,
-        documentType: doc.documentType || (cls.looksLikeDirectFile ? 'PDF_DOCUMENT' : 'ONLINE_DOCUMENT'),
-        pagesRead: doc.pagesRead || 0,
-        pageCount: doc.pageCount || 0,
-      });
-      if (docs.length >= MAX_NESTED_DOCS_PER_ROW) break;
-    }
-    return docs;
-  } catch {
-    return [];
-  }
-}
-
-/** `scope` is where the row actually lives — the outer Page when the
- * results grid renders directly on tas.ge, or the real docs.tbilisi.gov.ge
- * ExtJS iframe's own Frame when it doesn't (2026-09-06 "final alignment
- * pass" mandate fix: Playwright's `Page.locator()` does NOT pierce into
- * iframe content, only `Frame.locator()` does — `scope` must be whichever
- * one the row/modal DOM actually lives in). `ownerPage` is the real
- * browser Page underneath (`frame.page()` when scope is a Frame, or scope
- * itself when it's already the Page) — needed only for the operations a
- * Frame genuinely has no equivalent for: `.context()` (new-tab detection),
- * `.keyboard`, and pacing waits. */
-async function openTasChild(scope: any, ownerPage: Page, row: any): Promise<{ url: string; text: string; nestedDocs: TasRowExhaustionResult['rowDocuments'] } | null> {
-  const before = await pageText(scope).catch(() => '');
-  const newPagePromise = (ownerPage as any)
-    .context()
-    .waitForEvent('page', { timeout: 4000 })
-    .catch(() => null);
-  try {
-    await row.dblclick({ timeout: 3000 });
-  } catch {
-    try {
-      await row.click({ timeout: 2000 });
-    } catch {
-      /* row is not interactive the way we expected — caller records the skip */
-    }
-  }
-  await (ownerPage as any).waitForTimeout(900);
-  const newPage = await newPagePromise;
-  if (newPage) {
-    await newPage.waitForTimeout(1000).catch(() => {});
-    const t = await pageText(newPage).catch(() => '');
-    const u = newPage.url();
-    const nestedDocs = t && t.trim().length > 20 ? await readNestedDocuments(newPage, newPage, u) : [];
-    await newPage.close().catch(() => {});
-    return t && t.trim().length > 20 ? { url: u, text: t, nestedDocs } : null;
-  }
-  // The ExtJS floating window a double-click opens renders inside whichever
-  // document actually hosts the grid — `scope`, not necessarily the outer
-  // page — so it is looked for there first.
-  const modal = (scope as any).locator('[role="dialog"],.x-window,[class*="modal" i]').first();
-  if (await modal.count().catch(() => 0)) {
-    const t = await modal.innerText().catch(() => '');
-    const modalUrl = typeof (scope as any).url === 'function' ? (scope as any).url() : (ownerPage as any).url();
-    const nestedDocs = t && t.trim().length > 20 ? await readNestedDocuments(modal, ownerPage, modalUrl) : [];
-    const closeBtn = modal.locator('[aria-label*="close" i],.x-tool-close,button:has-text("×"),button:has-text("Close")').first();
-    if (await closeBtn.count().catch(() => 0)) await closeBtn.click({ timeout: 2000 }).catch(() => {});
-    else await (ownerPage as any).keyboard.press('Escape').catch(() => {});
-    await (ownerPage as any).waitForTimeout(300);
-    return t && t.trim().length > 20 ? { url: modalUrl, text: t, nestedDocs } : null;
-  }
-  const after = await pageText(scope).catch(() => '');
-  const afterUrl = typeof (scope as any).url === 'function' ? (scope as any).url() : (ownerPage as any).url();
-  if (after && after !== before && after.trim().length > 20) return { url: afterUrl, text: after, nestedDocs: [] };
-  return null;
-}
+type TasDocument = {
+  url: string;
+  label: string;
+  rawText: string;
+  source: string;
+  complete: boolean;
+  documentType: string;
+  pagesRead: number;
+  pageCount: number;
+};
 
 export interface TasRowExhaustionResult {
-  rowDocuments: { url: string; label: string; rawText: string; source: string; complete: boolean; documentType: string; pagesRead: number; pageCount: number }[];
+  rowDocuments: TasDocument[];
   trace: any[];
   rowsVisited: number;
   rowsDiscoveredBySelector: number;
   skippedReasons: { label: string; reason: string }[];
   rowStrategy: string;
+  /** Actual source counter, when known. Selection is intentionally capped. */
+  sourceTotalResults?: number | null;
+  /** Number of latest records this run was required to process (<=10). */
+  selectionTarget?: number;
+  selectionPagesVisited?: number[];
 }
 
-// A page-wide `:has(a)` selector is NOT scoped to the actual results area —
-// it matches equally well against tas.ge's own top nav / menu chrome
-// (confirmed live: a 13-item nav menu using <ul><li><a>... satisfied this
-// selector everywhere on the page, so the anchor-based branch took an
-// immediate `return` after "visiting" 13 nav links and reading zero real
-// documents, while the true ExtJS results grid — which renders with NO <a>
-// anywhere at all, see selectors.ts — was never even tried). Excluding
-// common nav/menu/header/footer containers here does not fully solve the
-// general case, so `exhaustTasResultRows` additionally verifies the
-// anchor-based pass actually produced usable rows (anchorPassLooksReal)
-// before trusting it over the grid-row fallback.
-const ANCHOR_ROW_SELECTOR =
-  'table tr:has(a):not(nav tr):not(header tr):not(footer tr):not([class*="menu" i] tr):not([class*="nav" i] tr),' +
-  'ul li:has(a):not(nav li):not(header li):not(footer li):not([class*="menu" i] li):not([class*="nav" i] li),' +
-  'ol li:has(a):not(nav li):not(header li):not(footer li):not([class*="menu" i] li):not([class*="nav" i] li),' +
-  '[class*="result" i]:has(a),' +
-  '[class*="row" i]:has(a):not([class*="menu" i]):not([class*="nav" i])';
+function clean(value: unknown): string {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
 
-/** Enumerates TAS's own result list end-to-end: opens/reads/returns from
- * every result row (and each row's own nested attachments), exclusively
- * against TAS's real, live-confirmed DOM shape. TAS-owned — not shared with
- * any other source.
- *
- * `scope` (2026-09-06 "final alignment pass" mandate fix — the confirmed
- * production bug): the real search-result DOM frequently lives inside the
- * docs.tbilisi.gov.ge ExtJS iframe TasPage.searchCadastral() already
- * resolves and returns as `frame`, NOT on the outer tas.ge Page.
- * Playwright's `Page.locator()` does not pierce into iframe content (only
- * `Frame.locator()` does) — every row/link locator below must run against
- * `scope`, whatever it actually is, never unconditionally against the
- * outer page. `scope` accepts either a Page (kept for backward
- * compatibility with any caller that genuinely has no iframe to cross) or
- * a Frame; `ownerPage` (`frame.page()` when scope is a Frame, or scope
- * itself otherwise) is used only for the handful of operations a Frame has
- * no equivalent for. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseDate(text: string): { date: string; timestamp: number } | null {
+  const match = text.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+  if (!match) return null;
+  const [, dd, mm, yyyy] = match;
+  const timestamp = new Date(Number(yyyy), Number(mm) - 1, Number(dd)).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  return { date: `${dd}/${mm}/${yyyy}`, timestamp };
+}
+
+async function newestPage(ownerPage: Page, before: Set<Page>, timeout = 5000): Promise<Page | null> {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    for (const page of ownerPage.context().pages()) if (!before.has(page)) return page;
+    await sleep(100);
+  }
+  return null;
+}
+
+async function bodyText(scope: any): Promise<string> {
+  return scope.locator('body').innerText().catch(() => '');
+}
+
+async function collectCurrentPageRows(scope: any, pageNumber: number): Promise<TasRowMeta[]> {
+  const rows = scope.locator(GRID_ROW_SELECTOR);
+  const count = await rows.count().catch(() => 0);
+  const found = new Map<string, TasRowMeta>();
+
+  for (let i = 0; i < count; i++) {
+    const row = rows.nth(i);
+    const text = clean(await row.innerText().catch(() => ''));
+    if (!text) continue;
+    const ar = text.match(/\bAR[A-Z0-9_-]*\d+[A-Z0-9_-]*\b/i)?.[0]?.toUpperCase();
+    if (!ar) continue;
+    const parsed = parseDate(text);
+    if (!parsed) continue;
+    if (!found.has(ar)) found.set(ar, { ar, date: parsed.date, timestamp: parsed.timestamp, text, page: pageNumber });
+  }
+
+  return [...found.values()];
+}
+
+async function sourceTotalFromPage(scope: any, expectedCount: number | null): Promise<number | null> {
+  if (expectedCount != null && Number.isFinite(expectedCount) && expectedCount >= 0) return expectedCount;
+  const text = clean(await bodyText(scope));
+  for (const pattern of [
+    /სულ\s+მოიძებნა\s*:\s*(\d+)/i,
+    /ჩანაწერები\s+\d+\s*-\s*\d+\s*,\s*(\d+)\s+დან/i,
+  ]) {
+    const match = text.match(pattern);
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+async function findPaginationInput(scope: any): Promise<any | null> {
+  // ExtJS paging toolbar first; generic numeric-input fallback second.
+  for (const selector of ['input.x-tbar-page-number', 'input[class*="page-number" i]']) {
+    const candidate = scope.locator(selector).first();
+    if ((await candidate.count().catch(() => 0)) && (await candidate.isVisible().catch(() => false))) return candidate;
+  }
+
+  const inputs = scope.locator('input[type="text"],input:not([type])');
+  const count = await inputs.count().catch(() => 0);
+  for (let i = 0; i < count; i++) {
+    const input = inputs.nth(i);
+    if (!(await input.isVisible().catch(() => false))) continue;
+    const value = clean(await input.inputValue().catch(() => ''));
+    if (!/^\d+$/.test(value)) continue;
+    const nearby = clean(
+      await input
+        .evaluate((el: any) => {
+          let node = el.parentElement;
+          for (let depth = 0; depth < 7 && node; depth++) {
+            const text = node.innerText || '';
+            if (/დან|გვერდ/i.test(text)) return text;
+            node = node.parentElement;
+          }
+          return '';
+        })
+        .catch(() => ''),
+    );
+    if (/დან|გვერდ/i.test(nearby)) return input;
+  }
+  return null;
+}
+
+async function currentPageNumber(scope: any): Promise<number> {
+  const input = await findPaginationInput(scope);
+  if (!input) return 1;
+  return Number(await input.inputValue().catch(() => '1')) || 1;
+}
+
+async function goToPage(scope: any, pageNumber: number): Promise<boolean> {
+  const input = await findPaginationInput(scope);
+  if (!input) return pageNumber === 1;
+
+  const beforeRows = await collectCurrentPageRows(scope, await currentPageNumber(scope));
+  const beforeSignature = beforeRows.map((x) => x.ar).join('|');
+
+  await input.click({ timeout: 2000 }).catch(() => {});
+  await input.fill(String(pageNumber));
+  await input.press('Enter');
+
+  for (let i = 0; i < 24; i++) {
+    await sleep(150);
+    const value = Number(await input.inputValue().catch(() => '0')) || 0;
+    const rows = await collectCurrentPageRows(scope, pageNumber);
+    const signature = rows.map((x) => x.ar).join('|');
+    if (value === pageNumber && rows.length > 0 && (signature !== beforeSignature || pageNumber === 1)) return true;
+  }
+  return false;
+}
+
+async function selectLatestRows(scope: any, expectedCount: number | null, trace: any[]): Promise<{
+  rows: TasRowMeta[];
+  total: number | null;
+  pagesVisited: number[];
+}> {
+  const firstRows = await collectCurrentPageRows(scope, 1);
+  const total = await sourceTotalFromPage(scope, expectedCount);
+  const target = Math.min(MAX_SELECTED_RESULTS, total != null ? total : firstRows.length);
+
+  if (target <= 0) return { rows: [], total, pagesVisited: [1] };
+
+  // If the whole result set fits in the current page, no pagination is needed.
+  if ((total != null && total <= firstRows.length) || (total != null && total <= MAX_SELECTED_RESULTS) || !total) {
+    const selected = firstRows.sort((a, b) => b.timestamp - a.timestamp).slice(0, target);
+    trace.push({ action: 'SELECT_LATEST', sourceTotal: total, target, pagesVisited: [1], selected: selected.map((r) => ({ ar: r.ar, date: r.date })) });
+    return { rows: selected, total, pagesVisited: [1] };
+  }
+
+  const pageSize = Math.max(1, firstRows.length);
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const collected = new Map<string, TasRowMeta>();
+  const pagesVisited: number[] = [];
+
+  for (let pageNo = lastPage; pageNo >= 1 && collected.size < target; pageNo--) {
+    const moved = pageNo === 1 ? await goToPage(scope, 1) : await goToPage(scope, pageNo);
+    if (!moved) {
+      trace.push({ action: 'PAGINATION_FAILED', page: pageNo, lastPage, total, pageSize });
+      continue;
+    }
+    pagesVisited.push(pageNo);
+    const pageRows = await collectCurrentPageRows(scope, pageNo);
+    for (const row of pageRows) if (!collected.has(row.ar)) collected.set(row.ar, row);
+  }
+
+  const selected = [...collected.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, target);
+  trace.push({
+    action: 'SELECT_LATEST',
+    sourceTotal: total,
+    target,
+    pageSize,
+    lastPage,
+    pagesVisited,
+    selected: selected.map((r) => ({ ar: r.ar, date: r.date, page: r.page })),
+  });
+  return { rows: selected, total, pagesVisited };
+}
+
+async function ensureRowVisible(scope: any, row: TasRowMeta): Promise<boolean> {
+  if (await scope.getByText(row.ar, { exact: false }).count().catch(() => 0)) return true;
+  if (!(await goToPage(scope, row.page))) return false;
+  return !!(await scope.getByText(row.ar, { exact: false }).count().catch(() => 0));
+}
+
+async function openSelectedAr(scope: any, ownerPage: Page, row: TasRowMeta): Promise<Page | null> {
+  if (!(await ensureRowVisible(scope, row))) return null;
+  const candidate = scope.getByText(row.ar, { exact: false }).first();
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const before = new Set(ownerPage.context().pages());
+    await candidate.scrollIntoViewIfNeeded().catch(() => {});
+    try {
+      await candidate.dblclick({ timeout: 4000 });
+    } catch {
+      await candidate.click({ force: true, timeout: 4000 }).catch(() => {});
+    }
+    const detail = await newestPage(ownerPage, before, 5000);
+    if (detail) return detail;
+    await sleep(250);
+  }
+  return null;
+}
+
+async function resolveDetailFrame(detail: Page): Promise<Frame | null> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    for (const frame of detail.frames()) {
+      if (/docs\.tbilisi\.gov\.ge\/architect\/public\.html/i.test(frame.url())) return frame;
+    }
+    try {
+      const iframe = detail.locator('iframe.page-iframe').first();
+      if (await iframe.count().catch(() => 0)) {
+        const handle = await iframe.elementHandle();
+        if (handle) {
+          const frame = await handle.contentFrame();
+          if (frame) return frame;
+        }
+      }
+    } catch {
+      // iframe can be between ExtJS reload states; retry briefly.
+    }
+    await sleep(150);
+  }
+  return null;
+}
+
+async function waitUntilReadable(frame: Frame): Promise<boolean> {
+  for (let i = 0; i < 25; i++) {
+    if ((await bodyText(frame)).trim().length > 100) return true;
+    await sleep(150);
+  }
+  return false;
+}
+
+async function scrollEverything(frame: Frame): Promise<void> {
+  await frame
+    .evaluate(async () => {
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      for (let pass = 0; pass < 3; pass++) {
+        const all = Array.from(document.querySelectorAll('*')) as HTMLElement[];
+        for (const el of all) {
+          const style = getComputedStyle(el);
+          if (
+            el.scrollHeight > el.clientHeight + 10 &&
+            (style.overflowY === 'auto' || style.overflowY === 'scroll')
+          ) {
+            el.scrollTop = el.scrollHeight;
+          }
+        }
+        window.scrollTo(0, document.body.scrollHeight);
+        await wait(80);
+      }
+    })
+    .catch(() => {});
+  await sleep(100);
+}
+
+async function exactResultButtons(frame: Frame): Promise<any[]> {
+  const all = frame.locator('button[type="button"][role="button"]');
+  const count = await all.count().catch(() => 0);
+  const matches: any[] = [];
+  for (let i = 0; i < count; i++) {
+    const button = all.nth(i);
+    if (!(await button.isVisible().catch(() => false))) continue;
+    const span = button.locator('span.x-btn-inner');
+    if (!(await span.count().catch(() => 0))) continue;
+    const text = clean(await span.innerText().catch(() => ''));
+    if (text === RESULT_BUTTON_TEXT) matches.push(button);
+  }
+  return matches;
+}
+
+function makeOnlineDocument(url: string, label: string, rawText: string, source: string): TasDocument {
+  return {
+    url,
+    label,
+    rawText,
+    source,
+    complete: rawText.trim().length > 0,
+    documentType: 'ONLINE_DOCUMENT',
+    pagesRead: rawText.trim().length > 0 ? 1 : 0,
+    pageCount: rawText.trim().length > 0 ? 1 : 0,
+  };
+}
+
+async function readOpenedResult(
+  ownerPage: Page,
+  detail: Page,
+  frame: Frame,
+  beforePages: Set<Page>,
+  beforeFrameUrl: string,
+  beforeText: string,
+  downloadPromise: Promise<any>,
+  label: string,
+): Promise<TasDocument | null> {
+  // Download response first.
+  const download = await Promise.race([downloadPromise, sleep(1000).then(() => null)]).catch(() => null);
+  if (download) {
+    const url = String(download.url?.() || '');
+    if (/^https?:/i.test(url)) {
+      const doc = await readPdfDocument(ownerPage, { url, label }, `${SOURCE}_result_document`);
+      return {
+        url: doc.url,
+        label: label || doc.title || doc.url,
+        rawText: doc.rawText || '',
+        source: `${SOURCE}_result_document`,
+        complete: !!doc.complete,
+        documentType: doc.documentType || 'PDF_DOCUMENT',
+        pagesRead: doc.pagesRead || 0,
+        pageCount: doc.pageCount || 0,
+      };
+    }
+  }
+
+  // New tab/window — the live-confirmed PDF path.
+  const child = await newestPage(ownerPage, beforePages, 2500);
+  if (child) {
+    await child.waitForLoadState('commit', { timeout: 10000 }).catch(() => {});
+    await sleep(200);
+    const url = child.url();
+    let out: TasDocument | null = null;
+    if (/^https?:/i.test(url)) {
+      const doc = await readPdfDocument(child, { url, label }, `${SOURCE}_result_document`);
+      out = {
+        url: doc.url,
+        label: label || doc.title || doc.url,
+        rawText: doc.rawText || '',
+        source: `${SOURCE}_result_document`,
+        complete: !!doc.complete,
+        documentType: doc.documentType || 'PDF_DOCUMENT',
+        pagesRead: doc.pagesRead || 0,
+        pageCount: doc.pageCount || 0,
+      };
+      // Some rare result links are HTML rather than PDF; retain rendered text.
+      if (!out.complete) {
+        const rendered = await bodyText(child);
+        if (rendered.trim().length > 20) out = makeOnlineDocument(url, label, rendered, `${SOURCE}_result_document`);
+      }
+    } else {
+      const rendered = await bodyText(child);
+      if (rendered.trim().length > 20) out = makeOnlineDocument(url, label, rendered, `${SOURCE}_result_document`);
+    }
+    await child.close().catch(() => {});
+    return out;
+  }
+
+  // Same iframe navigation/content/modal fallbacks.
+  if (frame.url() !== beforeFrameUrl) {
+    await sleep(200);
+    const text = await bodyText(frame);
+    return text.trim().length > 20
+      ? makeOnlineDocument(frame.url(), label, text, `${SOURCE}_result_document`)
+      : null;
+  }
+
+  const windows = frame.locator('.x-window');
+  const windowCount = await windows.count().catch(() => 0);
+  for (let i = windowCount - 1; i >= 0; i--) {
+    const win = windows.nth(i);
+    if (!(await win.isVisible().catch(() => false))) continue;
+    const text = await win.innerText().catch(() => '');
+    if (text.trim().length > 20) return makeOnlineDocument(frame.url(), label, text, `${SOURCE}_result_document`);
+  }
+
+  const afterText = await bodyText(frame);
+  if (afterText.trim().length > 20 && afterText !== beforeText) {
+    return makeOnlineDocument(frame.url(), label, afterText, `${SOURCE}_result_document`);
+  }
+  return null;
+}
+
+function documentFingerprint(doc: TasDocument): string {
+  // URL is the primary stable identity. The content signature catches the
+  // live-confirmed TAS duplicate-button case where two ExtJS buttons open the
+  // same PDF through equivalent/different transient URLs.
+  const normalizedUrl = doc.url.replace(/[?#].*$/, '');
+  const text = doc.rawText || '';
+  return `${normalizedUrl}|${doc.documentType}|${doc.pageCount}|${text.length}|${text.slice(0, 160)}`;
+}
+
+async function processDetail(ownerPage: Page, detail: Page, row: TasRowMeta): Promise<TasDocument[]> {
+  const frame = await resolveDetailFrame(detail);
+  if (!frame) throw new Error('DETAIL_IFRAME_NOT_FOUND');
+  await waitUntilReadable(frame);
+
+  const initialText = await bodyText(frame);
+  await scrollEverything(frame);
+  const fullText = await bodyText(frame);
+  const detailText = fullText.trim().length >= initialText.trim().length ? fullText : initialText;
+
+  const docs: TasDocument[] = [];
+  if (detailText.trim().length > 20) {
+    docs.push(makeOnlineDocument(frame.url(), `${row.ar} ${row.date}`, detailText, `${SOURCE}_result_row`));
+  }
+
+  const seen = new Set<string>(docs.map(documentFingerprint));
+  const initialButtons = await exactResultButtons(frame);
+
+  for (let index = 0; index < initialButtons.length; index++) {
+    // ExtJS can rebuild the toolbar after a result opens; always re-query.
+    const buttons = await exactResultButtons(frame);
+    if (index >= buttons.length) break;
+    const button = buttons[index];
+    await button.scrollIntoViewIfNeeded().catch(() => {});
+
+    const beforePages = new Set(ownerPage.context().pages());
+    const beforeFrameUrl = frame.url();
+    const beforeText = await bodyText(frame);
+    const downloadPromise = detail.waitForEvent('download', { timeout: 2500 }).catch(() => null);
+
+    await button.click({ force: true, timeout: 5000 });
+    await sleep(200);
+
+    const opened = await readOpenedResult(
+      ownerPage,
+      detail,
+      frame,
+      beforePages,
+      beforeFrameUrl,
+      beforeText,
+      downloadPromise,
+      `${row.ar} ${RESULT_BUTTON_TEXT} ${index + 1}`,
+    );
+    if (!opened || !opened.complete) continue;
+    const fp = documentFingerprint(opened);
+    if (!seen.has(fp)) {
+      seen.add(fp);
+      docs.push(opened);
+    }
+  }
+
+  return docs;
+}
+
+/**
+ * Traverses only the latest relevant TAS history, not an unbounded archive.
+ * The selection policy is deterministic and date-first: latest <=10 records.
+ * Older records remain history and are intentionally not visited by this
+ * source worker once the latest target is satisfied.
+ */
 export async function exhaustTasResultRows(scope: Page | any, expectedCount: number | null = null): Promise<TasRowExhaustionResult> {
-  const ownerPage: Page = typeof (scope as any)?.page === 'function' ? (scope as any).page() : (scope as Page);
-  const rowDocuments: TasRowExhaustionResult['rowDocuments'] = [];
+  const ownerPage: Page = typeof scope?.page === 'function' ? scope.page() : (scope as Page);
+  const rowDocuments: TasDocument[] = [];
   const skippedReasons: TasRowExhaustionResult['skippedReasons'] = [];
+  const trace: any[] = [];
+
   try {
-    const scopeUrl = () => (typeof (scope as any).url === 'function' ? (scope as any).url() : (ownerPage as any).url());
-    const anchorRows = (scope as any).locator(ANCHOR_ROW_SELECTOR);
-    const anchorCount = Math.min(await anchorRows.count().catch(() => 0), MAX_RESULT_ROWS);
-    let anchorPassAttempted = false;
-    if (anchorCount > 0) {
-      anchorPassAttempted = true;
-      const anchorDocs: TasRowExhaustionResult['rowDocuments'] = [];
-      const anchorSkips: TasRowExhaustionResult['skippedReasons'] = [];
-      // 2026-09 "report intelligence v2" mandate, Section 2: real production
-      // job 1aa45cdf-a5cf-4dcc-b7a9-524cedb596ae showed rowsVisited (19)
-      // EXCEEDING resultsDiscovered (18) — impossible by construction once
-      // visited is tracked as a SUBSET of one canonical discovered-key set
-      // per pass, rather than one NavigationStack instance accumulating
-      // visits across BOTH the anchor pass and the grid-row fallback pass
-      // (the old shared `nav` counted anchor-pass visits into the same
-      // total even when the anchor pass was later rejected as page-chrome,
-      // not real results — see anchorPassLooksReal below). Each pass now
-      // gets its own key sets and its own NavigationStack.
-      const anchorNav = new NavigationStack('TAS_RESULTS_ANCHOR');
-      const anchorDiscoveredKeys = new Set<string>();
-      const anchorVisitedKeys = new Set<string>();
-      for (let i = 0; i < anchorCount; i++) {
-        const row = anchorRows.nth(i);
-        const link = row.locator('a').first();
-        const href = await link.getAttribute('href').catch(() => null);
-        const label = ((await link.innerText().catch(() => '')) as string)?.trim() || `row-${i}`;
-        const key = href ? `href:${href}` : `idx:${i}:${label}`;
-        anchorDiscoveredKeys.add(key);
-        if (!href || /^javascript:|^#$/.test(href)) {
-          anchorSkips.push({ label, reason: 'NO_USABLE_HREF' });
-          continue;
-        }
-        let full = href;
-        try {
-          full = new URL(href, scopeUrl()).toString();
-        } catch {
-          /* keep href as-is */
-        }
-        if (!anchorNav.enter(label, full)) continue;
-        const cls = classifyDocumentLink({ url: full, label }, { pageUrl: scopeUrl() });
-        if (!cls.worthOpening) {
-          anchorNav.back();
-          continue;
-        }
-        try {
-          const rowPage = await (ownerPage as any).context().newPage();
-          await rowPage.goto(full, { waitUntil: 'domcontentloaded', timeout: 20000 });
-          await rowPage.waitForTimeout(1000);
-          const rowText = await pageText(rowPage).catch(() => '');
-          if (rowText && rowText.trim().length > 20) {
-            anchorDocs.push({ url: full, label, rawText: rowText.slice(0, 50000), source: `${SOURCE}_result_row`, complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 });
-            anchorVisitedKeys.add(key);
-            const nested = await readNestedDocuments(rowPage, rowPage, full);
-            if (nested.length) anchorDocs.push(...nested);
-          } else anchorSkips.push({ label, reason: 'ROW_PAGE_PRODUCED_NO_TEXT' });
-          await rowPage.close().catch(() => {});
-        } catch (e) {
-          anchorSkips.push({ label, reason: `ROW_OPEN_FAILED: ${String(e).slice(0, 120)}` });
-        }
-        anchorNav.back();
-      }
-      const anchorVisitedCount = anchorVisitedKeys.size;
-      const anchorDiscoveredCount = anchorDiscoveredKeys.size;
-      if (anchorPassLooksReal(anchorVisitedCount, anchorDocs.length, expectedCount, MAX_RESULT_ROWS)) {
-        rowDocuments.push(...anchorDocs);
-        skippedReasons.push(...anchorSkips);
-        return { rowDocuments, trace: anchorNav.trace(), rowsVisited: anchorVisitedCount, rowsDiscoveredBySelector: anchorDiscoveredCount, skippedReasons, rowStrategy: 'ANCHOR_BASED' };
-      }
-      // Rejected as likely page-chrome (nav/menu), not real results — kept
-      // ONLY as a diagnostic summary line. Its documents are never merged
-      // into the real result set the grid-row fallback below produces —
-      // doing so would silently mix nav-menu junk into genuine TAS
-      // documents and inflate the counters this fix exists to make honest.
-      skippedReasons.push(...anchorSkips, {
-        label: '(anchor-pass)',
-        reason: `ANCHOR_PASS_LIKELY_PAGE_CHROME_NOT_RESULTS: visited=${anchorVisitedCount} documentsFound=${anchorDocs.length} expectedResults=${expectedCount ?? 'unknown'} — falling back to grid-row strategy`,
-      });
-    }
-    const gridNav = new NavigationStack('TAS_RESULTS_GRID');
-    const gridRows = (scope as any).locator(GRID_ROW_SELECTOR);
-    const gridCount = Math.min(await gridRows.count().catch(() => 0), MAX_RESULT_ROWS);
-    const gridDiscoveredKeys = new Set<string>();
-    const gridVisitedKeys = new Set<string>();
-    for (let i = 0; i < gridCount; i++) {
-      const row = gridRows.nth(i);
-      const label = (((await row.innerText().catch(() => '')) as string)?.trim().slice(0, 140)) || `grid-row-${i}`;
-      const key = `grid:${i}:${label}`;
-      gridDiscoveredKeys.add(key);
-      if (!label.trim()) {
-        skippedReasons.push({ label: `grid-row-${i}`, reason: 'EMPTY_ROW_TEXT' });
-        continue;
-      }
-      if (!gridNav.enter(label, `${SOURCE}-grid-row-${i}-${label.slice(0, 40)}`)) continue;
+    const selection = await selectLatestRows(scope, expectedCount, trace);
+    const selected = selection.rows;
+    let visited = 0;
+
+    for (const row of selected) {
+      let detail: Page | null = null;
       try {
-        const detail = await openTasChild(scope, ownerPage, row);
-        if (detail) {
-          rowDocuments.push({ url: detail.url, label, rawText: detail.text.slice(0, 50000), source: `${SOURCE}_result_row`, complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 });
-          gridVisitedKeys.add(key);
-          if (detail.nestedDocs?.length) rowDocuments.push(...detail.nestedDocs);
-        } else skippedReasons.push({ label, reason: 'ROW_INTERACTION_PRODUCED_NO_DETECTABLE_CONTENT' });
+        if (!(await ensureRowVisible(scope, row))) {
+          skippedReasons.push({ label: row.ar, reason: `SELECTED_AR_NOT_VISIBLE page=${row.page}` });
+          continue;
+        }
+        detail = await openSelectedAr(scope, ownerPage, row);
+        if (!detail) {
+          skippedReasons.push({ label: row.ar, reason: 'DETAIL_TAB_NOT_OPENED' });
+          continue;
+        }
+
+        const docs = await processDetail(ownerPage, detail, row);
+        if (!docs.some((d) => d.source === `${SOURCE}_result_row` && d.complete)) {
+          skippedReasons.push({ label: row.ar, reason: 'DETAIL_TEXT_NOT_READ' });
+          continue;
+        }
+
+        visited++;
+        rowDocuments.push(...docs);
+        trace.push({ action: 'RESULT_COMPLETE', ar: row.ar, date: row.date, page: row.page, documents: docs.length });
       } catch (e) {
-        skippedReasons.push({ label, reason: `ROW_OPEN_FAILED: ${String(e).slice(0, 120)}` });
+        skippedReasons.push({ label: row.ar, reason: `RESULT_FAILED: ${String(e).slice(0, 180)}` });
+      } finally {
+        if (detail && !detail.isClosed()) await detail.close().catch(() => {});
+        await sleep(150);
       }
-      gridNav.back();
     }
-    if (gridCount >= MAX_RESULT_ROWS) skippedReasons.push({ label: '(overflow)', reason: 'ROW_LIMIT_CAP_REACHED' });
-    const strategy = anchorPassAttempted ? (gridCount > 0 ? 'GRID_ROW_DBLCLICK_AFTER_ANCHOR_REJECTED' : 'NO_GRID_MATCH_AFTER_ANCHOR_REJECTED') : gridCount > 0 ? 'GRID_ROW_DBLCLICK' : 'NO_ROW_SELECTOR_MATCHED';
+
     return {
       rowDocuments,
-      trace: gridNav.trace(),
-      // Invariant: rowsVisited can never exceed rowsDiscoveredBySelector —
-      // gridVisitedKeys is constructed as a subset of gridDiscoveredKeys.
-      rowsVisited: gridVisitedKeys.size,
-      rowsDiscoveredBySelector: gridDiscoveredKeys.size,
+      trace,
+      rowsVisited: visited,
+      rowsDiscoveredBySelector: selected.length,
       skippedReasons,
-      rowStrategy: strategy,
+      rowStrategy: 'TAS_LATEST_DATE_MAX_10_LAST_PAGES+DETAIL_IFRAME+FINAL_RESULT_BUTTON',
+      sourceTotalResults: selection.total,
+      selectionTarget: selected.length,
+      selectionPagesVisited: selection.pagesVisited,
     };
-  } catch {
-    return { rowDocuments, trace: [], rowsVisited: 0, rowsDiscoveredBySelector: 0, skippedReasons, rowStrategy: 'ERROR' };
+  } catch (e) {
+    return {
+      rowDocuments,
+      trace: [...trace, { action: 'EXHAUSTION_FAILED', error: String(e) }],
+      rowsVisited: 0,
+      rowsDiscoveredBySelector: 0,
+      skippedReasons: [...skippedReasons, { label: 'TAS_RESULTS', reason: String(e).slice(0, 180) }],
+      rowStrategy: 'TAS_LATEST_DATE_MAX_10_FAILED',
+      sourceTotalResults: expectedCount,
+      selectionTarget: 0,
+      selectionPagesVisited: [],
+    };
   }
 }

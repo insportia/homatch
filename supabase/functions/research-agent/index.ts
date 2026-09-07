@@ -2562,6 +2562,25 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const numericConfidence = Math.min(95, Math.max(20, 35 + oc * 10 + Math.min(wc, 5) * 5 - zConflictsNorm.filter((c) => c.severity === 'MATERIAL').length * 15 - zConflictsNorm.filter((c) => c.severity === 'MINOR').length * 5));
   const officialStatus = officialVerificationSummary(prior.browserOfficial);
   const officialDocs = officialDocuments(prior.browserOfficial);
+  // technicalFacts (2026-09-07 gap fix — "TAS technical facts as PRIMARY
+  // evidence... must survive all the way to synthesis AND UI"):
+  // aggregateTasTechnicalFacts() output was already fed to the SYNTHESIS
+  // prompt as PRIMARY guidance text (see prompt()'s "TAS/OFFICIAL DOCUMENT
+  // TECHNICAL FACTS ALREADY CONFIRMED" block), but that is the ONLY path it
+  // had to the customer — whether a specific fact actually appeared in the
+  // final officialEvidence/facts prose depended entirely on the SYNTHESIS
+  // model choosing to mention it. officialDocuments() (customer-facing
+  // document list) never carried the per-document technicalFacts through
+  // either. This exposes the same deterministic, code-computed facts as
+  // their own guaranteed report field — never re-derived or re-worded by
+  // the model — so a confirmed technical fact cannot be silently dropped by
+  // an LLM summarization choice. No document URL is included: per the
+  // established "comparables/sources never render `url` to the customer"
+  // policy (see CUSTOMER_REPORT_STRIP_KEYS and its own comment below), this
+  // stays consistent with every other structured evidence field in this
+  // report — only documentTitle/documentDate (plain text, not a link)
+  // travels with each fact.
+  const technicalFacts = (Array.isArray(o.tasTechnicalFacts) ? o.tasTechnicalFacts : []).map((f: any) => ({ category: f.category, key: f.key, value: f.value, confidence: f.confidence, documentTitle: f.documentTitle || null, documentDate: f.documentDate || null }));
   const identityConfidence = z.entity?.confidence || i.entity?.confidence || 'LOW';
   const gatedConfidence = overallConfidence(identityConfidence, officialStatus, officialDocs);
   const note = coverageNote(officialStatus, l);
@@ -2744,6 +2763,12 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     publicResearch: prior.publicResearch || null,
     documents: o.documents || [],
     officialDocumentsRetrieved: officialDocs,
+    // technicalFacts (see computation above): deterministic, PRIMARY,
+    // never LLM-paraphrased — null (not []) when TAS/official documents
+    // never yielded any structured technical fact, matching this schema's
+    // established "null means no evidence, not an empty placeholder"
+    // convention (see publicResearch below).
+    technicalFacts: technicalFacts.length ? technicalFacts : null,
     historicalComparison: prior.browserOfficial?.historicalComparison || null,
     // priceDrivers (2026-09-06 "final alignment pass" mandate, extended by
     // the "report intelligence v2" addendum Section 8): positioning/

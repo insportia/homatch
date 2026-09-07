@@ -1002,6 +1002,27 @@ async function resolveSourceUrls(list: any[]): Promise<any[]> {
   return dedupe(resolved.filter((s: any) => !isLoginPageUrl(s?.url)), (x) => x.url);
 }
 
+const VALID_COMPARABLE_TIERS = new Set(['SAME_PROJECT', 'MICRO_LOCATION', 'PEER_PROJECT']);
+// normalizeComparableTier() (2026-09-07 market-comparable model, Verify
+// mandate item 7): the MARKET prompt asks the model for a mandatory
+// three-tier "comparableType" per comparable (see prompt() 'MARKET') —
+// SAME_PROJECT / MICRO_LOCATION / PEER_PROJECT, replacing the old
+// undifferentiated boolean "sameProject" that nothing downstream ever
+// actually consumed. This is the deterministic safety net for two cases
+// the model output can't be blindly trusted for: (1) the model omits the
+// field or returns something outside the three valid values — falls back
+// to PEER_PROJECT, the same conservative default the prompt itself asks
+// the model to use when genuinely uncertain; (2) a report generated before
+// this field existed only carries the old boolean `sameProject`.
+// Reopening that report (mandate item 5: "old reports open with ZERO
+// rerun cost") must still show a sensible tier rather than silently
+// defaulting every historical comparable to PEER_PROJECT, so
+// sameProject === true maps to SAME_PROJECT for those legacy records.
+function normalizeComparableTier(c: any): 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT' {
+  if (VALID_COMPARABLE_TIERS.has(c?.comparableType)) return c.comparableType;
+  if (c?.sameProject === true) return 'SAME_PROJECT';
+  return 'PEER_PROJECT';
+}
 // sanitizeComparables() (v19, mandate item 12+14): a structured comparable
 // whose only URL is a bare homepage root can never carry a specific
 // listingId/price/pricePerSqm — those fields are stripped (not the whole
@@ -1014,9 +1035,10 @@ function sanitizeComparables(list: any[]): any[] {
       if (!c || typeof c !== 'object') return null;
       const url = typeof c.url === 'string' ? safeUrl(c.url) : null;
       const generic = isHomepageRoot(url);
-      if (!generic) return { ...c, url, genericSource: false, linkLabel: 'View listing' };
+      const comparableType = normalizeComparableTier(c);
+      if (!generic) return { ...c, url, comparableType, genericSource: false, linkLabel: 'View listing' };
       const { listingId, price, pricePerSqm, ...rest } = c;
-      return { ...rest, url, genericSource: true, linkLabel: null };
+      return { ...rest, url, comparableType, genericSource: true, linkLabel: null };
     })
     .filter(Boolean);
 }
@@ -1398,11 +1420,12 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     return (
       `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
       `Research actual public listing/post URLs and comparables: same building/project first, then street/micro-location, similar area/rooms/condition/floor. Include MyHome, SS, developer/project/agency sites, public social pages/posts, news, reviews/forums where accessible. ` +
-      `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt, sameProject (true only when literally the same building/project as the subject). If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. pricePerSqm (both here and in "subject" below) MUST be a plain numeric string in the SAME currency unit per square meter (no thousands separators, currency symbols or ranges) whenever you have a specific number — a deterministic step downstream computes the median/premium from these numbers directly, so a non-numeric or approximate value here simply will not be counted rather than being parsed loosely. ` +
+      `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt. If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. pricePerSqm (both here and in "subject" below) MUST be a plain numeric string in the SAME currency unit per square meter (no thousands separators, currency symbols or ranges) whenever you have a specific number — a deterministic step downstream computes the median/premium from these numbers directly, so a non-numeric or approximate value here simply will not be counted rather than being parsed loosely. ` +
+      `COMPARABLE TIER (mandatory per comparable, 2026-09-07 market-comparable model): classify "comparableType" as exactly one of "SAME_PROJECT" (literally the same building/project/complex as the subject — if the project has named blocks/phases/buildings and you can tell the comparable is a DIFFERENT block/phase than the subject's own, prefer "MICRO_LOCATION" instead, since a different block of the same complex is not the same physical structure), "MICRO_LOCATION" (a different project but the same street/immediate neighborhood/walking-distance area), or "PEER_PROJECT" (a comparable development elsewhere in the city included only for broader market context). This is a REQUIRED classification, never omitted or left to infer downstream — when genuinely uncertain between MICRO_LOCATION and PEER_PROJECT, use PEER_PROJECT (the more conservative, less specific claim). ` +
       `LISTING STATUS (mandatory per comparable — market price MUST reflect what is on the market NOW, never a stale figure): set "listingStatus" from what the page/evidence actually shows — "ACTIVE" only when the listing itself currently reads as available/on the market (no "sold"/"removed"/"no longer available"/"archived" marker, and not a stale page you cannot confirm is still live), "EXPIRED" or "REMOVED" or "SOLD" when the evidence itself says so, otherwise "UNKNOWN" (the safe default when you genuinely cannot tell — never guess ACTIVE just because a page loaded). Also set "propertyType" ("RESIDENTIAL","COMMERCIAL","LAND","OTHER") whenever the evidence supports it. Only ACTIVE + RESIDENTIAL comparables may ever be used for a *current* price range — everything else exists only for historical/contextual reference, so do not skip this field to save effort. ` +
       `SUBJECT PROPERTY'S OWN PRICE (separate from comparables): if — and only if — you find the subject property's own price/price-per-sqm specifically evidenced (its own listing, an official document, or public reporting), return it in "subject" below with the exact evidence URL, AND classify it with "priceType": "STARTING" when this is a developer's marketing "starting from" / "from" price for the project (never a specific unit's actual price), "CURRENT_LISTING" when it is a specific unit's own live asking price, "SOLD" when evidence shows it already sold at this price, or "OFFICIAL_DOCUMENT" when it comes from a registry/permit/contract document rather than a marketplace listing. A "STARTING" price must never be presented or treated as the property's current median/typical price — keep it a distinct, separately labeled figure. Never estimate or infer any of this from comparables; leave every field null when no such evidence exists for THIS specific property. ` +
       `PRICE-DRIVER EVIDENCE (mandatory, qualitative only — you do NOT compute a median, a percentage, or a CHEAPER/NORMAL/PREMIUM classification; a deterministic step downstream does that arithmetic from the numeric comparables/subject fields above): list the concrete, evidence-backed factors relevant to how this property's price compares to its market, grounded only in evidence already gathered this run (Identity/Official/PublicResearch above, or your own comparables): construction completion stage, remaining inventory/scarcity, availability of internal/developer installment financing, construction materials and structural system, architecture/design and architect reputation, developer reputation, parking availability, floor/view/layout, amenities, location/micro-location, bank financing availability, and current supply of comparable listings. Never state a price driver you cannot support with evidence gathered this run — omit it instead. ` +
-      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"sameProject":boolean,"listingStatus":"ACTIVE"|"EXPIRED"|"REMOVED"|"SOLD"|"UNKNOWN","propertyType":"RESIDENTIAL"|"COMMERCIAL"|"LAND"|"OTHER"|null}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null,"priceType":"STARTING"|"CURRENT_LISTING"|"SOLD"|"OFFICIAL_DOCUMENT"|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
+      `Return {"market":{"priceEvidence":string[],"comparables":[{"source":string,"url":string,"listingId":string|null,"project":string|null,"address":string|null,"area":string|null,"rooms":string|null,"floor":string|null,"condition":string|null,"price":string|null,"currency":string|null,"pricePerSqm":string|null,"listingDate":string|null,"similarity":string|null,"retrievedAt":string|null,"comparableType":"SAME_PROJECT"|"MICRO_LOCATION"|"PEER_PROJECT","listingStatus":"ACTIVE"|"EXPIRED"|"REMOVED"|"SOLD"|"UNKNOWN","propertyType":"RESIDENTIAL"|"COMMERCIAL"|"LAND"|"OTHER"|null}],"subject":{"pricePerSqm":string|null,"price":string|null,"currency":string|null,"evidenceUrl":string|null,"priceType":"STARTING"|"CURRENT_LISTING"|"SOLD"|"OFFICIAL_DOCUMENT"|null},"priceDriverEvidence":string[]},"reviews":{"positive":string[],"negative":string[],"neutral":string[]},"publicEvidence":string[],"facts":string[],"riskFlags":[{"severity":"LOW"|"MEDIUM"|"HIGH","description":string}],"unverified":string[]}.`
     );
   }
 

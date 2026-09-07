@@ -35,6 +35,14 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     }
 
     fsm.transition('CADASTRAL_FORM_FOUND', 'proceeding to search — a missing control is reported at FULL_CODE_ENTERED');
+    // 2026-09-07 Verify mandate, source-routing rule "TAS=parent/base": the
+    // FIRST candidate here is already the base/parent parcel (or the code
+    // exactly as supplied, if it already IS the base parcel) — never the
+    // full apartment/unit-level code. See cadastral.ts's own header for why
+    // this reverses the prior "full code first" design. `original` stays
+    // the exact code the caller passed in, untouched, for the final
+    // result's originalCadastralCode — it is never itself searched here
+    // unless it happens to equal the base parcel already.
     const candidates = mode === 'cadastral' ? candidateSequence(query) : [query];
     const original = query;
     let resolved = candidates[0];
@@ -53,12 +61,14 @@ export async function runTasWorkflow(page: Page, query: string, mode: 'cadastral
     fsm.transition('FULL_SEARCH_SUBMITTED');
     fsm.transition('FULL_RESULTS_INSPECTED');
 
-    // Escalate to the parent/base-parcel candidate sequence ONLY when the
-    // full code came back a CONFIRMED empty — never merely because the form
-    // failed to operate (that is a control problem, not a granularity one).
+    // Escalate to a progressively broader (never narrower/unit-level)
+    // fallback candidate ONLY when the base/parent parcel's own search came
+    // back a CONFIRMED empty — never merely because the form failed to
+    // operate (that is a control problem, not a granularity one). The full
+    // apartment/unit-level code is never one of these candidates.
     let attempts = [{ cadastralCodeTried: resolved, resultsDiscovered: searchRes.resultsDiscovered, noResultConfirmed: !!searchRes.noResultConfirmed }];
     if (!hasMeaningfulTasResults(searchRes) && candidates.length > 1) {
-      fsm.transition('PARENT_CODE_RESOLUTION', 'full code had no meaningful results — trying parent/base-parcel candidates');
+      fsm.transition('PARENT_CODE_RESOLUTION', 'base/parent parcel had no meaningful results — trying broader fallback candidates');
       for (const candidate of candidates.slice(1)) {
         fsm.transition('PARENT_CODE_ENTERED', candidate);
         const retry = await pageObj.searchCadastral(page, candidate);

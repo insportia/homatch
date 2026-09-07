@@ -48,34 +48,37 @@ export function recommendedParentCode(code: string): string | null {
   return segs.length > 5 ? segs.slice(0, 5).join('.') : null;
 }
 
-/** The full ordered sequence TasWorkflow should try. 2026-09-06 "final
- * alignment pass" mandate: the FULL, EXACT code the user/property actually
- * carries is the FIRST candidate tried, always — it is the real identifier
- * and TAS's search frequently does resolve it directly. The base/parent
- * parcel (the recommended 5-segment parent, when the code has more than 5
- * segments) is tried only as a FALLBACK, after the full code's own search
- * comes back a confirmed empty — not tried first as a guess. When the input
- * code has 5 or fewer segments it already IS the base parcel
- * (recommendedParentCode returns null), so there is nothing to add as a
- * distinct fallback.
+/** The full ordered sequence TasWorkflow should try.
  *
- * Neither candidate is ever discarded — TasWorkflow keeps both
- * originalCadastralCode and resolvedSearchCadastralCode explicit regardless
- * of which candidate the results actually came from. */
+ * SUPERSEDES the 2026-09-06 "final alignment pass" design (full/exact code
+ * tried first, base/parent only as a fallback). The 2026-09-07 "Verify
+ * mandate" source-routing rule is explicit and the opposite: "TAS=parent/
+ * base" — TAS's own document/permit history is filed at the parcel level,
+ * and entering the full apartment/unit-level code into TAS's search is a
+ * real, observed false-empty-result cause (confirmed against the mandate's
+ * own fixture: full code 01.18.06.019.055.03.01.603, required TAS query
+ * 01.18.06.019.055). MY.GOV's own Service 176 is the one source that gets
+ * the FULL exact code instead — see MyGovWorkflow.ts — so this is a genuine
+ * per-source routing difference, not a regression of either rule.
+ *
+ * The BASE/PARENT parcel (recommendedParentCode's 5-segment guess, when the
+ * input has more than 5 segments) is therefore tried FIRST and is the only
+ * candidate TasWorkflow will normally need. When the input code already IS
+ * the base parcel (5 or fewer segments — i.e. it was entered directly),
+ * `base === original` here: it is tried exactly as given, not truncated
+ * further before that first attempt. A short, progressively-broader
+ * fallback chain (4, then 3 segments) below the base is kept only as a
+ * defensive last resort for a base guess that itself finds nothing — the
+ * full apartment/unit-level code is deliberately never a candidate here.
+ *
+ * TasWorkflow keeps both originalCadastralCode (always the exact code as
+ * supplied, never overwritten) and resolvedSearchCadastralCode (whichever
+ * candidate below the results actually came from) explicit and separate. */
 export function candidateSequence(code: string, opts: { minSegments?: number } = {}): string[] {
   if (!isCadastralCode(code)) return [code];
   const original = code.trim();
-  const parent = recommendedParentCode(original);
-  const rest = cadastralPrefixes(original, opts);
-  const seen = new Set([original]);
-  const out = [original];
-  for (const c of [...(parent ? [parent] : []), ...rest]) {
-    if (c && !seen.has(c)) {
-      seen.add(c);
-      out.push(c);
-    }
-  }
-  return out;
+  const base = recommendedParentCode(original) || original;
+  return cadastralPrefixes(base, opts);
 }
 
 /** Real production job 08379309-bb2e-4ac6-9d97-727edb3af2b8: TasWorkflow's

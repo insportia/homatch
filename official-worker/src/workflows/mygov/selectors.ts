@@ -10,6 +10,19 @@
 // mechanism (opening the iframe's raw `src` in a brand-new page) does not
 // match this — it is replaced below.
 export const MYGOV_URL = 'https://my.gov.ge/ka-ge/services/10';
+// 2026-09-07 Verify mandate: "use ONLY
+// https://www.my.gov.ge/ka-ge/services/10/service/176". This is not actually
+// in conflict with the group-page + click-through flow above — the group
+// page's own click IS confirmed (napr-recording.spec.ts, and
+// MyGovPage.ts's openPropertySearchLink comment) to Angular-SPA-route from
+// exactly services/10 to exactly services/10/service/176, no popup, same
+// page. So this is tried FIRST, as a direct shortcut straight to that same
+// confirmed destination — MyGovPage.gotoDirectService176() — and the
+// group-page click-through above is kept as the fallback for the case where
+// this Angular SPA route does not render correctly from a cold, direct deep
+// link (a real risk for client-side-routed apps with no server-side
+// rendering for arbitrary sub-paths). Neither path is ever discarded.
+export const MYGOV_DIRECT_SERVICE_URL = 'https://www.my.gov.ge/ka-ge/services/10/service/176';
 // The exact real link text (recording): a duplicated/wrapped accessible
 // name is normal for this markup (the link's own title attribute repeats
 // its visible text) — matched by substring, not the full duplicated string,

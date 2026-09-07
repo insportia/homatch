@@ -31,11 +31,21 @@ test('recommendedParentCode: null when the code is already at/below 5 segments',
   assert.equal(recommendedParentCode('01.18'), null);
 });
 
-test('candidateSequence: tries the FULL/EXACT original code FIRST (2026-09-06 mandate: the base/parent parcel is a fallback, tried only after the full code comes back a confirmed empty), never drops the parent candidate, deduplicated', () => {
+// SUPERSEDES the 2026-09-06 "full code first" design. 2026-09-07 Verify
+// mandate, source-routing rule "TAS=parent/base": TAS's own document/permit
+// history is filed at the parcel level, and entering the full apartment/
+// unit-level code is a real, observed false-empty-result cause — the
+// mandate's own fixture is explicit: full code
+// 01.18.06.019.055.03.01.603, required TAS query 01.18.06.019.055.
+test('candidateSequence: tries the BASE/PARENT parcel FIRST (2026-09-07 mandate: "TAS=parent/base", never the full apartment/unit-level code), with a broader fallback chain below it, deduplicated', () => {
   const seq = candidateSequence('01.18.06.019.055.03.01.603');
-  assert.equal(seq[0], '01.18.06.019.055.03.01.603');
-  assert.ok(seq.includes('01.18.06.019.055'), 'base/parent parcel must still appear in the sequence as a fallback, never dropped');
+  assert.equal(seq[0], '01.18.06.019.055', "the mandate's own exact fixture: TAS query must be 01.18.06.019.055");
+  assert.equal(seq.includes('01.18.06.019.055.03.01.603'), false, 'the full apartment/unit-level code must never be a TAS search candidate');
   assert.equal(new Set(seq).size, seq.length);
+});
+test('candidateSequence: when the query already IS the base parcel (5 or fewer segments), it is tried exactly as given, not truncated before the first attempt', () => {
+  const seq = candidateSequence('01.18.06.019.055');
+  assert.equal(seq[0], '01.18.06.019.055');
 });
 test('candidateSequence: a non-cadastral query is returned as its own single-element sequence', () => {
   assert.deepEqual(candidateSequence('free text query'), ['free text query']);

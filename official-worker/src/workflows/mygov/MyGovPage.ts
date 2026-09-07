@@ -20,6 +20,7 @@ import { interact, candidateRankedRetry, waitForResultSignal } from '../../brows
 import {
   CADASTRAL_INPUT_SELECTORS,
   MYGOV_URL,
+  MYGOV_DIRECT_SERVICE_URL,
   PROPERTY_SEARCH_LINK_TEXT,
   MAIN_ROUTING_IFRAME_SELECTOR,
   APPLICATION_SEARCH_BUTTON_LABEL,
@@ -36,6 +37,23 @@ export class MyGovPage {
       await (page as any).waitForLoadState('networkidle', { timeout: 8000 });
     } catch {
       /* the service-group page can take longer than networkidle allows */
+    }
+    await (page as any).waitForTimeout(1000);
+  }
+
+  /** 2026-09-07 mandate: navigate straight to the exact deep-link
+   * destination the group-page click is already confirmed to route to
+   * (services/10 -> services/10/service/176 — see selectors.ts's own
+   * comment). Tried first by MyGovWorkflow; if the Angular app does not
+   * mount from this cold direct load, the caller falls back to goto() +
+   * openPropertySearchLink() below, unchanged. */
+  async gotoDirectService176(page: Page): Promise<void> {
+    await (page as any).goto(MYGOV_DIRECT_SERVICE_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await (page as any).waitForTimeout(1500);
+    try {
+      await (page as any).waitForLoadState('networkidle', { timeout: 8000 });
+    } catch {
+      /* the naprweb Angular app can take longer than networkidle allows */
     }
     await (page as any).waitForTimeout(1000);
   }

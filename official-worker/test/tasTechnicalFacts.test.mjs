@@ -121,3 +121,28 @@ test('dedupeTasTechnicalFacts: identical category+key+value pairs collapse to on
   const arch = out.find((f) => f.key === 'mainArchitectName');
   assert.equal(arch.confidence, 'HIGH');
 });
+
+// 2026-09-07 "ProjectRevision/block-structure" mandate item: recognize the
+// government form's own standard block/building-within-a-complex labels
+// (კორპუსი/corpus, ლიტერი/building-letter) — same generalization rule as
+// every other label in this file, and only ever the VALUE the document
+// itself states, never an invented block name.
+test('extractTasTechnicalFacts: a "კორპუსი" (corpus/block) label with an inline value is recognized as a buildingBlock fact', () => {
+  const facts = extractTasTechnicalFacts('კორპუსი: 2');
+  const f = facts.find((x) => x.key === 'buildingBlock');
+  assert.ok(f, 'expected a buildingBlock fact');
+  assert.equal(f.category, 'PROJECT');
+  assert.equal(f.value, '2');
+});
+
+test('extractTasTechnicalFacts: a "ლიტერი" (building letter/index) label is recognized as a buildingLiter fact', () => {
+  const facts = extractTasTechnicalFacts('ლიტერი: ბ');
+  const f = facts.find((x) => x.key === 'buildingLiter');
+  assert.ok(f);
+  assert.equal(f.value, 'ბ');
+});
+
+test('extractTasTechnicalFacts: a document that never mentions a block/liter label produces no buildingBlock/buildingLiter fact — never invented when the document does not support it', () => {
+  const facts = extractTasTechnicalFacts('სართულების რაოდენობა: 9');
+  assert.equal(facts.some((f) => f.key === 'buildingBlock' || f.key === 'buildingLiter'), false);
+});

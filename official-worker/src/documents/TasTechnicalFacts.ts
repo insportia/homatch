@@ -97,6 +97,17 @@ const STANDALONE_LABEL_RULES: LabelRule[] = [
   { re: /ნებართვის\s+რედაქცია/i, category: 'REVISION', key: 'permitRevision' },
   { re: /განმცხადებელი/i, category: 'APPLICANT', key: 'applicant' },
   { re: /ნაკვეთის\s+მესაკუთრე|მიწის\s+მესაკუთრე/i, category: 'OWNER', key: 'parcelOwner' },
+  // Block/building-within-a-complex identification (2026-09-07 "ProjectRevision/
+  // block-structure" mandate item). Same GENERALIZATION RULE as every other
+  // rule in this file: "კორპუსი" (corpus/block) and "ლიტერი" (building
+  // letter/index, e.g. "ლიტ. ა/ბ/გ") are the standard Georgian real-estate/
+  // construction-document terms for a named building within a multi-building
+  // complex — recognized because they are the FORM'S OWN vocabulary, not
+  // because any specific project uses them. A document that never uses these
+  // words simply never produces a 'buildingBlock' fact — this module never
+  // infers or guesses a block identity from context.
+  { re: /კორპუს(?:ი|ის|ს|ებ(?:ი|ის|ს))?/i, category: 'PROJECT', key: 'buildingBlock' },
+  { re: /ლიტერ(?:ი|ის|ს)?/i, category: 'PROJECT', key: 'buildingLiter' },
 ];
 
 // Generic attribute labels that only mean something in combination with a

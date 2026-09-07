@@ -1265,12 +1265,28 @@ interface AggregatedTasFact {
   documentUrl: string | null;
   documentTitle: string | null;
   documentDate: string | null;
+  // block (2026-09-07 "ProjectRevision/block-structure" mandate item):
+  // which named building/block/corpus within a multi-building complex this
+  // fact belongs to, when — and only when — the SAME document this fact was
+  // read from also states a block/corpus/liter identifier somewhere in its
+  // own text (see TasTechnicalFacts.ts's 'buildingBlock'/'buildingLiter'
+  // rules). A document that never names a block leaves this null on every
+  // one of its facts — never inferred or guessed across documents, and
+  // never invented when the project is genuinely a single building.
+  block: string | null;
 }
 function aggregateTasTechnicalFacts(browserOfficial: any): AggregatedTasFact[] {
   const out: AggregatedTasFact[] = [];
   for (const r of browserOfficial?.results || []) {
     for (const d of r.documents || []) {
       const facts = Array.isArray(d.technicalFacts) ? d.technicalFacts : [];
+      // block attribution: if THIS document's own text names a block/corpus/
+      // liter anywhere, every fact this document contributed is understood
+      // to be about that same block — one TAS technical/permit document
+      // describes one building. Never carried over from a DIFFERENT
+      // document's block label.
+      const blockFact = facts.find((f: any) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter');
+      const block = blockFact?.value ? String(blockFact.value).trim() || null : null;
       for (const f of facts) {
         if (!f || !f.category || !f.key || !f.value) continue;
         out.push({
@@ -1281,22 +1297,24 @@ function aggregateTasTechnicalFacts(browserOfficial: any): AggregatedTasFact[] {
           documentUrl: d.url || null,
           documentTitle: d.title || d.label || null,
           documentDate: d.date || d.documentDate || null,
+          block,
         });
       }
     }
   }
-  // Dedupe by category+key+value — the same (category,key,value) triple
+  // Dedupe by category+key+value+block — the same (category,key,value) triple
   // read off two different documents is one fact, not two; keep whichever
   // occurrence is HIGH-confidence, and prefer the one with a known document
   // date as provenance when confidence is tied. Genuinely DIFFERENT values
   // for the same category+key (e.g. a revised floor count between an old and
-  // a new permit) are intentionally kept as separate entries — this function
+  // a new permit, OR the same field reported for two different named
+  // blocks) are intentionally kept as separate entries — this function
   // never picks a single "winner" value for a key, only dedupes exact
-  // repeats; picking the latest/approved revision is a separate concern
-  // (ProjectRevision logic), not this extractor's job.
+  // repeats. Picking the latest/approved revision is buildRevisionTimeline()'s
+  // job, below, not this function's.
   const byId = new Map<string, AggregatedTasFact>();
   for (const f of out) {
-    const id = `${f.category}::${f.key}::${f.value}`;
+    const id = `${f.category}::${f.key}::${f.value}::${f.block || ''}`;
     const existing = byId.get(id);
     if (!existing) {
       byId.set(id, f);
@@ -1306,6 +1324,40 @@ function aggregateTasTechnicalFacts(browserOfficial: any): AggregatedTasFact[] {
     if (upgrade) byId.set(id, f);
   }
   return Array.from(byId.values());
+}
+// buildRevisionTimeline() (2026-09-07 "ProjectRevision/block-structure"
+// mandate item, generic interpretation — "track multiple official TAS/
+// project revisions over time... timeline should show revision/amendment
+// chronology"): groups the SAME aggregated facts above by the document they
+// came from (documentTitle+documentDate identifies one document/revision
+// event) and orders those groups chronologically. This is purely a
+// different VIEW of facts already extracted — no new evidence, nothing
+// invented. Deliberately returns null (never a fabricated single-entry
+// "timeline") unless at least two groups carry two DIFFERENT known dates —
+// a job with only one official document, or several documents that never
+// stated a date, has no genuine "over time" chronology to show.
+interface RevisionTimelineEntry {
+  documentTitle: string | null;
+  documentDate: string | null;
+  block: string | null;
+  facts: { category: string; key: string; value: string }[];
+}
+function buildRevisionTimeline(facts: AggregatedTasFact[]): RevisionTimelineEntry[] | null {
+  const byDoc = new Map<string, RevisionTimelineEntry>();
+  for (const f of facts) {
+    const id = `${f.documentTitle || ''}::${f.documentDate || ''}`;
+    if (!byDoc.has(id)) byDoc.set(id, { documentTitle: f.documentTitle, documentDate: f.documentDate, block: f.block, facts: [] });
+    byDoc.get(id)!.facts.push({ category: f.category, key: f.key, value: f.value });
+  }
+  const groups = Array.from(byDoc.values());
+  const distinctKnownDates = new Set(groups.map((g) => g.documentDate).filter(Boolean));
+  if (distinctKnownDates.size < 2) return null;
+  // Stable chronological order: dated groups first (ascending), undated
+  // groups kept at the end in their original encounter order rather than
+  // sorted arbitrarily.
+  const dated = groups.filter((g) => g.documentDate).sort((a, b) => String(a.documentDate).localeCompare(String(b.documentDate)));
+  const undated = groups.filter((g) => !g.documentDate);
+  return [...dated, ...undated];
 }
 // Compact, prompt-ready rendering — grouped by category so the model can
 // scan it as PRIMARY, already-confirmed ground truth rather than having to
@@ -2580,7 +2632,13 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // stays consistent with every other structured evidence field in this
   // report — only documentTitle/documentDate (plain text, not a link)
   // travels with each fact.
-  const technicalFacts = (Array.isArray(o.tasTechnicalFacts) ? o.tasTechnicalFacts : []).map((f: any) => ({ category: f.category, key: f.key, value: f.value, confidence: f.confidence, documentTitle: f.documentTitle || null, documentDate: f.documentDate || null }));
+  const technicalFacts = (Array.isArray(o.tasTechnicalFacts) ? o.tasTechnicalFacts : []).map((f: any) => ({ category: f.category, key: f.key, value: f.value, confidence: f.confidence, documentTitle: f.documentTitle || null, documentDate: f.documentDate || null, block: f.block || null }));
+  // revisionTimeline (2026-09-07 "ProjectRevision/block-structure" mandate
+  // item): see buildRevisionTimeline()'s own comment — null unless at least
+  // two of this job's own official documents carry two different known
+  // dates; never a fabricated single-entry chronology. No document URL,
+  // same policy as technicalFacts above.
+  const revisionTimeline = buildRevisionTimeline(Array.isArray(o.tasTechnicalFacts) ? o.tasTechnicalFacts : []);
   const identityConfidence = z.entity?.confidence || i.entity?.confidence || 'LOW';
   const gatedConfidence = overallConfidence(identityConfidence, officialStatus, officialDocs);
   const note = coverageNote(officialStatus, l);
@@ -2769,6 +2827,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // established "null means no evidence, not an empty placeholder"
     // convention (see publicResearch below).
     technicalFacts: technicalFacts.length ? technicalFacts : null,
+    revisionTimeline,
     historicalComparison: prior.browserOfficial?.historicalComparison || null,
     // priceDrivers (2026-09-06 "final alignment pass" mandate, extended by
     // the "report intelligence v2" addendum Section 8): positioning/

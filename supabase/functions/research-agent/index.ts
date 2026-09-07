@@ -2551,7 +2551,26 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     (x: any) => String(x?.description || '')
   );
   const reconciledIdentity = prior.reconciledIdentity || reconcileIdentity(i, o, mr);
-  const rawCompanyProfile = z.companyProfile || o.companyProfile || null;
+  let rawCompanyProfile = z.companyProfile || o.companyProfile || null;
+  // 2026-09-07 Verify mandate ("market/public evidence can know
+  // [a developer] while top-level projectProfile remains blank" —
+  // companyProfile has the equivalent gap): pickFinancialCandidate()
+  // already triggers a real ENREG lookup for a developer reconciliation
+  // promotes to MEDIUM/HIGH confidence (see that function's own comment),
+  // so the common case is already fixed by the time SYNTHESIS runs here.
+  // This covers the remaining terminal case — that ENREG lookup genuinely
+  // ran and came back with no matching registry record (a foreign company,
+  // an informal/trade name, or a real name mismatch), or was never
+  // triggered for some other reason — so companyProfile would otherwise
+  // stay entirely null while projectProfile.developer (below) already
+  // shows the name. Never fabricates registry data: only the name itself,
+  // explicitly marked WEB_RESEARCH_ONLY with its own reconciliation
+  // provenance, so the frontend can show the same developer consistently
+  // in both places instead of a populated project card next to an empty
+  // company-profile card.
+  if ((!rawCompanyProfile || !(rawCompanyProfile.name || rawCompanyProfile.idCode)) && reconciledIdentity?.developer && ['MEDIUM', 'HIGH'].includes(reconciledIdentity.confidence)) {
+    rawCompanyProfile = { name: reconciledIdentity.developer, idCode: null, legalForm: null, registrationDate: null, status: null, directors: [], representatives: [], historicalChanges: [], relatedProjects: [], summary: null, reconciledFromMarketEvidence: true };
+  }
   // v23: attach a deterministic sourceBasis so the frontend can visibly
   // distinguish registry-confirmed company facts from web-research-derived
   // ones (see companyProfileSourceBasis above) — never inferred from the

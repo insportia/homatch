@@ -1,10 +1,9 @@
-// EnregState.ts — mandate Section 11, the exact ENREG state sequence,
-// verbatim and in order. Deterministic, not AI-driven (Section 11's own
-// heading emphasis) — every transition below is made by EnregWorkflow.ts
-// only after the matching assertion in assertions.ts passed.
 import { buildLinearGraph, OPERATIONAL_STATUSES } from '../../state/ResearchState.js';
 import { SourceStateMachine } from '../../state/SourceState.js';
 
+// Compatibility state-machine retained for the existing `enreg` source key.
+// The production browser workflow now starts from MyGov Service 179 and no
+// longer navigates directly to the legacy registry website.
 export const ENREG_LINEAR = [
   'START',
   'ENREG_OPENED',
@@ -42,13 +41,11 @@ export function newEnregFsm(): SourceStateMachine<EnregState> {
   return new SourceStateMachine<EnregState>('enreg', ENREG_GRAPH as any, 'START');
 }
 
-export const ENREG_URL = 'https://enreg.reestri.gov.ge/main.php?m=new_index';
-// mandate Section 12's exact field label (used to locate the id/personal-
-// number input — trailing colon+space included, as given).
+export const ENREG_URL = 'https://my.gov.ge/ka-ge/services/10/service/179';
 export const ENREG_ID_FIELD_LABEL = 'საიდენტიფიკაციო კოდი ან პირადი ნომერი :';
 export const ENREG_NAME_FIELD_LABEL = 'ორგ. დასახელება';
 export const ENREG_SEARCH_BUTTON_LABEL = 'ძებნა';
 export const ENREG_VERIFY_BUTTON_LABEL = 'შემოწმება';
 export const ENREG_APPLICATIONS_LABEL = 'განცხადებები';
 export const ENREG_PREPARED_DOCS_LABEL = 'მომზადებული დოკუმენტები';
-export const ENREG_EXTRACT_LABEL = 'ამონაწერი სამეწარმეო და არასამეწარმეო იურიდიულ პირთა რეესტრიდან';
+export const ENREG_EXTRACT_LABEL = 'ამონაწერი';

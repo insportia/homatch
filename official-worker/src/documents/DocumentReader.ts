@@ -92,7 +92,7 @@ import { createHash } from 'node:crypto';
  * hashing failure returns null rather than a fabricated value. */
 export function sha256(buf: Buffer | string): string | null {
   try {
-    return createHash('sha256').update(buf).digest('hex');
+    return createHash('sha256').update(typeof buf === 'string' ? buf : Uint8Array.from(buf)).digest('hex');
   } catch {
     return null;
   }

@@ -5,7 +5,7 @@
 // EntityQueue for one job, and handles the WAITING_HUMAN pause/resume/skip
 // lifecycle (mandate Section 10) generically across all four sources
 // instead of ad hoc per-source resume logic.
-import { chromium } from 'playwright';
+import { launchResearchBrowser, researchContext } from '../browser/BrowserlessRuntime.js';
 import { randomUUID } from 'node:crypto';
 import { EvidenceLedger } from '../evidence/EvidenceLedger.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
@@ -201,8 +201,10 @@ export class ResearchOrchestrator {
   private async runStep(browser: any, job: ResearchJob, step: StepDescriptor): Promise<{ result: any; keep: boolean; browserCtx?: any; page?: any }> {
     const ledger = this.ledgerFor(job.id);
     const entities = this.entitiesFor(job.id);
-    const ctx = await browser.newContext({ locale: 'ka-GE', acceptDownloads: true, viewport: { width: 1440, height: 1000 } });
+    const ctx = await researchContext(browser);
+    const sharedBrowserlessContext = !!(browser as any).__homatchBrowserless;
     const page = await ctx.newPage();
+    await page.setViewportSize({ width: 1440, height: 1000 }).catch(() => {});
 
     const key = step.type === 'entity' ? step.source : step.key;
     const query = step.type === 'entity' ? step.idCode || step.name : job.query;
@@ -223,10 +225,18 @@ export class ResearchOrchestrator {
         this.sessions.set(job.id, { browser, ctx, page, jobId: job.id, step, query, expires: Date.now() + TTL });
         return { result, keep: true };
       }
-      await ctx.close().catch(() => {});
+      if (sharedBrowserlessContext) {
+        await page.close().catch(() => {});
+      } else {
+        await ctx.close().catch(() => {});
+      }
       return { result, keep: false };
     } catch (e) {
-      await ctx.close().catch(() => {});
+      if (sharedBrowserlessContext) {
+        await page.close().catch(() => {});
+      } else {
+        await ctx.close().catch(() => {});
+      }
       return {
         result: {
           source: key,
@@ -265,7 +275,7 @@ export class ResearchOrchestrator {
       // display through xvfb-run (Dockerfile), so government sites see the
       // same headed browser mode we live-tested locally instead of the old
       // headless execution mode. CAPTCHA is still solved only by the human.
-      browser = browser || (await chromium.launch({ headless: false, args: ['--disable-dev-shm-usage', '--no-sandbox'] }));
+      browser = browser || (await launchResearchBrowser());
       for (let i = startIndex; i < job.steps.length; i++) {
         const step = job.steps[i];
         job.sourceIndex = i;
@@ -379,7 +389,11 @@ export class ResearchOrchestrator {
     job.results = job.results.filter((x) => !stepMatchesResult(session.step, x));
     job.results.push(legacyDocuments({ ...finalResult, humanVerificationCompleted: true }));
     job.humanVerification = null;
-    await session.ctx.close().catch(() => {});
+    if ((session.browser as any).__homatchBrowserless) {
+      await session.page.close().catch(() => {});
+    } else {
+      await session.ctx.close().catch(() => {});
+    }
     this.sessions.delete(jobId);
     this.run(job, job.sourceIndex + 1, session.browser).catch((e) => {
       job.status = 'FAILED';
@@ -420,7 +434,11 @@ export class ResearchOrchestrator {
     job.results = job.results.filter((x) => !stepMatchesResult(session.step, x));
     job.results.push(result);
     job.humanVerification = null;
-    await session.ctx.close().catch(() => {});
+    if ((session.browser as any).__homatchBrowserless) {
+      await session.page.close().catch(() => {});
+    } else {
+      await session.ctx.close().catch(() => {});
+    }
     const browser = session.browser;
     this.sessions.delete(jobId);
     this.run(job, job.sourceIndex + 1, browser).catch((e) => {

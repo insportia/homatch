@@ -62,6 +62,8 @@ export async function challenge(p: any): Promise<ChallengeHit | null> {
       '.cf-turnstile',
       '[class*="captcha" i]',
       '[id*="captcha" i]',
+      '#capture_gate',
+      'img[src*="icaptcha.php" i]',
       '[role="checkbox"][aria-label*="robot" i]',
     ]) {
       const x = f.locator(s).first();

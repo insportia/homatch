@@ -50,9 +50,9 @@ test('RSTAX_CAPTCHA_BLOCK_PHRASE: does NOT match an unrelated confirmed result/n
   assert.ok(!RSTAX_CAPTCHA_BLOCK_PHRASE.test('გადასახადის გადამხდელის ბარათი'));
 });
 
-test('source meta: both new sources are classed as OFFICIAL_REGISTRY with their real confirmed URLs', () => {
-  assert.equal(RSTAX_SOURCE_META.class, 'OFFICIAL_REGISTRY');
+test('source meta: both financial sources use the generic OFFICIAL_GOVERNMENT customer-facing class with their real confirmed URLs', () => {
+  assert.equal(RSTAX_SOURCE_META.class, 'OFFICIAL_GOVERNMENT');
   assert.equal(RSTAX_SOURCE_META.url, RSTAX_URL);
-  assert.equal(DEBTOR_SOURCE_META.class, 'OFFICIAL_REGISTRY');
+  assert.equal(DEBTOR_SOURCE_META.class, 'OFFICIAL_GOVERNMENT');
   assert.equal(DEBTOR_SOURCE_META.url, DEBTOR_URL);
 });

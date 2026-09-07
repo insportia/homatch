@@ -32,6 +32,37 @@ function legacyDocuments(result: any): any {
   return result;
 }
 
+/** A reCAPTCHA iframe/widget may remain mounted after a human has solved it.
+ * Treat a real response token or aria-checked=true anchor as proof that the
+ * human step completed. This never solves or bypasses the challenge; it only
+ * observes the browser state that the human created. */
+async function recaptchaSolved(page: any): Promise<boolean> {
+  try {
+    const token = await page.locator('textarea[name="g-recaptcha-response"]').first().inputValue().catch(() => '');
+    if (String(token || '').trim()) return true;
+  } catch {
+    /* keep checking frames */
+  }
+  try {
+    for (const frame of page.frames()) {
+      if (!/recaptcha/i.test(String(frame.url?.() || ''))) continue;
+      const anchor = frame.locator('#recaptcha-anchor').first();
+      if (await anchor.count().catch(() => 0)) {
+        const checked = await anchor.getAttribute('aria-checked').catch(() => null);
+        if (checked === 'true') return true;
+      }
+    }
+  } catch {
+    /* unresolved means not proven solved */
+  }
+  return false;
+}
+
+async function humanVerificationPending(page: any): Promise<boolean> {
+  if (await recaptchaSolved(page)) return false;
+  return !!(await challenge(page));
+}
+
 const now = () => new Date().toISOString();
 const TTL = 15 * 60 * 1000;
 // Bounds an otherwise-unbounded research graph — a document mentioning many
@@ -230,7 +261,11 @@ export class ResearchOrchestrator {
     job.status = 'RUNNING';
     job.updatedAt = now();
     try {
-      browser = browser || (await chromium.launch({ headless: true, args: ['--disable-dev-shm-usage', '--no-sandbox'] }));
+      // Run Chromium in real headed mode. Railway provides a virtual X
+      // display through xvfb-run (Dockerfile), so government sites see the
+      // same headed browser mode we live-tested locally instead of the old
+      // headless execution mode. CAPTCHA is still solved only by the human.
+      browser = browser || (await chromium.launch({ headless: false, args: ['--disable-dev-shm-usage', '--no-sandbox'] }));
       for (let i = startIndex; i < job.steps.length; i++) {
         const step = job.steps[i];
         job.sourceIndex = i;
@@ -242,25 +277,6 @@ export class ResearchOrchestrator {
         if (keep) {
           job.status = 'WAITING_HUMAN';
           job.stage = 'CAPTCHA_REQUIRED';
-          // preserveHumanSession() shape, per the 2026-09-06 CAPTCHA/human-
-          // verification UX mandate ("write it more strictly so it doesn't
-          // accidentally leave a small/cropped CAPTCHA"): any CAPTCHA/
-          // human-verification screen must be shown large enough for a
-          // human to solve comfortably — desktop approx. 900-1100px wide,
-          // max 90vh, scrollable and uncropped; mobile full-screen. The
-          // SAME browser/context/page/session (this job's `sessions` Map
-          // entry, keyed by `job.id`) is preserved and resumed after
-          // successful human verification — see resume()/skip() below,
-          // which never call newContext()/newPage()/goto(sourceUrl)/
-          // restartWorker(). `sessionId` is `job.id` itself: it is exactly
-          // the identifier the frontend already uses (as `jobId`) to
-          // address this same paused session via /research/:id/*.
-          // recommendedWidth/recommendedMaxHeight/fullInteractiveSession/
-          // scrollable are UX hints for any consumer of this contract; the
-          // current frontend (ResearchCaptchaModal.tsx's v30 CAPTCHA UX
-          // overhaul) already independently renders within these bounds
-          // (sm:w-[min(1100px,94vw)] sm:max-h-[90vh], scrollable image
-          // area, uncropped <img>, full-screen on mobile).
           job.humanVerification = {
             sessionId: job.id,
             source: step.type === 'entity' ? step.source : step.key,
@@ -308,12 +324,14 @@ export class ResearchOrchestrator {
     const job = this.jobs.get(jobId);
     const session = this.sessions.get(jobId);
     if (!job || !session) return { ok: false, error: 'active human session not found' };
-    if (await challenge(session.page)) return { ok: false, error: 'human verification is not complete' };
-
-    // Continue directly against the SAME already-verified page/context the
-    // paused session held onto — re-navigating (a fresh runStep() context)
-    // would discard the just-completed human verification.
     const key = session.step.type === 'entity' ? session.step.source : session.step.key;
+
+    // Never use "visible CAPTCHA iframe" alone as the resume gate: both RS
+    // and MyGov can keep the widget mounted after it has been solved. We
+    // first observe the actual solved token/aria state, then fall back to the
+    // generic challenge detector only when it is not solved.
+    if (await humanVerificationPending(session.page)) return { ok: false, error: 'human verification is not complete' };
+
     const ledger = this.ledgerFor(jobId);
     const entities = this.entitiesFor(jobId);
     let finalResult: any = null;
@@ -332,6 +350,30 @@ export class ResearchOrchestrator {
       }
     } catch (e) {
       finalResult = { source: key, status: 'FAILED', error: String(e), documents: [], discoveredEntities: [], resultConfirmed: false, noResultConfirmed: false, resultValidated: false, traversal: null, retrievedAt: now() };
+    }
+
+    // A deeper application/document can trigger a second CAPTCHA after the
+    // first one was solved. Preserve the exact same headed browser session
+    // instead of closing it and incorrectly advancing to the next source.
+    if (finalResult?.status === 'WAITING_HUMAN') {
+      job.results = job.results.filter((x) => !stepMatchesResult(session.step, x));
+      job.results.push(legacyDocuments(finalResult));
+      session.expires = Date.now() + TTL;
+      job.status = 'WAITING_HUMAN';
+      job.stage = 'CAPTCHA_REQUIRED';
+      job.humanVerification = {
+        sessionId: job.id,
+        source: key,
+        step: session.step,
+        url: finalResult.finalUrl || finalResult.sourceUrl || session.page.url(),
+        expiresAt: new Date(session.expires).toISOString(),
+        recommendedWidth: 1100,
+        recommendedMaxHeight: '90vh',
+        fullInteractiveSession: true,
+        scrollable: true,
+        message: 'დამატებითი ადამიანის დადასტურებაა საჭირო. დაასრულეთ იგი იმავე ბრაუზერში და შემდეგ გააგრძელეთ.',
+      };
+      return { ok: false, error: 'human verification is not complete' };
     }
 
     job.results = job.results.filter((x) => !stepMatchesResult(session.step, x));

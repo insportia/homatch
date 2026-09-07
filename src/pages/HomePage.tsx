@@ -9,7 +9,7 @@ import {
   ArrowRight, Search, Sparkles, Shield, Building2, Home, Users, Globe,
   Zap, Lock, TrendingDown, Copy, BarChart2, ShieldCheck, Bot,
   MessageSquare, Bell, Eye, CheckCircle2, ChevronDown, ChevronUp,
-  ExternalLink, Star, Clock, MapPin, Mail, PhoneCall, Radio,
+  ExternalLink, Star, Clock, MapPin, Mail, PhoneCall, Radio, Landmark, Calculator,
 } from 'lucide-react';
 import { useState } from 'react';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
@@ -570,6 +570,31 @@ export default function HomePage() {
                 <p className="text-xs text-muted-foreground leading-relaxed">{t(descKey)}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── MORTGAGE CALCULATOR TEASER ── */}
+      <section className="py-16 px-4 border-t border-border">
+        <div className="max-w-4xl mx-auto">
+          <div className="rounded-3xl border border-border bg-card p-6 md:p-10 grid md:grid-cols-[auto_1fr_auto] items-center gap-6">
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+              <Landmark className="h-7 w-7 text-primary" />
+            </div>
+            <div className="space-y-2">
+              <Badge variant="secondary" className="border-amber-500/30 text-amber-400 bg-amber-500/10">
+                {t('home_mortgage_badge')}
+              </Badge>
+              <h2 className="text-xl md:text-2xl font-bold text-foreground">{t('home_mortgage_title')}</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-xl">{t('home_mortgage_desc')}</p>
+            </div>
+            <Button
+              size="lg"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 w-full md:w-auto"
+              onClick={() => navigate('/mortgage')}
+            >
+              <Calculator className="h-4 w-4" /> {t('home_mortgage_cta')}
+            </Button>
           </div>
         </div>
       </section>

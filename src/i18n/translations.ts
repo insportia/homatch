@@ -7,6 +7,7 @@ import type { SupportedLanguage } from '@/types/types';
 const en = {
   // Navigation
   nav_dashboard: 'Dashboard',
+  nav_mortgage: 'Mortgage',
   nav_chat: 'Messages',
   nav_viewings: 'Viewings',
   nav_active_search: 'Alerts',
@@ -1208,6 +1209,10 @@ const en = {
   home_how_match: 'MATCH',
   home_how_connect: 'CONNECT',
   home_how_verify: 'VERIFY',
+  home_mortgage_badge: 'New',
+  home_mortgage_title: 'Know exactly what a home will cost you — before you make an offer',
+  home_mortgage_desc: "Enter a price, a down payment, and a rate — get your real monthly payment, total cost, and whether it fits government affordability limits, plus the fees and legal protections most bank pitches skip.",
+  home_mortgage_cta: 'Try the mortgage calculator',
   home_demo_badge: 'Demo — Sample Results Only',
   home_demo_title: 'See What Homatch Returns',
   home_demo_query: 'AI query: "I need a 2-bedroom apartment in Vake under $150,000"',
@@ -2686,6 +2691,19 @@ const en = {
   mortgage_offer_label_other_tradeoffs: 'Different trade-offs',
   mortgage_offer_incomparable_currency: 'These offers are in different currencies, so their totals are not directly comparable.',
   mortgage_offer_incomparable_term: 'These offers have different loan terms, so their totals are not directly comparable.',
+  mortgage_hidden_section_title: 'The full picture — not just the loan calculation',
+  mortgage_hidden_section_subtitle: "Things worth knowing before you sign, that aren't always front and center in a bank's pitch.",
+  mortgage_hidden_early_repayment_title: "Paying off early? There's a legal cap on the fee",
+  mortgage_hidden_early_repayment_body: "Georgian law limits how much a bank can charge you for repaying a loan early — the maximum penalty is a percentage of your remaining balance, and depends on your rate type and how many months are left, not an arbitrary bank fee. Once you request early repayment, the bank must process it the same day if you have the funds. And if you're refinancing a foreign-currency loan into GEL — at the same bank or a different one — no early-repayment fee can be charged at all.",
+  mortgage_hidden_fx_risk_title: 'Why loans in USD/EUR have stricter limits',
+  mortgage_hidden_fx_risk_body: "If your income is in GEL but your loan is in dollars or euros, a weaker lari means your monthly payment effectively goes up even though nothing about your loan changed — the exchange-rate risk sits entirely with you, not the bank. This is exactly why foreign-currency loans allow a smaller payment-to-income ratio and require a bigger down payment than GEL loans (see the affordability limits above): the rules are trying to stop people from taking on debt they can't actually absorb a currency swing on.",
+  mortgage_hidden_closing_costs_title: "The closing costs that aren't in your monthly payment",
+  mortgage_hidden_closing_costs_body: "Beyond the loan itself, budget for one-time costs this calculator can't know about automatically: Public Registry fees for registering the property and the mortgage (roughly 150 GEL for standard processing, up to 350 GEL for same-day), a notary fee for the sale contract (varies by notary and transaction value — ask for a quote before you commit), and the bank's own property valuation fee. None of these are optional extras you can negotiate away entirely, so set money aside for them separately from your down payment.",
+  mortgage_hidden_insurance_title: "Insurance you're offered may not be as mandatory as it sounds",
+  mortgage_hidden_insurance_body: 'Most banks require the property itself to be insured for the life of the loan — that part is standard. But some also present life insurance, an account opened with them, or one specific insurer as "required," when it is really the bank\'s own condition, not a legal one. It is worth asking directly: is this insurance or product legally mandatory, or is it this bank\'s own policy — and can I insure through a provider of my choice instead of the bank\'s affiliated one? The answer changes what you are really comparing between two banks\' offers.',
+  mortgage_hidden_legal_cap_title: 'The law caps your total cost, not just the interest rate',
+  mortgage_hidden_legal_cap_body: "Georgia's Civil Code sets a maximum on the effective annual rate a lender can charge — a ceiling that combines the interest rate with fees and penalties together, not the nominal rate alone. Before you sign anything, the bank is required to give you a clear, written breakdown of the effective rate and every fee ahead of the contract — if a bank can't or won't give you that document, treat it as a warning sign, not a formality you can skip.",
+  mortgage_hidden_disclaimer: "This is general information to help you ask the right questions — not legal or financial advice, and not a substitute for reading your actual contract or asking a lawyer. Bank practices and exact figures can change; always verify current terms with your bank before deciding.",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -2693,6 +2711,7 @@ export type TranslationKey = keyof typeof en;
 const ka: Partial<Record<TranslationKey, string>> = {
   // Navigation
   nav_dashboard: 'პანელი',
+  nav_mortgage: 'იპოთეკა',
   nav_chat: 'შეტყობინებები',
   nav_viewings: 'ნახვები',
   nav_active_search: 'გაფრთხილებები',
@@ -3828,6 +3847,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   home_how_match: 'დამთხვევა',
   home_how_connect: 'დაკავშირება',
   home_how_verify: 'ვერიფიკაცია',
+  home_mortgage_badge: 'ახალი',
+  home_mortgage_title: 'იცოდეთ ზუსტად, რა დაგიჯდებათ სახლი — შეთავაზების გაკეთებამდე',
+  home_mortgage_desc: 'შეიყვანეთ ფასი, პირველადი შენატანი და განაკვეთი — მიიღეთ თქვენი რეალური ყოველთვიური გადასახადი, მთლიანი ღირებულება და შეესაბამება თუ არა სახელმწიფო ლიმიტებს, პლუს ის ხარჯები და სამართლებრივი დაცვის მექანიზმები, რომლებსაც ბანკების შეთავაზებები ხშირად გამოტოვებენ.',
+  home_mortgage_cta: 'სცადეთ იპოთეკის კალკულატორი',
   home_demo_badge: 'დემო — მხოლოდ სანიმუშო შედეგები',
   home_demo_title: 'იხილეთ, რას პოულობს Homatch',
   home_demo_query: 'AI მოთხოვნა: „მჭირდება 2-საძინებლიანი ბინა ვაკეში $150,000-მდე“',
@@ -5290,6 +5313,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mortgage_offer_label_other_tradeoffs: 'განსხვავებული დათმობები',
   mortgage_offer_incomparable_currency: 'ეს შეთავაზებები სხვადასხვა ვალუტაშია, ამიტომ მათი ჯამები პირდაპირ შედარებადი არ არის.',
   mortgage_offer_incomparable_term: 'ამ შეთავაზებებს განსხვავებული ვადა აქვს, ამიტომ მათი ჯამები პირდაპირ შედარებადი არ არის.',
+  mortgage_hidden_section_title: 'სრული სურათი — არა მხოლოდ სესხის გამოთვლა',
+  mortgage_hidden_section_subtitle: 'რაც ღირს იცოდეთ ხელმოწერამდე და რაც ყოველთვის არ არის თვალსაჩინო ბანკის შეთავაზებაში.',
+  mortgage_hidden_early_repayment_title: 'ვადამდელი დაფარვა? ჯარიმას კანონი ზღუდავს',
+  mortgage_hidden_early_repayment_body: 'საქართველოს კანონმდებლობა ზღუდავს, რამდენის დაკისრება შეუძლია ბანკს სესხის ვადამდე დაფარვისთვის — მაქსიმალური საკომისიო არის დარჩენილი ნაშთის პროცენტი და დამოკიდებულია განაკვეთის ტიპსა და დარჩენილ თვეებზე, და არა ბანკის თვითნებურ ტარიფზე. მას შემდეგ, რაც მოითხოვთ ვადამდელ დაფარვას, ბანკი ვალდებულია იგივე დღესვე დაამუშაოს მოთხოვნა, თუ თანხა საკმარისია. ხოლო თუ გადადიხართ უცხოური ვალუტიდან ლარზე რეფინანსირებით — იმავე ან სხვა ბანკში — ვადამდელი დაფარვის საკომისიო საერთოდ არ შეიძლება დაგერიცხოთ.',
+  mortgage_hidden_fx_risk_title: 'რატომ აქვს USD/EUR სესხს უფრო მკაცრი ლიმიტები',
+  mortgage_hidden_fx_risk_body: 'თუ თქვენი შემოსავალი ლარშია, ხოლო სესხი — დოლარში ან ევროში, ლარის გაუფასურება ნიშნავს, რომ თქვენი ყოველთვიური გადასახადი ეფექტურად იზრდება, მაშინაც კი, როცა თავად სესხში არაფერი შეცვლილა — სავალუტო რისკი მთლიანად თქვენზეა, არა ბანკზე. სწორედ ამიტომ დაუშვებს უცხოურ ვალუტაში სესხისთვის (იხილეთ ზემოთ გადახდისუნარიანობის ლიმიტები) უფრო დაბალ გადასახადი/შემოსავლის თანაფარდობას და მოითხოვს უფრო დიდ პირველად შენატანს, ვიდრე ლარის სესხისთვის — წესები ცდილობს თავიდან აიცილოს ვალის აღება ისეთი ადამიანების მიერ, ვინც ვალუტის ცვლილებას ვერ გაუძლებს.',
+  mortgage_hidden_closing_costs_title: 'დახურვის ხარჯები, რომლებიც ყოველთვიურ გადასახადში არ ჩანს',
+  mortgage_hidden_closing_costs_body: 'თავად სესხის გარდა, გაითვალისწინეთ ერთჯერადი ხარჯებიც, რომლებსაც ეს კალკულატორი ავტომატურად ვერ იცის: საჯარო რეესტრში ქონებისა და იპოთეკის რეგისტრაციის მოსაკრებელი (დაახლოებით 150 ლარი სტანდარტული განხილვისთვის, 350 ლარამდე — იმავე დღეს გაფორმებისთვის), სანოტარო მომსახურების საკომისიო ნასყიდობის ხელშეკრულებაზე (განსხვავდება ნოტარიუსისა და გარიგების თანხის მიხედვით — მოითხოვეთ ღირებულების შეთავაზება წინასწარ), და ბანკის საკუთარი შეფასების საკომისიო. ეს არცერთი არ არის სრულად მოსაშორებელი დამატებითი ხარჯი, ამიტომ გამოყავით მათთვის ცალკე თანხა — არა მხოლოდ პირველადი შენატანისთვის.',
+  mortgage_hidden_insurance_title: 'შემოთავაზებული დაზღვევა შეიძლება არც იყოს ისეთი სავალდებულო, როგორც ჟღერს',
+  mortgage_hidden_insurance_body: 'უმეტესი ბანკი მოითხოვს თავად ქონების დაზღვევას სესხის მთელი ვადით — ეს ნაწილი სტანდარტულია. მაგრამ ზოგი ასევე გთავაზობთ სიცოცხლის დაზღვევას, ანგარიშის გახსნას მათთან, ან კონკრეტულ სადაზღვევო კომპანიას როგორც „სავალდებულოს", როცა სინამდვილეში ეს ბანკის საკუთარი პირობაა და არა კანონისმიერი. ღირს პირდაპირ კითხვა: ეს დაზღვევა ან პროდუქტი კანონისმიერად სავალდებულოა, თუ ეს ბანკის საკუთარი პოლიტიკაა — და შემიძლია დაზღვევა ავიღო ჩემი არჩევანის კომპანიისგან, ბანკთან აფილირებულის ნაცვლად? პასუხი ცვლის იმას, რასაც რეალურად ადარებთ ორი ბანკის შეთავაზებას შორის.',
+  mortgage_hidden_legal_cap_title: 'კანონი ზღუდავს თქვენს მთლიან ხარჯს, არა მხოლოდ საპროცენტო განაკვეთს',
+  mortgage_hidden_legal_cap_body: 'საქართველოს სამოქალაქო კოდექსი აწესებს მაქსიმალურ ზღვარს კრედიტორის მიერ დაწესებულ ეფექტურ წლიურ განაკვეთზე — ეს ზღვარი აერთიანებს საპროცენტო განაკვეთს, საკომისიოებსა და ჯარიმებს ერთად, და არა მხოლოდ ნომინალურ განაკვეთს. ხელშეკრულებაზე ხელმოწერამდე ბანკი ვალდებულია მოგცეთ ეფექტური განაკვეთისა და ყველა საკომისიოს მკაფიო, წერილობითი აღწერა — თუ ბანკი ამ დოკუმენტს ვერ ან არ გაძლევთ, ეს განიხილეთ როგორც გამაფრთხილებელი ნიშანი და არა როგორც ფორმალობა, რომლის გამოტოვებაც შეიძლება.',
+  mortgage_hidden_disclaimer: 'ეს არის ზოგადი ინფორმაცია, რომელიც დაგეხმარებათ სწორი კითხვები დასვათ — ეს არ არის იურიდიული ან ფინანსური კონსულტაცია და არ ანაცვლებს რეალური ხელშეკრულების წაკითხვას ან იურისტთან კონსულტაციას. საბანკო პრაქტიკა და ზუსტი ციფრები შეიძლება შეიცვალოს — გადაწყვეტილებამდე ყოველთვის გადაამოწმეთ მიმდინარე პირობები თქვენს ბანკთან.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {

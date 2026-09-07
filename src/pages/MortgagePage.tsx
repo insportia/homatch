@@ -48,6 +48,20 @@ import type {
 const CURRENCIES = ['GEL', 'USD', 'EUR'];
 const TERM_YEAR_OPTIONS = [5, 10, 15, 20, 25, 30];
 
+// ── "Full picture" disclosures — always shown, not gated on a calculation.
+// The whole point of this feature per the product mandate: people should
+// leave understanding the things a bank pitch tends to skip over (capped
+// early-repayment fees, why FX loans carry stricter limits, real closing
+// costs, insurance that's sometimes presented as more mandatory than it
+// is, and the legal ceiling on total cost) — not just a monthly number.
+const HIDDEN_TOPICS = [
+  { key: 'early_repayment', titleKey: 'mortgage_hidden_early_repayment_title', bodyKey: 'mortgage_hidden_early_repayment_body' },
+  { key: 'fx_risk',         titleKey: 'mortgage_hidden_fx_risk_title',         bodyKey: 'mortgage_hidden_fx_risk_body' },
+  { key: 'closing_costs',   titleKey: 'mortgage_hidden_closing_costs_title',   bodyKey: 'mortgage_hidden_closing_costs_body' },
+  { key: 'insurance',       titleKey: 'mortgage_hidden_insurance_title',       bodyKey: 'mortgage_hidden_insurance_body' },
+  { key: 'legal_cap',       titleKey: 'mortgage_hidden_legal_cap_title',       bodyKey: 'mortgage_hidden_legal_cap_body' },
+];
+
 interface MortgagePrefillState {
   propertyId?: string;
   price?: number;
@@ -570,7 +584,6 @@ export default function MortgagePage() {
                         <AccuracyChip kind="official" t={t} />
                       </div>
                       <p className="text-xs text-muted-foreground leading-relaxed">{t(rule.humanExplanation)}</p>
-                      <p className="text-xs text-muted-foreground">{t('mortgage_subsidy_source')}: {rule.sourceAuthority}</p>
                       <p className="text-xs text-muted-foreground">{t('mortgage_subsidy_disclaimer')}</p>
                     </div>
                   ))}
@@ -579,6 +592,31 @@ export default function MortgagePage() {
             )}
           </>
         )}
+
+        {/* ── The full picture — always visible, not gated on a calculation.
+            This is the point of the whole feature: not just a monthly
+            number, but the things a bank pitch tends to leave out. ── */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm uppercase tracking-wide flex items-center gap-2">
+              <Info className="h-4 w-4" /> {t('mortgage_hidden_section_title')}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground pt-1">{t('mortgage_hidden_section_subtitle')}</p>
+          </CardHeader>
+          <CardContent>
+            <Accordion type="single" collapsible>
+              {HIDDEN_TOPICS.map(topic => (
+                <AccordionItem key={topic.key} value={topic.key}>
+                  <AccordionTrigger className="text-sm text-left">{t(topic.titleKey)}</AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground leading-relaxed">
+                    {t(topic.bodyKey)}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+            <p className="text-[11px] text-muted-foreground pt-3 leading-relaxed">{t('mortgage_hidden_disclaimer')}</p>
+          </CardContent>
+        </Card>
 
         <p className="text-[11px] text-muted-foreground text-center leading-relaxed pb-4">
           {t('mortgage_global_disclaimer')}

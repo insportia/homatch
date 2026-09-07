@@ -19,7 +19,7 @@ import {
   MapPin, BedDouble, Bath,
   Building2, ExternalLink, Zap, ArrowLeft, Trash2,
   CheckCircle2, AlertCircle, Lock, Layers,
-  Play, Pause, Loader2, ChevronRight, Bot, TrendingDown, Shield,
+  Play, Pause, Loader2, ChevronRight, Bot, TrendingDown, Shield, Landmark,
 } from 'lucide-react';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
@@ -549,6 +549,20 @@ function PropertyDetailContent() {
               >
                 <Shield className="h-4 w-4 shrink-0 text-primary" /> {t('prop_verify_btn')}
               </Button>
+              {facts?.total_price && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full gap-2 border-border justify-start"
+                  onClick={() => navigate('/mortgage', {
+                    state: {
+                      context: { propertyId: id, price: Number(facts.total_price), currency: facts.currency },
+                    },
+                  })}
+                >
+                  <Landmark className="h-4 w-4 shrink-0 text-primary" /> {t('dash_calculate_mortgage_property')}
+                </Button>
+              )}
             </div>
 
             {/* Campaign Controls */}

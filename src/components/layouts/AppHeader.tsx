@@ -31,11 +31,13 @@ import {
   Building2,
   Megaphone,
   Radio,
+  Landmark,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 
 const navItems = [
   { key: 'nav_dashboard',     path: '/dashboard',      icon: LayoutDashboard },
+  { key: 'nav_mortgage',      path: '/mortgage',       icon: Landmark },
   { key: 'nav_ai',            path: '/ai',             icon: Bot,         highlight: true },
   { key: 'nav_chat',          path: '/chat',           icon: MessageSquare },
   { key: 'nav_live_chat',     path: '/live-chat',      icon: Radio },

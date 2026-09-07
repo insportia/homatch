@@ -79,13 +79,33 @@ export async function launchResearchBrowser(): Promise<any> {
 
 export async function researchContext(browser: any): Promise<any> {
   if ((browser as any).__homatchBrowserless) {
+    /*
+     * One Browserless BrowserContext belongs to the whole research job.
+     *
+     * connectOverCDP() does not guarantee that contexts()[0] exists for the
+     * lifetime of the connection. Production proved that TAS_MAP could finish
+     * successfully and the following TAS step could then observe zero default
+     * contexts.
+     *
+     * Cache the adopted/created context on the Browser object itself so every
+     * source transition reuses the same cookies/session. This is also required
+     * for WAITING_HUMAN: CAPTCHA resume must continue in the exact context in
+     * which the human completed the challenge.
+     */
+    const cached = (browser as any).__homatchResearchContext;
+    if (cached) return cached;
+
     const existing = browser.contexts?.() || [];
+    const ctx =
+      existing[0] ||
+      (await browser.newContext({
+        locale: 'ka-GE',
+        acceptDownloads: true,
+        viewport: { width: 1440, height: 1000 },
+      }));
 
-    if (!existing[0]) {
-      throw new Error('Browserless CDP session has no default browser context');
-    }
-
-    return existing[0];
+    (browser as any).__homatchResearchContext = ctx;
+    return ctx;
   }
 
   return browser.newContext({

@@ -501,6 +501,66 @@ const PUBLIC_RESEARCH_TARGETS = [
   'forums',
   'reviews',
 ];
+// publicResearchScope() (2026-09-07 "IMPORTANT GENERALIZATION RULE" mandate
+// addendum): PUBLIC_RESEARCH_TARGETS/FIELDS above stay a fixed, verbatim
+// schema (normalizePublicResearchStructured relies on every key always being
+// present) — but WHICH of those targets are worth actively searching, and
+// whether a missing developer/architect/contractor field is expected or a
+// gap, genuinely differs by asset class. This reuses the assetClass value
+// IDENTITY already classifies (v28's ADAPTIVE ASSET LOGIC) rather than
+// introducing a second, competing classification — it only narrows the
+// SEARCH SCOPE and adds an explicit "this is normal, do not force it"
+// instruction; the Return{} schema and its field set are never changed by
+// asset class. Purely generic: no project, developer, or fixture name
+// appears here, only the property TYPE.
+function publicResearchScope(assetClass: string | null | undefined): { targets: string[]; scopeNote: string } {
+  const buildingTargets = ['facade', 'windows', 'elevators', 'structural system', 'construction materials', 'insulation', 'MEP (mechanical/electrical/plumbing)', 'energy efficiency', 'seismic design', 'amenities', 'landscaping', 'parking'];
+  const developerTargets = ['founders owners participants', 'directors representatives', 'company history', 'previous projects', 'developer reputation', 'bank financing', 'partners'];
+  const constructionTeamTargets = ['architect', 'architecture studio', 'architect reputation', 'contractors', 'construction companies', 'engineers', 'suppliers', 'construction start', 'construction chronology', 'progress history', 'current physical status', 'quality'];
+  const reputationTargets = ['complaints', 'disputes', 'court records', 'media coverage', 'Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'Telegram', 'forums', 'reviews'];
+  switch (assetClass) {
+    case 'PRIVATE_RESALE':
+    case 'RENTAL':
+      // A private individual's resale/rental unit has no developer/project
+      // history to research by default — only worth pursuing if evidence
+      // already on hand (Identity/Official) actually names one.
+      return {
+        targets: [...reputationTargets, 'quality'],
+        scopeNote:
+          'ASSET-CLASS SCOPE (private resale/rental — no forced developer research): this is a private individual\'s unit, not a marketed development project. Do NOT go looking for a developer, architect, contractor, or construction-company just to fill those fields — only research and populate them if the evidence already gathered (Identity/Official above) actually names one for this exact unit/building. It is entirely normal and CORRECT for developer/architect/contractor/companyHistory/previousProjects fields to stay null here; never invent a plausible-sounding value to avoid an empty field. Focus your search instead on: the property\'s own public reputation/reviews, its immediate micro-location, and any publicly reported quality signals or complaints about this exact address/unit.',
+      };
+    case 'PRIVATE_HOUSE':
+      return {
+        targets: ['quality', 'current physical status', ...reputationTargets],
+        scopeNote:
+          'ASSET-CLASS SCOPE (private house — no forced developer/project research): this is a standalone private house, not a unit in a marketed development. Only populate developer/architect/contractor/companyHistory/previousProjects if the evidence already gathered actually names one (e.g. a custom-build architect/builder is sometimes publicly documented) — otherwise leave them null; that is the expected, correct outcome, not a gap. Focus your search on the property\'s own public reputation and its immediate micro-location.',
+      };
+    case 'LAND':
+      // A bare parcel has no building at all — every building-fabric target
+      // (facade/windows/elevators/MEP/insulation/energy efficiency/seismic
+      // design/amenities-as-building-feature) is inapplicable by definition.
+      return {
+        targets: ['previous projects', 'developer reputation', 'quality', 'current physical status', ...reputationTargets],
+        scopeNote:
+          'ASSET-CLASS SCOPE (land parcel — no building-fabric research applies): this is a bare land parcel, not a building or unit. Facade/windows/elevators/structural system/construction materials/insulation/MEP/energy efficiency/seismic design/amenities/landscaping-as-a-building-feature/parking simply do not apply — leave every one of those fields null rather than describing the parcel\'s physical state under them. If a developer or project already publicly plans to build on this exact parcel, that is worth reporting (developer/previousProjects/companyHistory) — but never invent one. Focus your search on how this parcel and its immediate area are publicly discussed (development plans, land use, reputation of any named developer).',
+      };
+    case 'COMMERCIAL':
+      return {
+        targets: [...constructionTeamTargets, ...buildingTargets, ...developerTargets, ...reputationTargets],
+        scopeNote:
+          'ASSET-CLASS SCOPE (commercial property): research the same construction/developer/reputation topics as a residential project, but frame amenities/landscaping/parking findings in commercial terms (tenant/business-facing features, accessibility, signage/visibility) rather than residential ones — only when the evidence actually supports it.',
+      };
+    case 'APARTMENT_IN_PROJECT':
+    case 'UNDER_CONSTRUCTION':
+    case 'COMPANY_OWNED':
+    case 'MIXED_OR_UNKNOWN':
+    default:
+      // Safe default (also covers an unset/unrecognized value): research the
+      // full breadth, exactly as before this mandate — never narrow scope
+      // when the asset class is genuinely unclear.
+      return { targets: PUBLIC_RESEARCH_TARGETS, scopeNote: '' };
+  }
+}
 // PUBLIC_RESEARCH_FIELDS — the mandate's own ~35-field structured schema,
 // verbatim (43 keys as literally listed). Used both to build the prompt's
 // Return{...} schema string and to deterministically normalize the model's
@@ -1158,6 +1218,90 @@ function traversalNote(browserOfficial: any): string {
   return ` INTERNAL NOTE (do not surface this note or its wording to the customer in any form): the following sources are not yet exhaustively traversed — ${names}. Simply do not assert facts about them beyond what the evidence above actually shows; do not mention, hedge about, or apologize for their traversal state anywhere in your output.`;
 }
 
+// aggregateTasTechnicalFacts() / formatTasTechnicalFactsForPrompt() (2026-09-
+// 07 TAS DOCUMENT INTELLIGENCE mandate — "TAS official documents are the
+// PRIMARY source for technical/project intelligence whenever those documents
+// exist"): official-worker's own generic, non-project-specific label/value
+// extractor (documents/TasTechnicalFacts.ts) already attaches a
+// `technicalFacts[]` array to EVERY document via toLegacyDocument() —
+// ResearchOrchestrator.legacyDocuments() applies it uniformly to every
+// document any official source (TAS, ENREG, MyGov, ...) actually reads, so
+// this never assumes the source is specifically named "TAS". This function
+// walks every one of those facts across the whole browserOfficial payload
+// and reduces it to one deterministic, deduped, provenance-tagged summary —
+// computed in CODE, never left to the model's own reading of `b` below,
+// specifically because `b` is truncated to 24000 characters and a real
+// technical fact buried in a later document must never be silently lost to
+// that slice. Purely additive/generic: it only reflects whatever facts the
+// extractor actually found in THIS job's own evidence — nothing here is
+// tied to any specific project, developer, or asset type.
+interface AggregatedTasFact {
+  category: string;
+  key: string;
+  value: string;
+  confidence: 'HIGH' | 'MEDIUM';
+  documentUrl: string | null;
+  documentTitle: string | null;
+  documentDate: string | null;
+}
+function aggregateTasTechnicalFacts(browserOfficial: any): AggregatedTasFact[] {
+  const out: AggregatedTasFact[] = [];
+  for (const r of browserOfficial?.results || []) {
+    for (const d of r.documents || []) {
+      const facts = Array.isArray(d.technicalFacts) ? d.technicalFacts : [];
+      for (const f of facts) {
+        if (!f || !f.category || !f.key || !f.value) continue;
+        out.push({
+          category: String(f.category),
+          key: String(f.key),
+          value: String(f.value),
+          confidence: f.confidence === 'HIGH' ? 'HIGH' : 'MEDIUM',
+          documentUrl: d.url || null,
+          documentTitle: d.title || d.label || null,
+          documentDate: d.date || d.documentDate || null,
+        });
+      }
+    }
+  }
+  // Dedupe by category+key+value — the same (category,key,value) triple
+  // read off two different documents is one fact, not two; keep whichever
+  // occurrence is HIGH-confidence, and prefer the one with a known document
+  // date as provenance when confidence is tied. Genuinely DIFFERENT values
+  // for the same category+key (e.g. a revised floor count between an old and
+  // a new permit) are intentionally kept as separate entries — this function
+  // never picks a single "winner" value for a key, only dedupes exact
+  // repeats; picking the latest/approved revision is a separate concern
+  // (ProjectRevision logic), not this extractor's job.
+  const byId = new Map<string, AggregatedTasFact>();
+  for (const f of out) {
+    const id = `${f.category}::${f.key}::${f.value}`;
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, f);
+      continue;
+    }
+    const upgrade = (existing.confidence === 'MEDIUM' && f.confidence === 'HIGH') || (existing.confidence === f.confidence && !existing.documentDate && !!f.documentDate);
+    if (upgrade) byId.set(id, f);
+  }
+  return Array.from(byId.values());
+}
+// Compact, prompt-ready rendering — grouped by category so the model can
+// scan it as PRIMARY, already-confirmed ground truth rather than having to
+// parse it back out of the raw browser evidence payload itself.
+function formatTasTechnicalFactsForPrompt(facts: AggregatedTasFact[]): string {
+  if (!facts.length) return '';
+  const byCategory = new Map<string, AggregatedTasFact[]>();
+  for (const f of facts) {
+    if (!byCategory.has(f.category)) byCategory.set(f.category, []);
+    byCategory.get(f.category)!.push(f);
+  }
+  const lines: string[] = [];
+  for (const [cat, items] of byCategory) {
+    lines.push(`${cat}: ` + items.map((f) => `${f.key}=${f.value}${f.documentDate ? ` (doc dated ${f.documentDate})` : ''}`).join('; '));
+  }
+  return lines.join('\n');
+}
+
 function prompt(s: Stage, j: any, p: any, l: string): string {
   const L = LANG[l] || 'English';
   const q = j.query;
@@ -1185,11 +1329,16 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     const histNote = hist?.available
       ? ` A structured, evidence-based historical document comparison is also available (${hist.documentsConsidered} dated documents compared). If you reference any historical change, state ONLY what its comparisons[].addedInNewer/removedFromOlder arrays literally show, citing the olderDocument/newerDocument URLs — never add or infer a change beyond that structured diff.`
       : '';
+    const tasFacts = aggregateTasTechnicalFacts(p.browserOfficial);
+    const tasFactsBlock = tasFacts.length
+      ? `TAS/OFFICIAL DOCUMENT TECHNICAL FACTS — PRIMARY SOURCE (mandatory priority rule): the following values were extracted deterministically, in code, directly from the official documents' own text this run. Treat every one of these as ALREADY CONFIRMED — they take priority over anything else you find or infer for the same field, including your own general knowledge or any public-web lead. Weave the relevant ones into officialEvidence/documents[].facts in natural prose (never dump the raw "key=value" form verbatim into your output), and never contradict or "correct" one of these values.\n${formatTasTechnicalFactsForPrompt(tasFacts)}\n`
+      : '';
     return (
       `${BASE}\nAnswer strings in ${L}. Query=${q}.\n` +
       `INTERNAL GROUND TRUTH (for your reasoning only — never mention this line, its states, or its existence to the customer in any form): ${statusLine}.\n` +
       `A source counts as directly, officially checked ONLY when its state above is SEARCH_CONFIRMED or NO_RESULT_CONFIRMED. NO_RESULT_CONFIRMED is evidence ONLY that this one exact verified search returned no matching record on that specific source — NEVER evidence that the underlying property/record/company does not exist at all. Every other state means that source was NOT verified this run — for such a source you must simply not state a finding from it (positive or negative); do not explain why, do not name the state, do not describe any attempt.${trav}\n` +
       `Note on sources: MY.GOV.GE service 176 (naprweb.reestri.gov.ge) and NAPR are the SAME registry — never present them as two independent sources.${histNote}\n` +
+      tasFactsBlock +
       `Direct browser evidence payload=${b}. Identity=${JSON.stringify(p.identity || {}).slice(0, 12000)}.\n` +
       `You may use Google Search / URL Context to research TAS, the MS cadastral map, MY.GOV.GE/NAPR, the Entrepreneur Registry and other municipal/government records as PUBLIC WEB leads — but any such finding is public-web information, not a direct registry verification, and must go in facts/unverified rather than officialEvidence unless it is itself a primary document you can cite with an exact URL.\n` +
       `If you identify a legal entity (developer/owner company) — from the browser evidence above, from a cited document, or from your own web research — populate companyProfile with everything evidence-backed you can find: legal name, identification code (idCode), legal form, registration date, status (active/liquidated/etc.), directors, representatives, historical changes, related projects. A discovered company with a name or an identification code MUST be reported in companyProfile even if your evidence about it is otherwise thin — leave individual fields null rather than omitting the whole object. For relatedProjects specifically, when your evidence supports it, write each entry with real detail rather than a bare name — e.g. "<project name> — <status/completion evidenced>, per <url>" — but never pad a bare name with an invented status just to look complete; a bare name is correct when that is all the evidence supports.\n` +
@@ -1228,9 +1377,17 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
         ].filter((x) => typeof x === 'string' && x.trim())
       )
     );
+    const tasFacts = Array.isArray(o.tasTechnicalFacts) ? o.tasTechnicalFacts : [];
+    const tasFactsNote = tasFacts.length
+      ? `TAS/OFFICIAL DOCUMENT TECHNICAL FACTS ALREADY CONFIRMED (PRIMARY — see Official.tasTechnicalFacts above; do not re-research or contradict these, e.g. architect/structural/foundation/area/floor values already established there):\n${formatTasTechnicalFactsForPrompt(tasFacts)}\nFor any of these categories, your job here is reputation/context/qualitative enrichment ONLY (e.g. the architect's track record, the contractor's other projects) — never propose a different name/value for a field already confirmed above.\n`
+      : '';
+    const scope = publicResearchScope(i.assetClass);
+    const scopeNoteLine = scope.scopeNote ? `${scope.scopeNote}\n` : '';
     return (
       `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. Official=${JSON.stringify(o).slice(0, 12000)}.\n` +
-      `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${PUBLIC_RESEARCH_TARGETS.join(', ')}.\n` +
+      tasFactsNote +
+      scopeNoteLine +
+      `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${scope.targets.join(', ')}.\n` +
       `For every field below, populate it ONLY when your search actually surfaced supporting evidence for THIS exact project/company/property — never guess, never fill a field with a generic industry statement, never invent a name. No evidence for a field = null (or [] for list fields) — never omit the key and never pad with a placeholder string. Prefer specific names/dates/facts over vague description. Each list field should contain short, concrete, evidence-backed entries (e.g. a real person/company name with their role, not a generic sentence).\n` +
       `If you discover a legal company (developer/owner) — by exact name or identification code — that was not already present in Official.companyProfile above, populate companyId/legalCompany with it as precisely as the evidence supports; a downstream deterministic step (not you) decides whether this triggers any further registry lookup.\n` +
       `Return {"project":string|null,"developer":string|null,"legalCompany":string|null,"companyId":string|null,"foundersOwnersParticipants":string[],"directorsRepresentatives":string[],"companyHistory":string|null,"previousProjects":string[],"architect":string|null,"architectStudio":string|null,"architectReputation":string|null,"contractors":string[],"constructionCompanies":string[],"engineers":string[],"suppliers":string[],"facade":string|null,"windows":string|null,"elevators":string|null,"structuralSystem":string|null,"constructionMaterials":string|null,"insulation":string|null,"MEP":string|null,"energyEfficiency":string|null,"seismicDesign":string|null,"amenities":string[],"landscaping":string|null,"parking":string|null,"financingBank":string|null,"partners":string[],"constructionStart":string|null,"chronology":string|null,"progressHistory":string|null,"currentPhysicalStatus":string|null,"qualitySignals":string[],"developerReputation":string|null,"architectReputationSignals":string[],"complaints":string[],"disputes":string[],"legalPublicFootprint":string[],"mediaCoverage":string[],"socialPublicFootprint":string[],"awardsRecognition":string[],"facts":string[],"unverified":string[]}.`
@@ -1255,6 +1412,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
   const trav = traversalNote(p.browserOfficial);
   return (
     `${BASE}\nAnswer strings in ${L}. Query=${q}. Synthesize ONLY this collected evidence=${JSON.stringify(p).slice(0, 52000)}. Introduce no new facts. This includes publicResearch above (developer/company background, architect, contractors, construction quality/materials, chronology/current status, reputation, amenities) — weave genuinely evidenced items from it into officialEvidence/publicEvidence/facts/keyStrengths as appropriate; a field left null/[] there means no evidence exists and must not be mentioned at all.\n` +
+    `TAS/OFFICIAL DOCUMENT PRIORITY RULE (mandatory): when official.tasTechnicalFacts is present, those values were extracted deterministically from the official documents' own text and are the PRIMARY source for technical/project facts (architect, structural/geotechnical/foundation specialists, areas, floors, height, building function, revisions, applicant, parcel owner, and similar). Whenever official.tasTechnicalFacts and publicResearch disagree on the same fact, official.tasTechnicalFacts wins — state the confirmed value and simply do not mention the conflicting public-web claim at all (this is not a "conflict" worth listing in conflicts[] unless it is a MATERIAL identity/legal discrepancy per the CONFLICT SEVERITY RULE). Never omit a genuinely present official.tasTechnicalFacts value merely because publicResearch did not also confirm it.\n` +
     `CUSTOMER-FACING SOURCE WORDING (mandatory, applies to every string field you return): never name a specific website/platform/portal by brand (e.g. MyHome, SS.ge, Korter, Facebook, Instagram, or any other named site) anywhere in prose — refer to public-web findings only generically, e.g. "based on publicly available information" (translate this exact meaning into the requested answer language; the Georgian equivalent is "საჯაროდ არსებული ინფორმაციის საფუძველზე"). Never reference a worker/adapter name, a technical/coverage state, or a citation/link inside prose — those are handled entirely outside your output.\n` +
     `When describing official/registry results, distinguish (1) a confirmed positive match, (2) a source whose exact verified search returned no matching record — phrase this as "no matching record was found for this search", NEVER as "the property/record does not exist" — from (3) a source that was skipped because the user chose not to complete a human-verification step, phrased plainly as "<sourceName> — verification incomplete. Human verification was required and this source was skipped. The report below is based on the other successfully researched sources." Any other source state (blocked, technical failure, wrong search context, etc.) must simply be left out of officialEvidence/facts entirely — never explained, never named, never hedged about.${trav}\n` +
     `If browserOfficial.results contains an Entrepreneur Registry (enreg) entry — including one tagged with a forEntity (a company looked up specifically because it was discovered elsewhere in this research) — read its documents' extracted text/facts directly and use it to build or improve companyProfile (legal form, registration date, status, directors, representatives, historical changes) with the same schema OFFICIAL used. If it materially improves on the evidence-bundle's existing companyProfile, return your own improved companyProfile; otherwise omit the field and the existing one is kept.\n` +
@@ -2317,7 +2475,13 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     return sb.from('research_jobs').update({ status: 'CREATED', stage: 'BROWSER_READY', response_id: null, result_json: prior, evidence_bundle: ev, progress: { phase: 'identity_complete', percent: 28 }, updated_at: now() }).eq('id', j.id);
   }
   if (s === 'OFFICIAL_COLLECTION') {
-    prior.official = z;
+    // tasTechnicalFacts (2026-09-07 mandate): attach the deterministic,
+    // code-computed aggregation (never the model's own self-report) so it
+    // survives independently of whatever the model chose to weave into
+    // prose, and so PUBLIC_RESEARCH/SYNTHESIS and the final customer report
+    // can all reference the SAME ground-truth list rather than each stage
+    // re-deriving its own partial view of it.
+    prior.official = { ...z, tasTechnicalFacts: aggregateTasTechnicalFacts(prior.browserOfficial) };
     // v19: route through ENREG_CHECK_PENDING instead of straight to
     // PUBLIC_RESEARCH_READY so advance() gets a chance to trigger the
     // closed-loop entity ENREG/RS/Debtor chain for OFFICIAL_COLLECTION's own

@@ -87,19 +87,43 @@ export function markComplete(doc: ResearchDocument): ResearchDocument {
  * object too), applied once by ResearchOrchestrator right before a result's
  * `documents` array crosses the HTTP boundary — never inside a *Workflow.ts,
  * which should only ever produce the mandate's own ResearchDocument shape. */
+// 2026-09-07 "TAS DOCUMENT INTELLIGENCE" mandate: two fixes made together
+// here since both were found while adding technicalFacts below.
+//
+// (1) BUG FIX: a TAS row-level document (pushed inline by
+// TasResultExhauster.ts as `{url, label, rawText, ...}` — it never sets
+// `.title`, only `.label`) used to come out of this function with
+// `label: doc.title` = undefined, CLOBBERING its own real `label` value
+// (which `...doc` had already spread in, then this explicit key silently
+// overwrote). research-agent's officialDocuments() reads `d.title||d.label`
+// for the customer-facing document title, so every TAS anchor/grid-row
+// document was showing with NO title at all. Fixed by resolving `title`/
+// `label` from whichever of the two the source object actually set.
+//
+// (2) NEW: technicalFacts — every document's own rawText is now run
+// through extractTasTechnicalFacts() (pure, generic — see that file's own
+// header) right here, the one place EVERY document (both the mandate's
+// ResearchDocument shape and TasResultExhauster's inline row objects)
+// passes through before crossing the HTTP boundary to research-agent.
+import { extractTasTechnicalFacts, dedupeTasTechnicalFacts, type TasTechnicalFact } from './TasTechnicalFacts.js';
 export function toLegacyDocument(doc: ResearchDocument): ResearchDocument & {
   date: string | null;
   type: DocumentKind | null;
   parsed: boolean;
   textExtractionAvailable: boolean;
   label: string | null;
+  technicalFacts: TasTechnicalFact[];
 } {
+  const anyDoc = doc as unknown as { label?: string | null };
+  const resolvedTitle = doc.title ?? anyDoc.label ?? null;
   return {
     ...doc,
     date: doc.documentDate,
     type: doc.documentType,
     parsed: doc.complete,
     textExtractionAvailable: !!doc.rawText && doc.rawText.trim().length > 0,
-    label: doc.title,
+    title: resolvedTitle,
+    label: resolvedTitle,
+    technicalFacts: dedupeTasTechnicalFacts(extractTasTechnicalFacts(doc.rawText)),
   };
 }

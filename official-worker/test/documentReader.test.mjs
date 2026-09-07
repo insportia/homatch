@@ -131,3 +131,36 @@ test('toLegacyDocument: an incomplete/unread document maps to parsed:false, text
   assert.equal(legacy.textExtractionAvailable, false);
   assert.equal(legacy.date, null);
 });
+
+// REGRESSION (2026-09-07, found while adding technicalFacts below): a TAS
+// row-level document object — the exact inline shape TasResultExhauster.ts
+// pushes (`{url, label, rawText, source, complete, documentType, pagesRead,
+// pageCount}`, note: NO `.title` field at all) — used to come out of
+// toLegacyDocument with `label: undefined`, because the old
+// `label: doc.title` line ran AFTER the `...doc` spread and silently
+// clobbered the real label with undefined. Since research-agent's
+// officialDocuments() reads `d.title || d.label || null`, every TAS
+// anchor/grid-row document was showing with NO title in the customer
+// report's Official Documents section.
+test('toLegacyDocument: a TAS row-level object (label only, no .title field) keeps its real label — the exact production bug this fix catches', () => {
+  const rowLevelDoc = { url: 'https://tas.ge/row/1', label: '2019 წლის მშენებლობის ნებართვა', rawText: 'some text', source: 'tas_result_row', complete: true, documentType: 'ONLINE_DOCUMENT', pagesRead: 1, pageCount: 1 };
+  const legacy = toLegacyDocument(rowLevelDoc);
+  assert.equal(legacy.label, '2019 წლის მშენებლობის ნებართვა');
+  assert.equal(legacy.title, '2019 წლის მშენებლობის ნებართვა');
+});
+
+// technicalFacts wiring — every document (mandate shape or row-level) now
+// carries structured facts extracted from its own rawText.
+test('toLegacyDocument: attaches technicalFacts extracted from the document\'s own rawText', () => {
+  const doc = newDocumentShell('tas', 'https://tas.ge/doc/3');
+  doc.rawText = 'მთავარი არქიტექტორის სახელი და გვარი: თამარ ქავთარაძე';
+  const legacy = toLegacyDocument(doc);
+  assert.ok(Array.isArray(legacy.technicalFacts));
+  assert.ok(legacy.technicalFacts.some((f) => f.key === 'mainArchitectName' && f.value === 'თამარ ქავთარაძე'));
+});
+test('toLegacyDocument: a document with no recognizable official-form structure gets technicalFacts: []', () => {
+  const doc = newDocumentShell('tas', 'https://tas.ge/doc/4');
+  doc.rawText = 'just some unrelated cover-letter prose with nothing structured in it.';
+  const legacy = toLegacyDocument(doc);
+  assert.deepEqual(legacy.technicalFacts, []);
+});

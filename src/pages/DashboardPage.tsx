@@ -13,7 +13,7 @@ import {
   PlusCircle, MapPin, DollarSign, Maximize2, BedDouble, Zap, Trash2,
   ExternalLink, LayoutGrid, Building2, Search, Brain, Globe2, CheckCircle2,
   Loader2, Radio, ShieldCheck, Bot, Shield, MessageSquare, Bell, CalendarDays,
-  Sparkles, ArrowRight, TrendingUp, Users, Database, Layers, Filter,
+  Sparkles, ArrowRight, TrendingUp, Users, Database, Layers, Filter, Landmark,
 } from 'lucide-react';
 import { getProperties, softDeleteProperty } from '@/services/api';
 import {
@@ -118,6 +118,30 @@ function PropertyCard({ prop, run, onDelete }: { prop: Property; run?: LiveMatch
           {t('dash_ask_ai_property')}
           <ArrowRight className="h-3 w-3 ml-auto text-muted-foreground/40" />
         </button>
+        {/* Mortgage CTA — prefills /mortgage with this property's price/
+            currency snapshot. A later price change on the property never
+            silently overwrites a scenario already saved against this
+            snapshot (see MortgagePage's propertyPriceSnapshotAt handling
+            and the mortgage_scenarios table) — this button only ever
+            starts a fresh calculation. */}
+        {facts?.total_price && (
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation();
+              navigate('/mortgage', {
+                state: {
+                  context: { propertyId: prop.id, price: Number(facts.total_price), currency: facts.currency },
+                },
+              });
+            }}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/50 hover:border-primary/40 hover:bg-primary/5 transition-colors text-xs text-muted-foreground hover:text-foreground"
+          >
+            <Landmark className="h-3 w-3 text-primary shrink-0" />
+            {t('dash_calculate_mortgage_property')}
+            <ArrowRight className="h-3 w-3 ml-auto text-muted-foreground/40" />
+          </button>
+        )}
       </div>
     </div>
   );

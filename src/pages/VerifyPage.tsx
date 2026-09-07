@@ -69,6 +69,34 @@ const PHASE_LABEL_KEYS: Record<string,string>={queued:'verify_phase_queued',iden
 // dump of malformed data. Applied to every report-derived value used with
 // `.map()`/`.filter()`/a spread on this page.
 function asArray<T=any>(v:unknown):T[]{return Array.isArray(v)?v:[]}
+// resolveFunctionErrorMessage() (v31, Verify mandate: "the customer-facing
+// 'Edge Function returned a non-2xx status code' error is unacceptable —
+// replace it with real, safe, structured error surfacing"). When
+// research-agent returns a non-2xx response, supabase-js's
+// functions.invoke() throws a FunctionsHttpError whose own `.message` is
+// ALWAYS that fixed generic string — the actual JSON body research-agent
+// sent back (e.g. `{error:"..."}`, already a customer-safe, localized
+// message chosen by research-agent itself — see its own json()/
+// GENERIC_CONFIG_ERROR_I18N usage) is never read by the SDK on the
+// non-ok path and sits, unconsumed, on `error.context` (the raw fetch
+// Response object — see FunctionsHttpError's constructor in
+// @supabase/functions-js, which stores the Response as `context` without
+// awaiting its body). This reads that real body when present and only
+// falls back to the generic `e.message`/caller-supplied fallback when the
+// body can't be parsed (network-level FunctionsFetchError, a non-JSON
+// response, or a body already consumed) — never throws itself, so a
+// broken error path can never mask the original error.
+async function resolveFunctionErrorMessage(e:any,fallback:string):Promise<string>{
+  try{
+    const ctx=e?.context;
+    if(ctx&&typeof ctx.json==='function'){
+      const body=await(typeof ctx.clone==='function'?ctx.clone():ctx).json();
+      if(body&&typeof body.error==='string'&&body.error.trim())return body.error;
+    }
+  }catch{/* fall through to the generic message below — never let error
+            extraction itself become a second, more confusing failure */}
+  return(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback);
+}
 // coverageLabel() (v21, master due-diligence mandate — "PURCHASE DECISION"
 // section): this system must NEVER present a safety verdict (SAFE TO BUY /
 // a fake percentage). The primary badge is now DUE-DILIGENCE COVERAGE —
@@ -190,7 +218,17 @@ function CoverageNote({note}:{note?:string}){if(!note)return null;return <div cl
 // due-diligence-coverage/evidence signal only, computed server-side by
 // computeOverallAssessment() from structured signals, never from the
 // model's own self-report.
-const overallAssessmentLabel=(lvl:OverallAssessmentLevel|undefined,t:(k:string)=>string)=>({VERY_POSITIVE:t('verify_assessment_very_positive'),POSITIVE:t('verify_assessment_positive'),GENERALLY_POSITIVE:t('verify_assessment_generally_positive'),NEUTRAL_MIXED:t('verify_assessment_neutral_mixed'),ATTENTION_REQUIRED:t('verify_assessment_attention_required')}[String(lvl||'')]||t('verify_assessment_generally_positive'));
+// v31 (Verify mandate item: customer-facing verdict is exactly one of three
+// plain-language levels — Positive / Moderately positive / Negative — never
+// the code's own 5-tier internal OverallAssessmentLevel vocabulary. This used
+// to be patched onto the built artifact after every `npm install` by
+// scripts/apply-verify-ux-patch.mjs (which additionally had to hardcode raw
+// ka/ru/en strings inline since it could only string-replace this file, not
+// add real translation keys); it is now the real source, using proper
+// verify_assessment_moderately_positive/verify_assessment_negative i18n keys
+// (added alongside the existing verify_assessment_positive key) so every
+// supported language — not just ka/ru/en — gets a correct label.
+const overallAssessmentLabel=(lvl:OverallAssessmentLevel|undefined,t:(k:string)=>string)=>({VERY_POSITIVE:t('verify_assessment_positive'),POSITIVE:t('verify_assessment_positive'),GENERALLY_POSITIVE:t('verify_assessment_moderately_positive'),NEUTRAL_MIXED:t('verify_assessment_moderately_positive'),ATTENTION_REQUIRED:t('verify_assessment_negative')}[String(lvl||'')]||t('verify_assessment_moderately_positive'));
 const overallAssessmentBadgeClass=(lvl:OverallAssessmentLevel|undefined)=>({VERY_POSITIVE:'border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90',POSITIVE:'border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90',GENERALLY_POSITIVE:'border-emerald-300 bg-emerald-50 text-emerald-800',NEUTRAL_MIXED:'border-slate-300 bg-slate-50 text-slate-700',ATTENTION_REQUIRED:'border-transparent bg-destructive text-destructive-foreground'}[String(lvl||'')]||'border-emerald-300 bg-emerald-50 text-emerald-800');
 // findingsFromReport() (v36 report-tone rewrite): "მნიშვნელოვანი დასკვნები"
 // — a single short list of at most 6 findings, built from the SAME
@@ -207,18 +245,12 @@ function findingsFromReport(r:Report):{text:string;adverse:boolean}[]{
 function OverallAssessmentCard({oa,r}:{oa?:OverallAssessment|null;r:Report}){const{t}=useLanguage();if(!oa||!oa.level)return null;const strengths=asArray<string>(oa.keyStrengths);const findings=findingsFromReport(r);return <Card className="border-2"><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide flex items-center gap-2 flex-wrap"><span>{t('verify_assessment_title')}</span><Badge className={overallAssessmentBadgeClass(oa.level)}>{overallAssessmentLabel(oa.level,t)}</Badge></CardTitle></CardHeader><CardContent className="space-y-4">{!!strengths.length&&<div className="space-y-1.5"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('verify_assessment_strengths_title')}</p>{strengths.map((x,i)=><div key={i} className="text-sm leading-relaxed flex gap-2"><span className="text-emerald-600 shrink-0">✓</span><span>{clean(x)}</span></div>)}</div>}{!!findings.length&&<div className="space-y-1.5"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('verify_assessment_findings_title')}</p>{findings.map((f,i)=><div key={i} className={`text-sm leading-relaxed flex gap-2 ${f.adverse?'text-destructive':''}`}><span className={`shrink-0 ${f.adverse?'text-destructive':'text-muted-foreground'}`}>{f.adverse?'⚠':'•'}</span><span>{f.text}</span></div>)}</div>}</CardContent></Card>}
 function HistoricalComparisonCard({hc}:{hc?:HistoricalComparison|null}){const{t}=useLanguage();if(!hc?.available)return null;const comparisons=asArray<HistoricalComparisonEntry>(hc.comparisons);if(!comparisons.length)return null;const docLabel=(d:HistoricalDoc)=>clean(d.title)||t('verify_history_document_fallback');return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide">{t('verify_history_title')}</CardTitle></CardHeader><CardContent className="space-y-3">{comparisons.map((c,i)=><div key={i} className="text-xs space-y-1 border-b border-border pb-2 last:border-0 last:pb-0"><div className="text-muted-foreground">{docLabel(c.olderDocument)} ({c.olderDocument.date||'—'}) → {docLabel(c.newerDocument)} ({c.newerDocument.date||'—'})</div>{c.changed?<div className="space-y-0.5">{asArray<string>(c.addedInNewer).slice(0,5).map((l,j)=><div key={`a${j}`} className="text-emerald-600">+ {clean(l)}</div>)}{asArray<string>(c.removedFromOlder).slice(0,5).map((l,j)=><div key={`r${j}`} className="text-red-500">− {clean(l)}</div>)}</div>:<div className="text-muted-foreground">{t('verify_history_no_change')}</div>}</div>)}</CardContent></Card>}
 function OfficialDocumentsCard({docs}:{docs?:OfficialDocument[]}){const{t}=useLanguage();const list=asArray<OfficialDocument>(docs);if(!list.length)return null;return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide">{t('verify_official_docs_title')}</CardTitle></CardHeader><CardContent className="space-y-2">{list.map((d,i)=><div key={i} className="flex items-center justify-between gap-3 p-2 rounded-lg border text-xs"><span className="truncate">{clean(d.title||d.sourceName||d.source)}{d.date?` · ${d.date}`:''}</span></div>)}</CardContent></Card>}
-// TechnicalFactsCard (2026-09-07 gap fix — "TAS technical facts as PRIMARY
-// evidence ... must survive all the way to synthesis AND UI"): report.
-// technicalFacts is research-agent/index.ts's deterministic,
-// code-computed aggregateTasTechnicalFacts() output, exposed as its own
-// guaranteed field so a confirmed technical fact from an official
-// document can never be silently dropped by a SYNTHESIS-stage LLM
-// summarization choice (previously this data only ever reached the model
-// as prompt guidance, with no code-level guarantee it would appear
-// anywhere in the actual report). No document URL is included — see
-// OfficialDocument's own note above: comparables/documents never render a
-// raw `url` to the customer.
-function TechnicalFactsCard({facts}:{facts?:TechnicalFact[]|null}){const{t}=useLanguage();const list=asArray<TechnicalFact>(facts);if(!list.length)return null;const byCategory=new Map<string,TechnicalFact[]>();for(const f of list){if(!byCategory.has(f.category))byCategory.set(f.category,[]);byCategory.get(f.category)!.push(f)}return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide">{t('verify_technical_facts_title')}</CardTitle></CardHeader><CardContent className="space-y-3">{Array.from(byCategory.entries()).map(([cat,items])=><div key={cat} className="space-y-1"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">{clean(cat)}</p><div className="text-xs space-y-0.5">{items.map((f,i)=><div key={i} className="flex justify-between gap-3 p-1.5 rounded border"><span className="text-muted-foreground">{clean(f.key)}{f.block?<span className="text-muted-foreground/70"> · {t('verify_block_label_prefix')} {clean(f.block)}</span>:null}</span><span className="font-medium text-right">{clean(f.value)}{f.documentDate?<span className="text-muted-foreground font-normal"> ({clean(f.documentDate)})</span>:null}</span></div>)}</div></div>)}</CardContent></Card>}
+// TechnicalFactsCard was removed 2026-09-07 (Verify mandate: no
+// technical/audit-trail cards in the customer report — see the removal note
+// at this file's report-render call site). report.technicalFacts is still
+// computed server-side (aggregateTasTechnicalFacts() in research-agent) and
+// still feeds RevisionTimelineCard and SYNTHESIS; only this standalone
+// dump card is gone.
 // RevisionTimelineCard (2026-09-07 "ProjectRevision/block-structure"
 // mandate item): report.revisionTimeline is research-agent/index.ts's
 // buildRevisionTimeline() output — one entry per official document that
@@ -244,77 +276,14 @@ function ProjectProfileCard({p}:{p?:ProjectProfile|null}){const{t}=useLanguage()
 // useful customer information. Only the positive REGISTRY_CONFIRMED case
 // still gets a small badge; otherwise none is shown at all.
 function CompanyProfileCard({c}:{c?:CompanyProfile|null}){const{t}=useLanguage();if(!c||!(c.name||c.idCode))return null;const rows:[string,string|undefined|null][]=[[t('verify_company_row_id_code'),c.idCode],[t('verify_company_row_legal_form'),c.legalForm],[t('verify_company_row_registration_date'),c.registrationDate],[t('verify_company_row_status'),c.status]];return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide flex items-center gap-2 flex-wrap"><span>{t('verify_company_title_prefix')}: {clean(c.name)||'—'}</span>{c.sourceBasis==='REGISTRY_CONFIRMED'&&<Badge className="normal-case font-normal border-transparent bg-emerald-600 text-white">{t('verify_source_basis_registry')}</Badge>}</CardTitle></CardHeader><CardContent className="space-y-3">{c.summary&&<p className="text-sm text-muted-foreground">{clean(c.summary)}</p>}<div className="grid sm:grid-cols-2 gap-2 text-sm">{rows.filter(([,v])=>v).map(([k,v])=><div key={k}>{k}: {clean(v as string)}</div>)}</div><EvidenceCard title={t('verify_directors')} items={c.directors}/><EvidenceCard title={t('verify_representatives')} items={c.representatives}/><EvidenceCard title={t('verify_historical_changes')} items={c.historicalChanges}/><EvidenceCard title={t('verify_related_projects')} items={c.relatedProjects}/></CardContent></Card>}
-// PublicResearchCard (2026-09-06, "Fix Homatch Verify by implementing this
-// exact pipeline in code" mandate — PUBLIC_RESEARCH is now a real stage and
-// its structured findings must actually reach the customer, not just live in
-// result_json). Deliberately renders NO source names, worker names, raw
-// URLs, or citations — every string here already passed through
-// research-agent's SOURCE-ANONYMITY prompt rule and stripUrlFields() strips
-// any accidental url-shaped key before this object ever reaches an AI
-// follow-up; this component itself never prints report.sources or any
-// `url`/`link` field, consistent with the rest of this page. A field with no
-// evidence is always null/[] (never omitted vs. populated inconsistently),
-// so every row/list below is naturally hidden when empty — no separate
-// "not yet researched" placeholder needed. architectReputationSignals,
-// complaints, disputes, legalPublicFootprint, mediaCoverage,
-// socialPublicFootprint and awardsRecognition are flattened into one
-// "reputation & public footprint" list, and chronology+progressHistory into
-// one timeline list, to keep the card scannable rather than a dozen
-// one-line sub-cards for what the customer reads as a single topic.
-function PublicResearchCard({pr}:{pr?:PublicResearch|null}){
-  const{t}=useLanguage();
-  if(!pr)return null;
-  const rows:[string,string|undefined|null][]=[
-    [t('verify_public_research_row_legal_company'),pr.legalCompany],
-    [t('verify_public_research_row_architect_studio'),pr.architectStudio],
-    [t('verify_public_research_row_facade'),pr.facade],
-    [t('verify_public_research_row_windows'),pr.windows],
-    [t('verify_public_research_row_elevators'),pr.elevators],
-    [t('verify_public_research_row_structural_system'),pr.structuralSystem],
-    [t('verify_public_research_row_materials'),pr.constructionMaterials],
-    [t('verify_public_research_row_insulation'),pr.insulation],
-    [t('verify_public_research_row_mep'),pr.MEP],
-    [t('verify_public_research_row_energy_efficiency'),pr.energyEfficiency],
-    [t('verify_public_research_row_seismic_design'),pr.seismicDesign],
-    [t('verify_public_research_row_financing_bank'),pr.financingBank],
-    [t('verify_public_research_row_construction_start'),pr.constructionStart],
-    [t('verify_public_research_row_current_status'),pr.currentPhysicalStatus],
-    [t('verify_public_research_row_developer_reputation'),pr.developerReputation],
-    [t('verify_public_research_row_architect_reputation'),pr.architectReputation],
-  ];
-  const reputationSignals=[...asArray<string>(pr.architectReputationSignals),...asArray<string>(pr.complaints),...asArray<string>(pr.disputes),...asArray<string>(pr.legalPublicFootprint),...asArray<string>(pr.mediaCoverage),...asArray<string>(pr.socialPublicFootprint),...asArray<string>(pr.awardsRecognition)];
-  const chronologyItems=[...asArray<string>(pr.chronology),...asArray<string>(pr.progressHistory)];
-  const hasAnyRow=rows.some(([,v])=>v);
-  const hasAnyList=[pr.foundersOwnersParticipants,pr.directorsRepresentatives,pr.companyHistory,pr.previousProjects,pr.contractors,pr.constructionCompanies,pr.engineers,pr.suppliers,pr.amenities,pr.landscaping,pr.parking,pr.partners,chronologyItems,pr.qualitySignals,reputationSignals,pr.facts].some(a=>a?.length);
-  if(!hasAnyRow&&!hasAnyList)return null;
-  return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide">{t('verify_public_research_title')}</CardTitle></CardHeader><CardContent className="space-y-3">
-    <div className="grid sm:grid-cols-2 gap-2 text-sm">{rows.filter(([,v])=>v).map(([k,v])=><div key={k}>{k}: {clean(v as string)}</div>)}</div>
-    <EvidenceCard title={t('verify_public_research_founders')} items={pr.foundersOwnersParticipants}/>
-    <EvidenceCard title={t('verify_public_research_directors')} items={pr.directorsRepresentatives}/>
-    <EvidenceCard title={t('verify_public_research_company_history')} items={pr.companyHistory}/>
-    <EvidenceCard title={t('verify_public_research_previous_projects')} items={pr.previousProjects}/>
-    <EvidenceCard title={t('verify_contractors')} items={pr.contractors}/>
-    <EvidenceCard title={t('verify_public_research_construction_companies')} items={pr.constructionCompanies}/>
-    <EvidenceCard title={t('verify_public_research_engineers')} items={pr.engineers}/>
-    <EvidenceCard title={t('verify_public_research_suppliers')} items={pr.suppliers}/>
-    <EvidenceCard title={t('verify_amenities')} items={pr.amenities}/>
-    <EvidenceCard title={t('verify_public_research_landscaping')} items={pr.landscaping}/>
-    <EvidenceCard title={t('verify_public_research_parking')} items={pr.parking}/>
-    <EvidenceCard title={t('verify_public_research_partners')} items={pr.partners}/>
-    <EvidenceCard title={t('verify_public_research_chronology')} items={chronologyItems}/>
-    <EvidenceCard title={t('verify_public_research_quality_signals')} items={pr.qualitySignals}/>
-    <EvidenceCard title={t('verify_public_research_reputation_signals')} items={reputationSignals}/>
-    <EvidenceCard title={t('verify_public_research_facts')} items={pr.facts}/>
-  </CardContent></Card>
-}
-// DiscoveredEntitiesCard (mandate item 4 — "merge discovered ... entities
-// ... into the SAME existing property model"). official-worker's EntityQueue
-// already computes this per job; it was previously discarded by
-// research-agent's pollBrowser() before ever reaching result_json. Shown as
-// a bare name+ID-code list only (no internal `id`/`enregStatus`/
-// `discoveredFrom` bookkeeping, no source/worker names, no URLs) — those
-// internal fields are stripped server-side before this shape is built.
-function DiscoveredEntitiesCard({entities}:{entities?:DiscoveredEntity[]}){const{t}=useLanguage();const list=asArray<DiscoveredEntity>(entities);if(!list.length)return null;return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide">{t('verify_discovered_entities_title')}</CardTitle></CardHeader><CardContent className="space-y-2">{list.map((e,i)=><div key={i} className="text-sm flex items-center justify-between gap-2"><span>{clean(e.name)}</span>{e.identificationCode&&<span className="text-xs text-muted-foreground">{e.identificationCode}</span>}</div>)}</CardContent></Card>}
+// PublicResearchCard and DiscoveredEntitiesCard were removed 2026-09-07
+// (Verify mandate: no technical/audit-trail cards in the customer report —
+// see the removal note at this file's report-render call site).
+// report.publicResearch/discoveredEntities are still computed and persisted
+// server-side (research-agent's PUBLIC_RESEARCH stage / official-worker's
+// EntityQueue) for internal/admin diagnostics and still feed SYNTHESIS;
+// only these standalone dump cards are gone. PublicResearch/DiscoveredEntity
+// remain declared above as they're still part of the Report type.
 // PriceDriversCard (mandate: "Market analysis must explain WHY price is
 // cheaper/normal/premium"). Purely additive to the existing
 // priceEvidence/comparables rendering — never replaces it. `reasoning` is
@@ -337,14 +306,11 @@ function MarketRangeCard({m}:{m?:MarketRangeInput|null}){const{t}=useLanguage();
 // localized label/note — never one broad "clean" conclusion.
 const legalStatusBadgeClass=(s:LegalStatusValue)=>({CONFIRMED_POSITIVE:'border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90',CONFIRMED_ATTENTION:'border-transparent bg-destructive text-destructive-foreground',NOT_CONFIRMED:'border-slate-300 bg-slate-50 text-slate-700',HUMAN_VERIFICATION_REQUIRED:'border-amber-300 bg-amber-50 text-amber-800'}[s]);
 function LegalStatusMatrixCard({ls}:{ls?:LegalStatusMatrix|null}){const{t}=useLanguage();if(!ls)return null;const rows=Object.values(ls).filter(Boolean);if(!rows.length)return null;return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide">{t('verify_legal_status_title')}</CardTitle></CardHeader><CardContent className="space-y-2">{rows.map((r,i)=><div key={i} className="flex items-start justify-between gap-2 text-sm"><span>{r.label}</span><Badge className={`${legalStatusBadgeClass(r.status)} normal-case font-normal shrink-0`}>{r.note}</Badge></div>)}</CardContent></Card>}
-// ManualVerificationActionsCard (mandate item 8, addendum Sections 1-3): one
-// concrete card per unresolved gap — never a bare "not confirmed" label.
-// officialPortalUrl is already live-validated server-side (see
-// validateCustomerLink()/applyLinkValidation() in research-agent) so a dead
-// link is simply absent here rather than shown broken, and the link label is
-// always the neutral, pre-localized "open official page" text — never the
-// portal's own brand/domain name.
-function ManualVerificationActionsCard({actions}:{actions?:ManualVerificationAction[]}){const{t}=useLanguage();const list=asArray<ManualVerificationAction>(actions);if(!list.length)return null;return <Card><CardHeader className="pb-2"><CardTitle className="text-sm uppercase tracking-wide">{t('verify_manual_actions_title')}</CardTitle></CardHeader><CardContent className="space-y-4">{list.map((a,i)=><div key={a.id||i} className="space-y-1.5 pb-3 border-b border-border last:border-0 last:pb-0"><p className="text-sm font-medium">{clean(a.title)}</p><p className="text-xs text-muted-foreground">{clean(a.reason)}</p>{a.steps?.map((s,j)=><div key={j} className="text-xs text-muted-foreground leading-relaxed">• {clean(s)}</div>)}{a.requestedDocument&&<p className="text-xs text-muted-foreground">{t('verify_manual_actions_request_document')}: {clean(a.requestedDocument)}</p>}{a.officialPortalUrl&&<div className="flex items-center gap-2 flex-wrap">{a.officialPortalLabel&&<span className="text-xs text-muted-foreground">{clean(a.officialPortalLabel)}</span>}<a href={a.officialPortalUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline underline-offset-2">{t('verify_manual_actions_open_portal')}</a></div>}</div>)}</CardContent></Card>}
+// ManualVerificationActionsCard was removed 2026-09-07 (Verify mandate: no
+// technical/audit-trail cards in the customer report — see the removal note
+// at this file's report-render call site). report.manualVerificationActions
+// is still computed and persisted server-side for internal/admin
+// diagnostics; only this standalone dump card is gone.
 // ComparablesCard (2026-09-05 v2, mandate: market research must use CONCRETE
 // comparables, never only a broad price range). Renders each structured
 // comparable as a small row; a `genericSource` comparable (its only URL was
@@ -444,8 +410,21 @@ function VerifyHistorySidebar({open,onOpenChange,items,loading,activeJobId,onOpe
     </div>
   </SheetContent></Sheet>
 }
-export default function VerifyPage(){const nav=useNavigate();const{lang,t}=useLanguage();const{homatchUser,supaUser}=useAuth();const[searchParams,setSearchParams]=useSearchParams();const[mode,setMode]=useState<Mode>('property');const[query,setQuery]=useState('');const[loading,setLoading]=useState(false);const[report,setReport]=useState<Report|null>(null);const[err,setErr]=useState<string|null>(null);const[captcha,setCaptcha]=useState<Report|null>(null);const[jobId,setJobId]=useState<string|null>(null);const[progress,setProgress]=useState<any>(null);const[sidebarOpen,setSidebarOpen]=useState(false);const[allHistory,setAllHistory]=useState<ResearchJobRecord[]>([]);const[allHistoryLoading,setAllHistoryLoading]=useState(false);const timer=useRef<any>(null);const busy=useRef(false);const valid=mode==='cadastral'?/^\d+(\.\d+){3,}$/.test(query.trim()):query.trim().length>=2;const stop=()=>{if(timer.current){clearTimeout(timer.current);timer.current=null}busy.current=false};const schedule=(id:string,ms=2200)=>{if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>check(id),ms)};
-const check=async(id:string)=>{if(!id||busy.current)return;busy.current=true;let again=true;try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'status',jobId:id,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);if(data?.progress)setProgress(data.progress);if(data?.status==='FAILED'){again=false;stop();setLoading(false);setErr(data.error||t('verify_err_research_failed'));return}if(data?.status==='WAITING_HUMAN'){again=false;stop();setLoading(false);const r=data.result_json||{};setCaptcha({...r,jobId:id,workerJobId:r.workerJobId||r.officialWorkerJobId||r?._worker?.jobId||data?.progress?.workerJobId||data?.captcha?.workerJobId,verificationSite:data?.captcha?.source||data?.verification_site||r.verificationSite});return}if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setLoading(false);setCaptcha(null);setReport(data.result_json);return}}catch(e:any){again=false;stop();setLoading(false);setErr(e?.message||t('verify_err_status_fetch_failed'))}finally{busy.current=false}if(again)schedule(id)};useEffect(()=>()=>stop(),[]);
+export default function VerifyPage(){const nav=useNavigate();const{lang,t}=useLanguage();const{homatchUser,supaUser}=useAuth();const[searchParams,setSearchParams]=useSearchParams();
+// v31 (Verify mandate: remove the Property/ქონება selector from Verify's
+// input — cadastral-code entry only). `mode` used to be user-switchable
+// state (a Tabs selector with 'property'/'cadastral' triggers) that
+// defaulted to 'property'; it is now a fixed constant. Kept as a `Mode`-
+// typed value (not inlined as a literal everywhere) because `Mode` and
+// mode-keyed logic below (the cadastral-regex `valid` check, the
+// `type:mode` sent to research-agent, the entityType fallback badge, the
+// query placeholder) and the history sidebar's own type filter are
+// unchanged and still expect a `Mode` value — only the ability for the
+// customer to pick 'property' via the UI is removed. Existing 'property'-
+// mode research_jobs rows from before this change still open and render
+// normally (VerifyHistorySidebar's history list is untouched).
+const mode:Mode='cadastral';const[query,setQuery]=useState('');const[loading,setLoading]=useState(false);const[report,setReport]=useState<Report|null>(null);const[err,setErr]=useState<string|null>(null);const[captcha,setCaptcha]=useState<Report|null>(null);const[jobId,setJobId]=useState<string|null>(null);const[progress,setProgress]=useState<any>(null);const[sidebarOpen,setSidebarOpen]=useState(false);const[allHistory,setAllHistory]=useState<ResearchJobRecord[]>([]);const[allHistoryLoading,setAllHistoryLoading]=useState(false);const timer=useRef<any>(null);const busy=useRef(false);const valid=mode==='cadastral'?/^\d+(\.\d+){3,}$/.test(query.trim()):query.trim().length>=2;const stop=()=>{if(timer.current){clearTimeout(timer.current);timer.current=null}busy.current=false};const schedule=(id:string,ms=2200)=>{if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>check(id),ms)};
+const check=async(id:string)=>{if(!id||busy.current)return;busy.current=true;let again=true;try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'status',jobId:id,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);if(data?.progress)setProgress(data.progress);if(data?.status==='FAILED'){again=false;stop();setLoading(false);setErr(data.error||t('verify_err_research_failed'));return}if(data?.status==='WAITING_HUMAN'){again=false;stop();setLoading(false);const r=data.result_json||{};setCaptcha({...r,jobId:id,workerJobId:r.workerJobId||r.officialWorkerJobId||r?._worker?.jobId||data?.progress?.workerJobId||data?.captcha?.workerJobId,verificationSite:data?.captcha?.source||data?.verification_site||r.verificationSite});return}if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setLoading(false);setCaptcha(null);setReport(data.result_json);return}}catch(e:any){again=false;stop();setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_status_fetch_failed')))}finally{busy.current=false}if(again)schedule(id)};useEffect(()=>()=>stop(),[]);
 // openJob(): the entire "open an old report without rerunning research"
 // requirement — this calls check(), which only ever performs a `status`
 // read against the existing research_jobs row (research-agent's status
@@ -470,9 +449,9 @@ const run=async()=>{if(!valid)return;stop();setLoading(true);setErr(null);setRep
 // completes, so a mid-run refresh reconnects to the RUNNING job (mandate
 // test M), not just a COMPLETE one.
 {const params=new URLSearchParams(searchParams);if(params.get('job')!==id){params.set('job',id);setSearchParams(params,{replace:true})}}
-if(data?.progress)setProgress(data.progress);schedule(id,500)}catch(e:any){setLoading(false);setErr(e?.message||t('verify_err_start_failed'))}};
-const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(e?.message||t('verify_err_resume_failed'))}};
-const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(e?.message||t('verify_err_skip_failed'))}};
+if(data?.progress)setProgress(data.progress);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_start_failed')))}};
+const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed')))}};
+const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_skip_failed')))}};
 // openVerifyHistorySidebar(): the global "browse every research run I've ever
 // started" sidebar (mandate section 29). Always a plain SELECT
 // (listVerifyHistory), never a research-agent call — opening the sidebar
@@ -501,4 +480,19 @@ const handleSidebarDelete=async(id:string)=>{setAllHistory(prev=>prev.filter(j=>
 // clicking away from a report they were viewing should be able to hit
 // Back and land on that report again, not skip past /verify entirely.
 const startNewResearch=()=>{stop();setErr(null);setCaptcha(null);setReport(null);setJobId(null);setLoading(false);setProgress(null);setQuery('');const params=new URLSearchParams(searchParams);if(params.has('job')){params.delete('job');setSearchParams(params,{replace:false})}};
-const pct=Math.max(5,Math.min(100,Number(progress?.percent)||5)),workerCaptchaId=captcha?.workerJobId||captcha?.officialWorkerJobId||captcha?._worker?.jobId;return <AppLayout><ResearchCaptchaModal open={!!captcha} jobId={workerCaptchaId} site={captcha?.verificationSite} onComplete={resume} onSkip={skip}/>{homatchUser&&<VerifyHistorySidebar open={sidebarOpen} onOpenChange={setSidebarOpen} items={allHistory} loading={allHistoryLoading} activeJobId={jobId} onOpenJob={handleSidebarOpenJob} onRename={handleSidebarRename} onDelete={handleSidebarDelete}/>}<div className="max-w-4xl mx-auto space-y-5 pb-16"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2"><Shield className="h-6 w-6 text-primary"/><h1 className="text-2xl font-bold">{t('verify_title')}</h1></div><p className="text-sm text-muted-foreground mt-1">{t('verify_page_subtitle')}</p></div>{(report||jobId||captcha||query)&&<Button variant="outline" size="sm" onClick={startNewResearch} className="shrink-0">{t('verify_new_research_button')}</Button>}{homatchUser&&<Button variant="outline" size="sm" onClick={openVerifyHistorySidebar} className="shrink-0"><History className="h-3.5 w-3.5 mr-1.5"/>{t('verify_history_sidebar_button')}</Button>}</div><Tabs value={mode} onValueChange={v=>{stop();setMode(v as Mode);setReport(null);setCaptcha(null);setQuery('');setLoading(false)}}><TabsList className="grid grid-cols-2 w-full"><TabsTrigger value="property">{t('verify_tab_property')}</TabsTrigger><TabsTrigger value="cadastral">{t('verify_tab_cadastral')}</TabsTrigger></TabsList></Tabs><Card><CardContent className="pt-5"><div className="flex gap-2"><Input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&valid&&!loading&&run()} placeholder={mode==='property'?t('verify_property_query_ph'):t('verify_cadastral_query_ph')}/><Button onClick={()=>run()} disabled={!valid||loading}>{loading?<Loader2 className="h-4 w-4 animate-spin"/>:<><Search className="h-4 w-4 mr-2"/>{t('verify_search_button')}</>}</Button></div></CardContent></Card>{err&&<div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-sm text-destructive">{err}</div>}{loading&&<Card><CardContent className="py-8"><div className="flex items-center gap-3"><Loader2 className="h-6 w-6 animate-spin text-primary"/><div className="flex-1"><div className="flex justify-between text-sm"><span>{t('verify_loading_label')}</span><span>{pct}%</span></div><div className="h-2 bg-muted rounded-full mt-2 overflow-hidden"><div className="h-full bg-primary transition-all" style={{width:`${pct}%`}}/></div><p className="text-xs text-muted-foreground mt-2">{t(PHASE_LABEL_KEYS[String(progress?.phase||'')]||'verify_loading_phase_fallback')}</p></div></div></CardContent></Card>}{report&&!loading&&<div className="space-y-4"><OverallAssessmentCard oa={report.overallAssessment} r={report}/><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><Badge variant="outline">{report.entityType||mode}</Badge></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesMatrixCard u={report.utilitiesMatrix}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions}/><LegalStatusMatrixCard ls={report.legalStatus}/><ManualVerificationActionsCard actions={report.manualVerificationActions}/><OfficialDocumentsCard docs={report.officialDocumentsRetrieved}/><TechnicalFactsCard facts={report.technicalFacts}/><RevisionTimelineCard timeline={report.revisionTimeline}/><HistoricalComparisonCard hc={report.historicalComparison}/><CompanyProfileCard c={report.companyProfile}/><PublicResearchCard pr={report.publicResearch}/><DiscoveredEntitiesCard entities={report.discoveredEntities}/><EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/><Button variant="outline" onClick={()=>nav('/ai',{state:{prompt:`${t('verify_ai_prompt_prefix')}: ${query}`,context:{type:'verify',data:customerSafeReportForAi(report)}}})}><Bot className="h-4 w-4 mr-2"/>{t('verify_ask_ai_button')}</Button></div>}</div></AppLayout>}
+const pct=Math.max(5,Math.min(100,Number(progress?.percent)||5)),workerCaptchaId=captcha?.workerJobId||captcha?.officialWorkerJobId||captcha?._worker?.jobId;return <AppLayout><ResearchCaptchaModal open={!!captcha} jobId={workerCaptchaId} site={captcha?.verificationSite} onComplete={resume} onSkip={skip}/>{homatchUser&&<VerifyHistorySidebar open={sidebarOpen} onOpenChange={setSidebarOpen} items={allHistory} loading={allHistoryLoading} activeJobId={jobId} onOpenJob={handleSidebarOpenJob} onRename={handleSidebarRename} onDelete={handleSidebarDelete}/>}<div className="max-w-4xl mx-auto space-y-5 pb-16"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2"><Shield className="h-6 w-6 text-primary"/><h1 className="text-2xl font-bold">{t('verify_title')}</h1></div><p className="text-sm text-muted-foreground mt-1">{t('verify_page_subtitle')}</p></div>{(report||jobId||captcha||query)&&<Button variant="outline" size="sm" onClick={startNewResearch} className="shrink-0">{t('verify_new_research_button')}</Button>}{homatchUser&&<Button variant="outline" size="sm" onClick={openVerifyHistorySidebar} className="shrink-0"><History className="h-3.5 w-3.5 mr-1.5"/>{t('verify_history_sidebar_button')}</Button>}
+{/* v31: the Property/ქონება Tabs selector that used to sit here was removed
+    (Verify mandate — cadastral-code entry only, see the `mode` comment
+    above). The input below now always uses the cadastral placeholder/regex
+    since `mode` is permanently 'cadastral'. */}
+</div><Card><CardContent className="pt-5"><div className="flex gap-2"><Input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&valid&&!loading&&run()} placeholder={t('verify_cadastral_query_ph')}/><Button onClick={()=>run()} disabled={!valid||loading}>{loading?<Loader2 className="h-4 w-4 animate-spin"/>:<><Search className="h-4 w-4 mr-2"/>{t('verify_search_button')}</>}</Button></div></CardContent></Card>{err&&<div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-sm text-destructive">{err}</div>}{loading&&<Card><CardContent className="py-8"><div className="flex items-center gap-3"><Loader2 className="h-6 w-6 animate-spin text-primary"/><div className="flex-1"><div className="flex justify-between text-sm"><span>{t('verify_loading_label')}</span><span>{pct}%</span></div><div className="h-2 bg-muted rounded-full mt-2 overflow-hidden"><div className="h-full bg-primary transition-all" style={{width:`${pct}%`}}/></div><p className="text-xs text-muted-foreground mt-2">{t(PHASE_LABEL_KEYS[String(progress?.phase||'')]||'verify_loading_phase_fallback')}</p></div></div></CardContent></Card>}{report&&!loading&&<div className="space-y-4"><OverallAssessmentCard oa={report.overallAssessment} r={report}/><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><Badge variant="outline">{report.entityType||mode}</Badge></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesMatrixCard u={report.utilitiesMatrix}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
+    DiscoveredEntitiesCard permanently removed from the customer report (Verify
+    mandate: no technical/audit-trail clutter in the customer-facing view).
+    This used to be done post-build by scripts/apply-verify-ux-patch.mjs
+    string-deleting these 4 render lines from the built artifact only, leaving
+    them present (just unreached) in checked-in source. The component
+    functions themselves are left defined below, unused, since
+    report.manualVerificationActions/technicalFacts/publicResearch/
+    discoveredEntities are still computed and persisted server-side for
+    internal/admin diagnostics per that file's own header comment — only the
+    customer-facing render is removed here. */}<OfficialDocumentsCard docs={report.officialDocumentsRetrieved}/><RevisionTimelineCard timeline={report.revisionTimeline}/><HistoricalComparisonCard hc={report.historicalComparison}/><CompanyProfileCard c={report.companyProfile}/><EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/><Button variant="outline" onClick={()=>nav('/ai',{state:{prompt:`${t('verify_ai_prompt_prefix')}: ${query}`,context:{type:'verify',data:customerSafeReportForAi(report)}}})}><Bot className="h-4 w-4 mr-2"/>{t('verify_ask_ai_button')}</Button></div>}</div></AppLayout>}

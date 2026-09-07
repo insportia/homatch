@@ -624,8 +624,15 @@ function normalizePublicResearchStructured(z: any): Record<string, any> {
 
 const CAD = /^\d{1,6}(\.\d{1,6}){3,11}$/;
 const LANG: Record<string, string> = { ka: 'Georgian', en: 'English', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew' };
-const WORKER = 'https://homatch-official-worker-production.up.railway.app';
-const WT = 'ikc96EYn4PznFsdfo0LWlTy1VhSFaoi-YrCIXbl2qHddYS6VJVmyFysw5GotA3-R';
+// v31 (security hardening): WORKER/WT used to be hardcoded literals in
+// this file — a real credential committed to source control. Both now
+// come from this project's Edge Function secrets (WORKER_URL/WORKER_TOKEN,
+// matching the Railway worker's own WORKER_TOKEN env var name) and the
+// request-time guard below fails closed with the same customer-safe
+// GENERIC_CONFIG_ERROR_I18N used for a missing OPENAI_API_KEY, rather
+// than silently sending an empty Authorization header to the worker.
+const WORKER = Deno.env.get('WORKER_URL') || '';
+const WT = Deno.env.get('WORKER_TOKEN') || '';
 const now = () => new Date().toISOString();
 const CONFIRMED_STATUSES = new Set(['SEARCH_CONFIRMED', 'NO_RESULT_CONFIRMED']);
 const MAX_AUTO_ENREG_ENTITIES_FROM_TEXT = 3; // mirrors the worker's own bound for its in-job entity queue
@@ -1613,7 +1620,23 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     return sb.from('research_jobs').update({ status: 'WAITING_HUMAN', stage: 'CAPTCHA_REQUIRED', result_json: p, captcha: w.humanVerification || {}, progress: { phase: 'captcha_required', percent: 38, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
   }
   if (w.status === 'FAILED') throw new Error(w.error || 'browser failed');
-  if (w.status !== 'COMPLETE') return;
+  if (w.status !== 'COMPLETE') {
+    // v31 (state-consistency fix): this used to `return` here with NO write
+    // at all for every in-progress worker status (anything but WAITING_HUMAN/
+    // FAILED/COMPLETE) — the confirmed production symptom being a
+    // research_jobs row visually frozen at stage:'BROWSER_WAITING',
+    // progress.percent:34 for the entire duration the worker is actually
+    // working through TAS_MAP/TAS/MyGov/ENREG, because nothing ever
+    // refreshed the row in between. status/stage are deliberately left
+    // exactly as they already were (still 'RUNNING'/'BROWSER_WAITING') — no
+    // FSM transition happens here, only progress/updated_at, computed from
+    // the worker's own step bookkeeping (sourceIndex/steps/results) so the
+    // frontend's poll sees real, moving progress instead of a frozen value.
+    const total = Array.isArray(w.steps) && w.steps.length ? w.steps.length : null;
+    const done = Array.isArray(w.results) ? w.results.length : 0;
+    const percent = total ? Math.min(43, 34 + Math.round((done / total) * 9)) : 34;
+    return sb.from('research_jobs').update({ progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total }, updated_at: now() }).eq('id', j.id);
+  }
   const p = j.result_json || {};
   // discoveredEntities (2026-09-06 pipeline mandate item 4 — "merge
   // discovered ... entities ... into the SAME existing ResearchContext/
@@ -3270,6 +3293,17 @@ Deno.serve(async (req) => {
       // ("OpenAI not configured" is an admin/ops fact, not something to
       // leak in a CORS-intact response). Admin logs get the real cause.
       console.error('research-agent: OPENAI_API_KEY is not configured in this project\'s Edge Function secrets — refusing the request rather than calling any other provider.');
+      return json({ error: GENERIC_CONFIG_ERROR_I18N[lang] || GENERIC_CONFIG_ERROR_I18N.en }, 503);
+    }
+    if (!WORKER || !WT) {
+      // Same fail-closed pattern as the OPENAI_API_KEY check above: every
+      // action below this point that touches a browser job (start/status/
+      // resume/skip, via wf()/startBrowser()/pollBrowser()) needs a real
+      // worker URL and bearer token. Silently calling wf() with an empty
+      // Authorization header would surface as a confusing generic 500/401
+      // deep inside advance() — fail clearly here instead, before any DB
+      // row or worker call is made.
+      console.error('research-agent: WORKER_URL and/or WORKER_TOKEN is not configured in this project\'s Edge Function secrets — refusing the request rather than calling the worker with an incomplete/empty Authorization header.');
       return json({ error: GENERIC_CONFIG_ERROR_I18N[lang] || GENERIC_CONFIG_ERROR_I18N.en }, 503);
     }
 

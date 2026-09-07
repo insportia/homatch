@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
-    "test": "node --test test/**/*.test.mjs"
+    "test:build": "tsc --outDir .tstest-build --rootDir src --noEmit false --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop true --skipLibCheck true",
+    "test": "npm run test:build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
     "playwright": "1.55.0",
     "pdf-parse": "^1.1.1",
     "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
   }
 }

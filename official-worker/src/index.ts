@@ -134,46 +134,56 @@ app.post('/research/debtor-entity', auth, (req: any, res: any) => {
   res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
 });
 
+// 2026-09-07 Verify mandate ("CAPTCHA UI: remove backend crop-to-bounding-
+// box, use full Playwright viewport screenshot"): the previous version
+// clipped the screenshot to the challenge element's own bounding box (plus
+// a 40px pad), which repeatedly cropped real multi-tile/multi-step
+// challenges (see msmap-recording.spec.ts / napr-recording.spec.ts — a real
+// human-verification flow can involve a robot checkbox AND several
+// subsequent tile-selection screens, not one small isolated widget) and
+// forced the frontend to translate every click through an offsetX/offsetY
+// correction that only existed because of this crop. Always returning the
+// FULL viewport screenshot removes both problems at once: nothing is ever
+// cropped out of view, and a click's page-relative coordinates are simply
+// its coordinates (offsetX/offsetY stay 0, kept in the response only for
+// backward compatibility with the existing frontend contract).
+// Both handlers below are wrapped in try/catch (2026-09-07 Verify mandate,
+// "hide internal selectors/errors/stack traces" + "a clean interactive
+// panel, not a failure state"): Express 4 does not catch a rejected promise
+// from an async route handler on its own — without this, a genuine
+// Playwright error here (the page closed, navigated away mid-action, etc.)
+// would either hang the request until the frontend's own timeout or, worse,
+// let a raw error object with selector/call-log text reach the response.
+// The customer-facing message is always the same short, generic sentence;
+// the real error is logged server-side only, via console.error, for admin
+// diagnosis — never forwarded to the client.
 app.get('/research/:id/screenshot', auth, async (req: any, res: any) => {
   const s = orchestrator.getSession(req.params.id);
   if (!s) return res.status(404).json({ error: 'active human session not found' });
-  const cap = await challenge(s.page);
-  const PAD = 40;
-  let clip: any = null;
-  let offsetX = 0;
-  let offsetY = 0;
-  if (cap) {
-    try {
-      const box = await cap.el.boundingBox();
-      if (box) {
-        const vp = s.page.viewportSize() || { width: 1440, height: 1000 };
-        const x = Math.max(0, Math.floor(box.x - PAD));
-        const y = Math.max(0, Math.floor(box.y - PAD));
-        const w = Math.min(vp.width - x, Math.ceil(box.width + PAD * 2));
-        const h = Math.min(vp.height - y, Math.ceil(box.height + PAD * 2));
-        if (w > 0 && h > 0) {
-          clip = { x, y, width: w, height: h };
-          offsetX = x;
-          offsetY = y;
-        }
-      }
-    } catch {
-      /* fall back to a full-viewport screenshot below */
-    }
+  try {
+    const vp = s.page.viewportSize() || { width: 1440, height: 1000 };
+    const img = await s.page.screenshot({ type: 'jpeg', quality: 85, fullPage: false });
+    res.json({ image: `data:image/jpeg;base64,${img.toString('base64')}`, width: vp.width, height: vp.height, offsetX: 0, offsetY: 0, cropped: false, url: s.page.url(), source: s.step.type === 'entity' ? s.step.source : s.step.key, captcha: true });
+  } catch (e) {
+    console.error(`[screenshot ${req.params.id}] ${String(e)}`);
+    res.status(500).json({ error: 'could not load the verification screen right now — try again' });
   }
-  const img = clip ? await s.page.screenshot({ type: 'jpeg', quality: 85, clip }) : await s.page.screenshot({ type: 'jpeg', quality: 80 });
-  res.json({ image: `data:image/jpeg;base64,${img.toString('base64')}`, width: clip ? clip.width : 1440, height: clip ? clip.height : 1000, offsetX, offsetY, cropped: !!clip, url: s.page.url(), source: s.step.type === 'entity' ? s.step.source : s.step.key, captcha: true });
 });
 
 app.post('/research/:id/action', auth, async (req: any, res: any) => {
   const s = orchestrator.getSession(req.params.id);
   if (!s) return res.status(404).json({ error: 'active human session not found' });
-  const x = Number(req.body.x) + Number(req.body.offsetX || 0);
-  const y = Number(req.body.y) + Number(req.body.offsetY || 0);
-  await s.page.mouse.click(x, y);
-  await s.page.waitForTimeout(700);
-  s.expires = Date.now() + 15 * 60 * 1000;
-  res.json({ ok: true, captcha: !!(await challenge(s.page)), url: s.page.url() });
+  try {
+    const x = Number(req.body.x) + Number(req.body.offsetX || 0);
+    const y = Number(req.body.y) + Number(req.body.offsetY || 0);
+    await s.page.mouse.click(x, y);
+    await s.page.waitForTimeout(700);
+    s.expires = Date.now() + 15 * 60 * 1000;
+    res.json({ ok: true, captcha: !!(await challenge(s.page)), url: s.page.url() });
+  } catch (e) {
+    console.error(`[action ${req.params.id}] ${String(e)}`);
+    res.status(500).json({ error: 'that action could not be completed — try refreshing the verification screen' });
+  }
 });
 
 app.post('/research/:id/resume', auth, async (req: any, res: any) => {

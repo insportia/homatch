@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/apply-verify-ux-patch.mjs && vite build",
     "lint": "bash scripts/lint.sh",
     "i18n:check": "node scripts/i18n-check.mjs",
     "i18n:audit": "node scripts/i18n-audit.mjs",
@@ -72,7 +72,6 @@
     "streamdown": "^1.1.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "tailwindcss-intersect": "^2.2.0",
     "vaul": "^1.1.2",
     "video-react": "^0.16.0",
     "zod": "^3.25.76"

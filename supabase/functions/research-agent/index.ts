@@ -1584,7 +1584,10 @@ async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string
 async function startBrowser(sb: any, j: any): Promise<any> {
   const r = await wf('/research', 'POST', { query: j.query, mode: j.mode });
   const p = j.result_json || {};
-  p._worker = { jobId: r.data.jobId };
+  p._worker = {
+    jobId: r.data.jobId,
+    startedAt: new Date().toISOString(),
+  };
   return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'BROWSER_WAITING', result_json: p, progress: { phase: 'official_browser', percent: 34, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
 }
 
@@ -1642,8 +1645,84 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     p._captchaReturnStage = 'BROWSER_WAITING';
     return sb.from('research_jobs').update({ status: 'WAITING_HUMAN', stage: 'CAPTCHA_REQUIRED', result_json: p, captcha: w.humanVerification || {}, progress: { phase: 'captcha_required', percent: 38, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
   }
-  if (w.status === 'FAILED') throw new Error(w.error || 'browser failed');
+  if (w.status === 'FAILED') {
+    const p = j.result_json || {};
+    const partialResults = Array.isArray(w.results) ? w.results : [];
+
+    p.browserOfficial = {
+      ...(p.browserOfficial || {}),
+      results: partialResults,
+      unavailable: true,
+    };
+
+    delete p._worker;
+
+    const ev = dedupe(
+      [...(j.evidence_bundle || []), ...bev(w)],
+      (x: any) => x.url
+    );
+
+    return sb
+      .from('research_jobs')
+      .update({
+        status: 'CREATED',
+        stage: 'OFFICIAL_READY',
+        result_json: p,
+        evidence_bundle: ev,
+        captcha: {},
+        error: null,
+        progress: {
+          phase: 'official_browser_unavailable',
+          percent: 40,
+          retriable: false,
+        },
+        updated_at: now(),
+      })
+      .eq('id', j.id);
+  }
   if (w.status !== 'COMPLETE') {
+    const startedAt = Date.parse(j.result_json?._worker?.startedAt || '');
+    const workerAgeMs = Number.isFinite(startedAt)
+      ? Date.now() - startedAt
+      : 0;
+    const MAX_BROWSER_WAIT_MS = 12 * 60 * 1000;
+
+    if (startedAt && workerAgeMs > MAX_BROWSER_WAIT_MS) {
+      const p = j.result_json || {};
+      const partialResults = Array.isArray(w.results) ? w.results : [];
+
+      p.browserOfficial = {
+        ...(p.browserOfficial || {}),
+        results: partialResults,
+        unavailable: true,
+      };
+
+      delete p._worker;
+
+      const ev = dedupe(
+        [...(j.evidence_bundle || []), ...bev(w)],
+        (x: any) => x.url
+      );
+
+      return sb
+        .from('research_jobs')
+        .update({
+          status: 'CREATED',
+          stage: 'OFFICIAL_READY',
+          result_json: p,
+          evidence_bundle: ev,
+          captcha: {},
+          error: null,
+          progress: {
+            phase: 'official_browser_unavailable',
+            percent: 40,
+            retriable: false,
+          },
+          updated_at: now(),
+        })
+        .eq('id', j.id);
+    }
+
     // v31 (state-consistency fix): this used to `return` here with NO write
     // at all for every in-progress worker status (anything but WAITING_HUMAN/
     // FAILED/COMPLETE) — the confirmed production symptom being a
@@ -3022,25 +3101,19 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     if (['failed', 'cancelled', 'incomplete'].includes(p.status)) throw new Error(`OpenAI ${p.status}: ${JSON.stringify(p?.error || p?.incomplete_details || '').slice(0, 300)}`);
   } catch (e) {
     const s = String(e);
-    const legacyRetryable = /429|500|502|503|504|timeout|temporar/i.test(s);
-    // v32 (P0 fix): a transient worker-side Playwright/browser-session error
-    // — e.g. "browserContext.newPage: Target page, context or browser has
-    // been closed", which is exactly what pollBrowser() re-throws when the
-    // WORKER's own job record has status FAILED with that message — is a
-    // technical/infrastructure hiccup, not evidence the property or the job
-    // itself is dead (mandate: "TECHNICAL FAILURE ≠ PROPERTY RISK"). It gets
-    // a few BOUNDED retries here (unlike the legacy 429/5xx/timeout class
-    // above, which is deliberately left unbounded/unchanged) so a session
-    // that recovers on the worker's next poll can just continue, while a
-    // genuinely, permanently dead worker session still surfaces as a real
-    // FAILED after MAX_TRANSIENT_RETRIES rather than polling silently
-    // forever. This never touches official-worker's own Browserless/session
-    // lifecycle code — it only changes how research-agent classifies an
-    // error the worker already reported.
+    const legacyRetryable =
+      /429|500|502|503|504|timeout|temporar/i.test(s);
+    // Transient transport/session errors that happen while the worker state
+    // is still unknown remain bounded-retryable here. A worker that explicitly
+    // reports FAILED is handled inside pollBrowser() as unavailable official
+    // research and continues through OFFICIAL_READY instead of reaching this
+    // catch block.
     const transientBrowserSession = /target (page|frame|context|browser)|target closed|browsercontext\.|has been closed|session (closed|expired)|econnreset|socket hang up|browser has disconnected/i.test(s);
     const priorTransientRetries = Number(j.progress?.transientRetryCount) || 0;
     const MAX_TRANSIENT_RETRIES = 5;
-    const retryTransient = transientBrowserSession && priorTransientRetries < MAX_TRANSIENT_RETRIES;
+    const retryTransient =
+      transientBrowserSession &&
+      priorTransientRetries < MAX_TRANSIENT_RETRIES;
     const retry = legacyRetryable || retryTransient;
     await sb
       .from('research_jobs')

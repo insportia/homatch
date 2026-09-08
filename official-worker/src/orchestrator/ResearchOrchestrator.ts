@@ -431,6 +431,36 @@ export class ResearchOrchestrator {
       job.status = 'FAILED';
       job.stage = 'FAILED';
       job.error = String(e);
+
+      // Keep fatal worker failures observable without logging credentials,
+      // request headers, Browserless URLs, tokens, or environment values.
+      const rawFailureMessage =
+        e instanceof Error
+          ? String(e.message || 'worker job failed')
+          : String(e || 'worker job failed');
+
+      const safeFailureMessage = rawFailureMessage
+        // Never persist URL query strings; Browserless credentials can be
+        // transported as query parameters on CDP/WebSocket URLs.
+        .replace(/([a-z][a-z0-9+.-]*:\/\/[^\s?#]+)\?[^\s#]*/gi, '$1?[REDACTED]')
+        // Redact common credential-bearing key/value forms even when the
+        // message contains no complete URL.
+        .replace(/\b(token|access_token|api[_-]?key|authorization|bearer|secret|password)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
+        .slice(0, 300);
+
+      const failure = {
+        name: e instanceof Error
+          ? String(e.name || 'Error').slice(0, 80)
+          : 'Error',
+        message: safeFailureMessage,
+      };
+
+      logBrowserLifecycle('job_error', {
+        jobId: job.id,
+        errorName: failure.name,
+        errorMessage: failure.message,
+      });
+
       logBrowserLifecycle('close_browser', { jobId: job.id, reason: 'job_failed', closes: 'browser' });
       await browser?.close().catch(() => {});
       this.browserlessReconnects.delete(job.id);

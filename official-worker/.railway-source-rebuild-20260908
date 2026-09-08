@@ -1,0 +1,2 @@
+Purpose: force Railway to fetch the current GitHub source after the production startup-patcher incident on 2026-09-08.
+Safe to delete in a future normal source deployment.

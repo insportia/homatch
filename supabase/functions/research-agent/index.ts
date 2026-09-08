@@ -3114,6 +3114,47 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     const retryTransient =
       transientBrowserSession &&
       priorTransientRetries < MAX_TRANSIENT_RETRIES;
+    // Browser polling transport failures can happen before pollBrowser()
+    // gets a worker response, so its normal watchdog cannot run.
+    // Bound that failure mode using the same browser-job clock.
+    const browserStartedAt = Date.parse(
+      j.result_json?._worker?.startedAt || ''
+    );
+    const browserAgeMs = Number.isFinite(browserStartedAt)
+      ? Date.now() - browserStartedAt
+      : 0;
+    const browserTransportExpired =
+      j.stage === 'BROWSER_WAITING' &&
+      browserStartedAt &&
+      browserAgeMs > 12 * 60 * 1000 &&
+      (legacyRetryable || transientBrowserSession);
+
+    if (browserTransportExpired) {
+      const p = j.result_json || {};
+      p.browserOfficial = {
+        ...(p.browserOfficial || {}),
+        results: p.browserOfficial?.results || [],
+        unavailable: true,
+      };
+      delete p._worker;
+
+      return await sb
+        .from('research_jobs')
+        .update({
+          status: 'CREATED',
+          stage: 'OFFICIAL_READY',
+          result_json: p,
+          error: null,
+          progress: {
+            phase: 'official_browser_unavailable',
+            percent: 40,
+            retriable: false,
+          },
+          updated_at: now(),
+        })
+        .eq('id', j.id);
+    }
+
     const retry = legacyRetryable || retryTransient;
     await sb
       .from('research_jobs')
@@ -3467,8 +3508,38 @@ Deno.serve(async (req) => {
         // entity CAPTCHA resume back into pollBrowser() against the WRONG
         // (already-closed) worker job id.
         const returnStage = j.result_json?._captchaReturnStage || 'BROWSER_WAITING';
-        await sb.from('research_jobs').update({ status: 'RUNNING', stage: returnStage, captcha: {}, updated_at: now() }).eq('id', id);
-        j = { ...j, status: 'RUNNING', stage: returnStage };
+
+        // A human may legitimately spend longer than the browser watchdog
+        // window solving CAPTCHA. Restart the watchdog clock only when
+        // returning to the primary Browserless research job.
+        let resumedResultJson = j.result_json || {};
+        if (
+          returnStage === 'BROWSER_WAITING' &&
+          resumedResultJson?._worker?.jobId
+        ) {
+          resumedResultJson = {
+            ...resumedResultJson,
+            _worker: {
+              ...resumedResultJson._worker,
+              startedAt: new Date().toISOString(),
+            },
+          };
+        }
+
+        await sb.from('research_jobs').update({
+          status: 'RUNNING',
+          stage: returnStage,
+          captcha: {},
+          result_json: resumedResultJson,
+          updated_at: now(),
+        }).eq('id', id);
+
+        j = {
+          ...j,
+          status: 'RUNNING',
+          stage: returnStage,
+          result_json: resumedResultJson,
+        };
       }
       if (action === 'skip' && j.status === 'WAITING_HUMAN') {
         const wid = j.result_json?._worker?.jobId;
@@ -3480,8 +3551,38 @@ Deno.serve(async (req) => {
           }
         }
         const returnStage = j.result_json?._captchaReturnStage || 'BROWSER_WAITING';
-        await sb.from('research_jobs').update({ status: 'RUNNING', stage: returnStage, captcha: {}, updated_at: now() }).eq('id', id);
-        j = { ...j, status: 'RUNNING', stage: returnStage };
+
+        // A human may legitimately spend longer than the browser watchdog
+        // window solving CAPTCHA. Restart the watchdog clock only when
+        // returning to the primary Browserless research job.
+        let resumedResultJson = j.result_json || {};
+        if (
+          returnStage === 'BROWSER_WAITING' &&
+          resumedResultJson?._worker?.jobId
+        ) {
+          resumedResultJson = {
+            ...resumedResultJson,
+            _worker: {
+              ...resumedResultJson._worker,
+              startedAt: new Date().toISOString(),
+            },
+          };
+        }
+
+        await sb.from('research_jobs').update({
+          status: 'RUNNING',
+          stage: returnStage,
+          captcha: {},
+          result_json: resumedResultJson,
+          updated_at: now(),
+        }).eq('id', id);
+
+        j = {
+          ...j,
+          status: 'RUNNING',
+          stage: returnStage,
+          result_json: resumedResultJson,
+        };
       }
       if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN'].includes(j.status)) {
         await advance(sb, key, model, j, lang);

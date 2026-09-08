@@ -3,10 +3,40 @@ import{Loader2,ShieldCheck,X,AlertTriangle,RefreshCw,SkipForward}from'lucide-rea
 import{Button}from'@/components/ui/button';import{supabase}from'@/db/supabase';
 import{useLanguage}from'@/contexts/LanguageContext';
 const WORKER='https://homatch-official-worker-production.up.railway.app';const API_KEY=import.meta.env.VITE_SUPABASE_ANON_KEY;
+// When false (production), resume/skip are delegated to the orchestrating
+// Edge Function, which is the single authority for those transitions. Set to
+// true only to drive a worker job that has no research_jobs row behind it.
+const DIRECT_WORKER_ACTIONS=false;
 type Props={open:boolean;jobId?:string;site?:string;onComplete:()=>void|Promise<void>;onSkip?:()=>void|Promise<void>;onClose?:()=>void};type Shot={image:string;width:number;height:number;offsetX?:number;offsetY?:number;url?:string;captcha?:boolean;expiresAt?:string;humanAssist?:boolean};
 export function ResearchCaptchaModal({open,jobId,site,onComplete,onSkip,onClose}:Props){const{t}=useLanguage();const[shot,setShot]=useState<Shot|null>(null),[busy,setBusy]=useState(false),[err,setErr]=useState<string|null>(null),[finishing,setFinishing]=useState(false),[skipping,setSkipping]=useState(false);const img=useRef<HTMLImageElement|null>(null);
  const call=useCallback(async(body:any)=>{if(!jobId)throw new Error(t('verify_captcha_session_not_found'));const{data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw new Error(t('verify_captcha_session_inactive'));const action=String(body.action||'screenshot');let path=`/research/${jobId}/screenshot`,method='GET',payload:any=undefined;if(action==='input'){path=`/research/${jobId}/action`;method='POST';payload={...body};delete payload.action}else if(action==='resume'){path=`/research/${jobId}/resume`;method='POST';payload={humanVerificationCompleted:true}}else if(action==='skip'){path=`/research/${jobId}/skip`;method='POST';payload={}}const r=await fetch(`${WORKER}${path}`,{method,headers:{Authorization:`Bearer ${session.access_token}`,apikey:API_KEY,'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});const data=await r.json().catch(()=>({error:`HTTP ${r.status}`}));if(!r.ok||data?.error)throw new Error(data?.error||`HTTP ${r.status}`);return data},[jobId,t]);
  const refresh=useCallback(async()=>{if(!open||!jobId)return;setBusy(true);setErr(null);try{setShot(await call({action:'screenshot'}))}catch(e:any){setErr(e?.message||t('verify_captcha_load_failed'))}finally{setBusy(false)}},[open,jobId,call,t]);useEffect(()=>{if(open)refresh();else{setShot(null);setErr(null)}},[open,refresh]);const click=async(e:React.MouseEvent<HTMLImageElement>)=>{if(busy||!shot||!img.current)return;const r=img.current.getBoundingClientRect(),x=(e.clientX-r.left)*shot.width/r.width,y=(e.clientY-r.top)*shot.height/r.height;setBusy(true);setErr(null);try{await call({action:'input',type:'click',x,y,offsetX:shot.offsetX||0,offsetY:shot.offsetY||0});await refresh()}catch(e:any){setErr(e?.message||t('verify_captcha_action_failed'));setBusy(false)}};if(!open)return null;
+ /*
+  * ONE CUSTOMER CLICK = ONE LOGICAL ACTION.
+  *
+  * Skip and Resume used to do BOTH of these on a single click:
+  *   1. call the worker directly  ->  POST {WORKER}/research/<workerJobId>/skip
+  *   2. call the orchestrator     ->  research-agent Edge Function, action 'skip',
+  *                                    which forwards to the SAME worker endpoint
+  *
+  * So every skip produced two worker calls. The first consumed the human
+  * session; the second reliably lost the race (404 for skip, 409 "CAPTCHA not
+  * completed" for resume). research-agent silently swallowed the 404 with a
+  * comment describing it as "a normal race" — and on the resume path the
+  * customer could be shown a failure for a verification that had actually
+  * succeeded.
+  *
+  * The Edge Function is the single authority for these two actions: it owns
+  * the research_jobs row transition AND forwards to the worker. So we
+  * delegate, and only fall back to a direct worker call when this component
+  * is used without an orchestrating callback. Screenshot and coordinate
+  * actions still go direct — the Edge Function does not proxy those.
+  *
+  * The worker endpoints are ALSO idempotent now, so a genuine retry stays
+  * safe; this removes the guaranteed duplicate rather than relying on it.
+  */
+ const doSkip=async()=>{if(onSkip)return void await onSkip();await call({action:'skip'});await onComplete()};
+ const doResume=async()=>{if(onComplete&&!DIRECT_WORKER_ACTIONS)return void await onComplete();await call({action:'resume'});await onComplete()};
  // v30 CAPTCHA UX overhaul: the challenge viewport was previously capped at
  // max-w-2xl (672px) / max-h-[560px] regardless of the actual remote page
  // size, which cropped real multi-tile challenges. The modal is now sized to
@@ -53,8 +83,8 @@ export function ResearchCaptchaModal({open,jobId,site,onComplete,onSkip,onClose}
      <div className="px-3 sm:px-5 py-3 sm:py-4 border-t bg-card flex flex-col gap-3 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
        <p className="text-xs text-muted-foreground break-words">{t('verify_captcha_hint')}</p>
        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-         <Button variant="outline" className="w-full sm:w-auto" disabled={finishing||skipping||busy} onClick={async()=>{if(!window.confirm(t('verify_captcha_confirm_skip')))return;setSkipping(true);setErr(null);try{await call({action:'skip'});await(onSkip?onSkip():onComplete())}catch(e:any){setErr(e?.message||t('verify_err_skip_failed'))}finally{setSkipping(false)}}}>{skipping?<Loader2 className="h-4 w-4 animate-spin mr-2"/>:<SkipForward className="h-4 w-4 mr-2"/>}{t('verify_captcha_skip_button')}</Button>
-         <Button className="w-full sm:w-auto" disabled={finishing||skipping||busy||!shot} onClick={async()=>{setFinishing(true);setErr(null);try{await call({action:'resume'});await onComplete()}catch(e:any){setErr(e?.message||t('verify_captcha_resume_failed'));await refresh()}finally{setFinishing(false)}}}>{finishing?<Loader2 className="h-4 w-4 animate-spin mr-2"/>:<ShieldCheck className="h-4 w-4 mr-2"/>}{t('verify_captcha_complete_button')}</Button>
+         <Button variant="outline" className="w-full sm:w-auto" disabled={finishing||skipping||busy} onClick={async()=>{if(!window.confirm(t('verify_captcha_confirm_skip')))return;setSkipping(true);setErr(null);try{await doSkip()}catch(e:any){setErr(e?.message||t('verify_err_skip_failed'))}finally{setSkipping(false)}}}>{skipping?<Loader2 className="h-4 w-4 animate-spin mr-2"/>:<SkipForward className="h-4 w-4 mr-2"/>}{t('verify_captcha_skip_button')}</Button>
+         <Button className="w-full sm:w-auto" disabled={finishing||skipping||busy||!shot} onClick={async()=>{setFinishing(true);setErr(null);try{await doResume()}catch(e:any){setErr(e?.message||t('verify_captcha_resume_failed'));await refresh()}finally{setFinishing(false)}}}>{finishing?<Loader2 className="h-4 w-4 animate-spin mr-2"/>:<ShieldCheck className="h-4 w-4 mr-2"/>}{t('verify_captcha_complete_button')}</Button>
        </div>
      </div>
    </div>

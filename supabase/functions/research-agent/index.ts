@@ -1769,10 +1769,45 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
 // e.g. the developer — would never get a real, deterministic lookup at all.
 function alreadyHasResultFor(browserOfficial: any, source: 'enreg' | 'rstax' | 'debtor', idCode: string | null, name: string | null): boolean {
   const results = browserOfficial?.results || [];
-  return results.some((r: any) => {
-    if (r.source !== source) return false;
-    if (idCode && r.forEntity?.idCode) return r.forEntity.idCode === idCode;
-    if (!idCode && name && r.forEntity?.name) return normalizeLoose(r.forEntity.name) === normalizeLoose(name);
+
+  /*
+   * REAL PRODUCTION DEFECT — job 3aa36828-471a-4cd0-8a46-4e3f2b4c4c92.
+   *
+   * That job recorded enreg twice for the same developer (idCodes 404670272
+   * and 405068386, both named "შპს მილენიო გრუპი") and then started a THIRD
+   * enreg execution for candidate name "Millennio Group" with no idCode.
+   * The name compare below could not match Latin "Millennio Group" against
+   * the Georgian "შპს მილენიო გრუპი" already on record, so this guard
+   * returned false and a redundant browser job was launched. It never
+   * finished — it is still status START — and each such job can raise its own
+   * CAPTCHA for the customer.
+   *
+   * Transliterating between scripts to force a match would risk merging two
+   * genuinely different companies, which is a worse error. The structural
+   * rule below is deterministic and script-independent instead:
+   *
+   *   a NAME-ONLY candidate is already covered once this source has ANY
+   *   completed execution for an IDENTIFIED (idCode-bearing) entity.
+   *
+   * Rationale: a name search can never be more authoritative than a registry
+   * id this job has already resolved for the same source, so repeating it
+   * yields no new evidence — only another CAPTCHA. The worker enforces the
+   * same rule independently (ResearchContext.shouldSkipDuplicateExecution),
+   * so a duplicate is refused even if this guard is ever bypassed.
+   *
+   * Two DIFFERENT idCodes remain two different identities and are both still
+   * researched: distinct registry ids are never merged on name similarity.
+   */
+  const sameSource = results.filter((r: any) => r.source === source);
+
+  if (!idCode) {
+    if (sameSource.some((r: any) => r.forEntity?.idCode)) return true;
+    if (name) return sameSource.some((r: any) => r.forEntity?.name && normalizeLoose(r.forEntity.name) === normalizeLoose(name));
+    return false;
+  }
+
+  return sameSource.some((r: any) => {
+    if (r.forEntity?.idCode) return String(r.forEntity.idCode).trim() === String(idCode).trim();
     // A primary (non-entity-triggered) result with no forEntity only covers
     // property-mode jobs searching by the query itself — never treat that
     // as already covering an unrelated discovered company.

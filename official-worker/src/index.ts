@@ -238,16 +238,46 @@ app.post('/research/:id/action', auth, async (req: any, res: any) => {
 // which drive the EXACT live local Chromium Page the job paused on — the
 // same mechanism this repository used before Browserless (ae74a228).
 
+/*
+ * IDEMPOTENT HUMAN ACTIONS (production duplicate-skip defect).
+ *
+ * ONE customer click used to produce TWO calls to these endpoints: the
+ * CAPTCHA modal called the worker directly, and the orchestrating
+ * research-agent Edge Function then called it again for the same worker job.
+ * The second call always lost the race — /skip returned 404 and /resume
+ * returned 409 "CAPTCHA not completed" — and research-agent swallowed the
+ * 404 with a comment calling it "a normal race".
+ *
+ * The frontend no longer double-calls (see ResearchCaptchaModal), but a
+ * retry must be safe on its own: a network retry, a double click or a late
+ * Edge retry now returns the state the FIRST call produced, with
+ * `alreadyResolved: true`, instead of an error the customer would see.
+ *
+ * A genuine precondition failure — the challenge is still on screen — is
+ * still a real 409, because that one the customer can actually act on.
+ */
+function humanActionResponse(res: any, jobId: string, r: any, extra: Record<string, unknown> = {}) {
+  if (r.code === 'NOT_FOUND') return res.status(404).json({ error: r.error });
+  if (r.code === 'NOT_READY' || (!r.ok && r.code !== 'ALREADY_RESOLVED')) {
+    return res.status(409).json({ error: r.error });
+  }
+  return res.status(202).json({
+    accepted: true,
+    jobId,
+    status: r.status || 'RUNNING',
+    alreadyResolved: !!r.alreadyResolved,
+    ...extra,
+  });
+}
+
 app.post('/research/:id/resume', auth, async (req: any, res: any) => {
   const r = await orchestrator.resume(req.params.id);
-  if (!r.ok) return res.status(409).json({ error: r.error });
-  res.status(202).json({ accepted: true, jobId: req.params.id, status: 'RUNNING' });
+  return humanActionResponse(res, req.params.id, r);
 });
 
 app.post('/research/:id/skip', auth, async (req: any, res: any) => {
   const r = await orchestrator.skip(req.params.id);
-  if (!r.ok) return res.status(404).json({ error: r.error });
-  res.status(202).json({ accepted: true, jobId: req.params.id, status: 'RUNNING', skipped: r.source });
+  return humanActionResponse(res, req.params.id, r, { skipped: r.source });
 });
 
 // ── MSMAP diagnostic capability — kept from the pre-refactor architecture

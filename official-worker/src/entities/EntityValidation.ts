@@ -59,6 +59,17 @@ const NON_ENTITY_CONTEXT_RE = /(მშენებლობ|საცხოვ�
 export function isValidCompanyCandidate(name: string, idCode?: string | null, context?: string | null): boolean {
   const clean = String(name || '').trim();
   if (!clean) return false;
+  /*
+   * A candidate whose NAME begins with a dash/quote fragment, or which is
+   * only a legal form with no actual name after it, is a truncation artifact
+   * of the surrounding sentence rather than a company. Production job
+   * 3aa36828 recorded eleven of these ("სს იპ –", "სს იპ – ქ", …). Rejected
+   * even when an id code is present, because an id code attached to a
+   * sentence fragment is a mis-association, not a company.
+   */
+  if (/^[-–—«»"'„:;,.\s]+/.test(clean)) return false;
+  const withoutForm = clean.replace(LEGAL_FORM_RE, '').replace(/^[-–—«»"'„:;,.\s]+/, '').trim();
+  if (withoutForm.length < 2) return false;
   if (looksLikeCompanyId(idCode)) return true;
   if (LEGAL_FORM_RE.test(clean)) return true;
   if (

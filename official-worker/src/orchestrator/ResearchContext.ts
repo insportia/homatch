@@ -138,6 +138,193 @@ export function primaryStepsRemain(steps: StepDescriptor[], fromIndex: number): 
 // (so EntityQueue.scanText() could never have seen it) — research-agent
 // calls all three endpoints in sequence for that one entity, once, before
 // continuing to MARKET.
+/* ------------------------------------------------------------------ *
+ * EXECUTION IDENTITY + TERMINAL DEDUPLICATION                         *
+ *                                                                     *
+ * Root cause, from real production job                                *
+ * 3aa36828-471a-4cd0-8a46-4e3f2b4c4c92 (2026-09-08). Its ten browser  *
+ * executions were:                                                    *
+ *                                                                     *
+ *   1 TAS_MAP SEARCH_CONFIRMED                                        *
+ *   2 tas     SEARCH_CONFIRMED                                        *
+ *   3 mygov   SEARCH_CONTROL_NOT_FOUND                                *
+ *   4 enreg   SEARCH_CONFIRMED            404670272 "შპს მილენიო გრუპი"*
+ *   5 rstax   SKIPPED_HUMAN_VERIFICATION  404670272 "შპს მილენიო გრუპი"*
+ *   6 debtor  NO_RESULT_CONFIRMED         404670272 "შპს მილენიო გრუპი"*
+ *   7 enreg   SEARCH_CONFIRMED            405068386 "შპს მილენიო გრუპი"*
+ *   8 rstax   SKIPPED_HUMAN_VERIFICATION  405068386 "შპს მილენიო გრუპი"*
+ *   9 debtor  NO_RESULT_CONFIRMED         405068386 "შპს მილენიო გრუპი"*
+ *  10 enreg   START                       (no idCode) "Millennio Group"*
+ *                                                                     *
+ * Two distinct defects, not one:                                      *
+ *                                                                     *
+ *  (a) Row 10. research-agent's own guard (alreadyHasResultFor) can    *
+ *      only match a candidate name against a recorded execution's name *
+ *      with a loose STRING compare. The candidate was the Latin        *
+ *      "Millennio Group"; every recorded execution carried the         *
+ *      Georgian "შპს მილენიო გრუპი". No match -> it started a THIRD    *
+ *      enreg execution for a company enreg had already resolved twice. *
+ *      It never finished: it is still status START.                    *
+ *                                                                     *
+ *  (b) The worker itself had NO dedupe of its own. It trusted the      *
+ *      caller's guard entirely, so the moment that guard failed the    *
+ *      worker happily re-ran the work — and, because rows 5 and 8 both  *
+ *      reached a CAPTCHA, the customer was asked to solve and Skip the  *
+ *      SAME rs.ge challenge twice in one Verify.                       *
+ *                                                                     *
+ * The mandate's remedy is a deterministic execution identity plus      *
+ * defense in depth, so the worker refuses duplicate work even when a   *
+ * caller asks for it. That is what the helpers below provide.          *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Every status that ENDS an execution for its identity in this job.
+ *
+ * SKIPPED_HUMAN_VERIFICATION is deliberately here: the mandate states it is
+ * TERMINAL for that source/entity identity. A customer who skipped a CAPTCHA
+ * must never be shown the same CAPTCHA again inside the same Verify — which
+ * is exactly what rows 5 and 8 did to them.
+ *
+ * The non-success entries are terminal too: a source that was unavailable,
+ * blocked, or whose control could not be found has been TRIED. Retrying it
+ * inside the same job produces the same outcome and costs the customer time.
+ * None of these carries any property meaning (NO EVIDENCE = NO FACT).
+ */
+export const TERMINAL_EXECUTION_STATUSES: readonly string[] = [
+  'SEARCH_CONFIRMED',
+  'NO_RESULT_CONFIRMED',
+  'SOURCE_EXHAUSTED',
+  'SKIPPED_HUMAN_VERIFICATION',
+  'SOURCE_UNAVAILABLE',
+  'SOURCE_TECHNICAL_FAILURE',
+  'BLOCKED',
+  'AUTH_REQUIRED',
+  'SEARCH_CONTROL_NOT_FOUND',
+  'SUBMIT_FAILED',
+  'WRONG_SEARCH_CONTEXT',
+  'SUBMITTED_UNCONFIRMED',
+  'SUBMITTED_UNPARSED',
+  'FAILED',
+];
+
+/** WAITING_HUMAN is explicitly NOT terminal — that execution is paused and
+ * will be resumed or skipped on the same page. 'START' is not terminal
+ * either: row 10 above shows an execution that never finished. */
+export function isTerminalExecutionStatus(status: unknown): boolean {
+  return typeof status === 'string' && TERMINAL_EXECUTION_STATUSES.includes(status);
+}
+
+/** Georgian legal-form markers and their Latin equivalents. Stripped before
+ * comparing company names so "შპს მილენიო გრუპი" and "მილენიო გრუპი" are one
+ * identity — the form is not part of who the company is. */
+const LEGAL_FORM_RE = /(^|\s)(შპს|სს|ააიპ|ინდივიდუალურ\S*\s+მეწარმე|ltd\.?|llc|jsc|inc\.?|co\.?)(\s|$)/gi;
+
+/**
+ * Normalizes a company/person name for identity comparison. Deliberately
+ * conservative and deterministic — casing, punctuation, quotes, whitespace
+ * and legal form only. It does NOT transliterate: merging two scripts by
+ * guesswork could collapse two genuinely different companies into one, which
+ * is a worse failure than one redundant lookup. The transliteration case
+ * (row 10) is handled by the stronger structural rule in
+ * `shouldSkipDuplicateExecution` instead.
+ */
+export function normalizeEntityName(name: unknown): string {
+  return String(name ?? '')
+    .toLowerCase()
+    .replace(/[«»""''„"]/g, ' ')
+    .replace(LEGAL_FORM_RE, ' ')
+    .replace(/[.,;:()\-_/\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The deterministic identity of one execution: job + source + research
+ * target. Two steps with the same identity are the same work.
+ *
+ * An entity execution is identified by its idCode when it has one (the
+ * registry's own authoritative key), and by its normalized name otherwise.
+ */
+export function executionIdentity(step: StepDescriptor): string {
+  if (step.type === 'source') return `source:${step.key}`;
+  const target = step.idCode ? `id:${step.idCode}` : `name:${normalizeEntityName(step.name)}`;
+  return `entity:${step.source}:${target}`;
+}
+
+/** The same identity, computed from a RESULT rather than a step, so an
+ * execution recorded by any path (this job's own loop, a resume, a skip, or
+ * a caller's closed-loop entity endpoint) is recognized. */
+export function resultExecutionIdentity(r: {
+  source?: string;
+  forEntity?: { idCode?: string | null; name?: string | null } | null;
+}): string {
+  const source = String(r?.source ?? '');
+  if (!r?.forEntity) return `source:${source}`;
+  const target = r.forEntity.idCode
+    ? `id:${r.forEntity.idCode}`
+    : `name:${normalizeEntityName(r.forEntity.name)}`;
+  return `entity:${source}:${target}`;
+}
+
+/**
+ * Decides whether a step must be skipped because equivalent work already
+ * reached a terminal state in this job. Pure, so it is directly testable.
+ *
+ * Two independent rules:
+ *
+ *  1. EXACT IDENTITY. The same source + entity identity already finished.
+ *     This is what makes SKIPPED_HUMAN_VERIFICATION genuinely terminal.
+ *
+ *  2. NAME-ONLY SUBSUMPTION. A name-only entity execution (idCode === null)
+ *     is redundant once ANY execution of that same source already finished
+ *     for an identified (idCode-bearing) entity in this job. A name search
+ *     can never be more authoritative than the registry id the job already
+ *     resolved, so repeating it only risks another CAPTCHA for no new
+ *     evidence. This is the rule that deterministically kills row 10 without
+ *     needing to guess that "Millennio Group" and "შპს მილენიო გრუპი" are
+ *     the same string — and it holds for any script or spelling variant.
+ */
+export function shouldSkipDuplicateExecution(
+  step: StepDescriptor,
+  results: Array<{ source?: string; status?: string; forEntity?: { idCode?: string | null; name?: string | null } | null }>
+): { skip: boolean; reason: string } {
+  const terminal = (results || []).filter((r) => isTerminalExecutionStatus(r?.status));
+
+  const identity = executionIdentity(step);
+  if (terminal.some((r) => resultExecutionIdentity(r) === identity)) {
+    return { skip: true, reason: 'already_terminal_for_this_identity' };
+  }
+
+  if (step.type === 'entity' && !step.idCode) {
+    const identifiedSameSource = terminal.some((r) => r?.source === step.source && !!r?.forEntity?.idCode);
+    if (identifiedSameSource) {
+      return { skip: true, reason: 'subsumed_by_identified_entity_execution' };
+    }
+  }
+
+  return { skip: false, reason: 'not_a_duplicate' };
+}
+
+/** Filters proposed steps against what this job already executed AND against
+ * each other, so a single append can never enqueue the same identity twice.
+ * Used when the entity queue is mined for follow-up work. */
+export function dedupeProposedSteps(
+  proposed: StepDescriptor[],
+  results: Array<{ source?: string; status?: string; forEntity?: { idCode?: string | null; name?: string | null } | null }>,
+  alreadyPlanned: StepDescriptor[] = []
+): StepDescriptor[] {
+  const seen = new Set<string>([...alreadyPlanned.map(executionIdentity)]);
+  const out: StepDescriptor[] = [];
+  for (const step of proposed) {
+    const identity = executionIdentity(step);
+    if (seen.has(identity)) continue;
+    if (shouldSkipDuplicateExecution(step, results).skip) continue;
+    seen.add(identity);
+    out.push(step);
+  }
+  return out;
+}
+
 export function buildEntitySteps(confirmedEntities: { identificationCode: string | null; name: string }[], maxEntities: number): StepDescriptor[] {
   const steps: StepDescriptor[] = [];
   for (const e of confirmedEntities.filter((x) => x.identificationCode).slice(0, maxEntities)) {

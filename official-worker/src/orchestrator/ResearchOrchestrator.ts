@@ -16,9 +16,9 @@ import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
 import { runRsTaxpayerWorker } from '../workflows/financial/RsTaxpayerWorker.js';
 import { runDebtorWorker } from '../workflows/financial/DebtorWorker.js';
 import { runGenericWorkflow } from '../workflows/generic/GenericWorkflow.js';
-import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
+import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, shouldSkipDuplicateExecution, dedupeProposedSteps, executionIdentity, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
 import { looksLikeCompanyId } from '../entities/EntityValidation.js';
-import { challenge } from '../browser/BrowserSession.js';
+import { challenge, captchaNetworkBlocked } from '../browser/BrowserSession.js';
 import { buildHistoricalComparison } from '../documents/HistoricalComparison.js';
 import { toLegacyDocument } from '../documents/DocumentTypes.js';
 
@@ -102,6 +102,30 @@ interface SessionState {
   step: StepDescriptor;
   query: string;
   expires: number;
+}
+
+/**
+ * The result of a human-driven action (resume / skip).
+ *
+ * `code` makes the three outcomes distinguishable at the HTTP layer, which
+ * is what lets a duplicate call be answered honestly instead of as an error:
+ *
+ *   OK               — this call performed the action.
+ *   ALREADY_RESOLVED — the action had already been performed (a double
+ *                      click, a network retry, or the second of the two
+ *                      calls one customer click used to produce). Idempotent
+ *                      success: the caller gets the resulting state.
+ *   NOT_READY        — a real precondition failure that the customer can fix
+ *                      (the challenge is still on screen). Stays an error.
+ *   NOT_FOUND        — no such job at all.
+ */
+export interface HumanActionResult {
+  ok: boolean;
+  code?: 'OK' | 'ALREADY_RESOLVED' | 'NOT_READY' | 'NOT_FOUND';
+  error?: string;
+  source?: string;
+  status?: string;
+  alreadyResolved?: boolean;
 }
 
 /** buildTechnicalFailureResult() — the one shape every source uses to report
@@ -471,6 +495,31 @@ export class ResearchOrchestrator {
         if (job._abandoned) return;
         const step = job.steps[i];
         job.sourceIndex = i;
+
+        /*
+         * DUPLICATE-EXECUTION GUARD (production job 3aa36828…).
+         *
+         * Defense in depth: the worker refuses work whose identity already
+         * reached a terminal state in this job, even when a caller asks for
+         * it. Without this the worker trusted research-agent's guard alone,
+         * and when that guard failed to match a Latin company name against
+         * the Georgian one already recorded, the customer was asked to solve
+         * and skip the SAME rs.ge CAPTCHA a second time.
+         *
+         * This is a scheduling decision, never an evidence one: the step is
+         * dropped silently rather than recorded as a failure, because
+         * "already done" is not a finding about the property.
+         */
+        const duplicate = shouldSkipDuplicateExecution(step, job.results);
+        if (duplicate.skip) {
+          logBrowserLifecycle('duplicate_execution_skipped', {
+            jobId: job.id,
+            source: ResearchOrchestrator.sourceOf(step),
+            identity: executionIdentity(step),
+            reason: duplicate.reason,
+          });
+          continue;
+        }
         job.stage = step.type === 'entity' ? `CHECKING_${step.source.toUpperCase()}_ENTITY_${step.idCode}` : `CHECKING_${step.key.toUpperCase()}`;
         const { result, keep } = await this.runStep(jobBrowser, job, step);
         // The watchdog may have finalized this job while the step was in
@@ -480,6 +529,28 @@ export class ResearchOrchestrator {
         job.results.push(legacyDocuments(result));
         job.updatedAt = now();
         if (keep) {
+          /*
+           * SERVER-SIDE CAPTCHA BLOCK — observed, recorded, but NOT terminal.
+           *
+           * A datacenter IP can be refused outright rather than challenged.
+           * We record that fact so it is visible in production logs and so a
+           * later decision can be made on evidence, but the job still parks at
+           * WAITING_HUMAN on the SAME page in the SAME Chromium: the bundled
+           * Buster extension is loaded there, the human sees the challenge and
+           * the yellow assist control, and the session continues afterwards.
+           *
+           * If the human genuinely cannot complete it, Skip ends THAT source
+           * only. A CAPTCHA that cannot be solved is a technical condition and
+           * never negative evidence about the property.
+           */
+          const blockedSession = this.sessions.get(job.id);
+          if (blockedSession?.page && (await captchaNetworkBlocked(blockedSession.page))) {
+            logBrowserLifecycle('captcha_network_blocked', {
+              jobId: job.id,
+              source: ResearchOrchestrator.sourceOf(step),
+              note: 'server environment appears rejected; human + extension still get the same live page',
+            });
+          }
           job.status = 'WAITING_HUMAN';
           job.stage = 'CAPTCHA_REQUIRED';
           job.humanVerification = {
@@ -501,7 +572,14 @@ export class ResearchOrchestrator {
           job._entityStepsAppended = true;
           const entities = this.entitiesFor(job.id);
           const candidates = entities.notYetQueued();
-          const newSteps = buildEntitySteps(candidates, MAX_AUTO_ENREG_ENTITIES);
+          // Deduped against what this job already executed AND against the
+          // steps already planned, so one append can never enqueue the same
+          // identity twice.
+          const newSteps = dedupeProposedSteps(
+            buildEntitySteps(candidates, MAX_AUTO_ENREG_ENTITIES),
+            job.results,
+            job.steps
+          );
           job.steps.push(...newSteps);
           for (const s of newSteps) {
             if (s.type !== 'entity') continue;
@@ -565,17 +643,34 @@ export class ResearchOrchestrator {
     }
   }
 
-  async resume(jobId: string): Promise<{ ok: boolean; error?: string }> {
+  async resume(jobId: string): Promise<HumanActionResult> {
     const job = this.jobs.get(jobId);
     const session = this.sessions.get(jobId);
-    if (!job || !session) return { ok: false, error: 'active human session not found' };
+    if (!job) return { ok: false, error: 'job not found', code: 'NOT_FOUND' };
+    if (!session) {
+      /*
+       * IDEMPOTENT RESUME (production duplicate-skip/resume defect).
+       *
+       * One customer click used to produce TWO worker calls: the CAPTCHA
+       * modal called this endpoint directly, and then the orchestrating
+       * research-agent Edge Function called it again for the same worker
+       * job. The second call found the session already consumed and got a
+       * hard error, which surfaced to the customer as "CAPTCHA not
+       * completed" even though their verification had in fact succeeded.
+       *
+       * A retry of an action that already happened is not an error. Report
+       * the resulting state instead, so a double click, a network retry or
+       * a late Edge retry is harmless.
+       */
+      return { ok: true, alreadyResolved: true, status: job.status, code: 'ALREADY_RESOLVED' };
+    }
     const key = session.step.type === 'entity' ? session.step.source : session.step.key;
 
     // Never use "visible CAPTCHA iframe" alone as the resume gate: both RS
     // and MyGov can keep the widget mounted after it has been solved. We
     // first observe the actual solved token/aria state, then fall back to the
     // generic challenge detector only when it is not solved.
-    if (await humanVerificationPending(session.page)) return { ok: false, error: 'human verification is not complete' };
+    if (await humanVerificationPending(session.page)) return { ok: false, error: 'human verification is not complete', code: 'NOT_READY' };
 
     const ledger = this.ledgerFor(jobId);
     const entities = this.entitiesFor(jobId);
@@ -622,7 +717,7 @@ export class ResearchOrchestrator {
         scrollable: true,
         message: 'დამატებითი ადამიანის დადასტურებაა საჭირო. დაასრულეთ იგი იმავე ბრაუზერში და შემდეგ გააგრძელეთ.',
       };
-      return { ok: false, error: 'human verification is not complete' };
+      return { ok: false, error: 'human verification is not complete', code: 'NOT_READY' };
     }
 
     job.results = job.results.filter((x) => !stepMatchesResult(session.step, x));
@@ -637,13 +732,32 @@ export class ResearchOrchestrator {
       job.status = 'FAILED';
       job.error = String(e);
     });
-    return { ok: true };
+    return { ok: true, code: 'OK', status: 'RUNNING' };
   }
 
-  async skip(jobId: string): Promise<{ ok: boolean; source?: string; error?: string }> {
+  async skip(jobId: string): Promise<HumanActionResult> {
     const job = this.jobs.get(jobId);
     const session = this.sessions.get(jobId);
-    if (!job || !session) return { ok: false, error: 'active human session not found' };
+    if (!job) return { ok: false, error: 'job not found', code: 'NOT_FOUND' };
+    if (!session) {
+      /*
+       * IDEMPOTENT SKIP — the exact production defect. ONE customer click
+       * sent two /skip calls for the same worker job (the modal directly,
+       * then research-agent's Edge Function), so the second reliably 404'd.
+       * research-agent even swallowed it with a comment calling the 404 "a
+       * normal race". A retry now returns the state the first call produced.
+       */
+      const skipped = [...job.results]
+        .reverse()
+        .find((r: any) => r?.status === 'SKIPPED_HUMAN_VERIFICATION');
+      return {
+        ok: true,
+        alreadyResolved: true,
+        status: job.status,
+        source: skipped?.source,
+        code: 'ALREADY_RESOLVED',
+      };
+    }
     const key = session.step.type === 'entity' ? session.step.source : session.step.key;
     const result = {
       source: key,
@@ -682,6 +796,6 @@ export class ResearchOrchestrator {
       job.status = 'FAILED';
       job.error = String(e);
     });
-    return { ok: true, source: key };
+    return { ok: true, code: 'OK', source: key, status: 'RUNNING' };
   }
 }

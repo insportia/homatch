@@ -48,6 +48,31 @@ export interface ChallengeHit {
   matched: string;
 }
 
+/*
+ * SERVER-SIDE CAPTCHA BLOCK DETECTION.
+ *
+ * The decision itself is a pure predicate in CaptchaBlock.ts (no Playwright
+ * import, so it is unit-testable without a browser). This is only the part
+ * that has to read the live page.
+ */
+export { isCaptchaNetworkBlocked } from './CaptchaBlock.js';
+import { isCaptchaNetworkBlocked as isBlockedText } from './CaptchaBlock.js';
+
+/** Reads the visible text of every frame and applies isCaptchaNetworkBlocked.
+ * Bounded and failure-tolerant: an unreadable frame is simply not evidence of
+ * a block. */
+export async function captchaNetworkBlocked(p: any): Promise<boolean> {
+  try {
+    for (const f of p.frames()) {
+      const body = ((await f.locator('body').innerText().catch(() => '')) as string).slice(0, 15000);
+      if (isBlockedText(body)) return true;
+    }
+  } catch {
+    /* unreadable page is not proof of a block */
+  }
+  return false;
+}
+
 /** CAPTCHA/human-verification detector. Never solved or bypassed — its only
  * job is to report whether one is present so the workflow can transition to
  * a WAITING_HUMAN-style state per mandate Section 10. */

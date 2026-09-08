@@ -126,3 +126,80 @@ test('EntityQueue: notYetQueued/markQueued bookkeeping (mandate Section 16 entit
   q.markResult(pending[0].id, 'RESEARCHED');
   assert.equal(q.all().find((e) => e.id === pending[0].id).enregStatus, 'RESEARCHED');
 });
+
+/* ------------------------------------------------------------------ *
+ * ID PAIRING — production job 3aa36828-471a-4cd0-8a46-4e3f2b4c4c92.   *
+ *                                                                     *
+ * A Tbilisi architecture-permit response names the developer and the  *
+ * architect a few dozen characters apart. The old both-sides window    *
+ * paired "შპს მილენიო გრუპი" with 405068386, which the registry says   *
+ * is "შპს არტიტექსი" — a different company. That wrong pairing then    *
+ * scheduled an entire enreg/rstax/debtor triple against the wrong      *
+ * entity and cost the customer a second CAPTCHA.                       *
+ * ------------------------------------------------------------------ */
+
+test('an id belonging to the NEXT company is never attached to this one', () => {
+  // The shape of the real permit document: developer named first, architect
+  // named second with its own id.
+  const permit = 'დეველოპერი: შპს მილენიო გრუპი, პროექტის ავტორი: შპს არტიტექსი 405068386';
+  const found = extractEntityCandidates(permit);
+  const milenio = found.find((c) => c.name.includes('მილენიო'));
+  const artitexi = found.find((c) => c.name.includes('არტიტექსი'));
+
+  assert.equal(!!milenio, true, 'the developer must still be discovered');
+  assert.equal(milenio.idCode, null, 'the architect\'s id must NOT be attached to the developer');
+  assert.equal(!!artitexi, true, 'the architect must be discovered separately');
+  assert.equal(artitexi.idCode, '405068386', 'the id belongs to the company it follows');
+});
+
+test('an id that genuinely follows its own company is still paired', () => {
+  const found = extractEntityCandidates('მესაკუთრე : შპს მილენიო გრუპი (საქართველო) 404670272');
+  const c = found.find((x) => x.name.includes('მილენიო'));
+  assert.equal(c.idCode, '404670272');
+});
+
+test('an id BEFORE the name is not claimed by it', () => {
+  // 404670272 belongs to whatever was named before this point.
+  const found = extractEntityCandidates('404670272 და ასევე შპს სხვა კომპანია');
+  const c = found.find((x) => x.name.includes('სხვა'));
+  assert.equal(c?.idCode ?? null, null, 'a preceding id must not be adopted');
+});
+
+test('the სსიპ public-body ghosts from the same job are gone', () => {
+  const text = 'სსიპ – ქალაქ თბილისის მუნიციპალიტეტის არქიტექტურის სამსახური';
+  const found = extractEntityCandidates(text);
+  assert.equal(found.some((c) => c.name.startsWith('სს იპ')), false, 'სსიპ must never be read as სს + name');
+});
+
+test('two companies with NO delimiter between them are separated, each keeping its OWN id', () => {
+  /*
+   * The same mis-association as 3aa36828, in a document with no punctuation
+   * between the two names. Before the name-boundary fix this produced ONE
+   * candidate — "შპს ალფა 111111111 შპს ბეტა" carrying ბეტა's id — and ბეტა
+   * was never discovered at all.
+   */
+  const found = extractEntityCandidates('შპს ალფა 111111111 შპს ბეტა 222222222');
+  assert.equal(found.length, 2, 'both companies must be discovered');
+  const alpha = found.find((c) => c.name.includes('ალფა'));
+  const beta = found.find((c) => c.name.includes('ბეტა'));
+  assert.equal(alpha.name, 'შპს ალფა', 'the name must not swallow the id or the next company');
+  assert.equal(alpha.idCode, '111111111');
+  assert.equal(beta.name, 'შპს ბეტა');
+  assert.equal(beta.idCode, '222222222');
+});
+
+test('a company named after another company\'s id does not inherit it', () => {
+  const found = extractEntityCandidates('შპს ალფა 111111111 შპს ბეტა');
+  const beta = found.find((c) => c.name.includes('ბეტა'));
+  assert.equal(beta.idCode, null, 'ბეტა has no id of its own in this text');
+  assert.equal(found.find((c) => c.name.includes('ალფა')).idCode, '111111111');
+});
+
+test('extraction always terminates — the cursor can never stall', () => {
+  // Pathological inputs that previously risked a rewound cursor looping.
+  for (const text of ['შპს შპს შპს', 'შპს 123456789 შპს 987654321', 'შპს ა'.repeat(50)]) {
+    const t0 = Date.now();
+    extractEntityCandidates(text);
+    assert.equal(Date.now() - t0 < 2000, true, `extraction stalled on: ${text.slice(0, 30)}`);
+  }
+});

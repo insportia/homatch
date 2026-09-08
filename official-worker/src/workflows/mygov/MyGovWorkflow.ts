@@ -47,7 +47,31 @@ export async function runMyGovWorkflow(
         url: (page as any).url(),
       });
 
-      frame = await pageObj.resolveRegistryFrame(page, { timeoutMs: 10000 });
+      /*
+       * Use resolveRegistryFrame's OWN documented default (30s), not a
+       * shorter override.
+       *
+       * Live inspection of service 176 (2026-09-09) shows the page loads an
+       * INVISIBLE reCAPTCHA (sitekey 6LevnRsrAAAA…, size=invisible) and the
+       * registry application is an iframe at
+       * naprweb.reestri.gov.ge/_dea/#/search that only becomes usable once
+       * that challenge has executed. Google's declared readiness window for
+       * it is up to 20-30s — which is exactly why the default is 30s.
+       *
+       * The previous 10000ms override was BELOW that window, so a slow (or
+       * datacenter-throttled) reCAPTCHA made the frame look absent and the
+       * source reported SEARCH_CONTROL_NOT_FOUND with zero documents — the
+       * outcome recorded in production job
+       * 3aa36828-471a-4cd0-8a46-4e3f2b4c4c92 ("registry application not
+       * reached", finalUrl == sourceUrl, searchControlUsed null).
+       *
+       * NOTE: the service URL's category segment is NOT the issue. Live
+       * comparison of /services/5/service/176 and /services/10/service/176
+       * produced byte-identical pages, the same iframes and the same
+       * api.my.gov.ge/api/service/getServiceDetails?serviceId=176 call — the
+       * SPA resolves the service by id, not by the path segment.
+       */
+      frame = await pageObj.resolveRegistryFrame(page);
       trace.record({
         stateBefore: null,
         action: 'RESOLVE_REGISTRY_FRAME',

@@ -38,6 +38,12 @@ fi
 echo "== i18n gates (coverage, key-existence, hardcoded-string audit) =="
 npm run i18n:all
 
+echo "== Frontend test suite =="
+# The node:test frontend suite existed but was never part of any gate:
+# there was no "test" script at all, so 153 real assertions could rot
+# unnoticed while `npm run lint` stayed green. It runs here now.
+npm test
+
 echo "== Production build check =="
 .rules/testBuild.sh
 

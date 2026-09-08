@@ -175,7 +175,27 @@ test('the modal drives the SAME local Chromium page: screenshot in, clicks out, 
   assert.equal(/liveURL|liveURLId|browserless/i.test(modalSource), false);
   assert.equal(/solveCaptcha|captchaSolver|2captcha|anticaptcha|bypassCaptcha/i.test(modalSource), false);
   // VerifyPage still drives the same modal with the same worker job id.
-  assert.match(verifySource, /<ResearchCaptchaModal open=\{!!captcha\} jobId=\{workerCaptchaId\}/);
+  //
+  // The open condition gained `&& !handoff` in 2026-09. That is deliberate and
+  // is asserted here rather than relaxed away: when a source has refused our
+  // NETWORK outright, the server-browser screenshot cannot be solved from
+  // where it is rendered, so the customer is offered the lookup in their own
+  // browser INSTEAD. The two must never be on screen together, which is what
+  // the mutual exclusion below pins down. Everything else about the live
+  // session — same worker job id, same resume/skip — is unchanged.
+  assert.match(verifySource, /<ResearchCaptchaModal open=\{!!captcha&&!handoff\} jobId=\{workerCaptchaId\}/);
+  assert.match(verifySource, /\{handoff&&<HumanVerificationHandoff /);
+});
+
+test('the handoff never replaces Buster for an ordinary CAPTCHA', () => {
+  // Buster stays. The handoff is offered ONLY on an explicit network-refusal
+  // signal; an ordinary solvable CAPTCHA still goes to the server browser,
+  // where the yellow assist button works.
+  assert.match(verifySource, /networkBlocked===true\|\|r\?\.captchaNetworkBlocked===true/);
+  // And the extension hint the mandate fixes verbatim is still rendered.
+  assert.match(modalSource, /verify_captcha_extension_note/);
+  // Still no solver or bypass anywhere in the Verify surface.
+  assert.equal(/solveCaptcha|captchaSolver|2captcha|anticaptcha|bypassCaptcha/i.test(verifySource), false);
 });
 
 /* ------------------------------------------------------------------ *

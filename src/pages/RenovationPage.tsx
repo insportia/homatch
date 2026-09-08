@@ -266,12 +266,16 @@ const RenovationPage: React.FC = () => {
         )}
 
         <div className="flex flex-col sm:flex-row gap-2">
-          <Button onClick={onSave} disabled={saving} className="gap-2">
+          <Button onClick={onSave} disabled={saving} className="w-full sm:w-auto gap-2">
             <Save className="h-4 w-4" />
             {t('reno_save')}
           </Button>
           {roomId ? (
-            <Button variant="outline" onClick={() => navigate(`/deal-rooms/${roomId}`)}>
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => navigate(`/deal-rooms/${roomId}`)}
+            >
               {t('dr_tab_summary')}
             </Button>
           ) : null}

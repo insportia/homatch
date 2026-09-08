@@ -16,66 +16,15 @@
 // short-lived signed URL minted for a user who already passed the check.
 
 import { supabase } from '@/db/supabase';
+import { validateUpload, storagePathFor } from './uploadValidation';
 
-/** Kept in sync with the bucket's allowed_mime_types. */
-export const ALLOWED_MIME = Object.freeze([
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]);
-
-export const MAX_BYTES = 20 * 1024 * 1024;
-
-/** Signed URLs are minted per view and expire quickly: a leaked link should
- * stop working long before it can be passed around. */
-export const SIGNED_URL_TTL_SECONDS = 120;
-
-export type UploadRejection =
-  | { ok: true }
-  | { ok: false; reason: 'EMPTY' | 'TOO_LARGE' | 'UNSUPPORTED_TYPE' | 'SUSPICIOUS_NAME' };
-
-/**
- * Validates a file BEFORE it is uploaded.
- *
- * Extension is checked as well as MIME because a browser will happily report
- * `application/pdf` for a file the user renamed; the two disagreeing is a
- * reason to stop and ask rather than to store.
- */
-export function validateUpload(file: { name: string; size: number; type: string }): UploadRejection {
-  if (!file || file.size <= 0) return { ok: false, reason: 'EMPTY' };
-  if (file.size > MAX_BYTES) return { ok: false, reason: 'TOO_LARGE' };
-  if (!ALLOWED_MIME.includes(file.type)) return { ok: false, reason: 'UNSUPPORTED_TYPE' };
-
-  const name = String(file.name ?? '');
-  // Path traversal and control characters have no business in a filename, and
-  // a double extension is the classic way to smuggle one type as another.
-  if (
-    name.includes('/') ||
-    name.includes('\\') ||
-    name.includes('..') ||
-    // eslint-disable-next-line no-control-regex
-    /[\u0000-\u001f\u007f]/.test(name) ||
-    /\.(exe|js|sh|bat|cmd|scr|jar|msi|dll|ps1)(\.|$)/i.test(name)
-  ) {
-    return { ok: false, reason: 'SUSPICIOUS_NAME' };
-  }
-
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  const EXT_FOR: Record<string, string[]> = {
-    'application/pdf': ['pdf'],
-    'image/jpeg': ['jpg', 'jpeg'],
-    'image/png': ['png'],
-    'image/webp': ['webp'],
-    'application/msword': ['doc'],
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['docx'],
-  };
-  if (!(EXT_FOR[file.type] ?? []).includes(ext)) return { ok: false, reason: 'UNSUPPORTED_TYPE' };
-
-  return { ok: true };
-}
+// Validation and object naming live in a dependency-free module so they can
+// be unit tested; re-exported here so callers have one import site.
+export {
+  ALLOWED_MIME, MAX_BYTES, SIGNED_URL_TTL_SECONDS,
+  validateUpload, storagePathFor,
+} from './uploadValidation';
+export type { UploadRejection } from './uploadValidation';
 
 /** sha256 of the file, used to recognise a re-upload of the same document
  * rather than storing it twice. Computed in the browser via WebCrypto. */
@@ -83,18 +32,6 @@ export async function sha256Of(file: Blob): Promise<string> {
   const buf = await file.arrayBuffer();
   const digest = await crypto.subtle.digest('SHA-256', buf);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * The storage path.
- *
- * `<userId>/<roomId>/<documentId>.<ext>` — the first segment is what the
- * storage policies compare against auth.uid(), so this shape is load-bearing
- * and must not be changed without changing the policies with it.
- */
-export function storagePathFor(userId: string, roomId: string, documentId: string, filename: string): string {
-  const ext = (filename.split('.').pop() ?? 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
-  return `${userId}/${roomId}/${documentId}.${ext || 'bin'}`;
 }
 
 export async function uploadDocument(args: {

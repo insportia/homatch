@@ -8,6 +8,7 @@
 import { launchResearchBrowser, researchContext, logBrowserLifecycle } from '../browser/BrowserlessRuntime.js';
 import { decideBrowserlessReconnect } from '../browser/BrowserlessRecovery.js';
 import { openHumanLiveSession, closeHumanLiveSession, humanLiveFields, type HumanLiveSessionState } from '../browser/HumanLiveSession.js';
+import { createVisualWatch, attachVisualWatch, detachVisualWatch, isWatchingPage, visualWatchFields, type VisualWatchState } from '../browser/VisualWatchSession.js';
 import { randomUUID } from 'node:crypto';
 import { EvidenceLedger } from '../evidence/EvidenceLedger.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
@@ -133,6 +134,17 @@ function buildTechnicalFailureResult(key: string, forEntity: { name: string; idC
   };
 }
 
+/** page.url() without the ability to throw on a closed/dead target. The URL
+ * of a government page is not a secret; a live-view URL, a CDP endpoint or a
+ * token would be, and none of those can appear here. */
+function safePageUrl(page: any): string | null {
+  try {
+    return page?.url?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export class ResearchOrchestrator {
   private jobs = new Map<string, ResearchJob>();
   private sessions = new Map<string, SessionState>();
@@ -147,6 +159,10 @@ export class ResearchOrchestrator {
   // browser_disconnected_reconnecting log line so repeated session
   // expirations within one job stay visible in production.
   private browserlessReconnects = new Map<string, number>();
+  // Opt-in VISUAL WATCH state, one per job (see VisualWatchSession.ts).
+  // Absent/disabled for every ordinary production job, in which case every
+  // watch call below is inert and the job behaves exactly as before.
+  private visualWatches = new Map<string, VisualWatchState>();
 
   constructor() {
     setInterval(async () => {
@@ -161,12 +177,14 @@ export class ResearchOrchestrator {
           // synchronous within this same tick) and a double-close of an
           // already-closed target harmless either way (scenario #19).
           await this.closeLiveView(s, 'ttl_expired');
+          await this.detachWatch(id, ResearchOrchestrator.sourceOf(s.step), 'ttl_expired');
           logBrowserLifecycle('close_context', { jobId: id, reason: 'ttl_expired', closes: 'context' });
           await s.ctx.close().catch(() => {});
           logBrowserLifecycle('close_browser', { jobId: id, reason: 'ttl_expired', closes: 'browser' });
           await s.browser.close().catch(() => {});
           this.sessions.delete(id);
           this.browserlessReconnects.delete(id);
+          this.visualWatches.delete(id);
         }
       }
     }, 30000).unref();
@@ -231,6 +249,93 @@ export class ResearchOrchestrator {
     session.live = null;
   }
 
+  /** Points the visual watch at the page the orchestrator just created and is
+   * about to drive, and republishes the job's `visualWatch` block so a
+   * watcher polling GET /research/:id sees the new generation. Inert when
+   * watching is off. Never throws — visual watching can never fail research. */
+  private async attachWatch(jobId: string, page: any, source: string, reason: string): Promise<void> {
+    const watch = this.visualWatches.get(jobId);
+    if (!watch?.enabled) return;
+    const session = this.sessions.get(jobId);
+    await attachVisualWatch(watch, page, {
+      jobId,
+      source,
+      reason,
+      // An UPPER BOUND only — a live view cannot outlive the Browserless
+      // session it belongs to, whose lifetime this worker does not control.
+      timeoutMs: session ? Math.max(60 * 1000, session.expires - Date.now()) : TTL,
+    });
+    this.publishWatchState(jobId);
+  }
+
+  /** Best-effort release of the watched handle (source finished, resume, skip,
+   * job end, TTL). Never closes the page. Inert when watching is off. */
+  private async detachWatch(jobId: string, source: string, reason: string): Promise<void> {
+    const watch = this.visualWatches.get(jobId);
+    if (!watch?.enabled) return;
+    await detachVisualWatch(watch, { jobId, source, reason });
+    this.publishWatchState(jobId);
+  }
+
+  /** Recomputes job.visualWatch from whichever live handle is actually
+   * streaming right now — the watch's own, or (for an ordinary WAITING_HUMAN
+   * live view) the session's. Emits nothing at all when watching is off. */
+  private publishWatchState(jobId: string): void {
+    const job = this.jobs.get(jobId);
+    const watch = this.visualWatches.get(jobId);
+    if (!job || !watch?.enabled) return;
+    const effective = this.currentLiveView(jobId);
+    job.visualWatch = visualWatchFields(jobId, watch, effective.live, effective.error);
+    job.updatedAt = now();
+  }
+
+  /** The live handle currently streaming this job's active page, whoever owns
+   * it: the visual watch (watch jobs) or the WAITING_HUMAN session (ordinary
+   * jobs — the deployed behaviour, unchanged). */
+  private currentLiveView(jobId: string): { live: HumanLiveSessionState | null; error: string | null; source: string | null; generation: number } {
+    const watch = this.visualWatches.get(jobId);
+    const session = this.sessions.get(jobId);
+    if (watch?.enabled && watch.live) {
+      return { live: watch.live, error: watch.error, source: watch.source, generation: watch.generation };
+    }
+    return {
+      live: session?.live ?? null,
+      error: session?.liveError ?? watch?.error ?? null,
+      source: session ? ResearchOrchestrator.sourceOf(session.step) : watch?.source ?? null,
+      generation: watch?.generation ?? 0,
+    };
+  }
+
+  /**
+   * WAITING_HUMAN live view, with the visual-watch case folded in.
+   *
+   * For an ordinary job this is exactly the deployed path: mint a live view
+   * on the preserved page (openLiveView).
+   *
+   * For a visualWatch job whose watch is ALREADY streaming that very page,
+   * nothing is minted at all: the challenge appeared on the page the operator
+   * is already looking at, so the same stream simply becomes the interactive
+   * human session. That is what guarantees there is never a hidden automation
+   * browser plus a separate CAPTCHA browser.
+   */
+  private async ensureHumanLiveView(session: SessionState): Promise<void> {
+    const watch = this.visualWatches.get(session.jobId);
+    const source = ResearchOrchestrator.sourceOf(session.step);
+    if (watch?.enabled) {
+      if (isWatchingPage(watch, session.page)) {
+        logBrowserLifecycle('visual_watch_captcha_same_page', { jobId: session.jobId, source, generation: watch.generation });
+        this.publishWatchState(session.jobId);
+        return;
+      }
+      // Watching is on but not currently attached to this page (an earlier
+      // attach failed, or the page changed): attach it here, to the exact
+      // preserved CAPTCHA page.
+      await this.attachWatch(session.jobId, session.page, source, 'captcha');
+      return;
+    }
+    await this.openLiveView(session);
+  }
+
   /**
    * The authenticated POST/GET /research/:id/live handler's data source (the
    * path ResearchCaptchaModal.tsx already calls in production):
@@ -244,21 +349,65 @@ export class ResearchOrchestrator {
    * there is no active session or no view could be opened; the caller turns
    * that into an honest "interactive unavailable", never a job failure.
    */
-  async getOrCreateLiveView(jobId: string): Promise<{ liveURL: string; source: string; expiresAt: string } | null> {
+  async getOrCreateLiveView(jobId: string): Promise<{ liveURL: string; source: string | null; expiresAt: string | null; generation: number; mode: 'human_verification' | 'visual_watch'; pageUrl: string | null } | null> {
+    const watch = this.visualWatches.get(jobId);
     const session = this.sessions.get(jobId);
-    if (!session) return null;
-    if (!session.live) await this.openLiveView(session);
-    if (!session.live) return null;
-    return {
-      liveURL: session.live.liveURL,
-      source: ResearchOrchestrator.sourceOf(session.step),
-      expiresAt: new Date(session.expires).toISOString(),
-    };
+
+    // 1. An active WAITING_HUMAN session — the deployed path, unchanged: mint
+    //    on the preserved page only when nothing is streaming it yet, so a
+    //    polling/refreshing UI reuses the open handle instead of duplicating.
+    if (session) {
+      if (!session.live && !isWatchingPage(watch, session.page)) await this.ensureHumanLiveView(session);
+      const current = this.currentLiveView(jobId);
+      if (!current.live) return null;
+      return {
+        liveURL: current.live.liveURL,
+        source: ResearchOrchestrator.sourceOf(session.step),
+        expiresAt: new Date(session.expires).toISOString(),
+        generation: current.generation,
+        mode: watch?.enabled && watch.live ? 'visual_watch' : 'human_verification',
+        pageUrl: safePageUrl(session.page),
+      };
+    }
+
+    // 2. A RUNNING visualWatch job: hand back the stream already attached to
+    //    the real active worker page. Never minted here — attachment happens
+    //    where the page is created, so polling can never create a second
+    //    handle or touch the running research.
+    if (watch?.enabled && watch.live) {
+      return {
+        liveURL: watch.live.liveURL,
+        source: watch.source,
+        expiresAt: null,
+        generation: watch.generation,
+        mode: 'visual_watch',
+        pageUrl: safePageUrl(watch.watchedPage),
+      };
+    }
+
+    return null;
   }
 
-  start(query: string, mode: 'cadastral' | 'property'): ResearchJob {
+  /** Whether this job opted into visual watching — lets the HTTP layer tell
+   * "no live session for an ordinary job" (404, unchanged) apart from "a
+   * watch job whose stream is not up yet" (503, keep polling). */
+  isVisualWatchEnabled(jobId: string): boolean {
+    return !!this.visualWatches.get(jobId)?.enabled;
+  }
+
+  /** `options.visualWatch` (POST /research's `visualWatch: true`) turns on the
+   * opt-in live view of the REAL research browser from its very first page —
+   * a debugging/observation capability, never a change to how research runs.
+   * Absent or false, nothing about this job differs from before. */
+  start(query: string, mode: 'cadastral' | 'property', options: { visualWatch?: boolean } = {}): ResearchJob {
     const id = randomUUID();
     const job: ResearchJob = { id, query, mode, status: 'QUEUED', stage: 'QUEUED', sourceIndex: 0, results: [], createdAt: now(), updatedAt: now() };
+    if (options.visualWatch) {
+      const watch = createVisualWatch(true);
+      this.visualWatches.set(id, watch);
+      job.visualWatch = visualWatchFields(id, watch);
+      logBrowserLifecycle('visual_watch_requested', { jobId: id, mode });
+    }
     this.jobs.set(id, job);
     this.run(job).catch((e) => {
       job.status = 'FAILED';
@@ -437,6 +586,19 @@ export class ResearchOrchestrator {
 
     await page.setViewportSize({ width: 1440, height: 1000 }).catch(() => {});
 
+    // ACTIVE PAGE ASSIGNED. This is the one place a source's real page comes
+    // into existence, for the first source and for every later one, including
+    // the fresh page created on a brand-new browser after a Browserless
+    // reconnect — so pointing the visual watch here is what makes it follow
+    // the ACTUAL worker page across every transition, with `reason` recording
+    // which kind of transition it was. Inert unless the job opted in.
+    await this.attachWatch(
+      job.id,
+      page,
+      key,
+      reconnectsUsedForThisSourceAttempt > 0 ? 'browser_reconnect' : 'source_page'
+    );
+
     try {
       let result: any;
       if (key === 'tas') result = await runTasWorkflow(page, query, job.mode, entities);
@@ -452,6 +614,9 @@ export class ResearchOrchestrator {
         this.sessions.set(job.id, { browser, ctx, page, jobId: job.id, step, query, expires: Date.now() + TTL, live: null, liveError: null });
         return { result, keep: true, browser };
       }
+      // SOURCE COMPLETED: release the watch handle before the page it is
+      // attached to goes away; the next source's page gets its own.
+      await this.detachWatch(job.id, key, 'source_complete');
       if (sharedBrowserlessContext) {
         logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'source_complete', closes: 'page' });
         await page.close().catch(() => {});
@@ -462,6 +627,7 @@ export class ResearchOrchestrator {
       return { result, keep: false, browser };
     } catch (e) {
       logBrowserLifecycle('source_exception', { jobId: job.id, source: key, error: String(e).slice(0, 200) });
+      await this.detachWatch(job.id, key, 'source_error');
       if (sharedBrowserlessContext) {
         logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'source_error', closes: 'page' });
         await page.close().catch(() => {});
@@ -508,7 +674,8 @@ export class ResearchOrchestrator {
           // leaves the session preserved and the job WAITING_HUMAN with
           // interactive:false — never a lost page, never a job failure.
           const humanSession = this.sessions.get(job.id);
-          if (humanSession) await this.openLiveView(humanSession);
+          if (humanSession) await this.ensureHumanLiveView(humanSession);
+          const liveNow = this.currentLiveView(job.id);
           job.humanVerification = {
             sessionId: job.id,
             required: true,
@@ -516,7 +683,7 @@ export class ResearchOrchestrator {
             step,
             url: result.finalUrl || result.sourceUrl,
             expiresAt: new Date(Date.now() + TTL).toISOString(),
-            ...humanLiveFields(job.id, humanSession?.live, humanSession?.liveError),
+            ...humanLiveFields(job.id, liveNow.live, liveNow.error),
             recommendedWidth: 1100,
             recommendedMaxHeight: '90vh',
             fullInteractiveSession: true,
@@ -545,9 +712,11 @@ export class ResearchOrchestrator {
       job.discoveredEntities = this.entitiesFor(job.id).all();
       job.historicalComparison = buildHistoricalComparison(job.results.flatMap((r) => (Array.isArray(r?.documents) ? r.documents : [])));
       await this.closeLiveView(this.sessions.get(job.id), 'job_complete');
+      await this.detachWatch(job.id, 'job', 'job_complete');
       logBrowserLifecycle('close_browser', { jobId: job.id, reason: 'job_complete', closes: 'browser' });
       await browser.close().catch(() => {});
       this.browserlessReconnects.delete(job.id);
+      this.visualWatches.delete(job.id);
     } catch (e) {
       job.status = 'FAILED';
       job.stage = 'FAILED';
@@ -583,9 +752,11 @@ export class ResearchOrchestrator {
       });
 
       await this.closeLiveView(this.sessions.get(job.id), 'job_failed');
+      await this.detachWatch(job.id, 'job', 'job_failed');
       logBrowserLifecycle('close_browser', { jobId: job.id, reason: 'job_failed', closes: 'browser' });
       await browser?.close().catch(() => {});
       this.browserlessReconnects.delete(job.id);
+      this.visualWatches.delete(job.id);
       job.updatedAt = now();
     }
   }
@@ -634,7 +805,8 @@ export class ResearchOrchestrator {
       // Same preserved page, second challenge: re-open the live view on it.
       // openHumanLiveSession() closes the superseded handle first, so
       // repeated CAPTCHAs cannot accumulate orphaned Browserless views.
-      await this.openLiveView(session);
+      await this.ensureHumanLiveView(session);
+      const liveNow = this.currentLiveView(job.id);
       job.humanVerification = {
         sessionId: job.id,
         required: true,
@@ -642,7 +814,7 @@ export class ResearchOrchestrator {
         step: session.step,
         url: finalResult.finalUrl || finalResult.sourceUrl || session.page.url(),
         expiresAt: new Date(session.expires).toISOString(),
-        ...humanLiveFields(job.id, session.live, session.liveError),
+        ...humanLiveFields(job.id, liveNow.live, liveNow.error),
         recommendedWidth: 1100,
         recommendedMaxHeight: '90vh',
         fullInteractiveSession: true,
@@ -658,6 +830,7 @@ export class ResearchOrchestrator {
     // The human is done with this page — release the live view before the
     // page itself is closed. Best-effort: a failed close never blocks resume.
     await this.closeLiveView(session, 'resume_complete');
+    await this.detachWatch(job.id, key, 'resume_complete');
     if ((session.browser as any).__homatchBrowserless) {
       logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'resume_complete', closes: 'page' });
       await session.page.close().catch(() => {});
@@ -708,6 +881,7 @@ export class ResearchOrchestrator {
     // Skipping abandons the human session for this source: release the live
     // view first, then fall through to the unchanged page/context close.
     await this.closeLiveView(session, 'skip_human_verification');
+    await this.detachWatch(job.id, key, 'skip_human_verification');
     if ((session.browser as any).__homatchBrowserless) {
       logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'skip_human_verification', closes: 'page' });
       await session.page.close().catch(() => {});

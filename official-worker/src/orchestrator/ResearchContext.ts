@@ -31,6 +31,10 @@ export interface ResearchJob {
   updatedAt: string;
   steps?: StepDescriptor[];
   humanVerification?: any;
+  /** Opt-in VISUAL WATCH block (POST /research's `visualWatch: true`) — see
+   * VisualWatchSession.ts's visualWatchFields(). Absent entirely on ordinary
+   * production jobs, so their serialized shape is unchanged. */
+  visualWatch?: any;
   completedAt?: string;
   officialEvidenceCount?: number;
   discoveredEntities?: any[];

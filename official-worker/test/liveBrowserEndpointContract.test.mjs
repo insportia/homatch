@@ -88,7 +88,7 @@ test('the live response carries liveURL for the frontend and never a liveURLId o
   assert.equal(handler.includes('s.browser'), false);
   assert.equal(handler.includes('s.ctx'), false);
   // Failure is reported with the `error` string the modal displays.
-  assert.match(handler, /status\(503\)\.json\(\{\s*interactive:\s*false,\s*error:/);
+  assert.match(handler, /status\(503\)\.json\(\{[^}]*interactive:\s*false[^}]*error:/);
   assert.match(handler, /status\(404\)\.json\(\{\s*error:\s*'active human session not found'/);
 });
 

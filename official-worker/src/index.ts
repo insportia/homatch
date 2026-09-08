@@ -82,12 +82,19 @@ app.get('/health', (_q: any, r: any) =>
   })
 );
 
+// `visualWatch: true` (opt-in, strict boolean) turns on the live view of the
+// REAL research browser from its first page — an observation/debugging
+// capability for an authenticated operator. Absent or anything other than
+// exactly `true`, the job runs precisely as it always has: no live view is
+// minted before WAITING_HUMAN, and the job document carries no visualWatch
+// block at all.
 app.post('/research', auth, (req: any, res: any) => {
   const mode = req.body?.mode === 'property' ? 'property' : 'cadastral';
   const query = mode === 'cadastral' ? String(req.body?.query || '').trim().replace(/\s/g, '') : String(req.body?.query || '').trim();
   if (!query) return res.status(400).json({ error: 'query required' });
-  const job = orchestrator.start(query, mode);
-  res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
+  const visualWatch = req.body?.visualWatch === true;
+  const job = orchestrator.start(query, mode, { visualWatch });
+  res.status(202).json({ accepted: true, jobId: job.id, status: job.status, visualWatch });
 });
 
 app.get('/research/:id', auth, (req: any, res: any) => {
@@ -227,18 +234,31 @@ app.post('/research/:id/action', auth, async (req: any, res: any) => {
 // challenge; it only streams the real page to the real human.
 async function liveBrowserHandler(req: any, res: any) {
   const s = orchestrator.getSession(req.params.id);
-  if (!s) return res.status(404).json({ error: 'active human session not found' });
+  // A visualWatch job is legitimately watchable while RUNNING, with no human
+  // session at all. For every ordinary job the 404 below is exactly what it
+  // was before visual watching existed.
+  const watching = orchestrator.isVisualWatchEnabled(req.params.id);
+  if (!s && !watching) return res.status(404).json({ error: 'active human session not found' });
   try {
     const live = await orchestrator.getOrCreateLiveView(req.params.id);
     if (!live) {
-      return res.status(503).json({ interactive: false, error: 'the interactive verification browser is unavailable right now — you can still use the verification screen' });
+      // For a watch job this is the normal "not streaming yet / not streaming
+      // right now" answer — the caller polls again. It is never a research
+      // failure and says nothing about the property.
+      return res.status(503).json({ interactive: false, visualWatch: watching, error: 'the interactive verification browser is unavailable right now — you can still use the verification screen' });
     }
     return res.json({
       interactive: true,
       liveURL: live.liveURL,
       source: live.source,
       expiresAt: live.expiresAt,
-      url: s.page.url(),
+      // Generation changes whenever the stream moved to a different real page
+      // or to a new browser after a Browserless reconnect: the watcher must
+      // re-open the URL when it changes. Mode says which lifecycle the stream
+      // currently belongs to.
+      generation: live.generation,
+      mode: live.mode,
+      url: live.pageUrl,
     });
   } catch (e) {
     // Never forward a raw Playwright/CDP error (selectors, call logs,

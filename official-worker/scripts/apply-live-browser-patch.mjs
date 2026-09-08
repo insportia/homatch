@@ -1,5 +1,71 @@
-import fs from 'node:fs';
-function patch(path,edits){let s=fs.readFileSync(path,'utf8');for(const[from,to,label]of edits){if(!s.includes(from))throw new Error(`Patch anchor missing: ${label} in ${path}`);s=s.replace(from,to)}fs.writeFileSync(path,s);console.log(`patched ${path}`)}
-// ResearchOrchestrator Browserless lifecycle now lives in source code.
-patch('src/index.ts',[["    humanSessionControls: true,","    humanSessionControls: true,\n    liveInteractiveBrowser: true,\n    browserRuntime: 'browserless-cdp',",'health flags'],["app.get('/research/:id/screenshot', auth, async (req: any, res: any) => {","app.get('/health/browserless', async (_req: any, res: any) => {\n  let browser: any = null; try { const bridgeUrl=process.env.BROWSERLESS_TOKEN_BRIDGE_URL||''; const bridgeKey=process.env.BROWSERLESS_TOKEN_BRIDGE_KEY||''; if(!bridgeUrl||!bridgeKey) throw new Error('bridge_not_configured'); const r=await fetch(bridgeUrl,{method:'POST',headers:{Authorization:`Bearer ${bridgeKey}`},signal:AbortSignal.timeout(10000)}); if(!r.ok) throw new Error(`bridge_${r.status}`); const body:any=await r.json(); const token=String(body?.token||'').trim(); if(!token) throw new Error('token_missing'); const {chromium}=await import('playwright'); browser=await chromium.connectOverCDP(`wss://production-sfo.browserless.io/chromium/stealth?token=${encodeURIComponent(token)}`,{timeout:30000}); const ctx=browser.contexts()[0]; const page=await ctx.newPage(); const cdp=await ctx.newCDPSession(page); const out:any=await cdp.send('Browserless.liveURL',{interactable:true,quality:30,timeout:5000}); if(out?.error||!out?.liveURL||!out?.liveURLId) throw new Error('live_url_failed'); await cdp.send('Browserless.closeLiveURL',{liveURLId:out.liveURLId}).catch(()=>{}); await cdp.detach().catch(()=>{}); await page.close().catch(()=>{}); await browser.close().catch(()=>{}); return res.json({ok:true,bridge:true,cdp:true,liveURL:true}); } catch(e){await browser?.close?.().catch(()=>{}); console.error(`[browserless-health] ${String(e)}`); return res.status(503).json({ok:false,error:'remote_browser_unavailable'});}\n});\n\napp.post('/research/:id/live', auth, async (req: any, res: any) => {\n  const s = orchestrator.getSession(req.params.id); if (!s) return res.status(404).json({ error: 'active human session not found' });\n  try { const cdp = await s.ctx.newCDPSession(s.page); const out: any = await cdp.send('Browserless.liveURL', { interactable: true, resizable: true, showBrowserInterface: false, quality: 70, type: 'jpeg', timeout: 900000 }); await cdp.detach().catch(() => {});\n    if (out?.error || !out?.liveURL) return res.status(503).json({ error: 'could not open the live verification browser right now — try again' }); s.expires = Date.now() + 30 * 60 * 1000; return res.json({ liveURL: out.liveURL, expiresAt: new Date(s.expires).toISOString(), source: s.step.type === 'entity' ? s.step.source : s.step.key });\n  } catch (e) { console.error(`[live ${req.params.id}] ${String(e)}`); return res.status(500).json({ error: 'could not open the live verification browser right now — try again' }); }\n});\n\napp.get('/research/:id/screenshot', auth, async (req: any, res: any) => {",'browserless health and live endpoints']]);
-if(process.argv.includes('--run')){console.log('starting patched Homatch worker');const{register}=await import('tsx/esm/api');register();await import('../src/index.ts')}
+/*
+ * QUARANTINED 2026-09-08 — this script no longer patches anything.
+ *
+ * WHAT IT USED TO DO, AND WHY IT WAS HARMFUL
+ * ------------------------------------------
+ * The live Railway service (homatch-official-worker,
+ * 3e7f132b-d0be-4804-9bc0-0b6ad368ad15) carried a dashboard start-command
+ * override, `node scripts/apply-live-browser-patch.mjs --run`, which took
+ * precedence over the image's own CMD. This script then REWROTE
+ * src/index.ts on the container filesystem at boot and imported the mutated
+ * source.
+ *
+ * One of those injected edits registered a legacy handler
+ *
+ *     app.post('/research/:id/live', auth, async (req, res) => {
+ *       const s = orchestrator.getSession(req.params.id);
+ *       if (!s) return res.status(404).json({ error: 'active human session not found' });
+ *       ... Browserless.liveURL with a hardcoded timeout: 900000 ...
+ *     });
+ *
+ * anchored BEFORE `app.get('/research/:id/screenshot'` — i.e. at line ~171,
+ * whereas the real implementation registers at line ~275. Express dispatches
+ * to the FIRST matching route, so every production
+ * `POST /research/:id/live` was served by that legacy handler, which:
+ *
+ *   - 404s whenever there is no WAITING_HUMAN session, which is ALWAYS true
+ *     for a RUNNING visualWatch job. This is the proven cause of the
+ *     repeated 404s in jobs aaf11509…, 785134fd… and
+ *     9bd269c2-b6a3-49ee-aec1-e09f462131ca, while the worker's own logs
+ *     showed healthy `visual_watch_attached generation=1/2` — three separate
+ *     fixes landed in code the request never reached;
+ *   - hardcodes timeout: 900000, which the current Browserless plan rejects
+ *     (max 120000), so even the CAPTCHA path could only 503;
+ *   - bypasses the trusted LiveCapability provenance model entirely.
+ *
+ * Everything the patch used to add now lives in real source: the
+ * /health `liveInteractiveBrowser` flag, the live endpoints (with the
+ * bounded plan-timeout fallback and the capability trust boundary), and the
+ * native Browserless CDP connection in BrowserlessRuntime.ts. The script's
+ * own note said as much: "ResearchOrchestrator Browserless lifecycle now
+ * lives in source code."
+ *
+ * WHY THE FILE STILL EXISTS
+ * -------------------------
+ * Deleting it while a stale start-command override still referenced it would
+ * crash the container on boot. It is therefore kept as a HARMLESS launcher:
+ * it mutates nothing, and `--run` simply starts the real worker, so the
+ * service boots correctly whether Railway uses the Dockerfile CMD or a
+ * leftover override. Once the override is confirmed gone from every
+ * environment, this file can be deleted outright.
+ *
+ * It must never patch source again — startupIntegrity.test.mjs enforces that.
+ */
+
+const RUN = process.argv.includes('--run');
+
+console.log(
+  JSON.stringify({
+    at: new Date().toISOString(),
+    scope: 'worker_startup',
+    event: 'legacy_patch_script_disabled',
+    note: 'no source patching; Dockerfile CMD / npm start is authoritative',
+    starting: RUN,
+  })
+);
+
+if (RUN) {
+  const { register } = await import('tsx/esm/api');
+  register();
+  await import('../src/index.ts');
+}

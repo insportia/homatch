@@ -9,6 +9,7 @@ import express from 'express';
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { ResearchOrchestrator } from './orchestrator/ResearchOrchestrator.js';
+import { browserlessConfigured, launchResearchBrowser, researchContext, createHumanLiveURL, closeHumanLiveURL } from './browser/BrowserlessRuntime.js';
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 
 const app = express();
@@ -81,6 +82,66 @@ app.get('/health', (_q: any, r: any) =>
     evidenceModel: 'v5-deterministic-fsm-architecture-2026-09-05',
   })
 );
+
+/*
+ * GET /health/browserless — end-to-end proof that the remote browser chain
+ * works: bridge/token -> CDP connect -> context -> page -> Browserless.liveURL
+ * (including the bounded plan-timeout fallback) -> close.
+ *
+ * This route previously existed ONLY inside scripts/apply-live-browser-patch.mjs,
+ * the startup patcher that also shadowed the real POST /research/:id/live with
+ * a legacy handler and caused the production 404s (see that script's header
+ * and test/startupIntegrity.test.mjs). The patcher is now inert, so the
+ * capability it legitimately provided is reimplemented here, in real source,
+ * on top of the same functions production research uses — no duplicated CDP
+ * code, no hardcoded timeout, no separate credential handling.
+ *
+ * Returns BOOLEANS ONLY. Never the live URL, the liveURLId, the CDP/websocket
+ * URL, the Browserless token or the bridge key. Unauthenticated like /health
+ * (it discloses nothing), but each real probe consumes a Browserless session,
+ * so results are cached briefly to make the endpoint useless for burning the
+ * account's quota.
+ */
+const BROWSERLESS_PROBE_TTL_MS = 60 * 1000;
+let browserlessProbe: { at: number; ok: boolean; body: any } | null = null;
+
+app.get('/health/browserless', async (_req: any, res: any) => {
+  if (browserlessProbe && Date.now() - browserlessProbe.at < BROWSERLESS_PROBE_TTL_MS) {
+    return res.status(browserlessProbe.ok ? 200 : 503).json({ ...browserlessProbe.body, cached: true });
+  }
+
+  let browser: any = null;
+  let page: any = null;
+  let liveURLId: string | null = null;
+  try {
+    if (!browserlessConfigured()) throw new Error('browserless_not_configured');
+    browser = await launchResearchBrowser();
+    const ctx = await researchContext(browser);
+    page = await ctx.newPage();
+    const live = await createHumanLiveURL(page, 120000);
+    liveURLId = live.liveURLId;
+    const body = {
+      ok: true,
+      configured: true,
+      cdp: true,
+      liveURL: !!live.liveURL,
+      trustedCapability: true,
+      safeToExpose: !!live.capability,
+    };
+    browserlessProbe = { at: Date.now(), ok: true, body };
+    return res.json(body);
+  } catch (e) {
+    // Server-side only: the message can contain a Browserless endpoint.
+    console.error(`[browserless-health] ${String(e)}`);
+    const body = { ok: false, error: 'remote_browser_unavailable' };
+    browserlessProbe = { at: Date.now(), ok: false, body };
+    return res.status(503).json(body);
+  } finally {
+    if (page && liveURLId) await closeHumanLiveURL(page, liveURLId).catch(() => {});
+    await page?.close?.().catch(() => {});
+    await browser?.close?.().catch(() => {});
+  }
+});
 
 // `visualWatch: true` (opt-in, strict boolean) turns on the live view of the
 // REAL research browser from its first page — an observation/debugging

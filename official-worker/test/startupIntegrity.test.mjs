@@ -169,6 +169,46 @@ const entrypointCode = entrypoint
   .filter((l) => !/^\s*#/.test(l))
   .join('\n');
 
+test('no script may re-create the blind xvfb-run launcher chain', () => {
+  /*
+   * a13f53a4 ("Add deterministic Railway production launcher") added
+   * scripts/start-production.mjs, which did
+   *
+   *     spawn('xvfb-run', ['-a', 'npm', 'start'], { stdio: 'inherit' })
+   *
+   * and forwarded SIGTERM/SIGINT to that child. It was removed during the
+   * reconciliation, for three evidenced reasons:
+   *
+   *  1. It reinstates `xvfb-run`, whose default ERRORFILE is /dev/null and
+   *     which routes ALL xauth/Xvfb output to it — the exact reason the
+   *     failing containers were silent.
+   *  2. Its signal forwarding cannot work. xvfb-run installs traps only for
+   *     EXIT and USR1 (Debian xorg-server, debian/local/xvfb-run lines 159
+   *     and 180) and runs the command as a plain foreground child, so a
+   *     SIGTERM delivered to the xvfb-run PID is never forwarded to npm or
+   *     to node. Node's cleanup handlers still could not run, and Chromium
+   *     processes and profile directories would still leak on shutdown.
+   *  3. It made the chain LONGER, not shorter: node -> xvfb-run -> npm ->
+   *     node, four layers under PID 1.
+   *
+   * It was also referenced by nothing — an orphan that only becomes live
+   * through a Railway dashboard start-command override, which is precisely
+   * the coupling that caused this incident in the first place.
+   */
+  assert.equal(existsSync(`${SCRIPTS_DIR}/start-production.mjs`), false, 'the xvfb-run launcher must not come back');
+
+  for (const name of readdirSync(SCRIPTS_DIR).filter((f) => f.endsWith('.mjs'))) {
+    const code = readFileSync(`${SCRIPTS_DIR}/${name}`, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    assert.equal(/xvfb-run/.test(code), false, `${name} must not invoke the blind xvfb-run wrapper`);
+    assert.equal(/spawn\(|execFile\(|fork\(/.test(code), false, `${name} must not spawn the application as a child process`);
+    // A standalone quoted `npm` token, i.e. an argv entry — not the words
+    // "npm start" appearing inside an explanatory message string.
+    assert.equal(/(['"`])npm\1/.test(code), false, `${name} must not put npm on the signal path`);
+  }
+});
+
 test('the entrypoint is observable: it logs before, during and after bringing up the display', () => {
   for (const event of ['container_started', 'env_surface', 'exec_app']) {
     assert.match(entrypoint, new RegExp(`emit ${event}\\b`), `${event} must always be logged`);

@@ -390,6 +390,83 @@ export function classifyLiveURLExposure(
   return { safe: true, reason: 'opaque_no_credential_detected' };
 }
 
+/**
+ * The plan's own maximum, read out of Browserless's own rejection message.
+ *
+ * PRODUCTION INCIDENT 2026-09-08 (job aaf11509-391c-4799-b0af-2d074594d49a):
+ * Browserless answered Browserless.liveURL with
+ *
+ *   The 'timeout' value must be a whole number of milliseconds between
+ *   1 and 120,000 (your plan's maximum session time). Received "900000".
+ *
+ * That message states the account's real ceiling, so the fallback below uses
+ * THAT number rather than a constant compiled into this worker — a plan
+ * change moves the ceiling with no code change. Returns null when the
+ * message carries no parseable limit, in which case the caller omits the
+ * field entirely and lets Browserless apply its own default. Never assumes
+ * 120000: that value is this one account's current plan, not a universal.
+ */
+export function planTimeoutLimitMs(e: unknown): number | null {
+  const message = String((e as any)?.message ?? e ?? '');
+  const match = message.match(/between\s+1\s+and\s+([\d,]+)/i);
+  if (!match) return null;
+  const parsed = Number(String(match[1]).replace(/,/g, ''));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/** One Browserless.liveURL round trip. `timeoutMs === null` omits the field
+ * entirely so Browserless applies the account default. Normalizes both
+ * failure shapes (a thrown CDP error and a `{ error }` payload) into a
+ * thrown Error, so one matcher — exceedsPlanTimeoutLimit() — can classify
+ * either. */
+async function sendLiveURL(cdp: any, timeoutMs: number | null): Promise<{ liveURL: string; liveURLId: string | null }> {
+  const params: Record<string, unknown> = {
+    interactable: true,
+    resizable: true,
+    showBrowserInterface: false,
+    quality: 75,
+    type: 'jpeg',
+    compressed: true,
+    emulateComponents: true,
+  };
+  if (timeoutMs !== null) params.timeout = timeoutMs;
+
+  const result: any = await cdp.send('Browserless.liveURL', params);
+
+  if (result?.error || !result?.liveURL) {
+    throw new Error(result?.error || 'live browser URL unavailable');
+  }
+
+  return { liveURL: result.liveURL, liveURLId: result.liveURLId || null };
+}
+
+/**
+ * Mints the interactive live view for a page — the WAITING_HUMAN CAPTCHA
+ * session and the opt-in visual watch both come through here, so both get
+ * identical plan handling.
+ *
+ * PLAN-TIMEOUT FALLBACK (production incident aaf11509, above). Callers ask
+ * for a generous live-view lifetime (the human-session TTL, 15 minutes).
+ * On a plan whose maximum session time is lower — currently 120,000ms —
+ * Browserless rejects the request OUTRIGHT, and before this fix that single
+ * rejection made the whole feature unavailable: visual_watch_unavailable at
+ * generation 0, and POST /research/:id/live answering 404 for the entire
+ * job.
+ *
+ * This is the exact situation launchResearchBrowser() already handles for
+ * the CDP CONNECTION, and it is handled the same way here, reusing the same
+ * exceedsPlanTimeoutLimit() matcher (verified against the production wording
+ * above) rather than adding a second fragile message matcher: on a
+ * plan-limit rejection, retry EXACTLY ONCE with the plan's own maximum as
+ * Browserless reported it, or with no timeout field at all when the message
+ * carries no parseable limit.
+ *
+ * Bounded to one fallback, and only for that one specific rejection. Every
+ * other failure — Browserless down, the page gone, the session already
+ * expired — is thrown on the first attempt exactly as before, and the caller
+ * (HumanLiveSession.openHumanLiveSession) turns it into a non-fatal
+ * "unavailable": research continues, no property evidence is affected.
+ */
 export async function createHumanLiveURL(
   page: any,
   timeoutMs = 12 * 60 * 1000
@@ -402,25 +479,22 @@ export async function createHumanLiveURL(
   const cdp = await ctx.newCDPSession(page);
 
   try {
-    const result: any = await cdp.send('Browserless.liveURL', {
-      timeout: timeoutMs,
-      interactable: true,
-      resizable: true,
-      showBrowserInterface: false,
-      quality: 75,
-      type: 'jpeg',
-      compressed: true,
-      emulateComponents: true,
-    });
+    try {
+      return await sendLiveURL(cdp, timeoutMs);
+    } catch (e) {
+      if (!exceedsPlanTimeoutLimit(e)) throw e;
 
-    if (result?.error || !result?.liveURL) {
-      throw new Error(result?.error || 'live browser URL unavailable');
+      const planLimitMs = planTimeoutLimitMs(e);
+      // Never the URL, never a token, never the liveURLId — only the numbers
+      // needed to see and correct a plan/timeout mismatch in production.
+      logBrowserLifecycle('live_url_timeout_rejected_by_plan', {
+        requestedMs: timeoutMs,
+        fallbackMs: planLimitMs ?? 'account_default',
+      });
+      // Exactly one fallback attempt. If this one fails too, it throws and
+      // the caller fails closed.
+      return await sendLiveURL(cdp, planLimitMs);
     }
-
-    return {
-      liveURL: result.liveURL,
-      liveURLId: result.liveURLId || null,
-    };
   } finally {
     await cdp.detach().catch(() => {});
   }

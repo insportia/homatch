@@ -148,7 +148,16 @@ export function browserlessConfigured(): boolean {
 // exercise this exact matching logic directly, rather than only indirectly
 // through a live/mocked chromium.connectOverCDP() call — no behavior change.
 export function exceedsPlanTimeoutLimit(e: unknown): boolean {
-  return /exceeds the maximum allowed/i.test(String((e as any)?.message ?? e ?? ''));
+  const message = String((e as any)?.message ?? e ?? '');
+
+  return (
+    /exceeds the maximum allowed/i.test(message) ||
+    (
+      /timeout/i.test(message) &&
+      /between\s+1\s+and\s+[\d,]+/i.test(message) &&
+      /maximum session time/i.test(message)
+    )
+  );
 }
 
 async function connectBrowserless(token: string, timeoutMs: number | null): Promise<any> {

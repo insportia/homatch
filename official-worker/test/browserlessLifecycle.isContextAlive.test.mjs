@@ -90,6 +90,17 @@ test('exceedsPlanTimeoutLimit: matches Browserless\'s documented plan-cap reject
   assert.equal(exceedsPlanTimeoutLimit(e), true);
 });
 
+
+test('exceedsPlanTimeoutLimit: matches Browserless current plan-cap wording', () => {
+  const error = new Error(
+    "The 'timeout' value must be a whole number of milliseconds between 1 and 120,000 " +
+    "(your plan's maximum session time, 2 minutes). Received \"600000\". " +
+    "Use a smaller timeout, or upgrade your plan for a longer session."
+  );
+
+  assert.equal(exceedsPlanTimeoutLimit(error), true);
+});
+
 test('exceedsPlanTimeoutLimit: does not match an unrelated connection error (must fail closed, not silently retry as a plan-cap case)', () => {
   const e = new Error('getaddrinfo ENOTFOUND chrome.browserless.io');
   assert.equal(exceedsPlanTimeoutLimit(e), false);

@@ -57,12 +57,22 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
 
   useEffect(() => {
     if (!propertyId) return;
-    supabase.from('properties').select('cover_photo_url').eq('id', propertyId).maybeSingle()
-      .then(({ data, error }) => {
+    // Was `.then(...).catch(...)`: a PostgrestBuilder's .then() resolves to
+    // PromiseLike<void>, which has no .catch, so that handler never ran and a
+    // failed load rejected unhandled. An async IIFE gives a real try/catch.
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('properties')
+          .select('cover_photo_url')
+          .eq('id', propertyId)
+          .maybeSingle();
         if (error) throw error;
-        setCoverPhotoUrl(data?.cover_photo_url ?? null);
-      })
-      .catch(err => { console.error('[CommunityOutreachPanel] failed to load cover photo:', err); });
+        setCoverPhotoUrl((data?.cover_photo_url as string | null) ?? null);
+      } catch (err) {
+        console.error('[CommunityOutreachPanel] failed to load cover photo:', err);
+      }
+    })();
   }, [propertyId]);
 
   const load = useCallback(async () => {

@@ -47,8 +47,15 @@ export default function AuthCallbackPage() {
             }
           });
 
-          // Timeout fallback after 8 s
-          const t = setTimeout(() => {
+          // Timeout fallback after 8 s.
+          //
+          // Named `fallbackTimer`, not `t`: as `const t` this block-scoped
+          // binding shadowed the `t` translation function from useLanguage()
+          // for the WHOLE block, including the sign-in error handler above.
+          // That handler's toast.error(t('auth_callback_failed')) therefore
+          // called the timeout handle and threw "t is not a function" — so a
+          // failed post-sign-in setup crashed instead of showing its message.
+          const fallbackTimer = setTimeout(() => {
             if (!cancelled) {
               listener.subscription.unsubscribe();
               navigate('/dashboard', { replace: true });
@@ -57,7 +64,7 @@ export default function AuthCallbackPage() {
 
           return () => {
             cancelled = true;
-            clearTimeout(t);
+            clearTimeout(fallbackTimer);
             listener.subscription.unsubscribe();
           };
         }

@@ -54,7 +54,11 @@ export async function listResearchJobsForCase(caseId: string): Promise<ResearchJ
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as ResearchJobRecord[];
+  // `as unknown as`: LIST_COLUMNS is built by concatenation, so supabase-js
+  // cannot parse it into a row type and falls back to GenericStringError[].
+  // That is a type-level artefact of the select string, not the shape
+  // Postgres actually returns.
+  return (data ?? []) as unknown as ResearchJobRecord[];
 }
 
 // Points a research_jobs row at the case it belongs to (and, for a
@@ -90,7 +94,11 @@ export async function listVerifyHistory(userId: string): Promise<ResearchJobReco
     .order('created_at', { ascending: false })
     .limit(500);
   if (error) throw error;
-  return (data ?? []) as ResearchJobRecord[];
+  // `as unknown as`: LIST_COLUMNS is built by concatenation, so supabase-js
+  // cannot parse it into a row type and falls back to GenericStringError[].
+  // That is a type-level artefact of the select string, not the shape
+  // Postgres actually returns.
+  return (data ?? []) as unknown as ResearchJobRecord[];
 }
 
 // renameResearchJob() / softDeleteResearchJob(): the sidebar's Rename and

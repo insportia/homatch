@@ -62,8 +62,10 @@ import {
 import { listResearchJobsForCase } from '@/services/researchJobs';
 import type {
   TransactionCase, TransactionCaseStage, TransactionCaseChecklistItem,
-  TransactionCaseVersion, TransactionCaseUpdatableFields, ResearchJobRecord,
+  TransactionCaseVersion, ResearchJobRecord,
 } from '@/types/types';
+// Owned by the service that defines the update contract, not by types.ts.
+import type { TransactionCaseUpdatableFields } from '@/services/transactionCases';
 
 // Never render research_jobs.status/stage directly — those are internal
 // pipeline states (CREATED/RUNNING/WAITING_HUMAN/CAPTCHA_REQUIRED/...) and

@@ -203,7 +203,11 @@ export default function ContactListsPage() {
       };
       const csv = [
         columns.join(','),
-        ...rows.map((r: Record<string, unknown>) => columns.map(c => escape(r[c])).join(',')),
+        // `rows` is typed GenericStringError[] because supabase-js could not
+        // parse the concatenated select string; the runtime shape is a plain
+        // row object, which is what the CSV writer needs.
+        ...(rows as unknown as Record<string, unknown>[]).map((r) =>
+          columns.map(c => escape(r[c])).join(',')),
       ].join('\n');
       const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);

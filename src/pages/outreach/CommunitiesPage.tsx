@@ -23,6 +23,7 @@ const PLATFORM_COLORS: Record<CommunityPlatform, string> = {
   VK: 'bg-sky-500/10 text-sky-600 border-sky-200',
   REDDIT: 'bg-orange-500/10 text-orange-600 border-orange-200',
   LINKEDIN: 'bg-blue-700/10 text-blue-700 border-blue-300',
+  WHATSAPP: 'bg-green-500/10 text-green-600 border-green-200',
   THREADS: 'bg-purple-500/10 text-purple-600 border-purple-200',
   OTHER: 'bg-muted text-muted-foreground border-border',
 };

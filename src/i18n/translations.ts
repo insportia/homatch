@@ -194,7 +194,6 @@ const en = {
   dash_matching_active: 'MATCHING ACTIVE',
   dash_paused: 'PAUSED',
   dash_low_balance: 'LOW BALANCE',
-  dash_new_matches: 'new matches',
   dash_credits: 'credits',
 
   // Property card/detail
@@ -212,13 +211,9 @@ const en = {
   prop_transaction_rent: 'For Rent',
   prop_transaction_investment: 'Investment',
   prop_rooms: 'rooms',
-  prop_bedrooms: 'bedrooms',
-  prop_bathrooms: 'bathrooms',
-  prop_floor: 'floor',
   prop_area: 'm²',
   prop_price_sqm: '/m²',
   prop_source_link: 'View original listing',
-  prop_new_build: 'New build',
   prop_furnished: 'Furnished',
   prop_parking: 'Parking',
   prop_elevator: 'Elevator',
@@ -3012,7 +3007,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dash_matching_active: 'შეთავსება აქტიურია',
   dash_paused: 'შეჩერებულია',
   dash_low_balance: 'დაბალი ბალანსი',
-  dash_new_matches: 'ახალი შესატყვისი',
   dash_credits: 'კრედიტი',
 
   // Property
@@ -3030,13 +3024,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   prop_transaction_rent: 'ქირავდება',
   prop_transaction_investment: 'ინვესტიცია',
   prop_rooms: 'ოთახი',
-  prop_bedrooms: 'საძინებელი',
-  prop_bathrooms: 'სააბაზანო',
-  prop_floor: 'სართული',
   prop_area: 'მ²',
   prop_price_sqm: '/მ²',
   prop_source_link: 'ორიგინალი განცხადება',
-  prop_new_build: 'ახალი აშენება',
   prop_furnished: 'ავეჯით',
   prop_parking: 'პარკინგი',
   prop_elevator: 'ლიფტი',
@@ -5741,7 +5731,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dash_matching_active: 'ПОДБОР АКТИВЕН',
   dash_paused: 'НА ПАУЗЕ',
   dash_low_balance: 'НИЗКИЙ БАЛАНС',
-  dash_new_matches: 'новых совпадений',
   dash_credits: 'кредитов',
 
   // Property
@@ -5759,13 +5748,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   prop_transaction_rent: 'Аренда',
   prop_transaction_investment: 'Инвестиция',
   prop_rooms: 'комн.',
-  prop_bedrooms: 'спальни',
-  prop_bathrooms: 'ванные',
-  prop_floor: 'этаж',
   prop_area: 'м²',
   prop_price_sqm: '/м²',
   prop_source_link: 'Смотреть оригинал',
-  prop_new_build: 'Новостройка',
   prop_furnished: 'С мебелью',
   prop_parking: 'Парковка',
   prop_elevator: 'Лифт',
@@ -8349,7 +8334,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dash_empty_desc: 'İlk mülkünüzü ekleyin; Homatch ilgili talebi aramaya başlasın.',
   dash_matching_active: 'EŞLEŞTİRME AKTİF',
   dash_paused: 'DURAKLATILDI',
-  dash_new_matches: 'yeni eşleşme',
   dash_credits: 'kredi',
 
   // Property
@@ -8365,7 +8349,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   prop_transaction_rent: 'Kiralık',
   prop_transaction_investment: 'Yatırım',
   prop_area: 'm²',
-  prop_new_build: 'Yeni Yapı',
 
   // Import
   import_title: 'Mülk Analizi',
@@ -8641,9 +8624,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   prop_url_import: 'İlandan içe aktarıldı',
   prop_matchability: 'Eşleşme Skoru',
   prop_rooms: 'oda',
-  prop_bedrooms: 'yatak odası',
-  prop_bathrooms: 'banyo',
-  prop_floor: 'kat',
   prop_price_sqm: '/m²',
   prop_source_link: 'Orijinal ilanı görüntüle',
   prop_furnished: 'Mobilyalı',
@@ -10958,7 +10938,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dash_empty_desc: 'أضف أول عقار لك وسيبدأ Homatch في البحث عن الطلب المناسب.',
   dash_matching_active: 'المطابقة نشطة',
   dash_paused: 'متوقف',
-  dash_new_matches: 'مطابقات جديدة',
   dash_credits: 'اعتمادات',
 
   // Property
@@ -10974,7 +10953,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   prop_transaction_rent: 'للإيجار',
   prop_transaction_investment: 'استثمار',
   prop_area: 'م²',
-  prop_new_build: 'مبنى جديد',
 
   // Import
   import_title: 'تحليل العقار',
@@ -11249,9 +11227,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   prop_url_import: 'مستورد من الإعلان',
   prop_matchability: 'قابلية المطابقة',
   prop_rooms: 'غرف',
-  prop_bedrooms: 'غرف نوم',
-  prop_bathrooms: 'حمامات',
-  prop_floor: 'طابق',
   prop_price_sqm: '/م²',
   prop_source_link: 'عرض الإعلان الأصلي',
   prop_furnished: 'مفروش',
@@ -13569,7 +13544,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   dash_empty_desc: 'הוסף את הנכס הראשון שלך ו-Homatch יתחיל לחפש ביקוש רלוונטי.',
   dash_matching_active: 'התאמה פעילה',
   dash_paused: 'מושהה',
-  dash_new_matches: 'התאמות חדשות',
   dash_credits: 'קרדיטים',
 
   // Property
@@ -13585,7 +13559,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   prop_transaction_rent: 'להשכרה',
   prop_transaction_investment: 'השקעה',
   prop_area: 'מ"ר',
-  prop_new_build: 'בנייה חדשה',
 
   // Import
   import_title: 'ניתוח נכס',
@@ -13862,9 +13835,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   prop_url_import: 'יובא ממודעה',
   prop_matchability: 'ניתן להתאמה',
   prop_rooms: 'חדרים',
-  prop_bedrooms: 'חדרי שינה',
-  prop_bathrooms: 'חדרי אמבטיה',
-  prop_floor: 'קומה',
   prop_price_sqm: '/מ"ר',
   prop_source_link: 'צפה במודעה המקורית',
   prop_furnished: 'מרוהט',

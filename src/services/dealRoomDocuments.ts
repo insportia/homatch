@@ -16,7 +16,7 @@
 // short-lived signed URL minted for a user who already passed the check.
 
 import { supabase } from '@/db/supabase';
-import { validateUpload, storagePathFor } from './uploadValidation';
+import { validateUpload, storagePathFor, SIGNED_URL_TTL_SECONDS } from './uploadValidation';
 
 // Validation and object naming live in a dependency-free module so they can
 // be unit tested; re-exported here so callers have one import site.

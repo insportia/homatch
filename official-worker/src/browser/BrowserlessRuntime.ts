@@ -1,4 +1,7 @@
 import { chromium } from 'playwright';
+// Explicit node:url import: tsconfig.test.json builds without the DOM lib,
+// where the ambient global URL type carries no .protocol/.searchParams.
+import { URL } from 'node:url';
 
 const DIRECT_TOKEN = String(process.env.BROWSERLESS_TOKEN || '').trim();
 const ENDPOINT = String(
@@ -313,6 +316,78 @@ export async function researchContext(browser: any): Promise<any> {
     acceptDownloads: true,
     viewport: { width: 1440, height: 1000 },
   });
+}
+
+/*
+ * liveURL EXPOSURE SAFETY.
+ *
+ * Browserless's `Browserless.liveURL` returns a URL its own live-view UI is
+ * served from. Its exact shape is account-, region- and version-dependent,
+ * and this repository contains NO captured sample of one (checked: the
+ * forensic archives record only `liveURL: true` booleans, never a URL), so
+ * the format is deliberately NOT assumed here. It is classified at runtime,
+ * on the actual string Browserless returned, immediately before anything is
+ * exposed over HTTP.
+ *
+ * Only a URL proven to carry no credential is handed to the client directly
+ * (e.g. embedded in the widely-polled GET /research/:id job document, which
+ * research-agent stores and logs downstream). Anything else is withheld and
+ * reached instead through the authenticated worker endpoint, so a
+ * credential-bearing URL is only ever handed to a caller that already
+ * authenticated for this specific job.
+ *
+ * Two independent checks, both fail-closed:
+ *  1. Known-secret substring. The account's own BROWSERLESS_TOKEN /
+ *     BROWSERLESS_TOKEN_BRIDGE_KEY / WORKER_TOKEN must never appear ANYWHERE
+ *     in the URL — path, query or fragment. This is the strongest available
+ *     guarantee because it compares against the real secret values rather
+ *     than guessing at a format.
+ *  2. Credential-shaped query parameter. A parameter named like a
+ *     credential is treated as one even when its value matches no secret we
+ *     hold (Browserless can mint a per-session token of its own). `t` is
+ *     included deliberately: it is a plausible abbreviation for a token, and
+ *     a false positive costs nothing but routing through the authenticated
+ *     endpoint, while a false negative would publish a credential.
+ *
+ * An unparseable or non-https URL is also unsafe — never exposed, never
+ * "probably fine".
+ */
+const CREDENTIAL_QUERY_KEY =
+  /^(t|token|api[_-]?key|key|auth|authorization|access[_-]?token|id[_-]?token|refresh[_-]?token|jwt|secret|password|passwd|pwd|sig|signature|session[_-]?token|sessiontoken)$/i;
+
+/** Secrets this process holds that must never leave it inside a URL. Read at
+ * call time (not module load) so a test or a rotated env value is honoured,
+ * and length-filtered so a short/blank value can never match everything. */
+function knownSecretValues(): string[] {
+  return [DIRECT_TOKEN, BRIDGE_KEY, String(process.env.WORKER_TOKEN || '').trim()]
+    .map((s) => String(s || '').trim())
+    .filter((s) => s.length >= 8);
+}
+
+export function classifyLiveURLExposure(
+  liveURL: string,
+  secrets: string[] = knownSecretValues()
+): { safe: boolean; reason: string } {
+  const raw = String(liveURL || '').trim();
+  if (!raw) return { safe: false, reason: 'empty' };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return { safe: false, reason: 'unparseable' };
+  }
+  if (parsed.protocol !== 'https:') return { safe: false, reason: 'not_https' };
+
+  for (const secret of secrets) {
+    if (raw.includes(secret)) return { safe: false, reason: 'contains_known_secret' };
+  }
+
+  for (const key of parsed.searchParams.keys()) {
+    if (CREDENTIAL_QUERY_KEY.test(key)) return { safe: false, reason: 'credential_query_param' };
+  }
+
+  return { safe: true, reason: 'opaque_no_credential_detected' };
 }
 
 export async function createHumanLiveURL(

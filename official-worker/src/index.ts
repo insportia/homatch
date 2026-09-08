@@ -70,6 +70,10 @@ app.get('/health', (_q: any, r: any) =>
     structuredTraversal: true,
     humanSessionControls: true,
     humanSessionSkip: true,
+    // Interactive Browserless live view for WAITING_HUMAN sessions. The
+    // human solves the challenge themselves in the real preserved page;
+    // this worker neither solves nor bypasses one.
+    liveInteractiveBrowser: true,
     evidenceValidation: true,
     evidenceLedger: true,
     entityQueue: true,
@@ -185,6 +189,68 @@ app.post('/research/:id/action', auth, async (req: any, res: any) => {
     res.status(500).json({ error: 'that action could not be completed — try refreshing the verification screen' });
   }
 });
+
+// POST (and GET) /research/:id/live — the authenticated channel for the
+// interactive Browserless live view of an active WAITING_HUMAN session.
+//
+// CONTRACT OWNERSHIP: this path/method is the EXISTING PRODUCTION CONTRACT.
+// src/components/research/ResearchCaptchaModal.tsx (rendered by
+// VerifyPage.tsx) already ships `fetch(`${WORKER}/research/${jobId}/live`,
+// { method: 'POST', headers })` with no body, and reads `{ liveURL }` from
+// the JSON response (`expiresAt`/`source`/`url` optional, `error` on
+// failure). The worker matches the frontend here rather than the other way
+// round — there is exactly ONE live-view path, and no frontend change was
+// needed. GET is registered on the SAME path and handler so a caller that
+// follows humanVerification.liveBrowserEndpoint from GET /research/:id does
+// not have to guess a method; both verbs run identical code.
+//
+// WHY THIS EXISTS SEPARATELY FROM GET /research/:id: the job document is
+// polled continuously and stored/logged downstream by research-agent, so a
+// live URL is embedded in it ONLY when classifyLiveURLExposure() proves it
+// carries no credential (see BrowserlessRuntime.ts). When it cannot prove
+// that, the job document instead carries `liveBrowserEndpoint` — this path —
+// and the URL is handed out only here, to a caller that authenticated for
+// this specific job, never persisted in the job document.
+//
+// SINGLE IMPLEMENTATION: all live-view creation lives in
+// orchestrator.getOrCreateLiveView() -> HumanLiveSession.ts. This handler
+// contains no CDP call and no Browserless.liveURL of its own, so a repeated
+// UI poll/refresh returns the EXISTING handle instead of minting a second
+// one, and the preserved browser/context/page is never re-derived.
+//
+// Returns the URL and nothing else that matters: never the liveURLId, never
+// a CDP/websocket URL, never a token, never a page/context/browser handle.
+// A session that has none (creation failed, Browserless refused, the
+// underlying session died) is reported as an honest, non-fatal
+// "unavailable" — the job stays WAITING_HUMAN and the customer keeps the
+// screenshot/action fallback below. This never solves or bypasses a
+// challenge; it only streams the real page to the real human.
+async function liveBrowserHandler(req: any, res: any) {
+  const s = orchestrator.getSession(req.params.id);
+  if (!s) return res.status(404).json({ error: 'active human session not found' });
+  try {
+    const live = await orchestrator.getOrCreateLiveView(req.params.id);
+    if (!live) {
+      return res.status(503).json({ interactive: false, error: 'the interactive verification browser is unavailable right now — you can still use the verification screen' });
+    }
+    return res.json({
+      interactive: true,
+      liveURL: live.liveURL,
+      source: live.source,
+      expiresAt: live.expiresAt,
+      url: s.page.url(),
+    });
+  } catch (e) {
+    // Never forward a raw Playwright/CDP error (selectors, call logs,
+    // endpoints) to the client; server-side only.
+    console.error(`[live ${req.params.id}] ${String(e)}`);
+    return res.status(500).json({ interactive: false, error: 'could not open the interactive verification browser right now — try again' });
+  }
+}
+
+// `auth` on BOTH verbs: an unauthenticated caller can never obtain a live URL.
+app.post('/research/:id/live', auth, liveBrowserHandler);
+app.get('/research/:id/live', auth, liveBrowserHandler);
 
 app.post('/research/:id/resume', auth, async (req: any, res: any) => {
   const r = await orchestrator.resume(req.params.id);

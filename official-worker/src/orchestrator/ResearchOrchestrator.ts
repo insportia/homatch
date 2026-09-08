@@ -7,6 +7,7 @@
 // instead of ad hoc per-source resume logic.
 import { launchResearchBrowser, researchContext, logBrowserLifecycle } from '../browser/BrowserlessRuntime.js';
 import { decideBrowserlessReconnect } from '../browser/BrowserlessRecovery.js';
+import { openHumanLiveSession, closeHumanLiveSession, humanLiveFields, type HumanLiveSessionState } from '../browser/HumanLiveSession.js';
 import { randomUUID } from 'node:crypto';
 import { EvidenceLedger } from '../evidence/EvidenceLedger.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
@@ -85,6 +86,14 @@ interface SessionState {
   step: StepDescriptor;
   query: string;
   expires: number;
+  // Interactive Browserless live view onto THIS preserved page (never a
+  // different one). Server-side only — humanLiveFields() decides what, if
+  // anything, about it may reach the client. `live` is null whenever no view
+  // is currently open, `liveError` carries the last non-sensitive reason it
+  // could not be opened so GET /research/:id can say "interactive
+  // unavailable" honestly instead of silently omitting it.
+  live: HumanLiveSessionState | null;
+  liveError: string | null;
 }
 
 /** buildTechnicalFailureResult() — the one shape every source uses to report
@@ -151,6 +160,7 @@ export class ResearchOrchestrator {
           // already-deleted session id impossible (the Map delete below is
           // synchronous within this same tick) and a double-close of an
           // already-closed target harmless either way (scenario #19).
+          await this.closeLiveView(s, 'ttl_expired');
           logBrowserLifecycle('close_context', { jobId: id, reason: 'ttl_expired', closes: 'context' });
           await s.ctx.close().catch(() => {});
           logBrowserLifecycle('close_browser', { jobId: id, reason: 'ttl_expired', closes: 'browser' });
@@ -168,6 +178,82 @@ export class ResearchOrchestrator {
 
   getSession(id: string): SessionState | undefined {
     return this.sessions.get(id);
+  }
+
+  /** Source key of a step — the label used in every human-session log line
+   * and in the humanVerification response. */
+  private static sourceOf(step: StepDescriptor): string {
+    return step.type === 'entity' ? step.source : step.key;
+  }
+
+  /**
+   * Opens (or re-opens) the interactive Browserless live view on a
+   * WAITING_HUMAN session's EXACT preserved page.
+   *
+   * Never launches or reconnects a browser, never creates a context or page:
+   * it is handed `session.page` and nothing else, which is what preserves the
+   * human's cookies/session/challenge state. Any previous view on that page
+   * is closed by openHumanLiveSession() first, so a second CAPTCHA in the
+   * same source cannot leak the first view's handle.
+   *
+   * Best-effort by construction — on failure the session keeps its page and
+   * the job stays safely WAITING_HUMAN with interactive:false.
+   */
+  private async openLiveView(session: SessionState): Promise<void> {
+    if (!(session.browser as any).__homatchBrowserless) {
+      // Local/dev headed Chromium: there is no Browserless live view to mint,
+      // and the developer is already looking at the real window.
+      session.live = null;
+      session.liveError = 'not_a_browserless_session';
+      return;
+    }
+    const opened = await openHumanLiveSession(session.page, session.live, {
+      jobId: session.jobId,
+      source: ResearchOrchestrator.sourceOf(session.step),
+      // An UPPER BOUND only. The live view cannot outlive the underlying
+      // Browserless session, whose own lifetime this worker does not control
+      // (see BrowserlessRuntime.ts's header) — this promises nothing.
+      timeoutMs: Math.max(60 * 1000, session.expires - Date.now()),
+    });
+    session.live = opened.session;
+    session.liveError = opened.error;
+  }
+
+  /** Best-effort teardown of the live VIEW only — never the human's session,
+   * page, context or browser. Safe to call when no view is open. */
+  private async closeLiveView(session: SessionState | undefined, reason: string): Promise<void> {
+    if (!session?.live) return;
+    await closeHumanLiveSession(session.page, session.live, {
+      jobId: session.jobId,
+      source: ResearchOrchestrator.sourceOf(session.step),
+      reason,
+    });
+    session.live = null;
+  }
+
+  /**
+   * The authenticated POST/GET /research/:id/live handler's data source (the
+   * path ResearchCaptchaModal.tsx already calls in production):
+   * the live URL for an ACTIVE human session, minted on demand if one is not
+   * open yet (so a client can retry after a transient creation failure
+   * without the job ever leaving WAITING_HUMAN).
+   *
+   * Returns the URL itself — this is the credential-safe channel, reached
+   * only by a caller that already authenticated for this job — but never the
+   * liveURLId, and never any browser/context/page handle. Returns null when
+   * there is no active session or no view could be opened; the caller turns
+   * that into an honest "interactive unavailable", never a job failure.
+   */
+  async getOrCreateLiveView(jobId: string): Promise<{ liveURL: string; source: string; expiresAt: string } | null> {
+    const session = this.sessions.get(jobId);
+    if (!session) return null;
+    if (!session.live) await this.openLiveView(session);
+    if (!session.live) return null;
+    return {
+      liveURL: session.live.liveURL,
+      source: ResearchOrchestrator.sourceOf(session.step),
+      expiresAt: new Date(session.expires).toISOString(),
+    };
   }
 
   start(query: string, mode: 'cadastral' | 'property'): ResearchJob {
@@ -363,7 +449,7 @@ export class ResearchOrchestrator {
 
       const isWaitingHuman = result?.status === 'WAITING_HUMAN';
       if (isWaitingHuman) {
-        this.sessions.set(job.id, { browser, ctx, page, jobId: job.id, step, query, expires: Date.now() + TTL });
+        this.sessions.set(job.id, { browser, ctx, page, jobId: job.id, step, query, expires: Date.now() + TTL, live: null, liveError: null });
         return { result, keep: true, browser };
       }
       if (sharedBrowserlessContext) {
@@ -415,12 +501,22 @@ export class ResearchOrchestrator {
         if (keep) {
           job.status = 'WAITING_HUMAN';
           job.stage = 'CAPTCHA_REQUIRED';
+          // Mint the interactive live view on the EXACT page runStep() just
+          // preserved, before the job document is published, so the very
+          // first GET /research/:id a client polls already tells it whether
+          // an interactive session is available. Best-effort: a failure here
+          // leaves the session preserved and the job WAITING_HUMAN with
+          // interactive:false — never a lost page, never a job failure.
+          const humanSession = this.sessions.get(job.id);
+          if (humanSession) await this.openLiveView(humanSession);
           job.humanVerification = {
             sessionId: job.id,
+            required: true,
             source: step.type === 'entity' ? step.source : step.key,
             step,
             url: result.finalUrl || result.sourceUrl,
             expiresAt: new Date(Date.now() + TTL).toISOString(),
+            ...humanLiveFields(job.id, humanSession?.live, humanSession?.liveError),
             recommendedWidth: 1100,
             recommendedMaxHeight: '90vh',
             fullInteractiveSession: true,
@@ -448,6 +544,7 @@ export class ResearchOrchestrator {
       job.officialEvidenceCount = job.results.filter((x) => x.resultConfirmed).length;
       job.discoveredEntities = this.entitiesFor(job.id).all();
       job.historicalComparison = buildHistoricalComparison(job.results.flatMap((r) => (Array.isArray(r?.documents) ? r.documents : [])));
+      await this.closeLiveView(this.sessions.get(job.id), 'job_complete');
       logBrowserLifecycle('close_browser', { jobId: job.id, reason: 'job_complete', closes: 'browser' });
       await browser.close().catch(() => {});
       this.browserlessReconnects.delete(job.id);
@@ -485,6 +582,7 @@ export class ResearchOrchestrator {
         errorMessage: failure.message,
       });
 
+      await this.closeLiveView(this.sessions.get(job.id), 'job_failed');
       logBrowserLifecycle('close_browser', { jobId: job.id, reason: 'job_failed', closes: 'browser' });
       await browser?.close().catch(() => {});
       this.browserlessReconnects.delete(job.id);
@@ -533,12 +631,18 @@ export class ResearchOrchestrator {
       session.expires = Date.now() + TTL;
       job.status = 'WAITING_HUMAN';
       job.stage = 'CAPTCHA_REQUIRED';
+      // Same preserved page, second challenge: re-open the live view on it.
+      // openHumanLiveSession() closes the superseded handle first, so
+      // repeated CAPTCHAs cannot accumulate orphaned Browserless views.
+      await this.openLiveView(session);
       job.humanVerification = {
         sessionId: job.id,
+        required: true,
         source: key,
         step: session.step,
         url: finalResult.finalUrl || finalResult.sourceUrl || session.page.url(),
         expiresAt: new Date(session.expires).toISOString(),
+        ...humanLiveFields(job.id, session.live, session.liveError),
         recommendedWidth: 1100,
         recommendedMaxHeight: '90vh',
         fullInteractiveSession: true,
@@ -551,6 +655,9 @@ export class ResearchOrchestrator {
     job.results = job.results.filter((x) => !stepMatchesResult(session.step, x));
     job.results.push(legacyDocuments({ ...finalResult, humanVerificationCompleted: true }));
     job.humanVerification = null;
+    // The human is done with this page — release the live view before the
+    // page itself is closed. Best-effort: a failed close never blocks resume.
+    await this.closeLiveView(session, 'resume_complete');
     if ((session.browser as any).__homatchBrowserless) {
       logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'resume_complete', closes: 'page' });
       await session.page.close().catch(() => {});
@@ -598,6 +705,9 @@ export class ResearchOrchestrator {
     job.results = job.results.filter((x) => !stepMatchesResult(session.step, x));
     job.results.push(result);
     job.humanVerification = null;
+    // Skipping abandons the human session for this source: release the live
+    // view first, then fall through to the unchanged page/context close.
+    await this.closeLiveView(session, 'skip_human_verification');
     if ((session.browser as any).__homatchBrowserless) {
       logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'skip_human_verification', closes: 'page' });
       await session.page.close().catch(() => {});

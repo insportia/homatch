@@ -25,6 +25,9 @@ import DeveloperProfilePage from './pages/DeveloperProfilePage';
 import AIPage from './pages/AIPage';
 import VerifyPage from './pages/VerifyPage';
 import MortgagePage from './pages/MortgagePage';
+import DealRoomsPage from './pages/DealRoomsPage';
+import DealRoomPage from './pages/DealRoomPage';
+import RenovationPage from './pages/RenovationPage';
 // CasesPage import removed (2026-09-06 "REMOVE MY DEALS/CASES" mandate) —
 // the /cases route below is intentionally not registered. The file itself
 // is left in place (dormant), not deleted, in case this product surface
@@ -59,6 +62,7 @@ import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
 import AdminSponsoredPage from './pages/admin/AdminSponsoredPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AdminHealthPage from './pages/admin/AdminHealthPage';
+import AdminPriceBookPage from './pages/admin/AdminPriceBookPage';
 import AdminLiveChatReportsPage from './pages/admin/AdminLiveChatReportsPage';
 
 export interface RouteConfig {
@@ -94,6 +98,16 @@ export const routes: RouteConfig[] = [
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
+  // Deal Room — the persistent workspace a completed Verify feeds into.
+  // Authenticated only: a deal room is a customer's private due-diligence
+  // work, and every table behind it is owner-only under RLS.
+  { name: 'Deal Rooms',        path: '/deal-rooms',               element: <DealRoomsPage /> },
+  { name: 'Deal Room',         path: '/deal-rooms/:id',           element: <DealRoomPage /> },
+  // Renovation is public like Verify and Mortgage: the planner, phases and
+  // timeline are useful to a signed-out visitor. Saving a scenario still
+  // requires auth, enforced by renovation_scenarios RLS rather than by
+  // gating the route.
+  { name: 'Renovation',        path: '/renovation',               element: <RenovationPage />,    public: true },
   { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
   { name: 'Notifications',     path: '/notifications',            element: <NotificationsPage /> },
   { name: 'Credits',           path: '/credits',                  element: <CreditsPage /> },
@@ -136,5 +150,6 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },
   { name: 'Admin Sponsored',   path: '/admin/sponsored',          element: adminWrap(<AdminSponsoredPage />),   adminOnly: true },
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
+  { name: 'Admin Price Book',  path: '/admin/pricebook',          element: adminWrap(<AdminPriceBookPage />), adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
 ];

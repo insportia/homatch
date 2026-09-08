@@ -86,6 +86,13 @@ create table if not exists public.renovation_price_items (
   price_high numeric(12,2),
   currency text not null default 'GEL',
 
+  -- Category-appropriate material waste, mirroring the engine's WASTE table.
+  -- Labour is not wasted; material is — so this multiplies material quantity
+  -- only. Bounded to the same range validatePriceBook() enforces, so a book
+  -- loaded from the database cannot violate a rule the in-code book obeys.
+  waste_factor numeric(4,3) not null default 0
+    check (waste_factor >= 0 and waste_factor <= 0.3),
+
   status text not null default 'PROVISIONAL'
     check (status in ('PROVISIONAL','VERIFIED','STALE','REJECTED')),
 
@@ -210,7 +217,7 @@ with (security_invoker = true)
 as
   select
     i.id, i.version_id, v.market, v.version,
-    i.item_key, i.category, i.label, i.unit, i.cost_kind,
+    i.item_key, i.category, i.label, i.unit, i.cost_kind, i.waste_factor,
     i.price_low, i.price_base, i.price_high, i.currency,
     i.source, i.source_date, i.verified_at
   from public.renovation_price_items i

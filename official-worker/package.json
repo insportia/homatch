@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsx src/boot.ts",
     "test:build": "tsc -p tsconfig.test.json",
     "test": "npm run test:build && node --test test/*.test.mjs"
   },

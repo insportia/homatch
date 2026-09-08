@@ -5,7 +5,8 @@
 // EntityQueue for one job, and handles the WAITING_HUMAN pause/resume/skip
 // lifecycle (mandate Section 10) generically across all four sources
 // instead of ad hoc per-source resume logic.
-import { launchResearchBrowser, researchContext, BrowserDisconnectedError, logBrowserLifecycle } from '../browser/BrowserlessRuntime.js';
+import { launchResearchBrowser, researchContext, logBrowserLifecycle } from '../browser/BrowserlessRuntime.js';
+import { decideBrowserlessReconnect } from '../browser/BrowserlessRecovery.js';
 import { randomUUID } from 'node:crypto';
 import { EvidenceLedger } from '../evidence/EvidenceLedger.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
@@ -128,12 +129,15 @@ export class ResearchOrchestrator {
   private sessions = new Map<string, SessionState>();
   private ledgers = new Map<string, EvidenceLedger>();
   private entityQueues = new Map<string, EntityQueue>();
-  // Bounded (once per job, not once per source) recovery budget for a
-  // confirmed-dead Browserless browser/CDP connection — see runStep()'s
-  // BrowserDisconnectedError handling below. A Map, not a Set, so a future
-  // need to record WHY/WHEN is a one-line change instead of a type change.
+  // OBSERVABILITY ONLY: how many Browserless sessions this job has had to
+  // replace in total. It is NOT a budget and must never gate a reconnect —
+  // that was the P0 root cause (see BrowserlessRecovery.ts's header: a
+  // per-job budget of 1 left MyGov/ENREG/RSTAX/DEBTOR unrecoverable once TAS
+  // had spent it). The actual budget is per independent source attempt and
+  // lives in decideBrowserlessReconnect(); this counter only enriches the
+  // browser_disconnected_reconnecting log line so repeated session
+  // expirations within one job stay visible in production.
   private browserlessReconnects = new Map<string, number>();
-  private static readonly MAX_BROWSERLESS_RECONNECTS_PER_JOB = 1;
 
   constructor() {
     setInterval(async () => {
@@ -270,10 +274,18 @@ export class ResearchOrchestrator {
    * Now: acquiring the context/page is inside its own try. A confirmed-dead
    * BROWSER (BrowserDisconnectedError, not merely a dead cached context —
    * researchContext() already recovers a dead context on its own when the
-   * browser is still alive) gets exactly one bounded reconnect attempt per
-   * job; anything else, or a reconnect that itself fails, becomes a clean
-   * TECHNICAL_FAILED result for THIS source only — never a whole-job crash,
-   * never negative evidence about the property.
+   * browser is still alive) gets exactly one bounded reconnect attempt for
+   * THIS source attempt; anything else, or a reconnect that itself fails,
+   * becomes a clean TECHNICAL_FAILED result for THIS source only — never a
+   * whole-job crash, never negative evidence about the property.
+   *
+   * P0 INCIDENT 2026-09-08 (job 4d2ec4ba-e0ca-49f8-b7a1-cf1e37e23d44): that
+   * budget used to be once per JOB, so when Browserless sessions expired
+   * every ~2 minutes, TAS spent the job's only reconnect and MyGov, ENREG,
+   * RSTAX and DEBTOR were all refused one and failed technically. The budget
+   * is now scoped to one independent source attempt — see
+   * BrowserlessRecovery.ts — so each source can recover once from its own
+   * separate session expiration, while still never looping.
    */
   private async runStep(browser: any, job: ResearchJob, step: StepDescriptor): Promise<{ result: any; keep: boolean; browser: any }> {
     const ledger = this.ledgerFor(job.id);
@@ -285,6 +297,9 @@ export class ResearchOrchestrator {
     let ctx: any;
     let page: any;
     let sharedBrowserlessContext = !!(browser as any).__homatchBrowserless;
+    // Scoped to this single source attempt and reset by being a local — this
+    // is what makes recovery independent per source yet still bounded.
+    let reconnectsUsedForThisSourceAttempt = 0;
 
     const acquirePage = async () => {
       logBrowserLifecycle('before_source', {
@@ -305,11 +320,20 @@ export class ResearchOrchestrator {
       ctx = acquired.c;
       page = acquired.p;
     } catch (e) {
-      const reconnectsUsed = this.browserlessReconnects.get(job.id) || 0;
-      if (sharedBrowserlessContext && e instanceof BrowserDisconnectedError && reconnectsUsed < ResearchOrchestrator.MAX_BROWSERLESS_RECONNECTS_PER_JOB) {
-        this.browserlessReconnects.set(job.id, reconnectsUsed + 1);
-        logBrowserLifecycle('browser_disconnected_reconnecting', { jobId: job.id, source: key, attempt: reconnectsUsed + 1 });
+      // Budget is per INDEPENDENT SOURCE ATTEMPT (this local counter), never
+      // per job — a reconnect an earlier source needed must not disqualify
+      // this one from recovering from a later, separate session expiration.
+      const decision = decideBrowserlessReconnect(sharedBrowserlessContext, e, reconnectsUsedForThisSourceAttempt);
+      if (decision.shouldReconnect) {
+        reconnectsUsedForThisSourceAttempt = decision.attempt;
+        const jobTotal = (this.browserlessReconnects.get(job.id) || 0) + 1;
+        this.browserlessReconnects.set(job.id, jobTotal);
+        logBrowserLifecycle('browser_disconnected_reconnecting', { jobId: job.id, source: key, attempt: decision.attempt, jobTotal });
         try {
+          // The dead browser reference (and the stale context cached on it)
+          // is dropped here in favour of a fresh Browserless session; the new
+          // browser carries no cached context, so the retry below acquires a
+          // genuinely new one.
           browser = await launchResearchBrowser();
           sharedBrowserlessContext = !!(browser as any).__homatchBrowserless;
           const acquired = await acquirePage();
@@ -379,11 +403,11 @@ export class ResearchOrchestrator {
         job.stage = step.type === 'entity' ? `CHECKING_${step.source.toUpperCase()}_ENTITY_${step.idCode}` : `CHECKING_${step.key.toUpperCase()}`;
         const { result, keep, browser: possiblyRelaunchedBrowser } = await this.runStep(browser, job, step);
         // runStep() may have relaunched a fresh Browserless browser mid-job
-        // (bounded, once-per-job — see BrowserDisconnectedError handling
-        // there) after the original one's Browserless session died. Every
-        // SUBSEQUENT step, and this job's own resume()/skip() session if it
-        // pauses on a later step, must use that new browser, not the dead
-        // one this loop started with.
+        // (bounded to one recovery per source attempt — see the
+        // BrowserDisconnectedError handling there) after the original one's
+        // Browserless session died. Every SUBSEQUENT step, and this job's own
+        // resume()/skip() session if it pauses on a later step, must use that
+        // new browser, not the dead one this loop started with.
         browser = possiblyRelaunchedBrowser;
         job.results = job.results.filter((x) => !stepMatchesResult(step, x));
         job.results.push(legacyDocuments(result));

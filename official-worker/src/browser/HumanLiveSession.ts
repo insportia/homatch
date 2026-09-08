@@ -25,8 +25,9 @@
 import {
   createHumanLiveURL,
   closeHumanLiveURL,
-  classifyLiveURLExposure,
+  classifyLiveCapabilityExposure,
   logBrowserLifecycle,
+  type LiveCapability,
 } from './BrowserlessRuntime.js';
 
 /** Internal state, held next to the preserved page in the orchestrator's
@@ -38,14 +39,26 @@ export interface HumanLiveSessionState {
   safeToExpose: boolean;
   exposureReason: string;
   createdAt: number;
+  /** The TRUSTED capability object minted by BrowserlessRuntime for this
+   * exact live view (provenance, allowed origin, deadline). The authenticated
+   * /research/:id/live endpoint validates THIS — never the bare `liveURL`
+   * string above, which no other code path may expose. */
+  capability: LiveCapability;
 }
 
 /** The complete set of live-view fields that may cross the HTTP boundary.
- * Deliberately has no liveURLId, no page/context/browser handle, no CDP URL,
- * no token — see the exposure analysis in BrowserlessRuntime.ts. */
+ * Deliberately has no liveURL, no liveURLId, no page/context/browser handle,
+ * no CDP URL, no token.
+ *
+ * The raw live URL is NOT part of this shape at all — not even a "safe" one.
+ * The job document is polled continuously and stored and logged downstream,
+ * so the URL is reachable ONLY through the authenticated
+ * /research/:id/live endpoint, which validates the trusted capability at the
+ * moment of the request (see BrowserlessRuntime.exposableLiveURL). Making
+ * the field structurally absent is what guarantees requirement "the raw
+ * liveURL must remain non-serialized in the normal job response". */
 export interface HumanLiveFields {
   interactive: boolean;
-  liveURL?: string;
   liveBrowserEndpoint?: string;
   interactiveUnavailableReason?: string;
 }
@@ -76,15 +89,18 @@ export async function openHumanLiveSession(
   }
 
   try {
-    const { liveURL, liveURLId } = await createHumanLiveURL(page, opts.timeoutMs);
-    const exposure = classifyLiveURLExposure(liveURL);
-    // The URL itself is NEVER logged — only whether it is exposable and why.
+    const { liveURL, liveURLId, capability } = await createHumanLiveURL(page, opts.timeoutMs);
+    const exposure = classifyLiveCapabilityExposure(capability);
+    // Neither the URL nor the Browserless capability parameter is ever
+    // logged — only booleans and a short reason code.
     logBrowserLifecycle('human_live_url_created', {
       jobId: opts.jobId,
       source: opts.source,
+      trustedCapability: true,
       safeToExpose: exposure.safe,
       exposureReason: exposure.reason,
       hasLiveURLId: !!liveURLId,
+      carriesCredentialParam: capability.carriesCredentialParam,
     });
     return {
       session: {
@@ -93,6 +109,7 @@ export async function openHumanLiveSession(
         safeToExpose: exposure.safe,
         exposureReason: exposure.reason,
         createdAt: Date.now(),
+        capability,
       },
       error: null,
     };
@@ -126,26 +143,22 @@ export async function closeHumanLiveSession(
   logBrowserLifecycle('human_live_url_closed', { jobId: opts.jobId, source: opts.source, reason: opts.reason });
 }
 
-/** The ONLY function that decides what leaves the process about a live view.
+/** What the JOB DOCUMENT says about a live view — and it never says the URL.
  *
- *  - safe URL      -> returned inline, so the client can open it immediately.
- *  - unsafe URL    -> withheld; the client is pointed at the authenticated
- *                     worker endpoint (POST/GET /research/:id/live — the same
- *                     path ResearchCaptchaModal.tsx already calls), which
- *                     hands the URL only to a caller that authenticated for
- *                     this job.
- *  - no live view  -> interactive: false plus a short, non-sensitive reason.
+ *  - a live view exists -> interactive: true plus the authenticated endpoint
+ *                          to fetch it from (POST/GET /research/:id/live —
+ *                          the path ResearchCaptchaModal.tsx already calls).
+ *  - no live view       -> interactive: false plus a short, non-sensitive
+ *                          reason.
  *
- * liveURLId is never included in any branch: it is a Browserless-side handle
- * this worker owns and closes, and the client has no use for it. */
+ * Neither branch can carry the URL, the Browserless capability parameter, the
+ * liveURLId or any handle: the shape has no field for them. Exposure happens
+ * once, at request time, behind auth. */
 export function humanLiveFields(
   jobId: string,
   session: HumanLiveSessionState | null | undefined,
   error?: string | null
 ): HumanLiveFields {
-  if (session?.liveURL && session.safeToExpose) {
-    return { interactive: true, liveURL: session.liveURL };
-  }
   if (session?.liveURL) {
     return { interactive: true, liveBrowserEndpoint: `/research/${jobId}/live` };
   }

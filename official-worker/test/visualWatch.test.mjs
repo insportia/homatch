@@ -342,10 +342,13 @@ test('L) neither the wire shape nor the logs can carry a liveURLId, a handle or 
   const page = await world.browser.ctx.newPage();
   await attachVisualWatch(watch, page, { jobId: 'job-1', source: 'rstax', reason: 'source_page' });
 
-  // The fail-closed classifier is still the gate: a credential-bearing URL is
-  // withheld and replaced by the authenticated endpoint path.
-  assert.equal(watch.live.safeToExpose, false);
+  // The URL Browserless issued carries a capability parameter (the production
+  // case). It is recorded as such for diagnostics…
+  assert.equal(watch.live.capability.carriesCredentialParam, true);
+  // …and is structurally absent from the wire shape either way: the job
+  // document advertises the authenticated endpoint, never the URL.
   const wire = JSON.stringify(visualWatchFields('job-1', watch));
+  assert.equal(wire.includes('liveURL'), false);
   assert.equal(wire.includes(secret), false);
   assert.equal(wire.includes('handle-1'), false);
   assert.equal(wire.includes('liveURLId'), false);

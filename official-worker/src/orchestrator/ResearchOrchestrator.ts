@@ -5,7 +5,7 @@
 // EntityQueue for one job, and handles the WAITING_HUMAN pause/resume/skip
 // lifecycle (mandate Section 10) generically across all four sources
 // instead of ad hoc per-source resume logic.
-import { launchResearchBrowser, researchContext, logBrowserLifecycle } from '../browser/BrowserlessRuntime.js';
+import { launchResearchBrowser, researchContext, logBrowserLifecycle, exposableLiveURL } from '../browser/BrowserlessRuntime.js';
 import { decideBrowserlessReconnect } from '../browser/BrowserlessRecovery.js';
 import { openHumanLiveSession, closeHumanLiveSession, humanLiveFields, type HumanLiveSessionState } from '../browser/HumanLiveSession.js';
 import { createVisualWatch, attachVisualWatch, detachVisualWatch, isWatchingPage, visualWatchFields, type VisualWatchState } from '../browser/VisualWatchSession.js';
@@ -360,10 +360,14 @@ export class ResearchOrchestrator {
       if (!session.live && !isWatchingPage(watch, session.page)) await this.ensureHumanLiveView(session);
       const current = this.currentLiveView(jobId);
       if (!current.live) return null;
+      const exposed = this.exposeLiveURL(jobId, current.live, ResearchOrchestrator.sourceOf(session.step));
+      if (!exposed) return null;
       return {
-        liveURL: current.live.liveURL,
+        liveURL: exposed,
         source: ResearchOrchestrator.sourceOf(session.step),
-        expiresAt: new Date(session.expires).toISOString(),
+        // The capability's own deadline when Browserless gave us one,
+        // otherwise the human session's TTL. Never a promise beyond either.
+        expiresAt: new Date(Math.min(session.expires, current.live.capability.expiresAt ?? session.expires)).toISOString(),
         generation: current.generation,
         mode: watch?.enabled && watch.live ? 'visual_watch' : 'human_verification',
         pageUrl: safePageUrl(session.page),
@@ -375,10 +379,12 @@ export class ResearchOrchestrator {
     //    where the page is created, so polling can never create a second
     //    handle or touch the running research.
     if (watch?.enabled && watch.live) {
+      const exposed = this.exposeLiveURL(jobId, watch.live, watch.source || 'visual_watch');
+      if (!exposed) return null;
       return {
-        liveURL: watch.live.liveURL,
+        liveURL: exposed,
         source: watch.source,
-        expiresAt: null,
+        expiresAt: watch.live.capability.expiresAt ? new Date(watch.live.capability.expiresAt).toISOString() : null,
         generation: watch.generation,
         mode: 'visual_watch',
         pageUrl: safePageUrl(watch.watchedPage),
@@ -388,11 +394,39 @@ export class ResearchOrchestrator {
     return null;
   }
 
+  /**
+   * The single point where a live URL leaves this process, and only ever into
+   * an already-authenticated /research/:id/live response.
+   *
+   * It validates the TRUSTED CAPABILITY — provenance (minted by our own
+   * Browserless.liveURL round trip), https, an allowed Browserless live-view
+   * origin, none of this account's own secrets, and not expired — rather than
+   * re-judging a naked string. A capability that fails any of those is
+   * withheld and the caller reports "unavailable"; the withholding reason is
+   * logged, the URL never is.
+   */
+  private exposeLiveURL(jobId: string, live: HumanLiveSessionState, source: string): string | null {
+    const decision = exposableLiveURL(live.capability);
+    if (!decision.liveURL) {
+      logBrowserLifecycle('live_url_withheld', { jobId, source, reason: decision.reason });
+      return null;
+    }
+    return decision.liveURL;
+  }
+
   /** Whether this job opted into visual watching — lets the HTTP layer tell
    * "no live session for an ordinary job" (404, unchanged) apart from "a
    * watch job whose stream is not up yet" (503, keep polling). */
   isVisualWatchEnabled(jobId: string): boolean {
-    return !!this.visualWatches.get(jobId)?.enabled;
+    if (this.visualWatches.get(jobId)?.enabled) return true;
+    // The in-memory watch record is dropped when a job reaches COMPLETE/
+    // FAILED or its session TTL expires. Without this fallback the endpoint
+    // then answered 404 "active human session not found" for a job that
+    // demonstrably HAD a watch — indistinguishable, to a polling watcher,
+    // from a bad job id. The published block on the job document outlives the
+    // record, so a watch job keeps reporting an honest 503 "not streaming
+    // right now" instead.
+    return this.jobs.get(jobId)?.visualWatch?.enabled === true;
   }
 
   /** `options.visualWatch` (POST /research's `visualWatch: true`) turns on the

@@ -211,7 +211,7 @@ test('B) opening the live view never creates a replacement browser, context or p
  * C) GET /research/:id exposes only the intended metadata.            *
  * ================================================================== */
 
-test('C) an exposable live URL is published in humanVerification with required/source/interactive/liveURL', async () => {
+test('C) humanVerification advertises the live view by ENDPOINT, never by URL — the URL is fetched behind auth', async () => {
   const fx = makeHumanSession();
   const session = makeSessionState(fx);
   await openLiveView(session, 'job-1', 'enreg');
@@ -222,14 +222,19 @@ test('C) an exposable live URL is published in humanVerification with required/s
   assert.equal(wire.required, true);
   assert.equal(wire.source, 'enreg');
   assert.equal(wire.interactive, true);
-  assert.equal(wire.liveURL, `${SAFE_LIVE_HOST}/view-1`);
-  assert.equal('liveBrowserEndpoint' in wire, false, 'a safe URL needs no fallback endpoint');
+  // 2026-09-08 hardening: the raw URL is never serialized into the job
+  // document, safe or not — it is returned only by the authenticated
+  // /research/:id/live endpoint, after the trusted capability is validated.
+  assert.equal('liveURL' in wire, false, 'the job document must never carry the URL');
+  assert.equal(wire.liveBrowserEndpoint, '/research/job-1/live');
   assert.equal('interactiveUnavailableReason' in wire, false);
 });
 
 test('C2) humanLiveFields exposes exactly one shape per state and nothing more', () => {
-  const safe = humanLiveFields('job-1', { liveURL: `${SAFE_LIVE_HOST}/x`, liveURLId: 'x', safeToExpose: true, exposureReason: 'opaque_no_credential_detected', createdAt: 1 }, null);
-  assert.deepEqual(Object.keys(safe).sort(), ['interactive', 'liveURL']);
+  // A credential-free URL and a Browserless capability URL produce the SAME
+  // wire shape: an endpoint, never the URL.
+  const safe = humanLiveFields('job-1', { liveURL: `${SAFE_LIVE_HOST}/x`, liveURLId: 'x', safeToExpose: true, exposureReason: 'trusted_browserless_capability', createdAt: 1 }, null);
+  assert.deepEqual(Object.keys(safe).sort(), ['interactive', 'liveBrowserEndpoint']);
 
   const unsafe = humanLiveFields('job-1', { liveURL: `${SAFE_LIVE_HOST}/x?token=abc`, liveURLId: 'x', safeToExpose: false, exposureReason: 'credential_query_param', createdAt: 1 }, null);
   assert.deepEqual(Object.keys(unsafe).sort(), ['interactive', 'liveBrowserEndpoint']);
@@ -246,18 +251,19 @@ test('C2) humanLiveFields exposes exactly one shape per state and nothing more',
  * D) Secrets, raw handles and liveURLId are never serialized.        *
  * ================================================================== */
 
-test('D) a credential-bearing live URL is WITHHELD from the job document and replaced by the authenticated endpoint path', async () => {
+test('D) a Browserless capability URL is WITHHELD from the job document and replaced by the authenticated endpoint path', async () => {
   const secret = 'brs-SUPER-SECRET-TOKEN-0123456789';
   const fx = makeHumanSession({ liveURLFor: (n) => `${SAFE_LIVE_HOST}/view-${n}?token=${secret}` });
   const session = makeSessionState(fx);
   await openLiveView(session, 'job-1', 'enreg');
 
-  assert.equal(session.live.safeToExpose, false);
-  assert.equal(session.live.exposureReason, 'credential_query_param');
+  // The URL Browserless issued does carry a capability parameter (exactly the
+  // production case) — recorded for diagnostics, never the exposure decision.
+  assert.equal(session.live.capability.carriesCredentialParam, true);
 
   const wire = JSON.stringify(buildHumanVerification('job-1', session, session.step, 'enreg', 'u', 'e'));
   assert.equal(wire.includes(secret), false, 'no credential may reach the job document');
-  assert.equal(wire.includes('liveURL"'), false, 'the raw URL must not be published');
+  assert.equal(wire.includes('liveURL'), false, 'the raw URL must not be published');
   assert.match(wire, /\/research\/job-1\/live/);
 });
 

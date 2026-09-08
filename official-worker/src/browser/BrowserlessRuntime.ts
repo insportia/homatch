@@ -414,6 +414,160 @@ export function planTimeoutLimitMs(e: unknown): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+/* ============================================================== *
+ * TRUSTED BROWSERLESS LIVE CAPABILITY
+ *
+ * PRODUCTION INCIDENT 2026-09-08, job 785134fd-5210-4bf2-8315-6a927403c2dd.
+ * Browserless minted a real interactive live view and the watch attached at
+ * generation=1, but the URL Browserless itself returned carries an
+ * authentication/capability query parameter, so classifyLiveURLExposure()
+ * — correctly, for an arbitrary URL — reported credential_query_param and
+ * the job document withheld it.
+ *
+ * A live URL returned BY Browserless is not "a URL that happens to contain a
+ * token": it is an ephemeral capability Browserless issued to us, for one
+ * page, for a bounded lifetime. The distinction that makes it exposable is
+ * PROVENANCE, not the shape of the string — so trust is carried by an object
+ * that only this module can create, never re-derived from a naked string.
+ *
+ * The registry below is a module-private WeakSet. There is no exported mint
+ * function: the ONLY way an object gets into it is a successful
+ * Browserless.liveURL round trip inside createHumanLiveURL(). A hand-built
+ * object, a value parsed from JSON, a string copied out of a log or a job
+ * document can never be a member, so none of them can ever be exposed
+ * through the capability path — they fall through to the unchanged generic
+ * classifier and are refused exactly as before.
+ * ============================================================== */
+
+export interface LiveCapability {
+  readonly liveURL: string;
+  readonly liveURLId: string | null;
+  readonly origin: string;
+  readonly issuedAt: number;
+  /** Deadline derived from the timeout Browserless actually ACCEPTED. null
+   * when no timeout was sent (Browserless applied its own default), in which
+   * case this worker cannot know the deadline and the underlying Browserless
+   * session lifetime is the only bound. */
+  readonly expiresAt: number | null;
+  /** What the generic classifier says about this URL — recorded for
+   * diagnostics only, never as the exposure decision. True for the
+   * production URL above. */
+  readonly carriesCredentialParam: boolean;
+}
+
+const TRUSTED_LIVE_CAPABILITIES = new WeakSet<object>();
+
+/** Provenance test: was this exact object minted by a successful
+ * Browserless.liveURL call in this process? Nothing else can be. */
+export function isTrustedLiveCapability(candidate: unknown): candidate is LiveCapability {
+  return typeof candidate === 'object' && candidate !== null && TRUSTED_LIVE_CAPABILITIES.has(candidate as object);
+}
+
+/** Extra live-view origins, when an account serves live views from a host
+ * other than its CDP endpoint. Comma-separated hostnames or origins. */
+const EXTRA_LIVE_ORIGINS = String(process.env.BROWSERLESS_LIVE_ORIGINS || '')
+  .split(',')
+  .map((v) => v.trim().toLowerCase())
+  .filter(Boolean);
+
+function configuredBrowserlessHost(): string | null {
+  try {
+    return new URL(ENDPOINT).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** Allowed live-view origins come from CONFIGURATION — the account's own
+ * Browserless endpoint (and its registrable domain, since live views may be
+ * served from a sibling host of the same deployment) plus an explicit
+ * operator allowlist. Never a hardcoded blanket "any browserless.io URL":
+ * this check only ever RESTRICTS an already-trusted capability further, and
+ * grants nothing on its own. */
+export function isAllowedLiveOrigin(parsed: URL): boolean {
+  const host = parsed.hostname.toLowerCase();
+  if (EXTRA_LIVE_ORIGINS.includes(host) || EXTRA_LIVE_ORIGINS.includes(parsed.origin.toLowerCase())) return true;
+
+  const configured = configuredBrowserlessHost();
+  if (!configured) return false;
+  if (host === configured) return true;
+
+  const parts = configured.split('.');
+  const registrable = parts.length <= 2 ? configured : parts.slice(-2).join('.');
+  return host === registrable || host.endsWith(`.${registrable}`);
+}
+
+/**
+ * The narrow trust boundary. A capability may be handed to an authenticated
+ * caller only when ALL of these hold — provenance first, so a URL that merely
+ * looks right can never qualify:
+ *   1. it was minted by our own trusted Browserless.liveURL round trip;
+ *   2. https;
+ *   3. its origin is an allowed Browserless live-view origin (config);
+ *   4. it does not contain one of THIS account's own secrets (a Browserless
+ *      capability token is Browserless's to issue; our BROWSERLESS_TOKEN /
+ *      bridge key / WORKER_TOKEN must never leave the process either way);
+ *   5. it has not expired.
+ * A Browserless-issued capability query parameter alone never disqualifies.
+ */
+export function classifyLiveCapabilityExposure(candidate: unknown, now: number = Date.now()): { safe: boolean; reason: string } {
+  if (!isTrustedLiveCapability(candidate)) return { safe: false, reason: 'untrusted_provenance' };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate.liveURL);
+  } catch {
+    return { safe: false, reason: 'unparseable' };
+  }
+  if (parsed.protocol !== 'https:') return { safe: false, reason: 'not_https' };
+  if (!isAllowedLiveOrigin(parsed)) return { safe: false, reason: 'origin_not_allowed' };
+  for (const secret of knownSecretValues()) {
+    if (candidate.liveURL.includes(secret)) return { safe: false, reason: 'contains_known_secret' };
+  }
+  if (candidate.expiresAt !== null && now >= candidate.expiresAt) return { safe: false, reason: 'expired' };
+
+  return { safe: true, reason: 'trusted_browserless_capability' };
+}
+
+/**
+ * The ONE decision point for handing a live URL to an authenticated caller.
+ *
+ * A trusted capability is judged by the capability rules above. ANYTHING
+ * else — a naked string from a job document, a source page, a request body,
+ * the database, a log line — is judged by the UNCHANGED generic classifier,
+ * so a credential-bearing URL from any untrusted origin still fails closed
+ * exactly as it did before this incident.
+ */
+export function exposableLiveURL(candidate: unknown, now: number = Date.now()): { liveURL: string | null; reason: string } {
+  if (isTrustedLiveCapability(candidate)) {
+    const verdict = classifyLiveCapabilityExposure(candidate, now);
+    return { liveURL: verdict.safe ? candidate.liveURL : null, reason: verdict.reason };
+  }
+  const raw = typeof candidate === 'string' ? candidate : String((candidate as any)?.liveURL ?? '');
+  const generic = classifyLiveURLExposure(raw);
+  return { liveURL: generic.safe ? raw : null, reason: generic.safe ? generic.reason : `untrusted_${generic.reason}` };
+}
+
+function mintLiveCapability(liveURL: string, liveURLId: string | null, effectiveTimeoutMs: number | null): LiveCapability {
+  const issuedAt = Date.now();
+  let origin = '';
+  try {
+    origin = new URL(liveURL).origin;
+  } catch {
+    origin = '';
+  }
+  const capability: LiveCapability = {
+    liveURL,
+    liveURLId,
+    origin,
+    issuedAt,
+    expiresAt: effectiveTimeoutMs === null ? null : issuedAt + effectiveTimeoutMs,
+    carriesCredentialParam: !classifyLiveURLExposure(liveURL).safe,
+  };
+  TRUSTED_LIVE_CAPABILITIES.add(capability);
+  return capability;
+}
+
 /** One Browserless.liveURL round trip. `timeoutMs === null` omits the field
  * entirely so Browserless applies the account default. Normalizes both
  * failure shapes (a thrown CDP error and a `{ error }` payload) into a
@@ -470,7 +624,7 @@ async function sendLiveURL(cdp: any, timeoutMs: number | null): Promise<{ liveUR
 export async function createHumanLiveURL(
   page: any,
   timeoutMs = 12 * 60 * 1000
-): Promise<{ liveURL: string; liveURLId: string | null }> {
+): Promise<{ liveURL: string; liveURLId: string | null; capability: LiveCapability }> {
   if (!(page?.context?.())) {
     throw new Error('remote live browser session is unavailable');
   }
@@ -480,7 +634,10 @@ export async function createHumanLiveURL(
 
   try {
     try {
-      return await sendLiveURL(cdp, timeoutMs);
+      const first = await sendLiveURL(cdp, timeoutMs);
+      // Minted HERE and only here: this value came straight off a successful
+      // Browserless.liveURL round trip, which is what makes it trusted.
+      return { ...first, capability: mintLiveCapability(first.liveURL, first.liveURLId, timeoutMs) };
     } catch (e) {
       if (!exceedsPlanTimeoutLimit(e)) throw e;
 
@@ -493,7 +650,10 @@ export async function createHumanLiveURL(
       });
       // Exactly one fallback attempt. If this one fails too, it throws and
       // the caller fails closed.
-      return await sendLiveURL(cdp, planLimitMs);
+      const fallback = await sendLiveURL(cdp, planLimitMs);
+      // The capability's deadline follows the timeout Browserless ACCEPTED,
+      // not the one we asked for.
+      return { ...fallback, capability: mintLiveCapability(fallback.liveURL, fallback.liveURLId, planLimitMs) };
     }
   } finally {
     await cdp.detach().catch(() => {});

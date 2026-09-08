@@ -233,6 +233,9 @@ app.post('/research/:id/action', auth, async (req: any, res: any) => {
 // screenshot/action fallback below. This never solves or bypasses a
 // challenge; it only streams the real page to the real human.
 async function liveBrowserHandler(req: any, res: any) {
+  // An id this worker has never heard of is a 404 about the JOB — distinct
+  // from a known job that simply has nothing to stream right now (503).
+  if (!orchestrator.getJob(req.params.id)) return res.status(404).json({ error: 'not found' });
   const s = orchestrator.getSession(req.params.id);
   // A visualWatch job is legitimately watchable while RUNNING, with no human
   // session at all. For every ordinary job the 404 below is exactly what it

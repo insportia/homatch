@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -364,15 +364,28 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Three independent callers can trigger refresh(): the initial mount, the
+  // 3s polling interval below, and handleDelete()'s own explicit call right
+  // after a soft-delete. None of these are sequenced against each other, so
+  // without a guard a slower in-flight request started BEFORE a delete (e.g.
+  // the interval firing a split second before the user clicks Delete) can
+  // resolve AFTER the delete's own refresh() and overwrite `properties` with
+  // the stale, pre-delete list — making a just-deleted property reappear on
+  // the dashboard until the next tick. requestSeq makes only the most
+  // recently STARTED call's result ever get applied to state.
+  const requestSeq = useRef(0);
+
   const refresh = useCallback(async () => {
     if (!homatchUser) return;
+    const seq = ++requestSeq.current;
     const props = await getProperties(homatchUser.id);
-    setProperties(props);
     const ids = props.map(p => p.id);
     const [runs, summary] = await Promise.all([
       getLatestProgressForProperties(ids),
       getUserMatchSummary(ids),
     ]);
+    if (seq !== requestSeq.current) return; // a newer refresh() started while this one was in flight — discard
+    setProperties(props);
     setProgress(runs);
     setMatchSummary(summary);
     setLoading(false);

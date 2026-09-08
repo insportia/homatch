@@ -671,7 +671,12 @@ export async function getAdminOverviewStats(): Promise<AdminOverviewStats> {
   const [usersRes, propertiesRes, campaignsRes, rawSignalsRes, qualifiedRes,
          matchesRes, unlocksRes, creditsRes, cogsRes] = await Promise.all([
     supabase.from('users').select('id', { count: 'exact', head: true }),
-    supabase.from('properties').select('id', { count: 'exact', head: true }).is('deleted_at', null),
+    // properties has no deleted_at column (only is_deleted boolean — see
+    // softDeleteProperty()/getProperties() above); filtering on deleted_at
+    // here always threw a PostgREST "column does not exist" error that was
+    // silently swallowed (only `data`/`count` destructured, `error`
+    // ignored), so total_properties was always reported as 0.
+    supabase.from('properties').select('id', { count: 'exact', head: true }).eq('is_deleted', false),
     supabase.from('matching_campaigns').select('id', { count: 'exact', head: true }),
     supabase.from('raw_signals').select('id', { count: 'exact', head: true }),
     supabase.from('raw_signals').select('id', { count: 'exact', head: true }).eq('classification_status', 'CLASSIFIED'),
@@ -717,9 +722,12 @@ export async function getAdminUsers(limit = 50, offset = 0) {
 }
 
 export async function getAdminProperties(limit = 50, offset = 0) {
+  // Same fix as getAdminOverviewStats() above: properties has no deleted_at
+  // column, so this always errored (silently, since `error` isn't checked
+  // here either) and the admin properties list was always empty.
   const { data } = await supabase.from('properties')
     .select('*, property_facts(*), users(email)')
-    .is('deleted_at', null)
+    .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
   return data ?? [];

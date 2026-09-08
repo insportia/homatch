@@ -53,6 +53,25 @@ export async function runTasMapWorker(
   let finalText = '';
   let finalUrl: string | null = null;
   let mapPage: Page | null = null;
+  // P0 Browserless lifecycle audit (2026-09-08): openPublicRegistryLink()
+  // opens the NAPR registry list as a NEW popup Page in the shared job
+  // context (via context().waitForEvent('page') — see TasMapPage.ts). Every
+  // OTHER temporary child/document page this codebase opens is closed by
+  // whoever opened it (see traverseNaprRegistrationDocuments()'s own
+  // per-registration docPage.close(), OnlineDocumentReader.ts's `vp`) — this
+  // one was the sole exception, left open for the rest of the job. Not
+  // itself the confirmed cause of the incident's "context or browser has
+  // been closed" error (that was Browserless's own session timeout — see
+  // BrowserlessRuntime.ts), but a genuine resource-ownership violation
+  // against this file's own established pattern and the mandate's explicit
+  // "a source may close ONLY pages/resources that the source itself owns"
+  // contract — TAS_MAP owns this page and must close it. Safe to close
+  // unconditionally once the workflow is done with it: TAS_MAP's only
+  // WAITING_HUMAN transition happens earlier (the CAPTCHA check before the
+  // cadastral search even starts), well before this page can exist, so
+  // there is no code path where closing it here could ever interrupt a
+  // live human CAPTCHA session.
+  let naprPage: Page | null = null;
 
   const stop = (reason: string) =>
     trace.record({
@@ -229,6 +248,7 @@ export async function runTasMapWorker(
     }
     fsm.transition('NAPR_OPENED');
     finalUrl = naprRes.target.url();
+    naprPage = naprRes.target;
 
     signals.latestInformationOpened = true;
     fsm.transition('LATEST_INFORMATION_OPENED', 'NAPR registry list opened');
@@ -323,6 +343,8 @@ export async function runTasMapWorker(
       stateAfter: 'FAILED',
     });
     return buildResult('FAILED', signals, documents, trace, finalText, finalUrl, String(e), query);
+  } finally {
+    if (naprPage && naprPage !== mapPage) await naprPage.close().catch(() => {});
   }
 
   function buildResult(

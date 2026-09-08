@@ -5,7 +5,7 @@
 // EntityQueue for one job, and handles the WAITING_HUMAN pause/resume/skip
 // lifecycle (mandate Section 10) generically across all four sources
 // instead of ad hoc per-source resume logic.
-import { launchResearchBrowser, researchContext } from '../browser/BrowserlessRuntime.js';
+import { launchResearchBrowser, researchContext, BrowserDisconnectedError, logBrowserLifecycle } from '../browser/BrowserlessRuntime.js';
 import { randomUUID } from 'node:crypto';
 import { EvidenceLedger } from '../evidence/EvidenceLedger.js';
 import { EntityQueue } from '../entities/EntityQueue.js';
@@ -86,19 +86,73 @@ interface SessionState {
   expires: number;
 }
 
+/** buildTechnicalFailureResult() — the one shape every source uses to report
+ * "this source could not be checked," whether the workflow itself threw or
+ * the browser/page never came up at all. Centralized (2026-09-08 P0
+ * Browserless lifecycle fix) so the newPage()-outside-a-try bug this
+ * replaces — see runStep()'s header comment — could not silently duplicate
+ * this literal a second, drifting time. `status: 'FAILED'` here is a
+ * TECHNICAL/source-level failure only (mandate: "SOURCE FAILURE VS PROPERTY
+ * RISK" — NO EVIDENCE = NO FACT); it is never treated as negative evidence
+ * about the property downstream, and — critically — it no longer takes the
+ * whole job down with it (see run()'s loop below), so the customer still
+ * gets whatever OTHER sources did complete. */
+function buildTechnicalFailureResult(key: string, forEntity: { name: string; idCode: string | null } | null, e: unknown): any {
+  return {
+    source: key,
+    sourceName: key,
+    sourceClass: 'OFFICIAL_GOVERNMENT',
+    sourceUrl: '',
+    startUrl: '',
+    finalUrl: null,
+    frameUrls: [],
+    searchControlUsed: null,
+    queryEntered: null,
+    submitAction: null,
+    resultContext: null,
+    resultConfirmed: false,
+    noResultConfirmed: false,
+    resultValidated: false,
+    status: 'FAILED',
+    traversal: null,
+    retrievedAt: now(),
+    documents: [],
+    discoveredEntities: [],
+    forEntity,
+    error: String(e),
+  };
+}
+
 export class ResearchOrchestrator {
   private jobs = new Map<string, ResearchJob>();
   private sessions = new Map<string, SessionState>();
   private ledgers = new Map<string, EvidenceLedger>();
   private entityQueues = new Map<string, EntityQueue>();
+  // Bounded (once per job, not once per source) recovery budget for a
+  // confirmed-dead Browserless browser/CDP connection — see runStep()'s
+  // BrowserDisconnectedError handling below. A Map, not a Set, so a future
+  // need to record WHY/WHEN is a one-line change instead of a type change.
+  private browserlessReconnects = new Map<string, number>();
+  private static readonly MAX_BROWSERLESS_RECONNECTS_PER_JOB = 1;
 
   constructor() {
     setInterval(async () => {
       for (const [id, s] of this.sessions) {
         if (Date.now() > s.expires) {
+          // Abandoned/TTL session (mandate scenario #18): the whole job is
+          // being given up on, so — unlike every other close path in this
+          // class — closing the entire browser (not just the page/context)
+          // is correct here, not a violation of per-source ownership.
+          // `.catch(()=>{})` on both makes a second sweep over an
+          // already-deleted session id impossible (the Map delete below is
+          // synchronous within this same tick) and a double-close of an
+          // already-closed target harmless either way (scenario #19).
+          logBrowserLifecycle('close_context', { jobId: id, reason: 'ttl_expired', closes: 'context' });
           await s.ctx.close().catch(() => {});
+          logBrowserLifecycle('close_browser', { jobId: id, reason: 'ttl_expired', closes: 'browser' });
           await s.browser.close().catch(() => {});
           this.sessions.delete(id);
+          this.browserlessReconnects.delete(id);
         }
       }
     }, 30000).unref();
@@ -198,17 +252,80 @@ export class ResearchOrchestrator {
     return e;
   }
 
-  private async runStep(browser: any, job: ResearchJob, step: StepDescriptor): Promise<{ result: any; keep: boolean; browserCtx?: any; page?: any }> {
+  /**
+   * runStep() — P0 incident 2026-09-08 (job
+   * 61496cf0-36de-4da9-acf7-7e2a75728043) fix.
+   *
+   * Before this fix, `const page = await ctx.newPage()` sat OUTSIDE this
+   * function's own try/catch. A dead Browserless context/browser (see
+   * BrowserlessRuntime.ts's module header for the proven root cause — an
+   * unconfigured session timeout) threw there uncaught, which propagated
+   * all the way to run()'s own catch and marked the ENTIRE job FAILED —
+   * discarding every source's real evidence and giving the customer zero
+   * report, even when one or more sources (here, TAS_MAP) had already
+   * completed successfully. That is exactly the outcome mandate section
+   * "SOURCE FAILURE VS PROPERTY RISK"/"REALISTIC FAILURE POLICY" forbids
+   * for a technical, per-source problem.
+   *
+   * Now: acquiring the context/page is inside its own try. A confirmed-dead
+   * BROWSER (BrowserDisconnectedError, not merely a dead cached context —
+   * researchContext() already recovers a dead context on its own when the
+   * browser is still alive) gets exactly one bounded reconnect attempt per
+   * job; anything else, or a reconnect that itself fails, becomes a clean
+   * TECHNICAL_FAILED result for THIS source only — never a whole-job crash,
+   * never negative evidence about the property.
+   */
+  private async runStep(browser: any, job: ResearchJob, step: StepDescriptor): Promise<{ result: any; keep: boolean; browser: any }> {
     const ledger = this.ledgerFor(job.id);
     const entities = this.entitiesFor(job.id);
-    const ctx = await researchContext(browser);
-    const sharedBrowserlessContext = !!(browser as any).__homatchBrowserless;
-    const page = await ctx.newPage();
-    await page.setViewportSize({ width: 1440, height: 1000 }).catch(() => {});
-
     const key = step.type === 'entity' ? step.source : step.key;
     const query = step.type === 'entity' ? step.idCode || step.name : job.query;
     const forEntity = step.type === 'entity' ? { name: step.name, idCode: step.idCode } : null;
+
+    let ctx: any;
+    let page: any;
+    let sharedBrowserlessContext = !!(browser as any).__homatchBrowserless;
+
+    const acquirePage = async () => {
+      logBrowserLifecycle('before_source', {
+        jobId: job.id,
+        source: key,
+        browserlessSession: sharedBrowserlessContext,
+        contextCount: browser.contexts?.()?.length ?? null,
+        cachedContextPresent: !!(browser as any).__homatchResearchContext,
+      });
+      const c = await researchContext(browser);
+      const p = await c.newPage();
+      logBrowserLifecycle('page_created', { jobId: job.id, source: key, pageCount: c.pages?.()?.length ?? null });
+      return { c, p };
+    };
+
+    try {
+      const acquired = await acquirePage();
+      ctx = acquired.c;
+      page = acquired.p;
+    } catch (e) {
+      const reconnectsUsed = this.browserlessReconnects.get(job.id) || 0;
+      if (sharedBrowserlessContext && e instanceof BrowserDisconnectedError && reconnectsUsed < ResearchOrchestrator.MAX_BROWSERLESS_RECONNECTS_PER_JOB) {
+        this.browserlessReconnects.set(job.id, reconnectsUsed + 1);
+        logBrowserLifecycle('browser_disconnected_reconnecting', { jobId: job.id, source: key, attempt: reconnectsUsed + 1 });
+        try {
+          browser = await launchResearchBrowser();
+          sharedBrowserlessContext = !!(browser as any).__homatchBrowserless;
+          const acquired = await acquirePage();
+          ctx = acquired.c;
+          page = acquired.p;
+        } catch (e2) {
+          logBrowserLifecycle('browser_reconnect_failed', { jobId: job.id, source: key, error: String(e2).slice(0, 200) });
+          return { result: buildTechnicalFailureResult(key, forEntity, e2), keep: false, browser };
+        }
+      } else {
+        logBrowserLifecycle('page_acquisition_failed', { jobId: job.id, source: key, error: String(e).slice(0, 200) });
+        return { result: buildTechnicalFailureResult(key, forEntity, e), keep: false, browser };
+      }
+    }
+
+    await page.setViewportSize({ width: 1440, height: 1000 }).catch(() => {});
 
     try {
       let result: any;
@@ -223,46 +340,26 @@ export class ResearchOrchestrator {
       const isWaitingHuman = result?.status === 'WAITING_HUMAN';
       if (isWaitingHuman) {
         this.sessions.set(job.id, { browser, ctx, page, jobId: job.id, step, query, expires: Date.now() + TTL });
-        return { result, keep: true };
+        return { result, keep: true, browser };
       }
       if (sharedBrowserlessContext) {
+        logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'source_complete', closes: 'page' });
         await page.close().catch(() => {});
       } else {
+        logBrowserLifecycle('close_context', { jobId: job.id, source: key, reason: 'source_complete', closes: 'context' });
         await ctx.close().catch(() => {});
       }
-      return { result, keep: false };
+      return { result, keep: false, browser };
     } catch (e) {
+      logBrowserLifecycle('source_exception', { jobId: job.id, source: key, error: String(e).slice(0, 200) });
       if (sharedBrowserlessContext) {
+        logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'source_error', closes: 'page' });
         await page.close().catch(() => {});
       } else {
+        logBrowserLifecycle('close_context', { jobId: job.id, source: key, reason: 'source_error', closes: 'context' });
         await ctx.close().catch(() => {});
       }
-      return {
-        result: {
-          source: key,
-          sourceName: key,
-          sourceClass: 'OFFICIAL_GOVERNMENT',
-          sourceUrl: '',
-          startUrl: '',
-          finalUrl: null,
-          frameUrls: [],
-          searchControlUsed: null,
-          queryEntered: null,
-          submitAction: null,
-          resultContext: null,
-          resultConfirmed: false,
-          noResultConfirmed: false,
-          resultValidated: false,
-          status: 'FAILED',
-          traversal: null,
-          retrievedAt: now(),
-          documents: [],
-          discoveredEntities: [],
-          forEntity,
-          error: String(e),
-        },
-        keep: false,
-      };
+      return { result: buildTechnicalFailureResult(key, forEntity, e), keep: false, browser };
     }
   }
 
@@ -280,7 +377,14 @@ export class ResearchOrchestrator {
         const step = job.steps[i];
         job.sourceIndex = i;
         job.stage = step.type === 'entity' ? `CHECKING_${step.source.toUpperCase()}_ENTITY_${step.idCode}` : `CHECKING_${step.key.toUpperCase()}`;
-        const { result, keep } = await this.runStep(browser, job, step);
+        const { result, keep, browser: possiblyRelaunchedBrowser } = await this.runStep(browser, job, step);
+        // runStep() may have relaunched a fresh Browserless browser mid-job
+        // (bounded, once-per-job — see BrowserDisconnectedError handling
+        // there) after the original one's Browserless session died. Every
+        // SUBSEQUENT step, and this job's own resume()/skip() session if it
+        // pauses on a later step, must use that new browser, not the dead
+        // one this loop started with.
+        browser = possiblyRelaunchedBrowser;
         job.results = job.results.filter((x) => !stepMatchesResult(step, x));
         job.results.push(legacyDocuments(result));
         job.updatedAt = now();
@@ -320,12 +424,16 @@ export class ResearchOrchestrator {
       job.officialEvidenceCount = job.results.filter((x) => x.resultConfirmed).length;
       job.discoveredEntities = this.entitiesFor(job.id).all();
       job.historicalComparison = buildHistoricalComparison(job.results.flatMap((r) => (Array.isArray(r?.documents) ? r.documents : [])));
+      logBrowserLifecycle('close_browser', { jobId: job.id, reason: 'job_complete', closes: 'browser' });
       await browser.close().catch(() => {});
+      this.browserlessReconnects.delete(job.id);
     } catch (e) {
       job.status = 'FAILED';
       job.stage = 'FAILED';
       job.error = String(e);
+      logBrowserLifecycle('close_browser', { jobId: job.id, reason: 'job_failed', closes: 'browser' });
       await browser?.close().catch(() => {});
+      this.browserlessReconnects.delete(job.id);
       job.updatedAt = now();
     }
   }
@@ -390,8 +498,10 @@ export class ResearchOrchestrator {
     job.results.push(legacyDocuments({ ...finalResult, humanVerificationCompleted: true }));
     job.humanVerification = null;
     if ((session.browser as any).__homatchBrowserless) {
+      logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'resume_complete', closes: 'page' });
       await session.page.close().catch(() => {});
     } else {
+      logBrowserLifecycle('close_context', { jobId: job.id, source: key, reason: 'resume_complete', closes: 'context' });
       await session.ctx.close().catch(() => {});
     }
     this.sessions.delete(jobId);
@@ -435,8 +545,10 @@ export class ResearchOrchestrator {
     job.results.push(result);
     job.humanVerification = null;
     if ((session.browser as any).__homatchBrowserless) {
+      logBrowserLifecycle('close_page', { jobId: job.id, source: key, reason: 'skip_human_verification', closes: 'page' });
       await session.page.close().catch(() => {});
     } else {
+      logBrowserLifecycle('close_context', { jobId: job.id, source: key, reason: 'skip_human_verification', closes: 'context' });
       await session.ctx.close().catch(() => {});
     }
     const browser = session.browser;

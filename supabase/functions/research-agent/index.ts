@@ -418,6 +418,29 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 // gateway's own bad-JWT 401 already carries Access-Control-Allow-Origin —
 // so verify_jwt is not the blocking layer here and disabling it would be an
 // unrelated, unproven auth-surface change.
+// v32 P0 FOLLOW-UP (2026-09-07): the "every branch does `return xxx(...)`"
+// gap named above was never actually closed by v29 — v29 only stopped the
+// resulting exception from crashing the whole request headerlessly; the
+// exception itself still escaped advance()'s own try/catch (a `return
+// somePromise` inside a try exits the try block immediately, so a LATER
+// rejection of that promise is invisible to that try's own catch) and still
+// reached the outermost `catch (e)` around line 3362 as a bare "Internal
+// server error" 500 — which is exactly what a live customer saw while a
+// job (533a8c19-f160-4f06-ab27-517c1f661b86) was still genuinely RUNNING at
+// the DB level (a transient worker-side Playwright session error —
+// "browserContext.newPage: Target page, context or browser has been
+// closed" — one single poll's `pollBrowser()` throwing that as
+// `w.status === 'FAILED'`). advance()'s own catch (below) already has the
+// right retry-vs-fail classification logic; it just never got a chance to
+// run for these calls. Fix: every `return xxx(...)` in advance()'s try
+// block below is now `return await xxx(...)`, so a rejection is caught
+// HERE, classified via the existing `retry` regex, and turned into a normal
+// 200 status-poll response (status:'CREATED' to retry, or 'FAILED' with a
+// real reason) instead of an opaque top-level 500. The `retry` regex was
+// also extended to recognize this exact class of transient Playwright
+// browser/context/page-closed error, bounded to a few attempts (see
+// pollBrowser()'s own comment) so a job that is genuinely, permanently dead
+// still surfaces as FAILED rather than polling forever.
 const PROD_ORIGIN = 'https://www.homatch.live';
 const ALLOWED_ORIGINS = new Set([PROD_ORIGIN, 'https://homatch.live']);
 const DEV_ORIGIN_RE = /^https?:\/\/localhost(:\d+)?$/;
@@ -2931,9 +2954,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
 
 async function advance(sb: any, k: string, m: string, j: any, l: string): Promise<any> {
   try {
-    if (j.status === 'CREATED' && j.stage === 'QUEUED') return launch(sb, k, m, j, 'IDENTITY', l);
-    if (j.status === 'CREATED' && j.stage === 'BROWSER_READY') return startBrowser(sb, j);
-    if (j.stage === 'BROWSER_WAITING') return pollBrowser(sb, j);
+    if (j.status === 'CREATED' && j.stage === 'QUEUED') return await launch(sb, k, m, j, 'IDENTITY', l);
+    if (j.status === 'CREATED' && j.stage === 'BROWSER_READY') return await startBrowser(sb, j);
+    if (j.stage === 'BROWSER_WAITING') return await pollBrowser(sb, j);
     // Production execution path (2026-09-06 "Fix Homatch Verify by
     // implementing this exact pipeline in code" mandate): the browser-worker
     // steps (TasMapWorker -> TasDocumentWorker -> NaprPropertyWorker ->
@@ -2948,7 +2971,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // REAL stage) -> PUBLIC_RESEARCH's OWN enreg/rstax/debtor chain for a
     // NEW company IT found -> MARKET -> MARKET's reconciliation chain -> ONE
     // final SYNTHESIS (no web_search — see launch()'s `s !== 'SYNTHESIS'`).
-    if (j.status === 'CREATED' && j.stage === 'OFFICIAL_READY') return launch(sb, k, m, j, 'OFFICIAL_COLLECTION', l);
+    if (j.status === 'CREATED' && j.stage === 'OFFICIAL_READY') return await launch(sb, k, m, j, 'OFFICIAL_COLLECTION', l);
     // ENREG_CHECK_PENDING seeds the generalized financial queue (enreg ->
     // rstax -> debtor, see processFinancialQueue) for OFFICIAL_COLLECTION's
     // own discovered company. Destination is now PUBLIC_RESEARCH_READY, not
@@ -2957,10 +2980,10 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       const prior = j.result_json || {};
       prior._financialQueue = ['enreg', 'rstax', 'debtor'];
       prior._financialReturnStage = 'PUBLIC_RESEARCH_READY';
-      return processFinancialQueue(sb, { ...j, result_json: prior });
+      return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
-    if (j.stage === 'FINANCIAL_ENTITY_WAITING') return pollFinancialEntity(sb, j);
-    if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_READY') return launch(sb, k, m, j, 'PUBLIC_RESEARCH', l);
+    if (j.stage === 'FINANCIAL_ENTITY_WAITING') return await pollFinancialEntity(sb, j);
+    if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_READY') return await launch(sb, k, m, j, 'PUBLIC_RESEARCH', l);
     // PUBLIC_RESEARCH_CHECK_PENDING (2026-09-06 mandate): "If PublicResearch
     // finds ONE new strongly-supported company ID not already checked:
     // ENREG -> RS -> DEBTOR once only, then continue to MARKET." Same
@@ -2972,9 +2995,9 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       const prior = j.result_json || {};
       prior._financialQueue = ['enreg', 'rstax', 'debtor'];
       prior._financialReturnStage = 'MARKET_READY';
-      return processFinancialQueue(sb, { ...j, result_json: prior });
+      return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
-    if (j.status === 'CREATED' && j.stage === 'MARKET_READY') return launch(sb, k, m, j, 'MARKET', l);
+    if (j.status === 'CREATED' && j.stage === 'MARKET_READY') return await launch(sb, k, m, j, 'MARKET', l);
     // v25 (enreg-only) / v28 (generalized): the reconciliation-driven
     // secondary financial-queue trigger (mandate section 6's "MARKET
     // discovers Millennio Group" example) — runs after MARKET's own
@@ -2985,9 +3008,9 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       const prior = j.result_json || {};
       prior._financialQueue = ['enreg', 'rstax', 'debtor'];
       prior._financialReturnStage = 'SYNTHESIS_READY';
-      return processFinancialQueue(sb, { ...j, result_json: prior });
+      return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
-    if (j.status === 'CREATED' && j.stage === 'SYNTHESIS_READY') return launch(sb, k, m, j, 'SYNTHESIS', l);
+    if (j.status === 'CREATED' && j.stage === 'SYNTHESIS_READY') return await launch(sb, k, m, j, 'SYNTHESIS', l);
     const a = String(j.stage || '').match(/^(IDENTITY|OFFICIAL_COLLECTION|PUBLIC_RESEARCH|MARKET|SYNTHESIS)_WAITING$/);
     if (!a || !j.response_id) return;
     // OpenAI Responses API statuses: queued/in_progress (poll again — falls
@@ -2995,12 +3018,40 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // "no-op, caller re-polls later" behavior), completed, failed,
     // cancelled, incomplete.
     const p = await getOpenAIResponse(k, j.response_id);
-    if (p.status === 'completed') return finish(sb, j, a[1] as Stage, p, l);
+    if (p.status === 'completed') return await finish(sb, j, a[1] as Stage, p, l);
     if (['failed', 'cancelled', 'incomplete'].includes(p.status)) throw new Error(`OpenAI ${p.status}: ${JSON.stringify(p?.error || p?.incomplete_details || '').slice(0, 300)}`);
   } catch (e) {
     const s = String(e);
-    const retry = /429|500|502|503|504|timeout|temporar/i.test(s);
-    await sb.from('research_jobs').update({ status: retry ? 'CREATED' : 'FAILED', stage: retry ? j.stage || 'QUEUED' : 'FAILED', error: s, progress: { ...(j.progress || {}), retriable: retry }, updated_at: now() }).eq('id', j.id);
+    const legacyRetryable = /429|500|502|503|504|timeout|temporar/i.test(s);
+    // v32 (P0 fix): a transient worker-side Playwright/browser-session error
+    // — e.g. "browserContext.newPage: Target page, context or browser has
+    // been closed", which is exactly what pollBrowser() re-throws when the
+    // WORKER's own job record has status FAILED with that message — is a
+    // technical/infrastructure hiccup, not evidence the property or the job
+    // itself is dead (mandate: "TECHNICAL FAILURE ≠ PROPERTY RISK"). It gets
+    // a few BOUNDED retries here (unlike the legacy 429/5xx/timeout class
+    // above, which is deliberately left unbounded/unchanged) so a session
+    // that recovers on the worker's next poll can just continue, while a
+    // genuinely, permanently dead worker session still surfaces as a real
+    // FAILED after MAX_TRANSIENT_RETRIES rather than polling silently
+    // forever. This never touches official-worker's own Browserless/session
+    // lifecycle code — it only changes how research-agent classifies an
+    // error the worker already reported.
+    const transientBrowserSession = /target (page|frame|context|browser)|target closed|browsercontext\.|has been closed|session (closed|expired)|econnreset|socket hang up|browser has disconnected/i.test(s);
+    const priorTransientRetries = Number(j.progress?.transientRetryCount) || 0;
+    const MAX_TRANSIENT_RETRIES = 5;
+    const retryTransient = transientBrowserSession && priorTransientRetries < MAX_TRANSIENT_RETRIES;
+    const retry = legacyRetryable || retryTransient;
+    await sb
+      .from('research_jobs')
+      .update({
+        status: retry ? 'CREATED' : 'FAILED',
+        stage: retry ? j.stage || 'QUEUED' : 'FAILED',
+        error: s,
+        progress: { ...(j.progress || {}), retriable: retry, transientRetryCount: transientBrowserSession ? priorTransientRetries + 1 : 0 },
+        updated_at: now(),
+      })
+      .eq('id', j.id);
   }
 }
 
@@ -3190,6 +3241,26 @@ export function assertNoLeaks(customerJson: unknown): void {
 }
 
 function sanitizeForCustomer(job: any): any {
+  // v32 (P0 fix): `research_jobs.error` also carries the last TRANSIENT
+  // retry's message while a job is still actively being retried (see
+  // advance()'s catch — a retriable classification leaves status:'CREATED'
+  // and stage unchanged, specifically so the row keeps polling normally,
+  // but it also writes `error: s` for admin visibility). VerifyPage.tsx's
+  // check()/run()/resume()/skip() all do `if(data?.error)throw new
+  // Error(data.error)` BEFORE they ever look at `data.status` — so without
+  // this, a job the backend correctly classified as "keep going" would
+  // still surface as a hard client-side failure the instant it carried any
+  // stale `error` value, exactly reproducing the "Internal server error
+  // while the job is still RUNNING" P0 symptom one layer downstream of the
+  // advance()-await fix above. Only a genuinely terminal FAILED job's error
+  // reaches the client; every other status (CREATED/RUNNING/WAITING_HUMAN)
+  // never includes it, even when the DB row's own `error` column is
+  // currently non-null. The stored column itself is untouched — admin
+  // diagnostics via a direct DB read still see the real value.
+  if (job && job.status !== 'FAILED' && job.status !== 'COMPLETE' && job.error) {
+    const { error: _droppedTransientError, ...withoutError } = job;
+    job = withoutError;
+  }
   if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
   const r: any = sanitizeCustomerReport({ ...job.result_json });
   delete r.browserOfficial;

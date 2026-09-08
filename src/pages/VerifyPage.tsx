@@ -69,33 +69,86 @@ const PHASE_LABEL_KEYS: Record<string,string>={queued:'verify_phase_queued',iden
 // dump of malformed data. Applied to every report-derived value used with
 // `.map()`/`.filter()`/a spread on this page.
 function asArray<T=any>(v:unknown):T[]{return Array.isArray(v)?v:[]}
-// resolveFunctionErrorMessage() (v31, Verify mandate: "the customer-facing
-// 'Edge Function returned a non-2xx status code' error is unacceptable —
-// replace it with real, safe, structured error surfacing"). When
+// readFunctionErrorBody() (v33 refactor, P0 incident 2026-09-07, job
+// 533a8c19-f160-4f06-ab27-517c1f661b86): extracted from the original v31
+// resolveFunctionErrorMessage() below so classifyFunctionInvokeError() can
+// reuse the exact same body-reading logic without duplicating it. When
 // research-agent returns a non-2xx response, supabase-js's
 // functions.invoke() throws a FunctionsHttpError whose own `.message` is
-// ALWAYS that fixed generic string — the actual JSON body research-agent
-// sent back (e.g. `{error:"..."}`, already a customer-safe, localized
-// message chosen by research-agent itself — see its own json()/
-// GENERIC_CONFIG_ERROR_I18N usage) is never read by the SDK on the
-// non-ok path and sits, unconsumed, on `error.context` (the raw fetch
-// Response object — see FunctionsHttpError's constructor in
+// ALWAYS a fixed generic string — the actual JSON body research-agent sent
+// back (e.g. `{error:"..."}`, already a customer-safe, localized message —
+// see its own json()/GENERIC_CONFIG_ERROR_I18N usage) is never read by the
+// SDK on the non-ok path and sits, unconsumed, on `error.context` (the raw
+// fetch Response object — see FunctionsHttpError's constructor in
 // @supabase/functions-js, which stores the Response as `context` without
-// awaiting its body). This reads that real body when present and only
-// falls back to the generic `e.message`/caller-supplied fallback when the
-// body can't be parsed (network-level FunctionsFetchError, a non-JSON
-// response, or a body already consumed) — never throws itself, so a
-// broken error path can never mask the original error.
-async function resolveFunctionErrorMessage(e:any,fallback:string):Promise<string>{
+// awaiting its body). Never throws itself — a broken error path can never
+// mask the original error; returns null when there is no body to read
+// (network-level FunctionsFetchError, a non-JSON response, or a body
+// already consumed).
+async function readFunctionErrorBody(e:any):Promise<any>{
   try{
     const ctx=e?.context;
     if(ctx&&typeof ctx.json==='function'){
-      const body=await(typeof ctx.clone==='function'?ctx.clone():ctx).json();
-      if(body&&typeof body.error==='string'&&body.error.trim())return body.error;
+      return await(typeof ctx.clone==='function'?ctx.clone():ctx).json();
     }
-  }catch{/* fall through to the generic message below — never let error
-            extraction itself become a second, more confusing failure */}
+  }catch{/* not JSON / already consumed / no body at all — treated as no body */}
+  return null;
+}
+// resolveFunctionErrorMessage() (v31, Verify mandate: "the customer-facing
+// 'Edge Function returned a non-2xx status code' error is unacceptable —
+// replace it with real, safe, structured error surfacing"). See
+// readFunctionErrorBody() above for why this has to read `e.context` at
+// all.
+async function resolveFunctionErrorMessage(e:any,fallback:string):Promise<string>{
+  const body=await readFunctionErrorBody(e);
+  if(body&&typeof body.error==='string'&&body.error.trim())return body.error;
   return(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback);
+}
+// MAX_TRANSIENT_POLL_RETRIES / computeTransientPollBackoffMs (v33, P0
+// incident 2026-09-07, job 533a8c19-f160-4f06-ab27-517c1f661b86): production
+// evidence proved the backend research job was genuinely still RUNNING
+// (BROWSER_WAITING, 37%, 1/3 sources, error=null in research_jobs) at the
+// exact moment the customer saw "Internal server error" — a single
+// transient status-poll failure (research-agent's own uncaught-exception
+// 500 path — see the v32 backend fix in research-agent/index.ts's advance()
+// — or a plain network hiccup with no HTTP response at all) was being
+// treated by check() below as a terminal failure. These two pure helpers
+// bound how long the frontend keeps silently retrying before it finally
+// gives up and surfaces a real error, and back off between attempts
+// instead of hammering the function on every failure. Deliberately no
+// jitter/randomness so this stays exactly unit-testable.
+const MAX_TRANSIENT_POLL_RETRIES=8;
+function computeTransientPollBackoffMs(retryCount:number):number{const n=Math.max(0,Math.floor(Number(retryCount)||0));return Math.min(2200*Math.pow(1.6,n),15000)}
+// classifyFunctionInvokeError() (v33, same P0 incident). Distinguishes WHY a
+// supabase.functions.invoke() call failed so a still-RUNNING Verify job is
+// never shown as failed just because one status poll hit a transient
+// error. `e.context.status` is the real HTTP status research-agent
+// returned (see FunctionsHttpError in @supabase/functions-js) — a
+// FunctionsFetchError (no HTTP response reached at all, e.g. the customer's
+// connection dropped mid-poll) has no `.context.status` and is treated the
+// same as a 5xx: TRANSIENT. Status-code meanings below are read directly
+// off research-agent/index.ts's own `json({...}, <status>)` call sites in
+// its top-level Deno.serve handler — kept in sync with that file, not
+// guessed:
+//   401             → AUTH     ("Authentication required" / "Invalid
+//                               session" — session expired; retrying
+//                               blindly can never succeed)
+//   503             → CONFIG   (GENERIC_CONFIG_ERROR_I18N — a missing
+//                               OPENAI_API_KEY / WORKER_URL / WORKER_TOKEN
+//                               project secret; not recoverable by retrying)
+//   400, 404, 409   → TERMINAL (bad request / job not found / a CAPTCHA
+//                               action sent out of order; retrying the
+//                               same request only repeats the same error)
+//   everything else → TRANSIENT (500/502/504 from research-agent's own
+//                               uncaught-exception path, or no response at
+//                               all — exactly the incident class this fix
+//                               targets)
+async function classifyFunctionInvokeError(e:any,fallback:string):Promise<{message:string;category:'AUTH'|'CONFIG'|'TERMINAL'|'TRANSIENT'}>{
+  const body=await readFunctionErrorBody(e);
+  const message=(body&&typeof body.error==='string'&&body.error.trim())?body.error:(e?.message&&e.message!=='Edge Function returned a non-2xx status code'?e.message:fallback);
+  const statusCode=Number(e?.context?.status)||0;
+  const category=statusCode===401?'AUTH':statusCode===503?'CONFIG':(statusCode===400||statusCode===404||statusCode===409)?'TERMINAL':'TRANSIENT';
+  return{message,category};
 }
 // coverageLabel() (v21, master due-diligence mandate — "PURCHASE DECISION"
 // section): this system must NEVER present a safety verdict (SAFE TO BUY /
@@ -423,8 +476,49 @@ export default function VerifyPage(){const nav=useNavigate();const{lang,t}=useLa
 // customer to pick 'property' via the UI is removed. Existing 'property'-
 // mode research_jobs rows from before this change still open and render
 // normally (VerifyHistorySidebar's history list is untouched).
-const mode:Mode='cadastral';const[query,setQuery]=useState('');const[loading,setLoading]=useState(false);const[report,setReport]=useState<Report|null>(null);const[err,setErr]=useState<string|null>(null);const[captcha,setCaptcha]=useState<Report|null>(null);const[jobId,setJobId]=useState<string|null>(null);const[progress,setProgress]=useState<any>(null);const[sidebarOpen,setSidebarOpen]=useState(false);const[allHistory,setAllHistory]=useState<ResearchJobRecord[]>([]);const[allHistoryLoading,setAllHistoryLoading]=useState(false);const timer=useRef<any>(null);const busy=useRef(false);const valid=mode==='cadastral'?/^\d+(\.\d+){3,}$/.test(query.trim()):query.trim().length>=2;const stop=()=>{if(timer.current){clearTimeout(timer.current);timer.current=null}busy.current=false};const schedule=(id:string,ms=2200)=>{if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>check(id),ms)};
-const check=async(id:string)=>{if(!id||busy.current)return;busy.current=true;let again=true;try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'status',jobId:id,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);if(data?.progress)setProgress(data.progress);if(data?.status==='FAILED'){again=false;stop();setLoading(false);setErr(data.error||t('verify_err_research_failed'));return}if(data?.status==='WAITING_HUMAN'){again=false;stop();setLoading(false);const r=data.result_json||{};setCaptcha({...r,jobId:id,workerJobId:r.workerJobId||r.officialWorkerJobId||r?._worker?.jobId||data?.progress?.workerJobId||data?.captcha?.workerJobId,verificationSite:data?.captcha?.source||data?.verification_site||r.verificationSite});return}if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setLoading(false);setCaptcha(null);setReport(data.result_json);return}}catch(e:any){again=false;stop();setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_status_fetch_failed')))}finally{busy.current=false}if(again)schedule(id)};useEffect(()=>()=>stop(),[]);
+const mode:Mode='cadastral';const[query,setQuery]=useState('');const[loading,setLoading]=useState(false);const[report,setReport]=useState<Report|null>(null);const[err,setErr]=useState<string|null>(null);const[captcha,setCaptcha]=useState<Report|null>(null);const[jobId,setJobId]=useState<string|null>(null);const[progress,setProgress]=useState<any>(null);
+// pollNotice (v33, P0 incident 2026-09-07): a calm, non-alarming status-line
+// shown ONLY while a transient status-poll error is being silently retried
+// in the background — the existing progress card/percentage/report/captcha
+// state is left completely untouched while this is set. Deliberately a
+// separate piece of state from `err` (which still means "Verify has
+// terminally failed, show the red error box") so the two can never be
+// confused in the render below. transientRetryCount is a ref, not state —
+// it is pure internal retry bookkeeping for computeTransientPollBackoffMs()
+// and must never itself trigger a re-render.
+const[pollNotice,setPollNotice]=useState<string|null>(null);const transientRetryCount=useRef(0);
+const[sidebarOpen,setSidebarOpen]=useState(false);const[allHistory,setAllHistory]=useState<ResearchJobRecord[]>([]);const[allHistoryLoading,setAllHistoryLoading]=useState(false);const timer=useRef<any>(null);const busy=useRef(false);const valid=mode==='cadastral'?/^\d+(\.\d+){3,}$/.test(query.trim()):query.trim().length>=2;const stop=()=>{if(timer.current){clearTimeout(timer.current);timer.current=null}busy.current=false};const schedule=(id:string,ms=2200)=>{if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>check(id),ms)};
+// check() (v33 rewrite, P0 incident 2026-09-07, job
+// 533a8c19-f160-4f06-ab27-517c1f661b86): the same status poll used to treat
+// ANY thrown error — including a transient 500/network failure while the
+// backend job was genuinely still RUNNING — as terminal (stop polling,
+// blank the loading UI, show the red error box). It now classifies the
+// failure via classifyFunctionInvokeError() and only ever terminates the
+// job for AUTH/CONFIG/TERMINAL categories or once a TRANSIENT failure has
+// exceeded MAX_TRANSIENT_POLL_RETRIES — jobId/progress/report/captcha are
+// never touched on a transient failure, so a refresh or the next
+// successful poll reconnects to exactly the same job with no duplicate
+// Verify ever created.
+const check=async(id:string)=>{if(!id||busy.current)return;busy.current=true;let again=true;try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'status',jobId:id,language:lang}});if(error)throw error;if(data?.error){
+  // A 2xx response body carrying `error` only happens for a job the backend
+  // has already marked terminally FAILED — sanitizeForCustomer() strips
+  // `error` from every non-FAILED/non-COMPLETE job (the matching v32
+  // backend fix for this same incident) — so this is always a genuine
+  // terminal failure, never a transient one, regardless of message content.
+  again=false;stop();setLoading(false);setPollNotice(null);transientRetryCount.current=0;setErr(data.error||t('verify_err_research_failed'));return
+}
+// A poll that reached this point got a real, well-formed response — clear
+// any stale "retrying…" notice and reset the transient-retry counter right
+// away (regression requirement: a stale error/notice must be cleared the
+// moment recovery succeeds, not on the next poll after that).
+setPollNotice(null);transientRetryCount.current=0;
+if(data?.progress)setProgress(data.progress);if(data?.status==='FAILED'){again=false;stop();setLoading(false);setErr(data.error||t('verify_err_research_failed'));return}if(data?.status==='WAITING_HUMAN'){again=false;stop();setLoading(false);const r=data.result_json||{};setCaptcha({...r,jobId:id,workerJobId:r.workerJobId||r.officialWorkerJobId||r?._worker?.jobId||data?.progress?.workerJobId||data?.captcha?.workerJobId,verificationSite:data?.captcha?.source||data?.verification_site||r.verificationSite});return}if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setLoading(false);setCaptcha(null);setReport(data.result_json);return}}catch(e:any){const{message,category}=await classifyFunctionInvokeError(e,t('verify_err_status_fetch_failed'));if(category==='TRANSIENT'&&transientRetryCount.current<MAX_TRANSIENT_POLL_RETRIES){
+  // The core P0 fix: keep the existing progress UI exactly as it is, show a
+  // calm notice instead of the red error box, and keep polling with
+  // backoff — never stop(), never setLoading(false), never touch jobId/
+  // progress/report/captcha.
+  transientRetryCount.current+=1;setPollNotice(t('verify_status_poll_retrying'));busy.current=false;schedule(id,computeTransientPollBackoffMs(transientRetryCount.current));return
+}again=false;stop();setLoading(false);setPollNotice(null);setErr(message)}finally{busy.current=false}if(again)schedule(id)};useEffect(()=>()=>stop(),[]);
 // openJob(): the entire "open an old report without rerunning research"
 // requirement — this calls check(), which only ever performs a `status`
 // read against the existing research_jobs row (research-agent's status
@@ -440,18 +534,18 @@ const check=async(id:string)=>{if(!id||busy.current)return;busy.current=true;let
 // user has browsed in this session — before this, every job switch used
 // {replace:true} unconditionally and Back/Forward had no history entries
 // to move between at all.
-const openJob=(id:string,push=false)=>{stop();setErr(null);setCaptcha(null);setReport(null);setJobId(id);setLoading(true);setProgress({phase:'loading',percent:30});const params=new URLSearchParams(searchParams);params.set('job',id);setSearchParams(params,{replace:!push});check(id)};
+const openJob=(id:string,push=false)=>{stop();setErr(null);setPollNotice(null);transientRetryCount.current=0;setCaptcha(null);setReport(null);setJobId(id);setLoading(true);setProgress({phase:'loading',percent:30});const params=new URLSearchParams(searchParams);params.set('job',id);setSearchParams(params,{replace:!push});check(id)};
 useEffect(()=>{const urlJob=searchParams.get('job');if(urlJob)openJob(urlJob);
 // eslint-disable-next-line react-hooks/exhaustive-deps
 },[]);
-const run=async()=>{if(!valid)return;stop();setLoading(true);setErr(null);setReport(null);setCaptcha(null);setJobId(null);setProgress({phase:'queued',percent:5});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'start',query:query.trim(),type:mode,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);const id=String(data?.jobId||data?.id||'');if(!id)throw new Error(t('verify_err_no_job_id'));setJobId(id);
+const run=async()=>{if(!valid)return;stop();setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setReport(null);setCaptcha(null);setJobId(null);setProgress({phase:'queued',percent:5});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'start',query:query.trim(),type:mode,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);const id=String(data?.jobId||data?.id||'');if(!id)throw new Error(t('verify_err_no_job_id'));setJobId(id);
 // v26 fix: write ?job=<id> the moment the job exists — not only once it
 // completes, so a mid-run refresh reconnects to the RUNNING job (mandate
 // test M), not just a COMPLETE one.
 {const params=new URLSearchParams(searchParams);if(params.get('job')!==id){params.set('job',id);setSearchParams(params,{replace:true})}}
 if(data?.progress)setProgress(data.progress);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_start_failed')))}};
-const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed')))}};
-const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_skip_failed')))}};
+const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed')))}};
+const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_skip_failed')))}};
 // openVerifyHistorySidebar(): the global "browse every research run I've ever
 // started" sidebar (mandate section 29). Always a plain SELECT
 // (listVerifyHistory), never a research-agent call — opening the sidebar
@@ -479,13 +573,20 @@ const handleSidebarDelete=async(id:string)=>{setAllHistory(prev=>prev.filter(j=>
 // job — same back/forward reasoning as openJob(id,true) above: a user
 // clicking away from a report they were viewing should be able to hit
 // Back and land on that report again, not skip past /verify entirely.
-const startNewResearch=()=>{stop();setErr(null);setCaptcha(null);setReport(null);setJobId(null);setLoading(false);setProgress(null);setQuery('');const params=new URLSearchParams(searchParams);if(params.has('job')){params.delete('job');setSearchParams(params,{replace:false})}};
+const startNewResearch=()=>{stop();setErr(null);setPollNotice(null);transientRetryCount.current=0;setCaptcha(null);setReport(null);setJobId(null);setLoading(false);setProgress(null);setQuery('');const params=new URLSearchParams(searchParams);if(params.has('job')){params.delete('job');setSearchParams(params,{replace:false})}};
 const pct=Math.max(5,Math.min(100,Number(progress?.percent)||5)),workerCaptchaId=captcha?.workerJobId||captcha?.officialWorkerJobId||captcha?._worker?.jobId;return <AppLayout><ResearchCaptchaModal open={!!captcha} jobId={workerCaptchaId} site={captcha?.verificationSite} onComplete={resume} onSkip={skip}/>{homatchUser&&<VerifyHistorySidebar open={sidebarOpen} onOpenChange={setSidebarOpen} items={allHistory} loading={allHistoryLoading} activeJobId={jobId} onOpenJob={handleSidebarOpenJob} onRename={handleSidebarRename} onDelete={handleSidebarDelete}/>}<div className="max-w-4xl mx-auto space-y-5 pb-16"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2"><Shield className="h-6 w-6 text-primary"/><h1 className="text-2xl font-bold">{t('verify_title')}</h1></div><p className="text-sm text-muted-foreground mt-1">{t('verify_page_subtitle')}</p></div>{(report||jobId||captcha||query)&&<Button variant="outline" size="sm" onClick={startNewResearch} className="shrink-0">{t('verify_new_research_button')}</Button>}{homatchUser&&<Button variant="outline" size="sm" onClick={openVerifyHistorySidebar} className="shrink-0"><History className="h-3.5 w-3.5 mr-1.5"/>{t('verify_history_sidebar_button')}</Button>}
 {/* v31: the Property/ქონება Tabs selector that used to sit here was removed
     (Verify mandate — cadastral-code entry only, see the `mode` comment
     above). The input below now always uses the cadastral placeholder/regex
     since `mode` is permanently 'cadastral'. */}
-</div><Card><CardContent className="pt-5"><div className="flex gap-2"><Input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&valid&&!loading&&run()} placeholder={t('verify_cadastral_query_ph')}/><Button onClick={()=>run()} disabled={!valid||loading}>{loading?<Loader2 className="h-4 w-4 animate-spin"/>:<><Search className="h-4 w-4 mr-2"/>{t('verify_search_button')}</>}</Button></div></CardContent></Card>{err&&<div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-sm text-destructive">{err}</div>}{loading&&<Card><CardContent className="py-8"><div className="flex items-center gap-3"><Loader2 className="h-6 w-6 animate-spin text-primary"/><div className="flex-1"><div className="flex justify-between text-sm"><span>{t('verify_loading_label')}</span><span>{pct}%</span></div><div className="h-2 bg-muted rounded-full mt-2 overflow-hidden"><div className="h-full bg-primary transition-all" style={{width:`${pct}%`}}/></div><p className="text-xs text-muted-foreground mt-2">{t(PHASE_LABEL_KEYS[String(progress?.phase||'')]||'verify_loading_phase_fallback')}</p></div></div></CardContent></Card>}{report&&!loading&&<div className="space-y-4"><OverallAssessmentCard oa={report.overallAssessment} r={report}/><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><Badge variant="outline">{report.entityType||mode}</Badge></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesMatrixCard u={report.utilitiesMatrix}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
+</div><Card><CardContent className="pt-5"><div className="flex gap-2"><Input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&valid&&!loading&&run()} placeholder={t('verify_cadastral_query_ph')}/><Button onClick={()=>run()} disabled={!valid||loading}>{loading?<Loader2 className="h-4 w-4 animate-spin"/>:<><Search className="h-4 w-4 mr-2"/>{t('verify_search_button')}</>}</Button></div></CardContent></Card>{err&&<div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-sm text-destructive">{err}</div>}{loading&&<Card><CardContent className="py-8"><div className="flex items-center gap-3"><Loader2 className="h-6 w-6 animate-spin text-primary"/><div className="flex-1"><div className="flex justify-between text-sm"><span>{t('verify_loading_label')}</span><span>{pct}%</span></div><div className="h-2 bg-muted rounded-full mt-2 overflow-hidden"><div className="h-full bg-primary transition-all" style={{width:`${pct}%`}}/></div><p className="text-xs text-muted-foreground mt-2">{t(PHASE_LABEL_KEYS[String(progress?.phase||'')]||'verify_loading_phase_fallback')}</p>
+{/* pollNotice (v33, P0 incident 2026-09-07): a calm, muted-not-red line
+    shown ONLY while a transient status-poll failure is being retried
+    silently in the background — the progress bar/percentage/phase label
+    above are left completely untouched. Deliberately styled the same as
+    the ordinary phase label (not the destructive/err box) so a transient
+    hiccup never reads to the customer as a failure. */}
+{pollNotice&&<p className="text-xs text-muted-foreground mt-1">{pollNotice}</p>}</div></div></CardContent></Card>}{report&&!loading&&<div className="space-y-4"><OverallAssessmentCard oa={report.overallAssessment} r={report}/><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><Badge variant="outline">{report.entityType||mode}</Badge></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesMatrixCard u={report.utilitiesMatrix}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
     DiscoveredEntitiesCard permanently removed from the customer report (Verify
     mandate: no technical/audit-trail clutter in the customer-facing view).
     This used to be done post-build by scripts/apply-verify-ux-patch.mjs

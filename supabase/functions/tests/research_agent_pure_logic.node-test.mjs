@@ -1082,6 +1082,13 @@ function assertNoLeaks(customerJson) {
   if (leaks.length) throw new Error(`CUSTOMER_LEAK:${leaks.join(',')}`);
 }
 function sanitizeForCustomer(job) {
+  // v32 P0 fix: strip a stale/transient `error` from any non-terminal job
+  // before it reaches the customer — see index.ts's own copy of this
+  // function for the full incident writeup (job 533a8c19-...).
+  if (job && job.status !== 'FAILED' && job.status !== 'COMPLETE' && job.error) {
+    const { error: _droppedTransientError, ...withoutError } = job;
+    job = withoutError;
+  }
   if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
   const r = sanitizeCustomerReport({ ...job.result_json });
   delete r.browserOfficial;
@@ -1163,6 +1170,88 @@ test('sanitizeForCustomer: a non-COMPLETE job (e.g. WAITING_HUMAN) is returned u
   assert.equal(out, job);
   assert.equal(out.result_json._worker.jobId, 'abc');
   assert.equal(out.result_json.source, 'tas_map');
+});
+
+// ---- P0 regression (2026-09-07, job 533a8c19-f160-4f06-ab27-517c1f661b86):
+// a customer saw "Internal server error" while the job was genuinely still
+// RUNNING/BROWSER_WAITING at 37%. Root cause traced end-to-end: (1)
+// advance()'s try block returned every stage-handler promise without
+// `await`, so a rejection (a transient worker-side Playwright
+// "browserContext.newPage: Target page, context or browser has been
+// closed" error) skipped advance()'s own retry-vs-fail catch entirely and
+// surfaced as a bare top-level 500; (2) even after fixing that, the
+// research_jobs row still carried a stale `error` string from the
+// classification write while status was the retriable 'CREATED' — and
+// VerifyPage.tsx's check()/run()/resume()/skip() all do
+// `if(data?.error)throw new Error(data.error)` BEFORE ever looking at
+// data.status, so that stale error alone re-triggered the same
+// customer-facing failure one layer down. These tests cover fix #2
+// (sanitizeForCustomer stripping a non-terminal job's `error`); the
+// VerifyPage.tsx test suite covers fix #2's frontend counterpart and the
+// full status/poll resilience behavior; the retry-classification logic
+// itself (fix #1) is covered by classifyAdvanceError()'s own tests below.
+test('sanitizeForCustomer: a retriable job (status CREATED, a stale transient `error` from advance()\'s retry classification) has that error stripped before reaching the customer', () => {
+  const job = { status: 'CREATED', stage: 'BROWSER_WAITING', error: 'Error: browserContext.newPage: Target page, context or browser has been closed', progress: { phase: 'official_browser', percent: 37 } };
+  const out = sanitizeForCustomer(job);
+  assert.equal(out.error, undefined);
+  assert.equal(out.status, 'CREATED'); // status/progress themselves are untouched — only `error` is dropped
+  assert.equal(out.progress.percent, 37);
+});
+
+test('sanitizeForCustomer: a genuinely FAILED job keeps its error — the customer must still see a real terminal failure, never a silently swallowed one', () => {
+  const job = { status: 'FAILED', stage: 'FAILED', error: 'OpenAI failed: quota exceeded' };
+  const out = sanitizeForCustomer(job);
+  assert.equal(out.error, 'OpenAI failed: quota exceeded');
+});
+
+test('sanitizeForCustomer: a non-terminal job with no error at all is returned as the exact same object (no unnecessary copy)', () => {
+  const job = { status: 'RUNNING', stage: 'BROWSER_WAITING', progress: { percent: 40 } };
+  const out = sanitizeForCustomer(job);
+  assert.equal(out, job);
+});
+
+// classifyAdvanceError() — copied verbatim from advance()'s catch block in
+// index.ts (fix #1 above). Deliberately separated into its own pure
+// function here (and, for clarity, factored the same way conceptually in
+// index.ts's comment) so the retry-vs-fail decision itself is directly
+// testable without needing a live Supabase client or a real thrown error
+// from deep inside the stage chain.
+function classifyAdvanceError(errorString, priorTransientRetries = 0) {
+  const legacyRetryable = /429|500|502|503|504|timeout|temporar/i.test(errorString);
+  const transientBrowserSession = /target (page|frame|context|browser)|target closed|browsercontext\.|has been closed|session (closed|expired)|econnreset|socket hang up|browser has disconnected/i.test(errorString);
+  const MAX_TRANSIENT_RETRIES = 5;
+  const retryTransient = transientBrowserSession && priorTransientRetries < MAX_TRANSIENT_RETRIES;
+  const retry = legacyRetryable || retryTransient;
+  return { retry, nextTransientRetryCount: transientBrowserSession ? priorTransientRetries + 1 : 0 };
+}
+
+test('classifyAdvanceError: the exact reproduced production error ("browserContext.newPage: Target page, context or browser has been closed") is retriable on first occurrence', () => {
+  const { retry, nextTransientRetryCount } = classifyAdvanceError('Error: browserContext.newPage: Target page, context or browser has been closed', 0);
+  assert.equal(retry, true);
+  assert.equal(nextTransientRetryCount, 1);
+});
+
+test('classifyAdvanceError: the same transient error stops being retried once MAX_TRANSIENT_RETRIES is reached — a permanently dead worker session must still surface as FAILED, never poll silently forever', () => {
+  const { retry, nextTransientRetryCount } = classifyAdvanceError('Error: browserContext.newPage: Target page, context or browser has been closed', 5);
+  assert.equal(retry, false); // status goes to FAILED — the counter value itself is moot once terminal, since nothing polls a FAILED job again
+  assert.equal(nextTransientRetryCount, 6);
+});
+
+test('classifyAdvanceError: the legacy 429/5xx/timeout class stays unbounded/unchanged regardless of prior transient retry count', () => {
+  assert.equal(classifyAdvanceError('worker 503: Service Unavailable', 999).retry, true);
+  assert.equal(classifyAdvanceError('fetch failed: timeout', 999).retry, true);
+});
+
+test('classifyAdvanceError: a genuinely unrelated error (e.g. an OpenAI content/schema failure) is never retried and never mistaken for a transient browser-session hiccup', () => {
+  const { retry, nextTransientRetryCount } = classifyAdvanceError('OpenAI failed: {"code":"invalid_request_error"}', 0);
+  assert.equal(retry, false);
+  assert.equal(nextTransientRetryCount, 0);
+});
+
+test('classifyAdvanceError: other known-transient Playwright/session phrasings are also recognized (not just the one exact reproduced string)', () => {
+  assert.equal(classifyAdvanceError('Error: Target closed', 0).retry, true);
+  assert.equal(classifyAdvanceError('Error: Session closed. Most likely the page has been closed.', 0).retry, true);
+  assert.equal(classifyAdvanceError('Error: socket hang up', 0).retry, true);
 });
 
 // ---- sanitizeCustomerString() / findLeaks() / assertNoLeaks() (addendum

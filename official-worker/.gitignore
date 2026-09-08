@@ -1,0 +1,24 @@
+# official-worker local artifacts.
+#
+# Everything here accumulated during production incident work and is never an
+# input to a build, an image or a test. Added 2026-09-08 after a cleanup that
+# removed ~55 such files from the working tree.
+
+# One-off live-site probe scripts. Each was written to debug a single source
+# against the real government site; all are superseded by test/ and the
+# workflow FSMs, and none is imported by src/, the Dockerfile or an npm
+# script.
+debug-*.ts
+debug-*.mjs
+
+# Pre-refactor copies kept by hand during the Browserless -> local Chromium
+# migration. The real history is in git.
+*.pre-consolidation
+*.bak
+
+# Compiled output of `npm run test:build`.
+.tstest-build/
+
+# NOTE: extensions/human-assist/ is REQUIRED production content and is
+# deliberately tracked. Only the two upstream artifacts the sanitizer strips
+# are ignored, in extensions/.gitignore.

@@ -9,7 +9,7 @@ import express from 'express';
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { ResearchOrchestrator } from './orchestrator/ResearchOrchestrator.js';
-import { localBrowserHealth, installProcessCleanup } from './browser/LocalBrowserRuntime.js';
+import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrowserLifecycle, redactSecrets } from './browser/LocalBrowserRuntime.js';
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 
 const app = express();
@@ -319,5 +319,42 @@ app.get('/debug/:id/screenshot', auth, (req: any, res: any) => {
 });
 
 installProcessCleanup();
+
+/*
+ * CRASH VISIBILITY — production incident 2026-09-08.
+ *
+ * Deployments from 1ac14835 onward produced containers that printed NOTHING:
+ * Railway logged "Starting Container" and then nothing at all while the
+ * healthcheck failed for its full window. A worker must always be able to say
+ * why it died, so both fatal paths are made loud here.
+ *
+ * The two handlers deliberately behave DIFFERENTLY:
+ *
+ *   - unhandledRejection is logged and SURVIVED. A rejected promise from one
+ *     Verify job (a government site that vanished mid-navigation, a closed
+ *     page) must never take the whole worker — and with it every other
+ *     customer's in-flight job — down. This is the specific reason the
+ *     short-lived src/boot.ts shim (which called process.exit(1) here) is not
+ *     the production startup path.
+ *   - uncaughtException leaves the process in an undefined state, so the
+ *     browsers and their throwaway profiles are torn down and the process
+ *     exits for Railway to restart. Exiting without that cleanup would leak a
+ *     Chromium process and a profile directory per in-flight job.
+ *
+ * Messages are redacted before logging: an error thrown from deep in a
+ * workflow can carry a URL with a query string.
+ */
+process.on('unhandledRejection', (reason: unknown) => {
+  logBrowserLifecycle('unhandled_rejection', { error: redactSecrets(reason) });
+});
+process.on('uncaughtException', (error: unknown) => {
+  logBrowserLifecycle('uncaught_exception', {
+    name: String((error as any)?.name || 'Error').slice(0, 80),
+    error: redactSecrets(error),
+  });
+  closeAllJobBrowsers('uncaught_exception')
+    .catch(() => {})
+    .finally(() => process.exit(1));
+});
 
 app.listen(PORT, '0.0.0.0', () => console.log(`homatch-official-worker 2.0.0 (deterministic FSM architecture) listening on ${PORT}`));

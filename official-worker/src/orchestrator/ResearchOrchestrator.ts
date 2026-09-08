@@ -16,7 +16,7 @@ import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
 import { runRsTaxpayerWorker } from '../workflows/financial/RsTaxpayerWorker.js';
 import { runDebtorWorker } from '../workflows/financial/DebtorWorker.js';
 import { runGenericWorkflow } from '../workflows/generic/GenericWorkflow.js';
-import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
+import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySteps, decideStalledJob, type ResearchJob, type StepDescriptor } from './ResearchContext.js';
 import { looksLikeCompanyId } from '../entities/EntityValidation.js';
 import { challenge } from '../browser/BrowserSession.js';
 import { buildHistoricalComparison } from '../documents/HistoricalComparison.js';
@@ -65,6 +65,23 @@ async function humanVerificationPending(page: any): Promise<boolean> {
 
 const now = () => new Date().toISOString();
 const TTL = 15 * 60 * 1000;
+/*
+ * JOB WATCHDOG (mandate: "There must be a watchdog so jobs cannot remain
+ * stuck forever").
+ *
+ * The TTL sweep above only ever covered `sessions`, i.e. jobs already parked
+ * in WAITING_HUMAN. A job stuck in RUNNING — a government site that accepts a
+ * connection and then never responds, a Playwright call without its own
+ * timeout — had NO bound at all: it stayed RUNNING forever, never reached
+ * COMPLETE, and held its Chromium process and throwaway profile directory
+ * open for the lifetime of the container.
+ *
+ * `updatedAt` advances after every completed step, so this measures time
+ * since the last real progress, not total job duration. The bound is
+ * deliberately far longer than any legitimate single source takes, so the
+ * watchdog only ever fires on a genuine hang.
+ */
+const JOB_STALL_MS = 20 * 60 * 1000;
 // Bounds an otherwise-unbounded research graph — a document mentioning many
 // unrelated companies must never turn one Verify into dozens of ENREG/RS/
 // Debtor jobs. Counts COMPANIES, not steps: buildEntitySteps() now emits a
@@ -164,7 +181,67 @@ export class ResearchOrchestrator {
           this.jobBrowsers.delete(id);
         }
       }
+      await this.sweepStalledJobs();
     }, 30000).unref();
+  }
+
+  /**
+   * Finalizes jobs that are RUNNING but have made no progress for
+   * JOB_STALL_MS. A stalled job is not a property finding: whatever evidence
+   * the completed sources already produced is kept and the job COMPLETEs
+   * normally, so the customer still gets a report. Only a job that never
+   * produced a single result is FAILED, and even then the failure is
+   * technical and carries no property meaning.
+   *
+   * Exposed for tests; the constructor's interval is the only caller in
+   * production.
+   */
+  async sweepStalledJobs(nowMs: number = Date.now()): Promise<string[]> {
+    const finalized: string[] = [];
+    for (const [id, job] of this.jobs) {
+      const decision = decideStalledJob(job, nowMs, JOB_STALL_MS);
+      if (!decision.finalize) continue;
+
+      // Order matters: mark abandoned FIRST, so the in-flight step — whose
+      // Playwright call is about to reject when the browser goes away — can
+      // never race back in and overwrite what we set below.
+      job._abandoned = true;
+      const stalledSource = job.steps?.[job.sourceIndex]
+        ? ResearchOrchestrator.sourceOf(job.steps[job.sourceIndex])
+        : null;
+
+      await closeJobBrowser(this.jobBrowsers.get(id) ?? null, 'job_watchdog_stalled');
+      this.jobBrowsers.delete(id);
+      this.sessions.delete(id);
+
+      job.humanVerification = null;
+      job.watchdogFinalized = true;
+      if (decision.status === 'COMPLETE') {
+        job.status = 'COMPLETE';
+        job.stage = 'COMPLETE';
+        job.completedAt = now();
+        job.officialEvidenceCount = job.results.filter((x) => x.resultConfirmed).length;
+        job.discoveredEntities = this.entitiesFor(id).all();
+        job.historicalComparison = buildHistoricalComparison(
+          job.results.flatMap((r) => (Array.isArray(r?.documents) ? r.documents : []))
+        );
+      } else {
+        job.status = 'FAILED';
+        job.stage = 'FAILED';
+        job.error = 'research stalled with no source result — technical, not a property finding';
+      }
+      job.updatedAt = now();
+
+      logBrowserLifecycle('job_watchdog_stalled', {
+        jobId: id,
+        stalledSource,
+        stalledForMs: decision.stalledForMs,
+        resultsKept: job.results.length,
+        finalStatus: job.status,
+      });
+      finalized.push(id);
+    }
+    return finalized;
   }
 
   getJob(id: string): ResearchJob | undefined {
@@ -377,6 +454,8 @@ export class ResearchOrchestrator {
   }
 
   private async run(job: ResearchJob, startIndex = 0, existing: JobBrowser | null = null): Promise<void> {
+    // The watchdog already finalized this job and tore its browser down.
+    if (job._abandoned) return;
     if (!job.steps) job.steps = buildInitialSteps(job);
     job.status = 'RUNNING';
     job.updatedAt = now();
@@ -389,10 +468,14 @@ export class ResearchOrchestrator {
       jobBrowser = jobBrowser || (await launchJobBrowser(job.id));
       this.jobBrowsers.set(job.id, jobBrowser);
       for (let i = startIndex; i < job.steps.length; i++) {
+        if (job._abandoned) return;
         const step = job.steps[i];
         job.sourceIndex = i;
         job.stage = step.type === 'entity' ? `CHECKING_${step.source.toUpperCase()}_ENTITY_${step.idCode}` : `CHECKING_${step.key.toUpperCase()}`;
         const { result, keep } = await this.runStep(jobBrowser, job, step);
+        // The watchdog may have finalized this job while the step was in
+        // flight (its rejection is what returned us here). Never write back.
+        if (job._abandoned) return;
         job.results = job.results.filter((x) => !stepMatchesResult(step, x));
         job.results.push(legacyDocuments(result));
         job.updatedAt = now();
@@ -436,6 +519,13 @@ export class ResearchOrchestrator {
       await closeJobBrowser(jobBrowser, 'job_complete');
       this.jobBrowsers.delete(job.id);
     } catch (e) {
+      if (job._abandoned) {
+        // The watchdog already closed this job's browser and finalized it;
+        // the exception we are holding IS that teardown. Do not resurrect it.
+        await closeJobBrowser(jobBrowser, 'job_abandoned');
+        this.jobBrowsers.delete(job.id);
+        return;
+      }
       job.status = 'FAILED';
       job.stage = 'FAILED';
       job.error = String(e);

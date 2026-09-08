@@ -214,3 +214,110 @@ test(
     }
   }
 );
+
+/*
+ * humanAssistReady, PROVEN — not asserted, not mocked, not faked.
+ *
+ * Mandate: humanAssistReady may only become true after (1) the extension
+ * files exist, (2) the manifest is valid, (3) the extension's MV3 service
+ * worker actually registered, and (4) the speech configuration was
+ * successfully applied — "Do not fake this boolean."
+ *
+ * humanAssistConfig.test.mjs covers the same path against a FAKE service
+ * worker object, which can only prove the shape of the call. This test drives
+ * a REAL Chromium with the REAL bundled extension and a DUMMY credential, and
+ * reads the configuration back out of the extension's own chrome.storage.local
+ * to prove it actually landed there.
+ *
+ * The dummy credential is a local sentinel with no value anywhere. The real
+ * one is never involved, and the assertions below read back only BOOLEANS and
+ * the non-secret service name — the stored key itself is never returned into
+ * the test process.
+ */
+const DUMMY_CREDENTIAL = 'dummy-local-test-credential-not-a-real-key';
+
+test(
+  'REAL Chromium: humanAssistReady becomes true only when the extension really took the configuration',
+  { skip: HAVE_CHROMIUM ? false : 'no local Chromium binary available' },
+  async (t) => {
+    const extension = await validateBundledExtension();
+    if (!extension.present || !extension.manifestV3) {
+      t.diagnostic(`bundled extension not present (${extension.reason}) — humanAssist proof skipped`);
+      return;
+    }
+
+    const priorKey = process.env.HUMAN_ASSIST_SPEECH_API_KEY;
+    const priorService = process.env.HUMAN_ASSIST_SPEECH_SERVICE;
+
+    // ---- fail-closed FIRST: no credential must mean no assistance ---------
+    delete process.env.HUMAN_ASSIST_SPEECH_API_KEY;
+    delete process.env.HUMAN_ASSIST_SPEECH_SERVICE;
+    let unconfigured = null;
+    try {
+      unconfigured = await launchJobBrowser('assist-unconfigured');
+      assert.equal(unconfigured.extensionRuntimeConfirmed, true, 'the extension must still load without a credential');
+      assert.equal(unconfigured.humanAssistReady, false, 'no credential MUST mean humanAssistReady:false');
+    } finally {
+      await closeJobBrowser(unconfigured, 'assist_test_cleanup');
+    }
+
+    // ---- configured: the boolean must be earned ---------------------------
+    process.env.HUMAN_ASSIST_SPEECH_API_KEY = DUMMY_CREDENTIAL;
+    process.env.HUMAN_ASSIST_SPEECH_SERVICE = 'googleSpeechApi';
+
+    // Capture everything the launch logs, to prove the credential never
+    // reaches a log line on the REAL path (not just the unit-test path).
+    const logged = [];
+    const realLog = console.log;
+    console.log = (...a) => logged.push(a.join(' '));
+
+    let configured = null;
+    try {
+      configured = await launchJobBrowser('assist-configured');
+      console.log = realLog;
+
+      assert.equal(configured.extensionRuntimeConfirmed, true);
+      assert.equal(configured.humanAssistReady, true, 'a valid credential + a live extension MUST yield humanAssistReady:true');
+
+      // PROOF the configuration is in the extension itself, read back out of
+      // the running MV3 service worker's own chrome.storage.local.
+      const worker = (jobContext(configured).serviceWorkers?.() || [])[0];
+      assert.equal(!!worker, true, 'the extension service worker must be live');
+
+      const applied = await worker.evaluate(async () => {
+        const v = await chrome.storage.local.get(['speechService', 'googleSpeechApiKey']);
+        // Booleans and the non-secret service name only — the stored
+        // credential is never returned out of the browser.
+        return {
+          speechService: v.speechService ?? null,
+          credentialStored: typeof v.googleSpeechApiKey === 'string' && v.googleSpeechApiKey.length > 0,
+        };
+      });
+      assert.equal(applied.speechService, 'googleSpeechApi', 'the extension must really hold the selected backend');
+      assert.equal(applied.credentialStored, true, 'the extension must really hold a credential');
+
+      // It must be OUR credential, verified inside the page context so the
+      // value never crosses back into the test process.
+      const matches = await worker.evaluate(async (expected) => {
+        const v = await chrome.storage.local.get('googleSpeechApiKey');
+        return v.googleSpeechApiKey === expected;
+      }, DUMMY_CREDENTIAL);
+      assert.equal(matches, true, 'the extension must hold exactly the configured credential');
+
+      // And none of that may ever have been logged.
+      const all = logged.join('\n');
+      assert.equal(all.includes(DUMMY_CREDENTIAL), false, 'the credential must never reach a log line');
+      assert.match(all, /"event":"human_assist_configured"/, 'the outcome must still be observable');
+      assert.match(all, /"service":"googleSpeechApi"/, 'the service NAME is safe and must be logged');
+
+      t.diagnostic(`humanAssistReady proven true with extension storage speechService=${applied.speechService}`);
+    } finally {
+      console.log = realLog;
+      await closeJobBrowser(configured, 'assist_test_cleanup');
+      if (priorKey === undefined) delete process.env.HUMAN_ASSIST_SPEECH_API_KEY;
+      else process.env.HUMAN_ASSIST_SPEECH_API_KEY = priorKey;
+      if (priorService === undefined) delete process.env.HUMAN_ASSIST_SPEECH_SERVICE;
+      else process.env.HUMAN_ASSIST_SPEECH_SERVICE = priorService;
+    }
+  }
+);

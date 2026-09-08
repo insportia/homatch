@@ -49,6 +49,19 @@ export function logBrowserLifecycle(event: string, fields: Record<string, unknow
   }
 }
 
+/**
+ * Strips credential-bearing fragments out of an arbitrary error message
+ * before it reaches a log line. Same rules ResearchOrchestrator applies to
+ * job failures: URL query strings (a token can ride on one) and common
+ * key/value credential forms.
+ */
+export function redactSecrets(message: unknown, max = 300): string {
+  return String((message as any)?.message ?? message ?? '')
+    .replace(/([a-z][a-z0-9+.-]*:\/\/[^\s?#]+)\?[^\s#]*/gi, '$1?[REDACTED]')
+    .replace(/\b(token|access_token|api[_-]?key|authorization|bearer|secret|password)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
+    .slice(0, max);
+}
+
 export interface BundledExtensionStatus {
   /** The directory exists and holds a readable manifest.json. */
   present: boolean;
@@ -181,28 +194,82 @@ export function humanAssistConfig(env: Record<string, string | undefined> = proc
  * field to confirm it stuck. The credential itself is never read back, never
  * logged, and never returned.
  */
-export async function applyHumanAssistConfig(context: any, config: HumanAssistConfig): Promise<boolean> {
+export async function applyHumanAssistConfig(
+  context: any,
+  config: HumanAssistConfig,
+  attempts = 5,
+  settleMs = 250
+): Promise<boolean> {
   if (!config.configured) return false;
-  try {
-    let workers = context.serviceWorkers?.() || [];
-    if (!workers.length) {
-      await context.waitForEvent('serviceworker', { timeout: 5000 });
-      workers = context.serviceWorkers?.() || [];
-    }
-    if (!workers.length) return false;
+  const settle = () => new Promise((resolve) => setTimeout(resolve, settleMs));
 
-    await workers[0].evaluate(
-      (storage: Record<string, string>) => (globalThis as any).chrome.storage.local.set(storage),
-      config.storage
-    );
-    const applied = await workers[0].evaluate(async () => {
-      const v = await (globalThis as any).chrome.storage.local.get('speechService');
-      return v?.speechService ?? null;
-    });
-    return applied === config.service;
-  } catch {
-    return false;
+  /*
+   * WHY THIS RETRIES, RE-ACQUIRES THE WORKER, AND RE-CONFIRMS.
+   *
+   * Two real defects were found on 2026-09-08 by the real-Chromium proof in
+   * test/chromiumSmoke.test.mjs, both of which made humanAssistReady
+   * INTERMITTENT on identical inputs — the boolean the CAPTCHA UI trusts to
+   * decide whether to promise the customer assistance:
+   *
+   *  1. A Manifest V3 service worker is not a stable object. Chromium starts,
+   *     stops and recycles it on its own schedule, so `worker.evaluate()` can
+   *     legitimately throw ("target closed") at any moment. The previous
+   *     implementation held a single worker handle with ONE try/catch around
+   *     the whole operation, so a single recycle — routine, not exceptional —
+   *     returned false immediately and permanently. That reproduced reliably
+   *     as soon as another Chromium had run in the same process just before.
+   *     Every attempt therefore re-reads context.serviceWorkers() and catches
+   *     its own failure.
+   *
+   *  2. confirmExtensionRuntime() returns as soon as the worker OBJECT
+   *     exists, which is earlier than the extension finishing initialization
+   *     of its OWN option storage. Our write could land first and then be
+   *     overwritten by the extension's defaults. So each attempt writes, lets
+   *     the extension settle, reads back, and then requires the value to
+   *     STILL be ours on a second confirmation.
+   *
+   * Everything is bounded (attempts x 2 x settleMs). A genuine failure
+   * returns false rather than throwing: research must still run without the
+   * assist icon, and the UI must fail closed rather than promise help that
+   * is not there.
+   */
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      let workers = context.serviceWorkers?.() || [];
+      if (!workers.length) {
+        await context.waitForEvent('serviceworker', { timeout: 5000 });
+        workers = context.serviceWorkers?.() || [];
+      }
+      const worker = workers[0];
+      if (!worker) {
+        await settle();
+        continue;
+      }
+
+      // Reads back ONLY the non-secret service name. The credential itself is
+      // never returned out of the browser, here or anywhere else.
+      const readService = () =>
+        worker.evaluate(async () => {
+          const v = await (globalThis as any).chrome.storage.local.get('speechService');
+          return v?.speechService ?? null;
+        });
+
+      await worker.evaluate(
+        (storage: Record<string, string>) => (globalThis as any).chrome.storage.local.set(storage),
+        config.storage
+      );
+      await settle();
+      if ((await readService()) !== config.service) continue;
+      // Confirm it STAYS ours: a late initialization would clobber it here.
+      await settle();
+      if ((await readService()) === config.service) return true;
+    } catch {
+      // A recycled service worker is normal, not fatal — try again with a
+      // freshly acquired handle.
+      await settle().catch(() => {});
+    }
   }
+  return false;
 }
 
 /**

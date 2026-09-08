@@ -51,6 +51,9 @@ declare const process: {
   // Signal cleanup for local Chromium (LocalBrowserRuntime.installProcessCleanup):
   // a container stop must never leave a zombie browser or profile directory.
   once(event: string, listener: (...a: any[]) => void): void;
+  // Crash visibility (index.ts): unhandledRejection is logged and survived,
+  // uncaughtException tears the browsers down before exiting.
+  on(event: string, listener: (...a: any[]) => void): void;
   exit(code?: number): never;
 };
 declare const console: { log(...a: any[]): void; error(...a: any[]): void; warn(...a: any[]): void };

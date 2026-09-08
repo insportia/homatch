@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /*
@@ -143,6 +143,99 @@ test('the health payload advertises the local runtime, and /health/browserless i
 test('the Dockerfile CMD is the authoritative entrypoint and does not invoke the patcher', () => {
   const dockerfile = readFileSync(`${here}../Dockerfile`, 'utf8');
   const cmd = dockerfile.split('\n').filter((l) => l.trim().startsWith('CMD')).join('\n');
-  assert.match(cmd, /npm","start"/);
+  assert.match(cmd, /docker-entrypoint\.sh/, 'the image must boot through the canonical entrypoint');
   assert.equal(cmd.includes('apply-live-browser-patch'), false, 'the image must never start the patcher');
+  // The entrypoint must actually be in the image.
+  assert.match(dockerfile, /COPY docker-entrypoint\.sh/);
+});
+
+/* ------------------------------------------------------------------ *
+ * The container entrypoint — production incident 2026-09-08.          *
+ *                                                                     *
+ * `xvfb-run -a npm start` sent every xauth/Xvfb diagnostic to its     *
+ * default ERRORFILE (/dev/null) and blocked waiting for the X         *
+ * readiness signal, producing containers that were alive, completely  *
+ * silent and never bound their port. It also placed npm and xvfb-run  *
+ * between PID 1 and Node, so SIGTERM never reached the process whose  *
+ * handlers delete Chromium profiles.                                  *
+ * ------------------------------------------------------------------ */
+
+const entrypoint = readFileSync(`${here}../docker-entrypoint.sh`, 'utf8');
+// The header documents the incident verbatim — including the exact broken
+// commands it replaces — so every "must NOT appear" assertion runs against
+// executable lines only, never the explanation.
+const entrypointCode = entrypoint
+  .split(/\r?\n/)
+  .filter((l) => !/^\s*#/.test(l))
+  .join('\n');
+
+test('the entrypoint is observable: it logs before, during and after bringing up the display', () => {
+  for (const event of ['container_started', 'env_surface', 'exec_app']) {
+    assert.match(entrypoint, new RegExp(`emit ${event}\\b`), `${event} must always be logged`);
+  }
+  // Both display outcomes are reported — a failure may never be silent.
+  assert.match(entrypoint, /emit xvfb_ready\b/);
+  assert.match(entrypoint, /emit xvfb_unavailable\b/);
+  // The exact defect that hid the incident: the X server's own output must
+  // reach stdout/stderr, never a discard. (Checked on the Xvfb INVOCATION
+  // line — `command -v Xvfb >/dev/null` is a presence probe, not the server.)
+  const launch = entrypointCode.split('\n').find((l) => /^\s*Xvfb "/.test(l));
+  assert.equal(typeof launch, 'string', 'the entrypoint must launch Xvfb itself');
+  assert.equal(/\/dev\/null|>&\s*3/.test(launch), false, `Xvfb output must never be discarded: ${launch}`);
+  assert.equal(entrypointCode.includes('xvfb-run'), false, 'the blind xvfb-run wrapper must not come back');
+});
+
+test('the entrypoint execs Node directly so SIGTERM reaches the process that cleans up Chromium', () => {
+  assert.match(entrypointCode, /^exec node --import tsx src\/index\.ts$/m, 'the app must be exec-ed, not spawned');
+  // npm must not sit between PID 1 and Node: it does not forward signals.
+  assert.equal(/exec npm|npm start|npm run/.test(entrypointCode), false, 'npm must not be on the container signal path');
+});
+
+test('the entrypoint always starts the HTTP server, even when the display fails', () => {
+  // The exec is unconditional: it is not nested inside the Xvfb branch, so a
+  // display failure degrades the browser, never the whole service.
+  const execIndex = entrypoint.indexOf('exec node');
+  const xvfbBlockEnd = entrypoint.lastIndexOf('fi');
+  assert.equal(execIndex > xvfbBlockEnd, true, 'the app exec must sit outside every Xvfb conditional');
+  assert.match(entrypoint, /bounded/i, 'the wait for the display must be documented as bounded');
+  assert.match(entrypoint, /\$waited" -lt \d+/, 'the readiness wait must be bounded by a counter');
+});
+
+test('the entrypoint patches nothing and leaks no credential', () => {
+  assert.equal(/src\/index\.ts['"`]?\s*[;>]|>\s*src\//.test(entrypoint), false, 'the entrypoint must never write into src/');
+  assert.equal(/sed -i|writeFile|patch /.test(entrypoint), false, 'the entrypoint must never mutate source');
+  // It reports NODE_OPTIONS' size, never its content, and never touches a
+  // credential variable at all.
+  assert.match(entrypoint, /NODE_OPTIONS_CHARS/);
+  assert.equal(/\$\{?NODE_OPTIONS\}?[^_:]/.test(entrypoint.replace(/\$\{NODE_OPTIONS:-\}/g, '')), false, 'NODE_OPTIONS content must never be printed');
+  assert.equal(/HUMAN_ASSIST_SPEECH_API_KEY|WORKER_TOKEN|BROWSERLESS/.test(entrypoint), false, 'no credential variable may appear in the entrypoint');
+});
+
+test('package.json start remains the single canonical application command', () => {
+  const pkg = JSON.parse(readFileSync(`${here}../package.json`, 'utf8'));
+  assert.equal(pkg.scripts.start, 'tsx src/index.ts');
+  // The short-lived diagnostic bootstrap shim must not return: it called
+  // process.exit(1) on unhandledRejection, which would let one job's stray
+  // promise kill every other customer's in-flight job.
+  assert.equal(existsSync(`${here}../src/boot.ts`), false, 'src/boot.ts must not be reintroduced');
+  assert.equal(pkg.scripts.start.includes('boot'), false);
+});
+
+test('crash paths are loud, and a stray rejection never kills the worker', () => {
+  assert.match(indexSource, /process\.on\('unhandledRejection'/);
+  assert.match(indexSource, /process\.on\('uncaughtException'/);
+  const rejection = indexSource.slice(
+    indexSource.indexOf("process.on('unhandledRejection'"),
+    indexSource.indexOf("process.on('uncaughtException'")
+  );
+  assert.equal(/process\.exit/.test(rejection), false, 'an unhandled rejection must NOT exit the worker');
+  assert.match(rejection, /logBrowserLifecycle\('unhandled_rejection'/);
+  // A fatal exception must still tear down browsers before exiting, or every
+  // in-flight job leaks a Chromium process and a profile directory.
+  const fatal = indexSource.slice(indexSource.indexOf("process.on('uncaughtException'"));
+  assert.match(fatal, /closeAllJobBrowsers\('uncaught_exception'\)/);
+  assert.match(fatal, /process\.exit\(1\)/);
+  // Neither handler may log a raw message that could carry a credential.
+  assert.match(rejection, /redactSecrets\(/);
+  assert.match(fatal, /redactSecrets\(/);
 });

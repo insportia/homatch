@@ -170,7 +170,10 @@ test('the health payload reports humanAssistReady as a boolean and carries no cr
 });
 
 test('the log call sites structurally cannot pass the credential', () => {
-  const logCalls = runtimeSource.match(/logBrowserLifecycle\([\s\S]*?\}\);/g) || [];
+  // Call sites only (they always pass a string-literal event name first), so
+  // this can never swallow the function's own declaration and run on into a
+  // neighbouring helper.
+  const logCalls = runtimeSource.match(/logBrowserLifecycle\('[\s\S]*?\}\);/g) || [];
   assert.equal(logCalls.length >= 4, true);
   for (const call of logCalls) {
     assert.equal(/ApiKey|storage\.|config\.storage|SPEECH_API_KEY/.test(call), false, `log must stay secret-free: ${call.slice(0, 90)}`);

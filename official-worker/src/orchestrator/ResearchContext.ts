@@ -37,6 +37,45 @@ export interface ResearchJob {
   historicalComparison?: any;
   error?: string;
   _entityStepsAppended?: boolean;
+  /** Set by the stalled-job watchdog. Once true, run() must stop touching
+   * this job: its Chromium has already been torn down underneath it, so any
+   * in-flight Playwright call is about to reject and must not be allowed to
+   * overwrite the finalized state. */
+  _abandoned?: boolean;
+  /** True when the watchdog, not the pipeline, finalized this job. Surfaced
+   * so a stall is visible in the job document instead of looking like a
+   * normal completion. */
+  watchdogFinalized?: boolean;
+}
+
+/**
+ * decideStalledJob() — the stalled-job watchdog's decision, as a pure
+ * function so it can be tested directly (ResearchOrchestrator itself cannot
+ * be imported by the test build: it pulls in every Playwright workflow).
+ *
+ * Rules, in the mandate's terms:
+ *   - Only a RUNNING job can stall. WAITING_HUMAN is bounded by the session
+ *     TTL instead, and a human who has not answered yet is not a hang.
+ *   - `updatedAt` advances after every completed step, so this measures time
+ *     since the last real PROGRESS, never total job duration — a long but
+ *     healthy job is never killed.
+ *   - A stall is a TECHNICAL condition. Evidence already gathered is kept and
+ *     the job COMPLETEs so the customer still gets a report; only a job with
+ *     no result at all is FAILED, and that failure carries no property
+ *     meaning ("NO EVIDENCE = NO FACT" — never negative evidence).
+ */
+export function decideStalledJob(
+  job: Pick<ResearchJob, 'status' | 'updatedAt' | 'results' | '_abandoned'>,
+  nowMs: number,
+  stallMs: number
+): { finalize: false; reason: string } | { finalize: true; status: 'COMPLETE' | 'FAILED'; stalledForMs: number } {
+  if (job._abandoned) return { finalize: false, reason: 'already_abandoned' };
+  if (job.status !== 'RUNNING') return { finalize: false, reason: 'not_running' };
+  const last = Date.parse(job.updatedAt);
+  if (Number.isNaN(last)) return { finalize: false, reason: 'unparsable_timestamp' };
+  const stalledForMs = nowMs - last;
+  if (stalledForMs <= stallMs) return { finalize: false, reason: 'still_progressing' };
+  return { finalize: true, status: job.results.length ? 'COMPLETE' : 'FAILED', stalledForMs };
 }
 
 // Cadastral-mode order (2026-09-06, "Fix Homatch Verify by implementing

@@ -177,3 +177,59 @@ test('the modal drives the SAME local Chromium page: screenshot in, clicks out, 
   // VerifyPage still drives the same modal with the same worker job id.
   assert.match(verifySource, /<ResearchCaptchaModal open=\{!!captcha\} jobId=\{workerCaptchaId\}/);
 });
+
+/* ------------------------------------------------------------------ *
+ * The audited mobile widths.                                          *
+ *                                                                     *
+ * Mandate: "Audit at 320px / 360px / 375px / 390px / 430px. CAPTCHA   *
+ * screenshot/action UI must be usable."                               *
+ *                                                                     *
+ * There is no DOM renderer in this repository, so the guarantee is    *
+ * made structurally and it is a real one: Tailwind's `sm` breakpoint  *
+ * is 640px (the config overrides `screens` only for `container`), so  *
+ * every one of the audited widths renders the MOBILE branch of every  *
+ * responsive class asserted above — the full-screen sheet, the        *
+ * stacked full-width actions, the safe-area padding. What must then   *
+ * be proven for the narrowest of them is that nothing in the modal    *
+ * has a fixed width that cannot fit.                                  *
+ * ------------------------------------------------------------------ */
+
+const AUDITED_WIDTHS = [320, 360, 375, 390, 430];
+const TAILWIND_SM = 640;
+
+test('every audited width renders the mobile branch of the CAPTCHA modal', () => {
+  for (const width of AUDITED_WIDTHS) {
+    assert.equal(width < TAILWIND_SM, true, `${width}px must fall below the sm: breakpoint to get the mobile layout`);
+  }
+  // The mobile branch of each responsive pair the customer actually touches.
+  assert.match(modalSource, /w-full h-\[100dvh\]/, 'full-screen sheet below sm');
+  assert.match(modalSource, /className="w-full sm:w-auto"/, 'full-width tap targets below sm');
+  assert.match(modalSource, /flex flex-col-reverse gap-2 sm:flex-row/, 'stacked actions below sm');
+  assert.match(modalSource, /p-0 sm:p-4/, 'no wasted outer padding below sm');
+});
+
+test('nothing in the CAPTCHA modal is wider than the narrowest audited viewport', () => {
+  const narrowest = Math.min(...AUDITED_WIDTHS);
+  // Any fixed pixel width/min-width would overflow horizontally at 320px.
+  for (const [, value] of modalSource.matchAll(/(?:min-)?w-\[(\d+)px\]/g)) {
+    assert.equal(Number(value) <= narrowest, true, `fixed width ${value}px overflows a ${narrowest}px viewport`);
+  }
+  // The desktop width is explicitly viewport-clamped, not absolute.
+  assert.match(modalSource, /sm:w-\[min\(1100px,94vw\)\]/);
+  // The screenshot scales down instead of forcing the page wide, and the
+  // challenge area scrolls rather than clipping when it cannot.
+  assert.match(modalSource, /className="max-w-full w-auto h-auto cursor-pointer select-none"/);
+  assert.match(modalSource, /overflow-auto grid place-items-center/);
+  // Only min-HEIGHT is fixed; a min-width there would break narrow screens.
+  assert.equal(/min-w-\[\d+px\]/.test(modalSource), false, 'the challenge area must never have a fixed min-width');
+});
+
+test('the assistance NOTE stays readable and in flow at every audited width', () => {
+  // The NOTE is rendered only when the worker reports a real, configured
+  // human-assist backend — the UI must never promise help that is not there.
+  assert.match(modalSource, /\{shot\?\.humanAssist&&<p [^>]*>\{t\('verify_captcha_extension_note'\)\}<\/p>\}/);
+  // Long Georgian/Russian sentences must wrap, not overflow, at 320px.
+  const noteTag = modalSource.match(/<p [^>]*>\{t\('verify_captcha_extension_note'\)\}<\/p>/)[0];
+  assert.match(noteTag, /break-words/, 'the NOTE must wrap at narrow widths');
+  assert.equal(/fixed|absolute|sticky|z-\[|translate/.test(noteTag), false, 'the NOTE must stay in normal flow');
+});

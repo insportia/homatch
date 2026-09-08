@@ -219,10 +219,19 @@ test('a source owns only its Page — never the job context, never Chromium', ()
 });
 
 test('only terminal paths close the job browser, and each removes it from the registry', () => {
-  for (const reason of ['job_complete', 'job_failed', 'ttl_expired']) {
-    assert.match(orchestratorSource, new RegExp(`closeJobBrowser\\([^)]*'${reason}'\\)`), `${reason} must close the job browser`);
+  // The five terminal paths. 'job_watchdog_stalled' and 'job_abandoned' were
+  // added with the stalled-job watchdog (see jobWatchdog.test.mjs): a job that
+  // stops making progress must release its Chromium and profile too, and the
+  // step that was in flight when that happened must tear its own handle down
+  // without resurrecting the job.
+  for (const reason of ['job_complete', 'job_failed', 'ttl_expired', 'job_watchdog_stalled', 'job_abandoned']) {
+    // Not [^)]* — an argument may itself contain parentheses, e.g.
+    // closeJobBrowser(this.jobBrowsers.get(id) ?? null, 'job_watchdog_stalled').
+    assert.match(orchestratorSource, new RegExp(`closeJobBrowser\\([\\s\\S]{0,80}?'${reason}'\\)`), `${reason} must close the job browser`);
   }
-  assert.equal((orchestratorSource.match(/this\.jobBrowsers\.delete\(/g) || []).length, 3);
+  // Every close is paired with a registry removal, so nothing can be closed
+  // twice or leak a handle.
+  assert.equal((orchestratorSource.match(/this\.jobBrowsers\.delete\(/g) || []).length, 5);
 });
 
 test('CAPTCHA preserves the exact Chromium, context and Page — nothing is created or closed', () => {
@@ -320,7 +329,12 @@ test('the runtime opens no network transport of its own — it launches a local 
 });
 
 test('lifecycle logs stay secret-free — no profile path, cookie, token or extension storage', () => {
-  const logCalls = runtimeSource.match(/logBrowserLifecycle\([\s\S]*?\}\);/g) || [];
+  // CALL SITES only — every call passes a string-literal event name first.
+  // (Matching the bare identifier also swallowed the function's own
+  // declaration and ran on into whatever helper follows it in the file,
+  // which produced a false positive against redactSecrets' credential-name
+  // pattern list.)
+  const logCalls = runtimeSource.match(/logBrowserLifecycle\('[\s\S]*?\}\);/g) || [];
   assert.equal(logCalls.length >= 3, true);
   for (const call of logCalls) {
     assert.equal(/userDataDir|profilePath|cookie|token|storage/i.test(call), false, `log must stay secret-free: ${call}`);

@@ -544,11 +544,13 @@ export class ResearchOrchestrator {
            * never negative evidence about the property.
            */
           const blockedSession = this.sessions.get(job.id);
+          let networkBlocked = false;
           if (blockedSession?.page && (await captchaNetworkBlocked(blockedSession.page))) {
+            networkBlocked = true;
             logBrowserLifecycle('captcha_network_blocked', {
               jobId: job.id,
               source: ResearchOrchestrator.sourceOf(step),
-              note: 'server environment appears rejected; human + extension still get the same live page',
+              note: 'server environment appears rejected; offering user-side handoff where the source supports it',
             });
           }
           job.status = 'WAITING_HUMAN';
@@ -562,6 +564,21 @@ export class ResearchOrchestrator {
             expiresAt: new Date(Date.now() + TTL).toISOString(),
             recommendedWidth: 1100,
             recommendedMaxHeight: '90vh',
+            /*
+             * NETWORK REFUSAL, not a hard puzzle.
+             *
+             * True when the source refused this DATACENTER rather than
+             * presenting a solvable CAPTCHA ("your computer or network may be
+             * sending automated queries"). The customer-facing screenshot
+             * cannot fix that, because a screenshot does not change the source
+             * IP — so the UI offers the same public lookup in the customer's
+             * OWN browser instead.
+             *
+             * Purely informational here. The pause behaves exactly as before:
+             * same live page, same session, same Buster extension, same
+             * resume/skip. Nothing downstream is required to read this.
+             */
+            networkBlocked,
             fullInteractiveSession: true,
             scrollable: true,
             message: 'წყარომ მოითხოვა ადამიანის დადასტურება. დაასრულეთ ეს შემოწმება ან გამოტოვეთ ეს წყარო — იგივე სესია ავტომატურად გაგრძელდება ან კვლევა გააგრძელებს დანარჩენ წყაროებზე.',

@@ -256,9 +256,34 @@ test('a blocked CAPTCHA is recorded but the human still gets the SAME live page'
   const block = run.slice(run.indexOf('captchaNetworkBlocked(blockedSession.page)'), run.indexOf("job.status = 'WAITING_HUMAN';"));
   assert.match(block, /captcha_network_blocked/, 'the block must be observable in production logs');
   assert.equal(/SOURCE_UNAVAILABLE|continue;|return;/.test(block), false, 'a block must not end or divert the source');
-  assert.equal(/WAITING_HUMAN_LOCAL|LOCAL_BROWSER|handoff/i.test(run), false, 'no local-browser handoff in the production line');
-  // The job still parks in the same session for the human + extension.
+  /*
+   * The rejected mechanism was routing Verify through the DEVELOPER'S own
+   * browser (WAITING_HUMAN_LOCAL / LOCAL_BROWSER / the homatch-verify-helper
+   * extension), which made a developer's PC, phone and internet part of
+   * production. That must never come back, so it is still forbidden by name.
+   *
+   * This is deliberately narrower than the bare word "handoff", which it used
+   * to match. The CUSTOMER-side handoff added in 2026-09 is a different thing
+   * entirely: the customer opens the same public lookup in their own browser
+   * when the source has refused our datacenter outright. The worker's only
+   * part in it is the informational `networkBlocked` flag below — it starts
+   * nothing, diverts nothing, and the assertions that follow are what
+   * actually pin that down.
+   */
+  assert.equal(
+    /WAITING_HUMAN_LOCAL|LOCAL_BROWSER|localVerification|homatch-verify-helper/i.test(run),
+    false,
+    'the developer-browser handoff must never return to the production line'
+  );
+  // The job still parks in the SAME session for the human + extension, and
+  // the block observation is informational only.
   assert.match(run, /job\.status = 'WAITING_HUMAN';/);
+  assert.match(block, /networkBlocked = true/, 'the refusal must be recorded');
+  assert.equal(
+    /this\.sessions\.delete|closeSession|releaseHuman/.test(block),
+    false,
+    'observing a refusal must not tear down the live session'
+  );
 });
 
 test('the block predicate itself is still available and correct', () => {

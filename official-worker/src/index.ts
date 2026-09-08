@@ -9,7 +9,7 @@ import express from 'express';
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { ResearchOrchestrator } from './orchestrator/ResearchOrchestrator.js';
-import { browserlessConfigured, launchResearchBrowser, researchContext, createHumanLiveURL, closeHumanLiveURL } from './browser/BrowserlessRuntime.js';
+import { localBrowserHealth, installProcessCleanup } from './browser/LocalBrowserRuntime.js';
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 
 const app = express();
@@ -71,10 +71,11 @@ app.get('/health', (_q: any, r: any) =>
     structuredTraversal: true,
     humanSessionControls: true,
     humanSessionSkip: true,
-    // Interactive Browserless live view for WAITING_HUMAN sessions. The
-    // human solves the challenge themselves in the real preserved page;
-    // this worker neither solves nor bypasses one.
-    liveInteractiveBrowser: true,
+    // Local Playwright Chromium per job, with the bundled human-assist
+    // extension. The human solves any challenge themselves in the real
+    // preserved page; this worker neither solves nor bypasses one.
+    browserRuntime: 'local-playwright-chromium',
+    humanVerificationTransport: 'screenshot+action',
     evidenceValidation: true,
     evidenceLedger: true,
     entityQueue: true,
@@ -84,78 +85,47 @@ app.get('/health', (_q: any, r: any) =>
 );
 
 /*
- * GET /health/browserless — end-to-end proof that the remote browser chain
- * works: bridge/token -> CDP connect -> context -> page -> Browserless.liveURL
- * (including the bounded plan-timeout fallback) -> close.
+ * GET /health/browser — bounded LOCAL Chromium smoke test.
  *
- * This route previously existed ONLY inside scripts/apply-live-browser-patch.mjs,
- * the startup patcher that also shadowed the real POST /research/:id/live with
- * a legacy handler and caused the production 404s (see that script's header
- * and test/startupIntegrity.test.mjs). The patcher is now inert, so the
- * capability it legitimately provided is reimplemented here, in real source,
- * on top of the same functions production research uses — no duplicated CDP
- * code, no hardcoded timeout, no separate credential handling.
+ * Launches Chromium with the exact production configuration (persistent
+ * context, throwaway profile, bundled human-assist extension), confirms the
+ * extension's MV3 service worker actually registered, opens a page, executes
+ * JavaScript, then tears everything down including the profile directory.
  *
- * Returns BOOLEANS ONLY. Never the live URL, the liveURLId, the CDP/websocket
- * URL, the Browserless token or the bridge key. Unauthenticated like /health
- * (it discloses nothing), but each real probe consumes a Browserless session,
- * so results are cached briefly to make the endpoint useless for burning the
- * account's quota.
+ * Returns sanitized booleans only — never a token, cookie, profile path,
+ * extension storage or environment value. Unauthenticated like /health (it
+ * discloses nothing), and the probe is cached briefly so it cannot be used to
+ * spawn Chromium repeatedly.
+ *
+ * /health/browserless is kept ONLY as a deprecated alias for callers still
+ * pointing at the old name. It performs the LOCAL check and never contacts
+ * Browserless.
  */
-const BROWSERLESS_PROBE_TTL_MS = 60 * 1000;
-let browserlessProbe: { at: number; ok: boolean; body: any } | null = null;
+const BROWSER_PROBE_TTL_MS = 60 * 1000;
+let browserProbe: { at: number; ok: boolean; body: any } | null = null;
 
-app.get('/health/browserless', async (_req: any, res: any) => {
-  if (browserlessProbe && Date.now() - browserlessProbe.at < BROWSERLESS_PROBE_TTL_MS) {
-    return res.status(browserlessProbe.ok ? 200 : 503).json({ ...browserlessProbe.body, cached: true });
+async function browserHealthHandler(_req: any, res: any) {
+  if (browserProbe && Date.now() - browserProbe.at < BROWSER_PROBE_TTL_MS) {
+    return res.status(browserProbe.ok ? 200 : 503).json({ ...browserProbe.body, cached: true });
   }
+  const health = await localBrowserHealth();
+  browserProbe = { at: Date.now(), ok: health.ok, body: health };
+  return res.status(health.ok ? 200 : 503).json(health);
+}
 
-  let browser: any = null;
-  let page: any = null;
-  let liveURLId: string | null = null;
-  try {
-    if (!browserlessConfigured()) throw new Error('browserless_not_configured');
-    browser = await launchResearchBrowser();
-    const ctx = await researchContext(browser);
-    page = await ctx.newPage();
-    const live = await createHumanLiveURL(page, 120000);
-    liveURLId = live.liveURLId;
-    const body = {
-      ok: true,
-      configured: true,
-      cdp: true,
-      liveURL: !!live.liveURL,
-      trustedCapability: true,
-      safeToExpose: !!live.capability,
-    };
-    browserlessProbe = { at: Date.now(), ok: true, body };
-    return res.json(body);
-  } catch (e) {
-    // Server-side only: the message can contain a Browserless endpoint.
-    console.error(`[browserless-health] ${String(e)}`);
-    const body = { ok: false, error: 'remote_browser_unavailable' };
-    browserlessProbe = { at: Date.now(), ok: false, body };
-    return res.status(503).json(body);
-  } finally {
-    if (page && liveURLId) await closeHumanLiveURL(page, liveURLId).catch(() => {});
-    await page?.close?.().catch(() => {});
-    await browser?.close?.().catch(() => {});
-  }
+app.get('/health/browser', browserHealthHandler);
+app.get('/health/browserless', (req: any, res: any) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Link', '</health/browser>; rel="successor-version"');
+  return browserHealthHandler(req, res);
 });
 
-// `visualWatch: true` (opt-in, strict boolean) turns on the live view of the
-// REAL research browser from its first page — an observation/debugging
-// capability for an authenticated operator. Absent or anything other than
-// exactly `true`, the job runs precisely as it always has: no live view is
-// minted before WAITING_HUMAN, and the job document carries no visualWatch
-// block at all.
 app.post('/research', auth, (req: any, res: any) => {
   const mode = req.body?.mode === 'property' ? 'property' : 'cadastral';
   const query = mode === 'cadastral' ? String(req.body?.query || '').trim().replace(/\s/g, '') : String(req.body?.query || '').trim();
   if (!query) return res.status(400).json({ error: 'query required' });
-  const visualWatch = req.body?.visualWatch === true;
-  const job = orchestrator.start(query, mode, { visualWatch });
-  res.status(202).json({ accepted: true, jobId: job.id, status: job.status, visualWatch });
+  const job = orchestrator.start(query, mode);
+  res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
 });
 
 app.get('/research/:id', auth, (req: any, res: any) => {
@@ -235,7 +205,11 @@ app.get('/research/:id/screenshot', auth, async (req: any, res: any) => {
   try {
     const vp = s.page.viewportSize() || { width: 1440, height: 1000 };
     const img = await s.page.screenshot({ type: 'jpeg', quality: 85, fullPage: false });
-    res.json({ image: `data:image/jpeg;base64,${img.toString('base64')}`, width: vp.width, height: vp.height, offsetX: 0, offsetY: 0, cropped: false, url: s.page.url(), source: s.step.type === 'entity' ? s.step.source : s.step.key, captcha: true });
+    // humanAssist is a BOOLEAN capability flag, never a credential: it tells
+    // the CAPTCHA UI whether the bundled extension is loaded AND a
+    // Homatch-owned speech backend was configured for this job, so the UI
+    // never claims assistance that is not actually available (fail-closed).
+    res.json({ image: `data:image/jpeg;base64,${img.toString('base64')}`, width: vp.width, height: vp.height, offsetX: 0, offsetY: 0, cropped: false, url: s.page.url(), source: s.step.type === 'entity' ? s.step.source : s.step.key, captcha: true, humanAssist: !!s.jobBrowser?.humanAssistReady });
   } catch (e) {
     console.error(`[screenshot ${req.params.id}] ${String(e)}`);
     res.status(500).json({ error: 'could not load the verification screen right now — try again' });
@@ -258,83 +232,11 @@ app.post('/research/:id/action', auth, async (req: any, res: any) => {
   }
 });
 
-// POST (and GET) /research/:id/live — the authenticated channel for the
-// interactive Browserless live view of an active WAITING_HUMAN session.
-//
-// CONTRACT OWNERSHIP: this path/method is the EXISTING PRODUCTION CONTRACT.
-// src/components/research/ResearchCaptchaModal.tsx (rendered by
-// VerifyPage.tsx) already ships `fetch(`${WORKER}/research/${jobId}/live`,
-// { method: 'POST', headers })` with no body, and reads `{ liveURL }` from
-// the JSON response (`expiresAt`/`source`/`url` optional, `error` on
-// failure). The worker matches the frontend here rather than the other way
-// round — there is exactly ONE live-view path, and no frontend change was
-// needed. GET is registered on the SAME path and handler so a caller that
-// follows humanVerification.liveBrowserEndpoint from GET /research/:id does
-// not have to guess a method; both verbs run identical code.
-//
-// WHY THIS EXISTS SEPARATELY FROM GET /research/:id: the job document is
-// polled continuously and stored/logged downstream by research-agent, so a
-// live URL is embedded in it ONLY when classifyLiveURLExposure() proves it
-// carries no credential (see BrowserlessRuntime.ts). When it cannot prove
-// that, the job document instead carries `liveBrowserEndpoint` — this path —
-// and the URL is handed out only here, to a caller that authenticated for
-// this specific job, never persisted in the job document.
-//
-// SINGLE IMPLEMENTATION: all live-view creation lives in
-// orchestrator.getOrCreateLiveView() -> HumanLiveSession.ts. This handler
-// contains no CDP call and no Browserless.liveURL of its own, so a repeated
-// UI poll/refresh returns the EXISTING handle instead of minting a second
-// one, and the preserved browser/context/page is never re-derived.
-//
-// Returns the URL and nothing else that matters: never the liveURLId, never
-// a CDP/websocket URL, never a token, never a page/context/browser handle.
-// A session that has none (creation failed, Browserless refused, the
-// underlying session died) is reported as an honest, non-fatal
-// "unavailable" — the job stays WAITING_HUMAN and the customer keeps the
-// screenshot/action fallback below. This never solves or bypasses a
-// challenge; it only streams the real page to the real human.
-async function liveBrowserHandler(req: any, res: any) {
-  // An id this worker has never heard of is a 404 about the JOB — distinct
-  // from a known job that simply has nothing to stream right now (503).
-  if (!orchestrator.getJob(req.params.id)) return res.status(404).json({ error: 'not found' });
-  const s = orchestrator.getSession(req.params.id);
-  // A visualWatch job is legitimately watchable while RUNNING, with no human
-  // session at all. For every ordinary job the 404 below is exactly what it
-  // was before visual watching existed.
-  const watching = orchestrator.isVisualWatchEnabled(req.params.id);
-  if (!s && !watching) return res.status(404).json({ error: 'active human session not found' });
-  try {
-    const live = await orchestrator.getOrCreateLiveView(req.params.id);
-    if (!live) {
-      // For a watch job this is the normal "not streaming yet / not streaming
-      // right now" answer — the caller polls again. It is never a research
-      // failure and says nothing about the property.
-      return res.status(503).json({ interactive: false, visualWatch: watching, error: 'the interactive verification browser is unavailable right now — you can still use the verification screen' });
-    }
-    return res.json({
-      interactive: true,
-      liveURL: live.liveURL,
-      source: live.source,
-      expiresAt: live.expiresAt,
-      // Generation changes whenever the stream moved to a different real page
-      // or to a new browser after a Browserless reconnect: the watcher must
-      // re-open the URL when it changes. Mode says which lifecycle the stream
-      // currently belongs to.
-      generation: live.generation,
-      mode: live.mode,
-      url: live.pageUrl,
-    });
-  } catch (e) {
-    // Never forward a raw Playwright/CDP error (selectors, call logs,
-    // endpoints) to the client; server-side only.
-    console.error(`[live ${req.params.id}] ${String(e)}`);
-    return res.status(500).json({ interactive: false, error: 'could not open the interactive verification browser right now — try again' });
-  }
-}
-
-// `auth` on BOTH verbs: an unauthenticated caller can never obtain a live URL.
-app.post('/research/:id/live', auth, liveBrowserHandler);
-app.get('/research/:id/live', auth, liveBrowserHandler);
+// NOTE: the Browserless live-view endpoints (POST/GET /research/:id/live)
+// were removed with the Browserless runtime. Human CAPTCHA interaction is
+// served by GET /research/:id/screenshot + POST /research/:id/action above,
+// which drive the EXACT live local Chromium Page the job paused on — the
+// same mechanism this repository used before Browserless (ae74a228).
 
 app.post('/research/:id/resume', auth, async (req: any, res: any) => {
   const r = await orchestrator.resume(req.params.id);
@@ -415,5 +317,7 @@ app.get('/debug/:id/screenshot', auth, (req: any, res: any) => {
   res.setHeader('Content-Type', 'image/png');
   res.send(Buffer.from(b64, 'base64'));
 });
+
+installProcessCleanup();
 
 app.listen(PORT, '0.0.0.0', () => console.log(`homatch-official-worker 2.0.0 (deterministic FSM architecture) listening on ${PORT}`));

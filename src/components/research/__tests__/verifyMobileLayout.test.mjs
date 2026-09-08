@@ -117,41 +117,62 @@ test('long cadastral codes, evidence text and errors wrap instead of overflowing
  * ------------------------------------------------------------------ */
 
 test('the CAPTCHA modal fits the real mobile viewport and cannot exceed it', () => {
-  assert.match(modalSource, /h-\[100dvh\] max-h-\[100dvh\] sm:h-\[92vh\] sm:max-h-\[92vh\]/);
-  // Panel clips its children, so the iframe can never escape the rounded edge.
+  assert.match(modalSource, /h-\[100dvh\] max-h-\[100dvh\] sm:h-auto/);
+  assert.match(modalSource, /sm:max-h-\[90vh\]/);
+  // The panel clips its children; the challenge area scrolls rather than
+  // clipping, so a large multi-tile challenge is always reachable.
   assert.match(modalSource, /bg-background shadow-2xl overflow-hidden flex flex-col/);
-  assert.match(modalSource, /relative bg-neutral-950 flex-1 min-h-0 overflow-hidden/);
-  assert.match(modalSource, /<iframe [^>]*className="block w-full h-full max-w-full border-0/);
+  assert.match(modalSource, /flex-1 min-h-\[320px\] sm:min-h-\[420px\] overflow-auto/);
+  // Browserless is gone: the challenge is a screenshot of the REAL local
+  // Chromium page, clicked through /research/:id/action — no iframe, no
+  // remote browser URL.
+  assert.equal(modalSource.includes('<iframe'), false, 'no remote browser iframe after the local Chromium migration');
+  assert.match(modalSource, /<img ref=\{img\} src=\{shot\.image\} onClick=\{click\}/);
 });
 
 test('the modal controls stay reachable on a phone — full-width taps, safe-area padding, wrapping text', () => {
   assert.match(modalSource, /pb-\[max\(0\.75rem,env\(safe-area-inset-bottom\)\)\]/);
-  assert.match(modalSource, /className="flex flex-col gap-2 sm:flex-row sm:justify-end"/);
+  assert.match(modalSource, /flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between/);
   assert.equal((modalSource.match(/className="w-full sm:w-auto"/g) || []).length, 2, 'both footer actions are full-width on mobile');
   assert.match(modalSource, /px-3 py-3 sm:px-5 sm:py-4 border-b/);
-  assert.match(modalSource, /text-xs text-muted-foreground mb-2 sm:mb-3 break-words/);
+  assert.match(modalSource, /text-xs text-muted-foreground break-words/);
+});
+
+test('the required CAPTCHA NOTE is shown to the customer, in normal document flow', () => {
+  // The yellow-person-icon instruction, in every supported language.
+  assert.match(modalSource, /t\('verify_captcha_extension_note'\)/);
+  // The whole NOTE block: its wrapper div through to the challenge area.
+  const note = modalSource.slice(
+    modalSource.lastIndexOf('<div', modalSource.indexOf("verify_captcha_recommended_note")),
+    modalSource.indexOf('flex-1 min-h-')
+  );
+  // A plain block between the header and the challenge — never fixed,
+  // absolute, translated or z-indexed over other content.
+  assert.equal(/fixed|absolute|sticky|z-\[|translate|(^|\s)-m[trblxy]?-/.test(note), false);
+  assert.match(note, /border-b shrink-0/);
 });
 
 test('the modal is a labelled dialog and its icon controls are named', () => {
-  assert.match(modalSource, /role="dialog" aria-modal="true" aria-label=\{copy\.title\}/);
-  assert.match(modalSource, /aria-label=\{copy\.refresh\}/);
-  assert.match(modalSource, /aria-label=\{copy\.close\}/);
-  // Every language variant defines the new close label.
-  assert.equal((modalSource.match(/close:'/g) || []).length, 3);
+  assert.match(modalSource, /role="dialog" aria-modal="true" aria-label=\{t\('verify_captcha_title'\)\}/);
+  assert.equal((modalSource.match(/aria-label=\{t\(/g) || []).length >= 3, true, 'icon controls must be named');
 });
 
 /* ------------------------------------------------------------------ *
  * The UI changes did not touch the live-browser contract.             *
  * ------------------------------------------------------------------ */
 
-test('the live-browser and resume contracts the worker serves are untouched by the layout work', () => {
-  assert.match(modalSource, /fetch\(`\$\{WORKER\}\/research\/\$\{jobId\}\/live`,\s*\{\s*method:\s*'POST'/);
-  assert.match(modalSource, /\/research\/\$\{jobId\}\/resume`,\s*\{\s*method:\s*'POST'/);
-  assert.match(modalSource, /if\(!r\.ok\|\|!d\?\.liveURL\)throw new Error\(d\?\.error/);
-  // The real interactive liveURL remains the only source — nothing faked, no
-  // solver, no bypass.
-  assert.match(modalSource, /src=\{live\.liveURL\}/);
-  assert.equal(modalSource.includes('liveURLId'), false);
+test('the modal drives the SAME local Chromium page: screenshot in, clicks out, resume/skip on the same session', () => {
+  // The proven pre-Browserless transport, restored.
+  assert.match(modalSource, /path=`\/research\/\$\{jobId\}\/screenshot`/);
+  assert.match(modalSource, /path=`\/research\/\$\{jobId\}\/action`/);
+  assert.match(modalSource, /path=`\/research\/\$\{jobId\}\/resume`/);
+  assert.match(modalSource, /path=`\/research\/\$\{jobId\}\/skip`/);
+  // Authenticated with the user's Supabase JWT, as before.
+  assert.match(modalSource, /Authorization:`Bearer \$\{session\.access_token\}`/);
+  // Clicks are mapped from the displayed image back to real page coordinates.
+  assert.match(modalSource, /x=\(e\.clientX-r\.left\)\*shot\.width\/r\.width/);
+  // No Browserless remnants, and no solver or bypass anywhere.
+  assert.equal(/liveURL|liveURLId|browserless/i.test(modalSource), false);
   assert.equal(/solveCaptcha|captchaSolver|2captcha|anticaptcha|bypassCaptcha/i.test(modalSource), false);
   // VerifyPage still drives the same modal with the same worker job id.
   assert.match(verifySource, /<ResearchCaptchaModal open=\{!!captcha\} jobId=\{workerCaptchaId\}/);

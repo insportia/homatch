@@ -32,17 +32,33 @@ const indexSource = readFileSync(`${here}../src/index.ts`, 'utf8');
  * No startup script may mutate source.                                *
  * ------------------------------------------------------------------ */
 
-test('no tracked startup script writes to src/ — startup must never mutate source', () => {
+test('no script may mutate src/, and nothing on the startup path writes at all', () => {
   const scripts = readdirSync(SCRIPTS_DIR).filter((f) => f.endsWith('.mjs'));
   assert.equal(scripts.length > 0, true, 'scripts/ must be scanned');
+
+  // The startup path is the Dockerfile CMD plus package.json's start script.
+  // Nothing there may reference a script at all — the app starts directly.
+  const dockerfile = readFileSync(`${here}../Dockerfile`, 'utf8');
+  const pkg = JSON.parse(readFileSync(`${here}../package.json`, 'utf8'));
+  const cmdLines = dockerfile.split(/\r?\n/).filter((l) => l.trim().startsWith('CMD')).join(' ');
+  const startupPath = `${cmdLines} ${pkg.scripts.start}`;
+  for (const name of scripts) {
+    assert.equal(startupPath.includes(name), false, `${name} must not be on the startup path`);
+  }
 
   for (const name of scripts) {
     const source = readFileSync(`${SCRIPTS_DIR}/${name}`, 'utf8');
     // Comments explain the old behaviour; code must not perform it.
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    assert.equal(/writeFileSync|writeFile\s*\(|fs\.promises\.writeFile/.test(code), false, `${name} must not write files at startup`);
-    assert.equal(/readFileSync\(\s*['"`]src\//.test(code), false, `${name} must not read src/ for patching`);
+    // The historical bug: rewriting application source. Banned outright,
+    // whether at startup or from a maintenance tool.
+    assert.equal(/readFileSync\(\s*['"`]src\/|readFile\(\s*['"`]src\//.test(code), false, `${name} must not read src/ for patching`);
+    assert.equal(/['"`]src\/index\.ts['"`]/.test(code), false, `${name} must not target src/index.ts`);
     assert.equal(code.includes("patch('src/index.ts'"), false, `${name} must not patch src/index.ts`);
+    // A maintenance tool may write, but only outside src/.
+    for (const m of code.matchAll(/write(?:File)?(?:Sync)?\(\s*([^,)]+)/g)) {
+      assert.equal(/['"`]src\//.test(m[1]), false, `${name} must never write into src/`);
+    }
   }
 });
 
@@ -70,48 +86,58 @@ test('the quarantined live-browser patch script is inert but still bootable', ()
  * The real live route may never be shadowed.                          *
  * ------------------------------------------------------------------ */
 
-test('exactly one handler is registered per live route, and it is the real one', () => {
-  const postLive = indexSource.match(/app\.post\('\/research\/:id\/live'/g) || [];
-  const getLive = indexSource.match(/app\.get\('\/research\/:id\/live'/g) || [];
-  assert.equal(postLive.length, 1, 'a second POST /research/:id/live would shadow the real handler');
-  assert.equal(getLive.length, 1);
-  assert.match(indexSource, /app\.post\('\/research\/:id\/live',\s*auth,\s*liveBrowserHandler\)/);
-  assert.match(indexSource, /app\.get\('\/research\/:id\/live',\s*auth,\s*liveBrowserHandler\)/);
+test('no route is registered twice — a duplicate would shadow the real handler', () => {
+  const registrations = [...indexSource.matchAll(/app\.(get|post)\('([^']+)'/g)].map(([, verb, route]) => `${verb} ${route}`);
+  const seen = new Set();
+  for (const r of registrations) {
+    assert.equal(seen.has(r), false, `duplicate handler registered for ${r}`);
+    seen.add(r);
+  }
+  // The Browserless live-view endpoints are gone with the Browserless runtime.
+  assert.equal(indexSource.includes("'/research/:id/live'"), false, 'the Browserless live route must not come back');
 });
 
-test('the live route is registered by the real handler, which consults the visual watch and the trusted capability', () => {
-  const handler = indexSource.slice(
-    indexSource.indexOf('async function liveBrowserHandler('),
-    indexSource.indexOf("app.post('/research/:id/live'")
-  );
-  // The legacy handler's signature failure: it only ever looked at
-  // getSession() and 404'd for every RUNNING visualWatch job.
-  assert.match(handler, /orchestrator\.isVisualWatchEnabled\(req\.params\.id\)/);
-  assert.match(handler, /orchestrator\.getOrCreateLiveView\(req\.params\.id\)/);
-  // It must not mint its own live URL or hardcode a plan-busting timeout.
+test('human CAPTCHA interaction is served by the screenshot/action routes against the live Page', () => {
+  // The pre-Browserless, proven mechanism (ae74a228), restored as the only
+  // human-interaction transport.
+  assert.match(indexSource, /app\.get\('\/research\/:id\/screenshot',\s*auth,/);
+  assert.match(indexSource, /app\.post\('\/research\/:id\/action',\s*auth,/);
+  const screenshot = indexSource.slice(indexSource.indexOf("app.get('/research/:id/screenshot'"), indexSource.indexOf("app.post('/research/:id/action'"));
+  assert.match(screenshot, /orchestrator\.getSession\(req\.params\.id\)/);
+  assert.match(screenshot, /s\.page\.screenshot\(/, 'must screenshot the EXACT preserved page');
+  // No Browserless anything in the HTTP layer.
   assert.equal(/['"`]Browserless\.liveURL['"`]/.test(indexSource), false);
   assert.equal(indexSource.includes('timeout: 900000'), false);
+  // No Browserless in CODE (comments explaining the removal are fine, and the
+  // deprecated /health/browserless alias path is allowed by name only).
+  const indexCode = indexSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace(/'\/health\/browserless'/g, '');
+  assert.equal(/browserless/i.test(indexCode), false, 'no Browserless code may remain in the HTTP layer');
 });
 
-test('the health payload has no patch-only marker — its presence in production proves the patcher ran', () => {
-  // `browserRuntime` was added ONLY by the startup patcher. If a live
-  // /health response ever contains it again, the override is back.
-  assert.equal(indexSource.includes('browserRuntime'), false);
-  assert.match(indexSource, /liveInteractiveBrowser: true/);
-  // /health/browserless previously existed ONLY in the patch; it is now a
-  // real route built on the production Browserless functions, returning
-  // booleans only and never a URL, handle or credential.
-  assert.match(indexSource, /app\.get\('\/health\/browserless', async/);
+test('the health payload advertises the local runtime, and /health/browserless is a deprecated LOCAL alias', () => {
+  // `browserRuntime` was once injected by the startup patcher with the value
+  // 'browserless-cdp'. It is now a real source field with the local value —
+  // seeing 'browserless-cdp' in a live /health again would mean the patcher
+  // is back.
+  assert.match(indexSource, /browserRuntime: 'local-playwright-chromium'/);
+  assert.equal(indexSource.includes("'browserless-cdp'"), false);
+  assert.match(indexSource, /humanVerificationTransport: 'screenshot\+action'/);
+  // /health/browser is the real local Chromium smoke test; /health/browserless
+  // survives only as a deprecated alias that runs the SAME local check and
+  // never contacts Browserless.
+  assert.match(indexSource, /app\.get\('\/health\/browser', browserHealthHandler\)/);
+  assert.match(indexSource, /app\.get\('\/health\/browserless', \(req: any, res: any\)/);
   const probe = indexSource.slice(
-    indexSource.indexOf("app.get('/health/browserless'"),
+    indexSource.indexOf('async function browserHealthHandler('),
     indexSource.indexOf("app.post('/research', auth")
   );
-  assert.match(probe, /createHumanLiveURL\(page, 120000\)/, 'must reuse the production mint path, not hand-rolled CDP');
-  assert.equal(/liveURL: live\.liveURL|liveURLId: live\.liveURLId/.test(probe), false, 'no URL or handle may be serialized');
-  assert.match(probe, /liveURL: !!live\.liveURL/, 'boolean only');
-  assert.match(probe, /BROWSERLESS_PROBE_TTL_MS/, 'probe must be cached so it cannot burn Browserless quota');
-  assert.equal(probe.includes('BROWSERLESS_TOKEN'), false);
-  assert.equal(probe.includes('wss://'), false);
+  assert.match(probe, /localBrowserHealth\(\)/, 'must run the local Chromium probe');
+  assert.match(probe, /BROWSER_PROBE_TTL_MS/, 'probe must be cached so it cannot spawn Chromium repeatedly');
+  assert.equal(/token|cookie|userDataDir|profile/i.test(probe), false, 'no secret or profile path may be serialized');
+  assert.match(probe, /Deprecation/, 'the alias must announce itself as deprecated');
 });
 
 test('the Dockerfile CMD is the authoritative entrypoint and does not invoke the patcher', () => {

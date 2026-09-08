@@ -46,7 +46,13 @@ declare module 'node:crypto' {
 }
 
 // ── Minimal Node/DOM-ish globals (no @types/node available locally) ───────
-declare const process: { env: Record<string, string | undefined> };
+declare const process: {
+  env: Record<string, string | undefined>;
+  // Signal cleanup for local Chromium (LocalBrowserRuntime.installProcessCleanup):
+  // a container stop must never leave a zombie browser or profile directory.
+  once(event: string, listener: (...a: any[]) => void): void;
+  exit(code?: number): never;
+};
 declare const console: { log(...a: any[]): void; error(...a: any[]): void; warn(...a: any[]): void };
 declare function setTimeout(fn: (...a: any[]) => void, ms?: number): any;
 declare function setInterval(fn: (...a: any[]) => void, ms?: number): any;

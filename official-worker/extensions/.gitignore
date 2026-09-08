@@ -1,0 +1,15 @@
+# The human-assist extension IS tracked here, but only in its SANITIZED form,
+# produced reproducibly by scripts/sanitize-human-assist-extension.mjs.
+#
+# These two entries make it impossible to re-introduce the upstream artifacts
+# the sanitizer deliberately strips:
+#
+#  - secrets.txt is a 2048-byte encrypted blob the upstream service worker uses
+#    to derive the EXTENSION AUTHOR'S default wit.ai speech keys. Those are a
+#    third party's credentials; Homatch configures a backend it owns instead
+#    (HUMAN_ASSIST_SPEECH_API_KEY -> chrome.storage.local, per job).
+#  - _metadata/ holds Chrome Web Store integrity artifacts that apply only to
+#    store-installed packages. Chromium deletes the directory when loading an
+#    unpacked extension, so tracking it would guarantee a dirty working tree.
+human-assist/secrets.txt
+human-assist/_metadata/

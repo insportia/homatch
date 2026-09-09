@@ -6,6 +6,19 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // First-paint surface palette. useSurfaceTheme() sets this for real once
+      // React mounts, but the browser paints <body> before the bundle has even
+      // parsed — without this the two light screens flash the dark palette on
+      // a cold load. Kept to a literal path list rather than anything clever:
+      // if it ever disagrees with the routes, React corrects it on mount.
+      (function () {
+        var p = location.pathname.replace(/\/+$/, '') || '/';
+        if (p === '/' || p === '/dashboard') {
+          document.documentElement.setAttribute('data-surface', 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

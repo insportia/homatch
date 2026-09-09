@@ -1,9 +1,7 @@
 import React from 'react';
-import { useLocation } from 'react-router-dom';
 import { AppHeader } from './AppHeader';
 import { MobileBottomNav } from './MobileBottomNav';
 import { AIFloatingButton } from '@/components/common/AIFloatingButton';
-import { DashboardIntentPaths } from '@/components/dashboard/DashboardIntentPaths';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface AppLayoutProps {
@@ -13,10 +11,14 @@ interface AppLayoutProps {
   hidePadding?: boolean;
 }
 
+// DashboardIntentPaths used to render here for /dashboard only. The
+// redesigned dashboard has its own shell (HomatchShell) and does not use
+// AppLayout at all, and its "Find a client" / "Find a property" quick actions
+// carry the same two intents — so the block would never mount, and rendering
+// it would duplicate the actions. The component file is left dormant rather
+// than deleted, the same way CasesPage was.
 export function AppLayout({ children, noPadding = false, hidePadding = false }: AppLayoutProps) {
   const { session } = useAuth();
-  const location = useLocation();
-  const showDashboardIntentPaths = session && location.pathname === '/dashboard';
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background overflow-x-hidden">
@@ -29,7 +31,6 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
           session ? 'pb-24 md:pb-8' : '',
         ].join(' ')}
       >
-        {showDashboardIntentPaths && <DashboardIntentPaths />}
         {children}
       </main>
       {session && <MobileBottomNav />}

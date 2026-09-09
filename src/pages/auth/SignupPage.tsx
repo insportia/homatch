@@ -21,6 +21,8 @@ function GoogleIcon() {
   );
 }
 
+import { consumePendingAsk } from '@/lib/pendingAsk';
+
 const PENDING_URL_KEY = 'homatch_pending_url';
 
 export default function SignupPage() {
@@ -44,6 +46,13 @@ export default function SignupPage() {
 
   useEffect(() => {
     if (!session) return;
+    // See LoginPage: a question asked from the public AI panel takes the user
+    // straight into the assistant instead of being dropped on the dashboard.
+    const pendingAsk = consumePendingAsk();
+    if (pendingAsk) {
+      navigate('/ai', { replace: true, state: { prompt: pendingAsk } });
+      return;
+    }
     const pendingUrl = sessionStorage.getItem(PENDING_URL_KEY);
     const pendingIntent = sessionStorage.getItem('homatch_pending_intent') ?? intent;
     if (pendingIntent === 'analyse' && pendingUrl) {

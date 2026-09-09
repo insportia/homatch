@@ -63,6 +63,17 @@ export default {
                 success: 'hsl(var(--success))',
                 warning: 'hsl(var(--warning))',
                 info: 'hsl(var(--info))',
+                // Homatch brand values (see the light-surface block in
+                // index.css). Kept separate from `accent` because `accent` is
+                // a shadcn *role* — hover surfaces, muted highlights — while
+                // these are the brand's gold/sand/ink, used for rules, brand
+                // marks and warm panels.
+                gold: {
+                    DEFAULT: 'hsl(var(--gold))',
+                    soft: 'hsl(var(--gold-soft))'
+                },
+                sand: 'hsl(var(--sand))',
+                'ink-soft': 'hsl(var(--ink-soft))',
                 sidebar: {
                     DEFAULT: 'hsl(var(--sidebar-background))',
                     background: 'hsl(var(--sidebar-background))',

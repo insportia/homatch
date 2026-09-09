@@ -13,6 +13,11 @@
 export const ALLOW_DUPLICATE_KEYS = new Set([
   // Product/brand names — never translated in any language.
   'ai_title', // "Homatch AI"
+  // "Know before you buy" — the brand tagline, set beneath the wordmark as
+  // part of the logo lockup. It is a brand mark rather than interface copy
+  // and stays in English in every locale, exactly as it does in the design
+  // reference's Georgian screens.
+  'brand_tagline',
   'profile_login_google', // "Google" — third-party trademark
   // Turkish legitimately borrows these exact Latin spellings; the other
   // languages already carry distinct real translations for the same keys,

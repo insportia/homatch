@@ -1,20 +1,29 @@
 // HOMATCH Logo — official H icon (brand mark) + wordmark
 import React from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   iconOnly?: boolean;
+  /**
+   * Renders the reference's stacked lockup: brand mark on the left, wordmark
+   * with the tagline set beneath it. The mark itself is the repository's
+   * canonical asset either way — only the text block changes.
+   */
+  withTagline?: boolean;
   className?: string;
 }
 
 const sizes = {
-  sm: { icon: 22, text: 'text-sm', gap: 'gap-1.5' },
-  md: { icon: 30, text: 'text-lg', gap: 'gap-2' },
-  lg: { icon: 44, text: 'text-2xl', gap: 'gap-3' },
+  sm: { icon: 22, text: 'text-sm', gap: 'gap-1.5', tagline: 'text-[8px]' },
+  md: { icon: 30, text: 'text-lg', gap: 'gap-2', tagline: 'text-[9px]' },
+  lg: { icon: 44, text: 'text-2xl', gap: 'gap-3', tagline: 'text-[11px]' },
 };
 
-export function HomatchLogo({ size = 'md', iconOnly = false, className = '' }: LogoProps) {
+export function HomatchLogo({ size = 'md', iconOnly = false, withTagline = false, className = '' }: LogoProps) {
   const s = sizes[size];
+  const { t } = useLanguage();
+
   return (
     <div className={`flex items-center ${s.gap} ${className}`}>
       <img
@@ -27,11 +36,21 @@ export function HomatchLogo({ size = 'md', iconOnly = false, className = '' }: L
       />
 
       {!iconOnly && (
-        <span
-          className={`font-semibold tracking-widest ${s.text} text-foreground`}
-          style={{ letterSpacing: '0.12em', fontFamily: 'Montserrat, sans-serif' }}
-        >
-          HOMATCH
+        <span className="flex flex-col items-start leading-none min-w-0">
+          <span
+            className={`font-semibold tracking-widest ${s.text} text-foreground`}
+            style={{ letterSpacing: '0.12em', fontFamily: 'Montserrat, sans-serif' }}
+          >
+            HOMATCH
+          </span>
+          {withTagline && (
+            <span
+              className={`${s.tagline} mt-1 font-medium uppercase text-muted-foreground truncate max-w-full`}
+              style={{ letterSpacing: '0.14em' }}
+            >
+              {t('brand_tagline')}
+            </span>
+          )}
         </span>
       )}
     </div>

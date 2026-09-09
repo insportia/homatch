@@ -7,6 +7,8 @@ import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
 
+import { consumePendingAsk } from '@/lib/pendingAsk';
+
 const PENDING_URL_KEY = 'homatch_pending_url';
 
 export default function AuthCallbackPage() {
@@ -109,6 +111,13 @@ export default function AuthCallbackPage() {
     }
 
     function redirect() {
+      // See LoginPage: a question asked from the public AI panel survives the
+      // OAuth round-trip and opens the assistant rather than the dashboard.
+      const pendingAsk = consumePendingAsk();
+      if (pendingAsk) {
+        navigate('/ai', { replace: true, state: { prompt: pendingAsk } });
+        return;
+      }
       const pendingIntent = sessionStorage.getItem('homatch_pending_intent');
       const pendingUrl = sessionStorage.getItem(PENDING_URL_KEY);
       sessionStorage.removeItem('homatch_pending_intent');

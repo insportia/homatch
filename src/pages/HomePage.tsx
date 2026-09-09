@@ -1,801 +1,529 @@
+// HOMATCH — the public Main Page.
+//
+// Rebuilt against the supplied design reference: a cream / navy / gold
+// composition led by a photographic hero, a prominent Homatch AI panel, four
+// capability cards, and a closing brand section.
+//
+// TWO RULES SHAPED WHAT IS ON THIS PAGE
+//
+//  1. Every destination is a route that exists, and every CTA lands in the
+//     real product — the assistant, the matching flow, the Verification
+//     Center, the mortgage tools. There are no decorative buttons here.
+//  2. Nothing on this page states a figure Homatch cannot stand behind. The
+//     reference's headline metrics (10,000+ users, 500+ brokers, 99.9%
+//     uptime) were invented by the image generator, so the same band of the
+//     composition carries four true capability statements instead. The
+//     mortgage card shows the calculator's *inputs* rather than an example
+//     rate, because an illustrative rate on a landing page reads as an offer.
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  ArrowRight, Building2, CheckCircle2, CircleDollarSign, Mail, PhoneCall,
+  Play, Search, ShieldCheck, Sparkles, Users,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import {
-  ArrowRight, Search, Sparkles, Shield, Building2, Home, Users, Globe,
-  Zap, Lock, TrendingDown, Copy, BarChart2, ShieldCheck, Bot,
-  MessageSquare, Bell, Eye, CheckCircle2, ChevronDown, ChevronUp,
-  ExternalLink, Star, Clock, MapPin, Mail, PhoneCall, Radio, Landmark, Calculator,
-} from 'lucide-react';
-import { useState } from 'react';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
-import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { HeroMedia } from '@/components/home/HeroMedia';
+import { HomatchAsk } from '@/components/home/HomatchAsk';
+import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
 
-const PENDING_URL_KEY = 'homatch_pending_url';
+/* ------------------------------------------------------------------ *
+ * Small shared pieces                                                 *
+ * ------------------------------------------------------------------ */
 
-// ── Demo match cards ──────────────────────────────────────────
-// Machine-stable fields (score/price/area/beds/source/location/trustHigh)
-// are never translated. Only the presentation labels/badges route through
-// translation keys — the underlying data never changes by language.
-const DEMO_MATCHES = [
-  { score: 94, labelKey: 'home_demo_label_exceptional', price: '$142,000', area: '76 m²', beds: 2, source: 'Homatch', location: 'Vake, Tbilisi', trustHigh: true, badgeKey: 'home_demo_badge_internal' },
-  { score: 87, labelKey: 'home_demo_label_strong',      price: '$138,500', area: '74 m²', beds: 2, source: 'myhome.ge', location: 'Vake, Tbilisi', trustHigh: true, badgeKey: 'home_demo_badge_verified' },
-  { score: 79, labelKey: 'home_demo_label_good',        price: '$148,000', area: '81 m²', beds: 2, source: 'ss.ge', location: 'Saburtalo, Tbilisi', trustHigh: false, badgeKey: 'home_demo_badge_external' },
-];
-
-// ── Features — every user-facing string is a translation key, never a
-// hardcoded literal, so the whole grid follows the selected language. ──
-const FEATURES = [
-  { icon: Bot,          titleKey: 'home_feat_ai_search_title',    descKey: 'home_feat_ai_search_desc',    route: '/ai' },
-  { icon: Users,        titleKey: 'home_feat_matching_title',     descKey: 'home_feat_matching_desc',     route: '/property/add' },
-  { icon: Globe,        titleKey: 'home_feat_multisource_title',  descKey: 'home_feat_multisource_desc',  route: '/ai' },
-  { icon: TrendingDown, titleKey: 'home_feat_cheaper_title',      descKey: 'home_feat_cheaper_desc',      route: '/property/import' },
-  { icon: Copy,         titleKey: 'home_feat_duplicate_title',    descKey: 'home_feat_duplicate_desc',    route: '/property/import' },
-  { icon: ShieldCheck,  titleKey: 'home_feat_trust_title',        descKey: 'home_feat_trust_desc',        route: '/verify' },
-  { icon: Search,       titleKey: 'home_feat_cadastral_title',    descKey: 'home_feat_cadastral_desc',    route: '/verify' },
-  { icon: BarChart2,    titleKey: 'home_feat_developer_title',    descKey: 'home_feat_developer_desc',    route: '/verify?tab=property' },
-  { icon: Bell,         titleKey: 'home_feat_active_search_title',descKey: 'home_feat_active_search_desc',route: '/active-search' },
-  { icon: MessageSquare,titleKey: 'home_feat_chat_title',         descKey: 'home_feat_chat_desc',         route: '/chat' },
-  { icon: Radio,        titleKey: 'home_feat_livechat_title',     descKey: 'home_feat_livechat_desc',     route: '/live-chat' },
-  { icon: Eye,          titleKey: 'home_feat_viewing_title',      descKey: 'home_feat_viewing_desc',      route: '/viewings' },
-  { icon: Globe,        titleKey: 'home_feat_multilingual_title', descKey: 'home_feat_multilingual_desc', route: null },
-];
-
-// ── AI Outreach Engine showcase ──────────────────────────────
-const CALL_FEATURE_KEYS = ['home_call_feature_1', 'home_call_feature_2', 'home_call_feature_3'];
-const EMAIL_FEATURE_KEYS = ['home_email_feature_1', 'home_email_feature_2', 'home_email_feature_3'];
-const SMS_FEATURE_KEYS = ['home_sms_feature_1', 'home_sms_feature_2', 'home_sms_feature_3'];
-
-// ── Buyer / seller flow steps ────────────────────────────────
-const BUYER_FLOW = [
-  { stepKey: 'home_buyer_step1', descKey: 'home_buyer_step1_desc' },
-  { stepKey: 'home_buyer_step2', descKey: 'home_buyer_step2_desc' },
-  { stepKey: 'home_buyer_step3', descKey: 'home_buyer_step3_desc' },
-  { stepKey: 'home_buyer_step4', descKey: 'home_buyer_step4_desc' },
-  { stepKey: 'home_buyer_step5', descKey: 'home_buyer_step5_desc' },
-];
-
-const SELLER_FLOW = [
-  { stepKey: 'home_seller_step1', descKey: 'home_seller_step1_desc' },
-  { stepKey: 'home_seller_step2', descKey: 'home_seller_step2_desc' },
-  { stepKey: 'home_seller_step3', descKey: 'home_seller_step3_desc' },
-  { stepKey: 'home_seller_step4', descKey: 'home_seller_step4_desc' },
-  { stepKey: 'home_seller_step5', descKey: 'home_seller_step5_desc' },
-];
-
-// ── How it works ──────────────────────────────────────────────
-const HOW_STEPS = [
-  { icon: Search,        stepKey: 'home_how_1_step', titleKey: 'home_how_1_title', descKey: 'home_how_1_desc' },
-  { icon: Zap,           stepKey: 'home_how_2_step', titleKey: 'home_how_2_title', descKey: 'home_how_2_desc' },
-  { icon: MessageSquare, stepKey: 'home_how_3_step', titleKey: 'home_how_3_title', descKey: 'home_how_3_desc' },
-  { icon: ShieldCheck,   stepKey: 'home_how_4_step', titleKey: 'home_how_4_title', descKey: 'home_how_4_desc' },
-];
-
-// ── Pricing — plan codes (name) are stable identifiers used for routing
-// logic and display; only the feature copy is translated. ──
-const PLANS = [
-  { name: 'FREE', price: '$0', period: '/month', featureKeys: ['home_plan_free_f1', 'home_plan_free_f2', 'home_plan_free_f3', 'home_plan_free_f4'], highlight: false },
-  { name: 'PLUS', price: '$4.90', period: '/month', featureKeys: ['home_plan_plus_f1', 'home_plan_plus_f2', 'home_plan_plus_f3', 'home_plan_plus_f4', 'home_plan_plus_f5'], highlight: true },
-  { name: 'PRO',  price: '$9.90', period: '/month', featureKeys: ['home_plan_pro_f1', 'home_plan_pro_f2', 'home_plan_pro_f3', 'home_plan_pro_f4', 'home_plan_pro_f5', 'home_plan_pro_f6'], highlight: false },
-];
-
-// ── FAQ ───────────────────────────────────────────────────────
-const FAQ_KEYS = [
-  { qKey: 'home_faq_1_q', aKey: 'home_faq_1_a' },
-  { qKey: 'home_faq_2_q', aKey: 'home_faq_2_a' },
-  { qKey: 'home_faq_3_q', aKey: 'home_faq_3_a' },
-  { qKey: 'home_faq_4_q', aKey: 'home_faq_4_a' },
-  { qKey: 'home_faq_5_q', aKey: 'home_faq_5_a' },
-  { qKey: 'home_faq_6_q', aKey: 'home_faq_6_a' },
-];
-
-// ── Why Homatch ───────────────────────────────────────────────
-const WHY_KEYS = [
-  { titleKey: 'home_why_1_title', descKey: 'home_why_1_desc' },
-  { titleKey: 'home_why_2_title', descKey: 'home_why_2_desc' },
-  { titleKey: 'home_why_3_title', descKey: 'home_why_3_desc' },
-  { titleKey: 'home_why_4_title', descKey: 'home_why_4_desc' },
-  { titleKey: 'home_why_5_title', descKey: 'home_why_5_desc' },
-  { titleKey: 'home_why_6_title', descKey: 'home_why_6_desc' },
-];
-
-// ── Verification teaser tags ────────────────────────────────────
-const VERIFY_TAG_KEYS = ['home_verify_teaser_tag_cadastral', 'home_verify_teaser_tag_address', 'home_verify_teaser_tag_developer', 'home_verify_teaser_tag_project'];
-
-function FaqItem({ qKey, aKey }: { qKey: string; aKey: string }) {
-  const { t } = useLanguage();
-  const [open, setOpen] = useState(false);
+function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="border-b border-border/50 last:border-0">
-      <button type="button" onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between py-4 text-left gap-4 hover:text-primary transition-colors"
-        aria-expanded={open}>
-        <span className="text-sm font-medium text-foreground">{t(qKey)}</span>
-        {open ? <ChevronUp className="h-4 w-4 shrink-0 text-primary" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
-      </button>
-      {open && <p className="text-sm text-muted-foreground pb-4 leading-relaxed">{t(aKey)}</p>}
+    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gold">{children}</p>
+  );
+}
+
+function IconTile({ icon: Icon, tone = 'sand' }: { icon: React.ElementType; tone?: 'sand' | 'gold' }) {
+  return (
+    <div
+      className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${
+        tone === 'gold' ? 'bg-gold/15 text-gold' : 'bg-sand text-foreground'
+      }`}
+    >
+      <Icon className="h-5 w-5" aria-hidden="true" />
     </div>
   );
 }
 
-function MatchScoreBars({ score }: { score: number }) {
-  const color = score >= 90 ? 'bg-green-500' : score >= 80 ? 'bg-primary' : 'bg-blue-500';
+/** A card's illustrative panel. Labelled, never numeric — see the file header. */
+function VisualFrame({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
-        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${score}%` }} />
-      </div>
-      <span className={`text-xs font-bold tabular-nums ${score >= 90 ? 'text-green-400' : score >= 80 ? 'text-primary' : 'text-blue-400'}`}>{score}%</span>
+    <div className="rounded-2xl border border-border bg-secondary/60 p-3">
+      {children}
+      <p className="mt-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ *
+ * Page                                                                *
+ * ------------------------------------------------------------------ */
 
 export default function HomePage() {
+  useSurfaceTheme('light');
   const { session } = useAuth();
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
-  const [aiInput, setAiInput] = useState('');
-  const [url, setUrl] = useState('');
 
-  const QUICK_PATHS = [
-    { icon: Home,       labelKey: 'home_quick_find_property', action: () => navigate(session ? '/ai' : '/auth/signup') },
-    { icon: Users,      labelKey: 'home_quick_find_buyers',   action: () => navigate(session ? '/property/add' : '/auth/signup') },
-    { icon: ShieldCheck,labelKey: 'home_quick_verify_property', action: () => navigate('/verify') },
-    { icon: Building2,  labelKey: 'home_quick_check_developer', action: () => navigate('/verify?tab=property') },
-    { icon: ExternalLink,labelKey:'home_quick_paste_link',    action: () => navigate(session ? '/property/import' : '/auth/signup') },
+  const arrow = `h-4 w-4 ${isRTL ? 'rotate-180' : ''}`;
+  /** Signed-out visitors reach an authenticated flow via sign-up, not a 404. */
+  const gated = (path: string) => () => navigate(session ? path : '/auth/signup');
+
+  const headerLinks: HeaderLink[] = [
+    { key: 'capabilities', label: t('mp_nav_capabilities'), target: 'capabilities' },
+    { key: 'how', label: t('mp_nav_how'), target: 'how' },
+    { key: 'verify', label: t('nav_verify'), target: '/verify' },
+    { key: 'mortgage', label: t('nav_mortgage'), target: '/mortgage' },
+    { key: 'partners', label: t('home_nav_partners'), target: '/partners' },
+    { key: 'company', label: t('mp_nav_company'), target: 'company' },
   ];
 
-  const handleAISubmit = () => {
-    const text = aiInput.trim();
-    if (!text) return;
-    if (!session) {
-      sessionStorage.setItem(PENDING_URL_KEY, text);
-      navigate('/auth/login');
-      return;
-    }
-    navigate('/ai', { state: { prompt: text } });
-  };
+  const heroPills = [
+    { key: 'client', icon: Users, title: t('mp_pill_client_title'), desc: t('mp_pill_client_desc') },
+    { key: 'property', icon: Search, title: t('mp_pill_property_title'), desc: t('mp_pill_property_desc') },
+    { key: 'verify', icon: ShieldCheck, title: t('mp_pill_verify_title'), desc: t('mp_pill_verify_desc') },
+    { key: 'ai', icon: Sparkles, title: t('ai_title'), desc: t('mp_pill_ai_desc') },
+  ];
 
-  const handleUrlSubmit = () => {
-    const trimmed = url.trim();
-    if (!trimmed) return;
-    if (!session) {
-      sessionStorage.setItem(PENDING_URL_KEY, trimmed);
-      navigate('/auth/login');
-      return;
-    }
-    navigate(`/property/import?url=${encodeURIComponent(trimmed)}`);
-  };
+  const askSuggestions = [
+    { key: 'about', label: t('mp_ai_sugg_about') },
+    { key: 'clients', label: t('mp_ai_sugg_clients') },
+    { key: 'property', label: t('mp_ai_sugg_property') },
+    { key: 'verify', label: t('mp_ai_sugg_verify') },
+  ];
+
+  const secondary = [
+    { key: 'calls', icon: PhoneCall, title: t('call_center_title'), desc: t('mp_sec_calls_desc'), onClick: gated('/outreach/calls') },
+    { key: 'email', icon: Mail, title: t('mp_sec_email_title'), desc: t('mp_sec_email_desc'), onClick: gated('/outreach/email') },
+    { key: 'partners', icon: Building2, title: t('mp_sec_partners_title'), desc: t('mp_sec_partners_desc'), onClick: () => navigate('/partners') },
+  ];
+
+  const howSteps = [
+    { key: '1', title: t('mp_how_1_title'), desc: t('mp_how_1_desc') },
+    { key: '2', title: t('mp_how_2_title'), desc: t('mp_how_2_desc') },
+    { key: '3', title: t('mp_how_3_title'), desc: t('mp_how_3_desc') },
+    { key: '4', title: t('mp_how_4_title'), desc: t('mp_how_4_desc') },
+  ];
+
+  const beliefs = [
+    { key: '1', title: t('mp_more_1_title'), desc: t('mp_more_1_desc') },
+    { key: '2', title: t('mp_more_2_title'), desc: t('mp_more_2_desc') },
+    { key: '3', title: t('mp_more_3_title'), desc: t('mp_more_3_desc') },
+    { key: '4', title: t('mp_more_4_title'), desc: t('mp_more_4_desc') },
+  ];
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
-      {/* Public nav */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
-        <div className="flex items-center h-14 px-4 md:px-8 gap-4 max-w-7xl mx-auto">
-          <button
-            type="button"
-            onClick={() => { navigate('/'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-            className="shrink-0 cursor-pointer"
-            aria-label={t('home_nav_home_aria')}
-          >
-            <HomatchLogo size="sm" />
-          </button>
-          <div className="flex-1" />
-          <LanguageSwitcher />
-          <nav className="hidden md:flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-sm" onClick={() => navigate('/verify')}>
-              {t('nav_verify')}
-            </Button>
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-sm" onClick={() => navigate('/partners')}>
-              {t('home_nav_partners')}
-            </Button>
-          </nav>
-          {session ? (
-            <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => navigate('/dashboard')}>
-              {t('nav_dashboard')}
-            </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground hidden md:flex" onClick={() => navigate('/auth/login')}>{t('nav_login')}</Button>
-              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => navigate('/auth/signup')}>{t('nav_signup')}</Button>
-            </div>
-          )}
-        </div>
-      </header>
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+      <PublicHeader links={headerLinks} />
 
-      {/* ── HERO ── */}
-      <section className="relative pt-16 pb-20 px-4 overflow-hidden">
-        {/* Background grain */}
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/4 via-transparent to-transparent pointer-events-none" />
-        <div className="max-w-3xl mx-auto text-center space-y-6 relative">
-          <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5">
-            <Sparkles className="h-3 w-3" /> {t('home_hero_badge')}
-          </Badge>
-          <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight tracking-tight text-balance">
-            <span className="gradient-text">HOMATCH</span> — {t('home_hero_title_lead')}{' '}
-            <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_hero_title_highlight')}</span>{' '}
-            &amp; {t('home_hero_title_verification')}
-          </h1>
-          <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto text-pretty">
-            {t('home_hero_subtitle')}
-          </p>
+      {/* ── HERO ─────────────────────────────────────────────────────
+          The reference's photograph bleeds off the top and outer edge and
+          curves away from the copy on its inner corner.
 
-          {/* AI Input */}
-          <div className="max-w-2xl mx-auto">
-            <div className="flex gap-2 p-1.5 rounded-2xl border border-primary/30 bg-card shadow-card">
-              <div className="relative flex-1">
-                <Bot className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary pointer-events-none" />
-                <input
-                  className="w-full pl-10 pr-4 py-2.5 bg-transparent text-foreground text-sm placeholder:text-muted-foreground/60 focus:outline-none"
-                  placeholder={t('home_ai_input_placeholder')}
-                  value={aiInput}
-                  onChange={e => setAiInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAISubmit()}
-                />
-              </div>
-              <Button onClick={handleAISubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 gap-2 px-5">
-                {t('nav_ask_ai_short')} <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-            <p className="text-[11px] text-muted-foreground/50 mt-2">
-              {t('home_works_in_langs')}
-            </p>
-          </div>
+          Both halves are measured against the SAME box — the full-width
+          section — so they cannot collide at any viewport width. (Sizing the
+          copy inside a centred max-width container while the media sat at 55%
+          of the viewport is what slid the headline under the photograph past
+          ~1500px.) The media stays absolute rather than becoming a grid
+          column so it never contributes to the section's height: as a grid
+          item its SVG would resolve to its intrinsic 9:10 ratio and stretch
+          the hero to ~950px. The media is first in the DOM so it stacks above
+          the copy below lg, where it is a static band instead. */}
+      <section className="relative">
+        <div className="relative h-[260px] overflow-hidden sm:h-[320px] lg:absolute lg:inset-y-0 lg:end-0 lg:h-auto lg:w-[55%] lg:rounded-bl-[3.5rem] lg:rtl:rounded-bl-none lg:rtl:rounded-br-[3.5rem]">
+          <HeroMedia alt={t('mp_hero_image_alt')} />
 
-          {/* 5 quick paths */}
-          <div className="flex flex-wrap gap-2 justify-center pt-2">
-            {QUICK_PATHS.map(({ icon: Icon, labelKey, action }) => (
-              <button key={labelKey} type="button" onClick={action}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card/60 hover:border-primary/40 hover:bg-primary/5 transition-colors text-sm text-muted-foreground hover:text-foreground">
-                <Icon className="h-3.5 w-3.5 text-primary shrink-0" />
-                {t(labelKey)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── AI OUTREACH ENGINE — 3 separate showcase blocks, right at the top ── */}
-      <section className="py-16 px-4 border-t border-border">
-        <div className="max-w-5xl mx-auto space-y-16">
-          <div className="text-center">
-            <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 text-xs px-3 py-1 gap-1.5 mb-3">
-              <Sparkles className="h-3 w-3" /> {t('home_outreach_badge_new')}
-            </Badge>
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground">{t('home_outreach_title')}</h2>
-            <p className="text-sm text-muted-foreground mt-2 max-w-xl mx-auto">{t('home_outreach_subtitle')}</p>
-          </div>
-
-          {/* Block 1 — AI Call Center */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-            <div className="space-y-4 order-2 md:order-1">
-              <div className="w-11 h-11 rounded-2xl bg-green-500/10 flex items-center justify-center">
-                <PhoneCall className="h-5 w-5 text-green-400" />
-              </div>
-              <h3 className="text-xl font-bold text-foreground">{t('home_call_title')}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{t('home_call_desc')}</p>
-              <ul className="space-y-2">
-                {CALL_FEATURE_KEYS.map(k => (
-                  <li key={k} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />{t(k)}
-                  </li>
-                ))}
-              </ul>
-              <Button className="bg-green-600 hover:bg-green-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/calls' : '/auth/signup')}>
-                {t('home_call_cta')} <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="order-1 md:order-2">
-              <div className="rounded-2xl border border-border bg-card shadow-hover p-5 max-w-sm mx-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <Badge className="bg-green-500/15 text-green-400 border-green-500/30 text-[10px] gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> {t('home_call_live_badge')}
-                  </Badge>
-                  <span className="text-xs font-mono text-muted-foreground" dir="ltr">02:14</span>
-                </div>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="relative w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <PhoneCall className="h-5 w-5 text-primary" />
-                    <span className="absolute inset-0 rounded-full border-2 border-primary/30 animate-ping" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">Giorgi M.</p>
-                    <p className="text-xs text-muted-foreground" dir="ltr">+995 5●● ●● ●● ●●</p>
-                  </div>
-                  <div className="flex items-end gap-0.5 h-6 ml-auto shrink-0" aria-hidden>
-                    {[0, 1, 2, 3, 4].map(i => (
-                      <span key={i} className="w-1 rounded-full bg-green-400/70 animate-pulse" style={{ height: `${8 + (i % 3) * 5}px`, animationDelay: `${i * 100}ms` }} />
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-xl bg-secondary/60 border border-border p-3 space-y-1.5">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t('home_call_transcript_label')}</p>
-                  <p className="text-xs text-foreground leading-relaxed">{t('home_call_transcript_text')}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Block 2 — Email Campaigns */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-            <div>
-              <div className="rounded-2xl border border-border bg-card shadow-hover overflow-hidden max-w-sm mx-auto">
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-secondary/40">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-400/60" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-400/60" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-400/60" />
-                  <span className="text-[10px] text-muted-foreground ml-2">{t('home_email_new_campaign')}</span>
-                </div>
-                <div className="p-4 space-y-3">
-                  <p className="text-sm font-semibold text-foreground">{t('home_email_subject_demo')}</p>
-                  <div className="space-y-1.5">
-                    <div className="h-2 rounded bg-secondary w-full" />
-                    <div className="h-2 rounded bg-secondary w-11/12" />
-                    <div className="h-2 rounded bg-secondary w-4/5" />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-foreground">142</p>
-                      <p className="text-[10px] text-muted-foreground">{t('home_email_stat_sent')}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-blue-400">89</p>
-                      <p className="text-[10px] text-muted-foreground">{t('home_email_stat_opened')}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-green-400">12</p>
-                      <p className="text-[10px] text-muted-foreground">{t('home_email_stat_replied')}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <div className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center">
-                <Mail className="h-5 w-5 text-blue-400" />
-              </div>
-              <h3 className="text-xl font-bold text-foreground">{t('home_email_title')}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{t('home_email_desc')}</p>
-              <ul className="space-y-2">
-                {EMAIL_FEATURE_KEYS.map(k => (
-                  <li key={k} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />{t(k)}
-                  </li>
-                ))}
-              </ul>
-              <Button className="bg-blue-600 hover:bg-blue-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/email' : '/auth/signup')}>
-                {t('home_email_cta')} <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Block 3 — SMS Campaigns */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-            <div className="space-y-4 order-2 md:order-1">
-              <div className="w-11 h-11 rounded-2xl bg-purple-500/10 flex items-center justify-center">
-                <MessageSquare className="h-5 w-5 text-purple-400" />
-              </div>
-              <h3 className="text-xl font-bold text-foreground">{t('home_sms_title')}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{t('home_sms_desc')}</p>
-              <ul className="space-y-2">
-                {SMS_FEATURE_KEYS.map(k => (
-                  <li key={k} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-purple-400 shrink-0 mt-0.5" />{t(k)}
-                  </li>
-                ))}
-              </ul>
-              <Button className="bg-purple-600 hover:bg-purple-600/90 text-white gap-2" onClick={() => navigate(session ? '/outreach/sms' : '/auth/signup')}>
-                {t('home_sms_cta')} <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="order-1 md:order-2">
-              <div className="rounded-2xl border border-border bg-card shadow-hover p-4 max-w-sm mx-auto">
-                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
-                  <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
-                    <MessageSquare className="h-4 w-4 text-purple-400" />
-                  </div>
-                  <p className="text-sm font-semibold text-foreground">Homatch</p>
-                </div>
-                <div className="space-y-2">
-                  <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-purple-600 text-white text-xs px-3 py-2 leading-relaxed">
-                    {t('home_sms_demo_message')}
-                  </div>
-                  <div className="flex items-center gap-1 justify-end pr-1">
-                    <span className="text-[9px] text-muted-foreground">{t('home_sms_delivered')}</span>
-                    <CheckCircle2 className="h-2.5 w-2.5 text-purple-400" />
-                  </div>
-                  <div className="max-w-[70%] rounded-2xl rounded-bl-sm bg-secondary text-foreground text-xs px-3 py-2 leading-relaxed">
-                    {t('home_sms_demo_reply')}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── LIVE CHAT — prominent, standalone from AI chat ── */}
-      <section className="py-14 px-4 border-t border-border">
-        <div className="max-w-4xl mx-auto">
+          {/* Dissolve into the cream page: sideways on lg, upward on mobile,
+              so the photograph never ends on a hard rectangular edge. */}
           <div
-            role="button"
-            tabIndex={0}
-            onClick={() => navigate(session ? '/live-chat' : '/auth/signup')}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(session ? '/live-chat' : '/auth/signup'); } }}
-            className="flex flex-col sm:flex-row items-center gap-5 p-6 sm:p-8 rounded-2xl border border-primary/20 bg-primary/5 hover:border-primary/40 hover:shadow-hover transition-all cursor-pointer group"
-          >
-            <div className="h-14 w-14 rounded-2xl bg-primary/15 flex items-center justify-center shrink-0">
-              <Radio className="h-7 w-7 text-primary" />
-            </div>
-            <div className="flex-1 text-center sm:text-left">
-              <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                <h3 className="text-lg font-bold text-foreground">{t('home_livechat_title')}</h3>
-                <Badge className="bg-primary text-primary-foreground text-[10px]">{t('home_livechat_badge')}</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">{t('home_livechat_desc')}</p>
-            </div>
-            <ArrowRight className="h-5 w-5 text-primary shrink-0 group-hover:translate-x-1 transition-transform hidden sm:block" />
-          </div>
-        </div>
-      </section>
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent lg:hidden"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute inset-y-0 start-0 hidden w-40 bg-gradient-to-r from-background via-background/45 to-transparent rtl:bg-gradient-to-l lg:block"
+            aria-hidden="true"
+          />
 
-      {/* ── KEY FEATURES ── */}
-      <section className="py-16 px-4 border-t border-border">
-        <div className="max-w-5xl mx-auto space-y-8">
-          <div className="text-center">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t('home_capabilities_label')}</p>
-            <h2 className="text-2xl font-bold text-foreground">{t('home_capabilities_title')}</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {FEATURES.map(({ icon: Icon, titleKey, descKey, route }) => {
-              const clickable = Boolean(route);
-              return (
-                <div
-                  key={titleKey}
-                  role={clickable ? 'button' : undefined}
-                  tabIndex={clickable ? 0 : undefined}
-                  onClick={clickable ? () => navigate(session ? route! : '/auth/signup') : undefined}
-                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(session ? route! : '/auth/signup'); } } : undefined}
-                  className={`text-left p-4 rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-hover hover:-translate-y-0.5 transition-all group ${clickable ? 'cursor-pointer' : ''}`}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <Icon className="h-5 w-5 text-primary" />
-                    {clickable && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-primary/70 group-hover:translate-x-0.5 transition-all" />}
-                  </div>
-                  <p className="text-xs font-bold text-foreground underline decoration-primary decoration-1 underline-offset-2 mb-1.5">
-                    {t(titleKey)}
-                  </p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{t(descKey)}</p>
-                </div>
-              );
-            })}
-          </div>
+          {/* Pull-quote, as in the reference: white on a soft scrim at the
+              upper outer corner of the photograph. */}
+          <figure className="absolute end-6 top-8 hidden max-w-[15rem] lg:block xl:end-10 xl:max-w-[17rem]">
+            <div className="rounded-2xl bg-[hsl(214_42%_11%/0.62)] p-4 backdrop-blur-sm">
+              <div className="flex gap-3">
+                <span className="mt-1 w-0.5 shrink-0 self-stretch rounded-full bg-gold" aria-hidden="true" />
+                <blockquote className="text-sm leading-relaxed text-white">{t('mp_hero_quote')}</blockquote>
+              </div>
+              <figcaption className="mt-2.5 ps-[1.4rem] text-xs font-medium tracking-wide text-white/70">Homatch</figcaption>
+            </div>
+          </figure>
         </div>
-      </section>
 
-      {/* ── DUAL FLOW ── */}
-      <section className="py-16 px-4 border-t border-border bg-card/20">
-        <div className="max-w-5xl mx-auto space-y-8">
-          <div className="text-center">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t('home_dual_flow_label')}</p>
-            <h2 className="text-2xl font-bold text-foreground">{t('home_dual_flow_title')}</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Buyer flow */}
-            <div className="p-5 rounded-2xl border border-border bg-card space-y-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Home className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-foreground">{t('home_buyer_badge')}</p>
-                  <p className="text-xs text-muted-foreground">{t('home_buyer_subtitle')}</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {BUYER_FLOW.map((s, i) => (
-                  <div key={s.stepKey} className="flex items-center gap-3">
-                    <div className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-xs font-semibold text-foreground">{t(s.stepKey)}</span>
-                      <span className="text-xs text-muted-foreground ml-2">{t(s.descKey)}</span>
-                    </div>
-                    {i < BUYER_FLOW.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />}
-                  </div>
-                ))}
-              </div>
-              <Button size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
-                onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
-                {t('home_buyer_cta')} <ArrowRight className="h-4 w-4" />
+        {/* The copy column. Its inner start-padding is derived from the shared
+            page gutter rather than a container of its own, so the headline
+            stays left-aligned with the header logo at every width. */}
+        <div className="relative lg:w-[45%]">
+          <div className="w-full px-5 py-10 sm:px-8 lg:py-20 xl:py-24 lg:ps-[max(2.5rem,calc((100vw-100rem)/2+2.5rem))] lg:pe-10">
+            <Eyebrow>{t('mp_hero_eyebrow')}</Eyebrow>
+
+            <h1 className="mt-5 text-[2rem] font-semibold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem] xl:text-[3.15rem]">
+              <span className="block">{t('mp_hero_line1')}</span>
+              <span className="block">{t('mp_hero_line2')}</span>
+              <span className="block text-gold">{t('mp_hero_line3')}</span>
+            </h1>
+
+            <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-ink-soft">{t('mp_hero_sub')}</p>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button
+                className="h-12 gap-2 rounded-full px-7 text-sm"
+                onClick={() => navigate(session ? '/dashboard' : '/auth/signup')}
+              >
+                {t('mp_hero_cta_primary')} <ArrowRight className={arrow} aria-hidden="true" />
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 gap-2 rounded-full border-border bg-card px-7 text-sm"
+                onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              >
+                {t('mp_hero_cta_secondary')} <Play className="h-3.5 w-3.5" aria-hidden="true" />
               </Button>
             </div>
-            {/* Seller flow */}
-            <div className="p-5 rounded-2xl border border-border bg-card space-y-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-xl bg-accent/20 flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-accent-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-foreground">{t('home_seller_badge')}</p>
-                  <p className="text-xs text-muted-foreground">{t('home_seller_subtitle')}</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {SELLER_FLOW.map((s, i) => (
-                  <div key={s.stepKey} className="flex items-center gap-3">
-                    <div className="w-6 h-6 rounded-full bg-accent/20 text-accent-foreground text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-xs font-semibold text-foreground">{t(s.stepKey)}</span>
-                      <span className="text-xs text-muted-foreground ml-2">{t(s.descKey)}</span>
-                    </div>
-                    {i < SELLER_FLOW.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />}
+
+            {/* The reference's metrics band, carrying capabilities instead of
+                invented counts — see the file header. */}
+            <ul className="mt-10 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-border pt-7 sm:grid-cols-4 lg:mt-12">
+              {heroPills.map(pill => (
+                <li key={pill.key} className="flex items-start gap-2.5">
+                  <pill.icon className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold leading-tight text-foreground">{pill.title}</p>
+                    <p className="mt-1 text-xs leading-snug text-muted-foreground">{pill.desc}</p>
                   </div>
-                ))}
-              </div>
-              <Button size="sm" variant="outline" className="w-full border-border gap-2"
-                onClick={() => navigate(session ? '/property/add' : '/auth/signup')}>
-                {t('home_seller_cta')} <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── HOW IT WORKS ── */}
-      <section className="py-16 px-4 border-t border-border">
-        <div className="max-w-5xl mx-auto space-y-8">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-foreground">
-              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_how_search')}</span>
-              {' → '}
-              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_how_match')}</span>
-              {' → '}
-              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_how_connect')}</span>
-              {' → '}
-              <span className="underline decoration-primary decoration-2 underline-offset-4">{t('home_how_verify')}</span>
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {HOW_STEPS.map(({ icon: Icon, stepKey, titleKey, descKey }) => (
-              <div key={stepKey} className="p-5 rounded-2xl border border-border bg-card space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Icon className="h-5 w-5 text-primary" />
-                </div>
-                <p className="text-[10px] font-bold text-primary tracking-widest">{t(stepKey)}</p>
-                <p className="text-sm font-semibold text-foreground">{t(titleKey)}</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">{t(descKey)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── MORTGAGE CALCULATOR TEASER ── */}
-      <section className="py-16 px-4 border-t border-border">
-        <div className="max-w-4xl mx-auto">
-          <div className="rounded-3xl border border-border bg-card p-6 md:p-10 grid md:grid-cols-[auto_1fr_auto] items-center gap-6">
-            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-              <Landmark className="h-7 w-7 text-primary" />
-            </div>
-            <div className="space-y-2">
-              <Badge variant="secondary" className="border-amber-500/30 text-amber-400 bg-amber-500/10">
-                {t('home_mortgage_badge')}
-              </Badge>
-              <h2 className="text-xl md:text-2xl font-bold text-foreground">{t('home_mortgage_title')}</h2>
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-xl">{t('home_mortgage_desc')}</p>
-            </div>
-            <Button
-              size="lg"
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 w-full md:w-auto"
-              onClick={() => navigate('/mortgage')}
-            >
-              <Calculator className="h-4 w-4" /> {t('home_mortgage_cta')}
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── DEMO RESULTS ── */}
-      <section className="py-16 px-4 border-t border-border bg-card/20">
-        <div className="max-w-3xl mx-auto space-y-6">
-          <div className="text-center">
-            <Badge variant="secondary" className="border-amber-500/30 text-amber-400 bg-amber-500/10 mb-3">
-              {t('home_demo_badge')}
-            </Badge>
-            <h2 className="text-2xl font-bold text-foreground">{t('home_demo_title')}</h2>
-            <p className="text-sm text-muted-foreground mt-2">{t('home_demo_query')}</p>
-          </div>
-          <div className="space-y-3">
-            {DEMO_MATCHES.map((m, i) => (
-              <div key={i} className="p-4 rounded-xl border border-border bg-card space-y-3">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-sm font-semibold text-foreground" dir="ltr">{m.price}</span>
-                      <Badge variant="secondary" className="text-[10px] border-border">{m.source}</Badge>
-                      {m.trustHigh && (
-                        <Badge variant="secondary" className="text-[10px] bg-green-500/10 text-green-400 border-green-500/20">
-                          <ShieldCheck className="h-2.5 w-2.5 mr-1" /> {t('home_demo_high_trust')}
-                        </Badge>
-                      )}
-                      <Badge variant="secondary" className="text-[10px] border-border">{t(m.badgeKey)}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      <MapPin className="h-3 w-3 shrink-0" /> {m.location} · {m.area} · {m.beds} {t('home_demo_br_suffix')}
-                    </p>
-                  </div>
-                  <Button size="sm" variant="ghost" onClick={() => {}} className="border border-border text-muted-foreground hover:text-foreground shrink-0" disabled>
-                    <Lock className="h-3.5 w-3.5 mr-1.5" /> {t('home_demo_unlock')}
-                  </Button>
-                </div>
-                <MatchScoreBars score={m.score} />
-                <p className="text-[10px] text-muted-foreground/50 italic">{t('home_demo_disclaimer')}</p>
-              </div>
-            ))}
-          </div>
-          <div className="text-center">
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
-              onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
-              {t('home_demo_cta')} <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── VERIFICATION TEASER ── */}
-      <section className="py-14 px-4 border-t border-border">
-        <div className="max-w-3xl mx-auto">
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-8 text-center space-y-4">
-            <ShieldCheck className="h-10 w-10 text-primary mx-auto" />
-            <h2 className="text-xl font-bold text-foreground">{t('home_verify_teaser_title')}</h2>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              {t('home_verify_teaser_desc')}
-            </p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {VERIFY_TAG_KEYS.map(tagKey => (
-                <span key={tagKey} className="text-xs px-3 py-1.5 rounded-full border border-primary/30 text-primary/80 bg-primary/5">{t(tagKey)}</span>
+                </li>
               ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* ── HOMATCH AI ───────────────────────────────────────────────
+          A real entry into the assistant, lifted over the hero seam the way
+          the reference's panel is. */}
+      <section className="relative z-10 mx-auto max-w-[100rem] px-5 pb-4 pt-10 sm:px-8 lg:px-10 lg:pt-14">
+        <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-card md:p-8">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3.5">
+              <IconTile icon={Sparkles} tone="gold" />
+              <div className="min-w-0">
+                <h2 className="text-xl font-semibold tracking-tight text-foreground">{t('ai_title')}</h2>
+                <p className="mt-1 max-w-lg text-sm leading-relaxed text-muted-foreground">{t('mp_ai_sub')}</p>
+              </div>
             </div>
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
-              onClick={() => navigate('/verify')}>
-              {t('home_verify_teaser_cta')} <ArrowRight className="h-4 w-4" />
-            </Button>
+            <button
+              type="button"
+              onClick={() => navigate(session ? '/ai' : '/auth/signup')}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-sm font-medium text-gold transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t('mp_ai_examples')} <ArrowRight className={arrow} aria-hidden="true" />
+            </button>
           </div>
+
+          <HomatchAsk placeholder={t('mp_ai_placeholder')} suggestions={askSuggestions} />
         </div>
       </section>
 
-      {/* ── WHY HOMATCH ── */}
-      <section className="py-16 px-4 border-t border-border bg-card/20">
-        <div className="max-w-3xl mx-auto space-y-6">
-          <h2 className="text-2xl font-bold text-foreground text-center">{t('home_why_title')}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {WHY_KEYS.map(({ titleKey, descKey }) => (
-              <div key={titleKey} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
-                <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{t(titleKey)}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{t(descKey)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* ── CAPABILITIES ─────────────────────────────────────────── */}
+      <section id="capabilities" className="mx-auto max-w-[100rem] scroll-mt-24 px-5 sm:px-8 lg:px-10 py-16 lg:py-24">
+        <div className="max-w-2xl">
+          <Eyebrow>{t('mp_cap_eyebrow')}</Eyebrow>
+          <h2 className="mt-4 text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
+            {t('mp_cap_title')}
+          </h2>
+          <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">{t('mp_cap_sub')}</p>
         </div>
-      </section>
 
-      {/* ── PRICING ── */}
-      <section className="py-16 px-4 border-t border-border">
-        <div className="max-w-4xl mx-auto space-y-8">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-foreground">{t('home_pricing_title')}</h2>
-            <p className="text-sm text-muted-foreground mt-2">{t('home_pricing_subtitle')}</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {PLANS.map(plan => (
-              <div key={plan.name} className={`p-6 rounded-2xl border flex flex-col gap-4 ${
-                plan.highlight
-                  ? 'border-primary bg-primary/5 shadow-hover'
-                  : 'border-border bg-card'
-              }`}>
-                {plan.highlight && (
-                  <Badge className="self-start bg-primary/20 text-primary border-primary/40 text-[10px]">
-                    <Star className="h-2.5 w-2.5 mr-1" /> {t('home_pricing_most_popular')}
-                  </Badge>
-                )}
-                <div>
-                  <p className="text-xs font-bold text-muted-foreground tracking-widest" dir="ltr">{plan.name}</p>
-                  <p className="text-3xl font-bold text-foreground mt-1" dir="ltr">
-                    {plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.period}</span>
-                  </p>
-                </div>
-                <ul className="space-y-2 flex-1">
-                  {plan.featureKeys.map(fk => (
-                    <li key={fk} className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />{t(fk)}
-                    </li>
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Find a client */}
+          <article className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-card card-hover">
+            <IconTile icon={Users} />
+            <h3 className="mt-4 text-base font-semibold text-foreground">{t('mp_cap_client_title')}</h3>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{t('mp_cap_client_desc')}</p>
+            <div className="mt-5">
+              <VisualFrame label={t('mp_cap_client_visual_label')}>
+                <div className="flex items-center">
+                  {[0, 1, 2, 3].map(i => (
+                    <span
+                      key={i}
+                      className="grid h-9 w-9 place-items-center rounded-full border-2 border-card bg-gradient-to-br from-sand to-gold/35 text-foreground/70 -ms-2 first:ms-0"
+                      aria-hidden="true"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                    </span>
                   ))}
-                </ul>
-                <Button
-                  className={plan.highlight ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border-border'}
-                  variant={plan.highlight ? 'default' : 'outline'}
-                  onClick={() => navigate(session ? '/credits' : '/auth/signup')}
-                >
-                  {plan.name === 'FREE' ? t('home_pricing_get_started_free') : t('home_pricing_start_plan', { plan: plan.name })}
-                </Button>
-              </div>
-            ))}
-          </div>
-          <p className="text-center text-xs text-muted-foreground">
-            {t('home_pricing_footnote')}
-          </p>
+                  <span className="ms-1.5 grid h-9 w-9 place-items-center rounded-full bg-primary text-lg leading-none text-primary-foreground" aria-hidden="true">
+                    +
+                  </span>
+                </div>
+              </VisualFrame>
+            </div>
+            <Button variant="outline" className="mt-4 h-10 w-full justify-between rounded-xl border-border bg-card text-sm" onClick={gated('/property/add')}>
+              {t('mp_cap_client_cta')} <ArrowRight className={arrow} aria-hidden="true" />
+            </Button>
+          </article>
+
+          {/* Find a property */}
+          <article className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-card card-hover">
+            <IconTile icon={Search} />
+            <h3 className="mt-4 text-base font-semibold text-foreground">{t('mp_cap_property_title')}</h3>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{t('mp_cap_property_desc')}</p>
+            <div className="mt-5">
+              <VisualFrame label={t('mp_cap_property_visual_label')}>
+                <div className="space-y-2">
+                  {[92, 74, 56].map(width => (
+                    <div key={width} className="flex items-center gap-2">
+                      <span className="grid h-7 w-9 shrink-0 place-items-center rounded-md bg-card text-foreground/45" aria-hidden="true">
+                        <Building2 className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="h-1.5 rounded-full bg-gold/55" style={{ width: `${width}%` }} aria-hidden="true" />
+                    </div>
+                  ))}
+                </div>
+              </VisualFrame>
+            </div>
+            <Button variant="outline" className="mt-4 h-10 w-full justify-between rounded-xl border-border bg-card text-sm" onClick={gated('/ai')}>
+              {t('mp_cap_property_cta')} <ArrowRight className={arrow} aria-hidden="true" />
+            </Button>
+          </article>
+
+          {/* Verification Center */}
+          <article className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-card card-hover">
+            <IconTile icon={ShieldCheck} />
+            <h3 className="mt-4 text-base font-semibold text-foreground">{t('mp_cap_verify_title')}</h3>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{t('mp_cap_verify_desc')}</p>
+            <div className="mt-5">
+              <VisualFrame label={t('mp_cap_verify_state_confirmed')}>
+                <div className="space-y-1.5">
+                  {[
+                    { key: 'cadastral', label: t('mp_cap_verify_row_cadastral'), ok: true },
+                    { key: 'owner', label: t('mp_cap_verify_row_owner'), ok: true },
+                    { key: 'restrictions', label: t('mp_cap_verify_row_restrictions'), ok: false },
+                  ].map(row => (
+                    <div key={row.key} className="flex items-center justify-between gap-2 rounded-lg bg-card px-2.5 py-1.5">
+                      <span className="min-w-0 truncate text-[11px] text-ink-soft">{row.label}</span>
+                      <span className={`shrink-0 text-[10px] font-medium ${row.ok ? 'text-success' : 'text-muted-foreground'}`}>
+                        {row.ok ? t('mp_cap_verify_state_confirmed') : t('mp_cap_verify_state_unconfirmed')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </VisualFrame>
+            </div>
+            <Button variant="outline" className="mt-4 h-10 w-full justify-between rounded-xl border-border bg-card text-sm" onClick={() => navigate('/verify')}>
+              {t('mp_cap_verify_cta')} <ArrowRight className={arrow} aria-hidden="true" />
+            </Button>
+          </article>
+
+          {/* Mortgage intelligence */}
+          <article className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-card card-hover">
+            <IconTile icon={CircleDollarSign} />
+            <h3 className="mt-4 text-base font-semibold text-foreground">{t('mp_cap_mortgage_title')}</h3>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{t('mp_cap_mortgage_desc')}</p>
+            <div className="mt-5">
+              <VisualFrame label={t('mp_cap_mortgage_result_hint')}>
+                <div className="space-y-1.5">
+                  {[t('mp_cap_mortgage_row_price'), t('mp_cap_mortgage_row_down'), t('mp_cap_mortgage_row_term')].map(label => (
+                    <div key={label} className="flex items-center justify-between gap-2 rounded-lg bg-card px-2.5 py-1.5">
+                      <span className="min-w-0 truncate text-[11px] text-ink-soft">{label}</span>
+                      <span className="h-1.5 w-10 shrink-0 rounded-full bg-border" aria-hidden="true" />
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between gap-2 rounded-lg bg-primary px-2.5 py-1.5">
+                    <span className="min-w-0 truncate text-[11px] font-medium text-primary-foreground">{t('mp_cap_mortgage_row_result')}</span>
+                    <span className="h-1.5 w-10 shrink-0 rounded-full bg-primary-foreground/40" aria-hidden="true" />
+                  </div>
+                </div>
+              </VisualFrame>
+            </div>
+            <Button variant="outline" className="mt-4 h-10 w-full justify-between rounded-xl border-border bg-card text-sm" onClick={() => navigate('/mortgage')}>
+              {t('mp_cap_mortgage_cta')} <ArrowRight className={arrow} aria-hidden="true" />
+            </Button>
+          </article>
+        </div>
+
+        {/* Three supporting workflows */}
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {secondary.map(item => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={item.onClick}
+              className="group flex items-start gap-4 rounded-2xl border border-border bg-card p-5 text-start shadow-card transition-colors hover:border-ring/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <IconTile icon={item.icon} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-foreground">{item.title}</span>
+                <span className="mt-1.5 block text-xs leading-relaxed text-muted-foreground">{item.desc}</span>
+              </span>
+              <ArrowRight className={`mt-1 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none ${arrow}`} aria-hidden="true" />
+            </button>
+          ))}
         </div>
       </section>
 
-      {/* ── URL IMPORT strip ── */}
-      <section className="py-10 px-4 border-t border-border bg-card/20">
-        <div className="max-w-2xl mx-auto text-center space-y-4">
-          <p className="text-sm font-semibold text-foreground">{t('home_url_import_title')}</p>
-          <p className="text-xs text-muted-foreground">{t('home_url_import_desc')}</p>
-          <div className="flex gap-2">
-            <Input
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleUrlSubmit()}
-              placeholder={t('home_url_import_placeholder')}
-              dir="ltr"
-              className="flex-1 bg-secondary border-border text-sm"
-            />
-            <Button onClick={handleUrlSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
-              {t('home_url_import_button')}
+      {/* ── HOW IT WORKS ─────────────────────────────────────────── */}
+      <section id="how" className="scroll-mt-24 border-y border-border bg-secondary/40">
+        <div className="mx-auto max-w-[100rem] px-5 sm:px-8 lg:px-10 py-16 lg:py-24">
+          <div className="max-w-2xl">
+            <Eyebrow>{t('mp_how_eyebrow')}</Eyebrow>
+            <h2 className="mt-4 text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
+              {t('mp_how_title')}
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">{t('mp_how_sub')}</p>
+          </div>
+
+          <ol className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            {howSteps.map((step, index) => (
+              <li key={step.key} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <h3 className="mt-4 text-base font-semibold text-foreground">{step.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{step.desc}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* ── MORE THAN A PLATFORM ─────────────────────────────────── */}
+      <section id="company" className="mx-auto max-w-[100rem] scroll-mt-24 px-5 sm:px-8 lg:px-10 py-16 lg:py-24">
+        <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
+          <div>
+            <Eyebrow>{t('mp_more_eyebrow')}</Eyebrow>
+            <h2 className="mt-4 text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
+              {t('mp_more_title')}
+            </h2>
+            <span className="mt-6 block h-px w-16 bg-gold" aria-hidden="true" />
+            <p className="mt-6 text-[15px] leading-relaxed text-ink-soft">{t('mp_more_body')}</p>
+            <Button
+              variant="outline"
+              className="mt-8 h-11 gap-2 rounded-full border-border bg-card px-6 text-sm"
+              onClick={() => navigate('/partners')}
+            >
+              {t('mp_more_cta')} <ArrowRight className={arrow} aria-hidden="true" />
+            </Button>
+          </div>
+
+          <div>
+            <ul className="space-y-6">
+              {beliefs.map(item => (
+                <li key={item.key} className="flex gap-4">
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-gold" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.desc}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p
+              className="mt-10 text-end text-2xl leading-tight text-gold sm:text-3xl"
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic' }}
+            >
+              {t('brand_tagline')}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CLOSING CTA ──────────────────────────────────────────── */}
+      <section className="mx-auto max-w-[100rem] px-5 sm:px-8 lg:px-10 pb-16 lg:pb-24">
+        <div className="flex flex-col items-start gap-6 rounded-[1.75rem] bg-primary px-7 py-9 text-primary-foreground md:flex-row md:items-center md:justify-between md:px-12 md:py-11">
+          <div className="min-w-0">
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('mp_cta_title')}</h2>
+            <p className="mt-2.5 max-w-xl text-sm leading-relaxed text-primary-foreground/75">{t('mp_cta_body')}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-3">
+            <Button
+              className="h-12 gap-2 rounded-full bg-gold px-7 text-sm text-primary hover:bg-gold/90"
+              onClick={() => navigate(session ? '/dashboard' : '/auth/signup')}
+            >
+              {session ? t('nav_dashboard') : t('mp_cta_primary')} <ArrowRight className={arrow} aria-hidden="true" />
+            </Button>
+            <Button
+              variant="outline"
+              className="h-12 rounded-full border-primary-foreground/25 bg-transparent px-7 text-sm text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
+              onClick={() => navigate('/verify')}
+            >
+              {t('mp_cap_verify_cta')}
             </Button>
           </div>
         </div>
       </section>
 
-      {/* ── FAQ ── */}
-      <section className="py-16 px-4 border-t border-border">
-        <div className="max-w-2xl mx-auto space-y-4">
-          <h2 className="text-2xl font-bold text-foreground text-center">{t('home_faq_title')}</h2>
-          <div className="rounded-2xl border border-border bg-card px-5">
-            {FAQ_KEYS.map(({ qKey, aKey }) => <FaqItem key={qKey} qKey={qKey} aKey={aKey} />)}
+      {/* ── FOOTER ───────────────────────────────────────────────── */}
+      <footer className="border-t border-border">
+        <div className="mx-auto grid max-w-[100rem] gap-10 px-5 sm:px-8 lg:px-10 py-12 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-1">
+            <HomatchLogo size="md" withTagline />
+            <p className="mt-4 max-w-xs text-xs leading-relaxed text-muted-foreground">{t('mp_footer_tagline')}</p>
           </div>
-        </div>
-      </section>
 
-      {/* ── CTA ── */}
-      <section className="py-16 px-4 border-t border-border bg-primary/5">
-        <div className="max-w-xl mx-auto text-center space-y-4">
-          <Sparkles className="h-8 w-8 text-primary mx-auto" />
-          <h2 className="text-2xl font-bold text-foreground">{t('home_cta_title')}</h2>
-          <p className="text-sm text-muted-foreground">{t('home_cta_desc')}</p>
-          <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-base px-8 py-5"
-            onClick={() => navigate(session ? '/ai' : '/auth/signup')}>
-            {t('home_cta_button')} <ArrowRight className="h-5 w-5" />
-          </Button>
-        </div>
-      </section>
+          <nav aria-label={t('mp_footer_product')}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('mp_footer_product')}</p>
+            <ul className="mt-4 space-y-2.5">
+              {[
+                { key: 'verify', label: t('nav_verify'), path: '/verify' },
+                { key: 'mortgage', label: t('nav_mortgage'), path: '/mortgage' },
+                { key: 'ai', label: t('ai_title'), path: session ? '/ai' : '/auth/signup' },
+              ].map(link => (
+                <li key={link.key}>
+                  <button type="button" onClick={() => navigate(link.path)} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                    {link.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
-      {/* Footer */}
-      <footer className="border-t border-border py-8 px-4">
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <button
-            type="button"
-            onClick={() => { navigate('/'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-            className="cursor-pointer"
-            aria-label={t('home_nav_home_aria')}
-          >
-            <HomatchLogo size="sm" />
-          </button>
-          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-            <button type="button" onClick={() => navigate('/privacy')} className="hover:text-foreground transition-colors">{t('home_footer_privacy')}</button>
-            <button type="button" onClick={() => navigate('/terms')} className="hover:text-foreground transition-colors">{t('home_footer_terms')}</button>
-            <button type="button" onClick={() => navigate('/verify')} className="hover:text-foreground transition-colors">{t('nav_verify')}</button>
-            <button type="button" onClick={() => navigate('/partners')} className="hover:text-foreground transition-colors">{t('home_nav_partners')}</button>
-          </div>
-          <p className="text-xs text-muted-foreground">{t('home_footer_copyright', { year: String(new Date().getFullYear()) })}</p>
+          <nav aria-label={t('mp_footer_company')}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('mp_footer_company')}</p>
+            <ul className="mt-4 space-y-2.5">
+              <li>
+                <button type="button" onClick={() => navigate('/partners')} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                  {t('home_nav_partners')}
+                </button>
+              </li>
+            </ul>
+          </nav>
+
+          <nav aria-label={t('mp_footer_legal')}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('mp_footer_legal')}</p>
+            <ul className="mt-4 space-y-2.5">
+              {[
+                { key: 'privacy', label: t('home_footer_privacy'), path: '/privacy' },
+                { key: 'terms', label: t('home_footer_terms'), path: '/terms' },
+              ].map(link => (
+                <li key={link.key}>
+                  <button type="button" onClick={() => navigate(link.path)} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                    {link.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
+
+        <div className="border-t border-border">
+          <p className="mx-auto max-w-[100rem] px-5 sm:px-8 lg:px-10 py-5 text-xs text-muted-foreground">
+            {t('home_footer_copyright', { year: new Date().getFullYear() })}
+          </p>
         </div>
       </footer>
     </div>

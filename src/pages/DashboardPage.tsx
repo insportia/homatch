@@ -1,407 +1,396 @@
+// HOMATCH — the authenticated Dashboard.
+//
+// Rebuilt against the supplied design reference: a fixed left rail, a slim
+// topbar, a welcome banner, a metric row, five primary actions, then match /
+// property / assistant / verification / financing / activity cards.
+//
+// EVERY NUMBER ON THIS SCREEN IS REAL
+//
+// The reference is populated with invented figures (12 active clients, 28
+// matched properties, named buyers at 92%). None of that is reproduced. Each
+// card reads from loadDashboardSummary(), which queries only tables this user
+// owns, and each renders a designed empty state when the answer is nothing.
+// The "+n this week" lines are computed from created_at, not decoration.
+//
+// It answers, in reading order: what needs my attention (banner + metrics),
+// what can I do now (five actions), what has Homatch found (matches,
+// properties), and what is in flight (verifications, activity).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  ArrowRight, Building2, CheckCircle2, CircleDollarSign, FileUp, Loader2, MapPin,
+  Search, ShieldCheck, Sparkles, Trash2, TrendingUp, UserSearch, Users, Zap,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { AppLayout } from '@/components/layouts/AppLayout';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
+import { HomatchShell } from '@/components/layouts/HomatchShell';
+import { RouteGuard } from '@/components/common/RouteGuard';
+import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { softDeleteProperty } from '@/services/api';
+import { isMatchingJobLive, type LiveMatchingJob } from '@/services/matchingProgress';
+import { statusLabel as jobStatusLabel } from '@/components/matching/MatchingJobProgress';
 import {
-  PlusCircle, MapPin, DollarSign, Maximize2, BedDouble, Zap, Trash2,
-  ExternalLink, LayoutGrid, Building2, Search, Brain, Globe2, CheckCircle2,
-  Loader2, Radio, ShieldCheck, Bot, Shield, MessageSquare, Bell, CalendarDays,
-  Sparkles, ArrowRight, TrendingUp, Users, Database, Layers, Filter, Landmark,
-} from 'lucide-react';
-import { getProperties, softDeleteProperty } from '@/services/api';
-import {
-  getLatestProgressForProperties, getUserMatchSummary, isMatchingJobLive,
-  type LiveMatchingJob,
-} from '@/services/matchingProgress';
-import { statusLabel as jobStatusLabel, providerBadge, MATCHING_JOB_STEP_ORDER } from '@/components/matching/MatchingJobProgress';
-import type { Property } from '@/types/types';
+  EMPTY_DASHBOARD_SUMMARY, loadDashboardSummary,
+  type DashboardMatch, type DashboardSummary,
+} from '@/services/dashboardSummary';
+import type { DealRoomRecord } from '@/services/dealRooms';
+import type { ActivityEvent, Property } from '@/types/types';
 import { toast } from 'sonner';
-import { RouteGuard } from '@/components/common/RouteGuard';
 
-// ── Sub-components (unchanged from Phase 3) ──────────────────
-function StatusBadge({ status, run }: { status: string; run?: LiveMatchingJob }) {
-  const { t } = useLanguage();
-  if (run && isMatchingJobLive(run.status)) return <span className="status-active">{t('dash_status_ai_searching', { percent: run.progress })}</span>;
-  if (status === 'ACTIVE') return <span className="status-active">{t('dash_status_matching_active')}</span>;
-  if (status === 'PAUSED') return <span className="status-paused">{t('dash_status_paused_caps')}</span>;
-  return <span className="status-paused">{t('dash_status_draft')}</span>;
+/* ------------------------------------------------------------------ *
+ * Presentational primitives                                           *
+ * ------------------------------------------------------------------ */
+
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <section className={`rounded-2xl border border-border bg-card shadow-card ${className}`}>{children}</section>;
 }
 
-function PropertyCard({ prop, run, onDelete }: { prop: Property; run?: LiveMatchingJob; onDelete: (id: string) => void }) {
-  const navigate = useNavigate();
-  const { t, isRTL } = useLanguage();
-  const facts = prop.facts;
-  const isPrivate = prop.source_type === 'PRIVATE_LISTING';
-  const locationParts = [facts?.district, facts?.city, facts?.country].filter(Boolean).join(', ');
-  const running = !!run && isMatchingJobLive(run.status);
-  const score = running ? run.progress : (prop.matchability_score ?? 0);
-  const scoreColor = running ? 'text-primary' : score >= 80 ? 'text-green-400' : score >= 50 ? 'text-primary' : 'text-muted-foreground';
-  const label = running ? t('dash_label_ai_progress') : t('dash_label_best_match');
+function CardHead({ title, action }: { title: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+      <h2 className="min-w-0 truncate text-sm font-semibold text-foreground">{title}</h2>
+      {action}
+    </div>
+  );
+}
+
+function LinkAction({ label, onClick }: { label: string; onClick: () => void }) {
+  const { isRTL } = useLanguage();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-xs font-medium text-gold transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {label} <ArrowRight className={`h-3.5 w-3.5 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+    </button>
+  );
+}
+
+function EmptyState({ icon: Icon, title, hint, action }: {
+  icon: React.ElementType; title: string; hint?: string; action?: React.ReactNode;
+}) {
+  return (
+    <div className="px-5 py-10 text-center">
+      <span className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-sand text-muted-foreground" aria-hidden="true">
+        <Icon className="h-5 w-5" />
+      </span>
+      <p className="mt-3 text-sm font-medium text-foreground">{title}</p>
+      {hint && <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">{hint}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Cards                                                               *
+ * ------------------------------------------------------------------ */
+
+function MetricCard({ label, value, icon: Icon, note, loading }: {
+  label: string; value: number; icon: React.ElementType; note?: string | null; loading: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-card sm:p-5">
+      <span className="grid h-10 w-10 place-items-center rounded-xl bg-sand text-foreground" aria-hidden="true">
+        <Icon className="h-[18px] w-[18px]" />
+      </span>
+      {loading ? (
+        <Skeleton className="mt-3.5 h-8 w-14" />
+      ) : (
+        <p className="mt-3.5 text-3xl font-semibold leading-none tracking-tight text-foreground tabular-nums">{value}</p>
+      )}
+      <p className="mt-2 text-xs leading-snug text-muted-foreground">{label}</p>
+      {!loading && note && <p className="mt-1.5 text-xs font-medium text-success">{note}</p>}
+    </div>
+  );
+}
+
+function QuickAction({ icon: Icon, title, desc, onClick }: {
+  icon: React.ElementType; title: string; desc: string; onClick: () => void;
+}) {
+  const { isRTL } = useLanguage();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex h-full flex-col rounded-2xl border border-border bg-card p-4 text-start shadow-card transition-colors hover:border-ring/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="grid h-10 w-10 place-items-center rounded-xl bg-sand text-foreground" aria-hidden="true">
+        <Icon className="h-[18px] w-[18px]" />
+      </span>
+      <span className="mt-3.5 block text-sm font-semibold text-foreground">{title}</span>
+      <span className="mt-1.5 block flex-1 text-xs leading-relaxed text-muted-foreground">{desc}</span>
+      <ArrowRight
+        className={`mt-3 h-4 w-4 self-end text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-0.5' : ''}`}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
+
+/** A live matching run. Real progress from matching_jobs, or nothing at all. */
+function LiveRunStrip({ run, propertyTitle, onOpen }: {
+  run: LiveMatchingJob; propertyTitle: string; onOpen: () => void;
+}) {
+  const { t } = useLanguage();
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full rounded-2xl border border-ring/35 bg-card p-4 text-start shadow-card transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="flex items-center gap-3">
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gold motion-reduce:animate-none" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">
+            {t('dash_ai_matching_title')} {jobStatusLabel(run.status, t)}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">{run.current_step || propertyTitle}</p>
+        </div>
+        <span className="shrink-0 text-sm font-semibold tabular-nums text-gold">{run.progress}%</span>
+      </div>
+      <div className="mt-3 h-1 overflow-hidden rounded-full bg-secondary">
+        <div className="h-full rounded-full bg-gold transition-all duration-500" style={{ width: `${run.progress}%` }} />
+      </div>
+    </button>
+  );
+}
+
+function MatchRow({ entry, onOpen }: { entry: DashboardMatch; onOpen: () => void }) {
+  const { t } = useLanguage();
+  const { match, property } = entry;
+  const budget = match.preview_budget_min || match.preview_budget_max
+    ? [match.preview_budget_min, match.preview_budget_max]
+        .filter(Boolean)
+        .map(n => Number(n).toLocaleString())
+        .join(' – ')
+    : null;
 
   return (
-    <div className="group relative rounded-xl border border-border bg-card card-hover cursor-pointer overflow-hidden"
-      onClick={() => navigate(`/property/${prop.id}`)} role="button" tabIndex={0}
-      onKeyDown={e => e.key === 'Enter' && navigate(`/property/${prop.id}`)}>
-      <div className="aspect-[16/9] bg-secondary relative overflow-hidden">
-        {prop.cover_photo_url
-          ? <img src={prop.cover_photo_url} alt={prop.title ?? t('as_default_property_name')} className="w-full h-full object-cover" loading="lazy" />
-          : <div className="w-full h-full flex items-center justify-center"><Building2 className="h-8 w-8 text-muted-foreground/30" /></div>}
-        <div className={`absolute top-2 ${isRTL ? 'right-2' : 'left-2'} flex flex-col gap-1`}>
-          {isPrivate && <span className="status-private">{t('prop_private_badge')}</span>}
-        </div>
-        <button onClick={e => { e.stopPropagation(); onDelete(prop.id); }}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 bg-background/80 rounded-md flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground"
-          aria-label={t('dash_delete_property_aria')}><Trash2 className="h-3.5 w-3.5" /></button>
+    <div className="flex items-center gap-3 px-5 py-3.5">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sand text-foreground" aria-hidden="true">
+        <Users className="h-4 w-4" />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">
+          {match.preview_city || property.title || t('as_default_property_name')}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          {[
+            budget ? `${t('db_match_budget')} ${budget}${match.preview_currency ? ` ${match.preview_currency}` : ''}` : null,
+            match.preview_bedrooms ? `${match.preview_bedrooms} ${t('prop_bedrooms')}` : null,
+            match.preview_platform,
+          ].filter(Boolean).join(' · ')}
+        </p>
       </div>
-      <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-sm text-foreground truncate">
-              {prop.title ?? (isPrivate ? t('dash_private_listing') : t('dash_imported_property'))}
-            </h3>
-            {locationParts && (
-              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                <MapPin className="h-3 w-3 shrink-0" /><span className="truncate">{locationParts}</span>
-              </p>
-            )}
-          </div>
-          <StatusBadge status={prop.matching_status} run={run} />
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          {facts?.total_price && (
-            <span className="text-sm font-semibold text-foreground flex items-center gap-1">
-              <DollarSign className="h-3.5 w-3.5 text-primary" />
-              {Number(facts.total_price).toLocaleString()} {facts?.currency ?? ''}
+
+      <div className="shrink-0 text-end">
+        <p className="text-sm font-semibold tabular-nums text-success">{match.match_score}%</p>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('db_match_fit')}</p>
+      </div>
+
+      <Button variant="outline" size="sm" className="h-8 shrink-0 rounded-full border-border bg-card px-3 text-xs" onClick={onOpen}>
+        {t('db_match_open')}
+      </Button>
+    </div>
+  );
+}
+
+function PropertyRow({ property, run, onOpen, onDelete }: {
+  property: Property; run?: LiveMatchingJob; onOpen: () => void; onDelete: () => void;
+}) {
+  const { t } = useLanguage();
+  const facts = property.facts;
+  const location = [facts?.district, facts?.city].filter(Boolean).join(', ');
+  const running = !!run && isMatchingJobLive(run.status);
+  const score = running ? run.progress : (property.matchability_score ?? 0);
+
+  return (
+    <div className="group flex items-center gap-3 px-5 py-3.5">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="h-11 w-14 shrink-0 overflow-hidden rounded-xl bg-sand">
+          {property.cover_photo_url ? (
+            <img src={property.cover_photo_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+          ) : (
+            <span className="grid h-full w-full place-items-center text-muted-foreground" aria-hidden="true">
+              <Building2 className="h-4 w-4" />
             </span>
           )}
-          {facts?.area && <span className="text-xs text-muted-foreground flex items-center gap-1"><Maximize2 className="h-3 w-3" />{facts.area} {t('prop_area')}</span>}
-          {facts?.bedrooms && <span className="text-xs text-muted-foreground flex items-center gap-1"><BedDouble className="h-3 w-3" />{facts.bedrooms} {t('prop_bedrooms')}</span>}
-        </div>
-        <div className="pt-2 border-t border-border/50 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <Zap className={`h-3.5 w-3.5 ${running ? 'text-primary animate-pulse' : 'text-primary'}`} />
-              <span className="text-xs text-muted-foreground">{label}</span>
-            </div>
-            <span className={`text-xs font-semibold ${scoreColor}`}>{score}%</span>
-          </div>
-          <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
-            <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${score}%` }} />
-          </div>
-          {running && run?.current_step && <p className="text-[11px] text-muted-foreground truncate">{run.current_step}</p>}
-          {!running && run?.status === 'completed' && run.matches_created === 0 && (
-            <p className="text-[11px] text-muted-foreground">{t('dash_last_scan_no_matches')}</p>
-          )}
-        </div>
-        {/* Quick AI action */}
-        <button
-          type="button"
-          onClick={e => {
-            e.stopPropagation();
-            navigate('/ai', {
-              state: {
-                context: { type: 'property', data: { id: prop.id, title: prop.title, city: facts?.city } },
-                prompt: t('dash_ai_tell_prompt', { name: prop.title ?? facts?.city ?? prop.id }),
-              },
-            });
-          }}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/50 hover:border-primary/40 hover:bg-primary/5 transition-colors text-xs text-muted-foreground hover:text-foreground"
-        >
-          <Bot className="h-3 w-3 text-primary shrink-0" />
-          {t('dash_ask_ai_property')}
-          <ArrowRight className="h-3 w-3 ml-auto text-muted-foreground/40" />
-        </button>
-        {/* Mortgage CTA — prefills /mortgage with this property's price/
-            currency snapshot. A later price change on the property never
-            silently overwrites a scenario already saved against this
-            snapshot (see MortgagePage's propertyPriceSnapshotAt handling
-            and the mortgage_scenarios table) — this button only ever
-            starts a fresh calculation. */}
-        {facts?.total_price && (
-          <button
-            type="button"
-            onClick={e => {
-              e.stopPropagation();
-              navigate('/mortgage', {
-                state: {
-                  context: { propertyId: prop.id, price: Number(facts.total_price), currency: facts.currency },
-                },
-              });
-            }}
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/50 hover:border-primary/40 hover:bg-primary/5 transition-colors text-xs text-muted-foreground hover:text-foreground"
-          >
-            <Landmark className="h-3 w-3 text-primary shrink-0" />
-            {t('dash_calculate_mortgage_property')}
-            <ArrowRight className="h-3 w-3 ml-auto text-muted-foreground/40" />
-          </button>
-        )}
-      </div>
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-foreground">
+            {property.title || t('dash_imported_property')}
+          </span>
+          <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+            {location && (
+              <span className="flex min-w-0 items-center gap-1">
+                <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span className="truncate">{location}</span>
+              </span>
+            )}
+            {facts?.total_price && (
+              <span className="shrink-0 font-medium text-foreground">
+                {Number(facts.total_price).toLocaleString()} {facts.currency ?? ''}
+              </span>
+            )}
+          </span>
+        </span>
+
+        <span className="hidden shrink-0 text-end sm:block">
+          <span className="block text-sm font-semibold tabular-nums text-foreground">{score}%</span>
+          <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+            {running ? t('dash_label_ai_progress') : t('dash_label_best_match')}
+          </span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label={t('dash_delete_property_aria')}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+      >
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
     </div>
   );
 }
 
-function StatsCard({ label, value, icon: Icon, accent = false }: { label: string; value: string | number; icon: React.ElementType; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border p-4 ${accent ? 'border-primary/30 bg-primary/5' : 'border-border bg-card'}`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-muted-foreground font-medium">{label}</span>
-        <Icon className={`h-4 w-4 ${accent ? 'text-primary' : 'text-muted-foreground/50'}`} />
-      </div>
-      <p className={`text-2xl font-semibold ${accent ? 'text-primary' : 'text-foreground'}`}>{value}</p>
-    </div>
-  );
-}
-
-// Icons for each real matching_jobs lifecycle step, in MATCHING_JOB_STEP_ORDER.
-const STEP_ICONS: Record<string, React.ElementType> = {
-  queued: Loader2, analysing_property: Brain, generating_queries: Search,
-  searching_sources: Globe2, collecting_results: Database, normalizing: Layers,
-  deduplicating: Filter, classifying: ShieldCheck, ranking: TrendingUp,
+const VERDICT_KEY: Record<string, string> = {
+  POSITIVE: 'dr_verdict_positive',
+  MODERATELY_POSITIVE: 'dr_verdict_moderate',
+  NEGATIVE: 'dr_verdict_negative',
 };
 
-function LiveMatchingPanel({ run }: { run: LiveMatchingJob }) {
+const VERDICT_CLASS: Record<string, string> = {
+  POSITIVE: 'status-active',
+  MODERATELY_POSITIVE: 'status-low-balance',
+  NEGATIVE: 'status-private',
+};
+
+function VerificationRow({ record, onOpen }: { record: DealRoomRecord; onOpen: () => void }) {
   const { t } = useLanguage();
-  const running = isMatchingJobLive(run.status);
-  const currentIndex = MATCHING_JOB_STEP_ORDER.indexOf(run.status as typeof MATCHING_JOB_STEP_ORDER[number]);
-  const label = jobStatusLabel(run.status, t);
+  const verdict = (record.verify_snapshot as { verdict?: string } | undefined)?.verdict;
+  const label = verdict && VERDICT_KEY[verdict] ? t(VERDICT_KEY[verdict]) : t('db_verify_no_verdict');
+  const pill = (verdict && VERDICT_CLASS[verdict]) || 'status-paused';
 
   return (
-    <div className="rounded-xl border border-primary/30 bg-card overflow-hidden">
-      <div className="p-4 md:p-5 border-b border-border/60 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-            {running ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : <CheckCircle2 className="w-5 h-5 text-green-400" />}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-sm">{t('dash_ai_matching_title')} {label}</h3>
-              {running && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase tracking-wider">{t('dash_status_live')}</span>}
-            </div>
-            {run.current_step && <p className="text-xs text-muted-foreground mt-0.5 truncate">{run.current_step}</p>}
-          </div>
-        </div>
-        <span className="text-xl font-semibold text-primary">{run.progress}%</span>
-      </div>
-      <div className="h-1 bg-secondary"><div className="h-full bg-primary transition-all duration-500" style={{ width: `${run.progress}%` }} /></div>
-      <div className="p-4 md:p-5 grid md:grid-cols-2 gap-5">
-        <div className="space-y-2.5">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">{t('dash_ai_process_label')}</p>
-          {MATCHING_JOB_STEP_ORDER.map((key, idx) => {
-            const Icon = STEP_ICONS[key] ?? Loader2;
-            const done = run.status === 'completed' || (running && currentIndex >= 0 && idx < currentIndex);
-            const active = run.status === key;
-            return (
-              <div key={key} className="flex items-center gap-2 text-xs">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center ${done ? 'bg-green-500/10 text-green-400' : active ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'}`}>
-                  {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : active ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Icon className="w-3 h-3" />}
-                </div>
-                <span className={active ? 'text-foreground font-medium' : 'text-muted-foreground'}>{jobStatusLabel(key, t)}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="space-y-3">
-          {run.provider_results && Object.keys(run.provider_results).length > 0 && (
-            <div>
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">{t('dash_sources_label')}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(run.provider_results).map(([k, v]) => providerBadge(k, v))}
-              </div>
-            </div>
-          )}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <MiniMetric label={t('mjp_counter_query_packs')} value={run.query_packs_created} />
-            <MiniMetric label={t('mjp_counter_signals')} value={run.signals_collected} />
-            <MiniMetric label={t('mjp_counter_classified')} value={run.signals_classified} />
-            <MiniMetric label={t('mjp_counter_candidates')} value={run.candidates_after_filter} />
-            <MiniMetric label={t('mjp_counter_matches')} value={run.matches_created} />
-            <MiniMetric label={t('mjp_counter_tiers_run')} value={run.tiers_run} />
-          </div>
-        </div>
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-center gap-3 px-5 py-3 text-start transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-foreground">
+          {record.title || record.address || record.cadastral_code || t('vc_untitled_case')}
+        </span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {t('dr_updated')} {new Date(record.updated_at).toLocaleDateString()}
+        </span>
+      </span>
+      <span className={`${pill} shrink-0`}>{label}</span>
+    </button>
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-lg bg-secondary/40 border border-border/60 p-2">
-      <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
-      <p className="text-base font-semibold mt-0.5">{value}</p>
-    </div>
-  );
-}
+const ACTIVITY_LABEL: Record<string, string> = {
+  PROPERTY_ADDED: 'activity_property_added',
+  IMPORT_STARTED: 'activity_import_started',
+  IMPORT_COMPLETED: 'activity_import_completed',
+  IMPORT_FAILED: 'activity_import_failed',
+  PRIVATE_LISTING_CREATED: 'activity_private_created',
+  MATCHING_STARTED: 'activity_matching_started',
+  MATCHING_PAUSED: 'activity_matching_paused',
+  PROPERTY_DELETED: 'activity_property_deleted',
+  MATCH_AVAILABLE: 'activity_match_available',
+  MATCH_UNLOCKED: 'activity_match_unlocked',
+  CREDITS_TOPPED_UP: 'activity_credits_topped_up',
+  CREDITS_CHARGED: 'activity_credits_charged',
+  CAMPAIGN_PAUSED: 'activity_campaign_paused',
+  CAMPAIGN_RESUMED: 'activity_campaign_resumed',
+};
 
-// ── Quick-action cards shown when user has no properties ──────
-function EmptyDashboard() {
-  const navigate = useNavigate();
+function ActivityRow({ event }: { event: ActivityEvent }) {
   const { t } = useLanguage();
-  const SECONDARY_ACTIONS = [
-    { icon: Shield,       titleKey: 'dash_secondary_verify_title',   descKey: 'dash_secondary_verify_desc',   path: '/verify' },
-    { icon: Bell,         titleKey: 'dash_secondary_active_search_title', descKey: 'dash_secondary_active_search_desc', path: '/active-search' },
-    { icon: MessageSquare,titleKey: 'nav_chat',                      descKey: 'dash_secondary_messages_desc', path: '/chat' },
-  ];
+  const key = ACTIVITY_LABEL[event.event_type];
   return (
-    <div className="space-y-6">
-      {/* AI entry point */}
-      <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 text-center space-y-3">
-        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-          <Sparkles className="h-6 w-6 text-primary" />
-        </div>
-        <h2 className="text-base font-semibold text-foreground">{t('dash_empty_ai_title')}</h2>
-        <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-          {t('dash_empty_ai_desc')}
-        </p>
-        <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
-          onClick={() => navigate('/ai')}>
-          <Bot className="h-4 w-4" /> {t('dash_empty_open_ai')}
-        </Button>
-      </div>
-
-      {/* Two-path cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-5 rounded-xl border border-border bg-card space-y-3">
-          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Search className="h-5 w-5 text-primary" />
-          </div>
-          <h3 className="font-semibold text-sm text-foreground">{t('dash_empty_find_property_title')}</h3>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            {t('dash_empty_find_property_desc')}
-          </p>
-          <Button size="sm" variant="outline" className="border-border gap-2 w-full"
-            onClick={() => navigate('/ai')}>
-            {t('nav_ask_ai_short')} <ArrowRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-        <div className="p-5 rounded-xl border border-border bg-card space-y-3">
-          <div className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center">
-            <Users className="h-5 w-5 text-accent-foreground" />
-          </div>
-          <h3 className="font-semibold text-sm text-foreground">{t('dash_empty_find_buyers_title')}</h3>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            {t('dash_empty_find_buyers_desc')}
-          </p>
-          <Button size="sm" variant="outline" className="border-border gap-2 w-full"
-            onClick={() => navigate('/property/add')}>
-            {t('dash_empty_add_property')} <ArrowRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Secondary actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {SECONDARY_ACTIONS.map(({ icon: Icon, titleKey, descKey, path }) => (
-          <button key={path} type="button" onClick={() => navigate(path)}
-            className="p-4 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-primary/5 transition-colors text-left space-y-1.5">
-            <Icon className="h-4 w-4 text-primary" />
-            <p className="text-sm font-medium text-foreground">{t(titleKey)}</p>
-            <p className="text-xs text-muted-foreground">{t(descKey)}</p>
-          </button>
-        ))}
-      </div>
-    </div>
+    <li className="flex items-start gap-3 px-5 py-3">
+      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        {/* An unmapped event_type is a raw enum value, not prose — showing it
+            verbatim beats hiding an activity the user's account really has. */}
+        <span className="block text-sm text-foreground">{key ? t(key) : event.event_type}</span>
+        <span className="block text-xs text-muted-foreground">{new Date(event.created_at).toLocaleString()}</span>
+      </span>
+    </li>
   );
 }
 
-// ── Context-aware top widget ──────────────────────────────────
-function DashboardHero({ name, matchCount, newCount, topPropertyId }: { name?: string; matchCount: number; newCount: number; topPropertyId: string | null }) {
-  const navigate = useNavigate();
-  const { t } = useLanguage();
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5 flex flex-col md:flex-row gap-4 items-start md:items-center">
-      <div className="flex-1 min-w-0 space-y-1">
-        <p className="text-sm text-muted-foreground">
-          {name ? t('dash_welcome_back_name', { name: name.split(' ')[0] }) : t('dash_welcome_back')}
-        </p>
-        {matchCount > 0 ? (
-          <h2 className="text-base font-semibold text-foreground">
-            <span className="text-primary font-bold">{t('dash_matches_summary', { count: matchCount })}</span>
-            {newCount > 0 && <span className="text-green-400"> ({t('dash_new_count', { count: newCount })})</span>}
-          </h2>
-        ) : (
-          <h2 className="text-base font-semibold text-foreground">{t('dash_continue_ai')}</h2>
-        )}
-        <p className="text-xs text-muted-foreground">
-          {t('dash_hero_subtitle')}
-        </p>
-      </div>
-      <div className="flex gap-2 shrink-0 flex-wrap">
-        <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
-          onClick={() => navigate('/ai')}>
-          <Bot className="h-3.5 w-3.5" /> {t('nav_ask_ai_short')}
-        </Button>
-        {matchCount > 0 && topPropertyId && (
-          // Matches are only ever shown per-property (/property/:id/matches) — there is
-          // no single "all matches" page — so this routes to whichever property has the
-          // most unseen matches (topPropertyId, computed in getUserMatchSummary). This
-          // used to navigate('/dashboard'), a no-op self-navigation since the button
-          // already lives on the dashboard.
-          <Button size="sm" variant="outline" className="border-border gap-2"
-            onClick={() => navigate(`/property/${topPropertyId}/matches`)}>
-            <TrendingUp className="h-3.5 w-3.5" /> {t('dash_view_matches')}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}
+/* ------------------------------------------------------------------ *
+ * Page                                                                *
+ * ------------------------------------------------------------------ */
 
-// ── Main dashboard ────────────────────────────────────────────
 function DashboardContent() {
+  useSurfaceTheme('light');
   const { homatchUser } = useAuth();
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [progress, setProgress] = useState<Record<string, LiveMatchingJob>>({});
-  const [matchSummary, setMatchSummary] = useState<{ total: number; newCount: number; bestScore: number; topPropertyId: string | null }>({ total: 0, newCount: 0, bestScore: 0, topPropertyId: null });
+
+  const [data, setData] = useState<DashboardSummary>(EMPTY_DASHBOARD_SUMMARY);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  // Three independent callers can trigger refresh(): the initial mount, the
-  // 3s polling interval below, and handleDelete()'s own explicit call right
-  // after a soft-delete. None of these are sequenced against each other, so
-  // without a guard a slower in-flight request started BEFORE a delete (e.g.
-  // the interval firing a split second before the user clicks Delete) can
-  // resolve AFTER the delete's own refresh() and overwrite `properties` with
-  // the stale, pre-delete list — making a just-deleted property reappear on
-  // the dashboard until the next tick. requestSeq makes only the most
-  // recently STARTED call's result ever get applied to state.
+  // Guards against an in-flight load resolving after a newer one — the same
+  // race the previous dashboard hit, where a poll started just before a
+  // delete could resurrect the deleted property on screen.
   const requestSeq = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!homatchUser) return;
     const seq = ++requestSeq.current;
-    const props = await getProperties(homatchUser.id);
-    const ids = props.map(p => p.id);
-    const [runs, summary] = await Promise.all([
-      getLatestProgressForProperties(ids),
-      getUserMatchSummary(ids),
-    ]);
-    if (seq !== requestSeq.current) return; // a newer refresh() started while this one was in flight — discard
-    setProperties(props);
-    setProgress(runs);
-    setMatchSummary(summary);
-    setLoading(false);
+    try {
+      const next = await loadDashboardSummary(homatchUser.id);
+      if (seq !== requestSeq.current) return;
+      setData(next);
+      setError(false);
+    } catch {
+      if (seq !== requestSeq.current) return;
+      setError(true);
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
+    }
   }, [homatchUser]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => {
-    if (!homatchUser) return;
-    const timer = window.setInterval(() => { void refresh(); }, 3000);
-    return () => window.clearInterval(timer);
-  }, [homatchUser, refresh]);
 
-  const liveRuns = useMemo(() =>
-    Object.values(progress).filter(r => isMatchingJobLive(r.status)).sort((a, b) => b.created_at.localeCompare(a.created_at)),
-    [progress]);
-  const activeCount = properties.filter(p => p.matching_status === 'ACTIVE').length;
+  const liveRuns = useMemo(
+    () => Object.values(data.progress).filter(r => isMatchingJobLive(r.status)),
+    [data.progress],
+  );
+
+  // Poll only while something is actually running. The previous dashboard
+  // polled every 3s forever, including for an idle account with nothing to
+  // update — that is a request every three seconds per open tab, all day.
+  useEffect(() => {
+    if (!homatchUser || liveRuns.length === 0) return;
+    const timer = window.setInterval(() => { void refresh(); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [homatchUser, liveRuns.length, refresh]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -411,125 +400,281 @@ function DashboardContent() {
     await refresh();
   };
 
+  const firstName = homatchUser?.full_name?.split(' ')[0];
+  const propertiesById = useMemo(
+    () => new Map(data.properties.map(p => [p.id, p])),
+    [data.properties],
+  );
+
+  const quickActions = [
+    { key: 'client', icon: UserSearch, title: t('db_qa_client_title'), desc: t('db_qa_client_desc'), path: '/property/add' },
+    { key: 'property', icon: Search, title: t('db_qa_property_title'), desc: t('db_qa_property_desc'), path: '/ai' },
+    { key: 'verify', icon: ShieldCheck, title: t('db_qa_verify_title'), desc: t('db_qa_verify_desc'), path: '/verify' },
+    { key: 'contract', icon: FileUp, title: t('db_qa_contract_title'), desc: t('db_qa_contract_desc'), path: '/verify' },
+    { key: 'ai', icon: Sparkles, title: t('db_qa_ai_title'), desc: t('db_qa_ai_desc'), path: '/ai' },
+  ];
+
+  const askSuggestions = [
+    { key: '1', label: t('db_ai_sugg_1') },
+    { key: '2', label: t('db_ai_sugg_2') },
+    { key: '3', label: t('db_ai_sugg_3') },
+    { key: '4', label: t('db_ai_sugg_4') },
+  ];
+
+  const weekNote = (count: number) => (count > 0 ? t('db_stat_delta_week', { count }) : null);
+
   return (
-    <AppLayout>
-      <div className="max-w-5xl mx-auto space-y-8">
-        {/* Header row */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold text-foreground">{t('dash_title')}</h1>
-          </div>
-          <Button onClick={() => navigate('/property/add')}
-            className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-sm h-9 px-4">
-            <PlusCircle className="h-4 w-4 mr-2" />{t('dash_add_property')}
-          </Button>
-        </div>
-
-        {/* Context-aware hero widget */}
-        <DashboardHero
-          name={homatchUser?.full_name}
-          matchCount={matchSummary.total}
-          newCount={matchSummary.newCount}
-          topPropertyId={matchSummary.topPropertyId}
-        />
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatsCard label={t('dash_total_properties')} value={properties.length} icon={LayoutGrid} />
-          <StatsCard label={t('dash_active_matching')} value={activeCount} icon={Zap} accent />
-          <StatsCard label={t('dash_total_matches')} value={matchSummary.total} icon={ExternalLink} />
-          <StatsCard label={t('dash_new_matches')} value={matchSummary.newCount} icon={Radio} accent={matchSummary.newCount > 0} />
-        </div>
-
-        {/* Live Chat — prominent, always visible, separate from AI chat */}
-        <button
-          type="button"
-          onClick={() => navigate('/live-chat')}
-          className="w-full flex items-center gap-4 p-4 rounded-xl border border-primary/20 bg-primary/5 hover:border-primary/40 hover:bg-primary/10 transition-colors text-left"
-        >
-          <div className="h-10 w-10 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
-            <Radio className="h-5 w-5 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-foreground">{t('nav_live_chat')}</span>
-              <Badge className="bg-primary text-primary-foreground text-[9px] px-1.5">{t('home_livechat_badge')}</Badge>
+    <HomatchShell>
+      <div className="space-y-5 md:space-y-6">
+        {/* ── Welcome banner ── */}
+        <div className="relative overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-card">
+          <div className="grid gap-0 md:grid-cols-[1fr_minmax(0,20rem)]">
+            <div className="p-6 md:p-8">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                {firstName ? t('dash_welcome_back_name', { name: firstName }) : t('dash_welcome_back')}
+              </h1>
+              <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">{t('db_welcome_sub')}</p>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">{t('live_chat_dashboard_desc')}</p>
-          </div>
-          <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
-        </button>
 
-        {/* Live matching panels */}
-        {liveRuns.map(run => <LiveMatchingPanel key={run.id} run={run} />)}
-        {!liveRuns.length && Object.values(progress).filter(r => r.status === 'completed').slice(0, 1).map(run => (
-          <LiveMatchingPanel key={run.id} run={run} />
-        ))}
-
-        {/* Properties */}
-        <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-            {t('dash_your_properties')}
-          </h2>
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
-                  <div className="aspect-[16/9] bg-muted animate-pulse" />
-                  <div className="p-4 space-y-2">
-                    <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
-                    <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-                  </div>
+            <div className="relative hidden min-h-[9rem] bg-sand md:block">
+              <div
+                className="absolute inset-0 bg-gradient-to-br from-[hsl(214_28%_38%)] via-[hsl(30_26%_58%)] to-[hsl(38_44%_62%)] opacity-90"
+                aria-hidden="true"
+              />
+              <figure className="absolute inset-0 flex items-center p-6">
+                <div className="flex gap-3">
+                  <span className="w-0.5 shrink-0 self-stretch rounded-full bg-white/70" aria-hidden="true" />
+                  <blockquote className="text-sm font-medium leading-relaxed text-white">{t('db_banner_quote')}</blockquote>
                 </div>
-              ))}
+              </figure>
             </div>
-          ) : properties.length === 0 ? (
-            <EmptyDashboard />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {properties.map(prop => (
-                <PropertyCard key={prop.id} prop={prop} run={progress[prop.id]} onDelete={setDeleteId} />
-              ))}
-            </div>
-          )}
+          </div>
         </div>
 
-        {/* Quick nav when user has properties */}
-        {!loading && properties.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
-            {[
-              { icon: Bot,          labelKey: 'nav_ai'           as const, path: '/ai' },
-              { icon: Radio,        labelKey: 'nav_live_chat'    as const, path: '/live-chat' },
-              { icon: Shield,       labelKey: 'nav_verify'       as const, path: '/verify' },
-              { icon: Bell,         labelKey: 'nav_active_search' as const, path: '/active-search' },
-              { icon: CalendarDays, labelKey: 'nav_viewings'     as const, path: '/viewings' },
-            ].map(({ icon: Icon, labelKey, path }) => (
-              <button key={path} type="button" onClick={() => navigate(path)}
-                className="flex items-center gap-2 p-3 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-primary/5 transition-colors text-sm text-muted-foreground hover:text-foreground">
-                <Icon className="h-4 w-4 text-primary shrink-0" />
-                <span className="truncate">{t(labelKey)}</span>
-              </button>
-            ))}
+        {error && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-5 py-4">
+            <p className="text-sm text-destructive">{t('db_error_load')}</p>
+            <Button variant="outline" size="sm" className="h-9 rounded-full border-border bg-card" onClick={() => { setLoading(true); void refresh(); }}>
+              {t('db_retry')}
+            </Button>
           </div>
         )}
+
+        {/* ── Live matching, only while something is genuinely running ── */}
+        {liveRuns.map(run => (
+          <LiveRunStrip
+            key={run.id}
+            run={run}
+            propertyTitle={propertiesById.get(run.property_id)?.title ?? ''}
+            onOpen={() => navigate(`/property/${run.property_id}`)}
+          />
+        ))}
+
+        {/* ── Metrics ── */}
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          <MetricCard
+            label={t('dash_total_properties')} value={data.properties.length} icon={Building2}
+            note={weekNote(data.propertiesThisWeek)} loading={loading}
+          />
+          <MetricCard
+            label={t('dash_total_matches')} value={data.matchTotals.total} icon={TrendingUp}
+            note={data.matchTotals.newCount > 0 ? t('db_stat_delta_new', { count: data.matchTotals.newCount }) : null}
+            loading={loading}
+          />
+          <MetricCard
+            label={t('db_stat_verifications')} value={data.verifications.length} icon={ShieldCheck}
+            note={weekNote(data.verificationsThisWeek)} loading={loading}
+          />
+          <MetricCard
+            label={t('dash_active_matching')}
+            value={data.properties.filter(p => p.matching_status === 'ACTIVE').length}
+            icon={Zap} note={null} loading={loading}
+          />
+        </div>
+
+        {/* ── Primary actions ── */}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+          {quickActions.map(action => (
+            <QuickAction
+              key={action.key} icon={action.icon} title={action.title} desc={action.desc}
+              onClick={() => navigate(action.path)}
+            />
+          ))}
+        </div>
+
+        {/* ── Matches / properties / assistant ── */}
+        <div className="grid gap-5 xl:grid-cols-3">
+          <div className="min-w-0 space-y-5 xl:col-span-2">
+            <Card>
+              <CardHead
+                title={t('db_matches_title')}
+                action={
+                  data.matchTotals.topPropertyId
+                    ? <LinkAction label={t('db_matches_view_all')} onClick={() => navigate(`/property/${data.matchTotals.topPropertyId}/matches`)} />
+                    : undefined
+                }
+              />
+              {loading ? (
+                <div className="space-y-3 p-5">
+                  {[0, 1, 2].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                </div>
+              ) : data.topMatches.length === 0 ? (
+                <EmptyState
+                  icon={Users} title={t('db_matches_empty')} hint={t('db_matches_empty_hint')}
+                  action={
+                    <Button size="sm" className="h-9 rounded-full px-4" onClick={() => navigate('/property/add')}>
+                      {t('nav_add_property')}
+                    </Button>
+                  }
+                />
+              ) : (
+                <div className="divide-y divide-border">
+                  {data.topMatches.map(entry => (
+                    <MatchRow
+                      key={entry.match.id} entry={entry}
+                      onOpen={() => navigate(`/property/${entry.match.property_id}/matches`)}
+                    />
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <Card>
+              <CardHead
+                title={t('db_properties_title')}
+                action={data.properties.length > 0 ? <LinkAction label={t('nav_add_property')} onClick={() => navigate('/property/add')} /> : undefined}
+              />
+              {loading ? (
+                <div className="space-y-3 p-5">
+                  {[0, 1].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                </div>
+              ) : data.properties.length === 0 ? (
+                <EmptyState
+                  icon={Building2} title={t('db_properties_empty')} hint={t('db_properties_empty_hint')}
+                  action={
+                    <Button size="sm" className="h-9 rounded-full px-4" onClick={() => navigate('/property/add')}>
+                      {t('nav_add_property')}
+                    </Button>
+                  }
+                />
+              ) : (
+                <div className="divide-y divide-border">
+                  {data.properties.slice(0, 5).map(property => (
+                    <PropertyRow
+                      key={property.id} property={property} run={data.progress[property.id]}
+                      onOpen={() => navigate(`/property/${property.id}`)}
+                      onDelete={() => setDeleteId(property.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {/* Assistant — the same real entry point as the Main Page panel. */}
+          <Card className="min-w-0 self-start p-5">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold" aria-hidden="true">
+                <Sparkles className="h-[18px] w-[18px]" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-foreground">{t('ai_title')}</h2>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t('db_ai_sub')}</p>
+              </div>
+            </div>
+
+            <p className="mt-4 rounded-2xl rounded-bl-md bg-secondary px-4 py-3 text-sm text-foreground">
+              {t('db_ai_greeting')}
+            </p>
+
+            <HomatchAsk
+              className="mt-4"
+              variant="card"
+              placeholder={t('db_ai_placeholder')}
+              suggestions={askSuggestions}
+            />
+          </Card>
+        </div>
+
+        {/* ── Verification / financing / activity ── */}
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Card className="min-w-0">
+            <CardHead title={t('db_verify_title')} action={<LinkAction label={t('db_verify_start')} onClick={() => navigate('/verify')} />} />
+            {loading ? (
+              <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
+            ) : data.verifications.length === 0 ? (
+              <EmptyState icon={ShieldCheck} title={t('dr_list_empty')} />
+            ) : (
+              <div className="divide-y divide-border">
+                {data.verifications.slice(0, 4).map(record => (
+                  <VerificationRow key={record.id} record={record} onOpen={() => navigate(`/verify/${record.id}`)} />
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="flex min-w-0 flex-col items-center justify-center p-6 text-center">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-sand text-foreground" aria-hidden="true">
+              <CircleDollarSign className="h-5 w-5" />
+            </span>
+            <h2 className="mt-4 text-sm font-semibold text-foreground">{t('db_mortgage_title')}</h2>
+            <p className="mt-2 max-w-xs text-xs leading-relaxed text-muted-foreground">{t('db_mortgage_body')}</p>
+            <Button className="mt-5 h-10 gap-2 rounded-full px-5 text-sm" onClick={() => navigate('/mortgage')}>
+              {t('db_mortgage_cta')} <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </Button>
+          </Card>
+
+          <Card className="min-w-0">
+            <CardHead title={t('db_activity_title')} action={<LinkAction label={t('nav_activity')} onClick={() => navigate('/activity')} />} />
+            {loading ? (
+              <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
+            ) : data.activity.length === 0 ? (
+              <EmptyState icon={Zap} title={t('empty_no_activity_title')} hint={t('empty_no_activity_desc')} />
+            ) : (
+              <ul className="divide-y divide-border">
+                {data.activity.slice(0, 5).map(event => <ActivityRow key={event.id} event={event} />)}
+              </ul>
+            )}
+          </Card>
+        </div>
+
+        {/* ── Closing banner ── */}
+        <div className="flex flex-col items-start gap-5 rounded-[1.5rem] bg-primary px-6 py-7 text-primary-foreground md:flex-row md:items-center md:justify-between md:px-9">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight sm:text-xl">{t('db_footer_title')}</h2>
+            <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-primary-foreground/75">{t('db_footer_body')}</p>
+          </div>
+          <Button
+            className="h-11 shrink-0 gap-2 rounded-full bg-gold px-6 text-sm text-primary hover:bg-gold/90"
+            onClick={() => navigate('/verify')}
+          >
+            {t('mp_cap_verify_cta')} <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </Button>
+        </div>
       </div>
 
       <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
-        <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg bg-card border-border">
+        <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>{t('prop_delete_confirm')}</AlertDialogTitle>
-            <AlertDialogDescription className="text-muted-foreground">{t('prop_delete_confirm_desc')}</AlertDialogDescription>
+            <AlertDialogDescription>{t('prop_delete_confirm_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-border">{t('prop_cancel')}</AlertDialogCancel>
+            <AlertDialogCancel>{t('prop_cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {t('prop_confirm_delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppLayout>
+    </HomatchShell>
   );
 }
 
-export default function DashboardPage() { return <RouteGuard><DashboardContent /></RouteGuard>; }
+export default function DashboardPage() {
+  return (
+    <RouteGuard>
+      <DashboardContent />
+    </RouteGuard>
+  );
+}

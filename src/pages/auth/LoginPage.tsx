@@ -13,6 +13,8 @@ import {
 import { toast } from 'sonner';
 import { Eye, EyeOff, Zap, Loader2 } from 'lucide-react';
 
+import { consumePendingAsk } from '@/lib/pendingAsk';
+
 const PENDING_URL_KEY = 'homatch_pending_url';
 
 function GoogleIcon() {
@@ -52,6 +54,14 @@ export default function LoginPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!session) return;
+    // A question typed into the public Homatch AI panel before signing in.
+    // Checked first: it carries its own intent, so it can never be confused
+    // with a parked import URL.
+    const pendingAsk = consumePendingAsk();
+    if (pendingAsk) {
+      navigate('/ai', { replace: true, state: { prompt: pendingAsk } });
+      return;
+    }
     const pendingUrl = sessionStorage.getItem(PENDING_URL_KEY);
     const pendingIntent = sessionStorage.getItem('homatch_pending_intent') ?? intent;
     if (pendingIntent === 'analyse' && pendingUrl) {

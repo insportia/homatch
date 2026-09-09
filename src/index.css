@@ -48,6 +48,13 @@
     --success: 142 60% 42%;
     --warning: 38 92% 55%;
     --info: 197 60% 48%;
+    /* Brand values also defined on the light surface. Declared here too so a
+       `gold`/`sand` utility never resolves to an empty custom property if a
+       shared component that uses one is rendered on a dark screen. */
+    --gold: 38 92% 55%;
+    --gold-soft: 38 40% 18%;
+    --sand: 222 18% 14%;
+    --ink-soft: 210 15% 70%;
     --gradient-primary: linear-gradient(135deg, hsl(38 92% 55%) 0%, hsl(28 85% 48%) 100%);
     --gradient-card: linear-gradient(135deg, hsl(222 20% 9%) 0%, hsl(222 22% 11%) 100%);
     --gradient-amber-glow: radial-gradient(ellipse at 50% 0%, hsl(38 92% 55% / 0.12) 0%, transparent 60%);
@@ -125,9 +132,11 @@
     z-index: 0;
   }
 
+  /* Token-driven rather than a literal amber so the same utility reads
+     correctly on the light surface, where the accent is gold-on-cream. */
   .card-hover { transition: border-color 200ms ease, box-shadow 200ms ease; }
   .card-hover:hover {
-    border-color: hsl(38 92% 55% / 0.3);
+    border-color: hsl(var(--ring) / 0.32);
     box-shadow: var(--shadow-hover);
   }
 
@@ -154,5 +163,121 @@
     background: hsl(280 50% 60% / 0.15);
     color: hsl(280 50% 70%);
     border: 1px solid hsl(280 50% 60% / 0.3);
+  }
+}
+/* ── Homatch light surface ───────────────────────────────────────────────
+   The cream / navy / gold visual language of the Main Page and Dashboard.
+
+   This is a token OVERRIDE layer, not a second design system: it re-points
+   the same variables the whole component library already reads, so every
+   shadcn primitive (Button, Card, Dialog, Dropdown…) renders correctly on a
+   light surface without a single component fork.
+
+   It is opted into per-screen via useSurfaceTheme('light'), which stamps
+   data-surface on <html> — that placement (rather than a wrapper div) is
+   deliberate: Radix portals render at document.body, so a wrapper would
+   leave dropdowns and dialogs on the dark palette while the page behind
+   them was light. Screens that do not opt in keep the dark palette
+   untouched. */
+@layer base {
+  :root[data-surface='light'] {
+    --radius: 0.875rem;
+
+    --background: 40 30% 96%;
+    --foreground: 214 38% 16%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 214 38% 16%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 214 38% 16%;
+
+    /* Navy is the action colour here — filled buttons in both references are
+       navy, and gold is reserved for accent/brand moments (--accent). */
+    --primary: 214 40% 17%;
+    --primary-foreground: 40 40% 97%;
+
+    --secondary: 40 30% 93%;
+    --secondary-foreground: 214 30% 24%;
+    --muted: 40 26% 94%;
+    --muted-foreground: 30 9% 44%;
+
+    --accent: 38 44% 54%;
+    --accent-foreground: 214 40% 17%;
+
+    --destructive: 4 66% 48%;
+    --destructive-foreground: 40 40% 97%;
+
+    --border: 38 22% 88%;
+    --input: 38 22% 85%;
+    --ring: 38 44% 50%;
+
+    /* Named brand values used where a token role would be misleading —
+       the gold rule beside a pull-quote is neither "accent surface" nor
+       "border", it is the brand line. */
+    --gold: 38 44% 54%;
+    --gold-soft: 38 48% 92%;
+    --sand: 38 32% 93%;
+    --ink-soft: 214 20% 34%;
+
+    --success: 152 46% 34%;
+    --warning: 32 70% 42%;
+    --info: 205 55% 38%;
+
+    --chart-1: 38 44% 54%;
+    --chart-2: 205 45% 40%;
+    --chart-3: 152 40% 38%;
+    --chart-4: 265 30% 52%;
+    --chart-5: 18 55% 50%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 214 30% 26%;
+    --sidebar-primary: 214 40% 17%;
+    --sidebar-primary-foreground: 40 40% 97%;
+    --sidebar-accent: 40 30% 94%;
+    --sidebar-accent-foreground: 214 40% 17%;
+    --sidebar-border: 38 22% 90%;
+    --sidebar-ring: 38 44% 50%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(38 46% 50%) 0%, hsl(32 44% 42%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(40 30% 98%) 100%);
+    --gradient-amber-glow: radial-gradient(ellipse at 50% 0%, hsl(38 44% 54% / 0.10) 0%, transparent 62%);
+
+    /* Premium here means quiet: broad, low-opacity, warm-tinted shadows
+       rather than the hard drop shadows a template would use. */
+    --shadow-card: 0 1px 2px hsl(214 30% 20% / 0.04), 0 8px 24px -12px hsl(214 30% 20% / 0.10);
+    --shadow-hover: 0 2px 4px hsl(214 30% 20% / 0.05), 0 16px 36px -16px hsl(214 30% 20% / 0.16);
+    --shadow-amber: 0 10px 30px -12px hsl(38 44% 40% / 0.28);
+  }
+
+  /* The viewport behind the page (overscroll/rubber-band area) otherwise
+     stays the dark palette's near-black and flashes on scroll bounce. */
+  :root[data-surface='light'] body {
+    background-color: hsl(var(--background));
+  }
+}
+
+@layer utilities {
+  /* Status pills are defined once above against the dark palette; on the
+     light surface the same three roles need their own ink so the text keeps
+     contrast on white rather than glowing. */
+  :root[data-surface='light'] .status-active {
+    background: hsl(152 40% 32% / 0.10);
+    color: hsl(152 46% 26%);
+    border-color: hsl(152 36% 32% / 0.22);
+  }
+  :root[data-surface='light'] .status-paused {
+    background: hsl(var(--secondary));
+    color: hsl(var(--muted-foreground));
+    border-color: hsl(var(--border));
+  }
+  :root[data-surface='light'] .status-low-balance {
+    background: hsl(32 62% 46% / 0.12);
+    color: hsl(32 66% 32%);
+    border-color: hsl(32 56% 46% / 0.26);
+  }
+  :root[data-surface='light'] .status-private {
+    background: hsl(265 30% 50% / 0.10);
+    color: hsl(265 32% 38%);
+    border-color: hsl(265 28% 50% / 0.22);
   }
 }

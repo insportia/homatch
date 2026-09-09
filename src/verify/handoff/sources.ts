@@ -272,10 +272,11 @@ export interface HandoffPlan {
  *
  * Ordering matters and is deliberate:
  *
- *   - A terminal network refusal goes STRAIGHT to handoff when possible. The
- *     mandate is explicit: do not first ask the customer to solve a CAPTCHA
- *     that cannot be solved from where it is rendered.
- *   - An ordinary CAPTCHA stays in the server browser, where Buster helps.
+ *   - A handoff the customer already completed, declined or let expire is
+ *     never re-offered; that would loop them through the same dead end.
+ *   - Any status meaning "a human is needed" — ordinary CAPTCHA included —
+ *     goes to the customer's own browser when the source can be completed
+ *     from a cold start and we hold the inputs it needs.
  *   - Everything else skips the source. Skipping is always safe, because a
  *     skipped source produces no evidence and therefore cannot produce a
  *     negative finding or move the verdict.

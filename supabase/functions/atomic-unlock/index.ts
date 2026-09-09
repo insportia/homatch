@@ -66,176 +66,73 @@ serve(async (req) => {
       return json({ error: 'You do not own this property' }, 403);
     }
 
-    // Check already unlocked
-    const { data: existingUnlock } = await supabaseAdmin
-      .from('match_unlocks')
-      .select(`
-        id, credits_charged,
-        full_signal_text, full_source_url, full_profile_url, full_intent_json
-      `)
-      .eq('match_id', matchId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (existingUnlock) {
-      // Already unlocked — return full data without charging again
-      return json({
-        success: true,
-        alreadyUnlocked: true,
-        unlock: existingUnlock,
-        newBalance: null,
-      });
-    }
-
+    // The price is only used for the INSUFFICIENT_CREDITS response and the
+    // activity record; the charge itself is decided inside the transaction
+    // from the row it holds a lock on, not from this read.
     const price = Number(match.unlock_price_credits);
 
-    // Check credit balance
-    const { data: creditAccount } = await supabaseAdmin
-      .from('credit_accounts')
-      .select('balance')
-      .eq('user_id', userId)
-      .maybeSingle();
+    // The "already unlocked?" check lives inside the transaction now. Doing it
+    // here as well would be a second answer to the same question, and the one
+    // it used to give was worse -- it returned newBalance: null, so the screen
+    // showed no balance after a repeat unlock.
 
-    const balance = Number(creditAccount?.balance ?? 0);
-    if (balance < price) {
-      return json({
-        error: 'INSUFFICIENT_CREDITS',
-        required: price,
-        balance,
-        shortfall: price - balance,
-      }, 402);
+    // ── ONE TRANSACTION ──────────────────────────────────────
+    // This used to be three PostgREST round trips with hand-written
+    // compensation: debit, then ledger, then unlock row, each rolling the
+    // previous ones back by hand on failure.
+    //
+    // The debit was `.update({balance: newBalance}).eq('user_id', userId)
+    // .eq('balance', balance)` and only its ERROR was checked. When the
+    // optimistic guard did its job -- a concurrent unlock or top-up had moved
+    // the balance -- the statement matched zero rows, and PostgREST answers a
+    // zero-row UPDATE with 204 and no error. So the code carried on and wrote
+    // the ledger entry, the unlock row and the full seller reveal without
+    // having charged anything.
+    //
+    // atomic_match_unlock does all of it in one transaction with
+    // SELECT ... FOR UPDATE on the credit account, and returns the reveal
+    // payload itself. There is nothing left to compensate.
+    const { data: rpcRows, error: rpcErr } = await supabaseAdmin.rpc('atomic_match_unlock', {
+      p_user_id: userId,
+      p_match_id: matchId,
+    });
+
+    if (rpcErr) {
+      const code = rpcErr.message ?? '';
+      if (code.includes('INSUFFICIENT_CREDITS')) {
+        const { data: acct } = await supabaseAdmin
+          .from('credit_accounts').select('balance').eq('user_id', userId).maybeSingle();
+        const balance = Number(acct?.balance ?? 0);
+        return json({
+          error: 'INSUFFICIENT_CREDITS',
+          required: price, balance, shortfall: price - balance,
+        }, 402);
+      }
+      if (code.includes('NOT_YOUR_PROPERTY')) return json({ error: 'You do not own this property' }, 403);
+      if (code.includes('MATCH_NOT_FOUND')) return json({ error: 'Match not found' }, 404);
+      if (code.includes('CREDIT_ACCOUNT_NOT_FOUND')) return json({ error: 'No credit account' }, 404);
+      console.error('atomic-unlock rpc failed:', rpcErr.message);
+      // Nothing was charged: the whole transaction rolled back.
+      return json({ error: 'Unlock failed, no credits were charged' }, 500);
     }
 
-    // For mock matches, fetch pre-populated reveal data from match_unlocks_pending
-    const isMock = !!(match as any).mock_mode;
-    let pendingReveal: {
-      full_signal_text: string | null;
-      full_source_url: string | null;
-      full_profile_url: string | null;
-      full_intent_json: Record<string, unknown> | null;
-    } | null = null;
+    const row = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+    if (!row) return json({ error: 'Unlock failed, no credits were charged' }, 500);
 
-    if (isMock) {
-      const { data: pending } = await supabaseAdmin
-        .from('match_unlocks_pending')
-        .select('full_signal_text, full_source_url, full_profile_url, full_intent_json')
-        .eq('match_id', matchId)
-        .maybeSingle();
-      pendingReveal = pending ?? null;
+    const newBalance = Number(row.balance_after);
+    const unlock = {
+      id: row.unlock_id,
+      credits_charged: Number(row.credits_charged),
+      full_signal_text: row.full_signal_text,
+      full_source_url: row.full_source_url,
+      full_profile_url: row.full_profile_url,
+      full_intent_json: row.full_intent_json,
+    };
+
+    // The RPC returns the existing unlock rather than charging twice; say so.
+    if (row.already_unlocked) {
+      return json({ success: true, alreadyUnlocked: true, unlock, newBalance });
     }
-
-    // Load full signal data for reveal (real mode, or mock fallback via raw_signals)
-    const [signalRes, intentRes] = await Promise.all([
-      match.signal_id
-        ? supabaseAdmin
-            .from('raw_signals')
-            .select('original_text, source_url, author_public_name, author_public_url, platform, intent_json, profile_url')
-            .eq('id', match.signal_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-      match.intent_profile_id
-        ? supabaseAdmin
-            .from('intent_profiles')
-            .select('*')
-            .eq('id', match.intent_profile_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
-
-    const signal = signalRes.data;
-    const intentProfile = intentRes.data;
-
-    // ── ATOMIC DEBIT ─────────────────────────────────────────
-    const newBalance = balance - price;
-
-    // 1. Debit credit account
-    const { error: debitErr } = await supabaseAdmin
-      .from('credit_accounts')
-      .update({ balance: newBalance })
-      .eq('user_id', userId)
-      .eq('balance', balance); // Optimistic lock
-
-    if (debitErr) {
-      return json({ error: 'Credit debit failed, please retry' }, 409);
-    }
-
-    // 2. Write ledger entry
-    const { data: ledgerEntry, error: ledgerErr } = await supabaseAdmin
-      .from('credit_ledger')
-      .insert({
-        user_id: userId,
-        amount: -price,
-        balance_before: balance,
-        balance_after: newBalance,
-        type: 'MATCH_UNLOCK',
-        reference: `match:${matchId}`,
-      })
-      .select('id')
-      .maybeSingle();
-
-    if (ledgerErr) {
-      // Rollback debit
-      await supabaseAdmin
-        .from('credit_accounts')
-        .update({ balance })
-        .eq('user_id', userId);
-      return json({ error: 'Ledger write failed' }, 500);
-    }
-
-    // 3. Create unlock record with FULL data
-    // Priority: mock pending table > raw_signals > intent_profiles
-    const fullSignalText = pendingReveal?.full_signal_text
-      ?? signal?.original_text
-      ?? null;
-    const fullSourceUrl = pendingReveal?.full_source_url
-      ?? signal?.source_url
-      ?? null;
-    const fullProfileUrl = pendingReveal?.full_profile_url
-      ?? signal?.author_public_url
-      ?? (signal as any)?.profile_url
-      ?? null;
-    const fullIntentJson = pendingReveal?.full_intent_json
-      ?? intentProfile
-      ?? (signal as any)?.intent_json
-      ?? null;
-
-    const { data: unlock, error: unlockErr } = await supabaseAdmin
-      .from('match_unlocks')
-      .insert({
-        match_id: matchId,
-        user_id: userId,
-        credits_charged: price,
-        ledger_entry_id: ledgerEntry?.id ?? null,
-        // Full reveal — only ever stored/returned here
-        full_signal_text: fullSignalText,
-        full_source_url: fullSourceUrl,
-        full_profile_url: fullProfileUrl,
-        full_intent_json: fullIntentJson,
-      })
-      .select('id, credits_charged, full_signal_text, full_source_url, full_profile_url, full_intent_json')
-      .maybeSingle();
-
-    if (unlockErr) {
-      // Rollback: restore balance and remove ledger entry
-      await supabaseAdmin.from('credit_accounts').update({ balance }).eq('user_id', userId);
-      await supabaseAdmin.from('credit_ledger').delete().eq('id', ledgerEntry?.id);
-      return json({ error: 'Unlock record creation failed' }, 500);
-    }
-
-    // 4. Update match status + consume pending row
-    await Promise.all([
-      supabaseAdmin
-        .from('matches')
-        .update({ status: 'UNLOCKED' })
-        .eq('id', matchId),
-      // Delete the pending reveal row — it's been consumed
-      isMock
-        ? supabaseAdmin
-            .from('match_unlocks_pending')
-            .delete()
-            .eq('match_id', matchId)
-        : Promise.resolve(),
-    ]);
 
     // 5. Activity + Notification
     await supabaseAdmin.from('activity_events').insert({

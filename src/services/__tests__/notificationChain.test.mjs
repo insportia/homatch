@@ -28,11 +28,17 @@ import path from 'node:path';
  */
 
 const ROOT = process.cwd();
-const page = fs.readFileSync(path.join(ROOT, 'src', 'pages', 'NotificationsPage.tsx'), 'utf8');
-const unlock = fs.readFileSync(path.join(ROOT, 'supabase', 'functions', 'atomic-unlock', 'index.ts'), 'utf8');
-const translations = fs.readFileSync(path.join(ROOT, 'src', 'i18n', 'translations.ts'), 'utf8');
-const grant = fs.readFileSync(
-  path.join(ROOT, 'supabase', 'migrations', '20260911200000_notifications_read_only_flag.sql'), 'utf8');
+/* Line endings are normalized on read. Several assertions below slice a
+ * fixed-size window out of the source; on a CRLF checkout every line costs an
+ * extra byte, so the window ended mid-token and the test failed on Windows
+ * only. Normalizing here makes the offsets platform-independent. */
+const readSource = (...parts) =>
+  fs.readFileSync(path.join(ROOT, ...parts), 'utf8').split('\r\n').join('\n');
+
+const page = readSource('src', 'pages', 'NotificationsPage.tsx');
+const unlock = readSource('supabase', 'functions', 'atomic-unlock', 'index.ts');
+const translations = readSource('src', 'i18n', 'translations.ts');
+const grant = readSource('supabase', 'migrations', '20260911200000_notifications_read_only_flag.sql');
 
 /** Enum values, read from the migrations so this cannot drift from production. */
 function enumValues() {

@@ -35,7 +35,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 24, not 20. The frontend suite imports the .ts domain modules
+          # directly, which needs Node's native type stripping (on by default
+          # from 22.18 / 24). On Node 20 every such test dies with
+          # ERR_UNKNOWN_FILE_EXTENSION, so the gate could not run at all.
+          # This also matches the Node developers run locally, which is what
+          # let a 413-test suite pass on a laptop and fail in CI.
+          node-version: 24
           cache: pnpm
 
       - name: Install ast-grep
@@ -74,7 +80,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 24, not 20. The frontend suite imports the .ts domain modules
+          # directly, which needs Node's native type stripping (on by default
+          # from 22.18 / 24). On Node 20 every such test dies with
+          # ERR_UNKNOWN_FILE_EXTENSION, so the gate could not run at all.
+          # This also matches the Node developers run locally, which is what
+          # let a 413-test suite pass on a laptop and fail in CI.
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies

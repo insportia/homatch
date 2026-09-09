@@ -25,7 +25,8 @@ import {
   setActionState, answerQuestion, addNote, loadLatestAiThread,
   type DealRoomRecord, type ActionItemRecord, type QuestionRecord, type DocumentRecord,
 } from '@/services/dealRooms';
-import { listFindings, uploadDocument, deleteDocument, type DocumentFinding } from '@/services/dealRoomDocuments';
+import { listFindings, uploadDocument, deleteDocument, analyzeDocument, getDocumentAnalysis,
+  type DocumentFinding, type AnalysisState, type DocumentAnalysis } from '@/services/dealRoomDocuments';
 import { SynthesisSummary, type SynthesisView } from '@/components/dealroom/SynthesisSummary';
 import { ActionPlanPanel } from '@/components/dealroom/ActionPlanPanel';
 import { AskHomatchPanel, type AskMessage } from '@/components/dealroom/AskHomatchPanel';
@@ -41,6 +42,9 @@ const DealRoomPage: React.FC = () => {
   const [questions, setQuestions] = useState<QuestionRecord[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [findings, setFindings] = useState<DocumentFinding[]>([]);
+  // Analysis per document. Loaded lazily alongside the documents so the
+  // panel can say what it knows instead of implying nothing was found.
+  const [analyses, setAnalyses] = useState<Record<string, { state: AnalysisState; analysis: DocumentAnalysis | null }>>({});
   const [notes, setNotes] = useState<{ id: string; body: string; created_at: string }[]>([]);
   const [noteDraft, setNoteDraft] = useState('');
 
@@ -66,6 +70,22 @@ const DealRoomPage: React.FC = () => {
     setQuestions(q);
     setDocuments(d);
     setFindings(f);
+    // A document analysed days ago must not read as "we have not read this
+    // yet" when the customer comes back to it.
+    const withFiles = d.filter((doc) => doc.storage_path);
+    if (withFiles.length) {
+      const loaded = await Promise.all(
+        withFiles.map(async (doc) => {
+          try {
+            const a = await getDocumentAnalysis(doc.id);
+            return [doc.id, { state: a.state, analysis: a.analysis }] as const;
+          } catch {
+            return [doc.id, { state: 'NONE' as AnalysisState, analysis: null }] as const;
+          }
+        })
+      );
+      setAnalyses(Object.fromEntries(loaded));
+    }
     setNotes(n);
     // The conversation continues where the customer left it, days later. An
     // empty grounded_in is preserved as an empty array, because that is what
@@ -106,6 +126,25 @@ const DealRoomPage: React.FC = () => {
       alive = false;
     };
   }, [room?.verify_job_id]);
+
+  /** Ask for this document to be read, then re-read the stored result.
+   * The database state is the authority: on any failure we re-read rather
+   * than guessing, so the panel never claims an analysis that does not exist. */
+  const onAnalyzeDoc = async (doc: { id: string }) => {
+    setAnalyses((prev) => ({ ...prev, [doc.id]: { state: 'RUNNING', analysis: null } }));
+    try {
+      await analyzeDocument(doc.id);
+    } catch {
+      /* fall through to the re-read below */
+    }
+    try {
+      const a = await getDocumentAnalysis(doc.id);
+      setAnalyses((prev) => ({ ...prev, [doc.id]: { state: a.state, analysis: a.analysis } }));
+      if (id) setFindings(await listFindings(id));
+    } catch {
+      setAnalyses((prev) => ({ ...prev, [doc.id]: { state: 'FAILED', analysis: null } }));
+    }
+  };
 
   const onToggle = async (item: ActionItemRecord, next: ActionItemRecord['state']) => {
     setBusy(true);
@@ -284,8 +323,10 @@ const DealRoomPage: React.FC = () => {
             <DocumentsPanel
               documents={documents}
               findings={findings}
+              analyses={analyses}
               onUpload={onUpload}
               onDelete={onDeleteDoc}
+              onAnalyze={onAnalyzeDoc}
               busy={busy}
             />
           </TabsContent>

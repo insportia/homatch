@@ -9,6 +9,8 @@
 // never let someone forget which of those they are reading.
 import React, { useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { ContractAnalysisPanel } from './ContractAnalysisPanel';
+import type { AnalysisState, DocumentAnalysis } from '@/services/dealRoomDocuments';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,14 +29,20 @@ const REJECTION_KEY: Record<string, string> = {
 export function DocumentsPanel({
   documents,
   findings,
+  analyses,
   onUpload,
   onDelete,
+  onAnalyze,
   busy,
 }: {
   documents: DocumentRecord[];
   findings: DocumentFinding[];
+  /** Analysis per document id. Absent means we have not read it yet, which
+   * the panel says plainly rather than leaving the customer guessing. */
+  analyses?: Record<string, { state: AnalysisState; analysis: DocumentAnalysis | null }>;
   onUpload: (file: File) => void;
   onDelete: (doc: DocumentRecord) => void;
+  onAnalyze?: (doc: DocumentRecord) => void;
   busy?: boolean;
 }) {
   const { t } = useLanguage();
@@ -123,23 +131,37 @@ export function DocumentsPanel({
         <Card>
           <CardContent className="pt-5 space-y-3">
             {uploaded.map((d) => (
-              <div key={d.id} className="flex items-start gap-3">
-                <FileText className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium break-words">{d.original_filename ?? d.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {d.size_bytes ? `${Math.round(d.size_bytes / 1024)} KB` : ''}
-                  </p>
+              <div key={d.id} className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <FileText className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium break-words">{d.original_filename ?? d.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {d.size_bytes ? `${Math.round(d.size_bytes / 1024)} KB` : ''}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    aria-label={t('dr_docs_delete')}
+                    onClick={() => onDelete(d)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  aria-label={t('dr_docs_delete')}
-                  onClick={() => onDelete(d)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+
+                {/* What the contract actually says, under the file it came
+                    from — so the explanation is never detached from its
+                    source document. */}
+                {onAnalyze ? (
+                  <ContractAnalysisPanel
+                    state={analyses?.[d.id]?.state ?? 'NONE'}
+                    analysis={analyses?.[d.id]?.analysis ?? null}
+                    busy={busy}
+                    onAnalyze={() => onAnalyze(d)}
+                  />
+                ) : null}
               </div>
             ))}
           </CardContent>

@@ -1,20 +1,25 @@
 // HOMATCH — the authenticated Dashboard.
 //
-// Rebuilt against the supplied design reference: a fixed left rail, a slim
-// topbar, a welcome banner, a metric row, five primary actions, then match /
-// property / assistant / verification / financing / activity cards.
+// Same brand as the Main Page: cream ground, navy ink, gold accent, and the
+// same restraint about surfaces. The first pass laid this out as a dozen
+// separate cards; this one groups them, because a dozen equal rectangles is
+// exactly what makes a dashboard look like a template. There are now five
+// surfaces — the welcome banner, the actions group, the workspace, the
+// assistant, and the three-up footer group — and the divisions inside each
+// are hairlines, not more borders.
 //
 // EVERY NUMBER ON THIS SCREEN IS REAL
 //
 // The reference is populated with invented figures (12 active clients, 28
 // matched properties, named buyers at 92%). None of that is reproduced. Each
-// card reads from loadDashboardSummary(), which queries only tables this user
-// owns, and each renders a designed empty state when the answer is nothing.
+// group reads from loadDashboardSummary(), which queries only tables this
+// user owns, and renders a designed empty state when the answer is nothing.
 // The "+n this week" lines are computed from created_at, not decoration.
 //
-// It answers, in reading order: what needs my attention (banner + metrics),
-// what can I do now (five actions), what has Homatch found (matches,
-// properties), and what is in flight (verifications, activity).
+// It answers, in reading order: who you are and where you stand (banner),
+// what you can do now (four primary actions), what Homatch has found
+// (matches, properties), and what is in flight (verifications, financing,
+// activity).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -27,6 +32,7 @@ import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { HomatchShell } from '@/components/layouts/HomatchShell';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
+import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -93,26 +99,33 @@ function EmptyState({ icon: Icon, title, hint, action }: {
  * Cards                                                               *
  * ------------------------------------------------------------------ */
 
-function MetricCard({ label, value, icon: Icon, note, loading }: {
-  label: string; value: number; icon: React.ElementType; note?: string | null; loading: boolean;
+/**
+ * One count inside the banner's inline strip. These used to be four separate
+ * bordered cards; four numbers are a summary, not four objects, so they share
+ * one surface and are separated by hairlines.
+ */
+function Count({ label, value, note, loading }: {
+  label: string; value: number; note?: string | null; loading: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-card sm:p-5">
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-sand text-foreground" aria-hidden="true">
-        <Icon className="h-[18px] w-[18px]" />
-      </span>
+    <div className="min-w-0 px-5 py-5 sm:px-6">
       {loading ? (
-        <Skeleton className="mt-3.5 h-8 w-14" />
+        <Skeleton className="h-9 w-14" />
       ) : (
-        <p className="mt-3.5 text-3xl font-semibold leading-none tracking-tight text-foreground tabular-nums">{value}</p>
+        <p className="text-[2rem] font-semibold leading-none tracking-tight text-foreground tabular-nums">{value}</p>
       )}
-      <p className="mt-2 text-xs leading-snug text-muted-foreground">{label}</p>
-      {!loading && note && <p className="mt-1.5 text-xs font-medium text-success">{note}</p>}
+      <p className="mt-2.5 text-xs leading-snug text-muted-foreground">{label}</p>
+      {!loading && note && <p className="mt-1 text-xs font-medium text-success">{note}</p>}
     </div>
   );
 }
 
-function QuickAction({ icon: Icon, title, desc, onClick }: {
+/**
+ * One of the four primary actions. They live inside a single bordered group
+ * divided by hairlines, so they read as one control surface rather than four
+ * competing cards.
+ */
+function ActionTile({ icon: Icon, title, desc, onClick }: {
   icon: React.ElementType; title: string; desc: string; onClick: () => void;
 }) {
   const { isRTL } = useLanguage();
@@ -120,15 +133,15 @@ function QuickAction({ icon: Icon, title, desc, onClick }: {
     <button
       type="button"
       onClick={onClick}
-      className="group flex h-full flex-col rounded-2xl border border-border bg-card p-4 text-start shadow-card transition-colors hover:border-ring/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group flex h-full flex-col items-start p-5 text-start transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:p-6"
     >
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-sand text-foreground" aria-hidden="true">
+      <span className="grid h-10 w-10 place-items-center rounded-xl bg-sand text-foreground transition-colors group-hover:bg-gold/20 group-hover:text-gold" aria-hidden="true">
         <Icon className="h-[18px] w-[18px]" />
       </span>
-      <span className="mt-3.5 block text-sm font-semibold text-foreground">{title}</span>
+      <span className="mt-4 block text-sm font-semibold text-foreground">{title}</span>
       <span className="mt-1.5 block flex-1 text-xs leading-relaxed text-muted-foreground">{desc}</span>
       <ArrowRight
-        className={`mt-3 h-4 w-4 self-end text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-0.5' : ''}`}
+        className={`mt-4 h-4 w-4 self-end text-muted-foreground transition-transform group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
         aria-hidden="true"
       />
     </button>
@@ -406,11 +419,12 @@ function DashboardContent() {
     [data.properties],
   );
 
-  const quickActions = [
+  /** The four primary actions. Mortgage and outreach are secondary and live
+      further down; putting six here would flatten the hierarchy again. */
+  const primaryActions = [
     { key: 'client', icon: UserSearch, title: t('db_qa_client_title'), desc: t('db_qa_client_desc'), path: '/property/add' },
     { key: 'property', icon: Search, title: t('db_qa_property_title'), desc: t('db_qa_property_desc'), path: '/ai' },
     { key: 'verify', icon: ShieldCheck, title: t('db_qa_verify_title'), desc: t('db_qa_verify_desc'), path: '/verify' },
-    { key: 'contract', icon: FileUp, title: t('db_qa_contract_title'), desc: t('db_qa_contract_desc'), path: '/verify' },
     { key: 'ai', icon: Sparkles, title: t('db_qa_ai_title'), desc: t('db_qa_ai_desc'), path: '/ai' },
   ];
 
@@ -423,33 +437,66 @@ function DashboardContent() {
 
   const weekNote = (count: number) => (count > 0 ? t('db_stat_delta_week', { count }) : null);
 
+  /* A brand-new account has no properties, no matches and no verifications.
+     That is a beginning, not a fault, so it gets one intentional onboarding
+     surface instead of three separate "nothing here" boxes. */
+  const isNewAccount =
+    !loading && !error && data.properties.length === 0 && data.matchTotals.total === 0 && data.verifications.length === 0;
+
   return (
     <HomatchShell>
       <div className="space-y-5 md:space-y-6">
-        {/* ── Welcome banner ── */}
-        <div className="relative overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-card">
-          <div className="grid gap-0 md:grid-cols-[1fr_minmax(0,20rem)]">
-            <div className="p-6 md:p-8">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+        {/* ── 1. Welcome, with the four counts on the same surface ── */}
+        <section className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-card">
+          <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+            <div className="p-6 md:p-8 lg:p-9">
+              <h1 className="text-balance text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {firstName ? t('dash_welcome_back_name', { name: firstName }) : t('dash_welcome_back')}
               </h1>
-              <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">{t('db_welcome_sub')}</p>
+              <p className="mt-2.5 max-w-lg text-pretty text-sm leading-relaxed text-muted-foreground">
+                {t('db_welcome_sub')}
+              </p>
             </div>
 
-            <div className="relative hidden min-h-[9rem] bg-sand md:block">
-              <div
-                className="absolute inset-0 bg-gradient-to-br from-[hsl(214_28%_38%)] via-[hsl(30_26%_58%)] to-[hsl(38_44%_62%)] opacity-90"
-                aria-hidden="true"
-              />
+            {/* The reference's banner image. Same approved photograph as the
+                Main Page hero, cropped tight so it reads as a texture here
+                rather than competing with the greeting. */}
+            <div className="relative hidden min-h-[10rem] md:block">
+              <SceneMedia scene="hero" alt="" sizes="22rem" position="62% 46%" />
+              <div className="absolute inset-0 bg-[hsl(214_42%_14%/0.30)]" aria-hidden="true" />
+              <div className="absolute inset-y-0 start-0 w-1/3 bg-gradient-to-r from-card to-transparent rtl:bg-gradient-to-l" aria-hidden="true" />
               <figure className="absolute inset-0 flex items-center p-6">
-                <div className="flex gap-3">
-                  <span className="w-0.5 shrink-0 self-stretch rounded-full bg-white/70" aria-hidden="true" />
-                  <blockquote className="text-sm font-medium leading-relaxed text-white">{t('db_banner_quote')}</blockquote>
+                <div className="flex gap-3.5">
+                  <span className="w-px shrink-0 self-stretch bg-gold" aria-hidden="true" />
+                  <blockquote className="text-pretty text-sm font-medium leading-relaxed text-white drop-shadow-[0_1px_10px_rgba(16,24,36,0.7)]">
+                    {t('db_banner_quote')}
+                  </blockquote>
                 </div>
               </figure>
             </div>
           </div>
-        </div>
+
+          <div className="grid grid-cols-2 divide-x divide-border border-t border-border rtl:divide-x-reverse xl:grid-cols-4">
+            <div className="border-b border-border xl:border-b-0">
+              <Count label={t('dash_total_properties')} value={data.properties.length} note={weekNote(data.propertiesThisWeek)} loading={loading} />
+            </div>
+            <div className="border-b border-border xl:border-b-0">
+              <Count
+                label={t('dash_total_matches')}
+                value={data.matchTotals.total}
+                note={data.matchTotals.newCount > 0 ? t('db_stat_delta_new', { count: data.matchTotals.newCount }) : null}
+                loading={loading}
+              />
+            </div>
+            <Count label={t('db_stat_verifications')} value={data.verifications.length} note={weekNote(data.verificationsThisWeek)} loading={loading} />
+            <Count
+              label={t('dash_active_matching')}
+              value={data.properties.filter(p => p.matching_status === 'ACTIVE').length}
+              note={null}
+              loading={loading}
+            />
+          </div>
+        </section>
 
         {error && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-5 py-4">
@@ -470,110 +517,107 @@ function DashboardContent() {
           />
         ))}
 
-        {/* ── Metrics ── */}
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          <MetricCard
-            label={t('dash_total_properties')} value={data.properties.length} icon={Building2}
-            note={weekNote(data.propertiesThisWeek)} loading={loading}
-          />
-          <MetricCard
-            label={t('dash_total_matches')} value={data.matchTotals.total} icon={TrendingUp}
-            note={data.matchTotals.newCount > 0 ? t('db_stat_delta_new', { count: data.matchTotals.newCount }) : null}
-            loading={loading}
-          />
-          <MetricCard
-            label={t('db_stat_verifications')} value={data.verifications.length} icon={ShieldCheck}
-            note={weekNote(data.verificationsThisWeek)} loading={loading}
-          />
-          <MetricCard
-            label={t('dash_active_matching')}
-            value={data.properties.filter(p => p.matching_status === 'ACTIVE').length}
-            icon={Zap} note={null} loading={loading}
-          />
-        </div>
+        {/* ── 2. The four primary actions, as one group ── */}
+        <section className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-card">
+          <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x rtl:sm:divide-x-reverse xl:grid-cols-4 xl:divide-y-0">
+            {primaryActions.map(action => (
+              <ActionTile
+                key={action.key}
+                icon={action.icon}
+                title={action.title}
+                desc={action.desc}
+                onClick={() => navigate(action.path)}
+              />
+            ))}
+          </div>
+        </section>
 
-        {/* ── Primary actions ── */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-          {quickActions.map(action => (
-            <QuickAction
-              key={action.key} icon={action.icon} title={action.title} desc={action.desc}
-              onClick={() => navigate(action.path)}
-            />
-          ))}
-        </div>
-
-        {/* ── Matches / properties / assistant ── */}
+        {/* ── 3. Workspace + assistant ── */}
         <div className="grid gap-5 xl:grid-cols-3">
-          <div className="min-w-0 space-y-5 xl:col-span-2">
-            <Card>
-              <CardHead
-                title={t('db_matches_title')}
-                action={
-                  data.matchTotals.topPropertyId
-                    ? <LinkAction label={t('db_matches_view_all')} onClick={() => navigate(`/property/${data.matchTotals.topPropertyId}/matches`)} />
-                    : undefined
-                }
-              />
-              {loading ? (
-                <div className="space-y-3 p-5">
-                  {[0, 1, 2].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+          <div className="min-w-0 xl:col-span-2">
+            {isNewAccount ? (
+              <Card className="flex h-full flex-col items-start justify-center p-8 sm:p-10">
+                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gold/15 text-gold" aria-hidden="true">
+                  <Sparkles className="h-5 w-5" />
+                </span>
+                <h2 className="mt-5 max-w-md text-balance text-lg font-semibold leading-snug text-foreground sm:text-xl">
+                  {t('db_onboard_title')}
+                </h2>
+                <p className="mt-3 max-w-lg text-pretty text-sm leading-relaxed text-muted-foreground">
+                  {t('db_onboard_body')}
+                </p>
+                <div className="mt-7 flex flex-wrap gap-3">
+                  <Button className="h-11 gap-2 rounded-full px-6 text-sm" onClick={() => navigate('/property/add')}>
+                    {t('db_qa_client_title')}
+                    <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-11 gap-2 rounded-full border-border bg-transparent px-6 text-sm"
+                    onClick={() => navigate('/ai')}
+                  >
+                    {t('db_qa_property_title')}
+                  </Button>
                 </div>
-              ) : data.topMatches.length === 0 ? (
-                <EmptyState
-                  icon={Users} title={t('db_matches_empty')} hint={t('db_matches_empty_hint')}
+              </Card>
+            ) : (
+              /* Matches and properties are one workspace divided by a rule —
+                 two views of the same portfolio, not two products. */
+              <Card className="h-full">
+                <CardHead
+                  title={t('db_matches_title')}
                   action={
-                    <Button size="sm" className="h-9 rounded-full px-4" onClick={() => navigate('/property/add')}>
-                      {t('nav_add_property')}
-                    </Button>
+                    data.matchTotals.topPropertyId
+                      ? <LinkAction label={t('db_matches_view_all')} onClick={() => navigate(`/property/${data.matchTotals.topPropertyId}/matches`)} />
+                      : undefined
                   }
                 />
-              ) : (
-                <div className="divide-y divide-border">
-                  {data.topMatches.map(entry => (
-                    <MatchRow
-                      key={entry.match.id} entry={entry}
-                      onOpen={() => navigate(`/property/${entry.match.property_id}/matches`)}
-                    />
-                  ))}
-                </div>
-              )}
-            </Card>
+                {loading ? (
+                  <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+                ) : data.topMatches.length === 0 ? (
+                  <EmptyState icon={Users} title={t('db_matches_empty')} hint={t('db_matches_empty_hint')} />
+                ) : (
+                  <div className="divide-y divide-border">
+                    {data.topMatches.map(entry => (
+                      <MatchRow
+                        key={entry.match.id}
+                        entry={entry}
+                        onOpen={() => navigate(`/property/${entry.match.property_id}/matches`)}
+                      />
+                    ))}
+                  </div>
+                )}
 
-            <Card>
-              <CardHead
-                title={t('db_properties_title')}
-                action={data.properties.length > 0 ? <LinkAction label={t('nav_add_property')} onClick={() => navigate('/property/add')} /> : undefined}
-              />
-              {loading ? (
-                <div className="space-y-3 p-5">
-                  {[0, 1].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                <div className="border-t border-border">
+                  <CardHead
+                    title={t('db_properties_title')}
+                    action={<LinkAction label={t('nav_add_property')} onClick={() => navigate('/property/add')} />}
+                  />
+                  {loading ? (
+                    <div className="space-y-3 p-5">{[0, 1].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+                  ) : data.properties.length === 0 ? (
+                    <EmptyState icon={Building2} title={t('db_properties_empty')} hint={t('db_properties_empty_hint')} />
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {data.properties.slice(0, 5).map(property => (
+                        <PropertyRow
+                          key={property.id}
+                          property={property}
+                          run={data.progress[property.id]}
+                          onOpen={() => navigate(`/property/${property.id}`)}
+                          onDelete={() => setDeleteId(property.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : data.properties.length === 0 ? (
-                <EmptyState
-                  icon={Building2} title={t('db_properties_empty')} hint={t('db_properties_empty_hint')}
-                  action={
-                    <Button size="sm" className="h-9 rounded-full px-4" onClick={() => navigate('/property/add')}>
-                      {t('nav_add_property')}
-                    </Button>
-                  }
-                />
-              ) : (
-                <div className="divide-y divide-border">
-                  {data.properties.slice(0, 5).map(property => (
-                    <PropertyRow
-                      key={property.id} property={property} run={data.progress[property.id]}
-                      onOpen={() => navigate(`/property/${property.id}`)}
-                      onDelete={() => setDeleteId(property.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </Card>
+              </Card>
+            )}
           </div>
 
-          {/* Assistant — the same real entry point as the Main Page panel. */}
-          <Card className="min-w-0 self-start p-5">
-            <div className="flex items-start gap-3">
+          {/* The assistant — the same real entry point as the Main Page. */}
+          <Card className="min-w-0 self-start p-5 sm:p-6">
+            <div className="flex items-start gap-3.5">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold" aria-hidden="true">
                 <Sparkles className="h-[18px] w-[18px]" />
               </span>
@@ -583,72 +627,71 @@ function DashboardContent() {
               </div>
             </div>
 
-            <p className="mt-4 rounded-2xl rounded-bl-md bg-secondary px-4 py-3 text-sm text-foreground">
+            <p className="mt-5 rounded-2xl rounded-bl-md bg-secondary px-4 py-3 text-sm text-foreground">
               {t('db_ai_greeting')}
             </p>
 
-            <HomatchAsk
-              className="mt-4"
-              variant="card"
-              placeholder={t('db_ai_placeholder')}
-              suggestions={askSuggestions}
-            />
+            <HomatchAsk className="mt-4" variant="card" placeholder={t('db_ai_placeholder')} suggestions={askSuggestions} />
           </Card>
         </div>
 
-        {/* ── Verification / financing / activity ── */}
-        <div className="grid gap-5 lg:grid-cols-3">
-          <Card className="min-w-0">
-            <CardHead title={t('db_verify_title')} action={<LinkAction label={t('db_verify_start')} onClick={() => navigate('/verify')} />} />
-            {loading ? (
-              <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
-            ) : data.verifications.length === 0 ? (
-              <EmptyState icon={ShieldCheck} title={t('dr_list_empty')} />
-            ) : (
-              <div className="divide-y divide-border">
-                {data.verifications.slice(0, 4).map(record => (
-                  <VerificationRow key={record.id} record={record} onOpen={() => navigate(`/verify/${record.id}`)} />
-                ))}
-              </div>
-            )}
-          </Card>
+        {/* ── 4. Verification, financing and activity, as one group ── */}
+        <section className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-card">
+          <div className="grid divide-y divide-border rtl:lg:divide-x-reverse lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+            <div className="min-w-0">
+              <CardHead title={t('db_verify_title')} action={<LinkAction label={t('db_verify_start')} onClick={() => navigate('/verify')} />} />
+              {loading ? (
+                <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
+              ) : data.verifications.length === 0 ? (
+                <EmptyState icon={ShieldCheck} title={t('dr_list_empty')} />
+              ) : (
+                <div className="divide-y divide-border">
+                  {data.verifications.slice(0, 4).map(record => (
+                    <VerificationRow key={record.id} record={record} onOpen={() => navigate(`/verify/${record.id}`)} />
+                  ))}
+                </div>
+              )}
+            </div>
 
-          <Card className="flex min-w-0 flex-col items-center justify-center p-6 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-sand text-foreground" aria-hidden="true">
-              <CircleDollarSign className="h-5 w-5" />
-            </span>
-            <h2 className="mt-4 text-sm font-semibold text-foreground">{t('db_mortgage_title')}</h2>
-            <p className="mt-2 max-w-xs text-xs leading-relaxed text-muted-foreground">{t('db_mortgage_body')}</p>
-            <Button className="mt-5 h-10 gap-2 rounded-full px-5 text-sm" onClick={() => navigate('/mortgage')}>
-              {t('db_mortgage_cta')} <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
-            </Button>
-          </Card>
+            <div className="flex min-w-0 flex-col items-center justify-center p-6 text-center sm:p-8">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-sand text-foreground" aria-hidden="true">
+                <CircleDollarSign className="h-5 w-5" />
+              </span>
+              <h2 className="mt-4 text-sm font-semibold text-foreground">{t('db_mortgage_title')}</h2>
+              <p className="mt-2 max-w-xs text-pretty text-xs leading-relaxed text-muted-foreground">{t('db_mortgage_body')}</p>
+              <Button className="mt-5 h-10 gap-2 rounded-full px-5 text-sm" onClick={() => navigate('/mortgage')}>
+                {t('db_mortgage_cta')}
+                <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+              </Button>
+            </div>
 
-          <Card className="min-w-0">
-            <CardHead title={t('db_activity_title')} action={<LinkAction label={t('nav_activity')} onClick={() => navigate('/activity')} />} />
-            {loading ? (
-              <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
-            ) : data.activity.length === 0 ? (
-              <EmptyState icon={Zap} title={t('empty_no_activity_title')} hint={t('empty_no_activity_desc')} />
-            ) : (
-              <ul className="divide-y divide-border">
-                {data.activity.slice(0, 5).map(event => <ActivityRow key={event.id} event={event} />)}
-              </ul>
-            )}
-          </Card>
-        </div>
+            <div className="min-w-0">
+              <CardHead title={t('db_activity_title')} action={<LinkAction label={t('nav_activity')} onClick={() => navigate('/activity')} />} />
+              {loading ? (
+                <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
+              ) : data.activity.length === 0 ? (
+                <EmptyState icon={Zap} title={t('empty_no_activity_title')} hint={t('empty_no_activity_desc')} />
+              ) : (
+                <ul className="divide-y divide-border">
+                  {data.activity.slice(0, 5).map(event => <ActivityRow key={event.id} event={event} />)}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
 
-        {/* ── Closing banner ── */}
+        {/* ── 5. Closing band ── */}
         <div className="flex flex-col items-start gap-5 rounded-[1.5rem] bg-primary px-6 py-7 text-primary-foreground md:flex-row md:items-center md:justify-between md:px-9">
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight sm:text-xl">{t('db_footer_title')}</h2>
-            <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-primary-foreground/75">{t('db_footer_body')}</p>
+            <h2 className="text-balance text-lg font-semibold tracking-tight sm:text-xl">{t('db_footer_title')}</h2>
+            <p className="mt-1.5 max-w-xl text-pretty text-sm leading-relaxed text-primary-foreground/75">{t('db_footer_body')}</p>
           </div>
           <Button
             className="h-11 shrink-0 gap-2 rounded-full bg-gold px-6 text-sm text-primary hover:bg-gold/90"
             onClick={() => navigate('/verify')}
           >
-            {t('mp_cap_verify_cta')} <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+            {t('mp_cap_verify_cta')}
+            <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
           </Button>
         </div>
       </div>

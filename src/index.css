@@ -281,3 +281,43 @@
     border-color: hsl(265 28% 50% / 0.22);
   }
 }
+
+@layer base {
+  /* The distance from the viewport edge to the page grid's content edge.
+     Sections use it directly (PAGE_INSET) and the hero derives its media
+     boundary from it, so the headline, the logo and every section title sit
+     on one line while the hero photograph still bleeds past the container to
+     the viewport edge. */
+  :root {
+    --page-max: 90rem;
+    --page-inset: max(2.5rem, calc((100vw - var(--page-max)) / 2));
+  }
+  @media (max-width: 639px) {
+    :root { --page-inset: 1.25rem; }
+  }
+  @media (min-width: 640px) and (max-width: 1023px) {
+    :root { --page-inset: 2rem; }
+  }
+}
+
+@layer utilities {
+  /* Art-directed crop for <SceneMedia>. The mobile crop is the default and the
+     desktop one takes over at lg, so a single <img> serves both without a
+     second element or a second download. */
+  .scene-img {
+    object-position: var(--scene-pos, 50% 50%);
+  }
+  @media (min-width: 1024px) {
+    .scene-img {
+      object-position: var(--scene-pos-lg, var(--scene-pos, 50% 50%));
+    }
+  }
+
+  /* Editorial rules used instead of card borders throughout the Main Page. */
+  .rule-y {
+    background-image: linear-gradient(to bottom, transparent, hsl(var(--border)) 12%, hsl(var(--border)) 88%, transparent);
+  }
+  .rule-x {
+    background-image: linear-gradient(to right, transparent, hsl(var(--border)) 8%, hsl(var(--border)) 92%, transparent);
+  }
+}

@@ -1,7 +1,7 @@
 // synthesis.ts — the ONE final Verify synthesis.
 //
-// ARCHITECTURE (the same principle as the renovation engine)
-// ----------------------------------------------------------
+// ARCHITECTURE
+// ------------
 // A language model may choose WORDS. It may never choose FACTS.
 //
 // So synthesis is split in two:

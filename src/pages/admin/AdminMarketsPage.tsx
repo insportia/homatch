@@ -21,7 +21,15 @@ export default function AdminMarketsPage() {
 
   const toggle = async (id: string, enabled: boolean) => {
     setMarkets(m => m.map(x => x.id === id ? { ...x, enabled } : x));
-    const { error } = await supabase.from('markets').update({ enabled }).eq('id', id);
+    // Through an RPC, not a direct UPDATE: public.markets has RLS enabled with
+    // only a SELECT policy, so `.update({enabled})` matched zero rows and
+    // PostgREST returned 204 with no error -- this branch never fired and the
+    // toast always said the market had been enabled. Verified as a real admin
+    // in production: markets_toggle_rows=0.
+    const { error } = await supabase.rpc('admin_set_market_enabled', {
+      p_market_id: id,
+      p_enabled: enabled,
+    });
     if (error) {
       toast.error('Failed to update market');
       setMarkets(m => m.map(x => x.id === id ? { ...x, enabled: !enabled } : x));

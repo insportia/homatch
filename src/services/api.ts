@@ -918,10 +918,23 @@ export async function getAdminSettings(): Promise<AdminSetting[]> {
   return (data ?? []) as AdminSetting[];
 }
 
-export async function updateAdminSetting(key: string, value: unknown): Promise<void> {
-  await supabase.from('admin_settings')
-    .update({ value, updated_at: new Date().toISOString() })
-    .eq('key', key);
+/**
+ * Admin settings are written through admin_set_setting, not with a direct
+ * UPDATE. The direct write had two silent failure modes: a key that was never
+ * seeded matched zero rows (PostgREST answers 204 with no error, so a spend cap
+ * or pricing knob "saved" without existing), and nothing was ever recorded in
+ * admin_audit_log -- which held zero rows despite existing since phase 7.
+ *
+ * These keys include provider_kill_switch, the spend caps and the credit
+ * pricing table. Who changed them, and when, is worth knowing.
+ */
+export async function updateAdminSetting(key: string, value: unknown, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_setting', {
+    p_key: key,
+    p_value: value,
+    p_reason: reason ?? null,
+  });
+  if (error) throw new Error(`Could not save "${key}": ${error.message}`);
 }
 
 export async function getSpendCapStatus(): Promise<SpendCapStatus[]> {
@@ -1021,7 +1034,7 @@ export async function updatePricingConfig(cfg: Partial<PricingConfig>): Promise<
   };
   await Promise.all(
     (Object.entries(cfg) as [keyof PricingConfig, number][]).map(([k, v]) =>
-      supabase.from('admin_settings').update({ value: v, updated_at: new Date().toISOString() }).eq('key', keyMap[k])
+      updateAdminSetting(keyMap[k], v, 'pricing config')
     )
   );
 }
@@ -1029,7 +1042,7 @@ export async function updatePricingConfig(cfg: Partial<PricingConfig>): Promise<
 export async function updateSpendCaps(caps: Partial<SpendCapConfig>): Promise<void> {
   await Promise.all(
     (Object.entries(caps) as [string, number][]).map(([k, v]) =>
-      supabase.from('admin_settings').update({ value: v, updated_at: new Date().toISOString() }).eq('key', `spend_cap_${k}`)
+      updateAdminSetting(`spend_cap_${k}`, v, 'spend cap')
     )
   );
 }
@@ -1057,8 +1070,11 @@ export async function getVatRateBps(): Promise<number> {
   return Number(data?.value ?? 1800);
 }
 
+// The VAT rate applied to every research purchase. Same audited path as the
+// rest of admin_settings -- and the same reason: a direct UPDATE on a key that
+// has no row reports success and changes nothing.
 export async function updateVatRateBps(bps: number): Promise<void> {
-  await supabase.from('admin_settings').update({ value: bps, updated_at: new Date().toISOString() }).eq('key', 'vat_rate_bps');
+  await updateAdminSetting('vat_rate_bps', bps, 'VAT rate');
 }
 
 export async function getResearchProviderTreasury(): Promise<ResearchProviderTreasuryRow[]> {

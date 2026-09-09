@@ -3467,6 +3467,182 @@ function sanitizeForCustomer(job: any): any {
   return { ...job, result_json: r };
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+ * THE AUTONOMOUS DRIVER
+ *
+ * Until now `advance()` was called from exactly one place: the `status`
+ * action. That made the CUSTOMER'S BROWSER the execution engine. Close the
+ * tab and the state machine stopped mid-flight — not failed, not cancelled,
+ * just frozen in a non-terminal stage with no report and no error, forever.
+ *
+ * research_jobs still holds the proof: 2aa12895-9c2e-49ed-b8ad-c7ebb37c4125
+ * and 533a8c19-f160-4f06-ab27-517c1f661b86, both CREATED/BROWSER_WAITING,
+ * both untouched since the moment their client went away.
+ *
+ * pg_cron now calls `drive` on a schedule. It steps the same advance() the
+ * client steps — one engine, two callers, so there is no second
+ * implementation to drift out of sync.
+ *
+ * HOW IT AVOIDS FIGHTING A CONNECTED CLIENT
+ *
+ * A client polls every ~2.2s, and every poll bumps updated_at. The driver
+ * only looks at jobs whose heartbeat is older than DRIVE_STALE_MS, so a job
+ * somebody is actually watching is never touched and the existing, working
+ * foreground path is completely unchanged. When the client goes away the
+ * heartbeat goes stale and the driver picks the job up.
+ *
+ * A claim guards against the driver racing ITSELF (two ticks overlapping on
+ * a long job) and is always released in a finally.
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/** Jobs the driver may step. WAITING_HUMAN is deliberately absent: it is
+ *  waiting on a person, and ticking it would achieve nothing. */
+const DRIVE_LIVE_STATUSES = ['CREATED', 'RUNNING'];
+/** Leave a job alone while a client is demonstrably still polling it. */
+const DRIVE_STALE_MS = 30_000;
+/** Never resurrect something ancient — that is a support decision, not a tick. */
+const DRIVE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+/** Long enough to cover one whole background invocation. Always released. */
+const DRIVE_CLAIM_TTL_MS = 150_000;
+const DRIVE_BATCH = 6;
+const DRIVE_SYNTHESIS_BATCH = 4;
+/** Inside ONE invocation, step a job repeatedly so a browserless run keeps
+ *  roughly the pace a polling client would give it. */
+const DRIVE_TICKS_PER_JOB = 14;
+const DRIVE_TICK_SPACING_MS = 3_000;
+const DRIVE_WALL_CLOCK_MS = 55_000;
+/** §54: synthesis may retry; research must never be re-run because of it. */
+const MAX_SYNTHESIS_ATTEMPTS = 4;
+
+async function adminSetting(sb: any, key: string): Promise<string> {
+  const { data } = await sb.from('admin_settings').select('value').eq('key', key).maybeSingle();
+  const v = data?.value;
+  if (v == null) return '';
+  return typeof v === 'string' ? v : String(v);
+}
+
+/** The language the customer STARTED in, persisted at creation. A report
+ *  finished by the driver must not silently change language. */
+function jobLanguage(j: any): string {
+  const stored = String(j?.result_json?._lang || '');
+  // 'ka' rather than the request-time 'en' default: a job old enough to
+  // predate _lang belongs to this product's Georgian-first customer base,
+  // and guessing English would be the more damaging wrong guess.
+  return LANG[stored] ? stored : 'ka';
+}
+
+async function claimJob(sb: any, id: string): Promise<boolean> {
+  const cutoff = new Date(Date.now() - DRIVE_CLAIM_TTL_MS).toISOString();
+  const { data } = await sb
+    .from('research_jobs')
+    .update({ driver_claimed_at: now() })
+    .eq('id', id)
+    .or(`driver_claimed_at.is.null,driver_claimed_at.lt.${cutoff}`)
+    .select('id')
+    .maybeSingle();
+  return !!data;
+}
+
+async function releaseJob(sb: any, id: string): Promise<void> {
+  try {
+    await sb.from('research_jobs').update({ driver_claimed_at: null }).eq('id', id);
+  } catch {
+    /* the claim expires on its own; a failed release is not worth failing the tick */
+  }
+}
+
+/** Step one job for as long as this invocation can afford to. */
+async function driveJob(sb: any, key: string, model: string, id: string): Promise<void> {
+  const deadline = Date.now() + DRIVE_WALL_CLOCK_MS;
+  try {
+    for (let i = 0; i < DRIVE_TICKS_PER_JOB && Date.now() < deadline; i++) {
+      const { data: j } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
+      // Terminal, cancelled, or now waiting on a human: the driver's job here
+      // is done and re-ticking would be wrong, not merely wasteful.
+      if (!j || j.cancelled_at || !DRIVE_LIVE_STATUSES.includes(j.status)) return;
+      await advance(sb, key, model, j, jobLanguage(j));
+      if (i + 1 < DRIVE_TICKS_PER_JOB) await new Promise((r) => setTimeout(r, DRIVE_TICK_SPACING_MS));
+    }
+  } catch (e) {
+    // advance() already persists its own failures. Anything reaching here is
+    // the driver's own problem and must not take the whole sweep down.
+    console.error(`research-agent drive: job ${id} tick loop failed`, e);
+  } finally {
+    await releaseJob(sb, id);
+  }
+}
+
+/* SYNTHESIS IS PART OF THE PIPELINE, NOT PART OF THE PAGE.
+ *
+ * Nothing server-side ever called verify-synthesis. The Buyer Intelligence
+ * report existed only because a browser happened to be open at the moment
+ * research finished — and it was rebuilt, at full model cost, every single
+ * time anyone reopened the case. Both halves of that are fixed here: the
+ * driver requests synthesis when research completes, and verify-synthesis
+ * persists the result so it is built exactly once. */
+async function driveSynthesis(sb: any): Promise<void> {
+  const { data: jobs } = await sb
+    .from('research_jobs')
+    .select('id,synthesis_attempts')
+    .eq('status', 'COMPLETE')
+    .is('deleted_at', null)
+    .in('synthesis_state', ['NONE', 'FAILED'])
+    .lt('synthesis_attempts', MAX_SYNTHESIS_ATTEMPTS)
+    .order('completed_at', { ascending: true })
+    .limit(DRIVE_SYNTHESIS_BATCH);
+
+  for (const j of jobs ?? []) {
+    // Count the attempt BEFORE making it, so a hard crash still consumes
+    // budget and a permanently poisonous job cannot loop forever.
+    await sb
+      .from('research_jobs')
+      .update({ synthesis_state: 'PENDING', synthesis_attempts: (j.synthesis_attempts ?? 0) + 1 })
+      .eq('id', j.id);
+    try {
+      const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/verify-synthesis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'x-internal-driver': '1',
+        },
+        body: JSON.stringify({ jobId: j.id, internal: true }),
+      });
+      if (!res.ok) throw new Error(`verify-synthesis ${res.status}`);
+      // verify-synthesis owns the READY write — it is the only thing that
+      // knows whether a real report came out the other end.
+    } catch (e) {
+      console.error(`research-agent drive: synthesis failed for ${j.id}`, e);
+      await sb.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', j.id);
+    }
+  }
+}
+
+async function driveLiveJobs(sb: any, key: string, model: string): Promise<void> {
+  try {
+    const { data: jobs } = await sb
+      .from('research_jobs')
+      .select('id')
+      .in('status', DRIVE_LIVE_STATUSES)
+      .is('deleted_at', null)
+      .is('cancelled_at', null)
+      .lt('updated_at', new Date(Date.now() - DRIVE_STALE_MS).toISOString())
+      .gt('created_at', new Date(Date.now() - DRIVE_MAX_AGE_MS).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(DRIVE_BATCH);
+
+    for (const j of jobs ?? []) {
+      if (await claimJob(sb, j.id)) await driveJob(sb, key, model, j.id);
+    }
+  } catch (e) {
+    console.error('research-agent drive: sweep failed', e);
+  }
+  // Runs even if the sweep threw: a COMPLETE job still owes its customer a
+  // report, and that is independent of whatever went wrong above.
+  await driveSynthesis(sb);
+}
+
+
 Deno.serve(async (req) => {
   // v29: CORS headers computed per-request from THIS request's own Origin,
   // then closed over by a request-scoped `json` that shadows the module-
@@ -3486,6 +3662,26 @@ Deno.serve(async (req) => {
   // cause of the "blocked by CORS policy" reports. No research-workflow
   // logic below this line was changed.
   try {
+    // `drive` is the cron tick and deliberately sits ABOVE the user-session
+    // check: it belongs to no customer. It is authenticated instead by a
+    // shared secret held in admin_settings, exactly as the existing
+    // continuous-matching-worker cron is. Same shape, same blast radius.
+    const preAuthBody = req.method === 'POST' ? await req.clone().json().catch(() => ({})) : {};
+    if (String(preAuthBody?.action || '') === 'drive') {
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+      const expected = await adminSetting(svc, 'verify_driver_token');
+      if (!expected || req.headers.get('x-cron-token') !== expected) {
+        return json({ error: 'Forbidden' }, 403);
+      }
+      const dk = Deno.env.get('OPENAI_API_KEY');
+      const dm = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
+      if (!dk) return json({ error: 'not configured' }, 503);
+      // Return immediately and keep working: a tick that held the connection
+      // open for a minute would be a tick that pg_cron reports as a timeout.
+      EdgeRuntime.waitUntil(driveLiveJobs(svc, dk, dm));
+      return json({ ok: true, started: true }, 202);
+    }
+
     const a = req.headers.get('Authorization');
     if (!a) return json({ error: 'Authentication required' }, 401);
     const sb = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
@@ -3525,6 +3721,44 @@ Deno.serve(async (req) => {
       // row or worker call is made.
       console.error('research-agent: WORKER_URL and/or WORKER_TOKEN is not configured in this project\'s Edge Function secrets — refusing the request rather than calling the worker with an incomplete/empty Authorization header.');
       return json({ error: GENERIC_CONFIG_ERROR_I18N[lang] || GENERIC_CONFIG_ERROR_I18N.en }, 503);
+    }
+
+    /* EXPLICIT CANCELLATION — and nothing else.
+     *
+     * Closing a tab, navigating away, losing the network or backgrounding
+     * the browser are NOT cancellation and never reach this. Only the
+     * customer pressing "კვლევის შეწყვეტა" does.
+     *
+     * A cancelled job is CANCELLED, never FAILED: nothing went wrong, and
+     * showing a person a failure because they chose to stop is a lie about
+     * their own action. Everything already collected is preserved — the
+     * result_json is not touched. */
+    if (action === 'cancel') {
+      const id = String(b.jobId || '');
+      const { data: j } = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+      if (!j) return json({ error: 'Job not found' }, 404);
+      // Already finished one way or another: cancelling is a no-op, not an
+      // error, and must never overwrite a report the customer already has.
+      if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status)) return json(sanitizeForCustomer(j));
+      const wid = j.result_json?._worker?.jobId;
+      if (wid) {
+        // Best effort only. The worker has no cancel route and adding one
+        // would force a Railway deploy for no gain: the DB row is the
+        // authority, the driver skips cancelled jobs, and the orphaned
+        // browser session is reaped by the worker's own watchdog.
+        try { await wf(`/research/${wid}/skip`, 'POST', {}); } catch { /* already gone */ }
+      }
+      await sb.from('research_jobs').update({
+        status: 'CANCELLED',
+        stage: 'CANCELLED',
+        cancelled_at: now(),
+        driver_claimed_at: null,
+        error: null,
+        progress: { ...(j.progress || {}), phase: 'cancelled' },
+        updated_at: now(),
+      }).eq('id', id);
+      const { data: after } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
+      return json(sanitizeForCustomer(after || { ...j, status: 'CANCELLED', stage: 'CANCELLED' }));
     }
 
     if (action === 'status' || action === 'resume' || action === 'skip') {
@@ -3619,7 +3853,7 @@ Deno.serve(async (req) => {
           result_json: resumedResultJson,
         };
       }
-      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN'].includes(j.status)) {
+      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED'].includes(j.status)) {
         await advance(sb, key, model, j, lang);
         const r = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
         j = r.data || j;
@@ -3635,7 +3869,11 @@ Deno.serve(async (req) => {
     const q = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
     if (!q) return json({ error: 'Query required' }, 400);
     if (mode === 'cadastral' && !CAD.test(q)) return json({ error: 'Invalid cadastral code' }, 400);
-    const { data: j, error } = await sb.from('research_jobs').insert({ user_id: user.id, mode, query: q, status: 'CREATED', stage: 'QUEUED', progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
+    // `_lang` is what lets a job that finishes with NOBODY WATCHING still be
+    // written in the language the customer chose. Without it the driver would
+    // have to guess, and the report would silently change language whenever
+    // the customer happened to close the tab.
+    const { data: j, error } = await sb.from('research_jobs').insert({ user_id: user.id, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
     if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);
     await advance(sb, key, model, j, lang);
     return json({ accepted: true, jobId: j.id }, 202);

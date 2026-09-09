@@ -73,7 +73,7 @@ function earliestEvidenceDate(items: { date?: string }[]): string | null {
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-driver',
 };
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 
@@ -89,6 +89,29 @@ function textOf(p: any): string {
   return a.join('\n').trim();
 }
 
+/**
+ * Write the finished report down.
+ *
+ * Deliberately best-effort: the customer standing in front of a freshly built
+ * report must get it even if the write fails. A failed write only costs a
+ * rebuild later — swallowing the report to report a storage error would cost
+ * the thing they actually asked for.
+ */
+async function persist(db: any, jobId: string, payload: unknown): Promise<void> {
+  try {
+    await db
+      .from('research_jobs')
+      .update({
+        synthesis_json: payload,
+        synthesis_state: 'READY',
+        synthesis_at: new Date().toISOString(),
+      })
+      .eq('id', jobId);
+  } catch (e) {
+    console.error('verify-synthesis: could not persist report', e instanceof Error ? e.message : String(e));
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -96,28 +119,57 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? '';
     if (!authHeader) return json({ error: 'unauthorized' }, 401);
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    /* TWO CALLERS, TWO TRUST MODELS.
+     *
+     * A customer arrives with their own session and is held to RLS exactly as
+     * before — a job that is not theirs is simply not found.
+     *
+     * The driver arrives with no session at all, because it belongs to no
+     * customer: research finished while nobody was watching and the report
+     * still has to be built. It proves itself with the service-role key
+     * itself, compared in full, so a merely-valid user token can never take
+     * this branch. */
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const internal =
+      req.headers.get('x-internal-driver') === '1' &&
+      !!serviceKey &&
+      bearer === serviceKey;
 
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user?.id) return json({ error: 'unauthorized' }, 401);
+    const supabase = internal
+      ? createClient(Deno.env.get('SUPABASE_URL')!, serviceKey)
+      : createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_ANON_KEY')!,
+          { global: { headers: { Authorization: authHeader } } }
+        );
+
+    if (!internal) {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth?.user?.id) return json({ error: 'unauthorized' }, 401);
+    }
 
     const body = await req.json().catch(() => ({}));
     const jobId = String(body?.jobId ?? '').trim();
     if (!jobId) return json({ error: 'jobId is required' }, 400);
 
-    // RLS decides whether this caller may see this job. A job that is not
-    // theirs simply is not found.
     const { data: job, error } = await supabase
       .from('research_jobs')
-      .select('id,result_json,status')
+      .select('id,result_json,status,synthesis_json,synthesis_state')
       .eq('id', jobId)
       .maybeSingle();
     if (error) throw error;
     if (!job) return json({ error: 'not found' }, 404);
+
+    /* BUILT ONCE.
+     *
+     * The report used to be regenerated on every single view — opening a
+     * finished case from History re-ran the model and re-charged for it.
+     * The persisted report is now authoritative, so returning to a case is
+     * a read. */
+    if (job.synthesis_state === 'READY' && job.synthesis_json && !body?.force) {
+      return json({ ...(job.synthesis_json as Record<string, unknown>), persisted: true });
+    }
 
     // The projection still supplies the deterministic property model (type,
     // buyer plan, what completed and what did not). The evidence package is
@@ -135,14 +187,17 @@ serve(async (req) => {
     // may have been technically unavailable. Say so plainly rather than
     // returning an empty report that reads like a clean bill of health.
     if (!pkg.items.length) {
-      return json({
+      const emptyPayload = {
         report: null,
-        mode: 'DETERMINISTIC',
+        mode: 'DETERMINISTIC' as const,
         propertyType: projection.propertyType,
         snapshot: bundle.snapshot,
         selfChecks: bundle.selfChecks,
         empty: true,
-      });
+      };
+      // "No evidence at all" is a real, final answer, not a failure to retry.
+      await persist(supabase, jobId, emptyPayload);
+      return json(emptyPayload);
     }
 
     let raw: string | null = null;
@@ -175,13 +230,12 @@ serve(async (req) => {
       console.warn('buyer intelligence rejected', JSON.stringify(final.rejectedBecause));
     }
 
-    return json({
+    const payload = {
       report: {
         overallView: final.overallView,
         executiveSummary: final.executiveSummary,
         sections: final.sections,
         attentionPoints: final.attentionPoints,
-        unconfirmed: final.unconfirmed,
         buyerActions: final.buyerActions,
         finalView: final.finalView,
         contractUpload: final.contractUpload,
@@ -204,7 +258,10 @@ serve(async (req) => {
       propertyType: projection.propertyType,
       evidenceCounts: pkg.tierCounts,
       empty: false,
-    });
+    };
+
+    await persist(supabase, jobId, payload);
+    return json(payload);
   } catch (e) {
     console.error('verify-synthesis failed', e instanceof Error ? e.message : String(e));
     return json({ error: 'internal_error' }, 500);

@@ -3,6 +3,15 @@ name: Deploy Homatch
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: >-
+          Run `supabase db push` against production. Leave this false unless
+          the historical migration drift has been resolved first -- see the
+          migrate job for why it currently fails.
+        type: boolean
+        default: false
 
 # Prevent concurrent deployments
 concurrency:
@@ -75,10 +84,31 @@ jobs:
         run: pnpm run build
 
   # ── Job 3: Deploy Supabase migrations ─────────────────────────────────────
+  #
+  # DISABLED ON PUSH. This job runs `supabase db push`, which currently fails
+  # against production: 21 repository migrations were historically applied
+  # under different generated versions, so a push re-runs them, and
+  # 20260907120000_mortgage_feature_v1.sql contains unguarded CREATE TABLE /
+  # CREATE INDEX / CREATE TYPE that error on replay.
+  #
+  # It is kept, not deleted, so the pipeline is still here once that drift is
+  # resolved -- but it now requires an intentional workflow_dispatch with
+  # run_migrations explicitly set to true. Nothing reaches production
+  # schema by merely merging to main.
+  #
+  # The five Recovery migrations are already applied and runtime-verified:
+  #   20260909120000_deal_rooms
+  #   20260910090000_deal_room_document_storage
+  #   20260910100000_renovation_price_book
+  #   20260910110000_human_verification_handoff
+  #   20260910120000_fix_handoff_expiry_persistence
+  # They must not be replayed.
+  #
   migrate:
     name: Apply DB Migrations
     runs-on: ubuntu-latest
     needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_migrations }}
     steps:
       - uses: actions/checkout@v4
 
@@ -130,10 +160,13 @@ jobs:
           echo "✅ Migrations applied"
 
   # ── Job 4: Deploy Edge Functions ──────────────────────────────────────────
+  # Depends on validate, NOT on migrate. Edge Function deployment must never be
+  # gated behind a migration job that is knowingly disabled -- that is what
+  # previously stopped new functions from ever reaching production from source.
   deploy-functions:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
-    needs: migrate
+    needs: validate
     steps:
       - uses: actions/checkout@v4
 
@@ -226,7 +259,7 @@ jobs:
           echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Validate | ${{ needs.validate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build Frontend | ${{ needs.build-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| DB Migrations | ${{ needs.migrate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DB Migrations | ${{ needs.migrate.result }} (skipped unless run_migrations) |" >> $GITHUB_STEP_SUMMARY
           echo "| Edge Functions | ${{ needs.deploy-functions.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Supabase project:** \`ptxajsjhobhvsfhmutjn\`" >> $GITHUB_STEP_SUMMARY

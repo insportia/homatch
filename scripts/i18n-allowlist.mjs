@@ -18,6 +18,13 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // and stays in English in every locale, exactly as it does in the design
   // reference's Georgian screens.
   'brand_tagline',
+  // "Developer B2B" — the product's own name for its developer offering,
+  // kept in Latin script in every locale the same way "Homatch AI" is.
+  'mp_dev_eyebrow',
+  // "Email" as a one-word flow-stage label. Georgian and Russian both use
+  // the Latin spelling in everyday product usage; tr/ar/he carry their own
+  // real forms for the same key, so this cannot be hiding a gap there.
+  'mp_dev_stage_email',
   'profile_login_google', // "Google" — third-party trademark
   // Turkish legitimately borrows these exact Latin spellings; the other
   // languages already carry distinct real translations for the same keys,

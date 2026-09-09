@@ -189,6 +189,16 @@
    warmth — imperceptible as colour, but enough that it sits with champagne
    gold instead of fighting it.
 
+   HAIRLINE IS NOT THE SAME AS FAINT
+
+   The first attempt at "restrained" put every border at roughly 8% contrast
+   in a cream hue and every body line in grey. The page lost its authority:
+   separators vanished, nothing had edges, and the whole interface read as
+   beige. A hairline is ONE PIXEL — it is not a licence for a line you cannot
+   see. Borders here are neutral rather than cream, at a contrast that reads
+   clearly on white; body ink is dark enough to carry weight. The restraint
+   lives in the geometry, not in the ink.
+
    THE TWO GOLDS, AND WHY THERE HAVE TO BE TWO
 
    Champagne gold (#B99A68) is 2.6:1 against warm-white. That is fine for a
@@ -204,7 +214,7 @@
        surfaces read as generic SaaS boxes. */
     --radius: 0.625rem;
 
-    --background: 45 30% 98%;   /* #FCFBF8 warm-white canvas */
+    --background: 40 22% 98%;   /* warm-white canvas, only just warm  */
     --foreground: 30 6% 9%;     /* near-black ink            */
 
     --card: 0 0% 100%;
@@ -217,10 +227,10 @@
     --primary: 30 6% 9%;
     --primary-foreground: 45 40% 98%;
 
-    --secondary: 43 26% 96%;    /* #F8F6F1 warm tint          */
-    --secondary-foreground: 30 6% 20%;
-    --muted: 43 24% 96%;
-    --muted-foreground: 36 5% 34%;
+    --secondary: 40 14% 96%;    /* warm tint, used sparingly           */
+    --secondary-foreground: 30 6% 14%;
+    --muted: 40 12% 96%;
+    --muted-foreground: 30 5% 29%;
 
     --accent: 36 38% 56%;
     --accent-foreground: 30 6% 9%;
@@ -230,15 +240,15 @@
 
     /* Hairlines. Deliberately low-contrast: the design's structure comes
        from space and type, and a border is only ever a whisper of it. */
-    --border: 40 16% 90%;
-    --input: 40 16% 86%;
+    --border: 34 8% 84%;
+    --input: 34 8% 78%;
     --ring: 36 38% 46%;
 
     --gold: 36 38% 56%;         /* #B99A68 — rules, icons, dark-surface text */
     --gold-ink: 36 42% 33%;     /* the text-safe gold on light grounds       */
-    --gold-soft: 40 44% 94%;
-    --sand: 43 26% 95%;
-    --ink-soft: 32 6% 26%;
+    --gold-soft: 40 48% 93%;
+    --sand: 40 16% 95%;
+    --ink-soft: 30 6% 19%;
 
     --success: 152 42% 30%;
     --warning: 32 66% 38%;
@@ -256,7 +266,7 @@
     --sidebar-primary-foreground: 45 40% 98%;
     --sidebar-accent: 43 26% 96%;
     --sidebar-accent-foreground: 30 6% 9%;
-    --sidebar-border: 40 16% 91%;
+    --sidebar-border: 34 8% 85%;
     --sidebar-ring: 36 38% 46%;
 
     --gradient-primary: linear-gradient(135deg, hsl(36 40% 58%) 0%, hsl(32 38% 44%) 100%);

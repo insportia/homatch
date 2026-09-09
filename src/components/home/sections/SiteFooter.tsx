@@ -19,6 +19,8 @@ export function SiteFooter() {
         { key: 'verify', label: t('nav_verify'), path: '/verify' },
         { key: 'mortgage', label: t('nav_mortgage'), path: '/mortgage' },
         { key: 'ai', label: t('ai_title'), path: session ? '/ai' : '/auth/signup' },
+        { key: 'calls', label: t('call_center_title'), path: session ? '/outreach/calls' : '/auth/signup' },
+        { key: 'email', label: t('mp_email_title'), path: session ? '/outreach/email' : '/auth/signup' },
       ],
     },
     {

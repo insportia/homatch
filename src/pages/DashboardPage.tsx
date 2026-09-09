@@ -55,13 +55,16 @@ import { toast } from 'sonner';
  * ------------------------------------------------------------------ */
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-[1rem] border border-border bg-card shadow-card ${className}`}>{children}</section>;
+  return <section className={`rounded-[0.9rem] border border-foreground/15 bg-card shadow-card ${className}`}>{children}</section>;
 }
 
 function CardHead({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-      <h2 className="min-w-0 truncate text-sm font-semibold text-foreground">{title}</h2>
+    /* A fixed header height, not a truncated title: a two-line group name
+       (Georgian and Russian both run long) wraps inside the same 3.5rem band,
+       so the header rules of adjacent columns still line up. */
+    <div className="flex min-h-[3.5rem] items-center justify-between gap-3 border-b border-border px-5 py-3">
+      <h2 className="min-w-0 text-balance text-[13px] font-semibold uppercase leading-tight tracking-[0.08em] text-foreground">{title}</h2>
       {action}
     </div>
   );
@@ -85,8 +88,8 @@ function EmptyState({ icon: Icon, title, hint, action }: {
 }) {
   return (
     <div className="px-5 py-10 text-center">
-      <span className="mx-auto grid h-11 w-11 place-items-center rounded-[0.7rem] border border-border bg-secondary text-muted-foreground" aria-hidden="true">
-        <Icon className="h-5 w-5" strokeWidth={1.5} />
+      <span className="mx-auto grid h-11 w-11 place-items-center rounded-[0.6rem] border border-foreground/15 bg-secondary text-muted-foreground" aria-hidden="true">
+        <Icon className="h-5 w-5" strokeWidth={1.75} />
       </span>
       <p className="mt-3 text-sm font-medium text-foreground">{title}</p>
       {hint && <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">{hint}</p>}
@@ -135,8 +138,8 @@ function ActionTile({ icon: Icon, title, desc, onClick }: {
       onClick={onClick}
       className="group flex h-full flex-col items-start p-5 text-start transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:p-6"
     >
-      <span className="grid h-10 w-10 place-items-center rounded-[0.7rem] border border-border bg-secondary text-foreground transition-colors duration-300 group-hover:border-gold/45 group-hover:bg-gold-soft group-hover:text-gold-ink motion-reduce:transition-none" aria-hidden="true">
-        <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} />
+      <span className="grid h-10 w-10 place-items-center rounded-[0.6rem] border border-foreground/15 bg-secondary text-foreground transition-colors duration-300 group-hover:border-gold/70 group-hover:bg-gold-soft group-hover:text-gold-ink motion-reduce:transition-none" aria-hidden="true">
+        <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
       </span>
       <span className="mt-4 block text-sm font-semibold text-foreground">{title}</span>
       <span className="mt-1.5 block flex-1 text-xs leading-relaxed text-muted-foreground">{desc}</span>
@@ -157,7 +160,7 @@ function LiveRunStrip({ run, propertyTitle, onOpen }: {
     <button
       type="button"
       onClick={onOpen}
-      className="w-full rounded-2xl border border-ring/35 bg-card p-4 text-start shadow-card transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="w-full rounded-2xl border border-gold/60 bg-card p-4 text-start shadow-card transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex items-center gap-3">
         <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gold-ink motion-reduce:animate-none" aria-hidden="true" />
@@ -450,9 +453,9 @@ function DashboardContent() {
     <HomatchShell>
       <div className="space-y-5 md:space-y-6">
         {/* ── 1. Welcome, with the four counts on the same surface ── */}
-        <section className="overflow-hidden rounded-[1rem] border border-border bg-card shadow-card">
+        <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
           <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-            <div className="p-6 md:p-8 lg:p-9">
+            <div className="flex flex-col justify-center p-6 md:p-8 lg:p-9">
               <h1 className="text-balance text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {firstName ? t('dash_welcome_back_name', { name: firstName }) : t('dash_welcome_back')}
               </h1>
@@ -479,11 +482,11 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 divide-x divide-border border-t border-border rtl:divide-x-reverse xl:grid-cols-4">
-            <div className="border-b border-border xl:border-b-0">
+          <div className="grid grid-cols-2 divide-x divide-foreground/12 border-t border-border rtl:divide-x-reverse xl:grid-cols-4">
+            <div className="border-b border-foreground/12 xl:border-b-0">
               <Count label={t('dash_total_properties')} value={data.properties.length} note={weekNote(data.propertiesThisWeek)} loading={loading} />
             </div>
-            <div className="border-b border-border xl:border-b-0">
+            <div className="border-b border-foreground/12 xl:border-b-0">
               <Count
                 label={t('dash_total_matches')}
                 value={data.matchTotals.total}
@@ -521,8 +524,8 @@ function DashboardContent() {
         ))}
 
         {/* ── 2. The four primary actions, as one group ── */}
-        <section className="overflow-hidden rounded-[1rem] border border-border bg-card shadow-card">
-          <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x rtl:sm:divide-x-reverse xl:grid-cols-4 xl:divide-y-0">
+        <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
+          <div className="grid divide-y divide-foreground/12 sm:grid-cols-2 sm:divide-x sm:divide-foreground/12 rtl:sm:divide-x-reverse xl:grid-cols-4 xl:divide-y-0">
             {primaryActions.map(action => (
               <ActionTile
                 key={action.key}
@@ -540,8 +543,8 @@ function DashboardContent() {
           <div className="min-w-0 xl:col-span-2">
             {isNewAccount ? (
               <Card className="flex h-full flex-col items-start justify-center p-8 sm:p-10">
-                <span className="grid h-12 w-12 place-items-center rounded-[0.7rem] border border-gold/25 bg-gold-soft text-gold-ink" aria-hidden="true">
-                  <Sparkles className="h-5 w-5" strokeWidth={1.5} />
+                <span className="grid h-12 w-12 place-items-center rounded-[0.6rem] border border-gold/50 bg-gold-soft text-gold-ink" aria-hidden="true">
+                  <Sparkles className="h-5 w-5" strokeWidth={1.75} />
                 </span>
                 <h2 className="mt-5 max-w-md text-balance text-lg font-semibold leading-snug text-foreground sm:text-xl">
                   {t('db_onboard_title')}
@@ -580,7 +583,7 @@ function DashboardContent() {
                 ) : data.topMatches.length === 0 ? (
                   <EmptyState icon={Users} title={t('db_matches_empty')} hint={t('db_matches_empty_hint')} />
                 ) : (
-                  <div className="divide-y divide-border">
+                  <div className="divide-y divide-foreground/12">
                     {data.topMatches.map(entry => (
                       <MatchRow
                         key={entry.match.id}
@@ -591,7 +594,7 @@ function DashboardContent() {
                   </div>
                 )}
 
-                <div className="border-t border-border">
+                <div className="border-t border-foreground/12">
                   <CardHead
                     title={t('db_properties_title')}
                     action={<LinkAction label={t('nav_add_property')} onClick={() => navigate('/property/add')} />}
@@ -601,7 +604,7 @@ function DashboardContent() {
                   ) : data.properties.length === 0 ? (
                     <EmptyState icon={Building2} title={t('db_properties_empty')} hint={t('db_properties_empty_hint')} />
                   ) : (
-                    <div className="divide-y divide-border">
+                    <div className="divide-y divide-foreground/12">
                       {data.properties.slice(0, 5).map(property => (
                         <PropertyRow
                           key={property.id}
@@ -621,8 +624,8 @@ function DashboardContent() {
           {/* The assistant — the same real entry point as the Main Page. */}
           <Card className="min-w-0 self-start p-5 sm:p-6">
             <div className="flex items-start gap-3.5">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[0.7rem] border border-gold/25 bg-gold-soft text-gold-ink" aria-hidden="true">
-                <Sparkles className="h-[18px] w-[18px]" strokeWidth={1.5} />
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[0.6rem] border border-gold/50 bg-gold-soft text-gold-ink" aria-hidden="true">
+                <Sparkles className="h-[18px] w-[18px]" strokeWidth={1.75} />
               </span>
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-foreground">{t('ai_title')}</h2>
@@ -639,8 +642,8 @@ function DashboardContent() {
         </div>
 
         {/* ── 4. Verification, financing and activity, as one group ── */}
-        <section className="overflow-hidden rounded-[1rem] border border-border bg-card shadow-card">
-          <div className="grid divide-y divide-border rtl:lg:divide-x-reverse lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+        <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
+          <div className="grid divide-y divide-foreground/12 rtl:lg:divide-x-reverse lg:grid-cols-3 lg:divide-x lg:divide-y-0">
             <div className="min-w-0">
               <CardHead title={t('db_verify_title')} action={<LinkAction label={t('db_verify_start')} onClick={() => navigate('/verify')} />} />
               {loading ? (
@@ -648,7 +651,7 @@ function DashboardContent() {
               ) : data.verifications.length === 0 ? (
                 <EmptyState icon={ShieldCheck} title={t('dr_list_empty')} />
               ) : (
-                <div className="divide-y divide-border">
+                <div className="divide-y divide-foreground/12">
                   {data.verifications.slice(0, 4).map(record => (
                     <VerificationRow key={record.id} record={record} onOpen={() => navigate(`/verify/${record.id}`)} />
                   ))}
@@ -657,8 +660,8 @@ function DashboardContent() {
             </div>
 
             <div className="flex min-w-0 flex-col items-center justify-center p-6 text-center sm:p-8">
-              <span className="grid h-12 w-12 place-items-center rounded-[0.7rem] border border-border bg-secondary text-foreground" aria-hidden="true">
-                <CircleDollarSign className="h-5 w-5" strokeWidth={1.5} />
+              <span className="grid h-12 w-12 place-items-center rounded-[0.6rem] border border-foreground/15 bg-secondary text-foreground" aria-hidden="true">
+                <CircleDollarSign className="h-5 w-5" strokeWidth={1.75} />
               </span>
               <h2 className="mt-4 text-sm font-semibold text-foreground">{t('db_mortgage_title')}</h2>
               <p className="mt-2 max-w-xs text-pretty text-xs leading-relaxed text-muted-foreground">{t('db_mortgage_body')}</p>
@@ -675,7 +678,7 @@ function DashboardContent() {
               ) : data.activity.length === 0 ? (
                 <EmptyState icon={Zap} title={t('empty_no_activity_title')} hint={t('empty_no_activity_desc')} />
               ) : (
-                <ul className="divide-y divide-border">
+                <ul className="divide-y divide-foreground/12">
                   {data.activity.slice(0, 5).map(event => <ActivityRow key={event.id} event={event} />)}
                 </ul>
               )}
@@ -693,7 +696,7 @@ function DashboardContent() {
             className="h-11 shrink-0 gap-2 rounded-full bg-gold px-6 text-sm text-primary hover:bg-gold/90"
             onClick={() => navigate('/verify')}
           >
-            {t('mp_cap_verify_cta')}
+            {t('mp_verify_capability_cta')}
             <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
           </Button>
         </div>

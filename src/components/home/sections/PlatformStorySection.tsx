@@ -7,7 +7,13 @@ import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { Eyebrow, PAGE } from './primitives';
 
 /**
- * REGION 07 — the platform / intelligence network.
+ * REGION 07 — market and network intelligence.
+ *
+ * Market intelligence used to be one text row in a directory. It is not a
+ * separate product with its own page — comparables, public evidence and
+ * research context are gathered as part of a property check and feed Verify,
+ * matching and discovery — so it is presented for what it is: the layer
+ * underneath the others, over the city it actually covers.
  *
  * The city photograph carries the atmosphere; the network is drawn over it in
  * SVG rather than baked into the artwork, for three reasons: it stays crisp
@@ -69,10 +75,10 @@ export function PlatformStorySection() {
   const navigate = useNavigate();
 
   const beliefs = [
-    { key: '1', title: t('mp_more_1_title'), desc: t('mp_more_1_desc') },
-    { key: '2', title: t('mp_more_2_title'), desc: t('mp_more_2_desc') },
-    { key: '3', title: t('mp_more_3_title'), desc: t('mp_more_3_desc') },
-    { key: '4', title: t('mp_more_4_title'), desc: t('mp_more_4_desc') },
+    { key: '1', title: t('mp_market_1_title'), desc: t('mp_market_1_desc') },
+    { key: '2', title: t('mp_market_2_title'), desc: t('mp_market_2_desc') },
+    { key: '3', title: t('mp_market_3_title'), desc: t('mp_market_3_desc') },
+    { key: '4', title: t('mp_market_4_title'), desc: t('mp_market_4_desc') },
   ];
 
   return (
@@ -98,23 +104,23 @@ export function PlatformStorySection() {
       <div className={`${PAGE} relative py-20 sm:py-24 lg:py-32`}>
         <div className="grid gap-14 lg:grid-cols-2 lg:gap-20">
           <div>
-            <Eyebrow tone="light">{t('mp_more_eyebrow')}</Eyebrow>
+            <Eyebrow tone="light">{t('mp_market_eyebrow')}</Eyebrow>
             <h2
               className="mt-5 text-balance font-semibold leading-[1.1] tracking-[-0.02em] text-white"
               style={{ fontSize: 'clamp(1.75rem, 3.1vw, 2.9rem)' }}
             >
-              {t('mp_more_title')}
+              {t('mp_market_title')}
             </h2>
             <span className="mt-8 block h-px w-20 bg-gold" aria-hidden="true" />
             <p className="mt-8 max-w-[34rem] text-pretty text-[15px] leading-relaxed text-white/70 sm:text-base">
-              {t('mp_more_body')}
+              {t('mp_market_body')}
             </p>
             <Button
               variant="outline"
               className="mt-9 h-12 gap-2.5 rounded-full border-white/30 bg-transparent px-7 text-sm text-white hover:bg-white/10 hover:text-white"
               onClick={() => navigate('/partners')}
             >
-              {t('mp_more_cta')}
+              {t('mp_market_cta')}
               <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
             </Button>
           </div>
@@ -122,7 +128,7 @@ export function PlatformStorySection() {
           <div className="flex flex-col">
             <ul className="flex-1">
               {beliefs.map((item, i) => (
-                <li key={item.key} className={`py-6 ${i === 0 ? '' : 'border-t border-white/10'}`}>
+                <li key={item.key} className={`py-6 ${i === 0 ? '' : 'border-t border-white/20'}`}>
                   <h3 className="text-base font-semibold text-white">{item.title}</h3>
                   <p className="mt-2 text-pretty text-sm leading-relaxed text-white/70">{item.desc}</p>
                 </li>

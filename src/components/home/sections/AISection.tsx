@@ -31,13 +31,13 @@ export function AISection() {
 
   /* Every node here is a capability that exists in the product today. */
   const reach = [
-    { key: 'client', icon: UserSearch, label: t('mp_cap_client_title') },
-    { key: 'property', icon: Search, label: t('mp_cap_property_title') },
-    { key: 'verify', icon: ShieldCheck, label: t('mp_cap_verify_title') },
-    { key: 'mortgage', icon: Calculator, label: t('mp_cap_mortgage_title') },
+    { key: 'client', icon: UserSearch, label: t('mp_match_title') },
+    { key: 'property', icon: Search, label: t('mp_find_title') },
+    { key: 'verify', icon: ShieldCheck, label: t('mp_verify_capability_title') },
+    { key: 'mortgage', icon: Calculator, label: t('mp_mortgage_title') },
     { key: 'calls', icon: PhoneCall, label: t('call_center_title') },
-    { key: 'email', icon: Mail, label: t('mp_sec_email_title') },
-    { key: 'partners', icon: Building2, label: t('mp_sec_partners_title') },
+    { key: 'email', icon: Mail, label: t('mp_email_title') },
+    { key: 'developers', icon: Building2, label: t('mp_dev_eyebrow') },
   ];
 
   return (

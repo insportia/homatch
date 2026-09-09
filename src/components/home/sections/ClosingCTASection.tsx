@@ -60,7 +60,7 @@ export function ClosingCTASection() {
             className="h-[3.25rem] rounded-full border-white/30 bg-transparent px-8 text-[15px] text-white hover:bg-white/10 hover:text-white"
             onClick={() => navigate('/verify')}
           >
-            {t('mp_cap_verify_cta')}
+            {t('mp_verify_capability_cta')}
           </Button>
         </div>
       </div>

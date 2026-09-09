@@ -12,16 +12,18 @@
 // squeezed into 360px would be unusable, and the reference gives no mobile
 // treatment to copy, so the rule applied here is that navigation is one tap
 // away and never covers the content it navigates to.
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, Bell, Building2, CalendarDays, Coins, Crown, LayoutDashboard,
   LogOut, Mail, Megaphone, Menu, MessageSquare, PhoneCall, Radio, Search,
   ShieldCheck, Sparkles, User as UserIcon, UserSearch, X, Activity, CircleDollarSign,
+  Coins as CoinsIcon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
+import { getCreditAccount } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
@@ -73,6 +75,38 @@ export function HomatchShell({ children }: HomatchShellProps) {
   const unread = useNotificationCount();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  /* THE CREDIT BALANCE
+   *
+   * Read from credit_accounts through the same getCreditAccount() the
+   * Credits page uses — one billing source, no second state, and no
+   * hardcoded number anywhere near it. `null` means "not loaded yet or no
+   * account row"; the indicator renders a placeholder rather than a zero,
+   * because showing 0.0 to someone whose account simply has not loaded is a
+   * lie about their balance. Clicking it goes to /credits, the top-up
+   * destination that already exists. */
+  const [credits, setCredits] = useState<number | null>(null);
+
+  const loadCredits = useCallback(async () => {
+    if (!homatchUser) return;
+    try {
+      const account = await getCreditAccount(homatchUser.id);
+      setCredits(account ? Number(account.balance) : 0);
+    } catch {
+      /* A failed balance read must not take the whole shell down. */
+    }
+  }, [homatchUser]);
+
+  useEffect(() => {
+    void loadCredits();
+  }, [loadCredits]);
+
+  // The balance changes when the customer spends or tops up, both of which
+  // happen on another route; re-reading on navigation keeps it honest
+  // without polling.
+  useEffect(() => {
+    void loadCredits();
+  }, [location.pathname, loadCredits]);
+
   // Any navigation closes the drawer — otherwise tapping a rail item on a
   // phone leaves the menu sitting over the page it just opened.
   useEffect(() => {
@@ -99,7 +133,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
   const initials = (homatchUser?.full_name || homatchUser?.email || '?').trim().charAt(0).toUpperCase();
 
   const rail = (
-    <div className="flex h-full flex-col bg-sidebar">
+    <div className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="flex h-16 shrink-0 items-center justify-between gap-2 px-5 md:h-20">
         <Link to="/" className="min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <HomatchLogo size="sm" withTagline />
@@ -126,7 +160,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
                 item.gap ? 'mt-2' : 'mt-0.5'
               } ${
                 active
-                  ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+                  ? 'bg-secondary font-semibold text-foreground'
                   : 'text-ink-soft hover:bg-sidebar-accent/70 hover:text-foreground'
               }`}
             >
@@ -136,17 +170,22 @@ export function HomatchShell({ children }: HomatchShellProps) {
                   aria-hidden="true"
                 />
               )}
-              <item.icon className={`h-4 w-4 shrink-0 ${active ? 'text-gold' : 'text-muted-foreground'}`} aria-hidden="true" />
+              <item.icon className={`h-4 w-4 shrink-0 ${active ? 'text-gold-ink' : 'text-muted-foreground'}`} strokeWidth={1.75} aria-hidden="true" />
               <span className="min-w-0 truncate">{t(item.key)}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Plan card. Shows the account's real plan code from the users table —
-          never a hardcoded tier — and links to the page that can change it. */}
-      <div className="shrink-0 px-3">
-        <div className="rounded-2xl bg-primary p-4 text-primary-foreground">
+      {/* ── The sidebar's bottom block ──────────────────────────────
+          Plan card and account, in ONE shrink-0 region with a hairline above
+          it. The rail is `flex h-full flex-col` and the nav above is
+          `min-h-0 flex-1 overflow-y-auto`, so this sits at the bottom at
+          every viewport height and the nav scrolls behind its own edge
+          rather than disappearing under a floating card. Nothing here is
+          absolutely positioned. */}
+      <div className="shrink-0 border-t border-sidebar-border bg-sidebar px-3 pt-3">
+        <div className="rounded-[0.8rem] bg-primary p-4 text-primary-foreground">
           <div className="flex items-center gap-2">
             <Crown className="h-4 w-4 text-gold" aria-hidden="true" />
             <p className="min-w-0 truncate text-sm font-semibold">
@@ -156,7 +195,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
           <p className="mt-1.5 text-xs leading-relaxed text-primary-foreground/70">{t('db_plan_body')}</p>
           <Button
             size="sm"
-            className="mt-3 h-9 w-full gap-1.5 rounded-lg bg-gold text-primary hover:bg-gold/90"
+            className="mt-3 h-9 w-full gap-1.5 rounded-[0.5rem] bg-gold text-primary hover:bg-gold/90"
             onClick={() => navigate('/credits')}
           >
             {t('db_plan_upgrade')} <ArrowRight className={`h-3.5 w-3.5 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
@@ -164,7 +203,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
         </div>
       </div>
 
-      <div className="shrink-0 p-3">
+      <div className="shrink-0 px-3 pb-3 pt-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -209,7 +248,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Fixed rail on lg+ */}
-      <aside className="fixed inset-y-0 start-0 z-40 hidden w-64 border-e border-sidebar-border lg:block">{rail}</aside>
+      <aside className="fixed inset-y-0 start-0 z-40 hidden h-[100dvh] w-64 border-e border-sidebar-border lg:block">{rail}</aside>
 
       {/* Off-canvas drawer below lg */}
       {drawerOpen && (
@@ -220,14 +259,14 @@ export function HomatchShell({ children }: HomatchShellProps) {
             onClick={() => setDrawerOpen(false)}
             className="fixed inset-0 z-40 bg-[hsl(214_40%_12%/0.45)] lg:hidden"
           />
-          <aside className="fixed inset-y-0 start-0 z-50 w-[17rem] max-w-[85vw] border-e border-sidebar-border shadow-hover lg:hidden">
+          <aside className="fixed inset-y-0 start-0 z-50 h-[100dvh] w-[17rem] max-w-[85vw] border-e border-sidebar-border shadow-hover lg:hidden">
             {rail}
           </aside>
         </>
       )}
 
       <div className="min-w-0 lg:ps-64">
-        <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur-md">
+        <header className="sticky top-0 z-30 border-b border-border bg-background/92 backdrop-blur-md">
           <div className="flex h-16 items-center gap-3 px-4 md:h-20 md:px-6 lg:px-8">
             <button
               type="button"
@@ -248,13 +287,29 @@ export function HomatchShell({ children }: HomatchShellProps) {
             <div className="flex-1 sm:hidden" />
 
             <div className="flex shrink-0 items-center gap-1.5">
+              {/* Available balance. Commercially important, so it is a
+                  first-class control in the header rather than something
+                  buried in a menu. */}
+              <button
+                type="button"
+                onClick={() => navigate('/credits')}
+                aria-label={t('db_credits_aria')}
+                className="flex h-10 items-center gap-2 rounded-full border border-foreground/20 px-3 text-foreground transition-colors hover:border-gold hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <CoinsIcon className="h-4 w-4 shrink-0 text-gold-ink" strokeWidth={1.75} aria-hidden="true" />
+                <span className="text-sm font-semibold tabular-nums leading-none">
+                  {credits === null ? '—' : credits.toFixed(1)}
+                </span>
+                <span className="hidden text-xs text-muted-foreground lg:inline">{t('nav_credits')}</span>
+              </button>
+
               <LanguageSwitcher showGlobe triggerClassName="h-10 rounded-full px-2.5" />
 
               <button
                 type="button"
                 onClick={() => navigate('/notifications')}
                 aria-label={t('notif_title')}
-                className="relative grid h-10 w-10 place-items-center rounded-full border border-border text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="relative grid h-10 w-10 place-items-center rounded-full border border-foreground/20 text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Bell className="h-4 w-4" aria-hidden="true" />
                 {unread > 0 && (
@@ -307,7 +362,7 @@ function TopbarAsk() {
         onChange={e => setValue(e.target.value)}
         placeholder={t('db_search_placeholder')}
         aria-label={t('db_search_submit')}
-        className="h-11 w-full rounded-full border border-border bg-card ps-11 pe-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-ring/50 focus:outline-none focus:ring-2 focus:ring-ring/25"
+        className="h-11 w-full rounded-full border border-foreground/18 bg-card ps-11 pe-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-ring/50 focus:outline-none focus:ring-2 focus:ring-ring/25"
       />
     </form>
   );

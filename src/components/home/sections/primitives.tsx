@@ -53,11 +53,17 @@ export function Eyebrow({ children, tone = 'dark' }: { children: React.ReactNode
 /**
  * THE ICON SYSTEM
  *
- * One treatment everywhere: a thin (1.5px) lucide stroke in near-black on a
- * small warm square with a hairline. Gold arrives on interaction — the tile
- * warms and the stroke turns gold — rather than shouting at rest. The tile
- * grows with size while the stroke does not, so a row of them reads as one
- * set rather than as assorted graphics.
+ * lucide-react, which the project already ships — a mature, geometrically
+ * consistent set, rather than hand-drawn SVGs that drift out of family.
+ *
+ * One treatment everywhere: a 1.75px stroke in near-black on a warm square
+ * with a CLEARLY VISIBLE hairline. The previous pass used 1.5px on a border
+ * at 8% contrast, and the tiles dissolved into the page. Thin is not the
+ * same as faint. Gold arrives on interaction — the tile warms, its edge
+ * turns gold, the stroke follows — rather than shouting at rest.
+ *
+ * The tile grows with size while the stroke does not, so a row of them reads
+ * as one set.
  */
 export function Icon({
   icon: Glyph, size = 'md', tone = 'dark', className = '',
@@ -71,14 +77,14 @@ export function Icon({
   const glyph = size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-5 w-5' : 'h-[18px] w-[18px]';
   return (
     <span
-      className={`grid shrink-0 place-items-center rounded-[0.7rem] border transition-colors duration-300 motion-reduce:transition-none ${
+      className={`grid shrink-0 place-items-center rounded-[0.6rem] border transition-colors duration-300 motion-reduce:transition-none ${
         tone === 'light'
-          ? 'border-white/15 bg-white/[0.06] text-gold'
-          : 'border-border bg-secondary text-foreground group-hover:border-gold/45 group-hover:bg-gold-soft group-hover:text-gold-ink'
+          ? 'border-white/25 bg-white/[0.07] text-gold'
+          : 'border-foreground/15 bg-secondary text-foreground group-hover:border-gold/70 group-hover:bg-gold-soft group-hover:text-gold-ink'
       } ${box} ${className}`}
       aria-hidden="true"
     >
-      <Glyph className={glyph} strokeWidth={1.5} />
+      <Glyph className={glyph} strokeWidth={1.75} />
     </span>
   );
 }
@@ -109,7 +115,7 @@ export function SectionIntro({
         {title}
       </h2>
       {body && (
-        <p className={`mt-5 text-pretty text-[15px] leading-[1.75] sm:text-base ${light ? 'text-white/70' : 'text-ink-soft'}`}>
+        <p className={`mt-5 text-pretty text-[15px] leading-[1.75] sm:text-base ${light ? 'text-white/75' : 'text-ink-soft'}`}>
           {body}
         </p>
       )}

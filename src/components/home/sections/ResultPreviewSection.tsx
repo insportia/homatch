@@ -82,7 +82,7 @@ export function ResultPreviewSection() {
                   {t('mp_result_prop_confirmed')}
                 </dt>
                 <dd className="mt-2 space-y-1.5">
-                  {[t('mp_cap_verify_row_cadastral'), t('mp_cap_verify_row_owner')].map(row => (
+                  {[t('mp_verify_frag_identity'), t('mp_verify_frag_official')].map(row => (
                     <p key={row} className="flex items-center gap-2.5 text-sm text-white/80">
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-gold/80" aria-hidden="true" />
                       {row}
@@ -114,7 +114,7 @@ export function ResultPreviewSection() {
         <div className="mt-10">
           <ArrowLink
             tone="light"
-            label={t('mp_cap_client_cta')}
+            label={t('mp_match_cta')}
             onClick={() => navigate(session ? '/property/add' : '/auth/signup')}
           />
         </div>

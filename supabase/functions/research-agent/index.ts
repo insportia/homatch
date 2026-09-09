@@ -3092,7 +3092,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // MARKET_READY — PUBLIC_RESEARCH is a real stage in between.
     if (j.status === 'CREATED' && j.stage === 'ENREG_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'rstax', 'debtor'];
+      prior._financialQueue = ['enreg', 'debtor'];
       prior._financialReturnStage = 'PUBLIC_RESEARCH_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
@@ -3107,7 +3107,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // already covered by the first chain is never looked up again here.
     if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'rstax', 'debtor'];
+      prior._financialQueue = ['enreg', 'debtor'];
       prior._financialReturnStage = 'MARKET_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
@@ -3120,7 +3120,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // alreadyHasResultFor inside pickFinancialCandidate).
     if (j.status === 'CREATED' && j.stage === 'RECONCILIATION_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'rstax', 'debtor'];
+      prior._financialQueue = ['enreg', 'debtor'];
       prior._financialReturnStage = 'SYNTHESIS_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }

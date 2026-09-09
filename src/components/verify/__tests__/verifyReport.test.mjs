@@ -38,7 +38,9 @@ test('no card invents a conclusion of its own', () => {
   // incompleteSources and nothing else. Anything more would be a second
   // opinion competing with the projection.
   const reads = [...reportCode.matchAll(/synthesis[.?]*\.([a-zA-Z]+)/g)].map((m) => m[1]);
-  const allowed = new Set(['report', 'evidence', 'incompleteSources', 'mode', 'empty']);
+  const allowed = new Set([
+    'report', 'evidence', 'snapshot', 'market', 'people', 'selfChecks', 'mode', 'empty',
+  ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);
   }
@@ -62,16 +64,20 @@ test('no evidence at all is not a negative verdict', () => {
   assert.equal(computeVerdict([]).verdict, 'POSITIVE');
 });
 
-test('coverage is presented as coverage, never as a warning', () => {
-  // From the JSX, not the interface declaration at the top of the file --
-  // slicing from the first occurrence swept in the whole VERDICT_STYLE table.
-  const block = reportCode.slice(reportCode.indexOf('r.unconfirmed?.length'));
-  // The section that lists what could not be established must not borrow risk
-  // styling: a check we could not finish says nothing about the property.
-  const upTo = block.slice(0, block.indexOf('</section>'));
-  assert.ok(!/text-red|text-amber|border-red|border-amber|destructive/.test(upTo),
-    'unconfirmed checks must not be coloured like findings');
-  assert.match(report, /verify_ir_unconfirmed_note/);
+test('an incomplete check is advice, never a warning', () => {
+  // v2 removed the dedicated "could not confirm" block entirely: incomplete
+  // checks now arrive as buyerActions and as the buyer's own official
+  // self-checks. Neither may borrow risk styling.
+  assert.ok(!/unconfirmed/i.test(reportCode), 'the deficit block is back');
+
+  const actions = reportCode.slice(reportCode.indexOf('r.buyerActions?.length'));
+  const actionsBlock = actions.slice(0, actions.indexOf('</section>'));
+  assert.ok(!/text-red|text-amber|border-red|border-amber|destructive/.test(actionsBlock),
+    'buyer actions must not be coloured like findings');
+
+  const self = reportCode.slice(reportCode.indexOf('const SelfChecks'));
+  assert.ok(!/text-red|border-red|destructive/.test(self.slice(0, 2000)),
+    'official self-checks must not be coloured like findings');
 
   // Attention points MAY carry a restrained accent — they are real findings.
   const attention = reportCode.slice(reportCode.indexOf('r.attentionPoints?.length'));
@@ -148,19 +154,20 @@ test('readable() tolerates a stray replacement character in good text', () => {
   assert.ok(readable(mostlyFine).length > 40, 'one bad byte must not discard a whole sentence');
 });
 
-test('readable() is applied to every customer-visible string', () => {
-  for (const field of ['executiveSummary', 'sections', 'attentionPoints', 'buyerActions', 'unconfirmed', 'finalView']) {
+test('every customer-visible string is cleaned before it renders', () => {
+  for (const field of ['executiveSummary', 'sections', 'attentionPoints', 'buyerActions', 'finalView']) {
     assert.ok(reportCode.indexOf(field) > 0, `${field} should be rendered`);
   }
-  // Every string that reaches the screen goes through readable(), which is
-  // what keeps mis-decoded registry text out of the report.
+  // v2 routes every string through clean(), which is readable() — the
+  // mis-decoded-text guard — composed with the leaked-id strip. One helper,
+  // so a new field cannot accidentally skip one of the two.
+  assert.match(reportCode, /const clean = \(s: unknown\): string => stripEvidenceIds\(readable\(/);
   for (const call of [
-    'readable(s.title)', 'readable(a.point)', 'readable(a.why)',
-    'readable(a.action)', 'readable(u.item)', 'readable(r.overallView.statement)',
+    'clean(s.title)', 'clean(a.point)', 'clean(a.why)',
+    'clean(a.action)', 'clean(a.title)', 'clean(r.overallView.statement)',
   ]) {
     assert.ok(reportCode.includes(call), `${call} is missing — that string can render raw`);
   }
-  assert.match(reportCode, /readable\(text\)/);
 });
 
 /* ---------------- six languages ---------------- */
@@ -195,7 +202,7 @@ test('every section the report can emit is titled by the server, never left bare
   for (const key of keys) {
     assert.ok(titles.includes(`${key}:`), `${key} has no deterministic title`);
   }
-  assert.match(reportCode, /readable\(s\.title\)/, 'the server-supplied title is not rendered');
+  assert.match(reportCode, /clean\(s\.title\)/, 'the server-supplied title is not rendered');
 });
 
 /* ---------------- no machine vocabulary on the customer surface ---------------- */

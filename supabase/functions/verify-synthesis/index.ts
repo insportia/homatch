@@ -28,8 +28,48 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
+import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
 import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
 import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
+import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/intelligence/fx.ts';
+import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
+
+/**
+ * GEL/USD context from the National Bank of Georgia.
+ *
+ * Strictly best-effort and strictly bounded: a 4s timeout, and ANY failure
+ * yields null so the report simply omits the section. FX is useful colour on
+ * a historical change, never a reason for the report to be late or to fail.
+ */
+async function fetchFx(historicalDate: string | null): Promise<FxContext | null> {
+  if (!historicalDate) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const get = async (date: string) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const url = date === today ? NBG_RATES_URL : `${NBG_RATES_URL}?date=${date}`;
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) return null;
+      return parseNbgUsd(await res.json(), date);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  };
+  const [then, now] = await Promise.all([get(historicalDate), get(today)]);
+  return buildFxContext(then, now);
+}
+
+/** The earliest dated evidence, used as the "then" point for FX context. */
+function earliestEvidenceDate(items: { date?: string }[]): string | null {
+  const dates = items
+    .map((i) => i.date)
+    .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}/.test(d))
+    .sort();
+  return dates[0] ?? null;
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -85,6 +125,12 @@ serve(async (req) => {
     const projection = projectVerify({ jobId: job.id, report: job.result_json });
     const pkg = buildEvidencePackage(job.result_json);
 
+    // Market, location, people and the buyer's own official self-checks are
+    // computed deterministically here; the model is handed the RESULT and asked
+    // to explain it, never to do the arithmetic.
+    const fx = await fetchFx(earliestEvidenceDate(pkg.items));
+    const bundle = buildIntelligenceBundle(job.result_json, pkg, fx);
+
     // No evidence at all is a legitimate outcome, not an error: every source
     // may have been technically unavailable. Say so plainly rather than
     // returning an empty report that reads like a clean bill of health.
@@ -93,8 +139,8 @@ serve(async (req) => {
         report: null,
         mode: 'DETERMINISTIC',
         propertyType: projection.propertyType,
-        incompleteSources: projection.incomplete.map((o) => o.sourceName || o.source),
-        unconfirmed: pkg.unavailable,
+        snapshot: bundle.snapshot,
+        selfChecks: bundle.selfChecks,
         empty: true,
       });
     }
@@ -102,7 +148,7 @@ serve(async (req) => {
     let raw: string | null = null;
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (apiKey) {
-      const { system, user } = buildIntelligencePrompt(pkg);
+      const { system, user } = buildIntelligencePrompt(pkg, bundle);
       try {
         const res = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',
@@ -143,11 +189,19 @@ serve(async (req) => {
       // The sources behind the prose, so the UI can offer them underneath
       // without the customer having to read raw research output.
       evidence: final.evidenceUsed,
-      market: pkg.market,
+      snapshot: bundle.snapshot,
+      market: bundle.market,
+      location: bundle.location,
+      people: bundle.people,
+      fx: bundle.fx,
+      // Official checks the BUYER can run. These replace the old inventory of
+      // what our own pipeline could not retrieve.
+      selfChecks: bundle.selfChecks,
+      // Reusable by Contract Intelligence when a signatory must be compared
+      // against the register.
+      participants: bundle.participants,
       mode: final.mode,
       propertyType: projection.propertyType,
-      // Named for a customer, not by source key: "we could not complete X".
-      incompleteSources: projection.incomplete.map((o) => o.sourceName || o.source),
       evidenceCounts: pkg.tierCounts,
       empty: false,
     });

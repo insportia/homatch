@@ -6,12 +6,21 @@
 // The grounding contract is deliberately narrower than "did it cite
 // something": a citation must resolve to evidence that actually exists in the
 // package it was given. A model that cites `e99` when the package stops at
-// `e40` has invented a source, and inventing a source is how a report ends up
-// asserting something about someone's property that nothing supports.
+// `e40` has invented a source.
 //
-// When the output fails, we do not fail the request. We fall back to a
-// deterministic report assembled from the same evidence — plainer, but true
-// by construction, because every sentence in it IS an evidence claim.
+// WHAT CHANGED IN THIS VERSION
+// ----------------------------
+// The `unconfirmed` field is GONE. It was the structural cause of the report
+// reading like an audit: give a model a field named after a deficit and it
+// will fill it, prominently, every time. Incomplete checks now travel to the
+// model as `turnTheseIntoAdvice` and come back as buyerActions — the same
+// information, pointed forwards. The validator enforces the swap: if checks
+// were incomplete and the model produced no actions at all, the output is
+// rejected, because silently dropping them would read as "everything checks
+// out".
+//
+// buyerActions also gained a `title`, because a list rendered as "1 2 3" is
+// not a recommendation a person can scan.
 
 import type { EvidencePackage, EvidenceItem } from './evidencePackage.ts';
 import { SECTION_KEYS } from './prompt.ts';
@@ -33,6 +42,7 @@ export interface AttentionPoint {
 }
 
 export interface BuyerAction {
+  title: string;
   action: string;
   why: string;
   cites: string[];
@@ -43,15 +53,11 @@ export interface BuyerIntelligenceReport {
   executiveSummary: string;
   sections: ReportSection[];
   attentionPoints: AttentionPoint[];
-  unconfirmed: { item: string; why: string }[];
   buyerActions: BuyerAction[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
-  /** MODEL when the model's prose survived the gate, DETERMINISTIC otherwise. */
   mode: 'MODEL' | 'DETERMINISTIC';
-  /** Kept for diagnostics. Never shown to a customer. */
   rejectedBecause: string[];
-  /** Evidence the report drew on, so the UI can offer sources. */
   evidenceUsed: EvidenceItem[];
 }
 
@@ -99,12 +105,12 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
   const buyerActions: BuyerAction[] = asArray(p.buyerActions)
     .map((a) => (a ?? {}) as Record<string, unknown>)
     .filter((a) => asString(a.action))
-    .map((a) => ({ action: asString(a.action), why: asString(a.why), cites: asCites(a.cites) }));
-
-  const unconfirmed = asArray(p.unconfirmed)
-    .map((u) => (u ?? {}) as Record<string, unknown>)
-    .filter((u) => asString(u.item))
-    .map((u) => ({ item: asString(u.item), why: asString(u.why) }));
+    .map((a) => ({
+      title: asString(a.title),
+      action: asString(a.action),
+      why: asString(a.why),
+      cites: asCites(a.cites),
+    }));
 
   const cu = (p.contractUpload ?? {}) as Record<string, unknown>;
 
@@ -116,13 +122,9 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
     executiveSummary: asString(p.executiveSummary),
     sections,
     attentionPoints,
-    unconfirmed,
     buyerActions,
     finalView: asString(p.finalView),
-    contractUpload: {
-      recommend: cu.recommend !== false,
-      text: asString(cu.text),
-    },
+    contractUpload: { recommend: cu.recommend !== false, text: asString(cu.text) },
   };
 }
 
@@ -158,10 +160,15 @@ export function validateReport(
   for (const a of candidate.attentionPoints ?? []) checkCites(a.cites, 'attentionPoints');
   for (const a of candidate.buyerActions ?? []) checkCites(a.cites, 'buyerActions');
 
-  // Anything the research could not establish must not be silently dropped:
-  // an omitted "we could not confirm" reads as "we confirmed it".
-  if (pkg.unavailable.length && !(candidate.unconfirmed ?? []).length) {
-    problems.push('evidence had unconfirmed checks but the report omitted them');
+  // Incomplete checks must resurface as advice. Dropping them silently would
+  // read to a buyer as "we checked everything and it was fine".
+  if (pkg.unavailable.length && !(candidate.buyerActions ?? []).length) {
+    problems.push('checks were incomplete but the report offered no next steps');
+  }
+
+  // A numbered list with no labels is what this replaced.
+  for (const a of candidate.buyerActions ?? []) {
+    if (!a.title) problems.push('a buyer action has no title');
   }
 
   return { ok: problems.length === 0, problems };
@@ -181,30 +188,30 @@ const SECTION_FOR: Partial<Record<EvidenceItem['category'], SectionKey>> = {
   DEVELOPER: 'PROJECT',
   FINANCING: 'PROJECT',
   MARKET: 'MARKET',
-  MEDIA: 'PUBLIC_CONTEXT',
-  SOCIAL: 'PUBLIC_CONTEXT',
+  MEDIA: 'PROJECT',
+  SOCIAL: 'PROJECT',
 };
 
 const TITLES: Record<SectionKey, string> = {
   OVERVIEW: 'მოკლედ',
   WHAT_WE_FOUND: 'რა ვნახეთ',
-  LEGAL: 'სამართლებრივი სურათი',
+  MARKET: 'ფასი და ბაზარი',
+  LOCATION: 'მდებარეობა',
   PROJECT: 'პროექტი და დეველოპერი',
-  MARKET: 'საბაზრო კონტექსტი',
-  PUBLIC_CONTEXT: 'საჯარო კონტექსტი',
+  PEOPLE: 'დაკავშირებული პირები',
+  LEGAL: 'სამართლებრივი სურათი',
 };
 
 /**
  * Builds a report with no model at all.
  *
  * Every sentence here is an evidence claim verbatim, so it passes the gate by
- * construction. It reads like a list rather than a briefing — which is the
- * correct trade when the alternative is unverified prose about someone's
- * largest purchase.
+ * construction. Incomplete checks still become forward-looking actions rather
+ * than a deficit list, so even the fallback keeps the product's voice.
  */
 export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceReport {
   const sections: ReportSection[] = [];
-  for (const key of ['WHAT_WE_FOUND', 'LEGAL', 'PROJECT', 'MARKET', 'PUBLIC_CONTEXT'] as SectionKey[]) {
+  for (const key of ['WHAT_WE_FOUND', 'LEGAL', 'PROJECT', 'MARKET'] as SectionKey[]) {
     const mine = pkg.items.filter((i) => SECTION_FOR[i.category] === key);
     if (!mine.length) continue;
     sections.push({
@@ -225,8 +232,12 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
       : 'ამ ქონებაზე საკმარისი ინფორმაცია ვერ მოვიძიეთ.',
     sections,
     attentionPoints: [],
-    unconfirmed: pkg.unavailable.map((u) => ({ item: u.label, why: u.note ?? '' })),
-    buyerActions: [],
+    buyerActions: pkg.unavailable.map((u) => ({
+      title: u.label.slice(0, 40),
+      action: `ყიდვამდე ღირს ${u.label}-ის აქტუალური სტატუსის გადამოწმება.`,
+      why: '',
+      cites: [],
+    })),
     finalView: '',
     contractUpload: { recommend: true, text: '' },
     mode: 'DETERMINISTIC',
@@ -250,20 +261,17 @@ export function finalizeReport(
     return { ...deterministicReport(pkg), rejectedBecause: check.problems };
   }
 
-  const cited = new Set(
-    [
-      ...(parsed.sections ?? []).flatMap((s) => s.cites),
-      ...(parsed.attentionPoints ?? []).flatMap((a) => a.cites),
-      ...(parsed.buyerActions ?? []).flatMap((a) => a.cites),
-    ]
-  );
+  const cited = new Set([
+    ...(parsed.sections ?? []).flatMap((s) => s.cites),
+    ...(parsed.attentionPoints ?? []).flatMap((a) => a.cites),
+    ...(parsed.buyerActions ?? []).flatMap((a) => a.cites),
+  ]);
 
   return {
     overallView: parsed.overallView ?? { label: 'MIXED', statement: '' },
     executiveSummary: parsed.executiveSummary ?? '',
     sections: parsed.sections ?? [],
     attentionPoints: parsed.attentionPoints ?? [],
-    unconfirmed: parsed.unconfirmed ?? [],
     buyerActions: parsed.buyerActions ?? [],
     finalView: parsed.finalView ?? '',
     contractUpload: parsed.contractUpload ?? { recommend: true, text: '' },

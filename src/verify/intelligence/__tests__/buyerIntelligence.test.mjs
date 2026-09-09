@@ -190,7 +190,10 @@ test('C. an unavailable check becomes "could not confirm", never a finding', () 
     'an unfinished check leaked into the evidence as though it were a result');
 
   const { system } = buildIntelligencePrompt(pkg);
-  assert.ok(/UNAVAILABLE IS NOT A CONFLICT/.test(system));
+  // v2 states the same rule as a positive instruction: an incomplete check
+  // becomes forward-looking advice rather than a conflict or a finding.
+  assert.ok(/TECHNICAL GAPS BECOME ADVICE/.test(system));
+  assert.ok(/confirmed material issue -> finding/.test(system));
 });
 
 test('C2. the RS.ge check is marked human-assistable so the questionnaire can finish it', () => {
@@ -272,11 +275,11 @@ test('H. the output contract requires a contract-upload recommendation', () => {
   assert.ok(parsed.contractUpload.text.includes('ხელშეკრულება'));
 });
 
-test('I. the prompt forbids generic actions and demands a reason for each', () => {
+test('I. buyer actions must be specific, titled and reasoned', () => {
   const { system } = buildIntelligencePrompt(pkgOf(REAL_CASE));
-  assert.ok(/ACTIONS MUST BE SPECIFIC/.test(system));
-  assert.ok(/Not "check the mortgage"/.test(system));
-  assert.ok(/why am I doing this/.test(system));
+  assert.ok(/buyerActions: 3-6 items, each with a SHORT meaningful title/.test(system));
+  assert.ok(/Never a bare number/.test(system));
+  assert.ok(/"why": "<why>"/.test(system));
 });
 
 /* ---------------------------------------------------------------- *
@@ -312,18 +315,18 @@ test('M. NO EVIDENCE = NO FACT: a long uncited section is refused', () => {
   assert.ok(check.problems.some((p) => p.includes('no citation')));
 });
 
-test('a report that omits the unconfirmed checks is refused', () => {
+test('a report that drops the incomplete checks entirely is refused', () => {
   const pkg = pkgOf(REAL_CASE);
   assert.ok(pkg.unavailable.length);
   const omits = JSON.stringify({
     overallView: { label: 'POSITIVE', statement: 'ok' },
     executiveSummary: 'ok',
     sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [pkg.items[0].id] }],
-    unconfirmed: [],
+    buyerActions: [],
   });
   const check = validateReport(pkg, parseReport(omits));
   assert.equal(check.ok, false);
-  assert.ok(check.problems.some((p) => p.includes('omitted them')));
+  assert.ok(check.problems.some((p) => p.includes('no next steps')));
 });
 
 test('a well-grounded report IS accepted — the gate is not always-reject', () => {
@@ -334,7 +337,7 @@ test('a well-grounded report IS accepted — the gate is not always-reject', () 
     sections: [{ key: 'LEGAL', title: 'სამართლებრივი სურათი', body: 'იპოთეკა რეგისტრირებულია.', cites: [pkg.items[0].id] }],
     attentionPoints: [{ point: 'იპოთეკა', why: 'გავლენას ახდენს რეგისტრაციაზე', cites: [pkg.items[0].id] }],
     unconfirmed: [{ item: 'ექსპლუატაცია', why: 'ოფიციალური აქტით' }],
-    buyerActions: [{ action: 'მოითხოვეთ განმუხტვის მექანიზმი წერილობით', why: 'რომ ერთეული გათავისუფლდეს', cites: [pkg.items[0].id] }],
+    buyerActions: [{ title: 'ბანკის თანხმობა', action: 'მოითხოვეთ განმუხტვის მექანიზმი წერილობით', why: 'რომ ერთეული გათავისუფლდეს', cites: [pkg.items[0].id] }],
     finalView: 'დასკვნა.',
     contractUpload: { recommend: true, text: 'ატვირთეთ ხელშეკრულება.' },
   });
@@ -362,7 +365,7 @@ test('markdown fences around valid JSON are tolerated', () => {
   const wrapped = '```json\n' + JSON.stringify({
     overallView: { label: 'MIXED', statement: 's' }, executiveSummary: 'e',
     sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [pkg.items[0].id] }],
-    unconfirmed: [{ item: 'i', why: 'w' }],
+    buyerActions: [{ title: 'ტ', action: 'a', why: 'w', cites: [] }],
   }) + '\n```';
   assert.equal(finalizeReport(pkg, wrapped).mode, 'MODEL');
 });
@@ -391,7 +394,7 @@ test('mis-decoded historical text never reaches the report', () => {
 test('the prompt forbids restating the same finding in every section', () => {
   const { system } = buildIntelligencePrompt(pkgOf(REAL_CASE));
   assert.ok(/SAY IT ONCE/.test(system));
-  assert.ok(/Repetition is the main defect/.test(system));
+  assert.ok(/Repetition was the single/.test(system));
 });
 
 test('the prompt carries the certainty vocabulary instead of good/bad/unknown', () => {
@@ -399,12 +402,16 @@ test('the prompt carries the certainty vocabulary instead of good/bad/unknown', 
   for (const word of ['CONFIRMED', 'CORROBORATED', 'REPORTED', 'CLAIMED', 'OBSERVED', 'UNCONFIRMED']) {
     assert.ok(system.includes(word), `certainty band ${word} missing from the prompt`);
   }
-  assert.ok(/Never flatten these into good \/ bad \/ unknown/.test(system));
+  assert.ok(/never good\/bad\/unknown/.test(system));
 });
 
 test('physical completion and legal commissioning are kept apart', () => {
+  // v2 carries this as concrete worked examples in the advice rule rather
+  // than as a standalone heading: an unconfirmed commissioning status must
+  // become "worth confirming", never a contradiction.
   const { system } = buildIntelligencePrompt(pkgOf(REAL_CASE));
-  assert.ok(/PHYSICAL COMPLETION IS NOT LEGAL COMMISSIONING/.test(system));
+  assert.ok(/ექსპლუატაციაში მიღების აქტუალური სტატუსის/.test(system));
+  assert.ok(/confirmed material issue -> finding/.test(system));
 });
 
 test('the prompt never leaks raw research internals or the whole report', () => {
@@ -471,31 +478,32 @@ test('the UI strips evidence ids the model writes into prose anyway', () => {
   const cmp = read('src/components/verify/VerifyReport.tsx');
   assert.ok(cmp.includes('stripEvidenceIds'), 'nothing strips leaked ids');
   // Every customer-visible string must go through it, not just paragraphs.
+  // v2 composes the strip with readable() in one helper, so every call site
+  // gets both and a new field cannot skip one.
+  assert.ok(/const clean = \(s: unknown\): string => stripEvidenceIds\(readable\(/.test(cmp));
   for (const call of [
-    'stripEvidenceIds(readable(r.overallView.statement))',
-    'stripEvidenceIds(readable(s.title))',
-    'stripEvidenceIds(readable(a.point))',
-    'stripEvidenceIds(readable(a.action))',
-    'stripEvidenceIds(readable(u.item))',
+    'clean(r.overallView.statement)', 'clean(s.title)',
+    'clean(a.point)', 'clean(a.action)', 'clean(a.title)',
   ]) {
     assert.ok(cmp.includes(call), `${call} is missing — ids can still render there`);
   }
 });
 
-test('a citation chip never shows the raw provenance enum', () => {
-  const cmp = read('src/components/verify/VerifyReport.tsx');
-  // The live report rendered DERIVED / OFFICIAL_DOCUMENT / DEVELOPER_STATEMENT
-  // as source labels because the fallback was `e.source || e.provenance`.
+test('no provenance label of any kind reaches the primary report', () => {
+  // v1 translated the enum so DERIVED stopped appearing. v2 goes further and
+  // removes the chips entirely: a provenance label under every paragraph broke
+  // the reading rhythm, and sources belong in the evidence drawer. That is a
+  // stronger guarantee — there is no label left to get wrong.
+  const cmp = read('src/components/verify/VerifyReport.tsx')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
   assert.ok(!/\{e\.source \|\| e\.provenance\}/.test(cmp), 'the raw enum fallback is back');
-  assert.ok(cmp.includes('PROVENANCE_KEY'), 'provenance is not translated for the customer');
-  assert.ok(cmp.includes('isHumanSource'), 'an internal token can still be used as a label');
+  assert.ok(!/const Citations/.test(cmp), 'the provenance chip component is back');
 
-  // Every provenance the package can emit must have a customer-facing name.
   const pkgSrc = read('src/verify/intelligence/evidencePackage.ts');
-  const union = pkgSrc.slice(pkgSrc.indexOf('export type Provenance'), pkgSrc.indexOf(";", pkgSrc.indexOf('export type Provenance')));
+  const union = pkgSrc.slice(pkgSrc.indexOf('export type Provenance'), pkgSrc.indexOf(';', pkgSrc.indexOf('export type Provenance')));
   const values = [...union.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
   assert.ok(values.length >= 8, 'the provenance vocabulary was not found');
   for (const v of values) {
-    assert.ok(cmp.includes(`${v}: 'verify_src_`), `${v} has no customer-facing source label`);
+    assert.ok(!cmp.includes(v), `${v} can still reach the customer surface`);
   }
 });

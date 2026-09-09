@@ -94,7 +94,12 @@ export function decideStalledJob(
 // 'TAS_MAP' is the one real source (the map popup opened FROM tas.ge), not a
 // second source kept alongside it.
 export function buildInitialSteps(job: Pick<ResearchJob, 'mode'>): StepDescriptor[] {
-  const keys: StepDescriptor['type'] extends never ? never : Array<'tas' | 'TAS_MAP' | 'mygov' | 'enreg' | 'napr'> = job.mode === 'cadastral' ? ['TAS_MAP', 'tas', 'mygov'] : ['enreg', 'TAS_MAP', 'napr'];
+  // 'mygov' is deliberately NOT planned. Its property service sits behind a
+  // CAPTCHA no datacenter IP can pass, so scheduling it only ever paused the
+  // run and asked the customer to solve a challenge for a lookup they can do
+  // themselves in under a minute. The report now recommends it as an official
+  // self-check instead. The workflow itself is untouched and still callable.
+  const keys: StepDescriptor['type'] extends never ? never : Array<'tas' | 'TAS_MAP' | 'mygov' | 'enreg' | 'napr'> = job.mode === 'cadastral' ? ['TAS_MAP', 'tas'] : ['enreg', 'TAS_MAP', 'napr'];
   return keys.map((key) => ({ type: 'source', key }) as StepDescriptor);
 }
 
@@ -328,7 +333,11 @@ export function dedupeProposedSteps(
 export function buildEntitySteps(confirmedEntities: { identificationCode: string | null; name: string }[], maxEntities: number): StepDescriptor[] {
   const steps: StepDescriptor[] = [];
   for (const e of confirmedEntities.filter((x) => x.identificationCode).slice(0, maxEntities)) {
-    for (const source of ['enreg', 'rstax', 'debtor'] as const) {
+    // 'rstax' is deliberately absent for the same reason as 'mygov': the RS
+    // taxpayer registry is CAPTCHA-gated, and pausing a run on it produced
+    // HUMAN_VERIFICATION_REQUIRED rather than evidence. enreg and debtor are
+    // unaffected and still run for every confirmed entity.
+    for (const source of ['enreg', 'debtor'] as const) {
       steps.push({ type: 'entity', source, idCode: e.identificationCode as string, name: e.name });
     }
   }

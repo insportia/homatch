@@ -80,12 +80,14 @@ test('the NOTE sits directly under the Verify action area — above progress, re
   assert.equal(noticeAt > -1, true, 'VerifyPage must render the notice');
 
   const inputAt = verifySource.indexOf("placeholder={t('verify_cadastral_query_ph')}");
-  const loadingAt = verifySource.indexOf("{t('verify_loading_label')}");
+  // The percentage progress card is gone; the research stream replaced it.
+  const loadingAt = verifySource.indexOf('<ResearchStream');
   const reportAt = verifySource.indexOf('<OverallAssessmentCard');
   const aiButtonAt = verifySource.indexOf("{t('verify_ask_ai_button')}");
 
   assert.equal(inputAt < noticeAt, true, 'the NOTE follows the cadastral input it explains');
-  assert.equal(noticeAt < loadingAt, true, 'the NOTE is above the progress card');
+  assert.equal(loadingAt > -1, true, 'the research stream must be rendered');
+  assert.equal(noticeAt < loadingAt, true, 'the NOTE is above the loading UI');
   assert.equal(noticeAt < reportAt, true, 'the NOTE is above the report');
   assert.equal(noticeAt < aiButtonAt, true, 'the NOTE is not stranded at the very bottom');
 

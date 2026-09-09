@@ -195,14 +195,55 @@ create unique index if not exists renovation_price_observations_dedupe_uidx
 -- ---------------------------------------------------------------------------
 -- Scenario pinning
 -- ---------------------------------------------------------------------------
+/*
+ * THE SINGLE PRICE-VERSION IDENTITY.
+ *
+ * `price_book_version_id` is the ONE representation of "which approved price
+ * data produced this estimate". It is added here rather than in the table's
+ * own migration only because renovation_price_book_versions does not exist
+ * until this file runs.
+ *
+ * ON DELETE RESTRICT, deliberately, not SET NULL. A saved estimate must stay
+ * reproducible: if deleting a version could quietly blank the pointer, an old
+ * scenario would silently lose the evidence of what priced it, which is the
+ * exact failure this design exists to prevent. Versions are ARCHIVED, never
+ * deleted.
+ */
 alter table public.renovation_scenarios
   add column if not exists price_book_version_id uuid
-    references public.renovation_price_book_versions(id) on delete set null,
+    references public.renovation_price_book_versions(id) on delete restrict,
   -- Records whether the customer was shown real numbers or an explicit
   -- "not enough verified data" state, so an old scenario is never
   -- misremembered as having been a real quote.
   add column if not exists estimate_state text not null default 'NOT_PRICED'
     check (estimate_state in ('NOT_PRICED','PRICED','INSUFFICIENT_PRICE_DATA'));
+
+/*
+ * The invariant, enforced in the database rather than only in the service:
+ *
+ *   PRICED      <=> price_book_version_id IS NOT NULL
+ *
+ * Both directions matter. Forwards: a scenario showing a number must name the
+ * version that produced it, or it is an unreproducible figure. Backwards: a
+ * scenario that was never priced must not carry a version pointer, or it
+ * could later be misread as having been a real quote.
+ *
+ * Written as DO blocks because ADD CONSTRAINT has no IF NOT EXISTS.
+ */
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'renovation_scenarios_priced_iff_version_ck'
+  ) then
+    alter table public.renovation_scenarios
+      add constraint renovation_scenarios_priced_iff_version_ck
+      check (
+        (estimate_state = 'PRICED' and price_book_version_id is not null)
+        or (estimate_state <> 'PRICED' and price_book_version_id is null)
+      );
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- The customer-facing read path

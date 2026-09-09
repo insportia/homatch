@@ -191,7 +191,11 @@ create table if not exists public.renovation_scenarios (
   deal_room_id uuid references public.deal_rooms(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
 
-  name text not null,                 -- "Standard", "Premium bathroom", ...
+  -- NOT NULL by design: a scenario the customer can see in a list must be
+  -- identifiable. The service guarantees a non-empty value (see
+  -- scenarioName() in services/renovationPricing.ts), falling back to a
+  -- deterministic generated label rather than passing null.
+  name text not null,
   market text not null default 'tbilisi',
 
   -- Everything needed to reproduce the estimate exactly.
@@ -199,10 +203,27 @@ create table if not exists public.renovation_scenarios (
   -- The computed result, stored so a saved scenario never silently changes
   -- when the price book is updated.
   result jsonb not null,
-  price_book_version integer not null,
-  -- True when the estimate used any not-yet-reviewed price. Surfaces in the
-  -- UI so a provisional number is never shown as final.
-  provisional_prices boolean not null default true,
+
+  /*
+   * PRICE-VERSION IDENTITY lives in ONE place, added by
+   * 20260910100000_renovation_price_book.sql as `price_book_version_id`
+   * (a FK to renovation_price_book_versions) together with `estimate_state`.
+   *
+   * This table originally carried `price_book_version integer NOT NULL` and
+   * `provisional_prices boolean`. Both are deliberately absent now:
+   *
+   *   - the integer dated from when the price book was a hard-coded constant
+   *     with a monotonic version number. Versions are rows now, so the row is
+   *     the identity; keeping an integer beside the FK would be two
+   *     representations of one concept, free to drift.
+   *   - `provisional_prices` could only ever be false for a customer-visible
+   *     estimate, because a PRICED scenario is structurally reachable only
+   *     from VERIFIED items inside a PUBLISHED version. A column that cannot
+   *     vary is not a safeguard, it is a second source of truth.
+   *
+   * Neither migration has been applied anywhere, so this is a corrected
+   * initial schema rather than a compatibility fix-up.
+   */
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

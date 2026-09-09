@@ -186,12 +186,27 @@ export async function listScenarios(roomId: string | null): Promise<RenovationSc
   return (data ?? []) as unknown as RenovationScenarioRecord[];
 }
 
+// The write contract lives in a dependency-free module so it can be unit
+// tested; re-exported here so callers have one import site.
+export { scenarioName, normalizePricing } from './scenarioContract';
+import { scenarioName, normalizePricing } from './scenarioContract';
+
 /**
  * Saves a scenario, pinning the price version it was computed against.
  *
  * Pinning is what makes an old estimate explainable: reopening it months later
  * shows the numbers it was actually built from, rather than silently
  * recomputing against whatever the current book says.
+ *
+ * THE INVARIANT, mirrored from the database:
+ *
+ *     PRICED  <=>  price_book_version_id IS NOT NULL
+ *
+ * It is normalised here rather than trusted from the caller, so a caller that
+ * passes an inconsistent pair cannot produce either an unreproducible number
+ * or an unpriced scenario that looks like a real quote. The database enforces
+ * the same rule via renovation_scenarios_priced_iff_version_ck, so the two
+ * cannot drift.
  */
 export async function saveScenario(args: {
   roomId: string | null;
@@ -207,14 +222,19 @@ export async function saveScenario(args: {
   const userId = auth.user?.id;
   if (!userId) throw new Error('not_authenticated');
 
+  const { estimateState, priceBookVersionId } = normalizePricing(
+    args.estimateState,
+    args.priceBookVersionId
+  );
+
   const payload = {
     deal_room_id: args.roomId,
     user_id: userId,
-    name: args.name.trim() || null,
+    name: scenarioName(args.name, args.inputs),
     inputs: args.inputs,
     result: args.result,
-    price_book_version_id: args.priceBookVersionId,
-    estimate_state: args.estimateState,
+    price_book_version_id: priceBookVersionId,
+    estimate_state: estimateState,
   };
 
   const q = args.scenarioId

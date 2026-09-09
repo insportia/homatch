@@ -22,7 +22,7 @@ import { ArrowLeft, Hammer } from 'lucide-react';
 import { supabase } from '@/db/supabase';
 import {
   getDealRoom, listActionItems, listQuestions, listDocuments, listNotes,
-  setActionState, answerQuestion, addNote,
+  setActionState, answerQuestion, addNote, loadLatestAiThread,
   type DealRoomRecord, type ActionItemRecord, type QuestionRecord, type DocumentRecord,
 } from '@/services/dealRooms';
 import { listFindings, uploadDocument, deleteDocument, type DocumentFinding } from '@/services/dealRoomDocuments';
@@ -48,6 +48,7 @@ const DealRoomPage: React.FC = () => {
   const [summaryLoading, setSummaryLoading] = useState(false);
 
   const [messages, setMessages] = useState<AskMessage[]>([]);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const [askBusy, setAskBusy] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,14 +58,28 @@ const DealRoomPage: React.FC = () => {
     const r = await getDealRoom(id);
     setRoom(r);
     if (!r) return;
-    const [a, q, d, f, n] = await Promise.all([
+    const [a, q, d, f, n, ai] = await Promise.all([
       listActionItems(id), listQuestions(id), listDocuments(id), listFindings(id), listNotes(id),
+      loadLatestAiThread(id),
     ]);
     setActions(a);
     setQuestions(q);
     setDocuments(d);
     setFindings(f);
     setNotes(n);
+    // The conversation continues where the customer left it, days later. An
+    // empty grounded_in is preserved as an empty array, because that is what
+    // labels a past answer as a general explanation rather than a property
+    // fact — defaulting it to something else would relabel history.
+    setThreadId(ai.threadId);
+    setMessages(
+      ai.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        grounded: Array.isArray(m.grounded_in) ? m.grounded_in : [],
+      }))
+    );
   }, [id]);
 
   useEffect(() => {
@@ -152,12 +167,13 @@ const DealRoomPage: React.FC = () => {
     setAskError(null);
     try {
       const { data, error } = await supabase.functions.invoke('deal-room-ai', {
-        body: { dealRoomId: id, question },
+        body: { dealRoomId: id, question, threadId },
       });
       if (error || !data || data.error || !data.answer) {
         setAskError(t('dr_ask_unavailable'));
         return;
       }
+      if (data.threadId) setThreadId(data.threadId as string);
       setMessages((m) => [
         ...m,
         { id: `${localId}-a`, role: 'assistant', content: data.answer, grounded: data.grounded ?? [] },

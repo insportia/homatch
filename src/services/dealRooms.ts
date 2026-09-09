@@ -384,3 +384,53 @@ export async function listNotes(roomId: string): Promise<{ id: string; body: str
   if (error) throw error;
   return (data ?? []) as { id: string; body: string; created_at: string }[];
 }
+
+/* ------------------------------------------------------------------ *
+ * Ask Homatch AI history                                              *
+ * ------------------------------------------------------------------ */
+
+export interface AiMessageRecord {
+  id: string;
+  thread_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  /** Empty array is MEANINGFUL: it is what marks an answer as a general
+   * explanation rather than a fact about this property, and it is why the
+   * column is not nullable. */
+  grounded_in: string[];
+  created_at: string;
+}
+
+/**
+ * The most recent conversation for this deal room.
+ *
+ * Only one thread is loaded, not all of them: the panel is a continuing
+ * conversation about one property, and concatenating separate threads would
+ * present unrelated exchanges as one dialogue. Messages are capped so a long
+ * history cannot make the page unbounded.
+ */
+export async function loadLatestAiThread(
+  roomId: string,
+  limit = 100
+): Promise<{ threadId: string | null; messages: AiMessageRecord[] }> {
+  const { data: threads, error: tErr } = await supabase
+    .from('deal_room_ai_threads')
+    .select('id')
+    .eq('deal_room_id', roomId)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+  if (tErr) throw tErr;
+
+  const threadId = (threads ?? [])[0]?.id as string | undefined;
+  if (!threadId) return { threadId: null, messages: [] };
+
+  const { data, error } = await supabase
+    .from('deal_room_ai_messages')
+    .select('id,thread_id,role,content,grounded_in,created_at')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+
+  return { threadId, messages: (data ?? []) as unknown as AiMessageRecord[] };
+}

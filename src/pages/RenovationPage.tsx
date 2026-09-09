@@ -29,7 +29,10 @@ import { Info, Hammer, Save } from 'lucide-react';
 import { estimateQuantities, roomsFromKnownProperty, type Condition } from '@/renovation/calculations/quantities';
 import { calculateEstimate, type RenovationLevel, type Estimate } from '@/renovation/calculations/estimate';
 import { estimateTimeline, toCalendarWeeks, type TimelineResult } from '@/renovation/calculations/timeline';
-import { loadCustomerPriceBook, saveScenario, type PricingAvailability } from '@/services/renovationPricing';
+import {
+  loadCustomerPriceBook, saveScenario, listScenarios,
+  type PricingAvailability, type RenovationScenarioRecord,
+} from '@/services/renovationPricing';
 import { getDealRoom } from '@/services/dealRooms';
 
 const CONDITIONS: { value: Condition; key: string }[] = [
@@ -55,6 +58,7 @@ const RenovationPage: React.FC = () => {
 
   const [pricing, setPricing] = useState<PricingAvailability | null>(null);
   const [saving, setSaving] = useState(false);
+  const [scenarios, setScenarios] = useState<RenovationScenarioRecord[]>([]);
 
   useEffect(() => {
     loadCustomerPriceBook()
@@ -63,6 +67,14 @@ const RenovationPage: React.FC = () => {
       // both mean we must not show a number.
       .catch(() => setPricing({ state: 'INSUFFICIENT_PRICE_DATA', verifiedCount: 0, reason: 'lookup_failed' }));
   }, []);
+
+  // Previously saved scenarios for this room (or the unattached ones). Failing
+  // to load history must never block the calculator itself.
+  const refreshScenarios = React.useCallback(() => {
+    listScenarios(roomId).then(setScenarios).catch(() => setScenarios([]));
+  }, [roomId]);
+
+  useEffect(() => { refreshScenarios(); }, [refreshScenarios]);
 
   // Prefill the area from the deal room's Verify snapshot when we have one, so
   // the buyer does not retype something we already established.
@@ -120,6 +132,7 @@ const RenovationPage: React.FC = () => {
         estimateState: estimate ? 'PRICED' : 'INSUFFICIENT_PRICE_DATA',
       });
       toast.success(t('reno_saved'));
+      refreshScenarios();
     } catch {
       toast.error(t('dr_error_generic'));
     } finally {
@@ -261,6 +274,33 @@ const RenovationPage: React.FC = () => {
                   </li>
                 ))}
               </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {scenarios.length > 0 && (
+          <Card>
+            <CardContent className="pt-5 space-y-3">
+              <h2 className="text-base font-semibold">{t('reno_saved_scenarios')}</h2>
+              {scenarios.map((sc) => {
+                const display = (sc.result as { display?: { typical?: number } } | null)?.display;
+                return (
+                  <div key={sc.id} className="flex flex-wrap items-baseline gap-2 border-b pb-2 last:border-0">
+                    <span className="text-sm font-medium min-w-0 break-words flex-1">
+                      {sc.name || new Date(sc.created_at).toLocaleDateString()}
+                    </span>
+                    {/* A scenario saved while pricing was gated shows WHY it has
+                        no number, rather than a blank or a zero. */}
+                    {sc.estimate_state === 'PRICED' && typeof display?.typical === 'number' ? (
+                      <span className="text-sm">{display.typical.toLocaleString()} GEL</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground break-words">
+                        {t('reno_scenario_not_priced')}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         )}

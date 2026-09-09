@@ -136,6 +136,23 @@ serve(async (req) => {
     if (!answer) return json({ error: 'assistant_unavailable' }, 503);
 
     /* ---- persist, with grounding ---- */
+
+    // A client-supplied threadId must be re-checked against THIS deal room.
+    // RLS already prevents writing into another user's thread, but it does not
+    // stop the same user's thread from ANOTHER of their rooms being passed in,
+    // which would silently merge two properties' conversations. An id that
+    // does not belong here is discarded rather than rejected: the customer
+    // asked a legitimate question, and a fresh thread is the right recovery.
+    if (threadId) {
+      const { data: owned } = await supabase
+        .from('deal_room_ai_threads')
+        .select('id')
+        .eq('id', threadId)
+        .eq('deal_room_id', dealRoomId)
+        .maybeSingle();
+      if (!owned) threadId = null;
+    }
+
     if (!threadId) {
       const { data: t, error: tErr } = await supabase
         .from('deal_room_ai_threads')

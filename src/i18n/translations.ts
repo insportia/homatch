@@ -2811,6 +2811,11 @@ const en = {
   dr_loading: 'Loading…',
   dr_error_generic: 'Something went wrong. Please try again.',
   dr_not_found: 'This deal room was not found.',
+
+  // Renovation scenario history
+  reno_no_scenarios: 'You have not saved any scenarios yet.',
+  reno_saved_scenarios: 'Saved scenarios',
+  reno_scenario_not_priced: 'No price shown — verified price data was not available',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -5540,6 +5545,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dr_loading: 'იტვირთება…',
   dr_error_generic: 'რაღაც შეცდომა მოხდა. სცადეთ ხელახლა.',
   dr_not_found: 'გარიგება ვერ მოიძებნა.',
+
+  // Renovation scenario history
+  reno_no_scenarios: 'ჯერ არცერთი სცენარი არ შეგინახავთ.',
+  reno_saved_scenarios: 'შენახული სცენარები',
+  reno_scenario_not_priced: 'ფასი არ არის — გადამოწმებული ფასები არ იყო ხელმისაწვდომი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -8260,6 +8270,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mortgage_within_limit: 'В пределах опубликованного лимита',
   mortgage_years_value: '{{years}} лет',
   nav_mortgage: 'Ипотека',
+
+  // Renovation scenario history
+  reno_no_scenarios: 'Вы пока не сохранили ни одного сценария.',
+  reno_saved_scenarios: 'Сохранённые сценарии',
+  reno_scenario_not_priced: 'Цена не показана — проверенных данных не было',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -10978,6 +10993,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mortgage_within_limit: 'Yayımlanan limit içinde',
   mortgage_years_value: '{{years}} yıl',
   nav_mortgage: 'Konut Kredisi',
+
+  // Renovation scenario history
+  reno_no_scenarios: 'Henüz senaryo kaydetmediniz.',
+  reno_saved_scenarios: 'Kaydedilen senaryolar',
+  reno_scenario_not_priced: 'Fiyat gösterilmedi — doğrulanmış fiyat verisi yoktu',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -13696,6 +13716,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mortgage_within_limit: 'ضمن الحد المنشور',
   mortgage_years_value: '{{years}} سنة',
   nav_mortgage: 'الرهن العقاري',
+
+  // Renovation scenario history
+  reno_no_scenarios: 'لم تحفظ أي سيناريو بعد.',
+  reno_saved_scenarios: 'السيناريوهات المحفوظة',
+  reno_scenario_not_priced: 'لم يُعرض سعر — لم تتوفر بيانات أسعار مُتحقَّقة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -16414,6 +16439,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   mortgage_within_limit: 'בתוך המגבלה שפורסמה',
   mortgage_years_value: '{{years}} שנים',
   nav_mortgage: 'משכנתא',
+
+  // Renovation scenario history
+  reno_no_scenarios: 'עדיין לא שמרת תרחישים.',
+  reno_saved_scenarios: 'תרחישים שמורים',
+  reno_scenario_not_priced: 'לא הוצג מחיר — לא היו נתוני מחיר מאומתים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

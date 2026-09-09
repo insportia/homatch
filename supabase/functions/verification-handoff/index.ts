@@ -274,7 +274,14 @@ async function loadJobInputs(
 
   if (!job) return { job: null, available: {} };
 
-  const r = (job.result_json ?? {}) as any;
+  // Only the two public identifiers a handoff may legitimately pass to the
+  // customer's own browser. Typed narrowly rather than `any` so a future edit
+  // cannot quietly start reading something else out of the report.
+  const r = (job.result_json ?? {}) as {
+    exactUnit?: { cadastralCode?: string; code?: string };
+    identifiedParent?: { code?: string };
+    companyProfile?: { idCode?: string };
+  };
   const unit = r.exactUnit ?? {};
   return {
     job,

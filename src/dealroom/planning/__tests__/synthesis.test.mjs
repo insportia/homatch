@@ -257,7 +257,10 @@ test('a source that ran but confirmed nothing does not fake a milestone', () => 
 });
 
 test('human verification overrides ordinary progress', () => {
-  const v = buildProgressView({ status: 'WAITING_HUMAN_LOCAL', results: [], currentSource: 'rstax' });
+  // WAITING_HUMAN is the only pause status the pipeline emits; the test
+  // previously used WAITING_HUMAN_LOCAL, from the rejected
+  // developer-browser design, which nothing ever produces.
+  const v = buildProgressView({ status: 'WAITING_HUMAN', results: [], currentSource: 'rstax' });
   assert.equal(v.awaitingHuman, true);
   assert.equal(v.current.key, 'HUMAN_VERIFICATION');
 });

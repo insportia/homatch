@@ -230,6 +230,23 @@ set search_path = public
 as $$
 declare n integer;
 begin
+  /*
+   * DEFENCE IN DEPTH.
+   *
+   * This is SECURITY DEFINER, so it writes past RLS across every user's rows.
+   * It is currently unreachable by ordinary users because EXECUTE is revoked
+   * below — but relying only on a grant means a single future `grant execute
+   * ... to authenticated` would silently hand any signed-in user the ability
+   * to expire everybody's live handoffs. The check below makes that
+   * impossible regardless of grants.
+   *
+   * auth.uid() is NULL when invoked by a scheduled job or the service role,
+   * which is the intended caller; a human caller must be an admin.
+   */
+  if auth.uid() is not null and not public.is_admin() then
+    raise exception 'admin only' using errcode = 'insufficient_privilege';
+  end if;
+
   update public.human_verification_handoffs
      set status = 'EXPIRED',
          audit  = audit || jsonb_build_object('at', now(), 'event', 'EXPIRED_SWEEP')
@@ -240,4 +257,6 @@ begin
 end;
 $$;
 
-revoke all on function public.expire_stale_handoffs() from public, anon;
+-- Not granted to `authenticated` at all: this is a maintenance sweep, not a
+-- customer operation. `from public` also removes the implicit default grant.
+revoke all on function public.expire_stale_handoffs() from public, anon, authenticated;

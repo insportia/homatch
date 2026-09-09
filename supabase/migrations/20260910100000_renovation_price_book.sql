@@ -304,18 +304,39 @@ security invoker
 set search_path = public
 as $$
 declare
-  v_status text;
+  v_status  text;
+  v_version uuid;
 begin
-  select status into v_status
-  from public.renovation_price_book_versions
-  where id = coalesce(new.version_id, old.version_id);
+  /*
+   * TG_OP must be branched on explicitly.
+   *
+   * In a DELETE trigger PL/pgSQL leaves NEW unassigned, and touching a field
+   * of an unassigned record raises "record new is not assigned yet" — so
+   * coalesce(new.version_id, old.version_id) would ERROR on every delete
+   * rather than performing the check. The same applies to returning
+   * coalesce(new, old): a BEFORE DELETE trigger must return OLD, and any
+   * other row for INSERT/UPDATE.
+   */
+  if tg_op = 'DELETE' then
+    v_version := old.version_id;
+  else
+    v_version := new.version_id;
+  end if;
+
+  select v.status into v_status
+  from public.renovation_price_book_versions v
+  where v.id = v_version;
 
   if v_status = 'PUBLISHED' then
     raise exception
       'price book version is PUBLISHED and immutable; create a new version instead'
       using errcode = 'check_violation';
   end if;
-  return coalesce(new, old);
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
 end;
 $$;
 

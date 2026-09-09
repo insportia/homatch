@@ -128,7 +128,12 @@ export interface ProgressInput {
  */
 export function buildProgressView(input: ProgressInput): ProgressView {
   const results = input.results ?? [];
-  const awaitingHuman = input.status === 'WAITING_HUMAN' || input.status === 'WAITING_HUMAN_LOCAL';
+  // 'WAITING_HUMAN' is the only pause status the pipeline emits. This used
+  // to also accept 'WAITING_HUMAN_LOCAL', a status from the REJECTED
+  // developer-browser handoff design; nothing in the worker or in
+  // research-agent has ever produced it, so accepting it was dead code
+  // that kept a discarded architecture alive by name.
+  const awaitingHuman = input.status === 'WAITING_HUMAN';
 
   // ---- current activity --------------------------------------------------
   let current: Activity | null = null;

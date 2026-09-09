@@ -20,7 +20,7 @@
 import { supabase } from '@/db/supabase';
 import { projectVerify, toWriteModel } from '@/dealroom/domain/assemble';
 import type { DealRoomProjection } from '@/dealroom/domain/assemble';
-import type { VerifySnapshot } from '@/dealroom/domain/verifyExtract';
+import type { VerifySnapshot, VerifyReportLike } from '@/dealroom/domain/verifyExtract';
 
 export interface DealRoomRecord {
   id: string;
@@ -175,7 +175,7 @@ export async function listDocuments(roomId: string): Promise<DocumentRecord[]> {
  */
 export async function createDealRoomFromVerify(args: {
   jobId: string;
-  report: Record<string, unknown> | null;
+  report: VerifyReportLike | null;
   /** Set when the caller already computed the projection, to avoid doing it
    * twice on a page that has it in hand. */
   projection?: DealRoomProjection;
@@ -213,9 +213,28 @@ export async function createDealRoomFromVerify(args: {
       .insert({ ...wm.room, user_id: userId, verify_refreshed_at: new Date().toISOString() })
       .select(ROOM_COLUMNS)
       .single();
-    if (error) throw error;
-    room = data as unknown as DealRoomRecord;
-    created = true;
+
+    if (error) {
+      /*
+       * LOST THE RACE.
+       *
+       * Two tabs (or a double-tap on "Save to a deal room") both find no
+       * existing room and both insert. deal_rooms_user_cadastral_active_uidx
+       * rejects the second with 23505. That is the index doing its job — one
+       * room per property — so the correct response is to adopt the room the
+       * winner just created, not to surface a unique-violation to someone who
+       * pressed a button twice.
+       *
+       * Any other error is real and is rethrown.
+       */
+      if (error.code !== '23505') throw error;
+      const raced = await findExistingRoom(wm.room.cadastral_code, args.jobId);
+      if (!raced) throw error;
+      room = raced;
+    } else {
+      room = data as unknown as DealRoomRecord;
+      created = true;
+    }
   }
 
   await syncGeneratedContent(room.id, userId, wm);
@@ -229,20 +248,26 @@ async function findExistingRoom(cadastral: string | null, jobId: string): Promis
       .select(ROOM_COLUMNS)
       .eq('cadastral_code', cadastral)
       .is('deleted_at', null)
-      .maybeSingle();
+      .order('created_at', { ascending: true })
+      .limit(1);
     if (error) throw error;
-    if (data) return data as unknown as DealRoomRecord;
+    if (data?.length) return data[0] as unknown as DealRoomRecord;
   }
   // A property with no cadastral code still must not create a second room for
   // the same job.
+  // Deliberately NOT maybeSingle(): that throws when more than one row
+  // matches, and nothing constrains a user to one room per job the way the
+  // cadastral index constrains one room per property. Taking the oldest is
+  // stable and cannot throw.
   const { data, error } = await supabase
     .from('deal_rooms')
     .select(ROOM_COLUMNS)
     .eq('verify_job_id', jobId)
     .is('deleted_at', null)
-    .maybeSingle();
+    .order('created_at', { ascending: true })
+    .limit(1);
   if (error) throw error;
-  return (data ?? null) as unknown as DealRoomRecord | null;
+  return ((data ?? [])[0] ?? null) as unknown as DealRoomRecord | null;
 }
 
 /** Upserts generated content on its stable key. Customer state columns

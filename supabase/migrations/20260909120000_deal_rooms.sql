@@ -249,6 +249,14 @@ create index if not exists deal_room_ai_messages_thread_idx
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
+-- security invoker + a pinned search_path, matching owns_deal_room() below and
+-- every other function this project defines. A trigger function with a mutable
+-- search_path is what Supabase's advisor flags as "Function Search Path
+-- Mutable": it runs on every write to eight tables, so it is exactly the kind
+-- of function that should not resolve unqualified names through a caller-
+-- controlled path.
+security invoker
+set search_path = ''
 as $$
 begin
   new.updated_at = now();

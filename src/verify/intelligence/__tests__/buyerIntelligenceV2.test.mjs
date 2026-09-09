@@ -477,6 +477,23 @@ test('no fake percentage progress anywhere in the Verify page', () => {
   assert.ok(page.includes('<ResearchStream'), 'the research stream is not wired');
 });
 
+test('the elapsed clock cannot be reset from outside the component', () => {
+  // It FROZE at 00:03 in production: startedAt was a prop and the interval
+  // effect depended on it, so every rewrite tore the interval down before it
+  // could tick. The start time now lives in a ref inside the component, whose
+  // mount IS the run start, and the interval effect has no dependencies.
+  const stream = read('src/components/verify/ResearchStream.tsx');
+  assert.ok(/const startedAt = React\.useRef\(Date\.now\(\)\)/.test(stream),
+    'the start time is not owned by the component');
+  assert.ok(!/startedAt:\s*number/.test(stream), 'startedAt is a prop again');
+  const effect = stream.slice(stream.indexOf('const tick = setInterval'));
+  assert.ok(/\}, \[\]\);/.test(effect.slice(0, 260)),
+    'the interval effect has a dependency again — it can be torn down mid-tick');
+
+  const page = read('src/pages/VerifyPage.tsx');
+  assert.ok(!page.includes('startedAt'), 'VerifyPage still owns a clock it can reset');
+});
+
 test('elapsed time is measured, and no remaining time is estimated', () => {
   const src = code('src/components/verify/ResearchStream.tsx');
   assert.ok(src.includes('Date.now() - startedAt'), 'elapsed time is not measured');

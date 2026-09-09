@@ -55,12 +55,10 @@ const TAGS = [
 const two = (n: number): string => String(n).padStart(2, '0');
 
 export function ResearchStream({
-  startedAt,
   subject,
   /** True once research finished and only the AI report is still being built. */
   synthesizing = false,
 }: {
-  startedAt: number;
   subject?: string | null;
   synthesizing?: boolean;
 }) {
@@ -68,10 +66,24 @@ export function ResearchStream({
   const [elapsed, setElapsed] = React.useState(0);
   const [step, setStep] = React.useState(0);
 
+  /*
+   * The start time lives HERE, in a ref, not in a prop.
+   *
+   * It was a prop, and the interval effect depended on it. Every rewrite of
+   * that prop tore the interval down and rebuilt it, more often than once a
+   * second — so it never ticked and the clock froze at 00:03 in production.
+   * This component mounts when a run begins and unmounts when it ends, so its
+   * own mount time IS the run start, and nothing outside can reset it.
+   */
+  const startedAt = React.useRef(Date.now());
+
   React.useEffect(() => {
-    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    const tick = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)),
+      1000
+    );
     return () => clearInterval(tick);
-  }, [startedAt]);
+  }, []);
 
   React.useEffect(() => {
     // Advances on its own. It is a sense of motion, not a measurement, so it

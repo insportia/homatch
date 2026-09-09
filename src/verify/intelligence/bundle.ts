@@ -15,7 +15,7 @@
 // would be an invented fact.
 
 import type { EvidencePackage } from './evidencePackage.ts';
-import { buildMarketIntelligence } from './marketIntelligence.ts';
+import { buildMarketIntelligence, qualityFactorsFrom } from './marketIntelligence.ts';
 import type { MarketIntelligence, RawComparable, Subject } from './marketIntelligence.ts';
 import { buildLocationIntelligence } from './locationIntelligence.ts';
 import type { LocationIntelligence } from './locationIntelligence.ts';
@@ -135,7 +135,26 @@ export function buildIntelligenceBundle(
     totalPrice: Number(unit.price) || undefined,
     currency: nonEmpty(unit.currency) ?? 'USD',
   };
-  const market = buildMarketIntelligence(subject, arr<RawComparable>(m.comparables));
+  /*
+   * Quality goes in WITH the comparables, not after them.
+   *
+   * Price per square metre on its own invites the wrong conclusion: a
+   * lower-density boutique building with parking and concierge is a
+   * different product from a corridor block at the same rate. These factors
+   * are read from the snapshot the research already produced, so each one
+   * traces to recorded evidence — and none of them carries a monetary
+   * adjustment, because the data does not support one.
+   */
+  const market = buildMarketIntelligence(
+    subject,
+    arr<RawComparable>(m.comparables),
+    qualityFactorsFrom(
+      snapshot.amenities,
+      snapshot.condition,
+      snapshot.constructionStatus,
+      snapshot.parking
+    )
+  );
 
   /* ---- people ---- */
 

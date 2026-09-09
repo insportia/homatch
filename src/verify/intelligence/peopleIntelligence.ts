@@ -71,6 +71,22 @@ export interface Person {
   sourceKind: 'OFFICIAL_REGISTRY' | 'OFFICIAL_DOCUMENT' | 'DEVELOPER_STATEMENT' | 'MEDIA_REPORT';
   /** The sentence that supports it, already redacted. Internal + explorer. */
   support?: string;
+  /**
+   * Every role this person holds at this entity, strongest first.
+   *
+   * `role` stays the primary one so existing readers are unaffected; this is
+   * what stops a director who is also a partner from being reported as only
+   * one of the two.
+   */
+  roles?: PersonRole[];
+  /**
+   * Ownership share, ONLY where the register actually stated one.
+   *
+   * Never inferred from a directorship and never estimated. Two directors do
+   * not imply 50/50, and a sole director implies nothing at all about who
+   * owns the company.
+   */
+  ownershipPct?: number;
 }
 
 export interface PeopleIntelligence {
@@ -81,6 +97,72 @@ export interface PeopleIntelligence {
   representationNote?: string;
   /** Company/name changes and similar corporate context. Neutral, not risk. */
   corporateChanges: string[];
+}
+
+/*
+ * Partners and their shares.
+ *
+ * The registry extract puts this in its own block, below the directorate.
+ * It is parsed separately rather than by widening the directors' window,
+ * because the two blocks mean different things and merging them would
+ * silently turn a shareholder into a director — which is precisely the kind
+ * of invented role this module exists to prevent.
+ *
+ * A share is recorded only when the line actually carries a percentage.
+ * A partner with no stated share is still a real, useful finding, so they
+ * are kept — just without a number attached.
+ */
+const PARTNER_ANCHORS = ['პარტნიორ', 'დამფუძნებ', 'წილი'];
+
+export function parseRegistryShareholders(
+  extractText: unknown,
+  entity?: string,
+  asOf?: string
+): Person[] {
+  const text = String(extractText ?? '');
+  let anchor = -1;
+  for (const a of PARTNER_ANCHORS) {
+    const at = text.indexOf(a);
+    if (at >= 0 && (anchor < 0 || at < anchor)) anchor = at;
+  }
+  if (anchor < 0) return [];
+
+  const block = text.slice(anchor, anchor + 900);
+  const people: Person[] = [];
+  const seen = new Set<string>();
+
+  for (const rawLine of block.split(/\\n|\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // Anything that names a management role belongs to the other block.
+    if (line.includes(JOINT) || line.includes(SOLE)) continue;
+
+    const namePart = redactPersonalData(line.split(',')[0]);
+    if (!looksLikePersonName(namePart)) continue;
+    const key = namePart.toLowerCase();
+    if (seen.has(key)) continue;
+
+    // redactPersonalData has already removed 9-11 digit personal ids, so a
+    // percentage here cannot be a fragment of one.
+    const pct = line.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/);
+    const value = pct ? Number(pct[1].replace(',', '.')) : undefined;
+
+    seen.add(key);
+    people.push({
+      name: namePart,
+      role: 'SHAREHOLDER',
+      entity,
+      representation: 'UNKNOWN',
+      certainty: 'REGISTERED',
+      historical: false,
+      asOf,
+      sourceKind: 'OFFICIAL_REGISTRY',
+      support: redactPersonalData(line),
+      ...(value !== undefined && value > 0 && value <= 100 ? { ownershipPct: value } : {}),
+    });
+  }
+
+  return people;
 }
 
 /* ------------------------------------------------------------------ *
@@ -256,6 +338,9 @@ export function buildPeopleIntelligence(report: unknown): PeopleIntelligence {
     const parsed = parseRegistryDirectors(e, entity);
     if (parsed.representation !== 'UNKNOWN') representation = parsed.representation;
     found.push(...parsed.people);
+    // Partners are a separate block with a separate meaning. Parsed on their
+    // own so a shareholder can never arrive wearing a director's role.
+    found.push(...parseRegistryShareholders(e, entity));
   }
 
   // 2. Structured fields, when the research layer did populate them.
@@ -280,19 +365,44 @@ export function buildPeopleIntelligence(report: unknown): PeopleIntelligence {
 
   // 3. De-duplicate on (name, entity). Keep the strongest certainty, and keep
   //    a JOINT representation once any source establishes it.
+  //
+  //    ONE PERSON CAN HOLD TWO ROLES, and in a small Georgian company they
+  //    usually do: the directors are frequently the partners. This used to
+  //    merge on (name, entity) alone and keep whichever record arrived first,
+  //    which silently discarded the second role — so a company whose
+  //    shareholders were also its directors reported no shareholders at all.
+  //    Roles are now collected, and a share found under either record is
+  //    carried across rather than dropped with it.
+  //
+  //    Still true, and the reason this merge is careful rather than clever:
+  //    a shared NAME across different entities is not a shared identity, and
+  //    identityKey keeps those apart.
   const RANK: Record<PersonCertainty, number> = {
     REGISTERED: 4, PUBLICLY_REPORTED: 3, CLAIMED: 2, UNCONFIRMED: 1,
+  };
+  /** Display order when someone holds more than one: the binding role first. */
+  const ROLE_RANK: Record<string, number> = {
+    DIRECTOR: 5, REPRESENTATIVE: 4, SHAREHOLDER: 3, FOUNDER: 2,
   };
   const byIdentity = new Map<string, Person>();
   for (const p of found) {
     const k = identityKey(p);
     const prev = byIdentity.get(k);
-    if (!prev) { byIdentity.set(k, p); continue; }
+    if (!prev) { byIdentity.set(k, { ...p, roles: [p.role] }); continue; }
+    const roles = [...new Set([...(prev.roles ?? [prev.role]), p.role])]
+      .sort((a, b) => (ROLE_RANK[b] ?? 0) - (ROLE_RANK[a] ?? 0));
     byIdentity.set(k, {
       ...prev,
       certainty: RANK[p.certainty] > RANK[prev.certainty] ? p.certainty : prev.certainty,
       representation: prev.representation !== 'UNKNOWN' ? prev.representation : p.representation,
-      role: prev.certainty === 'REGISTERED' ? prev.role : p.role,
+      role: (roles[0] as Person['role']) ?? prev.role,
+      roles,
+      // A stated share belongs to the person, whichever record carried it.
+      // Never overwritten by a record that has none.
+      ownershipPct: prev.ownershipPct ?? p.ownershipPct,
+      // Historical only if EVERY record says so: one current sighting makes
+      // the person current.
+      historical: prev.historical && p.historical,
     });
   }
 

@@ -19,7 +19,47 @@
 //
 // It is pure: same input, same output. No clock, no network, no database.
 
-export type ComparableTier = 'SAME_PROJECT' | 'SAME_STREET' | 'SAME_DISTRICT' | 'WIDER_MARKET';
+/**
+ * The comparison hierarchy, narrowest first.
+ *
+ * PEER_PROJECT sits between the district and the open market on purpose: a
+ * boutique development elsewhere in the city is a far better guide to a
+ * boutique development's price than the district average, which mixes it
+ * with generic stock it does not actually compete with.
+ */
+export type ComparableTier =
+  | 'SAME_PROJECT'
+  | 'SAME_STREET'
+  | 'SAME_DISTRICT'
+  | 'PEER_PROJECT'
+  | 'WIDER_MARKET';
+
+/** Published per band, so the customer sees the whole hierarchy at once. */
+export interface TierStats {
+  tier: ComparableTier;
+  median: number;
+  min: number;
+  max: number;
+  count: number;
+}
+
+/**
+ * Why a premium or a discount may be RATIONAL here.
+ *
+ * Quality is part of price. A boutique building on a large plot with parking
+ * and concierge is not the same asset as a corridor block at the same price
+ * per square metre, and reporting only the number invites exactly the wrong
+ * conclusion.
+ *
+ * These are qualitative and evidence-backed by construction — each one is
+ * only present because a snapshot field or an amenity says so. Deliberately
+ * NO monetary adjustment is attached: the data does not support one, and
+ * inventing "+8% for concierge" would be a fabrication with a decimal point.
+ */
+export interface QualityFactor {
+  factor: string;
+  direction: 'SUPPORTS_PREMIUM' | 'SUPPORTS_DISCOUNT';
+}
 
 export type Positioning =
   | 'BELOW_MARKET_RANGE'
@@ -89,6 +129,10 @@ export interface MarketIntelligence {
   /** Best few, already ordered. Kept for the model to reason over. */
   closest: ScoredComparable[];
   tierCounts: Record<ComparableTier, number>;
+  /** Every band that actually has listings, narrowest first. */
+  tiers: TierStats[];
+  /** Evidence-backed reasons a premium or discount may be rational. */
+  qualityFactors: QualityFactor[];
   /** Always true: everything here is an ASK. */
   askingNotTransaction: true;
 }
@@ -168,6 +212,7 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
   let tier: ComparableTier = 'WIDER_MARKET';
   let score = 20;
 
+  const peerProject = lower(c.comparableType) === 'peer_project';
   const sameProject =
     lower(c.comparableType) === 'same_project' ||
     (!!subject.project && !!c.project && lower(c.project).includes(lower(subject.project).split(' ')[0]));
@@ -189,6 +234,13 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
     tier = 'SAME_DISTRICT';
     score = 58;
     reasons.push('same district');
+  } else if (peerProject) {
+    // The research layer judged this a comparable development rather than
+    // arbitrary city stock. Better than the open market, weaker than a
+    // location match, and never allowed to outrank one.
+    tier = 'PEER_PROJECT';
+    score = 40;
+    reasons.push('comparable development');
   }
 
   const rooms = num(c.rooms);
@@ -255,14 +307,78 @@ export function positioningFor(deltaPct: number): Positioning {
  * The build                                                           *
  * ------------------------------------------------------------------ */
 
-const TIER_ORDER: ComparableTier[] = ['SAME_PROJECT', 'SAME_STREET', 'SAME_DISTRICT', 'WIDER_MARKET'];
+const TIER_ORDER: ComparableTier[] = [
+  'SAME_PROJECT', 'SAME_STREET', 'SAME_DISTRICT', 'PEER_PROJECT', 'WIDER_MARKET',
+];
+
+/*
+ * Quality signals, read from the snapshot the research already produced.
+ *
+ * Density is the strongest of them and the one a price-per-square-metre
+ * comparison misses completely: forty-two households on 2,100 m² is a
+ * different product from two hundred in a corridor block, whatever the
+ * headline rate says.
+ */
+const PREMIUM_HINTS: [RegExp, string][] = [
+  [/კონსიერჟ|concierge/i, 'კონსიერჟი'],
+  [/დაცვა|security/i, 'დაცვა'],
+  [/პარკინგ|parking|ავტოსადგომ/i, 'პარკინგი'],
+  [/ლიფტ|otis|elevator/i, 'ლიფტი'],
+  [/პანორამულ|panoramic|ალუმინის|aluminium/i, 'პანორამული შემინვა'],
+  [/ენერგოეფექტ|energy.?efficien/i, 'ენერგოეფექტურობა'],
+  [/სეისმ|seismic/i, 'სეისმური მდგრადობა'],
+  [/ბუტიკ|boutique|დაბალი სიმჭიდროვ|low.?density/i, 'დაბალი სიმჭიდროვე'],
+  [/ეზო|landscap|გამწვანებ/i, 'გამწვანებული ეზო'],
+];
+
+const DISCOUNT_HINTS: [RegExp, string][] = [
+  [/თეთრი კარკას|შავი კარკას|white frame|black frame|საჭიროებს რემონტს/i, 'დაუსრულებელი მდგომარეობა'],
+  [/მშენებარე|under construction|არ არის დასრულებ/i, 'მშენებლობის ეტაპი'],
+];
+
+/**
+ * Quality factors from what the research actually recorded.
+ *
+ * Every factor must trace to a snapshot field or an amenity string. Nothing
+ * is inferred from the price, which would be circular, and nothing is
+ * inferred from the project's name.
+ */
+export function qualityFactorsFrom(
+  amenities: string[] = [],
+  condition?: string,
+  constructionStatus?: string,
+  parking?: string
+): QualityFactor[] {
+  const haystack = [...amenities, condition ?? '', constructionStatus ?? '', parking ?? '']
+    .filter(Boolean)
+    .join(' | ');
+  if (!haystack.trim()) return [];
+
+  const out: QualityFactor[] = [];
+  const seen = new Set<string>();
+  for (const [re, factor] of PREMIUM_HINTS) {
+    if (re.test(haystack) && !seen.has(factor)) {
+      seen.add(factor);
+      out.push({ factor, direction: 'SUPPORTS_PREMIUM' });
+    }
+  }
+  for (const [re, factor] of DISCOUNT_HINTS) {
+    if (re.test(haystack) && !seen.has(factor)) {
+      seen.add(factor);
+      out.push({ factor, direction: 'SUPPORTS_DISCOUNT' });
+    }
+  }
+  return out;
+}
 
 /** At least this many listings before a tier can carry the analysis alone. */
 const MIN_FOR_BASIS = 2;
 
 export function buildMarketIntelligence(
   subject: Subject,
-  raw: RawComparable[]
+  raw: RawComparable[],
+  /** Snapshot signals, so the price can be read against the product. */
+  quality: QualityFactor[] = []
 ): MarketIntelligence | null {
   const scored = raw
     .map((c) => scoreComparable(subject, c))
@@ -307,6 +423,22 @@ export function buildMarketIntelligence(
     basisCount: basisSet.length,
     closest,
     tierCounts,
+    // Every populated band, narrowest first. A single listing is still worth
+    // showing as context — it is only barred from CARRYING the analysis,
+    // which is what basis/MIN_FOR_BASIS decides.
+    tiers: TIER_ORDER.map((t) => {
+      const inTier = scored.filter((c) => c.tier === t);
+      if (!inTier.length) return null;
+      const vs = inTier.map((c) => c.pricePerSqm);
+      return {
+        tier: t,
+        median: Math.round(median(vs)),
+        min: Math.round(Math.min(...vs)),
+        max: Math.round(Math.max(...vs)),
+        count: vs.length,
+      };
+    }).filter((x): x is TierStats => x !== null),
+    qualityFactors: quality,
     askingNotTransaction: true,
   };
 

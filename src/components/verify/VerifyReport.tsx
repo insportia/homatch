@@ -72,7 +72,7 @@ export interface PropertySnapshot {
 }
 
 export interface MarketTier {
-  label: string; median: number; min: number; max: number; count: number;
+  tier: string; median: number; min: number; max: number; count: number;
 }
 
 export interface MarketBlock {
@@ -81,11 +81,15 @@ export interface MarketBlock {
   subjectPricePerSqm?: number; deltaFromMedianPct?: number; positioning?: string;
   /** Same project / same street / district / peer projects, when researched. */
   tiers?: MarketTier[];
+  /** Evidence-backed reasons a premium or discount may be rational. */
+  qualityFactors?: { factor: string; direction: 'SUPPORTS_PREMIUM' | 'SUPPORTS_DISCOUNT' }[];
 }
 
 export interface PersonBlock {
   name: string; role: string; entity?: string; representation: string;
   certainty: string; historical: boolean; asOf?: string;
+  /** Every role held at this entity — a director is often also a partner. */
+  roles?: string[];
   /** Only ever present when the register actually stated it. */
   ownershipPct?: number;
 }
@@ -444,7 +448,12 @@ const CompanyGraph: React.FC<{ people: PersonBlock[]; owner?: string }> = ({ peo
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1.5 min-w-0">
       <span className="text-sm font-medium break-words">{readable(p.name)}</span>
       <span className="text-xs text-muted-foreground break-words">
-        {t(`verify_role_${String(p.role || '').toLowerCase()}`)}
+        {/* Every role, not just the primary one: in a small company the
+            directors are usually also the partners, and showing one of the
+            two tells the buyer less than the register did. */}
+        {(p.roles?.length ? p.roles : [p.role])
+          .map((role) => t(`verify_role_${String(role || '').toLowerCase()}`))
+          .join(' · ')}
         {typeof p.ownershipPct === 'number' ? ` · ${p.ownershipPct}%` : ''}
         {p.historical && p.asOf ? ` · ${p.asOf}` : ''}
       </span>
@@ -578,6 +587,56 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
           {m.subjectPricePerSqm.toLocaleString()} {m.currency}/m² ·{' '}
           {m.deltaFromMedianPct > 0 ? '+' : ''}{m.deltaFromMedianPct}%
         </p>
+      ) : null}
+
+      {/* THE WHOLE HIERARCHY, not only the band that won.
+          Comparing a project's units to each other answers "what do five
+          flats in this building cost". The buyer asked whether the property
+          is well positioned in its real local market, and that question needs
+          the street, the district and comparable developments beside it.
+          Rows, not a table: at 320px a five-column table has nowhere to go. */}
+      {m.tiers && m.tiers.length > 1 ? (
+        <dl className="divide-y divide-border/60 border-t border-border/60 pt-1">
+          {m.tiers.map((tr) => (
+            <div key={tr.tier} className="flex items-baseline justify-between gap-3 py-1.5 min-w-0">
+              <dt className="text-[11px] text-muted-foreground break-words min-w-0">
+                {t(`verify_mkt_${tr.tier.toLowerCase()}`)}
+                <span className="ms-1 opacity-70">
+                  {tr.count} {t('verify_mkt_listings')}
+                </span>
+              </dt>
+              <dd className="text-xs tabular-nums shrink-0">
+                {tr.median.toLocaleString()}
+                {tr.min !== tr.max ? (
+                  <span className="text-muted-foreground">
+                    {' '}({tr.min.toLocaleString()}–{tr.max.toLocaleString()})
+                  </span>
+                ) : null}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
+      {/* Why a premium or a discount may be RATIONAL. Deliberately no money
+          attached to any of them: the evidence supports the factor, not a
+          number, and "+8% for concierge" would be a fabrication with a
+          decimal point in it. */}
+      {m.qualityFactors?.length ? (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {m.qualityFactors.map((q, i) => (
+            <span
+              key={i}
+              className={`rounded-full border px-2 py-0.5 text-[11px] break-words ${
+                q.direction === 'SUPPORTS_PREMIUM'
+                  ? 'border-border text-foreground/80'
+                  : 'border-dashed border-border text-muted-foreground'
+              }`}
+            >
+              {readable(q.factor)}
+            </span>
+          ))}
+        </div>
       ) : null}
     </div>
   );

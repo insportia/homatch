@@ -345,6 +345,21 @@ test('a cancelled run is shown as stopped, never as failed', () => {
 
 /* ── THE ACTIVE RUN ALWAYS HAS A REPRESENTATION ───────────────────── */
 
+test('real findings appear DURING the run, not only at the end', () => {
+  // Caught on the live E2E: seven minutes in, the pipeline had already
+  // identified the property, the project and the developer, and the stream
+  // was still showing only abstract activity lines. `report` is set at
+  // COMPLETE, so during research there was nothing real to show.
+  const page = code('src/pages/VerifyPage.tsx').replace(/\s+/g, ' ');
+  assert.ok(/if\(data\?\.result_json\)setPartial\(data\.result_json\)/.test(page),
+    'the in-flight research result is never captured');
+  assert.ok(/result=\{report\|\|partial\}/.test(page),
+    'the stream is not given the in-flight result');
+  // A different run must never inherit the previous one's findings.
+  assert.ok((page.match(/setPartial\(null\)/g) ?? []).length >= 2,
+    'the partial result is not cleared when switching runs');
+});
+
 test('a page with no job named in its URL reattaches to a running one', () => {
   const page = code('src/pages/VerifyPage.tsx').replace(/\s+/g, ' ');
   assert.ok(/recovered\.current/.test(page), 'there is no reattach guard');

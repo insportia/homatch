@@ -5,7 +5,8 @@ import path from 'node:path';
 
 import { buildEvidencePackage } from '../evidencePackage.ts';
 import { buildIntelligencePrompt } from '../prompt.ts';
-import { parseReport, validateReport, finalizeReport, deterministicReport } from '../report.ts';
+import { parseReport, validateReport, finalizeReport, deterministicReport,
+         MAX_HIGHLIGHTS, MAX_KEY_FINDINGS } from '../report.ts';
 import { buildIntelligenceBundle } from '../bundle.ts';
 import {
   buildMarketIntelligence, scoreComparable, median, mean, positioningFor, askingCagrPct,
@@ -328,9 +329,11 @@ test('there is NO "unconfirmed" field left in the report contract', () => {
   const src = read('src/verify/intelligence/report.ts');
   assert.ok(!/unconfirmed/i.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')),
     'the deficit field is back in the contract');
-  const { system } = buildIntelligencePrompt(buildEvidencePackage(RICH));
-  assert.ok(/There is NO "unconfirmed" field/.test(system));
-  assert.ok(/turnTheseIntoAdvice/.test(buildIntelligencePrompt(buildEvidencePackage(RICH)).user));
+  const { system, user } = buildIntelligencePrompt(buildEvidencePackage(RICH));
+  // v3 removed the checklist too, so the field it fed is gone as well.
+  assert.ok(/There is NO "buyerActions" field/.test(system));
+  assert.ok(/contextForAdvice/.test(user));
+  assert.ok(!/turnTheseIntoAdvice/.test(user), 'the advice list is still named after a deficit');
 });
 
 test('incomplete checks reach the model as advice, not as a deficit list', () => {
@@ -338,58 +341,83 @@ test('incomplete checks reach the model as advice, not as a deficit list', () =>
   assert.ok(pkg.unavailable.length, 'the incomplete checks were lost');
   const { user } = buildIntelligencePrompt(pkg);
   const parsed = JSON.parse(user);
-  assert.ok(Array.isArray(parsed.turnTheseIntoAdvice));
+  // Present as CONTEXT for advice, and never as a list to print back.
+  assert.ok(Array.isArray(parsed.contextForAdvice));
   assert.equal(parsed.unconfirmed, undefined);
   assert.equal(parsed.couldNotBeConfirmed, undefined);
+  assert.equal(parsed.turnTheseIntoAdvice, undefined);
 });
 
-test('dropping incomplete checks entirely is rejected — silence reads as "all clear"', () => {
+test('a key finding with no consequence is rejected — that is a fact list', () => {
+  // The v2 rules these replace required buyerActions to exist and to be
+  // titled. Both existed to stop the checklist rendering as a meaningless
+  // "1 2 3", and the checklist is gone. The equivalent failure now is a
+  // finding that states something without saying why the buyer should care.
   const pkg = buildEvidencePackage(RICH);
-  const noActions = JSON.stringify({
-    overallView: { label: 'POSITIVE', statement: 'ok' },
-    executiveSummary: 'ok',
+  const noWhy = JSON.stringify({
+    summary: {
+      label: 'BALANCED', statement: 'ok',
+      highlights: [{ dimension: 'LEGAL_CONTEXT', sentiment: 'BALANCED', headline: 'h', detail: 'd', cites: [pkg.items[0].id] }],
+    },
+    keyFindings: [{ finding: 'რაღაც დადგინდა.', whyItMatters: '', sentiment: 'BALANCED', cites: [pkg.items[0].id] }],
     sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [pkg.items[0].id] }],
-    buyerActions: [],
   });
-  const check = validateReport(pkg, parseReport(noActions));
+  const check = validateReport(pkg, parseReport(noWhy));
   assert.equal(check.ok, false);
-  assert.ok(check.problems.some((p) => p.includes('no next steps')));
+  assert.ok(check.problems.some((p) => p.includes('does not say why it matters')));
 });
 
-test('a buyer action without a title is rejected — "1 2 3" is not a recommendation', () => {
+test('the findings shortlist and the highlights are both capped', () => {
   const pkg = buildEvidencePackage(RICH);
-  const untitled = JSON.stringify({
-    overallView: { label: 'MIXED', statement: 'ok' },
-    executiveSummary: 'ok',
-    sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [pkg.items[0].id] }],
-    buyerActions: [{ action: 'გადაამოწმეთ', why: 'იმიტომ', cites: [] }],
+  const id = pkg.items[0].id;
+  const many = JSON.stringify({
+    summary: {
+      label: 'BALANCED', statement: 'ok',
+      highlights: Array.from({ length: 12 }, (_, i) => ({
+        dimension: 'PROJECT_QUALITY', sentiment: 'BALANCED',
+        headline: 'h' + i, detail: 'd', cites: [id],
+      })),
+    },
+    keyFindings: Array.from({ length: 20 }, (_, i) => ({
+      finding: 'f' + i, whyItMatters: 'w', sentiment: 'BALANCED', cites: [id],
+    })),
+    sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [id] }],
   });
-  const check = validateReport(pkg, parseReport(untitled));
-  assert.equal(check.ok, false);
-  assert.ok(check.problems.some((p) => p.includes('no title')));
+  const parsed = parseReport(many);
+  assert.equal(parsed.summary.highlights.length, MAX_HIGHLIGHTS);
+  assert.equal(parsed.keyFindings.length, MAX_KEY_FINDINGS);
 });
 
 test('a well-formed v2 report is accepted', () => {
   const pkg = buildEvidencePackage(RICH);
   const good = JSON.stringify({
-    overallView: { label: 'MOSTLY_POSITIVE', statement: 'საერთო სურათი დადებითია.' },
-    executiveSummary: 'პირველი.\n\nმეორე.',
-    sections: [{ key: 'MARKET', title: 'ფასი', body: 'ბაზარი', cites: [pkg.items[0].id] }],
+    summary: {
+      label: 'POSITIVE',
+      statement: 'საერთო სურათი დადებითია.',
+      highlights: [
+        { dimension: 'MARKET_POSITION', sentiment: 'POSITIVE', headline: 'ბაზართან შესაბამისი ფასი', detail: 'იმავე პროექტის დონეზეა.', cites: [pkg.items[0].id] },
+        { dimension: 'PROJECT_QUALITY', sentiment: 'POSITIVE', headline: 'დაბალი სიმჭიდროვე', detail: 'ბუტიკური ფორმატი.', cites: [pkg.items[0].id] },
+      ],
+    },
+    keyFindings: [{ finding: 'ფასი ბაზრის დონეზეა.', whyItMatters: 'მოლაპარაკების სივრცე შეზღუდულია.', sentiment: 'BALANCED', cites: [pkg.items[0].id] }],
+    sections: [{ key: 'MARKET', title: 'ფასი', body: 'ბაზარი', metrics: [{ label: 'მედიანა', value: '1,850 $/მ²' }], cites: [pkg.items[0].id] }],
     attentionPoints: [],
-    buyerActions: [{ title: 'ბანკის თანხმობა', action: 'მოითხოვეთ', why: 'რომ', cites: [pkg.items[0].id] }],
     finalView: 'დასკვნა.',
     contractUpload: { recommend: true, text: 'ატვირთეთ.' },
   });
   const final = finalizeReport(pkg, good);
   assert.equal(final.mode, 'MODEL', final.rejectedBecause.join('; '));
-  assert.equal(final.buyerActions[0].title, 'ბანკის თანხმობა');
+  assert.equal(final.summary.highlights.length, 2);
+  assert.equal(final.sections[0].metrics[0].value, '1,850 $/მ²');
 });
 
-test('even the deterministic fallback turns gaps into actions, not a deficit list', () => {
+test('the deterministic fallback still produces a summary and passes its own gate', () => {
   const pkg = buildEvidencePackage(RICH);
   const d = deterministicReport(pkg);
-  assert.ok(d.buyerActions.length, 'the fallback dropped the incomplete checks');
-  assert.ok(d.buyerActions.every((a) => a.title));
+  assert.ok(d.summary.statement, 'the fallback has no verdict at all');
+  assert.ok(d.summary.highlights.length, 'the fallback has no highlights');
+  assert.ok(d.keyFindings.every((f) => f.whyItMatters));
+  // It must never trip the epistemic guard: it only ever restates evidence.
   assert.equal(validateReport(pkg, d).ok, true);
 });
 
@@ -453,17 +481,23 @@ test('there is no "could not confirm" block in the primary report', () => {
   assert.ok(!src.includes('verify_ir_unconfirmed_title'));
 });
 
-test('the report shows a snapshot, price position, people and self-checks', () => {
+test('the report shows a summary, snapshot, price position, people and self-checks', () => {
   const src = REPORT_TSX();
-  for (const c of ['Snapshot', 'PriceBar', 'People', 'SelfChecks']) {
+  // People became CompanyGraph: the flat list said "director, company" and
+  // drew nothing, so it could not show who binds whom or who owns what.
+  for (const c of ['SummaryHero', 'KeyFindings', 'Snapshot', 'PriceBar', 'CompanyGraph', 'SelfChecks']) {
     assert.ok(new RegExp(`const ${c}`).test(src), `${c} is missing from the report`);
   }
 });
 
-test('buyer actions render their title, never a bare index', () => {
+test('emphasis comes from structured metrics, not from regexing prose', () => {
   const src = REPORT_TSX();
-  assert.ok(/clean\(a\.title\)/.test(src), 'action titles are not rendered');
-  assert.ok(!/\{i \+ 1\}/.test(src), 'the numbered list is back');
+  assert.ok(/const Metrics/.test(src), 'there is no metric rendering at all');
+  assert.ok(/s\.metrics\?\.length/.test(src), 'metrics are not read from the section');
+  // Highlighting arbitrary generated Georgian with patterns emphasises the
+  // wrong half of a sentence and breaks the moment the wording changes.
+  assert.ok(!/dangerouslySetInnerHTML|\.replace\(\/\b\(/.test(src),
+    'the renderer is pattern-highlighting model prose');
 });
 
 /* ---------------------------------------------------------------- *

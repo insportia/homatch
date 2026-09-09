@@ -1,6 +1,28 @@
 // HOMATCH — the customer's Buyer Intelligence Report.
 //
-// WHAT CHANGED AND WHY
+// V3: THE LENGTH PROBLEM WAS A SHAPE PROBLEM
+//
+// The report was accurate and unreadable. Not because it held too much — the
+// buyer wants that research — but because all of it was the same shape:
+// paragraphs, in a column, with the decisive numbers buried mid-sentence. So
+// this version gives the renderer more to do.
+//
+//   - A SUMMARY the customer reads in fifteen seconds: one overall view and
+//     three to six highlights, each with its own dimension and sentiment.
+//   - KEY FINDINGS as a shortlist, each carrying why it matters.
+//   - METRIC CHIPS lifted out of prose as structured data. Not by regexing
+//     model sentences — that emphasises the wrong half and breaks the moment
+//     the wording changes — but because the model names them as metrics.
+//   - A COMPANY block that DRAWS the relationship rather than describing it,
+//     including ownership when the evidence supports it.
+//
+// And one deletion: the pre-purchase checklist is gone. Not renamed —
+// removed. It had become a bin for every field the pipeline failed to fill,
+// so a reader got six near-identical "confirm before signing" lines with no
+// way to tell which mattered. Advice now sits in the section that gives it
+// meaning.
+//
+// EARLIER, AND STILL TRUE
 //
 // The previous version already dropped the card grid for an editorial column.
 // Reading real reports it produced showed the remaining problems were about
@@ -29,7 +51,8 @@ import { Button } from '@/components/ui/button';
 import { FileText, Copy, Check, ExternalLink, MapPin, Users } from 'lucide-react';
 import { readable } from '@/verify/readableText';
 
-export type OverallLabel = 'POSITIVE' | 'MOSTLY_POSITIVE' | 'MIXED' | 'NEEDS_ATTENTION';
+export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
+export type Sentiment = 'POSITIVE' | 'BALANCED' | 'ATTENTION';
 
 export interface EvidenceRef {
   id: string;
@@ -48,15 +71,23 @@ export interface PropertySnapshot {
   parking?: string; amenities?: string[];
 }
 
+export interface MarketTier {
+  label: string; median: number; min: number; max: number; count: number;
+}
+
 export interface MarketBlock {
   currency: string; median: number; mean: number; min: number; max: number; count: number;
   basis: string; basisCount: number;
   subjectPricePerSqm?: number; deltaFromMedianPct?: number; positioning?: string;
+  /** Same project / same street / district / peer projects, when researched. */
+  tiers?: MarketTier[];
 }
 
 export interface PersonBlock {
   name: string; role: string; entity?: string; representation: string;
   certainty: string; historical: boolean; asOf?: string;
+  /** Only ever present when the register actually stated it. */
+  ownershipPct?: number;
 }
 
 export interface SelfCheck {
@@ -64,12 +95,30 @@ export interface SelfCheck {
   url: string; copyValue: string; copyLabel: string; contextValue?: string;
 }
 
+export interface SummaryHighlight {
+  dimension: string;
+  sentiment: Sentiment;
+  headline: string;
+  detail: string;
+  cites: string[];
+}
+
+export interface KeyFinding {
+  finding: string;
+  whyItMatters: string;
+  sentiment: Sentiment;
+  cites: string[];
+}
+
 export interface BuyerIntelligence {
-  overallView: { label: OverallLabel; statement: string };
-  executiveSummary: string;
-  sections: { key: string; title: string; body: string; cites: string[] }[];
+  summary: { label: OverallLabel; statement: string; highlights: SummaryHighlight[] };
+  keyFindings: KeyFinding[];
+  sections: {
+    key: string; title: string; body: string;
+    metrics?: { label: string; value: string }[];
+    cites: string[];
+  }[];
   attentionPoints: { point: string; why: string; cites: string[] }[];
-  buyerActions: { title: string; action: string; why: string; cites: string[] }[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
 }
@@ -87,10 +136,26 @@ export interface VerifySynthesis {
 
 const OVERALL_KEY: Record<OverallLabel, string> = {
   POSITIVE: 'verify_ir_overall_positive',
-  MOSTLY_POSITIVE: 'verify_ir_overall_mostly_positive',
-  MIXED: 'verify_ir_overall_mixed',
+  BALANCED: 'verify_ir_overall_balanced',
   NEEDS_ATTENTION: 'verify_ir_overall_attention',
 };
+
+/*
+ * Restrained on purpose.
+ *
+ * A report that is mostly good should not be a wall of green, and ATTENTION
+ * must not read as danger — it means "look at this", and most things worth
+ * looking at are neither good nor bad. So the difference between the three
+ * states is a border and a small dot, not a filled colour block.
+ */
+const SENTIMENT_STYLE: Record<Sentiment, { dot: string; edge: string }> = {
+  POSITIVE: { dot: 'bg-emerald-500/80', edge: 'border-s-emerald-500/50' },
+  BALANCED: { dot: 'bg-muted-foreground/50', edge: 'border-s-border' },
+  ATTENTION: { dot: 'bg-amber-500/80', edge: 'border-s-amber-400/70' },
+};
+
+const sentimentOf = (v: unknown): Sentiment =>
+  v === 'POSITIVE' || v === 'ATTENTION' ? v : 'BALANCED';
 
 /*
  * Evidence ids belong in `cites`, never in a sentence. The prompt says so,
@@ -140,36 +205,48 @@ export function VerifyReport({
   }
 
   const sections = (r.sections ?? []).filter((s) => clean(s.body));
-  const people = (synthesis.people?.people ?? []).slice(0, 4);
+  const people = (synthesis.people?.people ?? []).slice(0, 6);
+  const findings = (r.keyFindings ?? []).filter((f) => clean(f.finding));
 
   return (
     <article className="mx-auto max-w-[68ch] space-y-8">
-      <header className="space-y-3 border-b border-border pb-6">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          {t(OVERALL_KEY[r.overallView?.label] ?? OVERALL_KEY.MIXED)}
-        </p>
-        {r.overallView?.statement ? (
-          <p className="text-lg sm:text-xl font-semibold leading-8 break-words">
-            {clean(r.overallView.statement)}
-          </p>
-        ) : null}
-      </header>
+      <SummaryHero summary={r.summary} />
 
       {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
 
-      {r.executiveSummary ? (
-        <section className="space-y-4"><Prose text={r.executiveSummary} /></section>
-      ) : null}
+      {findings.length ? <KeyFindings findings={findings} /> : null}
 
       {sections.map((s) => (
         <section key={s.key} className="space-y-3">
           <h2 className="text-base font-semibold tracking-tight break-words">{clean(s.title)}</h2>
+          {/* Decision-relevant numbers, pulled out of the paragraph so a
+              scanning reader meets them first. */}
+          {s.metrics?.length ? <Metrics metrics={s.metrics} /> : null}
           <Prose text={s.body} />
           {s.key === 'MARKET' && synthesis.market ? <PriceBar m={synthesis.market} /> : null}
+          {s.key === 'PEOPLE' && people.length ? (
+            <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
+          ) : null}
         </section>
       ))}
 
-      {people.length ? <People people={people} note={synthesis.people?.representationNote} /> : null}
+      {/* Only when the model had nothing to say about them under PEOPLE —
+          participants are context and must not vanish just because the prose
+          did not reach them. */}
+      {people.length && !sections.some((s) => s.key === 'PEOPLE') ? (
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold tracking-tight break-words flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            {t('verify_ir_people_title')}
+          </h2>
+          <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
+          {synthesis.people?.representationNote ? (
+            <p className="text-sm leading-6 text-muted-foreground break-words">
+              {readable(synthesis.people.representationNote)}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {r.attentionPoints?.length ? (
         <section className="space-y-3">
@@ -189,31 +266,13 @@ export function VerifyReport({
         </section>
       ) : null}
 
-      {/* Titled, scannable recommendations. The old "1 2 3" list was not
-          something a person could skim, and the numbers carried no meaning. */}
-      {r.buyerActions?.length ? (
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold tracking-tight break-words">
-            {t('verify_ir_actions_title')}
-          </h2>
-          <div className="divide-y divide-border rounded-xl border border-border">
-            {r.buyerActions.map((a, i) => (
-              <div key={i} className="p-4 space-y-1">
-                {a.title ? (
-                  <p className="text-sm font-semibold break-words">{clean(a.title)}</p>
-                ) : null}
-                <p className="text-[15px] leading-7 break-words">{clean(a.action)}</p>
-                {a.why ? (
-                  <p className="text-sm leading-6 text-muted-foreground break-words">{clean(a.why)}</p>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {r.finalView ? (
-        <section className="space-y-3 border-t border-border pt-6"><Prose text={r.finalView} /></section>
+        <section className="space-y-3 border-t border-border pt-6">
+          <h2 className="text-base font-semibold tracking-tight break-words">
+            {t('verify_ir_final_title')}
+          </h2>
+          <Prose text={r.finalView} />
+        </section>
       ) : null}
 
       {synthesis.selfChecks?.length ? <SelfChecks checks={synthesis.selfChecks} /> : null}
@@ -243,6 +302,181 @@ export function VerifyReport({
     </article>
   );
 }
+
+/* ------------------------------------------------------------------ *
+ * Buyer Intelligence Summary                                          *
+ * ------------------------------------------------------------------ */
+
+/**
+ * The first thing on the page, and for many readers the only thing.
+ *
+ * The old header was a label and a sentence, and everything that justified
+ * them was hundreds of words further down. This carries the verdict, the
+ * reason, and the three-to-six dimensions it rests on, in one screen.
+ */
+const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ summary }) => {
+  const { t } = useLanguage();
+  if (!summary) return null;
+  const label = (['POSITIVE', 'BALANCED', 'NEEDS_ATTENTION'] as OverallLabel[]).includes(summary.label)
+    ? summary.label
+    : 'BALANCED';
+  const highlights = (summary.highlights ?? []).filter((h) => clean(h.headline)).slice(0, 6);
+
+  return (
+    <header className="rounded-2xl border border-border bg-card/50 p-5 sm:p-6 space-y-5">
+      <div className="space-y-2">
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          {t('verify_ir_summary_title')}
+        </p>
+        <p className="text-xl sm:text-2xl font-semibold leading-tight break-words">
+          {t(OVERALL_KEY[label])}
+        </p>
+        {summary.statement ? (
+          <p className="text-[15px] leading-7 text-foreground/85 break-words">
+            {clean(summary.statement)}
+          </p>
+        ) : null}
+      </div>
+
+      {highlights.length ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {highlights.map((h, i) => {
+            const st = SENTIMENT_STYLE[sentimentOf(h.sentiment)];
+            return (
+              <div key={i} className={`rounded-lg border border-border border-s-2 ${st.edge} bg-background/50 p-3 min-w-0`}>
+                <div className="flex items-center gap-2">
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${st.dot}`} aria-hidden="true" />
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground break-words">
+                    {t(`verify_dim_${String(h.dimension || '').toLowerCase()}`)}
+                  </p>
+                </div>
+                <p className="mt-1 text-sm font-semibold break-words">{clean(h.headline)}</p>
+                {h.detail ? (
+                  <p className="mt-0.5 text-xs leading-5 text-muted-foreground break-words">
+                    {clean(h.detail)}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </header>
+  );
+};
+
+/* ------------------------------------------------------------------ *
+ * Key findings                                                        *
+ * ------------------------------------------------------------------ */
+
+/** A shortlist. Every row answers "why does this matter to me". */
+const KeyFindings: React.FC<{ findings: KeyFinding[] }> = ({ findings }) => {
+  const { t } = useLanguage();
+  return (
+    <section className="space-y-3">
+      <h2 className="text-base font-semibold tracking-tight break-words">
+        {t('verify_ir_findings_title')}
+      </h2>
+      <ul className="space-y-3">
+        {findings.slice(0, 7).map((f, i) => {
+          const st = SENTIMENT_STYLE[sentimentOf(f.sentiment)];
+          return (
+            <li key={i} className={`border-s-2 ${st.edge} ps-4 space-y-1`}>
+              <p className="text-[15px] leading-7 font-medium break-words">{clean(f.finding)}</p>
+              {f.whyItMatters ? (
+                <p className="text-sm leading-6 text-muted-foreground break-words">
+                  {clean(f.whyItMatters)}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+};
+
+/* ------------------------------------------------------------------ *
+ * Metric chips                                                        *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Emphasis from structured data, never from pattern-matching prose.
+ *
+ * Highlighting phrases inside generated Georgian with regexes is brittle and
+ * tends to emphasise the wrong half of a sentence. The model names the
+ * numbers that matter; this renders exactly those.
+ */
+const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ metrics }) => (
+  <div className="flex flex-wrap gap-2">
+    {metrics.slice(0, 4).map((m, i) => (
+      <div key={i} className="rounded-lg border border-border bg-muted/40 px-3 py-1.5 min-w-0">
+        <span className="block text-[10px] uppercase tracking-wide text-muted-foreground break-words">
+          {clean(m.label)}
+        </span>
+        <span className="block text-sm font-semibold tabular-nums break-words">{clean(m.value)}</span>
+      </div>
+    ))}
+  </div>
+);
+
+/* ------------------------------------------------------------------ *
+ * Company and participants                                            *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Who is on the other side of this transaction, drawn rather than described.
+ *
+ * Deliberately a plain indented tree and not a graph visualisation: the
+ * reader is a person buying a flat, not an analyst. It collapses to a single
+ * column on a phone because it never was more than one.
+ *
+ * Ownership percentages appear ONLY when the register stated them. A director
+ * is not a shareholder, and nothing here infers one from the other.
+ */
+const CompanyGraph: React.FC<{ people: PersonBlock[]; owner?: string }> = ({ people, owner }) => {
+  const { t } = useLanguage();
+  const entity = owner || people.find((p) => p.entity)?.entity;
+  const current = people.filter((p) => !p.historical);
+  const historical = people.filter((p) => p.historical);
+
+  const Row: React.FC<{ p: PersonBlock }> = ({ p }) => (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1.5 min-w-0">
+      <span className="text-sm font-medium break-words">{readable(p.name)}</span>
+      <span className="text-xs text-muted-foreground break-words">
+        {t(`verify_role_${String(p.role || '').toLowerCase()}`)}
+        {typeof p.ownershipPct === 'number' ? ` · ${p.ownershipPct}%` : ''}
+        {p.historical && p.asOf ? ` · ${p.asOf}` : ''}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+      {entity ? (
+        <div className="flex items-center gap-2 min-w-0">
+          <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <p className="text-sm font-semibold break-words min-w-0">{readable(entity)}</p>
+        </div>
+      ) : null}
+      {current.length ? (
+        <div className="ps-4 border-s border-border divide-y divide-border/60">
+          {current.map((p, i) => <Row key={i} p={p} />)}
+        </div>
+      ) : null}
+      {historical.length ? (
+        <div className="ps-4 space-y-1">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {t('verify_ir_people_historical')}
+          </p>
+          <div className="border-s border-dashed border-border ps-3 divide-y divide-border/40">
+            {historical.map((p, i) => <Row key={i} p={p} />)}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 /* ------------------------------------------------------------------ *
  * Snapshot                                                            *
@@ -356,33 +590,6 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
 /** Who is connected to the property. Context, never a risk list — so no
  *  warning colours, no scores, and only the handful a buyer has a reason to
  *  know about. */
-const People: React.FC<{ people: PersonBlock[]; note?: string }> = ({ people, note }) => {
-  const { t } = useLanguage();
-  return (
-    <section className="space-y-3">
-      <h2 className="text-base font-semibold tracking-tight break-words flex items-center gap-2">
-        <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        {t('verify_ir_people_title')}
-      </h2>
-      <div className="divide-y divide-border">
-        {people.map((p, i) => (
-          <div key={i} className="py-3 space-y-0.5">
-            <p className="text-sm font-medium break-words">{readable(p.name)}</p>
-            <p className="text-xs text-muted-foreground break-words">
-              {t(`verify_role_${p.role.toLowerCase()}`)}
-              {p.entity ? ` · ${readable(p.entity)}` : ''}
-              {p.historical && p.asOf ? ` · ${p.asOf}` : ''}
-            </p>
-          </div>
-        ))}
-      </div>
-      {note ? (
-        <p className="text-sm leading-6 text-muted-foreground break-words">{readable(note)}</p>
-      ) : null}
-    </section>
-  );
-};
-
 /* ------------------------------------------------------------------ *
  * Official self-checks                                                *
  * ------------------------------------------------------------------ */

@@ -86,21 +86,48 @@ test('an incomplete check is advice, never a warning', () => {
 
 /* ---------------- the verdict vocabulary is the product vocabulary ---------------- */
 
-test('the overall view is one of the four permitted readings and nothing else', () => {
-  for (const v of ['POSITIVE', 'MOSTLY_POSITIVE', 'MIXED', 'NEEDS_ATTENTION']) {
+test('the overall view is one of the three permitted readings and nothing else', () => {
+  // Three, not four. MOSTLY_POSITIVE and MIXED were a distinction without a
+  // difference to a reader, and "mixed" reads as a problem when most
+  // properties are simply ordinary.
+  for (const v of ['POSITIVE', 'BALANCED', 'NEEDS_ATTENTION']) {
     assert.match(report, new RegExp(`${v}:`), `${v} must be renderable`);
   }
   // No numeric confidence score as the headline judgement.
   assert.ok(!/\/\s*100|percent|score/i.test(reportCode), 'no 73/100-style scoring in the overall view');
 });
 
-test('the overall view is a sentence, not a traffic light', () => {
-  // The label names the section; the STATEMENT carries the judgement. A
-  // coloured chip alone would be exactly the compliance-robot output this
-  // report replaced.
-  assert.match(reportCode, /overallView\?\.statement/);
-  assert.match(reportCode, /executiveSummary/);
+test('the summary is a verdict WITH its reasons, not a traffic light', () => {
+  // The label names the state; the statement carries the judgement; the
+  // highlights carry what it rests on. A coloured chip alone would be exactly
+  // the compliance-robot output this report replaced.
+  assert.match(reportCode, /summary\.statement/);
+  assert.match(reportCode, /summary\.highlights/);
   assert.ok(!/ShieldCheck|ShieldX|traffic/.test(reportCode), 'the verdict chip is back');
+  // Restraint: the whole thing must not turn green because the news is good.
+  assert.ok(/SENTIMENT_STYLE/.test(reportCode), 'sentiment styling is not centralised');
+  // Colour is allowed to mark a state, not to flood the page. Every sentiment
+  // class must be a small dot or a left edge — never a filled panel, and never
+  // the destructive palette, which would make "look at this" read as "danger".
+  const styleBlock = reportCode.slice(reportCode.indexOf('SENTIMENT_STYLE'), reportCode.indexOf('sentimentOf'));
+  assert.ok(!/bg-destructive|bg-red-|text-red-/.test(styleBlock), 'the danger palette is back');
+  for (const cls of styleBlock.match(/bg-[a-z0-9-]+(?:\/\d+)?/g) ?? []) {
+    assert.match(cls, /\/\d+$/, `${cls} is a solid fill — sentiment colour must stay muted`);
+  }
+  assert.ok(!/bg-emerald|bg-amber/.test(reportCode.replace(styleBlock, '')),
+    'sentiment colour leaked outside the one place that owns it');
+});
+
+test('a summary highlight is scannable: dimension, headline, then detail', () => {
+  for (const bit of ['h.dimension', 'h.headline', 'h.detail', 'verify_dim_']) {
+    assert.ok(reportCode.includes(bit), `${bit} is missing from the summary`);
+  }
+});
+
+test('key findings each carry why they matter', () => {
+  assert.ok(reportCode.includes('f.whyItMatters'),
+    'findings render without their consequence — that is a fact list again');
+  assert.ok(/slice\(0, 7\)/.test(reportCode), 'the findings shortlist is uncapped');
 });
 
 /* ---------------- the research dump is no longer the report ---------------- */
@@ -155,7 +182,7 @@ test('readable() tolerates a stray replacement character in good text', () => {
 });
 
 test('every customer-visible string is cleaned before it renders', () => {
-  for (const field of ['executiveSummary', 'sections', 'attentionPoints', 'buyerActions', 'finalView']) {
+  for (const field of ['summary', 'keyFindings', 'sections', 'attentionPoints', 'finalView']) {
     assert.ok(reportCode.indexOf(field) > 0, `${field} should be rendered`);
   }
   // v2 routes every string through clean(), which is readable() — the
@@ -164,7 +191,8 @@ test('every customer-visible string is cleaned before it renders', () => {
   assert.match(reportCode, /const clean = \(s: unknown\): string => stripEvidenceIds\(readable\(/);
   for (const call of [
     'clean(s.title)', 'clean(a.point)', 'clean(a.why)',
-    'clean(a.action)', 'clean(a.title)', 'clean(r.overallView.statement)',
+    'clean(f.finding)', 'clean(f.whyItMatters)',
+    'clean(h.headline)', 'clean(h.detail)', 'clean(summary.statement)',
   ]) {
     assert.ok(reportCode.includes(call), `${call} is missing — that string can render raw`);
   }
@@ -238,4 +266,48 @@ test('the report has no fixed width that breaks a 320px screen', () => {
   // The cadastral code is the one string with no spaces to wrap on, so it is
   // rendered with break-all where it actually appears: the identity line.
   assert.match(page, /text-sm font-medium break-all">\{report\.exactUnit\.code\}/);
+});
+
+/* ---------------- the pre-purchase checklist is gone ---------------- */
+
+test('"რას გავაკეთებდი ყიდვამდე" is removed, not relocated', () => {
+  // It had become a bin: every field the pipeline failed to populate turned
+  // into a near-identical "confirm before signing" line, so a reader had no
+  // way to tell which one mattered. Advice now lives in the section that
+  // gives it meaning.
+  assert.ok(!reportCode.includes('buyerActions'), 'the checklist is still rendered');
+  assert.ok(!reportCode.includes('verify_ir_actions_title'), 'the checklist heading survives');
+  assert.ok(!/გავაკეთებდი/.test(report), 'the checklist heading text is still in the component');
+
+  // Comments stripped: a header explaining WHY the field was removed must not
+  // read as the field still being there.
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const contract = strip(fs.readFileSync(path.join(ROOT, 'src/verify/intelligence/report.ts'), 'utf8'));
+  assert.ok(!contract.includes('buyerActions'), 'buyerActions survives in the report contract');
+  assert.ok(!contract.includes('BuyerAction'), 'the BuyerAction type survives');
+
+  const prompt = strip(fs.readFileSync(path.join(ROOT, 'src/verify/intelligence/prompt.ts'), 'utf8'));
+  // The prompt must not REQUEST the field in the JSON shape it asks for...
+  assert.ok(!/"buyerActions":/.test(prompt), 'the prompt still asks for buyer actions');
+  // ...while still explicitly forbidding the model from inventing it back.
+  assert.ok(/There is NO "buyerActions" field/.test(prompt), 'the model is not told the field is gone');
+  assert.ok(/noPrePurchaseChecklist/.test(prompt), 'the prompt does not forbid recreating it');
+
+  const fn = fs.readFileSync(path.join(ROOT, 'supabase/functions/verify-synthesis/index.ts'), 'utf8');
+  assert.ok(!fn.includes('buyerActions'), 'the edge function still returns buyer actions');
+});
+
+test('participants survive even when the prose does not reach them', () => {
+  // The directors regression: people were extracted and then not shown.
+  assert.ok(reportCode.includes('CompanyGraph'), 'there is no participant block');
+  assert.ok(/!sections\.some\(\(s\) => s\.key === 'PEOPLE'\)/.test(reportCode),
+    'people are only shown when the model wrote a PEOPLE section');
+});
+
+test('ownership is shown only when the register stated it', () => {
+  assert.ok(/typeof p\.ownershipPct === 'number'/.test(reportCode),
+    'ownership is rendered without checking it exists');
+  // A director is not a shareholder, and nothing may infer one from the other.
+  assert.ok(!/role === 'DIRECTOR'[^\n]*ownership/i.test(reportCode),
+    'ownership is being inferred from a directorship');
 });

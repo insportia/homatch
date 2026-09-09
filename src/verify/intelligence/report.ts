@@ -8,30 +8,99 @@
 // package it was given. A model that cites `e99` when the package stops at
 // `e40` has invented a source.
 //
-// WHAT CHANGED IN THIS VERSION
-// ----------------------------
-// The `unconfirmed` field is GONE. It was the structural cause of the report
-// reading like an audit: give a model a field named after a deficit and it
-// will fill it, prominently, every time. Incomplete checks now travel to the
-// model as `turnTheseIntoAdvice` and come back as buyerActions — the same
-// information, pointed forwards. The validator enforces the swap: if checks
-// were incomplete and the model produced no actions at all, the output is
-// rejected, because silently dropping them would read as "everything checks
-// out".
+// WHAT CHANGED IN V3
+// ------------------
 //
-// buyerActions also gained a `title`, because a list rendered as "1 2 3" is
-// not a recommendation a person can scan.
+// 1. `buyerActions` IS GONE, and with it the "რას გავაკეთებდი ყიდვამდე"
+//    section. Not renamed — removed. It had become a bin: every incomplete
+//    check turned into a generic instruction, and a reader got a checklist of
+//    six near-identical "confirm this before signing" lines with no idea which
+//    one mattered. Advice now lives in the section it belongs to — signing
+//    authority with the people, negotiation with the market, contract review
+//    beside the contract CTA — where it carries the context that makes it
+//    actionable.
+//
+// 2. A SUMMARY the customer can read in fifteen seconds: one overall view and
+//    three to six scannable highlights, each tied to a dimension and a
+//    sentiment, each cited. It replaces a wall of prose at the top.
+//
+// 3. KEY FINDINGS, capped. Four to seven things that actually bear on the
+//    decision, each carrying WHY it matters — not everything the research
+//    happened to collect.
+//
+// 4. NOT FOUND IS NOT ABSENT. The previous report wrote sentences like
+//    "ლანდშაფტის არქიტექტორის სახელი არ სახელდება" — turning "our research
+//    did not find this" into "this does not exist". That is a claim about the
+//    world made from a fact about our pipeline, and it is now refused.
+//
+// 5. PROVENANCE IS NOT A PREFIX. "საჯაროდ გამოქვეყნებულ პროექტის მასალებში"
+//    appeared at the head of paragraph after paragraph. Provenance belongs in
+//    Evidence & Sources; a capped number of in-prose attributions survive for
+//    the places where the source genuinely changes the meaning.
+//
+// The safety property is unchanged: a model may cite only evidence that
+// exists, substantial claims must carry a citation, and output that fails is
+// DISCARDED for a deterministic report built from the same evidence.
 
 import type { EvidencePackage, EvidenceItem } from './evidencePackage.ts';
 import { SECTION_KEYS } from './prompt.ts';
 import type { SectionKey } from './prompt.ts';
 
-export type OverallLabel = 'POSITIVE' | 'MOSTLY_POSITIVE' | 'MIXED' | 'NEEDS_ATTENTION';
+/** Restrained, and deliberately three. "Attention" is not "bad". */
+export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
+export type Sentiment = 'POSITIVE' | 'BALANCED' | 'ATTENTION';
+
+/** The dimensions a summary highlight may speak to. Only evidenced ones appear. */
+export const DIMENSIONS = [
+  'PROJECT_QUALITY',
+  'MARKET_POSITION',
+  'LEGAL_CONTEXT',
+  'LOCATION',
+  'DEVELOPER',
+  'TRANSACTION_READINESS',
+] as const;
+export type Dimension = (typeof DIMENSIONS)[number];
+
+export interface SummaryHighlight {
+  dimension: Dimension;
+  sentiment: Sentiment;
+  /** A few words. This is the part a scanning reader actually reads. */
+  headline: string;
+  /** One sentence of substance behind it. */
+  detail: string;
+  cites: string[];
+}
+
+export interface BuyerSummary {
+  label: OverallLabel;
+  statement: string;
+  highlights: SummaryHighlight[];
+}
+
+export interface KeyFinding {
+  finding: string;
+  whyItMatters: string;
+  sentiment: Sentiment;
+  cites: string[];
+}
+
+/**
+ * A decision-relevant number the renderer may lift out of the prose as a chip.
+ *
+ * Structured rather than discovered: highlighting arbitrary model prose with
+ * regexes is brittle and emphasises the wrong half of a sentence. If a metric
+ * deserves emphasis, the model names it here.
+ */
+export interface SectionMetric {
+  label: string;
+  value: string;
+}
 
 export interface ReportSection {
   key: SectionKey;
   title: string;
   body: string;
+  metrics: SectionMetric[];
   cites: string[];
 }
 
@@ -41,19 +110,11 @@ export interface AttentionPoint {
   cites: string[];
 }
 
-export interface BuyerAction {
-  title: string;
-  action: string;
-  why: string;
-  cites: string[];
-}
-
 export interface BuyerIntelligenceReport {
-  overallView: { label: OverallLabel; statement: string };
-  executiveSummary: string;
+  summary: BuyerSummary;
+  keyFindings: KeyFinding[];
   sections: ReportSection[];
   attentionPoints: AttentionPoint[];
-  buyerActions: BuyerAction[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
   mode: 'MODEL' | 'DETERMINISTIC';
@@ -61,12 +122,61 @@ export interface BuyerIntelligenceReport {
   evidenceUsed: EvidenceItem[];
 }
 
-const LABELS: OverallLabel[] = ['POSITIVE', 'MOSTLY_POSITIVE', 'MIXED', 'NEEDS_ATTENTION'];
+const LABELS: OverallLabel[] = ['POSITIVE', 'BALANCED', 'NEEDS_ATTENTION'];
+const SENTIMENTS: Sentiment[] = ['POSITIVE', 'BALANCED', 'ATTENTION'];
+
+/** Older vocabularies, so a model that reaches for them is understood. */
+const LABEL_ALIASES: Record<string, OverallLabel> = {
+  MOSTLY_POSITIVE: 'POSITIVE',
+  MIXED: 'BALANCED',
+  NEUTRAL: 'BALANCED',
+  NEGATIVE: 'NEEDS_ATTENTION',
+};
+
+/** §41: findings are a shortlist. More than this and it is a data dump again. */
+export const MAX_KEY_FINDINGS = 7;
+export const MAX_HIGHLIGHTS = 6;
+
+/*
+ * Sentences that convert "we did not find it" into "it does not exist".
+ *
+ * Kept narrow on purpose. A registry statement of genuine absence — no
+ * encumbrance recorded, no seizure registered — is a real finding and must
+ * stay sayable. What is refused is an assertion about INFORMATION itself:
+ * that a name is not named anywhere, that information does not exist. Those
+ * are only ever claims about the limits of a search.
+ */
+const ABSENCE_AS_FACT: string[] = [
+  'არ სახელდება',
+  'ინფორმაცია არ არსებობს',
+  'არ არსებობს ინფორმაცია',
+  'არსად არ არის მითითებული',
+  'არ მოიპოვება ინფორმაცია',
+  'არ არის ცნობილი',
+];
+
+/*
+ * Attributions that were being pasted onto the front of every paragraph.
+ * A couple of uses is legitimate — sometimes the source IS the point. Ten is
+ * a tic, and it was the single most-complained-about texture in the report.
+ */
+const OVERUSED_PROVENANCE: string[] = [
+  'საჯაროდ გამოქვეყნებულ',
+  'დეველოპერის მიერ გამოქვეყნებულ',
+  'პროექტის მასალებში',
+  'საჯარო მასალებში',
+];
+export const PROVENANCE_MENTION_LIMIT = 2;
 
 const asString = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const asCites = (v: unknown): string[] =>
   asArray(v).filter((x): x is string => typeof x === 'string');
+
+const asSentiment = (v: unknown): Sentiment => {
+  const s = asString(v).toUpperCase();
+  return SENTIMENTS.includes(s as Sentiment) ? (s as Sentiment) : 'BALANCED';
+};
 
 /* ------------------------------------------------------------------ *
  * Parsing                                                             *
@@ -85,8 +195,36 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
   if (!parsed || typeof parsed !== 'object') return null;
   const p = parsed as Record<string, unknown>;
 
-  const ov = (p.overallView ?? {}) as Record<string, unknown>;
-  const label = asString(ov.label).toUpperCase() as OverallLabel;
+  const sm = (p.summary ?? {}) as Record<string, unknown>;
+  const rawLabel = asString(sm.label).toUpperCase();
+  const label = LABELS.includes(rawLabel as OverallLabel)
+    ? (rawLabel as OverallLabel)
+    : LABEL_ALIASES[rawLabel] ?? 'BALANCED';
+
+  const highlights: SummaryHighlight[] = asArray(sm.highlights)
+    .map((h) => (h ?? {}) as Record<string, unknown>)
+    .filter((h) => asString(h.headline))
+    .map((h) => ({
+      dimension: (DIMENSIONS.includes(asString(h.dimension).toUpperCase() as Dimension)
+        ? asString(h.dimension).toUpperCase()
+        : 'PROJECT_QUALITY') as Dimension,
+      sentiment: asSentiment(h.sentiment),
+      headline: asString(h.headline),
+      detail: asString(h.detail),
+      cites: asCites(h.cites),
+    }))
+    .slice(0, MAX_HIGHLIGHTS);
+
+  const keyFindings: KeyFinding[] = asArray(p.keyFindings)
+    .map((f) => (f ?? {}) as Record<string, unknown>)
+    .filter((f) => asString(f.finding))
+    .map((f) => ({
+      finding: asString(f.finding),
+      whyItMatters: asString(f.whyItMatters),
+      sentiment: asSentiment(f.sentiment),
+      cites: asCites(f.cites),
+    }))
+    .slice(0, MAX_KEY_FINDINGS);
 
   const sections: ReportSection[] = [];
   for (const s of asArray(p.sections)) {
@@ -94,7 +232,16 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
     const key = asString(sec.key).toUpperCase() as SectionKey;
     const body = asString(sec.body);
     if (!SECTION_KEYS.includes(key) || !body) continue;
-    sections.push({ key, title: asString(sec.title) || key, body, cites: asCites(sec.cites) });
+    sections.push({
+      key,
+      title: asString(sec.title) || key,
+      body,
+      metrics: asArray(sec.metrics)
+        .map((m) => (m ?? {}) as Record<string, unknown>)
+        .filter((m) => asString(m.label) && asString(m.value))
+        .map((m) => ({ label: asString(m.label), value: asString(m.value) })),
+      cites: asCites(sec.cites),
+    });
   }
 
   const attentionPoints: AttentionPoint[] = asArray(p.attentionPoints)
@@ -102,27 +249,13 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
     .filter((a) => asString(a.point))
     .map((a) => ({ point: asString(a.point), why: asString(a.why), cites: asCites(a.cites) }));
 
-  const buyerActions: BuyerAction[] = asArray(p.buyerActions)
-    .map((a) => (a ?? {}) as Record<string, unknown>)
-    .filter((a) => asString(a.action))
-    .map((a) => ({
-      title: asString(a.title),
-      action: asString(a.action),
-      why: asString(a.why),
-      cites: asCites(a.cites),
-    }));
-
   const cu = (p.contractUpload ?? {}) as Record<string, unknown>;
 
   return {
-    overallView: {
-      label: LABELS.includes(label) ? label : 'MIXED',
-      statement: asString(ov.statement),
-    },
-    executiveSummary: asString(p.executiveSummary),
+    summary: { label, statement: asString(sm.statement), highlights },
+    keyFindings,
     sections,
     attentionPoints,
-    buyerActions,
     finalView: asString(p.finalView),
     contractUpload: { recommend: cu.recommend !== false, text: asString(cu.text) },
   };
@@ -131,6 +264,19 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
 /* ------------------------------------------------------------------ *
  * The grounding gate                                                  *
  * ------------------------------------------------------------------ */
+
+/** Every string a customer will actually read. */
+function customerProse(c: Partial<BuyerIntelligenceReport>): string {
+  return [
+    c.summary?.statement ?? '',
+    ...(c.summary?.highlights ?? []).flatMap((h) => [h.headline, h.detail]),
+    ...(c.keyFindings ?? []).flatMap((f) => [f.finding, f.whyItMatters]),
+    ...(c.sections ?? []).flatMap((s) => [s.title, s.body]),
+    ...(c.attentionPoints ?? []).flatMap((a) => [a.point, a.why]),
+    c.finalView ?? '',
+    c.contractUpload?.text ?? '',
+  ].join('\n');
+}
 
 export function validateReport(
   pkg: EvidencePackage,
@@ -146,9 +292,16 @@ export function validateReport(
     }
   };
 
-  if (!asString(candidate.executiveSummary)) problems.push('no executive summary');
+  if (!candidate.summary?.statement) problems.push('no summary statement');
+  if (!candidate.summary?.highlights?.length) problems.push('summary has no highlights');
   if (!candidate.sections?.length) problems.push('no sections');
 
+  for (const h of candidate.summary?.highlights ?? []) checkCites(h.cites, 'summary highlight');
+  for (const f of candidate.keyFindings ?? []) {
+    checkCites(f.cites, 'key finding');
+    // A finding with no consequence is a fact, and facts belong in sections.
+    if (!f.whyItMatters) problems.push('a key finding does not say why it matters');
+  }
   for (const s of candidate.sections ?? []) {
     checkCites(s.cites, `section ${s.key}`);
     // A section of property prose that cites nothing is exactly the failure
@@ -158,17 +311,22 @@ export function validateReport(
     }
   }
   for (const a of candidate.attentionPoints ?? []) checkCites(a.cites, 'attentionPoints');
-  for (const a of candidate.buyerActions ?? []) checkCites(a.cites, 'buyerActions');
 
-  // Incomplete checks must resurface as advice. Dropping them silently would
-  // read to a buyer as "we checked everything and it was fine".
-  if (pkg.unavailable.length && !(candidate.buyerActions ?? []).length) {
-    problems.push('checks were incomplete but the report offered no next steps');
+  const prose = customerProse(candidate);
+
+  // NOT FOUND != DOES NOT EXIST.
+  for (const phrase of ABSENCE_AS_FACT) {
+    if (prose.includes(phrase)) {
+      problems.push(`states absence as fact ("${phrase}") where only the search came up empty`);
+    }
   }
 
-  // A numbered list with no labels is what this replaced.
-  for (const a of candidate.buyerActions ?? []) {
-    if (!a.title) problems.push('a buyer action has no title');
+  // Provenance as a verbal tic.
+  for (const phrase of OVERUSED_PROVENANCE) {
+    const uses = prose.split(phrase).length - 1;
+    if (uses > PROVENANCE_MENTION_LIMIT) {
+      problems.push(`provenance phrase "${phrase}" repeated ${uses} times`);
+    }
   }
 
   return { ok: problems.length === 0, problems };
@@ -179,7 +337,7 @@ export function validateReport(
  * ------------------------------------------------------------------ */
 
 const SECTION_FOR: Partial<Record<EvidenceItem['category'], SectionKey>> = {
-  PROPERTY: 'WHAT_WE_FOUND',
+  PROPERTY: 'PROJECT',
   OWNERSHIP: 'LEGAL',
   ENCUMBRANCE: 'LEGAL',
   LEGAL_CHECK: 'LEGAL',
@@ -193,51 +351,67 @@ const SECTION_FOR: Partial<Record<EvidenceItem['category'], SectionKey>> = {
 };
 
 const TITLES: Record<SectionKey, string> = {
-  OVERVIEW: 'მოკლედ',
-  WHAT_WE_FOUND: 'რა ვნახეთ',
   MARKET: 'ფასი და ბაზარი',
-  LOCATION: 'მდებარეობა',
   PROJECT: 'პროექტი და დეველოპერი',
-  PEOPLE: 'დაკავშირებული პირები',
-  LEGAL: 'სამართლებრივი სურათი',
+  LOCATION: 'მდებარეობა',
+  PEOPLE: 'კომპანია და დაკავშირებული პირები',
+  LEGAL: 'სამართლებრივი და ფინანსური კონტექსტი',
 };
 
 /**
  * Builds a report with no model at all.
  *
  * Every sentence here is an evidence claim verbatim, so it passes the gate by
- * construction. Incomplete checks still become forward-looking actions rather
- * than a deficit list, so even the fallback keeps the product's voice.
+ * construction — including the absence rule, because it never characterises
+ * what was not found.
  */
 export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceReport {
   const sections: ReportSection[] = [];
-  for (const key of ['WHAT_WE_FOUND', 'LEGAL', 'PROJECT', 'MARKET'] as SectionKey[]) {
+  for (const key of ['LEGAL', 'PROJECT', 'MARKET'] as SectionKey[]) {
     const mine = pkg.items.filter((i) => SECTION_FOR[i.category] === key);
     if (!mine.length) continue;
     sections.push({
       key,
       title: TITLES[key],
       body: mine.map((i) => i.claim).join(' '),
+      metrics: [],
       cites: mine.map((i) => i.id),
     });
   }
 
+  // The strongest few claims, stated as themselves. No interpretation is
+  // offered because none can be justified without a model.
+  const keyFindings: KeyFinding[] = pkg.items
+    .filter((i) => i.tier <= 2)
+    .slice(0, MAX_KEY_FINDINGS)
+    .map((i) => ({
+      finding: i.claim,
+      whyItMatters: 'ეს ჩანაწერი პირდაპირ ამ ქონებას ეხება.',
+      sentiment: 'BALANCED' as Sentiment,
+      cites: [i.id],
+    }));
+
   return {
-    overallView: {
-      label: 'MIXED',
-      statement: 'ქვემოთ თავმოყრილია ის, რაც ამ ქონებაზე მოვიძიეთ.',
+    summary: {
+      label: 'BALANCED',
+      statement: sections.length
+        ? 'ქვემოთ თავმოყრილია ის, რაც ამ ქონებაზე მოვიძიეთ, წყაროების მიხედვით.'
+        : 'ამ ქონებაზე საკმარისი ინფორმაცია ვერ მოვიძიეთ.',
+      highlights: sections.map((s) => ({
+        dimension: (s.key === 'MARKET'
+          ? 'MARKET_POSITION'
+          : s.key === 'LEGAL'
+            ? 'LEGAL_CONTEXT'
+            : 'PROJECT_QUALITY') as Dimension,
+        sentiment: 'BALANCED' as Sentiment,
+        headline: s.title,
+        detail: '',
+        cites: s.cites.slice(0, 3),
+      })),
     },
-    executiveSummary: sections.length
-      ? 'ქვემოთ მოცემულია ამ ქონებაზე მოძიებული ინფორმაცია წყაროების მიხედვით.'
-      : 'ამ ქონებაზე საკმარისი ინფორმაცია ვერ მოვიძიეთ.',
+    keyFindings,
     sections,
     attentionPoints: [],
-    buyerActions: pkg.unavailable.map((u) => ({
-      title: u.label.slice(0, 40),
-      action: `ყიდვამდე ღირს ${u.label}-ის აქტუალური სტატუსის გადამოწმება.`,
-      why: '',
-      cites: [],
-    })),
     finalView: '',
     contractUpload: { recommend: true, text: '' },
     mode: 'DETERMINISTIC',
@@ -262,17 +436,17 @@ export function finalizeReport(
   }
 
   const cited = new Set([
+    ...(parsed.summary?.highlights ?? []).flatMap((h) => h.cites),
+    ...(parsed.keyFindings ?? []).flatMap((f) => f.cites),
     ...(parsed.sections ?? []).flatMap((s) => s.cites),
     ...(parsed.attentionPoints ?? []).flatMap((a) => a.cites),
-    ...(parsed.buyerActions ?? []).flatMap((a) => a.cites),
   ]);
 
   return {
-    overallView: parsed.overallView ?? { label: 'MIXED', statement: '' },
-    executiveSummary: parsed.executiveSummary ?? '',
+    summary: parsed.summary ?? { label: 'BALANCED', statement: '', highlights: [] },
+    keyFindings: parsed.keyFindings ?? [],
     sections: parsed.sections ?? [],
     attentionPoints: parsed.attentionPoints ?? [],
-    buyerActions: parsed.buyerActions ?? [],
     finalView: parsed.finalView ?? '',
     contractUpload: parsed.contractUpload ?? { recommend: true, text: '' },
     mode: 'MODEL',

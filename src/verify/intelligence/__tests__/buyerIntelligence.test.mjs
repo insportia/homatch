@@ -138,7 +138,7 @@ test('K. sparse evidence stays sparse — no filler is manufactured', () => {
   assert.equal(evidenceRichness(pkg), 'SPARSE');
   const report = deterministicReport(pkg);
   assert.equal(report.sections.length, 0);
-  assert.ok(!report.executiveSummary.includes('VILLION'));
+  assert.ok(!report.summary.statement.includes('VILLION'));
 });
 
 /* ---------------------------------------------------------------- *
@@ -190,10 +190,12 @@ test('C. an unavailable check becomes "could not confirm", never a finding', () 
     'an unfinished check leaked into the evidence as though it were a result');
 
   const { system } = buildIntelligencePrompt(pkg);
-  // v2 states the same rule as a positive instruction: an incomplete check
-  // becomes forward-looking advice rather than a conflict or a finding.
-  assert.ok(/TECHNICAL GAPS BECOME ADVICE/.test(system));
-  assert.ok(/confirmed material issue -> finding/.test(system));
+  // v3 goes further than v2's "turn the gap into advice": a low-value gap
+  // should not be written about AT ALL, and a gap may never be phrased as
+  // the thing not existing.
+  assert.ok(/NOT FOUND IS NOT ABSENT/.test(system));
+  assert.ok(/LOW-VALUE NEGATIVES DO NOT GO IN THE REPORT AT ALL/.test(system));
+  assert.ok(/CONFIRMED material issue is the opposite/.test(system));
 });
 
 test('C2. the RS.ge check is marked human-assistable so the questionnaire can finish it', () => {
@@ -275,11 +277,19 @@ test('H. the output contract requires a contract-upload recommendation', () => {
   assert.ok(parsed.contractUpload.text.includes('ხელშეკრულება'));
 });
 
-test('I. buyer actions must be specific, titled and reasoned', () => {
-  const { system } = buildIntelligencePrompt(pkgOf(REAL_CASE));
-  assert.ok(/buyerActions: 3-6 items, each with a SHORT meaningful title/.test(system));
-  assert.ok(/Never a bare number/.test(system));
-  assert.ok(/"why": "<why>"/.test(system));
+test('I. advice is contextual, because the generic checklist is gone', () => {
+  // This used to require buyerActions to be titled and reasoned. That rule
+  // existed to stop the checklist rendering as a bare "1 2 3" — and the
+  // checklist itself is now removed, so the rule it protected is moot. What
+  // replaces it is a placement rule: advice must live where it means
+  // something.
+  const { system, user } = buildIntelligencePrompt(pkgOf(REAL_CASE));
+  assert.ok(/There is NO "buyerActions" field and no pre-purchase checklist section/.test(system));
+  assert.ok(/signing authority with PEOPLE, negotiation with MARKET/.test(system));
+  assert.ok(/Do not recreate the checklist under another name/.test(system));
+  // The incomplete checks still reach the model — as context for that advice,
+  // never as something to print.
+  assert.ok(Array.isArray(JSON.parse(user).contextForAdvice));
 });
 
 /* ---------------------------------------------------------------- *
@@ -315,35 +325,94 @@ test('M. NO EVIDENCE = NO FACT: a long uncited section is refused', () => {
   assert.ok(check.problems.some((p) => p.includes('no citation')));
 });
 
-test('a report that drops the incomplete checks entirely is refused', () => {
+test('a report with no summary is refused — the verdict is not optional', () => {
   const pkg = pkgOf(REAL_CASE);
-  assert.ok(pkg.unavailable.length);
-  const omits = JSON.stringify({
-    overallView: { label: 'POSITIVE', statement: 'ok' },
-    executiveSummary: 'ok',
+  const noSummary = JSON.stringify({
+    summary: { label: 'POSITIVE', statement: '', highlights: [] },
     sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [pkg.items[0].id] }],
-    buyerActions: [],
   });
-  const check = validateReport(pkg, parseReport(omits));
+  const check = validateReport(pkg, parseReport(noSummary));
   assert.equal(check.ok, false);
-  assert.ok(check.problems.some((p) => p.includes('no next steps')));
+  assert.ok(check.problems.some((p) => p.includes('no summary statement')));
+  assert.ok(check.problems.some((p) => p.includes('summary has no highlights')));
+});
+
+test('"we did not find it" may never be written as "it does not exist"', () => {
+  const pkg = pkgOf(REAL_CASE);
+  const absent = JSON.stringify({
+    summary: {
+      label: 'BALANCED', statement: 'ok',
+      highlights: [{ dimension: 'PROJECT_QUALITY', sentiment: 'BALANCED', headline: 'h', detail: 'd', cites: [pkg.items[0].id] }],
+    },
+    sections: [{
+      key: 'PROJECT', title: 'პროექტი',
+      body: 'ლანდშაფტის არქიტექტორის სახელი არ სახელდება.',
+      cites: [pkg.items[0].id],
+    }],
+  });
+  const check = validateReport(pkg, parseReport(absent));
+  assert.equal(check.ok, false);
+  assert.ok(check.problems.some((p) => p.includes('states absence as fact')),
+    'the epistemic guard did not fire');
+});
+
+test('a registry statement of genuine absence stays sayable', () => {
+  // The guard must not swallow a real finding: "no encumbrance is registered"
+  // is established BY a source, not inferred from our own silence.
+  const pkg = pkgOf(REAL_CASE);
+  const legitimate = JSON.stringify({
+    summary: {
+      label: 'POSITIVE', statement: 'ok',
+      highlights: [{ dimension: 'LEGAL_CONTEXT', sentiment: 'POSITIVE', headline: 'h', detail: 'd', cites: [pkg.items[0].id] }],
+    },
+    sections: [{
+      key: 'LEGAL', title: 'სამართლებრივი',
+      body: 'რეესტრის ჩანაწერით ყადაღა რეგისტრირებული არ არის.',
+      cites: [pkg.items[0].id],
+    }],
+  });
+  assert.equal(validateReport(pkg, parseReport(legitimate)).ok, true);
+});
+
+test('provenance may not be used as a prefix on paragraph after paragraph', () => {
+  const pkg = pkgOf(REAL_CASE);
+  const id = pkg.items[0].id;
+  const repetitive = JSON.stringify({
+    summary: {
+      label: 'BALANCED', statement: 'ok',
+      highlights: [{ dimension: 'PROJECT_QUALITY', sentiment: 'BALANCED', headline: 'h', detail: 'd', cites: [id] }],
+    },
+    sections: [1, 2, 3, 4].map((n) => ({
+      key: ['LEGAL', 'MARKET', 'PROJECT', 'LOCATION'][n - 1],
+      title: 't' + n,
+      body: 'საჯაროდ გამოქვეყნებულ პროექტის მასალებში მითითებულია რაღაც.',
+      cites: [id],
+    })),
+  });
+  const check = validateReport(pkg, parseReport(repetitive));
+  assert.equal(check.ok, false);
+  assert.ok(check.problems.some((p) => p.includes('provenance phrase')));
 });
 
 test('a well-grounded report IS accepted — the gate is not always-reject', () => {
   const pkg = pkgOf(REAL_CASE);
   const good = JSON.stringify({
-    overallView: { label: 'MOSTLY_POSITIVE', statement: 'საერთო სურათი პოზიტიურია.' },
-    executiveSummary: 'პირველი აბზაცი.\n\nმეორე აბზაცი.',
+    summary: {
+      label: 'POSITIVE',
+      statement: 'საერთო სურათი პოზიტიურია.',
+      highlights: [
+        { dimension: 'LEGAL_CONTEXT', sentiment: 'BALANCED', headline: 'იპოთეკა', detail: 'პროექტის დაფინანსებაა.', cites: [pkg.items[0].id] },
+      ],
+    },
+    keyFindings: [{ finding: 'იპოთეკა რეგისტრირებულია.', whyItMatters: 'გავლენას ახდენს რეგისტრაციაზე.', sentiment: 'ATTENTION', cites: [pkg.items[0].id] }],
     sections: [{ key: 'LEGAL', title: 'სამართლებრივი სურათი', body: 'იპოთეკა რეგისტრირებულია.', cites: [pkg.items[0].id] }],
     attentionPoints: [{ point: 'იპოთეკა', why: 'გავლენას ახდენს რეგისტრაციაზე', cites: [pkg.items[0].id] }],
-    unconfirmed: [{ item: 'ექსპლუატაცია', why: 'ოფიციალური აქტით' }],
-    buyerActions: [{ title: 'ბანკის თანხმობა', action: 'მოითხოვეთ განმუხტვის მექანიზმი წერილობით', why: 'რომ ერთეული გათავისუფლდეს', cites: [pkg.items[0].id] }],
     finalView: 'დასკვნა.',
     contractUpload: { recommend: true, text: 'ატვირთეთ ხელშეკრულება.' },
   });
   const final = finalizeReport(pkg, good);
   assert.equal(final.mode, 'MODEL', final.rejectedBecause.join('; '));
-  assert.equal(final.buyerActions.length, 1);
+  assert.equal(final.keyFindings.length, 1);
   // Only the evidence actually cited is offered as sources.
   assert.ok(final.evidenceUsed.length >= 1);
   assert.ok(final.evidenceUsed.every((e) => e.id === pkg.items[0].id));
@@ -363,9 +432,11 @@ test('unparseable model output degrades to the deterministic report, never a 500
 test('markdown fences around valid JSON are tolerated', () => {
   const pkg = pkgOf(REAL_CASE);
   const wrapped = '```json\n' + JSON.stringify({
-    overallView: { label: 'MIXED', statement: 's' }, executiveSummary: 'e',
+    summary: {
+      label: 'BALANCED', statement: 's',
+      highlights: [{ dimension: 'LEGAL_CONTEXT', sentiment: 'BALANCED', headline: 'h', detail: 'd', cites: [pkg.items[0].id] }],
+    },
     sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [pkg.items[0].id] }],
-    buyerActions: [{ title: 'ტ', action: 'a', why: 'w', cites: [] }],
   }) + '\n```';
   assert.equal(finalizeReport(pkg, wrapped).mode, 'MODEL');
 });
@@ -410,8 +481,10 @@ test('physical completion and legal commissioning are kept apart', () => {
   // than as a standalone heading: an unconfirmed commissioning status must
   // become "worth confirming", never a contradiction.
   const { system } = buildIntelligencePrompt(pkgOf(REAL_CASE));
-  assert.ok(/ექსპლუატაციაში მიღების აქტუალური სტატუსის/.test(system));
-  assert.ok(/confirmed material issue -> finding/.test(system));
+  assert.ok(/PHYSICAL COMPLETION IS NOT LEGAL COMMISSIONING/.test(system));
+  assert.ok(/ექსპლუატაციაში მიღების აქტუალური სტატუსის გადამოწმება ღირს/.test(system));
+  // ...and it must be said ONCE, in LEGAL, not repeated as a contradiction.
+  assert.ok(/inside LEGAL, once/.test(system));
 });
 
 test('the prompt never leaks raw research internals or the whole report', () => {
@@ -482,8 +555,8 @@ test('the UI strips evidence ids the model writes into prose anyway', () => {
   // gets both and a new field cannot skip one.
   assert.ok(/const clean = \(s: unknown\): string => stripEvidenceIds\(readable\(/.test(cmp));
   for (const call of [
-    'clean(r.overallView.statement)', 'clean(s.title)',
-    'clean(a.point)', 'clean(a.action)', 'clean(a.title)',
+    'clean(summary.statement)', 'clean(s.title)',
+    'clean(a.point)', 'clean(f.finding)', 'clean(h.headline)',
   ]) {
     assert.ok(cmp.includes(call), `${call} is missing — ids can still render there`);
   }

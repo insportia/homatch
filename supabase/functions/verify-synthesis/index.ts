@@ -232,11 +232,12 @@ serve(async (req) => {
 
     const payload = {
       report: {
-        overallView: final.overallView,
-        executiveSummary: final.executiveSummary,
+        // v3: summary + keyFindings replace overallView/executiveSummary, and
+        // the pre-purchase checklist is gone rather than renamed.
+        summary: final.summary,
+        keyFindings: final.keyFindings,
         sections: final.sections,
         attentionPoints: final.attentionPoints,
-        buyerActions: final.buyerActions,
         finalView: final.finalView,
         contractUpload: final.contractUpload,
       },

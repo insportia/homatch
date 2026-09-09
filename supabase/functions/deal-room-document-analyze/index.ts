@@ -321,9 +321,17 @@ serve(async (req) => {
       questionCount: analysis.questions.length,
       findingCount: checked.length,
       contradictions: checked.filter((c) => c.verifyRelation === 'CONTRADICTS').length,
-      // How much the model proposed that could not be grounded. A number, not
-      // the rejected text: that text can quote the document.
+      // How much the model proposed that could not be grounded.
       discarded: analysis.rejected.length,
+      // WHY it was discarded. Returned only to the document's own owner —
+      // they already have the document — because "we found nothing" with no
+      // explanation is indistinguishable from a broken extractor, and that
+      // ambiguity is exactly what hides a silent failure.
+      discardedReasons: analysis.rejected.slice(0, 8),
+      statusCounts: analysis.statusCounts,
+      // Length only, never content: enough to tell "the PDF gave us nothing"
+      // apart from "the model gave us nothing".
+      extractedChars: text.length,
       containsInstructionLikeText: stored.containsInstructionLikeText,
     });
   } catch (e) {

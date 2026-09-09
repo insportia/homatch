@@ -6,6 +6,7 @@ import {
   defaultSelection,
   groupByCategory,
   taxonomyNode,
+  nodesForRooms,
 } from '../selection.ts';
 import { TBILISI_PRICE_BOOK } from '../../calculations/priceBook.ts';
 
@@ -59,7 +60,7 @@ test('anything the price book cannot cost is NOT defaulted to INCLUDE', () => {
 });
 
 test('taxonomyNode looks nodes up and returns null for unknown ids', () => {
-  assert.equal(taxonomyNode('floors.finish')?.category, 'FLOORS');
+  assert.equal(taxonomyNode('floors.finish.dry')?.category, 'FLOORS');
   assert.equal(taxonomyNode('nope'), null);
 });
 
@@ -68,7 +69,7 @@ test('taxonomyNode looks nodes up and returns null for unknown ids', () => {
  * ---------------------------------------------------------------- */
 
 test('an INCLUDE with a priced option lands in the total', () => {
-  const r = resolveSelection({ 'floors.finish': { choice: 'INCLUDE', optionId: 'laminate' } });
+  const r = resolveSelection({ 'floors.finish.dry': { choice: 'INCLUDE', optionId: 'laminate' } });
   assert.ok(r.includedItemKeys.includes('floor.laminate'));
 });
 
@@ -79,10 +80,11 @@ test('an EXCLUDE never reaches the total, and is reported', () => {
 });
 
 test('NOT_DECIDED never reaches the total, and is reported', () => {
-  const r = resolveSelection({ 'floors.finish': { choice: 'NOT_DECIDED' } });
+  const r = resolveSelection({ 'floors.finish.dry': { choice: 'NOT_DECIDED' } });
+  // Only the dry-room covering is undecided here. floor.tile may still be
+  // included via the separate wet-room node, which is a different decision.
   assert.ok(!r.includedItemKeys.includes('floor.laminate'));
-  assert.ok(!r.includedItemKeys.includes('floor.tile'));
-  assert.ok(r.undecided.some((u) => u.id === 'floors.finish'));
+  assert.ok(r.undecided.some((u) => u.id === 'floors.finish.dry'));
 });
 
 test('a chosen but unpriceable option is surfaced, never silently zero', () => {
@@ -109,14 +111,14 @@ test('excluded, undecided and unpriced are mutually exclusive sets', () => {
  * ---------------------------------------------------------------- */
 
 test('choosing one floor covering excludes the alternatives', () => {
-  const r = resolveSelection({ 'floors.finish': { choice: 'INCLUDE', optionId: 'tile' } });
+  const r = resolveSelection({ 'floors.finish.dry': { choice: 'INCLUDE', optionId: 'tile' } });
   assert.ok(r.includedItemKeys.includes('floor.tile'));
   assert.ok(!r.includedItemKeys.includes('floor.laminate'), 'only one covering may be costed');
 });
 
 test('an option id that no longer exists falls back rather than throwing', () => {
   // Saved scenarios outlive taxonomy edits.
-  const r = resolveSelection({ 'floors.finish': { choice: 'INCLUDE', optionId: 'removed_option' } });
+  const r = resolveSelection({ 'floors.finish.dry': { choice: 'INCLUDE', optionId: 'removed_option' } });
   assert.ok(r.includedItemKeys.includes('floor.laminate'));
 });
 
@@ -126,15 +128,15 @@ test('an option id that no longer exists falls back rather than throwing', () =>
 
 test('premium flooring can sit beside economy paint in one project', () => {
   const r = resolveSelection({
-    'floors.finish': { choice: 'INCLUDE', optionId: 'laminate', tier: 'high' },
-    'walls.finish': { choice: 'INCLUDE', optionId: 'paint', tier: 'low' },
+    'floors.finish.dry': { choice: 'INCLUDE', optionId: 'laminate', segment: 'PREMIUM' },
+    'walls.finish.dry': { choice: 'INCLUDE', optionId: 'paint', segment: 'ECONOMY' },
   });
   assert.equal(r.itemTierOverrides['floor.laminate'], 'high');
   assert.equal(r.itemTierOverrides['wall.paint'], 'low');
 });
 
 test('a tier on an excluded node does not leak into the estimate', () => {
-  const r = resolveSelection({ 'doors.interior': { choice: 'EXCLUDE', tier: 'high' } });
+  const r = resolveSelection({ 'doors.interior': { choice: 'EXCLUDE', segment: 'PREMIUM' } });
   assert.equal(r.itemTierOverrides['door.interior'], undefined);
 });
 
@@ -186,4 +188,83 @@ test('grouping preserves taxonomy order and loses no node', () => {
     TAXONOMY.length
   );
   assert.equal(groups[0].category, TAXONOMY[0].category);
+});
+
+/* ---------------------------------------------------------------- *
+ * Rooms                                                             *
+ * ---------------------------------------------------------------- */
+
+test('a property with no bathroom is never asked bathroom questions', () => {
+  const nodes = nodesForRooms(['LIVING', 'BEDROOM', 'KITCHEN', 'HALLWAY']);
+  // sanitary.mixers legitimately also applies to a kitchen, so check the
+  // bathroom-only decisions rather than the whole prefix.
+  for (const id of ['sanitary.toilet', 'sanitary.basin', 'sanitary.bathing', 'sanitary.accessories']) {
+    assert.ok(!nodes.some((n) => n.id === id), `${id} must not be asked without a bathroom`);
+  }
+  assert.ok(nodes.some((n) => n.id === 'kitchen.units'), 'kitchen questions must survive');
+  assert.ok(nodes.some((n) => n.scope === 'PROPERTY'), 'property-wide questions always apply');
+});
+
+test('a room-scoped decision is made once per room, not once per property', () => {
+  const rooms = ['LIVING', 'BEDROOM', 'BATHROOM'];
+  const r = resolveSelection(defaultSelection(TAXONOMY, rooms), TAXONOMY, rooms);
+  const dryFloors = [...r.excluded, ...r.undecided, ...r.selectedButNotPriced]
+    .concat(r.includedItemKeys.map((k) => ({ id: k })))
+    .filter((x) => String(x.id).startsWith('floors.finish.dry@'));
+  // LIVING and BEDROOM each get their own answer; BATHROOM uses the wet node.
+  assert.ok(!String(JSON.stringify(r)).includes('floors.finish.dry@BATHROOM'));
+});
+
+test('different rooms can take different materials', () => {
+  const rooms = ['LIVING', 'BATHROOM'];
+  const sel = defaultSelection(TAXONOMY, rooms);
+  sel['floors.finish.dry@LIVING'] = { choice: 'INCLUDE', optionId: 'laminate', segment: 'PREMIUM' };
+  sel['floors.finish.wet@BATHROOM'] = { choice: 'INCLUDE', optionId: 'tile', segment: 'ECONOMY' };
+  const r = resolveSelection(sel, TAXONOMY, rooms);
+  assert.ok(r.includedItemKeys.includes('floor.laminate'));
+  assert.ok(r.includedItemKeys.includes('floor.tile'));
+  assert.equal(r.itemTierOverrides['floor.laminate'], 'high');
+  assert.equal(r.itemTierOverrides['floor.tile'], 'low');
+});
+
+test('the taxonomy covers the meaningful renovation universe', () => {
+  const cats = new Set(TAXONOMY.map((n) => n.category));
+  for (const required of [
+    'PREPARATION', 'WALLS', 'CEILINGS', 'FLOORS', 'WATERPROOFING', 'PLUMBING',
+    'BATHROOM', 'ELECTRICAL', 'LIGHTING', 'HEATING', 'HVAC', 'DOORS',
+    'WINDOWS', 'INSULATION', 'KITCHEN', 'FURNITURE', 'FINISHING',
+  ]) {
+    assert.ok(cats.has(required), `taxonomy is missing ${required}`);
+  }
+  assert.ok(TAXONOMY.length >= 40, `expected a real taxonomy, got ${TAXONOMY.length} nodes`);
+});
+
+/* ---------------------------------------------------------------- *
+ * The configurator actually changes the total                       *
+ * ---------------------------------------------------------------- */
+
+test('skipping work removes it from the estimate, not just from the UI', async () => {
+  const { calculateEstimate } = await import('../../calculations/estimate.ts');
+  const { estimateQuantities } = await import('../../calculations/quantities.ts');
+  const { TBILISI_PRICE_BOOK } = await import('../../calculations/priceBook.ts');
+
+  const property = {
+    totalArea: 70, condition: 'BLACK_FRAME',
+    rooms: [{ kind: 'LIVING', area: 40 }, { kind: 'BATHROOM', area: 6 }],
+  };
+  const quantities = estimateQuantities(property);
+  const base = {
+    quantities, condition: 'BLACK_FRAME', totalArea: 70,
+    level: 'STANDARD', materialTier: 'typical', allowProvisionalPrices: true,
+  };
+
+  const everything = calculateEstimate(TBILISI_PRICE_BOOK, base);
+  const withoutDoors = calculateEstimate(TBILISI_PRICE_BOOK, {
+    ...base,
+    includedItemKeys: everything.lineItems.map((l) => l.key).filter((k) => k !== 'door.interior'),
+  });
+
+  assert.ok(everything.lineItems.some((l) => l.key === 'door.interior'), 'doors priced by default');
+  assert.ok(!withoutDoors.lineItems.some((l) => l.key === 'door.interior'), 'skipped doors must vanish');
+  assert.ok(withoutDoors.baseTotal < everything.baseTotal, 'and the total must actually fall');
 });

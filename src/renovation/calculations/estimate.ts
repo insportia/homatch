@@ -35,6 +35,16 @@ export interface ScenarioInput {
   includeSoftCosts?: boolean;
   /** Explicitly opt in to using an unreviewed price book. */
   allowProvisionalPrices?: boolean;
+  /**
+   * Only these price-item keys may be costed.
+   *
+   * The configurator's output. When absent, every item with a quantity is
+   * priced, which is the old behaviour and still correct for a quick
+   * property-level estimate. When present, work the customer skipped or has
+   * not decided on is not silently priced anyway -- which is the entire
+   * point of asking them.
+   */
+  includedItemKeys?: string[];
 }
 
 export interface LineItem {
@@ -148,9 +158,13 @@ export function calculateEstimate(book: PriceBook, input: ScenarioInput): Estima
   const lineItems: LineItem[] = [];
   const byCategory: Record<string, number> = {};
 
+  const allowed = input.includedItemKeys ? new Set(input.includedItemKeys) : null;
+
   for (const [key, quantity] of Object.entries(input.quantities.byItem)) {
     const item = findItem(book, key);
     if (!item || quantity <= 0) continue;
+    // Not chosen by the customer, so not in their total.
+    if (allowed && !allowed.has(key)) continue;
 
     const mTier = tierFor(item, input);
     const quantityWithWaste = round2(quantity * (1 + item.wasteFactor));

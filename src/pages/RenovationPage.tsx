@@ -34,6 +34,8 @@ import {
   type PricingAvailability, type RenovationScenarioRecord,
 } from '@/services/renovationPricing';
 import { getDealRoom } from '@/services/dealRooms';
+import { ConfiguratorPanel, NotInTheTotal } from '@/components/renovation/ConfiguratorPanel';
+import { defaultSelection, resolveSelection, type SelectionMap, type RoomKind } from '@/renovation/configurator/selection';
 
 const CONDITIONS: { value: Condition; key: string }[] = [
   { value: 'BLACK_FRAME', key: 'reno_condition_black' },
@@ -58,6 +60,18 @@ const RenovationPage: React.FC = () => {
 
   const [pricing, setPricing] = useState<PricingAvailability | null>(null);
   const [saving, setSaving] = useState(false);
+  // What the customer has actually decided. Starts at the taxonomy's own
+  // defaults, which deliberately leave the expensive unpriceable choices open.
+  const [selection, setSelection] = useState<SelectionMap>(() => defaultSelection());
+
+  /** Rooms this property actually has, so the configurator never asks a
+   * bathroom question about a property with no bathroom. */
+  const configuratorRooms = useMemo<RoomKind[]>(() => {
+    const out: RoomKind[] = ['LIVING', 'KITCHEN', 'HALLWAY'];
+    for (let i = 0; i < Math.max(0, bedrooms); i++) out.push('BEDROOM');
+    if (bathrooms > 0) out.push('BATHROOM');
+    return [...new Set(out)];
+  }, [bedrooms, bathrooms]);
   const [scenarios, setScenarios] = useState<RenovationScenarioRecord[]>([]);
 
   useEffect(() => {
@@ -212,6 +226,17 @@ const RenovationPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* What the renovation actually is. Without this the total prices
+            everything the property could need at one quality level, which is
+            tidy, confident and wrong for the person reading it. */}
+        <ConfiguratorPanel
+          rooms={configuratorRooms}
+          selection={selection}
+          onChange={setSelection}
+        />
+
+        <NotInTheTotal selection={selection} rooms={configuratorRooms} />
 
         {/* The gate. When there is no verified price data we say so in full
             sentences rather than showing a zero or a spinner forever. */}

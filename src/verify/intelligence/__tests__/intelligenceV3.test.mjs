@@ -15,6 +15,8 @@ import {
   qualityFactorsFrom,
   scoreComparable,
 } from '../marketIntelligence.ts';
+import { buildIntelligenceBundle } from '../bundle.ts';
+import { buildEvidencePackage } from '../evidencePackage.ts';
 import {
   parseRegistryShareholders,
   buildPeopleIntelligence,
@@ -205,4 +207,42 @@ test('a percentage is never harvested out of a personal id', () => {
 test('the report shows ownership only when a share exists', () => {
   const src = read('src/components/verify/VerifyReport.tsx');
   assert.ok(/typeof p\.ownershipPct === 'number'/.test(src), 'ownership renders unconditionally');
+});
+
+/* ── the snapshot is the one path research text takes UNMODELLED ─────── */
+
+test('portal links never reach the snapshot, only their text', () => {
+  // Live report: amenities rendered as
+  //   "გამწვანებული ეზო. ([villion.ge](https://villion.ge/...))"
+  // putting a portal URL straight into the primary report.
+  const report = {
+    exactUnit: { code: '01.01.01.001.01.01.001' },
+    publicResearch: {
+      amenities: ['გამწვანებული ეზო. ([villion.ge](https://villion.ge/project))',
+                  'კონსიერჟი https://example.com/x'],
+    },
+  };
+  const b = buildIntelligenceBundle(report, buildEvidencePackage(report), null);
+  const joined = b.snapshot.amenities.join(' | ');
+  assert.ok(!/https?:/.test(joined), `a URL survived into the snapshot: ${joined}`);
+  assert.ok(!/\]\(/.test(joined), 'markdown link syntax survived');
+  // The readable part is kept — this is a cleanup, not a deletion.
+  assert.ok(joined.includes('გამწვანებული ეზო'));
+  assert.ok(joined.includes('კონსიერჟი'));
+});
+
+test('an internal enum is omitted from the snapshot, never shown', () => {
+  // Live report: "ტიპი MIXED_OR_UNKNOWN". It means "we do not know", so the
+  // honest rendering is no row at all.
+  const report = {
+    exactUnit: { code: '01.01.01.001.01.01.001', propertyType: 'MIXED_OR_UNKNOWN' },
+  };
+  const b = buildIntelligenceBundle(report, buildEvidencePackage(report), null);
+  assert.equal(b.snapshot.propertyType, undefined, 'an internal token reached the snapshot');
+});
+
+test('a real value that merely looks shouty is still shown', () => {
+  const report = { exactUnit: { code: '01.01.01.001.01.01.001', propertyType: 'ბინა' } };
+  const b = buildIntelligenceBundle(report, buildEvidencePackage(report), null);
+  assert.equal(b.snapshot.propertyType, 'ბინა');
 });

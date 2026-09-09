@@ -71,8 +71,43 @@ export interface SelfCheck {
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : v == null ? '' : String(v));
-const clean = (v: unknown): string => str(v).replace(/\s+/g, ' ').trim();
-const nonEmpty = (v: unknown): string | undefined => clean(v) || undefined;
+
+/*
+ * The snapshot is the one place raw research text reaches a customer WITHOUT
+ * passing through the model, so it is the one place research formatting can
+ * leak. Both of these were found on a live report:
+ *
+ *   amenities:    "გამწვანებული ეზო. ([villion.ge](https://villion.ge/...))"
+ *   propertyType: "MIXED_OR_UNKNOWN"
+ *
+ * The first put portal links straight into the primary report, which is
+ * exactly what Evidence & Sources exists to avoid. The second showed an
+ * internal enum to a buyer — and one that means "we do not know", so the
+ * honest rendering of it is nothing at all.
+ */
+const MARKDOWN_LINK = /\[([^\]]*)\]\((?:[^)]*)\)/g;
+const BARE_URL = /https?:[^\s]+/gi;
+/** SCREAMING_SNAKE is how this codebase writes internal states, never prose. */
+const INTERNAL_TOKEN = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+
+const clean = (v: unknown): string =>
+  str(v)
+    // Keep the link TEXT, drop the target.
+    .replace(MARKDOWN_LINK, '$1')
+    .replace(BARE_URL, '')
+    // Tidy the punctuation the removal leaves behind: " ()", " (, )", " .".
+    .replace(/\(\s*[),.;:]*\s*\)/g, '')
+    .replace(/\s+([.,;:!?])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const nonEmpty = (v: unknown): string | undefined => {
+  const c = clean(v);
+  if (!c) return undefined;
+  // An internal token is not a value a buyer can read. Omitting the row says
+  // "unknown" far better than printing the word for it.
+  return INTERNAL_TOKEN.test(c) ? undefined : c;
+};
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};

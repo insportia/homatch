@@ -447,7 +447,10 @@ test('markdown fences around valid JSON are tolerated', () => {
 
 test('mis-decoded historical text never reaches the report', () => {
   assert.equal(isPresentable('ნორმალური ქართული ტექსტი'), true);
-  assert.equal(isPresentable('  broken'), false);
+  // Written as escapes, not as raw bytes: a real NUL in a source file is
+  // precisely what src/verify/__tests__/sourceHygiene.test.mjs exists to
+  // catch, and a fixture must not be indistinguishable from the bug.
+  assert.equal(isPresentable('\u0000\u0001 broken'), false);
   assert.equal(isPresentable('����������������'), false);
   assert.equal(isPresentable('   '), false);
 

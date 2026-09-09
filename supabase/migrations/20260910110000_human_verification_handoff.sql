@@ -109,10 +109,21 @@ create unique index if not exists hvh_one_live_per_source_uidx
   where status in ('PENDING','OPENED');
 
 -- ---------------------------------------------------------------------------
--- RLS — the customer may READ their own handoffs (the UI needs status), but
--- may never write one. Minting and redemption both go through the edge
--- function, which validates the nonce; letting a client UPDATE status
--- directly would make the nonce pointless.
+-- RLS
+--
+-- The customer may READ their own handoffs (the UI needs status). There is
+-- NO client INSERT, UPDATE or DELETE policy, deliberately and permanently:
+-- every write goes through one of the SECURITY DEFINER functions below.
+--
+-- Why not a scoped INSERT policy? Because the client would then choose
+-- `nonce_sha256`. Knowing the preimage of a hash you supplied yourself makes
+-- the nonce worthless — you could immediately redeem your own handoff and
+-- record a verification that never happened. Same for UPDATE: a policy broad
+-- enough to allow cancelling is broad enough to set status = 'COMPLETED'.
+--
+-- So the security-sensitive fields — owner, job, source, nonce, status,
+-- expiry — are ALL derived server-side inside the functions, and none of them
+-- is accepted from the caller.
 -- ---------------------------------------------------------------------------
 alter table public.human_verification_handoffs enable row level security;
 alter table public.human_verification_handoffs force row level security;
@@ -123,6 +134,230 @@ create policy hvh_owner_read on public.human_verification_handoffs
   using (user_id = (select auth.uid()));
 
 revoke all on public.human_verification_handoffs from anon;
+
+-- ---------------------------------------------------------------------------
+-- mint_human_verification_handoff
+--
+-- The ONLY way a handoff comes into existence.
+--
+-- Everything security-relevant is derived here, never accepted from the
+-- caller: the owner is auth.uid(), the job must belong to that owner, the
+-- nonce is generated with pgcrypto and only its hash is stored, the status is
+-- forced to PENDING, and the expiry is computed from now(). A caller cannot
+-- mint for another user, cannot mint against a job they do not own, cannot
+-- choose the nonce, and cannot create a handoff that is already COMPLETED.
+--
+-- The caller supplies only descriptive values: which source, which worker job,
+-- and where to send the customer. `p_handoff_kind` is additionally constrained
+-- by the table's own CHECK, so an unknown kind is rejected by the database
+-- rather than trusted.
+--
+-- Returns the raw nonce EXACTLY ONCE. It is never stored and cannot be
+-- recovered afterwards.
+-- ---------------------------------------------------------------------------
+create or replace function public.mint_human_verification_handoff(
+  p_job_id       uuid,
+  p_source_key   text,
+  p_handoff_kind text default 'VERIFY_ON_SOURCE',
+  p_worker_job_id text default null,
+  p_target_url   text default null,
+  p_ttl_minutes  integer default 20
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid    uuid := auth.uid();
+  v_nonce  text;
+  v_hash   text;
+  v_live   public.human_verification_handoffs%rowtype;
+  v_new    public.human_verification_handoffs%rowtype;
+  v_ttl    integer;
+begin
+  if v_uid is null then
+    raise exception 'authentication required' using errcode = 'insufficient_privilege';
+  end if;
+  if p_source_key is null or btrim(p_source_key) = '' then
+    raise exception 'source_key is required' using errcode = 'invalid_parameter_value';
+  end if;
+
+  -- Bounded server-side. A caller cannot ask for a long-lived handoff, which
+  -- would just be a longer replay window.
+  v_ttl := least(greatest(coalesce(p_ttl_minutes, 20), 1), 60);
+
+  -- JOB OWNERSHIP. SECURITY DEFINER has bypassed RLS, so this is the check
+  -- that actually stops a caller minting against someone else's research job.
+  if not exists (
+    select 1 from public.research_jobs j
+    where j.id = p_job_id and j.user_id = v_uid
+  ) then
+    raise exception 'research job not found for this user'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  -- One live handoff per (job, source). Returned WITHOUT a nonce, because the
+  -- nonce was never stored and genuinely cannot be re-issued; the customer
+  -- must cancel and re-mint if they lost the link.
+  select * into v_live
+  from public.human_verification_handoffs
+  where research_job_id = p_job_id
+    and source_key = p_source_key
+    and status in ('PENDING','OPENED')
+  limit 1;
+
+  if found then
+    return jsonb_build_object(
+      'handoffId', v_live.id,
+      'status',    v_live.status,
+      'expiresAt', v_live.expires_at,
+      'targetUrl', v_live.target_url,
+      'nonce',     null,
+      'already',   true
+    );
+  end if;
+
+  -- 32 bytes of CSPRNG output. Only the hash is persisted.
+  v_nonce := encode(extensions.gen_random_bytes(32), 'hex');
+  v_hash  := encode(extensions.digest(v_nonce, 'sha256'), 'hex');
+
+  insert into public.human_verification_handoffs (
+    user_id, research_job_id, source_key, worker_job_id,
+    nonce_sha256, status, handoff_kind, target_url, expires_at, audit
+  ) values (
+    v_uid, p_job_id, p_source_key,
+    nullif(btrim(coalesce(p_worker_job_id, '')), ''),
+    v_hash,
+    'PENDING',                                   -- server-fixed, never caller-chosen
+    coalesce(nullif(btrim(coalesce(p_handoff_kind, '')), ''), 'VERIFY_ON_SOURCE'),
+    nullif(btrim(coalesce(p_target_url, '')), ''),
+    now() + make_interval(mins => v_ttl),        -- server-computed
+    jsonb_build_array(jsonb_build_object('at', now(), 'event', 'MINTED'))
+  )
+  returning * into v_new;
+
+  return jsonb_build_object(
+    'handoffId', v_new.id,
+    'status',    v_new.status,
+    'expiresAt', v_new.expires_at,
+    'targetUrl', v_new.target_url,
+    'nonce',     v_nonce,      -- returned once, never stored
+    'already',   false
+  );
+end;
+$$;
+
+revoke all on function public.mint_human_verification_handoff(uuid, text, text, text, text, integer)
+  from public, anon;
+grant execute on function public.mint_human_verification_handoff(uuid, text, text, text, text, integer)
+  to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- open_human_verification_handoff
+--
+-- Records that the customer actually opened the link. PENDING -> OPENED only;
+-- every other state is returned unchanged, so this can never resurrect a
+-- cancelled, expired or completed handoff. Idempotent.
+-- ---------------------------------------------------------------------------
+create or replace function public.open_human_verification_handoff(p_handoff_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  h public.human_verification_handoffs%rowtype;
+begin
+  if v_uid is null then
+    raise exception 'authentication required' using errcode = 'insufficient_privilege';
+  end if;
+
+  select * into h from public.human_verification_handoffs
+  where id = p_handoff_id for update;
+  if not found then
+    raise exception 'handoff not found' using errcode = 'no_data_found';
+  end if;
+  if h.user_id <> v_uid then
+    raise exception 'handoff does not belong to caller' using errcode = 'insufficient_privilege';
+  end if;
+
+  if h.status = 'PENDING' and h.expires_at > now() then
+    update public.human_verification_handoffs
+       set status    = 'OPENED',
+           opened_at = now(),
+           audit     = audit || jsonb_build_object('at', now(), 'event', 'OPENED')
+     where id = h.id
+     returning * into h;
+  end if;
+
+  return jsonb_build_object('handoffId', h.id, 'status', h.status, 'expiresAt', h.expires_at);
+end;
+$$;
+
+revoke all on function public.open_human_verification_handoff(uuid) from public, anon;
+grant execute on function public.open_human_verification_handoff(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- cancel_human_verification_handoff
+--
+-- The customer declining. Only PENDING and OPENED may become CANCELLED.
+--
+-- A COMPLETED handoff is NOT mutated — a completed verification is a fact and
+-- must not be erasable by a later click. EXPIRED likewise stays EXPIRED.
+-- Cancelling twice is idempotent success rather than an error, and a handoff
+-- that does not exist or belongs to someone else RAISES: there is no silent
+-- zero-row success, which is exactly the bug this replaces.
+--
+-- Because hvh_one_live_per_source_uidx only covers PENDING/OPENED, moving to
+-- CANCELLED frees the slot and a legitimate re-mint works immediately.
+-- ---------------------------------------------------------------------------
+create or replace function public.cancel_human_verification_handoff(p_handoff_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  h public.human_verification_handoffs%rowtype;
+begin
+  if v_uid is null then
+    raise exception 'authentication required' using errcode = 'insufficient_privilege';
+  end if;
+
+  select * into h from public.human_verification_handoffs
+  where id = p_handoff_id for update;
+  if not found then
+    raise exception 'handoff not found' using errcode = 'no_data_found';
+  end if;
+  if h.user_id <> v_uid then
+    raise exception 'handoff does not belong to caller' using errcode = 'insufficient_privilege';
+  end if;
+
+  if h.status = 'CANCELLED' then
+    return jsonb_build_object('handoffId', h.id, 'status', h.status, 'cancelled', true, 'already', true);
+  end if;
+
+  if h.status not in ('PENDING','OPENED') then
+    -- COMPLETED / EXPIRED / UNSUPPORTED are terminal and are reported back
+    -- unchanged rather than silently rewritten.
+    return jsonb_build_object('handoffId', h.id, 'status', h.status, 'cancelled', false, 'already', false);
+  end if;
+
+  update public.human_verification_handoffs
+     set status = 'CANCELLED',
+         audit  = audit || jsonb_build_object('at', now(), 'event', 'CANCELLED')
+   where id = h.id
+   returning * into h;
+
+  return jsonb_build_object('handoffId', h.id, 'status', h.status, 'cancelled', true, 'already', false);
+end;
+$$;
+
+revoke all on function public.cancel_human_verification_handoff(uuid) from public, anon;
+grant execute on function public.cancel_human_verification_handoff(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- redeem_human_verification_handoff
@@ -154,6 +389,16 @@ begin
   -- `status`, `source_key` etc. would shadow the identically-named columns of
   -- the table this function updates, which is a class of plpgsql ambiguity bug
   -- that only shows up at runtime. A single jsonb result has no such overlap.
+
+  -- An explicit NULL check on the caller identity, BEFORE anything else.
+  -- Without it the ownership test below (`h.user_id <> auth.uid()`) evaluates
+  -- to NULL for an unauthenticated caller, the IF does not fire, and the
+  -- comparison silently passes. EXECUTE is revoked from anon so this is not
+  -- reachable today, but a security check that depends on a grant staying
+  -- correct is one grant away from being no check at all.
+  if auth.uid() is null then
+    raise exception 'authentication required' using errcode = 'insufficient_privilege';
+  end if;
 
   if p_nonce is null or length(p_nonce) < 32 then
     raise exception 'invalid handoff nonce' using errcode = 'invalid_parameter_value';

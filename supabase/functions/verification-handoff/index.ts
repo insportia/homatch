@@ -75,6 +75,8 @@ serve(async (req) => {
         return await handleMint(supabase, userId, body);
       case 'complete':
         return await handleComplete(supabase, body);
+      case 'open':
+        return await handleOpen(supabase, body);
       case 'cancel':
         return await handleCancel(supabase, body);
       case 'status':
@@ -110,7 +112,7 @@ async function handleDecide(supabase: any, body: any): Promise<Response> {
   return json({ plan, spec: specFor(sourceKey) });
 }
 
-async function handleMint(supabase: any, userId: string, body: any): Promise<Response> {
+async function handleMint(supabase: any, _userId: string, body: any): Promise<Response> {
   const jobId = String(body?.jobId ?? '').trim();
   const sourceKey = String(body?.sourceKey ?? '').trim();
   if (!jobId || !sourceKey) return json({ error: 'jobId and sourceKey are required' }, 400);
@@ -136,61 +138,62 @@ async function handleMint(supabase: any, userId: string, body: any): Promise<Res
     return json({ plan, handoff: null });
   }
 
-  // An existing live handoff is returned as "already active" rather than
-  // duplicated — the unique index would reject a second one anyway, and the
-  // customer should be sent back to the one they already have.
-  const { data: live } = await supabase
-    .from('human_verification_handoffs')
-    .select('id,status,expires_at,target_url')
-    .eq('research_job_id', jobId)
-    .eq('source_key', sourceKey)
-    .in('status', ['PENDING', 'OPENED'])
-    .maybeSingle();
+  /*
+   * Minting goes through a SECURITY DEFINER RPC, never a table insert.
+   *
+   * The table has NO client write policy at all, deliberately: a scoped INSERT
+   * policy would let the caller choose `nonce_sha256`, and knowing the
+   * preimage of your own hash makes the nonce worthless. So the owner, the
+   * nonce, the status and the expiry are all derived inside the database, and
+   * the job-ownership check happens there too — after SECURITY DEFINER has
+   * bypassed RLS, which is the only place it can still be enforced.
+   *
+   * This function contributes only descriptive values.
+   */
+  const { data, error } = await supabase.rpc('mint_human_verification_handoff', {
+    p_job_id: jobId,
+    p_source_key: sourceKey,
+    p_handoff_kind: spec.kind,
+    p_worker_job_id: body?.workerJobId ? String(body.workerJobId) : null,
+    p_target_url: typeof body?.targetUrl === 'string' ? body.targetUrl : null,
+  });
 
-  if (live) {
-    // The nonce cannot be re-issued (it was never stored), so an in-flight
-    // handoff must be cancelled and re-minted if the customer lost the link.
-    return json({ plan, handoff: { id: live.id, status: live.status, expiresAt: live.expires_at, nonce: null } });
+  if (error) {
+    // The database is the authority on ownership and on the one-live-handoff
+    // rule; surface a stable code rather than its message.
+    console.error('mint failed', error.message?.slice(0, 200) ?? '');
+    return json({ error: 'could not create handoff' }, 409);
   }
-
-  const nonce = mintNonce();
-  const nonceHash = await sha256Hex(nonce);
-  const expiresAt = new Date(Date.now() + TTL_MINUTES * 60_000).toISOString();
-
-  const { data: row, error } = await supabase
-    .from('human_verification_handoffs')
-    .insert({
-      user_id: userId,
-      research_job_id: jobId,
-      source_key: sourceKey,
-      worker_job_id: body?.workerJobId ? String(body.workerJobId) : null,
-      nonce_sha256: nonceHash,
-      handoff_kind: spec.kind,
-      target_url: typeof body?.targetUrl === 'string' ? body.targetUrl : null,
-      expires_at: expiresAt,
-      audit: [{ at: new Date().toISOString(), event: 'MINTED', note: plan.reason }],
-    })
-    .select('id,status,expires_at')
-    .single();
-
-  // The insert is done with the caller's own client, so RLS would already have
-  // blocked a job they do not own; this catches the race where two tabs mint
-  // at once and the unique index rejects the second.
-  if (error) return json({ error: 'could not create handoff', detail: error.code ?? null }, 409);
 
   return json({
     plan,
     handoff: {
-      id: row.id,
-      status: row.status,
-      expiresAt: row.expires_at,
-      // Returned exactly once. It is not stored and cannot be recovered.
-      nonce,
+      id: data?.handoffId ?? null,
+      status: data?.status ?? null,
+      expiresAt: data?.expiresAt ?? null,
+      targetUrl: data?.targetUrl ?? null,
+      // Present exactly once, on the mint that created the row. An
+      // already-live handoff returns null here because the nonce was never
+      // stored and genuinely cannot be re-issued.
+      nonce: data?.nonce ?? null,
+      already: data?.already === true,
       kind: spec.kind,
       requiredInputs: spec.requiredInputs,
       inputs: pickInputs(spec.requiredInputs, available),
     },
   });
+}
+
+/** Records that the customer actually opened the link. PENDING -> OPENED only. */
+async function handleOpen(supabase: any, body: any): Promise<Response> {
+  const handoffId = String(body?.handoffId ?? '').trim();
+  if (!handoffId) return json({ error: 'handoffId is required' }, 400);
+
+  const { data, error } = await supabase.rpc('open_human_verification_handoff', {
+    p_handoff_id: handoffId,
+  });
+  if (error) return json({ error: 'handoff_not_found' }, 404);
+  return json({ handoff: data });
 }
 
 async function handleComplete(supabase: any, body: any): Promise<Response> {
@@ -224,18 +227,29 @@ async function handleCancel(supabase: any, body: any): Promise<Response> {
   const handoffId = String(body?.handoffId ?? '').trim();
   if (!handoffId) return json({ error: 'handoffId is required' }, 400);
 
-  // A customer declining is a normal outcome. decideHandoff() reads the
-  // resulting CANCELLED state and will not offer the same handoff again.
-  const { error } = await supabase
-    .from('human_verification_handoffs')
-    .update({ status: 'CANCELLED' })
-    .eq('id', handoffId)
-    .in('status', ['PENDING', 'OPENED']);
+  /*
+   * Cancellation goes through a SECURITY DEFINER RPC for the same reason as
+   * minting: the table has no client UPDATE policy, and a policy permissive
+   * enough to allow cancelling would also permit setting status = 'COMPLETED'.
+   *
+   * The previous implementation issued a direct .update(), which under a
+   * SELECT-only policy matched zero rows and returned SUCCESS — so declining a
+   * handoff silently did nothing, the row stayed PENDING, and the
+   * one-live-per-source index then blocked any re-mint. The RPC raises on a
+   * missing or non-owned handoff instead of succeeding vacuously.
+   */
+  const { data, error } = await supabase.rpc('cancel_human_verification_handoff', {
+    p_handoff_id: handoffId,
+  });
 
-  // The customer-facing table is read-only under RLS, so this update runs
-  // only where a policy permits it; a failure here is not fatal to the flow.
-  if (error) return json({ cancelled: false, reason: 'not_permitted' }, 200);
-  return json({ cancelled: true });
+  if (error) {
+    console.error('cancel failed', error.message?.slice(0, 200) ?? '');
+    return json({ cancelled: false, error: 'handoff_not_cancellable' }, 400);
+  }
+
+  // `cancelled: false` with a terminal status is a real answer, not a failure:
+  // a COMPLETED verification is a fact and is never rewritten by a later tap.
+  return json({ cancelled: data?.cancelled === true, status: data?.status ?? null });
 }
 
 async function handleStatus(supabase: any, body: any): Promise<Response> {

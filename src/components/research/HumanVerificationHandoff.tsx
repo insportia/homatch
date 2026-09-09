@@ -34,12 +34,16 @@ export function HumanVerificationHandoff({
   offer,
   onComplete,
   onCancel,
+  onOpen,
   busy,
   error,
 }: {
   offer: HandoffOffer;
   onComplete: (reference: string) => void;
   onCancel: () => void;
+  /** Fired when the customer actually opens the official site, so the
+   * handoff can move PENDING -> OPENED and the audit trail is truthful. */
+  onOpen?: () => void;
   busy?: boolean;
   error?: string | null;
 }) {
@@ -63,7 +67,7 @@ export function HumanVerificationHandoff({
             asChild
             variant="outline"
             className="w-full sm:w-auto gap-2"
-            onClick={() => setOpened(true)}
+            onClick={() => { setOpened(true); onOpen?.(); }}
           >
             {/* noopener/noreferrer: the official site must never receive a
                 referrer from, or a handle on, the Homatch tab. */}

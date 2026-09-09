@@ -142,6 +142,39 @@ serve(async (req) => {
       metadata: { match_id: matchId, credits_charged: price },
     });
 
+    // ── LOW_CREDITS ──────────────────────────────────────────
+    // notification_type has carried LOW_CREDITS since the enum was created and
+    // NotificationsPage has always had a branch for it, but nothing anywhere
+    // ever produced one -- so the first a customer learned about an empty
+    // balance was an unlock that refused. This is the moment worth telling
+    // them about: they just spent, and what is left no longer covers another
+    // match at the price they just paid.
+    //
+    // Only one outstanding warning at a time. Re-warning on every unlock would
+    // train people to ignore it.
+    if (newBalance < price) {
+      const { count: pendingWarnings } = await supabaseAdmin
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('type', 'LOW_CREDITS')
+        .eq('read', false);
+
+      if (!pendingWarnings) {
+        const { error: warnErr } = await supabaseAdmin.from('notifications').insert({
+          user_id: userId,
+          type: 'LOW_CREDITS',
+          // Stored copy is a write-time fallback; NotificationsPage renders a
+          // translated string in the viewer's own language.
+          title: 'Your credits are running low',
+          body: 'You no longer have enough credits to unlock another match.',
+          read: false,
+          metadata: { kind: 'LOW_CREDITS', balance: newBalance, last_unlock_price: price },
+        });
+        if (warnErr) console.error('atomic-unlock: low-credit warning failed:', warnErr.message);
+      }
+    }
+
     await supabaseAdmin.from('cost_events').insert({
       provider: 'OTHER',
       operation_type: 'MATCH_UNLOCK',

@@ -339,12 +339,19 @@ export async function getNotifications(userId: string, limit = 20): Promise<Noti
   return Array.isArray(data) ? data : [];
 }
 
+// `read` is the only column a customer may write; the database now grants only
+// that one. Errors are surfaced rather than dropped, so a bell that refuses to
+// clear says why instead of silently staying lit.
 export async function markNotificationRead(id: string) {
-  await supabase.from('notifications').update({ read: true }).eq('id', id);
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+  if (error) console.error('markNotificationRead error:', error.message);
+  return !error;
 }
 
 export async function markAllNotificationsRead(userId: string) {
-  await supabase.from('notifications').update({ read: true }).eq('user_id', userId);
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId);
+  if (error) console.error('markAllNotificationsRead error:', error.message);
+  return !error;
 }
 
 // ============================================================

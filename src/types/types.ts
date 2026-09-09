@@ -59,18 +59,30 @@ export type ActivityEventType =
   | 'MORTGAGE_OFFER_UPLOADED'
   | 'MORTGAGE_OFFERS_COMPARED'
   | 'MORTGAGE_SCENARIO_SAVED';
+/**
+ * Mirrors the public.notification_type Postgres enum exactly, in enum order.
+ *
+ * It had drifted: CREDITS_LOW, MATCH_UNLOCKED and CAMPAIGN_PAUSED were listed
+ * here and do not exist in the database, while RESEARCH_PRODUCT_PURCHASED,
+ * VERIFY_COMPLETE and DOCUMENT_ANALYZED existed there and not here. The
+ * consequence was the opposite of what a union is for: TypeScript vouched for
+ * a comparison against 'CREDITS_LOW' that could never be true, and rejected a
+ * comparison against a value the database really does store.
+ *
+ * Add a value here only together with an `alter type ... add value` migration.
+ */
 export type NotificationType =
   | 'IMPORT_COMPLETED'
   | 'IMPORT_FAILED'
   | 'MATCHING_STARTED'
   | 'MATCHING_PAUSED'
   | 'LOW_CREDITS'
-  | 'CREDITS_LOW'
   | 'MATCH_FOUND'
   | 'MATCH_AVAILABLE'
-  | 'MATCH_UNLOCKED'
   | 'CREDITS_TOPPED_UP'
-  | 'CAMPAIGN_PAUSED';
+  | 'RESEARCH_PRODUCT_PURCHASED'
+  | 'VERIFY_COMPLETE'
+  | 'DOCUMENT_ANALYZED';
 export type ConditionType = 'NEW' | 'GOOD' | 'NEEDS_RENOVATION' | 'UNDER_CONSTRUCTION';
 export type BuildingType = 'PANEL' | 'BRICK' | 'MONOLITH' | 'WOOD' | 'OTHER';
 export type HeatingType = 'CENTRAL' | 'GAS' | 'ELECTRIC' | 'NONE' | 'OTHER';

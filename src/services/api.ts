@@ -158,11 +158,19 @@ export async function softDeleteProperty(id: string) {
 // PROPERTY FACTS
 // ============================================================
 
+/**
+ * Throws. The facts ARE the listing -- price, city, area, rooms -- and both
+ * callers (PrivateListingPage and URLImportPage) already wrap this in a
+ * try/catch that shows the customer a real error. Logging and continuing meant
+ * "Property added successfully!" for a property with no price and no location,
+ * which then matches nothing and looks to the owner like the matching engine
+ * is broken.
+ */
 export async function upsertPropertyFacts(facts: Partial<PropertyFacts> & { property_id: string }) {
   const { error } = await supabase
     .from('property_facts')
     .upsert(facts, { onConflict: 'property_id' });
-  if (error) console.error('upsertPropertyFacts error:', error.message);
+  if (error) throw new Error(`Could not save the property details: ${error.message}`);
 }
 
 // ============================================================
@@ -198,19 +206,30 @@ export async function addPropertyPhoto(photo: Omit<PropertyPhoto, 'id' | 'create
 }
 
 export async function deletePropertyPhoto(id: string) {
-  await supabase.from('property_photos').delete().eq('id', id);
+  // .select() so a DELETE that matched nothing is distinguishable from one that
+  // did: PostgREST returns 204 either way.
+  const { data, error } = await supabase.from('property_photos').delete().eq('id', id).select('id');
+  if (error) throw new Error(`Could not delete the photo: ${error.message}`);
+  if (!data || data.length === 0) throw new Error('That photo no longer exists.');
 }
 
 export async function setCoverPhoto(propertyId: string, photoId: string) {
-  // Remove all cover flags then set new one
-  await supabase
+  // Clearing the old cover and setting the new one are two statements; if the
+  // second fails silently the property is left with no cover at all, which is
+  // worse than the state it started in.
+  const { error: clearErr } = await supabase
     .from('property_photos')
     .update({ is_cover: false })
     .eq('property_id', propertyId);
-  await supabase
+  if (clearErr) throw new Error(`Could not change the cover photo: ${clearErr.message}`);
+
+  const { data, error: setErr } = await supabase
     .from('property_photos')
     .update({ is_cover: true })
-    .eq('id', photoId);
+    .eq('id', photoId)
+    .select('id');
+  if (setErr) throw new Error(`Could not change the cover photo: ${setErr.message}`);
+  if (!data || data.length === 0) throw new Error('That photo is no longer part of this property.');
 }
 
 export async function uploadPropertyPhoto(
@@ -259,7 +278,9 @@ export async function getImport(id: string): Promise<PropertyImport | null> {
 }
 
 export async function updateImport(id: string, updates: Partial<PropertyImport>) {
-  await supabase.from('property_imports').update(updates).eq('id', id);
+  const { error } = await supabase.from('property_imports').update(updates).eq('id', id);
+  if (error) console.error('updateImport error:', error.message);
+  return !error;
 }
 
 // ============================================================
@@ -278,10 +299,17 @@ export async function createSearchProfile(
   const minArea = facts.area ? facts.area * (1 - areaFlex) : undefined;
   const maxArea = facts.area ? facts.area * (1 + areaFlex) : undefined;
 
-  await supabase.from('search_profiles').upsert({
+  // The search profile is what the matching engine matches demand against. A
+  // property without one is invisible to matching, so a failure here is not a
+  // detail to log -- it is the listing not working.
+  //
+  // (The `transaction_type` line that used to sit here read
+  // `facts.source_url ? undefined : undefined`, which is undefined either way.
+  // It looked like it set the field and never did; transaction_type comes from
+  // the property row.)
+  const { error } = await supabase.from('search_profiles').upsert({
     property_id: propertyId,
     user_id: userId,
-    transaction_type: facts.source_url ? undefined : undefined, // set from property
     country: facts.country,
     region: facts.region,
     city: facts.city,
@@ -295,6 +323,7 @@ export async function createSearchProfile(
     max_bedrooms: facts.bedrooms ? facts.bedrooms + 1 : null,
     new_build: facts.new_build,
   }, { onConflict: 'property_id' });
+  if (error) throw new Error(`Could not save the matching profile: ${error.message}`);
 }
 
 // ============================================================

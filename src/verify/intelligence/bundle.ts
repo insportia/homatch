@@ -89,12 +89,24 @@ const MARKDOWN_LINK = /\[([^\]]*)\]\((?:[^)]*)\)/g;
 const BARE_URL = /https?:[^\s]+/gi;
 /** SCREAMING_SNAKE is how this codebase writes internal states, never prose. */
 const INTERNAL_TOKEN = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+/*
+ * A parenthetical that is nothing but a hostname.
+ *
+ * Stripping the URL out of "([villion.ge](https://villion.ge/...))" leaves
+ * "(villion.ge)" — the link TEXT was the domain, so the portal name survives
+ * in the primary report anyway. For a snapshot field the attribution adds
+ * nothing a buyer can use; provenance lives in Evidence & Sources. Only a
+ * parenthetical that is ENTIRELY a domain goes, so "(მწვანე კარკასი)" and
+ * "(94.1 m2)" are untouched.
+ */
+const BARE_DOMAIN_PAREN = /\s*\(\s*(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+\s*\)/gi;
 
 const clean = (v: unknown): string =>
   str(v)
     // Keep the link TEXT, drop the target.
     .replace(MARKDOWN_LINK, '$1')
     .replace(BARE_URL, '')
+    .replace(BARE_DOMAIN_PAREN, '')
     // Tidy the punctuation the removal leaves behind: " ()", " (, )", " .".
     .replace(/\(\s*[),.;:]*\s*\)/g, '')
     .replace(/\s+([.,;:!?])/g, '$1')

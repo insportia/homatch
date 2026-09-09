@@ -231,6 +231,26 @@ test('portal links never reach the snapshot, only their text', () => {
   assert.ok(joined.includes('კონსიერჟი'));
 });
 
+test('a portal name left behind as link text is dropped too', () => {
+  // Stripping the URL out of "([villion.ge](https://...))" leaves
+  // "(villion.ge)" — the link text WAS the domain, so the portal name
+  // survived in the primary report anyway.
+  const report = {
+    exactUnit: { code: '01.01.01.001.01.01.001' },
+    publicResearch: { amenities: [
+      'გამწვანებული ეზო. ([villion.ge](https://villion.ge/p))',
+      'საბავშვო მოედანი. (korter.ge)',
+      'ჩაბარება — მწვანე კარკასი. (მწვანე კარკასი)',
+      'პარკინგი (94.1 m2)',
+    ] },
+  };
+  const a = buildIntelligenceBundle(report, buildEvidencePackage(report), null).snapshot.amenities;
+  assert.ok(!/villion\.ge|korter\.ge/i.test(a.join(' ')), 'a portal domain survived');
+  // Only a parenthetical that is ENTIRELY a domain goes.
+  assert.ok(a.some((x) => x.includes('(მწვანე კარკასი)')), 'a real parenthetical was eaten');
+  assert.ok(a.some((x) => x.includes('(94.1 m2)')), 'a measurement parenthetical was eaten');
+});
+
 test('an internal enum is omitted from the snapshot, never shown', () => {
   // Live report: "ტიპი MIXED_OR_UNKNOWN". It means "we do not know", so the
   // honest rendering is no row at all.

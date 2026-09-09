@@ -133,15 +133,25 @@ export async function createProperty(input: CreatePropertyInput): Promise<string
   return data?.id ?? null;
 }
 
+/**
+ * matchability_score is deliberately absent: it is produced by run-matching-v2
+ * under the service role and shown on the dashboard as the property's matching
+ * strength, so a client that could set it could rate its own listing. The
+ * database now revokes the column too; this keeps the two in step.
+ */
 export async function updateProperty(
   id: string,
-  updates: Partial<{ title: string; matching_status: MatchingStatus; matchability_score: number; cover_photo_url: string; transaction_type: TransactionType; property_type: PropertyType }>
+  updates: Partial<{ title: string; matching_status: MatchingStatus; cover_photo_url: string; transaction_type: TransactionType; property_type: PropertyType }>
 ) {
-  await supabase.from('properties').update(updates).eq('id', id);
+  const { error } = await supabase.from('properties').update(updates).eq('id', id);
+  if (error) console.error('updateProperty error:', error.message);
+  return !error;
 }
 
 export async function softDeleteProperty(id: string) {
-  await supabase.from('properties').update({ is_deleted: true }).eq('id', id);
+  const { error } = await supabase.from('properties').update({ is_deleted: true }).eq('id', id);
+  if (error) console.error('softDeleteProperty error:', error.message);
+  return !error;
 }
 
 // ============================================================
@@ -420,12 +430,24 @@ export async function getUnlockedMatch(
   return data ?? null;
 }
 
-export async function markMatchPreviewed(matchId: string) {
-  await supabase
-    .from('matches')
-    .update({ status: 'PREVIEWED' })
-    .eq('id', matchId)
-    .eq('status', 'NEW');
+/**
+ * Records that the customer opened a match.
+ *
+ * Goes through an RPC rather than a direct UPDATE: matches has no UPDATE policy
+ * for a customer, so the previous `.from('matches').update(...)` matched zero
+ * rows and PostgREST returned 204 with no error -- the preview was never
+ * recorded, which also meant the matching cleanup sweep still treated an
+ * opened match as an untouched NEW row it could reject.
+ *
+ * Returns the match's resulting status, or null if it could not be recorded.
+ */
+export async function markMatchPreviewed(matchId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('mark_match_previewed', { p_match_id: matchId });
+  if (error) {
+    console.error('[markMatchPreviewed] failed:', error.message);
+    return null;
+  }
+  return (data as string | null) ?? null;
 }
 
 export async function unlockMatch(matchId: string): Promise<{
@@ -552,22 +574,30 @@ export async function startMatchingCampaign(
     .maybeSingle();
 
   if (existing) {
-    await supabase
+    // Both writes are checked. Launching a campaign whose status never changed
+    // leaves the engine and the UI disagreeing about whether it is running.
+    const { error: campErr } = await supabase
       .from('matching_campaigns')
       .update({ status_v2: 'ACTIVE' })
       .eq('id', existing.id);
-    await supabase
+    if (campErr) throw new Error(`Could not activate the campaign: ${campErr.message}`);
+
+    const { error: propErr } = await supabase
       .from('properties')
       .update({ matching_status: 'ACTIVE' })
       .eq('id', propertyId);
+    if (propErr) throw new Error(`Could not activate the property: ${propErr.message}`);
+
     campaignId = existing.id;
   } else {
-    const { data } = await supabase
+    const { data, error: insertErr } = await supabase
       .from('matching_campaigns')
       .insert({ property_id: propertyId, user_id: userId, status_v2: 'ACTIVE' })
       .select('id')
       .single();
-    if (!data) return null;
+    if (insertErr || !data) {
+      throw new Error(`Could not create the campaign: ${insertErr?.message ?? 'no row returned'}`);
+    }
     campaignId = data.id;
   }
   await logActivity(userId, 'MATCHING_STARTED', propertyId);
@@ -620,25 +650,32 @@ export async function pauseMatchingCampaign(
   propertyId: string,
   userId: string
 ): Promise<void> {
-  await supabase
+  // "Pause" is a promise that the engine stops spending the customer's credits
+  // on this property, so a pause that did not land must not be reported as one.
+  const { error: campErr } = await supabase
     .from('matching_campaigns')
     .update({ status_v2: 'PAUSED' })
     .eq('property_id', propertyId);
+  if (campErr) throw new Error(`Could not pause the campaign: ${campErr.message}`);
 
-  await supabase
+  const { error: propErr } = await supabase
     .from('properties')
     .update({ matching_status: 'PAUSED' })
     .eq('id', propertyId);
+  if (propErr) throw new Error(`Could not pause the property: ${propErr.message}`);
 
   await logActivity(userId, 'MATCHING_PAUSED', propertyId);
 
-  await supabase.from('notifications').insert({
+  const { error: notifyErr } = await supabase.from('notifications').insert({
     user_id: userId,
     type: 'MATCHING_PAUSED',
     title: 'Matching paused',
     body: 'Your matching campaign has been paused.',
     property_id: propertyId,
   });
+  // The pause itself succeeded; failing to announce it is worth a log, not an
+  // exception that would make the caller believe nothing was paused.
+  if (notifyErr) console.error('[pauseMatchingCampaign] notification failed:', notifyErr.message);
 }
 
 // ============================================================

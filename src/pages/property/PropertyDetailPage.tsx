@@ -148,11 +148,19 @@ function CampaignPanel({
 
   const handlePauseConfirmed = async () => {
     setLoading(true);
-    await pauseMatchingCampaign(propertyId, userId);
-    setActive(false);
-    setLoading(false);
-    setShowPauseConfirm(false);
-    toast.success(t('matches_paused_toast'));
+    try {
+      await pauseMatchingCampaign(propertyId, userId);
+      setActive(false);
+      setShowPauseConfirm(false);
+      toast.success(t('matches_paused_toast'));
+    } catch (err) {
+      // Still active, still spending. Saying "paused" here would be a lie the
+      // customer only discovers on their next credit statement.
+      console.error(err);
+      toast.error(t('matches_pause_error'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

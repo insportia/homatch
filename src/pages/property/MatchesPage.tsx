@@ -469,8 +469,12 @@ function MatchesContent() {
     setUnlockError(null);
     setShowUnlockConfirm(true);
     if (match.status === 'NEW') {
-      await markMatchPreviewed(match.id);
-      setMatches(prev => prev.map(m => m.id === match.id ? { ...m, status: 'PREVIEWED' } : m));
+      // Reflect what the server actually recorded. Setting PREVIEWED locally
+      // regardless is what hid the fact that the write never landed.
+      const recorded = await markMatchPreviewed(match.id);
+      if (recorded) {
+        setMatches(prev => prev.map(m => m.id === match.id ? { ...m, status: recorded as Match['status'] } : m));
+      }
     }
   };
 
@@ -591,11 +595,19 @@ function MatchesContent() {
   const handlePauseMatching = async () => {
     if (!propertyId || !homatchUser) return;
     setCampaignLoading(true);
-    await pauseMatchingCampaign(propertyId, homatchUser.id);
-    setCampaignActive(false);
-    setCampaignLoading(false);
-    setShowPauseConfirm(false);
-    toast.success(t('matches_paused_toast'));
+    try {
+      await pauseMatchingCampaign(propertyId, homatchUser.id);
+      setCampaignActive(false);
+      setShowPauseConfirm(false);
+      toast.success(t('matches_paused_toast'));
+    } catch (err) {
+      // Do not clear the active state on failure: the campaign is still
+      // running and still spending credits, and the screen must say so.
+      console.error(err);
+      toast.error(t('matches_pause_error'));
+    } finally {
+      setCampaignLoading(false);
+    }
   };
 
   const balance = Number(creditAccount?.balance ?? 0);

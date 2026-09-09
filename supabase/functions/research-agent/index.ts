@@ -3605,17 +3605,42 @@ async function driveSynthesis(sb: any): Promise<void> {
    * synthesis_at records when the attempt STARTED and is overwritten with the
    * success time by verify-synthesis itself.
    */
-  const staleAttempt = new Date(Date.now() - SYNTHESIS_ATTEMPT_TIMEOUT_MS).toISOString();
-  const { data: jobs } = await sb
+  const staleBefore = Date.now() - SYNTHESIS_ATTEMPT_TIMEOUT_MS;
+  const { data: candidates, error: sweepError } = await sb
     .from('research_jobs')
-    .select('id,synthesis_attempts,synthesis_state')
+    .select('id,synthesis_attempts,synthesis_state,synthesis_at')
     .eq('status', 'COMPLETE')
     .is('deleted_at', null)
     .in('synthesis_state', ['NONE', 'FAILED', 'PENDING'])
     .lt('synthesis_attempts', MAX_SYNTHESIS_ATTEMPTS)
-    .or(`synthesis_state.neq.PENDING,synthesis_at.lt.${staleAttempt}`)
     .order('completed_at', { ascending: true })
-    .limit(DRIVE_SYNTHESIS_BATCH);
+    .limit(DRIVE_SYNTHESIS_BATCH * 3);
+
+  // A swallowed query error is how this sweep went silent once already: an
+  // unsupported filter returned no rows and no exception, so COMPLETE jobs
+  // simply stopped getting reports with nothing anywhere saying why.
+  if (sweepError) {
+    console.error('research-agent drive: synthesis sweep query failed', sweepError);
+    return;
+  }
+
+  /*
+   * The PENDING staleness test is done HERE rather than in the query.
+   *
+   * Expressing it as a PostgREST `.or()` meant embedding an ISO timestamp in
+   * a comma-separated filter string — which is exactly the kind of quoting
+   * that fails quietly. This is a handful of rows; JavaScript can filter it,
+   * and the rule stays readable.
+   */
+  const jobs = (candidates ?? [])
+    .filter((j: any) => {
+      if (j.synthesis_state !== 'PENDING') return true;
+      const started = Date.parse(j.synthesis_at ?? '');
+      // An attempt with no start time recorded predates this bookkeeping and
+      // is by definition not in flight.
+      return !Number.isFinite(started) || started < staleBefore;
+    })
+    .slice(0, DRIVE_SYNTHESIS_BATCH);
 
   for (const j of jobs ?? []) {
     // Count the attempt BEFORE making it, so a hard crash still consumes

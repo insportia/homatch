@@ -302,8 +302,22 @@ test('a synthesis stalled mid-flight is retried, not abandoned', () => {
   assert.ok(/'NONE', 'FAILED', 'PENDING'/.test(block), 'a stalled PENDING synthesis is never retried');
   // ...but only once it is demonstrably stale, so a live one is not duplicated.
   assert.ok(/SYNTHESIS_ATTEMPT_TIMEOUT_MS/.test(block), 'PENDING is retried with no staleness guard');
-  assert.ok(/synthesis_at\.lt\./.test(block), 'staleness is not measured against the attempt start');
   assert.ok(/synthesis_at: now\(\)/.test(block), 'the attempt start is never stamped');
+  // The staleness test is done in JS on purpose: expressing it as a PostgREST
+  // .or() meant embedding an ISO timestamp in a comma-separated filter
+  // string, which failed quietly and stopped the sweep returning anything.
+  assert.ok(!/\.or\(/.test(block), 'the sweep is back on a quoting-fragile or() filter');
+  assert.ok(/staleBefore/.test(block), 'staleness is not evaluated at all');
+});
+
+test('the synthesis sweep never swallows a query error', () => {
+  // It went silent exactly once this way: an unsupported filter returned no
+  // rows and no exception, so COMPLETE jobs stopped getting reports with
+  // nothing anywhere saying why.
+  const agent = code('supabase/functions/research-agent/index.ts');
+  const block = agent.slice(agent.indexOf('async function driveSynthesis'), agent.indexOf('async function driveLiveJobs'));
+  assert.ok(/error: sweepError/.test(block), 'the sweep query error is discarded');
+  assert.ok(/if \(sweepError\)/.test(block), 'the sweep query error is never checked');
 });
 
 test('a synthesis failure never re-runs the research behind it', () => {

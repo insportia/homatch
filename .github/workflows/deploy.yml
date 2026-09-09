@@ -152,6 +152,14 @@ jobs:
             "match-campaign"
             "provider-health-check"
             "external-discovery-orchestrator"
+            # Recovery release. All three authenticate the caller themselves
+            # and then read through that caller's own RLS, so JWT verification
+            # is required, not optional. They import shared domain modules from
+            # src/ by relative path; the CLI bundles that closure, which was
+            # confirmed against production on verification-handoff.
+            "verify-synthesis"
+            "deal-room-ai"
+            "verification-handoff"
           )
           FAILED=()
           for fn in "${JWT_FUNCTIONS[@]}"; do

@@ -140,6 +140,9 @@ test('credit_ledger has a unique key so a retry cannot charge twice', () => {
   // Partial: a NULL reference makes no idempotency claim.
   assert.match(sql, /where reference is not null/i);
   // Keyed on type as well, so reserve -> capture -> release may share a
-  // reference while an exact retry of one of them cannot.
-  assert.ok(!/\(user_id, reference\)\s*$/m.test(sql));
+  // reference while an exact retry of one of them cannot. Checked against the
+  // statement itself, not the file: the rationale comment above it discusses
+  // the (user_id, reference) form it deliberately rejects.
+  const stmt = sql.slice(sql.toLowerCase().indexOf('create unique index'));
+  assert.ok(!/on public\.credit_ledger \(user_id, reference\)/i.test(stmt));
 });

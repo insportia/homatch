@@ -70,6 +70,9 @@ export default {
                 // marks and warm panels.
                 gold: {
                     DEFAULT: 'hsl(var(--gold))',
+                    // The text-safe gold. --gold is 2.6:1 on warm-white and
+                    // must never carry type on a light ground; this is 5.7:1.
+                    ink: 'hsl(var(--gold-ink))',
                     soft: 'hsl(var(--gold-soft))'
                 },
                 sand: 'hsl(var(--sand))',

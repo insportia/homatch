@@ -1,79 +1,135 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
+import {
+  Building2, Calculator, Mail, PhoneCall, Search, ShieldCheck, Sparkles, UserSearch,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { ArrowLink, Eyebrow, PAGE } from './primitives';
 
 /**
- * REGION 04 — the first dark moment.
+ * REGION 03 — how the intelligence connects the platform. The first black
+ * moment, and the page's answer to "what actually happens when I ask?".
  *
- * The page's rhythm depends on this: three cream regions, then navy. It also
- * suits the content — the assistant is the one place on the page where the
- * visitor is invited to do something rather than read, and dropping the
- * lights around it is the cheapest way to say so.
+ * WHY THERE IS NO INPUT HERE
  *
- * The console is a real entry into /ai (see HomatchAsk); the dark treatment
- * changes nothing about that.
+ * The hero already carries the console. Repeating it two regions later would
+ * put the same control on the page twice, which teaches a visitor nothing
+ * and makes the page feel padded. The hero is where you ASK; this is where
+ * you see WHAT IT REACHES.
+ *
+ * The middle band is the whole point: one question fans out across every
+ * capability Homatch actually has and comes back as one grounded answer.
+ * That is the product claim in a single diagram — and it replaces the
+ * previous pass's separate five-step "how it works" strip, which was saying
+ * much the same thing a second time.
  */
 export function AISection() {
   const { session } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
 
-  const suggestions = [
-    { key: 'about', label: t('mp_ai_sugg_about') },
-    { key: 'check', label: t('mp_ai_sugg_check') },
-    { key: 'clients', label: t('mp_ai_sugg_clients') },
-    { key: 'cadastral', label: t('mp_ai_sugg_cadastral') },
+  /* Every node here is a capability that exists in the product today. */
+  const reach = [
+    { key: 'client', icon: UserSearch, label: t('mp_cap_client_title') },
+    { key: 'property', icon: Search, label: t('mp_cap_property_title') },
+    { key: 'verify', icon: ShieldCheck, label: t('mp_cap_verify_title') },
+    { key: 'mortgage', icon: Calculator, label: t('mp_cap_mortgage_title') },
+    { key: 'calls', icon: PhoneCall, label: t('call_center_title') },
+    { key: 'email', icon: Mail, label: t('mp_sec_email_title') },
+    { key: 'partners', icon: Building2, label: t('mp_sec_partners_title') },
   ];
 
   return (
-    <section className="relative overflow-hidden bg-primary text-primary-foreground">
-      {/* A single warm bloom behind the console, so the navy is not flat. */}
+    <section id="how" className="relative scroll-mt-24 overflow-hidden bg-primary text-primary-foreground">
+      {/* One warm bloom so the black is not flat. */}
       <div
         className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(60rem 32rem at 50% -10%, hsl(38 44% 54% / 0.16), transparent 70%)' }}
+        style={{ background: 'radial-gradient(64rem 34rem at 50% -12%, hsl(36 38% 56% / 0.13), transparent 68%)' }}
         aria-hidden="true"
       />
 
-      <div className={`${PAGE} relative py-16 sm:py-20 lg:py-24`}>
-        <div className="mx-auto max-w-[52rem] text-center">
-          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-gold/15 text-gold">
-            <Sparkles className="h-5 w-5" aria-hidden="true" />
+      <div className={`${PAGE} relative py-20 sm:py-24 lg:py-28`}>
+        <div className="mx-auto max-w-[46rem] text-center">
+          <div className="flex justify-center">
+            <Eyebrow tone="light">{t('mp_flow_eyebrow')}</Eyebrow>
           </div>
-
-          <div className="mt-6">
-            <Eyebrow tone="light">{t('mp_ai_eyebrow')}</Eyebrow>
-          </div>
-
           <h2
-            className="mt-4 text-balance font-semibold leading-[1.14] tracking-tight"
+            className="mt-5 text-balance font-semibold leading-[1.1] tracking-[-0.02em] text-white"
             style={{ fontSize: 'clamp(1.75rem, 3.1vw, 2.9rem)' }}
           >
-            {t('ai_title')}
+            {t('mp_flow_title')}
           </h2>
-
-          <p className="mx-auto mt-5 max-w-[38rem] text-pretty text-[15px] leading-relaxed text-primary-foreground/70 sm:text-base">
-            {t('mp_ai_sub')}
+          <p className="mx-auto mt-5 max-w-[38rem] text-pretty text-[15px] leading-[1.75] text-white/65 sm:text-base">
+            {t('mp_flow_sub')}
           </p>
         </div>
 
-        {/* The console itself sits on a light surface: the input has to read as
-            somewhere you type, and an outlined field on navy does not. */}
-        <div className="mx-auto mt-9 max-w-[46rem] rounded-[1.5rem] bg-card p-4 shadow-[0_24px_70px_-30px_rgba(10,18,30,0.75)] sm:p-6">
-          <HomatchAsk placeholder={t('mp_ai_placeholder')} suggestions={suggestions} />
+        {/* ── The flow ─────────────────────────────────────────────
+            Three beats stacked on mobile, three columns from lg, joined by a
+            single gold hairline rather than by arrows. */}
+        <div className="relative mt-16 grid gap-12 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)_minmax(0,0.85fr)] lg:items-start lg:gap-10">
+          <span
+            className="pointer-events-none absolute inset-x-0 top-[1.6rem] hidden h-px bg-gradient-to-r from-transparent via-gold/35 to-transparent lg:block"
+            aria-hidden="true"
+          />
+
+          <FlowStep step="01" title={t('mp_flow_1')} desc={t('mp_flow_1_desc')} />
+
+          {/* Homatch AI, and everything it reaches. */}
+          <div className="relative">
+            <div className="mx-auto flex max-w-[26rem] flex-col items-center text-center">
+              <span
+                className="grid h-[3.25rem] w-[3.25rem] place-items-center rounded-full border border-gold/40 bg-white/[0.05] text-gold"
+                aria-hidden="true"
+              >
+                <Sparkles className="h-5 w-5" strokeWidth={1.5} />
+              </span>
+              <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">{t('ai_title')}</p>
+              <p className="mt-3 text-pretty text-sm leading-relaxed text-white/65">{t('mp_flow_2_desc')}</p>
+            </div>
+
+            <ul className="mt-8 flex flex-wrap justify-center gap-2">
+              {reach.map(item => (
+                <li
+                  key={item.key}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-3.5 py-2 text-xs text-white/80"
+                >
+                  <item.icon className="h-[15px] w-[15px] shrink-0 text-gold" strokeWidth={1.5} aria-hidden="true" />
+                  {item.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <FlowStep step="02" title={t('mp_flow_5')} desc={t('mp_flow_5_desc')} align="end" />
         </div>
 
-        <div className="mt-8 flex justify-center">
+        <div className="mt-14 flex justify-center">
           <ArrowLink
             tone="light"
-            label={t('mp_ai_examples')}
+            label={t('mp_flow_cta')}
             onClick={() => navigate(session ? '/ai' : '/auth/signup')}
           />
         </div>
       </div>
     </section>
+  );
+}
+
+function FlowStep({ step, title, desc, align = 'start' }: {
+  step: string; title: string; desc: string; align?: 'start' | 'end';
+}) {
+  return (
+    <div className={`flex flex-col ${align === 'end' ? 'lg:items-end lg:text-end' : ''}`}>
+      <span
+        className="grid h-[3.25rem] w-[3.25rem] place-items-center rounded-full border border-white/15 text-[11px] font-semibold tracking-[0.16em] text-white/55"
+        aria-hidden="true"
+      >
+        {step}
+      </span>
+      <h3 className="mt-5 text-balance text-lg font-semibold leading-snug text-white">{title}</h3>
+      <p className="mt-2.5 max-w-[20rem] text-pretty text-sm leading-relaxed text-white/60">{desc}</p>
+    </div>
   );
 }

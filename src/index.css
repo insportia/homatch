@@ -52,6 +52,7 @@
        `gold`/`sand` utility never resolves to an empty custom property if a
        shared component that uses one is rendered on a dark screen. */
     --gold: 38 92% 55%;
+    --gold-ink: 38 92% 62%;
     --gold-soft: 38 40% 18%;
     --sand: 222 18% 14%;
     --ink-soft: 210 15% 70%;
@@ -166,7 +167,8 @@
   }
 }
 /* ── Homatch light surface ───────────────────────────────────────────────
-   The cream / navy / gold visual language of the Main Page and Dashboard.
+   The BLACK / WARM-WHITE / CHAMPAGNE-GOLD visual language of the Main Page
+   and Dashboard.
 
    This is a token OVERRIDE layer, not a second design system: it re-points
    the same variables the whole component library already reads, so every
@@ -178,75 +180,94 @@
    deliberate: Radix portals render at document.body, so a wrapper would
    leave dropdowns and dialogs on the dark palette while the page behind
    them was light. Screens that do not opt in keep the dark palette
-   untouched. */
+   untouched.
+
+   WHY NEAR-BLACK AND NOT NAVY
+
+   The previous pass used a blue-grey navy, which read as pale and corporate
+   next to the photography. Ink here is a true near-black carrying about 6%
+   warmth — imperceptible as colour, but enough that it sits with champagne
+   gold instead of fighting it.
+
+   THE TWO GOLDS, AND WHY THERE HAVE TO BE TWO
+
+   Champagne gold (#B99A68) is 2.6:1 against warm-white. That is fine for a
+   1px rule, an icon or a hover state, and completely unusable for text —
+   including the small letter-spaced eyebrows this design leans on. So there
+   are two: --gold is the brand/decorative value, correct on dark surfaces
+   where it reaches 6.9:1; --gold-ink is the darkened version (5.7:1 on
+   warm-white) and is the ONLY one allowed to carry text on a light ground.
+   Anything else would be luxury styling paid for with legibility. */
 @layer base {
   :root[data-surface='light'] {
-    --radius: 0.875rem;
+    /* Finer geometry than the last pass: large radii are what made the
+       surfaces read as generic SaaS boxes. */
+    --radius: 0.625rem;
 
-    --background: 40 30% 96%;
-    --foreground: 214 38% 16%;
+    --background: 45 30% 98%;   /* #FCFBF8 warm-white canvas */
+    --foreground: 30 6% 9%;     /* near-black ink            */
 
     --card: 0 0% 100%;
-    --card-foreground: 214 38% 16%;
+    --card-foreground: 30 6% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 214 38% 16%;
+    --popover-foreground: 30 6% 9%;
 
-    /* Navy is the action colour here — filled buttons in both references are
-       navy, and gold is reserved for accent/brand moments (--accent). */
-    --primary: 214 40% 17%;
-    --primary-foreground: 40 40% 97%;
+    /* Black is the action colour. Gold is an accent and never a button fill
+       on a light ground — it has nowhere near the contrast for it. */
+    --primary: 30 6% 9%;
+    --primary-foreground: 45 40% 98%;
 
-    --secondary: 40 30% 93%;
-    --secondary-foreground: 214 30% 24%;
-    --muted: 40 26% 94%;
-    --muted-foreground: 30 9% 44%;
+    --secondary: 43 26% 96%;    /* #F8F6F1 warm tint          */
+    --secondary-foreground: 30 6% 20%;
+    --muted: 43 24% 96%;
+    --muted-foreground: 36 5% 34%;
 
-    --accent: 38 44% 54%;
-    --accent-foreground: 214 40% 17%;
+    --accent: 36 38% 56%;
+    --accent-foreground: 30 6% 9%;
 
-    --destructive: 4 66% 48%;
-    --destructive-foreground: 40 40% 97%;
+    --destructive: 6 62% 44%;
+    --destructive-foreground: 45 40% 98%;
 
-    --border: 38 22% 88%;
-    --input: 38 22% 85%;
-    --ring: 38 44% 50%;
+    /* Hairlines. Deliberately low-contrast: the design's structure comes
+       from space and type, and a border is only ever a whisper of it. */
+    --border: 40 16% 90%;
+    --input: 40 16% 86%;
+    --ring: 36 38% 46%;
 
-    /* Named brand values used where a token role would be misleading —
-       the gold rule beside a pull-quote is neither "accent surface" nor
-       "border", it is the brand line. */
-    --gold: 38 44% 54%;
-    --gold-soft: 38 48% 92%;
-    --sand: 38 32% 93%;
-    --ink-soft: 214 20% 34%;
+    --gold: 36 38% 56%;         /* #B99A68 — rules, icons, dark-surface text */
+    --gold-ink: 36 42% 33%;     /* the text-safe gold on light grounds       */
+    --gold-soft: 40 44% 94%;
+    --sand: 43 26% 95%;
+    --ink-soft: 32 6% 26%;
 
-    --success: 152 46% 34%;
-    --warning: 32 70% 42%;
-    --info: 205 55% 38%;
+    --success: 152 42% 30%;
+    --warning: 32 66% 38%;
+    --info: 210 40% 34%;
 
-    --chart-1: 38 44% 54%;
-    --chart-2: 205 45% 40%;
-    --chart-3: 152 40% 38%;
-    --chart-4: 265 30% 52%;
-    --chart-5: 18 55% 50%;
+    --chart-1: 36 38% 56%;
+    --chart-2: 30 6% 26%;
+    --chart-3: 152 34% 34%;
+    --chart-4: 36 20% 62%;
+    --chart-5: 18 44% 46%;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 214 30% 26%;
-    --sidebar-primary: 214 40% 17%;
-    --sidebar-primary-foreground: 40 40% 97%;
-    --sidebar-accent: 40 30% 94%;
-    --sidebar-accent-foreground: 214 40% 17%;
-    --sidebar-border: 38 22% 90%;
-    --sidebar-ring: 38 44% 50%;
+    --sidebar-foreground: 32 6% 26%;
+    --sidebar-primary: 30 6% 9%;
+    --sidebar-primary-foreground: 45 40% 98%;
+    --sidebar-accent: 43 26% 96%;
+    --sidebar-accent-foreground: 30 6% 9%;
+    --sidebar-border: 40 16% 91%;
+    --sidebar-ring: 36 38% 46%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(38 46% 50%) 0%, hsl(32 44% 42%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(40 30% 98%) 100%);
-    --gradient-amber-glow: radial-gradient(ellipse at 50% 0%, hsl(38 44% 54% / 0.10) 0%, transparent 62%);
+    --gradient-primary: linear-gradient(135deg, hsl(36 40% 58%) 0%, hsl(32 38% 44%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(45 30% 99%) 100%);
+    --gradient-amber-glow: radial-gradient(ellipse at 50% 0%, hsl(36 38% 56% / 0.09) 0%, transparent 62%);
 
-    /* Premium here means quiet: broad, low-opacity, warm-tinted shadows
-       rather than the hard drop shadows a template would use. */
-    --shadow-card: 0 1px 2px hsl(214 30% 20% / 0.04), 0 8px 24px -12px hsl(214 30% 20% / 0.10);
-    --shadow-hover: 0 2px 4px hsl(214 30% 20% / 0.05), 0 16px 36px -16px hsl(214 30% 20% / 0.16);
-    --shadow-amber: 0 10px 30px -12px hsl(38 44% 40% / 0.28);
+    /* Minimal elevation. Contrast and fine lines carry the hierarchy; a
+       floating card shadow would undo both. */
+    --shadow-card: 0 1px 2px hsl(30 8% 12% / 0.035);
+    --shadow-hover: 0 1px 2px hsl(30 8% 12% / 0.04), 0 10px 28px -18px hsl(30 8% 12% / 0.22);
+    --shadow-amber: 0 8px 26px -14px hsl(36 40% 34% / 0.22);
   }
 
   /* The viewport behind the page (overscroll/rubber-band area) otherwise

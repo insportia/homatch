@@ -31,7 +31,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { HomatchShell } from '@/components/layouts/HomatchShell';
 import { RouteGuard } from '@/components/common/RouteGuard';
-import { HomatchAsk } from '@/components/home/HomatchAsk';
+import { HomatchAsk, type AskAction } from '@/components/home/HomatchAsk';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -55,7 +55,7 @@ import { toast } from 'sonner';
  * ------------------------------------------------------------------ */
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-border bg-card shadow-card ${className}`}>{children}</section>;
+  return <section className={`rounded-[1rem] border border-border bg-card shadow-card ${className}`}>{children}</section>;
 }
 
 function CardHead({ title, action }: { title: string; action?: React.ReactNode }) {
@@ -73,7 +73,7 @@ function LinkAction({ label, onClick }: { label: string; onClick: () => void }) 
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-xs font-medium text-gold transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-xs font-medium text-gold-ink transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {label} <ArrowRight className={`h-3.5 w-3.5 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
     </button>
@@ -85,8 +85,8 @@ function EmptyState({ icon: Icon, title, hint, action }: {
 }) {
   return (
     <div className="px-5 py-10 text-center">
-      <span className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-sand text-muted-foreground" aria-hidden="true">
-        <Icon className="h-5 w-5" />
+      <span className="mx-auto grid h-11 w-11 place-items-center rounded-[0.7rem] border border-border bg-secondary text-muted-foreground" aria-hidden="true">
+        <Icon className="h-5 w-5" strokeWidth={1.5} />
       </span>
       <p className="mt-3 text-sm font-medium text-foreground">{title}</p>
       {hint && <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">{hint}</p>}
@@ -135,8 +135,8 @@ function ActionTile({ icon: Icon, title, desc, onClick }: {
       onClick={onClick}
       className="group flex h-full flex-col items-start p-5 text-start transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:p-6"
     >
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-sand text-foreground transition-colors group-hover:bg-gold/20 group-hover:text-gold" aria-hidden="true">
-        <Icon className="h-[18px] w-[18px]" />
+      <span className="grid h-10 w-10 place-items-center rounded-[0.7rem] border border-border bg-secondary text-foreground transition-colors duration-300 group-hover:border-gold/45 group-hover:bg-gold-soft group-hover:text-gold-ink motion-reduce:transition-none" aria-hidden="true">
+        <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} />
       </span>
       <span className="mt-4 block text-sm font-semibold text-foreground">{title}</span>
       <span className="mt-1.5 block flex-1 text-xs leading-relaxed text-muted-foreground">{desc}</span>
@@ -160,17 +160,17 @@ function LiveRunStrip({ run, propertyTitle, onOpen }: {
       className="w-full rounded-2xl border border-ring/35 bg-card p-4 text-start shadow-card transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex items-center gap-3">
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gold motion-reduce:animate-none" aria-hidden="true" />
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gold-ink motion-reduce:animate-none" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">
             {t('dash_ai_matching_title')} {jobStatusLabel(run.status, t)}
           </p>
           <p className="truncate text-xs text-muted-foreground">{run.current_step || propertyTitle}</p>
         </div>
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-gold">{run.progress}%</span>
+        <span className="shrink-0 text-sm font-semibold tabular-nums text-gold-ink">{run.progress}%</span>
       </div>
       <div className="mt-3 h-1 overflow-hidden rounded-full bg-secondary">
-        <div className="h-full rounded-full bg-gold transition-all duration-500" style={{ width: `${run.progress}%` }} />
+        <div className="h-full rounded-full bg-gold-ink transition-all duration-500" style={{ width: `${run.progress}%` }} />
       </div>
     </button>
   );
@@ -342,7 +342,7 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
   const key = ACTIVITY_LABEL[event.event_type];
   return (
     <li className="flex items-start gap-3 px-5 py-3">
-      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" aria-hidden="true" />
+      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-ink" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         {/* An unmapped event_type is a raw enum value, not prose — showing it
             verbatim beats hiding an activity the user's account really has. */}
@@ -419,20 +419,23 @@ function DashboardContent() {
     [data.properties],
   );
 
-  /** The four primary actions. Mortgage and outreach are secondary and live
-      further down; putting six here would flatten the hierarchy again. */
+  /** The four primary actions, in the order the product argues for: the
+      assistant first, because it is how the rest is reached, then the two
+      matching directions, then verification. Mortgage and outreach are
+      secondary and live further down; putting six here would flatten the
+      hierarchy the last pass just built. */
   const primaryActions = [
+    { key: 'ai', icon: Sparkles, title: t('db_qa_ai_title'), desc: t('db_qa_ai_desc'), path: '/ai' },
     { key: 'client', icon: UserSearch, title: t('db_qa_client_title'), desc: t('db_qa_client_desc'), path: '/property/add' },
     { key: 'property', icon: Search, title: t('db_qa_property_title'), desc: t('db_qa_property_desc'), path: '/ai' },
     { key: 'verify', icon: ShieldCheck, title: t('db_qa_verify_title'), desc: t('db_qa_verify_desc'), path: '/verify' },
-    { key: 'ai', icon: Sparkles, title: t('db_qa_ai_title'), desc: t('db_qa_ai_desc'), path: '/ai' },
   ];
 
-  const askSuggestions = [
-    { key: '1', label: t('db_ai_sugg_1') },
-    { key: '2', label: t('db_ai_sugg_2') },
-    { key: '3', label: t('db_ai_sugg_3') },
-    { key: '4', label: t('db_ai_sugg_4') },
+  const askActions: AskAction[] = [
+    { key: '1', icon: Sparkles, label: t('db_ai_sugg_1') },
+    { key: '2', icon: UserSearch, label: t('db_ai_sugg_2') },
+    { key: '3', icon: ShieldCheck, label: t('db_ai_sugg_3') },
+    { key: '4', icon: CircleDollarSign, label: t('db_ai_sugg_4') },
   ];
 
   const weekNote = (count: number) => (count > 0 ? t('db_stat_delta_week', { count }) : null);
@@ -447,7 +450,7 @@ function DashboardContent() {
     <HomatchShell>
       <div className="space-y-5 md:space-y-6">
         {/* ── 1. Welcome, with the four counts on the same surface ── */}
-        <section className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-card">
+        <section className="overflow-hidden rounded-[1rem] border border-border bg-card shadow-card">
           <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
             <div className="p-6 md:p-8 lg:p-9">
               <h1 className="text-balance text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
@@ -463,7 +466,7 @@ function DashboardContent() {
                 rather than competing with the greeting. */}
             <div className="relative hidden min-h-[10rem] md:block">
               <SceneMedia scene="hero" alt="" sizes="22rem" position="62% 46%" />
-              <div className="absolute inset-0 bg-[hsl(214_42%_14%/0.30)]" aria-hidden="true" />
+              <div className="absolute inset-0 bg-[hsl(30_8%_8%/0.28)]" aria-hidden="true" />
               <div className="absolute inset-y-0 start-0 w-1/3 bg-gradient-to-r from-card to-transparent rtl:bg-gradient-to-l" aria-hidden="true" />
               <figure className="absolute inset-0 flex items-center p-6">
                 <div className="flex gap-3.5">
@@ -518,7 +521,7 @@ function DashboardContent() {
         ))}
 
         {/* ── 2. The four primary actions, as one group ── */}
-        <section className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-card">
+        <section className="overflow-hidden rounded-[1rem] border border-border bg-card shadow-card">
           <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x rtl:sm:divide-x-reverse xl:grid-cols-4 xl:divide-y-0">
             {primaryActions.map(action => (
               <ActionTile
@@ -537,8 +540,8 @@ function DashboardContent() {
           <div className="min-w-0 xl:col-span-2">
             {isNewAccount ? (
               <Card className="flex h-full flex-col items-start justify-center p-8 sm:p-10">
-                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gold/15 text-gold" aria-hidden="true">
-                  <Sparkles className="h-5 w-5" />
+                <span className="grid h-12 w-12 place-items-center rounded-[0.7rem] border border-gold/25 bg-gold-soft text-gold-ink" aria-hidden="true">
+                  <Sparkles className="h-5 w-5" strokeWidth={1.5} />
                 </span>
                 <h2 className="mt-5 max-w-md text-balance text-lg font-semibold leading-snug text-foreground sm:text-xl">
                   {t('db_onboard_title')}
@@ -618,8 +621,8 @@ function DashboardContent() {
           {/* The assistant — the same real entry point as the Main Page. */}
           <Card className="min-w-0 self-start p-5 sm:p-6">
             <div className="flex items-start gap-3.5">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold" aria-hidden="true">
-                <Sparkles className="h-[18px] w-[18px]" />
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[0.7rem] border border-gold/25 bg-gold-soft text-gold-ink" aria-hidden="true">
+                <Sparkles className="h-[18px] w-[18px]" strokeWidth={1.5} />
               </span>
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-foreground">{t('ai_title')}</h2>
@@ -631,12 +634,12 @@ function DashboardContent() {
               {t('db_ai_greeting')}
             </p>
 
-            <HomatchAsk className="mt-4" variant="card" placeholder={t('db_ai_placeholder')} suggestions={askSuggestions} />
+            <HomatchAsk className="mt-4" variant="card" placeholder={t('db_ai_placeholder')} actions={askActions} />
           </Card>
         </div>
 
         {/* ── 4. Verification, financing and activity, as one group ── */}
-        <section className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-card">
+        <section className="overflow-hidden rounded-[1rem] border border-border bg-card shadow-card">
           <div className="grid divide-y divide-border rtl:lg:divide-x-reverse lg:grid-cols-3 lg:divide-x lg:divide-y-0">
             <div className="min-w-0">
               <CardHead title={t('db_verify_title')} action={<LinkAction label={t('db_verify_start')} onClick={() => navigate('/verify')} />} />
@@ -654,8 +657,8 @@ function DashboardContent() {
             </div>
 
             <div className="flex min-w-0 flex-col items-center justify-center p-6 text-center sm:p-8">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-sand text-foreground" aria-hidden="true">
-                <CircleDollarSign className="h-5 w-5" />
+              <span className="grid h-12 w-12 place-items-center rounded-[0.7rem] border border-border bg-secondary text-foreground" aria-hidden="true">
+                <CircleDollarSign className="h-5 w-5" strokeWidth={1.5} />
               </span>
               <h2 className="mt-4 text-sm font-semibold text-foreground">{t('db_mortgage_title')}</h2>
               <p className="mt-2 max-w-xs text-pretty text-xs leading-relaxed text-muted-foreground">{t('db_mortgage_body')}</p>
@@ -681,7 +684,7 @@ function DashboardContent() {
         </section>
 
         {/* ── 5. Closing band ── */}
-        <div className="flex flex-col items-start gap-5 rounded-[1.5rem] bg-primary px-6 py-7 text-primary-foreground md:flex-row md:items-center md:justify-between md:px-9">
+        <div className="flex flex-col items-start gap-5 rounded-[1rem] bg-primary px-6 py-7 text-primary-foreground md:flex-row md:items-center md:justify-between md:px-9">
           <div className="min-w-0">
             <h2 className="text-balance text-lg font-semibold tracking-tight sm:text-xl">{t('db_footer_title')}</h2>
             <p className="mt-1.5 max-w-xl text-pretty text-sm leading-relaxed text-primary-foreground/75">{t('db_footer_body')}</p>

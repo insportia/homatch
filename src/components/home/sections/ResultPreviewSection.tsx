@@ -27,7 +27,7 @@ export function ResultPreviewSection() {
     <section className="relative overflow-hidden bg-primary text-primary-foreground">
       <div
         className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(52rem 30rem at 82% 8%, hsl(38 44% 54% / 0.13), transparent 68%)' }}
+        style={{ background: 'radial-gradient(52rem 30rem at 82% 8%, hsl(36 38% 56% / 0.12), transparent 68%)' }}
         aria-hidden="true"
       />
 
@@ -35,7 +35,7 @@ export function ResultPreviewSection() {
         <div className="max-w-[46rem]">
           <Eyebrow tone="light">{t('mp_result_eyebrow')}</Eyebrow>
           <h2
-            className="mt-4 text-balance font-semibold leading-[1.14] tracking-tight"
+            className="mt-5 text-balance font-semibold leading-[1.1] tracking-[-0.02em] text-white"
             style={{ fontSize: 'clamp(1.75rem, 3.1vw, 2.9rem)' }}
           >
             {t('mp_result_title')}
@@ -44,7 +44,7 @@ export function ResultPreviewSection() {
 
         <div className="mt-12 grid gap-6 lg:grid-cols-2">
           {/* Panel A — a match */}
-          <article className="rounded-[1.5rem] border border-primary-foreground/12 bg-primary-foreground/[0.055] p-6 backdrop-blur-sm sm:p-8">
+          <article className="rounded-[1rem] border border-white/12 bg-white/[0.045] p-6 sm:p-8">
             <IllustrativeTag label={t('mp_result_illustrative')} />
 
             <div className="mt-5 flex items-start gap-4">
@@ -57,12 +57,12 @@ export function ResultPreviewSection() {
               </div>
             </div>
 
-            <p className="mt-7 text-xs font-semibold uppercase tracking-[0.16em] text-primary-foreground/50">
+            <p className="mt-7 text-xs font-semibold uppercase tracking-[0.16em] text-white/50">
               {t('mp_result_match_why')}
             </p>
             <ul className="mt-3.5 space-y-2.5">
               {[t('mp_result_match_reason_1'), t('mp_result_match_reason_2'), t('mp_result_match_reason_3')].map(reason => (
-                <li key={reason} className="flex gap-3 text-sm leading-relaxed text-primary-foreground/80">
+                <li key={reason} className="flex gap-3 text-sm leading-relaxed text-white/75">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold/80" aria-hidden="true" />
                   {reason}
                 </li>
@@ -71,19 +71,19 @@ export function ResultPreviewSection() {
           </article>
 
           {/* Panel B — property intelligence */}
-          <article className="rounded-[1.5rem] border border-primary-foreground/12 bg-primary-foreground/[0.055] p-6 backdrop-blur-sm sm:p-8">
+          <article className="rounded-[1rem] border border-white/12 bg-white/[0.045] p-6 sm:p-8">
             <IllustrativeTag label={t('mp_result_illustrative')} />
 
             <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-gold">{t('mp_result_prop_label')}</p>
 
             <dl className="mt-5 space-y-4">
               <div className="border-s-2 border-gold/50 ps-4">
-                <dt className="text-xs font-medium uppercase tracking-wider text-primary-foreground/50">
+                <dt className="text-xs font-medium uppercase tracking-wider text-white/50">
                   {t('mp_result_prop_confirmed')}
                 </dt>
                 <dd className="mt-2 space-y-1.5">
                   {[t('mp_cap_verify_row_cadastral'), t('mp_cap_verify_row_owner')].map(row => (
-                    <p key={row} className="flex items-center gap-2.5 text-sm text-primary-foreground/85">
+                    <p key={row} className="flex items-center gap-2.5 text-sm text-white/80">
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-gold/80" aria-hidden="true" />
                       {row}
                     </p>
@@ -91,21 +91,21 @@ export function ResultPreviewSection() {
                 </dd>
               </div>
 
-              <div className="border-s-2 border-primary-foreground/20 ps-4">
-                <dt className="text-xs font-medium uppercase tracking-wider text-primary-foreground/50">
+              <div className="border-s-2 border-white/20 ps-4">
+                <dt className="text-xs font-medium uppercase tracking-wider text-white/50">
                   {t('mp_result_prop_attention')}
                 </dt>
-                <dd className="mt-2 flex items-center gap-2.5 text-sm text-primary-foreground/85">
+                <dd className="mt-2 flex items-center gap-2.5 text-sm text-white/80">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0 text-primary-foreground/55" aria-hidden="true" />
                   {t('mp_result_prop_attention_line')}
                 </dd>
               </div>
 
-              <div className="border-s-2 border-primary-foreground/20 ps-4">
-                <dt className="text-xs font-medium uppercase tracking-wider text-primary-foreground/50">
+              <div className="border-s-2 border-white/20 ps-4">
+                <dt className="text-xs font-medium uppercase tracking-wider text-white/50">
                   {t('mp_result_prop_next')}
                 </dt>
-                <dd className="mt-2 text-sm leading-relaxed text-primary-foreground/85">{t('mp_result_prop_next_line')}</dd>
+                <dd className="mt-2 text-sm leading-relaxed text-white/80">{t('mp_result_prop_next_line')}</dd>
               </div>
             </dl>
           </article>
@@ -125,8 +125,8 @@ export function ResultPreviewSection() {
 
 function IllustrativeTag({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/60">
-      <span className="h-1 w-1 rounded-full bg-primary-foreground/50" aria-hidden="true" />
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60">
+      <span className="h-1 w-1 rounded-full bg-white/50" aria-hidden="true" />
       {label}
     </span>
   );

@@ -88,8 +88,8 @@ export function PlatformStorySection() {
         />
         {/* Enough navy to carry body copy at AA, with the warm horizon still
             reading through the top of the frame. */}
-        <div className="absolute inset-0 bg-[hsl(214_44%_11%/0.66)]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[hsl(214_44%_10%/0.62)] via-[hsl(214_44%_10%/0.30)] to-[hsl(214_44%_9%/0.82)]" />
+        <div className="absolute inset-0 bg-[hsl(30_8%_7%/0.68)]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[hsl(30_8%_6%/0.6)] via-[hsl(30_8%_6%/0.26)] to-[hsl(30_8%_5%/0.84)]" />
         <div className="absolute inset-0 opacity-45">
           <NetworkOverlay />
         </div>
@@ -100,13 +100,13 @@ export function PlatformStorySection() {
           <div>
             <Eyebrow tone="light">{t('mp_more_eyebrow')}</Eyebrow>
             <h2
-              className="mt-4 text-balance font-semibold leading-[1.12] tracking-tight text-white"
+              className="mt-5 text-balance font-semibold leading-[1.1] tracking-[-0.02em] text-white"
               style={{ fontSize: 'clamp(1.75rem, 3.1vw, 2.9rem)' }}
             >
               {t('mp_more_title')}
             </h2>
             <span className="mt-8 block h-px w-20 bg-gold" aria-hidden="true" />
-            <p className="mt-8 max-w-[34rem] text-pretty text-[15px] leading-relaxed text-white/75 sm:text-base">
+            <p className="mt-8 max-w-[34rem] text-pretty text-[15px] leading-relaxed text-white/70 sm:text-base">
               {t('mp_more_body')}
             </p>
             <Button
@@ -122,7 +122,7 @@ export function PlatformStorySection() {
           <div className="flex flex-col">
             <ul className="flex-1">
               {beliefs.map((item, i) => (
-                <li key={item.key} className={`py-6 ${i === 0 ? '' : 'border-t border-white/12'}`}>
+                <li key={item.key} className={`py-6 ${i === 0 ? '' : 'border-t border-white/10'}`}>
                   <h3 className="text-base font-semibold text-white">{item.title}</h3>
                   <p className="mt-2 text-pretty text-sm leading-relaxed text-white/70">{item.desc}</p>
                 </li>

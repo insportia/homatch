@@ -18,8 +18,7 @@ export const PAGE = 'mx-auto w-full max-w-[90rem] px-5 sm:px-8 lg:px-10';
 
 /** Start-padding that lands exactly on the page grid's content edge, for
     full-bleed sections that align to it without nesting another container.
-    Backed by --page-inset (index.css), which is the single definition of
-    where that edge is. */
+    Backed by --page-inset (index.css), the single definition of that edge. */
 export const PAGE_INSET = 'ps-[var(--page-inset)]';
 
 /** The hero's split, expressed once.
@@ -30,14 +29,57 @@ export const PAGE_INSET = 'ps-[var(--page-inset)]';
  * image. The photograph starts where that column ends and bleeds to the
  * viewport edge, which is what makes the hero read as wider than the grid
  * while still being aligned to it. */
-export const HERO_COPY_SHARE = 0.47;
+export const HERO_COPY_SHARE = 0.5;
 export const HERO_SPLIT = `calc(var(--page-inset) + ${HERO_COPY_SHARE} * min(100vw - 2 * var(--page-inset), var(--page-max)))`;
 
-export function Eyebrow({ children, tone = 'gold' }: { children: React.ReactNode; tone?: 'gold' | 'light' }) {
+/** Section vertical rhythm. Deliberately large; the page should breathe. */
+export const SECTION_Y = 'py-20 sm:py-24 lg:py-28';
+
+/**
+ * The small letter-spaced label above a headline.
+ *
+ * On light grounds this uses --gold-ink, never --gold: champagne gold is
+ * 2.6:1 on warm-white, which is unreadable at 11px. The decorative gold is
+ * reserved for rules, icons and dark surfaces, where it clears 6.9:1.
+ */
+export function Eyebrow({ children, tone = 'dark' }: { children: React.ReactNode; tone?: 'dark' | 'light' }) {
   return (
-    <p className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${tone === 'gold' ? 'text-gold' : 'text-primary-foreground/55'}`}>
+    <p className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${tone === 'light' ? 'text-gold' : 'text-gold-ink'}`}>
       {children}
     </p>
+  );
+}
+
+/**
+ * THE ICON SYSTEM
+ *
+ * One treatment everywhere: a thin (1.5px) lucide stroke in near-black on a
+ * small warm square with a hairline. Gold arrives on interaction — the tile
+ * warms and the stroke turns gold — rather than shouting at rest. The tile
+ * grows with size while the stroke does not, so a row of them reads as one
+ * set rather than as assorted graphics.
+ */
+export function Icon({
+  icon: Glyph, size = 'md', tone = 'dark', className = '',
+}: {
+  icon: React.ElementType;
+  size?: 'sm' | 'md' | 'lg';
+  tone?: 'dark' | 'light';
+  className?: string;
+}) {
+  const box = size === 'sm' ? 'h-9 w-9' : size === 'lg' ? 'h-12 w-12' : 'h-11 w-11';
+  const glyph = size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-5 w-5' : 'h-[18px] w-[18px]';
+  return (
+    <span
+      className={`grid shrink-0 place-items-center rounded-[0.7rem] border transition-colors duration-300 motion-reduce:transition-none ${
+        tone === 'light'
+          ? 'border-white/15 bg-white/[0.06] text-gold'
+          : 'border-border bg-secondary text-foreground group-hover:border-gold/45 group-hover:bg-gold-soft group-hover:text-gold-ink'
+      } ${box} ${className}`}
+      aria-hidden="true"
+    >
+      <Glyph className={glyph} strokeWidth={1.5} />
+    </span>
   );
 }
 
@@ -59,15 +101,15 @@ export function SectionIntro({
   const light = tone === 'light';
   return (
     <div className={`${align === 'center' ? 'mx-auto max-w-[44rem] text-center' : 'max-w-[46rem]'} ${className}`}>
-      <Eyebrow tone={light ? 'light' : 'gold'}>{eyebrow}</Eyebrow>
+      <Eyebrow tone={light ? 'light' : 'dark'}>{eyebrow}</Eyebrow>
       <h2
-        className={`mt-4 text-balance font-semibold leading-[1.12] tracking-tight ${light ? 'text-primary-foreground' : 'text-foreground'}`}
+        className={`mt-5 text-balance font-semibold leading-[1.1] tracking-[-0.02em] ${light ? 'text-white' : 'text-foreground'}`}
         style={{ fontSize: 'clamp(1.75rem, 3.1vw, 2.9rem)' }}
       >
         {title}
       </h2>
       {body && (
-        <p className={`mt-5 text-pretty text-[15px] leading-relaxed sm:text-base ${light ? 'text-primary-foreground/70' : 'text-ink-soft'}`}>
+        <p className={`mt-5 text-pretty text-[15px] leading-[1.75] sm:text-base ${light ? 'text-white/70' : 'text-ink-soft'}`}>
           {body}
         </p>
       )}
@@ -81,9 +123,9 @@ export function ArrowLink({
 }: { label: string; onClick: () => void; tone?: 'dark' | 'light' | 'gold'; className?: string }) {
   const { isRTL } = useLanguage();
   const colour =
-    tone === 'light' ? 'text-primary-foreground/85 hover:text-primary-foreground'
-      : tone === 'gold' ? 'text-gold hover:text-foreground'
-        : 'text-foreground hover:text-gold';
+    tone === 'light' ? 'text-white/85 hover:text-white'
+      : tone === 'gold' ? 'text-gold-ink hover:text-foreground'
+        : 'text-foreground hover:text-gold-ink';
   return (
     <button
       type="button"
@@ -92,12 +134,10 @@ export function ArrowLink({
     >
       {label}
       <ArrowRight
-        className={`h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-0.5' : ''}`}
+        className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
+        strokeWidth={1.75}
         aria-hidden="true"
       />
     </button>
   );
 }
-
-/** Section vertical rhythm. Deliberately large; the page should breathe. */
-export const SECTION_Y = 'py-20 sm:py-24 lg:py-28';

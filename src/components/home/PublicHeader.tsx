@@ -69,7 +69,7 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
   return (
     <header
       className={`sticky top-0 z-50 transition-colors duration-300 motion-reduce:transition-none ${
-        scrolled || open ? 'border-b border-border bg-background/90 backdrop-blur-md' : 'border-b border-transparent bg-transparent'
+        scrolled || open ? 'border-b border-border bg-background/92 backdrop-blur-md' : 'border-b border-transparent bg-transparent'
       }`}
     >
       <div className={`${PAGE} flex h-[4.5rem] items-center gap-6 md:h-[5.5rem]`}>
@@ -103,7 +103,7 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
           <LanguageSwitcher showGlobe triggerClassName="h-9 px-2" />
 
           {session ? (
-            <Button size="sm" className="h-10 rounded-full px-5" onClick={() => navigate('/dashboard')}>
+            <Button size="sm" className="h-10 rounded-full px-5 text-[13px]" onClick={() => navigate('/dashboard')}>
               {t('nav_dashboard')}
             </Button>
           ) : (
@@ -115,7 +115,7 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
               >
                 {t('nav_login')}
               </button>
-              <Button size="sm" className="hidden h-10 rounded-full px-5 sm:inline-flex" onClick={() => navigate('/auth/signup')}>
+              <Button size="sm" className="hidden h-10 rounded-full px-5 text-[13px] sm:inline-flex" onClick={() => navigate('/auth/signup')}>
                 {t('nav_signup')}
               </Button>
             </>

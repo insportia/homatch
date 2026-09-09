@@ -28,7 +28,6 @@ import { PrimaryIntentSection } from '@/components/home/sections/PrimaryIntentSe
 import { AISection } from '@/components/home/sections/AISection';
 import { CapabilitiesSection } from '@/components/home/sections/CapabilitiesSection';
 import { VerificationSection } from '@/components/home/sections/VerificationSection';
-import { ProcessSection } from '@/components/home/sections/ProcessSection';
 import { ResultPreviewSection } from '@/components/home/sections/ResultPreviewSection';
 import { ProfessionalToolsSection } from '@/components/home/sections/ProfessionalToolsSection';
 import { PlatformStorySection } from '@/components/home/sections/PlatformStorySection';
@@ -52,20 +51,21 @@ export default function HomePage() {
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <PublicHeader links={headerLinks} />
 
-      {/* The running order, and the tonal rhythm it produces. Each image lands
-          where the approved artwork was assigned, with content between every
-          pair so no two photographs sit in the same register back to back. */}
+      {/* The running order, and the tonal rhythm it produces. The AI console
+          is in the hero, so the AI region below it explains what the
+          intelligence reaches rather than repeating the same input; the
+          cadastral entry point lives with the verification story rather than
+          in the hero. */}
       <main>
-        <HeroSection />              {/* cream + hero photograph            */}
-        <PrimaryIntentSection />     {/* cream                              */}
-        <AISection />                {/* NAVY                               */}
-        <CapabilitiesSection />      {/* cream                              */}
-        <VerificationSection />      {/* stone + verification photograph    */}
-        <PlatformStorySection />     {/* city photograph + network overlay  */}
-        <ProcessSection />           {/* cream                              */}
-        <ResultPreviewSection />     {/* NAVY                               */}
-        <ProfessionalToolsSection /> {/* cream                              */}
-        <ClosingCTASection />        {/* cinematic closing photograph       */}
+        <HeroSection />              {/* warm-white + hero photograph (lg+)  */}
+        <PrimaryIntentSection />     {/* warm-white — the two doors          */}
+        <AISection />                {/* BLACK — how the intelligence flows  */}
+        <CapabilitiesSection />      {/* warm-white — matching + 3 beside    */}
+        <VerificationSection />      {/* warm tint + verification photograph */}
+        <PlatformStorySection />     {/* city photograph + network overlay   */}
+        <ResultPreviewSection />     {/* BLACK — what you get back           */}
+        <ProfessionalToolsSection /> {/* warm-white — professional rows      */}
+        <ClosingCTASection />        {/* cinematic closing photograph        */}
       </main>
 
       <SiteFooter />

@@ -32,13 +32,13 @@ export function ClosingCTASection() {
           position="46% 58%"
           positionMobile="58% 62%"
         />
-        <div className="absolute inset-0 bg-[hsl(214_42%_12%/0.72)]" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[hsl(214_42%_10%/0.85)] via-transparent to-[hsl(214_42%_10%/0.55)]" />
+        <div className="absolute inset-0 bg-[hsl(30_8%_7%/0.70)]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[hsl(30_8%_5%/0.88)] via-transparent to-[hsl(30_8%_5%/0.5)]" />
       </div>
 
       <div className="relative mx-auto flex min-h-[clamp(24rem,52vh,36rem)] w-full max-w-[90rem] flex-col items-center justify-center px-5 py-20 text-center sm:px-8 lg:px-10">
         <h2
-          className="max-w-[34rem] text-balance font-semibold leading-[1.1] tracking-tight text-white"
+          className="max-w-[36rem] text-balance font-semibold leading-[1.06] tracking-[-0.025em] text-white"
           style={{ fontSize: 'clamp(2rem, 3.6vw, 3.15rem)' }}
         >
           {t('mp_cta_title')}

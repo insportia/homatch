@@ -1,8 +1,18 @@
-// HOMATCH — Deal Room data access.
+// HOMATCH — Verification Case data access.
 //
-// The Deal Room is the buyer's persistent workspace for ONE property. A
-// completed Verify creates or attaches to one; the customer comes back days
-// later and continues from where they stopped.
+// A VERIFICATION CASE is the buyer's persistent workspace for ONE property:
+// what Verify found, their documents, their plan, their questions and the
+// assistant that can answer using all of it. A completed Verify creates or
+// attaches to one; the customer comes back days later and continues from
+// where they stopped.
+//
+// NAMING. The customer-facing product has exactly one destination — the
+// Verification Center — and a case is what opens from it. The tables below
+// are still named `deal_room*` because they are live production tables
+// holding real customer work; renaming them for branding alone would be a
+// destructive migration with no product benefit. `DealRoomRecord` is
+// therefore the storage shape of a Verification Case, and nothing in the
+// customer-facing UI says "deal room".
 //
 // WHAT THIS FILE IS AND IS NOT
 // ----------------------------
@@ -14,7 +24,7 @@
 //
 // Every write goes through ordinary RLS (`user_id = auth.uid()`, plus a parent
 // ownership re-check on child tables). There is no service-role path here and
-// there must not be one: a Deal Room contains a customer's private
+// there must not be one: a Verification Case contains a customer's private
 // due-diligence work, and the only account that may read it is theirs.
 
 import { supabase } from '@/db/supabase';
@@ -239,6 +249,30 @@ export async function createDealRoomFromVerify(args: {
 
   await syncGeneratedContent(room.id, userId, wm);
   return { room, created };
+}
+
+/**
+ * Starts a Verification Case from a DOCUMENT rather than a cadastral code.
+ *
+ * The Verification Center accepts two ways in: a cadastral code, which runs
+ * Verify, and a contract, which has to land somewhere before it can be read.
+ * This creates that somewhere.
+ *
+ * It deliberately does NOT set `cadastral_code`. The unique index that keeps
+ * one case per property is partial (`where cadastral_code is not null`), so a
+ * document-first case cannot collide with anything, and once the contract is
+ * read and names a property the case can be given its code and converge with
+ * a Verify run on the same property rather than becoming a second workspace.
+ */
+export async function createDocumentVerificationCase(title: string): Promise<DealRoomRecord> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('deal_rooms')
+    .insert({ user_id: userId, title: title.trim().slice(0, 200) || null, property_type: 'UNKNOWN' })
+    .select(ROOM_COLUMNS)
+    .single();
+  if (error) throw error;
+  return data as unknown as DealRoomRecord;
 }
 
 async function findExistingRoom(cadastral: string | null, jobId: string): Promise<DealRoomRecord | null> {

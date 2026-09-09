@@ -11,6 +11,12 @@ import path from 'node:path';
  * is precisely why the features were invisible in production while appearing
  * "done" in the codebase. These tests fail if that regresses.
  *
+ * The product has since been consolidated: Renovation is removed, and Deal
+ * Room is no longer a destination of its own — it is the Verification Case
+ * that opens from the Verification Center at /verify. The assertions below
+ * now hold that shape: ONE verification product, with the old /deal-rooms
+ * URLs redirecting into it rather than serving a second parallel UI.
+ *
  * They read source text rather than rendering React, matching the existing
  * verifyMobileLayout.test.mjs approach: no jsdom in this project, and the
  * properties being asserted (a route exists, a class is not used) are
@@ -21,10 +27,8 @@ const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
 
 const ROUTES = read('src/routes.tsx');
 const PAGES = {
-  'src/pages/DealRoomsPage.tsx': read('src/pages/DealRoomsPage.tsx'),
-  'src/pages/DealRoomPage.tsx': read('src/pages/DealRoomPage.tsx'),
-  'src/pages/RenovationPage.tsx': read('src/pages/RenovationPage.tsx'),
-  'src/pages/admin/AdminPriceBookPage.tsx': read('src/pages/admin/AdminPriceBookPage.tsx'),
+  'src/pages/VerifyPage.tsx': read('src/pages/VerifyPage.tsx'),
+  'src/pages/VerificationCasePage.tsx': read('src/pages/VerificationCasePage.tsx'),
 };
 const COMPONENTS = {
   'src/components/dealroom/SynthesisSummary.tsx': read('src/components/dealroom/SynthesisSummary.tsx'),
@@ -33,39 +37,35 @@ const COMPONENTS = {
   'src/components/dealroom/DocumentsPanel.tsx': read('src/components/dealroom/DocumentsPanel.tsx'),
   'src/components/dealroom/VerdictBanner.tsx': read('src/components/dealroom/VerdictBanner.tsx'),
   'src/components/research/HumanVerificationHandoff.tsx': read('src/components/research/HumanVerificationHandoff.tsx'),
+  'src/components/verify/VerificationCaseList.tsx': read('src/components/verify/VerificationCaseList.tsx'),
+  'src/components/verify/StartFromDocument.tsx': read('src/components/verify/StartFromDocument.tsx'),
 };
 
 /* ---------------------------------------------------------------- *
  * Routes exist and are wired                                        *
  * ---------------------------------------------------------------- */
 
-test('the product routes the recovery audit found missing now exist', () => {
-  for (const p of ["path: '/deal-rooms'", "path: '/deal-rooms/:id'", "path: '/renovation'", "path: '/admin/pricebook'"]) {
+test('the verification routes exist and are the canonical ones', () => {
+  for (const p of ["path: '/verify'", "path: '/verify/:id'"]) {
     assert.ok(ROUTES.includes(p), `route ${p} is not registered`);
   }
 });
 
 test('each new route resolves to a real page component, not a placeholder', () => {
-  for (const c of ['DealRoomsPage', 'DealRoomPage', 'RenovationPage', 'AdminPriceBookPage']) {
+  for (const c of ['VerifyPage', 'VerificationCasePage']) {
     assert.ok(ROUTES.includes(`import ${c} from`), `${c} is not imported`);
     assert.ok(ROUTES.includes(`<${c} />`) || ROUTES.includes(`<${c} />)`), `${c} is not rendered`);
   }
 });
 
-test('the deal room routes are NOT public — a deal room is private work', () => {
-  const lines = ROUTES.split('\n').filter((l) => l.includes("path: '/deal-rooms"));
-  assert.equal(lines.length, 2);
-  for (const l of lines) assert.ok(!l.includes('public: true'), `deal room route must require auth: ${l}`);
+test('a verification case is NOT public — it is private due-diligence work', () => {
+  const line = ROUTES.split('\n').find((l) => l.includes("path: '/verify/:id'"));
+  assert.ok(line && !line.includes('public: true'), 'the case route must require auth');
 });
 
-test('the admin price book is admin-only', () => {
-  const line = ROUTES.split('\n').find((l) => l.includes("path: '/admin/pricebook'"));
-  assert.ok(line.includes('adminOnly: true'));
-});
-
-test('deal rooms appear in both desktop and mobile navigation', () => {
-  assert.ok(read('src/components/layouts/AppHeader.tsx').includes("path: '/deal-rooms'"));
-  assert.ok(read('src/components/layouts/MobileBottomNav.tsx').includes("path: '/deal-rooms'"));
+test('verification is reachable from both desktop and mobile navigation', () => {
+  assert.ok(read('src/components/layouts/AppHeader.tsx').includes("path: '/verify'"));
+  assert.ok(read('src/components/layouts/MobileBottomNav.tsx').includes("path: '/verify'"));
 });
 
 test('the mobile bottom bar stays at six items or fewer', () => {
@@ -119,8 +119,8 @@ test('long values are allowed to wrap rather than forcing horizontal scroll', ()
   // Cadastral codes, Georgian company names and file names are all long and
   // unbreakable; without break-words they push the page sideways at 320px.
   for (const file of [
-    'src/pages/DealRoomsPage.tsx',
-    'src/pages/DealRoomPage.tsx',
+    'src/components/verify/VerificationCaseList.tsx',
+    'src/pages/VerificationCasePage.tsx',
     'src/components/dealroom/SynthesisSummary.tsx',
     'src/components/dealroom/DocumentsPanel.tsx',
   ]) {
@@ -130,16 +130,16 @@ test('long values are allowed to wrap rather than forcing horizontal scroll', ()
 
 test('primary actions are full-width on mobile and inline from sm upward', () => {
   for (const file of [
-    'src/pages/RenovationPage.tsx',
     'src/components/dealroom/DocumentsPanel.tsx',
     'src/components/research/HumanVerificationHandoff.tsx',
+    'src/components/verify/StartFromDocument.tsx',
   ]) {
     assert.ok(/w-full sm:w-auto/.test(ALL[file]), `${file} has no responsive primary action`);
   }
 });
 
-test('the deal room tab strip scrolls instead of wrapping to a second row', () => {
-  assert.ok(/overflow-x-auto/.test(PAGES['src/pages/DealRoomPage.tsx']));
+test('the verification case tab strip scrolls instead of wrapping to a second row', () => {
+  assert.ok(/overflow-x-auto/.test(PAGES['src/pages/VerificationCasePage.tsx']));
 });
 
 /* ---------------------------------------------------------------- *
@@ -168,8 +168,77 @@ test('the verdict component supports exactly the three permitted values', () => 
   assert.ok(!/PARTIAL|DEGRADED|UNKNOWN_VERDICT/.test(src), 'coverage is not a verdict');
 });
 
-test('the renovation page cannot show a price without verified data', () => {
-  const src = PAGES['src/pages/RenovationPage.tsx'];
-  assert.ok(src.includes("pricing?.state !== 'PRICED'"), 'estimate must be gated on PRICED');
-  assert.ok(src.includes('reno_insufficient_body'), 'the gate must explain itself to the customer');
+/* ---------------------------------------------------------------- *
+ * Renovation is removed from the active product                     *
+ * ---------------------------------------------------------------- */
+
+test('no active renovation route, page, navigation entry or service remains', () => {
+  for (const p of ['src/pages/RenovationPage.tsx', 'src/pages/admin/AdminPriceBookPage.tsx',
+                   'src/services/renovationPricing.ts', 'src/renovation', 'src/components/renovation']) {
+    assert.ok(!fs.existsSync(path.join(process.cwd(), p)), `${p} still exists`);
+  }
+  for (const marker of ["path: '/renovation'", "path: '/admin/pricebook'", 'RenovationPage', 'AdminPriceBookPage']) {
+    assert.ok(!ROUTES.includes(marker), `routes.tsx still references ${marker}`);
+  }
+  for (const nav of ['src/components/layouts/AppHeader.tsx', 'src/components/layouts/MobileBottomNav.tsx']) {
+    assert.ok(!/renovation/i.test(read(nav)), `${nav} still offers renovation`);
+  }
+});
+
+test('no renovation product strings survive in any language bundle', () => {
+  const src = read('src/i18n/translations.ts');
+  for (const prefix of ['reno_', 'pb_', 'nav_renovation:', 'dr_tab_renovation:']) {
+    assert.ok(!src.includes(`  ${prefix}`), `translation key ${prefix}* is still shipped`);
+  }
+  // The listing CONDITION "needs renovation" describes a property, not the
+  // removed product, and is deliberately kept.
+  assert.ok(src.includes('prop_condition_needs_renovation'));
+});
+
+/* ---------------------------------------------------------------- *
+ * ONE product: Deal Room is absorbed, not offered alongside Verify  *
+ * ---------------------------------------------------------------- */
+
+test('there is no separate Deal Room destination in the product', () => {
+  assert.ok(!fs.existsSync(path.join(process.cwd(), 'src/pages/DealRoomsPage.tsx')),
+    'the standalone Deal Rooms list page is back');
+  assert.ok(!fs.existsSync(path.join(process.cwd(), 'src/pages/DealRoomPage.tsx')),
+    'the standalone Deal Room page is back');
+  for (const nav of ['src/components/layouts/AppHeader.tsx', 'src/components/layouts/MobileBottomNav.tsx']) {
+    assert.ok(!read(nav).includes("'/deal-rooms'"), `${nav} still offers Deal Room as its own destination`);
+  }
+});
+
+test('the old /deal-rooms URLs redirect into the case rather than rendering a second UI', () => {
+  const lines = ROUTES.split('\n').filter((l) => l.includes("path: '/deal-rooms"));
+  assert.equal(lines.length, 2, 'both legacy paths must stay addressable');
+  for (const l of lines) {
+    assert.ok(l.includes('LegacyDealRoomRedirect'), `legacy path still renders a page: ${l}`);
+  }
+  const redirect = read('src/pages/LegacyDealRoomRedirect.tsx');
+  assert.ok(redirect.includes('/verify/'), 'the redirect does not target the canonical case route');
+  assert.ok(redirect.includes('replace'), 'the stale URL must not stay in the history stack');
+});
+
+test('no customer-facing string calls a verification a deal room', () => {
+  const bundles = read('src/i18n/translations.ts');
+  assert.ok(!/Deal Room/i.test(bundles), 'a language bundle still says "Deal Room" to the customer');
+  assert.ok(!bundles.includes('nav_deal_rooms'), 'Deal Room is still a navigation entry');
+  for (const [file, src] of Object.entries(PAGES)) {
+    assert.ok(!/Deal Room/i.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')),
+      `${file} shows "Deal Room" outside a comment`);
+  }
+});
+
+test('a completed verification persists itself instead of asking for a second product', () => {
+  const src = PAGES['src/pages/VerifyPage.tsx'];
+  assert.ok(src.includes('void saveCase('), 'a finished report must save itself');
+  assert.ok(src.includes("t('verify_continue_case')"), 'the CTA must continue the verification, not create something new');
+  assert.ok(!src.includes("t('verify_create_deal_room')"), 'the create-a-deal-room CTA is back');
+});
+
+test('the Verification Center offers both ways in and lists what already exists', () => {
+  const src = PAGES['src/pages/VerifyPage.tsx'];
+  assert.ok(src.includes('<StartFromDocument/>'), 'contract upload is not offered from the Center');
+  assert.ok(src.includes('<VerificationCaseList/>'), 'existing verifications are not listed in the Center');
 });

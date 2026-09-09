@@ -25,9 +25,8 @@ import DeveloperProfilePage from './pages/DeveloperProfilePage';
 import AIPage from './pages/AIPage';
 import VerifyPage from './pages/VerifyPage';
 import MortgagePage from './pages/MortgagePage';
-import DealRoomsPage from './pages/DealRoomsPage';
-import DealRoomPage from './pages/DealRoomPage';
-import RenovationPage from './pages/RenovationPage';
+import VerificationCasePage from './pages/VerificationCasePage';
+import LegacyDealRoomRedirect from './pages/LegacyDealRoomRedirect';
 // CasesPage import removed (2026-09-06 "REMOVE MY DEALS/CASES" mandate) —
 // the /cases route below is intentionally not registered. The file itself
 // is left in place (dormant), not deleted, in case this product surface
@@ -62,7 +61,6 @@ import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
 import AdminSponsoredPage from './pages/admin/AdminSponsoredPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AdminHealthPage from './pages/admin/AdminHealthPage';
-import AdminPriceBookPage from './pages/admin/AdminPriceBookPage';
 import AdminLiveChatReportsPage from './pages/admin/AdminLiveChatReportsPage';
 
 export interface RouteConfig {
@@ -86,7 +84,16 @@ export const routes: RouteConfig[] = [
   { name: 'Privacy Policy',    path: '/privacy',                  element: <PrivacyPage />,       public: true },
   { name: 'Terms of Service',  path: '/terms',                    element: <TermsPage />,         public: true },
   { name: 'AI Assistant',      path: '/ai',                       element: <AIPage />,            public: false },
-  { name: 'Verify',            path: '/verify',                   element: <VerifyPage />,        public: true },
+  // VERIFICATION CENTER. The single customer destination for due diligence:
+  // start a verification here, and return to any verification you already
+  // have from the same screen. Public like before — a signed-out visitor can
+  // run a check; the saved-case list below only renders for a signed-in user
+  // and is owner-only under RLS regardless.
+  { name: 'Verification Center', path: '/verify',                 element: <VerifyPage />,        public: true },
+  // One property = one persistent Verification Case. Authenticated only: a
+  // case is a customer's private due-diligence work, and every table behind
+  // it is owner-only under RLS.
+  { name: 'Verification Case', path: '/verify/:id',               element: <VerificationCasePage /> },
   // Public like Verify: the calculator + educational explanations must work
   // for a signed-out visitor (mandate requirement); saving a scenario or
   // uploading a bank offer still requires auth, enforced by mortgage_scenarios
@@ -98,16 +105,11 @@ export const routes: RouteConfig[] = [
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
-  // Deal Room — the persistent workspace a completed Verify feeds into.
-  // Authenticated only: a deal room is a customer's private due-diligence
-  // work, and every table behind it is owner-only under RLS.
-  { name: 'Deal Rooms',        path: '/deal-rooms',               element: <DealRoomsPage /> },
-  { name: 'Deal Room',         path: '/deal-rooms/:id',           element: <DealRoomPage /> },
-  // Renovation is public like Verify and Mortgage: the planner, phases and
-  // timeline are useful to a signed-out visitor. Saving a scenario still
-  // requires auth, enforced by renovation_scenarios RLS rather than by
-  // gating the route.
-  { name: 'Renovation',        path: '/renovation',               element: <RenovationPage />,    public: true },
+  // Compatibility only. "Deal Room" was briefly a separate destination; it is
+  // now absorbed into the Verification Center, and these paths redirect there
+  // rather than serving a second UI for the same data.
+  { name: 'Deal Rooms (legacy)', path: '/deal-rooms',             element: <LegacyDealRoomRedirect /> },
+  { name: 'Deal Room (legacy)',  path: '/deal-rooms/:id',         element: <LegacyDealRoomRedirect /> },
   { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
   { name: 'Notifications',     path: '/notifications',            element: <NotificationsPage /> },
   { name: 'Credits',           path: '/credits',                  element: <CreditsPage /> },
@@ -150,6 +152,5 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },
   { name: 'Admin Sponsored',   path: '/admin/sponsored',          element: adminWrap(<AdminSponsoredPage />),   adminOnly: true },
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
-  { name: 'Admin Price Book',  path: '/admin/pricebook',          element: adminWrap(<AdminPriceBookPage />), adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
 ];

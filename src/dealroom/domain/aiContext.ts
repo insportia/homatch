@@ -153,7 +153,7 @@ function statementOf(f: CanonicalFact): string {
  * Assembles the context for one question against one deal room.
  *
  * `extras` carries evidence that lives outside the Verify projection —
- * contract findings, the renovation scenario, open action items — already
+ * contract findings, open action items — already
  * reduced to statements with refs by their own owners. They are appended
  * rather than re-derived here, so this function stays free of database access
  * and stays testable.

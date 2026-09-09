@@ -32,8 +32,6 @@ import {
   Megaphone,
   Radio,
   Landmark,
-  Briefcase,
-  Hammer,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 
@@ -47,8 +45,6 @@ const navItems = [
   { key: 'nav_active_search', path: '/active-search',  icon: Search },
   { key: 'nav_outreach',      path: '/outreach',       icon: Megaphone },
   { key: 'nav_verify',        path: '/verify',         icon: Shield },
-  { key: 'nav_deal_rooms',    path: '/deal-rooms',     icon: Briefcase },
-  { key: 'nav_renovation',    path: '/renovation',     icon: Hammer },
   // nav_cases ('ჩემი გარიგებები' / My Deals) removed from product navigation
   // per the "REMOVE MY DEALS / CASES FROM VERIFY AND FROM PRODUCT
   // NAVIGATION" mandate (2026-09-06) — the CRM/case-attachment flow is no

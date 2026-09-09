@@ -1,15 +1,20 @@
-// HOMATCH — one Deal Room: the persistent workspace for one property.
+// HOMATCH — one VERIFICATION CASE: the persistent workspace for one property.
 //
-// This is the screen the whole product converges on. Everything a buyer has
-// about this property lives here — the summary, what to do, their documents,
-// their questions, the renovation scenario, and the assistant that can answer
-// using all of it.
+// This is the screen the whole product converges on, and it opens from the
+// Verification Center — it is not a second product beside Verify. Everything
+// a buyer has about this property lives here: the summary, what to do, their
+// documents, their questions, and the assistant that can answer using all of
+// it.
 //
 // It is organised as a small number of tabs rather than dozens of cards. A
 // buyer thinks in questions ("what did you find", "what do I do", "what does
 // my contract say"), so the tabs are those questions.
+//
+// The storage layer underneath still calls a case a `deal_room` (see
+// services/dealRooms.ts for why those live production tables were not
+// renamed); nothing on this screen does.
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { ArrowLeft, Hammer } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/db/supabase';
 import {
   getDealRoom, listActionItems, listQuestions, listDocuments, listNotes,
@@ -32,10 +37,18 @@ import { ActionPlanPanel } from '@/components/dealroom/ActionPlanPanel';
 import { AskHomatchPanel, type AskMessage } from '@/components/dealroom/AskHomatchPanel';
 import { DocumentsPanel } from '@/components/dealroom/DocumentsPanel';
 
-const DealRoomPage: React.FC = () => {
+const VerificationCasePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { t } = useLanguage();
   const navigate = useNavigate();
+  // `?tab=documents` is how the Center's contract upload lands the customer
+  // on the document they just chose rather than on a summary that has not
+  // been produced yet. An unknown value falls back to the summary.
+  const [searchParams] = useSearchParams();
+  const requested = searchParams.get('tab');
+  const initialTab = ['summary', 'plan', 'documents', 'ask', 'notes'].includes(requested ?? '')
+    ? (requested as string)
+    : 'summary';
 
   const [room, setRoom] = useState<DealRoomRecord | null | undefined>(undefined);
   const [actions, setActions] = useState<ActionItemRecord[]>([]);
@@ -254,9 +267,9 @@ const DealRoomPage: React.FC = () => {
       <AppLayout>
         <div className="max-w-3xl mx-auto px-4 py-8 space-y-4">
           <p className="text-sm text-muted-foreground">{t('dr_not_found')}</p>
-          <Button variant="outline" onClick={() => navigate('/deal-rooms')} className="gap-2">
+          <Button variant="outline" onClick={() => navigate('/verify')} className="gap-2">
             <ArrowLeft className="h-4 w-4" />
-            {t('dr_list_title')}
+            {t('vc_center_title')}
           </Button>
         </div>
       </AppLayout>
@@ -271,10 +284,10 @@ const DealRoomPage: React.FC = () => {
             variant="ghost"
             size="sm"
             className="gap-2 -ml-2"
-            onClick={() => navigate('/deal-rooms')}
+            onClick={() => navigate('/verify')}
           >
             <ArrowLeft className="h-4 w-4" />
-            {t('dr_list_title')}
+            {t('vc_center_title')}
           </Button>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight break-words">
             {room.title || room.address || room.cadastral_code}
@@ -284,7 +297,7 @@ const DealRoomPage: React.FC = () => {
           ) : null}
         </div>
 
-        <Tabs defaultValue="summary">
+        <Tabs defaultValue={initialTab}>
           {/* Horizontally scrollable on narrow screens rather than wrapping
               into two rows, which would push content below the fold at 320px. */}
           <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
@@ -297,16 +310,6 @@ const DealRoomPage: React.FC = () => {
 
           <TabsContent value="summary" className="mt-5">
             <SynthesisSummary view={summary} loading={summaryLoading} subtitle={room.address} />
-            <div className="mt-5">
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto gap-2"
-                onClick={() => navigate(`/renovation?room=${room.id}`)}
-              >
-                <Hammer className="h-4 w-4" />
-                {t('dr_tab_renovation')}
-              </Button>
-            </div>
           </TabsContent>
 
           <TabsContent value="plan" className="mt-5">
@@ -378,4 +381,4 @@ const DealRoomPage: React.FC = () => {
   );
 };
 
-export default DealRoomPage;
+export default VerificationCasePage;

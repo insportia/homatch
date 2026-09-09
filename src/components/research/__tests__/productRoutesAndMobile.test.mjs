@@ -172,7 +172,7 @@ test('the verdict component supports exactly the three permitted values', () => 
  * Renovation is removed from the active product                     *
  * ---------------------------------------------------------------- */
 
-test('no active renovation route, page, navigation entry or service remains', () => {
+test('no active renovation route, page or service remains', () => {
   for (const p of ['src/pages/RenovationPage.tsx', 'src/pages/admin/AdminPriceBookPage.tsx',
                    'src/services/renovationPricing.ts', 'src/renovation', 'src/components/renovation']) {
     assert.ok(!fs.existsSync(path.join(process.cwd(), p)), `${p} still exists`);
@@ -180,9 +180,73 @@ test('no active renovation route, page, navigation entry or service remains', ()
   for (const marker of ["path: '/renovation'", "path: '/admin/pricebook'", 'RenovationPage', 'AdminPriceBookPage']) {
     assert.ok(!ROUTES.includes(marker), `routes.tsx still references ${marker}`);
   }
-  for (const nav of ['src/components/layouts/AppHeader.tsx', 'src/components/layouts/MobileBottomNav.tsx']) {
-    assert.ok(!/renovation/i.test(read(nav)), `${nav} still offers renovation`);
+});
+
+/*
+ * NAVIGATION SOURCES ARE DISCOVERED, NOT LISTED.
+ *
+ * The previous version of this guard named AppHeader.tsx and
+ * MobileBottomNav.tsx explicitly. That was true when it was written and went
+ * stale the moment a redesign introduced a THIRD navigation component
+ * (HomatchShell.tsx): a Renovation entry added there would have shipped with
+ * every test still green.
+ *
+ * A guard that only watches the files someone remembered is not a guard. So
+ * the nav surface is enumerated from the filesystem, and any future layout or
+ * navigation component is covered on the day it is created.
+ */
+const navSources = () => {
+  const out = [];
+  const walk = (rel) => {
+    const abs = path.join(process.cwd(), rel);
+    if (!fs.existsSync(abs)) return;
+    for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) walk(child);
+      else if (/\.(tsx|ts)$/.test(entry.name) && !/__tests__/.test(child)) out.push(child);
+    }
+  };
+  walk('src/components/layouts');
+  walk('src/components/nav');
+  out.push('src/routes.tsx');
+  return out.filter((f) => fs.existsSync(path.join(process.cwd(), f)));
+};
+
+test('every navigation source is discovered, and none of them offers Renovation', () => {
+  const files = navSources();
+  // If this ever drops to the two files the old guard hardcoded, the discovery
+  // itself has broken and the test below would be checking almost nothing.
+  assert.ok(files.length >= 3, `only ${files.length} nav sources discovered — discovery is broken`);
+  assert.ok(files.includes('src/routes.tsx'));
+
+  for (const file of files) {
+    const src = read(file);
+    assert.ok(!/\/renovation/i.test(src), `${file} links to /renovation`);
+    assert.ok(!/\/admin\/pricebook/i.test(src), `${file} links to the renovation price book`);
+    assert.ok(!/nav_renovation|reno_[a-z]/.test(src), `${file} uses a renovation translation key`);
+    // The Georgian nav label the product used to carry. Prose such as
+    // "რემონტის ბიუჯეტი" is legitimate; a bare label is not.
+    assert.ok(!/["'`]რემონტი["'`]/.test(src), `${file} carries a bare Renovation nav label`);
   }
+});
+
+test('nothing anywhere in the app routes a customer to Renovation', () => {
+  const offenders = [];
+  const walk = (rel) => {
+    const abs = path.join(process.cwd(), rel);
+    if (!fs.existsSync(abs)) return;
+    for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) { walk(child); continue; }
+      if (!/\.(tsx|ts)$/.test(entry.name)) continue;
+      if (/__tests__/.test(child)) continue;
+      const src = fs.readFileSync(path.join(process.cwd(), child), 'utf8');
+      if (/(to|path|href)\s*[:=]\s*["'`]\/renovation/.test(src)) offenders.push(child);
+      if (/(to|path|href)\s*[:=]\s*["'`]\/admin\/pricebook/.test(src)) offenders.push(child);
+    }
+  };
+  walk('src');
+  assert.deepEqual(offenders, [], `these files still navigate to Renovation: ${offenders.join(', ')}`);
 });
 
 test('no renovation product strings survive in any language bundle', () => {
@@ -190,6 +254,24 @@ test('no renovation product strings survive in any language bundle', () => {
   for (const prefix of ['reno_', 'pb_', 'nav_renovation:', 'dr_tab_renovation:']) {
     assert.ok(!src.includes(`  ${prefix}`), `translation key ${prefix}* is still shipped`);
   }
+
+  /*
+   * Catch the LABEL, in every language, not just the key.
+   *
+   * A redesign can reintroduce the product under a brand new key, so the key
+   * denylist above is not enough. What identifies a navigation entry is its
+   * VALUE being the bare word — "Renovation", "რემონტი", "Ремонт". Prose that
+   * merely contains the word ("საჭიროებს რემონტს", "changes the renovation
+   * budget") is legitimate property language and must keep working.
+   */
+  const BARE = /^(renovation|რემონტი|ремонт|tadilat|tadilât|تجديد|שיפוץ)$/i;
+  const offenders = [];
+  for (const line of src.split('\n')) {
+    const m = line.match(/^\s*([a-z0-9_]+)\s*:\s*(['"`])([\s\S]*?)\2\s*,\s*$/i);
+    if (m && BARE.test(m[3].trim())) offenders.push(`${m[1]} = "${m[3]}"`);
+  }
+  assert.deepEqual(offenders, [], `renovation product labels are back: ${offenders.join(', ')}`);
+
   // The listing CONDITION "needs renovation" describes a property, not the
   // removed product, and is deliberately kept.
   assert.ok(src.includes('prop_condition_needs_renovation'));

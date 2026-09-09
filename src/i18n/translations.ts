@@ -2857,6 +2857,17 @@ const en = {
   verify_ir_upload_cta: 'Upload the contract',
   verify_ir_disclaimer: 'This is property intelligence to help you ask the right questions — not legal advice, and not a substitute for a lawyer or notary reviewing your documents.',
   verify_ir_empty: 'We could not gather enough information about this property to write a report.',
+
+  // Where a fact came from, named for a customer
+  verify_src_registry: 'Public registry',
+  verify_src_document: 'Official document',
+  verify_src_developer: 'Developer',
+  verify_src_partner: 'Partner publication',
+  verify_src_listing: 'Property listing',
+  verify_src_media: 'Media report',
+  verify_src_social: 'Public post',
+  verify_src_human: 'Human-verified',
+  verify_src_research: 'Homatch research',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -5632,6 +5643,17 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_ir_upload_cta: 'ხელშეკრულების ატვირთვა',
   verify_ir_disclaimer: 'ეს არის ქონების ანალიზი, რომელიც დაგეხმარებათ სწორი კითხვები დასვათ — და არა იურიდიული რჩევა. მნიშვნელოვან სამართლებრივ საკითხებზე ურჩევნია იურისტთან ან ნოტარიუსთან გადამოწმება.',
   verify_ir_empty: 'ამ ქონებაზე საკმარისი ინფორმაცია ვერ მოვიძიეთ, რომ დასკვნა დაგიწეროთ.',
+
+  // Where a fact came from, named for a customer
+  verify_src_registry: 'საჯარო რეესტრი',
+  verify_src_document: 'ოფიციალური დოკუმენტი',
+  verify_src_developer: 'დეველოპერი',
+  verify_src_partner: 'პარტნიორის პუბლიკაცია',
+  verify_src_listing: 'განცხადება',
+  verify_src_media: 'მედია',
+  verify_src_social: 'საჯარო პოსტი',
+  verify_src_human: 'ადამიანის მიერ დადასტურებული',
+  verify_src_research: 'Homatch-ის კვლევა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -8398,6 +8420,17 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_ir_upload_cta: 'Загрузить договор',
   verify_ir_disclaimer: 'Это анализ объекта, который помогает задать правильные вопросы, — не юридическая консультация и не замена проверке юристом или нотариусом.',
   verify_ir_empty: 'Мы не смогли собрать достаточно информации по этому объекту, чтобы подготовить отчёт.',
+
+  // Where a fact came from, named for a customer
+  verify_src_registry: 'Публичный реестр',
+  verify_src_document: 'Официальный документ',
+  verify_src_developer: 'Застройщик',
+  verify_src_partner: 'Публикация партнёра',
+  verify_src_listing: 'Объявление',
+  verify_src_media: 'СМИ',
+  verify_src_social: 'Публичный пост',
+  verify_src_human: 'Подтверждено человеком',
+  verify_src_research: 'Исследование Homatch',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -11162,6 +11195,17 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_ir_upload_cta: 'Sözleşmeyi yükle',
   verify_ir_disclaimer: 'Bu, doğru soruları sormanıza yardımcı olan bir mülk analizidir — hukuki tavsiye değildir ve avukat veya noter incelemesinin yerini tutmaz.',
   verify_ir_empty: 'Bu mülk hakkında rapor yazacak kadar bilgi toplayamadık.',
+
+  // Where a fact came from, named for a customer
+  verify_src_registry: 'Kamu sicili',
+  verify_src_document: 'Resmî belge',
+  verify_src_developer: 'Geliştirici',
+  verify_src_partner: 'Ortak yayını',
+  verify_src_listing: 'İlan',
+  verify_src_media: 'Medya',
+  verify_src_social: 'Herkese açık paylaşım',
+  verify_src_human: 'İnsan tarafından doğrulandı',
+  verify_src_research: 'Homatch araştırması',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -13926,6 +13970,17 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_ir_upload_cta: 'رفع العقد',
   verify_ir_disclaimer: 'هذا تحليل للعقار يساعدك على طرح الأسئلة الصحيحة — وليس استشارة قانونية ولا بديلاً عن مراجعة محامٍ أو كاتب عدل.',
   verify_ir_empty: 'لم نتمكن من جمع معلومات كافية عن هذا العقار لكتابة تقرير.',
+
+  // Where a fact came from, named for a customer
+  verify_src_registry: 'السجل العام',
+  verify_src_document: 'وثيقة رسمية',
+  verify_src_developer: 'المطوّر',
+  verify_src_partner: 'منشور شريك',
+  verify_src_listing: 'إعلان عقاري',
+  verify_src_media: 'تقرير إعلامي',
+  verify_src_social: 'منشور عام',
+  verify_src_human: 'تم التحقق بشرياً',
+  verify_src_research: 'بحث Homatch',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -16690,6 +16745,17 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_ir_upload_cta: 'העלאת החוזה',
   verify_ir_disclaimer: 'זהו ניתוח נכס שנועד לעזור לך לשאול את השאלות הנכונות — לא ייעוץ משפטי ולא תחליף לבדיקה של עורך דין או נוטריון.',
   verify_ir_empty: 'לא הצלחנו לאסוף מספיק מידע על הנכס הזה כדי לכתוב דוח.',
+
+  // Where a fact came from, named for a customer
+  verify_src_registry: 'מרשם ציבורי',
+  verify_src_document: 'מסמך רשמי',
+  verify_src_developer: 'היזם',
+  verify_src_partner: 'פרסום שותף',
+  verify_src_listing: 'מודעה',
+  verify_src_media: 'דיווח תקשורתי',
+  verify_src_social: 'פוסט ציבורי',
+  verify_src_human: 'אומת על ידי אדם',
+  verify_src_research: 'מחקר Homatch',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

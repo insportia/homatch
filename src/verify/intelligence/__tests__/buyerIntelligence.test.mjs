@@ -438,3 +438,64 @@ test('the raw evidence explorer is still reachable underneath the report', () =>
   assert.ok(cmp.includes('verify_report_evidence_toggle'), 'the evidence drawer was removed');
   assert.ok(cmp.includes('<details'), 'the evidence detail is no longer collapsible');
 });
+
+/* ---------------------------------------------------------------- *
+ * No internal token on a customer screen                            *
+ * ---------------------------------------------------------------- *
+ *
+ * All three of these were found on the LIVE production report for
+ * 01.18.06.019.055.03.01.601 after the first deploy of this pipeline.
+ */
+
+test('a JSON group key is never used as a source label', () => {
+  // rightsAndRestrictions is shaped { items: [...] }. Passing that key
+  // through put the literal word "items" on screen as a source.
+  const pkg = pkgOf({
+    exactUnit: { code: '01.02.03.004' },
+    rightsAndRestrictions: { items: ['იპოთეკა რეგისტრირებულია.'] },
+  });
+  const enc = byCategory(pkg, 'ENCUMBRANCE');
+  assert.ok(enc.length, 'the encumbrance was lost');
+  assert.ok(enc.every((i) => i.source === undefined),
+    `a shape key leaked as a source: ${enc.map((i) => i.source).join(', ')}`);
+});
+
+test('the prompt forbids writing evidence ids into the prose', () => {
+  const { system } = buildIntelligencePrompt(pkgOf(REAL_CASE));
+  assert.ok(/PUT THE IDS IN `cites`, NEVER IN THE PROSE/.test(system));
+});
+
+test('the UI strips evidence ids the model writes into prose anyway', () => {
+  // A model instruction is a request; the boundary is the control. The live
+  // report came back with "...ტვირთებისგან. (e7, e8)" despite the rule.
+  const cmp = read('src/components/verify/VerifyReport.tsx');
+  assert.ok(cmp.includes('stripEvidenceIds'), 'nothing strips leaked ids');
+  // Every customer-visible string must go through it, not just paragraphs.
+  for (const call of [
+    'stripEvidenceIds(readable(r.overallView.statement))',
+    'stripEvidenceIds(readable(s.title))',
+    'stripEvidenceIds(readable(a.point))',
+    'stripEvidenceIds(readable(a.action))',
+    'stripEvidenceIds(readable(u.item))',
+  ]) {
+    assert.ok(cmp.includes(call), `${call} is missing — ids can still render there`);
+  }
+});
+
+test('a citation chip never shows the raw provenance enum', () => {
+  const cmp = read('src/components/verify/VerifyReport.tsx');
+  // The live report rendered DERIVED / OFFICIAL_DOCUMENT / DEVELOPER_STATEMENT
+  // as source labels because the fallback was `e.source || e.provenance`.
+  assert.ok(!/\{e\.source \|\| e\.provenance\}/.test(cmp), 'the raw enum fallback is back');
+  assert.ok(cmp.includes('PROVENANCE_KEY'), 'provenance is not translated for the customer');
+  assert.ok(cmp.includes('isHumanSource'), 'an internal token can still be used as a label');
+
+  // Every provenance the package can emit must have a customer-facing name.
+  const pkgSrc = read('src/verify/intelligence/evidencePackage.ts');
+  const union = pkgSrc.slice(pkgSrc.indexOf('export type Provenance'), pkgSrc.indexOf(";", pkgSrc.indexOf('export type Provenance')));
+  const values = [...union.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
+  assert.ok(values.length >= 8, 'the provenance vocabulary was not found');
+  for (const v of values) {
+    assert.ok(cmp.includes(`${v}: 'verify_src_`), `${v} has no customer-facing source label`);
+  }
+});

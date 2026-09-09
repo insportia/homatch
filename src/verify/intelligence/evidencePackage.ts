@@ -239,11 +239,14 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
   }
 
   const rr = obj(r.rightsAndRestrictions);
-  for (const [group, raw] of Object.entries(rr)) {
+  for (const [, raw] of Object.entries(rr)) {
     for (const entry of arr<unknown>(raw)) {
+      // The object key here ("items", "mortgages", ...) is a shape detail, not
+      // a source. Passing it through put the literal word `items` on a
+      // customer's screen as though it were where the fact came from.
       add({
         tier: 1, category: 'ENCUMBRANCE', claim: clean(entry),
-        provenance: 'OFFICIAL_REGISTRY', certainty: 'CONFIRMED', source: group,
+        provenance: 'OFFICIAL_REGISTRY', certainty: 'CONFIRMED',
       });
     }
   }

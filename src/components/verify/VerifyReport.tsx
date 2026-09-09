@@ -30,6 +30,37 @@ import { Button } from '@/components/ui/button';
 import { FileText, Info, CircleAlert } from 'lucide-react';
 import { readable } from '@/verify/readableText';
 
+/*
+ * Evidence ids belong in `cites`, never in a sentence. The prompt says so,
+ * and a live report still came back with "...ტვირთებისგან. (e7, e8)" in the
+ * body — so the boundary strips them too. A model instruction is a request;
+ * this is the control.
+ */
+const stripEvidenceIds = (text: string): string =>
+  text
+    .replace(/\s*[([]\s*e\d+(?:\s*,\s*e\d+)*\s*[)\]]/gi, '')
+    .replace(/\s+([.,;:!?])/g, '$1')
+    .trim();
+
+/** Customer-facing name for where a fact came from. The raw provenance enum
+ *  (DERIVED, OFFICIAL_DOCUMENT, ...) must never reach a screen. */
+const PROVENANCE_KEY: Record<string, string> = {
+  OFFICIAL_REGISTRY: 'verify_src_registry',
+  OFFICIAL_DOCUMENT: 'verify_src_document',
+  DEVELOPER_STATEMENT: 'verify_src_developer',
+  PARTNER_PUBLICATION: 'verify_src_partner',
+  MARKET_LISTING: 'verify_src_listing',
+  MEDIA_REPORT: 'verify_src_media',
+  SOCIAL_SIGNAL: 'verify_src_social',
+  HUMAN_ASSISTED: 'verify_src_human',
+  DERIVED: 'verify_src_research',
+};
+
+/** True when a `source` string is human text rather than an internal token
+ *  such as an enum member or a JSON key. */
+const isHumanSource = (s?: string): boolean =>
+  !!s && !/^[A-Z][A-Z0-9_]*$/.test(s) && !/^[a-z][a-zA-Z0-9]*$/.test(s);
+
 export type OverallLabel = 'POSITIVE' | 'MOSTLY_POSITIVE' | 'MIXED' | 'NEEDS_ATTENTION';
 
 export interface EvidenceRef {
@@ -71,7 +102,7 @@ const OVERALL_KEY: Record<OverallLabel, string> = {
 /** Paragraph splitting. The model writes prose with blank lines; we render
  *  those as real paragraphs rather than one wall of text. */
 const paragraphs = (text: string): string[] =>
-  readable(text)
+  stripEvidenceIds(readable(text))
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean);
@@ -120,7 +151,7 @@ export function VerifyReport({
         </p>
         {r.overallView?.statement ? (
           <p className="text-lg sm:text-xl font-semibold leading-8 break-words">
-            {readable(r.overallView.statement)}
+            {stripEvidenceIds(readable(r.overallView.statement))}
           </p>
         ) : null}
       </header>
@@ -134,7 +165,7 @@ export function VerifyReport({
       {/* ── The briefing ────────────────────────────────────────── */}
       {sections.map((s) => (
         <section key={s.key} className="space-y-3">
-          <h2 className="text-base font-semibold tracking-tight break-words">{readable(s.title)}</h2>
+          <h2 className="text-base font-semibold tracking-tight break-words">{stripEvidenceIds(readable(s.title))}</h2>
           <Prose text={s.body} />
           <Citations ids={s.cites} refs={refs} />
         </section>
@@ -149,9 +180,9 @@ export function VerifyReport({
           <ul className="space-y-4">
             {r.attentionPoints.map((a, i) => (
               <li key={i} className="border-s-2 border-amber-400/70 ps-4 space-y-1">
-                <p className="text-[15px] leading-7 font-medium break-words">{readable(a.point)}</p>
+                <p className="text-[15px] leading-7 font-medium break-words">{stripEvidenceIds(readable(a.point))}</p>
                 {a.why ? (
-                  <p className="text-sm leading-6 text-muted-foreground break-words">{readable(a.why)}</p>
+                  <p className="text-sm leading-6 text-muted-foreground break-words">{stripEvidenceIds(readable(a.why))}</p>
                 ) : null}
                 <Citations ids={a.cites} refs={refs} />
               </li>
@@ -173,8 +204,8 @@ export function VerifyReport({
           <ul className="space-y-2">
             {r.unconfirmed.map((u, i) => (
               <li key={i} className="text-sm leading-6 text-muted-foreground break-words">
-                {readable(u.item)}
-                {u.why ? ` — ${readable(u.why)}` : ''}
+                {stripEvidenceIds(readable(u.item))}
+                {u.why ? ` — ${stripEvidenceIds(readable(u.why))}` : ''}
               </li>
             ))}
           </ul>
@@ -197,9 +228,9 @@ export function VerifyReport({
                   {i + 1}
                 </span>
                 <div className="min-w-0 space-y-1">
-                  <p className="text-[15px] leading-7 break-words">{readable(a.action)}</p>
+                  <p className="text-[15px] leading-7 break-words">{stripEvidenceIds(readable(a.action))}</p>
                   {a.why ? (
-                    <p className="text-sm leading-6 text-muted-foreground break-words">{readable(a.why)}</p>
+                    <p className="text-sm leading-6 text-muted-foreground break-words">{stripEvidenceIds(readable(a.why))}</p>
                   ) : null}
                   <Citations ids={a.cites} refs={refs} />
                 </div>
@@ -246,11 +277,28 @@ export function VerifyReport({
 /** Subtle, non-intrusive source indicators. A reader who does not care never
  *  notices them; a reader who does can open the drawer below. */
 const Citations: React.FC<{ ids?: string[]; refs: Map<string, EvidenceRef> }> = ({ ids, refs }) => {
+  const { t } = useLanguage();
   const found = (ids ?? []).map((id) => refs.get(id)).filter((e): e is EvidenceRef => !!e);
   if (!found.length) return null;
+
+  // A source is named in the customer's language. `e.source` is used only when
+  // it is genuinely human text; otherwise the provenance is translated. The
+  // raw enum is never rendered.
+  const label = (e: EvidenceRef): string =>
+    isHumanSource(e.source) ? e.source! : t(PROVENANCE_KEY[e.provenance] ?? 'verify_src_research');
+
+  // The same source cited three times is one chip, not three.
+  const seen = new Set<string>();
+  const unique = found.filter((e) => {
+    const l = label(e) + (e.url ?? '');
+    if (seen.has(l)) return false;
+    seen.add(l);
+    return true;
+  });
+
   return (
     <p className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
-      {found.slice(0, 6).map((e) =>
+      {unique.slice(0, 4).map((e) =>
         e.url ? (
           <a
             key={e.id}
@@ -259,11 +307,11 @@ const Citations: React.FC<{ ids?: string[]; refs: Map<string, EvidenceRef> }> = 
             rel="noopener noreferrer"
             className="text-[11px] text-muted-foreground/80 underline underline-offset-2 hover:text-foreground break-all"
           >
-            {e.source || e.provenance}
+            {label(e)}
           </a>
         ) : (
           <span key={e.id} className="text-[11px] text-muted-foreground/70 break-words">
-            {e.source || e.provenance}
+            {label(e)}
           </span>
         )
       )}

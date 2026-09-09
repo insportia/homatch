@@ -12,10 +12,24 @@
 // that CANNOT be completed from the server, no matter how many times it is
 // reloaded.
 //
-// When one of these appears, the correct action is to stop re-prompting and
-// end that source. It is a statement about where the request came from, never
-// about the property: a blocked source is NOT risk, NOT a confirmed negative,
-// and must never influence the verdict (NO EVIDENCE = NO FACT).
+// WHAT CALLERS ACTUALLY DO WITH IT
+// --------------------------------
+// This function DETECTS; it does not decide. An earlier version of this
+// comment said the correct action was to stop re-prompting and end the
+// source, and that is no longer what happens — ResearchOrchestrator parks the
+// job at WAITING_HUMAN on the same page and the customer is offered the same
+// public lookup in their OWN browser, because a handoff changes the network
+// origin and ending the source does not. `networkBlocked` rides along on the
+// humanVerification payload as a diagnostic only; nothing downstream gates on
+// it, and a source is ended only when it genuinely cannot be handed off.
+//
+// A stale comment on a security decision is worse than no comment, hence this
+// one is written against the behaviour rather than the intention.
+//
+// What has not changed: this is a statement about where the request came
+// from, never about the property. A blocked source is NOT risk, NOT a
+// confirmed negative, and must never influence the verdict
+// (NO EVIDENCE = NO FACT).
 
 /** Network/reputation rejections — NOT ordinary solvable challenges. */
 const CAPTCHA_BLOCK_PATTERNS: readonly RegExp[] = [

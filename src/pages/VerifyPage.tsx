@@ -598,7 +598,14 @@ useEffect(()=>{const urlJob=searchParams.get('job');if(urlJob)openJob(urlJob);
 useEffect(()=>{if(recovered.current)return;if(searchParams.get('job')){recovered.current=true;return}
 if(!supaUser)return;recovered.current=true;void(async()=>{try{const{data}=await supabase.from('research_jobs')
 .select('id').eq('user_id',supaUser.id).in('status',['CREATED','RUNNING','WAITING_HUMAN'])
-.is('deleted_at',null).is('cancelled_at',null).order('created_at',{ascending:false}).limit(1).maybeSingle();
+.is('deleted_at',null).is('cancelled_at',null)
+/* Bounded to the same window the server driver will actually work on.
+   Without this, a job abandoned before the driver existed — and there
+   are two such rows in production, stuck since 2026-09-08 — would
+   capture every future visit to a clean /verify and the customer could
+   never start anything new. */
+.gt('created_at',new Date(Date.now()-6*60*60*1000).toISOString())
+.order('created_at',{ascending:false}).limit(1).maybeSingle();
 if(data?.id)openJob(data.id)}catch{/* best effort: a failed lookup must not block the landing page */}})();
 // eslint-disable-next-line react-hooks/exhaustive-deps
 },[supaUser]);

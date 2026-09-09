@@ -3648,6 +3648,47 @@ async function driveLiveJobs(sb: any, key: string, model: string): Promise<void>
   // Runs even if the sweep threw: a COMPLETE job still owes its customer a
   // report, and that is independent of whatever went wrong above.
   await driveSynthesis(sb);
+  await retireAbandonedJobs(sb);
+}
+
+/*
+ * Close out what can never finish.
+ *
+ * The forbidden state the customer reported is a live server job with no UI,
+ * no report and NO ERROR — and jobs abandoned before the driver existed are
+ * exactly that. They sit in History as "მიმდინარე" forever, promising a
+ * result that is not coming, because they stopped when their client did and
+ * nothing has stepped them since.
+ *
+ * Past the driver's own working window there is nothing further to try, so
+ * they are marked terminal with a truthful, customer-safe message. Their
+ * collected evidence is untouched — this changes the status that describes
+ * them, never the research they hold.
+ */
+async function retireAbandonedJobs(sb: any): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - DRIVE_MAX_AGE_MS).toISOString();
+    const { data: jobs } = await sb
+      .from('research_jobs')
+      .select('id')
+      .in('status', [...DRIVE_LIVE_STATUSES, 'WAITING_HUMAN'])
+      .is('deleted_at', null)
+      .is('cancelled_at', null)
+      .lt('created_at', cutoff)
+      .limit(DRIVE_BATCH);
+
+    for (const j of jobs ?? []) {
+      await sb.from('research_jobs').update({
+        status: 'FAILED',
+        stage: 'FAILED',
+        error: 'RESEARCH_ABANDONED_BEFORE_COMPLETION',
+        driver_claimed_at: null,
+        updated_at: now(),
+      }).eq('id', j.id);
+    }
+  } catch (e) {
+    console.error('research-agent drive: retiring abandoned jobs failed', e);
+  }
 }
 
 

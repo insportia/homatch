@@ -62,6 +62,24 @@ test('100% means a valid report exists, and nothing else does', () => {
   assert.equal(estimateProgress(run({ reportReady: true })), 100);
 });
 
+test('a run we have not heard about yet reads as just-started', () => {
+  // Caught on a live production run: one second in, the page showed "28%,
+  // official records", because a missing stage and a stage we have not met
+  // shared the same mid-research default. They are different questions.
+  const fresh = estimateProgress({ status: 'CREATED', stage: null, createdAt: null });
+  assert.ok(fresh <= 4, `a brand-new run reported ${fresh}%`);
+  // ...but a stage this table genuinely does not know, on a run that IS
+  // twenty minutes old, must still not collapse to 1%.
+  const unknown = estimateProgress(run({ stage: 'SOME_NEW_STAGE', now: at(20) }));
+  assert.ok(unknown > 20, `an unknown mid-run stage reported ${unknown}%`);
+
+  // The stream's phase label must follow the same rule, or the number and the
+  // words disagree on the same screen.
+  const stream = code('src/components/verify/ResearchStream.tsx');
+  assert.ok(/createdAt \? phaseFor\(stage\) : 'STARTING'/.test(stream),
+    'the phase label still defaults to mid-research before the first poll');
+});
+
 test('progress never goes backwards as time passes', () => {
   let prev = -1;
   for (let m = 0; m <= 90; m += 1) {

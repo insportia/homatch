@@ -87,7 +87,10 @@ export function ResearchStream({
   const elapsed = formatElapsed(elapsedMs(input));
   // Synthesis is a real phase of the pipeline, so say so rather than leaving
   // the stream describing research that has already finished.
-  const phase = synthesizing ? 'SYNTHESIS' : phaseFor(stage);
+  // Same rule as the percentage: before the first status poll we know nothing
+  // about this run, and the honest reading of nothing is the beginning — not
+  // the middle of the pipeline, which is where an unknown STAGE belongs.
+  const phase = synthesizing ? 'SYNTHESIS' : createdAt ? phaseFor(stage) : 'STARTING';
   const lines = synthesizing ? messagesFor('SYNTHESIS', step, 1) : messagesFor(phase, step, 3);
   const facts = React.useMemo(() => extractLiveFacts(result), [result]);
 

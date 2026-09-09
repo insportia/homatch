@@ -156,7 +156,22 @@ export function estimateProgress(input: ProgressInput): number {
   // rather than letting the curve keep climbing under a dead job.
   const frozen = status === 'FAILED' || status === 'CANCELLED';
 
-  const band = bandFor(status === 'COMPLETE' ? 'COMPLETE' : input.stage);
+  /*
+   * "We have not heard from the server yet" is not "the pipeline is somewhere
+   * in the middle".
+   *
+   * The unknown-stage default is deliberately mid-research, because a stage
+   * this table has not met is far likelier to be a new step in the middle of
+   * the pipeline than a job that has not started. But there is a second way
+   * to have no stage: the first status poll has not come back. Caught live —
+   * a run one second old rendered "28%, official records" because the two
+   * cases shared a default. Without a server start time we know nothing at
+   * all, and the honest reading of nothing is the beginning.
+   */
+  const heardFromServer = toMillis(input.createdAt) !== null;
+  const band = !heardFromServer
+    ? bandFor('QUEUED')
+    : bandFor(status === 'COMPLETE' ? 'COMPLETE' : input.stage);
   const t = elapsedMs(input);
   const curved = CURVE_CEILING * (1 - Math.exp(-t / CURVE_TAU_MS));
 

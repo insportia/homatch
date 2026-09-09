@@ -52,8 +52,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `tsc --noEmit` on the ROOT tsconfig checks NOTHING: it has "files": []
+      # and only project references, so the command exits 0 without compiling a
+      # single file. It was a green gate that could not fail. tsconfig.check.json
+      # is the config the lint script's tsgo already uses; running real tsc
+      # against it gives a genuine second type-check with a different engine.
       - name: Type-check
-        run: pnpm exec tsc --noEmit
+        run: pnpm exec tsc -p tsconfig.check.json --noEmit
 
       - name: Lint
         env:

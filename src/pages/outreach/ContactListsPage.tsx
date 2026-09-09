@@ -93,8 +93,11 @@ export default function ContactListsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm(t('contacts_delete_confirm'))) return;
-    const { error } = await supabase.from('outreach_contact_lists').delete().eq('id', id);
-    if (error) toast.error(t('contacts_delete_error'));
+    // .select() so the deleted rows come back. A DELETE that matches nothing --
+    // because RLS filtered the row out, or it was already gone -- returns 204
+    // with no error, which without this reads as a successful deletion.
+    const { data, error } = await supabase.from('outreach_contact_lists').delete().eq('id', id).select('id');
+    if (error || !data || data.length === 0) toast.error(t('contacts_delete_error'));
     else { toast.success(t('contacts_deleted')); load(); }
   };
 

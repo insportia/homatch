@@ -123,8 +123,11 @@ serve(async (req) => {
     const content = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     if (!content) return new Response(JSON.stringify({ error: 'Generation failed', details: geminiJson }), { status: 502, headers: corsHeaders });
 
-    // Save to social_posts as DRAFT (requires human review)
-    const { data: post } = await supabase.from('social_posts').insert({
+    // Save to social_posts as DRAFT (requires human review).
+    // owner_id is the AUTH user id: social_posts.owner_id references
+    // auth.users(id) and its RLS policy compares against auth.uid(), unlike
+    // properties.user_id above which is the public.users profile id.
+    const { data: post, error: postErr } = await supabase.from('social_posts').insert({
       owner_id: user.id,
       property_id,
       community_id: community_id ?? null,
@@ -137,9 +140,20 @@ serve(async (req) => {
       metadata: { char_limit: charLimit, mode, word_count: content.split(/\s+/).length },
     }).select('id').maybeSingle();
 
+    // The draft not being saved is a failure, not a detail. Returning the
+    // generated text with post_id undefined looked like success while leaving
+    // the customer with a post they cannot review, edit or mark as posted.
+    if (postErr || !post) {
+      console.error('[social-post-generate] failed to save draft:', postErr?.message);
+      return new Response(JSON.stringify({
+        error: 'Post was generated but could not be saved',
+        details: postErr?.message ?? 'insert returned no row',
+      }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     return new Response(JSON.stringify({
       content: content.trim(),
-      post_id: post?.id,
+      post_id: post.id,
       platform, language,
       char_count: content.trim().length,
       char_limit: charLimit,

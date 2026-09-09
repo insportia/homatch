@@ -240,30 +240,76 @@ serve(async (req) => {
       });
     }
 
-    // Batch insert (non-duplicate rows first, then flag dupes)
+    // ── Persist ──────────────────────────────────────────────
+    // Duplicates are NOT stored. They used to be: is_duplicate was set to true
+    // and the row inserted anyway, and nothing downstream filtered on that
+    // flag, so a duplicated address in an uploaded file was contacted once per
+    // copy. They are reported in `duplicates` instead, which is what the
+    // preview already showed the customer.
+    const insertable = contactRows.filter((r) => !r.is_duplicate);
+
+    // A second unique key lives in the database ((list_id, lower(email)) and
+    // (list_id, phone)), which catches what an in-file scan cannot: the same
+    // file uploaded into the same list twice. A batch that trips it is retried
+    // row by row so one repeat does not discard the 499 new contacts with it.
     const batchSize = 500;
     let inserted = 0;
-    for (let i = 0; i < contactRows.length; i += batchSize) {
-      const batch = contactRows.slice(i, i + batchSize);
+    let alreadyInList = 0;
+    const failures: string[] = [];
+
+    for (let i = 0; i < insertable.length; i += batchSize) {
+      const batch = insertable.slice(i, i + batchSize);
       const { error: insErr } = await supabase.from('outreach_contacts').insert(batch);
-      if (insErr) console.error('[contact-import] insert batch error:', insErr.message);
-      else inserted += batch.length;
+      if (!insErr) { inserted += batch.length; continue; }
+      if (insErr.code !== '23505') {
+        console.error('[contact-import] insert batch error:', insErr.message);
+        failures.push(insErr.message);
+        continue;
+      }
+      for (const row of batch) {
+        const { error: rowErr } = await supabase.from('outreach_contacts').insert(row);
+        if (!rowErr) inserted++;
+        else if (rowErr.code === '23505') alreadyInList++;
+        else { console.error('[contact-import] insert row error:', rowErr.message); failures.push(rowErr.message); }
+      }
     }
 
-    // Update list stats
-    await supabase.from('outreach_contact_lists').update({
+    // The list is READY only if everything that should have landed did. Marking
+    // a list READY with stats describing rows that were never stored is how a
+    // customer ends up launching a campaign against an empty audience.
+    const importStatus = failures.length > 0 ? 'FAILED' : 'READY';
+
+    const { error: listErr } = await supabase.from('outreach_contact_lists').update({
       total_rows: processedRows.length,
-      valid_rows: validCount,
+      // Counts describe what is actually in the table, not what was uploaded.
+      valid_rows: inserted,
       invalid_rows: invalidCount,
-      duplicate_rows: dupCount,
+      duplicate_rows: dupCount + alreadyInList,
       missing_email: missingEmail,
       missing_phone: missingPhone,
-      import_status: 'READY',
+      import_status: importStatus,
       segments: Object.entries(langCounts).map(([lang, count]) => ({ name: `lang:${lang}`, count, criteria: { language: lang } })),
       updated_at: new Date().toISOString(),
     }).eq('id', list_id);
+    if (listErr) console.error('[contact-import] list stats update failed:', listErr.message);
 
-    return new Response(JSON.stringify({ preview, inserted, status: 'READY' }), {
+    if (failures.length > 0) {
+      return new Response(JSON.stringify({
+        error: 'Import incomplete — some contacts could not be stored',
+        inserted,
+        duplicates: dupCount,
+        already_in_list: alreadyInList,
+        failed_reasons: [...new Set(failures)].slice(0, 5),
+        status: importStatus,
+      }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    return new Response(JSON.stringify({
+      preview, inserted,
+      duplicates: dupCount,
+      already_in_list: alreadyInList,
+      status: 'READY',
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {

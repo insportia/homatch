@@ -5,8 +5,15 @@
 // matching admin_settings flag is enabled and provider_kill_switch is false;
 // otherwise every send silently goes through the zero-network Mock adapter.
 // Processes contacts in small batches per invocation (edge functions have a
-// wall-clock limit) — call again with the same campaign_id to continue; it
-// never re-sends to a contact that already has a non-failed outreach_sends row.
+// wall-clock limit) — call again with the same campaign_id to continue.
+//
+// A contact is CLAIMED before it is contacted: a QUEUED outreach_sends row is
+// inserted first, and only if that insert wins does the provider get called.
+// The unique index outreach_sends_campaign_contact_uidx (campaign_id,
+// contact_id) WHERE status <> 'FAILED' makes the claim atomic, so two
+// overlapping invocations cannot both dial the same person. Reading the
+// already-sent list up front is still done — it keeps the batch full of useful
+// work — but it is an optimisation, not the guarantee.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getEmailAdapter, getSmsAdapter, getVoiceAdapter } from '../_shared/outreach_providers.ts';
@@ -118,6 +125,10 @@ serve(async (req) => {
       .eq('suppressed', false)
       .eq(doNotField, false)
       .eq('unsubscribed', false)
+      // contact-import flags in-file duplicates but still stores them. Nothing
+      // used to filter on this, so a duplicated address in an uploaded list was
+      // contacted once per copy.
+      .eq('is_duplicate', false)
       .not(contactField, 'is', null)
       .limit(BATCH_SIZE);
     if (excludeIds.length) contactsQuery = contactsQuery.not('id', 'in', `(${excludeIds.join(',')})`);
@@ -132,7 +143,7 @@ serve(async (req) => {
 
     if (!contacts || contacts.length === 0) {
       const stillPending = await supabase.from('outreach_sends').select('id', { count: 'exact', head: true })
-        .eq('campaign_id', campaign_id).in('status', ['DIALING', 'ANSWERED']);
+        .eq('campaign_id', campaign_id).in('status', ['QUEUED', 'DIALING', 'ANSWERED']);
       const isFullyDone = !(stillPending.count && stillPending.count > 0);
       if (isFullyDone) {
         await supabase.from('outreach_campaigns').update({ status: 'COMPLETED', updated_at: new Date().toISOString() }).eq('id', campaign_id);
@@ -149,13 +160,36 @@ serve(async (req) => {
     const emailUnitPrice = Number(fm['outreach_email_price_per_1k'] ?? 0.5) / 1000;
     const smsUnitPrice = Number(fm['outreach_sms_unit_price'] ?? 0.05);
 
-    let sentCount = 0, failedCount = 0, costTotal = 0, anyMock = false;
+    let sentCount = 0, failedCount = 0, skippedCount = 0, costTotal = 0, anyMock = false;
 
     for (const contact of contacts) {
-      const baseRow = {
+      // ── Claim the contact BEFORE contacting them ──────────
+      // provider is left null on the claim: this row does not yet describe a
+      // dispatch, and labelling it MOCK (the column default) would make a
+      // crashed batch look like a simulated send that happened.
+      const { data: claim, error: claimErr } = await supabase.from('outreach_sends').insert({
         campaign_id, contact_id: contact.id, owner_id: ownerId, channel,
         recipient_email: channel === 'EMAIL' ? contact.email : null,
         recipient_phone: channel !== 'EMAIL' ? contact.phone : null,
+        status: 'QUEUED', provider: null,
+      }).select('id').single();
+
+      if (claimErr || !claim) {
+        // 23505: a concurrent invocation already claimed this contact for this
+        // campaign. That is the guard working — skip, do not dial.
+        if (claimErr?.code === '23505') { skippedCount++; continue; }
+        console.error('[outreach-send] could not claim contact, not sending:', contact.id, claimErr?.message);
+        skippedCount++;
+        continue;
+      }
+      const sendId = claim.id as string;
+
+      // Anything that follows updates the claimed row rather than inserting a
+      // second one, so the count of rows is the count of real attempts.
+      const finalize = async (patch: Record<string, unknown>) => {
+        const { error: upErr } = await supabase.from('outreach_sends')
+          .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', sendId);
+        if (upErr) console.error('[outreach-send] failed to record send outcome:', sendId, upErr.message);
       };
 
       if (channel === 'EMAIL' && emailAdapter) {
@@ -180,8 +214,8 @@ serve(async (req) => {
         });
         anyMock = anyMock || result.is_mock;
         const cost = result.success && !result.is_mock ? emailUnitPrice : 0;
-        await supabase.from('outreach_sends').insert({
-          ...baseRow, status: result.success ? 'SENT' : 'FAILED', provider: result.is_mock ? 'MOCK' : 'RESEND',
+        await finalize({
+          status: result.success ? 'SENT' : 'FAILED', provider: result.is_mock ? 'MOCK' : 'RESEND',
           provider_message_id: result.provider_message_id, error_message: result.error, cost_usd: cost, sent_at: new Date().toISOString(),
         });
         if (result.success) { sentCount++; costTotal += cost; } else failedCount++;
@@ -190,8 +224,8 @@ serve(async (req) => {
         const result = await smsAdapter.send({ to: contact.phone!, body: campaign.sms_template || '', campaign_id });
         anyMock = anyMock || result.is_mock;
         const cost = result.success && !result.is_mock ? smsUnitPrice : 0;
-        await supabase.from('outreach_sends').insert({
-          ...baseRow, status: result.success ? 'SENT' : 'FAILED', provider: result.is_mock ? 'MOCK' : 'TWILIO',
+        await finalize({
+          status: result.success ? 'SENT' : 'FAILED', provider: result.is_mock ? 'MOCK' : 'TWILIO',
           provider_message_id: result.provider_message_id, error_message: result.error, cost_usd: cost, sent_at: new Date().toISOString(),
         });
         if (result.success) { sentCount++; costTotal += cost; } else failedCount++;
@@ -203,39 +237,47 @@ serve(async (req) => {
           campaign_id, max_duration_sec: campaign.max_call_duration_sec || 300, webhook_url: webhookUrl,
         });
         anyMock = anyMock || result.is_mock;
-        await supabase.from('outreach_sends').insert({
-          ...baseRow, status: result.success ? 'DIALING' : 'FAILED', provider: result.is_mock ? 'MOCK' : 'RETELL',
+        await finalize({
+          status: result.success ? 'DIALING' : 'FAILED', provider: result.is_mock ? 'MOCK' : 'RETELL',
           provider_message_id: result.provider_call_id, error_message: result.error, call_started_at: result.success ? new Date().toISOString() : null,
         });
         if (result.success) sentCount++; else failedCount++;
         // Mock calls "complete" immediately since nothing will ever call the webhook for them
         if (result.is_mock && result.success) {
-          await supabase.from('outreach_sends').update({
+          await finalize({
             status: 'COMPLETED', duration_sec: 42, call_ended_at: new Date().toISOString(),
             transcript: '[MOCK] Hello, this is the Homatch assistant calling about your property search...',
             summary: '[MOCK] Simulated call — no real telephony occurred.',
-          }).eq('campaign_id', campaign_id).eq('contact_id', contact.id).eq('provider_message_id', result.provider_call_id);
+          });
         }
+      } else {
+        // No adapter for this channel: release the claim rather than leaving a
+        // QUEUED row that blocks this contact for good.
+        await finalize({ status: 'FAILED', error_message: 'No provider adapter available for channel' });
+        failedCount++;
       }
     }
 
-    await supabase.from('outreach_campaigns').update({
-      sent_count: (campaign.sent_count || 0) + sentCount,
-      cost_actual_usd: Number(campaign.cost_actual_usd || 0) + costTotal,
-      updated_at: new Date().toISOString(),
-    }).eq('id', campaign_id);
+    // Derived from outreach_sends, not accumulated onto a value read at the top
+    // of this invocation — two overlapping batches used to lose each other's
+    // contribution to sent_count and cost_actual_usd.
+    const { error: counterErr } = await supabase.rpc('outreach_recompute_campaign_counters', { p_campaign_id: campaign_id });
+    if (counterErr) console.error('[outreach-send] counter recompute failed:', counterErr.message);
 
     const remaining = contacts.length === BATCH_SIZE; // heuristic: full batch means there may be more
     if (!remaining) {
       const stillDialing = await supabase.from('outreach_sends').select('id', { count: 'exact', head: true })
-        .eq('campaign_id', campaign_id).in('status', ['DIALING', 'ANSWERED']);
+        .eq('campaign_id', campaign_id).in('status', ['QUEUED', 'DIALING', 'ANSWERED']);
       if (!(stillDialing.count && stillDialing.count > 0)) {
         await supabase.from('outreach_campaigns').update({ status: 'COMPLETED', updated_at: new Date().toISOString() }).eq('id', campaign_id);
       }
     }
 
     return new Response(JSON.stringify({
-      processed: contacts.length, sent: sentCount, failed: failedCount, remaining_hint: remaining,
+      processed: contacts.length, sent: sentCount, failed: failedCount,
+      // Claimed by a concurrent invocation, so deliberately not contacted here.
+      skipped: skippedCount,
+      remaining_hint: remaining,
       is_mock: anyMock, campaign_status: remaining ? 'RUNNING' : 'COMPLETED_OR_RUNNING',
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {

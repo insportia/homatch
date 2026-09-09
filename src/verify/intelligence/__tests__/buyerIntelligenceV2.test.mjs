@@ -473,34 +473,42 @@ test('buyer actions render their title, never a bare index', () => {
 test('no fake percentage progress anywhere in the Verify page', () => {
   const page = read('src/pages/VerifyPage.tsx');
   assert.ok(!/progress\?\.percent/.test(page), 'the percentage is back');
-  assert.ok(!/\$\{pct\}%/.test(page), 'the progress bar is back');
+  // The percentage is back, but VerifyPage must not be the thing computing
+  // it: a number derived from page state is a number that resets when the
+  // page does. It belongs to verify/progress.ts, from server facts.
+  assert.ok(!/\$\{pct\}%/.test(page), 'VerifyPage renders its own percentage again');
   assert.ok(page.includes('<ResearchStream'), 'the research stream is not wired');
 });
 
-test('the elapsed clock cannot be reset from outside the component', () => {
-  // A timer whose effect depends on a prop can be torn down and rebuilt
-  // before it ever ticks. The start time lives in a ref inside the component,
-  // whose mount IS the run start, and the interval effect has no
-  // dependencies — so no parent re-render can stop the clock.
+test('the elapsed clock is the SERVER\'s, not this component\'s mount', () => {
+  // This assertion used to demand the opposite, and was right at the time:
+  // while the browser was the research engine, the component's mount really
+  // was the start of the run. Research now outlives the tab, so a customer
+  // can start a check, leave, and come back twelve minutes later — and a
+  // mount-time clock would tell them 00:00. That is not a smaller version of
+  // the truth, it is a different number.
   const stream = read('src/components/verify/ResearchStream.tsx');
-  assert.ok(/const startedAt = React\.useRef\(Date\.now\(\)\)/.test(stream),
-    'the start time is not owned by the component');
-  assert.ok(!/startedAt:\s*number/.test(stream), 'startedAt is a prop again');
-  const effect = stream.slice(stream.indexOf('const tick = setInterval'));
-  assert.ok(/\}, \[\]\);/.test(effect.slice(0, 260)),
-    'the interval effect has a dependency again — it can be torn down mid-tick');
+  assert.ok(!/React\.useRef\(Date\.now\(\)\)/.test(stream),
+    'the clock is owned by the component again — it will reset on remount');
+  assert.ok(/createdAt/.test(stream), 'the stream no longer reads the server start time');
+  assert.ok(/elapsedMs\(/.test(stream), 'elapsed time is not computed from the server timestamp');
 
-  const page = read('src/pages/VerifyPage.tsx');
-  assert.ok(!page.includes('startedAt'), 'VerifyPage still owns a clock it can reset');
+  // Whatever drives repainting must not carry a dependency: a timer effect
+  // that depends on a prop can be torn down before it ever ticks.
+  const effect = stream.slice(stream.indexOf('setInterval'));
+  assert.ok(/\}, \[\]\);/.test(effect.slice(0, 300)),
+    'the interval effect has a dependency again');
 });
 
-test('elapsed time is measured, and no remaining time is estimated', () => {
+test('the percentage is reconstructed from server facts, never accumulated', () => {
   const src = code('src/components/verify/ResearchStream.tsx');
-  assert.ok(src.includes('Date.now() - startedAt'), 'elapsed time is not measured');
-  assert.ok(!/remaining|დარჩენილ|estimate/i.test(src), 'a remaining-time estimate is back');
-  // `%` survives as the modulo operator; what must not exist is a percentage
-  // RENDERED to the customer.
-  assert.ok(!/\}%|'%'|"%"|\d\s*%/.test(src), 'a percentage is rendered again');
+  assert.ok(src.includes('estimateProgress('), 'the estimate is not computed by the shared module');
+  // A percentage held in state is a percentage that resets. The whole
+  // guarantee is that it is derived on every render from created_at + stage.
+  assert.ok(!/useState[^;]*pct|setPct/.test(src), 'the percentage is being stored in state again');
+  assert.ok(!/remaining|დარჩენილ/i.test(src), 'a remaining-time estimate is back');
+  assert.ok(src.includes('verify_progress_estimated'),
+    'the percentage is not labelled as an estimate');
 });
 
 test('the loading stream never names a source, provider or internal state', () => {

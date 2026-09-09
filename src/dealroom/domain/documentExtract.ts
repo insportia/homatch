@@ -289,8 +289,25 @@ export function buildAnalysisPrompt(
     `Allowed \`attention\`: ${ATTENTIONS.join(', ')}.`,
     ctx.language ? `Write all explanations in language code: ${ctx.language}.` : '',
     '',
-    'Return ONLY JSON with keys: documentType, summary, clauses, obligations,',
-    'deadlines, financial, missingProtections, questions, findings.',
+    // The exact field names matter. Naming only the top-level keys and then
+    // validating the fields inside them is how a first production run
+    // returned a model full of usable EXPLICIT findings and showed the
+    // customer nothing: every item was rejected for "had no label" because
+    // the model had reasonably called it something else.
+    'Return ONLY JSON, using exactly these field names:',
+    '{',
+    '  "documentType": string,',
+    '  "summary": [string],',
+    '  "clauses":    [{"label","plain","quote","page","attention"}],',
+    '  "obligations":[{"party","label","plain","quote","page"}],',
+    '  "deadlines":  [{"label","value","quote","page"}],',
+    '  "financial":  [{"label","value","quote","page"}],',
+    '  "missingProtections":[{"label","plain"}],',
+    '  "questions":  [string],',
+    '  "findings":   [{"type","label","value","quote","page","status"}]',
+    '}',
+    '`label` is a short title. `plain` is the explanation. `quote` is the',
+    'verbatim wording from the document. Every one of them is required.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -418,6 +435,17 @@ const str = (v: unknown, max: number): string | null => {
   return s ? s.slice(0, max) : null;
 };
 
+/**
+ * The item's short title.
+ *
+ * `label` is a DISPLAY string, not a safety field -- the safety field is
+ * `quote`, and it is checked against the document with no tolerance at all.
+ * So accepting the obvious synonyms a model reaches for costs nothing and
+ * avoids throwing away a perfectly grounded finding over a field name.
+ */
+const labelOf = (o: Record<string, unknown>, max: number): string | null =>
+  str(o.label, max) ?? str(o.title, max) ?? str(o.name, max) ?? str(o.heading, max);
+
 const pageOf = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : null;
 
@@ -487,7 +515,7 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
   for (const c of arr(o.clauses).slice(0, MAX_CLAUSES * 2)) {
     if (!c || typeof c !== 'object') continue;
     const x = c as Record<string, unknown>;
-    const label = str(x.label, MAX_LABEL);
+    const label = labelOf(x, MAX_LABEL);
     const quote = str(x.quote, MAX_QUOTE);
     if (!label) {
       rejected.push('clause had no label');
@@ -508,7 +536,7 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
   for (const ob of arr(o.obligations).slice(0, 60)) {
     if (!ob || typeof ob !== 'object') continue;
     const x = ob as Record<string, unknown>;
-    const label = str(x.label, MAX_LABEL);
+    const label = labelOf(x, MAX_LABEL);
     const quote = str(x.quote, MAX_QUOTE);
     if (!label) continue;
     if (!grounded(quote, `obligation "${label}"`)) continue;
@@ -524,7 +552,7 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
     for (const it of arr(o[key]).slice(0, 40)) {
       if (!it || typeof it !== 'object') continue;
       const x = it as Record<string, unknown>;
-      const label = str(x.label, MAX_LABEL);
+      const label = labelOf(x, MAX_LABEL);
       const quote = str(x.quote, MAX_QUOTE);
       if (!label) continue;
       if (!grounded(quote, `${what} "${label}"`)) continue;
@@ -544,7 +572,7 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
   for (const m of arr(o.missingProtections).slice(0, 20)) {
     if (!m || typeof m !== 'object') continue;
     const x = m as Record<string, unknown>;
-    const label = str(x.label, MAX_LABEL);
+    const label = labelOf(x, MAX_LABEL);
     if (!label) continue;
     const plain = safeProse(str(x.plain, MAX_PLAIN), `missing protection "${label}"`);
     if (!plain) continue;
@@ -582,7 +610,7 @@ export function parseAnalysis(raw: string, documentText: string): ContractAnalys
       rejected.push(`${type} not EXPLICIT (${status})`);
       continue;
     }
-    const label = str(x.label, MAX_LABEL);
+    const label = labelOf(x, MAX_LABEL);
     if (!label) {
       rejected.push(`${type} had no label`);
       continue;

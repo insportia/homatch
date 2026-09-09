@@ -435,3 +435,58 @@ test('an injected instruction inside the document cannot become an analysis', ()
   assert.equal(out.findings.length, 0, 'an obeyed injection must still fail grounding');
   assert.equal(looksLikePromptInjection(hostile), true);
 });
+
+/* ---------------------------------------------------------------- *
+ * The schema contract must be stated, not assumed                   *
+ * ---------------------------------------------------------------- */
+
+test('the prompt names the field names inside every item, not just the keys', () => {
+  // The first production run returned 10 EXPLICIT findings and showed the
+  // customer nothing: every item was rejected for "had no label" because the
+  // prompt named only the top-level keys and the model reasonably called the
+  // field something else. Validating against an unstated schema is the bug.
+  const { system } = buildAnalysisPrompt(CONTRACT, { interestingFactTypes: [] });
+  for (const shape of [
+    '"clauses":    [{"label","plain","quote","page","attention"}]',
+    '"obligations":[{"party","label","plain","quote","page"}]',
+    '"deadlines":  [{"label","value","quote","page"}]',
+    '"financial":  [{"label","value","quote","page"}]',
+    '"findings":   [{"type","label","value","quote","page","status"}]',
+  ]) {
+    assert.ok(system.includes(shape), `prompt must specify ${shape}`);
+  }
+});
+
+test('an item titled with a synonym is still accepted', () => {
+  // `label` is a display string; the safety field is `quote`, which is checked
+  // against the document with no tolerance. Discarding a properly grounded
+  // finding over a field name protects nothing.
+  for (const key of ['title', 'name', 'heading']) {
+    const out = parseAnalysis(
+      analysisJson({
+        clauses: [
+          {
+            [key]: 'Termination',
+            plain: 'You cannot cancel after the second payment.',
+            quote: 'The Buyer may not terminate this agreement after the second instalment.',
+          },
+        ],
+      }),
+      CONTRACT
+    );
+    assert.equal(out.clauses.length, 1, `${key} should be accepted as the label`);
+    assert.equal(out.clauses[0].label, 'Termination');
+  }
+});
+
+test('a synonym label does NOT relax the grounding requirement', () => {
+  const out = parseAnalysis(
+    analysisJson({
+      clauses: [
+        { title: 'Invented', plain: 'Something.', quote: 'A clause that is not in the document.' },
+      ],
+    }),
+    CONTRACT
+  );
+  assert.equal(out.clauses.length, 0);
+});

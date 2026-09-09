@@ -2,21 +2,39 @@
 //
 // WHAT THIS FILE DECIDES
 // ----------------------
-// When a Verify source cannot be completed by the server, there are exactly
-// three honest outcomes, and this table decides which one applies:
+// When a Verify source stops and asks for a human, there are exactly two
+// honest outcomes, and this table decides which one applies:
 //
-//   1. RETRY_IN_SERVER_BROWSER — an ordinary solvable CAPTCHA. The customer
-//      sees the live Railway Chromium page and the Buster yellow-person
-//      button, exactly as today. Nothing changes.
+//   1. USER_SIDE_HANDOFF — the customer completes the verification in THEIR
+//      OWN browser, on their own connection, and returns only the legitimate
+//      public result.
 //
-//   2. USER_SIDE_HANDOFF — the refusal is about our NETWORK, not the puzzle.
-//      A screenshot cannot fix that, because a screenshot does not change the
-//      source IP. The customer completes the verification in their own
-//      browser, on their own connection, and returns only the legitimate
-//      result.
+//   2. SKIP_SOURCE — that is not possible for this source. It is skipped,
+//      Verify continues, and NOTHING negative is recorded about the property.
 //
-//   3. SKIP_SOURCE — neither is possible. That source is skipped, Verify
-//      continues, and NOTHING negative is recorded about the property.
+// WHY THERE IS NO LONGER A THIRD OUTCOME
+// --------------------------------------
+// There used to be RETRY_IN_SERVER_BROWSER: an "ordinary" CAPTCHA was kept in
+// the Railway Chromium and the customer solved it there, through a streamed
+// screenshot with relayed clicks.
+//
+// A real production customer test (job 49c5f98d-972b-4e72-8ebf-dd228f24992b,
+// source `rstax`, networkBlocked=false) proved why that is wrong: the person
+// was shown a Google reCAPTCHA image challenge rendered inside the datacenter
+// browser and asked to solve it by clicking on a screenshot. That is a worse
+// experience than the real site, it trains people to solve challenges in a
+// surface they cannot verify, and the thing Google is actually assessing —
+// the browser and network making the request — is still ours, not theirs.
+//
+// So the distinction between "hard puzzle" and "refused network" no longer
+// decides WHERE the human works. Once a human is required at all, the human
+// works in their own browser. networkRefusal is still carried, because it
+// remains useful in the audit trail and in the reason string, but it no
+// longer selects a different customer-facing path.
+//
+// The server browser may still try to get past a challenge BY ITSELF, with no
+// customer involvement. That is invisible and is not this file's business.
+// This file only decides what to do once a human is unavoidable.
 //
 // THE LINE THIS FILE DOES NOT CROSS
 // ---------------------------------
@@ -46,7 +64,13 @@ export type HandoffCapability =
   /** The source has no public human-facing path at all. */
   | 'NOT_HANDOFFABLE';
 
-export type HandoffDecision = 'RETRY_IN_SERVER_BROWSER' | 'USER_SIDE_HANDOFF' | 'SKIP_SOURCE';
+/**
+ * RETRY_IN_SERVER_BROWSER is deliberately absent. Removing it from the type is
+ * the point: no future edit can reintroduce "let the customer solve it in our
+ * browser" without changing this union, which every consumer type-checks
+ * against.
+ */
+export type HandoffDecision = 'USER_SIDE_HANDOFF' | 'SKIP_SOURCE';
 
 /** Mirrors the migration's handoff_kind check constraint. */
 export type HandoffKind = 'VERIFY_ON_SOURCE' | 'FETCH_AND_RETURN' | 'UPLOAD_RESULT';
@@ -153,11 +177,57 @@ export const SOURCE_HANDOFF: Readonly<Record<string, SourceHandoffSpec>> = Objec
   },
 });
 
+/**
+ * The runtime vocabulary, mapped onto the matrix above.
+ *
+ * THIS IS THE SECOND REASON NO HANDOFF HAS EVER BEEN MINTED.
+ *
+ * Two different source vocabularies exist in this product and had never been
+ * connected:
+ *
+ *   evidence layer   napr.registry  napr.enreg  rs.taxpayer  enforcement.debtors
+ *                    mygov.permits  napr.map    napr.document
+ *                    -- SOURCE_KEYS in src/dealroom/domain/verifyExtract.ts,
+ *                       persisted in grounded_in, must not drift
+ *
+ *   worker runtime   enreg  rstax  debtor  mygov  napr
+ *                    -- what official-worker actually puts in the CAPTCHA
+ *                       payload's `source` field
+ *
+ * The matrix was keyed on the first. Every human-verification payload carries
+ * the second. So specFor('rstax') returned null, isHandoffCapable() said no,
+ * and the decision failed closed to SKIP -- for a genuine network refusal too,
+ * not just an ordinary CAPTCHA.
+ *
+ * Confirmed against production: the only two `source` values ever recorded in
+ * research_jobs.captcha are 'rstax' and 'mygov'.
+ *
+ * Aliasing rather than re-keying, because the matrix keys are the evidence
+ * keys and those are persisted.
+ */
+export const WORKER_SOURCE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  enreg: 'napr.enreg',
+  rstax: 'rs.taxpayer',
+  debtor: 'enforcement.debtors',
+  mygov: 'mygov.permits',
+  napr: 'napr.registry',
+  naprweb: 'napr.registry',
+  registry: 'napr.registry',
+  map: 'napr.map',
+  document: 'napr.document',
+});
+
+/** Resolves either vocabulary to a matrix key. */
+export function canonicalSourceKey(sourceKey: string): string {
+  const k = (sourceKey ?? '').trim();
+  return WORKER_SOURCE_ALIASES[k] ?? k;
+}
+
 /** Sources with no entry are treated as not handoff-capable. Failing closed is
  * the safe direction: an unknown source gets skipped cleanly rather than
  * sending a customer somewhere we have not reasoned about. */
 export function specFor(sourceKey: string): SourceHandoffSpec | null {
-  return SOURCE_HANDOFF[sourceKey] ?? null;
+  return SOURCE_HANDOFF[canonicalSourceKey(sourceKey)] ?? null;
 }
 
 export function isHandoffCapable(sourceKey: string): boolean {
@@ -231,57 +301,50 @@ export function decideHandoff(ctx: HandoffContext): HandoffPlan {
     };
   }
 
-  if (ctx.networkRefusal) {
-    if (!capable) {
-      return {
-        ...base,
-        decision: 'SKIP_SOURCE',
-        kind: null,
-        reason: spec
-          ? `terminal network refusal and source is ${spec.capability}`
-          : 'terminal network refusal and source has no handoff spec',
-      };
-    }
-    if (!hasRequiredInputs(spec!, ctx.available)) {
-      return {
-        ...base,
-        decision: 'SKIP_SOURCE',
-        kind: null,
-        reason: `handoff needs ${spec!.requiredInputs.join(', ')} which is not available`,
-      };
-    }
-    return {
-      ...base,
-      decision: 'USER_SIDE_HANDOFF',
-      kind: spec!.kind,
-      reason: 'terminal network refusal; verification must originate from the customer network',
-    };
+  // Every status that means "a human is needed" takes the SAME path. What
+  // used to branch here -- ordinary CAPTCHA to the server browser, network
+  // refusal to the customer -- is exactly the branch that put a real customer
+  // in front of a relayed reCAPTCHA. The human always works in their own
+  // browser now; only feasibility decides whether we ask at all.
+  if (!HUMAN_REQUIRED_STATUSES.has(ctx.status)) {
+    return { ...base, decision: 'SKIP_SOURCE', kind: null, reason: `no human verification needed for status ${ctx.status}` };
   }
 
-  // Ordinary solvable CAPTCHA — unchanged behaviour, Buster still applies.
-  if (ctx.status === 'CAPTCHA_REQUIRED') {
+  const why = ctx.networkRefusal ? 'terminal network refusal' : `source reported ${ctx.status}`;
+
+  if (!capable) {
     return {
       ...base,
-      decision: 'RETRY_IN_SERVER_BROWSER',
+      decision: 'SKIP_SOURCE',
       kind: null,
-      reason: 'ordinary CAPTCHA; solvable in the server browser with extension assistance',
+      reason: spec
+        ? `${why}; source is ${spec.capability} and cannot be completed by the customer`
+        : `${why}; source has no handoff spec`,
     };
   }
 
-  if (ctx.status === 'BLOCKED' || ctx.status === 'TECHNICAL_FAILED') {
-    if (capable && hasRequiredInputs(spec!, ctx.available)) {
-      return {
-        ...base,
-        decision: 'USER_SIDE_HANDOFF',
-        kind: spec!.kind,
-        reason: `source reported ${ctx.status}; customer-side lookup is possible`,
-      };
-    }
-    return { ...base, decision: 'SKIP_SOURCE', kind: null, reason: `source reported ${ctx.status} and cannot be handed off` };
+  if (!hasRequiredInputs(spec!, ctx.available)) {
+    return {
+      ...base,
+      decision: 'SKIP_SOURCE',
+      kind: null,
+      reason: `${why}; handoff needs ${spec!.requiredInputs.join(', ')} which is not available`,
+    };
   }
 
-  return { ...base, decision: 'SKIP_SOURCE', kind: null, reason: `no human verification needed for status ${ctx.status}` };
+  return {
+    ...base,
+    decision: 'USER_SIDE_HANDOFF',
+    kind: spec!.kind,
+    reason: `${why}; verification must originate from the customer's own browser`,
+  };
 }
+
+/**
+ * The worker statuses that mean "this source has stopped and needs a person".
+ * CAPTCHA_REQUIRED is in here now; that is the whole behavioural change.
+ */
+const HUMAN_REQUIRED_STATUSES = new Set(['CAPTCHA_REQUIRED', 'BLOCKED', 'TECHNICAL_FAILED', 'WAITING_HUMAN']);
 
 function hasRequiredInputs(spec: SourceHandoffSpec, available: HandoffContext['available']): boolean {
   return spec.requiredInputs.every((k) => {

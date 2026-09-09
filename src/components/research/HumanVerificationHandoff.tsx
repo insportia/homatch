@@ -28,6 +28,14 @@ export interface HandoffOffer {
   targetUrl: string | null;
   sourceName: string;
   expiresAt: string;
+  /**
+   * Whether the server can carry on with the SAME worker session after the
+   * customer finishes. False for every source in the matrix today: the
+   * customer verified on the real site in their own browser, so our Chromium
+   * still holds an unsolved challenge and must release that source instead of
+   * resuming into it.
+   */
+  serverCanContinue?: boolean;
 }
 
 export function HumanVerificationHandoff({
@@ -57,8 +65,8 @@ export function HumanVerificationHandoff({
         <div className="flex gap-3">
           <ShieldQuestion className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
           <div className="min-w-0 space-y-1">
-            <h3 className="text-base font-semibold">{t('handoff_title')}</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">{t('handoff_body')}</p>
+            <h3 className="text-base font-semibold break-words">{t('handoff_title')}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed break-words">{t('handoff_body')}</p>
           </div>
         </div>
 
@@ -66,13 +74,13 @@ export function HumanVerificationHandoff({
           <Button
             asChild
             variant="outline"
-            className="w-full sm:w-auto gap-2"
+            className="w-full sm:w-auto gap-2 min-w-0"
             onClick={() => { setOpened(true); onOpen?.(); }}
           >
             {/* noopener/noreferrer: the official site must never receive a
                 referrer from, or a handle on, the Homatch tab. */}
             <a href={offer.targetUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4" />
+              <ExternalLink className="h-4 w-4 shrink-0" />
               {t('handoff_open')}
             </a>
           </Button>
@@ -89,7 +97,7 @@ export function HumanVerificationHandoff({
           />
         </div>
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive break-words">{error}</p> : null}
 
         <div className="flex flex-col sm:flex-row gap-2">
           <Button

@@ -75,12 +75,28 @@ test('the customer is NEVER asked to solve a CAPTCHA on a refused network', () =
   assert.equal(plan.decision, 'USER_SIDE_HANDOFF');
 });
 
-test('an ordinary CAPTCHA still stays in the server browser, where Buster helps', () => {
+/*
+ * SUPERSEDED BY A REAL PRODUCTION FAILURE.
+ *
+ * This test used to assert the opposite: that an ordinary CAPTCHA stayed in
+ * the server browser "where Buster helps", and that only a terminal network
+ * refusal was handed to the customer.
+ *
+ * A live customer test (job 49c5f98d-972b-4e72-8ebf-dd228f24992b, source
+ * rstax, networkBlocked=false) showed what that assertion actually bought: a
+ * person was shown a Google reCAPTCHA image challenge rendered inside the
+ * Railway Chromium as a streamed screenshot, and asked to click on it.
+ *
+ * The distinction between "hard puzzle" and "refused network" is real, but it
+ * is not the customer's problem and it must not decide WHERE a human works.
+ * Once a human is needed at all, the human works in their own browser.
+ */
+test('an ordinary CAPTCHA is handed to the customer, not solved in our browser', () => {
   const plan = decideHandoff({
     sourceKey: 'enforcement.debtors', status: 'CAPTCHA_REQUIRED',
     networkRefusal: false, available: inputs,
   });
-  assert.equal(plan.decision, 'RETRY_IN_SERVER_BROWSER');
+  assert.equal(plan.decision, 'USER_SIDE_HANDOFF');
 });
 
 /* ---------------------------------------------------------------- *

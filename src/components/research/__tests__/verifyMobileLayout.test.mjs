@@ -4,9 +4,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /*
- * Verify UI layout regressions — the NOTE's document flow, the mobile-safe
- * CAPTCHA modal, and the guarantee that neither change broke the live-browser
- * contract the worker depends on.
+ * Verify UI layout regressions — the NOTE's document flow and the mobile
+ * safety of the human-verification surface.
+ *
+ * The streamed CAPTCHA modal this file used to cover no longer exists. It was
+ * removed after a real customer test showed a person being asked to solve a
+ * Google reCAPTCHA inside the Railway browser, through a screenshot with
+ * relayed clicks. The human-verification surface is now the local-browser
+ * handoff, and the mobile assertions below follow it there.
  *
  * The repository has no React/DOM test runner (no vitest/jest/testing-library
  * in package.json — its frontend suites are all plain `node --test` .mjs
@@ -16,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const NOTICE = `${here}../ResearchDepthNotice.tsx`;
-const MODAL = `${here}../ResearchCaptchaModal.tsx`;
+const HANDOFF = `${here}../HumanVerificationHandoff.tsx`;
 const VERIFY_PAGE = `${here}../../../pages/VerifyPage.tsx`;
 const APP = `${here}../../../App.tsx`;
 
@@ -30,7 +35,7 @@ const code = (p) =>
 
 const noticeSource = read(NOTICE);
 const noticeCode = code(NOTICE);
-const modalSource = read(MODAL);
+const handoffSource = read(HANDOFF);
 const verifySource = read(VERIFY_PAGE);
 const appSource = read(APP);
 
@@ -113,143 +118,43 @@ test('long cadastral codes, evidence text and errors wrap instead of overflowing
 });
 
 /* ------------------------------------------------------------------ *
- * Mobile-safe CAPTCHA / live-browser modal.                           *
+ * The human-verification surface: local browser, mobile-safe.         *
  * ------------------------------------------------------------------ */
 
-test('the CAPTCHA modal fits the real mobile viewport and cannot exceed it', () => {
-  assert.match(modalSource, /h-\[100dvh\] max-h-\[100dvh\] sm:h-auto/);
-  assert.match(modalSource, /sm:max-h-\[90vh\]/);
-  // The panel clips its children; the challenge area scrolls rather than
-  // clipping, so a large multi-tile challenge is always reachable.
-  assert.match(modalSource, /bg-background shadow-2xl overflow-hidden flex flex-col/);
-  assert.match(modalSource, /flex-1 min-h-\[320px\] sm:min-h-\[420px\] overflow-auto/);
-  // Browserless is gone: the challenge is a screenshot of the REAL local
-  // Chromium page, clicked through /research/:id/action — no iframe, no
-  // remote browser URL.
-  assert.equal(modalSource.includes('<iframe'), false, 'no remote browser iframe after the local Chromium migration');
-  assert.match(modalSource, /<img ref=\{img\} src=\{shot\.image\} onClick=\{click\}/);
+test('the customer is sent to the official page in their OWN browser', () => {
+  assert.match(handoffSource, /target="_blank"/);
+  assert.match(handoffSource, /rel="noopener noreferrer"/);
+  assert.equal(/<iframe/i.test(handoffSource), false, 'no embedded source surface');
 });
 
-test('the modal controls stay reachable on a phone — full-width taps, safe-area padding, wrapping text', () => {
-  assert.match(modalSource, /pb-\[max\(0\.75rem,env\(safe-area-inset-bottom\)\)\]/);
-  assert.match(modalSource, /flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between/);
-  assert.equal((modalSource.match(/className="w-full sm:w-auto"/g) || []).length, 2, 'both footer actions are full-width on mobile');
-  assert.match(modalSource, /px-3 py-3 sm:px-5 sm:py-4 border-b/);
-  assert.match(modalSource, /text-xs text-muted-foreground break-words/);
+test('nothing streams the worker browser to the customer any more', () => {
+  // The three things the deleted modal did: pull a screenshot, relay a click,
+  // and drive the worker session directly from the browser.
+  for (const p of [VERIFY_PAGE, HANDOFF]) {
+    const s = code(p);
+    assert.equal(/\/screenshot`/.test(s), false, `${p} must not fetch a worker screenshot`);
+    assert.equal(/\/action`/.test(s), false, `${p} must not relay clicks into the worker page`);
+  }
 });
 
-test('the required CAPTCHA NOTE is shown to the customer, in normal document flow', () => {
-  // The yellow-person-icon instruction, in every supported language.
-  assert.match(modalSource, /t\('verify_captcha_extension_note'\)/);
-  // The whole NOTE block: its wrapper div through to the challenge area.
-  const note = modalSource.slice(
-    modalSource.lastIndexOf('<div', modalSource.indexOf("verify_captcha_recommended_note")),
-    modalSource.indexOf('flex-1 min-h-')
-  );
-  // A plain block between the header and the challenge — never fixed,
-  // absolute, translated or z-indexed over other content.
-  assert.equal(/fixed|absolute|sticky|z-\[|translate|(^|\s)-m[trblxy]?-/.test(note), false);
-  assert.match(note, /border-b shrink-0/);
+test('the handoff fits the narrowest audited viewport', () => {
+  // 320px is the floor. Nothing fixed-width may exceed it.
+  for (const [, value] of handoffSource.matchAll(/(?:min-)?w-\[(\d+)px\]/g)) {
+    assert.ok(Number(value) <= 320, `fixed width ${value}px exceeds the 320px floor`);
+  }
+  assert.equal(/min-w-\[\d+px\]/.test(handoffSource), false, 'no fixed min-width');
 });
 
-test('the modal is a labelled dialog and its icon controls are named', () => {
-  assert.match(modalSource, /role="dialog" aria-modal="true" aria-label=\{t\('verify_captcha_title'\)\}/);
-  assert.equal((modalSource.match(/aria-label=\{t\(/g) || []).length >= 3, true, 'icon controls must be named');
+test('the handoff actions are reachable on a phone', () => {
+  // Full-width tap targets below sm, and text that wraps rather than clips.
+  assert.match(handoffSource, /w-full sm:w-auto/);
+  assert.match(handoffSource, /break-words|break-all/);
 });
 
-/* ------------------------------------------------------------------ *
- * The UI changes did not touch the live-browser contract.             *
- * ------------------------------------------------------------------ */
-
-test('the modal drives the SAME local Chromium page: screenshot in, clicks out, resume/skip on the same session', () => {
-  // The proven pre-Browserless transport, restored.
-  assert.match(modalSource, /path=`\/research\/\$\{jobId\}\/screenshot`/);
-  assert.match(modalSource, /path=`\/research\/\$\{jobId\}\/action`/);
-  assert.match(modalSource, /path=`\/research\/\$\{jobId\}\/resume`/);
-  assert.match(modalSource, /path=`\/research\/\$\{jobId\}\/skip`/);
-  // Authenticated with the user's Supabase JWT, as before.
-  assert.match(modalSource, /Authorization:`Bearer \$\{session\.access_token\}`/);
-  // Clicks are mapped from the displayed image back to real page coordinates.
-  assert.match(modalSource, /x=\(e\.clientX-r\.left\)\*shot\.width\/r\.width/);
-  // No Browserless remnants, and no solver or bypass anywhere.
-  assert.equal(/liveURL|liveURLId|browserless/i.test(modalSource), false);
-  assert.equal(/solveCaptcha|captchaSolver|2captcha|anticaptcha|bypassCaptcha/i.test(modalSource), false);
-  // VerifyPage still drives the same modal with the same worker job id.
-  //
-  // The open condition gained `&& !handoff` in 2026-09. That is deliberate and
-  // is asserted here rather than relaxed away: when a source has refused our
-  // NETWORK outright, the server-browser screenshot cannot be solved from
-  // where it is rendered, so the customer is offered the lookup in their own
-  // browser INSTEAD. The two must never be on screen together, which is what
-  // the mutual exclusion below pins down. Everything else about the live
-  // session — same worker job id, same resume/skip — is unchanged.
-  assert.match(verifySource, /<ResearchCaptchaModal open=\{!!captcha&&!handoff\} jobId=\{workerCaptchaId\}/);
+test('the Verify page renders the handoff and nothing else for this state', () => {
   assert.match(verifySource, /\{handoff&&<HumanVerificationHandoff /);
-});
-
-test('the handoff never replaces Buster for an ordinary CAPTCHA', () => {
-  // Buster stays. The handoff is offered ONLY on an explicit network-refusal
-  // signal; an ordinary solvable CAPTCHA still goes to the server browser,
-  // where the yellow assist button works.
-  assert.match(verifySource, /networkBlocked===true\|\|r\?\.captchaNetworkBlocked===true/);
-  // And the extension hint the mandate fixes verbatim is still rendered.
-  assert.match(modalSource, /verify_captcha_extension_note/);
-  // Still no solver or bypass anywhere in the Verify surface.
-  assert.equal(/solveCaptcha|captchaSolver|2captcha|anticaptcha|bypassCaptcha/i.test(verifySource), false);
-});
-
-/* ------------------------------------------------------------------ *
- * The audited mobile widths.                                          *
- *                                                                     *
- * Mandate: "Audit at 320px / 360px / 375px / 390px / 430px. CAPTCHA   *
- * screenshot/action UI must be usable."                               *
- *                                                                     *
- * There is no DOM renderer in this repository, so the guarantee is    *
- * made structurally and it is a real one: Tailwind's `sm` breakpoint  *
- * is 640px (the config overrides `screens` only for `container`), so  *
- * every one of the audited widths renders the MOBILE branch of every  *
- * responsive class asserted above — the full-screen sheet, the        *
- * stacked full-width actions, the safe-area padding. What must then   *
- * be proven for the narrowest of them is that nothing in the modal    *
- * has a fixed width that cannot fit.                                  *
- * ------------------------------------------------------------------ */
-
-const AUDITED_WIDTHS = [320, 360, 375, 390, 430];
-const TAILWIND_SM = 640;
-
-test('every audited width renders the mobile branch of the CAPTCHA modal', () => {
-  for (const width of AUDITED_WIDTHS) {
-    assert.equal(width < TAILWIND_SM, true, `${width}px must fall below the sm: breakpoint to get the mobile layout`);
-  }
-  // The mobile branch of each responsive pair the customer actually touches.
-  assert.match(modalSource, /w-full h-\[100dvh\]/, 'full-screen sheet below sm');
-  assert.match(modalSource, /className="w-full sm:w-auto"/, 'full-width tap targets below sm');
-  assert.match(modalSource, /flex flex-col-reverse gap-2 sm:flex-row/, 'stacked actions below sm');
-  assert.match(modalSource, /p-0 sm:p-4/, 'no wasted outer padding below sm');
-});
-
-test('nothing in the CAPTCHA modal is wider than the narrowest audited viewport', () => {
-  const narrowest = Math.min(...AUDITED_WIDTHS);
-  // Any fixed pixel width/min-width would overflow horizontally at 320px.
-  for (const [, value] of modalSource.matchAll(/(?:min-)?w-\[(\d+)px\]/g)) {
-    assert.equal(Number(value) <= narrowest, true, `fixed width ${value}px overflows a ${narrowest}px viewport`);
-  }
-  // The desktop width is explicitly viewport-clamped, not absolute.
-  assert.match(modalSource, /sm:w-\[min\(1100px,94vw\)\]/);
-  // The screenshot scales down instead of forcing the page wide, and the
-  // challenge area scrolls rather than clipping when it cannot.
-  assert.match(modalSource, /className="max-w-full w-auto h-auto cursor-pointer select-none"/);
-  assert.match(modalSource, /overflow-auto grid place-items-center/);
-  // Only min-HEIGHT is fixed; a min-width there would break narrow screens.
-  assert.equal(/min-w-\[\d+px\]/.test(modalSource), false, 'the challenge area must never have a fixed min-width');
-});
-
-test('the assistance NOTE stays readable and in flow at every audited width', () => {
-  // The NOTE is rendered only when the worker reports a real, configured
-  // human-assist backend — the UI must never promise help that is not there.
-  assert.match(modalSource, /\{shot\?\.humanAssist&&<p [^>]*>\{t\('verify_captcha_extension_note'\)\}<\/p>\}/);
-  // Long Georgian/Russian sentences must wrap, not overflow, at 320px.
-  const noteTag = modalSource.match(/<p [^>]*>\{t\('verify_captcha_extension_note'\)\}<\/p>/)[0];
-  assert.match(noteTag, /break-words/, 'the NOTE must wrap at narrow widths');
-  assert.equal(/fixed|absolute|sticky|z-\[|translate/.test(noteTag), false, 'the NOTE must stay in normal flow');
+  assert.equal(
+    /ResearchCaptchaModal/.test(verifySource), false,
+    'the competing remote-browser path must not exist'
+  );
 });

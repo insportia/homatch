@@ -282,7 +282,7 @@ async function loadJobInputs(
 ): Promise<{ job: any; available: { cadastralCode?: string | null; companyIdCode?: string | null } }> {
   const { data: job } = await supabase
     .from('research_jobs')
-    .select('id,query,result_json')
+    .select('id,query,result_json,captcha')
     .eq('id', jobId)
     .maybeSingle();
 
@@ -297,11 +297,25 @@ async function loadJobInputs(
     companyProfile?: { idCode?: string };
   };
   const unit = r.exactUnit ?? {};
+
+  // The company a source parked ON is not always the job's primary company.
+  // A discovered developer triggers its own rstax/enreg/debtor lookup, and the
+  // id it parked with lives in the human-verification payload:
+  //
+  //   captcha.step = { type:'entity', source:'rstax', idCode:'404670272', name:'...' }
+  //
+  // Reading only result_json.companyProfile.idCode meant that for exactly the
+  // case a handoff exists to solve -- a discovered entity's registry lookup
+  // being challenged -- the required input looked unavailable and the handoff
+  // was refused for want of a value we were holding all along.
+  const c = (job.captcha ?? {}) as { step?: { idCode?: string; type?: string } };
+  const parkedIdCode = typeof c.step?.idCode === 'string' ? c.step.idCode.trim() : '';
+
   return {
     job,
     available: {
       cadastralCode: unit.cadastralCode ?? unit.code ?? r.identifiedParent?.code ?? job.query ?? null,
-      companyIdCode: r.companyProfile?.idCode ?? null,
+      companyIdCode: (parkedIdCode || r.companyProfile?.idCode) ?? null,
     },
   };
 }

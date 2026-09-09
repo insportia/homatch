@@ -164,7 +164,12 @@ export interface DeveloperProfile {
   city?: string;
   website?: string;
   description?: string;
-  score: number;
+  // null when we hold no evidence about this developer at all. That is a
+  // different statement from a low score and must never be rendered as a
+  // number: an unassessed company showing "50 / 100" is a fabricated signal
+  // about a real business.
+  score: number | null;
+  assessed?: boolean;
   score_breakdown: Record<string, unknown>;
   completed_projects: number;
   active_projects: number;

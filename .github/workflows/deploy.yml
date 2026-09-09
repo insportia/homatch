@@ -211,6 +211,20 @@ jobs:
             "deal-room-ai"
             "verification-handoff"
             "deal-room-document-analyze"
+            # Outreach. These four were deployed by hand and never registered
+            # here, so repository fixes to them could not reach production --
+            # the duplicate-send race in outreach-send lived in a file CI never
+            # shipped. All four require the caller's JWT (they resolve the
+            # caller's profile and check ownership before doing anything), and
+            # the production functions are already verify_jwt=true, so this
+            # changes how they are deployed, not how they are protected.
+            "outreach-send"
+            "contact-import"
+            "social-post-generate"
+            "community-recommend"
+            # developer-score has never been deployed at all, which is what made
+            # /developer/:id a dead route.
+            "developer-score"
           )
           FAILED=()
           for fn in "${JWT_FUNCTIONS[@]}"; do

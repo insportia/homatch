@@ -17,10 +17,26 @@ import { getDeveloperProfile } from '@/services/api3';
 import type { DeveloperProfile, DeveloperProject } from '@/types/phase3';
 
 // ── Score Ring ────────────────────────────────────────────────
-function ScoreRing({ score }: { score: number }) {
-  const color = score >= 75 ? '#4ade80' : score >= 50 ? '#F5A623' : '#ef4444';
+function ScoreRing({ score }: { score: number | null }) {
   const radius = 40;
   const circ = 2 * Math.PI * radius;
+
+  // Unassessed: an empty ring and a dash. Drawing a partial ring for a score we
+  // do not have would state a level of confidence we cannot back.
+  if (score === null) {
+    return (
+      <div className="relative inline-flex items-center justify-center">
+        <svg width="104" height="104" className="-rotate-90">
+          <circle cx="52" cy="52" r={radius} fill="none" stroke="hsl(var(--secondary))" strokeWidth="8" />
+        </svg>
+        <div className="absolute text-center">
+          <span className="text-2xl font-bold text-muted-foreground">—</span>
+        </div>
+      </div>
+    );
+  }
+
+  const color = score >= 75 ? '#4ade80' : score >= 50 ? '#F5A623' : '#ef4444';
   const dash = (score / 100) * circ;
 
   return (
@@ -125,7 +141,10 @@ export default function DeveloperProfilePage() {
     );
   }
 
-  const scoreColor = dev.score >= 75 ? 'text-green-400' : dev.score >= 50 ? 'text-primary' : 'text-red-400';
+  const unassessed = dev.score === null || dev.score === undefined;
+  const scoreColor = unassessed
+    ? 'text-muted-foreground'
+    : dev.score! >= 75 ? 'text-green-400' : dev.score! >= 50 ? 'text-primary' : 'text-red-400';
   const riskItems = Array.isArray(dev.public_risk_evidence) ? dev.public_risk_evidence as { title?: string; summary?: string; url?: string }[] : [];
   const breakdown = dev.score_breakdown as Record<string, number | boolean | null | undefined>;
 
@@ -169,11 +188,15 @@ export default function DeveloperProfilePage() {
           <Card className="bg-card border-border">
             <CardContent className="p-5">
               <div className="flex items-center gap-6 flex-wrap">
-                <ScoreRing score={dev.score} />
+                <ScoreRing score={unassessed ? null : dev.score!} />
                 <div className="flex-1 min-w-0 space-y-3">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t('developer_score')}</p>
-                    <p className={`text-2xl font-bold ${scoreColor}`}>{dev.score}<span className="text-sm font-normal text-muted-foreground">/100</span></p>
+                    {unassessed ? (
+                      <p className={`text-sm font-medium ${scoreColor}`}>{t('developer_not_assessed')}</p>
+                    ) : (
+                      <p className={`text-2xl font-bold ${scoreColor}`}>{dev.score}<span className="text-sm font-normal text-muted-foreground">/100</span></p>
+                    )}
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     {[
@@ -193,7 +216,11 @@ export default function DeveloperProfilePage() {
           </Card>
 
           {/* Score breakdown */}
-          {breakdown && Object.keys(breakdown).length > 0 && (
+          {/* Only when there is a score to break down. An unassessed developer's
+              breakdown is {assessed:false, reason:'NO_EVIDENCE'}, and rendering
+              it would draw zero-length progress bars that read as measured
+              zeroes rather than as an absence of data. */}
+          {!unassessed && breakdown && Object.keys(breakdown).length > 0 && (
             <Card className="bg-card border-border">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold">{t('developer_score_breakdown')}</CardTitle>

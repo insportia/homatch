@@ -47,35 +47,71 @@ Deno.serve(async (req) => {
     const ageHours = (Date.now() - lastChecked.getTime()) / 3_600_000;
     const isStale = ageHours > STALE_HOURS;
 
-    // If stale, compute a basic score refresh from available data
+    // Counts derived from the project rows we actually hold. developer_profiles
+    // also carries completed_projects/active_projects columns, but nothing
+    // maintains them, so they sit at their default of 0 — the response used to
+    // score a developer off these derived counts while displaying the stale
+    // columns, which is how a profile could show "75 / 100" beside
+    // "0 completed projects".
+    const projects = (dev.developer_projects ?? []) as Array<{ status: string; commissioned: boolean }>;
+    const completedCount = projects.filter((p) => p.status === 'COMPLETED').length;
+    const activeCount = projects.filter((p) => p.status === 'ACTIVE' || p.status === 'UNDER_CONSTRUCTION').length;
+    const commissionedCount = projects.filter((p) => p.commissioned).length;
+    const riskCount = (dev.public_risk_evidence as unknown[])?.length ?? 0;
+    const hasRestrictions = !!(dev.restrictions && Object.keys(dev.restrictions as Record<string, unknown>).length);
+    const hasPermits = !!(dev.permits && Object.keys(dev.permits as Record<string, unknown>).length);
+
+    // NO EVIDENCE = NO SCORE.
+    //
+    // The old formula started every developer at 50 and adjusted from there, so
+    // a company we hold nothing at all about scored 50/100 — which a buyer
+    // reads as "averagely trustworthy" when the truth is "we have not assessed
+    // this developer". That is a fabricated signal about a real company, and
+    // it is the one thing this table must never produce. developer_profiles.score
+    // is nullable precisely so that "unassessed" can be said out loud.
+    const hasAnyEvidence = projects.length > 0 || riskCount > 0 || hasRestrictions || hasPermits;
+
+    let score: number | null = dev.score ?? null;
+    let breakdown = dev.score_breakdown ?? {};
+
     if (isStale) {
-      const completedCount = dev.developer_projects?.filter((p: { status: string }) => p.status === 'COMPLETED').length ?? 0;
-      const commissionedCount = dev.developer_projects?.filter((p: { commissioned: boolean }) => p.commissioned).length ?? 0;
-      const riskCount = (dev.public_risk_evidence as unknown[])?.length ?? 0;
+      if (!hasAnyEvidence) {
+        score = null;
+        breakdown = { assessed: false, reason: 'NO_EVIDENCE', computed_at: new Date().toISOString() };
+      } else {
+        let s = 50;
+        s += Math.min(completedCount * 5, 25); // up to +25 for completed projects
+        s += Math.min(commissionedCount * 3, 15); // up to +15 for commissioned
+        s -= Math.min(riskCount * 10, 30); // up to -30 for risk evidence
+        if (hasRestrictions) s -= 10;
+        score = Math.max(0, Math.min(100, s));
+        breakdown = {
+          assessed: true,
+          completed_projects: completedCount,
+          active_projects: activeCount,
+          commissioned: commissionedCount,
+          risk_evidence_count: riskCount,
+          has_restrictions: hasRestrictions,
+          computed_at: new Date().toISOString(),
+        };
+      }
 
-      let score = 50;
-      score += Math.min(completedCount * 5, 25); // up to +25 for completed projects
-      score += Math.min(commissionedCount * 3, 15); // up to +15 for commissioned
-      score -= Math.min(riskCount * 10, 30); // up to -30 for risk evidence
-      if (dev.restrictions && Object.keys(dev.restrictions as Record<string, unknown>).length > 0) score -= 10;
-      score = Math.max(0, Math.min(100, score));
-
-      const breakdown = {
-        completed_projects: completedCount,
-        commissioned: commissionedCount,
-        risk_evidence_count: riskCount,
-        has_restrictions: !!(dev.restrictions && Object.keys(dev.restrictions as Record<string, unknown>).length),
-        computed_at: new Date().toISOString(),
-      };
-
-      await supabase.from('developer_profiles').update({
+      // The refresh failing used to be swallowed, and the freshly computed
+      // score returned anyway — so the customer saw a number that was not in
+      // the database, and last_checked_at never moved, making every subsequent
+      // request recompute and report stale forever.
+      const { error: refreshErr } = await supabase.from('developer_profiles').update({
         score,
         score_breakdown: breakdown,
         last_checked_at: new Date().toISOString(),
-      }).eq('id', developer_id).catch(() => {});
+      }).eq('id', developer_id);
 
-      dev.score = score;
-      dev.score_breakdown = breakdown;
+      if (refreshErr) {
+        console.error('[developer-score] score refresh failed:', refreshErr.message);
+        // Fall back to what is actually stored rather than inventing freshness.
+        score = dev.score ?? null;
+        breakdown = dev.score_breakdown ?? {};
+      }
     }
 
     return new Response(JSON.stringify({
@@ -86,10 +122,14 @@ Deno.serve(async (req) => {
       city: dev.city,
       website: dev.website,
       description: dev.description,
-      score: dev.score,
-      score_breakdown: dev.score_breakdown,
-      completed_projects: dev.completed_projects,
-      active_projects: dev.active_projects,
+      score,
+      score_breakdown: breakdown,
+      // null, not 0 — "we have not assessed this developer" is a different
+      // statement from "this developer scored zero", and the UI must be able
+      // to tell them apart.
+      assessed: score !== null,
+      completed_projects: completedCount,
+      active_projects: activeCount,
       years_active: dev.years_active,
       permits: dev.permits,
       restrictions: dev.restrictions,

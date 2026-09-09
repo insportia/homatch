@@ -478,10 +478,10 @@ test('no fake percentage progress anywhere in the Verify page', () => {
 });
 
 test('the elapsed clock cannot be reset from outside the component', () => {
-  // It FROZE at 00:03 in production: startedAt was a prop and the interval
-  // effect depended on it, so every rewrite tore the interval down before it
-  // could tick. The start time now lives in a ref inside the component, whose
-  // mount IS the run start, and the interval effect has no dependencies.
+  // A timer whose effect depends on a prop can be torn down and rebuilt
+  // before it ever ticks. The start time lives in a ref inside the component,
+  // whose mount IS the run start, and the interval effect has no
+  // dependencies — so no parent re-render can stop the clock.
   const stream = read('src/components/verify/ResearchStream.tsx');
   assert.ok(/const startedAt = React\.useRef\(Date\.now\(\)\)/.test(stream),
     'the start time is not owned by the component');

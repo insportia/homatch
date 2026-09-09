@@ -69,11 +69,16 @@ export function ResearchStream({
   /*
    * The start time lives HERE, in a ref, not in a prop.
    *
-   * It was a prop, and the interval effect depended on it. Every rewrite of
-   * that prop tore the interval down and rebuilt it, more often than once a
-   * second — so it never ticked and the clock froze at 00:03 in production.
    * This component mounts when a run begins and unmounts when it ends, so its
-   * own mount time IS the run start, and nothing outside can reset it.
+   * own mount time IS the run start. Holding it locally, with a
+   * dependency-free interval effect, means nothing outside can reset the
+   * clock or tear the interval down mid-tick.
+   *
+   * (It was briefly a prop. A frozen 00:03 reading during automated testing
+   * looked like that prop resetting the effect; it was actually Chrome
+   * throttling timers in a backgrounded tab — `document.visibilityState`
+   * was 'hidden'. The local ref is kept because it is the more robust shape,
+   * not because it fixed that.)
    */
   const startedAt = React.useRef(Date.now());
 

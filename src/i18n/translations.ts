@@ -2843,6 +2843,20 @@ const en = {
   vc_start_document_hint: 'Upload it and we will read it, check what it says against the official record, and keep it with this property.',
   vc_creating: 'Preparing your verification…',
   vc_untitled_case: 'Untitled verification',
+
+  // Buyer Intelligence Report
+  verify_ir_overall_positive: 'Overall view',
+  verify_ir_overall_mostly_positive: 'Overall view',
+  verify_ir_overall_mixed: 'Overall view',
+  verify_ir_overall_attention: 'Overall view',
+  verify_ir_attention_title: 'What deserves your attention',
+  verify_ir_unconfirmed_title: 'What we could not confirm',
+  verify_ir_unconfirmed_note: 'These checks did not complete. That says nothing about the property itself — it means we could not confirm them from public sources.',
+  verify_ir_actions_title: 'What I would do before buying',
+  verify_ir_upload_body: 'If you already have a preliminary or purchase agreement, upload it. We will compare what the contract says against what we found on this property.',
+  verify_ir_upload_cta: 'Upload the contract',
+  verify_ir_disclaimer: 'This is property intelligence to help you ask the right questions — not legal advice, and not a substitute for a lawyer or notary reviewing your documents.',
+  verify_ir_empty: 'We could not gather enough information about this property to write a report.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -5604,6 +5618,20 @@ const ka: Partial<Record<TranslationKey, string>> = {
   vc_start_document_hint: 'ატვირთეთ და ჩვენ წავიკითხავთ, შევადარებთ ოფიციალურ ჩანაწერს და შევინახავთ ამ ქონებასთან ერთად.',
   vc_creating: 'მზადდება თქვენი შემოწმება…',
   vc_untitled_case: 'უსახელო შემოწმება',
+
+  // Buyer Intelligence Report
+  verify_ir_overall_positive: 'საერთო სურათი',
+  verify_ir_overall_mostly_positive: 'საერთო სურათი',
+  verify_ir_overall_mixed: 'საერთო სურათი',
+  verify_ir_overall_attention: 'საერთო სურათი',
+  verify_ir_attention_title: 'რას უნდა მიაქციოთ ყურადღება',
+  verify_ir_unconfirmed_title: 'რისი დადასტურებაც ვერ მოხერხდა',
+  verify_ir_unconfirmed_note: 'ეს შემოწმებები ვერ დასრულდა. ეს თავად ქონებაზე არაფერს ამბობს — უბრალოდ, საჯარო წყაროებით ვერ დავადასტურეთ.',
+  verify_ir_actions_title: 'რას გავაკეთებდი ყიდვამდე',
+  verify_ir_upload_body: 'თუ უკვე გაქვთ წინასწარი ან ნასყიდობის ხელშეკრულება, ატვირთეთ. ჩვენ შევადარებთ ხელშეკრულების პირობებს ამ ქონებაზე მოძიებულ ინფორმაციას და დაგეხმარებით დაინახოთ, ემთხვევა თუ არა დოკუმენტი რეალურ სარეესტრო და საჯარო სურათს.',
+  verify_ir_upload_cta: 'ხელშეკრულების ატვირთვა',
+  verify_ir_disclaimer: 'ეს არის ქონების ანალიზი, რომელიც დაგეხმარებათ სწორი კითხვები დასვათ — და არა იურიდიული რჩევა. მნიშვნელოვან სამართლებრივ საკითხებზე ურჩევნია იურისტთან ან ნოტარიუსთან გადამოწმება.',
+  verify_ir_empty: 'ამ ქონებაზე საკმარისი ინფორმაცია ვერ მოვიძიეთ, რომ დასკვნა დაგიწეროთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -8356,6 +8384,20 @@ const ru: Partial<Record<TranslationKey, string>> = {
   vc_start_document_hint: 'Загрузите его — мы прочитаем документ, сверим его с официальными данными и сохраним вместе с объектом.',
   vc_creating: 'Готовим вашу проверку…',
   vc_untitled_case: 'Проверка без названия',
+
+  // Buyer Intelligence Report
+  verify_ir_overall_positive: 'Общая картина',
+  verify_ir_overall_mostly_positive: 'Общая картина',
+  verify_ir_overall_mixed: 'Общая картина',
+  verify_ir_overall_attention: 'Общая картина',
+  verify_ir_attention_title: 'На что стоит обратить внимание',
+  verify_ir_unconfirmed_title: 'Что не удалось подтвердить',
+  verify_ir_unconfirmed_note: 'Эти проверки не завершились. Это ничего не говорит о самом объекте — мы просто не смогли подтвердить их по публичным источникам.',
+  verify_ir_actions_title: 'Что я сделал бы перед покупкой',
+  verify_ir_upload_body: 'Если у вас уже есть предварительный договор или договор купли-продажи, загрузите его. Мы сравним условия договора с тем, что нашли по этому объекту.',
+  verify_ir_upload_cta: 'Загрузить договор',
+  verify_ir_disclaimer: 'Это анализ объекта, который помогает задать правильные вопросы, — не юридическая консультация и не замена проверке юристом или нотариусом.',
+  verify_ir_empty: 'Мы не смогли собрать достаточно информации по этому объекту, чтобы подготовить отчёт.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -11106,6 +11148,20 @@ const tr: Partial<Record<TranslationKey, string>> = {
   vc_start_document_hint: 'Yükleyin; belgeyi okur, resmî kayıtla karşılaştırır ve bu mülkle birlikte saklarız.',
   vc_creating: 'Doğrulamanız hazırlanıyor…',
   vc_untitled_case: 'Adsız doğrulama',
+
+  // Buyer Intelligence Report
+  verify_ir_overall_positive: 'Genel görünüm',
+  verify_ir_overall_mostly_positive: 'Genel görünüm',
+  verify_ir_overall_mixed: 'Genel görünüm',
+  verify_ir_overall_attention: 'Genel görünüm',
+  verify_ir_attention_title: 'Dikkat etmeniz gerekenler',
+  verify_ir_unconfirmed_title: 'Doğrulayamadıklarımız',
+  verify_ir_unconfirmed_note: 'Bu kontroller tamamlanmadı. Bu, mülk hakkında bir şey söylemez — yalnızca kamuya açık kaynaklardan doğrulayamadık.',
+  verify_ir_actions_title: 'Satın almadan önce yapacaklarım',
+  verify_ir_upload_body: 'Ön sözleşmeniz veya satış sözleşmeniz varsa yükleyin. Sözleşmedeki koşulları bu mülk için bulduklarımızla karşılaştırırız.',
+  verify_ir_upload_cta: 'Sözleşmeyi yükle',
+  verify_ir_disclaimer: 'Bu, doğru soruları sormanıza yardımcı olan bir mülk analizidir — hukuki tavsiye değildir ve avukat veya noter incelemesinin yerini tutmaz.',
+  verify_ir_empty: 'Bu mülk hakkında rapor yazacak kadar bilgi toplayamadık.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -13856,6 +13912,20 @@ const ar: Partial<Record<TranslationKey, string>> = {
   vc_start_document_hint: 'ارفعه وسنقرأه ونقارن ما يذكره بالسجل الرسمي ونحفظه مع هذا العقار.',
   vc_creating: 'يتم تجهيز عملية التحقق…',
   vc_untitled_case: 'تحقق بدون عنوان',
+
+  // Buyer Intelligence Report
+  verify_ir_overall_positive: 'الصورة العامة',
+  verify_ir_overall_mostly_positive: 'الصورة العامة',
+  verify_ir_overall_mixed: 'الصورة العامة',
+  verify_ir_overall_attention: 'الصورة العامة',
+  verify_ir_attention_title: 'ما يستحق انتباهك',
+  verify_ir_unconfirmed_title: 'ما لم نتمكن من تأكيده',
+  verify_ir_unconfirmed_note: 'لم تكتمل هذه الفحوصات. هذا لا يقول شيئاً عن العقار نفسه — إنما لم نتمكن من تأكيدها من المصادر العامة.',
+  verify_ir_actions_title: 'ما كنت سأفعله قبل الشراء',
+  verify_ir_upload_body: 'إذا كان لديك عقد مبدئي أو عقد بيع، ارفعه. سنقارن شروط العقد بما وجدناه عن هذا العقار.',
+  verify_ir_upload_cta: 'رفع العقد',
+  verify_ir_disclaimer: 'هذا تحليل للعقار يساعدك على طرح الأسئلة الصحيحة — وليس استشارة قانونية ولا بديلاً عن مراجعة محامٍ أو كاتب عدل.',
+  verify_ir_empty: 'لم نتمكن من جمع معلومات كافية عن هذا العقار لكتابة تقرير.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -16606,6 +16676,20 @@ const he: Partial<Record<TranslationKey, string>> = {
   vc_start_document_hint: 'העלה אותו — נקרא אותו, נשווה את מה שכתוב בו לרשומה הרשמית ונשמור אותו יחד עם הנכס.',
   vc_creating: 'מכינים את הבדיקה שלך…',
   vc_untitled_case: 'בדיקה ללא שם',
+
+  // Buyer Intelligence Report
+  verify_ir_overall_positive: 'התמונה הכוללת',
+  verify_ir_overall_mostly_positive: 'התמונה הכוללת',
+  verify_ir_overall_mixed: 'התמונה הכוללת',
+  verify_ir_overall_attention: 'התמונה הכוללת',
+  verify_ir_attention_title: 'למה כדאי לשים לב',
+  verify_ir_unconfirmed_title: 'מה לא הצלחנו לאמת',
+  verify_ir_unconfirmed_note: 'הבדיקות האלה לא הושלמו. זה לא אומר דבר על הנכס עצמו — פשוט לא הצלחנו לאמת אותן ממקורות ציבוריים.',
+  verify_ir_actions_title: 'מה הייתי עושה לפני הקנייה',
+  verify_ir_upload_body: 'אם כבר יש לך הסכם מקדמי או הסכם מכר, העלה אותו. נשווה את תנאי החוזה למה שמצאנו על הנכס הזה.',
+  verify_ir_upload_cta: 'העלאת החוזה',
+  verify_ir_disclaimer: 'זהו ניתוח נכס שנועד לעזור לך לשאול את השאלות הנכונות — לא ייעוץ משפטי ולא תחליף לבדיקה של עורך דין או נוטריון.',
+  verify_ir_empty: 'לא הצלחנו לאסוף מספיק מידע על הנכס הזה כדי לכתוב דוח.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

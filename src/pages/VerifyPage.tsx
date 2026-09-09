@@ -545,9 +545,11 @@ if(data?.progress)setProgress(data.progress);if(data?.status==='FAILED'){again=f
 // user has browsed in this session — before this, every job switch used
 // {replace:true} unconditionally and Back/Forward had no history entries
 // to move between at all.
-/* The one authoritative customer-facing synthesis. verify-synthesis decides
-   WHAT IS TRUE deterministically and only lets the model decide how it reads,
-   validating that prose back against the deterministic plan. A provider outage
+/* The one authoritative customer-facing report. verify-synthesis builds a
+   tiered evidence package from the WHOLE research result and asks the model to
+   reason over it as an analyst would, then validates every citation back
+   against that package: a claim citing evidence that does not exist is
+   discarded and a deterministic report is returned instead. A provider outage
    degrades the wording, never the report, so this endpoint does not fail --
    but if it ever does, the raw evidence below is still rendered rather than
    leaving the customer with nothing. */
@@ -581,6 +583,16 @@ const cancelHandoff=async()=>{if(!handoff)return;setHandoffBusy(true);try{await 
 // hand-off this product no longer has. Called automatically on completion,
 // and again from the button if that automatic attempt failed.
 const saveCase=async(jid?:string,rep?:Report)=>{const id=jid||jobId||report?.jobId;const r=rep||report;if(!id||!r)return;setSavingCase(true);try{const{room}=await createDealRoomFromVerify({jobId:id,report:r});setCaseId(room.id)}catch{/* left to the explicit button below; the report itself is unaffected */}finally{setSavingCase(false)}};
+// The report closes by inviting the customer to upload their contract. It
+// must land in the SAME place a document uploaded from the Verification
+// Center lands -- the case's Documents tab -- so there is one document
+// architecture, not two. If the case has not been persisted yet (the
+// automatic save failed, or is still in flight), save it first and then go.
+const openContractUpload=async()=>{let id=caseId;if(!id){await saveCase();id=caseId}
+  // saveCase() sets state asynchronously, so re-read the room rather than
+  // trusting the closure; if it still is not there, the Center's own upload
+  // control is the correct fallback.
+  if(id){nav(`/verify/${id}?tab=documents`)}else{nav('/verify')}};
 const resume=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'resume',jobId:id,language:lang,humanVerificationCompleted:true}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_resume_failed')))}};
 const skip=async()=>{const id=captcha?.jobId||jobId;if(!id)return;setCaptcha(null);setLoading(true);setErr(null);setPollNotice(null);transientRetryCount.current=0;setProgress({phase:'resuming',percent:72});try{const{data,error}=await supabase.functions.invoke('research-agent',{body:{action:'skip',jobId:id,language:lang}});if(error)throw error;if(data?.error)throw new Error(data.error);schedule(id,500)}catch(e:any){setLoading(false);setErr(await resolveFunctionErrorMessage(e,t('verify_err_skip_failed')))}};
 // openVerifyHistorySidebar(): the global "browse every research run I've ever
@@ -632,7 +644,7 @@ const pct=Math.max(5,Math.min(100,Number(progress?.percent)||5));return <AppLayo
     above are left completely untouched. Deliberately styled the same as
     the ordinary phase label (not the destructive/err box) so a transient
     hiccup never reads to the customer as a failure. */}
-{pollNotice&&<p className="text-xs text-muted-foreground mt-1">{pollNotice}</p>}</div></div></CardContent></Card>}{report&&!loading&&<div className="space-y-4"><Card><CardContent className="pt-5 space-y-2"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold break-words">{clean(report.entityName)||query}</h2><Badge variant="outline">{report.entityType||mode}</Badge></div>{report.exactUnit?.code&&<p className="text-sm font-medium break-all">{report.exactUnit.code}</p>}</CardContent></Card>{synthesis?<VerifyReport synthesis={synthesis} evidence={<div className="space-y-4"><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><Badge variant="outline">{report.entityType||mode}</Badge></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesMatrixCard u={report.utilitiesMatrix}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
+{pollNotice&&<p className="text-xs text-muted-foreground mt-1">{pollNotice}</p>}</div></div></CardContent></Card>}{report&&!loading&&<div className="space-y-4"><Card><CardContent className="pt-5 space-y-2"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold break-words">{clean(report.entityName)||query}</h2><Badge variant="outline">{report.entityType||mode}</Badge></div>{report.exactUnit?.code&&<p className="text-sm font-medium break-all">{report.exactUnit.code}</p>}</CardContent></Card>{synthesis?<VerifyReport synthesis={synthesis} onUploadContract={()=>{void openContractUpload()}} evidence={<div className="space-y-4"><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><Badge variant="outline">{report.entityType||mode}</Badge></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesMatrixCard u={report.utilitiesMatrix}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
     DiscoveredEntitiesCard permanently removed from the customer report (Verify
     mandate: no technical/audit-trail clutter in the customer-facing view).
     This used to be done post-build by scripts/apply-verify-ux-patch.mjs

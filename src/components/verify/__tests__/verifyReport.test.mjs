@@ -38,7 +38,7 @@ test('no card invents a conclusion of its own', () => {
   // incompleteSources and nothing else. Anything more would be a second
   // opinion competing with the projection.
   const reads = [...reportCode.matchAll(/synthesis[.?]*\.([a-zA-Z]+)/g)].map((m) => m[1]);
-  const allowed = new Set(['verdict', 'verdictReasons', 'sections', 'incompleteSources', 'empty']);
+  const allowed = new Set(['report', 'evidence', 'incompleteSources', 'mode', 'empty']);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);
   }
@@ -65,27 +65,36 @@ test('no evidence at all is not a negative verdict', () => {
 test('coverage is presented as coverage, never as a warning', () => {
   // From the JSX, not the interface declaration at the top of the file --
   // slicing from the first occurrence swept in the whole VERDICT_STYLE table.
-  const block = reportCode.slice(reportCode.indexOf('(synthesis.incompleteSources?.length'));
-  // The section that lists unreachable sources must not borrow risk styling.
-  const upTo = block.slice(0, block.indexOf('</Card>'));
+  const block = reportCode.slice(reportCode.indexOf('r.unconfirmed?.length'));
+  // The section that lists what could not be established must not borrow risk
+  // styling: a check we could not finish says nothing about the property.
+  const upTo = block.slice(0, block.indexOf('</section>'));
   assert.ok(!/text-red|text-amber|border-red|border-amber|destructive/.test(upTo),
-    'unreachable sources must not be coloured like findings');
-  assert.match(report, /verify_report_incomplete_note/);
+    'unconfirmed checks must not be coloured like findings');
+  assert.match(report, /verify_ir_unconfirmed_note/);
+
+  // Attention points MAY carry a restrained accent — they are real findings.
+  const attention = reportCode.slice(reportCode.indexOf('r.attentionPoints?.length'));
+  assert.match(attention.slice(0, attention.indexOf('</section>')), /amber/);
 });
 
 /* ---------------- the verdict vocabulary is the product vocabulary ---------------- */
 
-test('the verdict is Positive / Moderately positive / Negative and nothing else', () => {
-  for (const v of ['POSITIVE', 'MODERATELY_POSITIVE', 'NEGATIVE']) {
+test('the overall view is one of the four permitted readings and nothing else', () => {
+  for (const v of ['POSITIVE', 'MOSTLY_POSITIVE', 'MIXED', 'NEEDS_ATTENTION']) {
     assert.match(report, new RegExp(`${v}:`), `${v} must be renderable`);
   }
   // No numeric confidence score as the headline judgement.
-  assert.ok(!/\/\s*100|percent|score/i.test(reportCode), 'no 73/100-style scoring in the verdict');
+  assert.ok(!/\/\s*100|percent|score/i.test(reportCode), 'no 73/100-style scoring in the overall view');
 });
 
-test('the verdict always carries its reasons', () => {
-  assert.match(report, /verify_report_why/);
-  assert.match(reportCode, /verdictReasons/);
+test('the overall view is a sentence, not a traffic light', () => {
+  // The label names the section; the STATEMENT carries the judgement. A
+  // coloured chip alone would be exactly the compliance-robot output this
+  // report replaced.
+  assert.match(reportCode, /overallView\?\.statement/);
+  assert.match(reportCode, /executiveSummary/);
+  assert.ok(!/ShieldCheck|ShieldX|traffic/.test(reportCode), 'the verdict chip is back');
 });
 
 /* ---------------- the research dump is no longer the report ---------------- */
@@ -93,7 +102,7 @@ test('the verdict always carries its reasons', () => {
 test('the heavy research cards are behind progressive disclosure', () => {
   // They still exist — nothing was deleted — but they are inside the evidence
   // control, not the default view.
-  const evidenceProp = page.slice(page.indexOf('<VerifyReport synthesis={synthesis} evidence={'));
+  const evidenceProp = page.slice(page.indexOf('<VerifyReport synthesis={synthesis}'));
   // The evidence JSX itself contains '/>' sequences, so bound the slice on the
   // fallback branch that follows the component instead.
   const upToClose = evidenceProp.slice(0, evidenceProp.indexOf(':synthesisLoading?'));
@@ -140,12 +149,18 @@ test('readable() tolerates a stray replacement character in good text', () => {
 });
 
 test('readable() is applied to every customer-visible string', () => {
-  for (const field of ['verdictReasons', 'sections', 'incompleteSources']) {
-    const at = reportCode.indexOf(field);
-    assert.ok(at > 0, `${field} should be rendered`);
+  for (const field of ['executiveSummary', 'sections', 'attentionPoints', 'buyerActions', 'unconfirmed', 'finalView']) {
+    assert.ok(reportCode.indexOf(field) > 0, `${field} should be rendered`);
   }
-  assert.match(reportCode, /\.map\(readable\)/);
-  assert.match(reportCode, /body: readable\(s\.text\)/);
+  // Every string that reaches the screen goes through readable(), which is
+  // what keeps mis-decoded registry text out of the report.
+  for (const call of [
+    'readable(s.title)', 'readable(a.point)', 'readable(a.why)',
+    'readable(a.action)', 'readable(u.item)', 'readable(r.overallView.statement)',
+  ]) {
+    assert.ok(reportCode.includes(call), `${call} is missing — that string can render raw`);
+  }
+  assert.match(reportCode, /readable\(text\)/);
 });
 
 /* ---------------- six languages ---------------- */
@@ -166,14 +181,21 @@ test('every report string exists in all six languages', () => {
   }
 });
 
-test('every section the synthesis can emit has a title', () => {
-  // A section with no mapping is dropped rather than shown unlabelled, but the
-  // mapping must actually be complete for the vocabulary that exists.
-  const synth = fs.readFileSync(path.join(ROOT, 'src', 'dealroom', 'planning', 'synthesis.ts'), 'utf8');
-  const union = synth.slice(synth.indexOf('export type SectionKey'), synth.indexOf(';', synth.indexOf('export type SectionKey')));
-  for (const [, key] of union.matchAll(/'([A-Z]+)'/g)) {
-    assert.match(report, new RegExp(`\\b${key}: 'verify_section_`), `${key} has no title`);
+test('every section the report can emit is titled by the server, never left bare', () => {
+  // Titles now travel WITH each section (the model writes them in the reader's
+  // language), so the UI does not hold a key map. What must hold instead is
+  // that the deterministic fallback — the path taken when the model output is
+  // rejected — can title every key it is allowed to emit.
+  const prompt = fs.readFileSync(path.join(ROOT, 'src', 'verify', 'intelligence', 'prompt.ts'), 'utf8');
+  const rpt = fs.readFileSync(path.join(ROOT, 'src', 'verify', 'intelligence', 'report.ts'), 'utf8');
+  const union = prompt.slice(prompt.indexOf('export const SECTION_KEYS'), prompt.indexOf('] as const'));
+  const keys = [...union.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
+  assert.ok(keys.length >= 5, 'the section vocabulary was not found');
+  const titles = rpt.slice(rpt.indexOf('const TITLES'), rpt.indexOf('};', rpt.indexOf('const TITLES')));
+  for (const key of keys) {
+    assert.ok(titles.includes(`${key}:`), `${key} has no deterministic title`);
   }
+  assert.match(reportCode, /readable\(s\.title\)/, 'the server-supplied title is not rendered');
 });
 
 /* ---------------- no machine vocabulary on the customer surface ---------------- */
@@ -196,8 +218,8 @@ test('the report never renders raw JSON', () => {
 test('the report uses logical properties so RTL is correct', () => {
   // ps-/start- rather than pl-/left-, so Arabic and Hebrew mirror properly.
   assert.match(reportCode, /ps-4/);
-  assert.match(reportCode, /absolute start-0/);
-  assert.ok(!/\bpl-4\b|\bleft-0\b/.test(reportCode), 'physical directions break RTL');
+  assert.match(reportCode, /border-s-2/);
+  assert.ok(!/\bpl-4\b|\bleft-0\b|\bborder-l-2\b/.test(reportCode), 'physical directions break RTL');
 });
 
 test('the report has no fixed width that breaks a 320px screen', () => {

@@ -1,24 +1,35 @@
-// HOMATCH — the final AI due-diligence summary.
+// HOMATCH — the Buyer Intelligence Report.
 //
-// The customer-facing replacement for the fragmented card dump. ONE
-// conversational explanation of what was found, what matters, and what to do
-// next.
+// The customer-facing output of Verify. ONE editorial due-diligence briefing:
+// what was found, what it means in context, what deserves attention, what
+// could not be confirmed, and what this buyer should do before paying.
 //
-// The deterministic plan decides what is TRUE. The model only decides how it
-// READS, and its output is validated back against the plan before anything is
-// returned. If the model invents a fact, cites a point that does not exist,
-// omits a conflict, or leaks internal vocabulary, its output is DISCARDED and
-// the deterministic rendering is returned instead — so the endpoint always
-// succeeds and never returns unverified prose.
+// WHAT CHANGED AND WHY
+// --------------------
+// This used to hand the model a list of finished sentences stripped of source,
+// date, provenance and certainty — and the model, holding nothing to reason
+// with, produced "a mortgage exists" where the research already knew the same
+// bank publicly finances the project. buildEvidencePackage() now reads the
+// WHOLE report (including `publicResearch`, which nothing read before) and
+// keeps provenance attached, tiered so registry evidence is never crowded out
+// by social noise.
 //
-// Because of that fallback, this function does not fail when OPENAI_API_KEY
-// is absent or the provider is down: it returns the deterministic rendering
-// and says so via `mode`.
+// The safety property is unchanged and still enforced: the model may cite only
+// evidence ids that exist, every substantial claim must carry one, and an
+// output that fails is DISCARDED in favour of a deterministic report built
+// from the same evidence. There is no path by which invented prose reaches a
+// customer.
+//
+// Because of that fallback the function does not fail when OPENAI_API_KEY is
+// absent or the provider is down: it returns the deterministic report and says
+// so via `mode`.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
-import { buildRenderPrompt, finalizeRendering } from '../../../src/dealroom/domain/render.ts';
+import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
+import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
+import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -68,19 +79,22 @@ serve(async (req) => {
     if (error) throw error;
     if (!job) return json({ error: 'not found' }, 404);
 
+    // The projection still supplies the deterministic property model (type,
+    // buyer plan, what completed and what did not). The evidence package is
+    // what the model reasons over.
     const projection = projectVerify({ jobId: job.id, report: job.result_json });
+    const pkg = buildEvidencePackage(job.result_json);
 
     // No evidence at all is a legitimate outcome, not an error: every source
     // may have been technically unavailable. Say so plainly rather than
-    // rendering an empty report that looks like a clean bill of health.
-    if (!projection.facts.length) {
+    // returning an empty report that reads like a clean bill of health.
+    if (!pkg.items.length) {
       return json({
-        verdict: projection.verdict,
-        verdictReasons: projection.verdictReasons,
-        sections: [],
+        report: null,
         mode: 'DETERMINISTIC',
         propertyType: projection.propertyType,
         incompleteSources: projection.incomplete.map((o) => o.sourceName || o.source),
+        unconfirmed: pkg.unavailable,
         empty: true,
       });
     }
@@ -88,7 +102,7 @@ serve(async (req) => {
     let raw: string | null = null;
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (apiKey) {
-      const { system, user } = buildRenderPrompt(projection.synthesis);
+      const { system, user } = buildIntelligencePrompt(pkg);
       try {
         const res = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',
@@ -108,22 +122,33 @@ serve(async (req) => {
       }
     }
 
-    const final = finalizeRendering(projection.synthesis, raw);
+    const final = finalizeReport(pkg, raw);
     if (final.mode === 'DETERMINISTIC' && final.rejectedBecause.length) {
       // Worth knowing about: a model that keeps failing the gate is a
       // prompt/model problem we want visible in logs, not silently absorbed.
-      console.warn('synthesis rendering rejected', JSON.stringify(final.rejectedBecause));
+      console.warn('buyer intelligence rejected', JSON.stringify(final.rejectedBecause));
     }
 
     return json({
-      verdict: final.verdict,
-      verdictReasons: final.verdictReasons,
-      sections: final.sections,
+      report: {
+        overallView: final.overallView,
+        executiveSummary: final.executiveSummary,
+        sections: final.sections,
+        attentionPoints: final.attentionPoints,
+        unconfirmed: final.unconfirmed,
+        buyerActions: final.buyerActions,
+        finalView: final.finalView,
+        contractUpload: final.contractUpload,
+      },
+      // The sources behind the prose, so the UI can offer them underneath
+      // without the customer having to read raw research output.
+      evidence: final.evidenceUsed,
+      market: pkg.market,
       mode: final.mode,
       propertyType: projection.propertyType,
       // Named for a customer, not by source key: "we could not complete X".
       incompleteSources: projection.incomplete.map((o) => o.sourceName || o.source),
-      conflictCount: projection.conflicts.length,
+      evidenceCounts: pkg.tierCounts,
       empty: false,
     });
   } catch (e) {

@@ -293,6 +293,19 @@ test('synthesis is requested by the server, not by the page', () => {
   assert.ok(/MAX_SYNTHESIS_ATTEMPTS/.test(agent), 'synthesis can retry forever');
 });
 
+test('a synthesis stalled mid-flight is retried, not abandoned', () => {
+  // Caught live: the driver swept only NONE and FAILED, so an attempt whose
+  // caller was evicted during a slow model call would sit at PENDING forever
+  // — research COMPLETE, no report, no error, nothing looking at it again.
+  const agent = code('supabase/functions/research-agent/index.ts');
+  const block = agent.slice(agent.indexOf('async function driveSynthesis'), agent.indexOf('async function driveLiveJobs'));
+  assert.ok(/'NONE', 'FAILED', 'PENDING'/.test(block), 'a stalled PENDING synthesis is never retried');
+  // ...but only once it is demonstrably stale, so a live one is not duplicated.
+  assert.ok(/SYNTHESIS_ATTEMPT_TIMEOUT_MS/.test(block), 'PENDING is retried with no staleness guard');
+  assert.ok(/synthesis_at\.lt\./.test(block), 'staleness is not measured against the attempt start');
+  assert.ok(/synthesis_at: now\(\)/.test(block), 'the attempt start is never stamped');
+});
+
 test('a synthesis failure never re-runs the research behind it', () => {
   const agent = code('supabase/functions/research-agent/index.ts');
   const block = agent.slice(agent.indexOf('async function driveSynthesis'), agent.indexOf('async function driveLiveJobs'));

@@ -3521,6 +3521,8 @@ const DRIVE_TICK_SPACING_MS = 3_000;
 const DRIVE_WALL_CLOCK_MS = 55_000;
 /** §54: synthesis may retry; research must never be re-run because of it. */
 const MAX_SYNTHESIS_ATTEMPTS = 4;
+/** Longer than any real synthesis, short enough that a stall is not a dead end. */
+const SYNTHESIS_ATTEMPT_TIMEOUT_MS = 4 * 60 * 1000;
 
 async function adminSetting(sb: any, key: string): Promise<string> {
   const { data } = await sb.from('admin_settings').select('value').eq('key', key).maybeSingle();
@@ -3589,22 +3591,43 @@ async function driveJob(sb: any, key: string, model: string, id: string): Promis
  * driver requests synthesis when research completes, and verify-synthesis
  * persists the result so it is built exactly once. */
 async function driveSynthesis(sb: any): Promise<void> {
+  /*
+   * PENDING IS A RETRYABLE STATE, NOT A RESTING ONE.
+   *
+   * The first version swept only NONE and FAILED. A synthesis whose caller
+   * was evicted mid-flight — an edge invocation is not guaranteed to outlive
+   * a slow model call — would sit at PENDING forever, and nothing would ever
+   * look at it again: research COMPLETE, no report, no error, no retry. That
+   * is the forbidden state wearing a different column.
+   *
+   * So PENDING is retried too, but only once it is demonstrably stale, so a
+   * synthesis that is legitimately still running is never duplicated.
+   * synthesis_at records when the attempt STARTED and is overwritten with the
+   * success time by verify-synthesis itself.
+   */
+  const staleAttempt = new Date(Date.now() - SYNTHESIS_ATTEMPT_TIMEOUT_MS).toISOString();
   const { data: jobs } = await sb
     .from('research_jobs')
-    .select('id,synthesis_attempts')
+    .select('id,synthesis_attempts,synthesis_state')
     .eq('status', 'COMPLETE')
     .is('deleted_at', null)
-    .in('synthesis_state', ['NONE', 'FAILED'])
+    .in('synthesis_state', ['NONE', 'FAILED', 'PENDING'])
     .lt('synthesis_attempts', MAX_SYNTHESIS_ATTEMPTS)
+    .or(`synthesis_state.neq.PENDING,synthesis_at.lt.${staleAttempt}`)
     .order('completed_at', { ascending: true })
     .limit(DRIVE_SYNTHESIS_BATCH);
 
   for (const j of jobs ?? []) {
     // Count the attempt BEFORE making it, so a hard crash still consumes
-    // budget and a permanently poisonous job cannot loop forever.
+    // budget and a permanently poisonous job cannot loop forever. synthesis_at
+    // stamps the START, which is what makes a stalled attempt detectable.
     await sb
       .from('research_jobs')
-      .update({ synthesis_state: 'PENDING', synthesis_attempts: (j.synthesis_attempts ?? 0) + 1 })
+      .update({
+        synthesis_state: 'PENDING',
+        synthesis_attempts: (j.synthesis_attempts ?? 0) + 1,
+        synthesis_at: now(),
+      })
       .eq('id', j.id);
     try {
       const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/verify-synthesis`, {

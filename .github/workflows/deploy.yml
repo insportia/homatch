@@ -205,6 +205,7 @@ jobs:
             "verify-synthesis"
             "deal-room-ai"
             "verification-handoff"
+            "deal-room-document-analyze"
           )
           FAILED=()
           for fn in "${JWT_FUNCTIONS[@]}"; do

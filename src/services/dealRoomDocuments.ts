@@ -136,3 +136,78 @@ export async function listFindings(roomId: string): Promise<DocumentFinding[]> {
   if (error) throw error;
   return (data ?? []) as DocumentFinding[];
 }
+
+/* ------------------------------------------------------------------ *
+ * Contract analysis                                                   *
+ * ------------------------------------------------------------------ */
+
+/** What the analyst produced for one document. Mirrors the `analysis` jsonb
+ * written by the deal-room-document-analyze function. */
+export interface DocumentAnalysis {
+  documentType: string | null;
+  summary: string[];
+  clauses: {
+    label: string;
+    plain: string;
+    quote: string;
+    page: number | null;
+    attention: 'NORMAL' | 'ONE_SIDED' | 'UNUSUAL' | 'AMBIGUOUS' | 'MISSING_PROTECTION';
+  }[];
+  obligations: {
+    party: 'BUYER' | 'SELLER' | 'DEVELOPER' | 'BOTH' | 'UNCLEAR';
+    label: string;
+    plain: string;
+    quote: string;
+    page: number | null;
+  }[];
+  deadlines: { label: string; value: string | null; quote: string; page: number | null }[];
+  financial: { label: string; value: string | null; quote: string; page: number | null }[];
+  missingProtections: { label: string; plain: string }[];
+  questions: string[];
+  pages: number;
+  containsInstructionLikeText: boolean;
+  analysedAt: string;
+}
+
+export type AnalysisState =
+  | 'NONE' | 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'UNSUPPORTED' | 'REQUIRES_OCR';
+
+/**
+ * Ask for a document to be analysed.
+ *
+ * Deliberately thin: everything that matters — ownership, file validation,
+ * extraction, grounding, cross-check — happens server-side, because a client
+ * check is advice and a server check is a control. The caller's session is
+ * what authorises it; there is no service-role path.
+ *
+ * `force` re-runs an analysis that is already DONE for the same bytes. Without
+ * it the call is idempotent and cheap: the same file is never re-analysed and
+ * never produces duplicate findings.
+ */
+export async function analyzeDocument(
+  documentId: string,
+  opts?: { force?: boolean; language?: string }
+): Promise<{ state: AnalysisState; reason?: string; findingCount?: number; contradictions?: number }> {
+  const { data, error } = await supabase.functions.invoke('deal-room-document-analyze', {
+    body: { documentId, force: opts?.force === true, language: opts?.language },
+  });
+  if (error) throw error;
+  return data as { state: AnalysisState; reason?: string; findingCount?: number; contradictions?: number };
+}
+
+/** The stored analysis for a document, if one has been produced. */
+export async function getDocumentAnalysis(
+  documentId: string
+): Promise<{ state: AnalysisState; analysis: DocumentAnalysis | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('deal_room_documents')
+    .select('analysis_state,analysis,analysis_error')
+    .eq('id', documentId)
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    state: (data?.analysis_state ?? 'NONE') as AnalysisState,
+    analysis: (data?.analysis ?? null) as DocumentAnalysis | null,
+    error: (data?.analysis_error ?? null) as string | null,
+  };
+}

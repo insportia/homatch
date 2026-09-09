@@ -257,6 +257,14 @@ jobs:
             "discovery-queue-worker"
             "continuous-matching-worker"
             "run-matching-v2"
+            # The Verify orchestrator. It belongs in THIS list, not the JWT one:
+            # it authenticates the caller itself (rejects a missing or invalid
+            # Authorization header with its own JSON 401) precisely so a failure
+            # returns a readable body instead of the gateway's headerless 500,
+            # which is what surfaced to customers as "blocked by CORS policy".
+            # Production has run verify_jwt=false since it was first deployed;
+            # deploying it here with --no-verify-jwt preserves that exactly.
+            "research-agent"
           )
           FAILED=()
           for fn in "${NO_JWT_FUNCTIONS[@]}"; do

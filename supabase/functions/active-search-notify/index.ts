@@ -32,9 +32,13 @@ Deno.serve(async (req) => {
           // localized string from type + metadata.kind at display time.
           title: 'New property match',
           body: 'A new property matching your search has been added.',
-          is_read: false,
+          read: false,
           metadata: { property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_PROPERTY_MATCH' },
-        }).catch(() => {});
+        }).then(({ error }) => {
+          // Swallowing this is what hid a broken notification pipeline: the
+          // insert failed on every call and nothing anywhere said so.
+          if (error) console.error('notification insert failed', error.message?.slice(0, 200));
+        });
 
         await supabase.from('active_search_subscriptions')
           .update({ last_notified_at: new Date().toISOString() }).eq('id', sub.id).catch(() => {});
@@ -56,9 +60,13 @@ Deno.serve(async (req) => {
           // localized string from type + metadata.kind at display time.
           title: 'New buyer/renter found',
           body: 'A new potential buyer or renter has been found for your property.',
-          is_read: false,
+          read: false,
           metadata: { signal_id, match_id: match_id || null, property_id: sub.property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_SIGNAL_MATCH' },
-        }).catch(() => {});
+        }).then(({ error }) => {
+          // Swallowing this is what hid a broken notification pipeline: the
+          // insert failed on every call and nothing anywhere said so.
+          if (error) console.error('notification insert failed', error.message?.slice(0, 200));
+        });
 
         await supabase.from('active_search_subscriptions')
           .update({ last_notified_at: new Date().toISOString() }).eq('id', sub.id).catch(() => {});

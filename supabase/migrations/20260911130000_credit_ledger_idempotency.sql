@@ -1,0 +1,48 @@
+-- Homatch — make credit_ledger.reference actually mean something.
+--
+-- WHAT WAS FOUND
+--
+-- Every credit function takes and records a `reference`:
+--
+--   reserve_credits_for_product  capture_credit_reservation
+--   release_credit_reservation   credit_topup_atomic
+--   atomic_external_match_unlock
+--
+-- and not one of them checks whether that reference has already been used.
+-- There was no unique constraint either, so the field looked like an
+-- idempotency key and behaved like a comment.
+--
+-- The consequence is ordinary and expensive: a retried call -- a dropped
+-- response, a double-tapped button, a webhook redelivery that got past its
+-- own guard -- debits or credits the customer twice, and the second entry is
+-- indistinguishable from a legitimate one.
+--
+-- The rest of the billing surface is already guarded, which is what makes
+-- this the gap rather than the norm:
+--
+--   payments.idempotency_key      UNIQUE
+--   payments.provider_id          UNIQUE
+--   payments.provider_event_id    UNIQUE
+--   match_unlocks (match_id, user_id) UNIQUE
+--
+-- WHY THE KEY IS (user_id, type, reference) AND NOT (user_id, reference)
+--
+-- A single business event legitimately produces several ledger entries that
+-- share a reference: a reservation is made, then captured, then possibly
+-- released. Those are different `type`s of the same reference and must all be
+-- allowed. What must NOT be allowed is the same type of the same reference
+-- twice for the same user -- that is the retry.
+--
+-- Partial, because reference is nullable and historical rows may not carry
+-- one; a NULL reference makes no idempotency claim and is left alone.
+--
+-- Verified before applying: 18 ledger rows, all with a reference, zero
+-- duplicate (user_id, reference) groups -- so nothing existing violates this.
+--
+-- This constrains; it does not change balances, rewrite history or alter any
+-- function. A retry now fails loudly at the database instead of silently
+-- charging twice.
+
+create unique index if not exists credit_ledger_user_type_reference_uidx
+  on public.credit_ledger (user_id, type, reference)
+  where reference is not null;

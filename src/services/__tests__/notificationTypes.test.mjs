@@ -126,3 +126,20 @@ test('notification inserts use the real column name', () => {
     );
   }
 });
+
+/* ---------------------------------------------------------------- *
+ * Billing idempotency                                               *
+ * ---------------------------------------------------------------- */
+
+test('credit_ledger has a unique key so a retry cannot charge twice', () => {
+  const sql = fs.readFileSync(
+    path.join(ROOT, 'supabase', 'migrations', '20260911130000_credit_ledger_idempotency.sql'),
+    'utf8'
+  );
+  assert.match(sql, /create unique index[\s\S]*credit_ledger \(user_id, type, reference\)/i);
+  // Partial: a NULL reference makes no idempotency claim.
+  assert.match(sql, /where reference is not null/i);
+  // Keyed on type as well, so reserve -> capture -> release may share a
+  // reference while an exact retry of one of them cannot.
+  assert.ok(!/\(user_id, reference\)\s*$/m.test(sql));
+});

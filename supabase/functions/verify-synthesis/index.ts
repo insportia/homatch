@@ -31,6 +31,7 @@ import { buildEvidencePackage } from '../../../src/verify/intelligence/evidenceP
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
 import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
 import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
+import { looksLikePersonName } from '../../../src/verify/intelligence/peopleIntelligence.ts';
 import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/intelligence/fx.ts';
 import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
 
@@ -112,6 +113,39 @@ async function persist(db: any, jobId: string, payload: unknown): Promise<void> 
   }
 }
 
+/*
+ * A REPORT ALREADY WRITTEN CAN STILL BE WRONG.
+ *
+ * The participants parser used to read shareholders by proximity to the word
+ * "share", which turned the lines following the real rows into eight
+ * registered shareholders of the developer that do not exist — "we
+ * additionally inform you", "is not registered", "of the public registry".
+ *
+ * That is fixed at the parser, but those names are already sitting in
+ * synthesis_json for every report generated before the fix, and a persisted
+ * report is served as a READ: it never passes through the parser again.
+ *
+ * Regenerating would mean a model call, and a charge, for every historical
+ * case. Re-checking the names on the way out costs nothing and covers all of
+ * them. A participant whose name is administrative vocabulary rather than a
+ * person is dropped; everything else is left exactly as written.
+ */
+function withCredibleParticipants(payload: Record<string, unknown>): Record<string, unknown> {
+  const people = payload?.people as { people?: unknown[] } | undefined;
+  if (!people || !Array.isArray(people.people)) return payload;
+
+  const kept = people.people.filter((p) => {
+    const name = (p as Record<string, unknown>)?.name;
+    return typeof name === 'string' && looksLikePersonName(name);
+  });
+  if (kept.length === people.people.length) return payload;
+
+  console.warn(
+    `verify-synthesis: dropped ${people.people.length - kept.length} non-credible participant(s) from a persisted report`
+  );
+  return { ...payload, people: { ...people, people: kept } };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -168,7 +202,7 @@ serve(async (req) => {
      * The persisted report is now authoritative, so returning to a case is
      * a read. */
     if (job.synthesis_state === 'READY' && job.synthesis_json && !body?.force) {
-      return json({ ...(job.synthesis_json as Record<string, unknown>), persisted: true });
+      return json({ ...withCredibleParticipants(job.synthesis_json as Record<string, unknown>), persisted: true });
     }
 
     // The projection still supplies the deterministic property model (type,

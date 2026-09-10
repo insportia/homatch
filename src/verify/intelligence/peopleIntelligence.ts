@@ -246,6 +246,15 @@ const NOT_A_PERSON = [
   'შპს', 'სს', 'სპს', 'კს', 'ააიპ', 'სსიპ', ' llc', 'ltd', 'jsc', 'inc',
   'ბანკი', 'კომპანი', 'ჯგუფი', 'group', 'დირექტორები', 'საზოგადოებ',
   'ხელმძღვანელობ', 'წარმომადგენლობ', 'განცხადებ', 'მინდობილობ',
+  // Administrative and registry vocabulary. Georgian has no letter case, so
+  // "two or more Georgian words" matches almost any phrase — which is how
+  // "we additionally inform you" and "is not registered" became registered
+  // shareholders of the developer. Every entry below is a word from one of
+  // the eight names that actually reached a customer.
+  'რეესტრ', 'სამინისტრო', 'დოკუმენტაცი', 'შემთხვევა', 'გაცნობებთ',
+  'დამატებით', 'ქონებრივ', 'სიკეთე', 'მმართველ', 'მესაკუთრე', 'წილი',
+  'რაოდენობა', 'საჯარო', 'განსაზღვრულ', 'წარმოდგენ', 'რეგისტრირებულ',
+  'ვალდებულებ', 'უფლებ', 'არ არის',
 ];
 
 /**

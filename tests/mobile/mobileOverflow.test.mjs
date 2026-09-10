@@ -21,16 +21,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 import { SYNTHESIS, STATUS_RESPONSE } from './fixture.mjs';
 
 const require = createRequire(import.meta.url);
+const ROOT = process.cwd();
 
 /** Real devices, narrowest first. 320 is the floor we support. */
 const WIDTHS = [320, 360, 375, 390, 430];
-const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+/**
+ * Chrome is DISCOVERED, not hardcoded to one machine's install path.
+ * playwright-core downloads no browsers; it drives the Chrome already here.
+ */
+function findChrome() {
+  if (process.env.PLAYWRIGHT_CHROME && existsSync(process.env.PLAYWRIGHT_CHROME)) {
+    return process.env.PLAYWRIGHT_CHROME;
+  }
+  const candidates = [
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe` : null,
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+  ].filter(Boolean);
+  return candidates.find((p) => existsSync(p)) ?? null;
+}
 const PREVIEW_PORT = 4319;
 const BASE = `http://127.0.0.1:${PREVIEW_PORT}`;
 /** Matches the VITE_SUPABASE_URL the harness build is given. */
@@ -42,18 +62,42 @@ const STUB_SUPABASE = 'https://stubproj.supabase.co';
  * taking a heavy devDependency that CI may not want to install.
  */
 function resolvePlaywright() {
-  try { return require('playwright-core'); } catch { /* fall through */ }
-  const ext = process.env.PLAYWRIGHT_CORE_PATH;
-  if (ext) { try { return require(ext); } catch { /* fall through */ } }
+  // In order of preference: a real dependency if one is ever added, the
+  // provisioned .tooling/ directory (npm run test:mobile:setup), then an
+  // explicit override. No hidden machine state is required for any of them.
+  const candidates = [
+    'playwright-core',
+    join(ROOT, '.tooling', 'node_modules', 'playwright-core'),
+    process.env.PLAYWRIGHT_CORE_PATH,
+  ].filter(Boolean);
+  for (const c of candidates) {
+    try { return require(c); } catch { /* try the next */ }
+  }
   return null;
 }
 
 function haveDeps() {
-  if (!existsSync(CHROME)) return 'Chrome is not installed at the expected path';
-  if (!resolvePlaywright()) return 'playwright-core is not available (set PLAYWRIGHT_CORE_PATH)';
-  if (!existsSync(new URL('../../dist/index.html', import.meta.url))) {
-    return 'no dist/ build — run: npm run build:harness';
+  // Every skip reason names the exact command that fixes it. A suite that
+  // skips for an unexplained reason is a suite nobody ever turns back on.
+  if (!resolvePlaywright()) return 'browser driver missing — run: npm run test:mobile:setup';
+  if (!findChrome()) return 'Google Chrome not found — install it, or set PLAYWRIGHT_CHROME to its path';
+  const distDir = join(ROOT, 'dist', 'assets');
+  if (!existsSync(join(ROOT, 'dist', 'index.html')) || !existsSync(distDir)) {
+    return 'no build in dist/ — run: npm run build:harness';
   }
+  /*
+   * dist/ must be the HARNESS build specifically.
+   *
+   * A normal `npm run build` overwrites dist/ with a bundle pointing at the
+   * real backend, and the stubs then intercept nothing — the page renders
+   * signed out with no report and the suite fails for a reason that has
+   * nothing to do with layout. Detect that and say which command fixes it,
+   * rather than reporting a false overflow failure.
+   */
+  const bundled = readdirSync(distDir)
+    .filter((f) => f.startsWith('index-') && f.endsWith('.js'))
+    .some((f) => readFileSync(join(distDir, f), 'utf8').includes('stubproj'));
+  if (!bundled) return 'dist/ is not the harness build — run: npm run build:harness';
   return null;
 }
 
@@ -96,7 +140,7 @@ test('the verification report has no horizontal overflow at real phone widths', 
     { cwd: process.cwd(), stdio: 'ignore', shell: process.platform === 'win32' }
   );
 
-  const browser = await chromium.launch({ executablePath: CHROME, headless: true });
+  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
 
   t.after(async () => {
     await browser.close().catch(() => {});

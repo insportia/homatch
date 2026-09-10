@@ -362,3 +362,45 @@ test('the report marks a thin comparison for the reader too', () => {
     assert.ok(!/(risk|რისკ|риск)/i.test(n.slice(0, 400)), 'thin evidence is framed as property risk');
   }
 });
+
+/* ── the peer band has to be reachable, or the hierarchy is fiction ──── */
+
+test('a named development elsewhere is a peer, not anonymous market stock', () => {
+  // PEER_PROJECT had never been produced in production: the research layer
+  // labels a distant development MICRO_LOCATION more often than PEER_PROJECT,
+  // and a comparable on a street with no district hint fell all the way to
+  // WIDER_MARKET, beside arbitrary city stock.
+  const named = scoreComparable(SUBJECT, {
+    project: 'Villa Residence', address: 'თბილისი, გრიგოლ ვოლსკის ქუჩა',
+    area: '95', pricePerSqm: '7776', currency: 'GEL', comparableType: 'MICRO_LOCATION',
+  });
+  assert.equal(named.tier, 'PEER_PROJECT', 'a named development is still treated as open-market stock');
+
+  // ...and an unbranded listing genuinely is wider market.
+  const anonymous = scoreComparable(SUBJECT, {
+    address: 'თბილისი, სადგურის მოედანი', area: '95', pricePerSqm: '3000',
+    currency: 'GEL', comparableType: 'MICRO_LOCATION',
+  });
+  assert.equal(anonymous.tier, 'WIDER_MARKET', 'an unbranded flat was promoted to a peer project');
+});
+
+test('a peer never outranks a location match', () => {
+  const peer = scoreComparable(SUBJECT, { project: 'Vake Boutique', address: 'თბილისი, ვაკე', area: '95', pricePerSqm: '2400', currency: 'USD' });
+  const district = scoreComparable(SUBJECT, { project: 'Ortachala Hills', address: 'თბილისი, კრწანისი, ორთაჭალის გზა 4', area: '92', pricePerSqm: '1600', currency: 'USD' });
+  const sameProject = scoreComparable(SUBJECT, { project: 'VILLION Krtsanisi Homes', address: 'კრწანისის ქუჩა 6', area: '94', pricePerSqm: '1850', currency: 'USD' });
+  assert.ok(peer.relevance < district.relevance, 'a peer outranked a district match');
+  assert.ok(district.relevance < sameProject.relevance, 'a district match outranked the same building');
+});
+
+test('the research prompt asks for a usable band, not a token listing', () => {
+  // A band holding ONE listing cannot carry a comparison — MIN_FOR_BASIS
+  // refuses it — so asking for restraint produced bands that were, in
+  // practice, unresearched. The instruction must be a floor.
+  const agent = read('supabase/functions/research-agent/index.ts');
+  assert.ok(/DEPTH PER BAND/.test(agent), 'there is no per-band depth instruction');
+  assert.ok(/AT LEAST 3/.test(agent), 'no minimum is requested');
+  assert.ok(/never stop at one/.test(agent), 'a single listing is still an acceptable band');
+  // The anti-fabrication bound must survive alongside it.
+  assert.ok(/never pad a band/.test(agent), 'the anti-padding rule was lost');
+  assert.ok(/an honestly empty band is correct/.test(agent), 'an empty band is no longer allowed');
+});

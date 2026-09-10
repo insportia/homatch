@@ -221,6 +221,9 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
   let score = 20;
 
   const peerProject = lower(c.comparableType) === 'peer_project';
+  // A project name the subject does not share. Not a location match, but
+  // not anonymous stock either.
+  const namedDevelopment = !!text(c.project);
   const sameProject =
     lower(c.comparableType) === 'same_project' ||
     (!!subject.project && !!c.project && lower(c.project).includes(lower(subject.project).split(' ')[0]));
@@ -242,10 +245,21 @@ export function scoreComparable(subject: Subject, c: RawComparable): ScoredCompa
     tier = 'SAME_DISTRICT';
     score = 58;
     reasons.push('same district');
-  } else if (peerProject) {
-    // The research layer judged this a comparable development rather than
-    // arbitrary city stock. Better than the open market, weaker than a
-    // location match, and never allowed to outrank one.
+  } else if (peerProject || namedDevelopment) {
+    /*
+     * A NAMED DEVELOPMENT ELSEWHERE IS A PEER, NOT GENERIC STOCK.
+     *
+     * PEER_PROJECT had never once been produced in production. The research
+     * layer labels a distant development MICRO_LOCATION more often than
+     * PEER_PROJECT, and this branch only trusted its label — so a comparable
+     * like "Villa Residence" on a street with no district hint fell all the
+     * way to WIDER_MARKET and sat beside arbitrary city stock.
+     *
+     * Carrying a project NAME is itself the evidence: an apartment in a named
+     * development is a closer comparison for another named development than
+     * an unbranded flat is. Better than the open market, weaker than any
+     * location match, and never allowed to outrank one.
+     */
     tier = 'PEER_PROJECT';
     score = 40;
     reasons.push('comparable development');

@@ -115,6 +115,33 @@ test('the anon grant revoke on research_jobs is committed as a migration', () =>
     'the migration does not actually revoke the anon grants');
 });
 
+test('research_jobs is aligned with the other case tables on forced RLS', () => {
+  // Deliberately recorded as alignment, not as a protection win: both
+  // postgres (the owner) and service_role hold BYPASSRLS, so FORCE changes
+  // no behaviour today. It matters if ownership ever moves to a role without
+  // that attribute.
+  const dir = join(ROOT, 'supabase/migrations');
+  const file = readdirSync(dir).find((f) => f.includes('force_rls_on_research_jobs'));
+  assert.ok(file, 'the force-RLS migration is not in the repository');
+  const sql = readFileSync(join(dir, file), 'utf8');
+  assert.ok(/alter table public\.research_jobs force row level security/i.test(sql),
+    'the migration does not force RLS');
+  assert.ok(/BYPASSRLS/.test(sql), 'the migration does not record why this is not a protection win');
+});
+
+test('the mobile regression needs no undocumented machine state', () => {
+  // It used to run only if you knew to set PLAYWRIGHT_CORE_PATH. A suite
+  // that skips for an unexplained reason is a suite nobody turns back on.
+  const suite = readFileSync(join(ROOT, 'tests/mobile/mobileOverflow.test.mjs'), 'utf8');
+  assert.ok(/test:mobile:setup/.test(suite), 'the skip message does not name the fix');
+  assert.ok(/\.tooling/.test(suite), 'the provisioned driver location is not consulted');
+  assert.ok(/function findChrome/.test(suite), 'Chrome is hardcoded to one machine again');
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  for (const s of ['test:mobile', 'test:mobile:setup', 'build:harness']) {
+    assert.ok(pkg.scripts[s], `npm script ${s} is missing`);
+  }
+});
+
 test('every migration has a unique version prefix', () => {
   // Two files once shared 20260910120000, which is exactly the collision that
   // makes a replay tool pick the wrong one.

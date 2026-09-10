@@ -77,14 +77,26 @@ test('thousands separators and currency symbols parse correctly', () => {
   assert.equal(c.pricePerSqm, 1850);
 });
 
-test('a same-project listing always outranks a city-wide one', () => {
+test('a same-project listing always outranks one from elsewhere', () => {
   const same = scoreComparable(SUBJECT, comp());
-  const far = scoreComparable(SUBJECT, comp({
+  // A NAMED development in another district is a peer project, not anonymous
+  // market stock — that classification became reachable when PEER_PROJECT
+  // stopped depending on the research layer volunteering the label. The
+  // invariant this test exists for is unchanged: it must never outrank the
+  // same building.
+  const namedElsewhere = scoreComparable(SUBJECT, comp({
     project: 'Other', address: 'თბილისი, საბურთალო', comparableType: 'CITY',
   }));
-  assert.ok(same.relevance > far.relevance);
+  assert.ok(same.relevance > namedElsewhere.relevance);
   assert.equal(same.tier, 'SAME_PROJECT');
-  assert.equal(far.tier, 'WIDER_MARKET');
+  assert.equal(namedElsewhere.tier, 'PEER_PROJECT');
+
+  // An UNBRANDED listing elsewhere is still the wider market.
+  const anonymous = scoreComparable(SUBJECT, comp({
+    project: null, address: 'თბილისი, საბურთალო', comparableType: 'CITY',
+  }));
+  assert.equal(anonymous.tier, 'WIDER_MARKET');
+  assert.ok(same.relevance > anonymous.relevance);
 });
 
 test('the analysis is based on the narrowest band with enough listings', () => {

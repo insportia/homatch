@@ -387,6 +387,26 @@ test('real findings appear DURING the run, not only at the end', () => {
     'the partial result is not cleared when switching runs');
 });
 
+test('the report fetch always settles, so loading can never stick', () => {
+  // Found live on a COMPLETE verification whose report was already persisted
+  // and READY: the page sat on the research stream indefinitely. The fetch
+  // had no timeout, so the await never resolved, the finally never ran, and
+  // setLoading(false) never fired.
+  const page = code('src/pages/VerifyPage.tsx').replace(/\s+/g, ' ');
+  assert.ok(/SYNTHESIS_FETCH_TIMEOUT_MS/.test(page), 'the report fetch is unbounded again');
+  assert.ok(/Promise\.race\(\[/.test(page), 'nothing guarantees the fetch settles');
+  assert.ok(/finally\{setSynthesisLoading\(false\)\}/.test(page), 'the loading flag is not released');
+});
+
+test('there is nothing to stop once research has finished', () => {
+  // The stop control kept showing while only the REPORT was still building.
+  // Research was already complete; offering to cancel it is a lie about what
+  // the button does.
+  const page = code('src/pages/VerifyPage.tsx').replace(/\s+/g, ' ');
+  assert.ok(/onStop=\{report\?undefined:/.test(page),
+    'stop research is still offered after research completed');
+});
+
 test('a page with no job named in its URL reattaches to a running one', () => {
   const page = code('src/pages/VerifyPage.tsx').replace(/\s+/g, ' ');
   assert.ok(/recovered\.current/.test(page), 'there is no reattach guard');

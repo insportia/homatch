@@ -1,4 +1,16 @@
-// HOMATCH VERIFY — what a given kind of property is actually worth researching.
+// HOMATCH VERIFY — what we derive about a property from evidence we already
+// have, and what that means for how deeply we research it.
+//
+// Three things live here, and they share a rule: each reads evidence that is
+// already in hand and never invents any.
+//
+//   publicResearchScope()      what is worth researching for this archetype
+//   resolveAssetClass()        what kind of property this is
+//   extractControlStructure()  who can actually sign for the company
+//
+// They are in one module because they are all imported by BOTH the Deno edge
+// functions and the test suite — which is the point: the tests exercise the
+// code that ships rather than a copy of it.
 //
 // This decides the PUBLIC_RESEARCH plan from the property's classification.
 // It is the point where an archetype stops being a label and starts changing
@@ -153,7 +165,7 @@ export const NARROWED_ASSET_CLASSES = ['PRIVATE_RESALE', 'RENTAL', 'PRIVATE_HOUS
 const DIRECTORATE_RE =
   /([\u10A0-\u10FF][\u10A0-\u10FF ]{2,60}?),\s*\d{11}\s*,\s*(ერთობლივი|ერთპიროვნულ[ია]?[და]?|დამოუკიდებლად)/gu;
 
-function extractControlStructure(browserOfficial: unknown): {
+export function extractControlStructure(browserOfficial: unknown): {
   directors: string[];
   representation: 'JOINT' | 'SOLE' | null;
 } {

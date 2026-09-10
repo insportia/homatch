@@ -93,4 +93,48 @@ if (fatal.length) {
   process.exit(1);
 }
 
-console.log(`[edge-check] all ${entries.length} edge functions parse.`);
+/*
+ * PASS 2 — does everything it calls actually exist?
+ *
+ * Pass 1 proves the file PARSES. It cannot prove the file is coherent: a call
+ * to a function that has been moved or renamed is perfectly good syntax, and
+ * the Supabase bundler does not check references either. So a
+ * research-agent/index.ts calling a function that had moved into a shared
+ * module passed the syntax gate, passed the bundler, deployed successfully,
+ * and returned
+ *
+ *   500 {"error":"Internal server error","detail":"extractControlStructure is not defined"}
+ *
+ * on the customer's very next report view.
+ *
+ * With module resolution ON, tsc reports exactly that as TS2304. The only
+ * TS2304s on a healthy tree are the Deno runtime globals, which are real and
+ * simply absent from this repo's lib — so they are allowed by name, and
+ * anything else is a genuine missing reference.
+ */
+const DENO_GLOBALS = new Set(['Deno', 'EdgeRuntime']);
+
+console.log('[edge-check] checking references...');
+
+const refRes = spawnSync(
+  process.platform === 'win32' ? 'npx.cmd' : 'npx',
+  ['tsc', '--noEmit', '--allowJs', 'false', '--target', 'esnext', '--module', 'esnext', '--moduleResolution', 'bundler', ...entries],
+  { encoding: 'utf8', shell: process.platform === 'win32' }
+);
+
+const refOutput = `${refRes.stdout ?? ''}${refRes.stderr ?? ''}`;
+const missing = refOutput
+  .split('\n')
+  .filter((l) => l.startsWith('supabase/functions') && l.includes('TS2304'))
+  .filter((l) => {
+    const name = (l.match(/Cannot find name '([^']+)'/) ?? [])[1];
+    return name && !DENO_GLOBALS.has(name);
+  });
+
+if (missing.length) {
+  console.error('\n[edge-check] these are called but do not exist — the function will throw at runtime:\n');
+  for (const m of missing) console.error('  ' + m.trim());
+  process.exit(1);
+}
+
+console.log(`[edge-check] all ${entries.length} edge functions parse, and every reference resolves.`);

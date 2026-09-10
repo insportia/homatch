@@ -200,19 +200,26 @@ test('every customer-visible string is cleaned before it renders', () => {
 
 /* ---------------- six languages ---------------- */
 
-test('every report string exists in all six languages', () => {
-  const keys = [
-    'verify_section_intro', 'verify_section_property', 'verify_section_ownership',
-    'verify_section_company', 'verify_section_people', 'verify_section_professionals',
-    'verify_section_construction', 'verify_section_permits', 'verify_section_location',
-    'verify_section_market', 'verify_section_price', 'verify_section_confirm',
-    'verify_section_assessment', 'verify_section_meaning', 'verify_section_next',
-    'verify_report_why', 'verify_report_evidence_toggle', 'verify_report_evidence_hint',
-    'verify_report_incomplete', 'verify_report_incomplete_note', 'verify_report_preparing',
-  ];
-  for (const k of keys) {
-    assert.equal((translations.match(new RegExp(`\\b${k}:`, 'g')) ?? []).length, 6,
-      `${k} must exist in KA/EN/RU/AR/TR/HE`);
+test('every report string the UI renders exists in all six languages', () => {
+  // This used to assert a hand-written list of verify_section_* keys. Those
+  // belonged to the pre-v2 report, where the UI held a map of section titles.
+  // Titles now travel WITH each section — the very next test documents that —
+  // so the list had been asserting the continued existence of keys no
+  // component reads, and it broke the moment the dead-key sweep removed them.
+  //
+  // Reading the keys out of the component instead means this can never again
+  // drift from what the report actually renders.
+  // Counting with split(), not RegExp built from a template literal.
+  // a word-boundary escape inside a template literal is a BACKSPACE character,
+  // boundary — the same escape trap that once shipped a 0x08 byte into a
+  // production regex. String matching removes the trap entirely.
+  const used = [...report.matchAll(/t\(\s*'([a-z0-9_]+)'\s*\)/g)].map((m) => m[1]);
+  const unique = [...new Set(used)];
+  assert.ok(unique.length >= 8, `expected the report to render several keys, found ${unique.length}`);
+  for (const k of unique) {
+    const defined = translations.split(`
+  ${k}: `).length - 1;
+    assert.equal(defined, 6, `${k} is rendered by the report but defined in ${defined} of 6 languages`);
   }
 });
 

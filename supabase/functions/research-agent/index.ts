@@ -3598,9 +3598,43 @@ const FORBIDDEN_LEAK_TOKENS = [
   'frame_not_found',
   'technical failure',
 ];
+/*
+ * THE SAFETY NET HAD NO IDEA WHAT A PERSONAL IDENTIFIER LOOKED LIKE.
+ *
+ * FORBIDDEN_LEAK_TOKENS is a list of literal strings — portal names, internal
+ * field names, technical failure text. It caught none of what actually
+ * reached customers: eleven-digit Georgian personal numbers, dates of birth
+ * of previous owners, and registry OCR in a legacy font encoding read back as
+ * Latin-1. Those are fixed at the primary sanitiser, which is where they
+ * should be fixed. But a last-resort net that cannot see the most sensitive
+ * category of leak is not a net for it, and this class of bug has now
+ * occurred twice.
+ *
+ * These patterns are INDEPENDENT of sanitizeCustomerString: if it is ever
+ * changed, bypassed, or handed a shape it does not recognise, this still
+ * fires. In normal operation it must find nothing — a hit here means the
+ * primary defence has a hole, and it is logged as exactly that.
+ */
+const FORBIDDEN_LEAK_PATTERNS: { name: string; re: RegExp }[] = [
+  // A Georgian personal number is eleven digits. A company id is nine and is
+  // public, so the bound matters in both directions.
+  { name: 'personal_id_11_digits', re: /(?<!\d)\d{11}(?!\d)/g },
+  { name: 'personal_id_label', re: /(?:პ\/?ნ|პირადი\s*ნომერი|p\s*\/\s*n)\s*[:№#]?\s*\d/gi },
+  { name: 'date_of_birth', re: /(?:დაბ|ÃÀÁ|born)\s*\.?\s*:?\s*\d{2}[./]\d{2}[./]\d{4}/gi },
+  // Registry PDFs in a legacy Georgian font decoded as Latin-1. Runs of
+  // accented capitals like "ÌÀÒÉÍÀ ÊÀÝÉÔÀÞÄ" do not occur in real copy.
+  { name: 'mojibake_registry_text', re: /[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÐÒÓÔÕÖÙÚÛÜÝÞ]{4,}/g },
+];
+
 function findLeaks(customerJson: unknown): string[] {
-  const raw = JSON.stringify(customerJson).toLowerCase();
-  return FORBIDDEN_LEAK_TOKENS.filter((token) => raw.includes(token));
+  const json = JSON.stringify(customerJson);
+  const raw = json.toLowerCase();
+  const hits = FORBIDDEN_LEAK_TOKENS.filter((token) => raw.includes(token));
+  for (const { name, re } of FORBIDDEN_LEAK_PATTERNS) {
+    re.lastIndex = 0;
+    if (re.test(json)) hits.push(name);
+  }
+  return hits;
 }
 export function assertNoLeaks(customerJson: unknown): void {
   const leaks = findLeaks(customerJson);
@@ -3720,7 +3754,17 @@ function sanitizeForCustomer(job: any): any {
   if (leaks.length) {
     console.error(`research-agent: sanitizeForCustomer residual leak (job ${job.id}): ${leaks.join(', ')}`);
     let raw = JSON.stringify(r);
-    for (const token of leaks) raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '');
+    for (const token of leaks) {
+      // A pattern hit is reported by NAME, so it is removed by its pattern
+      // rather than by deleting the literal name from the payload.
+      const pattern = FORBIDDEN_LEAK_PATTERNS.find((p) => p.name === token);
+      if (pattern) {
+        pattern.re.lastIndex = 0;
+        raw = raw.replace(pattern.re, '');
+        continue;
+      }
+      raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\    for (const token of leaks) raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '');'), 'gi'), '');
+    }
     try {
       return { ...job, result_json: JSON.parse(raw) };
     } catch {

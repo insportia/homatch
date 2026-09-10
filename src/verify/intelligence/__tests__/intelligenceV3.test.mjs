@@ -266,3 +266,99 @@ test('a real value that merely looks shouty is still shown', () => {
   const b = buildIntelligenceBundle(report, buildEvidencePackage(report), null);
   assert.equal(b.snapshot.propertyType, 'ბინა');
 });
+
+/* ── thin evidence stays honest about being thin ─────────────────────── */
+
+const one = (over = {}) => ({
+  project: 'VILLION Krtsanisi Homes', address: 'კრწანისის ქუჩა 6',
+  area: '94', pricePerSqm: '1850', currency: 'USD',
+  comparableType: 'SAME_PROJECT', listingStatus: 'ACTIVE', ...over,
+});
+
+test('rich same-project evidence carries the analysis and is not marked thin', () => {
+  const m = buildMarketIntelligence(SUBJECT, [one(), one({ pricePerSqm: '1870' }), one({ pricePerSqm: '1830' })]);
+  assert.equal(m.basis, 'SAME_PROJECT');
+  assert.equal(m.basisIsThin, false);
+  assert.equal(m.tiers.find((t) => t.tier === 'SAME_PROJECT').thin, false);
+});
+
+test('a single comparable is used, but never called a market', () => {
+  // The exact shape the live report produced. The figures are real; what
+  // must not happen is presenting them as a distribution.
+  const m = buildMarketIntelligence(SUBJECT, [one()]);
+  assert.equal(m.count, 1);
+  assert.equal(m.median, 1850, 'a single asking price is still real information');
+  assert.equal(m.basisIsThin, true, 'one listing was presented as a market');
+  assert.ok(m.tiers.every((t) => t.thin), 'a one-listing band is not marked thin');
+});
+
+test('a thin basis is never labelled as a narrower band than the data spans', () => {
+  // The defect: with one same-project listing and others elsewhere, basis was
+  // stamped SAME_PROJECT while the median came from EVERY comparable — the
+  // report said "in the same project" about a number that was not.
+  //
+  // When no single band has enough, the analysis is stitched across bands.
+  // The honest label is then the WIDEST band the data reaches, never a
+  // narrower one, and the whole thing is thin by definition: two listings
+  // from two different bands do not describe either band.
+  const order = ['SAME_PROJECT', 'SAME_STREET', 'SAME_DISTRICT', 'PEER_PROJECT', 'WIDER_MARKET'];
+  const mixed = [
+    one(),
+    one({ project: 'Krtsanisi Park', address: 'კრწანისის ქუჩა 20', comparableType: 'MICRO_LOCATION', pricePerSqm: '1700' }),
+    one({ project: 'Vake Boutique', address: 'თბილისი, ვაკე', comparableType: 'PEER_PROJECT', pricePerSqm: '2400' }),
+  ];
+  const m = buildMarketIntelligence(SUBJECT, mixed);
+
+  assert.equal(m.basisIsThin, true, 'a stitched comparison was presented as a solid one');
+  // The label must resolve to a band that actually has listings...
+  const row = m.tiers.find((t) => t.tier === m.basis);
+  assert.ok(row, `basis ${m.basis} is not a band with any listings`);
+  // ...and must be at least as wide as every band that contributed.
+  const widestPresent = Math.max(...m.tiers.map((t) => order.indexOf(t.tier)));
+  assert.equal(order.indexOf(m.basis), widestPresent,
+    `basis ${m.basis} is narrower than the data it was computed from`);
+  // basisCount describes what was USED, which is all of it.
+  assert.equal(m.basisCount, 3);
+});
+
+test('peer, district and broader bands each carry the analysis when they are the narrowest with enough', () => {
+  const district = [
+    one({ project: 'A', address: 'თბილისი, კრწანისი, ორთაჭალის გზა 4', comparableType: 'MICRO_LOCATION', pricePerSqm: '1600' }),
+    one({ project: 'B', address: 'თბილისი, კრწანისი, ორთაჭალის გზა 9', comparableType: 'MICRO_LOCATION', pricePerSqm: '1650' }),
+  ];
+  assert.equal(buildMarketIntelligence(SUBJECT, district).basis, 'SAME_DISTRICT');
+  assert.equal(buildMarketIntelligence(SUBJECT, district).basisIsThin, false);
+
+  const peers = [
+    one({ project: 'Vake Boutique', address: 'თბილისი, ვაკე', comparableType: 'PEER_PROJECT', pricePerSqm: '2400' }),
+    one({ project: 'Saburtalo Sky', address: 'თბილისი, საბურთალო', comparableType: 'PEER_PROJECT', pricePerSqm: '1500' }),
+  ];
+  assert.equal(buildMarketIntelligence(SUBJECT, peers).basis, 'PEER_PROJECT');
+});
+
+test('no usable comparables produces no market section at all', () => {
+  assert.equal(buildMarketIntelligence(SUBJECT, []), null);
+  assert.equal(buildMarketIntelligence(SUBJECT, [{ project: 'x' }, { project: 'y', price: 'n/a' }]), null);
+});
+
+test('the model is told to treat thin evidence as indicative, never as a rate', () => {
+  const src = read('src/verify/intelligence/prompt.ts');
+  assert.ok(/basisIsThin/.test(src), 'the prompt never hears about thin evidence');
+  assert.ok(/NEVER describe one/.test(src) && /"the market"/.test(src),
+    'the prompt does not forbid calling one listing the market');
+  assert.ok(/never conclude a property/.test(src),
+    'the prompt allows a verdict from a single comparable');
+});
+
+test('the report marks a thin comparison for the reader too', () => {
+  const cmp = read('src/components/verify/VerifyReport.tsx');
+  assert.ok(/verify_mkt_thin_note/.test(cmp), 'a thin comparison is presented as a market rate');
+  assert.ok(/tr\.thin \?/.test(cmp), 'a thin band is not marked in the hierarchy');
+  // Neutral, not alarming: this is a limit of the evidence, not a property risk.
+  const bundle = read('src/i18n/translations.ts');
+  const notes = bundle.split('verify_mkt_thin_note: ').slice(1);
+  assert.equal(notes.length, 6);
+  for (const n of notes) {
+    assert.ok(!/(risk|რისკ|риск)/i.test(n.slice(0, 400)), 'thin evidence is framed as property risk');
+  }
+});

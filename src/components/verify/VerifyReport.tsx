@@ -73,6 +73,8 @@ export interface PropertySnapshot {
 
 export interface MarketTier {
   tier: string; median: number; min: number; max: number; count: number;
+  /** Too few listings to characterise this band on its own. */
+  thin?: boolean;
 }
 
 export interface MarketBlock {
@@ -83,6 +85,8 @@ export interface MarketBlock {
   tiers?: MarketTier[];
   /** Evidence-backed reasons a premium or discount may be rational. */
   qualityFactors?: { factor: string; direction: 'SUPPORTS_PREMIUM' | 'SUPPORTS_DISCOUNT' }[];
+  /** The whole comparison rests on one or two asking prices, not a spread. */
+  basisIsThin?: boolean;
 }
 
 export interface PersonBlock {
@@ -604,6 +608,12 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
                 <span className="ms-1 opacity-70">
                   {tr.count} {t('verify_mkt_listings')}
                 </span>
+                {/* Neutral, not a warning: one listing is real information,
+                    it just is not a spread. Saying so is more useful than
+                    hiding the band or dressing it up as a market rate. */}
+                {tr.thin ? (
+                  <span className="ms-1 opacity-70">· {t('verify_mkt_thin')}</span>
+                ) : null}
               </dt>
               <dd className="text-xs tabular-nums shrink-0">
                 {tr.median.toLocaleString()}
@@ -616,6 +626,12 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
             </div>
           ))}
         </dl>
+      ) : null}
+
+      {m.basisIsThin ? (
+        <p className="text-[11px] leading-5 text-muted-foreground break-words">
+          {t('verify_mkt_thin_note')}
+        </p>
       ) : null}
 
       {/* Why a premium or a discount may be RATIONAL. Deliberately no money

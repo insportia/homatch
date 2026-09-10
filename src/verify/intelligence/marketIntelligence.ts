@@ -41,6 +41,8 @@ export interface TierStats {
   min: number;
   max: number;
   count: number;
+  /** Too few listings to characterise this band on its own. */
+  thin: boolean;
 }
 
 /**
@@ -133,6 +135,12 @@ export interface MarketIntelligence {
   tiers: TierStats[];
   /** Evidence-backed reasons a premium or discount may be rational. */
   qualityFactors: QualityFactor[];
+  /**
+   * The analysis rests on fewer listings than it takes to describe a market.
+   * The figures are still real, but they are one or two asking prices — not
+   * a distribution — and every consumer of this object must say so.
+   */
+  basisIsThin: boolean;
   /** Always true: everything here is an ASK. */
   askingNotTransaction: true;
 }
@@ -397,13 +405,36 @@ export function buildMarketIntelligence(
   // listing from being presented as "the market".
   let basis: ComparableTier = 'WIDER_MARKET';
   let basisSet = scored;
+  let basisIsThin = false;
   for (const t of TIER_ORDER) {
     const inTier = scored.filter((c) => c.tier === t);
     if (inTier.length >= MIN_FOR_BASIS) { basis = t; basisSet = inTier; break; }
   }
-  // Nothing reached the minimum: use everything, and say so by staying on the
-  // widest tier rather than implying a precision we do not have.
-  if (basisSet === scored && tierCounts.SAME_PROJECT === 1) basis = 'SAME_PROJECT';
+  /*
+   * Nothing reached the minimum.
+   *
+   * This used to relabel the basis as SAME_PROJECT whenever exactly one
+   * same-project listing existed — while the median was still being computed
+   * across EVERY comparable. The report then said "in the same project"
+   * about a number that came from the whole set, which is the one thing a
+   * price comparison must never do.
+   *
+   * The honest description is: everything we have, and not enough of it. The
+   * numbers still compute — a single asking price is real information — but
+   * `basisIsThin` travels with them so the prose, the model and the UI can
+   * all say so instead of implying a precision that is not there.
+   */
+  if (basisSet === scored) {
+    // No single band could carry the analysis, so it is stitched across all
+    // of them. That is thin by definition, however many listings there are
+    // in total: two listings from two different bands do not describe either
+    // band. The label is the WIDEST band actually present — the honest
+    // description of a set that reaches that far — and never a narrower one
+    // the numbers did not come from.
+    basisIsThin = true;
+    const present = TIER_ORDER.filter((t) => tierCounts[t] > 0);
+    if (present.length) basis = present[present.length - 1];
+  }
 
   const values = basisSet.map((c) => c.pricePerSqm);
   const med = median(values);
@@ -436,9 +467,11 @@ export function buildMarketIntelligence(
         min: Math.round(Math.min(...vs)),
         max: Math.round(Math.max(...vs)),
         count: vs.length,
+        thin: vs.length < MIN_FOR_BASIS,
       };
     }).filter((x): x is TierStats => x !== null),
     qualityFactors: quality,
+    basisIsThin,
     askingNotTransaction: true,
   };
 

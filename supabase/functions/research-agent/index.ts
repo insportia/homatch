@@ -2923,12 +2923,16 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     jobId: j.id,
     queryType: j.mode,
     entityName: z.entity?.name || i.entity?.name || j.query,
-    entityType: z.entity?.type || i.entity?.type || 'UNKNOWN',
+    // entityType is the model's own free-text description of the property.
+    // It is no longer defaulted to the literal 'UNKNOWN' — that is an internal
+    // enum, and it was reaching the customer's property-type badge. The
+    // frontend decides what to show from assetClass when this says nothing.
+    entityType: z.entity?.type || i.entity?.type || null,
     // v28: evidence-classified, not guessed (see IDENTITY prompt's ASSET
     // CLASS instruction) — lets the frontend/AI-chat follow-up know why a
     // report has no companyProfile/utilitiesMatrix/landProfile section
     // without that ever being phrased as a finding in itself.
-    assetClass: i.assetClass || null,
+    assetClass: i.assetClass || null, // repaired from evidence below, and again on every read
     entityConfidence: identityConfidence,
     overallConfidence: gatedConfidence,
     dueDiligenceCoverage: coverage,
@@ -3441,6 +3445,49 @@ function isPermitParticipantFact(v: unknown): boolean {
   const k = (v as Record<string, unknown>).key;
   return typeof k === 'string' && PERMIT_PARTICIPANT_FACT_KEYS.has(k.trim().toLowerCase());
 }
+/*
+ * ASSET CLASS IS A CLASSIFICATION, NOT A SELF-REPORT.
+ *
+ * The IDENTITY prompt asks the model to classify the property and it answers
+ * MIXED_OR_UNKNOWN far too readily: across sixteen runs of one cadastral code
+ * in production it said MIXED_OR_UNKNOWN thirteen times, while those very
+ * same reports carried a named project (Villion), a developer, a developer
+ * website and a registry-confirmed company id. Research scope and every
+ * downstream "what kind of property is this" decision hang off this field, so
+ * an unknown the evidence already answers is a defect — and it is what left
+ * the customer's property-type badge falling back to free text that merely
+ * restated their own cadastral code.
+ *
+ * This only ever REPAIRS an absent or unknown classification, from evidence
+ * that is already in the report. It never overrides a class the model
+ * committed to, and it never invents one: with no project and no land
+ * evidence it stays MIXED_OR_UNKNOWN. NO EVIDENCE = NO FACT.
+ *
+ * It runs on the assembled report shape rather than on pipeline internals so
+ * that the SAME rule applies to reports already persisted, which are read
+ * through sanitizeForCustomer() below.
+ */
+function resolveAssetClass(r: any): string {
+  const declared = typeof r?.assetClass === 'string' ? r.assetClass : null;
+  if (declared && declared !== 'MIXED_OR_UNKNOWN') return declared;
+
+  const projectName = r?.projectProfile?.name || r?.reconciledIdentity?.project || null;
+  // Any one of these means somebody is actually behind the development, as
+  // opposed to a project name the research merely mentioned.
+  const developer =
+    r?.projectProfile?.developer || r?.projectProfile?.developerCompany || r?.projectProfile?.website || null;
+  const unitCode = r?.exactUnit?.code || null;
+
+  // A named development, a developer behind it, and an identified unit inside
+  // it. A cadastral code on its own never gets here.
+  if (projectName && developer && unitCode) return 'APARTMENT_IN_PROJECT';
+
+  // Land evidence, with no development named on it.
+  if (r?.landProfile && !projectName) return 'LAND';
+
+  return declared || 'MIXED_OR_UNKNOWN';
+}
+
 function sanitizeCustomerReport<T>(value: T, key?: string): T {
   if (Array.isArray(value)) {
     return value
@@ -3546,6 +3593,9 @@ function sanitizeForCustomer(job: any): any {
   }
   if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
   const r: any = sanitizeCustomerReport({ ...job.result_json });
+  // Applied on READ, so the reports already in the database are classified by
+  // the same rule as new ones rather than staying permanently unknown.
+  r.assetClass = resolveAssetClass(r);
   delete r.browserOfficial;
   delete r.entityConfidence;
   delete r.confidence;

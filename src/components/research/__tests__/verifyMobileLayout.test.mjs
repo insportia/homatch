@@ -115,8 +115,9 @@ test('long cadastral codes, evidence text and errors wrap instead of overflowing
   assert.match(verifySource, /text-sm font-medium break-all">\{exactUnit\.code\}/);
   assert.match(verifySource, /text-xs text-muted-foreground leading-relaxed break-words">• \{clean\(x\)\}/);
   assert.match(verifySource, /text-sm text-destructive break-words">\{err\}/);
-  // Truncating rows need min-w-0 to truncate rather than push the row wide.
-  assert.match(verifySource, /border text-xs min-w-0"><span className="truncate min-w-0">/);
+  // The retrieved-documents card lists dates as chips rather than one long
+  // identifier per row, so its overflow guard is wrapping, not truncation.
+  assert.match(verifySource, /className="flex flex-wrap gap-1">\{g\.dates\.map/);
 });
 
 /* ------------------------------------------------------------------ *

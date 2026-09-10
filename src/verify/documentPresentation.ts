@@ -167,7 +167,7 @@ export function readableDocumentDate(raw: unknown): string | null {
 // belong in the underlying document. A history row needs to say what KIND of
 // document it was, in the reader's own language.
 const PERMIT_REF = /\bAR\s?(\d{5,})\b/i;
-const REGISTRY_REF = /\b(?:NAPR\s+registration|რეგისტრაცია)\s*(\d{6,})\b/i;
+const REGISTRY_REF = /\b(?:NAPR\s+registration|ABSTRACT\s*N\s*:?|რეგისტრაცია|ამონაწერი)\s*(\d{6,})\b/i;
 
 export type DocumentKind = 'PERMIT_DOCUMENT' | 'REGISTRY_RECORD' | 'DOCUMENT';
 
@@ -180,7 +180,7 @@ export const DOCUMENT_KIND_KEY: Record<DocumentKind, string> = {
 export function documentKind(title: unknown): DocumentKind {
   const s = typeof title === 'string' ? title : '';
   if (PERMIT_REF.test(s)) return 'PERMIT_DOCUMENT';
-  if (REGISTRY_REF.test(s) || /\bNAPR\b/i.test(s)) return 'REGISTRY_RECORD';
+  if (REGISTRY_REF.test(s) || /\bNAPR\b|\bABSTRACT\b/i.test(s)) return 'REGISTRY_RECORD';
   return 'DOCUMENT';
 }
 
@@ -323,4 +323,78 @@ export function summarizeDocumentHistory(hc: unknown): HistorySummary | null {
     firstDate: dates[0] ?? null,
     lastDate: dates.length ? dates[dates.length - 1] : null,
   };
+}
+
+/* ── the documents actually retrieved ────────────────────────────────── */
+
+/*
+ * A LIST OF IDENTIFIERS IS NOT EVIDENCE A BUYER CAN USE.
+ *
+ * The drawer listed all 31 rows verbatim, two per permit:
+ *
+ *   NAPR registration 882025810877 · D:20250714081926+00'00'
+ *   ABSTRACT N:892023420105 · 2023-12-19
+ *   AR11148112 17/06/2026
+ *   AR11148112 შედეგის ნახვა 1
+ *
+ * The same three faults as the revision timeline — internal identifiers, PDF
+ * metadata dates, one document split across two rows — and the reader learns
+ * nothing from any of it. What genuinely tells them how deep the check went
+ * is the shape: how many records of each kind, and the period they cover.
+ */
+
+export type DocumentGroup = {
+  kindKey: string;
+  count: number;
+  firstDate: string | null;
+  lastDate: string | null;
+  dates: string[];
+};
+
+const GROUP_LABEL_KEY: Record<DocumentKind, string> = {
+  REGISTRY_RECORD: 'verify_docgroup_registry',
+  PERMIT_DOCUMENT: 'verify_docgroup_permit',
+  DOCUMENT: 'verify_docgroup_other',
+};
+
+// Registry history first: it is what establishes ownership and encumbrance.
+const GROUP_ORDER: DocumentKind[] = ['REGISTRY_RECORD', 'PERMIT_DOCUMENT', 'DOCUMENT'];
+
+export function summarizeOfficialDocuments(docs: unknown): DocumentGroup[] {
+  if (!Array.isArray(docs)) return [];
+
+  // One entry per underlying document. A permit arrives as an "AR… <date>"
+  // row and an "AR… შედეგის ნახვა 1" row; only one of them carries the date.
+  const seen = new Map<string, { kind: DocumentKind; date: string | null }>();
+  let fallbackId = 0;
+
+  for (const d of docs) {
+    if (!d || typeof d !== 'object') continue;
+    const rec = d as Record<string, unknown>;
+    const title = rec.title;
+    const date = readableDocumentDate(rec.date) ?? readableDocumentDate(title);
+    const key = documentRef(title) ?? `#${fallbackId++}`;
+
+    const existing = seen.get(key);
+    if (existing) {
+      existing.date = existing.date ?? date;
+      continue;
+    }
+    seen.set(key, { kind: documentKind(title), date });
+  }
+
+  const groups: DocumentGroup[] = [];
+  for (const kind of GROUP_ORDER) {
+    const members = [...seen.values()].filter((m) => m.kind === kind);
+    if (!members.length) continue;
+    const dates = [...new Set(members.map((m) => m.date).filter((d): d is string => !!d))].sort();
+    groups.push({
+      kindKey: GROUP_LABEL_KEY[kind],
+      count: members.length,
+      firstDate: dates[0] ?? null,
+      lastDate: dates.length ? dates[dates.length - 1] : null,
+      dates,
+    });
+  }
+  return groups;
 }

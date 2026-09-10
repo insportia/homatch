@@ -19,6 +19,7 @@ import {
   documentRef,
   buildDocumentRows,
   summarizeDocumentHistory,
+  summarizeOfficialDocuments,
 } from '../documentPresentation.ts';
 
 const ROOT = process.cwd();
@@ -219,6 +220,66 @@ test('a missing or malformed timeline yields nothing, never a throw', () => {
   }
 });
 
+/* ── the documents retrieved ─────────────────────────────────────────── */
+
+test('an ABSTRACT extract is recognised as a registry record', () => {
+  // A third title shape alongside "NAPR registration …" — it was falling
+  // through to the generic bucket and printing its own identifier.
+  assert.equal(documentKind('ABSTRACT N:892023420105'), 'REGISTRY_RECORD');
+  assert.equal(documentRef('ABSTRACT N:892023420105'), 'REG892023420105');
+});
+
+test('the retrieved-documents list is grouped and counted, never listed by identifier', () => {
+  // The production shape: registry extracts with real dates, NAPR rows whose
+  // only date is PDF metadata, and permits split across two rows.
+  const groups = summarizeOfficialDocuments([
+    { title: 'ABSTRACT N:882009400862', date: '2009-12-07' },
+    { title: 'ABSTRACT N:892023420105', date: '2023-12-19' },
+    { title: 'NAPR registration 892024224686', date: "D:20240823122736+00'00'" },
+    { title: 'AR11026464 28/03/2024', date: null },
+    { title: 'AR11026464 შედეგის ნახვა 1', date: null },
+    { title: 'AR11148112 17/06/2026', date: null },
+    { title: 'AR11148112 შედეგის ნახვა 1', date: null },
+    { title: 'Official extract', date: null },
+  ]);
+
+  const registry = groups.find((g) => g.kindKey === 'verify_docgroup_registry');
+  assert.equal(registry.count, 3, 'registry records were miscounted');
+  assert.equal(registry.firstDate, '2009-12-07');
+  assert.equal(registry.lastDate, '2024-08-23', 'the PDF metadata date was not converted');
+
+  const permits = groups.find((g) => g.kindKey === 'verify_docgroup_permit');
+  assert.equal(permits.count, 2, 'each permit was counted twice');
+  assert.deepEqual(permits.dates, ['2024-03-28', '2026-06-17']);
+
+  assert.equal(groups.find((g) => g.kindKey === 'verify_docgroup_other').count, 1);
+});
+
+test('registry history is stated before permits', () => {
+  // Ownership and encumbrance history is what a buyer needs first.
+  const groups = summarizeOfficialDocuments([
+    { title: 'AR11026464 28/03/2024' },
+    { title: 'ABSTRACT N:882009400862', date: '2009-12-07' },
+  ]);
+  assert.deepEqual(groups.map((g) => g.kindKey), ['verify_docgroup_registry', 'verify_docgroup_permit']);
+});
+
+test('an empty or malformed document list renders nothing, never a throw', () => {
+  for (const v of [null, undefined, [], {}, 'nope', [null, 7]]) {
+    assert.deepEqual(summarizeOfficialDocuments(v), []);
+  }
+});
+
+test('the page no longer renders a document title or its raw date', () => {
+  const page = code('src/pages/VerifyPage.tsx');
+  const card = page.slice(page.indexOf('function OfficialDocumentsCard'));
+  const body = card.slice(0, card.indexOf('\nfunction '));
+  assert.ok(/summarizeOfficialDocuments\(docs\)/.test(body), 'the card does not go through the presentation boundary');
+  assert.ok(!/d\.title/.test(body), 'the raw document title is rendered again');
+  assert.ok(!/d\.date/.test(body), 'the raw document date is rendered again');
+  assert.ok(!/d\.sourceName|d\.source\b/.test(body), 'the source name is rendered again');
+});
+
 /* ── document history is counted, not diffed ─────────────────────────── */
 
 test('history is summarized from structure, and reports what changed', () => {
@@ -308,6 +369,11 @@ test('every new key exists in all six languages', () => {
     'verify_history_span',
     'verify_history_amended',
     'verify_history_none_changed',
+    'verify_docgroup_registry',
+    'verify_docgroup_permit',
+    'verify_docgroup_other',
+    'verify_docgroup_count',
+    'verify_docgroup_count_span',
   ]) {
     const n = bundle.split(`\n  ${key}: `).length - 1;
     assert.equal(n, 6, `${key} is defined ${n} times, expected all six languages`);

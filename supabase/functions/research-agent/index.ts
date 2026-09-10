@@ -3324,6 +3324,23 @@ const TECHNICAL_LEAK_RE =
  * CUSTOMER_REPORT_STRIP_KEYS's key-level stripping. Collapses the leftover
  * whitespace/punctuation debris a removal leaves behind so the sentence
  * still reads naturally. */
+/*
+ * PERSONAL IDENTIFICATION NUMBERS MUST NEVER REACH A CUSTOMER PAYLOAD.
+ *
+ * Found in production: the Evidence drawer for a live report displayed four
+ * private individuals' Georgian personal numbers, carried in technical facts
+ * shaped "ლევან ჩაჩუა პ/ნ 01012012287". They came from building-permit
+ * applications, which name the people who filed them.
+ *
+ * A Georgian personal number is ELEVEN digits. A company identification
+ * number is NINE, is public by design, and is genuinely useful to a buyer
+ * checking a seller in the taxpayer register — so the two must not be
+ * conflated. Only the 11-digit form is removed, together with the "პ/ნ"
+ * label that introduces it, so the person's NAME survives where it is
+ * legitimately relevant.
+ */
+const PERSONAL_ID_RE = /\b\d{11}\b/g;
+const PERSONAL_ID_LABEL_RE = /\s*(?:პ\/?ნ|პირადი\s*ნომერი|personal\s*(?:id|number))\s*[:№#]?\s*\d{11}\b/gi;
 function sanitizeCustomerString(input: string): string {
   if (!input) return input;
   let s = input;
@@ -3335,6 +3352,10 @@ function sanitizeCustomerString(input: string): string {
   s = s.replace(/\((?:via\s+)?[^()]*(?:myhome|ss\.ge|home\.ge|korter|estatehub|villion\.ge|linkedin|facebook|instagram)[^()]*\)/gi, '');
   s = s.replace(FORBIDDEN_SOURCE_NAME_RE, '');
   s = s.replace(TECHNICAL_LEAK_RE, '');
+  // Label first ("… პ/ნ 01012012287" -> "…"), then any bare 11-digit number
+  // that survived in another shape. Company ids (9 digits) are untouched.
+  s = s.replace(PERSONAL_ID_LABEL_RE, '');
+  s = s.replace(PERSONAL_ID_RE, '');
   // Collapse whitespace/punctuation left behind by the removals above
   // (double spaces, orphaned "()" or " — " fragments, stray commas/hyphens
   // at either end). A trailing "." is deliberately EXCLUDED from this
@@ -3361,8 +3382,46 @@ function sanitizeCustomerString(input: string): string {
 // label"). Every other string field, whatever its key, still gets the
 // full sanitizeCustomerString treatment.
 const CUSTOMER_FACING_URL_KEYS = new Set(['officialPortalUrl']);
+/*
+ * PERMIT PARTICIPANTS ARE NOT BUYER INTELLIGENCE.
+ *
+ * A building permit names the people who filed it: the applicant, the
+ * co-authors of the drawings, the engineers. A name appearing in an
+ * application does not make that person an owner, a shareholder, a director
+ * or a seller — and none of them help someone decide whether to buy the
+ * flat. They were reaching the Evidence drawer as technical facts, carrying
+ * private personal numbers with them.
+ *
+ * They are dropped from the customer payload entirely. The underlying
+ * documents are untouched in the database for support and admin use; this
+ * only decides what a customer is shown.
+ */
+const PERMIT_PARTICIPANT_FACT_KEYS = new Set([
+  'applicant',
+  'applicants',
+  'coauthors',
+  'coauthor',
+  'author',
+  'authors',
+  'architect',
+  'engineer',
+  'designer',
+  'supervisor',
+]);
+
+/** A technical fact whose KEY names a permit participant rather than a
+ *  property attribute. Matched case-insensitively on the fact's own `key`. */
+function isPermitParticipantFact(v: unknown): boolean {
+  if (!v || typeof v !== 'object') return false;
+  const k = (v as Record<string, unknown>).key;
+  return typeof k === 'string' && PERMIT_PARTICIPANT_FACT_KEYS.has(k.trim().toLowerCase());
+}
 function sanitizeCustomerReport<T>(value: T, key?: string): T {
-  if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v, key)) as unknown as T;
+  if (Array.isArray(value)) {
+    return value
+      .filter((v) => !isPermitParticipantFact(v))
+      .map((v) => sanitizeCustomerReport(v, key)) as unknown as T;
+  }
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {

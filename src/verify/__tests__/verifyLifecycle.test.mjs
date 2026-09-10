@@ -339,6 +339,26 @@ test('a synthesis stalled mid-flight is retried, not abandoned', () => {
   assert.ok(/staleBefore/.test(block), 'staleness is not evaluated at all');
 });
 
+test('no driver sweep swallows a query error', () => {
+  // supabase-js does not throw on a query failure, it returns { error }. The
+  // live-job sweep is the ONLY thing that moves a job forward once its client
+  // is gone, so discarding its error means every live verification quietly
+  // stops advancing with nothing saying why.
+  const agent = code('supabase/functions/research-agent/index.ts');
+  for (const [name, marker] of [
+    ['live-job sweep', 'liveSweepError'],
+    ['abandoned-job sweep', 'reaperError'],
+    ['per-tick job read', 'readError'],
+  ]) {
+    assert.ok(agent.includes(marker), `the ${name} still discards its query error`);
+    // A plain string, not a RegExp built from a template literal: inside a
+    // template literal an escaped parenthesis collapses to a bare one, so the
+    // pattern became a capture group and matched nothing. Same escaping trap
+    // that has bitten this codebase three times now.
+    assert.ok(agent.includes(`if (${marker})`), `the ${name} captures its error but never checks it`);
+  }
+});
+
 test('the synthesis sweep never swallows a query error', () => {
   // It went silent exactly once this way: an unsupported filter returned no
   // rows and no exception, so COMPLETE jobs stopped getting reports with

@@ -3608,7 +3608,13 @@ async function driveJob(sb: any, key: string, model: string, id: string): Promis
   const deadline = Date.now() + DRIVE_WALL_CLOCK_MS;
   try {
     for (let i = 0; i < DRIVE_TICKS_PER_JOB && Date.now() < deadline; i++) {
-      const { data: j } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
+      const { data: j, error: readError } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
+      // A read failure is not the same as a finished job. Both stop this
+      // invocation, but only one of them is worth knowing about.
+      if (readError) {
+        console.error(`research-agent drive: could not read job ${id}`, readError);
+        return;
+      }
       // Terminal, cancelled, or now waiting on a human: the driver's job here
       // is done and re-ticking would be wrong, not merely wasteful.
       if (!j || j.cancelled_at || !DRIVE_LIVE_STATUSES.includes(j.status)) return;
@@ -3718,7 +3724,7 @@ async function driveSynthesis(sb: any): Promise<void> {
 
 async function driveLiveJobs(sb: any, key: string, model: string): Promise<void> {
   try {
-    const { data: jobs } = await sb
+    const { data: jobs, error: liveSweepError } = await sb
       .from('research_jobs')
       .select('id')
       .in('status', DRIVE_LIVE_STATUSES)
@@ -3728,6 +3734,21 @@ async function driveLiveJobs(sb: any, key: string, model: string): Promise<void>
       .gt('created_at', new Date(Date.now() - DRIVE_MAX_AGE_MS).toISOString())
       .order('updated_at', { ascending: true })
       .limit(DRIVE_BATCH);
+
+    /*
+     * A DISCARDED ERROR HERE STOPS ALL RESEARCH, SILENTLY.
+     *
+     * supabase-js does not throw on a query failure, it returns { error }.
+     * This sweep is the only thing that moves a job forward once its client
+     * is gone, so swallowing the error means every live verification quietly
+     * stops advancing with nothing anywhere saying why — the exact failure
+     * the driver exists to remove, one level up from where it was fixed for
+     * synthesis.
+     */
+    if (liveSweepError) {
+      console.error('research-agent drive: live-job sweep query failed', liveSweepError);
+      return;
+    }
 
     for (const j of jobs ?? []) {
       if (await claimJob(sb, j.id)) await driveJob(sb, key, model, j.id);
@@ -3758,7 +3779,7 @@ async function driveLiveJobs(sb: any, key: string, model: string): Promise<void>
 async function retireAbandonedJobs(sb: any): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - DRIVE_MAX_AGE_MS).toISOString();
-    const { data: jobs } = await sb
+    const { data: jobs, error: reaperError } = await sb
       .from('research_jobs')
       .select('id,status')
       .in('status', [...DRIVE_LIVE_STATUSES, 'WAITING_HUMAN'])
@@ -3766,6 +3787,11 @@ async function retireAbandonedJobs(sb: any): Promise<void> {
       .is('cancelled_at', null)
       .lt('created_at', cutoff)
       .limit(DRIVE_BATCH);
+
+    if (reaperError) {
+      console.error('research-agent drive: abandoned-job sweep query failed', reaperError);
+      return;
+    }
 
     for (const j of jobs ?? []) {
       /*

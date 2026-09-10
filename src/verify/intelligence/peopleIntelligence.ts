@@ -102,17 +102,61 @@ export interface PeopleIntelligence {
 /*
  * Partners and their shares.
  *
- * The registry extract puts this in its own block, below the directorate.
- * It is parsed separately rather than by widening the directors' window,
- * because the two blocks mean different things and merging them would
- * silently turn a shareholder into a director — which is precisely the kind
- * of invented role this module exists to prevent.
+ * WHAT THIS USED TO DO, AND WHAT IT PRODUCED
  *
- * A share is recorded only when the line actually carries a percentage.
- * A partner with no stated share is still a real, useful finding, so they
- * are kept — just without a number attached.
+ * It searched for the words "პარტნიორ" / "დამფუძნებ" / "წილი" anywhere in the
+ * extract, took a 900-character window from the first hit, and treated every
+ * line in it as a possible shareholder. Georgian has no letter case, so the
+ * name test — two or more Georgian words — matches almost any phrase.
+ *
+ * In production that produced EIGHT shareholders of the developer that do not
+ * exist, each stamped certainty REGISTERED and sourceKind OFFICIAL_REGISTRY:
+ *
+ *   "სამინისტროს სა"                        of the ministry (truncated)
+ *   "დოკუმენტაციის წარმოდგენის შემთხვევაში" in case documentation is submitted
+ *   "დამატებით გაცნობებთ"                   we additionally inform you
+ *   "რეგისტრირებული არ არის"                is not registered
+ *   "ქონებრივი სიკეთე"                      property asset
+ *   "საჯარო რეესტრის"                       of the public registry
+ *
+ * Those are the lines that happen to FOLLOW the real rows in the window. This
+ * is the worst class of bug this product can have: it invents people, gives
+ * them a stake in the company selling the property, and cites the official
+ * register as the source.
+ *
+ * WHAT THE REGISTER ACTUALLY LOOKS LIKE
+ *
+ *   მესაკუთრერაოდენობაწილიწილის მმართველი     owner | quantity | share | manager
+ *     ლევან ჩაჩუა, 010120122875050%
+ *   კობა კვანტალიანი,
+ *   01015005319
+ *   5050%
+ *   ვალდებულება
+ *   რეგისტრირებული არ არის
+ *
+ * Two partners, fifty percent each — who are also the two directors. Real,
+ * and genuinely worth knowing: the developer is those two people.
+ *
+ * THE RULE
+ *
+ * A registry row carries an identification number. Prose does not. So a
+ * shareholder is read only from a row that pairs a name with an eleven-digit
+ * identifier, inside the partners table specifically — and when that table is
+ * not present, nothing is returned at all rather than guessed at from nearby
+ * words. NO EVIDENCE = NO FACT.
  */
-const PARTNER_ANCHORS = ['პარტნიორ', 'დამფუძნებ', 'წილი'];
+
+/** The partners table header. Its columns arrive run together. */
+const PARTNER_TABLE_HEADER = /მესაკუთრე\s*რაოდენობა|პარტნიორები|დამფუძნებელი\s*პარტნიორ/;
+
+/** Sections that follow the partners table; the block ends at the first. */
+const PARTNER_TABLE_END = /ვალდებულება|ყადაღა|საგადასახადო|გირავნობა|კაპიტალი/;
+
+/**
+ * A registry row: a Georgian name, a comma, then an eleven-digit identifier —
+ * possibly with the newline the extract wraps the row on in between.
+ */
+const PARTNER_ROW = /([\u10A0-\u10FF][\u10A0-\u10FF ]{2,60}?)\s*,\s*(?:\\+[nr]|\s)*(\d{11})/g;
 
 export function parseRegistryShareholders(
   extractText: unknown,
@@ -120,32 +164,33 @@ export function parseRegistryShareholders(
   asOf?: string
 ): Person[] {
   const text = String(extractText ?? '');
-  let anchor = -1;
-  for (const a of PARTNER_ANCHORS) {
-    const at = text.indexOf(a);
-    if (at >= 0 && (anchor < 0 || at < anchor)) anchor = at;
-  }
-  if (anchor < 0) return [];
 
-  const block = text.slice(anchor, anchor + 900);
+  const header = PARTNER_TABLE_HEADER.exec(text);
+  if (!header) return [];
+
+  const from = header.index;
+  const rest = text.slice(from, from + 1200);
+  const endAt = rest.search(PARTNER_TABLE_END);
+  const block = endAt > 0 ? rest.slice(0, endAt) : rest;
+
   const people: Person[] = [];
   const seen = new Set<string>();
 
-  for (const rawLine of block.split(/\\n|\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    // Anything that names a management role belongs to the other block.
-    if (line.includes(JOINT) || line.includes(SOLE)) continue;
+  PARTNER_ROW.lastIndex = 0;
+  for (const m of block.matchAll(PARTNER_ROW)) {
+    // A management row belongs to the directorate block, not here.
+    const rowTail = block.slice(m.index, m.index + m[0].length + 40);
+    if (rowTail.includes(JOINT) || rowTail.includes(SOLE)) continue;
 
-    const namePart = redactPersonalData(line.split(',')[0]);
+    const namePart = redactPersonalData(m[1]);
     if (!looksLikePersonName(namePart)) continue;
     const key = namePart.toLowerCase();
     if (seen.has(key)) continue;
 
-    // redactPersonalData has already removed 9-11 digit personal ids, so a
-    // percentage here cannot be a fragment of one.
-    const pct = line.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/);
-    const value = pct ? Number(pct[1].replace(',', '.')) : undefined;
+    // The share follows the identifier on the same row, e.g. "...5050%".
+    const after = block.slice(m.index + m[0].length, m.index + m[0].length + 30);
+    const pct = after.match(/(\d{1,3})\s*%/);
+    const value = pct ? Number(pct[1]) : undefined;
 
     seen.add(key);
     people.push({
@@ -157,7 +202,7 @@ export function parseRegistryShareholders(
       historical: false,
       asOf,
       sourceKind: 'OFFICIAL_REGISTRY',
-      support: redactPersonalData(line),
+      support: redactPersonalData(m[0]),
       ...(value !== undefined && value > 0 && value <= 100 ? { ownershipPct: value } : {}),
     });
   }

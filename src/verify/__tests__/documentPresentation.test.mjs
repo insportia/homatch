@@ -73,6 +73,42 @@ test('a captured form label is not shown as a value', () => {
   }
 });
 
+test('a bare field-label noun standing as a value is rejected', () => {
+  // Production had buildingFunction = "ფართობი" ("area") — the name of a
+  // different field on the same form. It would have read "Permitted use: Area".
+  assert.equal(isPresentableValue('ფართობი'), false);
+  assert.deepEqual(presentableFacts([{ key: 'buildingFunction', value: 'ფართობი' }]), []);
+});
+
+test('the rule is a whole-string match, so a real value is not caught by it', () => {
+  // "არასასოფლო სამეურნეო" is the genuine permitted-use value and must
+  // survive; a substring rule against label nouns would have eaten values
+  // like "საერთო ფართობი 797 კვ.მ".
+  assert.equal(isPresentableValue('არასასოფლო სამეურნეო'), true);
+  assert.equal(isPresentableValue('საერთო ფართობი 797 კვ.მ'), true);
+});
+
+test('a block is stated once, not twice', () => {
+  // The entry field and the buildingBlock fact carry the same string in
+  // production; saying it twice reads as padding.
+  const [row] = buildDocumentRows([
+    {
+      documentTitle: 'AR11148112 17/06/2026',
+      block: '2, ბინა 34',
+      facts: [{ key: 'buildingBlock', value: '2, ბინა 34' }],
+    },
+  ]);
+  assert.equal(row.block, null, 'the block is repeated outside the labelled fact');
+  assert.deepEqual(row.facts, [{ labelKey: 'verify_docfact_block', value: '2, ბინა 34' }]);
+});
+
+test('a block that differs from the fact is still shown', () => {
+  const [row] = buildDocumentRows([
+    { documentTitle: 'AR11101896 29/07/2025', block: '2, ბინა 34', facts: [] },
+  ]);
+  assert.equal(row.block, '2, ბინა 34');
+});
+
 test('a real extracted value survives', () => {
   for (const v of ['არასასოფლო', 'არასასოფლო სამეურნეო', '2, ბინა 34', '797.05 კვ.მ.']) {
     assert.equal(isPresentableValue(v), true, `"${v}" was dropped`);

@@ -62,6 +62,16 @@ export function factLabelKey(rawKey: unknown): string | null {
  * It is deliberately conservative — dropping a good fact costs a line, while
  * showing "Height: (მ):" costs the report its credibility.
  */
+/** Bare field-label nouns seen standing where a value should be. */
+const LABEL_NOUNS = new Set([
+  'ფართობი', // area
+  'სახელი', // name
+  'ინფორმაცია', // information
+  'მდებარეობა', // location
+  'თარიღი', // date
+  'ნომერი', // number
+]);
+
 export function isPresentableValue(raw: unknown): boolean {
   if (typeof raw !== 'string') return false;
   const s = raw.trim();
@@ -77,6 +87,13 @@ export function isPresentableValue(raw: unknown): boolean {
 
   // An asterisk is the "required field" marker on these forms, never content.
   if (s.includes('*')) return false;
+
+  // The value is the name of another field on the same form. Production had
+  // buildingFunction = "ფართობი" ("area"), which would have rendered as
+  // "Permitted use: Area". An exact match on a bare label noun is never a
+  // useful value, so this stays a whole-string comparison rather than a
+  // substring one — "არასასოფლო სამეურნეო" must survive it.
+  if (LABEL_NOUNS.has(s)) return false;
 
   // Two characters of actual content, so stray punctuation cannot qualify.
   return (s.match(/[\p{L}\p{N}]/gu) ?? []).length >= 2;
@@ -236,6 +253,13 @@ export function buildDocumentRows(timeline: unknown): DocumentRow[] {
   }
 
   return [...groups.values()]
+    .map((r) => ({
+      ...r,
+      // An entry's own block field and a buildingBlock fact are frequently
+      // the same string. Saying it twice reads as padding, so the labelled
+      // fact wins and the bare repeat is dropped.
+      block: r.facts.some((f) => f.labelKey === 'verify_docfact_block' && f.value === r.block) ? null : r.block,
+    }))
     .filter((r) => r.date !== null || r.facts.length > 0)
     .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
 }

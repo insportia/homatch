@@ -171,6 +171,15 @@ test('the verification report has no horizontal overflow at real phone widths', 
   }
 
   const failures = [];
+  /*
+   * What was actually exercised.
+   *
+   * `node --test` exits 0 for a suite that asserts nothing, so a future edit
+   * that empties WIDTHS, or a loop that silently stops early, would report
+   * green while covering no viewport at all. The run records what it really
+   * measured and checks that at the end.
+   */
+  const measured = [];
 
   for (const width of WIDTHS) {
     const ctx = await browser.newContext({
@@ -263,11 +272,23 @@ test('the verification report has no horizontal overflow at real phone widths', 
     await ctx.close();
 
     assert.ok(result.hasArticle, `${width}px: the report never rendered — the harness stubs are wrong`);
+    assert.equal(result.clientWidth, width, `${width}px: the viewport was not actually applied`);
+    measured.push(width);
     if (result.pageOverflow || result.offenders.length) {
       failures.push(`${width}px: scrollWidth=${result.scrollWidth} clientWidth=${result.clientWidth}\n` +
         result.offenders.map((o) => `    ${o.tag}.${o.cls} right=${o.right} "${o.text}"`).join('\n'));
     }
   }
+
+  // Coverage first: an overflow-free run that measured nothing is not a pass.
+  //
+  // Compared against a LITERAL list, deliberately, not against WIDTHS.
+  // Comparing to WIDTHS is a tautology — shrinking WIDTHS shrinks both sides
+  // and the guard stays green, which is exactly what a mutation test caught.
+  // These five widths are the supported contract; changing them has to be a
+  // deliberate edit here.
+  assert.deepEqual(measured, [320, 360, 375, 390, 430],
+    `the suite did not measure every supported width, it covered ${JSON.stringify(measured)}`);
 
   assert.deepEqual(failures, [], `horizontal overflow at real phone widths:\n${failures.join('\n')}`);
 });

@@ -15,6 +15,7 @@ import {
   propertyTypeDisplay,
   ASSET_CLASS_LABEL_KEYS,
 } from '../propertyType.ts';
+import { resolveAssetClass } from '../researchPlan.ts';
 
 const ROOT = process.cwd();
 const read = (p) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n');
@@ -114,50 +115,60 @@ test('MIXED_OR_UNKNOWN has no label of its own', () => {
 /* ── the server resolves the class from evidence ─────────────────────── */
 
 test('an unknown class is repaired from evidence already in the report', () => {
-  const agent = code('supabase/functions/research-agent/index.ts');
-  const fn = agent.slice(agent.indexOf('function resolveAssetClass'));
-  const body = fn.slice(0, fn.indexOf('\n}'));
+  // A named project, a developer behind it, and an identified unit inside it.
+  assert.equal(
+    resolveAssetClass({
+      assetClass: 'MIXED_OR_UNKNOWN',
+      projectProfile: { name: 'Villion', developer: 'Millenio Group' },
+      exactUnit: { code: '01.18.06.019.055.03.01.601' },
+    }),
+    'APARTMENT_IN_PROJECT'
+  );
+});
 
-  assert.ok(/declared !== 'MIXED_OR_UNKNOWN'/.test(body),
-    'a confident classification from the model is no longer preserved');
-  assert.ok(/projectName && developer && unitCode/.test(body),
-    'the class is inferred from less than a named project, a developer and a unit');
-  assert.ok(/return declared \|\| 'MIXED_OR_UNKNOWN'/.test(body),
-    'an unevidenced property is given a class anyway');
+test('a class the model committed to is never overridden', () => {
+  // The repair fills in an unknown; it does not second-guess a decision.
+  assert.equal(
+    resolveAssetClass({
+      assetClass: 'PRIVATE_RESALE',
+      projectProfile: { name: 'Villion', developer: 'Millenio Group' },
+      exactUnit: { code: '01.18.06.019.055.03.01.601' },
+    }),
+    'PRIVATE_RESALE'
+  );
+});
+
+test('an unevidenced property is left unknown rather than given a class', () => {
+  assert.equal(resolveAssetClass({ assetClass: 'MIXED_OR_UNKNOWN' }), 'MIXED_OR_UNKNOWN');
+  assert.equal(resolveAssetClass({}), 'MIXED_OR_UNKNOWN');
+  // Two of the three pieces is not enough.
+  assert.equal(
+    resolveAssetClass({ projectProfile: { name: 'Villion', developer: 'Millenio Group' } }),
+    'MIXED_OR_UNKNOWN'
+  );
 });
 
 test('a present-but-null profile is not evidence of anything', () => {
-  // Reports carry "landProfile": null as a KEY — the field is present and
-  // empty. Testing for the key rather than for a value would classify every
-  // apartment in the database as a land plot. (Found while simulating this
-  // classifier in SQL, where the key test does match and produced exactly
-  // that false LAND upgrade.)
-  const agent = code('supabase/functions/research-agent/index.ts');
-  const fn = agent.slice(agent.indexOf('function resolveAssetClass'));
-  const body = fn.slice(0, fn.indexOf('\n}'));
-  assert.ok(/if \(r\?\.landProfile && !projectName\)/.test(body),
-    'the land branch no longer requires a truthy profile');
-  assert.ok(!/'landProfile' in r|hasOwnProperty\('landProfile'\)/.test(body),
-    'the land branch tests for the key rather than for a value');
+  // Reports carry "landProfile": null as a KEY — present and empty. Testing
+  // for the key rather than a value classifies every apartment as land.
+  assert.equal(resolveAssetClass({ landProfile: null, exactUnit: { code: '01.18.06.019.055.03.01.603' } }), 'MIXED_OR_UNKNOWN');
+  // A real land profile with no project on it does classify as land.
+  assert.equal(resolveAssetClass({ landProfile: { area: '1,240 კვ.მ' } }), 'LAND');
 });
 
 test('the repair runs on READ, so reports already in the database benefit', () => {
-  // The privacy work established the rule: a fix at the customer-report
-  // boundary has to cover what is already persisted, not only new runs.
   const agent = code('supabase/functions/research-agent/index.ts');
   const readPath = agent.slice(agent.indexOf('const r: any = sanitizeCustomerReport'));
   assert.ok(/r\.assetClass = resolveAssetClass\(r\)/.test(readPath.slice(0, 400)),
     'a historical report keeps its stale MIXED_OR_UNKNOWN forever');
 });
 
-test('the classifier reads the report shape, not pipeline internals', () => {
-  // That is what lets one rule serve both boundaries.
+test('the classifier is shared with the edge function, not duplicated in it', () => {
+  // A copy kept in sync by hand proves nothing about what ships.
   const agent = code('supabase/functions/research-agent/index.ts');
-  const fn = agent.slice(agent.indexOf('function resolveAssetClass'));
-  const body = fn.slice(0, fn.indexOf('\n}'));
-  assert.ok(/r\?\.projectProfile\?\.name/.test(body), 'it does not read the assembled report');
-  assert.ok(!/\bi\.project\b|\bo\.landProfile\b/.test(body),
-    'it reaches into pipeline variables and cannot run on a persisted report');
+  assert.ok(!/function resolveAssetClass\(/.test(agent), 'the classifier was copied back into the edge function');
+  assert.ok(/from '\.\.\/\.\.\/\.\.\/src\/verify\/researchPlan\.ts'/.test(agent),
+    'the edge function no longer imports the shared classifier');
 });
 
 test('the raw UNKNOWN enum is no longer emitted as a customer label', () => {

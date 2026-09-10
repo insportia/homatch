@@ -1,51 +1,16 @@
-// Pure-logic regression test for supabase/functions/research-agent/index.ts's
-// publicResearchScope() (2026-09-07 "IMPORTANT GENERALIZATION RULE" mandate
-// addendum: the research plan must genuinely differ by asset class, and a
-// private resale/land/house must never be forced through developer/
-// architect/contractor research). That file is a Deno edge function and
-// can't be imported directly here (see tasTechnicalFactsAggregation.test.mjs
-// in this same directory for why) — the pure logic is copied verbatim.
-// Keep this in sync with research-agent/index.ts's own publicResearchScope/
-// PUBLIC_RESEARCH_TARGETS whenever that logic changes.
+// Regression test for the PUBLIC_RESEARCH plan: it must genuinely differ by
+// asset class, so a private resale, a land parcel or a house is never forced
+// through developer/architect/contractor research it has no reason to want.
+//
+// This file used to carry a verbatim COPY of publicResearchScope() under a
+// "keep this in sync with research-agent/index.ts" comment, because that file
+// is a Deno edge function. A copy proves a copy adapts. The logic now lives
+// in src/verify/researchPlan.ts, which the edge function imports, so these
+// assertions run against the code that actually ships and the two can no
+// longer drift apart.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-
-const PUBLIC_RESEARCH_TARGETS = [
-  'architect', 'architecture studio', 'founders owners participants', 'directors representatives', 'company history',
-  'previous projects', 'contractors', 'construction companies', 'engineers', 'suppliers', 'facade', 'windows',
-  'elevators', 'structural system', 'construction materials', 'insulation', 'MEP (mechanical/electrical/plumbing)',
-  'energy efficiency', 'seismic design', 'amenities', 'landscaping', 'parking', 'bank financing', 'partners',
-  'construction start', 'construction chronology', 'progress history', 'current physical status', 'quality',
-  'developer reputation', 'architect reputation', 'complaints', 'disputes', 'court records', 'media coverage',
-  'Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'Telegram', 'forums', 'reviews',
-];
-function publicResearchScope(assetClass) {
-  const buildingTargets = ['facade', 'windows', 'elevators', 'structural system', 'construction materials', 'insulation', 'MEP (mechanical/electrical/plumbing)', 'energy efficiency', 'seismic design', 'amenities', 'landscaping', 'parking'];
-  const developerTargets = ['founders owners participants', 'directors representatives', 'company history', 'previous projects', 'developer reputation', 'bank financing', 'partners'];
-  const constructionTeamTargets = ['architect', 'architecture studio', 'architect reputation', 'contractors', 'construction companies', 'engineers', 'suppliers', 'construction start', 'construction chronology', 'progress history', 'current physical status', 'quality'];
-  const reputationTargets = ['complaints', 'disputes', 'court records', 'media coverage', 'Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'Telegram', 'forums', 'reviews'];
-  switch (assetClass) {
-    case 'PRIVATE_RESALE':
-    case 'RENTAL':
-      return { targets: [...reputationTargets, 'quality'], scopeNote: 'ASSET-CLASS SCOPE (private resale/rental — no forced developer research): this is a private individual\'s unit, not a marketed development project. Do NOT go looking for a developer, architect, contractor, or construction-company just to fill those fields — only research and populate them if the evidence already gathered (Identity/Official above) actually names one for this exact unit/building. It is entirely normal and CORRECT for developer/architect/contractor/companyHistory/previousProjects fields to stay null here; never invent a plausible-sounding value to avoid an empty field. Focus your search instead on: the property\'s own public reputation/reviews, its immediate micro-location, and any publicly reported quality signals or complaints about this exact address/unit.' };
-    case 'PRIVATE_HOUSE':
-      return { targets: ['quality', 'current physical status', ...reputationTargets], scopeNote: 'ASSET-CLASS SCOPE (private house — no forced developer/project research): this is a standalone private house, not a unit in a marketed development. Only populate developer/architect/contractor/companyHistory/previousProjects if the evidence already gathered actually names one (e.g. a custom-build architect/builder is sometimes publicly documented) — otherwise leave them null; that is the expected, correct outcome, not a gap. Focus your search on the property\'s own public reputation and its immediate micro-location.' };
-    case 'LAND':
-      return { targets: ['previous projects', 'developer reputation', 'quality', 'current physical status', ...reputationTargets], scopeNote: 'ASSET-CLASS SCOPE (land parcel — no building-fabric research applies): this is a bare land parcel, not a building or unit. Facade/windows/elevators/structural system/construction materials/insulation/MEP/energy efficiency/seismic design/amenities/landscaping-as-a-building-feature/parking simply do not apply — leave every one of those fields null rather than describing the parcel\'s physical state under them. If a developer or project already publicly plans to build on this exact parcel, that is worth reporting (developer/previousProjects/companyHistory) — but never invent one. Focus your search on how this parcel and its immediate area are publicly discussed (development plans, land use, reputation of any named developer).' };
-    case 'COMMERCIAL':
-      return { targets: [...constructionTeamTargets, ...buildingTargets, ...developerTargets, ...reputationTargets], scopeNote: 'ASSET-CLASS SCOPE (commercial property): research the same construction/developer/reputation topics as a residential project, but frame amenities/landscaping/parking findings in commercial terms (tenant/business-facing features, accessibility, signage/visibility) rather than residential ones — only when the evidence actually supports it.' };
-    case 'APARTMENT_IN_PROJECT':
-    case 'UNDER_CONSTRUCTION':
-    case 'COMPANY_OWNED':
-    case 'MIXED_OR_UNKNOWN':
-    default:
-      return { targets: PUBLIC_RESEARCH_TARGETS, scopeNote: '' };
-  }
-}
-
-// The 5 scenarios the mandate explicitly requires coverage for: development-
-// project apartment, private resale apartment, land parcel, detached house,
-// commercial property.
+import { PUBLIC_RESEARCH_TARGETS, publicResearchScope } from '../../verify/researchPlan.ts';
 
 test('publicResearchScope: development-project apartment (APARTMENT_IN_PROJECT) gets the full, unnarrowed target list and no scope note — developer/architect research is genuinely expected here', () => {
   const scope = publicResearchScope('APARTMENT_IN_PROJECT');

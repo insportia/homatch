@@ -3281,7 +3281,17 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
 // response (see sanitizeForCustomer() below) — it never touches what is
 // persisted to the research_jobs row, so internal DB/admin evidence keeps
 // every one of these fields unchanged.
-const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial', 'source', 'sourceName']);
+// addedInNewer/removedFromOlder are the raw line-by-line diff between two
+// registry extracts. In production those lines are OCR'd text from a legacy
+// Georgian font encoding read back as Latin-1, and they carried a previous
+// owner's name, DATE OF BIRTH and personal number to the customer as
+// mojibake: "ÌÀÒÉÍÀ ÊÀÝÉÔÀÞÄ (ÃÀÁ.01/02/1969) ,P/N: 01018001305". Nothing a
+// customer sees is built from them any more (the UI presents an interpreted
+// summary instead), so they are stripped at the boundary rather than left
+// available for a future render to reintroduce. The underlying rows stay
+// intact in the database for support and for synthesis, which runs
+// server-side on the unsanitized report.
+const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial', 'source', 'sourceName', 'addedInNewer', 'removedFromOlder']);
 
 // ---------------------------------------------------------------------
 // 2026-09 "report intelligence v2" mandate addendum, Sections 5/6/7/10/12:
@@ -3340,7 +3350,21 @@ const TECHNICAL_LEAK_RE =
  * legitimately relevant.
  */
 const PERSONAL_ID_RE = /\b\d{11}\b/g;
-const PERSONAL_ID_LABEL_RE = /\s*(?:პ\/?ნ|პირადი\s*ნომერი|personal\s*(?:id|number))\s*[:№#]?\s*\d{11}\b/gi;
+// Registry extracts write the label in Latin ("P/N: 01018001305") as well as
+// in Georgian, so both forms are removed together with the number. Stripping
+// the digits alone would leave a dangling "P/N:" on screen.
+const PERSONAL_ID_LABEL_RE = /\s*(?:პ\/?ნ|პირადი\s*ნომერი|personal\s*(?:id|number)|p\s*\/\s*n)\s*[:№#]?\s*\d{11}\b/gi;
+/*
+ * A DATE OF BIRTH IS NOT DUE-DILIGENCE INFORMATION.
+ *
+ * Registry extracts name a previous owner as "მარინა კაციტაძე (დაბ.01/02/1969)".
+ * Who held title is public and legitimately part of an ownership history;
+ * when they were born is not, and it helps no one decide whether to buy.
+ * Only the LABELLED form is removed, so ordinary dates in the same sentence
+ * (a registration date, a contract date) are untouched. The mojibake spelling
+ * is matched too, because these extracts arrive in a legacy font encoding.
+ */
+const BIRTH_DATE_RE = /\s*\(?\s*(?:დაბ|ÃÀÁ|born|род)\s*\.?\s*:?\s*\d{2}[./]\d{2}[./]\d{4}\s*\)?/gi;
 function sanitizeCustomerString(input: string): string {
   if (!input) return input;
   let s = input;
@@ -3356,6 +3380,7 @@ function sanitizeCustomerString(input: string): string {
   // that survived in another shape. Company ids (9 digits) are untouched.
   s = s.replace(PERSONAL_ID_LABEL_RE, '');
   s = s.replace(PERSONAL_ID_RE, '');
+  s = s.replace(BIRTH_DATE_RE, '');
   // Collapse whitespace/punctuation left behind by the removals above
   // (double spaces, orphaned "()" or " — " fragments, stray commas/hyphens
   // at either end). A trailing "." is deliberately EXCLUDED from this

@@ -327,6 +327,17 @@ export function buildPeopleIntelligence(report: unknown): PeopleIntelligence {
   const found: Person[] = [];
   let representation: Representation = 'UNKNOWN';
 
+  // The register's own governance block is parsed SERVER-SIDE now (see
+  // extractControlStructure in research-agent): the raw extracts it lives in
+  // are stripped at the customer boundary, so source 1 below — which reads
+  // those extracts — finds nothing on this side and always did. What arrives
+  // instead is the conclusion: the director names, and whether they represent
+  // the company jointly.
+  const declaredRepresentation = str(company.representation);
+  if (declaredRepresentation === 'JOINT' || declaredRepresentation === 'SOLE') {
+    representation = declaredRepresentation;
+  }
+
   // 1. The register itself, read out of the retrieved extracts. This is the
   //    strongest source and the one that was being discarded entirely.
   const bo = obj(r.browserOfficial);

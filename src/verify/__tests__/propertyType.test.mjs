@@ -173,6 +173,20 @@ test('the badge goes through the presentation boundary at every call site', () =
     'not every badge site uses the shared component');
 });
 
+test('the translation bundle actually parses', async () => {
+  // Every Verify fix adds copy in six languages, and the six-language
+  // assertions elsewhere in this suite read the bundle as TEXT — a regex
+  // over a broken file still matches. `tsc --noEmit` does not cover
+  // translations.ts either, so an unescaped apostrophe in one string got
+  // all the way to the build step before anything complained. Importing it
+  // turns that into a failing test instead.
+  const bundle = await import('../../i18n/translations.ts');
+  assert.ok(bundle.translations, 'the bundle exports no translations');
+  for (const lang of ['en', 'ka', 'ru', 'tr', 'ar', 'he']) {
+    assert.ok(bundle.translations[lang], `${lang} is missing from the bundle`);
+  }
+});
+
 test('every asset class has copy in all six languages', () => {
   const bundle = read('src/i18n/translations.ts');
   for (const key of [...Object.values(ASSET_CLASS_LABEL_KEYS), 'verify_mode_cadastral', 'verify_mode_property']) {

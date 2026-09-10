@@ -3467,6 +3467,73 @@ function isPermitParticipantFact(v: unknown): boolean {
  * that the SAME rule applies to reports already persisted, which are read
  * through sanitizeForCustomer() below.
  */
+/*
+ * WHO CAN ACTUALLY SIGN FOR THE COMPANY.
+ *
+ * The registry extract carries the governance block in plain Georgian:
+ *
+ *   ხელმძღვანელობა/წარმომადგენლობა
+ *   დირექტორატი
+ *   კობა კვანტალიანი, <personal id> ,ერთობლივი
+ *   ლევან ჩაჩუა,      <personal id> ,ერთობლივი
+ *   კაპიტალი
+ *
+ * "ერთობლივი" means the directors represent the company JOINTLY — neither of
+ * them can bind it alone. For someone about to sign a purchase contract with
+ * a developer that is not trivia, it is the difference between a valid
+ * signature and an invalid one.
+ *
+ * None of it was reaching the customer. The frontend has a people-intelligence
+ * layer that parses exactly this block, but it runs in the browser against the
+ * SANITIZED report — and browserOfficial, the 232KB of registry extracts this
+ * block lives in, is stripped at the customer boundary because it is full of
+ * raw OCR, mojibake and personal numbers. So the parser ran on nothing, and
+ * companyProfile.directors was [] on every report in production.
+ *
+ * Shipping the raw extracts to the browser to fix that would undo the privacy
+ * work. The parsing belongs on this side of the boundary instead: read the
+ * evidence here, emit names and a representation mode, and let the raw text
+ * stay behind.
+ *
+ * The personal numbers ARE matched — they are what makes the pattern specific
+ * enough to find only the governance block — and they are then discarded. A
+ * name is a role-holder; the number is not the customer's business.
+ */
+const DIRECTORATE_RE =
+  /([\u10A0-\u10FF][\u10A0-\u10FF ]{2,60}?),\s*\d{11}\s*,\s*(ერთობლივი|ერთპიროვნულ[ია]?[და]?|დამოუკიდებლად)/gu;
+
+function extractControlStructure(browserOfficial: unknown): {
+  directors: string[];
+  representation: 'JOINT' | 'SOLE' | null;
+} {
+  const empty = { directors: [] as string[], representation: null as 'JOINT' | 'SOLE' | null };
+  if (!browserOfficial) return empty;
+
+  let text: string;
+  try {
+    text = typeof browserOfficial === 'string' ? browserOfficial : JSON.stringify(browserOfficial);
+  } catch {
+    return empty;
+  }
+  if (!text) return empty;
+
+  const directors: string[] = [];
+  let representation: 'JOINT' | 'SOLE' | null = null;
+
+  for (const m of text.matchAll(DIRECTORATE_RE)) {
+    const name = String(m[1] || '').trim().replace(/\s+/g, ' ');
+    // A single token is a fragment, not a person's full name.
+    if (name.split(' ').length < 2) continue;
+    if (!directors.includes(name)) directors.push(name);
+    // Joint wins outright: if any director is bound to act jointly, a lone
+    // signature is not enough, and that is the fact that matters.
+    if (m[2].startsWith('ერთობლივი')) representation = 'JOINT';
+    else if (representation === null) representation = 'SOLE';
+  }
+
+  return { directors: directors.slice(0, 12), representation };
+}
+
 function resolveAssetClass(r: any): string {
   const declared = typeof r?.assetClass === 'string' ? r.assetClass : null;
   if (declared && declared !== 'MIXED_OR_UNKNOWN') return declared;
@@ -3596,6 +3663,18 @@ function sanitizeForCustomer(job: any): any {
   // Applied on READ, so the reports already in the database are classified by
   // the same rule as new ones rather than staying permanently unknown.
   r.assetClass = resolveAssetClass(r);
+  // The control structure is read from the UNSANITIZED evidence, which only
+  // exists on this side, and merged in as names plus a representation mode.
+  // Done on read, so the reports already in the database gain it too.
+  const control = extractControlStructure((job.result_json as any)?.browserOfficial);
+  if (control.directors.length || control.representation) {
+    const existing = Array.isArray(r.companyProfile?.directors) ? r.companyProfile.directors : [];
+    const merged = [...existing];
+    for (const d of control.directors.map((x) => sanitizeCustomerString(x)).filter(Boolean)) {
+      if (!merged.some((e: unknown) => String(e).trim() === d)) merged.push(d);
+    }
+    r.companyProfile = { ...(r.companyProfile || {}), directors: merged, representation: control.representation };
+  }
   delete r.browserOfficial;
   delete r.entityConfidence;
   delete r.confidence;

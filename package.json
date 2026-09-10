@@ -7,6 +7,7 @@
     "build": "vite build",
     "lint": "bash scripts/lint.sh",
     "test": "node scripts/run-tests.mjs",
+    "check:edge": "node scripts/check-edge-functions.mjs",
     "test:worker": "npm --prefix official-worker test",
     "test:all": "npm run test && npm run test:worker",
     "i18n:check": "node scripts/i18n-check.mjs",

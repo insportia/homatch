@@ -89,6 +89,14 @@ jobs:
       - name: Mobile regression (real viewports)
         run: pnpm run test:mobile
 
+      # The edge functions are Deno TypeScript with URL and jsr: imports, so
+      # they sit outside the tsconfig and nothing else parses them. A
+      # research-agent/index.ts that could not be parsed AT ALL once passed
+      # type-check, lint, 796 tests and the mobile gate — and was caught only
+      # by the deploy step below, after the commit was already on main.
+      - name: Edge function syntax
+        run: pnpm run check:edge
+
   # ── Job 2: Build frontend (pnpm build — no Vercel CLI required) ───────────
   # Vercel's native GitHub integration handles production deploys automatically.
   # This job only verifies the build compiles cleanly.

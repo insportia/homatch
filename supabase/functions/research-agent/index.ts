@@ -3763,7 +3763,7 @@ function sanitizeForCustomer(job: any): any {
         raw = raw.replace(pattern.re, '');
         continue;
       }
-      raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\    for (const token of leaks) raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '');'), 'gi'), '');
+      raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '');
     }
     try {
       return { ...job, result_json: JSON.parse(raw) };

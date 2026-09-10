@@ -293,6 +293,35 @@ test('synthesis is requested by the server, not by the page', () => {
   assert.ok(/MAX_SYNTHESIS_ATTEMPTS/.test(agent), 'synthesis can retry forever');
 });
 
+test('an internal marker is never shown to a customer as an error', () => {
+  // A TERMINAL job's `error` is forwarded and rendered directly as
+  // `data.error || t(...)`, so anything the server writes there is
+  // customer-facing copy whether it was meant to be or not — and the driver
+  // writes markers like RESEARCH_ABANDONED_BEFORE_COMPLETION for support.
+  const agent = code('supabase/functions/research-agent/index.ts');
+  assert.ok(/INTERNAL_TERMINAL_MARKER/.test(agent), 'internal markers are forwarded verbatim');
+  assert.ok(/terminalReason/.test(agent), 'no safe reason is sent in its place');
+  // Dropping it makes the client fall back to its own localized message.
+  const page = code('src/pages/VerifyPage.tsx').replace(/\s+/g, ' ');
+  assert.ok(/terminalReason==='EXPIRED'/.test(page), 'the page cannot tell expiry from failure');
+  assert.ok(/verify_err_human_expired/.test(page), 'there is no copy for an expired verification');
+});
+
+test('an expired human verification is never described as a property problem', () => {
+  // "Technical failure is not property risk" has to survive into the words
+  // the customer actually reads.
+  const bundle = read('src/i18n/translations.ts');
+  const copies = bundle.split('verify_err_human_expired: ').slice(1);
+  assert.equal(copies.length, 6, 'the expiry copy is not defined in all six languages');
+  for (const c of copies) {
+    const line = c.slice(0, 400);
+    assert.ok(!/(risk|რისკ|риск|problem|პრობლემ)/i.test(line),
+      'the expiry message frames a timeout as a property problem');
+  }
+  const agent = code('supabase/functions/research-agent/index.ts');
+  assert.ok(/HUMAN_VERIFICATION_EXPIRED/.test(agent), 'an expired handoff is not distinguished at all');
+});
+
 test('a synthesis stalled mid-flight is retried, not abandoned', () => {
   // Caught live: the driver swept only NONE and FAILED, so an attempt whose
   // caller was evicted during a slow model call would sit at PENDING forever

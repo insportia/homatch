@@ -3397,6 +3397,12 @@ export function assertNoLeaks(customerJson: unknown): void {
   if (leaks.length) throw new Error(`CUSTOMER_LEAK:${leaks.join(',')}`);
 }
 
+/**
+ * An internal marker, not a sentence: SCREAMING_SNAKE with an underscore.
+ * Real diagnostic text ("OpenAI failed: ...") is left alone, because an
+ * admin reading a terminal job still wants it.
+ */
+const INTERNAL_TERMINAL_MARKER = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
 function sanitizeForCustomer(job: any): any {
   // v32 (P0 fix): `research_jobs.error` also carries the last TRANSIENT
   // retry's message while a job is still actively being retried (see
@@ -3417,6 +3423,30 @@ function sanitizeForCustomer(job: any): any {
   if (job && job.status !== 'FAILED' && job.status !== 'COMPLETE' && job.error) {
     const { error: _droppedTransientError, ...withoutError } = job;
     job = withoutError;
+  }
+  /*
+   * A TERMINAL job's error IS forwarded, and VerifyPage renders it directly
+   * as `data.error || t('verify_err_research_failed')`. So anything written
+   * into that column by the server is customer-facing copy whether it was
+   * meant to be or not — and the driver writes internal markers there for
+   * admin visibility, e.g. RESEARCH_ABANDONED_BEFORE_COMPLETION.
+   *
+   * Rather than police every writer, the boundary refuses to emit a value
+   * that is obviously an internal token. Dropping it makes the client fall
+   * back to its own localized message, which is the correct copy in all six
+   * languages. The DB row keeps the marker for support.
+   *
+   * `terminalReason` carries the distinction the customer legitimately needs
+   * as a safe enum instead: a run that expired waiting for the customer is
+   * not a run that failed, and must never read like one.
+   */
+  if (job && job.error && INTERNAL_TERMINAL_MARKER.test(String(job.error))) {
+    const marker = String(job.error).trim();
+    const { error: _internalMarker, ...withoutMarker } = job;
+    job = {
+      ...withoutMarker,
+      terminalReason: marker === 'HUMAN_VERIFICATION_EXPIRED' ? 'EXPIRED' : 'INCOMPLETE',
+    };
   }
   if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
   const r: any = sanitizeCustomerReport({ ...job.result_json });
@@ -3718,7 +3748,7 @@ async function retireAbandonedJobs(sb: any): Promise<void> {
     const cutoff = new Date(Date.now() - DRIVE_MAX_AGE_MS).toISOString();
     const { data: jobs } = await sb
       .from('research_jobs')
-      .select('id')
+      .select('id,status')
       .in('status', [...DRIVE_LIVE_STATUSES, 'WAITING_HUMAN'])
       .is('deleted_at', null)
       .is('cancelled_at', null)
@@ -3726,10 +3756,24 @@ async function retireAbandonedJobs(sb: any): Promise<void> {
       .limit(DRIVE_BATCH);
 
     for (const j of jobs ?? []) {
+      /*
+       * Two different things end up here, and they must not be described the
+       * same way. A run that stopped mid-research was abandoned; a run that
+       * was waiting for the CUSTOMER to complete a verification step simply
+       * expired. Neither is a statement about the property — a source we
+       * could not finish is never evidence of risk — but telling someone
+       * their verification "failed" when they just did not come back is a
+       * lie about their own action.
+       *
+       * Both markers are internal. sanitizeForCustomer refuses to emit them
+       * and sends a safe `terminalReason` instead.
+       */
       await sb.from('research_jobs').update({
         status: 'FAILED',
         stage: 'FAILED',
-        error: 'RESEARCH_ABANDONED_BEFORE_COMPLETION',
+        error: j.status === 'WAITING_HUMAN'
+          ? 'HUMAN_VERIFICATION_EXPIRED'
+          : 'RESEARCH_ABANDONED_BEFORE_COMPLETION',
         driver_claimed_at: null,
         updated_at: now(),
       }).eq('id', j.id);

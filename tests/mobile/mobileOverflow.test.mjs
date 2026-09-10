@@ -102,6 +102,18 @@ function haveDeps() {
 }
 
 const skipReason = haveDeps();
+
+/*
+ * IN CI, A MISSING PREREQUISITE IS A FAILURE — NEVER A SILENT PASS.
+ *
+ * Skipping is the right behaviour on a laptop without Chrome: the suite says
+ * which command fixes it and gets out of the way. In CI it is the worst
+ * possible behaviour, because a workflow that skips its only layout gate
+ * reports green while proving nothing. So CI turns every skip reason into a
+ * hard failure that names the missing prerequisite.
+ */
+const STRICT = !!process.env.CI;
+
 /*
  * Pass the option ONLY when actually skipping.
  *
@@ -110,7 +122,7 @@ const skipReason = haveDeps();
  * executing and asserting. A gate that reports neither pass nor fail is
  * worse than no gate: it looks green and proves nothing.
  */
-const opts = skipReason ? { skip: skipReason } : {};
+const opts = skipReason && !STRICT ? { skip: skipReason } : {};
 
 /** A session shaped the way supabase-js persists it, so the app boots signed in. */
 function fakeSession() {
@@ -132,6 +144,12 @@ function fakeSession() {
 }
 
 test('the verification report has no horizontal overflow at real phone widths', opts, async (t) => {
+  // In CI this is reached even when a prerequisite is missing, precisely so
+  // the run fails loudly instead of reporting a green skip.
+  if (skipReason) {
+    assert.fail(`mobile regression could not run: ${skipReason}`);
+  }
+
   const { chromium } = resolvePlaywright();
 
   const preview = spawn(

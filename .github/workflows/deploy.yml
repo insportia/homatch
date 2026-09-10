@@ -66,6 +66,29 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: pnpm run lint
 
+      # The regression suite gates the DEPLOY, not just the PR.
+      #
+      # Every job below depends on `validate`, so a broken Verify invariant
+      # now stops the release instead of shipping and being discovered in
+      # production. It needs no credentials, calls no paid provider and does
+      # not touch production: the Verify suites are pure, and the research
+      # pipeline is exercised through fixtures.
+      - name: Tests
+        run: pnpm test
+
+      # Built from .env.harness, which holds a stub origin and a fake anon
+      # key rather than a credential. The mobile test intercepts every
+      # request the page makes, so this reaches no network and no backend.
+      - name: Build mobile harness
+        run: pnpm run build:harness
+
+      # Real Chrome at 320/360/375/390/430 with the Evidence drawer
+      # expanded. CI=true turns a missing browser or driver into a FAILURE
+      # rather than a skip, so this gate cannot report green without having
+      # actually run.
+      - name: Mobile regression (real viewports)
+        run: pnpm run test:mobile
+
   # ── Job 2: Build frontend (pnpm build — no Vercel CLI required) ───────────
   # Vercel's native GitHub integration handles production deploys automatically.
   # This job only verifies the build compiles cleanly.

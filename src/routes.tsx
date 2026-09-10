@@ -108,8 +108,8 @@ export const routes: RouteConfig[] = [
   // Compatibility only. "Deal Room" was briefly a separate destination; it is
   // now absorbed into the Verification Center, and these paths redirect there
   // rather than serving a second UI for the same data.
-  { name: 'Deal Rooms (legacy)', path: '/deal-rooms',             element: <LegacyDealRoomRedirect /> },
-  { name: 'Deal Room (legacy)',  path: '/deal-rooms/:id',         element: <LegacyDealRoomRedirect /> },
+  { name: 'Legacy verification redirect', path: '/deal-rooms',             element: <LegacyDealRoomRedirect /> },
+  { name: 'Legacy verification redirect (case)',  path: '/deal-rooms/:id',         element: <LegacyDealRoomRedirect /> },
   { name: 'Activity',          path: '/activity',                 element: <ActivityPage /> },
   { name: 'Notifications',     path: '/notifications',            element: <NotificationsPage /> },
   { name: 'Credits',           path: '/credits',                  element: <CreditsPage /> },

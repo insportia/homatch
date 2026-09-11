@@ -4872,7 +4872,17 @@ Deno.serve(async (req) => {
     const owner = anonSession
       ? { user_id: null, anon_session_id: anonSession.id }
       : { user_id: user!.id };
-    /* Measured, not acted on. See shadowReusePlan(). */
+    /*
+     * Computed ONCE, here, and carried on the job for the whole run.
+     *
+     * Every stage reads its brief and its search budget back off this stored
+     * plan rather than re-deriving them, so a policy edited mid-run cannot
+     * change what a running verification was told — which is what makes a
+     * before/after measurement mean anything.
+     *
+     * No longer shadow: knownBriefFor() and searchBudgetFor() act on it. The
+     * name is kept because it is what the whole pipeline reads.
+     */
     const reusePlan = await shadowReusePlan(sb, q);
     const { data: j, error } = await sb.from('research_jobs').insert({ ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
     if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);

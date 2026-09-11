@@ -89,8 +89,13 @@ function clean(raw: string): string {
   // A single pair of wrapping quotes that was not in the source.
   const quoted = out.match(/^["“”'«»](.+)["“”'«»]$/s);
   if (quoted) out = quoted[1].trim();
-  // A leading "Georgian:" style label.
-  out = out.replace(/^[A-Za-z ()]{3,30}:\s*/, '');
+  // A leading "Georgian:" style label. Matched against the actual language
+  // names only, rather than "any short word before a colon": the general
+  // form would happily eat the first clause of a legitimate sentence.
+  out = out.replace(
+    /^(English|Georgian|Russian|Turkish|Arabic|Hebrew)\s*(\([^)]*\))?\s*:\s*/i,
+    '',
+  );
   return out.trim();
 }
 

@@ -111,11 +111,29 @@ export interface AttentionPoint {
   cites: string[];
 }
 
+/**
+ * Something to DO, not something to know.
+ *
+ * A generic pre-purchase checklist used to live here and was removed, because
+ * it had filled up with the fields the pipeline failed to populate — "confirm
+ * the commissioning status", "check the parking allocation" — dressed as
+ * advice. Steps are back because a buyer who has just read a report needs to
+ * know what to do next, but the bar that removed the checklist is kept and
+ * enforced in validateReport(): a step rests on something this report
+ * actually established, and zero steps is a correct answer.
+ */
+export interface NextStep {
+  step: string;
+  why: string;
+  cites: string[];
+}
+
 export interface BuyerIntelligenceReport {
   summary: BuyerSummary;
   keyFindings: KeyFinding[];
   sections: ReportSection[];
   attentionPoints: AttentionPoint[];
+  nextSteps: NextStep[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
   mode: 'MODEL' | 'DETERMINISTIC';
@@ -136,6 +154,8 @@ const LABEL_ALIASES: Record<string, OverallLabel> = {
 
 /** §41: findings are a shortlist. More than this and it is a data dump again. */
 export const MAX_KEY_FINDINGS = 7;
+/** Four actions is a plan. Ten is the checklist that had to be deleted. */
+export const MAX_NEXT_STEPS = 4;
 export const MAX_HIGHLIGHTS = 6;
 
 /*
@@ -250,16 +270,43 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
     .filter((a) => asString(a.point))
     .map((a) => ({ point: asString(a.point), why: asString(a.why), cites: asCites(a.cites) }));
 
+  const nextSteps: NextStep[] = asArray(p.nextSteps)
+    .map((s) => (s ?? {}) as Record<string, unknown>)
+    .filter((s) => asString(s.step))
+    .map((s) => ({ step: asString(s.step), why: asString(s.why), cites: asCites(s.cites) }))
+    .slice(0, MAX_NEXT_STEPS);
+
   const cu = (p.contractUpload ?? {}) as Record<string, unknown>;
 
   return {
     summary: { label, statement: asString(sm.statement), highlights },
     keyFindings,
-    sections,
+    sections: orderSections(sections),
     attentionPoints,
+    nextSteps,
     finalView: asString(p.finalView),
     contractUpload: { recommend: cu.recommend !== false, text: asString(cu.text) },
   };
+}
+
+/**
+ * The report is read in one order, whatever order it was written in.
+ *
+ * SECTION_KEYS is that order. A model emitting MARKET before SNAPSHOT is not
+ * a failure worth rejecting a whole report over — it is a sort.
+ *
+ * A key this pipeline no longer writes keeps its relative position at the
+ * end rather than being dropped. Reports written under the old structure are
+ * still in the database and are still what those customers were given; a
+ * renderer that quietly loses a section of them is worse than one that shows
+ * it where it now belongs.
+ */
+function orderSections(sections: ReportSection[]): ReportSection[] {
+  const rank = (k: string) => {
+    const i = (SECTION_KEYS as readonly string[]).indexOf(k);
+    return i === -1 ? SECTION_KEYS.length : i;
+  };
+  return [...sections].sort((a, b) => rank(a.key) - rank(b.key));
 }
 
 /* ------------------------------------------------------------------ *
@@ -316,6 +363,18 @@ export function validateReport(
     }
   }
   for (const a of candidate.attentionPoints ?? []) checkCites(a.cites, 'attentionPoints');
+  for (const s of candidate.nextSteps ?? []) {
+    checkCites(s.cites, 'nextSteps');
+    /*
+     * THE RULE THAT KILLED THE OLD CHECKLIST.
+     *
+     * "Confirm X, because our research could not establish X" is not advice —
+     * it is our own gap handed to the buyer as homework, and a list of them
+     * is what the removed pre-purchase checklist had become. A step must rest
+     * on something this report actually found, which is what a citation is.
+     */
+    if (!s.cites.length) problems.push('a next step rests on nothing this report established');
+  }
 
   const prose = customerProse(candidate);
 
@@ -341,27 +400,44 @@ export function validateReport(
  * The deterministic fallback                                          *
  * ------------------------------------------------------------------ */
 
+/*
+ * Ownership, encumbrances and the documents that establish them are facts
+ * about the property as it stands TODAY, so they belong with the rest of its
+ * current state. Routing them to a separate legal heading is what produced
+ * the compliance log this structure replaced.
+ */
 const SECTION_FOR: Partial<Record<EvidenceItem['category'], SectionKey>> = {
-  PROPERTY: 'PROJECT',
-  OWNERSHIP: 'LEGAL',
-  ENCUMBRANCE: 'LEGAL',
-  LEGAL_CHECK: 'LEGAL',
-  DOCUMENT: 'LEGAL',
+  PROPERTY: 'SNAPSHOT',
+  OWNERSHIP: 'SNAPSHOT',
+  ENCUMBRANCE: 'SNAPSHOT',
+  LEGAL_CHECK: 'SNAPSHOT',
+  DOCUMENT: 'SNAPSHOT',
   PROJECT: 'PROJECT',
-  DEVELOPER: 'PROJECT',
-  FINANCING: 'PROJECT',
+  DEVELOPER: 'PEOPLE',
+  FINANCING: 'SNAPSHOT',
   MARKET: 'MARKET',
   MEDIA: 'PROJECT',
   SOCIAL: 'PROJECT',
 };
 
 const TITLES: Record<SectionKey, string> = {
+  SNAPSHOT: 'ქონების მიმდინარე მდგომარეობა',
+  PROJECT: 'პროექტი და მშენებლობის ხარისხი',
+  LOCATION: 'მდებარეობა და ცხოვრება',
+  INFRASTRUCTURE: 'ინფრასტრუქტურა და ყოველდღიური კომფორტი',
   MARKET: 'ფასი და ბაზარი',
-  PROJECT: 'პროექტი და დეველოპერი',
-  LOCATION: 'მდებარეობა',
-  PEOPLE: 'კომპანია და დაკავშირებული პირები',
+  PEOPLE: 'დეველოპერი, მესაკუთრე და დაკავშირებული პირები',
+};
+
+/** Headings for sections this pipeline no longer writes but has written. */
+const LEGACY_TITLES: Record<string, string> = {
   LEGAL: 'სამართლებრივი და ფინანსური კონტექსტი',
 };
+
+/** The heading for any section key, including one only old reports carry. */
+export function sectionTitle(key: string): string {
+  return TITLES[key as SectionKey] ?? LEGACY_TITLES[key] ?? key;
+}
 
 /**
  * Builds a report with no model at all.
@@ -394,7 +470,8 @@ const TITLES: Record<SectionKey, string> = {
 export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceReport {
   const sections: ReportSection[] = [];
   const allItems = packageItems(pkg);
-  for (const key of ['LEGAL', 'PROJECT', 'MARKET'] as SectionKey[]) {
+  // Reading order, from the one list that defines it.
+  for (const key of SECTION_KEYS) {
     const mine = allItems.filter((i) => SECTION_FOR[i.category] === key);
     if (!mine.length) continue;
     sections.push({
@@ -427,9 +504,13 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
       highlights: sections.map((s) => ({
         dimension: (s.key === 'MARKET'
           ? 'MARKET_POSITION'
-          : s.key === 'LEGAL'
+          : s.key === 'SNAPSHOT'
             ? 'LEGAL_CONTEXT'
-            : 'PROJECT_QUALITY') as Dimension,
+            : s.key === 'LOCATION' || s.key === 'INFRASTRUCTURE'
+              ? 'LOCATION'
+              : s.key === 'PEOPLE'
+                ? 'DEVELOPER'
+                : 'PROJECT_QUALITY') as Dimension,
         sentiment: 'BALANCED' as Sentiment,
         headline: s.title,
         detail: '',
@@ -439,6 +520,9 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
     keyFindings,
     sections,
     attentionPoints: [],
+    // Deterministic means no interpretation, and a next step IS an
+    // interpretation. Zero is the honest answer here.
+    nextSteps: [],
     finalView: '',
     contractUpload: { recommend: true, text: '' },
     mode: 'DETERMINISTIC',
@@ -467,6 +551,7 @@ export function finalizeReport(
     ...(parsed.keyFindings ?? []).flatMap((f) => f.cites),
     ...(parsed.sections ?? []).flatMap((s) => s.cites),
     ...(parsed.attentionPoints ?? []).flatMap((a) => a.cites),
+    ...(parsed.nextSteps ?? []).flatMap((s) => s.cites),
   ]);
 
   return applyFactOwnership({
@@ -474,6 +559,7 @@ export function finalizeReport(
     keyFindings: parsed.keyFindings ?? [],
     sections: parsed.sections ?? [],
     attentionPoints: parsed.attentionPoints ?? [],
+    nextSteps: parsed.nextSteps ?? [],
     finalView: parsed.finalView ?? '',
     contractUpload: parsed.contractUpload ?? { recommend: true, text: '' },
     mode: 'MODEL',

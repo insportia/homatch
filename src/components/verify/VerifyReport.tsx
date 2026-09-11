@@ -127,6 +127,7 @@ export interface BuyerIntelligence {
     cites: string[];
   }[];
   attentionPoints: { point: string; why: string; cites: string[] }[];
+  nextSteps?: { step: string; why: string; cites: string[] }[];
   finalView: string;
   contractUpload: { recommend: boolean; text: string };
 }
@@ -140,6 +141,23 @@ export interface VerifySynthesis {
   selfChecks?: SelfCheck[];
   mode?: 'MODEL' | 'DETERMINISTIC';
   empty?: boolean;
+}
+
+/**
+ * The order a buyer reads the report in.
+ *
+ * Deliberately a literal rather than an import from the synthesis module: it
+ * is the ORDER that must stay stable here, and this list also has to name
+ * keys that module no longer knows about.
+ */
+const READING_ORDER = ['SNAPSHOT', 'PROJECT', 'LOCATION', 'INFRASTRUCTURE', 'MARKET', 'PEOPLE'];
+
+function orderForReading<T extends { key: string }>(sections: T[]): T[] {
+  const rank = (k: string) => {
+    const i = READING_ORDER.indexOf(k);
+    return i === -1 ? READING_ORDER.length : i;
+  };
+  return [...sections].sort((a, b) => rank(a.key) - rank(b.key));
 }
 
 const OVERALL_KEY: Record<OverallLabel, string> = {
@@ -212,7 +230,15 @@ export function VerifyReport({
     );
   }
 
-  const sections = (r.sections ?? []).filter((s) => clean(s.body));
+  /* THE ORDER IS PART OF THE REPORT.
+   *
+   * report.ts sorts what it writes, but the database is full of reports
+   * written before it did — and a section key it no longer emits at all, like
+   * the old standalone LEGAL block. Those are still what their customers were
+   * given, so they are shown rather than dropped: sorted to the end, under
+   * the heading they had. A renderer that silently loses part of an existing
+   * report is worse than one that shows it in a new place. */
+  const sections = orderForReading((r.sections ?? []).filter((s) => clean(s.body)));
   const people = (synthesis.people?.people ?? []).slice(0, 6);
   const findings = (r.keyFindings ?? []).filter((f) => clean(f.finding));
 
@@ -281,6 +307,39 @@ export function VerifyReport({
               </li>
             ))}
           </ul>
+        </section>
+      ) : null}
+
+      {/* WHAT TO DO NOW.
+          Sits between the things worth looking at and the official checks a
+          buyer can run themselves, because it is the bridge: attention points
+          say what stood out, this says what to do about it, and Check It
+          Yourself is the part they do at a registry counter. Absent entirely
+          when the report found nothing that needs acting on — an empty plan is
+          how the checklist this replaced got filled with filler. */}
+      {r.nextSteps?.length ? (
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold tracking-tight break-words">
+            {t('verify_ir_next_steps_title')}
+          </h2>
+          <ol className="space-y-4">
+            {r.nextSteps.map((s, i) => (
+              <li key={i} className="flex gap-3">
+                <span
+                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+                  aria-hidden="true"
+                >
+                  {i + 1}
+                </span>
+                <div className="space-y-1 min-w-0">
+                  <p className="text-[15px] leading-7 font-medium break-words">{clean(s.step)}</p>
+                  {s.why ? (
+                    <p className="text-sm leading-6 text-muted-foreground break-words">{clean(s.why)}</p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ol>
         </section>
       ) : null}
 

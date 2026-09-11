@@ -30,6 +30,7 @@ import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
 import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
+import { resolveAssetClass } from '../../../src/verify/researchPlan.ts';
 import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
 import { looksLikePersonName } from '../../../src/verify/intelligence/peopleIntelligence.ts';
 import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/intelligence/fx.ts';
@@ -268,7 +269,10 @@ serve(async (req) => {
     let raw: string | null = null;
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (apiKey) {
-      const { system, user } = buildIntelligencePrompt(pkg, bundle);
+      // The asset class decides which sections this property can even have:
+      // a plot of land has no building quality, and a heading with nothing
+      // real under it gets filled with something.
+      const { system, user } = buildIntelligencePrompt(pkg, bundle, resolveAssetClass(job.result_json));
       try {
         const res = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',

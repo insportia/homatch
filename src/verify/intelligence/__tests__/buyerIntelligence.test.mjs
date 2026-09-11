@@ -270,7 +270,7 @@ test('H. the output contract requires a contract-upload recommendation', () => {
   assert.ok(system.includes('"contractUpload"'));
   const parsed = parseReport(JSON.stringify({
     overallView: { label: 'MIXED', statement: 'x' }, executiveSummary: 'x',
-    sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [] }],
+    sections: [{ key: 'SNAPSHOT', title: 't', body: 'b', cites: [] }],
     contractUpload: { recommend: true, text: 'ატვირთეთ ხელშეკრულება' },
   }));
   assert.equal(parsed.contractUpload.recommend, true);
@@ -284,9 +284,13 @@ test('I. advice is contextual, because the generic checklist is gone', () => {
   // replaces it is a placement rule: advice must live where it means
   // something.
   const { system, user } = buildIntelligencePrompt(pkgOf(REAL_CASE));
-  assert.ok(/There is NO "buyerActions" field and no pre-purchase checklist section/.test(system));
+  // Next steps came back as a bounded, evidence-anchored list — but the
+  // checklist that had to be deleted must stay deleted, and the model is told
+  // so by name.
+  assert.ok(/There is NO "buyerActions" field and there is no pre-purchase checklist/.test(system));
+  assert.ok(/nextSteps is NOT it/.test(system));
   assert.ok(/signing authority with PEOPLE, negotiation with MARKET/.test(system));
-  assert.ok(/Do not recreate the checklist under another name/.test(system));
+  assert.ok(/NEVER write a step whose reason is that our research could not retrieve something/.test(system));
   // The incomplete checks still reach the model — as context for that advice,
   // never as something to print.
   assert.ok(Array.isArray(JSON.parse(user).contextForAdvice));
@@ -301,7 +305,7 @@ test('L. a citation that does not resolve to real evidence is rejected', () => {
   const bad = JSON.stringify({
     overallView: { label: 'POSITIVE', statement: 'ყველაფერი რიგზეა.' },
     executiveSummary: 'ეს ქონება სრულიად უპრობლემოა.',
-    sections: [{ key: 'LEGAL', title: 'სამართლებრივი', body: 'ბანკს პრეტენზია არ აქვს.', cites: ['e9999'] }],
+    sections: [{ key: 'SNAPSHOT', title: 'სამართლებრივი', body: 'ბანკს პრეტენზია არ აქვს.', cites: ['e9999'] }],
     unconfirmed: [{ item: 'x', why: 'y' }],
   });
   const check = validateReport(pkg, parseReport(bad));
@@ -317,7 +321,7 @@ test('M. NO EVIDENCE = NO FACT: a long uncited section is refused', () => {
   const bad = JSON.stringify({
     overallView: { label: 'POSITIVE', statement: 'ok' },
     executiveSummary: 'ok',
-    sections: [{ key: 'LEGAL', title: 'სამართლებრივი', body: 'ა'.repeat(300), cites: [] }],
+    sections: [{ key: 'SNAPSHOT', title: 'სამართლებრივი', body: 'ა'.repeat(300), cites: [] }],
     unconfirmed: [{ item: 'x', why: 'y' }],
   });
   const check = validateReport(pkg, parseReport(bad));
@@ -329,7 +333,7 @@ test('a report with no summary is refused — the verdict is not optional', () =
   const pkg = pkgOf(REAL_CASE);
   const noSummary = JSON.stringify({
     summary: { label: 'POSITIVE', statement: '', highlights: [] },
-    sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [pkg.items[0].id] }],
+    sections: [{ key: 'SNAPSHOT', title: 't', body: 'b', cites: [pkg.items[0].id] }],
   });
   const check = validateReport(pkg, parseReport(noSummary));
   assert.equal(check.ok, false);
@@ -366,7 +370,7 @@ test('a registry statement of genuine absence stays sayable', () => {
       highlights: [{ dimension: 'LEGAL_CONTEXT', sentiment: 'POSITIVE', headline: 'h', detail: 'd', cites: [pkg.items[0].id] }],
     },
     sections: [{
-      key: 'LEGAL', title: 'სამართლებრივი',
+      key: 'SNAPSHOT', title: 'სამართლებრივი',
       body: 'რეესტრის ჩანაწერით ყადაღა რეგისტრირებული არ არის.',
       cites: [pkg.items[0].id],
     }],
@@ -383,7 +387,7 @@ test('provenance may not be used as a prefix on paragraph after paragraph', () =
       highlights: [{ dimension: 'PROJECT_QUALITY', sentiment: 'BALANCED', headline: 'h', detail: 'd', cites: [id] }],
     },
     sections: [1, 2, 3, 4].map((n) => ({
-      key: ['LEGAL', 'MARKET', 'PROJECT', 'LOCATION'][n - 1],
+      key: ['SNAPSHOT', 'MARKET', 'PROJECT', 'LOCATION'][n - 1],
       title: 't' + n,
       body: 'საჯაროდ გამოქვეყნებულ პროექტის მასალებში მითითებულია რაღაც.',
       cites: [id],
@@ -405,7 +409,7 @@ test('a well-grounded report IS accepted — the gate is not always-reject', () 
       ],
     },
     keyFindings: [{ finding: 'იპოთეკა რეგისტრირებულია.', whyItMatters: 'გავლენას ახდენს რეგისტრაციაზე.', sentiment: 'ATTENTION', cites: [pkg.items[0].id] }],
-    sections: [{ key: 'LEGAL', title: 'სამართლებრივი სურათი', body: 'იპოთეკა რეგისტრირებულია.', cites: [pkg.items[0].id] }],
+    sections: [{ key: 'SNAPSHOT', title: 'სამართლებრივი სურათი', body: 'იპოთეკა რეგისტრირებულია.', cites: [pkg.items[0].id] }],
     attentionPoints: [{ point: 'იპოთეკა', why: 'გავლენას ახდენს რეგისტრაციაზე', cites: [pkg.items[0].id] }],
     finalView: 'დასკვნა.',
     contractUpload: { recommend: true, text: 'ატვირთეთ ხელშეკრულება.' },
@@ -436,7 +440,7 @@ test('markdown fences around valid JSON are tolerated', () => {
       label: 'BALANCED', statement: 's',
       highlights: [{ dimension: 'LEGAL_CONTEXT', sentiment: 'BALANCED', headline: 'h', detail: 'd', cites: [pkg.items[0].id] }],
     },
-    sections: [{ key: 'LEGAL', title: 't', body: 'b', cites: [pkg.items[0].id] }],
+    sections: [{ key: 'SNAPSHOT', title: 't', body: 'b', cites: [pkg.items[0].id] }],
   }) + '\n```';
   assert.equal(finalizeReport(pkg, wrapped).mode, 'MODEL');
 });
@@ -487,7 +491,7 @@ test('physical completion and legal commissioning are kept apart', () => {
   assert.ok(/PHYSICAL COMPLETION IS NOT LEGAL COMMISSIONING/.test(system));
   assert.ok(/ექსპლუატაციაში მიღების აქტუალური სტატუსის გადამოწმება ღირს/.test(system));
   // ...and it must be said ONCE, in LEGAL, not repeated as a contradiction.
-  assert.ok(/inside LEGAL, once/.test(system));
+  assert.ok(/inside SNAPSHOT, once/.test(system));
 });
 
 test('the prompt never leaks raw research internals or the whole report', () => {

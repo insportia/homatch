@@ -29,6 +29,7 @@
 // of evidence may never be written as evidence of absence, and output that
 // fails is discarded for a deterministic report.
 
+import { assetClassSectionNote, sectionsForAssetClass } from './sectionRelevance.ts';
 import type { EvidencePackage } from './evidencePackage.ts';
 import { evidenceRichness } from './evidencePackage.ts';
 import type { IntelligenceBundle } from './bundle.ts';
@@ -36,13 +37,43 @@ import type { IntelligenceBundle } from './bundle.ts';
 /**
  * Sections the report may use, in the order a buyer reads them.
  *
- * OVERVIEW and WHAT_WE_FOUND are gone: the summary and the key findings do
- * that job now, and keeping them was how the same facts ended up written
- * three times.
+ * This IS the reading order — report.ts sorts by it — so a model that emits
+ * sections in some other order cannot reorder the report.
+ *
+ * OVERVIEW and WHAT_WE_FOUND went earlier: the summary and the key findings
+ * do that job, and keeping them was how the same facts ended up written three
+ * times.
+ *
+ * LEGAL is gone too, and for a sharper reason. As its own heading it became a
+ * compliance log — a place to put every registry sentence, whether or not it
+ * changed anything for the buyer, safely quarantined from the report people
+ * actually read. But the ownership, the mortgage, the restriction and the
+ * exact-unit registration ARE the current state of the property. They belong
+ * in SNAPSHOT with everything else that is true of it today, and in
+ * ATTENTION POINTS when they need acting on. The full detail keeps living in
+ * Evidence & Sources, which is where detail belongs.
+ *
+ * Reports written before this still carry a LEGAL section. They are rendered
+ * as they were written — see report.ts. A report is a thing a customer was
+ * given, not a thing to tidy up afterwards.
  */
-export const SECTION_KEYS = ['MARKET', 'PROJECT', 'LOCATION', 'PEOPLE', 'LEGAL'] as const;
+export const SECTION_KEYS = [
+  'SNAPSHOT',
+  'PROJECT',
+  'LOCATION',
+  'INFRASTRUCTURE',
+  'MARKET',
+  'PEOPLE',
+] as const;
 
 export type SectionKey = (typeof SECTION_KEYS)[number];
+
+/**
+ * A section this pipeline no longer writes, but has written.
+ *
+ * Kept separate from SECTION_KEYS so nothing new can be emitted under it.
+ */
+export const LEGACY_SECTION_KEYS = ['LEGAL', 'OVERVIEW', 'WHAT_WE_FOUND'] as const;
 
 const ANALYST_RULES: string[] = [
   'You are an experienced Georgian real-estate adviser writing to ONE buyer about ONE property.',
@@ -69,7 +100,7 @@ const ANALYST_RULES: string[] = [
   '  BEST — say nothing at all. A missing architect name does not help anyone buy a flat.',
   'PHYSICAL COMPLETION IS NOT LEGAL COMMISSIONING, and an unverified commissioning status is not a',
   'contradiction of a finished building. If the status is not established, the useful sentence is',
-  '"ექსპლუატაციაში მიღების აქტუალური სტატუსის გადამოწმება ღირს" — inside LEGAL, once.',
+  '"ექსპლუატაციაში მიღების აქტუალური სტატუსის გადამოწმება ღირს" — inside SNAPSHOT, once.',
   'A REGISTRY statement of genuine absence is completely different and stays sayable: if the record',
   'says no encumbrance is registered, write that plainly. Absence ESTABLISHED by a source is a',
   'finding. Absence inferred from our own silence is not.',
@@ -126,6 +157,22 @@ const ANALYST_RULES: string[] = [
   'is over- or under-priced from a single comparable. "ერთი აქტიური განცხადების მიხედვით" is honest;',
   '"ბაზრის მედიანა" over one listing is not.',
   '',
+  'SNAPSHOT. What is true of this property TODAY: what it is, where it is, its size and layout,',
+  'its condition and stage, who is registered as its owner, and any registered mortgage,',
+  'restriction, seizure or obligation actually stated for THIS record. The registry facts live here,',
+  'in plain language, as part of the property rather than quarantined in a legal appendix — a buyer',
+  'reading "who owns it and what is registered against it" is reading about the property, not about',
+  'compliance. State a confirmed encumbrance clearly and do not soften it. A registry statement that',
+  'nothing is registered is a real finding and stays sayable; our own failure to retrieve a record',
+  'is not, and does not belong in this section or any other.',
+  'THE EXACT UNIT IS NOT THE PARENT PARCEL. A fact established about the parcel a building stands on',
+  'is not a fact about the flat inside it. Say which one each statement is about.',
+  '',
+  'INFRASTRUCTURE. Daily convenience: what is actually within reach on foot and by car, transport,',
+  'utilities and services. Only what was evidenced, and only what changes how it is to live or work',
+  'there. A list of nearby amenities with no bearing on the decision is filler; three that genuinely',
+  'shape the day are worth a paragraph.',
+  '',
   'MARKET. You are given computed statistics over SCORED comparables, with the band each came from',
   '(same project / same street / same district / peer projects / wider market). Use those numbers and',
   'say what this property actually competes with. Quality is part of price: a lower-density boutique',
@@ -148,8 +195,7 @@ const ANALYST_RULES: string[] = [
   'that is practical signing advice and belongs here: say what the buyer should confirm at signing.',
   'Do NOT say a contract would be invalid. Ownership percentages only if you were given them.',
   '',
-  'LEGAL. Material, buyer-relevant legal and financial context only. Not a compliance log.',
-  '',
+
   'MONEY MOVEMENTS. If FX context is supplied, it explains part of a historical change. It is NEVER',
   'evidence that the property will appreciate. Appreciation may only be discussed as evidence-backed',
   'factors ("ზრდის ერთ-ერთი შესაძლო ფაქტორია…"), never as a promise or a forecast percentage.',
@@ -176,9 +222,15 @@ const LENGTH_GUIDE: Record<ReturnType<typeof evidenceRichness>, string> = {
 
 export function buildIntelligencePrompt(
   pkg: EvidencePackage,
-  bundle?: IntelligenceBundle
+  bundle?: IntelligenceBundle,
+  assetClass?: string | null
 ): { system: string; user: string } {
   const richness = evidenceRichness(pkg);
+  /* A plot of land has no building quality and a warehouse has no school run.
+   * Deciding this here rather than hoping the model notices is what stops a
+   * heading with nothing under it being filled with something. */
+  const allowed = sectionsForAssetClass(assetClass);
+  const classNote = assetClassSectionNote(assetClass);
 
   const system = [
     ...ANALYST_RULES,
@@ -198,11 +250,13 @@ export function buildIntelligencePrompt(
     '  "keyFindings": [ { "finding": "<the fact, stated plainly>",',
     '                     "whyItMatters": "<why it changes this buyer\'s decision>",',
     '                     "sentiment": "<POSITIVE|BALANCED|ATTENTION>", "cites": ["e.."] } ],',
-    '  "sections": [ { "key": "<' + SECTION_KEYS.join('|') + '>", "title": "<Georgian heading>",',
+    '  "sections": [ { "key": "<' + allowed.join('|') + '>", "title": "<Georgian heading>",',
     '                  "body": "<Georgian prose>",',
     '                  "metrics": [ { "label": "<short>", "value": "<the number/short value>" } ],',
     '                  "cites": ["e1"] } ],',
     '  "attentionPoints": [ { "point": "<what>", "why": "<why it matters to this buyer>", "cites": ["e.."] } ],',
+  '  "nextSteps": [ { "step": "<the ACTION, phrased as something to do>",',
+  '                   "why": "<what it settles, in one clause>", "cites": ["e.."] } ],',
     '  "finalView": "<one short closing paragraph: the 2-4 decisive reasons, not a recap>",',
     '  "contractUpload": { "recommend": true, "text": "<Georgian invitation to upload the contract>" }',
     '}',
@@ -216,10 +270,27 @@ export function buildIntelligencePrompt(
     'a premium). Two to four per section at most, and none if the section has no numbers.',
     'attentionPoints: only genuinely evidence-specific items. Zero is a valid answer.',
     'Omit any section with no meaningful evidence. Never emit an empty section to fill the shape.',
+    ...(classNote ? ['', classNote] : []),
     '',
-    'There is NO "buyerActions" field and no pre-purchase checklist section. Advice goes INSIDE the',
-    'section it belongs to: signing authority with PEOPLE, negotiation with MARKET, document review',
-    'in contractUpload.text. Do not recreate the checklist under another name.',
+    'There is NO "buyerActions" field and there is no pre-purchase checklist. nextSteps is NOT it:',
+    'a checklist enumerates everything a cautious buyer might do, and it filled up with the fields',
+    'this pipeline failed to populate. What follows is the opposite of that.',
+    '',
+    'nextSteps: 0-4 items, and ZERO IS THE RIGHT ANSWER when this report found nothing that needs',
+    'acting on. This is not a pre-purchase checklist and must never become one. It replaced a',
+    'generic checklist that had degenerated into an inventory of fields the pipeline failed to',
+    'populate, so the bar is deliberately high:',
+    '  - Every step must rest on something THIS report actually established, and must cite it.',
+    '  - Every step must be an ACTION this buyer can take, not a fact restated as an imperative.',
+    '  - NEVER write a step whose reason is that our research could not retrieve something. A gap in',
+    '    our search is not a task for the buyer. Such a step will be rejected.',
+    '  - Do not restate an attention point as a step. If the point already says what to do, leave it',
+    '    there. Steps exist for actions the prose does not already carry.',
+    '  - The official checks a buyer can run themselves are rendered separately and deterministically.',
+    '    Do not reproduce them.',
+    '',
+    'Detailed advice still goes INSIDE the section it belongs to:',
+    'signing authority with PEOPLE, negotiation with MARKET, document review in contractUpload.text.',
     '',
     'cites must contain only ids from the evidence you were given.',
     'The overall label follows the WHOLE picture, never a single finding.',

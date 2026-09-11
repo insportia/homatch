@@ -271,3 +271,77 @@ test('an anomaly needs a real median to be measured against', () => {
   assert.equal(priceIsAnomalous(null, snapshot()), false);
   assert.equal(priceIsAnomalous(2600, snapshot({ median_price_per_sqm: 0 })), false);
 });
+
+/* ── writing one, against a stubbed store ────────────────────────────
+ *
+ * The first production run wrote its snapshot TWICE, six seconds apart, from
+ * one job: a verification can finish twice, which is why cost_events needed a
+ * unique index. The invariant held — supersede-then-insert is ordered so the
+ * partial unique index is never momentarily violated — but the history did
+ * not, and a segment that looks re-researched when nothing changed is exactly
+ * the signal market_refresh_roi exists to make trustworthy.
+ */
+
+function stubStore(existing = null) {
+  const calls = { updates: [], inserts: [] };
+  const db = {
+    from() {
+      const api = {
+        select: () => api,
+        eq: () => api,
+        maybeSingle: async () => ({ data: existing }),
+        insert: async (row) => { calls.inserts.push(row); return { error: null }; },
+        update: (row) => { calls.updates.push(row); return { eq: async () => ({ error: null }) }; },
+      };
+      return api;
+    },
+  };
+  return { db, calls };
+}
+
+const draft = {
+  segment: { scopeType: 'PROJECT', scopeKey: 'p', propertyType: 'RESIDENTIAL', roomBand: 'UNKNOWN' },
+  currency: 'USD', medianPricePerSqm: 970, lowerPricePerSqm: 950, upperPricePerSqm: 970,
+  sampleCount: 3, usableComparableCount: 3, sourceCount: 2,
+  basisTier: 'SAME_PROJECT', confidence: 'MEDIUM', refreshReason: 'INITIAL',
+};
+
+test('a job that already recorded this segment does not record it again', async () => {
+  const { writeSnapshot } = await import('../snapshotStore.ts');
+  const { db, calls } = stubStore({ id: 'row-1', built_by_job_id: 'job-1' });
+  const out = await writeSnapshot(db, draft, { jobId: 'job-1' });
+  assert.equal(out.written, false);
+  assert.equal(calls.inserts.length, 0, 'a second finish wrote a duplicate snapshot');
+  assert.equal(calls.updates.length, 0, 'a second finish superseded a row with a copy of itself');
+});
+
+test('a different job refreshing the same segment supersedes then inserts', async () => {
+  const { writeSnapshot } = await import('../snapshotStore.ts');
+  const { db, calls } = stubStore({ id: 'row-1', built_by_job_id: 'job-0' });
+  const out = await writeSnapshot(db, draft, { jobId: 'job-1' });
+  assert.equal(out.written, true);
+  assert.equal(out.superseded, true);
+  assert.equal(calls.updates[0].status, 'SUPERSEDED');
+  assert.equal(calls.inserts[0].status, 'CURRENT');
+  // Order matters: the index allows one CURRENT row, so the old one must die
+  // before the new one is born.
+  assert.equal(calls.inserts[0].built_by_job_id, 'job-1');
+});
+
+test('a first snapshot for a segment inserts without superseding anything', async () => {
+  const { writeSnapshot } = await import('../snapshotStore.ts');
+  const { db, calls } = stubStore(null);
+  const out = await writeSnapshot(db, draft, { jobId: 'job-1' });
+  assert.equal(out.written, true);
+  assert.equal(out.superseded, false);
+  assert.equal(calls.updates.length, 0);
+  assert.equal(calls.inserts.length, 1);
+});
+
+test('nothing worth storing writes nothing', async () => {
+  const { writeSnapshot } = await import('../snapshotStore.ts');
+  const { db, calls } = stubStore(null);
+  const out = await writeSnapshot(db, null, { jobId: 'job-1' });
+  assert.equal(out.written, false);
+  assert.equal(calls.inserts.length, 0);
+});

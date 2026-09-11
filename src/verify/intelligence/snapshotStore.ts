@@ -110,10 +110,28 @@ export async function writeSnapshot(
 
     const { data: existing } = await db
       .from('market_snapshots')
-      .select('id')
+      .select('id, built_by_job_id')
       .eq('segment_key', segmentKey)
       .eq('status', 'CURRENT')
       .maybeSingle();
+
+    /*
+     * THIS JOB HAS ALREADY SAID WHAT IT LEARNED.
+     *
+     * A verification can finish twice — two drivers completing the same job at
+     * once, which is why cost_events needed a unique index. Without this guard
+     * the second finish superseded a snapshot with an identical copy of
+     * itself, which is exactly what production did on the first run: two rows,
+     * six seconds apart, same median, same job, one of them immediately dead.
+     *
+     * The invariant survived, because supersede-then-insert is ordered
+     * correctly. The history did not: a segment looked like it had been
+     * re-researched when nothing had changed, which is precisely the signal
+     * market_refresh_roi exists to make trustworthy.
+     */
+    if (existing?.built_by_job_id && context.jobId && existing.built_by_job_id === context.jobId) {
+      return { written: false, superseded: false, segmentKey, reason: 'already recorded by this job' };
+    }
 
     let superseded = false;
     if (existing?.id) {

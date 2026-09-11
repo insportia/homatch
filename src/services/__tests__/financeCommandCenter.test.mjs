@@ -482,3 +482,65 @@ test('month buckets are local calendar months, and cannot drift', () => {
   assert.ok(!/date_trunc\('month', f\.occurred_at AT TIME ZONE v_tz\) AT TIME ZONE v_tz/.test(m),
     'the grouping key must not convert back to timestamptz');
 });
+
+// ── One identity in one column ─────────────────────────────────────────────
+
+test('the fact stream speaks one identity, so cost can be attributed', () => {
+  // research_jobs.user_id holds an AUTH id; every other table holds a
+  // public.users.id. Measured on production: 79 of 79 research jobs join to
+  // auth.users and 0 join to public.users. The view was emitting an auth id on
+  // the Verify branch and a public id on the cost_events branch, in the same
+  // column — so grouping by customer silently dropped ALL Verify cost, which
+  // is $20 of the $45 spent.
+  const m = mig('20260911213453_finance_and_admin_users_one_identity.sql');
+  assert.match(m, /LEFT JOIN public\.users ju ON ju\.auth_id = j\.user_id/);
+  assert.match(m, /ju\.id\s+AS user_id/);
+  // The comment on the view states the guarantee, so a later editor knows.
+  assert.match(m, /user_id is ALWAYS a public\.users\.id/);
+  // And anything counting a customer's verifies joins the auth id.
+  assert.match(m, /from public\.research_jobs j where j\.user_id = u\.auth_id/);
+});
+
+test('a profile row without an auth user is not counted as a customer', () => {
+  // Seven of ten profile rows on production are CI and smoke-test leftovers
+  // with no auth user. They cannot sign in and are not customers; the old page
+  // counted them and reported 10.
+  const m = mig('20260911213408_admin_users_list_tells_the_truth.sql');
+  assert.match(m, /'registered', \(a\.id is not null\)/);
+  assert.match(m, /'orphaned', count\(\*\) filter \(where a\.id is null\)/);
+  // Labelled, never deleted: what to do about them is an admin's decision.
+  const code = strip(m);
+  assert.ok(!/delete from public\.users/i.test(code), 'must not delete profile rows');
+
+  // The headline count means people.
+  const api = src('services/api.ts');
+  assert.match(api, /totals\?\.registered \?\? 0/);
+  // And the page states the split rather than hiding it.
+  const page = src('pages/admin/AdminUsersPage.tsx');
+  assert.match(page, /admin_users_orphans_note/);
+  assert.match(page, /admin_users_no_login/);
+});
+
+test('a credit balance is never printed as though it were dollars', () => {
+  // The page rendered `$${balance}` — that is 99,978.60 CREDITS shown as
+  // "$99978.60" when it is worth $9,997.86. The dollar sign was on the wrong
+  // unit, and the redenomination made it a tenfold overstatement.
+  const page = src('pages/admin/AdminUsersPage.tsx');
+  assert.ok(!/\$\$\{Number\(u\.credit_accounts/.test(page),
+    'credits must not be rendered with a bare dollar sign');
+  assert.match(page, /credits_balance/);
+  assert.match(page, /credits_value_usd/);
+  // The server does the conversion, from the configured rate.
+  assert.match(mig('20260911213408_admin_users_list_tells_the_truth.sql'),
+    /'credits_value_usd', round\(COALESCE\(ca\.balance, 0\) \/ v_cpu, 2\)/);
+});
+
+test('the admin users RPC is admin-gated and checks its own error', () => {
+  assert.match(mig('20260911213408_admin_users_list_tells_the_truth.sql'),
+    /raise exception 'FORBIDDEN: admin only'/);
+  assert.match(mig('20260911213408_admin_users_list_tells_the_truth.sql'),
+    /REVOKE ALL ON FUNCTION public\.admin_users_list\([^)]*\) FROM PUBLIC, anon/);
+  // A silent [] here reads as "nobody signed up", which is the same class of
+  // lie as a cost dashboard reporting $0.00.
+  assert.match(src('services/api.ts'), /if \(error\) throw new Error\(error\.message\);/);
+});

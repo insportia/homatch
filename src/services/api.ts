@@ -743,7 +743,9 @@ export async function isCurrentUserAdmin(): Promise<boolean> {
 export async function getAdminOverviewStats(): Promise<AdminOverviewStats> {
   const [usersRes, propertiesRes, campaignsRes, rawSignalsRes, qualifiedRes,
          matchesRes, unlocksRes, creditsRes, cogsRes] = await Promise.all([
-    supabase.from('users').select('id', { count: 'exact', head: true }),
+    // Profile rows are not users: seven of ten on production have no auth
+    // user behind them. admin_users_list() knows the difference.
+    supabase.rpc('admin_users_list', { p_limit: 1, p_include_orphans: false }),
     // properties has no deleted_at column (only is_deleted boolean — see
     // softDeleteProperty()/getProperties() above); filtering on deleted_at
     // here always threw a PostgREST "column does not exist" error that was
@@ -768,7 +770,7 @@ export async function getAdminOverviewStats(): Promise<AdminOverviewStats> {
     .filter(r => r.type === 'MATCH_UNLOCK').reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
   const grossProfit = revenue - cogs;
   return {
-    total_users: usersRes.count ?? 0,
+    total_users: (usersRes.data as { totals?: { registered?: number } } | null)?.totals?.registered ?? 0,
     total_properties: propertiesRes.count ?? 0,
     total_campaigns: campaignsRes.count ?? 0,
     raw_signals: rawSignalsRes.count ?? 0,
@@ -786,12 +788,70 @@ export async function getAdminOverviewStats(): Promise<AdminOverviewStats> {
   };
 }
 
-export async function getAdminUsers(limit = 50, offset = 0) {
-  const { data } = await supabase.from('users')
-    .select('*, credit_accounts(balance)')
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
-  return data ?? [];
+/**
+ * ADMIN USERS.
+ *
+ * This used to read public.users directly. That cannot tell a person from a
+ * leftover: on production 10 profile rows exist and only THREE have an auth
+ * user behind them — the rest are CI and smoke-test artifacts that can never
+ * sign in. It also printed the credit balance with a dollar sign, which after
+ * the 1 Credit = $0.10 redenomination overstated every balance tenfold.
+ *
+ * admin_users_list() joins auth.users (which the browser cannot read) and
+ * states per row whether a real registration exists, plus sign-in provider,
+ * last sign-in, verify runs and attributed provider cost.
+ */
+export async function getAdminUsers(limit = 200, offset = 0, includeOrphans = true) {
+  const { data, error } = await supabase.rpc('admin_users_list', {
+    p_limit: limit, p_offset: offset, p_include_orphans: includeOrphans,
+  });
+  // Previously unchecked: a failure returned [] and the page showed "no users",
+  // which is indistinguishable from a product nobody has signed up for.
+  if (error) throw new Error(error.message);
+  return (data ?? { totals: null, rows: [] }) as AdminUsersResult;
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  nickname: string | null;
+  username: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+  plan: string;
+  is_admin: boolean;
+  preferred_language: string | null;
+  created_at: string;
+  /** False when the profile has no auth user behind it — it cannot sign in. */
+  registered: boolean;
+  sign_in_provider: string | null;
+  last_sign_in_at: string | null;
+  email_confirmed_at: string | null;
+  auth_created_at: string | null;
+  credits_balance: number;
+  credits_reserved: number;
+  /** What the balance is actually worth. Credits are not dollars. */
+  credits_value_usd: number;
+  properties: number;
+  verify_runs: number;
+  last_verify_at: string | null;
+  paid_usd: number;
+  provider_cost_usd: number;
+  last_activity_at: string | null;
+}
+
+export interface AdminUsersResult {
+  credits_per_usd: number;
+  totals: {
+    profiles: number;
+    registered: number;
+    orphaned: number;
+    signed_in_ever: number;
+    active_30d: number;
+    admins: number;
+  } | null;
+  rows: AdminUserRow[];
 }
 
 export async function getAdminProperties(limit = 50, offset = 0) {

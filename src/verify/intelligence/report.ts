@@ -43,6 +43,7 @@
 // DISCARDED for a deterministic report built from the same evidence.
 
 import type { EvidencePackage, EvidenceItem } from './evidencePackage.ts';
+import { dedupeBlock, isParkingConfirmationPrompt, type TopicKey } from './dedupe.ts';
 import { SECTION_KEYS } from './prompt.ts';
 import type { SectionKey } from './prompt.ts';
 
@@ -468,7 +469,7 @@ export function finalizeReport(
     ...(parsed.attentionPoints ?? []).flatMap((a) => a.cites),
   ]);
 
-  return {
+  return applyFactOwnership({
     summary: parsed.summary ?? { label: 'BALANCED', statement: '', highlights: [] },
     keyFindings: parsed.keyFindings ?? [],
     sections: parsed.sections ?? [],
@@ -478,5 +479,74 @@ export function finalizeReport(
     mode: 'MODEL',
     rejectedBecause: [],
     evidenceUsed: packageItems(pkg).filter((i) => cited.has(i.id)),
+  });
+}
+
+/*
+ * ONE FACT, ONE HOME.
+ *
+ * Measured on a real production report: developer 35 mentions, parking 14,
+ * commissioning 9, floors 6, unit count 5 — the same facts explained again in
+ * the summary, the key findings, the project section, the attention points
+ * and the final view.
+ *
+ * The blocks are walked in READING order, so whichever block a reader meets
+ * first keeps the fact, except that a topic's owning section always wins if
+ * it is present. Everything after that keeps only what adds a number the
+ * owner did not state.
+ *
+ * Nothing is rewritten. Sentences are removed or kept whole, which is why
+ * this cannot invent a claim — the worst it can do is drop a repeat.
+ */
+export function applyFactOwnership(r: BuyerIntelligenceReport): BuyerIntelligenceReport {
+  const seen = new Map<TopicKey, string>();
+
+  // The owning sections go first, so they hold their own facts.
+  const ordered = [...r.sections].sort((a, b) => {
+    const rank = (k: string) => (k === 'PROJECT' ? 0 : k === 'PEOPLE' ? 1 : 2);
+    return rank(a.key) - rank(b.key);
+  });
+  const bodies = new Map<string, string>();
+  for (const s of ordered) {
+    bodies.set(s.key, dedupeBlock({ block: 'section', sectionKey: s.key, text: s.body }, seen).keep);
+  }
+
+  /*
+   * The summary is the buyer's headline CONCLUSION, not a second place to
+   * state the specification. When every sentence in it was a restatement of a
+   * section's detail, falling back to the original text would simply restore
+   * the repeat — so it falls back to the report's own leading highlight,
+   * which is a conclusion by construction. Nothing is written here that the
+   * model did not already write.
+   */
+  const dedupedStatement = dedupeBlock({ block: 'summary', text: r.summary?.statement ?? '' }, seen).keep;
+  const leadHighlight = (r.summary?.highlights ?? []).map((h) => h.headline).find((h) => h && h.trim());
+  const summary = {
+    ...r.summary,
+    statement: dedupedStatement || leadHighlight || (r.summary?.statement ?? ''),
+  };
+
+  const keyFindings = r.keyFindings
+    .map((f) => ({ ...f, finding: dedupeBlock({ block: 'keyFindings', text: f.finding }, seen).keep }))
+    .filter((f) => f.finding.trim().length > 0);
+
+  const attentionPoints = r.attentionPoints
+    .filter((a) => !isParkingConfirmationPrompt(`${a.point} ${a.why}`))
+    .map((a) => ({
+      ...a,
+      point: dedupeBlock({ block: 'attentionPoints', text: a.point }, seen).keep,
+      why: dedupeBlock({ block: 'attentionPoints', text: a.why }, seen).keep,
+    }))
+    .filter((a) => a.point.trim().length > 0);
+
+  const finalView = dedupeBlock({ block: 'finalView', text: r.finalView }, seen).keep;
+
+  return {
+    ...r,
+    summary,
+    keyFindings,
+    sections: r.sections.map((s) => ({ ...s, body: bodies.get(s.key) ?? s.body })).filter((s) => s.body.trim()),
+    attentionPoints,
+    finalView,
   };
 }

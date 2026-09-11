@@ -75,6 +75,100 @@ export function valueSignature(f: {
   return '';
 }
 
+/*
+ * WHEN THE WORDING CHANGES AND THE FACT DOES NOT.
+ *
+ * Measured by running the same verification twice against the same property.
+ * Five facts came back "changed" and only one of them had:
+ *
+ *   "Geo City Digomi LLC"                       → "LLC Geo City Digomi"
+ *   "18 Kristian Stiven Street, Digomi, Tbilisi" → "18 Kristian Stiven Street, Tbilisi"
+ *
+ * Same company. Same address. The research simply phrased them differently,
+ * and an exact comparison called both a change.
+ *
+ * That is worse than untidy. A customer asking "has anything changed since
+ * last time?" would be told the company had been renamed. And a fact that
+ * "changes" on every run is never fresh, so it can never be reused — the
+ * noise quietly destroys the saving the whole layer exists for.
+ *
+ * So comparison — and ONLY comparison — normalises. What gets stored is
+ * always the value exactly as the research gave it.
+ *
+ * Deliberately NOT applied to numbers or enums: 155000 is not 160000, and
+ * CONFIRMED_POSITIVE is not NOT_CONFIRMED. Those are the facts where a
+ * difference is always real, and blurring them would hide the changes that
+ * matter most.
+ */
+const LEGAL_FORM_TOKENS = new Set([
+  'llc', 'ltd', 'inc', 'jsc', 'lp', 'plc', 'co', 'company',
+  'შპს', 'სს', 'ააიპ', 'ი', 'მ',
+]);
+
+/** Significant tokens of a name-like value, lower-cased and order-free. */
+function nameTokens(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .split(' ')
+    .filter((t) => t && !LEGAL_FORM_TOKENS.has(t))
+    .sort();
+}
+
+const setOf = (xs: string[]) => new Set(xs);
+const isSubset = (a: Set<string>, b: Set<string>) => [...a].every((x) => b.has(x));
+
+export type ValueComparison =
+  /** The same fact, however it was worded. */
+  | 'SAME'
+  /** The new value says strictly less than what we hold. Keep the richer one. */
+  | 'LESS_SPECIFIC'
+  /** A genuine difference. */
+  | 'DIFFERENT';
+
+/**
+ * Whether two values say the same thing.
+ *
+ * The LESS_SPECIFIC verdict exists because a second run that returns a
+ * shorter version of an address, or a shorter list of amenities, is not new
+ * information — it is the same fact with detail missing. Superseding the
+ * fuller value with the thinner one would make the graph worse every time it
+ * was re-verified, which is the opposite of the point.
+ */
+export function compareValues(
+  next: { valueText?: string | null; valueNumber?: number | null; valueJson?: unknown },
+  prev: { valueText?: string | null; valueNumber?: number | null; valueJson?: unknown }
+): ValueComparison {
+  if (valueSignature(next) === valueSignature(prev)) return 'SAME';
+
+  // Numbers and enums compare exactly. A difference there is always real.
+  if (next.valueNumber != null || prev.valueNumber != null) return 'DIFFERENT';
+
+  if (typeof next.valueText === 'string' && typeof prev.valueText === 'string') {
+    const a = setOf(nameTokens(next.valueText));
+    const b = setOf(nameTokens(prev.valueText));
+    if (!a.size || !b.size) return 'DIFFERENT';
+    if (a.size === b.size && isSubset(a, b)) return 'SAME';
+    if (isSubset(a, b)) return 'LESS_SPECIFIC';
+    return 'DIFFERENT';
+  }
+
+  if (Array.isArray(next.valueJson) && Array.isArray(prev.valueJson)) {
+    // Lists compare as sets of normalised items, so a reordered or reworded
+    // amenity list is not a change to the building.
+    const norm = (xs: unknown[]) =>
+      setOf(xs.map((x) => (typeof x === 'string' ? nameTokens(x).join(' ') : JSON.stringify(x))).filter(Boolean));
+    const a = norm(next.valueJson);
+    const b = norm(prev.valueJson);
+    if (!a.size || !b.size) return 'DIFFERENT';
+    if (a.size === b.size && isSubset(a, b)) return 'SAME';
+    if (isSubset(a, b)) return 'LESS_SPECIFIC';
+    return 'DIFFERENT';
+  }
+
+  return 'DIFFERENT';
+}
+
 /** The same rendering, for a row already in the database. */
 function rowSignature(row: any): string {
   return valueSignature({
@@ -160,16 +254,32 @@ async function writeFact(
   const incoming = valueSignature(f);
   if (!incoming) return;
 
-  if (current && rowSignature(current) === incoming) {
-    // KNOWN AND STILL TRUE. The cheapest outcome there is: no new row, and
-    // the clock on the existing one moves forward so the next verification
-    // finds it fresh.
-    await db
-      .from('intelligence_facts')
-      .update({ last_verified_at: now, ...(f.confidence != null ? { confidence: f.confidence } : {}) })
-      .eq('id', current.id);
-    out.factsUnchanged += 1;
-    return;
+  if (current) {
+    const verdict = compareValues(f, {
+      valueText: current.value_text,
+      valueNumber: current.value_number == null ? null : Number(current.value_number),
+      valueJson: current.value_json,
+    });
+
+    if (verdict === 'SAME' || verdict === 'LESS_SPECIFIC') {
+      /*
+       * KNOWN AND STILL TRUE. The cheapest outcome there is: no new row, and
+       * the clock on the existing one moves forward so the next verification
+       * finds it fresh.
+       *
+       * LESS_SPECIFIC lands here deliberately. A run that returns a shorter
+       * address or a thinner amenity list has not learned something new — it
+       * has returned the same fact with detail missing, and replacing the
+       * fuller value would make the graph worse every time it was
+       * re-verified.
+       */
+      await db
+        .from('intelligence_facts')
+        .update({ last_verified_at: now, ...(f.confidence != null ? { confidence: f.confidence } : {}) })
+        .eq('id', current.id);
+      out.factsUnchanged += 1;
+      return;
+    }
   }
 
   const row = {

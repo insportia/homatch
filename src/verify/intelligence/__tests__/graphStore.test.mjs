@@ -16,7 +16,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { persistHarvest, loadKnownIntelligence, valueSignature } from '../graphStore.ts';
+import { persistHarvest, loadKnownIntelligence, valueSignature, compareValues } from '../graphStore.ts';
 import { harvestReport } from '../harvest.ts';
 
 /* ------------------------------------------------------------------ *
@@ -373,4 +373,92 @@ test('a cycle in the graph does not loop forever', async () => {
   const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
   assert.ok(Array.isArray(known.relatedEntities));
   assert.ok(!known.relatedEntities.some((r) => r.id === a.id), 'the walk came back to where it started');
+});
+
+/* ── wording is not change ───────────────────────────────────────────── */
+
+test('the same company named two ways is not a change', async () => {
+  // Measured by running the same verification twice against one property:
+  // "Geo City Digomi LLC" came back as "LLC Geo City Digomi". A customer
+  // asking "has anything changed?" would have been told the company was
+  // renamed — and a fact that changes every run is never fresh, so it can
+  // never be reused.
+  assert.equal(
+    compareValues({ valueText: 'LLC Geo City Digomi' }, { valueText: 'Geo City Digomi LLC' }),
+    'SAME'
+  );
+  assert.equal(compareValues({ valueText: 'Geo  City   Digomi' }, { valueText: 'geo city digomi' }), 'SAME');
+});
+
+test('a thinner version of the same address does not replace the fuller one', async () => {
+  // The second run returned "18 Kristian Stiven Street, Tbilisi" for
+  // "18 Kristian Stiven Street, Digomi, Tbilisi". That is the same fact with
+  // detail missing; superseding would make the graph worse every re-check.
+  assert.equal(
+    compareValues(
+      { valueText: '18 Kristian Stiven Street, Tbilisi' },
+      { valueText: '18 Kristian Stiven Street, Digomi, Tbilisi' }
+    ),
+    'LESS_SPECIFIC'
+  );
+  // And the fuller value is kept.
+  const db = makeDb();
+  const full = { ...REPORT, projectProfile: { ...REPORT.projectProfile, address: '18 Kristian Stiven Street, Digomi, Tbilisi' } };
+  const thin = { ...REPORT, projectProfile: { ...REPORT.projectProfile, address: '18 Kristian Stiven Street, Tbilisi' } };
+  await persistHarvest(db, harvestReport(full, POLICIES), 'job-1');
+  const out = await persistHarvest(db, harvestReport(thin, POLICIES), 'job-2');
+  assert.equal(out.factsChanged, 0, 'a less specific address replaced a fuller one');
+  const kept = db.tables.intelligence_facts.find((f) => f.fact_key === 'address.full' && f.status === 'CURRENT');
+  assert.match(kept.value_text, /Digomi/, 'the district was lost from the stored address');
+});
+
+test('a reworded amenity list is not a change to the building', () => {
+  assert.equal(
+    compareValues(
+      { valueJson: ['Ground-level parking', 'Elevator'] },
+      { valueJson: ['elevator', 'ground level parking'] }
+    ),
+    'SAME'
+  );
+  // A genuinely shorter list is the same building, described less fully.
+  assert.equal(
+    compareValues({ valueJson: ['Elevator'] }, { valueJson: ['Elevator', 'Parking'] }),
+    'LESS_SPECIFIC'
+  );
+  // A different amenity IS a change.
+  assert.equal(
+    compareValues({ valueJson: ['Elevator', 'Pool'] }, { valueJson: ['Elevator', 'Parking'] }),
+    'DIFFERENT'
+  );
+});
+
+test('numbers and enums are never blurred', () => {
+  // The facts where a difference is always real. Normalising these would
+  // hide exactly the changes that matter most.
+  assert.equal(compareValues({ valueNumber: 155000 }, { valueNumber: 160000 }), 'DIFFERENT');
+  assert.equal(compareValues({ valueNumber: 7 }, { valueNumber: 9 }), 'DIFFERENT');
+  assert.equal(
+    compareValues({ valueText: 'NOT_CONFIRMED' }, { valueText: 'CONFIRMED_POSITIVE' }),
+    'DIFFERENT'
+  );
+  assert.equal(compareValues({ valueText: 'JOINT' }, { valueText: 'SOLE' }), 'DIFFERENT');
+});
+
+test('a genuinely different set of directors is still a change', async () => {
+  // The one real change the two production runs disagreed about, and it must
+  // survive the normalisation that silences the rest.
+  assert.equal(
+    compareValues(
+      { valueJson: ['მერაბ ბეჟაშვილი', 'ლიანა ჭუმბურიძე'] },
+      { valueJson: ['გურამ ფშავლიშვილი', 'ჯუმბერი ომარაშვილი'] }
+    ),
+    'DIFFERENT'
+  );
+});
+
+test('what is stored is always what the research said, never the normalised form', async () => {
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+  const name = db.tables.intelligence_facts.find((f) => f.fact_key === 'company.name');
+  assert.equal(name.value_text, 'Geo City', 'the stored value was normalised');
 });

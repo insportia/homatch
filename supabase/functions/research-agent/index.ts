@@ -5,6 +5,8 @@ import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/a
 import { harvestReport, normalizeCadastral } from '../../../src/verify/intelligence/harvest.ts';
 import { persistHarvest, loadKnownIntelligence } from '../../../src/verify/intelligence/graphStore.ts';
 import { planVerification } from '../../../src/verify/intelligence/stagePlan.ts';
+import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
+import { summariseSources } from '../../../src/verify/intelligence/sourceVersion.ts';
 import {
   consumptionFromUsage,
   costOperationFor,
@@ -3087,6 +3089,15 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     // Per stage, like costUsage: a search is billed per call and is a real
     // line in what this verification cost.
     webSearchCalls: prior._searches,
+    /*
+     * CARRIED THROUGH, BECAUSE finish() REPLACES result_json WHOLESALE.
+     *
+     * The reuse plan is computed when the job is created and was being
+     * silently discarded the moment the report was written — the
+     * measurement survived only for as long as the job was running. Found
+     * by reading it mid-run and then finding it gone from the finished row.
+     */
+    _reusePlan: prior._reusePlan ?? null,
     stage: 'COMPLETE',
     searchedAt: now(),
   };
@@ -3097,6 +3108,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   await recordVerificationCost(sb, { id: j.id, result_json: result });
   // And the graph learns whatever this verification actually established.
   await learnFromVerification(sb, j.id, result);
+  // And what each official source looked like, so the next run can tell
+  // whether re-reading it would say anything new.
+  await recordOfficialSourceVersions(sb, { id: j.id, query: j.query, user_id: j.user_id }, result);
   return finished;
 }
 
@@ -3804,6 +3818,43 @@ async function shadowReusePlan(db: any, query: string): Promise<any | null> {
   } catch (e) {
     console.error('research-agent: shadow reuse plan threw', e instanceof Error ? e.message : String(e));
     return null;
+  }
+}
+
+/*
+ * WHAT EACH OFFICIAL SOURCE SAID, AND WHETHER IT HAD MOVED.
+ *
+ * research_cache was built for this and held zero rows — a source-record
+ * store somebody designed properly and nothing ever used. This fills it.
+ *
+ * Recorded after the fact for now, not consulted before it. Acting on an
+ * UNCHANGED verdict means skipping a paid read, which is routing, and
+ * routing waits for the benchmark like everything else. What this does buy
+ * immediately is the measurement: how often a registry record actually
+ * changes between two verifications is a number nobody has ever had.
+ */
+async function recordOfficialSourceVersions(db: any, job: any, report: any): Promise<void> {
+  try {
+    const results = report?.browserOfficial?.results;
+    if (!Array.isArray(results) || !results.length) return;
+
+    const out = await recordSourceVersions(
+      db,
+      String(job?.query ?? ''),
+      results,
+      sha256Hex,
+      job?.user_id ?? null
+    );
+    if (!out.observations.length && !out.errors.length) return;
+
+    const changed = out.observations.filter((o: any) => o.state === 'CHANGED').map((o: any) => o.source);
+    console.log(
+      'research-agent: official sources for ' + job.id + ' — ' + summariseSources(out.observations) +
+      (changed.length ? '; moved: ' + changed.join(', ') : '') +
+      (out.errors.length ? '; errors: ' + out.errors.join(' | ') : '')
+    );
+  } catch (e) {
+    console.error('research-agent: recording source versions threw', e instanceof Error ? e.message : String(e));
   }
 }
 

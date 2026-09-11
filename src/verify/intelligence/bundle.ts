@@ -146,7 +146,7 @@ export function buildIntelligenceBundle(
     address,
     nonEmpty(reconciled.address),
     ...arr<unknown>(pr.facts).map(clean),
-  ]);
+  ], pr.nearbyPlaces);
 
   const snapshot: PropertySnapshot = {
     cadastralCode: pkg.subject.cadastralCode,

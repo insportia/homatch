@@ -521,6 +521,53 @@ const PUBLIC_RESEARCH_ARRAY_FIELDS = [
   'awardsRecognition',
   'facts',
 ] as const;
+/*
+ * §3 — nearby places, kept structured rather than as prose.
+ *
+ * Each entry is { category, name, note, source }. The NOTE is where any
+ * relative context lives ("on the same street", "a few minutes on foot"), and
+ * it is only ever what a source actually said. A distance or a travel time is
+ * never computed here and never estimated: we have no coordinates for either
+ * end, and a made-up "350m" is exactly the kind of precise-sounding invention
+ * this product exists to avoid.
+ */
+const PUBLIC_RESEARCH_PLACE_FIELDS = ['nearbyPlaces'] as const;
+const PLACE_CATEGORIES = [
+  'SCHOOL', 'KINDERGARTEN', 'SUPERMARKET', 'PHARMACY', 'CLINIC',
+  'PARK', 'TRANSPORT', 'ROAD_ACCESS', 'CITY_CENTRE', 'SERVICE',
+];
+/** At most this many per category: a buyer wants the nearest few, not an index. */
+const MAX_PLACES_PER_CATEGORY = 3;
+
+function normalizeNearbyPlaces(raw: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(raw)) return [];
+  const perCategory = new Map<string, number>();
+  const seen = new Set<string>();
+  const out: Record<string, unknown>[] = [];
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    const category = String(e.category ?? '').trim().toUpperCase();
+    const name = typeof e.name === 'string' ? e.name.trim() : '';
+    if (!PLACE_CATEGORIES.includes(category) || !name) continue;
+
+    // The same supermarket found twice under two spellings is one supermarket.
+    const key = `${category}:${name.toLowerCase().replace(/\s+/g, ' ')}`;
+    if (seen.has(key)) continue;
+    const used = perCategory.get(category) ?? 0;
+    if (used >= MAX_PLACES_PER_CATEGORY) continue;
+
+    seen.add(key);
+    perCategory.set(category, used + 1);
+    out.push({
+      category,
+      name: name.slice(0, 120),
+      note: typeof e.note === 'string' ? e.note.trim().slice(0, 200) : null,
+    });
+  }
+  return out;
+}
 const PUBLIC_RESEARCH_SCALAR_FIELDS = [
   'project',
   'developer',
@@ -553,6 +600,7 @@ function normalizePublicResearchStructured(z: any): Record<string, any> {
   const out: Record<string, any> = {};
   for (const k of PUBLIC_RESEARCH_SCALAR_FIELDS) out[k] = typeof src[k] === 'string' && src[k].trim() ? src[k].trim() : null;
   for (const k of PUBLIC_RESEARCH_ARRAY_FIELDS) out[k] = Array.isArray(src[k]) ? src[k].filter((x: any) => typeof x === 'string' && x.trim()) : [];
+  for (const k of PUBLIC_RESEARCH_PLACE_FIELDS) out[k] = normalizeNearbyPlaces(src[k]);
   return out;
 }
 

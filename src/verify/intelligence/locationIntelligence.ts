@@ -30,12 +30,91 @@ export interface AreaProfile {
   context: string[];
 }
 
+/*
+ * A place near the property, as a source described it.
+ *
+ * There is deliberately no distance and no travel time. We have coordinates
+ * for neither end, so any number here would be invented — and "350m from the
+ * building" is precisely the kind of precise-sounding invention that makes a
+ * report untrustworthy. `note` carries whatever relative context a source
+ * actually stated, or nothing.
+ *
+ * `whyKey` is an i18n key, not prose: the reason a school or a pharmacy
+ * matters to a buyer is the same sentence every time, and it should be
+ * translated rather than re-written per report.
+ */
+export type PlaceCategory =
+  | 'SCHOOL' | 'KINDERGARTEN' | 'SUPERMARKET' | 'PHARMACY' | 'CLINIC'
+  | 'PARK' | 'TRANSPORT' | 'ROAD_ACCESS' | 'CITY_CENTRE' | 'SERVICE';
+
+export interface NearbyPlace {
+  category: PlaceCategory;
+  name: string;
+  /** Relative context a source actually stated. Never computed. */
+  note?: string | null;
+  /** Why this category matters to somebody living there. */
+  whyKey: string;
+}
+
+/** Why each kind of place matters, said once, translated per language. */
+export const PLACE_WHY_KEYS: Record<PlaceCategory, string> = {
+  SCHOOL: 'verify_place_why_school',
+  KINDERGARTEN: 'verify_place_why_kindergarten',
+  SUPERMARKET: 'verify_place_why_supermarket',
+  PHARMACY: 'verify_place_why_pharmacy',
+  CLINIC: 'verify_place_why_clinic',
+  PARK: 'verify_place_why_park',
+  TRANSPORT: 'verify_place_why_transport',
+  ROAD_ACCESS: 'verify_place_why_road',
+  CITY_CENTRE: 'verify_place_why_centre',
+  SERVICE: 'verify_place_why_service',
+};
+
+/** The order a buyer cares about: daily needs first, then getting around. */
+const CATEGORY_ORDER: PlaceCategory[] = [
+  'SUPERMARKET', 'PHARMACY', 'SCHOOL', 'KINDERGARTEN', 'CLINIC',
+  'TRANSPORT', 'PARK', 'ROAD_ACCESS', 'CITY_CENTRE', 'SERVICE',
+];
+
+/**
+ * The nearby places worth showing, deduplicated and ordered.
+ *
+ * A dozen supermarkets is an index, not intelligence, so this keeps the few
+ * that answer "could I live here" and drops the rest.
+ */
+export function nearbyPlaces(raw: unknown): NearbyPlace[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: NearbyPlace[] = [];
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    const category = String(e.category ?? '').toUpperCase() as PlaceCategory;
+    const name = typeof e.name === 'string' ? e.name.trim() : '';
+    if (!PLACE_WHY_KEYS[category] || !name) continue;
+
+    const key = `${category}:${name.toLowerCase().replace(/\s+/g, ' ')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const note = typeof e.note === 'string' && e.note.trim() ? e.note.trim() : null;
+    out.push({ category, name, note, whyKey: PLACE_WHY_KEYS[category] });
+  }
+
+  return out.sort(
+    (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
+  );
+}
+
 export interface LocationIntelligence {
   city?: string;
   district?: string;
   street?: string;
   /** Present only for a district this module actually knows. */
   profile?: AreaProfile;
+  /** Places a source actually named near this property. */
+  nearby: NearbyPlace[];
   /** True when nothing beyond a raw address string could be resolved. */
   minimal: boolean;
 }
@@ -122,7 +201,10 @@ export function cityOfAddress(address: unknown): string | undefined {
  * address, publicResearch facts, comparables' addresses. They are scanned in
  * order, so the most authoritative one wins.
  */
-export function buildLocationIntelligence(texts: (string | undefined)[]): LocationIntelligence {
+export function buildLocationIntelligence(
+  texts: (string | undefined)[],
+  places?: unknown
+): LocationIntelligence {
   const candidates = texts.map(str).filter(Boolean);
   const joined = candidates.join(' \n ');
 
@@ -137,6 +219,7 @@ export function buildLocationIntelligence(texts: (string | undefined)[]): Locati
     district,
     street,
     profile: known && district ? { district, ...known } : undefined,
+    nearby: nearbyPlaces(places),
     minimal: !city && !district && !street,
   };
 }

@@ -74,6 +74,34 @@ export const PUBLIC_RESEARCH_TARGETS = [
   'Telegram',
   'forums',
   'reviews',
+  // §3 — what it is like to live there. These belong to the PROPERTY, not to
+  // its developer, so unlike the construction and company targets they apply
+  // to every archetype: a land parcel still has a road to it and a school
+  // down it.
+  'nearby schools',
+  'nearby kindergartens',
+  'nearby supermarkets',
+  'nearby pharmacies',
+  'nearby clinics and hospitals',
+  'nearby parks and recreation',
+  'public transport access',
+  'main road access',
+  'distance to city centre',
+  'everyday services nearby',
+];
+
+/** The location targets, named once so every scope can include them. */
+export const LOCATION_TARGETS = [
+  'nearby schools',
+  'nearby kindergartens',
+  'nearby supermarkets',
+  'nearby pharmacies',
+  'nearby clinics and hospitals',
+  'nearby parks and recreation',
+  'public transport access',
+  'main road access',
+  'distance to city centre',
+  'everyday services nearby',
 ];
 
 export function publicResearchScope(assetClass: string | null | undefined): { targets: string[]; scopeNote: string } {
@@ -88,13 +116,13 @@ export function publicResearchScope(assetClass: string | null | undefined): { ta
       // history to research by default — only worth pursuing if evidence
       // already on hand (Identity/Official) actually names one.
       return {
-        targets: [...reputationTargets, 'quality'],
+        targets: [...reputationTargets, 'quality', ...LOCATION_TARGETS],
         scopeNote:
           'ASSET-CLASS SCOPE (private resale/rental — no forced developer research): this is a private individual\'s unit, not a marketed development project. Do NOT go looking for a developer, architect, contractor, or construction-company just to fill those fields — only research and populate them if the evidence already gathered (Identity/Official above) actually names one for this exact unit/building. It is entirely normal and CORRECT for developer/architect/contractor/companyHistory/previousProjects fields to stay null here; never invent a plausible-sounding value to avoid an empty field. Focus your search instead on: the property\'s own public reputation/reviews, its immediate micro-location, and any publicly reported quality signals or complaints about this exact address/unit.',
       };
     case 'PRIVATE_HOUSE':
       return {
-        targets: ['quality', 'current physical status', ...reputationTargets],
+        targets: ['quality', 'current physical status', ...reputationTargets, ...LOCATION_TARGETS],
         scopeNote:
           'ASSET-CLASS SCOPE (private house — no forced developer/project research): this is a standalone private house, not a unit in a marketed development. Only populate developer/architect/contractor/companyHistory/previousProjects if the evidence already gathered actually names one (e.g. a custom-build architect/builder is sometimes publicly documented) — otherwise leave them null; that is the expected, correct outcome, not a gap. Focus your search on the property\'s own public reputation and its immediate micro-location.',
       };
@@ -103,13 +131,13 @@ export function publicResearchScope(assetClass: string | null | undefined): { ta
       // (facade/windows/elevators/MEP/insulation/energy efficiency/seismic
       // design/amenities-as-building-feature) is inapplicable by definition.
       return {
-        targets: ['previous projects', 'developer reputation', 'quality', 'current physical status', ...reputationTargets],
+        targets: ['previous projects', 'developer reputation', 'quality', 'current physical status', ...reputationTargets, ...LOCATION_TARGETS],
         scopeNote:
           'ASSET-CLASS SCOPE (land parcel — no building-fabric research applies): this is a bare land parcel, not a building or unit. Facade/windows/elevators/structural system/construction materials/insulation/MEP/energy efficiency/seismic design/amenities/landscaping-as-a-building-feature/parking simply do not apply — leave every one of those fields null rather than describing the parcel\'s physical state under them. If a developer or project already publicly plans to build on this exact parcel, that is worth reporting (developer/previousProjects/companyHistory) — but never invent one. Focus your search on how this parcel and its immediate area are publicly discussed (development plans, land use, reputation of any named developer).',
       };
     case 'COMMERCIAL':
       return {
-        targets: [...constructionTeamTargets, ...buildingTargets, ...developerTargets, ...reputationTargets],
+        targets: [...constructionTeamTargets, ...buildingTargets, ...developerTargets, ...reputationTargets, ...LOCATION_TARGETS],
         scopeNote:
           'ASSET-CLASS SCOPE (commercial property): research the same construction/developer/reputation topics as a residential project, but frame amenities/landscaping/parking findings in commercial terms (tenant/business-facing features, accessibility, signage/visibility) rather than residential ones — only when the evidence actually supports it.',
       };

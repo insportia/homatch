@@ -194,6 +194,29 @@ async function recordMarketSnapshot(db: any, job: any, bundle: any): Promise<voi
     const market = bundle?.market;
     if (!market) return;
 
+    /*
+     * A RUN THAT REUSED A SNAPSHOT HAS NOTHING NEW TO SAY ABOUT THE MARKET.
+     *
+     * It was handed the range and told not to rebuild it, so it searched less
+     * and gathered fewer comparables by design. Writing its market back would
+     * replace the snapshot it just leaned on with a thinner copy — and the run
+     * after that would be thinner still, until confidence fell to LOW and
+     * forced the full refresh this was meant to avoid.
+     *
+     * Production showed the first step: a reusing run wrote source_count 1 over
+     * a snapshot built from 2. The store also refuses to accept a weaker
+     * replacement, but the honest place to stop is here, where we know the run
+     * was never asked to research a market in the first place.
+     */
+    const marketPlan = job?.result_json?._reusePlan?.marketPlan;
+    if (marketPlan && marketPlan.refresh === false) {
+      console.log(
+        'verify-synthesis: market snapshot for ' + job.id +
+        ' — not rewritten, this run reused an existing snapshot'
+      );
+      return;
+    }
+
     const profile = job?.result_json?.projectProfile ?? {};
     const address = profile.address ?? bundle?.snapshot?.address ?? null;
 

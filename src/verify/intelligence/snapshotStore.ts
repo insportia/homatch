@@ -21,6 +21,7 @@
 // marketSnapshot.ts, which is pure and therefore testable without a database.
 
 import {
+  SNAPSHOT_MAX_AGE_HOURS,
   segmentKeyOf,
   type SegmentKey,
   type SnapshotDraft,
@@ -70,6 +71,10 @@ export async function findSnapshot(
   }
 }
 
+/** The age limit for a scope, defaulting the way planMarket() does. */
+const maxAgeFor = (scope: string): number =>
+  (SNAPSHOT_MAX_AGE_HOURS as Record<string, number>)[scope] ?? SNAPSHOT_MAX_AGE_HOURS.DISTRICT;
+
 export interface SnapshotWriteResult {
   written: boolean;
   superseded: boolean;
@@ -110,7 +115,7 @@ export async function writeSnapshot(
 
     const { data: existing } = await db
       .from('market_snapshots')
-      .select('id, built_by_job_id')
+      .select('id, built_by_job_id, usable_comparable_count, source_count, last_refreshed_at')
       .eq('segment_key', segmentKey)
       .eq('status', 'CURRENT')
       .maybeSingle();
@@ -131,6 +136,39 @@ export async function writeSnapshot(
      */
     if (existing?.built_by_job_id && context.jobId && existing.built_by_job_id === context.jobId) {
       return { written: false, superseded: false, segmentKey, reason: 'already recorded by this job' };
+    }
+
+    /*
+     * NEVER REPLACE A SNAPSHOT WITH A WEAKER ONE.
+     *
+     * A run that REUSED a snapshot searches less, therefore gathers fewer
+     * comparables, and would then overwrite the thing it just leaned on with
+     * a thinner version of itself. Production showed the first step of it:
+     * source_count fell from 2 to 1 on a run that had spent zero searches
+     * rebuilding the range. Repeat that and each generation is thinner than
+     * the last until confidence hits LOW and forces a full refresh — a cache
+     * that quietly destroys itself and then bills for the rebuild.
+     *
+     * So a replacement has to be at least as well evidenced as what it
+     * replaces. The exception is age: a stale snapshot is replaced by fresher
+     * evidence even if there is less of it, because out-of-date is the failure
+     * mode that actually reaches a buyer.
+     */
+    if (existing?.id) {
+      const existingUsable = Number(existing.usable_comparable_count ?? 0);
+      const age = existing.last_refreshed_at
+        ? (Date.now() - new Date(existing.last_refreshed_at).getTime()) / 3_600_000
+        : Number.POSITIVE_INFINITY;
+      const existingIsFresh = Number.isFinite(age) && age <= maxAgeFor(draft.segment.scopeType);
+
+      if (existingIsFresh && draft.usableComparableCount < existingUsable) {
+        return {
+          written: false,
+          superseded: false,
+          segmentKey,
+          reason: `kept stronger snapshot (${existingUsable} comparables vs ${draft.usableComparableCount})`,
+        };
+      }
     }
 
     let superseded = false;

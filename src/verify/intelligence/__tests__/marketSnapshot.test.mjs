@@ -345,3 +345,65 @@ test('nothing worth storing writes nothing', async () => {
   assert.equal(out.written, false);
   assert.equal(calls.inserts.length, 0);
 });
+
+/* ── a cache must not destroy itself ─────────────────────────────────
+ *
+ * A run that REUSES a snapshot searches less and therefore gathers fewer
+ * comparables — by design. If it then writes its market back, it replaces the
+ * thing it just leaned on with a thinner copy, and the run after that is
+ * thinner still, until confidence hits LOW and forces the full refresh this
+ * was built to avoid.
+ *
+ * Production showed the first step within one pair of runs: a reusing run
+ * wrote source_count 1 over a snapshot built from 2.
+ */
+
+test('a weaker snapshot never replaces a fresh stronger one', async () => {
+  const { writeSnapshot } = await import('../snapshotStore.ts');
+  const { db, calls } = stubStore({
+    id: 'row-1',
+    built_by_job_id: 'job-0',
+    usable_comparable_count: 7,
+    source_count: 2,
+    last_refreshed_at: new Date().toISOString(),
+  });
+  const thin = { ...draft, usableComparableCount: 3 };
+  const out = await writeSnapshot(db, thin, { jobId: 'job-1' });
+  assert.equal(out.written, false);
+  assert.match(out.reason, /kept stronger snapshot/);
+  assert.equal(calls.inserts.length, 0);
+  assert.equal(calls.updates.length, 0, 'the stronger snapshot was superseded anyway');
+});
+
+test('an equally strong snapshot may replace a fresh one', async () => {
+  // Same depth, newer evidence. Refreshing with equal support is fine; it is
+  // only LOSING support that is forbidden.
+  const { writeSnapshot } = await import('../snapshotStore.ts');
+  const { db } = stubStore({
+    id: 'row-1',
+    built_by_job_id: 'job-0',
+    usable_comparable_count: 3,
+    source_count: 2,
+    last_refreshed_at: new Date().toISOString(),
+  });
+  const out = await writeSnapshot(db, draft, { jobId: 'job-1' });
+  assert.equal(out.written, true);
+});
+
+test('fresher evidence replaces a stale snapshot even with less of it', async () => {
+  // Out of date is the failure that actually reaches a buyer. Thin and current
+  // beats deep and wrong.
+  const { writeSnapshot } = await import('../snapshotStore.ts');
+  const old = new Date(Date.now() - 400 * 24 * 3_600_000).toISOString();
+  const { db } = stubStore({
+    id: 'row-1',
+    built_by_job_id: 'job-0',
+    usable_comparable_count: 20,
+    source_count: 5,
+    last_refreshed_at: old,
+  });
+  const thin = { ...draft, usableComparableCount: 3 };
+  const out = await writeSnapshot(db, thin, { jobId: 'job-1' });
+  assert.equal(out.written, true, 'a year-old snapshot was kept because it was deeper');
+  assert.equal(out.superseded, true);
+});

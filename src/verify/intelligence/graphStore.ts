@@ -425,6 +425,19 @@ export async function persistHarvest(
   return out;
 }
 
+/**
+ * The parcel a unit code sits inside, or null when the code is already one.
+ *
+ * Georgian cadastral codes nest: five dot-separated groups identify a parcel,
+ * anything longer identifies something within it. Kept here rather than
+ * imported from harvest.ts so the read path does not depend on the write path.
+ */
+const PARCEL_GROUP_COUNT = 5;
+export function parentCadastralOf(code: string | null | undefined): string | null {
+  const groups = String(code ?? '').split('.');
+  return groups.length > PARCEL_GROUP_COUNT ? groups.slice(0, PARCEL_GROUP_COUNT).join('.') : null;
+}
+
 /* ------------------------------------------------------------------ *
  * The read path                                                       *
  * ------------------------------------------------------------------ */
@@ -486,21 +499,86 @@ export async function loadKnownIntelligence(
 ): Promise<KnownIntelligence> {
   const empty: KnownIntelligence = { entityId: null, facts: [], relatedFacts: [], relatedEntities: [] };
   try {
-    const { data: entity } = await db
+    const { data: found } = await db
       .from('intelligence_entities')
       .select('id')
       .eq('key_kind', keyKind)
       .eq('natural_key', naturalKey)
       .maybeSingle();
+
+    /*
+     * THE SECOND FLAT IN THE BUILDING.
+     *
+     * This is the case the whole layer exists for, and it did not work.
+     *
+     * A unit we have never verified has no entity of its own, the lookup above
+     * returned nothing, and the plan read "nothing known about this property
+     * yet" — on a flat whose parcel, project and developer were sitting in the
+     * graph with twenty-three facts between them, paid for by the flat
+     * upstairs. Measured in production on 01.72.14.040.030.01.01.004, a unit
+     * inside a parcel whose project had just been researched three times over.
+     *
+     * So when the unit is unknown, the walk starts from its parent parcel
+     * instead. The subject still has NO facts of its own — we genuinely know
+     * nothing about this specific flat, entityId stays null, and nothing here
+     * can be mistaken for something established about it. What comes back is
+     * lineage, and the brief already states lineage as belonging to the thing
+     * named rather than to the unit: "true of the thing named in brackets, NOT
+     * of this unit unless your own research shows it is".
+     *
+     * A parcel fact is not an exact-unit fact. That rule is what makes this
+     * safe, not something this bends.
+     */
+    let entity = found ?? null;
+    let subjectIsTheEntity = true;
+
+    if (!entity?.id && keyKind === 'CADASTRAL_CODE') {
+      const parcel = parentCadastralOf(naturalKey);
+      if (parcel) {
+        const { data: viaParcel } = await db
+          .from('intelligence_entities')
+          .select('id')
+          .eq('key_kind', 'CADASTRAL_CODE')
+          .eq('natural_key', parcel)
+          .maybeSingle();
+        if (viaParcel?.id) {
+          entity = viaParcel;
+          subjectIsTheEntity = false;
+        }
+      }
+    }
+
     if (!entity?.id) return empty;
 
     // value_text comes back too: the planner needs one value, the asset
     // class, to know which fact families this kind of property can even have.
-    const { data: facts } = await db
+    const { data: ownFacts } = await db
       .from('intelligence_facts')
       .select('entity_id, fact_key, value_text, value_number, value_json, status, last_verified_at, freshness_class, content_hash, source_ref')
       .eq('entity_id', entity.id)
       .eq('status', 'CURRENT');
+
+    /*
+     * When the walk started at the parcel because the unit is unknown, the
+     * parcel's facts are LINEAGE, not the subject's. Nothing about a flat we
+     * have never looked at is established, and this is where that stays true.
+     */
+    const facts = subjectIsTheEntity ? ownFacts : [];
+    const standInFacts = subjectIsTheEntity ? [] : ((ownFacts ?? []) as KnownFact[]);
+
+    /*
+     * The parcel has to name itself, or the brief drops its facts: a fact
+     * whose entity is neither the subject nor a listed lineage entity is
+     * discarded, which is what keeps other people's flats out.
+     */
+    const standInEntities: KnownIntelligence['relatedEntities'] = subjectIsTheEntity
+      ? []
+      : [{
+          id: entity.id,
+          entityType: 'PARENT_PARCEL',
+          naturalKey: parentCadastralOf(naturalKey) ?? '',
+          relation: 'HAS_PARENT_PARCEL',
+        }];
 
     /*
      * Two plain reads rather than one embedded join.
@@ -580,7 +658,17 @@ export async function loadKnownIntelligence(
       relatedFacts = (rf ?? []) as KnownFact[];
     }
 
-    return { entityId: entity.id, facts: (facts ?? []) as KnownFact[], relatedFacts, relatedEntities };
+    /*
+     * entityId is the SUBJECT's entity, and stays null when we only reached
+     * its parcel — there is no entity for this flat, and inventing one would
+     * let a later write attach facts to the wrong thing.
+     */
+    return {
+      entityId: subjectIsTheEntity ? entity.id : null,
+      facts: (facts ?? []) as KnownFact[],
+      relatedFacts: [...standInFacts, ...relatedFacts],
+      relatedEntities: [...standInEntities, ...relatedEntities],
+    };
   } catch {
     // Knowing nothing is always a safe answer: the verification simply
     // researches everything, exactly as it did before this layer existed.

@@ -3885,7 +3885,16 @@ async function shadowReusePlan(db: any, query: string): Promise<any | null> {
     if (!code) return null;
 
     const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', code);
-    if (!known.entityId) {
+    /*
+     * entityId is null for a unit we have never verified — but its parcel may
+     * be known, and with it the project and the developer. That is the second
+     * flat in the building, and it is the case this whole layer exists for, so
+     * "we hold no entity for this exact flat" must not be read as "we know
+     * nothing about where it is".
+     */
+    const holdsSomething =
+      !!known.entityId || known.facts.length > 0 || known.relatedFacts.length > 0;
+    if (!holdsSomething) {
       return { known: false, summary: 'nothing known about this property yet' };
     }
 

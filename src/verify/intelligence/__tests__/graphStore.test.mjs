@@ -541,3 +541,74 @@ test('every fact that comes back knows what it is a fact about', async () => {
     assert.equal(f.entity_id, known.entityId, `${f.fact_key} was filed under the wrong entity`);
   }
 });
+
+/* ── the second flat in the building ─────────────────────────────────
+ *
+ * The case the whole layer exists for, and it did not work. A unit never
+ * verified has no entity, the lookup returned nothing, and the plan read
+ * "nothing known about this property yet" — for a flat whose parcel, project
+ * and developer were already in the graph with twenty-three facts between
+ * them, paid for by a different flat in the same building.
+ *
+ * Measured in production on 01.72.14.040.030.01.01.004.
+ */
+
+test('a unit we have never seen still reaches its parcel, project and developer', async () => {
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+
+  // A different flat in the same parcel. Never verified, no entity of its own.
+  const sibling = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.01.004');
+
+  assert.ok(
+    sibling.relatedFacts.length > 0,
+    'a flat in a fully researched building learned nothing from it'
+  );
+  assert.ok(
+    sibling.relatedEntities.some((r) => r.entityType === 'PROJECT'),
+    'the project the building belongs to was unreachable from a new unit'
+  );
+});
+
+test('reaching the parcel never makes a parcel fact into this flat\'s own', async () => {
+  // The rule that makes the fallback safe rather than reckless. We know
+  // nothing about this specific flat, and nothing here may pretend otherwise.
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+
+  const sibling = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.01.004');
+  assert.deepEqual(sibling.facts, [], 'facts were attributed to a flat nobody has looked at');
+  assert.equal(sibling.entityId, null, 'an entity was invented for an unverified flat');
+});
+
+test('every stand-in fact names the thing it is actually about', async () => {
+  // A fact whose entity is neither the subject nor a listed lineage entity is
+  // dropped by the brief. If the parcel does not name itself, its facts are
+  // silently lost instead of being labelled.
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+
+  const sibling = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.01.004');
+  const known = new Set(sibling.relatedEntities.map((r) => r.id));
+  for (const f of sibling.relatedFacts) {
+    assert.ok(known.has(f.entity_id), `${f.fact_key} belongs to an entity the brief cannot label`);
+  }
+});
+
+test('a unit that IS known is unaffected by the fallback', async () => {
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+
+  const self = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+  assert.ok(self.entityId, 'a verified unit lost its own entity');
+  assert.ok(self.facts.length > 0, 'a verified unit lost its own facts');
+});
+
+test('a parcel code is not treated as a unit inside itself', async () => {
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+
+  // Five groups is already a parcel; there is no parent to fall back to.
+  const parcel = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030');
+  assert.ok(parcel.entityId, 'the parcel itself stopped resolving');
+});

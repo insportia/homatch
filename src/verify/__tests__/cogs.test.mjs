@@ -388,3 +388,45 @@ test('who can sign for the company reaches the graph', () => {
   // block would be two parsers to keep in agreement.
   assert.match(src, /import \{[^}]*extractControlStructure/s);
 });
+
+/* ── usage measured before there were prices stays priceable ─────────
+ *
+ * provider_price_book is empty, so every verification so far is UNPRICED.
+ * That must not mean the measurement is lost: when real rates arrive they are
+ * effective-dated, and a September job has to price at September's rate.
+ *
+ * The risk this guards is quiet: a refactor that trims costUsage down to a
+ * total, or prices at "now" instead of at completion, would leave the system
+ * looking fine and make every past run unpriceable or wrongly priced. Neither
+ * would fail anything else.
+ */
+
+test('rates are resolved at the time the job completed, not at the time of pricing', () => {
+  const at = '2026-03-15T00:00:00.000Z';
+  const rows = [
+    { provider: 'OPENAI', model: 'm', unit: 'INPUT_TOKEN', rate: 1, per_units: 1_000_000,
+      currency: 'USD', effective_from: '2026-01-01T00:00:00.000Z', effective_to: '2026-06-01T00:00:00.000Z' },
+    { provider: 'OPENAI', model: 'm', unit: 'INPUT_TOKEN', rate: 99, per_units: 1_000_000,
+      currency: 'USD', effective_from: '2026-06-01T00:00:00.000Z', effective_to: null },
+  ];
+  const hit = resolveRate(rows, { provider: 'OPENAI', model: 'm', unit: 'INPUT_TOKEN', at });
+  assert.ok(hit, 'no rate resolved for a date the book covers');
+  assert.equal(Number(hit.rate), 1, 'a past job was priced at a later rate, rewriting history');
+});
+
+test('a job priced with no rates at all says so rather than reading as free', () => {
+  // A zero meaning "no rate for this" must never be mistaken for a zero
+  // meaning "this cost nothing".
+  const stages = priceVerification(
+    consumptionFromUsage(
+      { identity: { input_tokens: 100, output_tokens: 10, total_tokens: 110,
+                    input_tokens_details: { cached_tokens: 0 } } },
+      () => 'm',
+      () => 0
+    ),
+    { provider: 'OPENAI', rows: [], at: '2026-09-11T00:00:00.000Z' }
+  );
+  const total = totalVerificationCost(stages);
+  assert.equal(total.state, 'UNPRICED');
+  assert.ok(total.unpricedUnits.length > 0, 'nothing named the units that had no rate');
+});

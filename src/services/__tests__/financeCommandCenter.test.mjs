@@ -122,7 +122,8 @@ test('missing revenue configuration is stated, never drawn as zero revenue', () 
     'revenue availability must not be derived from the revenue amount');
   // And the UI renders that as NOT CONFIGURED rather than $0.00.
   const page = src('pages/admin/AdminFinancePage.tsx');
-  assert.match(page, /unavailable=\{!s\?\.revenue_data_available\}/);
+  assert.match(page, /unavailable=\{!s \|\| !s\.revenue_data_available\}/);
+  assert.match(page, /fin_revenue_unavailable/);
 });
 
 // ── Admin only, in the database ────────────────────────────────────────────
@@ -417,4 +418,51 @@ test('a refused request is shown as authorization working, not as an empty compa
   const page = src('pages/admin/AdminFinancePage.tsx');
   assert.match(page, /FORBIDDEN/);
   assert.match(page, /fin_forbidden_title/);
+});
+
+// ── A failed load is not a company that spent nothing ──────────────────────
+
+test('a query that fails renders as unavailable, never as $0.00', () => {
+  // Found live: finance_monthly_summary took 9.6s against production data,
+  // hit the statement timeout, and the dashboard rendered $0.00 across every
+  // headline figure while showing a toast. A cost dashboard reporting zero
+  // because a query died is indistinguishable from one reporting the truth.
+  const page = src('pages/admin/AdminFinancePage.tsx');
+  assert.match(page, /setLoadError\(msg\)/);
+  assert.match(page, /setSummary\(null\)/);
+  assert.match(page, /\{loadError && <LoadError/);
+  // Every headline card opts out of rendering a number when there is none.
+  const cards = page.match(/unavailableLabel=\{t\('fin_unavailable'\)\}/g) ?? [];
+  assert.ok(cards.length >= 6, `expected every summary card guarded, found ${cards.length}`);
+});
+
+test('no finance tab swallows a load failure into an empty table', () => {
+  for (const f of [
+    'components/admin/finance/FinanceProvidersTab.tsx',
+    'components/admin/finance/FinanceConnectionsTab.tsx',
+    'components/admin/finance/FinanceProductsTab.tsx',
+    'components/admin/finance/FinanceMoreTabs.tsx',
+    'components/admin/finance/FinanceMoneyTabs.tsx',
+    'components/admin/finance/FinanceEventsTab.tsx',
+  ]) {
+    const code = src(f);
+    assert.match(code, /LoadError/, `${f} must surface a failed load`);
+    assert.ok(!/\.catch\(\(\) => \{ \/\* [^*]*\*\/ \}\)/.test(code),
+      `${f} must not swallow its error`);
+  }
+});
+
+test('the reports scan the fact stream once, not once per row of output', () => {
+  // The view is a four-way union with per-row function calls and cannot be
+  // indexed into, so the only thing that matters is how often it is scanned.
+  const perf = mig('20260911212114_finance_single_scan_reports_and_double_round_fixes.sql');
+  // Month buckets are computed per row rather than the stream re-scanned.
+  assert.match(perf, /date_trunc\('month', f\.occurred_at AT TIME ZONE v_tz\)/);
+  assert.match(perf, /group by 1/);
+  // The summary pivots one pass with FILTER instead of running four.
+  assert.match(perf, /filter \(where f\.is_cogs and f\.occurred_at >= v_day_start\)/);
+  // Budgets read a single materialised CTE.
+  assert.match(perf, /with facts as \(/);
+  // And the second double-precision round is cast.
+  assert.match(perf, /percentile_cont\(0\.5\) within group \(order by total_cogs_usd\)\)::numeric/);
 });

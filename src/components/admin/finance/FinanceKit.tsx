@@ -18,7 +18,8 @@ import { AlertTriangle, Minus, TrendingDown, TrendingUp } from 'lucide-react';
 
 /** The one big number. */
 export function StatCard({
-  label, value, sub, tone = 'neutral', unavailable, unavailableNote, icon: Icon,
+  label, value, sub, tone = 'neutral', unavailable, unavailableNote,
+  unavailableLabel, icon: Icon,
 }: {
   label: string;
   value: React.ReactNode;
@@ -26,6 +27,8 @@ export function StatCard({
   tone?: 'neutral' | 'good' | 'bad' | 'gold';
   unavailable?: boolean;
   unavailableNote?: string;
+  /** Defaults to NOT CONFIGURED. A failed load says so instead. */
+  unavailableLabel?: string;
   icon?: React.ElementType;
 }) {
   const { t } = useLanguage();
@@ -46,7 +49,7 @@ export function StatCard({
       {unavailable ? (
         <>
           <p className="mt-1.5 text-lg font-semibold text-muted-foreground">
-            {t('fin_not_configured')}
+            {unavailableLabel ?? t('fin_not_configured')}
           </p>
           {unavailableNote && (
             <p className="mt-1 text-xs text-muted-foreground/80">{unavailableNote}</p>
@@ -168,6 +171,33 @@ export function Empty({ message }: { message: string }) {
   return (
     <div className="rounded-lg border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
       {message}
+    </div>
+  );
+}
+
+/**
+ * A load that failed must never leave the screen showing zeros. Nothing here
+ * is worse than a cost dashboard quietly reporting $0.00 because a query died
+ * — that is indistinguishable from a company that spent nothing.
+ */
+export function LoadError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const { t } = useLanguage();
+  return (
+    <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4">
+      <p className="flex items-center gap-2 text-sm font-semibold text-red-400">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        {t('fin_load_failed')}
+      </p>
+      <p className="mt-1 break-words text-xs text-muted-foreground">{message}</p>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-2 text-xs text-muted-foreground underline underline-offset-2"
+        >
+          {t('fin_retry')}
+        </button>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, Clock, KeyRound, Loader2, Plug } from 'lucide-react';
 import { getProviderConnections, usd, num, relativeTime } from '@/services/finance';
 import type { AccessLevel, AccessStatus, ProviderConnection } from '@/types/finance';
-import { Pill, Empty, SectionTitle } from './FinanceKit';
+import { Pill, Empty, SectionTitle, LoadError } from './FinanceKit';
 
 /**
  * PROVIDER CONNECTIONS — the access and billing audit, as a screen.
@@ -51,13 +51,14 @@ export function FinanceConnectionsTab() {
   const { t } = useLanguage();
   const [rows, setRows] = useState<ProviderConnection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     let alive = true;
     getProviderConnections()
       .then(r => { if (alive) setRows(r ?? []); })
-      .catch(() => { /* shell surfaces it */ })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
@@ -65,6 +66,7 @@ export function FinanceConnectionsTab() {
   if (loading) {
     return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
   }
+  if (error) return <LoadError message={error} />;
 
   const connected = rows.filter(r => r.access_status !== 'NOT_CONFIGURED');
   const notConfigured = rows.filter(r => r.access_status === 'NOT_CONFIGURED');

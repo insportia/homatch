@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { getFinancePlans, getCreditEconomics, getUserEconomics, usd, num } from '@/services/finance';
 import type { CreditEconomics, PlanRow, UserEconomicsRow } from '@/types/finance';
-import { Money, Pill, TableWrap, Empty, SectionTitle } from './FinanceKit';
+import { Money, Pill, TableWrap, Empty, SectionTitle, LoadError } from './FinanceKit';
 
 /**
  * Plans, credit economics and per-customer contribution.
@@ -17,16 +17,19 @@ import { Money, Pill, TableWrap, Empty, SectionTitle } from './FinanceKit';
 function useLoad<T>(fn: () => Promise<T | null>, deps: React.DependencyList = []) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
+  // A failure must be visible. Swallowing it leaves an empty table that reads
+  // as "nothing happened" rather than "this did not load".
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     fn()
-      .then(d => { if (alive) setData(d); })
-      .catch(() => { /* the page shell already surfaced the error */ })
+      .then(d => { if (alive) { setData(d); setError(null); } })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  return { data, loading };
+  return { data, loading, error };
 }
 
 const Spinner = () => (
@@ -36,9 +39,10 @@ const Spinner = () => (
 /** Subscriptions: what each plan earns, and what its included allowances cost. */
 export function FinanceSubscriptionsTab() {
   const { t } = useLanguage();
-  const { data, loading } = useLoad<PlanRow[]>(() => getFinancePlans(30));
+  const { data, loading, error } = useLoad<PlanRow[]>(() => getFinancePlans(30));
   const plans = data ?? [];
   if (loading) return <Spinner />;
+  if (error) return <LoadError message={error} />;
 
   return (
     <div className="space-y-4">
@@ -99,8 +103,9 @@ export function FinanceSubscriptionsTab() {
 /** Credit economics: what is cash, and what was issued rather than sold. */
 export function FinanceCreditsTab() {
   const { t } = useLanguage();
-  const { data: credits, loading } = useLoad<CreditEconomics>(() => getCreditEconomics());
+  const { data: credits, loading, error } = useLoad<CreditEconomics>(() => getCreditEconomics());
   if (loading) return <Spinner />;
+  if (error) return <LoadError message={error} />;
 
   return (
     <div className="space-y-4">
@@ -199,9 +204,10 @@ export function FinanceCreditsTab() {
 /** Per-customer contribution: revenue against attributed provider cost. */
 export function FinanceUsersTab() {
   const { t } = useLanguage();
-  const { data, loading } = useLoad<UserEconomicsRow[]>(() => getUserEconomics(30, 'cogs', 25));
+  const { data, loading, error } = useLoad<UserEconomicsRow[]>(() => getUserEconomics(30, 'cogs', 25));
   const users = data ?? [];
   if (loading) return <Spinner />;
+  if (error) return <LoadError message={error} />;
 
   return (
     <div className="space-y-4">

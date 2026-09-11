@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, AlertTriangle, Loader2 } from 'lucide-react';
 import { getLiveFeed, getFixedCosts, getPriceBook, usd, num, relativeTime } from '@/services/finance';
 import type { FixedCosts, LiveFeed, PriceBook } from '@/types/finance';
-import { Money, Pill, TableWrap, Empty, SectionTitle, StatCard } from './FinanceKit';
+import { Money, Pill, TableWrap, Empty, SectionTitle, StatCard, LoadError } from './FinanceKit';
 
 /**
  * The three remaining Finance surfaces: what is being spent right now, what
@@ -17,12 +17,13 @@ export function FinanceLiveSpendTab() {
   const { t } = useLanguage();
   const [feed, setFeed] = useState<LiveFeed | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     const load = () => getLiveFeed(60)
       .then(f => { if (alive) setFeed(f); })
-      .catch(() => { /* shell surfaces it */ })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     load();
     // Live means live. Cheap enough to poll: one indexed read.
@@ -33,6 +34,7 @@ export function FinanceLiveSpendTab() {
   if (loading) {
     return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
   }
+  if (error) return <LoadError message={error} />;
 
   return (
     <div className="space-y-4">
@@ -107,12 +109,13 @@ export function FinanceFixedCostsTab() {
   const { t } = useLanguage();
   const [data, setData] = useState<FixedCosts | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     getFixedCosts()
       .then(d => { if (alive) setData(d); })
-      .catch(() => { /* shell surfaces it */ })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
@@ -120,6 +123,7 @@ export function FinanceFixedCostsTab() {
   if (loading) {
     return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
   }
+  if (error) return <LoadError message={error} />;
 
   return (
     <div className="space-y-4">
@@ -206,12 +210,13 @@ export function FinancePriceBookTab() {
   const { t } = useLanguage();
   const [book, setBook] = useState<PriceBook | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     getPriceBook()
       .then(b => { if (alive) setBook(b); })
-      .catch(() => { /* shell surfaces it */ })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
@@ -219,6 +224,7 @@ export function FinancePriceBookTab() {
   if (loading) {
     return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
   }
+  if (error) return <LoadError message={error} />;
 
   const current = (book?.model_rates ?? []).filter(r => r.current);
   const historical = (book?.model_rates ?? []).filter(r => !r.current);

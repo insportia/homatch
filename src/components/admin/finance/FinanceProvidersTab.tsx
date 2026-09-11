@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { getFinanceProviders, getProviderRegistry, usd, num, relativeTime } from '@/services/finance';
 import type { ProviderRow, ProviderRegistry } from '@/types/finance';
-import { Pill, ShareBar, TableWrap, Empty, UnpricedBadge, SectionTitle } from './FinanceKit';
+import { Pill, ShareBar, TableWrap, Empty, UnpricedBadge, SectionTitle, LoadError } from './FinanceKit';
 
 /**
  * Provider spend, rendered from the REGISTRY.
@@ -19,12 +19,13 @@ export function FinanceProvidersTab() {
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [registry, setRegistry] = useState<ProviderRegistry | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     Promise.all([getFinanceProviders(30), getProviderRegistry(30, true)])
       .then(([p, r]) => { if (alive) { setRows(p ?? []); setRegistry(r); } })
-      .catch(() => { /* the page shell already surfaced the error */ })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
@@ -32,6 +33,7 @@ export function FinanceProvidersTab() {
   if (loading) {
     return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
   }
+  if (error) return <LoadError message={error} />;
 
   const spending = rows.filter(r => Number(r.spend_usd) > 0 || r.events > 0);
   const idle = rows.filter(r => Number(r.spend_usd) === 0 && r.events === 0);

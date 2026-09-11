@@ -10,7 +10,7 @@ import {
   getCostEvents, exportCostFacts, getFxStatus, usd, num,
 } from '@/services/finance';
 import type { CostEventPage, CostFactRow, FxStatus } from '@/types/finance';
-import { Money, Pill, TableWrap, Empty } from './FinanceKit';
+import { Money, Pill, TableWrap, Empty, LoadError } from './FinanceKit';
 
 const PAGE = 100;
 
@@ -34,10 +34,12 @@ export function FinanceEventsTab() {
   const [jobRef, setJobRef] = useState('');
   const [unpricedOnly, setUnpricedOnly] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      setError(null);
       const res = await getCostEvents({
         provider: provider.trim() || undefined,
         product: product.trim() || undefined,
@@ -48,14 +50,25 @@ export function FinanceEventsTab() {
       });
       setPage(res);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      // Shown in place, not only as a toast that disappears.
+      setError(msg);
+      setPage(null);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   }, [provider, product, jobRef, unpricedOnly, offset]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { getFxStatus().then(setFx).catch(() => { /* optional panel */ }); }, []);
+  // The FX banner is advisory: if it fails the table below is still correct,
+  // so this does not take the whole tab down. It is logged rather than
+  // swallowed, because a silent catch is how a gap stops being noticed.
+  useEffect(() => {
+    getFxStatus().then(setFx).catch(err => {
+      console.error('[finance] fx status unavailable:', err);
+    });
+  }, []);
 
   const doExport = async () => {
     setExporting(true);
@@ -145,6 +158,8 @@ export function FinanceEventsTab() {
             <div className="flex justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
+          ) : error ? (
+            <LoadError message={error} onRetry={load} />
           ) : rows.length === 0 ? (
             <Empty message={t('fin_no_events')} />
           ) : (

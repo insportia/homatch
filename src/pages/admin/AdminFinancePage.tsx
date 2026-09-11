@@ -13,7 +13,7 @@ import type {
   FinanceSummary, BudgetRow, AlertRow, MonthRow, MarginMonitor,
 } from '@/types/finance';
 import {
-  StatCard, Money, Pct, Pill, SectionTitle, TableWrap, Empty, ShareBar,
+  StatCard, Money, Pct, Pill, SectionTitle, TableWrap, Empty, ShareBar, LoadError,
 } from '@/components/admin/finance/FinanceKit';
 import { FinanceProvidersTab } from '@/components/admin/finance/FinanceProvidersTab';
 import { FinanceConnectionsTab } from '@/components/admin/finance/FinanceConnectionsTab';
@@ -53,6 +53,7 @@ export default function AdminFinancePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [denied, setDenied] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,14 +64,21 @@ export default function AdminFinancePage() {
       ]);
       setSummary(s); setBudgets(b ?? []); setAlerts(a ?? []);
       setMonths(m ?? []); setMargin(mm);
-      setDenied(false);
+      setDenied(false); setLoadError(null);
     } catch (err) {
       // The server refusing a non-admin is correct behaviour, not a failure
       // to paper over. Say so plainly instead of rendering an empty dashboard
       // that looks like a company with no costs.
       const msg = err instanceof Error ? err.message : String(err);
       if (/FORBIDDEN/i.test(msg)) setDenied(true);
-      else toast.error(msg);
+      else {
+        // A toast is not enough: without this the cards below would render
+        // $0.00 for every figure, which reads as "the company spent nothing"
+        // rather than "this did not load".
+        setLoadError(msg);
+        setSummary(null);
+        toast.error(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -169,12 +177,15 @@ export default function AdminFinancePage() {
 
         {/* ── OVERVIEW ─────────────────────────────────────── */}
         <TabsContent value="overview" className="mt-4 space-y-5">
+          {loadError && <LoadError message={loadError} onRetry={load} />}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
               icon={Flame}
               label={t('fin_spend_today')}
               value={usd(s?.spend_today)}
               sub={t('fin_spend_mtd_sub').replace('{v}', usd(s?.spend_mtd))}
+              unavailable={!s}
+              unavailableLabel={t('fin_unavailable')}
             />
             <StatCard
               icon={Banknote}
@@ -182,8 +193,9 @@ export default function AdminFinancePage() {
               value={usd(s?.revenue_mtd)}
               // §53: a missing payment credential must never be drawn as $0
               // revenue. That is an invented fact about the business.
-              unavailable={!s?.revenue_data_available}
-              unavailableNote={t('fin_revenue_unavailable')}
+              unavailable={!s || !s.revenue_data_available}
+              unavailableLabel={s ? undefined : t('fin_unavailable')}
+              unavailableNote={s ? t('fin_revenue_unavailable') : undefined}
             />
             <StatCard
               icon={CircleDollarSign}
@@ -191,23 +203,31 @@ export default function AdminFinancePage() {
               value={usd(s?.gross_profit_mtd)}
               tone={Number(s?.gross_profit_mtd ?? 0) < 0 ? 'bad' : 'good'}
               sub={<>{t('fin_margin')}: <Pct value={s?.gross_margin_bps ?? null} /></>}
+              unavailable={!s}
+              unavailableLabel={t('fin_unavailable')}
             />
             <StatCard
               icon={Activity}
               label={t('fin_burn_projected')}
               value={usd(s?.burn_projected_month_end)}
               sub={t('fin_burn_daily').replace('{v}', usd(s?.burn_daily_avg))}
+              unavailable={!s}
+              unavailableLabel={t('fin_unavailable')}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label={t('fin_variable_cogs')} value={usd(s?.variable_cogs_mtd)} />
-            <StatCard label={t('fin_fixed_monthly')} value={usd(s?.fixed_monthly)} />
-            <StatCard label={t('fin_total_spend')} value={usd(s?.total_company_spend_mtd)} />
+            <StatCard label={t('fin_variable_cogs')} value={usd(s?.variable_cogs_mtd)}
+                      unavailable={!s} unavailableLabel={t('fin_unavailable')} />
+            <StatCard label={t('fin_fixed_monthly')} value={usd(s?.fixed_monthly)}
+                      unavailable={!s} unavailableLabel={t('fin_unavailable')} />
+            <StatCard label={t('fin_total_spend')} value={usd(s?.total_company_spend_mtd)}
+                      unavailable={!s} unavailableLabel={t('fin_unavailable')} />
             <StatCard
               label={t('fin_operating_contribution')}
               value={usd(s?.operating_contribution_mtd)}
               tone={Number(s?.operating_contribution_mtd ?? 0) < 0 ? 'bad' : 'good'}
+              unavailable={!s} unavailableLabel={t('fin_unavailable')}
             />
           </div>
 

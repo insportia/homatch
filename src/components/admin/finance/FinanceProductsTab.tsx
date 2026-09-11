@@ -3,7 +3,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { getFinanceProducts, getVerifyDeepDive, num } from '@/services/finance';
-import { Money, Pill, TableWrap, Empty, UnpricedBadge, SectionTitle } from './FinanceKit';
+import { Money, Pill, TableWrap, Empty, UnpricedBadge, SectionTitle, LoadError } from './FinanceKit';
 
 /** Per-product unit economics, plus the Verify stage breakdown. */
 interface ProductJson {
@@ -20,6 +20,7 @@ export function FinanceProductsTab() {
   const [rows, setRows] = useState<ProductJson[]>([]);
   const [verify, setVerify] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -29,7 +30,7 @@ export function FinanceProductsTab() {
         setRows((p ?? []) as unknown as ProductJson[]);
         setVerify(v);
       })
-      .catch(() => { /* shell surfaces it */ })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
@@ -37,6 +38,7 @@ export function FinanceProductsTab() {
   if (loading) {
     return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
   }
+  if (error) return <LoadError message={error} />;
 
   const stages = (verify?.by_stage ?? []) as {
     stage: string; runs?: number; cost_usd: number; tokens?: number; web_searches?: number;

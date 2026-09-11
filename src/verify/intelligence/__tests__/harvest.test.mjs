@@ -175,8 +175,26 @@ test('an unverified unit is never attached to a project', () => {
   // is unconfirmed. Writing it anyway is how a developer's reputation gets
   // attached to a building they never touched.
   const h = harvest();
-  assert.equal(relFor(h, 'PART_OF_PROJECT'), undefined, 'an unverified unit was attached to a project');
+  const fromUnit = h.relationships.find(
+    (r) => r.relation === 'PART_OF_PROJECT' && r.from.entityType === 'PROPERTY_UNIT'
+  );
+  assert.equal(fromUnit, undefined, 'an unverified unit was attached to a project');
   assert.ok(h.skipped.some((s) => /did not verify that this exact unit belongs/.test(s.why)));
+});
+
+test('but the project IS recorded as standing on the parcel', () => {
+  // A different and far better supported claim, and the one that makes the
+  // research reusable: "that development is on this land" needs no registry
+  // statement about the flat. The two must never be collapsed, so this edge
+  // hangs off the PARCEL and never off the unit.
+  const h = harvest();
+  const fromParcel = h.relationships.find(
+    (r) => r.relation === 'PART_OF_PROJECT' && r.from.entityType === 'PARENT_PARCEL'
+  );
+  assert.ok(fromParcel, 'the project is not reachable from the parcel');
+  assert.equal(fromParcel.to.entityType, 'PROJECT');
+  assert.equal(fromParcel.sourceKind, 'PUBLIC_WEB', 'a web association claimed registry strength');
+  assert.ok(fromParcel.confidence <= 0.6, 'a weakly-evidenced link carries a strong confidence');
 });
 
 test('a verified unit is attached to its project', () => {

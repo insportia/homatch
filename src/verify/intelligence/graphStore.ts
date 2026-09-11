@@ -373,30 +373,56 @@ export async function loadKnownIntelligence(
      * production. Two queries are duller, cheaper to reason about, and mean
      * the same thing.
      */
-    const { data: edges } = await db
-      .from('intelligence_relationships')
-      .select('to_entity_id, relation')
-      .eq('from_entity_id', entity.id)
-      .eq('status', 'CURRENT');
+    /*
+     * TWO HOPS, AND NO MORE.
+     *
+     * One hop reaches the parcel. The project stands on the parcel and the
+     * company built the project, so a second hop is what actually reaches the
+     * research worth reusing — measured in production, a flat whose link to
+     * its project could not be verified had seven researched project facts
+     * sitting unreachable and reused three facts out of eighteen.
+     *
+     * The limit is two because the third hop is where a graph stops being an
+     * answer and starts being a crawl: a company builds other projects, and
+     * their facts are about other properties.
+     *
+     * Everything past the first hop stays in relatedFacts. The distinction
+     * between "registered against this flat" and "true of the land it stands
+     * on" is the most consequential one in a Georgian due-diligence report,
+     * and it is preserved by construction rather than by remembering to.
+     */
+    const relatedEntities: KnownIntelligence['relatedEntities'] = [];
+    const visited = new Set<string>([entity.id]);
+    let frontier = [entity.id];
 
-    const edgeRows = (edges ?? []) as { to_entity_id: string; relation: string }[];
-    let relatedEntities: KnownIntelligence['relatedEntities'] = [];
+    for (let hop = 0; hop < 2 && frontier.length; hop++) {
+      const { data: edges } = await db
+        .from('intelligence_relationships')
+        .select('to_entity_id, relation')
+        .in('from_entity_id', frontier)
+        .eq('status', 'CURRENT');
 
-    if (edgeRows.length) {
+      const edgeRows = ((edges ?? []) as { to_entity_id: string; relation: string }[])
+        .filter((e) => e.to_entity_id && !visited.has(e.to_entity_id));
+      if (!edgeRows.length) break;
+
+      const ids = [...new Set(edgeRows.map((e) => e.to_entity_id))];
       const { data: targets } = await db
         .from('intelligence_entities')
         .select('id, entity_type, natural_key')
-        .in('id', [...new Set(edgeRows.map((e) => e.to_entity_id))]);
+        .in('id', ids);
 
       const byId = new Map<string, { id: string; entity_type: string; natural_key: string }>(
         ((targets ?? []) as { id: string; entity_type: string; natural_key: string }[]).map((t) => [t.id, t])
       );
-      relatedEntities = edgeRows
-        .map((e) => {
-          const t = byId.get(e.to_entity_id);
-          return t ? { id: t.id, entityType: t.entity_type, naturalKey: t.natural_key, relation: e.relation } : null;
-        })
-        .filter(Boolean) as KnownIntelligence['relatedEntities'];
+
+      for (const e of edgeRows) {
+        const t = byId.get(e.to_entity_id);
+        if (!t || visited.has(t.id)) continue;
+        visited.add(t.id);
+        relatedEntities.push({ id: t.id, entityType: t.entity_type, naturalKey: t.natural_key, relation: e.relation });
+      }
+      frontier = ids.filter((id) => byId.has(id));
     }
 
     let relatedFacts: KnownFact[] = [];

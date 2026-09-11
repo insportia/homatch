@@ -306,3 +306,71 @@ test('an unchanged listing is confirmed, not re-inserted', async () => {
   assert.ok(out.factsUnchanged > 0);
   assert.equal(out.factsChanged, 0);
 });
+
+/* ── reaching the research that was already paid for ─────────────────── */
+
+test('the project is reachable through the parcel, without claiming the flat is in it', async () => {
+  // Measured in production: with only the unit→project link available and
+  // correctly refused, seven researched project facts sat in the graph
+  // unreachable and reuse came out at 3 facts of 18.
+  //
+  // "That development is on this land" is a parcel-level statement and a far
+  // better supported one than "this flat is in that development". The two
+  // must never be collapsed, which is why this edge hangs off the parcel.
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+
+  const parcel = known.relatedEntities.find((r) => r.relation === 'HAS_PARENT_PARCEL');
+  const project = known.relatedEntities.find((r) => r.entityType === 'PROJECT');
+  assert.ok(parcel, 'the parcel is not reachable');
+  assert.ok(project, 'the project is still unreachable through the parcel');
+
+  // And the claim that was refused stays refused.
+  const unitToProject = db.tables.intelligence_relationships.find(
+    (r) => r.relation === 'PART_OF_PROJECT' && r.source_kind === 'OFFICIAL_REGISTRY'
+  );
+  assert.equal(unitToProject, undefined, 'the unverified unit was attached to the project after all');
+});
+
+test('project facts arrive as related, never as the unit\'s own', async () => {
+  // The distinction between "registered against this flat" and "true of the
+  // land it stands on" is the most consequential one in the report.
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+
+  const ownKeys = known.facts.map((f) => f.fact_key);
+  assert.ok(ownKeys.includes('registry.debtorRegistry'), 'the unit lost its own facts');
+  assert.ok(!ownKeys.some((k) => k.startsWith('project.')), 'a project fact was presented as the unit\'s own');
+  assert.ok(known.relatedFacts.some((f) => f.fact_key.startsWith('project.')),
+    'the project research is still not reachable');
+});
+
+test('the walk stops at two hops', async () => {
+  // The third hop is where a graph stops being an answer and starts being a
+  // crawl: a company builds other projects, and their facts are about other
+  // properties.
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+
+  // A second, unrelated project by the same company — three hops from the unit.
+  const other = { ...REPORT, exactUnit: { code: '09.99.99.999.999.01.02.001', verified: false }, projectProfile: { ...REPORT.projectProfile, name: 'Somewhere Else Entirely' } };
+  await persistHarvest(db, harvestReport(other, POLICIES), 'job-2');
+
+  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+  assert.ok(!known.relatedEntities.some((r) => r.naturalKey === 'somewhere-else-entirely'),
+    'the walk reached another property\'s project');
+});
+
+test('a cycle in the graph does not loop forever', async () => {
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+  const [a, b] = db.tables.intelligence_entities;
+  db.tables.intelligence_relationships.push(
+    { id: 'cycle-1', from_entity_id: b.id, to_entity_id: a.id, relation: 'LOCATED_IN', status: 'CURRENT' }
+  );
+  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+  assert.ok(Array.isArray(known.relatedEntities));
+  assert.ok(!known.relatedEntities.some((r) => r.id === a.id), 'the walk came back to where it started');
+});

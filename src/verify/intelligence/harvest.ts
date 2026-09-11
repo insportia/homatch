@@ -407,6 +407,40 @@ export function harvestReport(
           why: 'the research did not verify that this exact unit belongs to this project',
         });
       }
+
+      /*
+       * THE PROJECT IS ON THE LAND, WHICH IS A DIFFERENT CLAIM.
+       *
+       * Measured in production: with only the unit→project link available and
+       * correctly refused, seven researched project facts sat in the graph
+       * unreachable, and reuse came out at 3 facts of 18. The expensive
+       * research was already paid for and could not be found again.
+       *
+       * But a project standing on a parcel is a PARCEL-level statement, and a
+       * far better supported one: this verification researched this parcel
+       * and that research produced this project. Recording it is recording
+       * what we actually did, with the job as its evidence.
+       *
+       * It is emphatically NOT the claim that was refused above. "This flat
+       * is in that development" needs the registry to say so. "That
+       * development is on this land" does not, and the two must never be
+       * collapsed — which is exactly why this edge hangs off the PARCEL and
+       * the loader keeps parcel facts in a separate bucket from the unit's
+       * own. A parent-parcel fact is still not an exact-unit fact.
+       */
+      const derivedParent = unitCode ? parentParcelOf(unitCode) : null;
+      if (derivedParent) {
+        const parcel = entity({
+          entityType: 'PARENT_PARCEL',
+          keyKind: 'CADASTRAL_CODE',
+          naturalKey: derivedParent,
+        });
+        out.relationships.push({
+          from: parcel, to: project, relation: 'PART_OF_PROJECT',
+          sourceKind: 'PUBLIC_WEB', evidenceRef: 'projectProfile',
+          confidence: 0.5,
+        });
+      }
     }
   }
 

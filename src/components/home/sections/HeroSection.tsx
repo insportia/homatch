@@ -4,6 +4,7 @@ import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { IntentChips } from '@/components/home/IntentCards';
 import { PAGE } from './primitives';
+import { useSectionField, useSectionMedia } from '@/site/content';
 
 /**
  * REGION 01 — the hero.
@@ -32,6 +33,8 @@ import { PAGE } from './primitives';
  * hidden — so a phone never downloads it.
  */
 export function HeroSection() {
+  const photo = useSectionMedia()('photo');
+  const sf = useSectionField();
   const { t } = useLanguage();
 
   return (
@@ -43,7 +46,7 @@ export function HeroSection() {
             is the one warm object on a black-white-gold page, and at full
             chroma it pulls the whole first screen orange. */}
         <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.72]">
-          <SceneMedia scene="hero" alt="" priority sizes="78vw" position="52% 52%" />
+          <SceneMedia scene="hero" alt={photo?.alt ?? ''} priority sizes="78vw" position="52% 52%" overrideUrl={photo?.url} />
         </div>
         <div className="absolute inset-0 bg-[#080808]/45" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#080808] from-30% via-[#080808]/88 to-transparent rtl:bg-gradient-to-l" />
@@ -64,7 +67,7 @@ export function HeroSection() {
         <div className="flex min-h-[clamp(27rem,68vh,40rem)] max-w-[46rem] flex-col justify-center pb-11 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
           <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
-            {t('mp_hero_eyebrow')}
+            {sf('eyebrow', 'mp_hero_eyebrow')}
           </p>
 
           {/* The lockup: the name on its own line, then the proposition.
@@ -75,23 +78,23 @@ export function HeroSection() {
             className="mt-5 text-balance font-semibold leading-[1.07] tracking-[-0.03em] text-white sm:mt-6"
             style={{ fontSize: 'clamp(1.5rem, 7.4vw, 3.9rem)' }}
           >
-            <span className="block">{t('brand_name')}</span>
+            <span className="block">{sf('brand', 'brand_name')}</span>
             {/* Balanced from sm up, where equal line lengths look composed.
                 On a narrow phone balance splits the phrase in the wrong
                 place ("Smart real / estate decisions"), so the narrowest
                 case fills greedily and breaks after the noun instead. */}
-            <span className="block text-pretty text-white/90 sm:text-balance">{t('mp_hero_h1')}</span>
+            <span className="block text-pretty text-white/90 sm:text-balance">{sf('title', 'mp_hero_h1')}</span>
           </h1>
 
           <p
             className="mt-4 text-balance font-semibold leading-[1.25] tracking-[-0.015em] text-gold sm:mt-5"
             style={{ fontSize: 'clamp(0.98rem, 3.4vw, 1.5rem)' }}
           >
-            {t('mp_hero_h2')}
+            {sf('subtitle', 'mp_hero_h2')}
           </p>
 
           <p className="mt-4 max-w-[38rem] text-pretty text-[14.5px] leading-[1.6] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
-            {t('mp_hero_scope')}
+            {sf('body', 'mp_hero_scope')}
           </p>
 
           {/* THE ONLY INTERACTION IN THE HERO
@@ -108,7 +111,7 @@ export function HeroSection() {
             variant="card"
             tone="dark"
             heading={t('ai_title')}
-            placeholder={t('mp_hero_ai_placeholder')}
+            placeholder={sf('placeholder', 'mp_hero_ai_placeholder')}
             actions={[]}
           />
 

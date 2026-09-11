@@ -62,6 +62,7 @@ import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
 import AdminSponsoredPage from './pages/admin/AdminSponsoredPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AdminHealthPage from './pages/admin/AdminHealthPage';
+import SiteStudioPage from './pages/admin/SiteStudioPage';
 import AdminLiveChatReportsPage from './pages/admin/AdminLiveChatReportsPage';
 
 export interface RouteConfig {
@@ -157,4 +158,5 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Sponsored',   path: '/admin/sponsored',          element: adminWrap(<AdminSponsoredPage />),   adminOnly: true },
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
+  { name: 'Site Studio',       path: '/admin/site-studio',        element: adminWrap(<SiteStudioPage />),       adminOnly: true },
 ];

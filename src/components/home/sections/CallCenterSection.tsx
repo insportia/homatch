@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
+import { useSectionField } from '@/site/content';
 
 /**
  * REGION 04 — the AI Call Center, on its own.
@@ -46,6 +47,7 @@ const POINTS = [
 ] as const;
 
 export function CallCenterSection() {
+  const sf = useSectionField();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -67,17 +69,17 @@ export function CallCenterSection() {
           <div className="min-w-0">
             <div className="flex items-center gap-4">
               <FeatureGlyph name="calls" size={48} tone="dark" className="sm:h-14 sm:w-14" />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">{t('call_center_title')}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'call_center_title')}</p>
             </div>
 
             <h2
               className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-white sm:mt-7"
               style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.9rem)' }}
             >
-              {t('mp_cc_title')}
+              {sf('title', 'mp_cc_title')}
             </h2>
             <p className="mt-4 max-w-[36rem] text-pretty text-[14.5px] leading-[1.65] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
-              {t('mp_cc_sub')}
+              {sf('body', 'mp_cc_sub')}
             </p>
 
             <ul className="mt-7 grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-9 sm:grid-cols-3">

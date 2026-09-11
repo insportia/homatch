@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { Button } from '@/components/ui/button';
 import { Eyebrow, PAGE, SECTION_Y } from './primitives';
+import { useSectionField, useSectionMedia } from '@/site/content';
 
 /**
  * REGION 06 — Developer B2B.
@@ -35,6 +36,8 @@ const STAGES = [
 ];
 
 export function DeveloperB2BSection() {
+  const backdrop = useSectionMedia()('backdrop');
+  const sf = useSectionField();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
@@ -53,7 +56,7 @@ export function DeveloperB2BSection() {
           source of warm colour on a black-white-gold page; desaturated to
           nothing and held at a tenth of its exposure it is pure texture. */}
       <div className="absolute inset-0 saturate-0" aria-hidden="true">
-        <SceneMedia scene="platform" alt="" sizes="100vw" position="50% 58%" />
+        <SceneMedia scene="platform" alt={backdrop?.alt ?? ''} sizes="100vw" position="50% 58%" overrideUrl={backdrop?.url} />
         <div className="absolute inset-0 bg-[#080808]/90" />
         <div className="absolute inset-0 bg-gradient-to-b from-[#080808] via-[#080808]/78 to-[#080808]" />
       </div>
@@ -66,15 +69,15 @@ export function DeveloperB2BSection() {
       <div className={`${PAGE} relative ${SECTION_Y}`}>
         <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-20">
           <div>
-            <Eyebrow tone="light">{t('mp_dev_eyebrow')}</Eyebrow>
+            <Eyebrow tone="light">{sf('eyebrow', 'mp_dev_eyebrow')}</Eyebrow>
             <h2
               className="mt-5 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-white"
               style={{ fontSize: 'clamp(1.4rem, 5.6vw, 3.1rem)' }}
             >
-              {t('mp_dev_title')}
+              {sf('title', 'mp_dev_title')}
             </h2>
             <p className="mt-6 max-w-[36rem] text-pretty text-[15px] leading-[1.75] text-white/75 sm:text-base">
-              {t('mp_dev_sub')}
+              {sf('body', 'mp_dev_sub')}
             </p>
 
             <ul className="mt-10 border-t border-white/15">

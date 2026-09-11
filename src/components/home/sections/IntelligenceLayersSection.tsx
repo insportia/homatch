@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PAGE, SECTION_Y } from './primitives';
+import { useSectionField } from '@/site/content';
 
 /**
  * REGION 03 — what Homatch actually understands.
@@ -37,6 +38,7 @@ const LAYERS = [
 ] as const;
 
 export function IntelligenceLayersSection() {
+  const sf = useSectionField();
   const { t } = useLanguage();
   const [active, setActive] = useState(0);
   const [held, setHeld] = useState(false);
@@ -73,16 +75,16 @@ export function IntelligenceLayersSection() {
         <div className="max-w-[46rem]">
           <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">
             <span className="h-px w-7 bg-gold" aria-hidden="true" />
-            {t('mp_layers_eyebrow')}
+            {sf('eyebrow', 'mp_layers_eyebrow')}
           </p>
           <h2
             className="mt-4 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-white sm:mt-5"
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
-            {t('mp_layers_title')}
+            {sf('title', 'mp_layers_title')}
           </h2>
           <p className="mt-4 max-w-[38rem] text-pretty text-[14.5px] leading-[1.65] text-white/65 sm:mt-5 sm:text-base sm:leading-[1.7]">
-            {t('mp_layers_sub')}
+            {sf('body', 'mp_layers_sub')}
           </p>
         </div>
 

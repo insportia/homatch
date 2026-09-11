@@ -4,6 +4,7 @@ import { ArrowRight, Check } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
+import { useSectionField } from '@/site/content';
 
 /**
  * REGION 06 — the mortgage consultant.
@@ -40,6 +41,7 @@ const POINTS = [
 const ROWS = ['mp_mortgage_row_price', 'mp_mortgage_row_down', 'mp_mortgage_row_term', 'mp_mortgage_row_rate'] as const;
 
 export function MortgageSection() {
+  const sf = useSectionField();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
@@ -50,7 +52,7 @@ export function MortgageSection() {
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="mortgage" size={48} className="sm:h-14 sm:w-14" />
             <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
-              {t('mp_mortgage_eyebrow')}
+              {sf('eyebrow', 'mp_mortgage_eyebrow')}
             </p>
           </div>
 
@@ -58,10 +60,10 @@ export function MortgageSection() {
             className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
-            {t('mp_mortgage_show_title')}
+            {sf('title', 'mp_mortgage_show_title')}
           </h2>
           <p className="mt-4 max-w-[34rem] text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
-            {t('mp_mortgage_desc')}
+            {sf('body', 'mp_mortgage_desc')}
           </p>
 
           <ul className="mt-7 space-y-3.5 sm:mt-9 sm:space-y-4">

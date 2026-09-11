@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
+import { useSectionField, useSectionMedia } from '@/site/content';
 
 /**
  * REGION 11 — the closing image.
@@ -15,6 +16,8 @@ import { SceneMedia } from '@/components/home/media/SceneMedia';
  * is why it is a flat wash plus a vertical gradient rather than a light tint.
  */
 export function ClosingCTASection() {
+  const photo = useSectionMedia()('photo');
+  const sf = useSectionField();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -24,13 +27,14 @@ export function ClosingCTASection() {
       <div className="absolute inset-0 saturate-[0.45]" aria-hidden="true">
         <SceneMedia
           scene="closing"
-          alt=""
+          alt={photo?.alt ?? ''}
           sizes="100vw"
           // The panorama is 2.13:1 and this band is taller than that, so the
           // crop is vertical: hold the city lights and the terrace, drop the
           // upper sky.
           position="46% 58%"
           positionMobile="58% 62%"
+          overrideUrl={photo?.url}
         />
         <div className="absolute inset-0 bg-[#080808]/78" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-[#080808]/55 to-[#080808]/70" />
@@ -41,10 +45,10 @@ export function ClosingCTASection() {
           className="max-w-[36rem] text-balance font-semibold leading-[1.06] tracking-[-0.025em] text-white"
           style={{ fontSize: 'clamp(1.55rem, 6vw, 3.15rem)' }}
         >
-          {t('mp_cta_title')}
+          {sf('title', 'mp_cta_title')}
         </h2>
         <p className="mt-5 max-w-[36rem] text-pretty text-[15px] leading-relaxed text-white/85 sm:text-base">
-          {t('mp_cta_body')}
+          {sf('body', 'mp_cta_body')}
         </p>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
@@ -52,7 +56,7 @@ export function ClosingCTASection() {
             className="h-[3.25rem] gap-2.5 rounded-full bg-gold px-8 text-[15px] font-semibold text-[#0A0A0A] hover:bg-white"
             onClick={() => navigate(session ? '/dashboard' : '/auth/signup')}
           >
-            {session ? t('nav_dashboard') : t('mp_cta_primary')}
+            {session ? t('nav_dashboard') : sf('cta', 'mp_cta_primary')}
             <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
           </Button>
           <Button

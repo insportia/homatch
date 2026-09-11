@@ -90,6 +90,17 @@ export interface SceneMediaProps {
   /** Above-the-fold media is fetched eagerly at high priority; the rest lazily. */
   priority?: boolean;
   className?: string;
+  /**
+   * A photograph an admin uploaded through Site Studio, replacing the built
+   * one for this slot.
+   *
+   * It renders at the same geometry, crop and fallback behaviour, but as a
+   * single file: there is no responsive ladder, because an upload is one
+   * width and inventing srcset entries for sizes that were never generated
+   * would just serve the same bytes under four names. That is a real cost, so
+   * the bucket caps uploads at 5 MB and the field is opt-in per slot.
+   */
+  overrideUrl?: string;
 }
 
 export function SceneMedia({
@@ -100,15 +111,36 @@ export function SceneMedia({
   positionMobile,
   priority = false,
   className = '',
+  overrideUrl,
 }: SceneMediaProps) {
   const [failed, setFailed] = useState(false);
   const asset = ASSETS[scene];
   const widest = asset.widths[asset.widths.length - 1];
 
+  const positionStyle = {
+    ['--scene-pos' as string]: positionMobile ?? position,
+    ['--scene-pos-lg' as string]: position,
+  };
+
   return (
     <div className={`relative h-full w-full overflow-hidden bg-sand ${className}`}>
       {failed ? (
         <ArchitecturalScene scene={asset.fallback} />
+      ) : overrideUrl ? (
+        <img
+          src={overrideUrl}
+          alt={alt}
+          width={asset.intrinsic.w}
+          height={asset.intrinsic.h}
+          loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          {...({ fetchpriority: priority ? 'high' : 'auto' } as Record<string, string>)}
+          // Same failure path as the built assets: a replaced photo that 404s
+          // falls back to the vector scene rather than leaving a hole.
+          onError={() => setFailed(true)}
+          className="scene-img h-full w-full object-cover"
+          style={positionStyle}
+        />
       ) : (
         // <picture> is display:inline by default, which collapses the img's
         // percentage height to auto and leaves an empty frame. It has to be a
@@ -138,10 +170,7 @@ export function SceneMedia({
             // than classes because object-position takes arbitrary values, so
             // this art-directs the crop without a second element or download.
             className="scene-img h-full w-full object-cover"
-            style={{
-              ['--scene-pos' as string]: positionMobile ?? position,
-              ['--scene-pos-lg' as string]: position,
-            }}
+            style={positionStyle}
           />
         </picture>
       )}

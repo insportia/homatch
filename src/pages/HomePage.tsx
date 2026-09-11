@@ -1,7 +1,12 @@
 // HOMATCH — the public Main Page.
 //
-// This file is a running order, nothing else. Each region owns its own
+// The page frame: header, the regions, footer. Each region owns its own
 // composition, geometry and copy (src/components/home/sections/).
+//
+// The running order itself now lives in src/site/render/SitePage.tsx, as
+// DEFAULT_HOME_ORDER, so that Site Studio can reorder and hide regions
+// without this file changing. With nothing published, SitePage renders
+// exactly the order and copy described below.
 //
 // THE STORY, IN ORDER
 //
@@ -36,23 +41,14 @@ import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
-import { HeroSection } from '@/components/home/sections/HeroSection';
-import { ActionLauncherSection } from '@/components/home/sections/ActionLauncherSection';
-import { IntelligenceLayersSection } from '@/components/home/sections/IntelligenceLayersSection';
-import { VerifyShowcaseSection } from '@/components/home/sections/VerifyShowcaseSection';
-import { ContractIntelligenceSection } from '@/components/home/sections/ContractIntelligenceSection';
-import { MatchingShowcaseSection } from '@/components/home/sections/MatchingShowcaseSection';
-import { MortgageSection } from '@/components/home/sections/MortgageSection';
-import { CallCenterSection } from '@/components/home/sections/CallCenterSection';
-import { EmailCampaignsSection } from '@/components/home/sections/EmailCampaignsSection';
-import { AISection } from '@/components/home/sections/AISection';
-import { DeveloperB2BSection } from '@/components/home/sections/DeveloperB2BSection';
-import { ClosingCTASection } from '@/components/home/sections/ClosingCTASection';
+import { SitePage } from '@/site/render/SitePage';
+import { usePublishedPage } from '@/site/render/usePublishedPage';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 
 export default function HomePage() {
   useSurfaceTheme('light');
   const { t } = useLanguage();
+  const published = usePublishedPage('home');
 
   const headerLinks: HeaderLink[] = [
     { key: 'start', label: t('mp_nav_start'), target: 'start' },
@@ -68,18 +64,7 @@ export default function HomePage() {
       <PublicHeader links={headerLinks} />
 
       <main>
-        <HeroSection />                  {/* BLACK  — what Homatch is            */}
-        <ActionLauncherSection />        {/* WHITE  — six tasks, one size        */}
-        <IntelligenceLayersSection />    {/* BLACK  — the seven layers           */}
-        <VerifyShowcaseSection />        {/* WHITE  — what a check gives back    */}
-        <ContractIntelligenceSection />  {/* WHITE  — the document, read         */}
-        <MatchingShowcaseSection />      {/* BLACK  — property to interested people */}
-        <MortgageSection />              {/* WHITE  — the financing scenario     */}
-        <CallCenterSection />            {/* BLACK  — the call, in progress      */}
-        <EmailCampaignsSection />        {/* WHITE  — the campaign, assembled    */}
-        <AISection />                    {/* WHITE  — the assistant behind them  */}
-        <DeveloperB2BSection />          {/* BLACK  — developers                 */}
-        <ClosingCTASection />            {/* photograph, graded to black         */}
+        <SitePage slug="home" content={published} />
       </main>
 
       <SiteFooter />

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
+import { useSectionField } from '@/site/content';
 
 /**
  * REGION 02 — the action launcher.
@@ -48,6 +49,7 @@ import { PAGE, SECTION_Y } from './primitives';
  * worse than a launcher with one fewer tile.
  */
 export function ActionLauncherSection() {
+  const sf = useSectionField();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -67,17 +69,17 @@ export function ActionLauncherSection() {
         <div className="max-w-[40rem]">
           <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
-            {t('mp_launch_eyebrow')}
+            {sf('eyebrow', 'mp_launch_eyebrow')}
           </p>
           <h2
             className="mt-3.5 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground"
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
-            {t('mp_launch_title')}
+            {sf('title', 'mp_launch_title')}
           </h2>
         </div>
         <p className="max-w-[22rem] text-pretty text-[13.5px] leading-[1.6] text-ink-soft sm:text-sm">
-          {t('mp_launch_sub')}
+          {sf('body', 'mp_launch_sub')}
         </p>
       </div>
 

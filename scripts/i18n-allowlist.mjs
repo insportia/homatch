@@ -77,6 +77,15 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // "Platform" above) — ka/tr/ar/he all carry their own real translations
   // for this key, so this can't be hiding a missing one elsewhere.
   'cases_stage_due_diligence',
+  // "Homatch AI" and "Site Studio" — the products' own names, used as the
+  // Site Studio section label and the editor title. Same rule as 'ai_title'
+  // and 'brand_name' above: a name, not interface prose.
+  'studio_sec_ai',
+  'studio_title',
+  // Turkish borrows both of these exact Latin spellings ("Tablet", "Normal");
+  // the other five locales carry their own real forms for the same keys.
+  'studio_device_tablet',
+  'studio_spacing_normal',
 ]);
 
 // Heuristic: values that don't need translating in the first place, so an

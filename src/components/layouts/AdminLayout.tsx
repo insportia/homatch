@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Building2, Zap, Globe, Radio,
   Activity, Puzzle, CreditCard, Receipt, Server, Settings2,
   ShieldAlert, Wrench, ChevronLeft, Menu, X, AlertTriangle,
-  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send,
+  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send, Paintbrush,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +37,7 @@ const NAV = [
   { path: '/admin/sponsored',    labelKey: 'admin_nav_sponsored',  icon: Activity },
   { path: '/admin/settings',     labelKey: 'admin_nav_settings',   icon: SlidersHorizontal },
   { path: '/admin/health',       labelKey: 'admin_nav_health',     icon: HeartPulse },
+  { path: '/admin/site-studio',  labelKey: 'studio_title',         icon: Paintbrush },
 ];
 
 function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose?: () => void }) {

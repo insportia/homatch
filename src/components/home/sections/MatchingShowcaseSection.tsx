@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
+import { useSectionField } from '@/site/content';
 
 /**
  * REGION 06 — matching.
@@ -43,6 +44,7 @@ const SHORTLIST = [
 ] as const;
 
 export function MatchingShowcaseSection() {
+  const sf = useSectionField();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -58,7 +60,7 @@ export function MatchingShowcaseSection() {
       <div className={`${PAGE} relative ${SECTION_Y}`}>
         <div className="flex items-center gap-3.5">
           <FeatureGlyph name="matching" size={48} tone="dark" className="sm:h-14 sm:w-14" />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">{t('mp_match_eyebrow')}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'mp_match_eyebrow')}</p>
         </div>
 
         {/* The headline is the sentence this product is named by; the
@@ -69,14 +71,14 @@ export function MatchingShowcaseSection() {
               className="max-w-[36rem] text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-white"
               style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.9rem)' }}
             >
-              {t('mp_match_title')}
+              {sf('title', 'mp_match_title')}
             </h2>
             <p className="mt-3.5 max-w-[34rem] text-pretty text-[14.5px] leading-[1.6] text-gold sm:text-[15px]">
-              {t('mp_match_show_title')}
+              {sf('subtitle', 'mp_match_show_title')}
             </p>
           </div>
           <p className="text-pretty text-[14.5px] leading-[1.65] text-white/70 sm:text-base sm:leading-[1.7]">
-            {t('mp_match_desc')}
+            {sf('body', 'mp_match_desc')}
           </p>
         </div>
 

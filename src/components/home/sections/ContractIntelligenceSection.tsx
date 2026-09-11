@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
+import { useSectionField } from '@/site/content';
 
 /**
  * REGION 05 — Contract Intelligence.
@@ -37,6 +38,7 @@ const STEPS = [
 ] as const;
 
 export function ContractIntelligenceSection() {
+  const sf = useSectionField();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -81,7 +83,7 @@ export function ContractIntelligenceSection() {
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="contract" size={48} className="sm:h-14 sm:w-14" />
             <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
-              {t('mp_contract_title')}
+              {sf('eyebrow', 'mp_contract_title')}
             </p>
           </div>
 
@@ -89,10 +91,10 @@ export function ContractIntelligenceSection() {
             className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
-            {t('mp_ci_title')}
+            {sf('title', 'mp_ci_title')}
           </h2>
           <p className="mt-4 max-w-[34rem] text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
-            {t('mp_ci_sub')}
+            {sf('body', 'mp_ci_sub')}
           </p>
 
           {/* The four steps are the control. Each is a real button, so the

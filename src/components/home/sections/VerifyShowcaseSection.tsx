@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
+import { useSectionField, useSectionMedia } from '@/site/content';
 
 /**
  * REGION 05 — Buyer Intelligence.
@@ -19,6 +20,8 @@ import { PAGE, SECTION_Y } from './primitives';
  * before they read it as someone's real property.
  */
 export function VerifyShowcaseSection() {
+  const plate = useSectionMedia()('plate');
+  const sf = useSectionField();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
@@ -31,17 +34,17 @@ export function VerifyShowcaseSection() {
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="verify" size={48} className="sm:h-14 sm:w-14" />
-            <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">{t('mp_verify_eyebrow')}</p>
+            <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">{sf('eyebrow', 'mp_verify_eyebrow')}</p>
           </div>
 
           <h2
             className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
-            {t('mp_verify_show_title')}
+            {sf('title', 'mp_verify_show_title')}
           </h2>
           <p className="mt-4 max-w-[34rem] text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
-            {t('mp_verify_capability_desc')}
+            {sf('body', 'mp_verify_capability_desc')}
           </p>
 
           <ul className="mt-7 space-y-3.5 sm:mt-9 sm:space-y-4">
@@ -81,7 +84,7 @@ export function VerifyShowcaseSection() {
           {/* The property under examination. Graded hard so the photograph
               reads as a black-and-gold plate rather than as a listing. */}
           <div className="relative h-36 saturate-[0.6] sm:h-44">
-            <SceneMedia scene="verification" alt="" sizes="(min-width: 1024px) 40vw, 100vw" position="50% 55%" />
+            <SceneMedia scene="verification" alt={plate?.alt ?? ''} sizes="(min-width: 1024px) 40vw, 100vw" position="50% 55%" overrideUrl={plate?.url} />
             <div className="absolute inset-0 bg-[#080808]/72" aria-hidden="true" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-[#080808]/45 to-[#080808]/25" aria-hidden="true" />
             <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5">

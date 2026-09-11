@@ -301,3 +301,24 @@ test('a personal identification number is never harvested', () => {
   assert.ok(!/\b\d{11}\b/.test(serialised), 'an eleven-digit personal number reached the graph');
   assert.deepEqual(factFor(h, 'company.directors').valueJson, ['კობა კვანტალიანი', 'ლევან ჩაჩუა']);
 });
+
+/* ── what kind of property this is ───────────────────────────────────── */
+
+test('the asset class is remembered, so the next run knows what applies', () => {
+  // Without it the planner cannot tell "this kind of property has no
+  // commissioning status" from "we have not looked yet", and a private resale
+  // can never reuse the public research it already paid for.
+  const h = harvest({ assetClass: 'PRIVATE_RESALE' });
+  const f = factFor(h, 'property.assetClass');
+  assert.ok(f, 'the asset class was not remembered');
+  assert.equal(f.valueText, 'PRIVATE_RESALE');
+  assert.equal(f.sourceKind, 'DETERMINISTIC_DERIVATION');
+});
+
+test('"we could not classify it" is not remembered as a classification', () => {
+  // Storing it would let a later run treat an unclassified property as
+  // classified — the absence rule, in another place.
+  assert.equal(factFor(harvest({ assetClass: 'MIXED_OR_UNKNOWN' }), 'property.assetClass'), undefined);
+  assert.equal(factFor(harvest({ assetClass: null }), 'property.assetClass'), undefined);
+  assert.equal(factFor(harvest({}), 'property.assetClass'), undefined);
+});

@@ -66,6 +66,39 @@ export const STAGE_FACTS: Record<StageName, string[]> = {
  */
 export const ALWAYS_VERIFY: StageName[] = ['official_collection', 'synthesis'];
 
+/*
+ * FACT FAMILIES A KIND OF PROPERTY CANNOT HAVE.
+ *
+ * Found by benchmarking the planner across the six archetypes: a private
+ * resale apartment holds no commissioning status and no building permit,
+ * because there is no development and no permit to hold. The planner treated
+ * that identically to "we have not looked yet", so public research counted
+ * five families as MISSING on every run and the stage could never be reused —
+ * for ever, no matter how much was actually known.
+ *
+ * "This property cannot have that fact" and "we have not established that
+ * fact" are different states, and only the second is worth paying to resolve.
+ *
+ * Deliberately an exclusion list, mirroring the report's own asset-class
+ * relevance: a new fact family applies everywhere by default, because the
+ * failure mode of the opposite arrangement is silent.
+ */
+const NOT_APPLICABLE: Record<string, readonly string[]> = {
+  // A plot has no building, so nothing about one can be established.
+  LAND: ['building.', 'amenities.', 'commissioning.', 'construction.', 'project.'],
+  // Sold by its owner: a building, but no development, developer or permit
+  // process of ours to research.
+  PRIVATE_RESALE: ['commissioning.', 'permit.', 'project.', 'amenities.'],
+  RENTAL: ['commissioning.', 'permit.', 'project.', 'amenities.'],
+  PRIVATE_HOUSE: ['commissioning.', 'project.', 'amenities.'],
+};
+
+/** Whether a fact family is something this kind of property can even have. */
+export function factFamilyApplies(assetClass: string | null | undefined, family: string): boolean {
+  const excluded = NOT_APPLICABLE[String(assetClass ?? '')] ?? [];
+  return !excluded.some((e) => family === e || family.startsWith(e));
+}
+
 export interface StageDecision {
   stage: StageName;
   /** What the plan says. In shadow mode nothing acts on it. */
@@ -95,8 +128,12 @@ export interface VerificationPlan {
  * prefix itself — so a stage that has never run counts as MISSING rather than
  * silently having nothing to do.
  */
-function requiredKeysFor(stage: StageName, held: readonly KnownFact[]): string[] {
-  const prefixes = STAGE_FACTS[stage];
+function requiredKeysFor(
+  stage: StageName,
+  held: readonly KnownFact[],
+  assetClass?: string | null
+): string[] {
+  const prefixes = STAGE_FACTS[stage].filter((p) => factFamilyApplies(assetClass, p));
   const keys = new Set<string>();
   for (const p of prefixes) {
     if (!p.endsWith('.')) { keys.add(p); continue; }
@@ -118,7 +155,9 @@ function requiredKeysFor(stage: StageName, held: readonly KnownFact[]): string[]
 export function planVerification(
   held: readonly KnownFact[] | null | undefined,
   policies: readonly FreshnessPolicy[] | null | undefined,
-  now: Date | number = Date.now()
+  now: Date | number = Date.now(),
+  /** What kind of property this is. Unknown means nothing is ruled out. */
+  assetClass?: string | null
 ): VerificationPlan {
   const facts = (held ?? []).filter((f) => f && f.fact_key);
   const decisions: StageDecision[] = [];
@@ -126,7 +165,7 @@ export function planVerification(
   let requiredFacts = 0;
 
   for (const stage of STAGES) {
-    const required = requiredKeysFor(stage, facts);
+    const required = requiredKeysFor(stage, facts, assetClass);
     requiredFacts += required.length;
 
     const plan: RefreshPlan = planRefresh(required, facts, policies, now);

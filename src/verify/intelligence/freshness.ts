@@ -36,6 +36,12 @@ export interface KnownFact {
   freshness_class?: FreshnessClass | null;
   content_hash?: string | null;
   source_ref?: string | null;
+  /**
+   * Carried for the one fact the planner reads a VALUE from: the asset class,
+   * which decides what families of fact this kind of property can even have.
+   * Nothing else here looks at values — freshness is about when, not what.
+   */
+  value_text?: string | null;
 }
 
 /**

@@ -228,6 +228,29 @@ export function harvestReport(
     }
   }
 
+  /*
+   * WHAT KIND OF PROPERTY THIS IS.
+   *
+   * Read off the report's own classification rather than guessed, and stored
+   * because the next verification needs it before it has researched anything:
+   * a private resale has no commissioning status to establish, and a planner
+   * that does not know that counts it as MISSING on every run and can never
+   * reuse the public research it already paid for.
+   *
+   * MIXED_OR_UNKNOWN is deliberately not stored. "We could not classify it"
+   * is a fact about our research, and storing it would let a later run treat
+   * an unclassified property as classified.
+   */
+  if (unit) {
+    const assetClass = text(report.assetClass).toUpperCase();
+    if (assetClass && assetClass !== 'MIXED_OR_UNKNOWN') {
+      fact({
+        entity: unit, factKey: 'property.assetClass', valueText: assetClass,
+        sourceKind: 'DETERMINISTIC_DERIVATION', evidenceRef: 'assetClass', confidence: 0.8,
+      });
+    }
+  }
+
   /* ── the registry checks that actually established something ───────── */
 
   const legal = (report.legalStatus ?? {}) as Record<string, any>;

@@ -355,9 +355,11 @@ export async function loadKnownIntelligence(
       .maybeSingle();
     if (!entity?.id) return empty;
 
+    // value_text comes back too: the planner needs one value, the asset
+    // class, to know which fact families this kind of property can even have.
     const { data: facts } = await db
       .from('intelligence_facts')
-      .select('fact_key, status, last_verified_at, freshness_class, content_hash, source_ref')
+      .select('fact_key, value_text, status, last_verified_at, freshness_class, content_hash, source_ref')
       .eq('entity_id', entity.id)
       .eq('status', 'CURRENT');
 

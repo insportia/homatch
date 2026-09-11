@@ -27,6 +27,7 @@
 // how a developer's reputation gets attached to a building they never touched.
 
 import { policyFor, type FreshnessClass, type FreshnessPolicy } from './freshness.ts';
+import { canonicalProjectKey } from './projectIdentity.ts';
 
 export type EntityType =
   | 'PROPERTY_UNIT' | 'PARENT_PARCEL' | 'BUILDING' | 'PROJECT'
@@ -114,14 +115,19 @@ export function normalizeCompanyId(v: unknown): string | null {
 /**
  * A stable key for a project name.
  *
- * Lower-cased, punctuation removed, whitespace collapsed. Deliberately not
- * transliterated: two spellings of one project become two entities, which is
- * a real limitation and a smaller error than merging two different projects
- * that happen to share a word.
+ * Deliberately not transliterated: two spellings of one project become two
+ * entities, which is a real limitation and a smaller error than merging two
+ * different developments that happen to share a word. That judgement stands.
+ *
+ * It was, however, being applied one step too early. "Kristian Stiven St, 18"
+ * and "Kristian Stiven Street, 18" are not two spellings of a name, they are
+ * one address written two ways, and production held them as two PROJECT
+ * entities with seven facts each. canonicalProjectKey normalises the parts of
+ * an address that have a right answer — street-type words, house-number
+ * position — and leaves the proper nouns exactly as alone as before.
  */
 export function projectSlug(v: unknown): string | null {
-  const t = text(v).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
-  return t.length >= 3 ? t : null;
+  return canonicalProjectKey(text(v));
 }
 
 /** The parent parcel a unit code sits inside, or null when it is already one. */

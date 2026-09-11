@@ -113,7 +113,11 @@ test('the unit, its parcel, the company and the project all become entities', ()
   assert.deepEqual(keys, [
     'COMPANY:424619256',
     'PARENT_PARCEL:01.72.14.040.030',
-    'PROJECT:კრისტიან-სტივენის-ქუჩა-18',
+    // The street-type word canonicalises to one spelling across scripts, so
+    // ქუჩა and ქ. and "St" and "Street" all land on the same key. The proper
+    // nouns are untouched, so a Georgian-script name and a Latin one are
+    // still two entities — that half is deliberate, see projectIdentity.ts.
+    'PROJECT:კრისტიან-სტივენის-street-18',
     'PROPERTY_UNIT:01.72.14.040.030.01.02.017',
   ]);
 });

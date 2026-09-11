@@ -35,43 +35,43 @@ export function HistoryPanel({ studio }: { studio: StudioState }) {
         {/* Search copy is per language like everything else, so these two
             boxes follow the toolbar's editing language rather than being a
             single global value that the last editor silently wins. */}
-        <p className="mt-1 text-[11px] uppercase text-muted-foreground">{locale}</p>
+        <p className="mt-1 text-[13px] uppercase text-muted-foreground">{locale}</p>
         <div className="mt-3 space-y-3">
           <div className="space-y-1">
-            <Label htmlFor="seo-title" className="text-[11px]">{t('studio_seo_title')}</Label>
+            <Label htmlFor="seo-title" className="text-[13px]">{t('studio_seo_title')}</Label>
             <Input
               id="seo-title"
               value={readLocalized(draft.seo.title, locale) ?? ''}
               onChange={e => setSeo({ title: setLocalized(draft.seo.title, locale, e.target.value) })}
-              className="h-8 text-[12px]"
+              className="h-8 text-[14px]"
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="seo-desc" className="text-[11px]">{t('studio_seo_desc')}</Label>
+            <Label htmlFor="seo-desc" className="text-[13px]">{t('studio_seo_desc')}</Label>
             <Textarea
               id="seo-desc"
               rows={3}
               value={readLocalized(draft.seo.description, locale) ?? ''}
               onChange={e => setSeo({ description: setLocalized(draft.seo.description, locale, e.target.value) })}
-              className="text-[12px]"
+              className="text-[14px]"
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="og-image" className="text-[11px]">{t('studio_og_image')}</Label>
+            <Label htmlFor="og-image" className="text-[13px]">{t('studio_og_image')}</Label>
             <Input
               id="og-image"
               value={draft.seo.ogImage ?? ''}
               onChange={e => setSeo({ ogImage: e.target.value })}
-              className="h-8 text-[12px]"
+              className="h-8 text-[14px]"
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="canonical" className="text-[11px]">{t('studio_canonical')}</Label>
+            <Label htmlFor="canonical" className="text-[13px]">{t('studio_canonical')}</Label>
             <Input
               id="canonical"
               value={draft.seo.canonical ?? ''}
               onChange={e => setSeo({ canonical: e.target.value })}
-              className="h-8 text-[12px]"
+              className="h-8 text-[14px]"
             />
           </div>
 
@@ -80,7 +80,7 @@ export function HistoryPanel({ studio }: { studio: StudioState }) {
               means. */}
           <div className="rounded-md border border-destructive/30 p-3">
             <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="noindex" className="text-[11px] font-medium">
+              <Label htmlFor="noindex" className="text-[13px] font-medium">
                 {t('studio_noindex')}
               </Label>
               <Switch
@@ -90,7 +90,7 @@ export function HistoryPanel({ studio }: { studio: StudioState }) {
               />
             </div>
             {draft.seo.noindex === true && (
-              <p className="mt-2 text-[11px] leading-relaxed text-destructive">
+              <p className="mt-2 text-[13px] leading-relaxed text-destructive">
                 {t('studio_noindex_warn')}
               </p>
             )}
@@ -104,7 +104,7 @@ export function HistoryPanel({ studio }: { studio: StudioState }) {
         </h3>
 
         {versions.length === 0 ? (
-          <p className="mt-3 text-[12px] text-muted-foreground">{t('studio_no_history')}</p>
+          <p className="mt-3 text-[14px] text-muted-foreground">{t('studio_no_history')}</p>
         ) : (
           <ul className="mt-3 space-y-2">
             {versions.map(v => {
@@ -112,24 +112,24 @@ export function HistoryPanel({ studio }: { studio: StudioState }) {
               return (
                 <li key={v.version} className="rounded-md border p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12px] font-medium">
+                    <span className="text-[14px] font-medium">
                       {t('studio_version')} {v.version}
                     </span>
                     {live && (
-                      <span className="rounded bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                      <span className="rounded bg-emerald-600/10 px-1.5 py-0.5 text-[12px] font-medium text-emerald-700">
                         {t('studio_live')}
                       </span>
                     )}
                   </div>
                   {v.note && (
-                    <p className="mt-1 text-[11px] text-muted-foreground">{v.note}</p>
+                    <p className="mt-1 text-[13px] text-muted-foreground">{v.note}</p>
                   )}
-                  <p className="mt-1 text-[10px] text-muted-foreground">
+                  <p className="mt-1 text-[12px] text-muted-foreground">
                     {v.publishedAt ? new Date(v.publishedAt).toLocaleString() : ''}
                   </p>
                   <div className="mt-2 flex gap-2">
                     <Button
-                      variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-[11px]"
+                      variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-[13px]"
                       disabled={saving}
                       onClick={() => void restore(v.version)}
                     >
@@ -138,7 +138,7 @@ export function HistoryPanel({ studio }: { studio: StudioState }) {
                     </Button>
                     {!live && (
                       <Button
-                        variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-[11px]"
+                        variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-[13px]"
                         disabled={saving}
                         onClick={() => void rollback(v.version)}
                       >

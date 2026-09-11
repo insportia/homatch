@@ -66,7 +66,7 @@ export default function OutreachHubPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm">{t(labelKey as Parameters<typeof t>[0])}</span>
                         {badge && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 text-muted-foreground">
+                          <Badge variant="outline" className="text-[12px] px-1.5 text-muted-foreground">
                             {t(badge as Parameters<typeof t>[0])}
                           </Badge>
                         )}

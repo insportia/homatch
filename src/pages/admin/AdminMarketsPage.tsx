@@ -63,7 +63,7 @@ export default function AdminMarketsPage() {
                 )) : markets.map(m => (
                   <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-2.5 whitespace-nowrap font-medium">{m.country_name}</td>
-                    <td className="px-4 py-2.5 whitespace-nowrap"><Badge variant="outline" className="text-[10px]">{m.country_code}</Badge></td>
+                    <td className="px-4 py-2.5 whitespace-nowrap"><Badge variant="outline" className="text-[12px]">{m.country_code}</Badge></td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">{m.default_currency ?? '—'}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">{m.launch_priority ?? '—'}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">

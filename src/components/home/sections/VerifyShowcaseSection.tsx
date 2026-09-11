@@ -34,7 +34,7 @@ export function VerifyShowcaseSection() {
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="verify" size={48} className="sm:h-14 sm:w-14" />
-            <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">{sf('eyebrow', 'mp_verify_eyebrow')}</p>
+            <p className="min-w-0 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">{sf('eyebrow', 'mp_verify_eyebrow')}</p>
           </div>
 
           <h2
@@ -43,7 +43,7 @@ export function VerifyShowcaseSection() {
           >
             {sf('title', 'mp_verify_show_title')}
           </h2>
-          <p className="mt-4 max-w-[34rem] text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
             {sf('body', 'mp_verify_capability_desc')}
           </p>
 
@@ -58,8 +58,8 @@ export function VerifyShowcaseSection() {
                   <Check className="h-3 w-3" strokeWidth={3} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[15px] font-semibold leading-snug text-foreground">{row.title}</span>
-                  <span className="mt-1 block text-pretty text-[13.5px] leading-relaxed text-ink-soft sm:text-sm">{row.desc}</span>
+                  <span className="block text-[17px] font-semibold leading-snug text-foreground">{row.title}</span>
+                  <span className="mt-1 block text-pretty text-[15px] leading-relaxed text-ink-soft sm:text-sm">{row.desc}</span>
                 </span>
               </li>
             ))}
@@ -85,21 +85,21 @@ export function VerifyShowcaseSection() {
               reads as a black-and-gold plate rather than as a listing. */}
           <div className="relative h-36 saturate-[0.6] sm:h-44">
             <SceneMedia scene="verification" alt={plate?.alt ?? ''} sizes="(min-width: 1024px) 40vw, 100vw" position="50% 55%" overrideUrl={plate?.url} />
-            <div className="absolute inset-0 bg-[#080808]/72" aria-hidden="true" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-[#080808]/45 to-[#080808]/25" aria-hidden="true" />
+            <div className="absolute inset-0 bg-[#0D0D0D]/72" aria-hidden="true" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0D] via-[#0D0D0D]/45 to-[#0D0D0D]/25" aria-hidden="true" />
             <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">{t('mp_result_prop_label')}</p>
-                <p className="mt-1.5 font-mono text-[13px] tabular-nums text-white/85">01.18.06.019.055.03</p>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-gold">{t('mp_result_prop_label')}</p>
+                <p className="mt-1.5 font-mono text-[15px] tabular-nums text-white/85">01.18.06.019.055.03</p>
               </div>
-              <span className="shrink-0 rounded-full border border-white/30 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/80">
+              <span className="shrink-0 rounded-full border border-white/30 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.14em] text-white/80">
                 {t('mp_result_illustrative')}
               </span>
             </div>
           </div>
 
           <div className="p-5 sm:p-7">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {t('mp_result_prop_confirmed')}
             </p>
             <ul className="mt-3 space-y-2">
@@ -111,7 +111,7 @@ export function VerifyShowcaseSection() {
               ))}
             </ul>
 
-            <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <p className="mt-6 text-[13px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {t('mp_result_prop_attention')}
             </p>
             <p className="mt-3 flex items-start gap-2.5 text-sm text-foreground">
@@ -120,7 +120,7 @@ export function VerifyShowcaseSection() {
             </p>
 
             <div className="mt-6 rounded-[0.7rem] bg-primary p-4 text-primary-foreground">
-              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">
+              <p className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.16em] text-gold">
                 <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
                 {t('mp_result_prop_next')}
               </p>

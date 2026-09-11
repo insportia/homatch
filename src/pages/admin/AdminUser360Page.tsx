@@ -137,7 +137,7 @@ export default function AdminUser360Page() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium truncate">{u.full_name ?? t('admin_user360_no_name')}</span>
-                    {u.is_admin && <Badge className="text-[10px] px-1.5 bg-red-500/10 text-red-700">{t('admin_users_admin_badge')}</Badge>}
+                    {u.is_admin && <Badge className="text-[12px] px-1.5 bg-red-500/10 text-red-700">{t('admin_users_admin_badge')}</Badge>}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                 </div>
@@ -284,7 +284,7 @@ export default function AdminUser360Page() {
 function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 p-2 bg-muted/40 rounded-lg">
-      <div className="flex items-center gap-1 text-muted-foreground">{icon}<span className="text-[10px]">{label}</span></div>
+      <div className="flex items-center gap-1 text-muted-foreground">{icon}<span className="text-[12px]">{label}</span></div>
       <span className="text-base font-semibold">{value}</span>
     </div>
   );
@@ -309,8 +309,8 @@ function Row({ primary, secondary, badge, date }: { primary: string; secondary?:
         {secondary && <p className="text-xs text-muted-foreground truncate">{secondary}</p>}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        {badge && <Badge variant="outline" className="text-[10px] px-1.5">{badge}</Badge>}
-        {date && <span className="text-[11px] text-muted-foreground whitespace-nowrap">{new Date(date).toLocaleDateString()}</span>}
+        {badge && <Badge variant="outline" className="text-[12px] px-1.5">{badge}</Badge>}
+        {date && <span className="text-[13px] text-muted-foreground whitespace-nowrap">{new Date(date).toLocaleDateString()}</span>}
       </div>
     </div>
   );

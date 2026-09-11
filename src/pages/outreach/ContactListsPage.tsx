@@ -282,12 +282,12 @@ export default function ContactListsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-sm truncate">{list.name}</span>
-                            <Badge className={`text-[10px] px-1.5 ${sb.class}`}>{sb.label}</Badge>
-                            {list.source_format && <Badge variant="outline" className="text-[10px] px-1.5">{list.source_format}</Badge>}
+                            <Badge className={`text-[12px] px-1.5 ${sb.class}`}>{sb.label}</Badge>
+                            {list.source_format && <Badge variant="outline" className="text-[12px] px-1.5">{list.source_format}</Badge>}
                           </div>
                           {list.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{list.description}</p>}
                           {(list.total_rows ?? 0) > 0 && (
-                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
+                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[13px] text-muted-foreground">
                               <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-green-600" />{list.valid_rows ?? 0} {t('contacts_valid')}</span>
                               {(list.invalid_rows ?? 0) > 0 && <span className="flex items-center gap-1 text-red-600"><AlertCircle className="h-3 w-3" />{list.invalid_rows} {t('contacts_invalid')}</span>}
                               {(list.duplicate_rows ?? 0) > 0 && <span>{list.duplicate_rows} {t('contacts_dupes')}</span>}

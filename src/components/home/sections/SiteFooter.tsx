@@ -54,7 +54,7 @@ export function SiteFooter() {
 
         {columns.map(column => (
           <nav key={column.key} aria-label={column.heading}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-foreground">{column.heading}</p>
+            <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-foreground">{column.heading}</p>
             <ul className="mt-5 space-y-3">
               {column.links.map(link => (
                 <li key={link.key}>

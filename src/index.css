@@ -1,5 +1,37 @@
 /* stylelint-disable */
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+/* ---------------------------------------------------------------------------
+ * TYPEFACES
+ *
+ * Montserrat was the whole stack, and it does not contain Georgian. Its
+ * Google subsets are latin, latin-ext, vietnamese, cyrillic and cyrillic-ext
+ * — no U+10A0-10FF at all, and no Arabic or Hebrew either. So every Georgian
+ * screen was rendering in whatever `system-ui` resolves to on that machine:
+ * Segoe UI on Windows, SF on macOS, Roboto on Android. Georgian is a primary
+ * locale for this product, not a fallback, and it was never actually being
+ * set in the brand face.
+ *
+ * The replacement is one family per script, chosen so that each script is
+ * designed rather than substituted:
+ *
+ *   Inter Tight   display and headings. Tighter and more characterful than
+ *                 Inter at large sizes, which is where a heading earns its
+ *                 keep; at 40px the difference is the whole tone.
+ *   Inter         body and interface. Built for screen reading at small
+ *                 sizes, with real tabular figures for the numbers that
+ *                 carry meaning in a report.
+ *   Noto Sans Georgian / Hebrew / Arabic
+ *                 the scripts Inter does not cover, in faces drawn for them.
+ *
+ * This costs nothing extra on a Latin page. Google serves each family split
+ * by `unicode-range`, so a browser downloads the Georgian file only when
+ * Georgian glyphs are actually on the page, and the Latin reader never
+ * fetches it. The stacks below list every script family on every rule for
+ * the same reason: font fallback is resolved PER GLYPH, so one stack renders
+ * a Georgian sentence with a Latin brand name inside it correctly, each in
+ * its own designed face.
+ * ------------------------------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&family=Noto+Sans+Georgian:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,6 +44,20 @@
 
 @layer base {
   :root {
+    /* One stack per role, listing every script family. Font fallback is
+       resolved per glyph, so a Georgian sentence containing "Homatch" gets
+       Noto Sans Georgian for the Georgian and Inter for the Latin, with no
+       per-locale switching anywhere in the app. */
+    --font-body: 'Inter', 'Noto Sans Georgian', 'Noto Sans Hebrew',
+                 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+    --font-display: 'Inter Tight', 'Inter', 'Noto Sans Georgian',
+                    'Noto Sans Hebrew', 'Noto Sans Arabic', system-ui, sans-serif;
+
+    /* The measure a column of reading text is allowed to reach. Long-form
+       analysis set across a 1400px container is unreadable regardless of
+       font size, which the sweep found on /mortgage at 131 characters. */
+    --measure: 68ch;
+
     --radius: 0.5rem;
     --background: 222 25% 6%;
     --foreground: 210 20% 90%;
@@ -73,24 +119,56 @@
   }
 
   html {
-    font-family: 'Montserrat', system-ui, sans-serif;
+    font-family: var(--font-body);
     scroll-behavior: smooth;
-    overflow-wrap: anywhere;
+    /* `break-word`, not `anywhere`. Both stop a long Georgian compound from
+       overflowing its container, but `anywhere` also offers those break
+       points when the browser computes min-content width — so inside a flex
+       or grid child it breaks words that would have fitted perfectly well.
+       That is what put a lone "ა" on its own line under the header nav once
+       the type grew. This keeps the overflow protection and drops the
+       premature breaking. */
+    overflow-wrap: break-word;
   }
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Montserrat', system-ui, sans-serif;
+    font-family: var(--font-body);
     font-weight: 400;
-    line-height: 1.6;
+    /* 17px base. The old 16px default plus Tailwind's text-sm meant most of
+       the interface read at 14px or less; see tailwind.config.js. */
+    font-size: 1.0625rem;
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     overflow-x: hidden;
   }
 
+  /* Headings take the display face. Set here rather than per-component so a
+     new heading is correct by default instead of by remembering. */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.011em;
+  }
+
+  /* Figures that are compared down a column — prices, areas, scores — must
+     line up. Inter carries real tabular figures, so this is a font feature
+     rather than a layout hack. */
+  .tabular, table, [data-tabular] {
+    font-variant-numeric: tabular-nums;
+  }
+
   p, h1, h2, h3, h4, h5, h6, span, label, a, button {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     word-break: normal;
+  }
+
+  /* Labels are not prose. A control's text should shrink the control or
+     wrap between words, never split a word in half. */
+  button, [role="button"], nav a, label {
+    overflow-wrap: normal;
   }
 
   button, [role="button"] {
@@ -116,6 +194,111 @@
 }
 
 @layer utilities {
+  /* ------------------------------------------------------------------ *
+   * READING AND SURFACE UTILITIES
+   *
+   * Shared so a long-form screen is composed from a few named decisions
+   * rather than from a different max-width and padding guess per file.
+   * ------------------------------------------------------------------ */
+
+  /* Long-form analysis: Verify findings, contract explanations, mortgage
+     guidance, AI answers. A measure, not a container width — a paragraph
+     set across 131 characters (which /mortgage was) is hard to read at any
+     font size, because the eye loses the line on the return sweep. */
+  .measure { max-width: var(--measure); }
+  .measure-wide { max-width: 82ch; }
+
+  /* Vertical rhythm inside a block of prose. Paragraph spacing is what
+     makes a report feel considered rather than dumped; borders between
+     everything is what makes it feel like an admin panel. */
+  .prose-block > * + * { margin-top: 1.15em; }
+  .prose-block h3, .prose-block h4 { margin-top: 2em; }
+  .prose-block > * + h3, .prose-block > * + h4 { margin-top: 2em; }
+  .prose-block li + li { margin-top: 0.5em; }
+
+  /* The elevated content surface: white on the neutral page, with a
+     hairline and a shadow soft enough to read as lift rather than as a
+     drop shadow. */
+  .surface {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+  }
+  .surface-raised {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: 0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 16px hsl(0 0% 0% / 0.04);
+  }
+
+  /* Card padding, as two named steps instead of a per-card guess. The
+     substantial one is for cards that carry a real finding; the compact one
+     is for utility rows and chips, which get worse when inflated. */
+  .pad-card { padding: 1.25rem; }
+  @media (min-width: 640px) { .pad-card { padding: 1.75rem; } }
+  .pad-card-compact { padding: 1rem; }
+  @media (min-width: 640px) { .pad-card-compact { padding: 1.25rem; } }
+
+  /* ------------------------------------------------------------------ *
+   * RESULT HIERARCHY
+   *
+   * A report has four levels, and the complaint was that they all render at
+   * roughly the same size. These are the four, defined once, so a verdict
+   * cannot accidentally be set in the same type as a source id.
+   * ------------------------------------------------------------------ */
+
+  /* L1 — the verdict, the headline number, the conclusion. */
+  .t-verdict {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 3.4vw, 2.5rem);
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+  /* L1 supporting: the one-line explanation under a verdict. */
+  .t-verdict-note { font-size: 1.0625rem; line-height: 1.6; font-weight: 400; }
+
+  /* L2 — major section headings inside a report. */
+  .t-section {
+    font-family: var(--font-display);
+    font-size: clamp(1.25rem, 2vw, 1.5rem);
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+
+  /* L3 — the evidence and explanation people actually read. */
+  .t-body { font-size: 1.0625rem; line-height: 1.65; }
+
+  /* L4 — timestamps, ids, counts. Small, but never below 13px and never
+     below comfortable contrast; a citation nobody can read is not a
+     citation. */
+  .t-meta {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* The single large value on a summary card. */
+  .t-metric {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 2.6vw, 2rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Its label. Small caps energy without shrinking into nothing. */
+  .t-metric-label {
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+
   .gradient-text {
     background-image: var(--gradient-primary);
     -webkit-background-clip: text;
@@ -232,23 +415,45 @@
   :root[data-surface='light'] {
     --radius: 0.625rem;
 
-    --background: 0 0% 100%;    /* pure white, no warmth whatsoever */
-    --foreground: 0 0% 6%;      /* neutral near-black ink           */
+    /* THE PAGE IS NO LONGER PURE WHITE.
+       Everything was #FFFFFF — page and cards alike — so a card could not
+       read as a surface sitting on a page, and a long screen was an
+       unbroken white field. This is a 3% step down at a hair of warmth
+       (hsl 48 6% 97% = #F8F8F6): enough that white cards lift off it and
+       the eye gets a rest, nowhere near enough to read as beige. The
+       saturation is deliberately tiny; at 6% of 97% lightness it is a
+       neutral that happens not to be clinical. */
+    --background: 48 6% 97%;    /* #F8F8F6 — premium neutral, not beige */
+    --foreground: 0 0% 7%;      /* neutral near-black ink               */
 
+    /* Cards are the white now, which is what makes them elevated content
+       rather than more page. */
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 6%;
+    --card-foreground: 0 0% 7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 6%;
+    --popover-foreground: 0 0% 7%;
+
+    /* Deep surfaces. Pure #000 is harsh next to a warm-neutral page, so the
+       dark sections sit at #0D0D0D with a second step for panels inside
+       them — which also gives dark sections internal depth instead of one
+       flat void. */
+    --surface-deep: 0 0% 5%;    /* #0D0D0D */
+    --surface-deep-2: 0 0% 9%;  /* #171717 */
 
     /* Black is the action colour. Gold is an accent and never a button fill
        on a light ground — it has nowhere near the contrast for it. */
     --primary: 0 0% 5%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 96%;      /* neutral grey fill, no beige */
+    /* These sat at 96% against a 100% page. Against a 97% page they need to
+       be a touch deeper to read as a fill at all. */
+    --secondary: 40 5% 94%;
     --secondary-foreground: 0 0% 10%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 34%;
+    --muted: 40 5% 94%;
+    /* Was 34%. Secondary text has to stay comfortably readable rather than
+       looking disabled: this is about 5.7:1 on white, where 34% was ~4.6:1
+       and thin gray metadata was one of the stated complaints. */
+    --muted-foreground: 0 0% 30%;
 
     --accent: 38 88% 54%;
     --accent-foreground: 0 0% 6%;
@@ -258,8 +463,10 @@
 
     /* Hairlines that are actually visible. Neutral, so a 1px rule on white
        reads as a drawn line rather than as a warm smudge. */
-    --border: 0 0% 87%;
-    --input: 0 0% 78%;
+    /* Softer than 87% now that it sits on a 97% page rather than white, so
+       a hairline separates without drawing itself. */
+    --border: 40 4% 89%;
+    --input: 0 0% 80%;
     --ring: 38 88% 40%;
 
     --gold: 38 88% 54%;         /* the brand mark's own gold */

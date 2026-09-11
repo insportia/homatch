@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { beginExecution, settleExecution, releaseExecution } from '../_shared/billing.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -80,6 +81,8 @@ Deno.serve(async (req: Request) => {
   const db = createClient(baseUrl, serviceKey);
 
   let jobId: string | null = null;
+  // Visible to the catch below, which is outside the try that creates it.
+  let grantRef: Awaited<ReturnType<typeof beginExecution>> | null = null;
   try {
     const body = await req.json().catch(() => ({}));
     const propertyId = String(body.propertyId || '');
@@ -162,6 +165,41 @@ Deno.serve(async (req: Request) => {
         status: priorJob.status,
         matchesCreated: priorJob.matches_created,
       });
+    }
+
+    /* ---- billing ----
+     *
+     * This is the Find Clients SEARCH. One full search a month is included on
+     * every plan; after that the wallet funds it, with no monthly ceiling on
+     * how many a customer may run.
+     *
+     * Placed AFTER the idempotency check on purpose: a replayed request
+     * returns the earlier job above and never reaches here, so it cannot hold
+     * a second lot of credits for one logical search.
+     *
+     * NOTE FOR THE OPERATOR: unlocking an individual match still charges
+     * separately through atomic_match_unlock, which is the pre-existing and
+     * untouched revenue line for revealing one contact. Whether the search
+     * charge and the per-contact charge should be consolidated is a product
+     * decision, and it is deliberately NOT made here. */
+    const grant = await beginExecution(db, {
+      userId: homatchUser.id,
+      productCode: 'FIND_CLIENTS',
+      idempotencyKey: `findclients:${idempotencyKey}`,
+      jobRef: propertyId,
+      metadata: { campaignId, propertyId },
+    });
+    grantRef = grant;
+
+    if (!grant.ok) {
+      const { data: ent } = await db.rpc('billing_entitlements', { p_user_id: homatchUser.id });
+      return json({
+        error: 'This search needs Credits to continue.',
+        reasonCode: grant.reason ?? 'BILLING_REQUIRED',
+        planCode: grant.planCode,
+        walletBalance: Number(ent?.wallet?.balance ?? 0),
+        firstTopupPromoAvailable: !!ent?.first_topup_promo_available,
+      }, 402);
     }
 
     const startedAt = new Date().toISOString();
@@ -354,11 +392,45 @@ Deno.serve(async (req: Request) => {
       paidProviderCalls: Number(externalResult?.processed || 0),
     });
 
+    /* ---- settle on what the pipeline actually spent ----
+     *
+     * totalCost is summed from cost_events written by the providers this run
+     * actually called, so a search that found its answer in existing Homatch
+     * data costs the customer far less than one that had to go out and buy
+     * fresh discovery. That is the reuse economics working as intended. */
+    let creditsCharged = 0;
+    try {
+      const settled = await settleExecution(db, grant, {
+        provider: 'homatch_matching',
+        providerOperation: 'find_clients_search',
+        providerRequestId: jobId ?? undefined,
+        searchCount: Number(externalResult?.processed || 0),
+        durationMs: Date.now() - new Date(startedAt).getTime(),
+        rawProviderCostCents: totalCost * 100,
+        metadata: {
+          quality_tier: grant.qualityTier,
+          result_ceiling: grant.resultCeiling,
+          matches: totalMatches,
+          candidate_signals: candidateSignals,
+        },
+      }, totalMatches > 0 ? 'SUCCESS' : 'PARTIAL');
+      creditsCharged = settled.chargedCredits;
+    } catch (e) {
+      console.error('[match-campaign] settle failed; sweeper will reconcile', e);
+    }
+
     return json({
       success: true,
       jobId,
       campaignId,
       status: totalMatches > 0 ? 'completed' : 'partially_completed',
+      billing: {
+        funding: grant.funding,
+        planCode: grant.planCode,
+        qualityTier: grant.qualityTier,
+        resultCeiling: grant.resultCeiling,
+        creditsCharged,
+      },
       matchesCreated: totalMatches,
       candidateSignals,
       costUsd: totalCost,
@@ -366,6 +438,11 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     const errorMessage = message(error);
+    // Our pipeline broke. The customer keeps their credits and, if the run was
+    // allowance-funded, their included search for the month.
+    if (grantRef) {
+      await releaseExecution(db, grantRef, 'pipeline_error').catch(() => undefined);
+    }
     if (jobId) {
       await event(db, jobId, 'JOB_FAILED', { message: errorMessage }).catch(() => undefined);
       await updateJob(db, jobId, {

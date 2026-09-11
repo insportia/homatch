@@ -57,7 +57,7 @@ export function EmailCampaignsSection() {
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="email" size={48} className="sm:h-14 sm:w-14" />
-            <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+            <p className="min-w-0 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
               {sf('eyebrow', 'mp_email_eyebrow')}
             </p>
           </div>
@@ -68,7 +68,7 @@ export function EmailCampaignsSection() {
           >
             {sf('title', 'mp_email_show_title')}
           </h2>
-          <p className="mt-4 max-w-[34rem] text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
             {sf('body', 'mp_email_desc')}
           </p>
 
@@ -76,7 +76,7 @@ export function EmailCampaignsSection() {
             {POINTS.map(point => (
               <li key={point.key} className="bg-card p-4 sm:p-5">
                 <h3 className="text-sm font-semibold leading-snug text-foreground">{t(point.title)}</h3>
-                <p className="mt-2 text-pretty text-[13px] leading-relaxed text-ink-soft">{t(point.desc)}</p>
+                <p className="mt-2 text-pretty text-[15px] leading-relaxed text-ink-soft">{t(point.desc)}</p>
               </li>
             ))}
           </ul>
@@ -105,14 +105,14 @@ export function EmailCampaignsSection() {
                 than beside it: the drafting is part of writing the campaign,
                 not a separate product bolted on. */}
             <div className="rounded-[0.7rem] border border-foreground/[0.14] bg-secondary/60 p-3.5">
-              <p className="text-[12px] font-medium text-ink-soft">{t('mp_email_field_3')}</p>
+              <p className="text-[14px] font-medium text-ink-soft">{t('mp_email_field_3')}</p>
               <div className="mt-3 space-y-2" aria-hidden="true">
                 <span className="block h-2 w-[92%] rounded-full bg-foreground/[0.16]" />
                 <span className="block h-2 w-[78%] rounded-full bg-foreground/[0.13]" />
                 <span className="block h-2 w-[85%] rounded-full bg-foreground/[0.16]" />
                 <span className="block h-2 w-[54%] rounded-full bg-foreground/10" />
               </div>
-              <p className="mt-3.5 inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground">
+              <p className="mt-3.5 inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground">
                 <Sparkles className="h-3 w-3 shrink-0 text-gold" strokeWidth={2} aria-hidden="true" />
                 {t('mp_email_field_ai')}
               </p>
@@ -124,16 +124,16 @@ export function EmailCampaignsSection() {
             {STAGES.map((stage, i) => (
               <li key={stage} className="flex items-center gap-2.5 bg-card px-3.5 py-3">
                 <span
-                  className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold tabular-nums ${
+                  className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-semibold tabular-nums ${
                     i === STAGES.length - 1
-                      ? 'bg-gold text-[#0A0A0A]'
+                      ? 'bg-gold text-[#0D0D0D]'
                       : 'border border-foreground/[0.22] text-muted-foreground'
                   }`}
                   aria-hidden="true"
                 >
                   {i + 1}
                 </span>
-                <span className="min-w-0 text-[12px] font-medium leading-tight text-foreground">{t(stage)}</span>
+                <span className="min-w-0 text-[14px] font-medium leading-tight text-foreground">{t(stage)}</span>
               </li>
             ))}
           </ol>
@@ -150,7 +150,7 @@ export function EmailCampaignsSection() {
 function Field({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-[0.7rem] border border-foreground/[0.14] bg-secondary/60 px-3.5 py-3">
-      <span className="min-w-0 text-[12px] font-medium text-ink-soft">{label}</span>
+      <span className="min-w-0 text-[14px] font-medium text-ink-soft">{label}</span>
       <span className="h-2 w-16 shrink-0 rounded-full bg-foreground/[0.16] sm:w-24" aria-hidden="true" />
     </div>
   );

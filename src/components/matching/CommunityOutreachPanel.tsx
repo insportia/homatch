@@ -194,29 +194,29 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
                     onKeyDown={(e) => { if (e.key === 'Enter') setExpandedId(isOpen ? null : c.id); }}
                     className="flex items-center gap-3 p-3 cursor-pointer hover:bg-secondary/40 transition-colors"
                   >
-                    <Badge variant="outline" className={`text-[10px] shrink-0 ${PLATFORM_COLORS[c.platform] ?? ''}`}>{c.platform}</Badge>
+                    <Badge variant="outline" className={`text-[12px] shrink-0 ${PLATFORM_COLORS[c.platform] ?? ''}`}>{c.platform}</Badge>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
                         {c.housing_focus === 'secondary' && (
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground shrink-0">{t('community_general_badge')}</Badge>
+                          <Badge variant="outline" className="text-[11px] px-1 py-0 text-muted-foreground shrink-0">{t('community_general_badge')}</Badge>
                         )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground truncate">
+                      <p className="text-[13px] text-muted-foreground truncate">
                         {[c.city, c.country].filter(Boolean).join(', ')}
                         {c.member_count ? ` · ${c.member_count.toLocaleString()} ${t('community_members')}` : ''}
                       </p>
                     </div>
-                    {isPosted && <Badge className="text-[10px] bg-green-500/15 text-green-400 border-green-500/30 shrink-0">{t('community_status_posted')}</Badge>}
+                    {isPosted && <Badge className="text-[12px] bg-green-500/15 text-green-400 border-green-500/30 shrink-0">{t('community_status_posted')}</Badge>}
                     {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
                   </div>
                   {isOpen && (
                     <div className="p-3 pt-0 space-y-3 border-t border-border">
                       {c.posting_allowed === false && (
-                        <p className="text-[11px] text-muted-foreground italic pt-3">{t('community_no_direct_post')}</p>
+                        <p className="text-[13px] text-muted-foreground italic pt-3">{t('community_no_direct_post')}</p>
                       )}
                       {c.housing_focus === 'secondary' && (
-                        <p className="text-[11px] text-muted-foreground italic pt-3">{t('community_secondary_note')}</p>
+                        <p className="text-[13px] text-muted-foreground italic pt-3">{t('community_secondary_note')}</p>
                       )}
                       <div className="flex flex-wrap gap-2 pt-3">
                         <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => generatePost(c.id)} disabled={draft?.generating}>
@@ -267,7 +267,7 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
           </div>
         )}
         {plan === 'FREE' && lockedCount === 0 && items.length > 0 && (
-          <p className="text-[11px] text-muted-foreground text-center">{t('community_free_plan_note')}</p>
+          <p className="text-[13px] text-muted-foreground text-center">{t('community_free_plan_note')}</p>
         )}
       </CardContent>
     </Card>

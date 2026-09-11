@@ -83,7 +83,7 @@ export function IntentCards({ intents = INTENTS, className = '' }: { intents?: I
             size={34}
             className="transition-transform duration-300 group-hover:scale-[1.06] motion-reduce:transform-none"
           />
-          <span className="min-w-0 flex-1 text-pretty text-[13.5px] leading-snug text-foreground sm:text-sm">
+          <span className="min-w-0 flex-1 text-pretty text-[15px] leading-snug text-foreground sm:text-sm">
             {t(intent.prompt)}
           </span>
           <ArrowRight

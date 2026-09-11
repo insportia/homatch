@@ -35,11 +35,11 @@ function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => vo
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">ID</p>
-              <p className="font-mono text-[11px] break-all">{signal.id}</p>
+              <p className="font-mono text-[13px] break-all">{signal.id}</p>
             </div>
             <div>
               <p className="text-muted-foreground font-medium uppercase tracking-wide mb-0.5">{t('admin_signals_status')}</p>
-              <Badge variant={STATUS_VARIANT[signal.classification_status] ?? 'outline'} className="text-[10px]">
+              <Badge variant={STATUS_VARIANT[signal.classification_status] ?? 'outline'} className="text-[12px]">
                 {signal.classification_status ?? '—'}
               </Badge>
             </div>
@@ -67,7 +67,7 @@ function SignalDetailModal({ signal, onClose }: { signal: any; onClose: () => vo
           {signal.intent_json && (
             <div>
               <p className="text-muted-foreground font-medium uppercase tracking-wide mb-1">{t('admin_signals_intent_json')}</p>
-              <pre className="rounded-lg bg-secondary/50 border border-border p-3 max-h-64 overflow-auto text-[11px] font-mono leading-relaxed">
+              <pre className="rounded-lg bg-secondary/50 border border-border p-3 max-h-64 overflow-auto text-[13px] font-mono leading-relaxed">
                 {JSON.stringify(signal.intent_json, null, 2)}
               </pre>
             </div>
@@ -179,7 +179,7 @@ export default function AdminSignalsPage() {
               : <RotateCcw className="h-3.5 w-3.5" />}
             {t('admin_signals_reprocess_btn')}
             {failedCount > 0 && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500/40 text-amber-500 ml-0.5">
+              <Badge variant="outline" className="text-[12px] px-1 py-0 border-amber-500/40 text-amber-500 ml-0.5">
                 {failedCount}
               </Badge>
             )}
@@ -219,15 +219,15 @@ export default function AdminSignalsPage() {
                     <td className="px-4 py-2.5 max-w-[280px]">
                       <p className="text-xs truncate">{s.original_text?.slice(0, 110) ?? '—'}</p>
                       {s.error_message && (
-                        <p className="text-[10px] text-destructive truncate mt-0.5">{s.error_message.slice(0, 60)}</p>
+                        <p className="text-[12px] text-destructive truncate mt-0.5">{s.error_message.slice(0, 60)}</p>
                       )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant="outline" className="text-[10px]">{s.platform ?? '—'}</Badge>
+                      <Badge variant="outline" className="text-[12px]">{s.platform ?? '—'}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{s.language ?? '—'}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant={STATUS_VARIANT[s.classification_status] ?? 'outline'} className="text-[10px]">
+                      <Badge variant={STATUS_VARIANT[s.classification_status] ?? 'outline'} className="text-[12px]">
                         {s.classification_status ?? '—'}
                       </Badge>
                     </td>

@@ -64,7 +64,7 @@ function CardHead({ title, action }: { title: string; action?: React.ReactNode }
        (Georgian and Russian both run long) wraps inside the same 3.5rem band,
        so the header rules of adjacent columns still line up. */
     <div className="flex min-h-[3.5rem] items-center justify-between gap-3 border-b border-border px-5 py-3">
-      <h2 className="min-w-0 text-balance text-[13px] font-semibold uppercase leading-tight tracking-[0.08em] text-foreground">{title}</h2>
+      <h2 className="min-w-0 text-balance text-[15px] font-semibold uppercase leading-tight tracking-[0.08em] text-foreground">{title}</h2>
       {action}
     </div>
   );
@@ -210,7 +210,7 @@ function MatchRow({ entry, onOpen }: { entry: DashboardMatch; onOpen: () => void
 
       <div className="shrink-0 text-end">
         <p className="text-sm font-semibold tabular-nums text-success">{match.match_score}%</p>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('db_match_fit')}</p>
+        <p className="text-[12px] uppercase tracking-wider text-muted-foreground">{t('db_match_fit')}</p>
       </div>
 
       <Button variant="outline" size="sm" className="h-8 shrink-0 rounded-full border-border bg-card px-3 text-xs" onClick={onOpen}>
@@ -267,7 +267,7 @@ function PropertyRow({ property, run, onOpen, onDelete }: {
 
         <span className="hidden shrink-0 text-end sm:block">
           <span className="block text-sm font-semibold tabular-nums text-foreground">{score}%</span>
-          <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span className="block text-[12px] uppercase tracking-wider text-muted-foreground">
             {running ? t('dash_label_ai_progress') : t('dash_label_best_match')}
           </span>
         </span>

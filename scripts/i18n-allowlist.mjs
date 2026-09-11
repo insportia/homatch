@@ -45,6 +45,7 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // ar/he all carry their own distinct forms for this key.
   'wallet_bucket_promotional',
   'profile_field_plan', // Turkish "Plan" is a standard loanword
+  'admin_sim_plan', // the same Turkish loanword, in the admin simulator
   'comm_filter_platform',
   'admin_sources_platform',
   'admin_signals_platform',

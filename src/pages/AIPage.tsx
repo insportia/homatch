@@ -31,7 +31,7 @@ const EVIDENCE_CFG: Record<EvidenceStatus, { color: string; label: string }> = {
 };
 function EvidenceBadge({ status }: { status: EvidenceStatus }) {
   const cfg = EVIDENCE_CFG[status] ?? EVIDENCE_CFG.UNVERIFIED;
-  return <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${cfg.color}`}>{cfg.label}</span>;
+  return <span className={`text-[12px] px-1.5 py-0.5 rounded border font-medium ${cfg.color}`}>{cfg.label}</span>;
 }
 
 // ── Research result card (parsed from streaming assistant message) ────────────
@@ -58,17 +58,17 @@ function ResearchCard({
   return (
     <Card className="border-primary/20 bg-primary/5 mt-2">
       <CardHeader className="pb-2 pt-4">
-        <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
+        <CardTitle className="flex flex-wrap items-center gap-2">
           <Star className="h-4 w-4 text-primary" />
           <span className="font-semibold">{report.entityName ?? t('ai_entity_default')}</span>
-          {report.entityType && <Badge variant="outline" className="text-[10px]">{report.entityType}</Badge>}
+          {report.entityType && <Badge variant="outline" className="text-[12px]">{report.entityType}</Badge>}
           {report.confidence !== undefined && (
             <span className="text-xs text-muted-foreground ml-auto">{t('ai_confidence')}: {report.confidence}%</span>
           )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 pb-4">
-        {report.summary && <p className="text-xs text-muted-foreground leading-relaxed">{report.summary}</p>}
+        {report.summary && <p className="measure text-sm leading-relaxed text-foreground">{report.summary}</p>}
 
         {(report.publicFindings?.riskFlags ?? []).length > 0 && (
           <div className="space-y-1">
@@ -88,10 +88,10 @@ function ResearchCard({
                 <EvidenceBadge status={s.status} />
                 {s.url ? (
                   <a href={s.url} target="_blank" rel="noopener noreferrer"
-                    className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
+                    className="flex items-center gap-0.5 text-sm text-primary hover:underline">
                     {s.label} <ExternalLink className="h-2.5 w-2.5" />
                   </a>
-                ) : <span className="text-[10px] text-muted-foreground">{s.label}</span>}
+                ) : <span className="text-sm text-muted-foreground">{s.label}</span>}
               </div>
             ))}
           </div>
@@ -100,7 +100,7 @@ function ResearchCard({
         {(report.actions ?? []).length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             {report.actions!.map(a => (
-              <Button key={a.id} size="sm" variant="outline" className="h-7 text-[11px] gap-1 border-border"
+              <Button key={a.id} size="sm" variant="outline" className="h-7 text-[13px] gap-1 border-border"
                 onClick={() => {
                   if (a.type === 'navigate' && a.path) onNavigate(a.path);
                   else if (a.type === 'external' && a.path) window.open(a.path, '_blank');
@@ -145,7 +145,7 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
               className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-secondary/50 hover:border-primary/40 transition-colors text-left group"
             >
               <Icon className="h-4 w-4 text-primary shrink-0" />
-              <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
+              <span className="text-base text-muted-foreground transition-colors group-hover:text-foreground">{label}</span>
               <ChevronRight className="h-3 w-3 text-muted-foreground/40 ml-auto shrink-0" />
             </button>
           );
@@ -185,7 +185,7 @@ function MessageBubble({
         </div>
       )}
       <div className={`max-w-[80%] ${isUser ? '' : 'flex-1 min-w-0'}`}>
-        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+        <div className={`prose-block rounded-2xl px-4 py-3.5 text-base leading-[1.65] ${
           isUser
             ? 'bg-primary text-primary-foreground rounded-tr-sm'
             : 'bg-card border border-border text-foreground rounded-tl-sm'
@@ -314,7 +314,7 @@ function AIPageInner() {
                 }`}
               >
                 <div className="truncate">{conv.title}</div>
-                <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                <div className="text-[12px] text-muted-foreground/60 mt-0.5">
                   {formatDistanceToNow(conv.updatedAt, { addSuffix: true })}
                 </div>
               </button>
@@ -337,7 +337,7 @@ function AIPageInner() {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Bot className="h-5 w-5 text-primary shrink-0" />
             <span className="font-semibold text-sm text-foreground truncate">{t('ai_title')}</span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">{t('ai_beta_badge')}</Badge>
+            <Badge variant="secondary" className="text-[12px] px-1.5 py-0 shrink-0">{t('ai_beta_badge')}</Badge>
           </div>
           {messages.length > 0 && (
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
@@ -405,7 +405,7 @@ function AIPageInner() {
               </Button>
             )}
           </div>
-          <p className="text-center text-[10px] text-muted-foreground/50 mt-2">
+          <p className="text-center text-[12px] text-muted-foreground/50 mt-2">
             {t('ai_disclaimer')}
           </p>
         </div>

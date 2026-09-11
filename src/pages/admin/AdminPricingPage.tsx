@@ -10,6 +10,7 @@ import { getPricingConfig, updatePricingConfig, getResearchProducts, updateResea
 import type { PricingConfig, ResearchProduct } from '@/types/types';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { PricingSimulator } from '@/components/admin/PricingSimulator';
 
 type FieldDef = { key: keyof PricingConfig; label: string; hint: string; min: number; max: number; step: number };
 
@@ -107,6 +108,8 @@ export default function AdminPricingPage() {
         <h1 className="text-xl font-bold">{t('admin_pricing_title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">{t('admin_pricing_intro_desc')}</p>
       </div>
+      <PricingSimulator />
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold">{t('admin_pricing_engine_parameters')}</CardTitle>
@@ -120,7 +123,7 @@ export default function AdminPricingPage() {
             draft && FIELDS.map(f => (
               <div key={f.key}>
                 <Label className="text-xs font-medium">{f.label}</Label>
-                {f.hint && <p className="text-[11px] text-muted-foreground mb-1">{f.hint}</p>}
+                {f.hint && <p className="text-[13px] text-muted-foreground mb-1">{f.hint}</p>}
                 <Input
                   type="number"
                   min={f.min} max={f.max} step={f.step}
@@ -168,7 +171,7 @@ export default function AdminPricingPage() {
               <div key={p.code} className="flex items-center gap-3 p-3 rounded-lg border border-border flex-wrap">
                 <div className="flex-1 min-w-[160px]">
                   <p className="text-sm font-medium">{p.name}</p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[13px] text-muted-foreground">
                     {t('admin_pricing_cogs_prefix')}{(p.reference_cogs_cents / 100).toFixed(2)} {t('admin_pricing_target_contribution_prefix')}{(p.target_contribution_cents / 100).toFixed(2)} {t('admin_pricing_vat_prefix')} {(p.vat_rate_bps / 100).toFixed(0)}%
                   </p>
                 </div>

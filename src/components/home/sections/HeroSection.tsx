@@ -38,7 +38,7 @@ export function HeroSection() {
   const { t } = useLanguage();
 
   return (
-    <section className="relative isolate overflow-hidden bg-[#080808] text-white">
+    <section className="relative isolate overflow-hidden bg-[#0D0D0D] text-white">
       {/* ── The photograph, lg and up ───────────────────────────── */}
       <div className="absolute inset-0 hidden lg:block" aria-hidden="true">
         {/* The plate runs well past the wipe's opaque end, so the image's own
@@ -48,10 +48,10 @@ export function HeroSection() {
         <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.72]">
           <SceneMedia scene="hero" alt={photo?.alt ?? ''} priority sizes="78vw" position="52% 52%" overrideUrl={photo?.url} />
         </div>
-        <div className="absolute inset-0 bg-[#080808]/45" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#080808] from-30% via-[#080808]/88 to-transparent rtl:bg-gradient-to-l" />
-        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#080808] to-transparent" />
-        <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#080808]/85 to-transparent" />
+        <div className="absolute inset-0 bg-[#0D0D0D]/45" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0D0D0D] from-30% via-[#0D0D0D]/88 to-transparent rtl:bg-gradient-to-l" />
+        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#0D0D0D] to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#0D0D0D]/85 to-transparent" />
       </div>
 
       {/* One gold bloom, so the black is lit rather than flat. It is the only
@@ -65,7 +65,7 @@ export function HeroSection() {
       <div className={`${PAGE} relative`}>
         {/* pt covers the fixed header; the black band itself starts at y=0. */}
         <div className="flex min-h-[clamp(27rem,68vh,40rem)] max-w-[46rem] flex-col justify-center pb-11 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
-          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
+          <p className="flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold">
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_hero_eyebrow')}
           </p>
@@ -93,7 +93,7 @@ export function HeroSection() {
             {sf('subtitle', 'mp_hero_h2')}
           </p>
 
-          <p className="mt-4 max-w-[38rem] text-pretty text-[14.5px] leading-[1.6] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[38rem] text-pretty text-[16px] leading-[1.6] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
             {sf('body', 'mp_hero_scope')}
           </p>
 

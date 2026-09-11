@@ -82,7 +82,7 @@ serve(async (req) => {
         // client cannot quote as somebody else.
         const { data, error } = await sb.rpc('billing_entitlements', { p_user_id: hmUser.id });
         if (error) throw new Error(error.message);
-        return json({ quote: await quoteFor(sb, hmUser.id, data, productCode, expectedUnits) });
+        return json({ quote: await quoteFor(sb, data, productCode, expectedUnits) });
       }
 
       case 'subscribe':
@@ -120,18 +120,25 @@ async function catalogue(sb: any) {
     sb.from('admin_settings').select('value').eq('key', 'credits_per_usd').maybeSingle(),
   ]);
 
+  // A product that is registered but disabled must not appear on the pricing
+  // page. BROKER_FINDER is priced and ready but has no execution path yet, and
+  // AI_CALL / EMAIL_CAMPAIGN are deliberately unpriced.
+  const { data: enabledProducts } = await sb
+    .from('billable_products').select('code').eq('enabled', true);
+  const enabled = new Set((enabledProducts ?? []).map((p: any) => p.code));
+
   return {
     plans: plans ?? [],
     topupPacks: packs ?? [],
     firstTopupPromo: promo?.enabled ? promo : null,
-    entitlementMatrix: ents ?? [],
+    entitlementMatrix: (ents ?? []).filter((e: any) => enabled.has(e.product_code)),
     creditsPerUsd: Number(cpu?.value ?? 10),
   };
 }
 
 // ── quote ────────────────────────────────────────────────────
 
-async function quoteFor(sb: any, userId: string, ent: any, productCode: string, expectedUnits: number) {
+async function quoteFor(sb: any, ent: any, productCode: string, expectedUnits: number) {
   const planCode = ent?.plan_code ?? 'FREE';
   const product = (ent?.products ?? []).find((p: any) => p.product_code === productCode);
   if (!product) return { productCode, funding: 'UNAVAILABLE', reason: 'NOT_AVAILABLE_ON_PLAN' };

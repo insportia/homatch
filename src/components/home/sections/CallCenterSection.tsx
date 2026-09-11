@@ -56,7 +56,7 @@ export function CallCenterSection() {
   const arrow = `h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`;
 
   return (
-    <section id="call-center" className="relative scroll-mt-24 overflow-hidden bg-[#080808] text-white">
+    <section id="call-center" className="relative scroll-mt-24 overflow-hidden bg-[#0D0D0D] text-white">
       <div
         className="pointer-events-none absolute inset-0"
         style={{ background: 'radial-gradient(64rem 32rem at 78% 0%, hsl(38 88% 54% / 0.15), transparent 64%)' }}
@@ -69,7 +69,7 @@ export function CallCenterSection() {
           <div className="min-w-0">
             <div className="flex items-center gap-4">
               <FeatureGlyph name="calls" size={48} tone="dark" className="sm:h-14 sm:w-14" />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'call_center_title')}</p>
+              <p className="text-[13px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'call_center_title')}</p>
             </div>
 
             <h2
@@ -78,15 +78,15 @@ export function CallCenterSection() {
             >
               {sf('title', 'mp_cc_title')}
             </h2>
-            <p className="mt-4 max-w-[36rem] text-pretty text-[14.5px] leading-[1.65] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
+            <p className="mt-4 max-w-[36rem] text-pretty text-[16px] leading-[1.65] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
               {sf('body', 'mp_cc_sub')}
             </p>
 
             <ul className="mt-7 grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-9 sm:grid-cols-3">
               {POINTS.map(point => (
-                <li key={point.key} className="bg-[#0C0C0C] p-4 sm:p-5">
+                <li key={point.key} className="bg-[#171717] p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-white">{t(point.title)}</h3>
-                  <p className="mt-2 text-pretty text-[13px] leading-relaxed text-white/60">{t(point.desc)}</p>
+                  <p className="mt-2 text-pretty text-[15px] leading-relaxed text-white/60">{t(point.desc)}</p>
                 </li>
               ))}
             </ul>
@@ -94,7 +94,7 @@ export function CallCenterSection() {
             <button
               type="button"
               onClick={gated('/outreach/calls')}
-              className="group mt-7 inline-flex h-12 sm:mt-9 items-center justify-center gap-2.5 rounded-full bg-gold px-6 text-sm font-semibold text-[#0A0A0A] transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#080808] motion-reduce:transition-none"
+              className="group mt-7 inline-flex h-12 sm:mt-9 items-center justify-center gap-2.5 rounded-full bg-gold px-6 text-sm font-semibold text-[#0D0D0D] transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D0D0D] motion-reduce:transition-none"
             >
               <PhoneCall className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden="true" />
               {t('mp_calls_cta')}
@@ -109,16 +109,16 @@ export function CallCenterSection() {
         {/* ── The flow, full width under both columns ──────────── */}
         <ol className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-14 sm:grid-cols-3 lg:grid-cols-6">
           {STAGES.map((stage, i) => (
-            <li key={stage} className="flex items-center gap-2.5 bg-[#0C0C0C] px-3.5 py-3.5 sm:gap-3 sm:px-4 sm:py-4">
+            <li key={stage} className="flex items-center gap-2.5 bg-[#171717] px-3.5 py-3.5 sm:gap-3 sm:px-4 sm:py-4">
               <span
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold tabular-nums ${
-                  i === STAGES.length - 1 ? 'bg-gold text-[#0A0A0A]' : 'border border-white/25 text-white/55'
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[13px] font-semibold tabular-nums ${
+                  i === STAGES.length - 1 ? 'bg-gold text-[#0D0D0D]' : 'border border-white/25 text-white/55'
                 }`}
                 aria-hidden="true"
               >
                 {i + 1}
               </span>
-              <span className="min-w-0 text-[12px] font-medium leading-tight text-white/85 sm:text-[13px]">{t(stage)}</span>
+              <span className="min-w-0 text-[14px] font-medium leading-tight text-white/85 sm:text-[15px]">{t(stage)}</span>
             </li>
           ))}
         </ol>
@@ -138,22 +138,22 @@ function LiveCallPanel() {
 
   return (
     <div className="relative min-w-0" role="img" aria-label={t('mp_cc_panel_alt')}>
-      <div className="rounded-[1.1rem] border border-white/[0.18] bg-[#0C0C0C] p-6 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.9)] sm:p-7">
+      <div className="rounded-[1.1rem] border border-white/[0.18] bg-[#171717] p-6 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.9)] sm:p-7">
         {/* Status */}
         <div className="flex items-center justify-between gap-4">
-          <span className="inline-flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-gold">
+          <span className="inline-flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.18em] text-gold">
             <span className="relative grid h-2 w-2 place-items-center">
               <span className="hm-ring absolute inset-0 rounded-full" />
               <span className="relative h-2 w-2 rounded-full bg-gold" />
             </span>
             {t('mp_cc_live')}
           </span>
-          <span className="font-mono text-[11px] tabular-nums text-white/40">02:14</span>
+          <span className="font-mono text-[13px] tabular-nums text-white/40">02:14</span>
         </div>
 
         {/* The voice */}
         <div className="mt-6 flex items-center gap-4 rounded-[0.7rem] border border-white/[0.12] bg-white/[0.04] p-4">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold text-[#0A0A0A]" aria-hidden="true">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold text-[#0D0D0D]" aria-hidden="true">
             <PhoneCall className="h-4 w-4" strokeWidth={2.25} />
           </span>
           {/* The bars span the panel rather than huddling beside the avatar:
@@ -185,9 +185,9 @@ function LiveCallPanel() {
 
 function Row({ label, value, pending = false }: { label: string; value: string; pending?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-4 bg-[#0C0C0C] px-4 py-3">
-      <dt className="min-w-0 text-[12px] text-white/50">{label}</dt>
-      <dd className={`min-w-0 text-end text-[12px] font-medium ${pending ? 'text-white/40' : 'text-white'}`}>{value}</dd>
+    <div className="flex items-center justify-between gap-4 bg-[#171717] px-4 py-3">
+      <dt className="min-w-0 text-[14px] text-white/50">{label}</dt>
+      <dd className={`min-w-0 text-end text-[14px] font-medium ${pending ? 'text-white/40' : 'text-white'}`}>{value}</dd>
     </div>
   );
 }

@@ -45,7 +45,7 @@ export function AISection() {
     <section id="how" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
       <div className="flex items-center gap-3.5">
         <FeatureGlyph name="ai" size={48} className="sm:h-14 sm:w-14" />
-        <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+        <p className="min-w-0 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
           {sf('eyebrow', 'mp_flow_eyebrow')}
         </p>
       </div>
@@ -57,7 +57,7 @@ export function AISection() {
         >
           {sf('title', 'mp_flow_title')}
         </h2>
-        <p className="text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:text-base sm:leading-[1.7]">
+        <p className="text-pretty text-[16px] leading-[1.65] text-ink-soft sm:text-base sm:leading-[1.7]">
           {sf('body', 'mp_flow_sub')}
         </p>
       </div>
@@ -66,7 +66,7 @@ export function AISection() {
         <div className="min-w-0">
           <HomatchAsk variant="console" placeholder={t('mp_hero_ai_placeholder')} actions={[]} />
 
-          <p className="mt-7 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <p className="mt-7 text-[13px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {t('mp_intent_label')}
           </p>
           <IntentCards className="mt-4" />
@@ -75,7 +75,7 @@ export function AISection() {
         {/* What a question reaches. Not decoration: this is the list that
             separates an assistant from a chat window. */}
         <div className="min-w-0 self-start rounded-[1.1rem] border border-foreground/15 bg-secondary/60 p-5 sm:p-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {t('mp_ai_reach_label')}
           </p>
           <ul className="mt-5 grid gap-2.5">
@@ -87,7 +87,7 @@ export function AISection() {
                 >
                   <item.icon className="h-[15px] w-[15px]" strokeWidth={1.9} />
                 </span>
-                <span className="min-w-0 pt-1 text-[13.5px] leading-snug text-foreground">{item.label}</span>
+                <span className="min-w-0 pt-1 text-[15px] leading-snug text-foreground">{item.label}</span>
               </li>
             ))}
           </ul>

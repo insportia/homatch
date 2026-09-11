@@ -57,7 +57,7 @@ export default function AdminLiveChatReportsPage() {
                 <CardContent className="p-4 space-y-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <Badge className={STATUS_COLOR[r.status] ?? STATUS_COLOR.PENDING}>{STATUS_KEYS[r.status] ? t(STATUS_KEYS[r.status]) : r.status}</Badge>
-                    <span className="text-[11px] text-muted-foreground">{format(new Date(r.created_at), 'MMM d, HH:mm')}</span>
+                    <span className="text-[13px] text-muted-foreground">{format(new Date(r.created_at), 'MMM d, HH:mm')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">{t('admin_livechat_reason_label')} <span className="text-foreground">{r.reason}</span></p>
                   {msg && (

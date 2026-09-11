@@ -64,6 +64,33 @@ serve(async (req) => {
     const signature = req.headers.get('stripe-signature');
     const provider = getPaymentProvider();
 
+    // ── Refuse to mint credits we cannot attribute ─────────────
+    //
+    // This endpoint is deployed with verify_jwt=false, because a payment
+    // provider cannot present a Supabase JWT. Its ONLY defence is therefore
+    // the webhook signature.
+    //
+    // When PAYMENT_WEBHOOK_SECRET is absent, both providers fall through to
+    // "parse the body and believe it": MockPaymentProvider.verifyWebhook
+    // returns valid for any JSON at all, and StripePaymentProvider does the
+    // same when it has no secret to check against. Combined with an
+    // unauthenticated endpoint, that means anyone who knows a user id could
+    // POST a fabricated checkout.session.completed and mint credits for that
+    // account. Credits are not cash and cannot be withdrawn, but they buy real
+    // provider execution that Homatch pays for.
+    //
+    // So: no secret, no crediting. This is also the honest state of the
+    // system today, since no payment provider is configured and no real
+    // payment can complete anyway. The moment a real secret is set, this
+    // guard stops applying by itself.
+    if (!Deno.env.get('PAYMENT_WEBHOOK_SECRET')) {
+      console.error('[payment-webhook] refused: PAYMENT_WEBHOOK_SECRET is not configured');
+      return json({
+        error: 'Webhook signature verification is not configured. Refusing to process payment events.',
+        code: 'WEBHOOK_VERIFICATION_UNAVAILABLE',
+      }, 503);
+    }
+
     const verification = await provider.verifyWebhook(body, signature);
     if (!verification.valid) return json({ error: 'Invalid webhook signature' }, 400);
 

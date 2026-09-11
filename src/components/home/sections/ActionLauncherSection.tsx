@@ -67,7 +67,7 @@ export function ActionLauncherSection() {
     <section id="start" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
         <div className="max-w-[40rem]">
-          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+          <p className="flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_launch_eyebrow')}
           </p>
@@ -78,7 +78,7 @@ export function ActionLauncherSection() {
             {sf('title', 'mp_launch_title')}
           </h2>
         </div>
-        <p className="max-w-[22rem] text-pretty text-[13.5px] leading-[1.6] text-ink-soft sm:text-sm">
+        <p className="max-w-[22rem] text-pretty text-[15px] leading-[1.6] text-ink-soft sm:text-sm">
           {sf('body', 'mp_launch_sub')}
         </p>
       </div>
@@ -206,7 +206,7 @@ function Tile({
         </h3>
       </div>
 
-      <p className="mt-3 text-pretty text-[13.5px] leading-[1.6] text-ink-soft sm:mt-2.5 sm:text-[14.5px] sm:leading-[1.65]">
+      <p className="mt-3 text-pretty text-[15px] leading-[1.6] text-ink-soft sm:mt-2.5 sm:text-[16px] sm:leading-[1.65]">
         {desc}
       </p>
 

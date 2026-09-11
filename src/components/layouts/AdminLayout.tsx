@@ -48,7 +48,7 @@ function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose
       <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border shrink-0">
         <Link to="/admin" className="flex items-center gap-2" onClick={onClose}>
           <span className="font-bold text-base tracking-tight text-primary">HOMATCH</span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/40 text-primary">ADMIN</Badge>
+          <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-primary/40 text-primary">ADMIN</Badge>
         </Link>
         {onClose && (
           <Button variant="ghost" size="icon" className="md:hidden" onClick={onClose}>
@@ -75,7 +75,7 @@ function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose
               <Icon className="h-4 w-4 shrink-0" />
               <span className="flex-1 truncate">{t(labelKey)}</span>
               {isSpendCap && capWarnings > 0 && (
-                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{capWarnings}</Badge>
+                <Badge variant="destructive" className="text-[12px] px-1.5 py-0 h-4">{capWarnings}</Badge>
               )}
             </Link>
           );

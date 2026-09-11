@@ -76,7 +76,7 @@ export function HomatchAsk({
   return (
     <div className={className}>
       {heading && (
-        <p className={`mb-3.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}>
+        <p className={`mb-3.5 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}>
           <Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
           {heading}
         </p>
@@ -102,14 +102,14 @@ export function HomatchAsk({
           aria-label={t('mp_ai_send')}
           className={`min-w-0 flex-1 bg-transparent focus:outline-none ${
             dark ? 'text-white placeholder:text-white/50' : 'text-foreground placeholder:text-muted-foreground/80'
-          } ${console_ ? 'py-3 text-[15px] sm:text-base' : 'py-2 text-sm'}`}
+          } ${console_ ? 'py-3 text-[17px] sm:text-base' : 'py-2 text-sm'}`}
         />
         <button
           type="submit"
           aria-label={t('mp_ai_send')}
           className={`grid shrink-0 place-items-center rounded-[0.6rem] transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none ${
             dark
-              ? 'bg-gold text-[#0A0A0A] hover:bg-white focus-visible:ring-offset-[#0A0A0A]'
+              ? 'bg-gold text-[#0D0D0D] hover:bg-white focus-visible:ring-offset-[#0D0D0D]'
               : 'bg-primary text-primary-foreground hover:bg-gold-ink focus-visible:ring-offset-background'
           } ${console_ ? 'h-11 w-11' : 'h-9 w-9'}`}
         >

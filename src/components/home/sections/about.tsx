@@ -51,7 +51,7 @@ const H2_SIZE = { fontSize: 'clamp(1.4rem, 5.6vw, 2.5rem)' } as const;
 export function AboutHeroSection() {
   const sf = useSectionField();
   return (
-    <section className="relative isolate overflow-hidden bg-[#080808] text-white">
+    <section className="relative isolate overflow-hidden bg-[#0D0D0D] text-white">
       <div
         className="pointer-events-none absolute inset-0"
         style={{ background: 'radial-gradient(58rem 30rem at 14% 0%, hsl(38 88% 54% / 0.13), transparent 62%)' }}
@@ -59,7 +59,7 @@ export function AboutHeroSection() {
       />
       <div className={`${PAGE} relative`}>
         <div className="max-w-[46rem] pb-12 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
-          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
+          <p className="flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold">
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'about_eyebrow')}
           </p>
@@ -69,10 +69,10 @@ export function AboutHeroSection() {
           >
             {sf('title', 'about_title')}
           </h1>
-          <p className="mt-5 max-w-[40rem] text-pretty text-[14.5px] leading-[1.7] text-white/75 sm:text-base sm:leading-[1.8]">
+          <p className="mt-5 max-w-[40rem] text-pretty text-[16px] leading-[1.7] text-white/75 sm:text-base sm:leading-[1.8]">
             {sf('body', 'about_lede')}
           </p>
-          <p className="mt-4 max-w-[40rem] text-pretty text-[14.5px] leading-[1.7] text-gold sm:text-base">
+          <p className="mt-4 max-w-[40rem] text-pretty text-[16px] leading-[1.7] text-gold sm:text-base">
             {sf('subtitle', 'about_lede_2')}
           </p>
         </div>
@@ -103,11 +103,11 @@ export function AboutWhatSection() {
   return (
     <section id="what" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
       <div className="max-w-[44rem]">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+        <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
           {sf('eyebrow', 'about_what_eyebrow')}
         </p>
         <h2 className={LIGHT_H2} style={H2_SIZE}>{sf('title', 'about_what_title')}</h2>
-        <p className="mt-4 text-pretty text-[14.5px] leading-[1.7] text-ink-soft sm:text-base">
+        <p className="mt-4 text-pretty text-[16px] leading-[1.7] text-ink-soft sm:text-base">
           {sf('body', 'about_what_body')}
         </p>
       </div>
@@ -126,10 +126,10 @@ export function AboutWhatSection() {
                 size={40}
                 className="transition-transform duration-300 group-hover:scale-[1.06] motion-reduce:transform-none"
               />
-              <h3 className="mt-4 text-balance text-[15px] font-semibold leading-snug text-foreground">
+              <h3 className="mt-4 text-balance text-[17px] font-semibold leading-snug text-foreground">
                 {t(cap.title)}
               </h3>
-              <p className="mt-2 flex-1 text-pretty text-[13px] leading-relaxed text-ink-soft">{t(cap.desc)}</p>
+              <p className="mt-2 flex-1 text-pretty text-[15px] leading-relaxed text-ink-soft">{t(cap.desc)}</p>
               <ArrowRight
                 className={`mt-4 h-4 w-4 shrink-0 text-muted-foreground transition-[transform,color] duration-300 group-hover:text-gold-ink motion-reduce:transform-none ${
                   isRTL ? 'rotate-180 group-hover:-translate-x-1' : 'group-hover:translate-x-1'
@@ -152,30 +152,30 @@ export function AboutMarketSection() {
   const sf = useSectionField();
 
   return (
-    <section id="market" className="scroll-mt-20 bg-[#080808] text-white">
+    <section id="market" className="scroll-mt-20 bg-[#0D0D0D] text-white">
       <div className={`${PAGE} ${SECTION_Y}`}>
         <div className="max-w-[44rem]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-gold">
             {sf('eyebrow', 'about_market_eyebrow')}
           </p>
           <h2 className={DARK_H2} style={H2_SIZE}>{sf('title', 'about_market_title')}</h2>
-          <p className="mt-4 text-pretty text-[14.5px] leading-[1.7] text-white/70 sm:text-base">
+          <p className="mt-4 text-pretty text-[16px] leading-[1.7] text-white/70 sm:text-base">
             {sf('body', 'about_market_body')}
           </p>
         </div>
 
         <ul className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-10 sm:grid-cols-3">
           {MARKET.map(item => (
-            <li key={item.key} className="flex items-center gap-3 bg-[#0C0C0C] px-4 py-4">
+            <li key={item.key} className="flex items-center gap-3 bg-[#171717] px-4 py-4">
               <item.icon className="h-[18px] w-[18px] shrink-0 text-gold" strokeWidth={1.75} aria-hidden="true" />
-              <span className="min-w-0 text-[13px] font-medium leading-tight text-white/85 sm:text-sm">
+              <span className="min-w-0 text-[15px] font-medium leading-tight text-white/85 sm:text-sm">
                 {t(item.label)}
               </span>
             </li>
           ))}
         </ul>
 
-        <p className="mt-5 max-w-[40rem] text-pretty text-[13px] leading-relaxed text-white/50">
+        <p className="mt-5 max-w-[40rem] text-pretty text-[15px] leading-relaxed text-white/50">
           {sf('note', 'about_market_note')}
         </p>
       </div>
@@ -193,14 +193,14 @@ export function AboutSourcesSection() {
     <section id="sources" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
       <div className="grid gap-9 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:gap-16">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
             {sf('eyebrow', 'about_sources_eyebrow')}
           </p>
           <h2 className={LIGHT_H2} style={H2_SIZE}>{sf('title', 'about_sources_title')}</h2>
-          <p className="mt-4 text-pretty text-[14.5px] leading-[1.7] text-ink-soft sm:text-base">
+          <p className="mt-4 text-pretty text-[16px] leading-[1.7] text-ink-soft sm:text-base">
             {sf('body', 'about_sources_body')}
           </p>
-          <p className="mt-4 text-pretty text-[13px] leading-relaxed text-muted-foreground">
+          <p className="mt-4 text-pretty text-[15px] leading-relaxed text-muted-foreground">
             {sf('note', 'about_sources_note')}
           </p>
         </div>
@@ -208,8 +208,8 @@ export function AboutSourcesSection() {
         <ul className="grid gap-px overflow-hidden rounded-[0.9rem] border border-foreground/[0.14] bg-foreground/10 sm:grid-cols-2">
           {SOURCES.map(src => (
             <li key={src.key} className="bg-card p-4 sm:p-5">
-              <h3 className="text-[14px] font-semibold leading-snug text-foreground">{t(src.label)}</h3>
-              <p className="mt-1.5 text-pretty text-[13px] leading-relaxed text-ink-soft">{t(src.desc)}</p>
+              <h3 className="text-[16px] font-semibold leading-snug text-foreground">{t(src.label)}</h3>
+              <p className="mt-1.5 text-pretty text-[15px] leading-relaxed text-ink-soft">{t(src.desc)}</p>
             </li>
           ))}
         </ul>
@@ -225,7 +225,7 @@ export function AboutIntlSection() {
   const sf = useSectionField();
 
   return (
-    <section className="bg-[#080808] text-white">
+    <section className="bg-[#0D0D0D] text-white">
       <div className={`${PAGE} ${SECTION_Y}`}>
         <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center lg:gap-16">
           <div className="min-w-0">
@@ -236,22 +236,22 @@ export function AboutIntlSection() {
               >
                 <Globe className="h-5 w-5" strokeWidth={1.75} />
               </span>
-              <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
+              <p className="min-w-0 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold">
                 {sf('eyebrow', 'about_intl_eyebrow')}
               </p>
             </div>
             <h2 className={`${DARK_H2} mt-6 sm:mt-7`} style={H2_SIZE}>
               {sf('title', 'about_intl_title')}
             </h2>
-            <p className="mt-4 max-w-[36rem] text-pretty text-[14.5px] leading-[1.7] text-white/70 sm:text-base">
+            <p className="mt-4 max-w-[36rem] text-pretty text-[16px] leading-[1.7] text-white/70 sm:text-base">
               {sf('body', 'about_intl_body')}
             </p>
           </div>
 
           <ul className="grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:grid-cols-2 lg:grid-cols-1">
             {(['about_intl_1', 'about_intl_2', 'about_intl_3'] as const).map(key => (
-              <li key={key} className="bg-[#0C0C0C] p-4 sm:p-5">
-                <p className="text-pretty text-[13.5px] leading-relaxed text-white/85">{t(key)}</p>
+              <li key={key} className="bg-[#171717] p-4 sm:p-5">
+                <p className="text-pretty text-[15px] leading-relaxed text-white/85">{t(key)}</p>
               </li>
             ))}
           </ul>
@@ -269,16 +269,16 @@ export function AboutAskSection() {
   return (
     <section className={`${PAGE} ${SECTION_Y}`}>
       <div className="max-w-[44rem]">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+        <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
           {sf('eyebrow', 'about_ask_eyebrow')}
         </p>
         <h2 className={LIGHT_H2} style={H2_SIZE}>{sf('title', 'about_ask_title')}</h2>
-        <p className="mt-4 text-pretty text-[14.5px] leading-[1.7] text-ink-soft sm:text-base">
+        <p className="mt-4 text-pretty text-[16px] leading-[1.7] text-ink-soft sm:text-base">
           {sf('body', 'about_ask_body')}
         </p>
       </div>
       <IntentCards className="mt-8 sm:mt-10 lg:grid-cols-4" />
-      <p className="mt-6 max-w-[44rem] text-pretty text-[13px] leading-relaxed text-muted-foreground">
+      <p className="mt-6 max-w-[44rem] text-pretty text-[15px] leading-relaxed text-muted-foreground">
         {sf('note', 'about_limits')}
       </p>
     </section>

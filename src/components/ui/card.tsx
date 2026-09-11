@@ -9,7 +9,10 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-xl border bg-card text-card-foreground shadow",
+      // Restrained depth: a hairline plus a shadow that reads as lift
+      // rather than as a drop shadow. The card is white on a neutral
+      // page, so the surface change is already doing most of the work.
+      "rounded-xl border bg-card text-card-foreground shadow-card-soft",
       className
     )}
     {...props}
@@ -35,7 +38,11 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("font-semibold leading-none tracking-tight", className)}
+    className={cn(
+      // Card titles are a level in the hierarchy, not inherited body text.
+      "font-display text-lg font-semibold leading-snug tracking-[-0.012em]",
+      className,
+    )}
     {...props}
   />
 ))
@@ -47,7 +54,7 @@ const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-sm leading-relaxed text-muted-foreground", className)}
     {...props}
   />
 ))

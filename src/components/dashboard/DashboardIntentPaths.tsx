@@ -106,7 +106,7 @@ export function DashboardIntentPaths() {
             <Home className="h-5 w-5 text-primary" />
           </div>
           <div className="min-w-0 max-w-3xl">
-            <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.12em] text-primary break-words">{copy.eyebrow}</p>
+            <p className="text-[13px] sm:text-xs font-semibold uppercase tracking-[0.12em] text-primary break-words">{copy.eyebrow}</p>
             <h2 className="mt-1 text-lg sm:text-xl md:text-2xl font-semibold leading-snug text-foreground break-words [overflow-wrap:anywhere]">{copy.title}</h2>
             <p className="mt-1.5 text-xs sm:text-sm leading-relaxed text-muted-foreground break-words [overflow-wrap:anywhere]">{copy.subtitle}</p>
           </div>

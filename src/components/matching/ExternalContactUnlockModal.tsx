@@ -163,7 +163,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                 <div key={item.label} className="flex items-start gap-2 p-2 bg-secondary/50 rounded-lg">
                   <item.icon className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                   <div className="min-w-0">
-                    <p className="text-[10px] text-muted-foreground">{item.label}</p>
+                    <p className="text-[12px] text-muted-foreground">{item.label}</p>
                     <p className="text-xs font-medium text-foreground truncate">{item.value}</p>
                   </div>
                 </div>
@@ -172,7 +172,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
 
             {preview.requirements && (
               <div className="p-3 bg-secondary/40 rounded-lg border border-border">
-                <p className="text-[10px] text-muted-foreground mb-0.5">{t('unlock_requirements')}</p>
+                <p className="text-[12px] text-muted-foreground mb-0.5">{t('unlock_requirements')}</p>
                 <p className="text-xs text-foreground">{preview.requirements}</p>
               </div>
             )}
@@ -223,7 +223,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                       <Phone className="h-4 w-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground">{t('profile_field_phone')}</p>
+                        <p className="text-[12px] text-muted-foreground">{t('profile_field_phone')}</p>
                         <p className="text-sm font-medium" dir="ltr">{contact.phone}</p>
                       </div>
                     </div>
@@ -232,7 +232,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                       <Mail className="h-4 w-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground">{t('profile_field_email')}</p>
+                        <p className="text-[12px] text-muted-foreground">{t('profile_field_email')}</p>
                         <p className="text-sm font-medium" dir="ltr">{contact.email}</p>
                       </div>
                     </div>
@@ -241,7 +241,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                       <MessageCircle className="h-4 w-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground">{t('contact_whatsapp')}</p>
+                        <p className="text-[12px] text-muted-foreground">{t('contact_whatsapp')}</p>
                         <p className="text-sm font-medium" dir="ltr">{contact.whatsapp}</p>
                       </div>
                     </div>
@@ -250,7 +250,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
                     <div className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                       <MessageCircle className="h-4 w-4 text-primary shrink-0" />
                       <div>
-                        <p className="text-[10px] text-muted-foreground">{t('contact_telegram')}</p>
+                        <p className="text-[12px] text-muted-foreground">{t('contact_telegram')}</p>
                         <p className="text-sm font-medium" dir="ltr">{contact.telegram}</p>
                       </div>
                     </div>

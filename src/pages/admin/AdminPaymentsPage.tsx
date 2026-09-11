@@ -55,13 +55,13 @@ export default function AdminPaymentsPage() {
                       {p.credits_issued != null ? Number(p.credits_issued).toFixed(2) : '—'}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant="outline" className="text-[10px]">{p.provider ?? '—'}</Badge>
+                      <Badge variant="outline" className="text-[12px]">{p.provider ?? '—'}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant={STATUS_VARIANT[p.status] ?? 'outline'} className="text-[10px]">{p.status ?? '—'}</Badge>
+                      <Badge variant={STATUS_VARIANT[p.status] ?? 'outline'} className="text-[12px]">{p.status ?? '—'}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[140px] block">{p.idempotency_key ?? '—'}</span>
+                      <span className="font-mono text-[12px] text-muted-foreground truncate max-w-[140px] block">{p.idempotency_key ?? '—'}</span>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
                       {p.created_at ? format(new Date(p.created_at), 'MMM d, yyyy HH:mm') : '—'}

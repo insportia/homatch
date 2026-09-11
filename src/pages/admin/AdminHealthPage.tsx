@@ -78,8 +78,8 @@ function SpendBar({ label, spent, cap, pct, blocked }: { label: string; spent: n
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium capitalize">{label}</span>
         <span className="text-muted-foreground">${spent.toFixed(2)} / ${cap}</span>
-        {blocked && <Badge variant="destructive" className="text-[10px] px-1.5 py-0 ml-1">BLOCKED</Badge>}
-        {!blocked && pct >= 80 && <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1 border-amber-500 text-amber-500">WARNING</Badge>}
+        {blocked && <Badge variant="destructive" className="text-[12px] px-1.5 py-0 ml-1">BLOCKED</Badge>}
+        {!blocked && pct >= 80 && <Badge variant="outline" className="text-[12px] px-1.5 py-0 ml-1 border-amber-500 text-amber-500">WARNING</Badge>}
       </div>
       <div className="h-1.5 rounded-full bg-muted overflow-hidden">
         <div className={cn('h-full rounded-full transition-all', color)} style={{ width: `${Math.min(pct, 100)}%` }} />
@@ -217,7 +217,7 @@ export default function AdminHealthPage() {
                     <ShieldAlert className="h-4 w-4 text-muted-foreground" />
                     <span>{t('admin_health_mock_mode_label')}</span>
                   </div>
-                  <Badge variant={health.mock_mode_active ? 'destructive' : 'outline'} className="text-[10px] px-1.5">
+                  <Badge variant={health.mock_mode_active ? 'destructive' : 'outline'} className="text-[12px] px-1.5">
                     {health.mock_mode_active ? t('admin_health_mock_on_danger') : t('admin_health_mock_off_ok')}
                   </Badge>
                 </div>
@@ -278,7 +278,7 @@ export default function AdminHealthPage() {
                 <div key={name} className="flex items-center justify-between gap-3 py-2 border-b border-border/30 last:border-0">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm font-medium w-28 shrink-0">{name}</span>
-                    <Badge className={cn('text-[10px] px-1.5 py-0', PROVIDER_COLORS[p.status] ?? '')}>
+                    <Badge className={cn('text-[12px] px-1.5 py-0', PROVIDER_COLORS[p.status] ?? '')}>
                       {p.status.replace(/_/g, ' ')}
                     </Badge>
                   </div>

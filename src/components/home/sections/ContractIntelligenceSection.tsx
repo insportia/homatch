@@ -82,7 +82,7 @@ export function ContractIntelligenceSection() {
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="contract" size={48} className="sm:h-14 sm:w-14" />
-            <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+            <p className="min-w-0 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
               {sf('eyebrow', 'mp_contract_title')}
             </p>
           </div>
@@ -93,7 +93,7 @@ export function ContractIntelligenceSection() {
           >
             {sf('title', 'mp_ci_title')}
           </h2>
-          <p className="mt-4 max-w-[34rem] text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
             {sf('body', 'mp_ci_sub')}
           </p>
 
@@ -114,7 +114,7 @@ export function ContractIntelligenceSection() {
                     }`}
                   >
                     <span
-                      className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none ${
+                      className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[13px] font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none ${
                         on ? 'bg-primary text-primary-foreground' : 'border border-foreground/25 text-muted-foreground'
                       }`}
                       aria-hidden="true"
@@ -123,14 +123,14 @@ export function ContractIntelligenceSection() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span
-                        className={`block text-[14.5px] leading-snug transition-colors duration-200 motion-reduce:transition-none ${
+                        className={`block text-[16px] leading-snug transition-colors duration-200 motion-reduce:transition-none ${
                           on ? 'font-semibold text-foreground' : 'font-medium text-ink-soft'
                         }`}
                       >
                         {t(s.label)}
                       </span>
                       {on && (
-                        <span className="mt-1 block text-pretty text-[13px] leading-relaxed text-muted-foreground">
+                        <span className="mt-1 block text-pretty text-[15px] leading-relaxed text-muted-foreground">
                           {t(s.note)}
                         </span>
                       )}
@@ -188,9 +188,9 @@ function DocumentPanel({ step }: { step: number }) {
       <div className="flex items-center justify-between gap-3 border-b border-foreground/[0.12] px-5 py-3.5 sm:px-6">
         <span className="inline-flex min-w-0 items-center gap-2.5">
           <FileText className="h-4 w-4 shrink-0 text-gold-ink" strokeWidth={2} aria-hidden="true" />
-          <span className="min-w-0 truncate text-[12px] font-medium text-foreground">{t('mp_ci_doc_label')}</span>
+          <span className="min-w-0 truncate text-[14px] font-medium text-foreground">{t('mp_ci_doc_label')}</span>
         </span>
-        <span className="shrink-0 rounded-full border border-foreground/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <span className="shrink-0 rounded-full border border-foreground/20 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           {t('mp_result_illustrative')}
         </span>
       </div>
@@ -227,19 +227,19 @@ function DocumentPanel({ step }: { step: number }) {
       {/* What the reading produced */}
       <div className="border-t border-foreground/[0.12] bg-secondary/50 p-5 sm:p-6">
         {step < 2 ? (
-          <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mp_ci_state_reading')}</p>
+          <p className="text-[15px] leading-relaxed text-muted-foreground">{t('mp_ci_state_reading')}</p>
         ) : (
           <>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold-ink">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-gold-ink">
               {t('mp_ci_found_label')}
             </p>
             <p className="mt-2 text-pretty text-sm font-medium leading-snug text-foreground">{t('mp_ci_found')}</p>
             {step >= 3 && (
               <div className="mt-4 rounded-[0.7rem] bg-primary p-4 text-primary-foreground">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-gold">
                   {t('mp_ci_plain_label')}
                 </p>
-                <p className="mt-2 text-pretty text-[13.5px] leading-relaxed">{t('mp_ci_plain')}</p>
+                <p className="mt-2 text-pretty text-[15px] leading-relaxed">{t('mp_ci_plain')}</p>
               </div>
             )}
           </>

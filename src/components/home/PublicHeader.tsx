@@ -104,13 +104,13 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
           <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} />
         </button>
 
-        <nav className="mx-auto hidden items-center gap-8 lg:flex">
+        <nav className="mx-auto hidden items-center gap-6 lg:flex xl:gap-8">
           {links.map(link => (
             <button
               key={link.key}
               type="button"
               onClick={() => go(link.target)}
-              className={`relative text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+              className={`relative whitespace-nowrap [overflow-wrap:normal] text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                 onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
               }`}
             >
@@ -125,8 +125,8 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
           {session ? (
             <Button
               size="sm"
-              className={`h-10 rounded-full px-5 text-[13px] font-semibold ${
-                onDark ? 'bg-gold text-[#0A0A0A] hover:bg-white' : ''
+              className={`h-10 whitespace-nowrap rounded-full px-5 text-[15px] font-semibold ${
+                onDark ? 'bg-gold text-[#0D0D0D] hover:bg-white' : ''
               }`}
               onClick={() => navigate('/dashboard')}
             >
@@ -137,7 +137,7 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
               <button
                 type="button"
                 onClick={() => navigate('/auth/login')}
-                className={`hidden text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:inline ${
+                className={`hidden whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:inline ${
                   onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
                 }`}
               >
@@ -145,8 +145,8 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
               </button>
               <Button
                 size="sm"
-                className={`hidden h-10 rounded-full px-5 text-[13px] font-semibold sm:inline-flex ${
-                  onDark ? 'bg-gold text-[#0A0A0A] hover:bg-white' : ''
+                className={`hidden h-10 whitespace-nowrap rounded-full px-5 text-[15px] font-semibold sm:inline-flex ${
+                  onDark ? 'bg-gold text-[#0D0D0D] hover:bg-white' : ''
                 }`}
                 onClick={() => navigate('/auth/signup')}
               >
@@ -177,7 +177,7 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
                 key={link.key}
                 type="button"
                 onClick={() => go(link.target)}
-                className="rounded-xl py-3.5 text-start text-[15px] text-foreground transition-colors hover:text-gold"
+                className="rounded-xl py-3.5 text-start text-[17px] text-foreground transition-colors hover:text-gold"
               >
                 {link.label}
               </button>

@@ -105,10 +105,10 @@ function LockedMatchCard({
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {match.status === 'NEW' && (
-            <span className="text-[10px] font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded">{t('matches_new_badge')}</span>
+            <span className="text-[12px] font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded">{t('matches_new_badge')}</span>
           )}
           {match.status === 'UNLOCKED' && (
-            <span className="text-[10px] font-bold bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30">{t('matches_unlocked_badge')}</span>
+            <span className="text-[12px] font-bold bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30">{t('matches_unlocked_badge')}</span>
           )}
         </div>
       </div>
@@ -160,7 +160,7 @@ function LockedMatchCard({
           </p>
           <div className="flex items-center gap-1 mt-1">
             <Lock className="h-3 w-3 text-muted-foreground/50" />
-            <span className="text-[10px] text-muted-foreground/50">{t('matches_unlock_hint')}</span>
+            <span className="text-[12px] text-muted-foreground/50">{t('matches_unlock_hint')}</span>
           </div>
         </div>
       )}
@@ -168,7 +168,7 @@ function LockedMatchCard({
       {/* Mock badge — dev only */}
       {match.mock_mode && import.meta.env.DEV && (
         <div className="flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 px-2 py-0.5 rounded-full">
+          <span className="inline-flex items-center gap-1 text-[12px] font-bold bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 px-2 py-0.5 rounded-full">
             {t('matches_dev_signal')}
           </span>
         </div>
@@ -313,7 +313,7 @@ function UnlockedMatchDialog({
                     : null],
                 ].filter(([, v]) => v).map(([k, v]) => (
                   <div key={String(k)} className="rounded-lg bg-secondary/30 px-3 py-2">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{k}</p>
+                    <p className="text-[12px] text-muted-foreground uppercase tracking-wide">{k}</p>
                     <p className="text-sm text-foreground font-medium">{String(v)}</p>
                   </div>
                 ))}
@@ -361,7 +361,7 @@ function UnlockedMatchDialog({
             )}
           </div>
 
-          <p className="text-[10px] text-muted-foreground/50">
+          <p className="text-[12px] text-muted-foreground/50">
             {t('matches_charged_credits', { credits: String(unlock.credits_charged) })} · {t('matches_unlocked_on', { date: new Date(unlock.created_at).toLocaleString() })}
           </p>
         </div>

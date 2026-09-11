@@ -54,7 +54,7 @@ export function PropertyTrustBadge({ propertyId, compact = false }: Props) {
     return (
       <Popover>
         <PopoverTrigger asChild>
-          <button className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium cursor-pointer hover:opacity-80 transition-opacity ${badgeClass}`}>
+          <button className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity ${badgeClass}`}>
             <Icon className="h-3 w-3" />
             {score.score}
             {hasRisks && <AlertTriangle className="h-2.5 w-2.5 ml-0.5" />}
@@ -74,7 +74,7 @@ export function PropertyTrustBadge({ propertyId, compact = false }: Props) {
           <div className="flex items-center gap-1.5 p-2 bg-secondary rounded-lg border border-border">
             <Shield className={`h-4 w-4 ${scoreColor}`} />
             <div>
-              <p className="text-[10px] text-muted-foreground">{t('trust_score')}</p>
+              <p className="text-[12px] text-muted-foreground">{t('trust_score')}</p>
               <p className={`text-sm font-bold ${scoreColor}`}>{score.score}/100</p>
             </div>
             {hasRisks && <AlertTriangle className="h-3.5 w-3.5 text-yellow-400 ml-1" />}
@@ -124,7 +124,7 @@ function TrustPopoverContent({ score, risks, scoreColor, t }: {
         )
       }
 
-      <p className="text-[10px] text-muted-foreground border-t border-border pt-2 leading-relaxed">
+      <p className="text-[12px] text-muted-foreground border-t border-border pt-2 leading-relaxed">
         {t('trust_disclaimer')}
       </p>
     </div>

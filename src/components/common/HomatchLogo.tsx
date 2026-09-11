@@ -18,9 +18,9 @@ interface LogoProps {
 }
 
 const sizes = {
-  sm: { icon: 22, text: 'text-sm', gap: 'gap-1.5', tagline: 'text-[8px]' },
-  md: { icon: 30, text: 'text-lg', gap: 'gap-2', tagline: 'text-[9px]' },
-  lg: { icon: 44, text: 'text-2xl', gap: 'gap-3', tagline: 'text-[11px]' },
+  sm: { icon: 22, text: 'text-sm', gap: 'gap-1.5', tagline: 'text-[11px]' },
+  md: { icon: 30, text: 'text-lg', gap: 'gap-2', tagline: 'text-[11px]' },
+  lg: { icon: 44, text: 'text-2xl', gap: 'gap-3', tagline: 'text-[13px]' },
 };
 
 export function HomatchLogo({ size = 'md', iconOnly = false, withTagline = false, tone = 'dark', className = '' }: LogoProps) {

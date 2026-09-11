@@ -38,12 +38,12 @@ export function RichTextSection() {
   const paragraphs = body.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
 
   return (
-    <section className={dark ? 'bg-[#080808] text-white' : 'bg-background text-foreground'}>
+    <section className={dark ? 'bg-[#0D0D0D] text-white' : 'bg-background text-foreground'}>
       <div className={`${PAGE} ${spacingClass(spacing)}`}>
         <div className={variant === 'centered' ? 'mx-auto max-w-[44rem] text-center' : 'max-w-[44rem]'}>
           {eyebrow && (
             <p
-              className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}
+              className={`text-[13px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}
             >
               {eyebrow}
             </p>
@@ -57,7 +57,7 @@ export function RichTextSection() {
           {paragraphs.map((p, i) => (
             <p
               key={p.slice(0, 32) + String(i)}
-              className={`mt-4 text-pretty text-[14.5px] leading-[1.7] sm:text-base ${dark ? 'text-white/70' : 'text-ink-soft'}`}
+              className={`mt-4 text-pretty text-[16px] leading-[1.7] sm:text-base ${dark ? 'text-white/70' : 'text-ink-soft'}`}
             >
               {p}
             </p>

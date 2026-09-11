@@ -85,7 +85,7 @@ export function SynthesisSummary({
       {view.empty ? (
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm leading-relaxed">{t('dr_summary_empty')}</p>
+            <p className="measure t-body">{t('dr_summary_empty')}</p>
           </CardContent>
         </Card>
       ) : null}
@@ -93,9 +93,9 @@ export function SynthesisSummary({
       {narrative.length > 0 && (
         <Card>
           <CardContent className="pt-5 sm:pt-6 space-y-4">
-            <h3 className="text-base font-semibold">{t('dr_confirmed_title')}</h3>
+            <h3 className="t-section">{t('dr_confirmed_title')}</h3>
             {narrative.map((s) => (
-              <p key={s.sectionKey} className="text-sm leading-relaxed break-words">
+              <p key={s.sectionKey} className="measure t-body break-words">
                 {s.text}
               </p>
             ))}
@@ -106,9 +106,9 @@ export function SynthesisSummary({
       {attention.length > 0 && (
         <Card>
           <CardContent className="pt-5 sm:pt-6 space-y-3">
-            <h3 className="text-base font-semibold">{t('dr_attention_title')}</h3>
+            <h3 className="t-section">{t('dr_attention_title')}</h3>
             {attention.map((s) => (
-              <p key={s.sectionKey} className="text-sm leading-relaxed break-words">
+              <p key={s.sectionKey} className="measure t-body break-words">
                 {s.text}
               </p>
             ))}
@@ -119,10 +119,10 @@ export function SynthesisSummary({
       {view.incompleteSources.length > 0 && (
         <Card>
           <CardContent className="pt-5 sm:pt-6">
-            <h3 className="text-base font-semibold">{t('dr_unverified_title')}</h3>
+            <h3 className="t-section">{t('dr_unverified_title')}</h3>
             <ul className="mt-3 space-y-1.5">
               {view.incompleteSources.map((s, i) => (
-                <li key={i} className="text-sm flex gap-2">
+                <li key={i} className="flex gap-2 text-base">
                   <span aria-hidden="true" className="opacity-50">•</span>
                   <span className="min-w-0 break-words">{s}</span>
                 </li>
@@ -130,7 +130,7 @@ export function SynthesisSummary({
             </ul>
             {/* The single most important sentence on this screen: a failed
                 check is our problem, not evidence against the property. */}
-            <p className="mt-3 text-xs text-muted-foreground flex gap-2 leading-relaxed">
+            <p className="measure mt-4 flex gap-2 text-sm leading-relaxed text-foreground">
               <Info className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
               <span className="min-w-0">{t('dr_unverified_note')}</span>
             </p>
@@ -141,9 +141,9 @@ export function SynthesisSummary({
       {next.length > 0 && (
         <Card>
           <CardContent className="pt-5 sm:pt-6 space-y-3">
-            <h3 className="text-base font-semibold">{t('dr_next_title')}</h3>
+            <h3 className="t-section">{t('dr_next_title')}</h3>
             {next.map((s) => (
-              <p key={s.sectionKey} className="text-sm leading-relaxed break-words">
+              <p key={s.sectionKey} className="measure t-body break-words">
                 {s.text}
               </p>
             ))}

@@ -70,10 +70,10 @@ export function IntelligenceLayersSection() {
   }, [autoplay, held]);
 
   return (
-    <section id="intelligence" className="scroll-mt-20 bg-[#080808] text-white">
+    <section id="intelligence" className="scroll-mt-20 bg-[#0D0D0D] text-white">
       <div className={`${PAGE} ${SECTION_Y}`}>
         <div className="max-w-[46rem]">
-          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">
+          <p className="flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.24em] text-gold">
             <span className="h-px w-7 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_layers_eyebrow')}
           </p>
@@ -83,7 +83,7 @@ export function IntelligenceLayersSection() {
           >
             {sf('title', 'mp_layers_title')}
           </h2>
-          <p className="mt-4 max-w-[38rem] text-pretty text-[14.5px] leading-[1.65] text-white/65 sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[38rem] text-pretty text-[16px] leading-[1.65] text-white/65 sm:mt-5 sm:text-base sm:leading-[1.7]">
             {sf('body', 'mp_layers_sub')}
           </p>
         </div>
@@ -136,7 +136,7 @@ export function IntelligenceLayersSection() {
                       aria-hidden="true"
                     />
                     <span
-                      className={`shrink-0 font-mono text-[11px] tabular-nums tracking-widest transition-colors duration-300 motion-reduce:transition-none ${
+                      className={`shrink-0 font-mono text-[13px] tabular-nums tracking-widest transition-colors duration-300 motion-reduce:transition-none ${
                         on ? 'text-gold' : 'text-white/35'
                       }`}
                       aria-hidden="true"
@@ -160,12 +160,12 @@ export function IntelligenceLayersSection() {
               this sentence changed a row's height on every tick and shunted
               the rows below it — a section that moves under the reader's eye
               while they are reading it. */}
-          <div className="order-2 min-w-0 rounded-[0.9rem] border border-white/15 bg-[#0C0C0C] p-6 lg:order-none">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
+          <div className="order-2 min-w-0 rounded-[0.9rem] border border-white/15 bg-[#171717] p-6 lg:order-none">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
             <p className="mt-3 min-h-[7.5rem] text-pretty text-sm leading-relaxed text-white/70 sm:min-h-[8.5rem]">
               {t(LAYERS[active].desc)}
             </p>
-            <p className="border-t border-white/[0.12] pt-4 text-[11px] uppercase tracking-[0.16em] text-white/35">
+            <p className="border-t border-white/[0.12] pt-4 text-[13px] uppercase tracking-[0.16em] text-white/35">
               {String(active + 1).padStart(2, '0')} / {String(LAYERS.length).padStart(2, '0')}
             </p>
           </div>
@@ -229,7 +229,7 @@ function MobileStack({ active, onPick }: { active: number; onPick: (i: number) =
                 </span>
 
                 <span
-                  className={`min-w-0 flex-1 text-[15px] leading-snug transition-colors duration-200 motion-reduce:transition-none ${
+                  className={`min-w-0 flex-1 text-[17px] leading-snug transition-colors duration-200 motion-reduce:transition-none ${
                     on ? 'font-semibold text-white' : 'font-medium text-white/55'
                   }`}
                 >
@@ -237,7 +237,7 @@ function MobileStack({ active, onPick }: { active: number; onPick: (i: number) =
                 </span>
 
                 <span
-                  className={`shrink-0 font-mono text-[11px] tabular-nums transition-colors duration-200 motion-reduce:transition-none ${
+                  className={`shrink-0 font-mono text-[13px] tabular-nums transition-colors duration-200 motion-reduce:transition-none ${
                     on ? 'text-gold' : 'text-white/30'
                   }`}
                   aria-hidden="true"
@@ -250,9 +250,9 @@ function MobileStack({ active, onPick }: { active: number; onPick: (i: number) =
         })}
       </ol>
 
-      <div className="mt-5 rounded-[0.9rem] border border-white/15 bg-[#0C0C0C] p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
-        <p className="mt-2 min-h-[5.5rem] text-pretty text-[13.5px] leading-relaxed text-white/70">
+      <div className="mt-5 rounded-[0.9rem] border border-white/15 bg-[#171717] p-4">
+        <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
+        <p className="mt-2 min-h-[5.5rem] text-pretty text-[15px] leading-relaxed text-white/70">
           {t(LAYERS[active].desc)}
         </p>
       </div>

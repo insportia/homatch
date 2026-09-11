@@ -50,7 +50,7 @@ export const SECTION_Y = 'py-14 sm:py-20 lg:py-28';
  */
 export function Eyebrow({ children, tone = 'dark' }: { children: React.ReactNode; tone?: 'dark' | 'light' }) {
   return (
-    <p className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${tone === 'light' ? 'text-gold' : 'text-gold-ink'}`}>
+    <p className={`text-[13px] font-semibold uppercase tracking-[0.22em] ${tone === 'light' ? 'text-gold' : 'text-gold-ink'}`}>
       {children}
     </p>
   );
@@ -121,7 +121,7 @@ export function SectionIntro({
         {title}
       </h2>
       {body && (
-        <p className={`mt-5 text-pretty text-[15px] leading-[1.75] sm:text-base ${light ? 'text-white/75' : 'text-ink-soft'}`}>
+        <p className={`mt-5 text-pretty text-[17px] leading-[1.75] sm:text-base ${light ? 'text-white/75' : 'text-ink-soft'}`}>
           {body}
         </p>
       )}

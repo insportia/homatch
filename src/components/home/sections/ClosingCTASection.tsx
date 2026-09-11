@@ -36,8 +36,8 @@ export function ClosingCTASection() {
           positionMobile="58% 62%"
           overrideUrl={photo?.url}
         />
-        <div className="absolute inset-0 bg-[#080808]/78" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-[#080808]/55 to-[#080808]/70" />
+        <div className="absolute inset-0 bg-[#0D0D0D]/78" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0D] via-[#0D0D0D]/55 to-[#0D0D0D]/70" />
       </div>
 
       <div className="relative mx-auto flex min-h-[clamp(24rem,52vh,36rem)] w-full max-w-[90rem] flex-col items-center justify-center px-5 py-20 text-center sm:px-8 lg:px-10">
@@ -47,13 +47,13 @@ export function ClosingCTASection() {
         >
           {sf('title', 'mp_cta_title')}
         </h2>
-        <p className="mt-5 max-w-[36rem] text-pretty text-[15px] leading-relaxed text-white/85 sm:text-base">
+        <p className="mt-5 max-w-[36rem] text-pretty text-[17px] leading-relaxed text-white/85 sm:text-base">
           {sf('body', 'mp_cta_body')}
         </p>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
           <Button
-            className="h-[3.25rem] gap-2.5 rounded-full bg-gold px-8 text-[15px] font-semibold text-[#0A0A0A] hover:bg-white"
+            className="h-[3.25rem] gap-2.5 rounded-full bg-gold px-8 text-[17px] font-semibold text-[#0D0D0D] hover:bg-white"
             onClick={() => navigate(session ? '/dashboard' : '/auth/signup')}
           >
             {session ? t('nav_dashboard') : sf('cta', 'mp_cta_primary')}
@@ -61,7 +61,7 @@ export function ClosingCTASection() {
           </Button>
           <Button
             variant="outline"
-            className="h-[3.25rem] rounded-full border-white/30 bg-transparent px-8 text-[15px] text-white hover:bg-white/10 hover:text-white"
+            className="h-[3.25rem] rounded-full border-white/30 bg-transparent px-8 text-[17px] text-white hover:bg-white/10 hover:text-white"
             onClick={() => navigate('/verify')}
           >
             {t('mp_verify_capability_cta')}

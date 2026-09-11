@@ -48,7 +48,7 @@ export function DeveloperB2BSection() {
   ];
 
   return (
-    <section id="developers" className="relative scroll-mt-20 overflow-hidden bg-[#080808] text-white">
+    <section id="developers" className="relative scroll-mt-20 overflow-hidden bg-[#0D0D0D] text-white">
       {/* The city, at the bottom of its exposure range: a texture that says
           "a development, in a real place" without turning the region warm. */}
       {/* The city, in black and white. At full chroma a Tbilisi sunset behind
@@ -57,8 +57,8 @@ export function DeveloperB2BSection() {
           nothing and held at a tenth of its exposure it is pure texture. */}
       <div className="absolute inset-0 saturate-0" aria-hidden="true">
         <SceneMedia scene="platform" alt={backdrop?.alt ?? ''} sizes="100vw" position="50% 58%" overrideUrl={backdrop?.url} />
-        <div className="absolute inset-0 bg-[#080808]/90" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#080808] via-[#080808]/78 to-[#080808]" />
+        <div className="absolute inset-0 bg-[#0D0D0D]/90" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0D0D0D] via-[#0D0D0D]/78 to-[#0D0D0D]" />
       </div>
       <div
         className="pointer-events-none absolute inset-0"
@@ -76,7 +76,7 @@ export function DeveloperB2BSection() {
             >
               {sf('title', 'mp_dev_title')}
             </h2>
-            <p className="mt-6 max-w-[36rem] text-pretty text-[15px] leading-[1.75] text-white/75 sm:text-base">
+            <p className="mt-6 max-w-[36rem] text-pretty text-[17px] leading-[1.75] text-white/75 sm:text-base">
               {sf('body', 'mp_dev_sub')}
             </p>
 
@@ -119,7 +119,7 @@ export function DeveloperB2BSection() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-white">{t(stage.labelKey)}</p>
                   </div>
-                  <span className="shrink-0 text-[11px] font-semibold tabular-nums tracking-[0.16em] text-white/35" aria-hidden="true">
+                  <span className="shrink-0 text-[13px] font-semibold tabular-nums tracking-[0.16em] text-white/35" aria-hidden="true">
                     {`0${i + 1}`}
                   </span>
                 </li>

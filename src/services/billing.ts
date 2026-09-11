@@ -69,9 +69,20 @@ export async function getQuote(productCode: string, expectedUnits = 1): Promise<
 // ── Public catalogue (works signed out) ─────────────────────────────────────
 
 export async function getCatalogue(): Promise<BillingCatalogue> {
+  // The pricing page must render for a signed-out visitor, so this sends the
+  // ANON key as the bearer token rather than a user session. The function is
+  // deployed with verify_jwt=true and the anon key is a valid JWT, so the
+  // gateway is satisfied without the endpoint being left unauthenticated.
+  // A signed-in visitor's own token would work equally well; the catalogue is
+  // identical either way because it contains no per-customer data.
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/billing?action=catalogue`;
   const res = await fetch(url, {
-    headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
+    headers: {
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+    },
   });
   if (!res.ok) throw new Error(`Catalogue unavailable (${res.status})`);
   return (await res.json()) as BillingCatalogue;

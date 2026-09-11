@@ -34,7 +34,7 @@ export function StateDot({ state, className = '' }: { state: LocaleState; classN
 export function StateBadge({ state }: { state: LocaleState }) {
   const { t } = useLanguage();
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+    <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
       <StateDot state={state} />
       {t(STYLES[state].labelKey)}
     </span>

@@ -35,7 +35,7 @@ function FallbackChain({ chain }: { chain: Array<{ strategy: string; status: str
         <TooltipProvider key={i}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className={`inline-flex items-center gap-0.5 rounded text-[10px] px-1.5 py-0.5 font-mono cursor-default
+              <span className={`inline-flex items-center gap-0.5 rounded text-[12px] px-1.5 py-0.5 font-mono cursor-default
                 ${typeof step.status === 'number' && step.status >= 200 && step.status < 300
                   ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                   : step.status === 'skipped'
@@ -81,7 +81,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
         <td className="px-3 py-2.5 max-w-[160px]">
           <a href={imp.source_url as string} target="_blank" rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="text-[11px] text-primary hover:underline truncate block font-mono">
+            className="text-[13px] text-primary hover:underline truncate block font-mono">
             {imp.source_url as string ?? '—'}
           </a>
         </td>
@@ -91,7 +91,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
         </td>
         {/* strategy */}
         <td className="px-3 py-2.5 whitespace-nowrap">
-          <span className={`inline-block rounded text-[10px] px-1.5 py-0.5 font-medium
+          <span className={`inline-block rounded text-[12px] px-1.5 py-0.5 font-medium
             ${STRATEGY_VARIANT[imp.fetch_strategy as string] ?? 'bg-muted text-muted-foreground'}`}>
             {(imp.fetch_strategy as string) ?? 'DIRECT'}
           </span>
@@ -106,7 +106,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
         <td className="px-3 py-2.5 max-w-[140px]">
           {missing.length === 0
             ? <span className="text-green-600 dark:text-green-400 text-xs">✓ {t('admin_diagnostics_complete')}</span>
-            : <span className="text-amber-600 text-[11px] truncate block">{missing.join(', ')}</span>}
+            : <span className="text-amber-600 text-[13px] truncate block">{missing.join(', ')}</span>}
         </td>
         {/* status */}
         <td className="px-3 py-2.5 whitespace-nowrap">
@@ -129,7 +129,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
 
               {/* Fallback chain */}
               <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-muted-foreground font-medium uppercase tracking-wide text-[10px] mb-1">
+                <div className="flex items-center gap-1.5 text-muted-foreground font-medium uppercase tracking-wide text-[12px] mb-1">
                   <Layers className="h-3 w-3" /> {t('admin_diagnostics_fallback_chain')}
                 </div>
                 <FallbackChain chain={chain} />
@@ -137,7 +137,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
 
               {/* HTTP details */}
               <div className="space-y-1">
-                <p className="text-muted-foreground font-medium uppercase tracking-wide text-[10px] mb-1">{t('admin_diagnostics_http_details')}</p>
+                <p className="text-muted-foreground font-medium uppercase tracking-wide text-[12px] mb-1">{t('admin_diagnostics_http_details')}</p>
                 <p>{t('admin_diagnostics_status')}: <span className="font-mono">{String(imp.http_status ?? '—')}</span></p>
                 <p>{t('admin_diagnostics_response_size')}: <span className="font-mono">
                   {imp.response_size ? `${(Number(imp.response_size) / 1024).toFixed(1)} KB` : '—'}
@@ -150,7 +150,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
               {/* Error */}
               {(imp.error_code || imp.error_message) && (
                 <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-destructive font-medium uppercase tracking-wide text-[10px] mb-1">
+                  <div className="flex items-center gap-1.5 text-destructive font-medium uppercase tracking-wide text-[12px] mb-1">
                     <AlertTriangle className="h-3 w-3" /> {t('admin_diagnostics_error')}
                   </div>
                   <p className="text-destructive font-mono">{String(imp.error_code ?? '')}</p>
@@ -161,7 +161,7 @@ function ExpandableRow({ imp }: { imp: Record<string, string | number | boolean 
               {/* Photos */}
               {imp.photos_found !== undefined && imp.photos_found !== null && (
                 <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-muted-foreground font-medium uppercase tracking-wide text-[10px] mb-1">
+                  <div className="flex items-center gap-1.5 text-muted-foreground font-medium uppercase tracking-wide text-[12px] mb-1">
                     <ImageOff className="h-3 w-3" /> {t('match_factor_photos')}
                   </div>
                   <p>{imp.photos_found as number > 0

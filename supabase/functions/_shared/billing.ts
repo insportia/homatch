@@ -215,9 +215,13 @@ export async function beginExecution(
   // Below the product's minimum viable budget it refuses instead, because
   // spending someone's last 2 Credits on a search that cannot produce anything
   // useful is worse than telling them so.
-  const product = await productBudgetRules(sb, opts.productCode);
+  // `budgetRules`, not `product`. `product` is already bound at the top of
+  // this function to the entitlement row, and is still read after this point
+  // (payg_available, quality_tier). Binding the name twice in one scope is a
+  // SyntaxError in Deno, not a shadow — the module would not load at all.
+  const budgetRules = await productBudgetRules(sb, opts.productCode);
   const balance = n(ent?.wallet?.balance);
-  const minViable = product.minViableBudgetCredits;
+  const minViable = budgetRules.minViableBudgetCredits;
 
   const authorized = opts.authorizedMaxCredits != null
     ? round2(Math.min(opts.authorizedMaxCredits, balance, estMax))

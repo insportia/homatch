@@ -137,4 +137,44 @@ if (missing.length) {
   process.exit(1);
 }
 
-console.log(`[edge-check] all ${entries.length} edge functions parse, and every reference resolves.`);
+/*
+ * PASS 3 — is every binding legal?
+ *
+ * Pass 1 proves the file PARSES. Pass 2 proves every name it calls EXISTS.
+ * Neither catches a name DECLARED TWICE in one scope, because that is
+ * grammatically fine and resolves perfectly well. TypeScript reports it as a
+ * semantic error, TS2451, which pass 2's TS2304-only filter dropped.
+ *
+ * Deno does not tolerate it. `const x` twice in one function is a SyntaxError
+ * at module load, so the function never starts — every request to it fails,
+ * not merely the path through the duplicate.
+ *
+ * Not hypothetical. _shared/billing.ts carried exactly this:
+ *
+ *   const product = (ent.products ?? []).find(...)     line 162
+ *   const product = await productBudgetRules(...)      line 218
+ *
+ * It reached main and would have taken deal-room-document-analyze,
+ * match-campaign and homatch-research down with it — two of them the paid
+ * paths for Contract Intelligence and Find Clients. The only reason it never
+ * shipped is that an unrelated CI step was failing, so the deploy job that
+ * would have published it never ran. A gate that green-lights a module Deno
+ * refuses to load is not a gate.
+ *
+ * Shared modules under src/ are included: an edge function is only as
+ * loadable as the closure it imports.
+ */
+const FATAL_SEMANTIC = ['TS2451', 'TS2300', 'TS2440'];
+
+const illegal = refOutput
+  .split('\n')
+  .filter((l) => l.startsWith('supabase/functions') || l.startsWith('src/'))
+  .filter((l) => FATAL_SEMANTIC.some((code) => l.includes(`error ${code}:`)));
+
+if (illegal.length) {
+  console.error('\n[edge-check] these will not LOAD in Deno, so every request to the function fails:\n');
+  for (const e of illegal) console.error('  ' + e.trim());
+  process.exit(1);
+}
+
+console.log(`[edge-check] all ${entries.length} edge functions parse, resolve, and bind legally.`);

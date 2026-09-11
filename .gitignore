@@ -73,3 +73,7 @@ history/*.json
 
 # Browser driver for the Verify mobile regression suite (npm run test:mobile:setup)
 .tooling
+
+# Build output from .rules/testBuild.sh. Never committed: a stray `git add -A`
+# otherwise sweeps several thousand bundled files into a commit.
+.dist-ci/

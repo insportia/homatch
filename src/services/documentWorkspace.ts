@@ -365,6 +365,38 @@ export async function requestAnalysis(
   if (error) throw error;
 
   await recordEvent(doc, opts?.reanalyze ? 'REANALYZED' : 'QUEUED', { jobId: job?.id ?? null });
+
+  /*
+   * AND KICK IT NOW, FROM HERE.
+   *
+   * Two independent paths reach the same analysis, deliberately:
+   *
+   *   this call     starts it immediately with the customer's own session, so
+   *                 somebody watching the page sees it move within seconds
+   *                 rather than waiting up to thirty for the next worker tick
+   *   jobs-worker   guarantees it happens at all, whether or not this browser
+   *                 is still open
+   *
+   * Neither is load-bearing alone, which is the point. The worker is what
+   * makes the work durable; this is what makes it feel immediate.
+   *
+   * RUNNING IT TWICE IS FREE. deal-room-document-analyze is idempotent on
+   * (analysis_state DONE, analysis_sha256 === sha) and returns
+   * ALREADY_ANALYSED without reading the document or calling a model — so the
+   * worker arriving after this one finished costs nothing and bills nothing.
+   *
+   * Deliberately not awaited. The customer asked for the document to be read,
+   * not to watch a request; the card updates from the row either way.
+   */
+  void supabase.functions
+    .invoke('deal-room-document-analyze', {
+      body: { documentId: doc.id, force: opts?.reanalyze === true },
+    })
+    .catch((e) => {
+      // A failed kick is not a failed analysis — the worker still has it.
+      reportError(e, { subjectType: 'DOCUMENT', subjectId: doc.id, boundary: 'analyzeKick' });
+    });
+
   return job;
 }
 

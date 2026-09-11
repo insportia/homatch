@@ -258,7 +258,5 @@ UPDATE public.finance_provider_registry
        default_cost_source = COALESCE(default_cost_source, 'UNPRICED')
  WHERE health_key IS NULL OR default_cost_source IS NULL;
 
--- The env var this repository actually reads for the payment provider.
-UPDATE public.finance_provider_registry
-   SET credential_env_var = 'PAYMENT_PROVIDER_SECRET'
- WHERE provider_id = 'STRIPE';
+-- Credential names are corrected against what the code actually reads in
+-- 20260911212850 and 20260911212930.

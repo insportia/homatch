@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/db/supabase';
+import { claimAnonymousWork } from '@/services/anonymousSession';
 import type { Session, User as SupaUser } from '@supabase/supabase-js';
 import type { User } from '@/types/types';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -59,6 +60,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSupaUser(s?.user ?? null);
       if (s?.user) {
         fetchHomatchUser(s.user.id);
+        /* WHATEVER THEY DID BEFORE SIGNING IN IS THEIRS NOW.
+         *
+         * This is the single moment an account exists to hand anonymous work
+         * to, and it fires for every route into the product — email, Google, a
+         * restored session in a second tab. Claiming here rather than on one
+         * page means a visitor who signed up from anywhere still keeps the
+         * conversation and the research they already started; nothing is
+         * copied and no thread restarts.
+         *
+         * Safe to run on every event: with no anonymous token it does nothing,
+         * and the server treats a repeat claim as success, so a refresh in the
+         * middle of the round trip cannot break it. Deliberately not awaited —
+         * signing in must never wait on it — and never fatal. */
+        void claimAnonymousWork()
+          .then((r) => {
+            // The conversation and research now belong to this account, but
+            // the lists in memory were fetched when it owned nothing. Tell the
+            // app to re-read rather than leaving the work invisible until the
+            // next reload.
+            if (r.claimed && (r.conversations > 0 || r.researchJobs > 0)) {
+              window.dispatchEvent(new CustomEvent('homatch:anon-claimed', { detail: r }));
+            }
+          })
+          .catch(() => {
+            /* The work stays where it is; nothing the visitor did is lost. */
+          });
       } else {
         setHomatchUser(null);
       }

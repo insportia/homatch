@@ -102,6 +102,44 @@ function shouldCaptureLead(lead: LeadExtraction | null): boolean {
   return hasContact || (lead.intent_detected === true && confidence >= LEAD_CONFIDENCE_THRESHOLD);
 }
 
+/*
+ * ANONYMOUS CALLERS.
+ *
+ * Somebody who has not signed up can hold a conversation here, because being
+ * asked to create an account before you have seen whether the thing is any
+ * good is a bad trade. The ownership model already exists: the work belongs to
+ * an anonymous SESSION, proven by a secret the browser holds, and
+ * claim_anonymous_session() hands it to whoever signs in.
+ *
+ * Two limits are load-bearing. The message cap is what stops an anonymous
+ * visitor running up an unbounded model bill, and it is counted in the
+ * DATABASE rather than in the browser, because a counter the client owns is
+ * not a limit. And an anonymous caller gets no Homatch internal data at all —
+ * there is no account to scope it to, and "no user" must never read as "all
+ * users".
+ */
+const ANON_USER_MESSAGE_LIMIT = 2;
+
+async function sha256Hex(s: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** The session this token proves, or null. Never trusts anything but the hash. */
+async function anonSessionFor(sb: any, token: unknown): Promise<any | null> {
+  if (typeof token !== 'string' || token.length < 32) return null;
+  const { data } = await sb
+    .from('anonymous_sessions')
+    .select('id, expires_at, claimed_at, user_messages')
+    .eq('token_sha256', await sha256Hex(token))
+    .maybeSingle();
+  if (!data) return null;
+  // A claimed session belongs to an account now; it must sign in to continue.
+  if (data.claimed_at) return null;
+  if (new Date(data.expires_at).getTime() <= Date.now()) return null;
+  return data;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Method Not Allowed' }, 405);
@@ -111,10 +149,24 @@ serve(async (req) => {
 
   const sb = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
   const jwt = auth.replace(/^Bearer\s+/i, '');
+  // The anon key is a valid bearer here, so "no user" means an anonymous
+  // caller rather than a bad request. They are only let through if they also
+  // present a session token that proves itself below.
   const { data: { user } } = await sb.auth.getUser(jwt);
-  if (!user) return json({ error: 'Invalid session' }, 401);
 
   const body = await req.json().catch(() => ({}));
+
+  const anonSession = user ? null : await anonSessionFor(sb, body?.anonSessionToken);
+  if (!user && !anonSession) return json({ error: 'Authentication required' }, 401);
+
+  if (anonSession && anonSession.user_messages >= ANON_USER_MESSAGE_LIMIT) {
+    // Not an error — the visitor has had what was offered, and the next step
+    // is signing in, which keeps everything they have already said.
+    return json(
+      { error: 'sign in to continue this conversation', code: 'ANON_LIMIT_REACHED', limit: ANON_USER_MESSAGE_LIMIT },
+      402
+    );
+  }
   const msgs = (Array.isArray(body.messages) ? body.messages : [])
     .filter((m: any) => ['user', 'assistant'].includes(m?.role) && typeof m.content === 'string')
     .slice(-30)
@@ -122,15 +174,37 @@ serve(async (req) => {
   if (!msgs.length) return json({ error: 'messages array required' }, 400);
 
   const lang = resolveLocaleFromBody(body);
-  const conversationId = body.conversationId ? String(body.conversationId) : null;
+  let conversationId = body.conversationId ? String(body.conversationId) : null;
   if (conversationId) {
-    const { data: c } = await sb.from('ai_conversations').select('id').eq('id', conversationId).eq('user_id', user.id).maybeSingle();
+    // Scoped by OWNER either way, so a conversation id is never enough on its
+    // own — the same rule for an account and for an anonymous session.
+    const q = sb.from('ai_conversations').select('id').eq('id', conversationId);
+    const { data: c } = await (anonSession
+      ? q.eq('anon_session_id', anonSession.id)
+      : q.eq('user_id', user!.id)
+    ).maybeSingle();
     if (!c) return json({ error: 'Conversation not found' }, 404);
+  } else if (anonSession) {
+    // An anonymous visitor cannot create a conversation themselves — RLS gives
+    // them no access to the table — so the first message creates it here,
+    // owned by the session.
+    const { data: created, error: convErr } = await sb
+      .from('ai_conversations')
+      .insert({ user_id: null, anon_session_id: anonSession.id, title: 'Homatch AI' })
+      .select('id')
+      .single();
+    if (convErr || !created) {
+      console.error('homatch-ai: could not open an anonymous conversation', convErr?.message ?? convErr);
+      return json({ error: 'could not start a conversation' }, 500);
+    }
+    conversationId = created.id;
   }
 
-  const { data: profile } = await sb.from('users').select('id, plan').eq('auth_id', user.id).maybeSingle();
+  const { data: profile } = user
+    ? await sb.from('users').select('id, plan').eq('auth_id', user.id).maybeSingle()
+    : { data: null as any };
   const uid = profile?.id;
-  if (!uid) return json({ error: 'User profile not found' }, 404);
+  if (user && !uid) return json({ error: 'User profile not found' }, 404);
 
   // ── 1. Rate limit: today's message count vs. this user's plan tier ──────
   const plan = (profile?.plan || 'FREE').toUpperCase();
@@ -138,7 +212,7 @@ serve(async (req) => {
   const { data: limitSetting } = await sb.from('admin_settings').select('value').eq('key', limitKey).maybeSingle();
   const dailyLimit = typeof limitSetting?.value === 'number' ? limitSetting.value : Number(limitSetting?.value ?? 20);
 
-  if (dailyLimit >= 0) {
+  if (uid && dailyLimit >= 0) {
     const now = new Date();
     const dayStartUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
     const { count } = await sb
@@ -154,7 +228,10 @@ serve(async (req) => {
     }
   }
 
+  // An anonymous caller has no account to scope internal data to, and "no
+  // user" must never be read as "every user". They get the public assistant.
   const internal: any = { properties: [], matches: [], intents: [] };
+  if (uid) {
   const { data: p } = await sb.from('properties').select('id,title,transaction_type,property_type,matching_status,property_facts(*)').eq('user_id', uid).eq('is_deleted', false).limit(15);
   internal.properties = p || [];
   const ids = (p || []).map((x: any) => x.id);
@@ -163,9 +240,11 @@ serve(async (req) => {
     internal.matches = m || [];
   }
 
+  }
+
   const last = [...msgs].reverse().find((m: any) => m.role === 'user')?.content || '';
   const terms = last.toLowerCase().split(/\s+/).filter((x: string) => x.length > 3).slice(0, 4);
-  if (terms.length) {
+  if (uid && terms.length) {
     const pat = terms.map((x: string) => `%${x.replace(/[%_,]/g, '')}%`);
     const { data: i } = await sb.from('intent_profiles').select('id,intent_type,country,region,city,district,transaction_type,property_types,budget_min,budget_max,currency,bedrooms_min,bedrooms_max,timeline,language,intent_confidence,original_text,investment_intent,relocation_intent').or(pat.map((x: string) => `original_text.ilike.${x}`).join(',')).order('intent_confidence', { ascending: false }).limit(20);
     internal.intents = i || [];
@@ -182,6 +261,17 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
   const key = Deno.env.get('OPENAI_API_KEY');
   if (!key) return json({ error: 'OpenAI not configured' }, 500);
   if (conversationId) await sb.from('ai_messages').insert({ conversation_id: conversationId, role: 'user', content: last });
+
+  /* NAME THE ANONYMOUS CONVERSATION HERE, NOT IN THE BROWSER.
+   *
+   * An account holder's client titles its own conversation from the first
+   * message. An anonymous visitor cannot: RLS gives them no write access to
+   * the table, so that update would fail silently and the thread would arrive
+   * in their History after signing in called "Homatch AI" — indistinguishable
+   * from any other. The server owns the row, so it does the naming. */
+  if (anonSession && anonSession.user_messages === 0 && conversationId && last) {
+    await sb.from('ai_conversations').update({ title: last.slice(0, 60) }).eq('id', conversationId);
+  }
 
   const r = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -204,10 +294,18 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
 
   // Record this successful turn against the daily rate limit.
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || null;
-  await sb.from('rate_limit_events').insert({ user_id: uid, ip_address: ip, operation: RATE_LIMIT_OPERATION });
+  if (uid) await sb.from('rate_limit_events').insert({ user_id: uid, ip_address: ip, operation: RATE_LIMIT_OPERATION });
+  if (anonSession) {
+    // Counted server-side, after a turn actually succeeded, so a failed call
+    // does not burn one of the two.
+    await sb
+      .from('anonymous_sessions')
+      .update({ user_messages: anonSession.user_messages + 1 })
+      .eq('id', anonSession.id);
+  }
 
   // ── 3. Capture a canonical lead row when real intent/contact info showed up ──
-  if (shouldCaptureLead(lead)) {
+  if (uid && shouldCaptureLead(lead)) {
     const l = lead as LeadExtraction;
     await sb.from('ai_chat_leads').insert({
       user_id: uid,
@@ -231,6 +329,7 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
 
   return json({
     text,
+    conversationId,
     sources: sourcesOf(p2),
     researchMode: 'DB_FIRST_PUBLIC_WEB',
     paidProvidersUsed: false,

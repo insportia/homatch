@@ -221,6 +221,7 @@ function AIPageInner() {
     messages, streaming, streamContent, conversations, activeConvId,
     sendMessage, cancelStream, resetChat, loadConversations,
     loadConversation, newConversation, setPageContext,
+    anonLimitReached,
   } = useAIChat();
 
   // Inject page context and auto-send prompt when navigated with state
@@ -260,8 +261,17 @@ function AIPageInner() {
     setSidebarOpen(false);
   };
 
-  // Unauthenticated gate
-  if (!session) {
+  /* THE GATE MOVED.
+   *
+   * It used to stand in front of the assistant entirely: an anonymous visitor
+   * saw a sign-up screen and nothing else. Now they get a real conversation
+   * first, and the gate appears only once they have had it — at which point
+   * signing in KEEPS what they have already written rather than asking them
+   * to start again.
+   *
+   * anonLimitReached is set by the hook when the server refuses a third turn.
+   * The limit is the server's: a counter the browser owns is not a limit. */
+  if (!session && anonLimitReached) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[60vh]">
         <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">

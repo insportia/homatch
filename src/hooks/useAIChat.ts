@@ -1,7 +1,8 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { sendStreamRequest } from '@/lib/sse';
 import { supabase } from '@/db/supabase';
+import { ensureAnonymousSession } from '@/services/anonymousSession';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -29,6 +30,9 @@ export function useAIChat() {
   const { lang, t } = useLanguage();
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
+  /* Set only by the SERVER's refusal, never counted here. A limit the browser
+   * keeps is not a limit, and the point of this one is that it costs money. */
+  const [anonLimitReached, setAnonLimitReached] = useState(false);
   const [streamContent, setStreamContent] = useState('');
   const [conversations, setConversations] = useState<AIConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -76,8 +80,21 @@ export function useAIChat() {
     const { data: { session } } = await supabase.auth.getSession();
     const accessToken = session?.access_token;
 
+    /* SOMEBODY WHO HAS NOT SIGNED UP YET.
+     *
+     * Being asked to create an account before you have seen whether the thing
+     * is any good is a bad trade, so an anonymous visitor gets a real
+     * conversation. It belongs to a session the server issues; the browser
+     * only holds the secret that proves it, and claimAnonymousWork() hands the
+     * whole thread to their account when they sign in. Nothing is copied and
+     * nothing restarts.
+     *
+     * The conversation is created SERVER-side for them: RLS gives an anonymous
+     * visitor no access to the table, which is the point. */
+    const anonToken = accessToken ? null : await ensureAnonymousSession();
+
     let convId = activeConvId;
-    if (!convId) {
+    if (!convId && accessToken) {
       convId = await newConversation(pageContext) ?? null;
       if (!convId) convId = 'guest';
     }
@@ -97,7 +114,10 @@ export function useAIChat() {
       requestBody: {
         messages: efMessages,
         context: pageContext.type !== 'general' ? pageContext.data : undefined,
-        conversationId: convId !== 'guest' ? convId : undefined,
+        conversationId: convId && convId !== 'guest' ? convId : undefined,
+        // Proves which anonymous session this belongs to. Never an id the
+        // client picked: the server decides what this token owns.
+        anonSessionToken: anonToken ?? undefined,
         // Canonical locale field — forces the AI's entire answer into the
         // user's currently selected UI language, independent of whatever
         // language the message text itself happens to be typed in.
@@ -105,6 +125,23 @@ export function useAIChat() {
       },
       supabaseAnonKey: SUPABASE_ANON_KEY,
       accessToken,
+      onMeta: (payload) => {
+        /* WHICH CONVERSATION AM I IN?
+         *
+         * An anonymous visitor cannot create one — RLS gives them no access to
+         * the table — so the server opens it and this is how we find out which
+         * one it is. Without it, the second message would start a fresh
+         * conversation and the thread would quietly split in half.
+         *
+         * Only ever adopts an id we did not already have, so a server reply
+         * can never move an account holder out of the conversation they are
+         * reading. */
+        const id = payload?.conversationId;
+        if (typeof id === 'string' && id && !convId) {
+          convId = id;
+          setActiveConvId(id);
+        }
+      },
       onData: (raw) => {
         try {
           const parsed = JSON.parse(raw);
@@ -137,6 +174,15 @@ export function useAIChat() {
           try {
             const data = await httpErr.response.clone().json();
             if (data?.error && typeof data.error === 'string') message = data.error;
+            if (data?.code === 'ANON_LIMIT_REACHED') {
+              // Not a failure. They have had what was offered, and signing in
+              // continues the SAME conversation rather than starting one.
+              setAnonLimitReached(true);
+              setMessages(prev =>
+                (prev.length && prev[prev.length - 1].id === userMsg.id) ? prev.slice(0, -1) : prev
+              );
+              return;
+            }
           } catch { /* non-JSON error body — keep the generic message */ }
         }
         toast.error(message);
@@ -149,7 +195,20 @@ export function useAIChat() {
   }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, lang, t]);
 
   const cancelStream = useCallback(() => { abortRef.current?.abort(); setStreaming(false); setStreamContent(''); }, []);
+  /* SIGNING IN MID-CONVERSATION.
+   *
+   * AuthContext hands the anonymous work to the new account and announces it.
+   * Nothing here needs to move: the messages are on screen and activeConvId
+   * still points at the same row, which is the whole promise — no restart, no
+   * copy. Only the conversation LIST is stale, because it was fetched while
+   * this visitor owned nothing. */
+  useEffect(() => {
+    const onClaimed = () => { void loadConversations(); };
+    window.addEventListener('homatch:anon-claimed', onClaimed);
+    return () => window.removeEventListener('homatch:anon-claimed', onClaimed);
+  }, [loadConversations]);
+
   const resetChat = useCallback(() => { setMessages([]); setActiveConvId(null); setStreamContent(''); setPageContext({ type: 'general' }); }, []);
 
-  return { messages, streaming, streamContent, conversations, activeConvId, pageContext, setPageContext, sendMessage, cancelStream, resetChat, loadConversations, loadConversation, newConversation };
+  return { messages, streaming, streamContent, conversations, activeConvId, pageContext, setPageContext, sendMessage, cancelStream, resetChat, loadConversations, loadConversation, newConversation, anonLimitReached };
 }

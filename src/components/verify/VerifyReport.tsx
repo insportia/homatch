@@ -677,6 +677,29 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
  * Official self-checks                                                *
  * ------------------------------------------------------------------ */
 
+/*
+ * Each check answers the six questions a buyer actually has: what is being
+ * checked, why it matters, where to open it, what to type in, what an
+ * ordinary result looks like, and what would be worth a closer look.
+ *
+ * Keyed by kind rather than chosen with a ternary, so a new check cannot be
+ * added without someone deciding what all six say.
+ */
+const SELF_CHECK_COPY: Record<SelfCheck['kind'], { title: string; help: string; expect: string; attention: string }> = {
+  PROPERTY_EXTRACT: {
+    title: 'verify_ir_selfcheck_property',
+    help: 'verify_ir_selfcheck_property_help',
+    expect: 'verify_ir_selfcheck_property_expect',
+    attention: 'verify_ir_selfcheck_property_attention',
+  },
+  TAXPAYER_REGISTRY: {
+    title: 'verify_ir_selfcheck_taxpayer',
+    help: 'verify_ir_selfcheck_taxpayer_help',
+    expect: 'verify_ir_selfcheck_taxpayer_expect',
+    attention: 'verify_ir_selfcheck_taxpayer_attention',
+  },
+};
+
 /** The buyer's own official checks. This is what replaced the old inventory
  *  of what our pipeline could not retrieve: the same underlying situation,
  *  pointed forwards, with the exact value to paste. */
@@ -705,11 +728,21 @@ const SelfChecks: React.FC<{ checks: SelfCheck[] }> = ({ checks }) => {
       <div className="space-y-3">
         {checks.map((c) => (
           <div key={c.kind} className="rounded-xl border border-border p-4 space-y-2">
-            <p className="text-sm font-medium break-words">
-              {t(c.kind === 'PROPERTY_EXTRACT' ? 'verify_ir_selfcheck_property' : 'verify_ir_selfcheck_taxpayer')}
+            <p className="text-sm font-medium break-words">{t(SELF_CHECK_COPY[c.kind].title)}</p>
+            {/* WHY it matters, then WHAT an ordinary answer looks like, then
+                what would be worth a second look. A buyer who has never read
+                an extract needs the last two most, and they are the two the
+                old card left out. */}
+            <p className="text-xs leading-5 text-muted-foreground break-words">
+              {t(SELF_CHECK_COPY[c.kind].help)}
             </p>
             <p className="text-xs leading-5 text-muted-foreground break-words">
-              {t(c.kind === 'PROPERTY_EXTRACT' ? 'verify_ir_selfcheck_property_help' : 'verify_ir_selfcheck_taxpayer_help')}
+              <span className="font-medium text-foreground">{t('verify_ir_selfcheck_expect_label')}: </span>
+              {t(SELF_CHECK_COPY[c.kind].expect)}
+            </p>
+            <p className="text-xs leading-5 text-muted-foreground break-words">
+              <span className="font-medium text-foreground">{t('verify_ir_selfcheck_attention_label')}: </span>
+              {t(SELF_CHECK_COPY[c.kind].attention)}
             </p>
             {c.contextValue ? (
               <p className="text-xs text-muted-foreground break-words">{readable(c.contextValue)}</p>

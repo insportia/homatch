@@ -173,25 +173,87 @@ const AREAS: Record<string, Omit<AreaProfile, 'district'>> = {
 
 const CITY_HINTS = ['თბილისი', 'ბათუმი', 'ქუთაისი', 'რუსთავი', 'გორი', 'ზუგდიდი', 'თელავი'];
 
+/*
+ * THE SAME PLACE, WRITTEN IN LATIN.
+ *
+ * This module read Georgian only, and a real production report carried the
+ * address as "Krtsanisi St, 6, Tbilisi" — so nothing resolved, `minimal` came
+ * back true, and Location & Living produced no section for a property whose
+ * district this module has a curated profile for. The research layer answers
+ * in whichever script its sources used; an address is not less of an address
+ * for being transliterated.
+ *
+ * Latin spellings map to the canonical GEORGIAN name, because that is the key
+ * AREAS is written in and the language the report is written in. Variants are
+ * the ones that actually appear in Georgian listing portals and registry
+ * transliterations, not every conceivable romanisation.
+ */
+const LATIN_ALIASES: Record<string, string> = {
+  // Cities
+  tbilisi: 'თბილისი',
+  batumi: 'ბათუმი',
+  kutaisi: 'ქუთაისი',
+  rustavi: 'რუსთავი',
+  gori: 'გორი',
+  zugdidi: 'ზუგდიდი',
+  telavi: 'თელავი',
+  // Districts
+  krtsanisi: 'კრწანისი',
+  vake: 'ვაკე',
+  saburtalo: 'საბურთალო',
+  mtatsminda: 'მთაწმინდა',
+  isani: 'ისანი',
+  chughureti: 'ჩუღურეთი',
+  chugureti: 'ჩუღურეთი',
+  didube: 'დიდუბე',
+  vera: 'ვერა',
+};
+
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
-/** Pulls a street phrase out of a Georgian address without inventing one. */
+/** The canonical Georgian names a text mentions, in either script. */
+function canonicalNames(text: string): Set<string> {
+  const found = new Set<string>();
+  const lower = text.toLowerCase();
+  for (const [latin, georgian] of Object.entries(LATIN_ALIASES)) {
+    // Word-bounded, so "Vera" does not match inside "Veranda" and "Gori"
+    // does not match inside "Gorgasali".
+    if (new RegExp(`(^|[^a-z])${latin}([^a-z]|$)`).test(lower)) found.add(georgian);
+  }
+  return found;
+}
+
+/**
+ * Pulls a street phrase out of an address without inventing one.
+ *
+ * Georgian first, then Latin. The Latin form has to carry a street word —
+ * "St", "Street", "Ave", "Avenue" — because without one there is nothing to
+ * distinguish a street name from any other capitalised token in the string.
+ */
 export function streetOf(address: unknown): string | undefined {
   const a = str(address);
   if (!a) return undefined;
-  const m = a.match(/([Ⴀ-ჿ'’\-\s]+?(?:ქუჩა|გამზირი|ჩიხი|მოედანი))\s*(?:N?\s*\d+)?/);
-  if (m) return m[0].replace(/\s+/g, ' ').trim();
+  const georgian = a.match(/([Ⴀ-ჿ'’\-\s]+?(?:ქუჩა|გამზირი|ჩიხი|მოედანი))\s*(?:N?\s*\d+)?/);
+  if (georgian) return georgian[0].replace(/\s+/g, ' ').trim();
+  const latin = a.match(/([A-Z][A-Za-z'’-]*(?:\s+[A-Z][A-Za-z'’-]*)*\s+(?:St|Str|Street|Ave|Avenue|Rd|Road|Sq|Square)\.?)(?:\s*,?\s*(?:N\s*)?\d+)?/);
+  if (latin) return latin[0].replace(/\s+/g, ' ').replace(/\s*,\s*/g, ' ').trim();
   return undefined;
 }
 
 export function districtOfAddress(address: unknown): string | undefined {
   const a = str(address);
-  return Object.keys(AREAS).find((d) => a.includes(d));
+  const direct = Object.keys(AREAS).find((d) => a.includes(d));
+  if (direct) return direct;
+  const latin = canonicalNames(a);
+  return Object.keys(AREAS).find((d) => latin.has(d));
 }
 
 export function cityOfAddress(address: unknown): string | undefined {
   const a = str(address);
-  return CITY_HINTS.find((c) => a.includes(c));
+  const direct = CITY_HINTS.find((c) => a.includes(c));
+  if (direct) return direct;
+  const latin = canonicalNames(a);
+  return CITY_HINTS.find((c) => latin.has(c));
 }
 
 /**

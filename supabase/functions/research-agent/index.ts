@@ -3,8 +3,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
 import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
 import {
+  consumptionFromUsage,
   costOperationFor,
-  parseRateTable,
   priceVerification,
   totalVerificationCost,
 } from '../../../src/verify/cogs.ts';
@@ -925,6 +925,26 @@ function extractOpenAIText(p: any): string {
   for (const o of p?.output || []) if (o?.type === 'message') for (const c of o?.content || []) if (c?.type === 'output_text') t += c.text || '';
   return t;
 }
+/*
+ * HOW MANY SEARCHES THIS STAGE ACTUALLY RAN.
+ *
+ * A web search is billed per call, so it is a real line in what a
+ * verification costs — and nothing counted them. Token totals alone made the
+ * research stages look cheaper than they are, and any later decision to
+ * search less had nothing to measure itself against.
+ *
+ * Counted from the provider's own response rather than from our intent: what
+ * we asked for and what it did are different numbers, and only the second one
+ * is billed.
+ */
+function countWebSearches(p: any): number {
+  let n = 0;
+  for (const item of p?.output || []) {
+    if (item?.type === 'web_search_call') n += 1;
+  }
+  return n;
+}
+
 function extractOpenAISources(p: any): any[] {
   const o: any[] = [];
   for (const item of p?.output || [])
@@ -2701,6 +2721,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const prior = j.result_json || {};
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
   prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
+  prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
 
   if (s === 'IDENTITY') {
     prior.identity = z;
@@ -3060,6 +3081,9 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     requiresManualVerification: manualVerificationActions.length > 0,
     researchProvider: 'openai+playwright',
     costUsage: prior._cost,
+    // Per stage, like costUsage: a search is billed per call and is a real
+    // line in what this verification cost.
+    webSearchCalls: prior._searches,
     stage: 'COMPLETE',
     searchedAt: now(),
   };
@@ -3720,15 +3744,36 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
 
     const researchModel = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
     const reportModel = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
-    const rates = parseRateTable(Deno.env.get('OPENAI_TOKEN_PRICES'));
 
+    /*
+     * RATES COME FROM THE PRICE BOOK, AND FROM THE RIGHT DATE.
+     *
+     * provider_price_book is effective-dated, so a job completed last month
+     * is priced at last month's rate. Re-pricing history at today's number
+     * would quietly rewrite it, and a COGS figure that changes underneath you
+     * is worse than no figure.
+     */
+    const at = job?.completed_at ?? new Date().toISOString();
+    const { data: priceRows, error: priceError } = await db
+      .from('provider_price_book')
+      .select('provider, model, unit, rate, per_units, currency, effective_from, effective_to')
+      .eq('provider', 'OPENAI');
+    if (priceError) {
+      // Not fatal. Usage is still worth recording without a price on it.
+      console.error(`research-agent: price book unavailable for ${job.id}: ${priceError.message ?? priceError}`);
+    }
+
+    const searches = job?.result_json?.webSearchCalls ?? {};
     const stages = priceVerification(
-      usage,
-      // The report is written by verify-synthesis on a different model from
-      // the four research stages. Pricing them as one would misattribute
-      // whichever half is the expensive one.
-      (stage) => (stage === 'synthesis' ? reportModel : researchModel),
-      rates
+      consumptionFromUsage(
+        usage,
+        // The report is written by verify-synthesis on a different model from
+        // the four research stages. Pricing them as one would misattribute
+        // whichever half is the expensive one.
+        (stage) => (stage === 'synthesis' ? reportModel : researchModel),
+        (stage) => Number(searches?.[stage] ?? 0)
+      ),
+      { provider: 'OPENAI', rows: priceRows ?? [], at }
     );
     if (!stages.length) return;
     const total = totalVerificationCost(stages);
@@ -3736,10 +3781,17 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
     const rows = stages.map((s) => ({
       provider: 'OPENAI',
       operation_type: costOperationFor(s.stage),
-      // Not a customer-facing string, and deliberately explicit about whether
-      // the dollars are real: a zero that means "no rate configured" must
-      // never be read as a zero that means "free".
-      source: s.priced ? `model=${s.model}` : `model=${s.model};unpriced`,
+      /*
+       * Not customer-facing, and deliberately explicit about whether the
+       * dollars are real: a zero meaning "no rate for this" must never be
+       * read as a zero meaning "free". Anything unpriced is named, so the gap
+       * is actionable rather than merely visible.
+       */
+      source: [
+        `model=${s.model}`,
+        s.priced ? null : `unpriced=${s.unpricedUnits.join('+')}`,
+        s.webSearches ? `searches=${s.webSearches}` : null,
+      ].filter(Boolean).join(';'),
       units: s.totalTokens,
       cost_usd: s.costUsd,
       success: true,
@@ -3756,8 +3808,11 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
     }
     console.log(
       `research-agent: recorded COGS for ${job.id} — ${stages.length} stages, ` +
-      `${total.totalTokens} tokens, ${total.cachedInputTokens} cached, ` +
-      `$${total.totalUsd}${total.fullyPriced ? '' : ' (INCOMPLETE: a stage ran on an unpriced model)'}`
+      `${total.totalTokens} tokens (${total.cachedInputTokens} cached), ` +
+      `${total.webSearches} searches, ` +
+      `${total.state} $${total.totalUsd}` +
+      (total.cacheSavingUsd ? ` (cache saved $${total.cacheSavingUsd})` : '') +
+      (total.unpricedUnits.length ? ` — no rate for ${total.unpricedUnits.join(', ')}` : '')
     );
   } catch (e) {
     console.error('research-agent: COGS accounting threw', e instanceof Error ? e.message : String(e));
@@ -3855,8 +3910,10 @@ function sanitizeForCustomer(job: any): any {
   delete r.stage;
   delete r.researchProvider;
   delete r.costUsage;
+  delete r.webSearchCalls;
   delete r._worker;
   delete r._cost;
+  delete r._searches;
   delete r._enregEntityRequestedFor;
   // v28: the generalized financial-queue bookkeeping (enreg/rstax/debtor) —
   // same reasoning as _enregEntityRequestedFor above, kept alongside it

@@ -252,17 +252,38 @@ async function driveDocuments(sb: Sb, baseUrl: string, serviceKey: string): Prom
     if (!job.committed_at && Date.now() < Date.parse(job.cancel_deadline_at)) continue;
     if (!job.subject_id) continue;
 
-    // Claim it first. Two overlapping ticks must not both invoke the
-    // analyser for one document and buy the read twice.
-    const claim = await sb.rpc('background_job_progress', {
-      p_job_id: job.id,
-      p_state: 'PROCESSING',
-      p_progress: 10,
-      p_stage: 'EXTRACTING',
-      p_checkpoint: null,
-      p_metadata: null,
-    });
+    /*
+     * CLAIM IT, AND MEAN IT.
+     *
+     * This used to call background_job_progress(), which succeeds for ANY
+     * non-terminal job — so two ticks that both read the row while it was
+     * still QUEUED both "claimed" it and both dispatched. It happened in
+     * production on 2026-09-11: one contract read twice, 21 seconds apart,
+     * spending the customer's included analysis AND 0.34 Credits on the same
+     * file while Homatch paid OpenAI twice.
+     *
+     * background_job_claim() is a compare-and-swap — it updates only while
+     * the row is still QUEUED — so exactly one caller can win however many
+     * read it first.
+     */
+    const claim = await sb.rpc('background_job_claim', { p_job_id: job.id });
     if ((claim.data as Record<string, any>)?.ok !== true) continue;
+
+    /*
+     * And a second look at the document itself, because the job row is not
+     * the only way to learn that this work is already under way: a run
+     * started by the customer's own browser marks the DOCUMENT without ever
+     * touching the job. RUNNING means somebody is reading it right now; DONE
+     * means the analyser will short-circuit anyway, so there is nothing to
+     * dispatch for.
+     */
+    const { data: docNow } = await sb
+      .from('deal_room_documents')
+      .select('analysis_state')
+      .eq('id', job.subject_id)
+      .maybeSingle();
+    const st = String((docNow as Record<string, any> | null)?.analysis_state ?? '');
+    if (st === 'RUNNING' || st === 'DONE') continue;
 
     try {
       // Fire and forget: the analyser writes its own result to the document

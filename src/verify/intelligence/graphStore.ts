@@ -587,3 +587,75 @@ export async function loadKnownIntelligence(
     return empty;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * The comparables this property has already been measured against     *
+ * ------------------------------------------------------------------ */
+
+/** One comparable listing, as the market stage would have found it. */
+export interface HeldComparable {
+  entityId: string;
+  url: string;
+  facts: Record<string, string | number | null>;
+}
+
+/**
+ * The listings a previous verification compared this property against.
+ *
+ * READ SEPARATELY FROM THE LINEAGE, AND ON PURPOSE. loadKnownIntelligence
+ * walks provenance only — parcel, project, developer — because a comparable is
+ * a DIFFERENT property and its asking price is not a fact about this one. That
+ * rule stands and this does not weaken it: nothing here is ever presented as
+ * something true of the subject.
+ *
+ * But the market stage's whole job is other people's flats, and re-finding the
+ * same ten listings from scratch on every run is the single largest avoidable
+ * cost in a verification. A comparable's area, rooms, floor, address and
+ * project do not change; its price and its status do. Handing over the stable
+ * half and asking only for the volatile half is the difference between an
+ * incremental refresh and a blind sweep.
+ */
+export async function loadComparables(
+  db: GraphClient,
+  subjectEntityId: string | null | undefined
+): Promise<HeldComparable[]> {
+  if (!subjectEntityId) return [];
+  try {
+    const { data: edges } = await db
+      .from('intelligence_relationships')
+      .select('to_entity_id')
+      .eq('from_entity_id', subjectEntityId)
+      .eq('relation', 'COMPARABLE_TO')
+      .eq('status', 'CURRENT');
+
+    const ids = [...new Set(((edges ?? []) as { to_entity_id: string }[]).map((e) => e.to_entity_id).filter(Boolean))];
+    if (!ids.length) return [];
+
+    const { data: entities } = await db
+      .from('intelligence_entities')
+      .select('id, natural_key')
+      .in('id', ids);
+
+    const { data: facts } = await db
+      .from('intelligence_facts')
+      .select('entity_id, fact_key, value_text, value_number')
+      .in('entity_id', ids)
+      .eq('status', 'CURRENT');
+
+    const byEntity = new Map<string, HeldComparable>();
+    for (const e of ((entities ?? []) as { id: string; natural_key: string }[])) {
+      if (e?.id && e.natural_key) byEntity.set(e.id, { entityId: e.id, url: e.natural_key, facts: {} });
+    }
+    for (const f of ((facts ?? []) as KnownFact[])) {
+      const c = f.entity_id ? byEntity.get(f.entity_id) : undefined;
+      if (!c || !f.fact_key) continue;
+      c.facts[f.fact_key] = (f as any).value_number ?? f.value_text ?? null;
+    }
+
+    return [...byEntity.values()];
+  } catch {
+    // Knowing no comparables means the market stage researches them all, which
+    // is exactly what it did before this existed.
+    return [];
+  }
+}

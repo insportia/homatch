@@ -3,11 +3,12 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
 import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
 import { harvestReport, normalizeCadastral } from '../../../src/verify/intelligence/harvest.ts';
-import { persistHarvest, loadKnownIntelligence } from '../../../src/verify/intelligence/graphStore.ts';
+import { persistHarvest, loadKnownIntelligence, loadComparables } from '../../../src/verify/intelligence/graphStore.ts';
 import { planVerification } from '../../../src/verify/intelligence/stagePlan.ts';
 import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
+import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
 import { planEscalation, searchBudgetInstruction } from '../../../src/verify/intelligence/escalation.ts';
 import { summariseSources } from '../../../src/verify/intelligence/sourceVersion.ts';
 import {
@@ -1423,16 +1424,37 @@ function formatTasTechnicalFactsForPrompt(facts: AggregatedTasFact[]): string {
 function knownBriefFor(j: any, s: Stage): string {
   if ((Deno.env.get('VERIFY_REUSE_ROUTING') ?? 'on').toLowerCase() === 'off') return '';
   const plan = j?.result_json?._reusePlan;
-  if (!plan?.known || !Array.isArray(plan.briefFacts) || !plan.briefFacts.length) return '';
+  if (!plan?.known) return '';
   try {
     // Only what this stage would otherwise have gone looking for. A stage
     // handed facts outside its remit, under an instruction to spend its
     // searches on whatever is missing, is being told to search harder — see
     // briefFactsForStage().
-    const mine = briefFactsForStage(plan.briefFacts, s.toLowerCase() as any);
-    if (!mine.length) return '';
-    const brief = buildKnownBrief(mine, plan.assessments ?? [], plan.scope ?? null);
-    return brief.text ? `\n${brief.text}\n` : '';
+    const mine = briefFactsForStage(
+      Array.isArray(plan.briefFacts) ? plan.briefFacts : [],
+      s.toLowerCase() as any
+    );
+    const brief = mine.length
+      ? buildKnownBrief(mine, plan.assessments ?? [], plan.scope ?? null)
+      : { text: '', briefed: [] as string[] };
+
+    /*
+     * MARKET gets a second block of its own, and is the reason the fact brief
+     * above is allowed to be empty.
+     *
+     * Its subject matter is other people's flats. This unit holds no listing
+     * facts, so briefFactsForStage finds nothing for it — while the graph
+     * holds the comparables themselves, as their own entities. Those are
+     * handed over with their STABLE attributes only; price and status are
+     * withheld deliberately, so a day-old asking price can never be restated
+     * as a current one. See marketBrief.ts.
+     */
+    const market = s === 'MARKET'
+      ? buildMarketBrief(Array.isArray(plan.comparables) ? plan.comparables : [])
+      : { text: '', urls: [] as string[] };
+
+    const joined = [brief.text, market.text].filter(Boolean).join('\n');
+    return joined ? `\n${joined}\n` : '';
   } catch {
     return '';
   }
@@ -3931,6 +3953,19 @@ async function shadowReusePlan(db: any, query: string): Promise<any | null> {
         subjectEntityId: known.entityId,
         related: known.relatedEntities,
       },
+      /*
+       * The listings this property has already been measured against.
+       *
+       * Read separately from the lineage walk, which deliberately does not
+       * follow COMPARABLE_TO — a comparable is a different property. These are
+       * never presented as facts about the subject; they exist so the market
+       * stage can refresh what it already found instead of sweeping for it
+       * again. See marketBrief.ts for what is given and what is withheld.
+       */
+      comparables: (await loadComparables(db, known.entityId)).map((c: any) => ({
+        url: c.url,
+        facts: c.facts,
+      })),
       heldFacts: known.facts.length,
       relatedFacts: known.relatedFacts.length,
       reusableFacts: plan.reusableFacts,

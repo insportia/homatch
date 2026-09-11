@@ -3978,8 +3978,7 @@ async function recordOfficialSourceVersions(db: any, job: any, report: any): Pro
       db,
       String(job?.query ?? ''),
       results,
-      sha256Hex,
-      job?.user_id ?? null
+      sha256Hex
     );
     if (!out.observations.length && !out.errors.length) return;
 

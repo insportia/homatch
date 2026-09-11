@@ -10,6 +10,21 @@
 // verification updates the row it already has rather than inserting another,
 // so the table stays one row per thing we watch rather than one per run.
 //
+// NOBODY OWNS ONE OF THESE ROWS. There is deliberately no created_by_user_id.
+// A row records what a PUBLIC REGISTRY said about a cadastral code, keyed by
+// (source, subject), one row per thing watched, and every customer who looks
+// updates the same row — so "created by" is meaningless the moment a second
+// customer touches it, and stamping one customer's identity into a table
+// shared across all of them is the shape of leak this layer exists to avoid.
+//
+// It is also what broke it. That column's foreign key points at the legacy
+// public.users profile table, which is keyed separately from auth.users and
+// reached through its auth_id column. This module passed the job's auth.users
+// id straight into it. Every insert failed on
+// research_cache_created_by_user_id_fkey, the error went into out.errors and
+// from there into a log line nobody was reading, and the table held zero rows
+// across six production verifications while appearing to work.
+//
 // WHAT THIS IS NOT. It is not a cache of answers. Nothing reads a stored
 // result_json back and serves it as research. It records what the source
 // LOOKED LIKE, so the next verification can ask whether re-reading it would
@@ -47,8 +62,7 @@ export async function recordSourceVersions(
   db: SourceClient,
   query: string,
   results: readonly OfficialSourceResult[] | null | undefined,
-  digest: (s: string) => Promise<string>,
-  jobUserId?: string | null
+  digest: (s: string) => Promise<string>
 ): Promise<SourceVersionOutcome> {
   const out: SourceVersionOutcome = { observations: [], errors: [] };
   if (!Array.isArray(results) || !results.length) return out;
@@ -108,7 +122,6 @@ export async function recordSourceVersions(
           acquired_at: now,
           last_verified_at: now,
           hit_count: 1,
-          created_by_user_id: jobUserId ?? null,
         });
         if (error) out.errors.push(`${fingerprint}: ${error.message ?? error}`);
       }

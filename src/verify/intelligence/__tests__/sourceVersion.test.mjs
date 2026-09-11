@@ -20,6 +20,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   sourceFingerprint,
   sourceContentProjection,
@@ -212,4 +214,63 @@ test('nothing consults a source version to skip work yet', async () => {
     'utf8'
   );
   assert.ok(!/state === 'UNCHANGED'/.test(agent), 'the pipeline already branches on an unbenchmarked verdict');
+});
+
+/* ── the row a shared table is allowed to hold ───────────────────────
+ *
+ * research_cache held zero rows across six production verifications while
+ * appearing to work. Every insert was failing on
+ * research_cache_created_by_user_id_fkey: that column's foreign key points at
+ * the legacy public.users profile table, which is keyed separately from
+ * auth.users and reached through its auth_id column, and this module was
+ * passing the job's auth.users id straight into it. The error was caught per
+ * source, pushed into out.errors, and logged — so the failure was visible
+ * only in a log line, and the table looked merely unused.
+ *
+ * It is not written at all now. A source-version row says what a public
+ * registry showed for a cadastral code; it is shared across every customer
+ * who looks and updated by each of them, so a "created by" is meaningless
+ * after the second one — and a customer identity inside a shared table is the
+ * shape of leak this layer exists to prevent.
+ */
+
+test('a source-version row carries no customer identity', async () => {
+  const { recordSourceVersions } = await import('../sourceStore.ts');
+
+  let inserted = null;
+  const db = {
+    from() {
+      const api = {
+        select: () => api,
+        eq: () => api,
+        maybeSingle: async () => ({ data: null }),
+        insert: async (row) => { inserted = row; return { error: null }; },
+        update: () => api,
+      };
+      return api;
+    },
+  };
+
+  const out = await recordSourceVersions(
+    db,
+    '01.72.14.040.030.01.02.017',
+    [{ source: 'tas', sourceUrl: 'https://example.ge/x', documents: [{ a: 1 }], resultConfirmed: true }],
+    async (s) => `hash-${s.length}`
+  );
+
+  assert.equal(out.errors.length, 0, `the insert was rejected: ${out.errors.join(' | ')}`);
+  assert.ok(inserted, 'nothing was inserted at all');
+  assert.ok(
+    !('created_by_user_id' in inserted),
+    'a shared source-version row was stamped with a customer identity'
+  );
+  assert.equal(inserted.fingerprint, 'official:tas:01.72.14.040.030.01.02.017');
+});
+
+test('recordSourceVersions takes no user argument to pass by mistake', () => {
+  // The parameter is gone rather than merely unused, so the auth.users id
+  // cannot be handed back in by a future caller copying the old shape.
+  const src = readFileSync(join(process.cwd(), 'src/verify/intelligence/sourceStore.ts'), 'utf8');
+  const sig = src.slice(src.indexOf('export async function recordSourceVersions'));
+  assert.ok(!/jobUserId/.test(sig.slice(0, sig.indexOf('{'))), 'the user parameter is back');
 });

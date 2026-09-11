@@ -466,3 +466,19 @@ test('the reports scan the fact stream once, not once per row of output', () => 
   // And the second double-precision round is cast.
   assert.match(perf, /percentile_cont\(0\.5\) within group \(order by total_cogs_usd\)\)::numeric/);
 });
+
+test('month buckets are local calendar months, and cannot drift', () => {
+  // The first single-scan rewrite stepped a timestamptz by interval '1 month'.
+  // A month start in a timezone ahead of UTC sits on the previous month's
+  // 31st in UTC, and 31 Jan + 1 month = 28 Feb — so the series drifted, the
+  // join to the grouped spend missed, and every month rendered zero.
+  // Production returned month_start 2026-08-28T20:00:00+00:00.
+  const m = mig('20260911212617_finance_monthly_summary_month_keys_do_not_drift.sql');
+  // Both sides key on a plain local timestamp, with no round trip.
+  assert.match(m, /v_from_local timestamp := date_trunc\('month'/);
+  assert.match(m, /select date_trunc\('month', f\.occurred_at AT TIME ZONE v_tz\) as m,/);
+  assert.match(m, /generate_series\(v_from_local, v_this_local, interval '1 month'\)/);
+  // The round trip that caused it is gone from the grouping key.
+  assert.ok(!/date_trunc\('month', f\.occurred_at AT TIME ZONE v_tz\) AT TIME ZONE v_tz/.test(m),
+    'the grouping key must not convert back to timestamptz');
+});

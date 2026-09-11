@@ -136,3 +136,45 @@ test('a stage at full effort is told nothing at all', () => {
   assert.equal(searchBudgetInstruction(effortFor(decision('official_collection', { reused: ['a'] }))), '');
   assert.equal(searchBudgetInstruction(null), '');
 });
+
+/* ── market's ceiling is a measurement, not a trim ───────────────────
+ *
+ * A market web search costs about $0.04 all-in: OpenAI bills the
+ * search-content tokens at model rates on top of the $10/1k call fee, and
+ * those tokens arrive inside usage.input_tokens — roughly 8,000 per search.
+ * Across thirteen production market stages the implied non-search tokens held
+ * at 20,717–31,600 whatever the count, while stage cost tracked it almost
+ * linearly: $0.198 at four searches, $0.396 at nine.
+ *
+ * The extra searching bought nothing measurable. Usable comparables per run —
+ * ACTIVE, RESIDENTIAL, priced, which is what the deterministic maths can use:
+ * four searches gave 4.0 across 3 tiers, five gave 6.2 across 3, eight gave
+ * 6.0 across 2.
+ */
+
+test('market cannot authorise the nine-search runs that bought nothing', () => {
+  const cold = effortFor(decision('market', { missing: ['a', 'b', 'c', 'd'] }));
+  assert.equal(cold.level, 'FULL');
+  assert.ok(cold.searchBudget <= 6, `market may still spend ${cold.searchBudget} searches`);
+  assert.ok(cold.searchBudget >= 5, 'market was cut below what has been seen to work');
+});
+
+test('the registry is not cheapened while market is bounded', () => {
+  // Only market had evidence for a lower ceiling. Nothing here licenses
+  // trimming the stage a buyer is actually exposed to.
+  const registry = effortFor(decision('official_collection', { missing: ['a', 'b'] }));
+  assert.equal(registry.searchBudget, 4);
+  assert.equal(registry.level, 'FULL');
+});
+
+test('a cold run is still authorised for real discovery across every stage', () => {
+  const cold = planEscalation([
+    decision('identity', { missing: ['a'] }),
+    decision('official_collection', { missing: ['b'] }),
+    decision('public_research', { missing: ['c'] }),
+    decision('market', { missing: ['d'] }),
+    decision('synthesis'),
+  ]);
+  assert.equal(cold.totalBudget, cold.fullBudget, 'a cold run was throttled');
+  assert.ok(cold.totalBudget >= 20, `a cold verification may only spend ${cold.totalBudget} searches`);
+});

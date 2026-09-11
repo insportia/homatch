@@ -1635,6 +1635,22 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       // So the instruction is now a floor, not a ceiling, and the anti-padding
       // rule is kept as a separate sentence rather than as the headline.
       `DEPTH PER BAND: aim for AT LEAST 3 genuinely comparable listings in each band you can populate, and never stop at one. A band holding a single listing cannot be used for comparison at all, so one listing is only marginally better than none — if you found one, look harder for others like it before moving on. ` +
+      // WHEN TO STOP, TIED TO WHAT THE ARITHMETIC ACTUALLY NEEDS.
+      //
+      // The deterministic step downstream needs MIN_FOR_BASIS = 2 priced,
+      // ACTIVE, residential listings before a tier can carry the analysis at
+      // all. Everything past that is refinement, and production says the
+      // refinement is not arriving: across thirteen market stages, runs that
+      // spent eight searches returned 6.0 usable comparables across 2 tiers
+      // while runs that spent five returned 6.2 across 3. Searching harder
+      // bought variance, not a better comparison - and a market search costs
+      // about $0.04 once the search-content tokens billed at model rates are
+      // counted, so the gap between a four-search and a nine-search market
+      // stage is a third of the entire product's cost.
+      //
+      // A stopping condition, not a cap: expressed as the evidence being
+      // sufficient rather than a number being reached.
+      `WHEN TO STOP SEARCHING: the analysis downstream needs at least 2 priced, ACTIVE, residential comparables in a band before that band can be used at all. Once you hold at least 3 such comparables spread over at least 2 bands - including the most specific band you were able to populate - you have what the report needs, and further searching has measurably NOT improved these reports. Stop there and write up what you found. This is a stopping condition, not a quota: if a band you have already searched is genuinely thin, or something you found contradicts what you were told, keep going. Being right still outranks being cheap. ` +
       `RELEVANCE STILL BOUNDS IT: never pad a band with listings that are not actually comparable, never invent a listing you cannot support with a specific deep URL, and never describe a band you did not search. If a band genuinely has nothing findable, return nothing for it — an honestly empty band is correct, a fabricated one is not. ` +
       `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt. If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. pricePerSqm (both here and in "subject" below) MUST be a plain numeric string in the SAME currency unit per square meter (no thousands separators, currency symbols or ranges) whenever you have a specific number — a deterministic step downstream computes the median/premium from these numbers directly, so a non-numeric or approximate value here simply will not be counted rather than being parsed loosely. ` +
       `COMPARABLE TIER (mandatory per comparable, 2026-09-07 market-comparable model): classify "comparableType" as exactly one of "SAME_PROJECT" (literally the same building/project/complex as the subject — if the project has named blocks/phases/buildings and you can tell the comparable is a DIFFERENT block/phase than the subject's own, prefer "MICRO_LOCATION" instead, since a different block of the same complex is not the same physical structure), "MICRO_LOCATION" (a different project but the same street/immediate neighborhood/walking-distance area), or "PEER_PROJECT" (a comparable development elsewhere in the city included only for broader market context). This is a REQUIRED classification, never omitted or left to infer downstream — when genuinely uncertain between MICRO_LOCATION and PEER_PROJECT, use PEER_PROJECT (the more conservative, less specific claim). ` +

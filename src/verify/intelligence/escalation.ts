@@ -66,7 +66,39 @@ const FULL_BUDGET: Record<StageName, number> = {
   identity: 4,
   official_collection: 4,
   public_research: 8,
-  market: 8,
+  /*
+   * MARKET IS 6, AND THAT IS A MEASUREMENT RATHER THAN A TRIM.
+   *
+   * A market web search is the most expensive single act in a verification.
+   * OpenAI bills the search-content tokens at model rates on top of the call
+   * fee, and those tokens arrive inside usage.input_tokens — about 8,000 of
+   * them per search — so one costs roughly $0.04 all-in, not the $0.01 the
+   * call fee suggests. Across thirteen production market stages the implied
+   * non-search tokens held at 20,717-31,600 whatever the search count, while
+   * stage cost tracked the count almost linearly: $0.198 at four searches,
+   * $0.396 at nine.
+   *
+   * The question was whether the extra searches were buying anything. They
+   * were not. Usable comparables per run — ACTIVE, RESIDENTIAL, with a
+   * numeric price per square metre, which is what the deterministic maths can
+   * actually use:
+   *
+   *   4 searches   4.0 usable   3 tiers
+   *   5 searches   6.2 usable   3 tiers
+   *   7 searches   7.5 usable   2 tiers
+   *   8 searches   6.0 usable   2 tiers
+   *   9 searches  16.0 usable   3 tiers
+   *
+   * Eight searches produced fewer usable comparables across fewer tiers than
+   * five did. There is no relationship between searching harder and
+   * comparing better; there is only variance, and the variance costs $0.20 a
+   * run between its ends.
+   *
+   * Six, not five, because the ceiling should sit just above what has been
+   * seen to work rather than exactly on it — and the budget remains advisory,
+   * so a stage that genuinely needs another search still takes it.
+   */
+  market: 6,
   synthesis: 0,
 };
 

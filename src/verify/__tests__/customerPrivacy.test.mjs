@@ -95,3 +95,30 @@ test('an applicant is never promoted to owner, shareholder or developer', () => 
   assert.ok(!/role:\s*'OWNER'/.test(people) || /REGISTERED/.test(people),
     'an owner role is assigned without a registered source');
 });
+
+/* ── what the reuse work must never tell a customer ──────────────────── */
+
+test('the reuse plan never reaches a customer payload', () => {
+  // _reusePlan records how much of this verification Homatch already knew,
+  // which stages were eased off and how many searches were authorised. The
+  // mandate is explicit that a customer is never told that most information
+  // was cached, that Homatch had already paid for it, how cheap the job was
+  // internally, or how many model calls were avoided. It is also a BILLABLE
+  // purchase at an unchanged price, and a customer shown a "92% reused" figure
+  // would reasonably ask why they paid full price.
+  const src = code(AGENT);
+  const fn = src.slice(src.indexOf('function sanitizeForCustomer'));
+  const body = fn.slice(0, fn.indexOf('\nfunction '));
+  assert.ok(body.includes('delete r._reusePlan'), 'the reuse plan survives into the customer payload');
+  assert.ok(body.includes('delete r.webSearchCalls'), 'the web-search count survives into the customer payload');
+});
+
+test('the reuse plan is carried on the job precisely so it can be stripped once', () => {
+  // It is written into result_json at job creation and removed at the one
+  // boundary a customer reads through. If it stopped being stored the
+  // measurement would vanish; if it stopped being deleted the customer would
+  // be shown Homatch's internal economics. Both halves have to stay.
+  const src = code(AGENT);
+  assert.ok(/_reusePlan:\s*reusePlan/.test(src) || /_reusePlan:\s*prior\._reusePlan/.test(src),
+    'the plan is no longer recorded against the job at all');
+});

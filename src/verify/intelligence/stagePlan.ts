@@ -66,6 +66,44 @@ export const STAGE_FACTS: Record<StageName, string[]> = {
  */
 export const ALWAYS_VERIFY: StageName[] = ['official_collection', 'synthesis'];
 
+/**
+ * What each stage WRITES INTO THE REPORT — which is not what it establishes.
+ *
+ * STAGE_FACTS above answers "whose job is it to find this out", and that is
+ * the right question for deciding whether a stage still has work to do. It is
+ * the wrong question for deciding what to tell a stage, and conflating the two
+ * cost a real report its project block.
+ *
+ * identity ESTABLISHES three facts — the parcel code, the address, the
+ * project's name. But its output schema also carries the project's floors,
+ * buildings, unit counts, aliases and amenities, and the report is written
+ * from that output. Briefed on only the three it establishes, and throttled to
+ * one search because those three were known, it returned floors: null,
+ * buildings: null, unitCounts: null and no amenities at all — on a property
+ * whose graph held 7, 1, 48 and seven amenities the whole time.
+ *
+ * Measured across five production runs of the same property:
+ *
+ *   briefed on it, not throttled   floors 7,    amenities 4   27,929 tokens
+ *   not briefed on it, throttled   floors null, amenities 7    8,964
+ *   scoped away, throttled         floors null, amenities 0    8,858
+ *
+ * The saving is real and so is the damage, and they are separable: a stage
+ * restates what it is given. So a stage is briefed on everything it is about
+ * to be asked to produce, and judged on what it alone is responsible for
+ * discovering.
+ */
+export const STAGE_REPORT_FACTS: Record<StageName, string[]> = {
+  // Writes the whole project/building block, not just the identity of it.
+  identity: ['parcel.code', 'address.', 'project.', 'amenities.', 'building.'],
+  official_collection: ['ownership.', 'encumbrance.', 'rights.', 'registry.', 'company.'],
+  public_research: ['project.', 'building.', 'amenities.', 'construction.', 'commissioning.', 'permit.', 'location.'],
+  market: ['listing.', 'market.'],
+  // Reasons over the evidence this run gathered; a remembered fact would be a
+  // second, unciteable source.
+  synthesis: [],
+};
+
 /*
  * FACT FAMILIES A KIND OF PROPERTY CANNOT HAVE.
  *

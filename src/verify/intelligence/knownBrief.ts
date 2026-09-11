@@ -26,7 +26,7 @@
 // model what we last saw could only bias what it reports seeing now.
 
 import type { FactAssessment } from './freshness.ts';
-import { STAGE_FACTS, type StageName } from './stagePlan.ts';
+import { STAGE_REPORT_FACTS, type StageName } from './stagePlan.ts';
 
 /**
  * The facts that are this stage's business.
@@ -41,16 +41,23 @@ import { STAGE_FACTS, type StageName } from './stagePlan.ts';
  * 56,017 tokens and 4 searches, with no brief, to 86,206 and 8 the first run it
  * received one, and stayed there.
  *
- * Scoping by stage costs nothing and removes the contradiction: a stage sees
- * what it would otherwise have gone looking for, and nothing else. When that
- * set is empty the stage gets no brief at all, which is the honest
- * representation of "we know nothing that helps you".
+ * Scoping by stage costs nothing and removes the contradiction. The map is
+ * STAGE_REPORT_FACTS — what a stage WRITES — and deliberately not STAGE_FACTS,
+ * which is what a stage is responsible for DISCOVERING. Briefing off the
+ * latter is a bug that has already been paid for once: identity establishes
+ * three facts but writes the project's floors, buildings, unit counts and
+ * amenities, and briefing it on only the three it establishes emptied that
+ * block out of the report.
+ *
+ * A stage is briefed on everything it is about to be asked to produce. When
+ * that set is empty it gets no brief at all, which is the honest
+ * representation of "we hold nothing that helps you".
  */
 export function briefFactsForStage<T extends { fact_key: string }>(
   facts: readonly T[] | null | undefined,
   stage: StageName
 ): T[] {
-  const prefixes = STAGE_FACTS[stage] ?? [];
+  const prefixes = STAGE_REPORT_FACTS[stage] ?? [];
   return (facts ?? []).filter((f) =>
     prefixes.some((p) => (p.endsWith('.') ? f.fact_key?.startsWith(p) : f.fact_key === p))
   );

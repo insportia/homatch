@@ -10,7 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planVerification, STAGES, STAGE_FACTS, ALWAYS_VERIFY } from '../stagePlan.ts';
+import { planVerification, STAGES, STAGE_FACTS, STAGE_REPORT_FACTS, ALWAYS_VERIFY } from '../stagePlan.ts';
 
 const HOUR = 3_600_000;
 const NOW = Date.parse('2026-09-11T12:00:00Z');
@@ -187,4 +187,37 @@ test('the plan is recorded, not executed', async () => {
   // exactly what §17 forbids.
   assert.ok(!/wouldSkip\.includes\(/.test(agent), 'the pipeline is already skipping stages on an unbenchmarked plan');
   assert.ok(!/if \(plan\.wouldSkip/.test(agent), 'the pipeline branches on the shadow plan');
+});
+
+/* ── a stage is briefed on what it writes, judged on what it finds ───
+ *
+ * These are different maps and conflating them cost a real report its project
+ * block. identity ESTABLISHES the parcel code, the address and the project
+ * name; it WRITES the project's floors, buildings, unit counts, aliases and
+ * amenities as well. Briefed off the first list and throttled because that
+ * list was satisfied, it returned floors: null, buildings: null, unitCounts:
+ * null on a property whose graph held 7, 1 and 48.
+ */
+
+test('identity is briefed on the whole project block it writes', () => {
+  for (const needed of ['project.', 'amenities.', 'building.']) {
+    assert.ok(
+      STAGE_REPORT_FACTS.identity.includes(needed),
+      `identity writes ${needed} into the report but is not briefed on it, so it will be asked for a field it was never given`
+    );
+  }
+});
+
+test('what a stage is judged on stays narrower than what it is briefed on', () => {
+  // The judging list decides whether a stage still has work to do. Widening it
+  // to everything a stage writes would mean a property with no amenities could
+  // never satisfy identity, and identity could never be reused at all.
+  for (const stage of STAGES) {
+    for (const family of STAGE_FACTS[stage]) {
+      assert.ok(
+        STAGE_REPORT_FACTS[stage].some((p) => family === p || family.startsWith(p) || p.startsWith(family)),
+        `${stage} is judged on ${family} but never briefed on it`
+      );
+    }
+  }
 });

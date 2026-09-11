@@ -214,8 +214,32 @@ test('a stage is briefed only on facts within its own remit', () => {
     { fact_key: 'listing.price', value_number: 102000 },
   ];
   assert.deepEqual(briefFactsForStage(facts, 'market').map((f) => f.fact_key), ['listing.price']);
-  assert.deepEqual(briefFactsForStage(facts, 'identity').map((f) => f.fact_key), ['parcel.code']);
   assert.deepEqual(briefFactsForStage(facts, 'public_research').map((f) => f.fact_key), ['project.floors']);
+  // identity gets project.floors too, because identity is the stage that
+  // WRITES the project block. Scoped to what it merely establishes, it
+  // returned floors: null on a property whose graph held 7.
+  assert.deepEqual(
+    briefFactsForStage(facts, 'identity').map((f) => f.fact_key),
+    ['parcel.code', 'project.floors']
+  );
+});
+
+test('identity is briefed on every part of the project block it writes', () => {
+  // The exact regression: identity's schema carries the project's floors,
+  // buildings, unit counts, aliases and amenities. Brief it on only the three
+  // facts it is responsible for establishing and the report loses the rest.
+  const facts = [
+    { fact_key: 'project.floors', value_number: 7 },
+    { fact_key: 'project.buildings', value_number: 1 },
+    { fact_key: 'project.units', value_number: 48 },
+    { fact_key: 'project.aliases', value_json: ['a'] },
+    { fact_key: 'amenities.list', value_json: ['Elevator'] },
+    { fact_key: 'address.full', value_text: '18 Kristian Stiven Street' },
+    { fact_key: 'building.structure', value_text: 'concrete' },
+  ];
+  const got = briefFactsForStage(facts, 'identity').map((f) => f.fact_key).sort();
+  assert.deepEqual(got, facts.map((f) => f.fact_key).sort(),
+    'identity was starved of a field it is about to be asked to produce');
 });
 
 test('a stage we know nothing useful for is briefed on nothing', () => {

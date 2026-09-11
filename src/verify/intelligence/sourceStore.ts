@@ -99,17 +99,33 @@ export async function recordSourceVersions(
          * different questions — the first decides whether a fact is stale,
          * the second only says somebody looked.
          */
-        await db
+        /*
+         * FRESH either way, and not a word about whether it moved.
+         *
+         * freshness_status answers "how old is this", and its vocabulary is
+         * fixed by a CHECK constraint: LIVE, FRESH, AGING, STALE. Writing
+         * 'VERIFIED' or 'CHANGED' into it — which this did — violates that
+         * constraint, and because the update's error was never read, the
+         * failure was perfectly silent: production logged "4 unchanged, 2
+         * changed" while every row kept hit_count 1 and its original
+         * last_verified_at. The read worked; only the write-back did not.
+         *
+         * Whether the content moved is already recorded properly, in
+         * content_hash and acquired_at. It does not also belong in a field
+         * that means something else.
+         */
+        const { error: updateError } = await db
           .from('research_cache')
           .update({
             last_verified_at: now,
             hit_count: Number(stored.hit_count ?? 0) + 1,
-            freshness_status: observation.state === 'CHANGED' ? 'CHANGED' : 'VERIFIED',
+            freshness_status: 'FRESH',
             ...(observation.state === 'CHANGED' && hash
               ? { content_hash: hash, acquired_at: now }
               : {}),
           })
           .eq('id', stored.id);
+        if (updateError) out.errors.push(`${fingerprint}: ${updateError.message ?? updateError}`);
       } else {
         const { error } = await db.from('research_cache').insert({
           fingerprint,

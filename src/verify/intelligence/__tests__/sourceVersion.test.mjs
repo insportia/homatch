@@ -274,3 +274,96 @@ test('recordSourceVersions takes no user argument to pass by mistake', () => {
   const sig = src.slice(src.indexOf('export async function recordSourceVersions'));
   assert.ok(!/jobUserId/.test(sig.slice(0, sig.indexOf('{'))), 'the user parameter is back');
 });
+
+/* ── the re-read has to actually land ────────────────────────────────
+ *
+ * The insert bug and this one are the same failure twice: a write whose error
+ * was never read. Production logged "4 unchanged, 2 changed" — proving the
+ * comparison worked — while every row kept hit_count 1 and its original
+ * last_verified_at, because freshness_status was being set to 'VERIFIED' and
+ * 'CHANGED', and the column's CHECK constraint allows only LIVE, FRESH, AGING
+ * and STALE.
+ */
+
+const FRESHNESS_ALLOWED = new Set(['LIVE', 'FRESH', 'AGING', 'STALE']);
+
+async function runAgainstStored(storedRow, result, digest = async (s) => `h${s.length}`) {
+  const { recordSourceVersions } = await import('../sourceStore.ts');
+  let updated = null;
+  const db = {
+    from() {
+      const api = {
+        select: () => api,
+        eq: () => api,
+        maybeSingle: async () => ({ data: storedRow }),
+        insert: async () => ({ error: null }),
+        update: (row) => { updated = row; return { eq: async () => ({ error: null }) }; },
+      };
+      return api;
+    },
+  };
+  const out = await recordSourceVersions(db, '01.72.14.040.030.01.02.017', [result], digest);
+  return { updated, out };
+}
+
+test('re-reading a known source writes a status the column actually allows', async () => {
+  const { updated, out } = await runAgainstStored(
+    { id: 'row-1', content_hash: 'h-old', hit_count: 1 },
+    { source: 'tas', sourceUrl: 'https://x', documents: [{ a: 1 }], resultConfirmed: true }
+  );
+  assert.equal(out.errors.length, 0, out.errors.join(' | '));
+  assert.ok(updated, 'the stored row was never updated');
+  assert.ok(
+    FRESHNESS_ALLOWED.has(updated.freshness_status),
+    `freshness_status '${updated.freshness_status}' violates the column's CHECK constraint`
+  );
+});
+
+test('a re-read moves last_verified_at and counts the hit', async () => {
+  const { updated } = await runAgainstStored(
+    { id: 'row-1', content_hash: 'h-old', hit_count: 4 },
+    { source: 'tas', documents: [{ a: 1 }] }
+  );
+  assert.equal(updated.hit_count, 5, 'the hit was not counted');
+  assert.ok(updated.last_verified_at, 'last_verified_at did not move on a confirmed look');
+});
+
+test('content that moved updates the hash and the acquired time; content that did not, does not', async () => {
+  // acquired_at answers "how old is what we hold", last_verified_at answers
+  // "when did somebody last look". Conflating them loses the first.
+  // The stored hash is whatever this exact content hashes to, computed rather
+  // than guessed, so "unchanged" really means unchanged.
+  const content = { source: 'tas', documents: [{ a: 1 }] };
+  const stableDigest = async () => 'THE-SAME-HASH';
+  const { sourceContentHash } = await import('../sourceVersion.ts');
+  const expected = await sourceContentHash(content, stableDigest);
+
+  const same = await runAgainstStored({ id: 'row-1', content_hash: expected, hit_count: 1 }, content, stableDigest);
+  assert.ok(!('acquired_at' in same.updated), 'unchanged content was aged forward');
+
+  const moved = await runAgainstStored(
+    { id: 'row-1', content_hash: 'something-else', hit_count: 1 },
+    { source: 'tas', documents: [{ a: 1 }] }
+  );
+  assert.ok(moved.updated.acquired_at, 'changed content did not update acquired_at');
+  assert.ok(moved.updated.content_hash, 'changed content did not update the hash');
+});
+
+test('a rejected write-back is reported rather than swallowed', async () => {
+  const { recordSourceVersions } = await import('../sourceStore.ts');
+  const db = {
+    from() {
+      const api = {
+        select: () => api,
+        eq: () => api,
+        maybeSingle: async () => ({ data: { id: 'row-1', content_hash: 'old', hit_count: 1 } }),
+        insert: async () => ({ error: null }),
+        update: () => ({ eq: async () => ({ error: { message: 'violates check constraint' } }) }),
+      };
+      return api;
+    },
+  };
+  const out = await recordSourceVersions(db, 'q', [{ source: 'tas', documents: [{ a: 1 }] }], async () => 'h');
+  assert.equal(out.errors.length, 1, 'a failed update was swallowed exactly like the first time');
+  assert.match(out.errors[0], /violates check constraint/);
+});

@@ -39,6 +39,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
+import JSZip from 'npm:jszip@3.10.1';
+import { documentKind, extractDocxText, DOCX_MIME } from '../../../src/dealroom/domain/docx.ts';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { crossCheck, toFindingRows } from '../../../src/dealroom/domain/contractCheck.ts';
 import {
@@ -80,16 +82,6 @@ async function sha256Hex(buf: ArrayBuffer): Promise<string> {
 }
 
 /** Trust the bytes, never the filename or the declared MIME. */
-function sniffPdf(bytes: Uint8Array): boolean {
-  return (
-    bytes.length > 5 &&
-    bytes[0] === 0x25 && // %
-    bytes[1] === 0x50 && // P
-    bytes[2] === 0x44 && // D
-    bytes[3] === 0x46 && // F
-    bytes[4] === 0x2d // -
-  );
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -127,17 +119,28 @@ serve(async (req) => {
     if (!doc) return json({ error: 'document not found' }, 404);
     if (!doc.storage_path) return json({ error: 'document has no file' }, 400);
 
-    /* ---- only PDF for now, and only by declared type as a first filter ---- */
-    if (doc.mime_type && doc.mime_type !== 'application/pdf') {
+    /* ---- PDF and DOCX, by declared type as a first filter ----
+     *
+     * This gate used to be application/pdf only, while uploadValidation's
+     * ALLOWED_MIME and the storage bucket both accepted Word documents. So a
+     * customer could upload a contract as .docx, watch it upload cleanly, and
+     * be told immediately that it could not be analysed — two layers of the
+     * same feature disagreeing about what the product supports. That is the
+     * reported upload failure.
+     *
+     * The legacy binary .doc is deliberately still refused: it is a different
+     * format entirely, not a ZIP, and nothing here can read it. */
+    const ANALYSABLE_MIME = ['application/pdf', DOCX_MIME];
+    if (doc.mime_type && !ANALYSABLE_MIME.includes(doc.mime_type)) {
       await supabase
         .from('deal_room_documents')
         .update({
           analysis_state: 'UNSUPPORTED',
-          analysis_error: 'only PDF documents can be analysed today',
+          analysis_error: 'only PDF and Word (.docx) documents can be analysed',
           analyzed_at: new Date().toISOString(),
         })
         .eq('id', documentId);
-      return json({ state: 'UNSUPPORTED', reason: 'NOT_A_PDF' });
+      return json({ state: 'UNSUPPORTED', reason: 'UNSUPPORTED_TYPE' });
     }
 
     await supabase.from('deal_room_documents').update({ analysis_state: 'RUNNING' }).eq('id', documentId);
@@ -162,12 +165,16 @@ serve(async (req) => {
     }
 
     const bytes = new Uint8Array(buf);
-    if (!sniffPdf(bytes)) {
+    // Bytes decide, not the declared type: a browser reports whatever it likes
+    // for a renamed file, and the declared type is the one thing an attacker
+    // controls for free.
+    const kind = documentKind(bytes, doc.mime_type);
+    if (kind === 'UNSUPPORTED') {
       await supabase
         .from('deal_room_documents')
-        .update({ analysis_state: 'UNSUPPORTED', analysis_error: 'file is not a readable PDF', analyzed_at: new Date().toISOString() })
+        .update({ analysis_state: 'UNSUPPORTED', analysis_error: 'file is not a readable PDF or Word document', analyzed_at: new Date().toISOString() })
         .eq('id', documentId);
-      return json({ state: 'UNSUPPORTED', reason: 'NOT_A_PDF' });
+      return json({ state: 'UNSUPPORTED', reason: 'UNSUPPORTED_TYPE' });
     }
 
     const sha = await sha256Hex(buf);
@@ -181,14 +188,26 @@ serve(async (req) => {
     let raw = '';
     let pages = 0;
     try {
-      const pdf = await getDocumentProxy(bytes);
-      pages = pdf.numPages ?? 0;
-      const res = await extractText(pdf, { mergePages: true });
-      raw = typeof res?.text === 'string' ? res.text : Array.isArray(res?.text) ? res.text.join('\n') : '';
+      if (kind === 'DOCX') {
+        // A .docx is a ZIP; word/document.xml is the body. Everything after
+        // the unzip is pure and lives in src/dealroom/domain/docx.ts.
+        const zip = await JSZip.loadAsync(bytes);
+        const entry = zip.file('word/document.xml');
+        if (!entry) throw new Error('no word/document.xml');
+        raw = extractDocxText(await entry.async('string'));
+        // A Word file has no page count until it is laid out, and guessing one
+        // would be inventing a fact about the document.
+        pages = 0;
+      } else {
+        const pdf = await getDocumentProxy(bytes);
+        pages = pdf.numPages ?? 0;
+        const res = await extractText(pdf, { mergePages: true });
+        raw = typeof res?.text === 'string' ? res.text : Array.isArray(res?.text) ? res.text.join('\n') : '';
+      }
     } catch {
       await supabase
         .from('deal_room_documents')
-        .update({ analysis_state: 'FAILED', analysis_error: 'the PDF could not be parsed', analyzed_at: new Date().toISOString() })
+        .update({ analysis_state: 'FAILED', analysis_error: 'the document could not be parsed', analyzed_at: new Date().toISOString() })
         .eq('id', documentId);
       return json({ state: 'FAILED', reason: 'PARSE_FAILED' });
     }

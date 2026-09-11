@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, XCircle, Ban, ExternalLink, AlertTriangle } from 'lucide-react';
 import { cancelSecondsRemaining, isTerminal } from '@/jobs/jobState';
+import { phaseFor } from '@/verify/progress';
 import type { BackgroundJob } from '@/services/backgroundJobs';
 import { toast } from 'sonner';
 
@@ -62,6 +63,44 @@ const STATE_KEY: Record<string, string> = {
  *  rather than leaking an internal token to a paying customer. */
 const productKey = (p: string) => PRODUCT_KEY[p] ?? 'job_product_generic';
 const stateKey = (s: string) => STATE_KEY[s] ?? 'job_state_processing';
+
+/**
+ * THE STAGE LINE, AND WHY IT IS NOT `job.currentStage`.
+ *
+ * current_stage holds whatever the subject pipeline calls its own position:
+ * EXTRACTING and ANALYZING for a document, MARKET and SYNTHESIS for a
+ * verification, a matching step name for a search. Those are selector names,
+ * and rendering one put the literal word "ANALYZING" in front of a customer
+ * on the live job centre — the exact failure verify/phaseLabels was written
+ * to prevent one screen over, reintroduced here because this component was
+ * printing a different column.
+ *
+ * Each product's vocabulary is translated through its OWN map, and anything
+ * unrecognised returns null so the row falls back to its state badge. A
+ * vaguer line costs nothing; a leaked token costs the customer's confidence
+ * in a report they paid for.
+ */
+const DOCUMENT_STAGE_KEY: Record<string, string> = {
+  QUEUED: 'doc_status_queued',
+  EXTRACTING: 'doc_status_extracting',
+  ANALYZING: 'doc_status_analyzing',
+  RUNNING: 'doc_status_extracting',
+  DONE: 'doc_status_ready',
+};
+
+function stageKey(job: BackgroundJob): string | null {
+  const stage = String(job.currentStage ?? '').trim();
+  if (!stage) return null;
+  if (job.productType === 'DOCUMENT_ANALYSIS' || job.productType === 'CONTRACT_ANALYSIS') {
+    return DOCUMENT_STAGE_KEY[stage.toUpperCase()] ?? null;
+  }
+  if (job.productType === 'VERIFY') {
+    // The customer-facing phase, resolved by the same module the Verify
+    // progress bar uses, so one run cannot be described two ways.
+    return `verify_pstep_${phaseFor(stage).toLowerCase()}`;
+  }
+  return null;
+}
 
 /* ------------------------------------------------------------------ *
  * Countdown                                                           *
@@ -150,8 +189,8 @@ const JobRow: React.FC<{ job: BackgroundJob; onClose: () => void }> = ({ job, on
           {job.subjectLabel ? (
             <p className="text-sm text-muted-foreground break-words">{job.subjectLabel}</p>
           ) : null}
-          {!done && job.currentStage ? (
-            <p className="text-sm text-muted-foreground break-words">{job.currentStage}</p>
+          {!done && stageKey(job) ? (
+            <p className="text-sm text-muted-foreground break-words">{t(stageKey(job)!)}</p>
           ) : null}
           {job.userSafeError ? (
             <p className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400">

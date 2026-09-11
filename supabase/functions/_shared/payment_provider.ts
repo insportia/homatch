@@ -63,14 +63,49 @@ export interface InvoiceReference {
   supportsLegalInvoice: boolean;
 }
 
+// ── Subscriptions ──────────────────────────────────────────────
+// A subscription is a recurring authorization, not a wallet top-up, and the
+// two must not share a code path: buying VIP changes the plan and grants
+// membership credits, while a top-up only adds purchased credits. Keeping
+// them apart at the provider boundary is what stops one from ever being
+// mistaken for the other downstream.
+export interface SubscriptionCheckoutParams {
+  planCode: string;
+  planName: string;
+  amountCentsPerMonth: number;
+  currency: string;
+  customerEmail?: string;
+  successUrl: string;
+  cancelUrl: string;
+  metadata: Record<string, string>;
+}
+
+export interface SubscriptionCheckoutResult {
+  mock: boolean;
+  checkoutUrl: string;
+  providerCheckoutId: string;
+}
+
 export interface PaymentProvider {
   readonly name: string;
   createCheckout(params: CheckoutParams): Promise<CheckoutResult>;
+  createSubscriptionCheckout(params: SubscriptionCheckoutParams): Promise<SubscriptionCheckoutResult>;
   verifyWebhook(rawBody: string, signatureHeader: string | null): Promise<WebhookVerifyResult>;
   getPayment(providerPaymentId: string): Promise<PaymentRecord | null>;
   getPaymentStatus(providerPaymentId: string): Promise<PaymentStatus>;
   refundPayment(providerPaymentId: string, amountCents?: number): Promise<RefundResult>;
   createInvoiceReference(providerPaymentId: string): Promise<InvoiceReference>;
+  /**
+   * A stable identifier for the payment INSTRUMENT behind a completed
+   * checkout — Stripe's payment_method fingerprint, which is the same string
+   * for the same card however many accounts present it.
+   *
+   * This is what makes the once-per-customer activation bonus resistant to
+   * someone signing up twice with the same card. Returning null is always
+   * allowed and is not a failure: the per-user unique index still holds, and
+   * inventing an identifier would be worse than admitting we have none.
+   */
+  getPaymentInstrumentFingerprint(providerPaymentId: string): Promise<string | null>;
 }
 
 // ── Stripe (real, SDK-free REST integration) ───────────────────
@@ -179,6 +214,55 @@ export class StripePaymentProvider implements PaymentProvider {
       supportsLegalInvoice: false,
     };
   }
+
+  async createSubscriptionCheckout(params: SubscriptionCheckoutParams): Promise<SubscriptionCheckoutResult> {
+    // price_data in `subscription` mode with a monthly recurring interval, so
+    // no pre-created Stripe Price object is needed and the plan's price can be
+    // edited in Admin -> Pricing without touching the Stripe dashboard.
+    const body = new URLSearchParams({
+      'line_items[0][price_data][currency]': params.currency,
+      'line_items[0][price_data][product_data][name]': params.planName,
+      'line_items[0][price_data][unit_amount]': String(params.amountCentsPerMonth),
+      'line_items[0][price_data][recurring][interval]': 'month',
+      'line_items[0][quantity]': '1',
+      mode: 'subscription',
+      customer_email: params.customerEmail ?? '',
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+    });
+    for (const [k, v] of Object.entries(params.metadata)) {
+      body.set(`metadata[${k}]`, v);
+      // Stripe does not copy Checkout Session metadata onto the Subscription,
+      // and renewal webhooks arrive against the SUBSCRIPTION. Without this the
+      // second month would have no user_id to credit.
+      body.set(`subscription_data[metadata][${k}]`, v);
+    }
+
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    if (!res.ok) throw new Error(`Stripe subscription checkout error: ${await res.text()}`);
+    const session = await res.json();
+    return { mock: false, checkoutUrl: session.url, providerCheckoutId: session.id };
+  }
+
+  async getPaymentInstrumentFingerprint(providerPaymentId: string): Promise<string | null> {
+    try {
+      const sres = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions/${providerPaymentId}?expand[]=payment_intent.payment_method`,
+        { headers: { Authorization: `Bearer ${this.secretKey}` } });
+      if (!sres.ok) return null;
+      const session = await sres.json();
+      const pm = session?.payment_intent?.payment_method;
+      // Card fingerprint is the only one Stripe guarantees is stable across
+      // customers. Anything else we simply do not have.
+      return pm?.card?.fingerprint ?? null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 // ── Mock provider (dev / no credentials configured) ────────────
@@ -209,6 +293,18 @@ export class MockPaymentProvider implements PaymentProvider {
   async createInvoiceReference(): Promise<InvoiceReference> {
     return { invoiceId: null, invoiceUrl: null, receiptUrl: null, supportsLegalInvoice: false };
   }
+  async createSubscriptionCheckout(params: SubscriptionCheckoutParams): Promise<SubscriptionCheckoutResult> {
+    const mockId = `mock_sub_${crypto.randomUUID()}`;
+    return {
+      mock: true,
+      checkoutUrl: `https://mock-stripe.homatch.com/subscribe?plan=${params.planCode}&session=${mockId}`,
+      providerCheckoutId: mockId,
+    };
+  }
+  // No real instrument exists behind a mock checkout, so there is no
+  // fingerprint to report. The per-user unique index still enforces
+  // one activation bonus per account.
+  async getPaymentInstrumentFingerprint(): Promise<string | null> { return null; }
 }
 
 export function getPaymentProvider(): PaymentProvider {

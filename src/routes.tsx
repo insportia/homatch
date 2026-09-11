@@ -32,6 +32,7 @@ import LegacyDealRoomRedirect from './pages/LegacyDealRoomRedirect';
 // is left in place (dormant), not deleted, in case this product surface
 // is revisited later.
 import PartnersPage from './pages/PartnersPage';
+import PricingPage from './pages/PricingPage';
 import AboutPage from './pages/AboutPage';
 // Outreach pages
 import OutreachHubPage from './pages/outreach/OutreachHubPage';
@@ -108,6 +109,9 @@ export const routes: RouteConfig[] = [
   // 'My Deals' / '/cases' route intentionally removed from the product
   // (2026-09-06 mandate) — see the CasesPage import comment above.
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },
+  // Public on purpose. A signed-out visitor comparing plans is the whole
+  // point of the page, and the plan catalogue is readable by anon.
+  { name: 'Pricing',           path: '/pricing',                  element: <PricingPage />,       public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
   // Compatibility only. "Deal Room" was briefly a separate destination; it is

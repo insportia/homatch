@@ -132,11 +132,20 @@ serve(async (req) => {
   const uid = profile?.id;
   if (!uid) return json({ error: 'User profile not found' }, 404);
 
-  // ── 1. Rate limit: today's message count vs. this user's plan tier ──────
-  const plan = (profile?.plan || 'FREE').toUpperCase();
-  const limitKey = plan === 'PRO' ? 'ai_chat_daily_limit_pro' : plan === 'PLUS' ? 'ai_chat_daily_limit_plus' : 'ai_chat_daily_limit_free';
-  const { data: limitSetting } = await sb.from('admin_settings').select('value').eq('key', limitKey).maybeSingle();
-  const dailyLimit = typeof limitSetting?.value === 'number' ? limitSetting.value : Number(limitSetting?.value ?? 20);
+  // ── 1. Fair use: today's message count vs. this user's plan tier ────────
+  //
+  // AI Chat is FREE on every plan and never deducts a credit. This is a fair-use
+  // ceiling, not a price: it exists to stop automation, not to meter a human.
+  // Wallet credits and AI fair use are deliberately separate systems -- turning
+  // chat messages into microtransactions is exactly what the product must not do.
+  //
+  // The limit now comes from the entitlement engine rather than from
+  // users.plan, because users.plan is a mirror and the subscription is the
+  // truth. The old lookup only knew FREE/PLUS/PRO, so a VIP or Premium customer
+  // would silently have fallen through to the FREE ceiling.
+  const { data: ent } = await sb.rpc('billing_entitlements', { p_user_id: uid });
+  const plan = String(ent?.plan_code ?? profile?.plan ?? 'FREE').toUpperCase();
+  const dailyLimit = Number(ent?.ai_fair_use_daily ?? 20);
 
   if (dailyLimit >= 0) {
     const now = new Date();

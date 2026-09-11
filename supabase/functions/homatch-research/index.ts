@@ -43,6 +43,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { type Locale, LANGUAGE_NAMES, resolveLocaleFromBody, languageDirective } from '../_shared/locale.ts';
+import { beginExecution, settleExecution, releaseExecution } from '../_shared/billing.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -353,6 +354,56 @@ serve(async (req) => {
   const key = Deno.env.get('OPENAI_API_KEY');
   if (!key) return json({ error: 'Research provider not configured' }, 500);
 
+  // ── Billing gate ───────────────────────────────────────────────────────
+  //
+  // Everything above this line is free and stays free: the cache hit above
+  // returns without reaching here at all, because a reused report costs us
+  // nothing and so must cost the customer nothing. That reuse is the whole
+  // point of research_cache.
+  //
+  // Below this line we are about to spend real provider money, so the run has
+  // to be funded. Included allowance first (three a month on every plan);
+  // wallet credits after that; and if the wallet is empty the customer is told
+  // how to continue rather than shown a dead end.
+  if (!uid) return json({ error: 'User profile not found', reasonCode: 'NO_PROFILE' }, 404);
+
+  const startedAt = Date.now();
+  const grant = await beginExecution(sb, {
+    userId: uid,
+    productCode: 'VERIFY',
+    // Stable for the logical run, so a retried request re-uses the same hold
+    // instead of placing a second one.
+    idempotencyKey: `verify:${uid}:${fingerprint}`,
+    jobRef: fingerprint,
+    metadata: { mode, lang },
+  });
+
+  if (!grant.ok) {
+    // Not a paywall: a continuation. The client renders the activation offer
+    // from the entitlement payload, which knows whether this customer still
+    // has their once-per-account bonus.
+    const { data: ent } = await sb.rpc('billing_entitlements', { p_user_id: uid });
+    return json({
+      error: 'This verification needs Credits to continue.',
+      reasonCode: grant.reason ?? 'BILLING_REQUIRED',
+      includedUsed: true,
+      planCode: grant.planCode,
+      walletBalance: Number(ent?.wallet?.balance ?? 0),
+      firstTopupPromoAvailable: !!ent?.first_topup_promo_available,
+    }, 402);
+  }
+
+  // Plan differences are breadth and depth, never truthfulness. A Standard
+  // report says exactly the same true things about ownership, cadastral
+  // identity and legal status as a Maximum one; it searches fewer sources and
+  // reasons over them less deeply.
+  const DEPTH: Record<string, { context: 'low' | 'medium' | 'high'; effort: 'low' | 'medium' | 'high' }> = {
+    STANDARD: { context: 'low',    effort: 'low' },
+    ENHANCED: { context: 'medium', effort: 'medium' },
+    MAXIMUM:  { context: 'high',   effort: 'high' },
+  };
+  const depth = DEPTH[grant.qualityTier] ?? DEPTH.STANDARD;
+
   const modePrompt = MODE_PROMPTS[mode](query, isUrl);
   const prompt = `You are Homatch Research, an evidence-based verification assistant. ${modePrompt}
 Homatch internal data (for context only, not a source of truth for public facts): ${JSON.stringify(internal).slice(0, 30000)}
@@ -362,20 +413,27 @@ ${languageDirective(lang)}`;
   const providerResult = await callResearchProvider(key, {
     model: MODEL,
     input: prompt,
-    tools: [{ type: 'web_search', search_context_size: 'medium' }],
+    tools: [{ type: 'web_search', search_context_size: depth.context }],
     store: false,
-    reasoning: { effort: 'low' },
+    reasoning: { effort: depth.effort },
   });
 
   let p: any;
   try {
     p = JSON.parse(providerResult.raw);
   } catch {
-    return json({ error: 'Research provider returned an unreadable response.' }, 502);
+    // Our problem, not theirs. Nothing is charged and an included slot is
+    // handed back.
+    await releaseExecution(sb, grant, 'provider_response_unreadable');
+    return json({ error: 'Research provider returned an unreadable response.', creditsCharged: 0 }, 502);
   }
   if (!providerResult.ok) {
     console.error('[homatch-research] provider error', providerResult.status, p?.error ?? providerResult.raw?.slice(0, 500));
-    return json({ error: p?.error?.message ? `Research provider error: ${p.error.message}` : `Research provider error (${providerResult.status || 'network'})` }, 502);
+    await releaseExecution(sb, grant, `provider_error_${providerResult.status || 'network'}`);
+    return json({
+      error: p?.error?.message ? `Research provider error: ${p.error.message}` : `Research provider error (${providerResult.status || 'network'})`,
+      creditsCharged: 0,
+    }, 502);
   }
 
   const text = textOf(p);
@@ -462,6 +520,48 @@ ${languageDirective(lang)}`;
     usage: p?.usage || null,
   };
 
+  // ── Settle ─────────────────────────────────────────────────────────────
+  //
+  // Priced from what this run ACTUALLY consumed, not from the estimate. The
+  // token counts come from the provider's own usage block and the rates from
+  // provider_price_book, so a short cheap lookup costs the customer less than a
+  // deep one -- and wallet_settle clamps the result to what they authorised, so
+  // a surprisingly expensive provider is our problem rather than theirs.
+  const aiUsage = p?.usage ?? {};
+  const inputTokens = Number(aiUsage.input_tokens ?? 0);
+  const cachedTokens = Number(aiUsage.input_tokens_details?.cached_tokens ?? 0);
+  const outputTokens = Number(aiUsage.output_tokens ?? 0);
+  const webSearchCalls = sources.length;
+
+  const { data: aiCents } = await sb.rpc('billing_ai_cost_cents', {
+    p_model: p?.model || MODEL,
+    p_input_tokens: inputTokens,
+    p_cached_tokens: cachedTokens,
+    p_output_tokens: outputTokens,
+    p_web_search_calls: webSearchCalls,
+  });
+
+  let creditsCharged = 0;
+  try {
+    const settled = await settleExecution(sb, grant, {
+      provider: 'openai',
+      providerOperation: 'web_search_research',
+      providerRequestId: p?.id ?? undefined,
+      model: p?.model || MODEL,
+      inputTokens, cachedTokens, outputTokens,
+      searchCount: webSearchCalls,
+      durationMs: Date.now() - startedAt,
+      rawProviderCostCents: 0,
+      aiCostCents: Number(aiCents ?? 0),
+      metadata: { mode, quality_tier: grant.qualityTier, sources: sources.length, status },
+    }, hasEvidence ? 'SUCCESS' : 'PARTIAL');
+    creditsCharged = settled.chargedCredits;
+  } catch (e) {
+    // Billing must never eat a report the customer has already paid provider
+    // cost for. Log loudly and let the sweeper reconcile the hold.
+    console.error('[homatch-research] settle failed; reservation left for the sweeper', e);
+  }
+
   // Persist for caching/dedup — best-effort, never blocks the response.
   sb.from('research_cache')
     .upsert(
@@ -487,5 +587,16 @@ ${languageDirective(lang)}`;
     )
     .then(() => {}, (e: unknown) => console.error('[homatch-research] cache write failed', e));
 
-  return json(responseBody);
+  // What the customer was charged and why. Deliberately no COGS, no provider
+  // price and no margin: those are ours, and they are not in responseBody either.
+  return json({
+    ...responseBody,
+    billing: {
+      funding: grant.funding,          // INCLUDED | PAYG
+      planCode: grant.planCode,
+      qualityTier: grant.qualityTier,  // STANDARD | ENHANCED | MAXIMUM
+      creditsCharged,
+      creditsAuthorized: grant.authorizedMaxCredits,
+    },
+  });
 });

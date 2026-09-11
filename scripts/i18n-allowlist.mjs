@@ -29,12 +29,21 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // real forms for the same key, so this cannot be hiding a gap there.
   'mp_dev_stage_email',
   'profile_login_google', // "Google" — third-party trademark
+  // "Premium" — the PAID PLAN's own name, not the adjective. VIP and Premium
+  // are the plan brands and are set in Latin script on the badge, the pricing
+  // card and the profile chip in every locale, exactly as "Homatch AI" is.
+  // Translating one and not the other would make the two tiers look like they
+  // belong to different products. (badge_vip is an acronym and is not flagged.)
+  'badge_premium',
   // Turkish legitimately borrows these exact Latin spellings; the other
   // languages already carry distinct real translations for the same keys,
   // so allowlisting here can't hide a missing translation elsewhere.
   'prop_area', // Turkish "m²" is the standard Turkish abbreviation too
   'prop_price_sqm', // Turkish "/m²"
   'matches_platform', // Turkish "Platform" is a standard loanword
+  // Turkish "Bonus" is the ordinary Turkish word, spelled identically. ka/ru/
+  // ar/he all carry their own distinct forms for this key.
+  'wallet_bucket_promotional',
   'profile_field_plan', // Turkish "Plan" is a standard loanword
   'comm_filter_platform',
   'admin_sources_platform',

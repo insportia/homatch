@@ -82,7 +82,7 @@ export function StructurePanel({ studio }: { studio: StudioState }) {
                   </Button>
                   <Button
                     variant="ghost" size="icon" className="h-7 w-7"
-                    onClick={() => { select(section.id); setEnabled(!section.enabled); }}
+                    onClick={() => { select(section.id); setEnabled(!section.enabled, section.id); }}
                     aria-label={t('studio_enabled')}
                   >
                     {section.enabled

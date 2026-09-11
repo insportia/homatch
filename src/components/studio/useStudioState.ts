@@ -68,7 +68,7 @@ export interface StudioState {
   setVariant: (variant: string) => void;
   setTheme: (theme: 'light' | 'dark' | null) => void;
   setSpacing: (spacing: SiteSection['spacing']) => void;
-  setEnabled: (enabled: boolean) => void;
+  setEnabled: (enabled: boolean, id?: string) => void;
   setMedia: (slot: string, url: string | null, alt?: string) => void;
   move: (id: string, delta: number) => void;
   addSection: (type: string) => void;
@@ -184,9 +184,21 @@ export function useStudioState(): StudioState {
     patch(selectedId, s => ({ ...s, spacing }));
   }, [selectedId, patch]);
 
-  const setEnabled = useCallback((enabled: boolean) => {
-    if (!selectedId) return;
-    setDraft(prev => setSectionEnabled(prev, selectedId, enabled));
+  /**
+   * Show or hide a section.
+   *
+   * `id` is explicit because the structure list toggles a row's eye without
+   * that row necessarily being the selected one. Selecting and toggling in
+   * one handler cannot work through the selection: select() only schedules
+   * the state change, so the toggle would still read the PREVIOUS selection
+   * and either do nothing or hide a different section than the one clicked.
+   * The inspector's switch has no id to hand and means "the selected one",
+   * which is what the default covers.
+   */
+  const setEnabled = useCallback((enabled: boolean, id?: string) => {
+    const target = id ?? selectedId;
+    if (!target) return;
+    setDraft(prev => setSectionEnabled(prev, target, enabled));
     setDirty(true);
   }, [selectedId]);
 

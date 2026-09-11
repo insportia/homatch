@@ -2,6 +2,8 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
 import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
+import { harvestReport } from '../../../src/verify/intelligence/harvest.ts';
+import { persistHarvest } from '../../../src/verify/intelligence/graphStore.ts';
 import {
   consumptionFromUsage,
   costOperationFor,
@@ -3092,6 +3094,8 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // The job is already saved. Bookkeeping runs after it and separately, so a
   // failure here can cost us a number but never a customer's report.
   await recordVerificationCost(sb, { id: j.id, result_json: result });
+  // And the graph learns whatever this verification actually established.
+  await learnFromVerification(sb, j.id, result);
   return finished;
 }
 
@@ -3729,6 +3733,50 @@ function withholdReportUntilSignIn(job: any): any {
  * property, and a report is not cheaper to buy for having been cheaper to
  * make.
  */
+/*
+ * WHAT THIS VERIFICATION TEACHES THE GRAPH.
+ *
+ * Every completed Verify should leave Homatch knowing more than it did — not
+ * "a report exists for this code", which cannot be partially refreshed and
+ * cannot say which of its claims has gone stale, but a set of facts each with
+ * a source, a validity and a freshness class.
+ *
+ * harvestReport() decides what may be learned and refuses the rest: the
+ * narrative is never promoted to a fact, a check that established nothing is
+ * not stored as knowledge, and an unverified link between a flat and a
+ * project is not written at all.
+ *
+ * Runs after the report is saved and can never fail it. The graph is an
+ * optimisation; losing an update costs one cheap future verification, while
+ * losing the report costs a customer.
+ */
+async function learnFromVerification(db: any, jobId: string, report: any): Promise<void> {
+  try {
+    const { data: policies } = await db
+      .from('intelligence_freshness_policy')
+      .select('fact_key_pattern, freshness_class, max_age_hours');
+
+    const harvest = harvestReport(report, policies ?? []);
+    if (!harvest.entities.length) return;
+
+    const out = await persistHarvest(db, harvest, jobId);
+    const changed = out.changes.length
+      ? '; changed: ' + out.changes.map((c: any) => c.factKey).join(', ')
+      : '';
+    const skipped = harvest.skipped.length ? '; not learned: ' + harvest.skipped.length : '';
+    const errors = out.errors.length ? '; errors: ' + out.errors.join(' | ') : '';
+    console.log(
+      'research-agent: graph updated from ' + jobId + ' — ' +
+      out.entities + ' entities, ' +
+      out.factsNew + ' new / ' + out.factsChanged + ' changed / ' + out.factsUnchanged + ' confirmed facts, ' +
+      out.relationshipsNew + ' new / ' + out.relationshipsConfirmed + ' confirmed links' +
+      changed + skipped + errors
+    );
+  } catch (e) {
+    console.error('research-agent: learning from the verification threw', e instanceof Error ? e.message : String(e));
+  }
+}
+
 async function recordVerificationCost(db: any, job: any): Promise<void> {
   try {
     const usage = job?.result_json?.costUsage;

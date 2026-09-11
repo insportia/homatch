@@ -7,7 +7,7 @@ import { persistHarvest, loadKnownIntelligence } from '../../../src/verify/intel
 import { planVerification } from '../../../src/verify/intelligence/stagePlan.ts';
 import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
-import { buildKnownBrief } from '../../../src/verify/intelligence/knownBrief.ts';
+import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { planEscalation, searchBudgetInstruction } from '../../../src/verify/intelligence/escalation.ts';
 import { summariseSources } from '../../../src/verify/intelligence/sourceVersion.ts';
 import {
@@ -1420,12 +1420,18 @@ function formatTasTechnicalFactsForPrompt(facts: AggregatedTasFact[]): string {
  * deploy, because a saving that cannot be switched off is a saving nobody can
  * investigate.
  */
-function knownBriefFor(j: any): string {
+function knownBriefFor(j: any, s: Stage): string {
   if ((Deno.env.get('VERIFY_REUSE_ROUTING') ?? 'on').toLowerCase() === 'off') return '';
   const plan = j?.result_json?._reusePlan;
   if (!plan?.known || !Array.isArray(plan.briefFacts) || !plan.briefFacts.length) return '';
   try {
-    const brief = buildKnownBrief(plan.briefFacts, plan.assessments ?? [], plan.scope ?? null);
+    // Only what this stage would otherwise have gone looking for. A stage
+    // handed facts outside its remit, under an instruction to spend its
+    // searches on whatever is missing, is being told to search harder — see
+    // briefFactsForStage().
+    const mine = briefFactsForStage(plan.briefFacts, s.toLowerCase() as any);
+    if (!mine.length) return '';
+    const brief = buildKnownBrief(mine, plan.assessments ?? [], plan.scope ?? null);
     return brief.text ? `\n${brief.text}\n` : '';
   } catch {
     return '';
@@ -1484,7 +1490,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
    * the budget is rung 3, targeted search. The stage still chooses how to
    * spend what it is given; nothing here forbids a search.
    */
-  const known = s === 'SYNTHESIS' ? '' : knownBriefFor(j) + searchBudgetFor(j, s);
+  const known = s === 'SYNTHESIS' ? '' : knownBriefFor(j, s) + searchBudgetFor(j, s);
 
   if (s === 'IDENTITY') {
     return (

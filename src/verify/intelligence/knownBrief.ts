@@ -26,6 +26,35 @@
 // model what we last saw could only bias what it reports seeing now.
 
 import type { FactAssessment } from './freshness.ts';
+import { STAGE_FACTS, type StageName } from './stagePlan.ts';
+
+/**
+ * The facts that are this stage's business.
+ *
+ * A BRIEF IS NOT FREE, AND AN IRRELEVANT ONE IS EXPENSIVE. The brief was
+ * originally built once per run and handed to every research stage. Production
+ * showed what that costs: the market stage, whose job is comparables and
+ * asking prices, was handed the developer's directors and the project's
+ * amenities followed by "spend your searches on what is missing, unclear or
+ * contradicted instead". For market, everything it cares about was missing, so
+ * that reads as an instruction to search harder — and it did. Market went from
+ * 56,017 tokens and 4 searches, with no brief, to 86,206 and 8 the first run it
+ * received one, and stayed there.
+ *
+ * Scoping by stage costs nothing and removes the contradiction: a stage sees
+ * what it would otherwise have gone looking for, and nothing else. When that
+ * set is empty the stage gets no brief at all, which is the honest
+ * representation of "we know nothing that helps you".
+ */
+export function briefFactsForStage<T extends { fact_key: string }>(
+  facts: readonly T[] | null | undefined,
+  stage: StageName
+): T[] {
+  const prefixes = STAGE_FACTS[stage] ?? [];
+  return (facts ?? []).filter((f) =>
+    prefixes.some((p) => (p.endsWith('.') ? f.fact_key?.startsWith(p) : f.fact_key === p))
+  );
+}
 
 /** A fact as the graph returns it, with the value the brief will quote. */
 export interface BriefFact {

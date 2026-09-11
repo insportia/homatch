@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildKnownBrief, briefable } from '../knownBrief.ts';
+import { buildKnownBrief, briefFactsForStage, briefable } from '../knownBrief.ts';
 
 const fresh = (factKey) => ({ factKey, state: 'FRESH', ageHours: 1, maxAgeHours: 8760, freshnessClass: 'LOW_VOLATILITY', reason: 'fresh' });
 const stale = (factKey) => ({ factKey, state: 'STALE', ageHours: 900, maxAgeHours: 24, freshnessClass: 'HIGH_VOLATILITY', reason: 'old' });
@@ -195,4 +195,54 @@ test('an identified key never falls back to key-only matching', () => {
     scope
   );
   assert.equal(brief.text, '');
+});
+
+/* ── a brief is not free, and an irrelevant one is expensive ─────────
+ *
+ * The brief was built once per run and given to every stage. Market — whose
+ * job is comparables and asking prices — was handed the developer's directors
+ * and the project's amenities, followed by "spend your searches on what is
+ * missing". For market everything it cares about WAS missing, so that reads
+ * as an instruction to search harder. It did: 56,017 tokens and 4 searches
+ * with no brief, 86,206 and 8 the first run it got one.
+ */
+
+test('a stage is briefed only on facts within its own remit', () => {
+  const facts = [
+    { fact_key: 'parcel.code', value_text: '01.72.14.040.030' },
+    { fact_key: 'project.floors', value_number: 7 },
+    { fact_key: 'listing.price', value_number: 102000 },
+  ];
+  assert.deepEqual(briefFactsForStage(facts, 'market').map((f) => f.fact_key), ['listing.price']);
+  assert.deepEqual(briefFactsForStage(facts, 'identity').map((f) => f.fact_key), ['parcel.code']);
+  assert.deepEqual(briefFactsForStage(facts, 'public_research').map((f) => f.fact_key), ['project.floors']);
+});
+
+test('a stage we know nothing useful for is briefed on nothing', () => {
+  // Not an empty heading, not a list of somebody else's facts — nothing. That
+  // is the honest representation of "we hold nothing that helps you", and it
+  // is what market gets on a property whose own listing facts we do not hold.
+  const facts = [
+    { fact_key: 'project.floors', value_number: 7 },
+    { fact_key: 'company.name', value_text: 'LLC Geo City Digomi' },
+  ];
+  assert.deepEqual(briefFactsForStage(facts, 'market'), []);
+});
+
+test('scoping never lets a stage lose a fact it is meant to have', () => {
+  // The inverse failure: over-tight scoping would quietly starve a stage of
+  // reuse and put the cost straight back.
+  const facts = [
+    { fact_key: 'listing.price', value_number: 1 },
+    { fact_key: 'listing.status', value_text: 'ACTIVE' },
+    { fact_key: 'market.medianPricePerSqm', value_number: 2 },
+  ];
+  assert.equal(briefFactsForStage(facts, 'market').length, 3);
+});
+
+test('synthesis is briefed on nothing at all', () => {
+  // It reasons over the evidence this run gathered. A separate list of
+  // remembered facts would be a second, unciteable source.
+  const facts = [{ fact_key: 'parcel.code', value_text: 'x' }, { fact_key: 'listing.price', value_number: 1 }];
+  assert.deepEqual(briefFactsForStage(facts, 'synthesis'), []);
 });

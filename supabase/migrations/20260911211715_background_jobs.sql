@@ -1,5 +1,14 @@
 -- HOMATCH — background_jobs: one durable registry for work that outlives a tab.
 --
+-- NOTE ON VERSION NUMBERING. This file carries the final state of
+-- background_job_cancel(). Production reached it in three recorded steps
+-- (…213259 and …213331, which fixed wallet_release's return type and then
+-- deferred the release to the worker); they are folded in here rather than
+-- kept as separate files, because a fresh environment should arrive at the
+-- answer directly rather than replaying a bug. `supabase migration repair` is
+-- how an already-migrated database reconciles the two intervening versions —
+-- the CI workflow already scripts it.
+--
 -- WHY A NEW TABLE, AND WHY IT REPLACES NOTHING
 --
 -- There are already two durable pipelines. research_jobs drives Verify and is

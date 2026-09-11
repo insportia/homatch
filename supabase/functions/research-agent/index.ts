@@ -3474,6 +3474,45 @@ export function assertNoLeaks(customerJson: unknown): void {
  * admin reading a terminal job still wants it.
  */
 const INTERNAL_TERMINAL_MARKER = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+/*
+ * A JAVASCRIPT ERROR IS NOT A MESSAGE FOR A CUSTOMER.
+ *
+ * This is the mechanism behind the reported Continue Verification failure.
+ * advance()'s catch ends with `error: String(e)`, so ANYTHING thrown inside
+ * it is written verbatim into research_jobs.error. INTERNAL_TERMINAL_MARKER
+ * only recognises SCREAMING_SNAKE markers, so a real runtime error sails
+ * straight through it — and VerifyPage's check/run/resume/skip all do
+ * `if (data?.error) throw new Error(data.error)`. The customer is shown the
+ * raw string.
+ *
+ * That is how a TypeError becomes:
+ *
+ *   Cannot read properties of undefined (reading 'filter')
+ *
+ * on a customer's screen. Guarding the one function that happened to throw it
+ * fixes one instance; this closes the class. Reproduced against a disposable
+ * job, where the same path surfaced "Error: missing worker job" — an internal
+ * string, shown to the customer, for a worker session that had simply gone.
+ *
+ * The stored column is deliberately untouched: admin diagnostics still read
+ * the real value straight from the row. Only what leaves for the customer is
+ * replaced, with the same safe terminalReason the markers already use.
+ */
+const RAW_RUNTIME_ERROR = new RegExp(
+  [
+    // "TypeError: ...", "ReferenceError: ...", and a bare "Error: ..."
+    String.raw`^\s*\w*Error\b`,
+    // The V8 phrasings, in case something re-wraps the message.
+    String.raw`Cannot read propert`,
+    String.raw`is not a function`,
+    String.raw`is not defined`,
+    String.raw`undefined is not`,
+    String.raw`null is not`,
+    // A stack frame is never customer copy.
+    String.raw`\n\s*at `,
+  ].join('|'),
+  'i'
+);
 function sanitizeForCustomer(job: any): any {
   // v32 (P0 fix): `research_jobs.error` also carries the last TRANSIENT
   // retry's message while a job is still actively being retried (see
@@ -3511,6 +3550,13 @@ function sanitizeForCustomer(job: any): any {
    * as a safe enum instead: a run that expired waiting for the customer is
    * not a run that failed, and must never read like one.
    */
+  // A raw runtime error never leaves for the customer, whatever the status.
+  // INCOMPLETE is the honest description: the research did not finish, and
+  // nothing about the PROPERTY is being claimed by saying so.
+  if (job && job.error && RAW_RUNTIME_ERROR.test(String(job.error))) {
+    const { error: _rawRuntimeError, ...withoutRaw } = job;
+    job = { ...withoutRaw, terminalReason: 'INCOMPLETE' };
+  }
   if (job && job.error && INTERNAL_TERMINAL_MARKER.test(String(job.error))) {
     const marker = String(job.error).trim();
     const { error: _internalMarker, ...withoutMarker } = job;

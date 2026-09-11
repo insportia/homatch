@@ -85,15 +85,37 @@ test('both anonymous endpoints ask the same question', () => {
 
 /* ── the report does not leave ───────────────────────────────────────── */
 
-test('a finished report is removed from the response, not hidden in it', () => {
+test('the gate is an allow-list, not a list of things to remove', () => {
+  // research_jobs is forty columns wide and several of them ARE the research:
+  // evidence, evidence_bundle, documents, synthesis_json. A deny-list over a
+  // table that keeps growing leaks whichever column is added next.
+  const src = agent();
+  const i = src.indexOf('const ANON_VISIBLE_JOB_FIELDS');
+  assert.ok(i > 0, 'the gate is not an allow-list');
+  const list = src.slice(i, src.indexOf('] as const;', i));
+  for (const leaked of [
+    'result_json', 'evidence', 'evidence_bundle', 'documents',
+    'synthesis_json', 'captcha', 'user_id', 'anon_session_id',
+    'target_url', 'verification_url', 'response_id',
+  ]) {
+    assert.ok(!new RegExp(`'${leaked}'`).test(list), `${leaked} is visible to an anonymous caller`);
+  }
+  const fn = src.slice(i, src.indexOf('function sanitizeForCustomer'));
+  assert.ok(/awaitingSignIn = true/.test(fn), 'the client is never told the research is ready');
+});
+
+test('the gate applies while the job is still running, not only at the end', () => {
+  // A job one poll from COMPLETE has done nearly all the work, and its
+  // partial result_json is an unsanitised working draft — sanitizeForCustomer
+  // deliberately only cleans a COMPLETE job, so the partial still carries the
+  // raw official-source evidence the customer boundary exists to strip.
+  // Withholding only at the end leaves a gate you walk around by polling early.
   const src = agent();
   const i = src.indexOf('function withholdReportUntilSignIn');
-  assert.ok(i > 0, 'nothing withholds the report');
-  const fn = src.slice(i, src.indexOf('\nfunction ', i + 10));
-  for (const field of ['result_json', 'report', 'synthesis']) {
-    assert.ok(new RegExp(`${field}: _`).test(fn), `${field} still reaches an anonymous caller`);
-  }
-  assert.ok(/awaitingSignIn: true/.test(fn), 'the client is told nothing about why');
+  const fn = src.slice(i, src.indexOf('function sanitizeForCustomer'));
+  assert.ok(/if \(!job\) return job;/.test(fn), 'the gate short-circuits on something other than absence');
+  assert.ok(!/status !== 'COMPLETE'\) return job/.test(fn),
+    'a running job is handed back whole, partial evidence included');
 });
 
 test('every job response for an anonymous caller goes through the gate', () => {
@@ -108,11 +130,15 @@ test('every job response for an anonymous caller goes through the gate', () => {
     'a job response was added or removed without going through the gate');
 });
 
-test('a job still running is not altered by the gate', () => {
-  // There is no report yet to withhold, and the visitor should keep watching
-  // their own research run.
-  assert.ok(/if \(!job \|\| job\.status !== 'COMPLETE'\) return job;/.test(agent()),
-    'the gate touches jobs that have nothing to hide');
+test('a running job can still be watched, just not read', () => {
+  // Progress is theirs — they started this research and are waiting on it.
+  // What it has FOUND is not, until there is an account to give it to.
+  const src = agent();
+  const i = src.indexOf('const ANON_VISIBLE_JOB_FIELDS');
+  const list = src.slice(i, src.indexOf('] as const;', i));
+  for (const watching of ['status', 'stage', 'progress', 'query', 'completed_at', 'error']) {
+    assert.ok(new RegExp(`'${watching}'`).test(list), `${watching} is withheld, so the run looks stuck`);
+  }
 });
 
 test('reads are scoped by owner, so knowing a job id is never enough', () => {

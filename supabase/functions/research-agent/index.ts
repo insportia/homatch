@@ -3610,28 +3610,55 @@ async function anonSessionFor(sb: any, token: unknown): Promise<any | null> {
   return anonSessionUsable(data) ? data : null;
 }
 
-/**
- * What an anonymous caller may see of their own finished job.
+/*
+ * WHAT AN ANONYMOUS CALLER MAY SEE OF THEIR OWN JOB.
  *
- * Everything about PROGRESS is kept: they watched the research run and should
- * keep watching it finish. Everything that IS the research is removed — not
- * emptied, removed — and replaced with a single flag the client turns into
- * "Your full research is ready — sign in to view it."
+ * An ALLOW-LIST, and the distinction matters. The first version of this
+ * removed the finished report and let the rest of the row through, which
+ * read as safe and was not: research_jobs is forty columns wide and several
+ * of them — evidence, evidence_bundle, documents, synthesis_json — ARE the
+ * research. A deny-list over a table that keeps growing is a leak with a
+ * date on it, because the next column is included by default.
  *
- * A job still running has no report to withhold, so this changes nothing for
- * it, and a job that failed is told honestly that it failed rather than being
- * dressed up as ready.
+ * It also applies at EVERY status, not only when the job finishes. A job one
+ * poll away from COMPLETE has already done nearly all the work, and
+ * result_json mid-run is an unsanitised working draft: sanitizeForCustomer
+ * deliberately only cleans a COMPLETE job, so the partial still carries the
+ * raw official-source evidence the customer boundary exists to strip. Giving
+ * that to someone who has not signed in would make the gate a formality you
+ * could walk around by polling early.
+ *
+ * What is left is exactly enough to WATCH your own research run: is it going,
+ * how far along, did it finish, did it fail. Nothing it found.
  */
+const ANON_VISIBLE_JOB_FIELDS = [
+  'id',
+  'status',
+  'stage',
+  'progress',
+  'mode',
+  'query',
+  'created_at',
+  'updated_at',
+  'completed_at',
+  'cancelled_at',
+  // A terminal failure still has to be explainable. sanitizeForCustomer has
+  // already replaced any internal marker or raw runtime error by the time
+  // this runs, so what survives here is customer-facing copy.
+  'error',
+  'terminalReason',
+] as const;
+
 function withholdReportUntilSignIn(job: any): any {
-  if (!job || job.status !== 'COMPLETE') return job;
-  const {
-    result_json: _report,
-    report: _rendered,
-    synthesis: _synthesis,
-    captcha: _captcha,
-    ...rest
-  } = job;
-  return { ...rest, awaitingSignIn: true };
+  if (!job) return job;
+  const visible: Record<string, unknown> = {};
+  for (const k of ANON_VISIBLE_JOB_FIELDS) {
+    if (job[k] !== undefined) visible[k] = job[k];
+  }
+  // The one thing added rather than removed: the client turns this into
+  // "Your full research is ready — sign in to view it."
+  if (job.status === 'COMPLETE') visible.awaitingSignIn = true;
+  return visible;
 }
 
 function sanitizeForCustomer(job: any): any {

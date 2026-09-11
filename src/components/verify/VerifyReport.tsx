@@ -224,6 +224,16 @@ export function VerifyReport({
 
       {findings.length ? <KeyFindings findings={findings} /> : null}
 
+      {/* EVIDENCE, WHERE THE READER IS STILL DECIDING WHETHER TO TRUST IT.
+          This used to sit at the very bottom, below the disclaimer — past the
+          point where anyone was still reading. A due-diligence report is worth
+          what its sources are worth, and the reader needs to know the
+          conclusions are grounded BEFORE they have finished forming an opinion,
+          not after. It stays a closed drawer: the summary line is the promise,
+          the detail is still a deliberate click, and the page above it is
+          unchanged. */}
+      {evidence ? <EvidenceDrawer>{evidence}</EvidenceDrawer> : null}
+
       {sections.map((s) => (
         <section key={s.key} className="space-y-3">
           <h2 className="text-base font-semibold tracking-tight break-words">{clean(s.title)}</h2>
@@ -305,8 +315,6 @@ export function VerifyReport({
       <p className="text-xs text-muted-foreground/80 leading-relaxed break-words">
         {t('verify_ir_disclaimer')}
       </p>
-
-      {evidence ? <EvidenceDrawer>{evidence}</EvidenceDrawer> : null}
     </article>
   );
 }

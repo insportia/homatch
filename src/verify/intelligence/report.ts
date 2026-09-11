@@ -265,6 +265,10 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
  * The grounding gate                                                  *
  * ------------------------------------------------------------------ */
 
+function packageItems(pkg: unknown): EvidenceItem[] {
+  const items = (pkg as EvidencePackage | undefined)?.items;
+  return Array.isArray(items) ? items : [];
+}
 /** Every string a customer will actually read. */
 function customerProse(c: Partial<BuyerIntelligenceReport>): string {
   return [
@@ -285,7 +289,7 @@ export function validateReport(
   const problems: string[] = [];
   if (!candidate) return { ok: false, problems: ['model output was not parseable JSON'] };
 
-  const known = new Set(pkg.items.map((i) => i.id));
+  const known = new Set(packageItems(pkg).map((i) => i.id));
   const checkCites = (cites: string[], where: string): void => {
     for (const c of cites) {
       if (!known.has(c)) problems.push(`ungrounded citation ${c} in ${where}`);
@@ -365,10 +369,32 @@ const TITLES: Record<SectionKey, string> = {
  * construction — including the absence rule, because it never characterises
  * what was not found.
  */
+/*
+ * A REPORT BUILDER MUST NOT BE THE THING THAT CRASHES.
+ *
+ * deterministicReport() and finalizeReport() are the LAST line of defence:
+ * they exist so a customer gets something truthful when the model fails.
+ * Both reached straight into pkg.items, so handed a package without one they
+ * threw the exact error reported from production:
+ *
+ *   TypeError: Cannot read properties of undefined (reading 'filter')
+ *
+ * Reproduced directly against these two functions — deterministicReport({})
+ * and finalizeReport({}, parsed) each throw it verbatim.
+ *
+ * buildEvidencePackage() always returns an items array, so the only live
+ * caller is safe today. That is exactly why this is worth fixing rather than
+ * arguing about: the fallback path has no business depending on a caller
+ * getting the shape right, and a deterministic report built from no evidence
+ * is a correct, honest answer — an empty one.
+ */
+
+
 export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceReport {
   const sections: ReportSection[] = [];
+  const allItems = packageItems(pkg);
   for (const key of ['LEGAL', 'PROJECT', 'MARKET'] as SectionKey[]) {
-    const mine = pkg.items.filter((i) => SECTION_FOR[i.category] === key);
+    const mine = allItems.filter((i) => SECTION_FOR[i.category] === key);
     if (!mine.length) continue;
     sections.push({
       key,
@@ -381,7 +407,7 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
 
   // The strongest few claims, stated as themselves. No interpretation is
   // offered because none can be justified without a model.
-  const keyFindings: KeyFinding[] = pkg.items
+  const keyFindings: KeyFinding[] = packageItems(pkg)
     .filter((i) => i.tier <= 2)
     .slice(0, MAX_KEY_FINDINGS)
     .map((i) => ({
@@ -416,7 +442,7 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
     contractUpload: { recommend: true, text: '' },
     mode: 'DETERMINISTIC',
     rejectedBecause: [],
-    evidenceUsed: pkg.items,
+    evidenceUsed: packageItems(pkg),
   };
 }
 
@@ -451,6 +477,6 @@ export function finalizeReport(
     contractUpload: parsed.contractUpload ?? { recommend: true, text: '' },
     mode: 'MODEL',
     rejectedBecause: [],
-    evidenceUsed: pkg.items.filter((i) => cited.has(i.id)),
+    evidenceUsed: packageItems(pkg).filter((i) => cited.has(i.id)),
   };
 }

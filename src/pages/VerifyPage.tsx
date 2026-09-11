@@ -499,11 +499,9 @@ function ComparablesCard({comparables}:{comparables?:Comparable[]}){const{t}=use
 // go through renameResearchJob()/softDeleteResearchJob() (soft delete only —
 // see the migration's own header comment for why a real DELETE is never
 // issued).
-type HistoryTypeFilter='all'|'property'|'cadastral';
 function VerifyHistorySidebar({open,onOpenChange,items,loading,activeJobId,onOpenJob,onRename,onDelete}:{open:boolean;onOpenChange:(v:boolean)=>void;items:ResearchJobRecord[];loading:boolean;activeJobId:string|null;onOpenJob:(id:string)=>void;onRename:(id:string,title:string)=>void;onDelete:(id:string)=>void}){
   const{t}=useLanguage();
   const[q,setQ]=useState('');
-  const[typeFilter,setTypeFilter]=useState<HistoryTypeFilter>('all');
   const[renamingId,setRenamingId]=useState<string|null>(null);
   const[renameValue,setRenameValue]=useState('');
   const[confirmDeleteId,setConfirmDeleteId]=useState<string|null>(null);
@@ -511,15 +509,20 @@ function VerifyHistorySidebar({open,onOpenChange,items,loading,activeJobId,onOpe
   const needle=q.trim().toLowerCase();
   // Already newest-first from listVerifyHistory's own ORDER BY — filtering
   // here never re-sorts, so "sort newest-first" always holds.
-  const filtered=items.filter(j=>{
-    if(typeFilter!=='all'&&j.mode!==typeFilter)return false;
+  // asArray, not items.filter: a caller that has not loaded history yet
+  // passes undefined, and "Cannot read properties of undefined (reading
+  // 'filter')" is precisely the crash this page has already been bitten by
+  // once. The guard is the same one used everywhere else here.
+  const filtered=asArray<ResearchJobRecord>(items).filter(j=>{
     if(!needle)return true;
     const hay=[j.title,j.query,j.entity_name,j.project_name,j.address,j.developer_name,j.company_name].filter(Boolean).join(' ').toLowerCase();
     return hay.includes(needle);
   });
   return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent side="left" className="w-full sm:max-w-md flex flex-col gap-3"><SheetHeader><SheetTitle>{t('verify_history_sidebar_title')}</SheetTitle></SheetHeader>
     <Input value={q} onChange={e=>setQ(e.target.value)} placeholder={t('verify_history_search_ph')}/>
-    <Tabs value={typeFilter} onValueChange={v=>setTypeFilter(v as HistoryTypeFilter)}><TabsList className="grid grid-cols-3 w-full"><TabsTrigger value="all">{t('verify_history_filter_all')}</TabsTrigger><TabsTrigger value="property">{t('verify_tab_property')}</TabsTrigger><TabsTrigger value="cadastral">{t('verify_tab_cadastral')}</TabsTrigger></TabsList></Tabs>
+    {/* The Property/Cadastral filter was removed at product's request: every
+        research is reachable by search, and a three-way tab over two modes
+        mostly hid rows people were looking for. */}
     <div className="flex-1 overflow-y-auto space-y-2 pr-1">
       {loading?<p className="text-xs text-muted-foreground px-1">{t('verify_history_loading')}</p>:filtered.length===0?<p className="text-xs text-muted-foreground px-1">{t('verify_report_history_empty')}</p>:filtered.map(j=>{
         const title=j.title||j.entity_name||j.project_name||j.query;

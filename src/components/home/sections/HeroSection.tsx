@@ -69,13 +69,20 @@ export function HeroSection() {
             {t('mp_hero_eyebrow')}
           </p>
 
-          {/* The product statement. "Homatch" is set as its own mass so the
-              name is unmistakable before the sentence is even read. */}
+          {/* The lockup: the name on its own line, then the proposition.
+              Two lines rather than one sentence, so the headline needs no
+              full stop and no dash to hold them together, and the name is
+              unmistakable before the phrase under it is even read. */}
           <h1
             className="mt-5 text-balance font-semibold leading-[1.07] tracking-[-0.03em] text-white sm:mt-6"
-            style={{ fontSize: 'clamp(1.6rem, 7.4vw, 3.9rem)' }}
+            style={{ fontSize: 'clamp(1.5rem, 7.4vw, 3.9rem)' }}
           >
-            {t('mp_hero_h1')}
+            <span className="block">{t('brand_name')}</span>
+            {/* Balanced from sm up, where equal line lengths look composed.
+                On a narrow phone balance splits the phrase in the wrong
+                place ("Smart real / estate decisions"), so the narrowest
+                case fills greedily and breaks after the noun instead. */}
+            <span className="block text-pretty text-white/90 sm:text-balance">{t('mp_hero_h1')}</span>
           </h1>
 
           <p

@@ -2846,6 +2846,7 @@ const en = {
 
   // ── Brand ─────────────────────────────────────────────────
   brand_tagline: 'Know before you buy',
+  brand_name: 'Homatch',
 
   // ── Main Page (premium rebuild) ───────────────────────────
   mp_nav_how: 'How it works',
@@ -2854,7 +2855,7 @@ const en = {
   mp_nav_menu_open: 'Open menu',
   mp_nav_menu_close: 'Close menu',
 
-  mp_hero_eyebrow: 'Real estate intelligence platform',
+  mp_hero_eyebrow: 'Real estate intelligence',
   mp_hero_line1: 'Find someone who wants it.',
   mp_hero_line2: 'Find the one you want.',
   mp_hero_line3: 'In one action.',
@@ -2870,7 +2871,7 @@ const en = {
 
 
 
-  mp_cta_title: 'Decisions made on evidence.',
+  mp_cta_title: 'Decisions made on evidence',
   mp_cta_body: 'Ask Homatch a question, add a property, or check a cadastral code.',
   mp_cta_primary: 'Create your account',
 
@@ -2880,13 +2881,13 @@ const en = {
   mp_footer_legal: 'Legal',
 
   // ── Main Page: launcher-led rebuild ──────────────────────
-  mp_hero_h1: 'Homatch. Smart real estate decisions.',
-  mp_hero_h2: 'Everything on one platform. In one click.',
-  mp_hero_scope: 'Check, value, plan, find, compare, buy, sell or rent. All of it better informed, and more safely.',
+  mp_hero_h1: 'Smart real estate decisions',
+  mp_hero_h2: 'Everything on one platform',
+  mp_hero_scope: 'Check, value, plan, find, compare, buy, sell or rent. One click to start, and more behind every decision.',
   mp_hero_explore: 'See what Homatch does',
   mp_nav_start: 'Start',
   mp_launch_eyebrow: 'Start here',
-  mp_launch_title: 'Start a real task, right now.',
+  mp_launch_title: 'Start a real task',
   mp_launch_sub: 'Every action below opens the real Homatch product. No demo, no waiting list.',
   mp_launch_verify_go: 'Check',
   mp_launch_ai_desc: 'Ask about a property, a project, a district, a price, a report or a deal, in your own language.',
@@ -2894,24 +2895,24 @@ const en = {
   mp_contract_desc: 'Upload a purchase, sale or rental contract and Homatch reads it, explains what it says, and marks what deserves a second look.',
   mp_contract_cta: 'Upload a contract',
   mp_contract_formats: 'PDF, DOCX, DOC or a photo, up to 20 MB. Opens in the Verification Center.',
-  mp_layers_eyebrow: 'What Homatch understands',
-  mp_layers_title: 'A listing knows the flat. Homatch knows what is underneath it.',
-  mp_layers_sub: 'Seven layers are gathered around a single property, and any one of them can change the decision. The reports, the matching and the answers are all built on them.',
-  mp_layer_property: 'The property',
+  mp_layers_eyebrow: 'Intelligence layers',
+  mp_layers_title: 'Seven layers under every property',
+  mp_layers_sub: 'A listing knows the flat. Homatch knows what sits underneath it, from the official record to the financing, and every report, match and answer is built on those seven layers.',
+  mp_layer_property: 'Property',
   mp_layer_property_d: 'What is registered: the identity of the unit, its area, the owner of record, and anything filed against it.',
-  mp_layer_project: 'The project',
+  mp_layer_project: 'Project',
   mp_layer_project_d: 'The building it sits in and the company that built it. What else they have delivered, and what is on record about them.',
-  mp_layer_location: 'The location',
+  mp_layer_location: 'Location',
   mp_layer_location_d: 'The district, what surrounds it, and how it is described in the sources Homatch can reach.',
-  mp_layer_market: 'The market',
+  mp_layer_market: 'Market',
   mp_layer_market_d: 'Comparable listings and asking prices gathered around the property, so a number has something to be judged against.',
   mp_layer_demand: 'Demand',
   mp_layer_demand_d: 'Who is looking for something like this right now. These are the intent signals that matching runs against.',
-  mp_layer_contract: 'The contract',
+  mp_layer_contract: 'Contract',
   mp_layer_contract_d: 'The document itself, read clause by clause, with the terms that deserve attention pulled out.',
   mp_layer_financing: 'Financing',
   mp_layer_financing_d: 'What the purchase actually costs over time: the payment, the structure, and what moves them.',
-  mp_cc_title: 'AI that calls your leads, talks to them, and tells you who is genuinely interested.',
+  mp_cc_title: 'Calls and qualification handled for you',
   mp_cc_sub: 'Build a call campaign for a property or a project and Homatch does the calling. It holds the conversation in the customer’s own language, works out what they are looking for, and keeps the outcome against the contact for your team to pick up.',
   mp_cc_stage_lead: 'Lead',
   mp_cc_stage_talk: 'Conversation',
@@ -2931,10 +2932,10 @@ const en = {
   mp_cc_panel_alt: 'An AI call in progress: the stage it has reached, and the outcome waiting to be filled in',
   mp_cc_panel_note: 'A representation of a live call. No name, number or transcript is shown.',
   mp_verify_eyebrow: 'Buyer Intelligence',
-  mp_verify_show_title: 'Know what you are buying before you sign for it.',
+  mp_verify_show_title: 'The full picture before you sign',
   mp_verify_show_contract_d: 'Upload the contract into the same case and it is read alongside everything else Homatch found.',
   mp_match_eyebrow: 'Matching',
-  mp_match_show_title: 'Give Homatch a property. It finds the people who may actually want it.',
+  mp_match_show_title: 'One click from your property to a ranked shortlist',
   mp_match_beat_1: 'Your property',
   mp_match_beat_2: 'Homatch reads what it is',
   mp_match_beat_3: 'It looks for matching intent',
@@ -2952,7 +2953,7 @@ const en = {
   mp_tile_calls_d: 'Homatch phones your leads, holds the conversation and records what they want.',
   mp_tile_email_d: 'Build a campaign, let Homatch AI draft it, and follow every send.',
   mp_mortgage_eyebrow: 'Financing',
-  mp_mortgage_show_title: 'Know what the purchase really costs, before you commit to it.',
+  mp_mortgage_show_title: 'What the purchase really costs',
   mp_mortgage_point_1: 'The monthly payment',
   mp_mortgage_point_1_d: 'What you would actually pay each month at the price, deposit and term you are considering.',
   mp_mortgage_point_2: 'The structure behind it',
@@ -2963,7 +2964,7 @@ const en = {
   mp_mortgage_scenario: 'Scenario',
   mp_mortgage_note: 'A planning tool. Homatch does not arrange the loan and cannot promise approval.',
   mp_email_eyebrow: 'Campaigns',
-  mp_email_show_title: 'Write once, reach a whole contact list, and know what happened.',
+  mp_email_show_title: 'Write once and reach the whole list',
   mp_email_point_1: 'Your own audience',
   mp_email_point_1_d: 'Build the list from your contacts and choose exactly who a campaign goes to.',
   mp_email_point_2: 'Written with Homatch AI',
@@ -3095,7 +3096,7 @@ const en = {
   mp_hero_action_capabilities_prompt: 'What can Homatch do for me?',
 
   mp_flow_eyebrow: 'The intelligence layer',
-  mp_flow_title: 'One question. Everything Homatch knows how to reach.',
+  mp_flow_title: 'One question for the whole platform',
   mp_flow_sub: 'Homatch AI is not a chat window bolted onto a website. It is the layer the whole platform is reached through, and it answers only from what it can actually confirm.',
   mp_flow_cta: 'Ask Homatch AI',
 
@@ -3111,7 +3112,7 @@ const en = {
   mp_core_title: 'Four things Homatch does, and does properly.',
   mp_core_sub: 'Find the person who wants a property. Find the property someone wants. Check what you are buying. Understand what it costs to finance. Each is a real capability with its own workflow — and Homatch AI reaches all of them.',
 
-  mp_match_title: 'Find someone interested in buying or renting, in one click',
+  mp_match_title: 'Find someone interested in buying or renting',
   mp_match_desc: 'Add or import a property and Homatch looks for people whose stated budget, district and requirements actually line up with it. It brings back scored demand with no duplicates, and shows where each one came from.',
   mp_match_cta: 'Start matching',
 
@@ -3156,11 +3157,11 @@ const en = {
   mp_email_cta: 'Open email campaigns',
 
   mp_dev_eyebrow: 'Developer B2B',
-  mp_dev_title: 'Run the sales operation of a development from one place.',
+  mp_dev_title: 'Run a development sales operation from one place',
   mp_dev_sub: 'Find the buyers already looking for what you are building. Turn that demand into conversations, calls, email and follow up, and keep it all connected instead of spread across a spreadsheet, an agency and an inbox.',
   mp_dev_point_1_title: 'Demand that already exists',
   mp_dev_point_1_desc: 'Homatch looks for people whose requirements match your project, rather than waiting for them to find your listing.',
-  mp_dev_point_2_title: 'Communication that runs itself',
+  mp_dev_point_2_title: 'Outreach that runs itself',
   mp_dev_point_2_desc: 'The AI Call Center and email campaigns work from that same demand, so outreach is aimed at people it actually suits.',
   mp_dev_point_3_title: 'One thread per buyer',
   mp_dev_point_3_desc: 'Calls, messages and outcomes stay with the contact, so every follow-up has its context.',
@@ -5950,6 +5951,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   // ── Brand ─────────────────────────────────────────────────
   brand_tagline: 'Know before you buy',
+  brand_name: 'Homatch',
 
   // ── Main Page (premium rebuild) ───────────────────────────
   mp_nav_how: 'როგორ მუშაობს',
@@ -5974,7 +5976,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
 
 
-  mp_cta_title: 'გადაწყვეტილებები, მიღებული მტკიცებულებაზე დაყრდნობით.',
+  mp_cta_title: 'გადაწყვეტილებები მტკიცებულებაზე დაყრდნობით',
   mp_cta_body: 'დაუსვით Homatch-ს შეკითხვა, დაამატეთ ობიექტი ან შეამოწმეთ საკადასტრო კოდი.',
   mp_cta_primary: 'ანგარიშის შექმნა',
 
@@ -5984,13 +5986,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_footer_legal: 'იურიდიული',
 
   // ── Main Page: launcher-led rebuild ──────────────────────
-  mp_hero_h1: 'Homatch. უძრავი ქონების ჭკვიანი გადაწყვეტილებები.',
-  mp_hero_h2: 'ყველაფერი ერთ პლატფორმაზე. ერთი კლიკით.',
-  mp_hero_scope: 'შეამოწმე, შეაფასე, დაგეგმე, იპოვე, შეადარე, იყიდე, გაყიდე ან იქირავე. ყველაფერი უფრო ინფორმირებულად და უსაფრთხოდ.',
+  mp_hero_h1: 'უძრავი ქონების ჭკვიანი გადაწყვეტილებები',
+  mp_hero_h2: 'ყველაფერი ერთ პლატფორმაზე',
+  mp_hero_scope: 'შეამოწმე, შეაფასე, დაგეგმე, იპოვე, შეადარე, იყიდე, გაყიდე ან იქირავე. ერთი კლიკით დაიწყე, უფრო ინფორმირებულად და უსაფრთხოდ.',
   mp_hero_explore: 'ნახე, რას აკეთებს Homatch',
   mp_nav_start: 'დაწყება',
   mp_launch_eyebrow: 'დაიწყე აქედან',
-  mp_launch_title: 'დაიწყე რეალური სამუშაო ახლავე.',
+  mp_launch_title: 'დაიწყე რეალური სამუშაო',
   mp_launch_sub: 'ქვემოთ თითოეული მოქმედება ხსნის Homatch-ის რეალურ პროდუქტს. არც დემო, არც მოლოდინის სია.',
   mp_launch_verify_go: 'შემოწმება',
   mp_launch_ai_desc: 'იკითხე ქონებაზე, პროექტზე, უბანზე, ფასზე, ანგარიშზე ან გარიგებაზე, შენს ენაზე.',
@@ -5998,9 +6000,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_contract_desc: 'ატვირთე ნასყიდობის, გაყიდვის ან ქირავნობის ხელშეკრულება და Homatch წაიკითხავს, აგიხსნის მის შინაარსს და მონიშნავს იმას, რაც დამატებით ყურადღებას იმსახურებს.',
   mp_contract_cta: 'ატვირთე ხელშეკრულება',
   mp_contract_formats: 'PDF, DOCX, DOC ან ფოტო, 20 მბ-მდე. იხსნება გადამოწმების ცენტრში.',
-  mp_layers_eyebrow: 'რას ხედავს Homatch',
-  mp_layers_title: 'განცხადებამ იცის ბინა. Homatch-მა იცის ის, რაც მის უკან დგას.',
-  mp_layers_sub: 'ერთი ქონების გარშემო შვიდი შრე გროვდება და თითოეულს შეუძლია გადაწყვეტილება შეცვალოს. სწორედ მათზეა აგებული ანგარიშები, შერჩევა და პასუხები.',
+  mp_layers_eyebrow: 'ინტელექტის შრეები',
+  mp_layers_title: 'შვიდი შრე ყოველი ქონების ქვეშ',
+  mp_layers_sub: 'განცხადებამ იცის ბინა. Homatch-მა იცის ის, რაც მის უკან დგას, ოფიციალური ჩანაწერიდან დაფინანსებამდე, და სწორედ ამ შვიდ შრეზეა აგებული ყველა ანგარიში, დამთხვევა და პასუხი.',
   mp_layer_property: 'ქონება',
   mp_layer_property_d: 'რეესტრში რა წერია: ობიექტის იდენტიფიკაცია, ფართი, რეგისტრირებული მესაკუთრე და ყველაფერი, რაც მასზეა დაფიქსირებული.',
   mp_layer_project: 'პროექტი',
@@ -6015,7 +6017,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_layer_contract_d: 'თავად დოკუმენტი, მუხლ-მუხლ წაკითხული, გამოკვეთილი პირობებით, რომლებიც ყურადღებას საჭიროებს.',
   mp_layer_financing: 'დაფინანსება',
   mp_layer_financing_d: 'რა ჯდება შენაძენი რეალურად დროში: გადასახდელი, სტრუქტურა და ის, რაც მათ ცვლის.',
-  mp_cc_title: 'AI, რომელიც რეკავს, ესაუბრება და გეუბნება, ვინ არის ნამდვილად დაინტერესებული.',
+  mp_cc_title: 'ზარები და კვალიფიკაცია ავტომატურად',
   mp_cc_sub: 'შექმენი სატელეფონო კამპანია ქონებისთვის ან პროექტისთვის და დარეკვას Homatch შეასრულებს. ის საუბარს მომხმარებლის ენაზე წარმართავს, გაარკვევს, რას ეძებს, და შედეგს კონტაქტთან ერთად შეინახავს, რომ შენმა გუნდმა გააგრძელოს.',
   mp_cc_stage_lead: 'ლიდი',
   mp_cc_stage_talk: 'საუბარი',
@@ -6035,10 +6037,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_cc_panel_alt: 'მიმდინარე AI ზარი: მიღწეული ეტაპი და შედეგი, რომელიც შესავსებია',
   mp_cc_panel_note: 'ცოცხალი ზარის გამოსახულება. სახელი, ნომერი და ტრანსკრიპტი არ ჩანს.',
   mp_verify_eyebrow: 'მყიდველის ინტელექტი',
-  mp_verify_show_title: 'გაიგე, რას ყიდულობ, სანამ ხელს მოაწერ.',
+  mp_verify_show_title: 'სრული სურათი ხელმოწერამდე',
   mp_verify_show_contract_d: 'ატვირთე ხელშეკრულება იმავე საქმეში და ის წაიკითხება ყველაფერთან ერთად, რაც Homatch-მა იპოვა.',
   mp_match_eyebrow: 'შერჩევა',
-  mp_match_show_title: 'მიეცი Homatch-ს ქონება. ის იპოვის ადამიანებს, ვისაც ის შეიძლება ნამდვილად სურდეს.',
+  mp_match_show_title: 'ერთი კლიკით შენი ქონებიდან დალაგებულ სიამდე',
   mp_match_beat_1: 'შენი ქონება',
   mp_match_beat_2: 'Homatch კითხულობს, რა არის ის',
   mp_match_beat_3: 'ეძებს შესაბამის განზრახვას',
@@ -6056,7 +6058,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_tile_calls_d: 'Homatch თავად რეკავს, ესაუბრება და იწერს, რას ეძებს ადამიანი.',
   mp_tile_email_d: 'შექმენი კამპანია, წერილი Homatch AI-ს დააწერინე და თვალი ადევნე ყოველ გაგზავნას.',
   mp_mortgage_eyebrow: 'დაფინანსება',
-  mp_mortgage_show_title: 'გაიგე, რეალურად რა ჯდება შენაძენი, სანამ გადაწყვეტ.',
+  mp_mortgage_show_title: 'რა ჯდება შენაძენი სინამდვილეში',
   mp_mortgage_point_1: 'თვიური გადასახდელი',
   mp_mortgage_point_1_d: 'რამდენს გადაიხდი ყოველთვიურად იმ ფასზე, შენატანსა და ვადაზე, რომელსაც განიხილავ.',
   mp_mortgage_point_2: 'სტრუქტურა მის მიღმა',
@@ -6067,7 +6069,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_mortgage_scenario: 'სცენარი',
   mp_mortgage_note: 'დაგეგმვის ინსტრუმენტი. Homatch სესხს არ აფორმებს და დამტკიცებას ვერ გპირდება.',
   mp_email_eyebrow: 'კამპანიები',
-  mp_email_show_title: 'დაწერე ერთხელ, მიაწვდინე მთელ სიას და გაიგე, რა მოჰყვა.',
+  mp_email_show_title: 'დაწერე ერთხელ და მიწვდი მთელ სიას',
   mp_email_point_1: 'შენი აუდიტორია',
   mp_email_point_1_d: 'ააწყვე სია შენი კონტაქტებიდან და აირჩიე, ვის მიდის კამპანია.',
   mp_email_point_2: 'დაწერილი Homatch AI-სთან ერთად',
@@ -6199,7 +6201,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities_prompt: 'რა შეუძლია Homatch-ს ჩემთვის?',
 
   mp_flow_eyebrow: 'ინტელექტის ფენა',
-  mp_flow_title: 'ერთი შეკითხვა. ყველაფერი, რასაც Homatch წვდება.',
+  mp_flow_title: 'ერთი შეკითხვა მთელი პლატფორმისთვის',
   mp_flow_sub: 'Homatch AI არ არის ვებგვერდზე მიმაგრებული ჩატის ფანჯარა. ეს არის ფენა, რომლითაც მთელ პლატფორმას წვდებით, და პასუხობს მხოლოდ იმაზე დაყრდნობით, რისი დადასტურებაც შეუძლია.',
   mp_flow_cta: 'ჰკითხეთ Homatch AI-ს',
 
@@ -6215,7 +6217,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_core_title: 'ოთხი რამ, რასაც Homatch სრულფასოვნად აკეთებს.',
   mp_core_sub: 'იპოვე ადამიანი, ვისაც შენი ქონება სჭირდება. იპოვე ქონება, რომელსაც შენ ეძებ. გადაამოწმე, რას ყიდულობ. გაიგე, რა ჯდება დაფინანსება. თითოეული ცალკე შესაძლებლობაა თავისი პროცესით — და ყველას Homatch AI-ს მეშვეობით წვდები.',
 
-  mp_match_title: 'იპოვე ყიდვით ან ქირით დაინტერესებული ადამიანი ერთი კლიკით',
+  mp_match_title: 'იპოვე ყიდვით ან ქირით დაინტერესებული ადამიანი',
   mp_match_desc: 'დაამატე ან შემოიტანე ქონება და Homatch მოძებნის ადამიანებს, ვისი ბიუჯეტი, სასურველი უბანი და მოთხოვნებიც რეალურად ემთხვევა მას. დაგიბრუნებს შეფასებულ, დუბლიკატებისგან გასუფთავებულ მოთხოვნას და აჩვენებს, საიდან მოვიდა თითოეული.',
   mp_match_cta: 'დამთხვევის დაწყება',
 
@@ -6260,11 +6262,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mp_email_cta: 'გახსენი კამპანიები',
 
   mp_dev_eyebrow: 'Developer B2B',
-  mp_dev_title: 'მართე პროექტის მთელი გაყიდვების ოპერაცია ერთი ადგილიდან.',
+  mp_dev_title: 'მართე პროექტის გაყიდვები ერთი ადგილიდან',
   mp_dev_sub: 'იპოვე მყიდველები, რომლებიც უკვე ეძებენ იმას, რასაც აშენებ. აქციე ეს მოთხოვნა კომუნიკაციად, ზარებად, წერილებად და შემდგომ კონტაქტად, და შეინარჩუნე ყველაფერი ერთ სისტემაში, ცხრილს, სააგენტოსა და ფოსტას შორის გაფანტვის ნაცვლად.',
-  mp_dev_point_1_title: 'მოთხოვნა, რომელიც უკვე არსებობს',
+  mp_dev_point_1_title: 'უკვე არსებული მოთხოვნა',
   mp_dev_point_1_desc: 'Homatch ეძებს ადამიანებს, ვისი მოთხოვნებიც შენს პროექტს ემთხვევა, იმის ნაცვლად, რომ დაელოდო, სანამ ისინი შენს განცხადებას იპოვიან.',
-  mp_dev_point_2_title: 'კომუნიკაცია, რომელიც თავად მიიწევს წინ',
+  mp_dev_point_2_title: 'კომუნიკაცია ავტომატურად',
   mp_dev_point_2_desc: 'AI ქოლ ცენტრი და Email კამპანიები იმავე მოთხოვნაზე მუშაობს, ამიტომ კომუნიკაცია მიემართება მათ, ვისაც ის ნამდვილად ეხება.',
   mp_dev_point_3_title: 'ერთი ისტორია თითოეულ მყიდველზე',
   mp_dev_point_3_desc: 'ზარები, შეტყობინებები და შედეგები კონტაქტთან რჩება, ამიტომ ყოველ შემდგომ კონტაქტს კონტექსტი აქვს.',
@@ -9045,6 +9047,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   // ── Brand ─────────────────────────────────────────────────
   brand_tagline: 'Know before you buy',
+  brand_name: 'Homatch',
 
   // ── Main Page (premium rebuild) ───────────────────────────
   mp_nav_how: 'Как это работает',
@@ -9069,7 +9072,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
 
 
-  mp_cta_title: 'Решения, основанные на доказательствах.',
+  mp_cta_title: 'Решения на основе доказательств',
   mp_cta_body: 'Задайте Homatch вопрос, добавьте объект или проверьте кадастровый код.',
   mp_cta_primary: 'Создать аккаунт',
 
@@ -9079,13 +9082,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_footer_legal: 'Правовая информация',
 
   // ── Main Page: launcher-led rebuild ──────────────────────
-  mp_hero_h1: 'Homatch. Умные решения в недвижимости.',
-  mp_hero_h2: 'Всё на одной платформе. В один клик.',
-  mp_hero_scope: 'Проверьте, оцените, спланируйте, найдите, сравните, купите, продайте или арендуйте. И всё это осознаннее и безопаснее.',
+  mp_hero_h1: 'Умные решения в недвижимости',
+  mp_hero_h2: 'Всё на одной платформе',
+  mp_hero_scope: 'Проверьте, оцените, спланируйте, найдите, сравните, купите, продайте или арендуйте. Один клик, чтобы начать, и больше оснований за каждым решением.',
   mp_hero_explore: 'Посмотрите, что умеет Homatch',
   mp_nav_start: 'Начать',
   mp_launch_eyebrow: 'Начните отсюда',
-  mp_launch_title: 'Начните реальную задачу прямо сейчас.',
+  mp_launch_title: 'Начните реальную задачу',
   mp_launch_sub: 'Каждое действие ниже открывает настоящий продукт Homatch. Без демонстраций и листов ожидания.',
   mp_launch_verify_go: 'Проверить',
   mp_launch_ai_desc: 'Спросите об объекте, проекте, районе, цене, отчёте или сделке на своём языке.',
@@ -9093,9 +9096,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_contract_desc: 'Загрузите договор купли-продажи или аренды, и Homatch прочитает его, объяснит содержание и отметит то, что заслуживает второго взгляда.',
   mp_contract_cta: 'Загрузить договор',
   mp_contract_formats: 'PDF, DOCX, DOC или фото, до 20 МБ. Открывается в Центре проверки.',
-  mp_layers_eyebrow: 'Что понимает Homatch',
-  mp_layers_title: 'Объявление знает квартиру. Homatch знает то, что за ней стоит.',
-  mp_layers_sub: 'Вокруг одного объекта собираются семь слоёв, и любой из них может изменить решение. Именно на них построены отчёты, подбор и ответы.',
+  mp_layers_eyebrow: 'Слои интеллекта',
+  mp_layers_title: 'Семь слоёв под каждым объектом',
+  mp_layers_sub: 'Объявление знает квартиру. Homatch знает то, что стоит за ней, от официальной записи до финансирования, и именно на этих семи слоях построены все отчёты, подборы и ответы.',
   mp_layer_property: 'Объект',
   mp_layer_property_d: 'Что записано в реестре: идентификация объекта, площадь, зарегистрированный собственник и всё, что на нём числится.',
   mp_layer_project: 'Проект',
@@ -9110,7 +9113,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_layer_contract_d: 'Сам документ, прочитанный пункт за пунктом, с выделенными условиями, требующими внимания.',
   mp_layer_financing: 'Финансирование',
   mp_layer_financing_d: 'Во что покупка обходится на самом деле со временем: платёж, структура и то, что их меняет.',
-  mp_cc_title: 'AI, который звонит вашим лидам, разговаривает с ними и показывает, кто действительно заинтересован.',
+  mp_cc_title: 'Звонки и квалификация без вашего участия',
   mp_cc_sub: 'Создайте кампанию звонков для объекта или проекта, и звонить будет Homatch. Он ведёт разговор на языке клиента, выясняет, что человек ищет, и сохраняет результат вместе с контактом, чтобы ваша команда продолжила.',
   mp_cc_stage_lead: 'Лид',
   mp_cc_stage_talk: 'Разговор',
@@ -9130,15 +9133,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_cc_panel_alt: 'Идущий AI-звонок: достигнутый этап и результат, который предстоит заполнить',
   mp_cc_panel_note: 'Изображение живого звонка. Имя, номер и расшифровка не показываются.',
   mp_verify_eyebrow: 'Аналитика для покупателя',
-  mp_verify_show_title: 'Знайте, что покупаете, прежде чем подписать.',
+  mp_verify_show_title: 'Полная картина до подписания',
   mp_verify_show_contract_d: 'Загрузите договор в то же дело, и он будет прочитан вместе со всем, что нашёл Homatch.',
   mp_match_eyebrow: 'Подбор',
-  mp_match_show_title: 'Дайте Homatch объект. Он найдёт людей, которым он может быть действительно нужен.',
+  mp_match_show_title: 'Один клик от вашего объекта до ранжированного списка',
   mp_match_beat_1: 'Ваш объект',
   mp_match_beat_2: 'Homatch разбирается, что это',
   mp_match_beat_3: 'Ищет подходящее намерение',
   mp_match_beat_4: 'Вы получаете ранжированный список',
-  mp_match_caveat: 'Совпадение это сигнал интереса, а не подтверждённый покупатель. Homatch показывает, почему связал каждого, чтобы оценка осталась за вами.',
+  mp_match_caveat: 'Совпадение говорит об интересе, а не о подтверждённом покупателе. Homatch показывает, почему связал каждого, чтобы оценка осталась за вами.',
   mp_ai_reach_label: 'До чего дотягивается один вопрос',
 
   // ── Main Page: equal-weight capability pass ──────────────
@@ -9151,7 +9154,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_tile_calls_d: 'Homatch сам звонит, ведёт разговор и записывает, что ищет человек.',
   mp_tile_email_d: 'Соберите кампанию, доверьте текст Homatch AI и следите за каждой отправкой.',
   mp_mortgage_eyebrow: 'Финансирование',
-  mp_mortgage_show_title: 'Узнайте, во что покупка обходится на самом деле, до того как решитесь.',
+  mp_mortgage_show_title: 'Во что покупка обходится на самом деле',
   mp_mortgage_point_1: 'Ежемесячный платёж',
   mp_mortgage_point_1_d: 'Сколько вы будете платить каждый месяц при той цене, взносе и сроке, которые рассматриваете.',
   mp_mortgage_point_2: 'Структура за ним',
@@ -9162,7 +9165,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_mortgage_scenario: 'Сценарий',
   mp_mortgage_note: 'Инструмент планирования. Homatch не оформляет кредит и не обещает одобрения.',
   mp_email_eyebrow: 'Кампании',
-  mp_email_show_title: 'Напишите один раз, дойдите до всего списка и узнайте результат.',
+  mp_email_show_title: 'Напишите один раз и дойдите до всего списка',
   mp_email_point_1: 'Ваша аудитория',
   mp_email_point_1_d: 'Соберите список из своих контактов и выберите, кому уходит кампания.',
   mp_email_point_2: 'Текст вместе с Homatch AI',
@@ -9294,8 +9297,8 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities_prompt: 'Что Homatch может для меня сделать?',
 
   mp_flow_eyebrow: 'Слой интеллекта',
-  mp_flow_title: 'Один вопрос. Всё, до чего Homatch умеет дотянуться.',
-  mp_flow_sub: 'Homatch AI это не чат, приделанный к сайту. Это слой, через который работает вся платформа, и отвечает он только на основании того, что действительно может подтвердить.',
+  mp_flow_title: 'Один вопрос ко всей платформе',
+  mp_flow_sub: 'Homatch AI работает не как чат, приделанный к сайту. Это слой, через который работает вся платформа, и отвечает он только на основании того, что действительно может подтвердить.',
   mp_flow_cta: 'Спросить Homatch AI',
 
 
@@ -9310,7 +9313,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_core_title: 'Четыре вещи, которые Homatch делает по-настоящему.',
   mp_core_sub: 'Найдите человека, которому нужен ваш объект. Найдите объект, который ищете вы. Проверьте, что покупаете. Поймите, во что обходится финансирование. Каждое — отдельная возможность со своим процессом, и ко всем ведёт Homatch AI.',
 
-  mp_match_title: 'Найдите человека, заинтересованного в покупке или аренде, в один клик',
+  mp_match_title: 'Найдите заинтересованного покупателя или арендатора',
   mp_match_desc: 'Добавьте или импортируйте объект, и Homatch найдёт людей, чей бюджет, район и требования действительно ему соответствуют. Он вернёт оценённый спрос без дублей и покажет, откуда взялся каждый.',
   mp_match_cta: 'Начать подбор',
 
@@ -9355,11 +9358,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mp_email_cta: 'Открыть кампании',
 
   mp_dev_eyebrow: 'Developer B2B',
-  mp_dev_title: 'Ведите всю продажу проекта из одного места.',
+  mp_dev_title: 'Ведите продажи проекта из одного места',
   mp_dev_sub: 'Найдите покупателей, которые уже ищут то, что вы строите. Превратите этот спрос в разговоры, звонки, письма и дальнейший контакт, и держите всё связанным, а не разбросанным между таблицей, агентством и почтой.',
-  mp_dev_point_1_title: 'Спрос, который уже есть',
+  mp_dev_point_1_title: 'Уже существующий спрос',
   mp_dev_point_1_desc: 'Homatch ищет людей, чьи требования совпадают с вашим проектом, вместо того чтобы ждать, пока они найдут ваше объявление.',
-  mp_dev_point_2_title: 'Коммуникация, которая идёт сама',
+  mp_dev_point_2_title: 'Коммуникация без ручной работы',
   mp_dev_point_2_desc: 'AI Call Center и email-кампании работают с тем же спросом, поэтому обращение адресовано тем, кому оно действительно подходит.',
   mp_dev_point_3_title: 'Одна история на покупателя',
   mp_dev_point_3_desc: 'Звонки, сообщения и результаты остаются рядом с контактом, поэтому у каждого следующего шага есть контекст.',
@@ -12138,6 +12141,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   // ── Brand ─────────────────────────────────────────────────
   brand_tagline: 'Know before you buy',
+  brand_name: 'Homatch',
 
   // ── Main Page (premium rebuild) ───────────────────────────
   mp_nav_how: 'Nasıl çalışır',
@@ -12146,7 +12150,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_nav_menu_open: 'Menüyü aç',
   mp_nav_menu_close: 'Menüyü kapat',
 
-  mp_hero_eyebrow: 'Gayrimenkul zekâsı platformu',
+  mp_hero_eyebrow: 'Gayrimenkul zekâsı',
   mp_hero_line1: 'Onu isteyeni bulun.',
   mp_hero_line2: 'İstediğinizi bulun.',
   mp_hero_line3: 'Tek bir hamlede.',
@@ -12162,7 +12166,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
 
 
-  mp_cta_title: 'Kanıta dayanan kararlar.',
+  mp_cta_title: 'Kanıta dayanan kararlar',
   mp_cta_body: 'Homatch’e bir soru sorun, bir gayrimenkul ekleyin ya da bir kadastro kodunu kontrol edin.',
   mp_cta_primary: 'Hesabınızı oluşturun',
 
@@ -12172,13 +12176,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_footer_legal: 'Hukuki',
 
   // ── Main Page: launcher-led rebuild ──────────────────────
-  mp_hero_h1: 'Homatch. Gayrimenkulde akıllı kararlar.',
-  mp_hero_h2: 'Her şey tek platformda. Tek tıkla.',
-  mp_hero_scope: 'Kontrol edin, değerlendirin, planlayın, bulun, karşılaştırın, alın, satın ya da kiralayın. Hepsi daha bilinçli ve daha güvenli.',
+  mp_hero_h1: 'Gayrimenkulde akıllı kararlar',
+  mp_hero_h2: 'Her şey tek platformda',
+  mp_hero_scope: 'Kontrol edin, değerlendirin, planlayın, bulun, karşılaştırın, alın, satın ya da kiralayın. Başlamak için tek tık, her kararın arkasında daha fazla bilgi.',
   mp_hero_explore: 'Homatch ne yapıyor, görün',
   mp_nav_start: 'Başla',
   mp_launch_eyebrow: 'Buradan başlayın',
-  mp_launch_title: 'Gerçek bir işe hemen başlayın.',
+  mp_launch_title: 'Gerçek bir işe başlayın',
   mp_launch_sub: 'Aşağıdaki her eylem Homatch’in gerçek ürününü açar. Demo yok, bekleme listesi yok.',
   mp_launch_verify_go: 'Kontrol et',
   mp_launch_ai_desc: 'Bir gayrimenkul, proje, semt, fiyat, rapor ya da işlem hakkında kendi dilinizde sorun.',
@@ -12186,9 +12190,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_contract_desc: 'Satış ya da kira sözleşmesini yükleyin; Homatch sözleşmeyi okur, ne dediğini açıklar ve ikinci kez bakılmayı hak eden yerleri işaretler.',
   mp_contract_cta: 'Sözleşme yükle',
   mp_contract_formats: 'PDF, DOCX, DOC ya da fotoğraf, en fazla 20 MB. Doğrulama Merkezi’nde açılır.',
-  mp_layers_eyebrow: 'Homatch neyi anlıyor',
-  mp_layers_title: 'İlan daireyi bilir. Homatch onun altındakini bilir.',
-  mp_layers_sub: 'Tek bir gayrimenkulün çevresinde yedi katman toplanır ve her biri kararı değiştirebilir. Raporlar, eşleştirme ve yanıtlar bunların üzerine kuruludur.',
+  mp_layers_eyebrow: 'Zekâ katmanları',
+  mp_layers_title: 'Her gayrimenkulün altındaki yedi katman',
+  mp_layers_sub: 'İlan daireyi bilir. Homatch onun altındakini bilir, resmî kayıttan finansmana kadar, ve bütün raporlar, eşleşmeler ve yanıtlar bu yedi katmanın üzerine kurulur.',
   mp_layer_property: 'Gayrimenkul',
   mp_layer_property_d: 'Kayıtta ne varsa: bağımsız bölümün kimliği, alanı, kayıtlı maliki ve üzerine işlenmiş her şey.',
   mp_layer_project: 'Proje',
@@ -12203,7 +12207,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_layer_contract_d: 'Belgenin kendisi, madde madde okunmuş ve dikkat isteyen hükümleri ayrıştırılmış hâlde.',
   mp_layer_financing: 'Finansman',
   mp_layer_financing_d: 'Alımın zaman içinde gerçekte neye mal olduğu: ödeme, yapı ve bunları değiştiren şeyler.',
-  mp_cc_title: 'Potansiyel müşterilerinizi arayan, onlarla konuşan ve kimin gerçekten ilgilendiğini söyleyen bir AI.',
+  mp_cc_title: 'Aramalar ve niteleme sizin yerinize',
   mp_cc_sub: 'Bir gayrimenkul ya da proje için arama kampanyası kurun; aramayı Homatch yapsın. Görüşmeyi müşterinin kendi dilinde yürütür, ne aradığını anlar ve sonucu ekibinizin devralması için kişiyle birlikte saklar.',
   mp_cc_stage_lead: 'Aday müşteri',
   mp_cc_stage_talk: 'Görüşme',
@@ -12223,10 +12227,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_cc_panel_alt: 'Süren bir AI araması: ulaştığı aşama ve doldurulmayı bekleyen sonuç',
   mp_cc_panel_note: 'Canlı bir aramanın temsili. İsim, numara ve döküm gösterilmez.',
   mp_verify_eyebrow: 'Alıcı İstihbaratı',
-  mp_verify_show_title: 'İmzalamadan önce ne aldığınızı bilin.',
+  mp_verify_show_title: 'İmzalamadan önce tam resim',
   mp_verify_show_contract_d: 'Sözleşmeyi aynı dosyaya yükleyin; Homatch’in bulduğu her şeyle birlikte okunur.',
   mp_match_eyebrow: 'Eşleştirme',
-  mp_match_show_title: 'Homatch’e bir gayrimenkul verin. Onu gerçekten isteyebilecek kişileri bulsun.',
+  mp_match_show_title: 'Gayrimenkulünüzden sıralı listeye tek tıkla',
   mp_match_beat_1: 'Gayrimenkulünüz',
   mp_match_beat_2: 'Homatch onun ne olduğunu okur',
   mp_match_beat_3: 'Eşleşen niyeti arar',
@@ -12244,7 +12248,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_tile_calls_d: 'Homatch arar, görüşmeyi yürütür ve kişinin ne aradığını kaydeder.',
   mp_tile_email_d: 'Kampanyayı kurun, metni Homatch AI yazsın, her gönderimi takip edin.',
   mp_mortgage_eyebrow: 'Finansman',
-  mp_mortgage_show_title: 'Karar vermeden önce alımın gerçekte neye mal olduğunu bilin.',
+  mp_mortgage_show_title: 'Alımın gerçek maliyeti',
   mp_mortgage_point_1: 'Aylık ödeme',
   mp_mortgage_point_1_d: 'Düşündüğünüz fiyat, peşinat ve vadede her ay gerçekte ne ödeyeceğiniz.',
   mp_mortgage_point_2: 'Arkasındaki yapı',
@@ -12255,7 +12259,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_mortgage_scenario: 'Senaryo',
   mp_mortgage_note: 'Bir planlama aracı. Homatch krediyi düzenlemez ve onay vaat edemez.',
   mp_email_eyebrow: 'Kampanyalar',
-  mp_email_show_title: 'Bir kez yazın, tüm listeye ulaşın, sonucu görün.',
+  mp_email_show_title: 'Bir kez yazın ve tüm listeye ulaşın',
   mp_email_point_1: 'Kendi kitleniz',
   mp_email_point_1_d: 'Listeyi kendi kişilerinizden kurun ve kampanyanın tam olarak kime gideceğini seçin.',
   mp_email_point_2: 'Homatch AI ile yazılmış',
@@ -12387,7 +12391,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities_prompt: 'Homatch benim için neler yapabilir?',
 
   mp_flow_eyebrow: 'Zekâ katmanı',
-  mp_flow_title: 'Tek bir soru. Homatch’in ulaşabildiği her şey.',
+  mp_flow_title: 'Tüm platform için tek bir soru',
   mp_flow_sub: 'Homatch AI, bir siteye iliştirilmiş sohbet penceresi değildir. Tüm platforma onun üzerinden ulaşılır ve yalnızca gerçekten doğrulayabildiğine dayanarak yanıt verir.',
   mp_flow_cta: 'Homatch AI’a sor',
 
@@ -12403,7 +12407,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_core_title: 'Homatch’in gerçekten yaptığı dört şey.',
   mp_core_sub: 'Gayrimenkulünüzü isteyen kişiyi bulun. Aradığınız gayrimenkulü bulun. Ne aldığınızı kontrol edin. Finansmanın neye mal olduğunu anlayın. Her biri kendi akışı olan gerçek bir yetenektir ve hepsine Homatch AI üzerinden ulaşılır.',
 
-  mp_match_title: 'Almak ya da kiralamakla ilgilenen kişiyi tek tıkla bulun',
+  mp_match_title: 'Almak ya da kiralamakla ilgilenen kişiyi bulun',
   mp_match_desc: 'Bir gayrimenkul ekleyin veya içe aktarın; Homatch bütçesi, semti ve kriterleri gerçekten uyan kişileri arar. Puanlanmış ve tekrarsız talebi geri getirir, her birinin nereden geldiğini gösterir.',
   mp_match_cta: 'Eşleştirmeyi başlat',
 
@@ -12448,7 +12452,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mp_email_cta: 'Kampanyaları aç',
 
   mp_dev_eyebrow: 'Developer B2B',
-  mp_dev_title: 'Bir projenin satış operasyonunu tek yerden yürütün.',
+  mp_dev_title: 'Projenin satışını tek yerden yürütün',
   mp_dev_sub: 'İnşa ettiğiniz şeyi zaten arayan alıcıları bulun. Bu talebi konuşmalara, aramalara, e-postalara ve takibe dönüştürün, her şeyi bir tabloya, bir ajansa ve bir gelen kutusuna dağıtmak yerine bağlı tutun.',
   mp_dev_point_1_title: 'Hâlihazırda var olan talep',
   mp_dev_point_1_desc: 'Homatch, ilanınızı bulmalarını beklemek yerine kriterleri projenize uyan kişileri arar.',
@@ -15231,6 +15235,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   // ── Brand ─────────────────────────────────────────────────
   brand_tagline: 'Know before you buy',
+  brand_name: 'Homatch',
 
   // ── Main Page (premium rebuild) ───────────────────────────
   mp_nav_how: 'كيف يعمل',
@@ -15255,7 +15260,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
 
 
-  mp_cta_title: 'قرارات تُبنى على الأدلة.',
+  mp_cta_title: 'قرارات تُبنى على الأدلة',
   mp_cta_body: 'اطرح على Homatch سؤالًا، أو أضف عقارًا، أو تحقّق من رمز عقاري.',
   mp_cta_primary: 'أنشئ حسابك',
 
@@ -15265,13 +15270,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_footer_legal: 'الشؤون القانونية',
 
   // ── Main Page: launcher-led rebuild ──────────────────────
-  mp_hero_h1: 'Homatch. قرارات عقارية ذكية.',
-  mp_hero_h2: 'كل شيء على منصة واحدة. بنقرة واحدة.',
-  mp_hero_scope: 'تحقّق، وقيّم، وخطّط، وابحث، وقارن، واشترِ، وبِع، أو استأجر. كل ذلك بمعرفة أوسع وأمان أكبر.',
+  mp_hero_h1: 'قرارات عقارية ذكية',
+  mp_hero_h2: 'كل شيء على منصة واحدة',
+  mp_hero_scope: 'تحقّق، وقيّم، وخطّط، وابحث، وقارن، واشترِ، وبِع، أو استأجر. نقرة واحدة للبدء، ومعرفة أوسع خلف كل قرار.',
   mp_hero_explore: 'شاهد ما يفعله Homatch',
   mp_nav_start: 'ابدأ',
   mp_launch_eyebrow: 'ابدأ من هنا',
-  mp_launch_title: 'ابدأ مهمة حقيقية الآن.',
+  mp_launch_title: 'ابدأ مهمة حقيقية',
   mp_launch_sub: 'كل إجراء أدناه يفتح منتج Homatch الفعلي. لا عرض تجريبي ولا قائمة انتظار.',
   mp_launch_verify_go: 'تحقّق',
   mp_launch_ai_desc: 'اسأل عن عقار أو مشروع أو حي أو سعر أو تقرير أو صفقة بلغتك أنت.',
@@ -15279,9 +15284,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_contract_desc: 'ارفع عقد بيع أو شراء أو إيجار، فيقرأه Homatch ويشرح ما ينص عليه ويؤشّر على ما يستحق نظرة ثانية.',
   mp_contract_cta: 'ارفع عقدًا',
   mp_contract_formats: 'PDF أو DOCX أو DOC أو صورة، حتى 20 ميغابايت. يُفتح في مركز التحقق.',
-  mp_layers_eyebrow: 'ما الذي يفهمه Homatch',
-  mp_layers_title: 'الإعلان يعرف الشقة. وHomatch يعرف ما تحتها.',
-  mp_layers_sub: 'تُجمع سبع طبقات حول العقار الواحد، وأي واحدة منها قد تغيّر القرار. عليها تُبنى التقارير والمطابقة والإجابات.',
+  mp_layers_eyebrow: 'طبقات الذكاء',
+  mp_layers_title: 'سبع طبقات تحت كل عقار',
+  mp_layers_sub: 'الإعلان يعرف الشقة. وHomatch يعرف ما تحتها، من السجل الرسمي إلى التمويل، وعلى هذه الطبقات السبع تُبنى كل التقارير والمطابقات والإجابات.',
   mp_layer_property: 'العقار',
   mp_layer_property_d: 'ما هو مسجّل: هوية الوحدة ومساحتها والمالك المقيّد وكل ما دوّن عليها.',
   mp_layer_project: 'المشروع',
@@ -15296,7 +15301,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_layer_contract_d: 'المستند نفسه، مقروءًا بندًا بندًا، مع إبراز الشروط التي تستحق الانتباه.',
   mp_layer_financing: 'التمويل',
   mp_layer_financing_d: 'ما يكلّفه الشراء فعليًا عبر الزمن: الدفعة والهيكل وما يحرّكهما.',
-  mp_cc_title: 'ذكاء اصطناعي يتصل بعملائك المحتملين ويتحدث إليهم ويخبرك من المهتم فعلًا.',
+  mp_cc_title: 'المكالمات والفرز نيابة عنك',
   mp_cc_sub: 'أنشئ حملة اتصال لعقار أو مشروع، ويتولى Homatch الاتصال. يدير المحادثة بلغة العميل نفسه، ويستوضح ما يبحث عنه، ويحفظ النتيجة مع جهة الاتصال ليكمل فريقك من هناك.',
   mp_cc_stage_lead: 'عميل محتمل',
   mp_cc_stage_talk: 'محادثة',
@@ -15316,10 +15321,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_cc_panel_alt: 'مكالمة ذكاء اصطناعي جارية: المرحلة التي بلغتها والنتيجة في انتظار التعبئة',
   mp_cc_panel_note: 'تمثيل لمكالمة حيّة. لا يُعرض اسم ولا رقم ولا نص محادثة.',
   mp_verify_eyebrow: 'ذكاء المشتري',
-  mp_verify_show_title: 'اعرف ما تشتريه قبل أن توقّع عليه.',
+  mp_verify_show_title: 'الصورة الكاملة قبل التوقيع',
   mp_verify_show_contract_d: 'ارفع العقد في الملف نفسه، فيُقرأ إلى جانب كل ما وجده Homatch.',
   mp_match_eyebrow: 'المطابقة',
-  mp_match_show_title: 'أعطِ Homatch عقارًا، فيجد من قد يرغب فيه فعلًا.',
+  mp_match_show_title: 'من عقارك إلى قائمة مرتّبة بنقرة واحدة',
   mp_match_beat_1: 'عقارك',
   mp_match_beat_2: 'يقرأ Homatch ماهيته',
   mp_match_beat_3: 'يبحث عن نية مطابقة',
@@ -15337,7 +15342,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_tile_calls_d: 'يتصل Homatch بنفسه، ويدير المحادثة، ويسجّل ما يبحث عنه الشخص.',
   mp_tile_email_d: 'ابنِ الحملة، ودع Homatch AI يكتبها، وتابع كل إرسال.',
   mp_mortgage_eyebrow: 'التمويل',
-  mp_mortgage_show_title: 'اعرف كم يكلّفك الشراء فعلًا قبل أن تلتزم به.',
+  mp_mortgage_show_title: 'التكلفة الحقيقية للشراء',
   mp_mortgage_point_1: 'الدفعة الشهرية',
   mp_mortgage_point_1_d: 'كم ستدفع فعليًا كل شهر عند السعر والدفعة الأولى والمدة التي تفكر فيها.',
   mp_mortgage_point_2: 'الهيكل وراءها',
@@ -15348,7 +15353,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_mortgage_scenario: 'سيناريو',
   mp_mortgage_note: 'أداة تخطيط. لا يرتّب Homatch القرض ولا يعد بالموافقة.',
   mp_email_eyebrow: 'الحملات',
-  mp_email_show_title: 'اكتب مرة واحدة، وصِل إلى القائمة كلها، واعرف ما حدث.',
+  mp_email_show_title: 'اكتب مرة واحدة وصِل إلى القائمة كلها',
   mp_email_point_1: 'جمهورك أنت',
   mp_email_point_1_d: 'ابنِ القائمة من جهات اتصالك واختر بالضبط من تصله الحملة.',
   mp_email_point_2: 'مكتوبة مع Homatch AI',
@@ -15480,7 +15485,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities_prompt: 'ماذا يمكن أن يفعل Homatch من أجلي؟',
 
   mp_flow_eyebrow: 'طبقة الذكاء',
-  mp_flow_title: 'سؤال واحد. وكل ما يستطيع Homatch الوصول إليه.',
+  mp_flow_title: 'سؤال واحد للمنصة كلها',
   mp_flow_sub: 'Homatch AI ليس نافذة محادثة مضافة إلى موقع. إنه الطبقة التي تُدار من خلالها المنصة كلها، ولا يجيب إلا استنادًا إلى ما يستطيع تأكيده فعلًا.',
   mp_flow_cta: 'اسأل Homatch AI',
 
@@ -15496,7 +15501,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_core_title: 'أربعة أمور يقوم بها Homatch على أكمل وجه.',
   mp_core_sub: 'اعثر على من يحتاج عقارك. اعثر على العقار الذي تبحث عنه. تحقّق مما تشتريه. افهم كلفة التمويل. كل واحدة قدرة قائمة بذاتها لها مسارها، وإليها جميعًا تصل عبر Homatch AI.',
 
-  mp_match_title: 'اعثر على شخص مهتم بالشراء أو الإيجار بنقرة واحدة',
+  mp_match_title: 'اعثر على شخص مهتم بالشراء أو الإيجار',
   mp_match_desc: 'أضف عقارك أو استورده، فيبحث Homatch عن أشخاص تتوافق ميزانيتهم ومنطقتهم ومتطلباتهم معه فعلًا. يعيد إليك طلبًا مصنّفًا بلا تكرار، ويبيّن مصدر كل واحد منهم.',
   mp_match_cta: 'ابدأ المطابقة',
 
@@ -15541,7 +15546,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mp_email_cta: 'افتح الحملات',
 
   mp_dev_eyebrow: 'Developer B2B',
-  mp_dev_title: 'أدر عملية مبيعات المشروع بالكامل من مكان واحد.',
+  mp_dev_title: 'أدر مبيعات المشروع من مكان واحد',
   mp_dev_sub: 'اعثر على المشترين الذين يبحثون بالفعل عمّا تبنيه. حوّل هذا الطلب إلى محادثات ومكالمات ورسائل ومتابعة، واحتفظ بكل ذلك مترابطًا بدل تشتّته بين جدول ووكالة وبريد.',
   mp_dev_point_1_title: 'طلب موجود بالفعل',
   mp_dev_point_1_desc: 'يبحث Homatch عن أشخاص تتوافق متطلباتهم مع مشروعك، بدل انتظار أن يعثروا هم على إعلانك.',
@@ -18324,6 +18329,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   // ── Brand ─────────────────────────────────────────────────
   brand_tagline: 'Know before you buy',
+  brand_name: 'Homatch',
 
   // ── Main Page (premium rebuild) ───────────────────────────
   mp_nav_how: 'איך זה עובד',
@@ -18348,7 +18354,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
 
 
-  mp_cta_title: 'החלטות שמתקבלות על סמך ראיות.',
+  mp_cta_title: 'החלטות על סמך ראיות',
   mp_cta_body: 'שאלו את Homatch שאלה, הוסיפו נכס, או בדקו קוד קדסטרלי.',
   mp_cta_primary: 'צרו חשבון',
 
@@ -18358,13 +18364,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_footer_legal: 'משפטי',
 
   // ── Main Page: launcher-led rebuild ──────────────────────
-  mp_hero_h1: 'Homatch. החלטות נדל״ן חכמות.',
-  mp_hero_h2: 'הכול בפלטפורמה אחת. בלחיצה אחת.',
-  mp_hero_scope: 'בדקו, העריכו, תכננו, מצאו, השוו, קנו, מכרו או שכרו. הכול מתוך יותר מידע ובבטחה רבה יותר.',
+  mp_hero_h1: 'החלטות נדל״ן חכמות',
+  mp_hero_h2: 'הכול בפלטפורמה אחת',
+  mp_hero_scope: 'בדקו, העריכו, תכננו, מצאו, השוו, קנו, מכרו או שכרו. לחיצה אחת כדי להתחיל, ויותר מידע מאחורי כל החלטה.',
   mp_hero_explore: 'ראו מה Homatch עושה',
   mp_nav_start: 'התחלה',
   mp_launch_eyebrow: 'מתחילים כאן',
-  mp_launch_title: 'התחילו משימה אמיתית, עכשיו.',
+  mp_launch_title: 'התחילו משימה אמיתית',
   mp_launch_sub: 'כל פעולה למטה פותחת את המוצר האמיתי של Homatch. בלי הדגמות ובלי רשימות המתנה.',
   mp_launch_verify_go: 'בדיקה',
   mp_launch_ai_desc: 'שאלו על נכס, פרויקט, שכונה, מחיר, דוח או עסקה בשפה שלכם.',
@@ -18372,9 +18378,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_contract_desc: 'העלו חוזה מכר או שכירות, ו-Homatch יקרא אותו, יסביר מה כתוב בו ויסמן את מה שראוי למבט שני.',
   mp_contract_cta: 'העלאת חוזה',
   mp_contract_formats: 'PDF, DOCX, DOC או תצלום, עד 20 מ״ב. נפתח במרכז האימות.',
-  mp_layers_eyebrow: 'מה Homatch מבין',
-  mp_layers_title: 'מודעה מכירה את הדירה. Homatch מכיר את מה שמתחתיה.',
-  mp_layers_sub: 'סביב נכס אחד נאספות שבע שכבות, וכל אחת מהן עשויה לשנות את ההחלטה. עליהן בנויים הדוחות, ההתאמה והתשובות.',
+  mp_layers_eyebrow: 'שכבות בינה',
+  mp_layers_title: 'שבע שכבות מתחת לכל נכס',
+  mp_layers_sub: 'מודעה מכירה את הדירה. Homatch מכיר את מה שמתחתיה, מהרישום הרשמי ועד המימון, ועל שבע השכבות האלה בנויים כל הדוחות, ההתאמות והתשובות.',
   mp_layer_property: 'הנכס',
   mp_layer_property_d: 'מה שרשום: זהות היחידה, שטחה, הבעלים הרשום וכל מה שנרשם עליה.',
   mp_layer_project: 'הפרויקט',
@@ -18389,7 +18395,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_layer_contract_d: 'המסמך עצמו, נקרא סעיף אחר סעיף, עם התנאים שראויים לתשומת לב מובלטים.',
   mp_layer_financing: 'מימון',
   mp_layer_financing_d: 'כמה הרכישה באמת עולה לאורך זמן: התשלום, המבנה, ומה שמזיז אותם.',
-  mp_cc_title: 'בינה מלאכותית שמתקשרת ללידים שלכם, משוחחת איתם ואומרת מי באמת מתעניין.',
+  mp_cc_title: 'שיחות וסינון במקומכם',
   mp_cc_sub: 'בנו קמפיין שיחות לנכס או לפרויקט, ו-Homatch יתקשר. הוא מנהל את השיחה בשפה של הלקוח, מברר מה הוא מחפש, ושומר את התוצאה אצל איש הקשר כדי שהצוות שלכם ימשיך משם.',
   mp_cc_stage_lead: 'ליד',
   mp_cc_stage_talk: 'שיחה',
@@ -18409,10 +18415,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_cc_panel_alt: 'שיחת AI מתקיימת: השלב שאליו הגיעה והתוצאה הממתינה למילוי',
   mp_cc_panel_note: 'ייצוג של שיחה חיה. לא מוצגים שם, מספר או תמליל.',
   mp_verify_eyebrow: 'בינת הקונה',
-  mp_verify_show_title: 'דעו מה אתם קונים לפני שאתם חותמים.',
+  mp_verify_show_title: 'התמונה המלאה לפני החתימה',
   mp_verify_show_contract_d: 'העלו את החוזה לאותו תיק והוא ייקרא לצד כל מה ש-Homatch מצא.',
   mp_match_eyebrow: 'התאמה',
-  mp_match_show_title: 'תנו ל-Homatch נכס. הוא ימצא את מי שאולי באמת רוצה אותו.',
+  mp_match_show_title: 'מהנכס שלכם לרשימה מדורגת בלחיצה אחת',
   mp_match_beat_1: 'הנכס שלכם',
   mp_match_beat_2: 'Homatch קורא מה הוא',
   mp_match_beat_3: 'מחפש כוונה תואמת',
@@ -18430,7 +18436,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_tile_calls_d: 'Homatch מתקשר בעצמו, מנהל את השיחה ורושם מה האדם מחפש.',
   mp_tile_email_d: 'בנו קמפיין, תנו ל-Homatch AI לנסח, ועקבו אחרי כל שליחה.',
   mp_mortgage_eyebrow: 'מימון',
-  mp_mortgage_show_title: 'דעו כמה הרכישה באמת עולה, לפני שאתם מתחייבים אליה.',
+  mp_mortgage_show_title: 'העלות האמיתית של הרכישה',
   mp_mortgage_point_1: 'התשלום החודשי',
   mp_mortgage_point_1_d: 'כמה תשלמו בפועל בכל חודש במחיר, בהון העצמי ובתקופה שאתם שוקלים.',
   mp_mortgage_point_2: 'המבנה שמאחוריו',
@@ -18441,7 +18447,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_mortgage_scenario: 'תרחיש',
   mp_mortgage_note: 'כלי תכנון. Homatch אינו מסדר את ההלוואה ואינו מבטיח אישור.',
   mp_email_eyebrow: 'קמפיינים',
-  mp_email_show_title: 'כתבו פעם אחת, הגיעו לכל הרשימה, ודעו מה קרה.',
+  mp_email_show_title: 'כתבו פעם אחת והגיעו לכל הרשימה',
   mp_email_point_1: 'הקהל שלכם',
   mp_email_point_1_d: 'בנו את הרשימה מאנשי הקשר שלכם ובחרו בדיוק למי הקמפיין יוצא.',
   mp_email_point_2: 'נכתב עם Homatch AI',
@@ -18573,7 +18579,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_hero_action_capabilities_prompt: 'מה Homatch יכול לעשות בשבילי?',
 
   mp_flow_eyebrow: 'שכבת הבינה',
-  mp_flow_title: 'שאלה אחת. וכל מה ש-Homatch יודע להגיע אליו.',
+  mp_flow_title: 'שאלה אחת לכל הפלטפורמה',
   mp_flow_sub: 'Homatch AI הוא לא חלון צ׳אט שהוצמד לאתר. זו השכבה שדרכה מגיעים לכל הפלטפורמה, והוא עונה רק על סמך מה שהוא באמת יכול לאמת.',
   mp_flow_cta: 'שאלו את Homatch AI',
 
@@ -18589,7 +18595,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_core_title: 'ארבעה דברים ש-Homatch עושה באמת.',
   mp_core_sub: 'מצאו את מי שצריך את הנכס שלכם. מצאו את הנכס שאתם מחפשים. בדקו מה אתם קונים. הבינו כמה עולה המימון. כל אחת יכולת עצמאית עם התהליך שלה, ולכולן מגיעים דרך Homatch AI.',
 
-  mp_match_title: 'מצאו אדם שמתעניין בקנייה או בשכירות בלחיצה אחת',
+  mp_match_title: 'מצאו אדם שמתעניין בקנייה או בשכירות',
   mp_match_desc: 'הוסיפו או ייבאו נכס ו-Homatch יחפש אנשים שהתקציב, האזור והדרישות שלהם באמת מתאימים לו. הוא יחזיר ביקוש מדורג בלי כפילויות, ויראה מהיכן הגיע כל אחד.',
   mp_match_cta: 'התחילו התאמה',
 
@@ -18634,7 +18640,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mp_email_cta: 'פתחו את הקמפיינים',
 
   mp_dev_eyebrow: 'Developer B2B',
-  mp_dev_title: 'נהלו את כל מערך המכירות של פרויקט ממקום אחד.',
+  mp_dev_title: 'נהלו את מכירות הפרויקט ממקום אחד',
   mp_dev_sub: 'מצאו את הקונים שכבר מחפשים את מה שאתם בונים. הפכו את הביקוש הזה לשיחות, לטלפונים, לאימיילים ולהמשך טיפול, ושמרו על הכול מחובר במקום מפוזר בין גיליון, סוכנות ותיבת דואר.',
   mp_dev_point_1_title: 'ביקוש שכבר קיים',
   mp_dev_point_1_desc: 'Homatch מחפש אנשים שהדרישות שלהם מתאימות לפרויקט שלכם, במקום לחכות שימצאו את המודעה.',

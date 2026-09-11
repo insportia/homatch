@@ -18,6 +18,9 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // and stays in English in every locale, exactly as it does in the design
   // reference's Georgian screens.
   'brand_tagline',
+  // "Homatch" on its own, set as the first line of the hero lockup. It is the
+  // company's name, never translated or transliterated in any locale.
+  'brand_name',
   // "Developer B2B" — the product's own name for its developer offering,
   // kept in Latin script in every locale the same way "Homatch AI" is.
   'mp_dev_eyebrow',

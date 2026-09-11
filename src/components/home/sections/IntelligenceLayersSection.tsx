@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PAGE, SECTION_Y } from './primitives';
 
@@ -40,20 +40,32 @@ export function IntelligenceLayersSection() {
   const { t } = useLanguage();
   const [active, setActive] = useState(0);
   const [held, setHeld] = useState(false);
-  const reduced = useRef(false);
+
+  /* The highlight walks the tower on its own, but ONLY where the tower is:
+     from lg up, with motion allowed. On a phone the floors are the control,
+     and something that moves while a thumb is reaching for it is a worse
+     experience than one that waits. */
+  const [autoplay, setAutoplay] = useState(false);
 
   useEffect(() => {
-    reduced.current =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setAutoplay(desktop.matches && !still.matches);
+    sync();
+    desktop.addEventListener('change', sync);
+    still.addEventListener('change', sync);
+    return () => {
+      desktop.removeEventListener('change', sync);
+      still.removeEventListener('change', sync);
+    };
   }, []);
 
   useEffect(() => {
-    if (held || reduced.current) return;
+    if (!autoplay || held) return;
     const id = window.setInterval(() => setActive(i => (i + 1) % LAYERS.length), 3400);
     return () => window.clearInterval(id);
-  }, [held]);
+  }, [autoplay, held]);
 
   return (
     <section id="intelligence" className="scroll-mt-20 bg-[#080808] text-white">
@@ -74,12 +86,20 @@ export function IntelligenceLayersSection() {
           </p>
         </div>
 
-        {/* Three columns: the picture, the floors, and the floor you are on.
-            Two columns left a wide dead band to the right of seven short
-            labels, which is exactly the empty premium-SaaS look this pass is
-            supposed to get rid of. */}
+        {/* ── The phone composition ────────────────────────────────
+            Seven rows, each one a floor of the building AND its own touch
+            target. The slab tapers with the floor it stands for, so the
+            stack still reads as a tower, but the label lives OUTSIDE the
+            shape where it can be read at any size. One tap swaps the active
+            floor; nothing moves on its own. */}
+        <MobileStack active={active} onPick={setActive} />
+
+        {/* Three columns from lg: the picture, the floors, and the floor you
+            are on. Two columns left a wide dead band to the right of seven
+            short labels, which is the empty premium-SaaS look this pass
+            exists to remove. */}
         <div
-          className="mt-8 grid gap-8 sm:mt-12 sm:gap-10 lg:grid-cols-[minmax(0,19rem)_minmax(0,26rem)_minmax(0,20rem)] lg:items-center lg:justify-between lg:gap-12 xl:gap-16"
+          className="mt-8 hidden gap-8 sm:mt-12 sm:gap-10 lg:grid lg:grid-cols-[minmax(0,19rem)_minmax(0,26rem)_minmax(0,20rem)] lg:items-center lg:justify-between lg:gap-12 xl:gap-16"
           onMouseEnter={() => setHeld(true)}
           onMouseLeave={() => setHeld(false)}
           onFocusCapture={() => setHeld(true)}
@@ -150,6 +170,91 @@ export function IntelligenceLayersSection() {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * THE PHONE COMPOSITION
+ *
+ * The desktop tower is a picture beside a list. Shrunk onto a 320px screen
+ * that became a small diagram with unreadable floors and a list repeating it
+ * underneath, which is two weak things instead of one good one.
+ *
+ * Here the building IS the list. Each row carries a slab whose width is that
+ * floor's width in the tower, so the stack still tapers and still reads as a
+ * building, and the label sits beside the slab rather than inside it. The
+ * whole row is the touch target at 48px, the active floor is gold with a
+ * brighter border and a bolder label, and the sentence for the active floor
+ * sits underneath in a block of fixed height so nothing jumps when it
+ * changes. In RTL the whole row mirrors, slab and label together.
+ */
+function MobileStack({ active, onPick }: { active: number; onPick: (i: number) => void }) {
+  const { t } = useLanguage();
+  const floors = LAYERS.length;
+
+  return (
+    <div className="mt-8 lg:hidden">
+      {/* Drawn top down as FINANCING first and PROPERTY last, the same way
+          the desktop tower is stacked: the property is the ground the rest
+          of it stands on, so it is the widest slab and it is at the bottom.
+          The numbers count down as you read, which is how floors are
+          numbered in a building and removes any doubt about which end is
+          the base. */}
+      <ol>
+        {[...LAYERS].reverse().map((layer, position) => {
+          const i = floors - 1 - position;
+          const on = i === active;
+          const width = 46 + ((floors - 1 - i) / (floors - 1)) * 54;
+          return (
+            <li key={layer.key}>
+              <button
+                type="button"
+                onClick={() => onPick(i)}
+                aria-current={on}
+                className={`flex w-full items-center gap-3.5 rounded-[0.55rem] py-1.5 text-start transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold motion-reduce:transition-none ${
+                  on ? 'bg-white/[0.06]' : ''
+                }`}
+              >
+                {/* The floor. A fixed 7rem track keeps every slab on the same
+                    centre line, so the taper is visible rather than implied. */}
+                <span className="flex h-11 w-[7rem] shrink-0 items-center justify-center" aria-hidden="true">
+                  <span
+                    className={`h-[1.6rem] rounded-[0.2rem] border transition-[background-color,border-color] duration-200 motion-reduce:transition-none ${
+                      on ? 'border-gold bg-gold' : 'border-white/25 bg-white/[0.07]'
+                    }`}
+                    style={{ width: `${width}%` }}
+                  />
+                </span>
+
+                <span
+                  className={`min-w-0 flex-1 text-[15px] leading-snug transition-colors duration-200 motion-reduce:transition-none ${
+                    on ? 'font-semibold text-white' : 'font-medium text-white/55'
+                  }`}
+                >
+                  {t(layer.label)}
+                </span>
+
+                <span
+                  className={`shrink-0 font-mono text-[11px] tabular-nums transition-colors duration-200 motion-reduce:transition-none ${
+                    on ? 'text-gold' : 'text-white/30'
+                  }`}
+                  aria-hidden="true"
+                >
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="mt-5 rounded-[0.9rem] border border-white/15 bg-[#0C0C0C] p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
+        <p className="mt-2 min-h-[5.5rem] text-pretty text-[13.5px] leading-relaxed text-white/70">
+          {t(LAYERS[active].desc)}
+        </p>
+      </div>
+    </div>
   );
 }
 

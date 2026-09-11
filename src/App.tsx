@@ -6,6 +6,8 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { routes } from './routes';
 import { reportError } from '@/lib/errorReporting';
+import { JobsProvider } from '@/contexts/JobsContext';
+import { JobIndicator } from '@/components/jobs/JobIndicator';
 const DomMutationGuard: React.FC = () => { useEffect(() => { document.documentElement.setAttribute('translate','no'); document.documentElement.classList.add('notranslate'); document.body.setAttribute('translate','no'); document.body.classList.add('notranslate'); return()=>{document.documentElement.removeAttribute('translate');document.documentElement.classList.remove('notranslate');document.body.removeAttribute('translate');document.body.classList.remove('notranslate');};},[]); return null; };
 interface EBState { hasError:boolean }
 /*
@@ -26,5 +28,13 @@ interface EBState { hasError:boolean }
  */
 function ErrorFallback({onRetry}:{onRetry:()=>void}){const{t}=useLanguage();return <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-background"><p className="text-lg font-semibold mb-2">{t('app_error_occurred')}</p><p className="text-sm text-muted-foreground mb-4">{t('app_error_generic_hint')}</p><button className="text-sm underline text-primary" onClick={onRetry}>{t('app_refresh_page')}</button></div>}
 class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState>{constructor(props:{children:React.ReactNode}){super(props);this.state={hasError:false}}static getDerivedStateFromError():EBState{return{hasError:true}}componentDidCatch(error:Error,info:React.ErrorInfo){reportError(error,{boundary:'app',route:typeof window!=='undefined'?window.location.pathname:undefined});console.error('[ErrorBoundary]',info.componentStack);const isDomRemovalError=error?.name==='NotFoundError'||/removeChild|not a child of this node/i.test(error?.message??'');if(isDomRemovalError&&sessionStorage.getItem('homatch-dom-recovery')!=='1'){sessionStorage.setItem('homatch-dom-recovery','1');window.location.reload();return}sessionStorage.removeItem('homatch-dom-recovery')}render(){if(this.state.hasError)return <ErrorFallback onRetry={()=>{sessionStorage.removeItem('homatch-dom-recovery');this.setState({hasError:false});window.location.reload()}}/>;return this.props.children}}
-const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<Navigate to="/" replace/>}/></Routes></ErrorBoundary><Toaster richColors position="top-right"/></AuthProvider></LanguageProvider></Router>;
+/*
+ * JobsProvider and JobIndicator sit OUTSIDE <Routes>, which is the whole
+ * point of them. A route change re-renders what is inside <Routes> and
+ * nothing else, so the thing watching a running verification is not the thing
+ * the customer navigates away from. It is also outside <ErrorBoundary>: a
+ * page that throws must not take the progress indicator with it, since the
+ * job is still running and that is exactly when the customer needs to see so.
+ */
+const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<Navigate to="/" replace/>}/></Routes></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></JobsProvider></AuthProvider></LanguageProvider></Router>;
 export default App;

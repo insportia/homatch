@@ -112,6 +112,8 @@ export async function deleteDocument(documentId: string, storagePath: string | n
 
 export interface DocumentFinding {
   id: string;
+  /** Which document this came from — what makes provenance renderable (§21). */
+  document_id: string;
   finding_type: string;
   label: string;
   value: string | null;
@@ -126,7 +128,7 @@ export interface DocumentFinding {
 export async function listFindings(roomId: string): Promise<DocumentFinding[]> {
   const { data, error } = await supabase
     .from('deal_room_document_findings')
-    .select('id,finding_type,label,value,quote,page,verify_relation,verify_fact_type,verify_fact_value,severity')
+    .select('id,document_id,finding_type,label,value,quote,page,verify_relation,verify_fact_type,verify_fact_value,severity')
     .eq('deal_room_id', roomId)
     .eq('dismissed', false)
     // Contradictions first: a contract that disagrees with the registry is

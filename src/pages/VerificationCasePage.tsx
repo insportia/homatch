@@ -13,7 +13,7 @@
 // The storage layer underneath still calls a case a `deal_room` (see
 // services/dealRooms.ts for why those live production tables were not
 // renamed); nothing on this screen does.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -30,15 +30,23 @@ import {
   setActionState, answerQuestion, addNote, loadLatestAiThread,
   type DealRoomRecord, type ActionItemRecord, type QuestionRecord, type DocumentRecord,
 } from '@/services/dealRooms';
-import { listFindings, uploadDocument, deleteDocument, analyzeDocument, getDocumentAnalysis,
-  type DocumentFinding, type AnalysisState, type DocumentAnalysis } from '@/services/dealRoomDocuments';
+import { listFindings, uploadDocument, type DocumentFinding } from '@/services/dealRoomDocuments';
+import {
+  listWorkspaceDocuments, renameDocument, setDocumentCategory, archiveDocument,
+  restoreDocument, deleteDocumentPermanently, downloadUrlFor, requestAnalysis,
+  type WorkspaceDocument,
+} from '@/services/documentWorkspace';
+import { DocumentWorkspace } from '@/components/documents/DocumentWorkspace';
+import { DocumentReader } from '@/components/documents/DocumentReader';
+import type { DocumentCategory } from '@/documents/documentModel';
+import { useJobs } from '@/contexts/JobsContext';
+import type { BackgroundJob } from '@/services/backgroundJobs';
 import { VerifyResultView } from '@/components/verify/VerifyResultView';
 import { loadVerifyResult, getVerifyJobFacts, type VerifyJobFacts } from '@/services/verifyResult';
 import type { NormalizedVerifyResult } from '@/verify/resultNormalizer';
 import { isTerminal } from '@/jobs/jobState';
 import { ActionPlanPanel } from '@/components/dealroom/ActionPlanPanel';
 import { AskHomatchPanel, type AskMessage } from '@/components/dealroom/AskHomatchPanel';
-import { DocumentsPanel } from '@/components/dealroom/DocumentsPanel';
 
 const VerificationCasePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -56,11 +64,13 @@ const VerificationCasePage: React.FC = () => {
   const [room, setRoom] = useState<DealRoomRecord | null | undefined>(undefined);
   const [actions, setActions] = useState<ActionItemRecord[]>([]);
   const [questions, setQuestions] = useState<QuestionRecord[]>([]);
-  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  // One read gives the whole document: its analysis, its category, its
+  // archive state. The old page fetched the list and then made one extra
+  // round trip PER DOCUMENT to find out whether it had been analysed.
+  const [documents, setDocuments] = useState<WorkspaceDocument[]>([]);
   const [findings, setFindings] = useState<DocumentFinding[]>([]);
-  // Analysis per document. Loaded lazily alongside the documents so the
-  // panel can say what it knows instead of implying nothing was found.
-  const [analyses, setAnalyses] = useState<Record<string, { state: AnalysisState; analysis: DocumentAnalysis | null }>>({});
+  const [readerDoc, setReaderDoc] = useState<WorkspaceDocument | null>(null);
+  const [readerOpen, setReaderOpen] = useState(false);
   const [notes, setNotes] = useState<{ id: string; body: string; created_at: string }[]>([]);
   const [noteDraft, setNoteDraft] = useState('');
 
@@ -77,35 +87,55 @@ const VerificationCasePage: React.FC = () => {
   const [askError, setAskError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /*
+   * The live document jobs, from the global provider.
+   *
+   * Read rather than owned: the provider is mounted above the router, so a
+   * document analysis the customer started here keeps being watched after
+   * they navigate away — and is still being watched when they come back
+   * (§30, §31).
+   */
+  const { jobs: allJobs, cancel: cancelJob, refresh: refreshJobs } = useJobs();
+  const documentJobs = useMemo(() => {
+    const m = new Map<string, BackgroundJob>();
+    for (const j of allJobs) {
+      if (j.subjectType === 'DOCUMENT' && j.subjectId) m.set(j.subjectId, j);
+    }
+    return m;
+  }, [allJobs]);
+
+  /*
+   * PROVENANCE (§21).
+   *
+   * A document that produced a finding which was cross-checked against the
+   * verification contributed to it. Derived from the findings themselves
+   * rather than asserted, so the badge can never claim a document was used
+   * when nothing of it reached the report.
+   */
+  const usedInVerification = useMemo(() => {
+    const ids = new Set<string>();
+    for (const f of findings) {
+      if (f.verify_relation === 'AGREES' || f.verify_relation === 'CONTRADICTS') {
+        const docId = (f as unknown as { document_id?: string }).document_id;
+        if (docId) ids.add(docId);
+      }
+    }
+    return ids;
+  }, [findings]);
+
   const reload = useCallback(async () => {
     if (!id) return;
     const r = await getDealRoom(id);
     setRoom(r);
     if (!r) return;
     const [a, q, d, f, n, ai] = await Promise.all([
-      listActionItems(id), listQuestions(id), listDocuments(id), listFindings(id), listNotes(id),
-      loadLatestAiThread(id),
+      listActionItems(id), listQuestions(id), listWorkspaceDocuments(id), listFindings(id),
+      listNotes(id), loadLatestAiThread(id),
     ]);
     setActions(a);
     setQuestions(q);
     setDocuments(d);
     setFindings(f);
-    // A document analysed days ago must not read as "we have not read this
-    // yet" when the customer comes back to it.
-    const withFiles = d.filter((doc) => doc.storage_path);
-    if (withFiles.length) {
-      const loaded = await Promise.all(
-        withFiles.map(async (doc) => {
-          try {
-            const a = await getDocumentAnalysis(doc.id);
-            return [doc.id, { state: a.state, analysis: a.analysis }] as const;
-          } catch {
-            return [doc.id, { state: 'NONE' as AnalysisState, analysis: null }] as const;
-          }
-        })
-      );
-      setAnalyses(Object.fromEntries(loaded));
-    }
     setNotes(n);
     // The conversation continues where the customer left it, days later. An
     // empty grounded_in is preserved as an empty array, because that is what
@@ -172,25 +202,6 @@ const VerificationCasePage: React.FC = () => {
     };
   }, [room?.verify_job_id]);
 
-  /** Ask for this document to be read, then re-read the stored result.
-   * The database state is the authority: on any failure we re-read rather
-   * than guessing, so the panel never claims an analysis that does not exist. */
-  const onAnalyzeDoc = async (doc: { id: string }) => {
-    setAnalyses((prev) => ({ ...prev, [doc.id]: { state: 'RUNNING', analysis: null } }));
-    try {
-      await analyzeDocument(doc.id);
-    } catch {
-      /* fall through to the re-read below */
-    }
-    try {
-      const a = await getDocumentAnalysis(doc.id);
-      setAnalyses((prev) => ({ ...prev, [doc.id]: { state: a.state, analysis: a.analysis } }));
-      if (id) setFindings(await listFindings(id));
-    } catch {
-      setAnalyses((prev) => ({ ...prev, [doc.id]: { state: 'FAILED', analysis: null } }));
-    }
-  };
-
   const onToggle = async (item: ActionItemRecord, next: ActionItemRecord['state']) => {
     setBusy(true);
     // Optimistic: the customer's own progress should feel instant.
@@ -217,13 +228,23 @@ const VerificationCasePage: React.FC = () => {
     }
   };
 
+  /*
+   * Uploading now ASKS for the document to be read, durably.
+   *
+   * It used to upload and stop: the customer then had to find and press
+   * Analyse. Handing us a contract is unambiguous about what they want, and
+   * the analysis is a registered job from the first moment, so leaving the
+   * page immediately afterwards is safe.
+   */
   const onUpload = async (file: File) => {
     if (!id) return;
     setBusy(true);
     try {
-      await uploadDocument({ roomId: id, file });
+      const { documentId } = await uploadDocument({ roomId: id, file });
       toast.success(t('dr_docs_uploaded'));
+      await requestAnalysis({ id: documentId, caseId: id, name: file.name } as WorkspaceDocument);
       await reload();
+      await refreshJobs();
     } catch {
       toast.error(t('dr_error_generic'));
     } finally {
@@ -231,16 +252,45 @@ const VerificationCasePage: React.FC = () => {
     }
   };
 
-  const onDeleteDoc = async (doc: DocumentRecord) => {
-    setBusy(true);
+  /*
+   * WHAT THE WORKSPACE CAN DO.
+   *
+   * Each of these re-reads afterwards rather than patching local state: the
+   * database is the authority on what happened, and a card that shows an
+   * archive that failed is worse than one that takes a moment to update.
+   */
+  const guard = async (fn: () => Promise<void>) => {
     try {
-      await deleteDocument(doc.id, doc.storage_path);
+      await fn();
       await reload();
     } catch {
       toast.error(t('dr_error_generic'));
-    } finally {
-      setBusy(false);
+      await reload();
     }
+  };
+
+  const documentActions = {
+    onOpenReader: (doc: WorkspaceDocument) => { setReaderDoc(doc); setReaderOpen(true); },
+    onRename: (doc: WorkspaceDocument, name: string) => guard(() => renameDocument(doc, name)),
+    onCategorize: (doc: WorkspaceDocument, c: DocumentCategory) => guard(() => setDocumentCategory(doc, c)),
+    onReanalyze: (doc: WorkspaceDocument) =>
+      guard(async () => { await requestAnalysis(doc, { reanalyze: true }); await refreshJobs(); }),
+    onArchive: (doc: WorkspaceDocument) => guard(() => archiveDocument(doc)),
+    onRestore: (doc: WorkspaceDocument) => guard(() => restoreDocument(doc)),
+    onDelete: (doc: WorkspaceDocument) => guard(() => deleteDocumentPermanently(doc)),
+    onDownload: async (doc: WorkspaceDocument) => {
+      try {
+        const url = await downloadUrlFor(doc);
+        if (url) window.open(url, '_blank', 'noopener');
+      } catch {
+        toast.error(t('doc_download_failed'));
+      }
+    },
+    onCancelJob: async (jobId: string) => {
+      const outcome = await cancelJob(jobId);
+      if (!outcome.ok && outcome.reason === 'COMMITTED') toast.info(t('job_cancel_too_late'));
+      await reload();
+    },
   };
 
   const onAsk = async (question: string) => {
@@ -251,7 +301,7 @@ const VerificationCasePage: React.FC = () => {
     setAskError(null);
     try {
       const { data, error } = await supabase.functions.invoke('deal-room-ai', {
-        body: { dealRoomId: id, question, threadId },
+        body: { caseId: id, question, threadId },
       });
       if (error || !data || data.error || !data.answer) {
         setAskError(t('dr_ask_unavailable'));
@@ -364,14 +414,14 @@ const VerificationCasePage: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="documents" className="mt-5">
-            <DocumentsPanel
+            <DocumentWorkspace
               documents={documents}
               findings={findings}
-              analyses={analyses}
+              jobs={documentJobs}
               onUpload={onUpload}
-              onDelete={onDeleteDoc}
-              onAnalyze={onAnalyzeDoc}
+              actions={documentActions}
               busy={busy}
+              usedInVerification={usedInVerification}
             />
           </TabsContent>
 
@@ -418,6 +468,15 @@ const VerificationCasePage: React.FC = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Outside the tab strip on purpose: closing the reader must not move
+          the customer somewhere else. */}
+      <DocumentReader
+        doc={readerDoc}
+        open={readerOpen}
+        onOpenChange={setReaderOpen}
+        usedInVerification={readerDoc ? usedInVerification.has(readerDoc.id) : false}
+      />
     </AppLayout>
   );
 };

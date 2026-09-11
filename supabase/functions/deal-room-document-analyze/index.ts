@@ -93,21 +93,61 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? '';
     if (!authHeader) return json({ error: 'unauthorized' }, 401);
 
-    supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth?.user?.id;
-    if (!userId) return json({ error: 'unauthorized' }, 401);
-
     const body = await req.json().catch(() => ({}));
     documentId = String(body?.documentId ?? '').trim();
     const force = body?.force === true;
     const language = typeof body?.language === 'string' ? body.language.slice(0, 12) : undefined;
     if (!documentId) return json({ error: 'documentId is required' }, 400);
+
+    /*
+     * TWO WAYS IN, AND ONLY ONE OF THEM IS A PERSON.
+     *
+     * The customer's own session is the normal path and is unchanged: RLS
+     * decides which document they may read, and one that is not theirs simply
+     * is not found.
+     *
+     * jobs-worker is the second. It has no session — it is a cron tick —
+     * because the entire point of a durable job is that the browser which
+     * started the analysis is gone. Letting it in needs a capability rather
+     * than trust, so it presents TWO things: the service key, which only
+     * Homatch holds, and a background_jobs row whose subject_id is this exact
+     * document. The job row IS the authorisation; the key alone will not do,
+     * so a leaked key cannot be pointed at an arbitrary document id without a
+     * matching job to go with it.
+     */
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const workerJobId = String(body?.workerJobId ?? '').trim();
+    const claimsWorker = !!workerJobId && !!serviceKey && authHeader === `Bearer ${serviceKey}`;
+
+    let userId: string | undefined;
+
+    if (claimsWorker) {
+      supabase = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
+      const { data: job } = await supabase
+        .from('background_jobs')
+        .select('id,user_id,subject_id,subject_type,product_type,state')
+        .eq('id', workerJobId)
+        .maybeSingle();
+      if (
+        !job ||
+        job.subject_type !== 'DOCUMENT' ||
+        job.product_type !== 'DOCUMENT_ANALYSIS' ||
+        job.subject_id !== documentId ||
+        ['COMPLETED', 'FAILED', 'CANCELLED'].includes(String(job.state))
+      ) {
+        return json({ error: 'unauthorized' }, 401);
+      }
+      userId = job.user_id as string;
+    } else {
+      supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: auth } = await supabase.auth.getUser();
+      userId = auth?.user?.id;
+      if (!userId) return json({ error: 'unauthorized' }, 401);
+    }
 
     /* ---- the document, via RLS ---- */
     const { data: doc, error: docErr } = await supabase
@@ -144,6 +184,12 @@ serve(async (req) => {
     }
 
     await supabase.from('deal_room_documents').update({ analysis_state: 'RUNNING' }).eq('id', documentId);
+    try {
+      await supabase.from('deal_room_document_events').insert({
+        document_id: documentId, deal_room_id: doc.deal_room_id, user_id: userId,
+        event_type: 'ANALYSIS_STARTED', detail: { worker: claimsWorker },
+      });
+    } catch { /* history is bookkeeping, not the result */ }
 
     /* ---- the private object, via the same RLS ---- */
     const dl = await supabase.storage.from('deal-room-documents').download(doc.storage_path);
@@ -315,6 +361,21 @@ serve(async (req) => {
       analysedAt: new Date().toISOString(),
     };
 
+    /*
+     * THE TEXT IS KEPT NOW.
+     *
+     * It was extracted on every run and thrown away, which is why "view the
+     * extracted text" was an action the product could not honestly offer and
+     * why re-reading your own contract meant re-buying the extraction. It
+     * lives on the row, under exactly the same RLS as the document, and is
+     * never logged.
+     *
+     * headline_summary is what a COLLAPSED card shows. The first line of the
+     * extracted text would be a letterhead; the analyser's own first summary
+     * sentence is a sentence about the document (§14).
+     */
+    const headline = (analysis.summary[0] ?? '').slice(0, 300) || null;
+
     await supabase
       .from('deal_room_documents')
       .update({
@@ -324,8 +385,23 @@ serve(async (req) => {
         analysis_sha256: sha,
         analyzed_at: new Date().toISOString(),
         state: 'ANALYZED',
+        extracted_text: text,
+        extracted_pages: pages || null,
+        headline_summary: headline,
       })
       .eq('id', documentId);
+
+    // The customer's own history of their document (§18). Best-effort: a
+    // missing history line must never fail an analysis that succeeded.
+    try {
+      await supabase.from('deal_room_document_events').insert([
+        { document_id: documentId, deal_room_id: doc.deal_room_id, user_id: userId,
+          event_type: 'EXTRACTION_COMPLETED', detail: { pages, chars: text.length } },
+        { document_id: documentId, deal_room_id: doc.deal_room_id, user_id: userId,
+          event_type: 'ANALYSIS_COMPLETED',
+          detail: { clauses: analysis.clauses.length, findings: checked.length } },
+      ]);
+    } catch { /* history is bookkeeping, not the result */ }
 
     return json({
       state: 'DONE',

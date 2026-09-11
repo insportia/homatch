@@ -2,8 +2,9 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
 import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
-import { harvestReport } from '../../../src/verify/intelligence/harvest.ts';
-import { persistHarvest } from '../../../src/verify/intelligence/graphStore.ts';
+import { harvestReport, normalizeCadastral } from '../../../src/verify/intelligence/harvest.ts';
+import { persistHarvest, loadKnownIntelligence } from '../../../src/verify/intelligence/graphStore.ts';
+import { planVerification } from '../../../src/verify/intelligence/stagePlan.ts';
 import {
   consumptionFromUsage,
   costOperationFor,
@@ -3734,6 +3735,79 @@ function withholdReportUntilSignIn(job: any): any {
  * make.
  */
 /*
+ * WHAT THIS VERIFICATION WOULD NOT HAVE HAD TO PAY FOR.
+ *
+ * Computed at the start of every run, recorded against the job, and ACTED
+ * ON BY NOTHING. Every stage still runs exactly as it did.
+ *
+ * That order is deliberate. Routing away from expensive research before a
+ * benchmark shows quality is materially equivalent is precisely what the
+ * mandate forbids, and a decision nobody has measured is not a decision
+ * worth shipping. Recording it against real verifications turns the saving
+ * from a projection into a number — and if the plan ever proposes skipping
+ * something a report actually needed, that appears in a log rather than in
+ * somebody's due diligence.
+ *
+ * Reuse is computed over the facts we hold about this property AND about
+ * the things it belongs to — its parcel, its project, the company that
+ * built it — because that is where reuse actually pays: a second flat in
+ * the same building needs none of the project research the first one did.
+ */
+async function shadowReusePlan(db: any, query: string): Promise<any | null> {
+  try {
+    const code = normalizeCadastral(query);
+    if (!code) return null;
+
+    const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', code);
+    if (!known.entityId) {
+      return { known: false, summary: 'nothing known about this property yet' };
+    }
+
+    const { data: policies } = await db
+      .from('intelligence_freshness_policy')
+      .select('fact_key_pattern, freshness_class, max_age_hours');
+
+    /*
+     * Facts about the property itself and about what it belongs to — and the
+     * kind of property it is, because a private resale has no commissioning
+     * status to establish and counting that as MISSING on every run would
+     * mean public research could never be reused for one.
+     *
+     * The class is whatever the LAST verification of this property concluded.
+     * Unknown rules nothing out, so a first run is unaffected.
+     */
+    const assetClassFact = known.facts.find((f: any) => f.fact_key === 'property.assetClass');
+    const plan = planVerification(
+      [...known.facts, ...known.relatedFacts],
+      policies ?? [],
+      Date.now(),
+      (assetClassFact as any)?.value_text ?? null
+    );
+
+    return {
+      known: true,
+      heldFacts: known.facts.length,
+      relatedFacts: known.relatedFacts.length,
+      reusableFacts: plan.reusableFacts,
+      requiredFacts: plan.requiredFacts,
+      wouldSkip: plan.wouldSkip,
+      summary: plan.summary,
+      decisions: plan.decisions.map((d: any) => ({
+        stage: d.stage,
+        wouldRun: d.wouldRun,
+        reason: d.reason,
+        missing: d.missing.length,
+        stale: d.stale.length,
+        reused: d.reused.length,
+      })),
+    };
+  } catch (e) {
+    console.error('research-agent: shadow reuse plan threw', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+/*
  * WHAT THIS VERIFICATION TEACHES THE GRAPH.
  *
  * Every completed Verify should leave Homatch knowing more than it did — not
@@ -3756,7 +3830,37 @@ async function learnFromVerification(db: any, jobId: string, report: any): Promi
       .from('intelligence_freshness_policy')
       .select('fact_key_pattern, freshness_class, max_age_hours');
 
-    const harvest = harvestReport(report, policies ?? []);
+    /*
+     * WHO CAN SIGN FOR THE COMPANY IS DERIVED ON READ.
+     *
+     * extractControlStructure() parses the directorate out of the raw registry
+     * extract, and sanitizeForCustomer() merges the result into the report the
+     * customer sees. The stored result_json never carries it: companyProfile
+     * .directors is [] in the raw report, which is exactly what the harvest
+     * was being handed.
+     *
+     * So the same extraction runs here, from the same function, before the
+     * harvest reads the profile. Two parsers for one registry block would be
+     * two parsers to keep in agreement.
+     *
+     * The personal identification numbers that sit beside the names in that
+     * extract are matched and discarded by extractControlStructure itself.
+     * Names and a representation mode are what a buyer needs; the numbers are
+     * not their business and are certainly not shared intelligence.
+     */
+    const control = extractControlStructure((report as any)?.browserOfficial);
+    const forHarvest = (control.directors.length || control.representation)
+      ? {
+          ...report,
+          companyProfile: {
+            ...((report as any)?.companyProfile ?? {}),
+            directors: control.directors,
+            representation: control.representation,
+          },
+        }
+      : report;
+
+    const harvest = harvestReport(forHarvest, policies ?? []);
     if (!harvest.entities.length) return;
 
     const out = await persistHarvest(db, harvest, jobId);
@@ -3959,6 +4063,10 @@ function sanitizeForCustomer(job: any): any {
   delete r.researchProvider;
   delete r.costUsage;
   delete r.webSearchCalls;
+  // What we already knew, and what a reuse decision would have skipped, is
+  // internal economics. A customer buys the current state of their property,
+  // not a description of how cheaply we assembled it.
+  delete r._reusePlan;
   delete r._worker;
   delete r._cost;
   delete r._searches;
@@ -4583,7 +4691,9 @@ Deno.serve(async (req) => {
     const owner = anonSession
       ? { user_id: null, anon_session_id: anonSession.id }
       : { user_id: user!.id };
-    const { data: j, error } = await sb.from('research_jobs').insert({ ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
+    /* Measured, not acted on. See shadowReusePlan(). */
+    const reusePlan = await shadowReusePlan(sb, q);
+    const { data: j, error } = await sb.from('research_jobs').insert({ ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
     if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);
     await advance(sb, key, model, j, lang);
     return json({ accepted: true, jobId: j.id }, 202);

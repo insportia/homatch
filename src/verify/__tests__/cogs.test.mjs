@@ -370,3 +370,21 @@ test('a re-driven job does not double-count', () => {
   assert.match(fn, /count: 'exact', head: true/);
   assert.match(fn, /if \(\(count \?\? 0\) > 0\) return;/, 'a second completion records the cost again');
 });
+
+/* ── the harvest sees what the customer sees ─────────────────────────── */
+
+test('who can sign for the company reaches the graph', () => {
+  // extractControlStructure() parses the directorate out of the raw registry
+  // extract and sanitizeForCustomer() merges it into the report a customer
+  // reads. The STORED result_json never carries it — companyProfile.directors
+  // is [] there — so the harvest was being handed a company with no directors
+  // and no representation mode at all.
+  const src = agent();
+  const i = src.indexOf('async function learnFromVerification');
+  const fn = src.slice(i, src.indexOf('async function recordVerificationCost', i));
+  assert.match(fn, /extractControlStructure\(/, 'the harvest still reads the unenriched profile');
+  assert.match(fn, /representation: control\.representation/);
+  // The same function the customer path uses: two parsers for one registry
+  // block would be two parsers to keep in agreement.
+  assert.match(src, /import \{[^}]*extractControlStructure/s);
+});

@@ -126,3 +126,53 @@ export function sameProject(a: unknown, b: unknown): boolean {
   const kb = canonicalProjectKey(b);
   return !!ka && ka === kb;
 }
+
+/**
+ * Which script a name is written in.
+ *
+ * Deterministic and only as precise as it needs to be: this decides how an
+ * alias is labelled for an operator reading the table, never whether two names
+ * are the same thing.
+ */
+export type NameScript = 'LATIN' | 'GEORGIAN' | 'CYRILLIC' | 'MIXED' | 'UNKNOWN';
+
+export function scriptOf(v: unknown): NameScript {
+  const s = typeof v === 'string' ? v : v == null ? '' : String(v);
+  const has = {
+    LATIN: /\p{Script=Latin}/u.test(s),
+    GEORGIAN: /\p{Script=Georgian}/u.test(s),
+    CYRILLIC: /\p{Script=Cyrillic}/u.test(s),
+  };
+  const present = (Object.keys(has) as NameScript[]).filter((k) => has[k as 'LATIN']);
+  if (!present.length) return 'UNKNOWN';
+  return present.length > 1 ? 'MIXED' : present[0];
+}
+
+/**
+ * Every spelling of a project worth remembering as pointing at it.
+ *
+ * WHY ALIASES AND NOT TRANSLITERATION. "Kristian Stiven Street, 18" and
+ * "კრისტიან სტივენის ქუჩა №18" are the same development, and canonicalisation
+ * gets the street-type word but not the name: transliterating the Georgian
+ * gives "kristian stivenis" — the genitive "-ის" is part of the word — and
+ * stripping case endings is morphology, not a deterministic rewrite. Guessing
+ * there risks fusing two real developments, which is far worse than holding
+ * two entities.
+ *
+ * So nothing is guessed. A name observed for a project is REMEMBERED as
+ * pointing at it, and the next verification that sees that spelling resolves
+ * to the same entity. Evidence, not inference.
+ */
+export function aliasKeysFor(names: readonly unknown[]): { key: string; raw: string; script: NameScript }[] {
+  const out: { key: string; raw: string; script: NameScript }[] = [];
+  const seen = new Set<string>();
+  for (const n of names ?? []) {
+    const raw = typeof n === 'string' ? n.trim() : n == null ? '' : String(n).trim();
+    if (!raw) continue;
+    const key = canonicalProjectKey(raw);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, raw: raw.slice(0, 300), script: scriptOf(raw) });
+  }
+  return out;
+}

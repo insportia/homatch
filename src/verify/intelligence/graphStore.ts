@@ -27,6 +27,7 @@
 // updated. Failures are logged and the harvest is abandoned, never the report.
 
 import type { Harvest, HarvestedEntity, HarvestedFact, HarvestedRelationship } from './harvest.ts';
+import { aliasKeysFor } from './projectIdentity.ts';
 import type { KnownFact } from './freshness.ts';
 
 /** The narrow slice of a Supabase client this module needs. */
@@ -192,6 +193,53 @@ function readableValue(row: any): string | null {
  * `last_seen_at` moves on every sighting, which is how a project nobody has
  * looked at in a year becomes visible as such.
  */
+/**
+ * Remembers every spelling this run saw for a project.
+ *
+ * Never re-points an alias that already belongs to another project: the unique
+ * index makes a collision do nothing, so the first project to claim a spelling
+ * keeps it and the clash is left for a person rather than silently resolved.
+ * Failing here must never cost a verification its graph write, so it is
+ * swallowed — an unremembered alias means the next run creates a duplicate,
+ * which is exactly what happened before any of this existed.
+ */
+async function rememberAliases(db: GraphClient, entityId: string, e: HarvestedEntity): Promise<void> {
+  if (e.entityType !== 'PROJECT' || !e.aliases?.length) return;
+  try {
+    const rows = aliasKeysFor(e.aliases).map((a) => ({
+      entity_id: entityId,
+      alias_key: a.key,
+      alias_raw: a.raw,
+      script: a.script,
+      source_kind: 'PUBLIC_WEB',
+      confidence: 0.6,
+      resolution: 'AUTO',
+    }));
+    if (rows.length) await db.from('intelligence_project_aliases').insert(rows);
+  } catch {
+    /* see above */
+  }
+}
+
+/** The project a spelling has already been seen to mean, if any. */
+async function entityByAlias(db: GraphClient, e: HarvestedEntity): Promise<string | null> {
+  if (e.entityType !== 'PROJECT') return null;
+  try {
+    const keys = aliasKeysFor([e.naturalKey, ...(e.aliases ?? [])]).map((a) => a.key);
+    if (!keys.length) return null;
+    const { data } = await db
+      .from('intelligence_project_aliases')
+      .select('entity_id, resolution')
+      .in('alias_key', keys)
+      .neq('resolution', 'REJECTED')
+      .limit(1);
+    const hit = (data ?? [])[0] as { entity_id?: string } | undefined;
+    return hit?.entity_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function upsertEntity(db: GraphClient, e: HarvestedEntity): Promise<string | null> {
   const { data: existing } = await db
     .from('intelligence_entities')
@@ -200,7 +248,30 @@ async function upsertEntity(db: GraphClient, e: HarvestedEntity): Promise<string
     .eq('natural_key', e.naturalKey)
     .maybeSingle();
 
+  /*
+   * A project already known under a different spelling.
+   *
+   * "Kristian Stiven Street, 18" and the Georgian form of the same address
+   * canonicalise differently — the street-type word normalises, the name does
+   * not, because transliterating Georgian gives "stivenis" and stripping the
+   * genitive is morphology rather than a rewrite. So the match comes from
+   * having SEEN the spelling before, not from guessing that two names mean the
+   * same thing.
+   */
+  if (!existing?.id) {
+    const viaAlias = await entityByAlias(db, e);
+    if (viaAlias) {
+      await db
+        .from('intelligence_entities')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', viaAlias);
+      await rememberAliases(db, viaAlias, e);
+      return viaAlias;
+    }
+  }
+
   if (existing?.id) {
+    await rememberAliases(db, existing.id, e);
     await db
       .from('intelligence_entities')
       .update({ last_seen_at: new Date().toISOString(), ...(e.displayName ? { display_name: e.displayName } : {}) })
@@ -229,8 +300,10 @@ async function upsertEntity(db: GraphClient, e: HarvestedEntity): Promise<string
       .eq('key_kind', e.keyKind)
       .eq('natural_key', e.naturalKey)
       .maybeSingle();
+    if (raced?.id) await rememberAliases(db, raced.id, e);
     return raced?.id ?? null;
   }
+  if (data?.id) await rememberAliases(db, data.id, e);
   return data?.id ?? null;
 }
 

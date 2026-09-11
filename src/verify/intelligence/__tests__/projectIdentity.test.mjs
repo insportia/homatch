@@ -12,7 +12,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canonicalProjectKey, sameProject } from '../projectIdentity.ts';
+import { canonicalProjectKey, sameProject, scriptOf, aliasKeysFor } from '../projectIdentity.ts';
 
 /* ── the production case ─────────────────────────────────────────────── */
 
@@ -121,4 +121,54 @@ test('a plain project name is unchanged apart from shaping', () => {
 test('sameProject is false when either side has no key at all', () => {
   assert.ok(!sameProject('', ''));
   assert.ok(!sameProject(null, null));
+});
+
+/* ── cross-script identity, by evidence rather than by guessing ──────
+ *
+ * canonicalProjectKey normalises the street-type word across scripts but not
+ * the name, so `kristian-stiven-street-18` and `კრისტიან-სტივენის-street-18`
+ * stayed two entities and split again in production within the hour.
+ *
+ * Transliteration does not close it: the Georgian genitive makes
+ * "სტივენის" -> "stivenis", not "stiven", and stripping case endings is
+ * morphology, not a deterministic rewrite. So spellings are REMEMBERED
+ * instead — a name seen for a project resolves to it next time.
+ */
+
+test('a name is recognised by its script without being rewritten', () => {
+  assert.equal(scriptOf('Kristian Stiven Street, 18'), 'LATIN');
+  assert.equal(scriptOf('კრისტიან სტივენის ქუჩა №18'), 'GEORGIAN');
+  assert.equal(scriptOf('Руставели проспект 12'), 'CYRILLIC');
+  assert.equal(scriptOf('Villion კრწანისი'), 'MIXED');
+  assert.equal(scriptOf('18'), 'UNKNOWN');
+  assert.equal(scriptOf(null), 'UNKNOWN');
+});
+
+test('every observed spelling becomes a key that can be looked up', () => {
+  const keys = aliasKeysFor([
+    'Kristian Stiven Street, 18',
+    '18 Kristian Stiven St',
+    'კრისტიან სტივენის ქუჩა №18',
+  ]);
+  // The two Latin spellings canonicalise together; the Georgian one is its own
+  // key, which is exactly why it has to be remembered rather than derived.
+  assert.equal(keys.length, 2);
+  assert.ok(keys.some((k) => k.key === 'kristian-stiven-street-18' && k.script === 'LATIN'));
+  assert.ok(keys.some((k) => k.script === 'GEORGIAN'));
+});
+
+test('aliases carry their raw spelling for a human to audit', () => {
+  const [a] = aliasKeysFor(['  Kristian Stiven Street, 18  ']);
+  assert.equal(a.raw, 'Kristian Stiven Street, 18');
+  assert.equal(a.key, 'kristian-stiven-street-18');
+});
+
+test('an unusable name yields no alias at all', () => {
+  assert.deepEqual(aliasKeysFor(['', '  ', null, undefined, 'A']), []);
+  assert.deepEqual(aliasKeysFor([]), []);
+});
+
+test('the same spelling twice is remembered once', () => {
+  const keys = aliasKeysFor(['Kristian Stiven Street 18', 'kristian stiven st, 18']);
+  assert.equal(keys.length, 1, 'one spelling was recorded twice under one key');
 });

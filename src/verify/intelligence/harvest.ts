@@ -48,6 +48,15 @@ export interface HarvestedEntity {
   keyKind: KeyKind;
   naturalKey: string;
   displayName?: string | null;
+  /**
+   * Other spellings this thing has been seen under.
+   *
+   * Only PROJECT uses these today. They are remembered, never inferred: a
+   * name observed for a project resolves to it next time, which is how the
+   * Georgian and Latin spellings of one development stop becoming two
+   * entities without anyone transliterating anything.
+   */
+  aliases?: string[];
 }
 
 export interface HarvestedFact {
@@ -344,6 +353,23 @@ export function harvestReport(
         keyKind: 'PROJECT_SLUG',
         naturalKey: slug,
         displayName: text(projectProfile.name),
+        /*
+         * Every spelling this run saw for the development, so the next one
+         * that meets any of them lands on the same entity.
+         *
+         * The name and the marketed aliases, plus the address — a development
+         * is routinely named by its address, and that is the spelling the
+         * Georgian-language sources use. Remembered, never transliterated:
+         * the Latin and Georgian forms of one project are the same thing, but
+         * only evidence can say so safely.
+         */
+        aliases: [
+          projectProfile.name,
+          projectProfile.address,
+          ...(Array.isArray(projectProfile.aliases) ? projectProfile.aliases : []),
+        ]
+          .map((a) => text(a))
+          .filter(Boolean),
       })
     : null;
 

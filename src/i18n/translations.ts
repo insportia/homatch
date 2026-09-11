@@ -3518,6 +3518,19 @@ const en = {
   admin_sim_margin: 'Gross margin',
   admin_sim_markup: 'Markup',
   admin_sim_floor_applied: 'floor applied, was',
+
+  // -- Find Clients budget offer --
+  budget_full_title: 'Ready to search',
+  budget_partial_title: 'Search with your current balance',
+  budget_partial_body: 'Homatch will use up to {n} Credits and prioritise the strongest available sources. You only pay for actual usage.',
+  budget_cta_full: 'Run search',
+  budget_cta_partial: 'Search with {n} Credits',
+  budget_cta_deeper: 'Add Credits for deeper search',
+  budget_topup_title: 'Add Credits to run this search',
+  budget_topup_body: 'This search needs at least {n} Credits to produce something worth having. Your balance is {b}.',
+  budget_scoped_note: 'A smaller budget means a more focused search, not a less accurate one.',
+  budget_results_included: 'Every result this search finds is included. Revealing a contact costs nothing more.',
+  budget_your_balance: 'Your balance',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -6954,6 +6967,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_sim_margin: 'მთლიანი მარჟა',
   admin_sim_markup: 'მარკაპი',
   admin_sim_floor_applied: 'ზღვარი გამოყენებულია, იყო',
+
+  // -- Find Clients budget offer --
+  budget_full_title: 'ძიება მზადაა',
+  budget_partial_title: 'მოძებნეთ არსებული ბალანსით',
+  budget_partial_body: 'Homatch გამოიყენებს მაქსიმუმ {n} კრედიტს და პრიორიტეტს მიანიჭებს ყველაზე ძლიერ ხელმისაწვდომ წყაროებს. იხდით მხოლოდ ფაქტობრივ მოხმარებას.',
+  budget_cta_full: 'ძიების დაწყება',
+  budget_cta_partial: 'ძიება {n} კრედიტით',
+  budget_cta_deeper: 'დაამატეთ კრედიტები ღრმა ძიებისთვის',
+  budget_topup_title: 'დაამატეთ კრედიტები ამ ძიებისთვის',
+  budget_topup_body: 'ამ ძიებას სჭირდება მინიმუმ {n} კრედიტი, რომ შედეგი ღირებული იყოს. თქვენი ბალანსია {b}.',
+  budget_scoped_note: 'ნაკლები ბიუჯეტი ნიშნავს უფრო ფოკუსირებულ ძიებას და არა ნაკლებად ზუსტს.',
+  budget_results_included: 'ამ ძიების ყველა შედეგი შედის ფასში. კონტაქტის ნახვა დამატებით არაფერი ღირს.',
+  budget_your_balance: 'თქვენი ბალანსი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -10381,6 +10407,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_sim_margin: 'Валовая маржа',
   admin_sim_markup: 'Наценка',
   admin_sim_floor_applied: 'порог применён, было',
+
+  // -- Find Clients budget offer --
+  budget_full_title: 'Готово к поиску',
+  budget_partial_title: 'Искать с текущим балансом',
+  budget_partial_body: 'Homatch использует не более {n} кредитов и отдаст приоритет самым сильным доступным источникам. Вы платите только за фактический расход.',
+  budget_cta_full: 'Запустить поиск',
+  budget_cta_partial: 'Искать за {n} кредитов',
+  budget_cta_deeper: 'Пополнить для более глубокого поиска',
+  budget_topup_title: 'Пополните баланс для этого поиска',
+  budget_topup_body: 'Этому поиску нужно минимум {n} кредитов, чтобы дать стоящий результат. Ваш баланс: {b}.',
+  budget_scoped_note: 'Меньший бюджет означает более сфокусированный поиск, а не менее точный.',
+  budget_results_included: 'Все результаты этого поиска включены. Раскрытие контакта не стоит ничего дополнительно.',
+  budget_your_balance: 'Ваш баланс',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -13806,6 +13845,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_sim_margin: 'Brüt marj',
   admin_sim_markup: 'Kâr oranı',
   admin_sim_floor_applied: 'taban uygulandı, önceki',
+
+  // -- Find Clients budget offer --
+  budget_full_title: 'Aramaya hazır',
+  budget_partial_title: 'Mevcut bakiyenizle arayın',
+  budget_partial_body: 'Homatch en fazla {n} Kredi kullanacak ve en güçlü kaynaklara öncelik verecek. Yalnızca gerçek kullanım kadar ödersiniz.',
+  budget_cta_full: 'Aramayı başlat',
+  budget_cta_partial: '{n} Kredi ile ara',
+  budget_cta_deeper: 'Daha derin arama için Kredi ekleyin',
+  budget_topup_title: 'Bu arama için Kredi ekleyin',
+  budget_topup_body: 'Bu aramanın değerli bir sonuç üretmesi için en az {n} Krediye ihtiyacı var. Bakiyeniz: {b}.',
+  budget_scoped_note: 'Daha küçük bütçe daha odaklı bir arama demektir, daha az doğru bir arama değil.',
+  budget_results_included: 'Bu aramanın bulduğu her sonuç dahildir. Bir kişiyi görüntülemek ek ücret gerektirmez.',
+  budget_your_balance: 'Bakiyeniz',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -17231,6 +17283,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_sim_margin: 'هامش الربح الإجمالي',
   admin_sim_markup: 'نسبة الزيادة',
   admin_sim_floor_applied: 'طُبّق الحد، كان',
+
+  // -- Find Clients budget offer --
+  budget_full_title: 'جاهز للبحث',
+  budget_partial_title: 'ابحث برصيدك الحالي',
+  budget_partial_body: 'سيستخدم Homatch ما يصل إلى {n} رصيد وسيعطي الأولوية لأقوى المصادر المتاحة. تدفع مقابل الاستخدام الفعلي فقط.',
+  budget_cta_full: 'ابدأ البحث',
+  budget_cta_partial: 'ابحث بـ {n} رصيد',
+  budget_cta_deeper: 'أضف رصيداً لبحث أعمق',
+  budget_topup_title: 'أضف رصيداً لتشغيل هذا البحث',
+  budget_topup_body: 'يحتاج هذا البحث إلى {n} رصيد على الأقل ليعطي نتيجة تستحق. رصيدك {b}.',
+  budget_scoped_note: 'الميزانية الأصغر تعني بحثاً أكثر تركيزاً، لا بحثاً أقل دقة.',
+  budget_results_included: 'كل نتيجة يجدها هذا البحث مشمولة. إظهار جهة الاتصال لا يكلف شيئاً إضافياً.',
+  budget_your_balance: 'رصيدك',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -20656,6 +20721,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_sim_margin: 'מרווח גולמי',
   admin_sim_markup: 'תוספת מחיר',
   admin_sim_floor_applied: 'הרצפה הופעלה, היה',
+
+  // -- Find Clients budget offer --
+  budget_full_title: 'מוכן לחיפוש',
+  budget_partial_title: 'חפשו עם היתרה הנוכחית',
+  budget_partial_body: 'Homatch ישתמש בעד {n} קרדיטים וייתן עדיפות למקורות החזקים ביותר. אתם משלמים רק על השימוש בפועל.',
+  budget_cta_full: 'הפעילו חיפוש',
+  budget_cta_partial: 'חפשו עם {n} קרדיטים',
+  budget_cta_deeper: 'הוסיפו קרדיטים לחיפוש עמוק יותר',
+  budget_topup_title: 'הוסיפו קרדיטים כדי להריץ את החיפוש',
+  budget_topup_body: 'החיפוש הזה צריך לפחות {n} קרדיטים כדי להניב תוצאה שווה. היתרה שלכם היא {b}.',
+  budget_scoped_note: 'תקציב קטן יותר פירושו חיפוש ממוקד יותר, לא פחות מדויק.',
+  budget_results_included: 'כל תוצאה שהחיפוש הזה מוצא כלולה. חשיפת איש קשר לא עולה דבר נוסף.',
+  budget_your_balance: 'היתרה שלכם',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

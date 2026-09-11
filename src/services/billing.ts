@@ -15,6 +15,7 @@ import { supabase } from '@/db/supabase';
 import type {
   BillingEntitlements,
   BillingCatalogue,
+  BudgetOffer,
   ExecutionQuote,
   UpgradeSavings,
   CreditLot,
@@ -64,6 +65,30 @@ export async function getQuote(productCode: string, expectedUnits = 1): Promise<
     return null;
   }
   return (data as ExecutionQuote) ?? null;
+}
+
+/**
+ * What this customer can actually afford right now, and what to offer them.
+ *
+ * A balance short of the estimate is not a failure: the server returns
+ * PAYG_PARTIAL with the budget it would authorise, and the UI offers "search
+ * with your current balance" instead of a dead end. Below the product's
+ * minimum viable budget it returns TOPUP_REQUIRED, because spending someone's
+ * last 2 Credits on a search that cannot produce anything is worse than
+ * saying so.
+ *
+ * The decision is the server's. This only renders it.
+ */
+export async function getBudgetOffer(productCode: string, expectedUnits = 1): Promise<BudgetOffer | null> {
+  const { data, error } = await supabase.rpc('billing_budget_offer', {
+    p_product_code: productCode,
+    p_expected_units: expectedUnits,
+  });
+  if (error) {
+    console.error('[billing] budget offer failed', error.message);
+    return null;
+  }
+  return (data as BudgetOffer) ?? null;
 }
 
 // ── Public catalogue (works signed out) ─────────────────────────────────────

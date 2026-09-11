@@ -180,3 +180,31 @@ export interface ExecutionBilling {
   creditsCharged: number;
   creditsAuthorized: number;
 }
+
+/**
+ * What a customer is OFFERED when their balance cannot cover the full
+ * estimate.
+ *
+ * The product deliberately does not have a dead-end "Insufficient balance"
+ * state. Either the balance buys a scoped search (`PAYG_PARTIAL`), or it is
+ * genuinely too small to produce anything worth having and the customer is
+ * asked to top up (`TOPUP_REQUIRED`) rather than having their last few Credits
+ * spent on a search that cannot work.
+ */
+export type BudgetOfferKind =
+  | 'INCLUDED'        // covered by the plan's monthly allowance
+  | 'PAYG_FULL'       // balance covers the full estimate
+  | 'PAYG_PARTIAL'    // best effort: search with what they have
+  | 'TOPUP_REQUIRED'  // below the product's minimum viable budget
+  | 'UNAVAILABLE';    // kill switch or unpriced product
+
+export interface BudgetOffer extends ExecutionQuote {
+  offer: BudgetOfferKind;
+  available_balance?: number;
+  /** Below this, the product refuses to run rather than waste the balance. */
+  min_viable_budget_credits?: number;
+  /** What we would hold if they accept. Never more than their balance. */
+  offered_authorized_max_credits?: number;
+  credits_short_of_full?: number;
+  credits_short_of_viable?: number;
+}

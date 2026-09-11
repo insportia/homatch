@@ -676,3 +676,203 @@ test('a cache hit is free and never reaches the billing gate', () => {
   assert.ok(cacheReturn > -1 && gate > -1);
   assert.ok(cacheReturn < gate, 'the cache hit must return before the billing gate');
 });
+
+// ── Best-effort budgets, and the no-double-charge decision ──────────────────
+//
+// Verified behaviourally on production against a probe account (since removed),
+// FIND_CLIENTS at FREE, estimate 17.50-32.50, minimum viable 5:
+//
+//   balance 40 -> PAYG_FULL,      authorise 32.50
+//   balance 10 -> PAYG_PARTIAL,   authorise 10.00, short of full 22.50
+//   balance  5 -> PAYG_PARTIAL,   authorise  5.00  (the boundary is inclusive)
+//   balance  2 -> TOPUP_REQUIRED, short of viable 3.00
+//   reserve 10 -> provider budget snapshot 23c, not the plan's 200c
+//   actual 7.4 -> charged 7.40, released 2.60
+//   provider wants 26 against 10 authorised -> charged 10.00, clamped
+//   reserve 3  -> BELOW_MIN_VIABLE_BUDGET
+//   paid-search result revealed -> charged 0, no ledger row
+//   separately-priced result    -> charged 4.00, ledger row written
+//
+// These tests hold the invariants behind those numbers in place.
+
+const BUDGET = mig('20260911202247_billing_best_effort_budget_and_included_unlocks.sql');
+const UNLOCK = mig('20260911202302_match_unlock_included_in_paid_search.sql');
+const EXT_UNLOCK = mig('20260911202334_external_match_unlock_ownership_and_included.sql');
+
+test('a balance short of the estimate is offered a scoped search, not refused', () => {
+  const offer = BUDGET.slice(BUDGET.indexOf('CREATE OR REPLACE FUNCTION public.billing_budget_offer'));
+  // Three outcomes, in this order of preference.
+  assert.match(offer, /v_funding := 'PAYG_FULL'/);
+  assert.match(offer, /v_funding := 'PAYG_PARTIAL'/);
+  assert.match(offer, /v_funding := 'TOPUP_REQUIRED'/);
+  // The partial offer authorises exactly what they have.
+  assert.match(offer, /v_offer := round\(v_balance, 2\)/);
+  // And it says how far short of a full search they are, so the UI can offer
+  // a top-up rather than a dead end.
+  assert.match(offer, /'credits_short_of_full'/);
+  assert.match(offer, /'credits_short_of_viable'/);
+});
+
+test('a budget below the minimum viable one is refused rather than wasted', () => {
+  assert.match(BUDGET, /min_viable_budget_credits numeric\(18,4\) NOT NULL DEFAULT 0/);
+  assert.match(BUDGET, /min_viable_budget_credits = 5\s+WHERE code = 'FIND_CLIENTS'/);
+  // Enforced in the reservation itself, not only in the offer, so a direct
+  // call cannot skip it.
+  const reserve = BUDGET.slice(BUDGET.indexOf('CREATE OR REPLACE FUNCTION public.wallet_reserve'));
+  assert.match(reserve, /if p_authorized_max_credits < COALESCE\(v_product\.min_viable_budget_credits, 0\) then/);
+  assert.match(reserve, /raise exception 'BELOW_MIN_VIABLE_BUDGET/);
+});
+
+test('the authorised budget, not the plan, decides how much provider spend is allowed', () => {
+  const reserve = BUDGET.slice(BUDGET.indexOf('CREATE OR REPLACE FUNCTION public.wallet_reserve'));
+  assert.match(reserve, /v_budget_cents := public\.billing_budget_to_cogs_ceiling\(p_product_code, v_plan_code, v_need\)/);
+  // The stricter of the two wins, so a partial budget can never spend a full
+  // budget's worth.
+  assert.match(reserve, /v_budget_cents := least\(v_budget_cents, v_ent\.provider_budget_ceiling_cents\)/);
+  // And it is SNAPSHOTTED, so the worker obeys one number for the life of the job.
+  assert.match(reserve, /floor\(v_budget_cents\)::integer/);
+});
+
+test('the same budget buys more execution on a better member rate', () => {
+  // This is the member rate doing real work. It falls out of the pricing model
+  // rather than being a separate rule: a smaller effective multiple means the
+  // same credits authorise more underlying cost.
+  const f = BUDGET.slice(BUDGET.indexOf('CREATE OR REPLACE FUNCTION public.billing_budget_to_cogs_ceiling'));
+  assert.match(f, /v_effective := 1 \+ \(v_multiple - 1\) \* \(1 - v_plan\.profit_share_to_customer_bps \/ 10000\.0\)/);
+  assert.match(f, /return round\(v_cents \/ v_effective, 4\)/);
+  // The floor is inside the max, so a budget never authorises spend we could
+  // not charge for.
+  assert.match(f, /v_effective := greatest\(v_effective, v_floor_multiple\)/);
+
+  // The arithmetic, mirrored. FREE concedes nothing; Premium concedes half.
+  const cogsFor = (shareBps, credits = 10, standardRetail = 250, refCogs = 59, minMarginBps = 3000, cpu = 10) => {
+    const multiple = standardRetail / refCogs;
+    const effective = Math.max(
+      1 + (multiple - 1) * (1 - shareBps / 10000),
+      1 / (1 - minMarginBps / 10000),
+    );
+    return (credits * 100 / cpu) / effective;
+  };
+  const free = cogsFor(0);
+  const vip = cogsFor(2500);
+  const premium = cogsFor(5000);
+  assert.ok(vip > free, 'VIP must buy more execution than Standard for the same credits');
+  assert.ok(premium > vip, 'Premium must buy more than VIP');
+  // Matches what production returned: 23.60c / 29.17c / 38.19c.
+  assert.equal(free.toFixed(2), '23.60');
+  assert.equal(vip.toFixed(2), '29.17');
+  assert.equal(premium.toFixed(2), '38.19');
+});
+
+test('a partial budget is spent on a scoped search, not a truncated one', () => {
+  const campaign = fn('match-campaign/index.ts');
+  // Fewer, highest-yield jobs rather than a broad sweep that runs out of money.
+  assert.match(campaign, /grant\.partialBudget/);
+  assert.match(campaign, /Math\.floor\(configuredMax \/ 2\)/);
+  // The ceiling travels with the request.
+  assert.match(campaign, /maxSpendUsd/);
+  assert.match(campaign, /qualityTier: grant\.qualityTier/);
+});
+
+test('the worker stops before the provider call that would overrun the budget', () => {
+  const worker = fn('discovery-queue-worker/index.ts');
+  // Checked BEFORE each call, against that call's own estimate.
+  assert.match(worker, /if \(maxSpendUsd != null && spentUsd \+ jobEstimate > maxSpendUsd\)/);
+  assert.match(worker, /budgetExhausted = true;/);
+  // The unrun job goes back to the queue rather than being left claimed.
+  assert.match(worker, /BUDGET_CEILING_REACHED: not started, returned to the queue/);
+  assert.match(worker, /p_retryable: true/);
+  // And the real spend is reported back so settlement uses it.
+  assert.match(worker, /spentUsd: Math\.round\(spentUsd \* 10000\) \/ 10000/);
+  // Null means no per-run ceiling; the global caps still apply as before.
+  assert.match(worker, /body\.maxSpendUsd == null \? null : Number\(body\.maxSpendUsd\)/);
+});
+
+test('a paid search includes its results: no second charge to reveal them', () => {
+  // The stamp.
+  assert.match(BUDGET, /ADD COLUMN IF NOT EXISTS unlock_included_reservation_id uuid REFERENCES public\.usage_reservations\(id\)/);
+  const campaign = fn('match-campaign/index.ts');
+  assert.match(campaign, /unlock_included_reservation_id: grant\.reservationId/);
+  // Scoped to this job's own results, so it cannot retroactively free somebody's
+  // older, separately-priced matches.
+  assert.match(campaign, /\.gte\('created_at', startedAt\)/);
+  assert.match(campaign, /\.is\('unlock_included_reservation_id', null\)/);
+
+  // The price.
+  assert.match(UNLOCK, /v_price := case when v_included then 0 else v_match\.unlock_price_credits end/);
+  // Nothing is written to the account or the ledger when nothing moved.
+  assert.match(UNLOCK, /if v_price > 0 then/);
+  // The history row is STILL written, at zero: it is what makes a second
+  // reveal idempotent and what lead-exposure ranking reads.
+  const afterGuard = UNLOCK.slice(UNLOCK.indexOf('insert into public.match_unlocks('));
+  assert.match(afterGuard, /values \(p_match_id, p_user_id, v_price, v_ledger/);
+});
+
+test('the external unlock path got the same treatment, plus the checks it never had', () => {
+  assert.match(EXT_UNLOCK, /then 0 else v_match\.unlock_price_credits end/);
+  // It had no ownership check at all, and its caller does not do one either.
+  assert.match(EXT_UNLOCK, /raise exception 'NOT_YOUR_PROPERTY'/);
+  assert.match(EXT_UNLOCK, /if auth\.role\(\) <> 'service_role' and p_user_id <> public\.auth_user_id\(\) then/);
+  // And the caller now surfaces that as a 403 rather than a generic failure.
+  assert.match(fn('unlock-external-contact/index.ts'), /NOT_YOUR_PROPERTY/);
+});
+
+test('legacy unlock history is preserved, not rewritten', () => {
+  // Nothing zeroes or deletes historical charges. This decision changes what
+  // happens next, not what happened.
+  for (const sql of [UNLOCK, EXT_UNLOCK, BUDGET]) {
+    const code = strip(sql);
+    assert.ok(!/update public\.match_unlocks/i.test(code), 'historical unlock rows must not be edited');
+    // match_unlocks_pending is a DIFFERENT table -- the one-shot mock reveal
+    // payload, consumed on use. The negative lookahead keeps this assertion
+    // about the history table it is actually named for.
+    assert.ok(!/delete from public\.match_unlocks(?!_pending)/i.test(code), 'historical unlock rows must not be deleted');
+    assert.ok(!/update public\.credit_ledger\s+set/i.test(code), 'historical ledger rows must not be edited');
+  }
+});
+
+test('settlement is still actual usage, and still clamped, under a partial budget', () => {
+  // The reservation is a MAXIMUM authorisation, never the charge.
+  const settle = SETTLE_FIX.slice(SETTLE_FIX.indexOf('CREATE OR REPLACE FUNCTION public.wallet_settle'));
+  assert.match(settle, /v_release := round\(v_res\.reserved_credits - v_charge, 4\)/);
+  assert.match(settle, /v_charge := v_res\.authorized_max_credits;/);
+  // The gateway prices the ACTUAL measured cost, not the estimate.
+  const gw = read(path.join(FN, '_shared', 'billing.ts'));
+  assert.match(gw, /p_landed_cogs_cents: landedCogsCents > 0 \? landedCogsCents : null/);
+});
+
+test('the gateway never authorises more than the customer has, or than they agreed', () => {
+  const gw = read(path.join(FN, '_shared', 'billing.ts'));
+  // min of (what they asked for, what they have, what the estimate needs).
+  assert.match(gw, /round2\(Math\.min\(opts\.authorizedMaxCredits, balance, estMax\)\)/);
+  assert.match(gw, /round2\(Math\.min\(estMax, balance\)\)/);
+  // A caller that must not silently shrink can say so.
+  assert.match(gw, /opts\.requireFullBudget/);
+  // Below the minimum it refuses with the figures the UI needs to explain it.
+  assert.match(gw, /reason: 'BELOW_MIN_VIABLE_BUDGET'/);
+  assert.match(gw, /creditsShortOfViable/);
+});
+
+test('the customer-facing budget offer leaks no economics', () => {
+  const offer = BUDGET.slice(BUDGET.indexOf('CREATE OR REPLACE FUNCTION public.billing_budget_offer'));
+  const returned = offer.slice(0, offer.indexOf('$fn$;', 100));
+  for (const forbidden of ['landed_cogs', 'gross_margin', 'profit_pool', 'markup', 'provider_budget']) {
+    assert.ok(!returned.includes(forbidden), 'billing_budget_offer must not return ' + forbidden);
+  }
+  // billing_budget_to_cogs_ceiling IS internal and stays service-role only.
+  assert.match(BUDGET, /REVOKE ALL ON FUNCTION public\.billing_budget_to_cogs_ceiling\(text, text, numeric\) FROM PUBLIC, anon, authenticated/);
+});
+
+test('the UI offers a search rather than a dead end', () => {
+  const ui = read(path.join(SRC, 'components', 'billing', 'SearchBudgetOffer.tsx'));
+  assert.match(ui, /budget_partial_title/);
+  assert.match(ui, /budget_cta_partial/);
+  assert.match(ui, /budget_cta_deeper/);
+  assert.match(ui, /budget_topup_title/);
+  // "You only pay for actual usage" appears next to the number.
+  assert.match(ui, /cost_only_actual/);
+  // And the results-are-included promise is stated where the money is.
+  assert.match(ui, /budget_results_included/);
+  // A scoped search must not read as a less truthful one.
+  assert.match(ui, /budget_scoped_note/);
+});

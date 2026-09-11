@@ -16,7 +16,14 @@ Deno.serve(async(req)=>{
   const preview={match_score:match.match_score,signal_strength:match.signal_strength,confidence:match.intent_confidence,location:match.preview_city,source:match.preview_platform,language:match.preview_language,budget_min:match.preview_budget_min,budget_max:match.preview_budget_max,budget_currency:match.preview_currency,bedrooms:match.preview_bedrooms,excerpt:match.preview_excerpt,freshness:match.preview_recency,customer_price:match.unlock_price_credits,currency:'credits',already_unlocked:match.status==='UNLOCKED'};
   if(!confirm) return respond({preview});
   const {data:result,error:unlockErr}=await supabase.rpc('atomic_external_match_unlock',{p_user_id:actor.id,p_match_id:match_id}).maybeSingle();
-  if(unlockErr){const msg=unlockErr.message||''; if(msg.includes('INSUFFICIENT_CREDITS')) return respond({error:'Insufficient credits',required:match.unlock_price_credits},402); console.error('atomic unlock failed',unlockErr); return respond({error:'Unlock failed. No credits were charged.'},500);}
+  // NOT_YOUR_PROPERTY is new: atomic_external_match_unlock now checks that the
+  // lead belongs to the caller's property, which this function never did. It
+  // fetches `matches` by id with the service role, so RLS does not apply and
+  // any match id would previously have been revealed to any signed-in user.
+  if(unlockErr){const msg=unlockErr.message||'';
+   if(msg.includes('NOT_YOUR_PROPERTY')) return respond({error:'You do not own this property'},403);
+   if(msg.includes('INSUFFICIENT_CREDITS')) return respond({error:'Insufficient credits',required:match.unlock_price_credits},402);
+   console.error('atomic unlock failed',unlockErr); return respond({error:'Unlock failed. No credits were charged.'},500);}
   const {data:unlock}=await supabase.from('match_unlocks').select('full_signal_text,full_source_url,full_profile_url,full_intent_json').eq('id',result.unlock_id).single();
   return respond({...preview,already_unlocked:result.already_unlocked,credits_charged:result.credits_charged,balance_after:result.balance_after,contact:{source_url:unlock?.full_source_url??null,profile_url:unlock?.full_profile_url??null},full_signal_text:unlock?.full_signal_text??null,full_intent:unlock?.full_intent_json??null});
  }catch(err){console.error(err); return respond({error:'Unexpected unlock error. No credits were charged unless an unlock record was committed.'},500);}

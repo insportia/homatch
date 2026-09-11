@@ -109,7 +109,28 @@ async function executeControlledJobs(db: any, baseUrl: string, serviceKey: strin
   const completed: any[] = [];
   const failures: any[] = [];
 
+  // -- The authorised spend ceiling ----------------------------------------
+  //
+  // When the caller passes maxSpendUsd, the customer has authorised exactly
+  // that much provider spend and not a cent more. The check happens BEFORE
+  // each provider call, against that call's own estimate, so the budget is
+  // never discovered to be exceeded after the money is already gone.
+  //
+  // Null means no per-run ceiling: the pre-existing global spend caps and the
+  // kill switches still apply, as they always did.
+  const maxSpendUsd = body.maxSpendUsd == null ? null : Number(body.maxSpendUsd);
+  let spentUsd = 0;
+  let budgetExhausted = false;
+
+  // A smaller budget should buy the HIGHEST-YIELD work, not simply the first
+  // work in the queue. claim_external_discovery_jobs_for_property already
+  // returns in priority order; this only decides when to stop.
   for (let index = 0; index < limit; index++) {
+    if (maxSpendUsd != null && spentUsd >= maxSpendUsd) {
+      budgetExhausted = true;
+      break;
+    }
+
     const { data: claimed, error: claimError } = await db.rpc('claim_external_discovery_jobs_for_property', {
       p_property_id: propertyId,
       p_limit: 1,
@@ -117,6 +138,32 @@ async function executeControlledJobs(db: any, baseUrl: string, serviceKey: strin
     if (claimError) throw claimError;
     const job = claimed?.[0];
     if (!job) break;
+
+    // Would THIS job take us past what the customer authorised? Release it
+    // and stop, rather than running it and overrunning.
+    const jobEstimate = Number(job.estimated_cost_usd || 0);
+    if (maxSpendUsd != null && spentUsd + jobEstimate > maxSpendUsd) {
+      // Hand the job back to the queue rather than leaving it claimed. There is
+      // no release RPC, but fail_external_discovery_job with retryable=true is
+      // exactly a requeue, and it is what the error path already uses. Leaving
+      // it claimed would strand a perfectly good job until the stale-claim
+      // sweeper ran.
+      await db.rpc('fail_external_discovery_job', {
+        p_job_id: job.id,
+        p_claim_token: job.claim_token,
+        p_error: 'BUDGET_CEILING_REACHED: not started, returned to the queue',
+        p_retryable: true,
+      });
+      await event(db, job, 'BUDGET_CEILING_REACHED', {
+        message: 'Stopped before this job to stay inside the authorised budget',
+        estimatedCostUsd: jobEstimate,
+        spentUsd,
+        authorizedSpendUsd: maxSpendUsd,
+      });
+      budgetExhausted = true;
+      break;
+    }
+
     await event(db, job, 'CLAIMED', { provider: job.provider, platform: job.platform, estimatedCostUsd: job.estimated_cost_usd });
     try {
       const { data: allowed, error: guardError } = await db.rpc('external_discovery_job_execution_allows', {
@@ -137,6 +184,7 @@ async function executeControlledJobs(db: any, baseUrl: string, serviceKey: strin
         p_reconcile: false,
       });
       if (persistError) throw new ProviderError(`PERSISTENCE_FAILED: ${persistError.message}`, true, 500);
+      spentUsd += accountedCost;
       completed.push({ ...persisted, providerCostUsd: execution.costUsd, accountedCostUsd: accountedCost });
     } catch (error) {
       const failure = error instanceof ProviderError ? error : new ProviderError(message(error), true, 500);
@@ -146,7 +194,18 @@ async function executeControlledJobs(db: any, baseUrl: string, serviceKey: strin
   }
 
   if (completed.length) await invokeMatching(baseUrl, serviceKey, propertyId, body.campaignId || null);
-  return { success: failures.length === 0, blocked: false, processed: completed.length + failures.length, completed, failures };
+  return {
+    success: failures.length === 0,
+    blocked: false,
+    processed: completed.length + failures.length,
+    completed,
+    failures,
+    // Reported back so the caller can settle on what was really spent and tell
+    // the customer their search stopped at the budget rather than at an error.
+    spentUsd: Math.round(spentUsd * 10000) / 10000,
+    authorizedSpendUsd: maxSpendUsd,
+    budgetExhausted,
+  };
 }
 
 async function executeProvider(job: any, maxResults: number, disabledProviders: string[] = []) {

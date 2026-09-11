@@ -54,10 +54,25 @@ export interface ExecutionGrant {
   providerBudgetCeilingCents: number | null;
   priorityLevel: number;
   pricingVersion: number;
+  /**
+   * True when the customer could not cover the full estimate and authorised
+   * what they had instead. The worker must scope the search to the budget
+   * rather than running a full one and being cut off part way.
+   */
+  partialBudget: boolean;
+  /** The minimum budget this product will run at all for. */
+  minViableBudgetCredits: number;
   /** Machine-readable reason when ok is false. */
-  reason?: 'INSUFFICIENT_CREDITS' | 'PAYG_DISABLED' | 'PRODUCT_DISABLED'
-         | 'PRODUCT_PRICING_INACTIVE' | 'NOT_FOUND' | 'ERROR';
+  reason?: 'INSUFFICIENT_CREDITS' | 'BELOW_MIN_VIABLE_BUDGET' | 'PAYG_DISABLED'
+         | 'PRODUCT_DISABLED' | 'PRODUCT_PRICING_INACTIVE' | 'NOT_FOUND' | 'ERROR';
   message?: string;
+  /** Populated on a BELOW_MIN_VIABLE_BUDGET refusal, so the UI can say how short they are. */
+  budget?: {
+    availableCredits: number;
+    minViableCredits: number;
+    estimateMaxCredits: number;
+    creditsShortOfViable: number;
+  };
 }
 
 /** Measured facts about what a run actually consumed. */
@@ -110,6 +125,19 @@ export async function beginExecution(
     jobRef?: string;
     /** Scales the estimate for per-unit products. Defaults to one execution. */
     expectedUnits?: number;
+    /**
+     * What the customer explicitly authorised. Pass this when they accepted a
+     * best-effort budget smaller than the estimate ("search with my 10
+     * Credits"). Omitted means "the full estimate, or as much of it as the
+     * balance covers".
+     */
+    authorizedMaxCredits?: number;
+    /**
+     * Refuse rather than silently shrinking. Set when the caller has NOT shown
+     * the customer a partial-budget offer and must not spend less than the
+     * estimate without asking.
+     */
+    requireFullBudget?: boolean;
     metadata?: Record<string, unknown>;
   },
 ): Promise<ExecutionGrant> {
@@ -122,6 +150,7 @@ export async function beginExecution(
     estimateMinCredits: 0, estimateMaxCredits: 0,
     resultCeiling: null, providerBudgetCeilingCents: null,
     priorityLevel: 0, pricingVersion: 1,
+    partialBudget: false, minViableBudgetCredits: 0,
   };
 
   const { data: ent, error: entErr } = await sb.rpc('billing_entitlements', { p_user_id: opts.userId });
@@ -149,6 +178,8 @@ export async function beginExecution(
         allowanceId: allowanceId as string,
         resultCeiling, providerBudgetCeilingCents: budget, priorityLevel,
         pricingVersion: n(ent.pricing_version, 1),
+        // An included run is full depth for the plan by definition.
+        partialBudget: false,
       };
     }
     // A null here means someone else took the last slot between the read and
@@ -175,15 +206,66 @@ export async function beginExecution(
   const estMin = round2(expected * (1 - spread));
   const estMax = round2(expected * (1 + spread));
 
+  // -- How much is actually authorised -------------------------------------
+  //
+  // A balance short of the estimate is NOT a failure. The customer is offered
+  // the search their balance can buy, and the work is scoped to that ceiling
+  // rather than a full search being started and cut off part way.
+  //
+  // Below the product's minimum viable budget it refuses instead, because
+  // spending someone's last 2 Credits on a search that cannot produce anything
+  // useful is worse than telling them so.
+  const product = await productBudgetRules(sb, opts.productCode);
+  const balance = n(ent?.wallet?.balance);
+  const minViable = product.minViableBudgetCredits;
+
+  const authorized = opts.authorizedMaxCredits != null
+    ? round2(Math.min(opts.authorizedMaxCredits, balance, estMax))
+    : round2(Math.min(estMax, balance));
+
+  const partial = authorized < estMax;
+
+  if (partial && opts.requireFullBudget) {
+    return {
+      ...base, planCode, qualityTier, resultCeiling,
+      minViableBudgetCredits: minViable,
+      reason: 'INSUFFICIENT_CREDITS',
+      estimateMinCredits: estMin, estimateMaxCredits: estMax,
+      budget: {
+        availableCredits: balance, minViableCredits: minViable,
+        estimateMaxCredits: estMax, creditsShortOfViable: 0,
+      },
+    };
+  }
+
+  if (authorized < minViable) {
+    return {
+      ...base, planCode, qualityTier, resultCeiling,
+      minViableBudgetCredits: minViable,
+      reason: 'BELOW_MIN_VIABLE_BUDGET',
+      message: 'This search needs at least ' + minViable + ' Credits to be worth running.',
+      estimateMinCredits: estMin, estimateMaxCredits: estMax,
+      budget: {
+        availableCredits: balance,
+        minViableCredits: minViable,
+        estimateMaxCredits: estMax,
+        creditsShortOfViable: round2(Math.max(minViable - balance, 0)),
+      },
+    };
+  }
+
   const { data: res, error: resErr } = await sb.rpc('wallet_reserve', {
     p_user_id: opts.userId,
     p_product_code: opts.productCode,
-    p_authorized_max_credits: estMax,
+    // The AUTHORISED ceiling, which may be less than the estimate. It is a
+    // maximum, not the charge: settlement bills actual usage and releases the
+    // rest.
+    p_authorized_max_credits: authorized,
     p_idempotency_key: opts.idempotencyKey,
     p_estimate_min_credits: estMin,
     p_estimate_max_credits: estMax,
     p_job_ref: opts.jobRef ?? null,
-    p_metadata: opts.metadata ?? {},
+    p_metadata: { ...(opts.metadata ?? {}), partial_budget: partial },
   });
 
   if (resErr) {
@@ -193,13 +275,25 @@ export async function beginExecution(
       : msg.includes('PAYG_DISABLED') ? 'PAYG_DISABLED'
       : msg.includes('PRODUCT_DISABLED') || msg.includes('KILL_SWITCH') ? 'PRODUCT_DISABLED'
       : msg.includes('PRICING_INACTIVE') ? 'PRODUCT_PRICING_INACTIVE'
+      : msg.includes('BELOW_MIN_VIABLE_BUDGET') ? 'BELOW_MIN_VIABLE_BUDGET'
       : 'ERROR';
     return { ...base, planCode, qualityTier, resultCeiling, reason, message: msg,
+             minViableBudgetCredits: minViable,
              estimateMinCredits: estMin, estimateMaxCredits: estMax };
   }
 
   const row = res?.[0] ?? {};
-  const budget = await providerBudgetFor(sb, opts.productCode, planCode);
+
+  // The spend ceiling comes from the RESERVATION, not from the plan's
+  // entitlement row: wallet_reserve already took the stricter of what the
+  // money buys at this plan's member rate and what the plan allows
+  // operationally. Reading the entitlement here would let a partial-budget
+  // search spend a full-budget amount.
+  const { data: snap } = await sb
+    .from('usage_reservations')
+    .select('provider_budget_ceiling_cents_snapshot, result_ceiling_snapshot, authorized_max_credits')
+    .eq('id', row.reservation_id).maybeSingle();
+
   return {
     ok: true, funding: 'PAYG',
     productCode: opts.productCode, userId: opts.userId,
@@ -207,13 +301,16 @@ export async function beginExecution(
     reservationId: row.reservation_id ?? null,
     allowanceId: null,
     reservedCredits: n(row.reserved_credits),
-    authorizedMaxCredits: estMax,
+    authorizedMaxCredits: n(snap?.authorized_max_credits, authorized),
     estimateMinCredits: estMin,
     estimateMaxCredits: estMax,
-    resultCeiling,
-    providerBudgetCeilingCents: budget,
+    resultCeiling: snap?.result_ceiling_snapshot ?? resultCeiling,
+    providerBudgetCeilingCents: snap?.provider_budget_ceiling_cents_snapshot
+      ?? (await providerBudgetFor(sb, opts.productCode, planCode)),
     priorityLevel,
     pricingVersion: n(quote[0].pricing_version, 1),
+    partialBudget: partial,
+    minViableBudgetCredits: minViable,
   };
 }
 
@@ -347,6 +444,14 @@ async function providerBudgetFor(sb: SupabaseClient, productCode: string, planCo
     .select('provider_budget_ceiling_cents')
     .eq('product_code', productCode).eq('plan_code', planCode).maybeSingle();
   return data?.provider_budget_ceiling_cents ?? null;
+}
+
+async function productBudgetRules(
+  sb: SupabaseClient, productCode: string,
+): Promise<{ minViableBudgetCredits: number }> {
+  const { data } = await sb
+    .from('billable_products').select('min_viable_budget_credits').eq('code', productCode).maybeSingle();
+  return { minViableBudgetCredits: n(data?.min_viable_budget_credits) };
 }
 
 async function estimateSpreadFor(sb: SupabaseClient, productCode: string): Promise<number> {

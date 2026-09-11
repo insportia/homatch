@@ -264,3 +264,45 @@ test('a parcel fact is returned as a parcel fact, never merged into the unit', a
   assert.equal(parcel.entityType, 'PARENT_PARCEL');
   assert.ok(!known.facts.some((f) => known.relatedFacts.includes(f)), 'related facts leaked into the unit\'s own');
 });
+
+/* ── price history falls out of the machinery ────────────────────────── */
+
+const LISTING = {
+  url: 'https://home.ge/listing/444915',
+  area: '83.2', floor: '6/8', price: '160000', rooms: '3',
+  source: 'Home.ge', currency: 'USD', pricePerSqm: '1923',
+  listingStatus: 'ACTIVE', project: 'Villion',
+};
+const withListing = (over = {}) => ({ ...REPORT, market: { comparables: [{ ...LISTING, ...over }] } });
+
+test('a listing price change is recorded as history', async () => {
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(withListing(), POLICIES), 'job-1');
+  const out = await persistHarvest(db, harvestReport(withListing({ price: '155000' }), POLICIES), 'job-2');
+
+  assert.ok(out.changes.some((c) => c.factKey === 'listing.price' && c.from === '160000' && c.to === '155000'),
+    'the price drop was not recorded as a change');
+
+  const prices = db.tables.intelligence_facts.filter((f) => f.fact_key === 'listing.price');
+  assert.equal(prices.length, 2, 'the old price was overwritten instead of superseded');
+  assert.equal(prices.filter((f) => f.status === 'CURRENT').length, 1);
+  assert.ok(prices.find((f) => f.status === 'SUPERSEDED').valid_to, 'the old price has no end date');
+});
+
+test('a listing coming off the market is recorded the same way', async () => {
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(withListing(), POLICIES), 'job-1');
+  const out = await persistHarvest(db, harvestReport(withListing({ listingStatus: 'EXPIRED' }), POLICIES), 'job-2');
+  assert.ok(out.changes.some((c) => c.factKey === 'listing.status' && c.from === 'ACTIVE' && c.to === 'EXPIRED'));
+});
+
+test('an unchanged listing is confirmed, not re-inserted', async () => {
+  // The cheap case: seeing the same listing again costs one clock update.
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(withListing(), POLICIES), 'job-1');
+  const before = db.tables.intelligence_facts.length;
+  const out = await persistHarvest(db, harvestReport(withListing(), POLICIES), 'job-2');
+  assert.equal(db.tables.intelligence_facts.length, before, 'the fact table grew on an unchanged listing');
+  assert.ok(out.factsUnchanged > 0);
+  assert.equal(out.factsChanged, 0);
+});

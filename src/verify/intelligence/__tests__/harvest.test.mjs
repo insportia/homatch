@@ -20,6 +20,8 @@ import {
   normalizeCompanyId,
   projectSlug,
   parentParcelOf,
+  listingKey,
+  MAX_COMPARABLES_HARVESTED,
 } from '../harvest.ts';
 
 const POLICIES = [
@@ -321,4 +323,117 @@ test('"we could not classify it" is not remembered as a classification', () => {
   assert.equal(factFor(harvest({ assetClass: 'MIXED_OR_UNKNOWN' }), 'property.assetClass'), undefined);
   assert.equal(factFor(harvest({ assetClass: null }), 'property.assetClass'), undefined);
   assert.equal(factFor(harvest({}), 'property.assetClass'), undefined);
+});
+
+/* ── comparables ─────────────────────────────────────────────────────── */
+
+/** Verbatim from a real completed job's market.comparables. */
+const REAL_COMPARABLE = {
+  url: 'https://www.home.ge/binebi/iyideba-binebi/iyideba-bina-3-otakhiani-akhali-ashenebuli-tbilisi-krtsanisi-444915.html',
+  area: '83.2',
+  floor: '6/8',
+  price: '158080',
+  rooms: '3',
+  source: 'Home.ge',
+  address: 'თბილისი, კრწანისი, კრწანისის ქუჩა 6',
+  project: 'Villion Krtsanisi Homes',
+  currency: 'USD',
+  condition: 'მწვანე კარკასი',
+  listingDate: '2026-06-25',
+  pricePerSqm: '1900',
+  retrievedAt: '2026-09-09',
+  listingStatus: 'ACTIVE',
+  comparableType: 'SAME_PROJECT',
+};
+
+const withMarket = (comparables) => harvest({ market: { comparables } });
+
+test('a comparable becomes a listing entity in the same graph', () => {
+  // Not a separate comparables store: a second knowledge system beside the
+  // first means every read has to ask which of the two is right.
+  const h = withMarket([REAL_COMPARABLE]);
+  const listing = h.entities.find((e) => e.entityType === 'LISTING');
+  assert.ok(listing, 'the comparable did not become an entity');
+  assert.equal(listing.keyKind, 'LISTING_URL');
+  assert.equal(listing.displayName, 'Villion Krtsanisi Homes');
+});
+
+test('its price and its description are both recorded', () => {
+  const h = withMarket([REAL_COMPARABLE]);
+  const f = (k) => h.facts.find((x) => x.factKey === k);
+  assert.equal(f('listing.price').valueNumber, 158080);
+  assert.equal(f('listing.price').valueUnit, 'USD');
+  assert.equal(f('listing.pricePerSqm').valueNumber, 1900);
+  assert.equal(f('listing.area').valueNumber, 83.2);
+  assert.equal(f('listing.rooms').valueNumber, 3);
+  assert.equal(f('listing.floor').valueText, '6/8');
+  assert.equal(f('listing.condition').valueText, 'მწვანე კარკასი');
+  assert.equal(f('listing.status').valueText, 'ACTIVE');
+  assert.equal(f('listing.source').valueText, 'Home.ge');
+  for (const fact of h.facts.filter((x) => x.factKey.startsWith('listing.'))) {
+    assert.equal(fact.sourceKind, 'MARKET_LISTING', `${fact.factKey} claims a stronger source than a listing`);
+  }
+});
+
+test('the same page seen twice is one listing, whatever the tracking parameters', () => {
+  // Trackers and session parameters differ between two sightings and would
+  // make one flat into several listings — which is exactly what breaks a
+  // price history.
+  assert.equal(
+    listingKey('https://Home.ge/a/b?utm_source=x#top'),
+    listingKey('https://home.ge/a/b/')
+  );
+  const h = withMarket([
+    REAL_COMPARABLE,
+    { ...REAL_COMPARABLE, url: REAL_COMPARABLE.url + '?utm_source=newsletter' },
+  ]);
+  assert.equal(h.entities.filter((e) => e.entityType === 'LISTING').length, 1);
+});
+
+test('a listing with no URL is not stored, because it could never be recognised again', () => {
+  const h = withMarket([{ ...REAL_COMPARABLE, url: null }]);
+  assert.equal(h.entities.filter((e) => e.entityType === 'LISTING').length, 0);
+  // And a non-URL is not a URL.
+  assert.equal(listingKey('home.ge/a'), null);
+  assert.equal(listingKey(''), null);
+  assert.equal(listingKey(null), null);
+});
+
+test('a comparable is linked to the property it was a comparable for', () => {
+  // The same listing is a close comparison for the flat next door and a poor
+  // one for a warehouse across the city.
+  const h = withMarket([REAL_COMPARABLE]);
+  const r = h.relationships.find((x) => x.relation === 'COMPARABLE_TO');
+  assert.ok(r, 'the comparable was not linked to the subject');
+  assert.equal(r.to.naturalKey, '01.72.14.040.030.01.02.017');
+  assert.equal(r.sourceKind, 'MARKET_LISTING');
+});
+
+test('the number of listings stored per run is bounded', () => {
+  const many = Array.from({ length: 60 }, (_, i) => ({ ...REAL_COMPARABLE, url: `https://home.ge/listing/${i}` }));
+  const h = withMarket(many);
+  assert.equal(h.entities.filter((e) => e.entityType === 'LISTING').length, MAX_COMPARABLES_HARVESTED);
+});
+
+test('an empty or broken market block harvests nothing and throws nothing', () => {
+  for (const m of [null, undefined, {}, { comparables: null }, { comparables: 'x' }, { comparables: [null, 'x', 42] }]) {
+    const h = harvest({ market: m });
+    assert.equal(h.entities.filter((e) => e.entityType === 'LISTING').length, 0);
+  }
+});
+
+test('no market conclusion is ever stored, only the observations under it', () => {
+  // The medians, the bands and the positioning stay deterministic in
+  // marketIntelligence.ts. The graph caches what was observed, never what was
+  // concluded from it.
+  const h = harvest({
+    market: {
+      comparables: [REAL_COMPARABLE],
+      median: 1950, mean: 2000, basis: 'SAME_PROJECT', positioning: 'AROUND_MARKET',
+    },
+  });
+  const keys = h.facts.map((f) => f.factKey);
+  for (const conclusion of ['market.median', 'market.mean', 'market.basis', 'market.positioning']) {
+    assert.ok(!keys.includes(conclusion), `${conclusion} was cached as a fact`);
+  }
 });

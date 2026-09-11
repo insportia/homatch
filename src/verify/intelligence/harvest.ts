@@ -410,5 +410,122 @@ export function harvestReport(
     }
   }
 
+  /* ── the comparables ───────────────────────────────────────────────── */
+
+  harvestComparables(report, unit, entity, fact, out);
+
   return out;
+}
+
+/**
+ * At most this many listings per verification.
+ *
+ * A report typically carries seven. The cap exists so a run that somehow
+ * returns hundreds cannot flood the graph with listings nobody will look at
+ * again — the value is in the few genuinely comparable ones, which is the
+ * same reason the market module scores them in the first place.
+ */
+export const MAX_COMPARABLES_HARVESTED = 20;
+
+/**
+ * A stable identity for a listing.
+ *
+ * The URL, stripped of the query string and fragment — trackers and session
+ * parameters differ between two sightings of the same page and would make one
+ * flat into several listings, which is exactly what breaks a price history.
+ */
+export function listingKey(url: unknown): string | null {
+  const u = text(url);
+  if (!/^https?:\/\//i.test(u)) return null;
+  return u.split('#')[0].split('?')[0].replace(/\/+$/, '').toLowerCase() || null;
+}
+
+/*
+ * WHY COMPARABLES LIVE IN THE SAME GRAPH AS EVERYTHING ELSE.
+ *
+ * A listing is an entity, its price is a fact about that entity, and a price
+ * that changes is a fact that supersedes another. So the price history the
+ * mandate asks for — 160000 → 155000, with both provenances and the date the
+ * first stopped being true — falls out of the machinery already built rather
+ * than needing a table of its own. So does status history: ACTIVE → EXPIRED
+ * is the same mechanism.
+ *
+ * The alternative, a separate comparables store, would be a second knowledge
+ * system beside the first, and every read would have to ask which of the two
+ * was right.
+ *
+ * Nothing here decides anything about the market. The medians, the bands and
+ * the positioning stay deterministic in marketIntelligence.ts, computed from
+ * the comparables in hand — a model never recomputes them and the graph never
+ * caches a conclusion, only the observations underneath it.
+ */
+function harvestComparables(
+  report: Record<string, unknown>,
+  subject: HarvestedEntity | null,
+  entity: (e: HarvestedEntity) => HarvestedEntity,
+  fact: (f: Omit<HarvestedFact, 'freshnessClass'>) => void,
+  out: Harvest
+): void {
+  const raw = (report.market as any)?.comparables;
+  if (!Array.isArray(raw)) return;
+
+  let kept = 0;
+  const seen = new Set<string>();
+
+  for (const c of raw) {
+    if (kept >= MAX_COMPARABLES_HARVESTED) break;
+    if (!c || typeof c !== 'object') continue;
+
+    const key = listingKey(c.url);
+    // A listing with no URL cannot be recognised again, so it cannot have a
+    // history and is not worth storing as an entity. It still counts towards
+    // this verification's own statistics, which is computed elsewhere.
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    kept += 1;
+
+    const listing = entity({
+      entityType: 'LISTING',
+      keyKind: 'LISTING_URL',
+      naturalKey: key,
+      displayName: text(c.project) || text(c.address) || key,
+    });
+
+    const evidence = `market.comparables[${key}]`;
+    const num = (v: unknown): number | null => {
+      const n = Number(text(v).replace(/[^\d.-]/g, ''));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
+    // The price and the status are what actually move, and each change becomes
+    // a superseded row with the date it stopped being true.
+    fact({ entity: listing, factKey: 'listing.price', valueNumber: num(c.price), valueUnit: text(c.currency) || 'USD', sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+    fact({ entity: listing, factKey: 'listing.pricePerSqm', valueNumber: num(c.pricePerSqm), valueUnit: text(c.currency) || 'USD', sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+    fact({ entity: listing, factKey: 'listing.status', valueText: text(c.listingStatus).toUpperCase() || null, sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+
+    // The rest describes the flat and essentially does not move, so a second
+    // sighting confirms it rather than rewriting it.
+    fact({ entity: listing, factKey: 'listing.area', valueNumber: num(c.area), valueUnit: 'm2', sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+    fact({ entity: listing, factKey: 'listing.rooms', valueNumber: num(c.rooms), sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+    fact({ entity: listing, factKey: 'listing.floor', valueText: text(c.floor) || null, sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+    fact({ entity: listing, factKey: 'listing.condition', valueText: text(c.condition) || null, sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+    fact({ entity: listing, factKey: 'listing.address', valueText: text(c.address) || null, sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+    fact({ entity: listing, factKey: 'listing.source', valueText: text(c.source) || null, sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence, confidence: 0.7 });
+
+    /*
+     * The link to what it was a comparable FOR.
+     *
+     * Recorded because a comparable is only comparable to something: the same
+     * listing is a close comparison for the flat next door and a poor one for
+     * a warehouse across the city, and the band it fell into was a judgement
+     * this verification made about this property.
+     */
+    if (subject) {
+      out.relationships.push({
+        from: listing, to: subject, relation: 'COMPARABLE_TO',
+        sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence,
+        confidence: 0.6,
+      });
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
+import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
 
 // v28 (2026-09-06, "HOMATCH VERIFY — FINAL PRE-PUSH CONSOLIDATION / ADAPTIVE
 // RESEARCH ENGINE / RECORDED OFFICIAL WORKFLOWS" — the FINANCIAL/COMPANY
@@ -3561,6 +3562,78 @@ const RAW_RUNTIME_ERROR = new RegExp(
   ].join('|'),
   'i'
 );
+/* ══════════════════════════════════════════════════════════════════════
+ * VERIFYING A PROPERTY BEFORE YOU HAVE AN ACCOUNT
+ *
+ * Somebody who has just been shown a listing and wants to know whether it is
+ * real should not have to create an account to find out. So an anonymous
+ * visitor can start one verification. It runs in full — same research, same
+ * evidence, same synthesis, same job id — and when they sign in it becomes
+ * theirs, appears in their History, and is never re-run. Nothing is paid for
+ * twice.
+ *
+ * What they do NOT get before signing in is the report. That is the whole
+ * bargain, and it is enforced HERE, at the boundary, not in React: the
+ * finished report is simply not in the response. Hiding it in the browser
+ * would mean shipping the entire thing to anyone who opens the network tab,
+ * which is not a gate, it is a curtain.
+ *
+ * WHAT BOUNDS THE SPEND
+ *
+ * A full verification costs real provider money and nobody has paid for this
+ * one. Three limits stack: one job per anonymous session (counted in the
+ * database), a handful of anonymous starts per IP per day, and the mint limit
+ * in anon-session upstream of both. None of them lives in the browser,
+ * because a limit the client keeps is not a limit.
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/** One. This is a taste of the product, not a free tier. */
+const ANON_RESEARCH_JOBS_PER_SESSION = 1;
+/** And a ceiling across sessions, since minting a new one is cheap. */
+const ANON_RESEARCH_STARTS_PER_IP_PER_DAY = 3;
+const ANON_RESEARCH_RATE_LIMIT_OPERATION = 'anon_research_start';
+
+/**
+ * The session a token proves, or null.
+ *
+ * Deliberately the same refusals as the ones homatch-ai makes: both call
+ * anonSessionUsable(), so "claimed" and "expired" cannot come to mean
+ * different things in the two places that ask.
+ */
+async function anonSessionFor(sb: any, token: unknown): Promise<any | null> {
+  if (!anonTokenPlausible(token)) return null;
+  const { data } = await sb
+    .from('anonymous_sessions')
+    .select('id, expires_at, claimed_at, research_jobs')
+    .eq('token_sha256', await sha256Hex(token))
+    .maybeSingle();
+  return anonSessionUsable(data) ? data : null;
+}
+
+/**
+ * What an anonymous caller may see of their own finished job.
+ *
+ * Everything about PROGRESS is kept: they watched the research run and should
+ * keep watching it finish. Everything that IS the research is removed — not
+ * emptied, removed — and replaced with a single flag the client turns into
+ * "Your full research is ready — sign in to view it."
+ *
+ * A job still running has no report to withhold, so this changes nothing for
+ * it, and a job that failed is told honestly that it failed rather than being
+ * dressed up as ready.
+ */
+function withholdReportUntilSignIn(job: any): any {
+  if (!job || job.status !== 'COMPLETE') return job;
+  const {
+    result_json: _report,
+    report: _rendered,
+    synthesis: _synthesis,
+    captcha: _captcha,
+    ...rest
+  } = job;
+  return { ...rest, awaitingSignIn: true };
+}
+
 function sanitizeForCustomer(job: any): any {
   // v32 (P0 fix): `research_jobs.error` also carries the last TRANSIENT
   // retry's message while a job is still actively being retried (see
@@ -4045,8 +4118,18 @@ Deno.serve(async (req) => {
     const {
       data: { user },
     } = await sb.auth.getUser(a.replace(/^Bearer\s+/i, ''));
-    if (!user) return json({ error: 'Invalid session' }, 401);
     const b = await req.json().catch(() => ({}));
+    // The anon key is itself a valid bearer, so "no user" here means an
+    // anonymous caller rather than a bad request. They are let through only if
+    // they also present a session secret that proves itself.
+    const anonSession = user ? null : await anonSessionFor(sb, b?.anonSessionToken);
+    if (!user && !anonSession) return json({ error: 'Invalid session' }, 401);
+    /** Scopes a read to whoever actually owns the row — never to a known id. */
+    const ownedBy = (q: any) =>
+      anonSession ? q.eq('anon_session_id', anonSession.id) : q.eq('user_id', user!.id);
+    /** The last thing every job response passes through. */
+    const forCaller = (j: any) =>
+      anonSession ? withholdReportUntilSignIn(sanitizeForCustomer(j)) : sanitizeForCustomer(j);
     const action = String(b.action || 'start');
     const lang = LANG[String(b.locale || b.language)] ? String(b.locale || b.language) : 'en';
     // v30: Gemini removed entirely — OpenAI Responses API only, per the
@@ -4092,11 +4175,11 @@ Deno.serve(async (req) => {
      * result_json is not touched. */
     if (action === 'cancel') {
       const id = String(b.jobId || '');
-      const { data: j } = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+      const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
       // Already finished one way or another: cancelling is a no-op, not an
       // error, and must never overwrite a report the customer already has.
-      if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status)) return json(sanitizeForCustomer(j));
+      if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status)) return json(forCaller(j));
       const wid = j.result_json?._worker?.jobId;
       if (wid) {
         // Best effort only. The worker has no cancel route and adding one
@@ -4115,12 +4198,12 @@ Deno.serve(async (req) => {
         updated_at: now(),
       }).eq('id', id);
       const { data: after } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
-      return json(sanitizeForCustomer(after || { ...j, status: 'CANCELLED', stage: 'CANCELLED' }));
+      return json(forCaller(after || { ...j, status: 'CANCELLED', stage: 'CANCELLED' }));
     }
 
     if (action === 'status' || action === 'resume' || action === 'skip') {
       const id = String(b.jobId || '');
-      let { data: j } = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+      let { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
 
       if (action === 'resume' && j.status === 'WAITING_HUMAN') {
@@ -4212,14 +4295,14 @@ Deno.serve(async (req) => {
       }
       if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED'].includes(j.status)) {
         await advance(sb, key, model, j, lang);
-        const r = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+        const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
         j = r.data || j;
       }
       // v22: strip internal diagnostics from the wire response for finished jobs
       // (see sanitizeForCustomer above). The DB row itself is left untouched —
       // full browserOfficial/cost/provider diagnostics remain queryable there
       // for admin support/debugging, only the customer-facing HTTP body changes.
-      return json(sanitizeForCustomer(j));
+      return json(forCaller(j));
     }
 
     const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';
@@ -4230,7 +4313,42 @@ Deno.serve(async (req) => {
     // written in the language the customer chose. Without it the driver would
     // have to guess, and the report would silently change language whenever
     // the customer happened to close the tab.
-    const { data: j, error } = await sb.from('research_jobs').insert({ user_id: user.id, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
+    if (anonSession) {
+      // One per session. The counter is a column, not a header, so clearing
+      // site data does not reset it — only minting a new session does, and
+      // the IP ceiling below is what bounds that.
+      if ((anonSession.research_jobs ?? 0) >= ANON_RESEARCH_JOBS_PER_SESSION) {
+        return json({ error: 'sign in to run another verification', code: 'ANON_LIMIT_REACHED' }, 402);
+      }
+      const ip =
+        req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        req.headers.get('cf-connecting-ip') ||
+        'unknown';
+      const d = new Date();
+      const dayStartUtc = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
+      const { count } = await sb
+        .from('rate_limit_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('ip_address', ip)
+        .eq('operation', ANON_RESEARCH_RATE_LIMIT_OPERATION)
+        .gte('created_at', dayStartUtc);
+      if ((count ?? 0) >= ANON_RESEARCH_STARTS_PER_IP_PER_DAY) {
+        return json({ error: 'sign in to run another verification', code: 'ANON_LIMIT_REACHED' }, 402);
+      }
+      await sb.from('rate_limit_events').insert({ ip_address: ip, operation: ANON_RESEARCH_RATE_LIMIT_OPERATION });
+      // Counted BEFORE the work starts, unlike the anonymous chat turn. A
+      // verification that fails halfway has still spent provider money, so the
+      // failure mode worth preventing here is an unbounded retry loop, not an
+      // unlucky visitor losing their one free run.
+      await sb
+        .from('anonymous_sessions')
+        .update({ research_jobs: (anonSession.research_jobs ?? 0) + 1 })
+        .eq('id', anonSession.id);
+    }
+    const owner = anonSession
+      ? { user_id: null, anon_session_id: anonSession.id }
+      : { user_id: user!.id };
+    const { data: j, error } = await sb.from('research_jobs').insert({ ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
     if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);
     await advance(sb, key, model, j, lang);
     return json({ accepted: true, jobId: j.id }, 202);

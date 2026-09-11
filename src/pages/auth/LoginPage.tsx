@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Zap, Loader2 } from 'lucide-react';
+import { takePendingPath } from '@/services/returnTo';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
@@ -62,7 +63,11 @@ export default function LoginPage() {
       sessionStorage.removeItem('homatch_pending_intent');
       navigate('/property/create');
     } else {
-      const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard';
+      // A page that sent them here to sign in gets them back. Checked before
+      // router state because it is the only one of the two that survives the
+      // Google round trip, so it is the more specific intent.
+      const returnTo = takePendingPath();
+      const from = returnTo ?? (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard';
       navigate(from, { replace: true });
     }
   }, [session, intent, navigate, location.state]);

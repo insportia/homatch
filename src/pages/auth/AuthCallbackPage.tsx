@@ -6,6 +6,7 @@ import { supabase } from '@/db/supabase';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
+import { takePendingPath } from '@/services/returnTo';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
@@ -119,7 +120,9 @@ export default function AuthCallbackPage() {
       } else if (pendingIntent === 'private') {
         navigate('/property/create', { replace: true });
       } else {
-        navigate('/dashboard', { replace: true });
+        // Same as the email route: whatever page asked for a sign-in gets the
+        // visitor back, and the dashboard is only the fallback.
+        navigate(takePendingPath() ?? '/dashboard', { replace: true });
       }
     }
 

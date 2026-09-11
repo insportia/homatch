@@ -17,6 +17,7 @@
 //      written to ai_chat_leads for admin follow-up.
 //   3. (Unchanged) DB-first RAG context + OpenAI Responses API + web search.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { resolveLocaleFromBody, languageDirective, type Locale } from '../_shared/locale.ts';
 
@@ -120,24 +121,17 @@ function shouldCaptureLead(lead: LeadExtraction | null): boolean {
  */
 const ANON_USER_MESSAGE_LIMIT = 2;
 
-async function sha256Hex(s: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
 /** The session this token proves, or null. Never trusts anything but the hash. */
 async function anonSessionFor(sb: any, token: unknown): Promise<any | null> {
-  if (typeof token !== 'string' || token.length < 32) return null;
+  if (!anonTokenPlausible(token)) return null;
   const { data } = await sb
     .from('anonymous_sessions')
     .select('id, expires_at, claimed_at, user_messages')
     .eq('token_sha256', await sha256Hex(token))
     .maybeSingle();
-  if (!data) return null;
-  // A claimed session belongs to an account now; it must sign in to continue.
-  if (data.claimed_at) return null;
-  if (new Date(data.expires_at).getTime() <= Date.now()) return null;
-  return data;
+  // Claimed and expired are decided in one shared place, so this endpoint and
+  // the Verify orchestrator cannot come to disagree about what either means.
+  return anonSessionUsable(data) ? data : null;
 }
 
 serve(async (req) => {

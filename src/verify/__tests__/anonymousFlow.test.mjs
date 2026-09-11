@@ -132,9 +132,13 @@ test('a claimed or expired session can no longer be used to talk', () => {
   const src = aiFn();
   const i = src.indexOf('async function anonSessionFor');
   const fn = src.slice(i, i + 900);
-  assert.ok(/claimed_at\) return null/.test(fn), 'a claimed session still works anonymously');
-  assert.ok(/expires_at\)\.getTime\(\) <= Date\.now\(\)/.test(fn), 'an expired session still works');
-  assert.ok(/length < 32/.test(fn), 'a short token is looked up');
+  // "Claimed" and "expired" are decided in one shared place now — exercised
+  // directly in anonymousVerify.test.mjs — so what matters here is that this
+  // endpoint asks it rather than restating it in its own words.
+  assert.ok(/return anonSessionUsable\(data\) \? data : null;/.test(fn),
+    'this endpoint judges a session by its own rule');
+  assert.ok(/if \(!anonTokenPlausible\(token\)\) return null;/.test(fn),
+    'a token of any shape is looked up');
 });
 
 /* ── the thread must not split ───────────────────────────────────────── */

@@ -3,3 +3,9 @@
 # request inside the function using the private x-cron-token stored server-side.
 [functions.continuous-matching-worker]
 verify_jwt = false
+
+# jobs-worker is the same shape: a pg_cron tick that belongs to no customer,
+# so it cannot present a user JWT. It authenticates on the private
+# jobs_worker_token held in admin_settings and refuses anything else with 403.
+[functions.jobs-worker]
+verify_jwt = false

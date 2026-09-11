@@ -306,6 +306,13 @@ jobs:
             # Production has run verify_jwt=false since it was first deployed;
             # deploying it here with --no-verify-jwt preserves that exactly.
             "research-agent"
+            # The durable-job tick. Same shape as the two workers above: it is
+            # called by pg_cron, belongs to no customer, and so cannot present
+            # a user JWT — it authenticates on the private jobs_worker_token in
+            # admin_settings and answers anything else with 403. Registered
+            # here from its first release rather than deployed by hand, which
+            # is the mistake the comments above this line are all about.
+            "jobs-worker"
           )
           FAILED=()
           for fn in "${NO_JWT_FUNCTIONS[@]}"; do

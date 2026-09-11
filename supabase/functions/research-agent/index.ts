@@ -5,6 +5,7 @@ import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/a
 import { harvestReport, normalizeCadastral } from '../../../src/verify/intelligence/harvest.ts';
 import { persistHarvest, loadKnownIntelligence } from '../../../src/verify/intelligence/graphStore.ts';
 import { planVerification } from '../../../src/verify/intelligence/stagePlan.ts';
+import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
 import { buildKnownBrief } from '../../../src/verify/intelligence/knownBrief.ts';
 import { planEscalation, searchBudgetInstruction } from '../../../src/verify/intelligence/escalation.ts';
@@ -1424,7 +1425,7 @@ function knownBriefFor(j: any): string {
   const plan = j?.result_json?._reusePlan;
   if (!plan?.known || !Array.isArray(plan.briefFacts) || !plan.briefFacts.length) return '';
   try {
-    const brief = buildKnownBrief(plan.briefFacts, plan.assessments ?? []);
+    const brief = buildKnownBrief(plan.briefFacts, plan.assessments ?? [], plan.scope ?? null);
     return brief.text ? `\n${brief.text}\n` : '';
   } catch {
     return '';
@@ -3891,15 +3892,25 @@ async function shadowReusePlan(db: any, query: string): Promise<any | null> {
      * graph grows without limit — a property with two hundred comparables
      * must not put two hundred rows into the prompt.
      */
+    /*
+     * ASSESSED PER FACT, NOT PER FACT KEY.
+     *
+     * The planner's decisions carry bare fact keys, and a key is not an
+     * identity: a graph holding eleven listings holds eleven different
+     * answers to `listing.price`. Reading freshness back off the decisions
+     * therefore let one fresh listing vouch for every same-named fact in the
+     * graph, and the brief shipped five comparables' asking prices as this
+     * flat's own. assessFact is the actual source of truth and takes the fact
+     * itself, so asking it directly is both stricter and simpler.
+     */
     const allFacts = [...known.facts, ...known.relatedFacts];
-    const assessments = plan.decisions.flatMap((d: any) =>
-      d.reused.map((factKey: string) => ({ factKey, state: 'FRESH' }))
+    const assessments = allFacts.map((f: any) =>
+      assessFact(f.fact_key, f, policies ?? [], Date.now())
     );
-    const usable = new Set(assessments.map((a: any) => a.factKey));
     const briefFacts = allFacts
-      .filter((f: any) => usable.has(f.fact_key))
       .slice(0, 60)
       .map((f: any) => ({
+        entity_id: f.entity_id ?? null,
         fact_key: f.fact_key,
         value_text: f.value_text ?? null,
         value_number: f.value_number ?? null,
@@ -3910,6 +3921,10 @@ async function shadowReusePlan(db: any, query: string): Promise<any | null> {
       known: true,
       briefFacts,
       assessments,
+      scope: {
+        subjectEntityId: known.entityId,
+        related: known.relatedEntities,
+      },
       heldFacts: known.facts.length,
       relatedFacts: known.relatedFacts.length,
       reusableFacts: plan.reusableFacts,

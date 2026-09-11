@@ -374,21 +374,30 @@ test('the walk follows the whole provenance chain, and stops there', async () =>
     'the walk reached another property\'s project');
 });
 
-test('the comparables of a property are reachable from it', async () => {
+test('a comparable is recorded against the property, pointing away from it', async () => {
   // Recorded the other way round they sat one edge away in the wrong
   // direction, unreachable from the only place anyone starts — which is
   // exactly what the production graph showed.
+  //
+  // Reachable is not the same as lineage, and this asserts the edge rather
+  // than the walk: loadKnownIntelligence deliberately does NOT follow
+  // COMPARABLE_TO, because a comparable is a different property and its
+  // asking price is not a fact about this one. See the lineage tests below.
   const db = makeDb();
   const withComps = {
     ...REPORT,
     market: { comparables: [{ url: 'https://home.ge/x/1', price: '150000', area: '80' }] },
   };
-  await persistHarvest(db, harvestReport(withComps, POLICIES), 'job-1');
-  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
-  assert.ok(known.relatedEntities.some((r) => r.entityType === 'LISTING'),
-    'the comparables cannot be found from the property they were comparables for');
-  assert.ok(known.relatedFacts.some((f) => f.fact_key === 'listing.price'),
-    'a stored asking price is unreachable');
+  const harvest = harvestReport(withComps, POLICIES);
+  await persistHarvest(db, harvest, 'job-1');
+
+  const edge = harvest.relationships.find((r) => r.relation === 'COMPARABLE_TO');
+  assert.ok(edge, 'no comparable edge was recorded at all');
+  assert.equal(edge.from.naturalKey, '01.72.14.040.030.01.02.017',
+    'the comparable edge points at the subject instead of away from it');
+  assert.equal(edge.to.entityType, 'LISTING');
+  assert.ok(harvest.facts.some((f) => f.factKey === 'listing.price'),
+    'a comparable asking price was not stored at all');
 });
 
 test('a cycle in the graph does not loop forever', async () => {
@@ -489,4 +498,46 @@ test('what is stored is always what the research said, never the normalised form
   await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
   const name = db.tables.intelligence_facts.find((f) => f.fact_key === 'company.name');
   assert.equal(name.value_text, 'Geo City', 'the stored value was normalised');
+});
+
+/* ── a comparable is not lineage ─────────────────────────────────────
+ *
+ * The traversal exists to reach what this property BELONGS to: its parcel,
+ * its project, the company that built it. A COMPARABLE_TO edge points at a
+ * different property, and following it pulls that property's asking price
+ * into what we believe about this one. Production held eleven comparable
+ * listings against a subject unit with four facts of its own, and an
+ * unfiltered walk returned forty-four "related" facts that were mostly other
+ * people's flats.
+ */
+
+test('comparable listings are not walked as if they were lineage', async () => {
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+
+  const comparableIds = new Set(
+    known.relatedEntities.filter((r) => r.relation === 'COMPARABLE_TO').map((r) => r.id)
+  );
+  assert.equal(comparableIds.size, 0, 'a comparable property was returned as lineage');
+
+  for (const r of known.relatedEntities) {
+    assert.notEqual(r.entityType, 'LISTING', `a listing (${r.naturalKey}) was walked as lineage`);
+  }
+});
+
+test('every fact that comes back knows what it is a fact about', async () => {
+  // A fact key is not an identity: eleven listings each have their own answer
+  // to `listing.price`. Without entity_id the brief cannot tell them apart,
+  // and it briefed five strangers' prices as this property's own.
+  const db = makeDb();
+  await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
+  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+
+  for (const f of [...known.facts, ...known.relatedFacts]) {
+    assert.ok(f.entity_id, `${f.fact_key} came back with no entity`);
+  }
+  for (const f of known.facts) {
+    assert.equal(f.entity_id, known.entityId, `${f.fact_key} was filed under the wrong entity`);
+  }
 });

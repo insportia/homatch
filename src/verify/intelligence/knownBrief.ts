@@ -29,6 +29,8 @@ import type { FactAssessment } from './freshness.ts';
 
 /** A fact as the graph returns it, with the value the brief will quote. */
 export interface BriefFact {
+  /** Which thing this is a fact about. See BriefScope for why it matters. */
+  entity_id?: string | null;
   fact_key: string;
   value_text?: string | null;
   value_number?: number | string | null;
@@ -69,47 +71,156 @@ export interface KnownBrief {
 }
 
 /**
+ * What the verification is actually about, and what merely stands near it.
+ *
+ * WHY THIS EXISTS. Without it the brief had no way to tell a fact about this
+ * flat from a fact about a comparable flat down the road, because both arrive
+ * as `listing.price`. Production duly briefed five different asking prices
+ * under that one key, none of them this property's, all of them introduced as
+ * "established by earlier research on this exact property". The unit held four
+ * facts; the brief claimed thirteen.
+ *
+ * A fact key is not an identity. Everything below is scoped by entity.
+ */
+export interface BriefScope {
+  /** The entity the customer asked about. */
+  subjectEntityId: string | null;
+  /** The lineage entities, for labelling what is said about them. */
+  related?: readonly {
+    id: string;
+    entityType?: string | null;
+    naturalKey?: string | null;
+    relation?: string | null;
+  }[];
+}
+
+/** How a related entity is introduced in the brief. */
+const RELATION_LABEL: Record<string, string> = {
+  HAS_PARENT_PARCEL: 'the land parcel this property sits on',
+  IN_BUILDING: 'the building this property is in',
+  PART_OF_PROJECT: 'the development this property is part of',
+  DEVELOPED_BY: 'the company that developed it',
+  IS_COMPANY: 'the company involved',
+  LOCATED_IN: 'the area it is in',
+};
+
+/**
+ * Does this verdict belong to this fact?
+ *
+ * Once identity is available on either side it is REQUIRED to match. The
+ * key-only fallback survives only for callers that carry no entity at all,
+ * and it can never be reached by a fact whose key has an identified verdict —
+ * otherwise one fresh listing would go on vouching for ten stale ones.
+ */
+function usableIndex(assessments: readonly FactAssessment[]): {
+  qualified: Set<string>;
+  unqualified: Set<string>;
+  identified: Set<string>;
+} {
+  const qualified = new Set<string>();
+  const unqualified = new Set<string>();
+  const identified = new Set<string>();
+  for (const a of assessments) {
+    if (!a?.factKey) continue;
+    if (a.entityId) {
+      identified.add(a.factKey);
+      if (a.state === 'FRESH') qualified.add(`${a.entityId}::${a.factKey}`);
+    } else if (a.state === 'FRESH') {
+      unqualified.add(a.factKey);
+    }
+  }
+  return { qualified, unqualified, identified };
+}
+
+/**
  * The block handed to a research stage.
  *
  * `fresh` is the planner's own verdict, so the brief and the plan cannot
  * disagree about what counts as usable — one source of truth for freshness,
  * not two.
+ *
+ * Facts about this property are stated as such. Facts about its parcel,
+ * building, project or developer go in a second block that names what they are
+ * about, because "true of the land it stands on" and "true of this flat" are
+ * the two things a Georgian due-diligence report must never merge. Facts about
+ * anything else — a comparable listing is the case that actually arose — are
+ * not briefed at all: they are somebody else's property.
  */
 export function buildKnownBrief(
   facts: readonly BriefFact[] | null | undefined,
-  assessments: readonly FactAssessment[] | null | undefined
+  assessments: readonly FactAssessment[] | null | undefined,
+  scope?: BriefScope | null
 ): KnownBrief {
-  const usable = new Set(
-    (assessments ?? []).filter((a) => a.state === 'FRESH').map((a) => a.factKey)
-  );
+  const { qualified, unqualified, identified } = usableIndex(assessments ?? []);
 
-  const lines: string[] = [];
+  const relatedById = new Map(
+    (scope?.related ?? []).map((r) => [r.id, r] as const)
+  );
+  const scoped = !!scope;
+
+  const mine: string[] = [];
+  const theirs: string[] = [];
   const briefed: string[] = [];
 
   for (const f of facts ?? []) {
-    if (!f?.fact_key || !usable.has(f.fact_key) || !briefable(f.fact_key)) continue;
+    if (!f?.fact_key || !briefable(f.fact_key)) continue;
+
+    const fresh = f.entity_id
+      ? qualified.has(`${f.entity_id}::${f.fact_key}`)
+      : !identified.has(f.fact_key) && unqualified.has(f.fact_key);
+    if (!fresh) continue;
+
     const v = shortValue(f);
     if (!v) continue;
-    lines.push(`  ${f.fact_key} = ${v}`);
+
+    // Unscoped callers get the old behaviour: everything handed over is the
+    // subject's. Scoped callers get the distinction enforced.
+    if (!scoped || !f.entity_id || f.entity_id === scope!.subjectEntityId) {
+      mine.push(`  ${f.fact_key} = ${v}`);
+      briefed.push(f.fact_key);
+      continue;
+    }
+
+    const rel = relatedById.get(f.entity_id);
+    // Not the subject and not lineage: another property's fact. Drop it.
+    if (!rel) continue;
+
+    const about = RELATION_LABEL[rel.relation ?? ''] ?? (rel.entityType ?? 'a related record').toLowerCase();
+    theirs.push(`  (${about}) ${f.fact_key} = ${v}`);
     briefed.push(f.fact_key);
   }
 
-  if (!lines.length) return { text: '', briefed: [] };
+  if (!mine.length && !theirs.length) return { text: '', briefed: [] };
 
-  return {
-    briefed,
-    text: [
-      'ALREADY ESTABLISHED BY HOMATCH — verified research, not a hint:',
-      ...lines,
-      '',
-      'These were established by earlier research on this exact property and are',
-      'still current under their own freshness policy. Treat them as given.',
-      'Do NOT spend searches rediscovering them; spend them on what is missing,',
-      'unclear or contradicted instead. Restate any of them that belongs in your',
-      'answer — they must appear in the result exactly as they would have if you',
-      'had just found them, because the report is written from your output.',
-      'If your own research CONTRADICTS one of these, say so plainly and prefer',
-      'what you actually found: this list is what we knew, not what must be true.',
-    ].join('\n'),
-  };
+  const out: string[] = [];
+
+  if (mine.length) {
+    out.push(
+      'ALREADY ESTABLISHED BY HOMATCH ABOUT THIS EXACT PROPERTY — verified research, not a hint:',
+      ...mine
+    );
+  }
+
+  if (theirs.length) {
+    if (out.length) out.push('');
+    out.push(
+      'ESTABLISHED ABOUT WHAT THIS PROPERTY BELONGS TO — true of the thing named',
+      'in brackets, NOT of this unit unless your own research shows it is:',
+      ...theirs
+    );
+  }
+
+  out.push(
+    '',
+    'These were established by earlier research and are still current under',
+    'their own freshness policy. Treat them as given.',
+    'Do NOT spend searches rediscovering them; spend them on what is missing,',
+    'unclear or contradicted instead. Restate any of them that belongs in your',
+    'answer — they must appear in the result exactly as they would have if you',
+    'had just found them, because the report is written from your output.',
+    'If your own research CONTRADICTS one of these, say so plainly and prefer',
+    'what you actually found: this list is what we knew, not what must be true.'
+  );
+
+  return { briefed, text: out.join('\n') };
 }

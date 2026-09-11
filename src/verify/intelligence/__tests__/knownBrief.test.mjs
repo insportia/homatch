@@ -111,3 +111,88 @@ test('a long value is truncated rather than flooding the prompt', () => {
   );
   assert.ok(brief.text.length < 1000, 'one fact was allowed to dominate the prompt');
 });
+
+/* ── a fact key is not an identity ───────────────────────────────────
+ *
+ * All of these are regressions from one production run. The graph held the
+ * subject unit (4 facts) and eleven comparable listings (~90 facts). Because
+ * the brief matched facts to freshness verdicts by fact_key alone, one fresh
+ * `listing.price` admitted every `listing.price` in the graph, and the brief
+ * introduced five strangers' asking prices as established fact about this
+ * flat. It was also more expensive: handed five contradictory prices for one
+ * property, the market stage searched harder, not less.
+ */
+
+const SUBJECT = 'entity-subject';
+const PROJECT = 'entity-project';
+const OTHER_FLAT = 'entity-comparable';
+
+const scope = {
+  subjectEntityId: SUBJECT,
+  related: [{ id: PROJECT, entityType: 'PROJECT', naturalKey: 'p', relation: 'PART_OF_PROJECT' }],
+};
+
+const freshOf = (entityId, factKey) => ({ factKey, entityId, state: 'FRESH', ageHours: 1, maxAgeHours: 24, freshnessClass: 'HIGH_VOLATILITY', reason: 'fresh' });
+const staleOf = (entityId, factKey) => ({ factKey, entityId, state: 'STALE', ageHours: 99, maxAgeHours: 24, freshnessClass: 'HIGH_VOLATILITY', reason: 'stale' });
+
+test('one fresh listing does not vouch for another listing of the same key', () => {
+  const brief = buildKnownBrief(
+    [
+      { entity_id: SUBJECT, fact_key: 'listing.price', value_number: 114985 },
+      { entity_id: OTHER_FLAT, fact_key: 'listing.price', value_number: 85000 },
+    ],
+    [freshOf(SUBJECT, 'listing.price'), staleOf(OTHER_FLAT, 'listing.price')],
+    scope
+  );
+  assert.match(brief.text, /114985/);
+  assert.doesNotMatch(brief.text, /85000/, "another property's asking price was briefed as this one's");
+});
+
+test("a comparable's facts are never briefed at all", () => {
+  // Not the subject, not lineage — somebody else's flat.
+  const brief = buildKnownBrief(
+    [{ entity_id: OTHER_FLAT, fact_key: 'listing.price', value_number: 85000 }],
+    [freshOf(OTHER_FLAT, 'listing.price')],
+    scope
+  );
+  assert.equal(brief.text, '');
+  assert.deepEqual(brief.briefed, []);
+});
+
+test('a project fact is briefed as the project\'s, never as the unit\'s', () => {
+  const brief = buildKnownBrief(
+    [{ entity_id: PROJECT, fact_key: 'project.floors', value_text: '14' }],
+    [freshOf(PROJECT, 'project.floors')],
+    scope
+  );
+  assert.match(brief.text, /ESTABLISHED ABOUT WHAT THIS PROPERTY BELONGS TO/);
+  assert.match(brief.text, /the development this property is part of\) project\.floors/);
+  assert.doesNotMatch(brief.text, /ABOUT THIS EXACT PROPERTY[\s\S]*project\.floors/);
+});
+
+test('the two blocks stay separate when both are present', () => {
+  const brief = buildKnownBrief(
+    [
+      { entity_id: SUBJECT, fact_key: 'parcel.code', value_text: '01.72.14.040.030' },
+      { entity_id: PROJECT, fact_key: 'project.floors', value_text: '14' },
+    ],
+    [freshOf(SUBJECT, 'parcel.code'), freshOf(PROJECT, 'project.floors')],
+    scope
+  );
+  const mine = brief.text.indexOf('parcel.code');
+  const theirs = brief.text.indexOf('project.floors');
+  const header = brief.text.indexOf('ESTABLISHED ABOUT WHAT THIS PROPERTY BELONGS TO');
+  assert.ok(mine < header && header < theirs, 'the unit\'s facts and its project\'s were interleaved');
+  assert.match(brief.text, /NOT of this unit unless your own research shows it is/);
+});
+
+test('an identified key never falls back to key-only matching', () => {
+  // The fallback exists for callers that carry no entity at all. It must not
+  // become a way back into the bug for a fact whose key is identified.
+  const brief = buildKnownBrief(
+    [{ entity_id: OTHER_FLAT, fact_key: 'listing.price', value_number: 85000 }],
+    [freshOf(SUBJECT, 'listing.price')],
+    scope
+  );
+  assert.equal(brief.text, '');
+});

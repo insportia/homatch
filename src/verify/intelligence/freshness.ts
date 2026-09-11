@@ -30,6 +30,16 @@ export interface FreshnessPolicy {
 
 /** The parts of a stored fact this module needs to judge it. */
 export interface KnownFact {
+  /**
+   * Which thing this is a fact ABOUT.
+   *
+   * A fact key is not an identity. `listing.price` is a fact key that eleven
+   * different listings each have their own answer to, and code that matches a
+   * fact to a verdict by key alone will let one fresh listing vouch for ten
+   * stale ones belonging to other properties. Carried here so that identity is
+   * available wherever freshness is, rather than being reconstructed.
+   */
+  entity_id?: string | null;
   fact_key: string;
   status?: string | null;
   last_verified_at?: string | null;
@@ -83,6 +93,11 @@ export type FactState =
 
 export interface FactAssessment {
   factKey: string;
+  /**
+   * Which thing was assessed. Carried through from the fact so that a verdict
+   * can never be applied to a same-named fact about something else.
+   */
+  entityId?: string | null;
   state: FactState;
   ageHours: number | null;
   maxAgeHours: number | null;
@@ -115,20 +130,21 @@ export function assessFact(
   now: Date | number = Date.now()
 ): FactAssessment {
   const nowMs = typeof now === 'number' ? now : now.getTime();
+  const entityId = fact?.entity_id ?? null;
   const policy = policyFor(factKey, policies);
   const maxAgeHours = policy?.max_age_hours ?? null;
   const freshnessClass = policy?.freshness_class ?? null;
 
   if (!fact || fact.status === 'SUPERSEDED') {
     return {
-      factKey, state: 'MISSING', ageHours: null, maxAgeHours, freshnessClass,
+      factKey, entityId, state: 'MISSING', ageHours: null, maxAgeHours, freshnessClass,
       reason: 'not held',
     };
   }
 
   if (fact.status === 'CONFLICTING') {
     return {
-      factKey, state: 'CONFLICTING', ageHours: hoursBetween(fact.last_verified_at, nowMs), maxAgeHours, freshnessClass,
+      factKey, entityId, state: 'CONFLICTING', ageHours: hoursBetween(fact.last_verified_at, nowMs), maxAgeHours, freshnessClass,
       reason: 'contradicted by other evidence',
     };
   }
@@ -136,32 +152,32 @@ export function assessFact(
   const ageHours = hoursBetween(fact.last_verified_at, nowMs);
 
   if (fact.status === 'STALE') {
-    return { factKey, state: 'STALE', ageHours, maxAgeHours, freshnessClass, reason: 'marked stale' };
+    return { factKey, entityId, state: 'STALE', ageHours, maxAgeHours, freshnessClass, reason: 'marked stale' };
   }
 
   if (!policy) {
     return {
-      factKey, state: 'STALE', ageHours, maxAgeHours, freshnessClass,
+      factKey, entityId, state: 'STALE', ageHours, maxAgeHours, freshnessClass,
       reason: 'no freshness policy for this kind of fact',
     };
   }
 
   if (ageHours === null) {
     return {
-      factKey, state: 'STALE', ageHours, maxAgeHours, freshnessClass,
+      factKey, entityId, state: 'STALE', ageHours, maxAgeHours, freshnessClass,
       reason: 'never verified',
     };
   }
 
   if (ageHours > policy.max_age_hours) {
     return {
-      factKey, state: 'STALE', ageHours, maxAgeHours, freshnessClass,
+      factKey, entityId, state: 'STALE', ageHours, maxAgeHours, freshnessClass,
       reason: `${Math.round(ageHours)}h old, policy allows ${policy.max_age_hours}h`,
     };
   }
 
   return {
-    factKey, state: 'FRESH', ageHours, maxAgeHours, freshnessClass,
+    factKey, entityId, state: 'FRESH', ageHours, maxAgeHours, freshnessClass,
     reason: `${Math.round(ageHours)}h old, within ${policy.max_age_hours}h`,
   };
 }

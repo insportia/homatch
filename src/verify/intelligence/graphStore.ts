@@ -438,6 +438,35 @@ export interface KnownIntelligence {
 }
 
 /**
+ * THE RELATIONS THAT ARE PART OF THIS PROPERTY'S OWN LINEAGE.
+ *
+ * The traversal below follows these and nothing else. The distinction is not
+ * academic: a COMPARABLE_TO edge points at somebody else's flat, and walking
+ * it pulls that flat's asking price into what we believe about this one.
+ *
+ * Production showed exactly that. The subject unit held four facts; the graph
+ * held eleven comparable listings with about ninety facts between them, and an
+ * unfiltered walk returned forty-four "related" facts that were overwhelmingly
+ * other people's listings. Five different asking prices arrived under the one
+ * key `listing.price`, and the brief then offered them as established fact
+ * about this property. That is the "a parent-parcel fact is not automatically
+ * an exact-unit fact" rule failing one step further out than it was written
+ * for, and it made the research more expensive as well as less true: handed
+ * five contradictory prices for one flat, the market stage searched harder.
+ *
+ * A comparable is still reachable — it is an edge, and the market stage is
+ * what it is for — but it is not lineage and is not walked as if it were.
+ */
+const PROVENANCE_RELATIONS = new Set<string>([
+  'HAS_PARENT_PARCEL',
+  'IN_BUILDING',
+  'PART_OF_PROJECT',
+  'DEVELOPED_BY',
+  'IS_COMPANY',
+  'LOCATED_IN',
+]);
+
+/**
  * What Homatch already knows about one property.
  *
  * Includes facts about the things it BELONGS to — its parcel, its project,
@@ -469,7 +498,7 @@ export async function loadKnownIntelligence(
     // class, to know which fact families this kind of property can even have.
     const { data: facts } = await db
       .from('intelligence_facts')
-      .select('fact_key, value_text, value_number, value_json, status, last_verified_at, freshness_class, content_hash, source_ref')
+      .select('entity_id, fact_key, value_text, value_number, value_json, status, last_verified_at, freshness_class, content_hash, source_ref')
       .eq('entity_id', entity.id)
       .eq('status', 'CURRENT');
 
@@ -518,7 +547,8 @@ export async function loadKnownIntelligence(
         .eq('status', 'CURRENT');
 
       const edgeRows = ((edges ?? []) as { to_entity_id: string; relation: string }[])
-        .filter((e) => e.to_entity_id && !visited.has(e.to_entity_id));
+        .filter((e) => e.to_entity_id && !visited.has(e.to_entity_id))
+        .filter((e) => PROVENANCE_RELATIONS.has(e.relation));
       if (!edgeRows.length) break;
 
       const ids = [...new Set(edgeRows.map((e) => e.to_entity_id))];

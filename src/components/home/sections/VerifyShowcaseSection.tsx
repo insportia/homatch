@@ -4,7 +4,7 @@ import { AlertCircle, ArrowRight, Check, FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
-import { PAGE } from './primitives';
+import { PAGE, SECTION_Y } from './primitives';
 
 /**
  * REGION 05 — Buyer Intelligence.
@@ -25,26 +25,26 @@ export function VerifyShowcaseSection() {
   const confirmed = [t('mp_verify_frag_identity'), t('mp_verify_frag_official'), t('mp_market_1_title')];
 
   return (
-    <section id="verify" className={`${PAGE} scroll-mt-24 py-20 sm:py-24 lg:py-28`}>
-      <div className="grid gap-12 lg:grid-cols-2 lg:items-center lg:gap-16">
+    <section id="verify" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
+      <div className="grid gap-9 lg:grid-cols-2 lg:items-center lg:gap-16">
         {/* ── The argument ─────────────────────────────────────── */}
         <div className="min-w-0">
-          <div className="flex items-center gap-4">
-            <FeatureGlyph name="verify" size={56} />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold-ink">{t('mp_verify_eyebrow')}</p>
+          <div className="flex items-center gap-3.5">
+            <FeatureGlyph name="verify" size={48} className="sm:h-14 sm:w-14" />
+            <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">{t('mp_verify_eyebrow')}</p>
           </div>
 
           <h2
-            className="mt-7 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-foreground"
-            style={{ fontSize: 'clamp(1.75rem, 3.2vw, 2.75rem)' }}
+            className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
+            style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
             {t('mp_verify_show_title')}
           </h2>
-          <p className="mt-5 max-w-[34rem] text-pretty text-[15px] leading-[1.7] text-ink-soft sm:text-base">
+          <p className="mt-4 max-w-[34rem] text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
             {t('mp_verify_capability_desc')}
           </p>
 
-          <ul className="mt-9 space-y-4">
+          <ul className="mt-7 space-y-3.5 sm:mt-9 sm:space-y-4">
             {[
               { key: 'record', title: t('mp_market_2_title'), desc: t('mp_market_2_desc') },
               { key: 'project', title: t('mp_market_3_title'), desc: t('mp_market_3_desc') },
@@ -56,7 +56,7 @@ export function VerifyShowcaseSection() {
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[15px] font-semibold leading-snug text-foreground">{row.title}</span>
-                  <span className="mt-1 block text-pretty text-sm leading-relaxed text-ink-soft">{row.desc}</span>
+                  <span className="mt-1 block text-pretty text-[13.5px] leading-relaxed text-ink-soft sm:text-sm">{row.desc}</span>
                 </span>
               </li>
             ))}
@@ -65,7 +65,7 @@ export function VerifyShowcaseSection() {
           <button
             type="button"
             onClick={() => navigate('/verify')}
-            className="group mt-9 inline-flex h-12 items-center justify-center gap-2.5 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
+            className="group mt-7 inline-flex h-12 sm:mt-9 items-center justify-center gap-2.5 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
           >
             {t('mp_verify_capability_cta')}
             <ArrowRight
@@ -95,7 +95,7 @@ export function VerifyShowcaseSection() {
             </div>
           </div>
 
-          <div className="p-6 sm:p-7">
+          <div className="p-5 sm:p-7">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {t('mp_result_prop_confirmed')}
             </p>

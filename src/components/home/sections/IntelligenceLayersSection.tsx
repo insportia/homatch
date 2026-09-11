@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { PAGE } from './primitives';
+import { PAGE, SECTION_Y } from './primitives';
 
 /**
  * REGION 03 — what Homatch actually understands.
@@ -56,20 +56,20 @@ export function IntelligenceLayersSection() {
   }, [held]);
 
   return (
-    <section id="intelligence" className="scroll-mt-24 bg-[#080808] text-white">
-      <div className={`${PAGE} py-20 sm:py-24 lg:py-28`}>
+    <section id="intelligence" className="scroll-mt-20 bg-[#080808] text-white">
+      <div className={`${PAGE} ${SECTION_Y}`}>
         <div className="max-w-[46rem]">
           <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">
             <span className="h-px w-7 bg-gold" aria-hidden="true" />
             {t('mp_layers_eyebrow')}
           </p>
           <h2
-            className="mt-5 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-white"
-            style={{ fontSize: 'clamp(1.75rem, 3.2vw, 2.75rem)' }}
+            className="mt-4 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-white sm:mt-5"
+            style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
             {t('mp_layers_title')}
           </h2>
-          <p className="mt-5 max-w-[38rem] text-pretty text-[15px] leading-[1.7] text-white/65 sm:text-base">
+          <p className="mt-4 max-w-[38rem] text-pretty text-[14.5px] leading-[1.65] text-white/65 sm:mt-5 sm:text-base sm:leading-[1.7]">
             {t('mp_layers_sub')}
           </p>
         </div>
@@ -79,7 +79,7 @@ export function IntelligenceLayersSection() {
             labels, which is exactly the empty premium-SaaS look this pass is
             supposed to get rid of. */}
         <div
-          className="mt-14 grid gap-10 lg:grid-cols-[minmax(0,19rem)_minmax(0,26rem)_minmax(0,20rem)] lg:items-center lg:justify-between lg:gap-12 xl:gap-16"
+          className="mt-8 grid gap-8 sm:mt-12 sm:gap-10 lg:grid-cols-[minmax(0,19rem)_minmax(0,26rem)_minmax(0,20rem)] lg:items-center lg:justify-between lg:gap-12 xl:gap-16"
           onMouseEnter={() => setHeld(true)}
           onMouseLeave={() => setHeld(false)}
           onFocusCapture={() => setHeld(true)}
@@ -100,8 +100,8 @@ export function IntelligenceLayersSection() {
                     onMouseEnter={() => setActive(i)}
                     onFocus={() => setActive(i)}
                     aria-current={on}
-                    className={`group relative flex w-full items-center gap-4 border-b py-4 ps-4 text-start transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold motion-reduce:transition-none ${
-                      on ? 'border-gold/60' : 'border-white/12 hover:border-white/30'
+                    className={`group relative flex w-full items-center gap-3.5 border-b py-3.5 ps-4 sm:gap-4 sm:py-4 text-start transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold motion-reduce:transition-none ${
+                      on ? 'border-gold/60' : 'border-white/[0.12] hover:border-white/30'
                     }`}
                   >
                     {/* The gold bar is what ties this row to the lit floor.
@@ -143,7 +143,7 @@ export function IntelligenceLayersSection() {
             <p className="mt-3 min-h-[7.5rem] text-pretty text-sm leading-relaxed text-white/70 sm:min-h-[8.5rem]">
               {t(LAYERS[active].desc)}
             </p>
-            <p className="border-t border-white/12 pt-4 text-[11px] uppercase tracking-[0.16em] text-white/35">
+            <p className="border-t border-white/[0.12] pt-4 text-[11px] uppercase tracking-[0.16em] text-white/35">
               {String(active + 1).padStart(2, '0')} / {String(LAYERS.length).padStart(2, '0')}
             </p>
           </div>

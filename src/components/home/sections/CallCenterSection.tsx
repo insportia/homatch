@@ -1,10 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Mail, PhoneCall } from 'lucide-react';
+import { ArrowRight, PhoneCall } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
-import { PAGE } from './primitives';
+import { PAGE, SECTION_Y } from './primitives';
 
 /**
  * REGION 04 — the AI Call Center, on its own.
@@ -16,8 +16,9 @@ import { PAGE } from './primitives';
  * does. The previous pass put it in a two-up beside email campaigns, where
  * it read as one of a pair of utilities. It is not one of a pair.
  *
- * Email campaigns still belong on this page — outreach is calls AND email —
- * but as the footnote at the bottom of this region, not as its equal.
+ * Email campaigns are the other half of outreach and have a region of their
+ * own (REGION 08). They used to be a strip at the bottom of this one, which
+ * said "supporting act" however the copy was worded.
  *
  * WHAT THE PANEL SHOWS, AND WHAT IT REFUSES TO
  *
@@ -60,28 +61,28 @@ export function CallCenterSection() {
         aria-hidden="true"
       />
 
-      <div className={`${PAGE} relative py-20 sm:py-24 lg:py-28`}>
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:items-center lg:gap-16">
+      <div className={`${PAGE} relative ${SECTION_Y}`}>
+        <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:items-center lg:gap-16">
           {/* ── The argument ───────────────────────────────────── */}
           <div className="min-w-0">
             <div className="flex items-center gap-4">
-              <FeatureGlyph name="calls" size={56} tone="dark" />
+              <FeatureGlyph name="calls" size={48} tone="dark" className="sm:h-14 sm:w-14" />
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">{t('call_center_title')}</p>
             </div>
 
             <h2
-              className="mt-7 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-white"
-              style={{ fontSize: 'clamp(1.85rem, 3.4vw, 3rem)' }}
+              className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-white sm:mt-7"
+              style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.9rem)' }}
             >
               {t('mp_cc_title')}
             </h2>
-            <p className="mt-5 max-w-[36rem] text-pretty text-[15px] leading-[1.7] text-white/70 sm:text-base">
+            <p className="mt-4 max-w-[36rem] text-pretty text-[14.5px] leading-[1.65] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
               {t('mp_cc_sub')}
             </p>
 
-            <ul className="mt-10 grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:grid-cols-3">
+            <ul className="mt-7 grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-9 sm:grid-cols-3">
               {POINTS.map(point => (
-                <li key={point.key} className="bg-[#0C0C0C] p-5">
+                <li key={point.key} className="bg-[#0C0C0C] p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-white">{t(point.title)}</h3>
                   <p className="mt-2 text-pretty text-[13px] leading-relaxed text-white/60">{t(point.desc)}</p>
                 </li>
@@ -91,7 +92,7 @@ export function CallCenterSection() {
             <button
               type="button"
               onClick={gated('/outreach/calls')}
-              className="group mt-9 inline-flex h-12 items-center justify-center gap-2.5 rounded-full bg-gold px-6 text-sm font-semibold text-[#0A0A0A] transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#080808] motion-reduce:transition-none"
+              className="group mt-7 inline-flex h-12 sm:mt-9 items-center justify-center gap-2.5 rounded-full bg-gold px-6 text-sm font-semibold text-[#0A0A0A] transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#080808] motion-reduce:transition-none"
             >
               <PhoneCall className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden="true" />
               {t('mp_calls_cta')}
@@ -104,9 +105,9 @@ export function CallCenterSection() {
         </div>
 
         {/* ── The flow, full width under both columns ──────────── */}
-        <ol className="mt-16 grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:grid-cols-3 lg:grid-cols-6">
+        <ol className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-14 sm:grid-cols-3 lg:grid-cols-6">
           {STAGES.map((stage, i) => (
-            <li key={stage} className="flex items-center gap-3 bg-[#0C0C0C] px-4 py-4">
+            <li key={stage} className="flex items-center gap-2.5 bg-[#0C0C0C] px-3.5 py-3.5 sm:gap-3 sm:px-4 sm:py-4">
               <span
                 className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold tabular-nums ${
                   i === STAGES.length - 1 ? 'bg-gold text-[#0A0A0A]' : 'border border-white/25 text-white/55'
@@ -115,29 +116,11 @@ export function CallCenterSection() {
               >
                 {i + 1}
               </span>
-              <span className="min-w-0 text-[13px] font-medium leading-tight text-white/85">{t(stage)}</span>
+              <span className="min-w-0 text-[12px] font-medium leading-tight text-white/85 sm:text-[13px]">{t(stage)}</span>
             </li>
           ))}
         </ol>
 
-        {/* ── Email, deliberately subordinate ──────────────────── */}
-        <div className="mt-6 flex flex-col gap-4 rounded-[0.9rem] border border-white/15 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
-          <div className="flex min-w-0 items-start gap-3.5">
-            <Mail className="mt-0.5 h-5 w-5 shrink-0 text-gold" strokeWidth={1.75} aria-hidden="true" />
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-white">{t('mp_email_title')}</h3>
-              <p className="mt-1 text-pretty text-[13px] leading-relaxed text-white/60">{t('mp_email_desc')}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={gated('/outreach/email')}
-            className="group inline-flex shrink-0 items-center gap-2 text-sm font-medium text-white/85 transition-colors hover:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-          >
-            {t('mp_email_cta')}
-            <ArrowRight className={arrow} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-        </div>
       </div>
     </section>
   );
@@ -153,7 +136,7 @@ function LiveCallPanel() {
 
   return (
     <div className="relative min-w-0" role="img" aria-label={t('mp_cc_panel_alt')}>
-      <div className="rounded-[1.1rem] border border-white/18 bg-[#0C0C0C] p-6 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.9)] sm:p-7">
+      <div className="rounded-[1.1rem] border border-white/[0.18] bg-[#0C0C0C] p-6 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.9)] sm:p-7">
         {/* Status */}
         <div className="flex items-center justify-between gap-4">
           <span className="inline-flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-gold">
@@ -167,7 +150,7 @@ function LiveCallPanel() {
         </div>
 
         {/* The voice */}
-        <div className="mt-6 flex items-center gap-4 rounded-[0.7rem] border border-white/12 bg-white/[0.04] p-4">
+        <div className="mt-6 flex items-center gap-4 rounded-[0.7rem] border border-white/[0.12] bg-white/[0.04] p-4">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold text-[#0A0A0A]" aria-hidden="true">
             <PhoneCall className="h-4 w-4" strokeWidth={2.25} />
           </span>
@@ -186,7 +169,7 @@ function LiveCallPanel() {
         </div>
 
         {/* What the conversation is doing right now */}
-        <dl className="mt-5 space-y-px overflow-hidden rounded-[0.7rem] border border-white/12 bg-white/10">
+        <dl className="mt-5 space-y-px overflow-hidden rounded-[0.7rem] border border-white/[0.12] bg-white/10">
           <Row label={t('mp_cc_row_stage')} value={t('mp_calls_stage_3')} />
           <Row label={t('mp_cc_row_language')} value={t('mp_cc_row_language_v')} />
           <Row label={t('mp_cc_row_outcome')} value={t('mp_cc_row_outcome_v')} pending />

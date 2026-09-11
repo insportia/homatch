@@ -31,7 +31,8 @@ export type GlyphName =
   | 'ai'
   | 'property'
   | 'mortgage'
-  | 'calls';
+  | 'calls'
+  | 'email';
 
 interface Palette {
   /** The tile behind the art. */
@@ -52,6 +53,7 @@ const PALETTES: Record<GlyphName, Palette> = {
   property: { tile: '#F0F0F0', base: '#1C1C1C', deep: '#C9800F' },
   mortgage: { tile: '#E6EEFF', base: '#2C63E8', deep: '#173C9B' },
   calls: { tile: '#DEF3F3', base: '#0E9C9C', deep: '#076767' },
+  email: { tile: '#FFE7EF', base: '#DB2F6E', deep: '#8E1442' },
 };
 
 /** Drawn on a 64 × 64 grid, inside a tile the component supplies. */
@@ -158,6 +160,21 @@ const ART: Record<GlyphName, (p: Palette) => React.ReactNode> = {
         <path d="M43.6 29.5a1.9 1.9 0 0 1 2.9 2.4L24.2 45.3a1.9 1.9 0 0 1-2.2-3.1z" opacity="0.9" />
       </g>
       <path d="M32 5 L43 13 H21z" fill={p.deep} />
+    </>
+  ),
+
+  /* A campaign leaving: an envelope with the message already written in it. */
+  email: p => (
+    <>
+      <rect x="7" y="15" width="50" height="34" rx="5" fill={p.base} />
+      <path d="M9.5 18.5 L32 34 L54.5 18.5" fill="none" stroke="#FFFFFF" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 45.5 L24 32.5" stroke={p.deep} strokeWidth="3.2" strokeLinecap="round" opacity="0.85" />
+      <path d="M57 45.5 L40 32.5" stroke={p.deep} strokeWidth="3.2" strokeLinecap="round" opacity="0.85" />
+      <circle cx="49" cy="16" r="10.5" fill={p.deep} stroke="#FFFFFF" strokeWidth="3.4" />
+      <path
+        d="M49 10.2l1.6 3.4 3.5.45-2.6 2.4.68 3.6-3.18-1.82-3.18 1.82.68-3.6-2.6-2.4 3.5-.45z"
+        fill="#FFFFFF"
+      />
     </>
   ),
 

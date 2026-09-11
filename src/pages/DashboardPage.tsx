@@ -482,11 +482,11 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 divide-x divide-foreground/12 border-t border-border rtl:divide-x-reverse xl:grid-cols-4">
-            <div className="border-b border-foreground/12 xl:border-b-0">
+          <div className="grid grid-cols-2 divide-x divide-foreground/[0.12] border-t border-border rtl:divide-x-reverse xl:grid-cols-4">
+            <div className="border-b border-foreground/[0.12] xl:border-b-0">
               <Count label={t('dash_total_properties')} value={data.properties.length} note={weekNote(data.propertiesThisWeek)} loading={loading} />
             </div>
-            <div className="border-b border-foreground/12 xl:border-b-0">
+            <div className="border-b border-foreground/[0.12] xl:border-b-0">
               <Count
                 label={t('dash_total_matches')}
                 value={data.matchTotals.total}
@@ -525,7 +525,7 @@ function DashboardContent() {
 
         {/* ── 2. The four primary actions, as one group ── */}
         <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
-          <div className="grid divide-y divide-foreground/12 sm:grid-cols-2 sm:divide-x sm:divide-foreground/12 rtl:sm:divide-x-reverse xl:grid-cols-4 xl:divide-y-0">
+          <div className="grid divide-y divide-foreground/[0.12] sm:grid-cols-2 sm:divide-x sm:divide-foreground/[0.12] rtl:sm:divide-x-reverse xl:grid-cols-4 xl:divide-y-0">
             {primaryActions.map(action => (
               <ActionTile
                 key={action.key}
@@ -583,7 +583,7 @@ function DashboardContent() {
                 ) : data.topMatches.length === 0 ? (
                   <EmptyState icon={Users} title={t('db_matches_empty')} hint={t('db_matches_empty_hint')} />
                 ) : (
-                  <div className="divide-y divide-foreground/12">
+                  <div className="divide-y divide-foreground/[0.12]">
                     {data.topMatches.map(entry => (
                       <MatchRow
                         key={entry.match.id}
@@ -594,7 +594,7 @@ function DashboardContent() {
                   </div>
                 )}
 
-                <div className="border-t border-foreground/12">
+                <div className="border-t border-foreground/[0.12]">
                   <CardHead
                     title={t('db_properties_title')}
                     action={<LinkAction label={t('nav_add_property')} onClick={() => navigate('/property/add')} />}
@@ -604,7 +604,7 @@ function DashboardContent() {
                   ) : data.properties.length === 0 ? (
                     <EmptyState icon={Building2} title={t('db_properties_empty')} hint={t('db_properties_empty_hint')} />
                   ) : (
-                    <div className="divide-y divide-foreground/12">
+                    <div className="divide-y divide-foreground/[0.12]">
                       {data.properties.slice(0, 5).map(property => (
                         <PropertyRow
                           key={property.id}
@@ -643,7 +643,7 @@ function DashboardContent() {
 
         {/* ── 4. Verification, financing and activity, as one group ── */}
         <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
-          <div className="grid divide-y divide-foreground/12 rtl:lg:divide-x-reverse lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+          <div className="grid divide-y divide-foreground/[0.12] rtl:lg:divide-x-reverse lg:grid-cols-3 lg:divide-x lg:divide-y-0">
             <div className="min-w-0">
               <CardHead title={t('db_verify_title')} action={<LinkAction label={t('db_verify_start')} onClick={() => navigate('/verify')} />} />
               {loading ? (
@@ -651,7 +651,7 @@ function DashboardContent() {
               ) : data.verifications.length === 0 ? (
                 <EmptyState icon={ShieldCheck} title={t('dr_list_empty')} />
               ) : (
-                <div className="divide-y divide-foreground/12">
+                <div className="divide-y divide-foreground/[0.12]">
                   {data.verifications.slice(0, 4).map(record => (
                     <VerificationRow key={record.id} record={record} onOpen={() => navigate(`/verify/${record.id}`)} />
                   ))}
@@ -678,7 +678,7 @@ function DashboardContent() {
               ) : data.activity.length === 0 ? (
                 <EmptyState icon={Zap} title={t('empty_no_activity_title')} hint={t('empty_no_activity_desc')} />
               ) : (
-                <ul className="divide-y divide-foreground/12">
+                <ul className="divide-y divide-foreground/[0.12]">
                   {data.activity.slice(0, 5).map(event => <ActivityRow key={event.id} event={event} />)}
                 </ul>
               )}

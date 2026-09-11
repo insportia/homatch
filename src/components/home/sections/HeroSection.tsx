@@ -63,40 +63,40 @@ export function HeroSection() {
 
       <div className={`${PAGE} relative`}>
         {/* pt covers the fixed header; the black band itself starts at y=0. */}
-        <div className="flex min-h-[clamp(30rem,70vh,40rem)] max-w-[46rem] flex-col justify-center pb-14 pt-[7rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
-          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">
-            <span className="h-px w-7 bg-gold" aria-hidden="true" />
+        <div className="flex min-h-[clamp(27rem,68vh,40rem)] max-w-[46rem] flex-col justify-center pb-11 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
+          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
+            <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {t('mp_hero_eyebrow')}
           </p>
 
           {/* The product statement. "Homatch" is set as its own mass so the
               name is unmistakable before the sentence is even read. */}
           <h1
-            className="mt-6 text-balance font-semibold leading-[1.04] tracking-[-0.03em] text-white"
-            style={{ fontSize: 'clamp(2.2rem, 4.6vw, 3.9rem)' }}
+            className="mt-5 text-balance font-semibold leading-[1.07] tracking-[-0.03em] text-white sm:mt-6"
+            style={{ fontSize: 'clamp(1.6rem, 7.4vw, 3.9rem)' }}
           >
             {t('mp_hero_h1')}
           </h1>
 
           <p
-            className="mt-5 text-balance font-semibold leading-[1.2] tracking-[-0.015em] text-gold"
-            style={{ fontSize: 'clamp(1.1rem, 1.9vw, 1.5rem)' }}
+            className="mt-4 text-balance font-semibold leading-[1.25] tracking-[-0.015em] text-gold sm:mt-5"
+            style={{ fontSize: 'clamp(0.98rem, 3.4vw, 1.5rem)' }}
           >
             {t('mp_hero_h2')}
           </p>
 
-          <p className="mt-5 max-w-[38rem] text-pretty text-[15px] leading-[1.7] text-white/70 sm:text-base">
+          <p className="mt-4 max-w-[38rem] text-pretty text-[14.5px] leading-[1.6] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
             {t('mp_hero_scope')}
           </p>
 
           {/* Two ways in, then the assistant. The assistant is present and
               one keystroke deep, but it no longer stands in for the
               explanation of the platform — the launcher below does that. */}
-          <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="mt-7 flex flex-col gap-2.5 sm:mt-9 sm:flex-row sm:items-center sm:gap-3">
             <button
               type="button"
               onClick={() => navigate('/verify')}
-              className="group inline-flex h-12 items-center justify-center gap-2.5 rounded-full bg-gold px-6 text-sm font-semibold text-[#0A0A0A] transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#080808] motion-reduce:transition-none"
+              className="group inline-flex h-auto min-h-[3rem] items-center justify-center gap-2.5 rounded-full bg-gold px-5 py-3 text-center text-sm font-semibold text-[#0A0A0A] sm:px-6 transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#080808] motion-reduce:transition-none"
             >
               <ShieldCheck className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden="true" />
               {t('mp_verify_capability_cta')}
@@ -112,14 +112,14 @@ export function HeroSection() {
               onClick={() => {
                 document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }}
-              className="inline-flex h-12 items-center justify-center rounded-full border border-white/30 px-6 text-sm font-medium text-white transition-colors duration-300 hover:border-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none"
+              className="inline-flex h-auto min-h-[3rem] items-center justify-center rounded-full border border-white/30 px-5 py-3 text-center text-sm font-medium text-white sm:px-6 transition-colors duration-300 hover:border-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none"
             >
               {t('mp_hero_explore')}
             </button>
           </div>
 
           <HomatchAsk
-            className="mt-10 max-w-[34rem]"
+            className="mt-7 max-w-[34rem] sm:mt-10"
             variant="card"
             tone="dark"
             heading={t('ai_title')}

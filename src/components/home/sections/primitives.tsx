@@ -32,8 +32,14 @@ export const PAGE_INSET = 'ps-[var(--page-inset)]';
 export const HERO_COPY_SHARE = 0.5;
 export const HERO_SPLIT = `calc(var(--page-inset) + ${HERO_COPY_SHARE} * min(100vw - 2 * var(--page-inset), var(--page-max)))`;
 
-/** Section vertical rhythm. Deliberately large; the page should breathe. */
-export const SECTION_Y = 'py-20 sm:py-24 lg:py-28';
+/** Section vertical rhythm.
+ *
+ * Generous on a desktop, where the page should breathe, and deliberately
+ * much tighter on a phone. Ten full-height regions at desktop spacing turn
+ * a phone into an endless scroll, and vertical padding is the first thing
+ * to give: it costs nothing in comprehension and buys back roughly a
+ * screen and a half over the length of the page. */
+export const SECTION_Y = 'py-14 sm:py-20 lg:py-28';
 
 /**
  * The small letter-spaced label above a headline.

@@ -121,8 +121,8 @@ export function HomatchAsk({
             onClick={() => submit(action.prompt ?? action.label)}
             className={`group inline-flex items-center gap-2.5 rounded-full border py-2 pe-3.5 ps-3 text-xs transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none ${
               dark
-                ? 'border-white/22 text-white/80 hover:border-gold hover:text-white'
-                : 'border-foreground/18 bg-card text-ink-soft hover:border-foreground hover:text-foreground'
+                ? 'border-white/[0.22] text-white/80 hover:border-gold hover:text-white'
+                : 'border-foreground/[0.18] bg-card text-ink-soft hover:border-foreground hover:text-foreground'
             }`}
           >
             {action.icon && (

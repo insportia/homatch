@@ -5,7 +5,7 @@ import {
 import { useLanguage } from '@/contexts/LanguageContext';
 import { HomatchAsk, type AskAction } from '@/components/home/HomatchAsk';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
-import { PAGE } from './primitives';
+import { PAGE, SECTION_Y } from './primitives';
 
 /**
  * REGION 07 — Homatch AI.
@@ -41,26 +41,26 @@ export function AISection() {
   ];
 
   return (
-    <section id="how" className={`${PAGE} scroll-mt-24 py-20 sm:py-24 lg:py-28`}>
-      <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:gap-16">
+    <section id="how" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
+      <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:gap-16">
         <div className="min-w-0">
-          <div className="flex items-center gap-4">
-            <FeatureGlyph name="ai" size={56} />
+          <div className="flex items-center gap-3.5">
+            <FeatureGlyph name="ai" size={48} className="sm:h-14 sm:w-14" />
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold-ink">{t('mp_flow_eyebrow')}</p>
           </div>
 
           <h2
-            className="mt-7 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-foreground"
-            style={{ fontSize: 'clamp(1.75rem, 3.2vw, 2.75rem)' }}
+            className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
+            style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
             {t('mp_flow_title')}
           </h2>
-          <p className="mt-5 max-w-[36rem] text-pretty text-[15px] leading-[1.7] text-ink-soft sm:text-base">
+          <p className="mt-4 max-w-[36rem] text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
             {t('mp_flow_sub')}
           </p>
 
           <HomatchAsk
-            className="mt-9 max-w-[40rem]"
+            className="mt-7 max-w-[40rem] sm:mt-9"
             variant="console"
             placeholder={t('mp_hero_ai_placeholder')}
             actions={actions}
@@ -69,7 +69,7 @@ export function AISection() {
 
         {/* What a question reaches. Not decoration — this is the list that
             separates an assistant from a chat window. */}
-        <div className="min-w-0 self-start rounded-[1.1rem] border border-foreground/15 bg-secondary/60 p-6 sm:p-7">
+        <div className="min-w-0 self-start rounded-[1.1rem] border border-foreground/15 bg-secondary/60 p-5 sm:p-7">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {t('mp_ai_reach_label')}
           </p>

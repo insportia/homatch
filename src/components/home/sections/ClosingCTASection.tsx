@@ -39,7 +39,7 @@ export function ClosingCTASection() {
       <div className="relative mx-auto flex min-h-[clamp(24rem,52vh,36rem)] w-full max-w-[90rem] flex-col items-center justify-center px-5 py-20 text-center sm:px-8 lg:px-10">
         <h2
           className="max-w-[36rem] text-balance font-semibold leading-[1.06] tracking-[-0.025em] text-white"
-          style={{ fontSize: 'clamp(2rem, 3.6vw, 3.15rem)' }}
+          style={{ fontSize: 'clamp(1.55rem, 6vw, 3.15rem)' }}
         >
           {t('mp_cta_title')}
         </h2>

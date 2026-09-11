@@ -4,7 +4,7 @@ import { ArrowRight, Building2, Mail, MessagesSquare, PhoneCall, Radar, Users } 
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { Button } from '@/components/ui/button';
-import { Eyebrow, PAGE } from './primitives';
+import { Eyebrow, PAGE, SECTION_Y } from './primitives';
 
 /**
  * REGION 06 — Developer B2B.
@@ -45,7 +45,7 @@ export function DeveloperB2BSection() {
   ];
 
   return (
-    <section id="developers" className="relative scroll-mt-24 overflow-hidden bg-[#080808] text-white">
+    <section id="developers" className="relative scroll-mt-20 overflow-hidden bg-[#080808] text-white">
       {/* The city, at the bottom of its exposure range: a texture that says
           "a development, in a real place" without turning the region warm. */}
       {/* The city, in black and white. At full chroma a Tbilisi sunset behind
@@ -63,13 +63,13 @@ export function DeveloperB2BSection() {
         aria-hidden="true"
       />
 
-      <div className={`${PAGE} relative py-20 sm:py-24 lg:py-32`}>
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-20">
+      <div className={`${PAGE} relative ${SECTION_Y}`}>
+        <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-20">
           <div>
             <Eyebrow tone="light">{t('mp_dev_eyebrow')}</Eyebrow>
             <h2
               className="mt-5 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-white"
-              style={{ fontSize: 'clamp(1.9rem, 3.4vw, 3.1rem)' }}
+              style={{ fontSize: 'clamp(1.4rem, 5.6vw, 3.1rem)' }}
             >
               {t('mp_dev_title')}
             </h2>
@@ -79,7 +79,7 @@ export function DeveloperB2BSection() {
 
             <ul className="mt-10 border-t border-white/15">
               {points.map(point => (
-                <li key={point.key} className="border-b border-white/15 py-6">
+                <li key={point.key} className="border-b border-white/15 py-4 sm:py-6">
                   <h3 className="text-base font-semibold text-white">{point.title}</h3>
                   <p className="mt-2 max-w-[34rem] text-pretty text-sm leading-relaxed text-white/65">{point.desc}</p>
                 </li>
@@ -102,13 +102,13 @@ export function DeveloperB2BSection() {
           <div className="relative">
             <ol className="relative">
               <span
-                className="pointer-events-none absolute start-[1.4rem] top-4 bottom-4 w-px bg-gradient-to-b from-transparent via-gold/45 to-transparent"
+                className="pointer-events-none absolute start-[1.25rem] top-4 bottom-4 w-px sm:start-[1.4rem] bg-gradient-to-b from-transparent via-gold/45 to-transparent"
                 aria-hidden="true"
               />
               {STAGES.map((stage, i) => (
-                <li key={stage.key} className="relative flex items-center gap-5 py-3.5">
+                <li key={stage.key} className="relative flex items-center gap-4 py-2.5 sm:gap-5 sm:py-3.5">
                   <span
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-[0.6rem] border border-white/25 bg-[#111111] text-gold"
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-[0.6rem] border border-white/25 bg-[#111111] text-gold sm:h-11 sm:w-11"
                     aria-hidden="true"
                   >
                     <stage.icon className="h-[18px] w-[18px]" strokeWidth={1.75} />

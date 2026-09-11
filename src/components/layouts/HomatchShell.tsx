@@ -266,7 +266,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
       )}
 
       <div className="min-w-0 lg:ps-64">
-        <header className="sticky top-0 z-30 border-b border-border bg-background/92 backdrop-blur-md">
+        <header className="sticky top-0 z-30 border-b border-border bg-background/[0.92] backdrop-blur-md">
           <div className="flex h-16 items-center gap-3 px-4 md:h-20 md:px-6 lg:px-8">
             <button
               type="button"
@@ -362,7 +362,7 @@ function TopbarAsk() {
         onChange={e => setValue(e.target.value)}
         placeholder={t('db_search_placeholder')}
         aria-label={t('db_search_submit')}
-        className="h-11 w-full rounded-full border border-foreground/18 bg-card ps-11 pe-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-ring/50 focus:outline-none focus:ring-2 focus:ring-ring/25"
+        className="h-11 w-full rounded-full border border-foreground/[0.18] bg-card ps-11 pe-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-ring/50 focus:outline-none focus:ring-2 focus:ring-ring/25"
       />
     </form>
   );

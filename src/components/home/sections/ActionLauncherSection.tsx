@@ -4,7 +4,7 @@ import { ArrowRight, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
-import { PAGE } from './primitives';
+import { PAGE, SECTION_Y } from './primitives';
 
 /**
  * REGION 02 — the action launcher.
@@ -12,28 +12,40 @@ import { PAGE } from './primitives';
  * THE POINT OF THE WHOLE PAGE
  *
  * A visitor who has read the hero now knows what Homatch claims. This is
- * where they get to do one of the things it claims. Every tile here starts a
- * REAL task on a route that already exists — there is no "learn more", and
- * nothing here is a placeholder for a feature that is not built.
+ * where they get to do one of the things it claims. Every tile starts a REAL
+ * task on a route that already exists; there is no "learn more", and nothing
+ * here stands in for a feature that is not built.
+ *
+ * SIX TILES, ONE SIZE
+ *
+ * The previous pass had four large tiles and two small ones. Size reads as
+ * importance whatever the intent, so the two in the small row looked like
+ * accessories to the four above them. They are not: the mortgage consultant
+ * and the campaign tools are products people pay to use. Every tile is now
+ * the same tile, in a 3 x 2 grid that becomes two columns on a tablet and one
+ * on a phone. Difference of treatment happens further down the page, where
+ * each capability gets a section shaped around what it actually does.
  *
  * WHERE EACH TILE GOES, AND WHAT IT NEEDS
  *
- *   Verify       /verify?code=…   public. The field posts straight into the
- *                                 Verification Center's own code reader.
- *   Contract     /verify          the contract upload lives inside the
- *                                 Verification Center and only appears to a
- *                                 signed-in account, so a signed-out visitor
- *                                 is sent to sign-up rather than to a page
- *                                 that will not show them the control.
- *   Matching     /property/add    behind RouteGuard.
- *   Homatch AI   /ai              renders signed-out with a sign-in panel, so
- *                                 it is linked directly either way.
- *   Find         /ai              same page, carrying the question.
- *   Mortgage     /mortgage        public; the calculator runs signed-out.
+ *   Verify     /verify?code=…    public. The field posts straight into the
+ *                                Verification Center's own code reader.
+ *   Contract   /verify           the contract upload lives inside the
+ *                                Verification Center and only renders for a
+ *                                signed-in account, so a signed-out visitor
+ *                                goes to sign-up rather than to a page that
+ *                                will not show them the control.
+ *   Matching   /property/add     behind RouteGuard.
+ *   Mortgage   /mortgage         public; the calculator runs signed out.
+ *   Calls      /outreach/calls   behind RouteGuard.
+ *   Email      /outreach/email   behind RouteGuard.
  *
- * There is no "compare properties" tile. Homatch has no comparison feature,
- * and a launcher that opens onto something that does not exist is worse than
- * a launcher with one fewer tile.
+ * Homatch AI is not a tile. It is the hero's own interaction and has its own
+ * region; these six are what a question to it reaches.
+ *
+ * There is no "compare properties" tile either. Homatch has no comparison
+ * feature, and a launcher that opens onto something that does not exist is
+ * worse than a launcher with one fewer tile.
  */
 export function ActionLauncherSection() {
   const { session } = useAuth();
@@ -50,36 +62,35 @@ export function ActionLauncherSection() {
   };
 
   return (
-    <section id="start" className={`${PAGE} scroll-mt-24 py-16 sm:py-20 lg:py-24`}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="max-w-[42rem]">
-          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-gold-ink">
-            <span className="h-px w-7 bg-gold" aria-hidden="true" />
+    <section id="start" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
+        <div className="max-w-[40rem]">
+          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+            <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {t('mp_launch_eyebrow')}
           </p>
           <h2
-            className="mt-4 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-foreground"
-            style={{ fontSize: 'clamp(1.75rem, 3.2vw, 2.75rem)' }}
+            className="mt-3.5 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground"
+            style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
           >
             {t('mp_launch_title')}
           </h2>
         </div>
-        <p className="max-w-[24rem] text-pretty text-sm leading-[1.7] text-ink-soft">{t('mp_launch_sub')}</p>
+        <p className="max-w-[22rem] text-pretty text-[13.5px] leading-[1.6] text-ink-soft sm:text-sm">
+          {t('mp_launch_sub')}
+        </p>
       </div>
 
-      {/* ── The four primary tiles ─────────────────────────────────
-          One column on a phone, because each carries a real sentence and a
-          real control; two from sm, where a 300px column can hold them. */}
-      <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-2">
-        {/* Verify — the only tile with a live field, because it is the only
-            capability whose entry point is public and takes one value. */}
-        <Tile glyph="verify" title={t('mp_verify_capability_title')} desc={t('mp_verify_capability_desc')} as="div">
+      <div className="mt-8 grid gap-3.5 sm:mt-10 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        {/* Verify — the one tile with a live field, because it is the one
+            capability whose entry point is public and takes a single value. */}
+        <Tile glyph="verify" title={t('mp_tile_verify_t')} desc={t('mp_tile_verify_d')} as="div">
           <form
             onSubmit={e => {
               e.preventDefault();
               openVerify();
             }}
-            className="flex flex-col gap-2.5 sm:flex-row"
+            className="flex flex-col gap-2"
           >
             <input
               value={code}
@@ -87,11 +98,11 @@ export function ActionLauncherSection() {
               placeholder={t('mp_verify_code_placeholder')}
               aria-label={t('mp_verify_code_label')}
               inputMode="numeric"
-              className="h-11 min-w-0 flex-1 rounded-[0.6rem] border border-foreground/22 bg-card px-3.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/80 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/25"
+              className="h-11 w-full min-w-0 rounded-[0.6rem] border border-foreground/[0.22] bg-card px-3.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/80 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/25"
             />
             <button
               type="submit"
-              className="group/go inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[0.6rem] bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
+              className="group/go inline-flex h-11 w-full items-center justify-center gap-2 rounded-[0.6rem] bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
             >
               {t('mp_launch_verify_go')}
               <ArrowRight
@@ -106,7 +117,7 @@ export function ActionLauncherSection() {
         <Tile
           glyph="contract"
           title={t('mp_contract_title')}
-          desc={t('mp_contract_desc')}
+          desc={t('mp_tile_contract_d')}
           onClick={gated('/verify')}
           action={
             <span className="inline-flex items-center gap-2">
@@ -114,37 +125,39 @@ export function ActionLauncherSection() {
               {t('mp_contract_cta')}
             </span>
           }
-          note={t('mp_contract_formats')}
         />
 
         <Tile
           glyph="matching"
-          title={t('mp_match_title')}
-          desc={t('mp_match_desc')}
+          title={t('mp_tile_match_t')}
+          desc={t('mp_tile_match_d')}
           onClick={gated('/property/add')}
           action={t('mp_match_cta')}
         />
 
         <Tile
-          glyph="ai"
-          title={t('ai_title')}
-          desc={t('mp_launch_ai_desc')}
-          onClick={() => navigate('/ai')}
-          action={t('mp_flow_cta')}
+          glyph="mortgage"
+          title={t('mp_mortgage_title')}
+          desc={t('mp_tile_mortgage_d')}
+          onClick={() => navigate('/mortgage')}
+          action={t('mp_mortgage_cta')}
         />
-      </div>
 
-      {/* ── Secondary actions ──────────────────────────────────────
-          Real capabilities, smaller because they are entered less often.
-          Two columns at every width; the tile itself stacks its glyph over
-          its label until there is room for a row. */}
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <MiniTile
-          glyph="property"
-          title={t('mp_find_title')}
-          onClick={() => navigate('/ai', { state: { prompt: t('mp_hero_action_property_prompt') } })}
+        <Tile
+          glyph="calls"
+          title={t('call_center_title')}
+          desc={t('mp_tile_calls_d')}
+          onClick={gated('/outreach/calls')}
+          action={t('mp_calls_cta')}
         />
-        <MiniTile glyph="mortgage" title={t('mp_mortgage_title')} onClick={() => navigate('/mortgage')} />
+
+        <Tile
+          glyph="email"
+          title={t('mp_email_title')}
+          desc={t('mp_tile_email_d')}
+          onClick={gated('/outreach/email')}
+          action={t('mp_email_cta')}
+        />
       </div>
     </section>
   );
@@ -154,19 +167,18 @@ export function ActionLauncherSection() {
  * The tile                                                            *
  *                                                                     *
  * A white card whose WHOLE SURFACE is the control, which is what makes *
- * a launcher feel like a launcher. The Verify tile is the exception:   *
- * it contains a field and a submit, so it renders as a plain <div>     *
- * rather than nesting interactive elements inside a button.            *
+ * a launcher feel like a launcher. Verify is the exception: it holds a *
+ * field and a submit, so it renders as a plain <div> rather than       *
+ * nesting interactive elements inside a button.                       *
  * ------------------------------------------------------------------ */
 
 function Tile({
-  glyph, title, desc, action, note, onClick, as = 'button', children,
+  glyph, title, desc, action, onClick, as = 'button', children,
 }: {
   glyph: GlyphName;
   title: string;
   desc: string;
   action?: React.ReactNode;
-  note?: string;
   onClick?: () => void;
   as?: 'button' | 'div';
   children?: React.ReactNode;
@@ -175,29 +187,30 @@ function Tile({
 
   const body = (
     <>
-      <FeatureGlyph
-        name={glyph}
-        size={60}
-        className="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none"
-      />
+      {/* Glyph and title share a row on a phone, so a tile does not open with
+          60px of picture before its first word; they stack from sm, where
+          there is height to spend on the composition. */}
+      <div className="flex items-center gap-3.5 sm:block">
+        <FeatureGlyph
+          name={glyph}
+          size={48}
+          className="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none sm:h-14 sm:w-14"
+        />
+        <h3
+          className="min-w-0 flex-1 text-balance font-semibold leading-[1.2] tracking-[-0.012em] text-foreground sm:mt-5"
+          style={{ fontSize: 'clamp(1.05rem, 1.45vw, 1.3rem)' }}
+        >
+          {title}
+        </h3>
+      </div>
 
-      <h3
-        className="mt-6 text-balance font-semibold leading-[1.18] tracking-[-0.015em] text-foreground"
-        style={{ fontSize: 'clamp(1.15rem, 1.55vw, 1.4rem)' }}
-      >
-        {title}
-      </h3>
-      {/* Clamped on a phone. Four full-width tiles each carrying a six-line
-          paragraph turns the launcher into the long stack of tall panels this
-          layout exists to avoid; the full sentence is there from sm up, and
-          the tile's destination is the same either way. */}
-      <p className="mt-2.5 line-clamp-3 text-pretty text-[14.5px] leading-[1.65] text-ink-soft sm:line-clamp-none">
+      <p className="mt-3 text-pretty text-[13.5px] leading-[1.6] text-ink-soft sm:mt-2.5 sm:text-[14.5px] sm:leading-[1.65]">
         {desc}
       </p>
 
-      <div className="mt-6 border-t border-foreground/12 pt-5">
+      <div className="mt-5 border-t border-foreground/[0.12] pt-4 sm:mt-6 sm:pt-5">
         {children ?? (
-          <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground transition-colors duration-300 group-hover:text-gold-ink motion-reduce:transition-none">
+          <span className="inline-flex items-center gap-2 text-start text-sm font-semibold text-foreground transition-colors duration-300 group-hover:text-gold-ink motion-reduce:transition-none">
             {action}
             <ArrowRight
               className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
@@ -206,16 +219,15 @@ function Tile({
             />
           </span>
         )}
-        {note && <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">{note}</p>}
       </div>
     </>
   );
 
-  /* The gold edge that appears along the top on hover — the one premium
-     detail every tile shares, and the reason the grid reads as a set. */
   const shell =
-    'group relative flex h-full flex-col overflow-hidden rounded-[1.1rem] border border-foreground/14 bg-card p-6 text-start transition-[border-color,box-shadow,transform] duration-300 hover:border-foreground/45 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:p-7';
+    'group relative flex h-full flex-col overflow-hidden rounded-[1.1rem] border border-foreground/[0.14] bg-card p-5 text-start transition-[border-color,box-shadow] duration-300 hover:border-foreground/45 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:p-6';
 
+  /* The gold edge along the top on hover: the one premium detail every tile
+     shares, and the reason the grid reads as a set rather than six cards. */
   const edge = (
     <span
       className="pointer-events-none absolute inset-x-0 top-0 h-[3px] origin-left scale-x-0 bg-gold transition-transform duration-300 group-hover:scale-x-100 motion-reduce:transition-none rtl:origin-right"
@@ -236,35 +248,6 @@ function Tile({
     <button type="button" onClick={onClick} className={shell}>
       {edge}
       {body}
-    </button>
-  );
-}
-
-/** The compact form of the same idea: glyph, label, arrow. */
-function MiniTile({ glyph, title, onClick }: { glyph: GlyphName; title: string; onClick: () => void }) {
-  const { isRTL } = useLanguage();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      /* Glyph above label on a phone: two of these side by side at 320px
-         leave about 7px for the text once a 44px glyph, an arrow and the
-         padding have taken their share, which is not a layout — it is a
-         squeeze. The row form returns at sm, where the column is wide
-         enough to hold the glyph, the label and the arrow together. */
-      className="group flex flex-col items-start gap-3 rounded-[1.1rem] border border-foreground/14 bg-card p-4 text-start transition-[border-color,box-shadow] duration-300 hover:border-foreground/45 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:flex-row sm:items-center sm:gap-3.5 sm:p-5"
-    >
-      <FeatureGlyph
-        name={glyph}
-        size={44}
-        className="transition-transform duration-300 group-hover:scale-[1.06] motion-reduce:transform-none"
-      />
-      <span className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">{title}</span>
-      <ArrowRight
-        className={`hidden h-4 w-4 shrink-0 text-muted-foreground transition-[transform,color] duration-300 group-hover:text-gold-ink motion-reduce:transform-none sm:block ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : 'group-hover:translate-x-1'}`}
-        strokeWidth={2}
-        aria-hidden="true"
-      />
     </button>
   );
 }

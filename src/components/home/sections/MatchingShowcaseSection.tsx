@@ -4,7 +4,7 @@ import { ArrowRight, Building2, Sparkles, UserSearch, Waves } from 'lucide-react
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
-import { PAGE } from './primitives';
+import { PAGE, SECTION_Y } from './primitives';
 
 /**
  * REGION 06 — matching.
@@ -48,39 +48,48 @@ export function MatchingShowcaseSection() {
   const navigate = useNavigate();
 
   return (
-    <section id="matching" className="relative scroll-mt-24 overflow-hidden bg-[#080808] text-white">
+    <section id="matching" className="relative scroll-mt-20 overflow-hidden bg-[#080808] text-white">
       <div
         className="pointer-events-none absolute inset-0"
         style={{ background: 'radial-gradient(60rem 30rem at 20% 0%, hsl(20 80% 50% / 0.14), transparent 62%)' }}
         aria-hidden="true"
       />
 
-      <div className={`${PAGE} relative py-20 sm:py-24 lg:py-28`}>
-        <div className="flex items-center gap-4">
-          <FeatureGlyph name="matching" size={56} tone="dark" />
+      <div className={`${PAGE} relative ${SECTION_Y}`}>
+        <div className="flex items-center gap-3.5">
+          <FeatureGlyph name="matching" size={48} tone="dark" className="sm:h-14 sm:w-14" />
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">{t('mp_match_eyebrow')}</p>
         </div>
 
-        <div className="mt-7 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-end lg:gap-16">
-          <h2
-            className="max-w-[36rem] text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-white"
-            style={{ fontSize: 'clamp(1.85rem, 3.4vw, 3rem)' }}
-          >
-            {t('mp_match_show_title')}
-          </h2>
-          <p className="text-pretty text-[15px] leading-[1.7] text-white/70 sm:text-base">{t('mp_match_desc')}</p>
+        {/* The headline is the sentence this product is named by; the
+            mechanism is explained beside it rather than above it. */}
+        <div className="mt-6 grid gap-7 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-end lg:gap-16">
+          <div className="min-w-0">
+            <h2
+              className="max-w-[36rem] text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-white"
+              style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.9rem)' }}
+            >
+              {t('mp_match_title')}
+            </h2>
+            <p className="mt-3.5 max-w-[34rem] text-pretty text-[14.5px] leading-[1.6] text-gold sm:text-[15px]">
+              {t('mp_match_show_title')}
+            </p>
+          </div>
+          <p className="text-pretty text-[14.5px] leading-[1.65] text-white/70 sm:text-base sm:leading-[1.7]">
+            {t('mp_match_desc')}
+          </p>
         </div>
 
         {/* ── The four beats ───────────────────────────────────────
             A row on lg, a column below it. The connector is a rule that
             runs between the numbers, not an arrow per gap, so it survives
             wrapping and reads the same in RTL. */}
-        <ol className="mt-14 grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:grid-cols-2 lg:grid-cols-4">
+        <ol className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-12 lg:grid-cols-4">
           {BEATS.map((beat, i) => (
-            <li key={beat.key} className="flex min-w-0 flex-col bg-[#0C0C0C] p-6">
+            <li key={beat.key} className="flex min-w-0 flex-col bg-[#0C0C0C] p-4 sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <span
-                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-[0.6rem] border ${
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-[0.6rem] border sm:h-10 sm:w-10 ${
                     i === BEATS.length - 1 ? 'border-gold bg-gold text-[#0A0A0A]' : 'border-white/25 text-gold'
                   }`}
                   aria-hidden="true"
@@ -91,14 +100,14 @@ export function MatchingShowcaseSection() {
                   {String(i + 1).padStart(2, '0')}
                 </span>
               </div>
-              <p className="mt-5 text-pretty text-[15px] font-semibold leading-snug text-white">{t(beat.label)}</p>
+              <p className="mt-4 text-pretty text-[14.5px] font-semibold leading-snug text-white sm:mt-5 sm:text-[15px]">{t(beat.label)}</p>
             </li>
           ))}
         </ol>
 
         {/* ── What comes back ──────────────────────────────────── */}
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:items-center">
-          <div className="min-w-0 rounded-[0.9rem] border border-white/15 bg-[#0C0C0C] p-6 sm:p-7">
+        <div className="mt-3.5 grid gap-5 sm:mt-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:items-center">
+          <div className="min-w-0 rounded-[0.9rem] border border-white/15 bg-[#0C0C0C] p-5 sm:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
                 {t('mp_result_match_why')}

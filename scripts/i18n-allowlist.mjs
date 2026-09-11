@@ -11,6 +11,15 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // "Webhook" — the integration mechanism's own name. Turkish and Hebrew both
+  // use the English term verbatim in technical usage, exactly as the other
+  // four locales here carry their own real forms; this is an admin-only
+  // Finance label describing how a provider reports cost, not prose.
+  'fin_sync_webhook',
+  // "Plan" — Turkish spells the word identically to English. ka/ru/ar/he all
+  // carry distinct real translations of the same key, so allowlisting the
+  // Turkish case cannot be hiding a gap anywhere else.
+  'fin_col_plan',
   // Product/brand names — never translated in any language.
   'ai_title', // "Homatch AI"
   // "Know before you buy" — the brand tagline, set beneath the wordmark as

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Building2, Zap, Globe, Radio,
   Activity, Puzzle, CreditCard, Receipt, Server, Settings2,
   ShieldAlert, Wrench, ChevronLeft, Menu, X, AlertTriangle,
-  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send, Paintbrush,
+  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send, Paintbrush, BadgeDollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ const NAV = [
   { path: '/admin/matches',      labelKey: 'admin_nav_matches',    icon: Puzzle },
   { path: '/admin/credits',      labelKey: 'admin_nav_credits',    icon: CreditCard },
   { path: '/admin/payments',     labelKey: 'admin_nav_payments',   icon: Receipt },
+  { path: '/admin/finance',      labelKey: 'admin_nav_finance',    icon: BadgeDollarSign },
   { path: '/admin/live-chat-reports', labelKey: 'admin_livechat_title', icon: MessageSquareWarning },
   { path: '/admin/providers',    labelKey: 'admin_nav_providers',  icon: Server },
   { path: '/admin/pricing',      labelKey: 'admin_nav_pricing',    icon: Settings2 },

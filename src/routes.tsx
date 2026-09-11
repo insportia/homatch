@@ -56,6 +56,7 @@ import AdminSignalsPage from './pages/admin/AdminSignalsPage';
 import AdminMatchesPage from './pages/admin/AdminMatchesPage';
 import AdminCreditsPage from './pages/admin/AdminCreditsPage';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
+import AdminFinancePage from './pages/admin/AdminFinancePage';
 import AdminProvidersPage from './pages/admin/AdminProvidersPage';
 import AdminPricingPage from './pages/admin/AdminPricingPage';
 import AdminSpendCapsPage from './pages/admin/AdminSpendCapsPage';
@@ -154,6 +155,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Matches',     path: '/admin/matches',            element: adminWrap(<AdminMatchesPage />),     adminOnly: true },
   { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },
   { name: 'Admin Payments',    path: '/admin/payments',           element: adminWrap(<AdminPaymentsPage />),    adminOnly: true },
+  { name: 'Admin Finance',     path: '/admin/finance',            element: adminWrap(<AdminFinancePage />),     adminOnly: true },
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },

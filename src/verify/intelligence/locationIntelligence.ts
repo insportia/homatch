@@ -209,16 +209,53 @@ const LATIN_ALIASES: Record<string, string> = {
   vera: 'ვერა',
 };
 
+/*
+ * The same places again, in Russian.
+ *
+ * Russian is one of the six languages this product is sold in, and Georgian
+ * listing portals carry Russian-language descriptions as a matter of course —
+ * "Тбилиси, Ваке, ул. Чавчавадзе 40" is an ordinary address here, not an edge
+ * case. Matched separately from the Latin table because Cyrillic needs its own
+ * word boundaries: a Latin `[^a-z]` guard would treat every Cyrillic letter as
+ * a boundary and match fragments inside longer words.
+ */
+const CYRILLIC_ALIASES: Record<string, string> = {
+  // Cities
+  тбилиси: 'თბილისი',
+  батуми: 'ბათუმი',
+  кутаиси: 'ქუთაისი',
+  рустави: 'რუსთავი',
+  гори: 'გორი',
+  зугдиди: 'ზუგდიდი',
+  телави: 'თელავი',
+  // Districts
+  крцаниси: 'კრწანისი',
+  ваке: 'ვაკე',
+  сабуртало: 'საბურთალო',
+  мтацминда: 'მთაწმინდა',
+  исани: 'ისანი',
+  чугурети: 'ჩუღურეთი',
+  дидубе: 'დიდუბე',
+  вера: 'ვერა',
+};
+
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
-/** The canonical Georgian names a text mentions, in either script. */
+/** The canonical Georgian names a text mentions, in any supported script. */
 function canonicalNames(text: string): Set<string> {
   const found = new Set<string>();
   const lower = text.toLowerCase();
-  for (const [latin, georgian] of Object.entries(LATIN_ALIASES)) {
-    // Word-bounded, so "Vera" does not match inside "Veranda" and "Gori"
-    // does not match inside "Gorgasali".
-    if (new RegExp(`(^|[^a-z])${latin}([^a-z]|$)`).test(lower)) found.add(georgian);
+  // Word-bounded per script, so "Vera" does not match inside "Veranda",
+  // "Gori" does not match inside "Gorgasali", and "Вера" does not match
+  // inside "Веранда". A Latin boundary class would treat every Cyrillic
+  // letter as a boundary and match fragments inside Russian words.
+  for (const [alias, georgian] of Object.entries(LATIN_ALIASES)) {
+    if (new RegExp(`(^|[^a-z])${alias}([^a-z]|$)`).test(lower)) found.add(georgian);
+  }
+  for (const [alias, georgian] of Object.entries(CYRILLIC_ALIASES)) {
+    if (new RegExp(`(^|[^\\u0430-\\u044f\\u0451])${alias}([^\\u0430-\\u044f\\u0451]|$)`).test(lower)) {
+      found.add(georgian);
+    }
   }
   return found;
 }
@@ -237,6 +274,14 @@ export function streetOf(address: unknown): string | undefined {
   if (georgian) return georgian[0].replace(/\s+/g, ' ').trim();
   const latin = a.match(/([A-Z][A-Za-z'’-]*(?:\s+[A-Z][A-Za-z'’-]*)*\s+(?:St|Str|Street|Ave|Avenue|Rd|Road|Sq|Square)\.?)(?:\s*,?\s*(?:N\s*)?\d+)?/);
   if (latin) return latin[0].replace(/\s+/g, ' ').replace(/\s*,\s*/g, ' ').trim();
+  /*
+   * Russian, where the street word usually comes FIRST and abbreviated:
+   * "ул. Чавчавадзе 40", "проспект Руставели 12". The name is what follows
+   * it, so this match is anchored on the word rather than on capitalisation —
+   * Cyrillic street names are not reliably capitalised in listing text.
+   */
+  const cyrillic = a.match(/(?:ул\.?|улица|просп\.?|проспект|пр-т|пер\.?|переулок|пл\.?|площадь)\s+([А-ЯЁа-яё'’-]+(?:\s+[А-ЯЁа-яё'’-]+)*)\s*(?:д\.?\s*)?(\d+)?/);
+  if (cyrillic) return cyrillic[0].replace(/\s+/g, ' ').trim();
   return undefined;
 }
 

@@ -39,7 +39,11 @@ test('no card invents a conclusion of its own', () => {
   // opinion competing with the projection.
   const reads = [...reportCode.matchAll(/synthesis[.?]*\.([a-zA-Z]+)/g)].map((m) => m[1]);
   const allowed = new Set([
-    'report', 'evidence', 'snapshot', 'market', 'people', 'selfChecks', 'mode', 'empty',
+    // `location`, like `market` and `people`, is computed deterministically in
+    // the intelligence bundle and rendered as given. It is not a second
+    // opinion: the component displays the places a source named and the
+    // district context, and reaches no conclusion of its own about either.
+    'report', 'evidence', 'snapshot', 'market', 'location', 'people', 'selfChecks', 'mode', 'empty',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);

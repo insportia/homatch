@@ -132,11 +132,44 @@ export interface BuyerIntelligence {
   contractUpload: { recommend: boolean; text: string };
 }
 
+/**
+ * A place a source actually named near the property.
+ *
+ * There is no distance and no travel time, because this pipeline has a
+ * geocoder at neither end. `note` carries whatever relative context a source
+ * literally stated and nothing else, and `whyKey` is a translation key rather
+ * than prose — the reason a pharmacy matters is the same sentence every time.
+ */
+export interface NearbyPlaceBlock {
+  category: string;
+  name: string;
+  note?: string | null;
+  whyKey: string;
+}
+
+export interface LocationBlock {
+  city?: string;
+  district?: string;
+  street?: string;
+  profile?: { district: string; character: string; likelyResidents: string[]; context: string[] };
+  nearby: NearbyPlaceBlock[];
+  minimal: boolean;
+}
+
 export interface VerifySynthesis {
   report: BuyerIntelligence | null;
   evidence?: EvidenceRef[];
   snapshot?: PropertySnapshot;
   market?: MarketBlock | null;
+  /*
+   * THE LAST BROKEN LINK IN LOCATION & LIVING.
+   *
+   * verify-synthesis has been sending this block for as long as it has
+   * existed. It was absent from this type, so nothing downstream could read
+   * it and no component ever rendered it — the whole feature reached the
+   * browser and stopped there.
+   */
+  location?: LocationBlock | null;
   people?: { people?: PersonBlock[]; representationNote?: string };
   selfChecks?: SelfCheck[];
   mode?: 'MODEL' | 'DETERMINISTIC';
@@ -240,6 +273,11 @@ export function VerifyReport({
    * report is worse than one that shows it in a new place. */
   const sections = orderForReading((r.sections ?? []).filter((s) => clean(s.body)));
   const people = (synthesis.people?.people ?? []).slice(0, 6);
+  /* Which section the evidenced places belong under. LOCATION when the model
+     wrote one, otherwise INFRASTRUCTURE, otherwise neither and the block
+     stands on its own below. */
+  const locationHost =
+    (['LOCATION', 'INFRASTRUCTURE'] as const).find((k) => sections.some((s) => s.key === k)) ?? null;
   const findings = (r.keyFindings ?? []).filter((f) => clean(f.finding));
 
   return (
@@ -271,8 +309,18 @@ export function VerifyReport({
           {s.key === 'PEOPLE' && people.length ? (
             <CompanyGraph people={people} owner={synthesis.snapshot?.owner} />
           ) : null}
+          {/* Under whichever of the two location sections the model actually
+              wrote, so the evidenced places sit with the prose about them. */}
+          {s.key === locationHost && synthesis.location ? (
+            <LocationLiving l={synthesis.location} />
+          ) : null}
         </section>
       ))}
+
+      {/* And on its own when the model wrote neither section. Places a source
+          named are evidence, and evidence must not vanish because the prose
+          did not reach it — the same reasoning as the participants below. */}
+      {synthesis.location && !locationHost ? <LocationLiving l={synthesis.location} /> : null}
 
       {/* Only when the model had nothing to say about them under PEOPLE —
           participants are context and must not vanish just because the prose
@@ -599,6 +647,93 @@ const Snapshot: React.FC<{ s: PropertySnapshot }> = ({ s }) => {
         <p className="mt-4 text-xs text-muted-foreground break-words">
           {s.amenities.map((a) => readable(a)).filter(Boolean).join(' · ')}
         </p>
+      ) : null}
+    </section>
+  );
+};
+
+/* ------------------------------------------------------------------ *
+ * Location & Living                                                   *
+ * ------------------------------------------------------------------ */
+
+/** The order a buyer cares about: daily needs first, then getting around. */
+const PLACE_ORDER = [
+  'SUPERMARKET', 'PHARMACY', 'SCHOOL', 'KINDERGARTEN', 'CLINIC',
+  'TRANSPORT', 'PARK', 'ROAD_ACCESS', 'CITY_CENTRE', 'SERVICE',
+];
+
+/**
+ * What is actually around the property, and why each kind matters.
+ *
+ * Rendered ONLY from places a source named. There is no geocoder at either
+ * end of this pipeline, so there is no distance here and no travel time — a
+ * confident "350m" invented from nothing is exactly the kind of
+ * precise-sounding fabrication this product exists to avoid. What a source
+ * literally said about reaching somewhere is shown as the source's words;
+ * where it said nothing, nothing appears.
+ *
+ * The area profile beneath is general local knowledge about the district, not
+ * a finding about this property, and is labelled that way rather than being
+ * mixed into the evidenced places above it.
+ */
+const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
+  const { t } = useLanguage();
+
+  const places = [...(l.nearby ?? [])]
+    .filter((p) => p && clean(p.name))
+    .sort((a, b) => {
+      const rank = (c: string) => {
+        const i = PLACE_ORDER.indexOf(String(c).toUpperCase());
+        return i === -1 ? PLACE_ORDER.length : i;
+      };
+      return rank(a.category) - rank(b.category);
+    });
+
+  const where = [l.street, l.district, l.city].map((x) => clean(x)).filter(Boolean);
+
+  // Nothing resolved and nothing found: silence is the correct output. A
+  // heading with no content under it is what gets filled with city
+  // description, which is the filler this report structure exists to prevent.
+  if (!places.length && !where.length && !l.profile) return null;
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-base font-semibold tracking-tight break-words">
+        {t('verify_location_title')}
+      </h2>
+
+      {where.length ? (
+        <p className="text-sm leading-6 text-muted-foreground break-words">{where.join(' · ')}</p>
+      ) : null}
+
+      {places.length ? (
+        <ul className="space-y-3">
+          {places.map((p, i) => (
+            <li key={`${p.category}-${i}`} className="border-s-2 border-border ps-4 space-y-0.5">
+              <p className="text-[15px] leading-6 break-words">
+                <span className="font-medium">{clean(p.name)}</span>
+                {p.note ? (
+                  <span className="text-muted-foreground"> — {clean(p.note)}</span>
+                ) : null}
+              </p>
+              <p className="text-xs leading-5 text-muted-foreground break-words">{t(p.whyKey)}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {l.profile ? (
+        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            {t('verify_area_context_label')}
+          </p>
+          <p className="text-sm leading-6 break-words">{readable(l.profile.character)}</p>
+          {l.profile.context?.length ? (
+            <p className="text-xs text-muted-foreground break-words">
+              {l.profile.context.map((c) => readable(c)).filter(Boolean).join(' · ')}
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

@@ -71,7 +71,21 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
-      <div className="flex items-center h-14 px-4 md:px-6 gap-4 max-w-screen overflow-x-hidden">
+      {/*
+        No overflow-x-hidden here.
+
+        It used to carry it, and that is what turned a real layout defect into
+        an invisible one: at 320-375px the signed-out "Get Started" button
+        ended at x=384 on a 320px screen, so the primary call to action was
+        simply clipped away with no scrollbar to reveal it. Hiding the
+        overflow made the page LOOK fine while the CTA was unreachable.
+
+        The row is now sized to fit the narrowest supported screen instead —
+        tighter padding and gaps below sm, and compact auth buttons — so
+        nothing needs hiding. tests/mobile/mobileOverflow.test.mjs measures
+        this at real device viewports and fails if anything leaves the screen.
+      */}
+      <div className="flex items-center h-14 px-2 sm:px-4 md:px-6 gap-1 sm:gap-4 max-w-full">
         {/* Logo — always goes to the public home page, regardless of auth state */}
         <Link to="/" className="shrink-0">
           <HomatchLogo size="sm" />
@@ -102,7 +116,7 @@ export function AppHeader() {
         <div className="flex-1 md:flex-none" />
 
         {/* Right side */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0 min-w-0">
           <LanguageSwitcher />
 
           {session ? (
@@ -252,13 +266,13 @@ export function AppHeader() {
             </>
           ) : (
             <>
-              <Link to="/auth/login">
-                <Button variant="ghost" size="sm" className="text-sm text-muted-foreground hover:text-foreground h-8">
+              <Link to="/auth/login" className="shrink-0">
+                <Button variant="ghost" size="sm" className="px-1.5 sm:px-3 text-xs sm:text-sm text-muted-foreground hover:text-foreground h-8">
                   {t('auth_signin')}
                 </Button>
               </Link>
-              <Link to="/auth/signup">
-                <Button size="sm" className="h-8 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
+              <Link to="/auth/signup" className="shrink-0">
+                <Button size="sm" className="h-8 px-2.5 sm:px-3 text-xs sm:text-sm bg-primary text-primary-foreground hover:bg-primary/90">
                   {t('nav_signup')}
                 </Button>
               </Link>

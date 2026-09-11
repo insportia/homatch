@@ -1,0 +1,34 @@
+-- Align research_jobs with every other case-scoped table, which all run
+-- FORCE ROW LEVEL SECURITY.
+--
+-- WHAT THIS DOES AND DOES NOT DO — stated plainly, because it would be easy
+-- to record this as a security win that it is not.
+--
+-- FORCE makes RLS apply to the TABLE OWNER, who would otherwise bypass it.
+-- The owner here is `postgres`. But PostgreSQL always bypasses row security
+-- for roles holding the BYPASSRLS attribute, and both `postgres` and
+-- `service_role` hold it. So FORCE changes the behaviour of exactly nobody
+-- today:
+--
+--   postgres      BYPASSRLS -> bypasses with or without FORCE
+--   service_role  BYPASSRLS -> bypasses; this is the driver, the research
+--                              orchestrator and internal synthesis
+--   authenticated no bypass -> already subject to the three owner-scoped
+--                              policies, unchanged
+--   anon          no bypass -> already refused at the privilege level
+--
+-- The two SECURITY DEFINER functions that touch this table
+-- (mint_human_verification_handoff, research_job_dependents) are owned by
+-- postgres, so they keep bypassing too and no server path changes.
+--
+-- Applied anyway for one real reason: the protection currently rests on a
+-- ROLE ATTRIBUTE rather than on the table. If ownership ever moves to a role
+-- without BYPASSRLS, every other case table would still be protected and
+-- this one would not.
+--
+-- Verified after applying, as every role Verify actually uses:
+--   owner        select 53, update 1 row
+--   other user   select 0
+--   anon         denied at privilege level
+--   service_role select 53, driver claim 1 row, synthesis persist 1 row
+alter table public.research_jobs force row level security;

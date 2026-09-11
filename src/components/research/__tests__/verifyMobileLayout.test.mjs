@@ -80,12 +80,14 @@ test('the NOTE sits directly under the Verify action area — above progress, re
   assert.equal(noticeAt > -1, true, 'VerifyPage must render the notice');
 
   const inputAt = verifySource.indexOf("placeholder={t('verify_cadastral_query_ph')}");
-  const loadingAt = verifySource.indexOf("{t('verify_loading_label')}");
+  // The percentage progress card is gone; the research stream replaced it.
+  const loadingAt = verifySource.indexOf('<ResearchStream');
   const reportAt = verifySource.indexOf('<OverallAssessmentCard');
   const aiButtonAt = verifySource.indexOf("{t('verify_ask_ai_button')}");
 
   assert.equal(inputAt < noticeAt, true, 'the NOTE follows the cadastral input it explains');
-  assert.equal(noticeAt < loadingAt, true, 'the NOTE is above the progress card');
+  assert.equal(loadingAt > -1, true, 'the research stream must be rendered');
+  assert.equal(noticeAt < loadingAt, true, 'the NOTE is above the loading UI');
   assert.equal(noticeAt < reportAt, true, 'the NOTE is above the report');
   assert.equal(noticeAt < aiButtonAt, true, 'the NOTE is not stranded at the very bottom');
 
@@ -117,8 +119,9 @@ test('long cadastral codes, evidence text and errors wrap instead of overflowing
   assert.match(verifySource, /text-sm font-medium break-all">\{exactUnit\.code\}/);
   assert.match(verifySource, /text-xs text-muted-foreground leading-relaxed break-words">• \{clean\(x\)\}/);
   assert.match(verifySource, /text-sm text-destructive break-words">\{err\}/);
-  // Truncating rows need min-w-0 to truncate rather than push the row wide.
-  assert.match(verifySource, /border text-xs min-w-0"><span className="truncate min-w-0">/);
+  // The retrieved-documents card lists dates as chips rather than one long
+  // identifier per row, so its overflow guard is wrapping, not truncation.
+  assert.match(verifySource, /className="flex flex-wrap gap-1">\{g\.dates\.map/);
 });
 
 /* ------------------------------------------------------------------ *

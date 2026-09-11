@@ -1,28 +1,85 @@
-// HOMATCH — the final AI due-diligence summary.
+// HOMATCH — the Buyer Intelligence Report.
 //
-// The customer-facing replacement for the fragmented card dump. ONE
-// conversational explanation of what was found, what matters, and what to do
-// next.
+// The customer-facing output of Verify. ONE editorial due-diligence briefing:
+// what was found, what it means in context, what deserves attention, what
+// could not be confirmed, and what this buyer should do before paying.
 //
-// The deterministic plan decides what is TRUE. The model only decides how it
-// READS, and its output is validated back against the plan before anything is
-// returned. If the model invents a fact, cites a point that does not exist,
-// omits a conflict, or leaks internal vocabulary, its output is DISCARDED and
-// the deterministic rendering is returned instead — so the endpoint always
-// succeeds and never returns unverified prose.
+// WHAT CHANGED AND WHY
+// --------------------
+// This used to hand the model a list of finished sentences stripped of source,
+// date, provenance and certainty — and the model, holding nothing to reason
+// with, produced "a mortgage exists" where the research already knew the same
+// bank publicly finances the project. buildEvidencePackage() now reads the
+// WHOLE report (including `publicResearch`, which nothing read before) and
+// keeps provenance attached, tiered so registry evidence is never crowded out
+// by social noise.
 //
-// Because of that fallback, this function does not fail when OPENAI_API_KEY
-// is absent or the provider is down: it returns the deterministic rendering
-// and says so via `mode`.
+// The safety property is unchanged and still enforced: the model may cite only
+// evidence ids that exist, every substantial claim must carry one, and an
+// output that fails is DISCARDED in favour of a deterministic report built
+// from the same evidence. There is no path by which invented prose reaches a
+// customer.
+//
+// Because of that fallback the function does not fail when OPENAI_API_KEY is
+// absent or the provider is down: it returns the deterministic report and says
+// so via `mode`.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
-import { buildRenderPrompt, finalizeRendering } from '../../../src/dealroom/domain/render.ts';
+import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
+import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
+import { draftSnapshot, segmentsFor } from '../../../src/verify/intelligence/marketSnapshot.ts';
+import { writeSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts';
+import { districtOfAddress, cityOfAddress } from '../../../src/verify/intelligence/locationIntelligence.ts';
+import { projectSlug } from '../../../src/verify/intelligence/harvest.ts';
+import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
+import { resolveAssetClass } from '../../../src/verify/researchPlan.ts';
+import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
+import { looksLikePersonName } from '../../../src/verify/intelligence/peopleIntelligence.ts';
+import { NBG_RATES_URL, parseNbgUsd, buildFxContext } from '../../../src/verify/intelligence/fx.ts';
+import type { FxContext } from '../../../src/verify/intelligence/fx.ts';
+
+/**
+ * GEL/USD context from the National Bank of Georgia.
+ *
+ * Strictly best-effort and strictly bounded: a 4s timeout, and ANY failure
+ * yields null so the report simply omits the section. FX is useful colour on
+ * a historical change, never a reason for the report to be late or to fail.
+ */
+async function fetchFx(historicalDate: string | null): Promise<FxContext | null> {
+  if (!historicalDate) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const get = async (date: string) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const url = date === today ? NBG_RATES_URL : `${NBG_RATES_URL}?date=${date}`;
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) return null;
+      return parseNbgUsd(await res.json(), date);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  };
+  const [then, now] = await Promise.all([get(historicalDate), get(today)]);
+  return buildFxContext(then, now);
+}
+
+/** The earliest dated evidence, used as the "then" point for FX context. */
+function earliestEvidenceDate(items: { date?: string }[]): string | null {
+  const dates = items
+    .map((i) => i.date)
+    .filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}/.test(d))
+    .sort();
+  return dates[0] ?? null;
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-driver',
 };
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 
@@ -38,6 +95,188 @@ function textOf(p: any): string {
   return a.join('\n').trim();
 }
 
+/**
+ * Write the finished report down.
+ *
+ * Deliberately best-effort: the customer standing in front of a freshly built
+ * report must get it even if the write fails. A failed write only costs a
+ * rebuild later — swallowing the report to report a storage error would cost
+ * the thing they actually asked for.
+ */
+/*
+ * WRITING THE REPORT BACK.
+ *
+ * This used to write through the CALLER's client and swallow whatever came
+ * back. There is an RLS policy letting an owner update their own
+ * research_jobs row, but the `authenticated` role has no table-level UPDATE
+ * grant — and a policy filters ROWS, it does not grant privileges. So every
+ * write failed with "42501 permission denied for table research_jobs", the
+ * error went into a console line, and a freshly generated report was billed,
+ * returned once and lost. The next view regenerated it and lost it again.
+ *
+ * The fix is not a new grant. Widening UPDATE on research_jobs to every
+ * authenticated user would let somebody rewrite their own result_json, which
+ * later feeds AI context — a much bigger door than the one being closed.
+ * Writing the report back is a SERVER action, so it uses the service client,
+ * exactly as the driver branch already does.
+ *
+ * The authorisation is unchanged and happens before this is ever reached: the
+ * job was loaded through the caller's own RLS-scoped client, so a caller can
+ * only ever persist for a job they were already allowed to see.
+ */
+async function persist(db: any, jobId: string, payload: unknown): Promise<void> {
+  const { error } = await db
+    .from('research_jobs')
+    .update({
+      synthesis_json: payload,
+      synthesis_state: 'READY',
+      synthesis_at: new Date().toISOString(),
+    })
+    .eq('id', jobId);
+
+  if (error) {
+    // Loud, because a silent failure here costs a model call every view.
+    console.error(`verify-synthesis: could not persist report for ${jobId}: ${error.message ?? error}`);
+  }
+}
+
+/*
+ * A REPORT ALREADY WRITTEN CAN STILL BE WRONG.
+ *
+ * The participants parser used to read shareholders by proximity to the word
+ * "share", which turned the lines following the real rows into eight
+ * registered shareholders of the developer that do not exist — "we
+ * additionally inform you", "is not registered", "of the public registry".
+ *
+ * That is fixed at the parser, but those names are already sitting in
+ * synthesis_json for every report generated before the fix, and a persisted
+ * report is served as a READ: it never passes through the parser again.
+ *
+ * Regenerating would mean a model call, and a charge, for every historical
+ * case. Re-checking the names on the way out costs nothing and covers all of
+ * them. A participant whose name is administrative vocabulary rather than a
+ * person is dropped; everything else is left exactly as written.
+ */
+function withCredibleParticipants(payload: Record<string, unknown>): Record<string, unknown> {
+  const people = payload?.people as { people?: unknown[] } | undefined;
+  if (!people || !Array.isArray(people.people)) return payload;
+
+  const kept = people.people.filter((p) => {
+    const name = (p as Record<string, unknown>)?.name;
+    return typeof name === 'string' && looksLikePersonName(name);
+  });
+  if (kept.length === people.people.length) return payload;
+
+  console.warn(
+    `verify-synthesis: dropped ${people.people.length - kept.length} non-credible participant(s) from a persisted report`
+  );
+  return { ...payload, people: { ...people, people: kept } };
+}
+
+
+/*
+ * WHAT THIS VERIFICATION LEARNED ABOUT THE MARKET.
+ *
+ * A snapshot is written for the NARROWEST segment the property genuinely
+ * belongs to — its project if we know one, otherwise its district, otherwise
+ * its city. Only one, and only the narrowest: writing the same median against
+ * a project AND a district AND a city would let a single building's prices
+ * masquerade as a district answer for every other building in it.
+ *
+ * draftSnapshot refuses anything too thin to be worth reusing, so a run that
+ * found two listings stores nothing rather than storing something that would
+ * immediately force a refresh.
+ *
+ * Never throws. Bookkeeping must not cost a customer their report.
+ */
+async function recordMarketSnapshot(db: any, job: any, bundle: any): Promise<void> {
+  try {
+    const market = bundle?.market;
+    if (!market) return;
+
+    /*
+     * A RUN THAT REUSED A SNAPSHOT HAS NOTHING NEW TO SAY ABOUT THE MARKET.
+     *
+     * It was handed the range and told not to rebuild it, so it searched less
+     * and gathered fewer comparables by design. Writing its market back would
+     * replace the snapshot it just leaned on with a thinner copy — and the run
+     * after that would be thinner still, until confidence fell to LOW and
+     * forced the full refresh this was meant to avoid.
+     *
+     * Production showed the first step: a reusing run wrote source_count 1 over
+     * a snapshot built from 2. The store also refuses to accept a weaker
+     * replacement, but the honest place to stop is here, where we know the run
+     * was never asked to research a market in the first place.
+     */
+    const marketPlan = job?.result_json?._reusePlan?.marketPlan;
+    if (marketPlan && marketPlan.refresh === false) {
+      console.log(
+        'verify-synthesis: market snapshot for ' + job.id +
+        ' — not rewritten, this run reused an existing snapshot'
+      );
+      return;
+    }
+
+    const profile = job?.result_json?.projectProfile ?? {};
+    const address = profile.address ?? bundle?.snapshot?.address ?? null;
+
+    const segments = segmentsFor({
+      projectSlug: projectSlug(profile.name),
+      district: districtOfAddress(address),
+      city: cityOfAddress(address),
+      propertyType: 'RESIDENTIAL',
+      /*
+       * ROOMS ARE DELIBERATELY NOT IN THE KEY YET.
+       *
+       * A segment key has to be computable identically BEFORE research (to
+       * find a snapshot) and AFTER it (to store one). Room count is only known
+       * afterwards, so keying on it would mean every lookup missed and every
+       * write landed in a segment nothing could ever find again — the most
+       * expensive possible outcome, since it costs the write and saves
+       * nothing.
+       *
+       * The column exists and roomBandOf() is tested, so this becomes a key
+       * dimension the moment rooms are known at plan time. Until then the
+       * honest key is the one both ends can actually compute.
+       */
+      rooms: null,
+    });
+    if (!segments.length) return;
+
+    /*
+     * Distinct sources behind the comparables. One portal is one opinion, and
+     * confidence should know the difference.
+     */
+    const comparables = Array.isArray(job?.result_json?.market?.comparables)
+      ? job.result_json.market.comparables
+      : [];
+    const sourceCount = new Set(
+      comparables.map((c: any) => String(c?.source ?? '').trim().toLowerCase()).filter(Boolean)
+    ).size;
+
+    const draft = draftSnapshot(segments[0], market, {
+      sourceCount: Math.max(1, sourceCount),
+      refreshReason: job?.result_json?._marketPlan?.reasons?.[0] ?? 'INITIAL',
+    });
+    if (!draft) return;
+
+    const out = await writeSnapshot(db, draft, {
+      jobId: job.id,
+      city: cityOfAddress(address) ?? null,
+      district: districtOfAddress(address) ?? null,
+    });
+
+    console.log(
+      'verify-synthesis: market snapshot for ' + job.id + ' — ' +
+      (out.written
+        ? `${out.segmentKey} ${draft.confidence} (${draft.usableComparableCount} comparables${out.superseded ? ', superseded previous' : ''})`
+        : `not written: ${out.reason ?? 'unknown'}`)
+    );
+  } catch (e) {
+    console.error('verify-synthesis: market snapshot threw', e instanceof Error ? e.message : String(e));
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -45,50 +284,118 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? '';
     if (!authHeader) return json({ error: 'unauthorized' }, 401);
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    /* TWO CALLERS, TWO TRUST MODELS.
+     *
+     * A customer arrives with their own session and is held to RLS exactly as
+     * before — a job that is not theirs is simply not found.
+     *
+     * The driver arrives with no session at all, because it belongs to no
+     * customer: research finished while nobody was watching and the report
+     * still has to be built. It proves itself with the service-role key
+     * itself, compared in full, so a merely-valid user token can never take
+     * this branch. */
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const internal =
+      req.headers.get('x-internal-driver') === '1' &&
+      !!serviceKey &&
+      bearer === serviceKey;
 
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user?.id) return json({ error: 'unauthorized' }, 401);
+    const supabase = internal
+      ? createClient(Deno.env.get('SUPABASE_URL')!, serviceKey)
+      : createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_ANON_KEY')!,
+          { global: { headers: { Authorization: authHeader } } }
+        );
+
+    /* READS stay with the caller and stay under RLS. Only the write-back of a
+     * report we just built uses the service client — see persist() for why a
+     * table-level UPDATE grant would be the wrong fix. Falls back to the
+     * caller's client when no service key is configured, so a misconfigured
+     * environment degrades to the old behaviour rather than crashing. */
+    const writer = serviceKey
+      ? createClient(Deno.env.get('SUPABASE_URL')!, serviceKey)
+      : supabase;
+
+    if (!internal) {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth?.user?.id) return json({ error: 'unauthorized' }, 401);
+    }
 
     const body = await req.json().catch(() => ({}));
     const jobId = String(body?.jobId ?? '').trim();
     if (!jobId) return json({ error: 'jobId is required' }, 400);
 
-    // RLS decides whether this caller may see this job. A job that is not
-    // theirs simply is not found.
     const { data: job, error } = await supabase
       .from('research_jobs')
-      .select('id,result_json,status')
+      .select('id,result_json,status,synthesis_json,synthesis_state')
       .eq('id', jobId)
       .maybeSingle();
     if (error) throw error;
     if (!job) return json({ error: 'not found' }, 404);
 
+    /* BUILT ONCE.
+     *
+     * The report used to be regenerated on every single view — opening a
+     * finished case from History re-ran the model and re-charged for it.
+     * The persisted report is now authoritative, so returning to a case is
+     * a read. */
+    if (job.synthesis_state === 'READY' && job.synthesis_json && !body?.force) {
+      return json({ ...withCredibleParticipants(job.synthesis_json as Record<string, unknown>), persisted: true });
+    }
+
+    // The projection still supplies the deterministic property model (type,
+    // buyer plan, what completed and what did not). The evidence package is
+    // what the model reasons over.
     const projection = projectVerify({ jobId: job.id, report: job.result_json });
+    const pkg = buildEvidencePackage(job.result_json);
+
+    // Market, location, people and the buyer's own official self-checks are
+    // computed deterministically here; the model is handed the RESULT and asked
+    // to explain it, never to do the arithmetic.
+    const fx = await fetchFx(earliestEvidenceDate(pkg.items));
+    const bundle = buildIntelligenceBundle(job.result_json, pkg, fx);
+
+    /*
+     * WHAT THIS VERIFICATION LEARNED ABOUT THE MARKET, KEPT.
+     *
+     * bundle.market is the deterministic answer — median, band, tier, sample
+     * size — computed from comparables that were actually gathered. Until now
+     * it was quoted once and discarded, so the next flat in the same building
+     * paid for the same five-band sweep to rebuild it. That sweep is 45% of
+     * what a Verify costs.
+     *
+     * Stored against the SEGMENT it describes rather than the job that
+     * happened to compute it. Bookkeeping: it runs after the report is safe
+     * and can never cost a customer their answer.
+     */
+    await recordMarketSnapshot(writer, job, bundle);
 
     // No evidence at all is a legitimate outcome, not an error: every source
     // may have been technically unavailable. Say so plainly rather than
-    // rendering an empty report that looks like a clean bill of health.
-    if (!projection.facts.length) {
-      return json({
-        verdict: projection.verdict,
-        verdictReasons: projection.verdictReasons,
-        sections: [],
-        mode: 'DETERMINISTIC',
+    // returning an empty report that reads like a clean bill of health.
+    if (!pkg.items.length) {
+      const emptyPayload = {
+        report: null,
+        mode: 'DETERMINISTIC' as const,
         propertyType: projection.propertyType,
-        incompleteSources: projection.incomplete.map((o) => o.sourceName || o.source),
+        snapshot: bundle.snapshot,
+        selfChecks: bundle.selfChecks,
         empty: true,
-      });
+      };
+      // "No evidence at all" is a real, final answer, not a failure to retry.
+      await persist(writer, jobId, emptyPayload);
+      return json(emptyPayload);
     }
 
     let raw: string | null = null;
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (apiKey) {
-      const { system, user } = buildRenderPrompt(projection.synthesis);
+      // The asset class decides which sections this property can even have:
+      // a plot of land has no building quality, and a heading with nothing
+      // real under it gets filled with something.
+      const { system, user } = buildIntelligencePrompt(pkg, bundle, resolveAssetClass(job.result_json));
       try {
         const res = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',
@@ -108,24 +415,46 @@ serve(async (req) => {
       }
     }
 
-    const final = finalizeRendering(projection.synthesis, raw);
+    const final = finalizeReport(pkg, raw);
     if (final.mode === 'DETERMINISTIC' && final.rejectedBecause.length) {
       // Worth knowing about: a model that keeps failing the gate is a
       // prompt/model problem we want visible in logs, not silently absorbed.
-      console.warn('synthesis rendering rejected', JSON.stringify(final.rejectedBecause));
+      console.warn('buyer intelligence rejected', JSON.stringify(final.rejectedBecause));
     }
 
-    return json({
-      verdict: final.verdict,
-      verdictReasons: final.verdictReasons,
-      sections: final.sections,
+    const payload = {
+      report: {
+        // v3: summary + keyFindings replace overallView/executiveSummary, and
+        // the pre-purchase checklist is gone rather than renamed.
+        summary: final.summary,
+        keyFindings: final.keyFindings,
+        sections: final.sections,
+        attentionPoints: final.attentionPoints,
+        finalView: final.finalView,
+        contractUpload: final.contractUpload,
+      },
+      // The sources behind the prose, so the UI can offer them underneath
+      // without the customer having to read raw research output.
+      evidence: final.evidenceUsed,
+      snapshot: bundle.snapshot,
+      market: bundle.market,
+      location: bundle.location,
+      people: bundle.people,
+      fx: bundle.fx,
+      // Official checks the BUYER can run. These replace the old inventory of
+      // what our own pipeline could not retrieve.
+      selfChecks: bundle.selfChecks,
+      // Reusable by Contract Intelligence when a signatory must be compared
+      // against the register.
+      participants: bundle.participants,
       mode: final.mode,
       propertyType: projection.propertyType,
-      // Named for a customer, not by source key: "we could not complete X".
-      incompleteSources: projection.incomplete.map((o) => o.sourceName || o.source),
-      conflictCount: projection.conflicts.length,
+      evidenceCounts: pkg.tierCounts,
       empty: false,
-    });
+    };
+
+    await persist(writer, jobId, payload);
+    return json(payload);
   } catch (e) {
     console.error('verify-synthesis failed', e instanceof Error ? e.message : String(e));
     return json({ error: 'internal_error' }, 500);

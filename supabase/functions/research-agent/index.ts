@@ -1,5 +1,25 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
+import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
+import { harvestReport, normalizeCadastral } from '../../../src/verify/intelligence/harvest.ts';
+import { persistHarvest, loadKnownIntelligence, loadComparables } from '../../../src/verify/intelligence/graphStore.ts';
+import { planVerification } from '../../../src/verify/intelligence/stagePlan.ts';
+import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
+import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
+import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
+import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
+import { planMarket, segmentsFor, snapshotBrief } from '../../../src/verify/intelligence/marketSnapshot.ts';
+import { findSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts';
+import { districtOfAddress, cityOfAddress } from '../../../src/verify/intelligence/locationIntelligence.ts';
+import { planEscalation, searchBudgetInstruction } from '../../../src/verify/intelligence/escalation.ts';
+import { summariseSources } from '../../../src/verify/intelligence/sourceVersion.ts';
+import {
+  consumptionFromUsage,
+  costOperationFor,
+  priceVerification,
+  totalVerificationCost,
+} from '../../../src/verify/cogs.ts';
 
 // v28 (2026-09-06, "HOMATCH VERIFY — FINAL PRE-PUSH CONSOLIDATION / ADAPTIVE
 // RESEARCH ENGINE / RECORDED OFFICIAL WORKFLOWS" — the FINANCIAL/COMPANY
@@ -479,51 +499,9 @@ type Stage = 'IDENTITY' | 'OFFICIAL_COLLECTION' | 'PUBLIC_RESEARCH' | 'MARKET' |
 // — matching how IDENTITY/OFFICIAL_COLLECTION/MARKET already work (one
 // instructive prompt + web_search tool + a structured schema), not a new
 // per-query orchestration primitive this codebase does not otherwise use.
-const PUBLIC_RESEARCH_TARGETS = [
-  'architect',
-  'architecture studio',
-  'founders owners participants',
-  'directors representatives',
-  'company history',
-  'previous projects',
-  'contractors',
-  'construction companies',
-  'engineers',
-  'suppliers',
-  'facade',
-  'windows',
-  'elevators',
-  'structural system',
-  'construction materials',
-  'insulation',
-  'MEP (mechanical/electrical/plumbing)',
-  'energy efficiency',
-  'seismic design',
-  'amenities',
-  'landscaping',
-  'parking',
-  'bank financing',
-  'partners',
-  'construction start',
-  'construction chronology',
-  'progress history',
-  'current physical status',
-  'quality',
-  'developer reputation',
-  'architect reputation',
-  'complaints',
-  'disputes',
-  'court records',
-  'media coverage',
-  'Facebook',
-  'Instagram',
-  'LinkedIn',
-  'YouTube',
-  'TikTok',
-  'Telegram',
-  'forums',
-  'reviews',
-];
+// PUBLIC_RESEARCH_TARGETS / publicResearchScope now live in
+// src/verify/researchPlan.ts so the archetype regression tests exercise the
+// SHIPPED plan instead of a hand-synced copy. See that file for why.
 // publicResearchScope() (2026-09-07 "IMPORTANT GENERALIZATION RULE" mandate
 // addendum): PUBLIC_RESEARCH_TARGETS/FIELDS above stay a fixed, verbatim
 // schema (normalizePublicResearchStructured relies on every key always being
@@ -536,54 +514,6 @@ const PUBLIC_RESEARCH_TARGETS = [
 // instruction; the Return{} schema and its field set are never changed by
 // asset class. Purely generic: no project, developer, or fixture name
 // appears here, only the property TYPE.
-function publicResearchScope(assetClass: string | null | undefined): { targets: string[]; scopeNote: string } {
-  const buildingTargets = ['facade', 'windows', 'elevators', 'structural system', 'construction materials', 'insulation', 'MEP (mechanical/electrical/plumbing)', 'energy efficiency', 'seismic design', 'amenities', 'landscaping', 'parking'];
-  const developerTargets = ['founders owners participants', 'directors representatives', 'company history', 'previous projects', 'developer reputation', 'bank financing', 'partners'];
-  const constructionTeamTargets = ['architect', 'architecture studio', 'architect reputation', 'contractors', 'construction companies', 'engineers', 'suppliers', 'construction start', 'construction chronology', 'progress history', 'current physical status', 'quality'];
-  const reputationTargets = ['complaints', 'disputes', 'court records', 'media coverage', 'Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'Telegram', 'forums', 'reviews'];
-  switch (assetClass) {
-    case 'PRIVATE_RESALE':
-    case 'RENTAL':
-      // A private individual's resale/rental unit has no developer/project
-      // history to research by default — only worth pursuing if evidence
-      // already on hand (Identity/Official) actually names one.
-      return {
-        targets: [...reputationTargets, 'quality'],
-        scopeNote:
-          'ASSET-CLASS SCOPE (private resale/rental — no forced developer research): this is a private individual\'s unit, not a marketed development project. Do NOT go looking for a developer, architect, contractor, or construction-company just to fill those fields — only research and populate them if the evidence already gathered (Identity/Official above) actually names one for this exact unit/building. It is entirely normal and CORRECT for developer/architect/contractor/companyHistory/previousProjects fields to stay null here; never invent a plausible-sounding value to avoid an empty field. Focus your search instead on: the property\'s own public reputation/reviews, its immediate micro-location, and any publicly reported quality signals or complaints about this exact address/unit.',
-      };
-    case 'PRIVATE_HOUSE':
-      return {
-        targets: ['quality', 'current physical status', ...reputationTargets],
-        scopeNote:
-          'ASSET-CLASS SCOPE (private house — no forced developer/project research): this is a standalone private house, not a unit in a marketed development. Only populate developer/architect/contractor/companyHistory/previousProjects if the evidence already gathered actually names one (e.g. a custom-build architect/builder is sometimes publicly documented) — otherwise leave them null; that is the expected, correct outcome, not a gap. Focus your search on the property\'s own public reputation and its immediate micro-location.',
-      };
-    case 'LAND':
-      // A bare parcel has no building at all — every building-fabric target
-      // (facade/windows/elevators/MEP/insulation/energy efficiency/seismic
-      // design/amenities-as-building-feature) is inapplicable by definition.
-      return {
-        targets: ['previous projects', 'developer reputation', 'quality', 'current physical status', ...reputationTargets],
-        scopeNote:
-          'ASSET-CLASS SCOPE (land parcel — no building-fabric research applies): this is a bare land parcel, not a building or unit. Facade/windows/elevators/structural system/construction materials/insulation/MEP/energy efficiency/seismic design/amenities/landscaping-as-a-building-feature/parking simply do not apply — leave every one of those fields null rather than describing the parcel\'s physical state under them. If a developer or project already publicly plans to build on this exact parcel, that is worth reporting (developer/previousProjects/companyHistory) — but never invent one. Focus your search on how this parcel and its immediate area are publicly discussed (development plans, land use, reputation of any named developer).',
-      };
-    case 'COMMERCIAL':
-      return {
-        targets: [...constructionTeamTargets, ...buildingTargets, ...developerTargets, ...reputationTargets],
-        scopeNote:
-          'ASSET-CLASS SCOPE (commercial property): research the same construction/developer/reputation topics as a residential project, but frame amenities/landscaping/parking findings in commercial terms (tenant/business-facing features, accessibility, signage/visibility) rather than residential ones — only when the evidence actually supports it.',
-      };
-    case 'APARTMENT_IN_PROJECT':
-    case 'UNDER_CONSTRUCTION':
-    case 'COMPANY_OWNED':
-    case 'MIXED_OR_UNKNOWN':
-    default:
-      // Safe default (also covers an unset/unrecognized value): research the
-      // full breadth, exactly as before this mandate — never narrow scope
-      // when the asset class is genuinely unclear.
-      return { targets: PUBLIC_RESEARCH_TARGETS, scopeNote: '' };
-  }
-}
 // PUBLIC_RESEARCH_FIELDS — the mandate's own ~35-field structured schema,
 // verbatim (43 keys as literally listed). Used both to build the prompt's
 // Return{...} schema string and to deterministically normalize the model's
@@ -610,6 +540,53 @@ const PUBLIC_RESEARCH_ARRAY_FIELDS = [
   'awardsRecognition',
   'facts',
 ] as const;
+/*
+ * §3 — nearby places, kept structured rather than as prose.
+ *
+ * Each entry is { category, name, note, source }. The NOTE is where any
+ * relative context lives ("on the same street", "a few minutes on foot"), and
+ * it is only ever what a source actually said. A distance or a travel time is
+ * never computed here and never estimated: we have no coordinates for either
+ * end, and a made-up "350m" is exactly the kind of precise-sounding invention
+ * this product exists to avoid.
+ */
+const PUBLIC_RESEARCH_PLACE_FIELDS = ['nearbyPlaces'] as const;
+const PLACE_CATEGORIES = [
+  'SCHOOL', 'KINDERGARTEN', 'SUPERMARKET', 'PHARMACY', 'CLINIC',
+  'PARK', 'TRANSPORT', 'ROAD_ACCESS', 'CITY_CENTRE', 'SERVICE',
+];
+/** At most this many per category: a buyer wants the nearest few, not an index. */
+const MAX_PLACES_PER_CATEGORY = 3;
+
+function normalizeNearbyPlaces(raw: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(raw)) return [];
+  const perCategory = new Map<string, number>();
+  const seen = new Set<string>();
+  const out: Record<string, unknown>[] = [];
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    const category = String(e.category ?? '').trim().toUpperCase();
+    const name = typeof e.name === 'string' ? e.name.trim() : '';
+    if (!PLACE_CATEGORIES.includes(category) || !name) continue;
+
+    // The same supermarket found twice under two spellings is one supermarket.
+    const key = `${category}:${name.toLowerCase().replace(/\s+/g, ' ')}`;
+    if (seen.has(key)) continue;
+    const used = perCategory.get(category) ?? 0;
+    if (used >= MAX_PLACES_PER_CATEGORY) continue;
+
+    seen.add(key);
+    perCategory.set(category, used + 1);
+    out.push({
+      category,
+      name: name.slice(0, 120),
+      note: typeof e.note === 'string' ? e.note.trim().slice(0, 200) : null,
+    });
+  }
+  return out;
+}
 const PUBLIC_RESEARCH_SCALAR_FIELDS = [
   'project',
   'developer',
@@ -642,6 +619,7 @@ function normalizePublicResearchStructured(z: any): Record<string, any> {
   const out: Record<string, any> = {};
   for (const k of PUBLIC_RESEARCH_SCALAR_FIELDS) out[k] = typeof src[k] === 'string' && src[k].trim() ? src[k].trim() : null;
   for (const k of PUBLIC_RESEARCH_ARRAY_FIELDS) out[k] = Array.isArray(src[k]) ? src[k].filter((x: any) => typeof x === 'string' && x.trim()) : [];
+  for (const k of PUBLIC_RESEARCH_PLACE_FIELDS) out[k] = normalizeNearbyPlaces(src[k]);
   return out;
 }
 
@@ -959,6 +937,26 @@ function extractOpenAIText(p: any): string {
   for (const o of p?.output || []) if (o?.type === 'message') for (const c of o?.content || []) if (c?.type === 'output_text') t += c.text || '';
   return t;
 }
+/*
+ * HOW MANY SEARCHES THIS STAGE ACTUALLY RAN.
+ *
+ * A web search is billed per call, so it is a real line in what a
+ * verification costs — and nothing counted them. Token totals alone made the
+ * research stages look cheaper than they are, and any later decision to
+ * search less had nothing to measure itself against.
+ *
+ * Counted from the provider's own response rather than from our intent: what
+ * we asked for and what it did are different numbers, and only the second one
+ * is billed.
+ */
+function countWebSearches(p: any): number {
+  let n = 0;
+  for (const item of p?.output || []) {
+    if (item?.type === 'web_search_call') n += 1;
+  }
+  return n;
+}
+
 function extractOpenAISources(p: any): any[] {
   const o: any[] = [];
   for (const item of p?.output || [])
@@ -1406,14 +1404,166 @@ function formatTasTechnicalFactsForPrompt(facts: AggregatedTasFact[]): string {
   return lines.join('\n');
 }
 
+/*
+ * REUSE, TAKEN AS A SAVING RATHER THAN AS A SKIP.
+ *
+ * The obvious implementation — skip a stage whose facts we already hold —
+ * removes that stage's output from result_json, and the buyer's report is
+ * written from those same fields. The report would quietly lose a section.
+ * Cheaper and worse is not the trade on offer.
+ *
+ * So every stage still runs. What changes is that it is handed what we
+ * already established and told to spend its searches on what is missing. The
+ * report keeps every field it had, because the model restates a known fact
+ * from context instead of paying to find it again.
+ *
+ * The brief carries only facts the PLANNER judged fresh, and never the
+ * registry families at any age — see knownBrief.ts for why.
+ *
+ * VERIFY_REUSE_ROUTING=off turns it back into today's behaviour without a
+ * deploy, because a saving that cannot be switched off is a saving nobody can
+ * investigate.
+ */
+function knownBriefFor(j: any, s: Stage): string {
+  if ((Deno.env.get('VERIFY_REUSE_ROUTING') ?? 'on').toLowerCase() === 'off') return '';
+  const plan = j?.result_json?._reusePlan;
+  if (!plan?.known) return '';
+  try {
+    // Only what this stage would otherwise have gone looking for. A stage
+    // handed facts outside its remit, under an instruction to spend its
+    // searches on whatever is missing, is being told to search harder — see
+    // briefFactsForStage().
+    const mine = briefFactsForStage(
+      Array.isArray(plan.briefFacts) ? plan.briefFacts : [],
+      s.toLowerCase() as any
+    );
+    const brief = mine.length
+      ? buildKnownBrief(mine, plan.assessments ?? [], plan.scope ?? null)
+      : { text: '', briefed: [] as string[] };
+
+    /*
+     * MARKET gets a second block of its own, and is the reason the fact brief
+     * above is allowed to be empty.
+     *
+     * Its subject matter is other people's flats. This unit holds no listing
+     * facts, so briefFactsForStage finds nothing for it — while the graph
+     * holds the comparables themselves, as their own entities. Those are
+     * handed over with their STABLE attributes only; price and status are
+     * withheld deliberately, so a day-old asking price can never be restated
+     * as a current one. See marketBrief.ts.
+     */
+    const market = s === 'MARKET'
+      ? buildMarketBrief(Array.isArray(plan.comparables) ? plan.comparables : [])
+      : { text: '', urls: [] as string[] };
+
+    /*
+     * THE MARKET ANSWER ITSELF, WHEN WE ALREADY HAVE IT.
+     *
+     * A fresh, confident snapshot for this segment means the range is already
+     * established from real listings, and the arithmetic behind it is done in
+     * code. The stage still writes the market section - the report is built
+     * from its output - but it is handed the answer instead of being sent to
+     * rebuild it. Empty whenever the plan says refresh, so nothing stale is
+     * ever quoted as current.
+     */
+    const snapshotText = s === 'MARKET' ? String(plan.marketPlan?.brief ?? '') : '';
+
+    const joined = [brief.text, snapshotText, market.text].filter(Boolean).join('\n');
+    return joined ? `\n${joined}\n` : '';
+  } catch {
+    return '';
+  }
+}
+
+/*
+ * HOW HARD THIS STAGE SHOULD WORK.
+ *
+ * A web search is billed per call, and a stage holding nine of its ten facts
+ * has no business running a full discovery sweep to re-find them. The budget
+ * falls with what is known and never reaches zero — "we already know this" and
+ * "do not look" are different instructions, and a contradiction is worth
+ * finding.
+ *
+ * The registry stage is exempt and always works at full effort: throttling it
+ * would throttle exactly the check a buyer is exposed to.
+ */
+function searchBudgetFor(j: any, s: Stage): string {
+  if ((Deno.env.get('VERIFY_REUSE_ROUTING') ?? 'on').toLowerCase() === 'off') return '';
+  const decisions = j?.result_json?._reusePlan?.decisions;
+  if (!Array.isArray(decisions) || !decisions.length) return '';
+  try {
+    const stage = s.toLowerCase();
+    const plan = planEscalation(
+      decisions.map((d: any) => ({
+        stage: d.stage,
+        wouldRun: d.wouldRun,
+        reason: d.reason ?? '',
+        // The stored plan keeps counts rather than keys; the ladder only ever
+        // reads their lengths, so a placeholder array of the right size is
+        // the same input.
+        missing: new Array(Number(d.missing) || 0).fill('?'),
+        stale: new Array(Number(d.stale) || 0).fill('?'),
+        conflicting: new Array(Number(d.conflicting) || 0).fill('?'),
+        reused: new Array(Number(d.reused) || 0).fill('?'),
+      }))
+    );
+    /*
+     * MARKET IS DECIDED BY ITS SNAPSHOT, NOT BY THE FACT LADDER.
+     *
+     * The escalation ladder counts facts the graph holds about the SUBJECT,
+     * and a market is not a fact about the subject - so it always read market
+     * as unknown and authorised a full sweep. planMarket() knows better: it
+     * has looked at the actual snapshot for this segment and decided whether
+     * the question is already answered.
+     */
+    if (stage === 'market') {
+      const mp = j?.result_json?._reusePlan?.marketPlan;
+      if (mp && typeof mp.searchBudget === 'number') {
+        if (!mp.refresh && mp.searchBudget === 0) {
+          return [
+            '',
+            'SEARCH BUDGET: none needed for this step.',
+            'The market range above is already established for this segment from',
+            'real listings, and the arithmetic is done in code. Spend no searches',
+            'rebuilding it. This is a budget, not a gag: if your own evidence',
+            'contradicts that range, say so and search to establish what is true.',
+            'Being right outranks being cheap.',
+          ].join('\n');
+        }
+        return searchBudgetInstruction({
+          stage: 'market',
+          level: 'TARGETED',
+          searchBudget: mp.searchBudget,
+          reason: String(mp.summary ?? ''),
+        } as any);
+      }
+    }
+
+    const effort = plan.efforts.find((e: any) => e.stage === stage);
+    return searchBudgetInstruction(effort);
+  } catch {
+    return '';
+  }
+}
+
 function prompt(s: Stage, j: any, p: any, l: string): string {
   const L = LANG[l] || 'English';
   const q = j.query;
   const b = JSON.stringify(p.browserOfficial || {}).slice(0, 24000);
+  /*
+   * Appended to whichever stage prompt is built below. SYNTHESIS is excluded:
+   * it reasons over the evidence this run actually gathered, and handing it a
+   * separate list of remembered facts would be a second, unciteable source.
+   *
+   * The brief is rung 0 of the escalation ladder — what we already know — and
+   * the budget is rung 3, targeted search. The stage still chooses how to
+   * spend what it is given; nothing here forbids a search.
+   */
+  const known = s === 'SYNTHESIS' ? '' : knownBriefFor(j, s) + searchBudgetFor(j, s);
 
   if (s === 'IDENTITY') {
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}, mode=${j.mode}. Identify the exact entity and evidence-backed expansion terms. ` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}, mode=${j.mode}. Identify the exact entity and evidence-backed expansion terms. ` +
       `ASSET CLASS (v28): from the actual evidence gathered, classify this property's assetClass as one of APARTMENT_IN_PROJECT / PRIVATE_RESALE / PRIVATE_HOUSE / LAND / COMMERCIAL / RENTAL / UNDER_CONSTRUCTION / COMPANY_OWNED / MIXED_OR_UNKNOWN — never assume every property has the same evidence shape (a private resale apartment has no developer/company research to do; a land parcel has no utilities/commissioning; a company-owned unit may). Use MIXED_OR_UNKNOWN rather than guessing when the evidence does not clearly indicate one category. This classification only shapes how deep/which categories of research make sense — it never itself becomes a customer-facing risk statement. ` +
       `Also research the marketed PROJECT/DEVELOPMENT this property likely belongs to (its public name, developer, physical building/complex) as thoroughly as public web evidence allows — this is a separate concept from the bare cadastral/unit identity. ` +
       `For construction/completion, keep THREE separate concepts and never merge them: declaredCompletionTarget (a developer/marketing target date, labeled as declared, never as actual), observedConstructionStatus (what current public evidence — photos, posts, listings — shows about physical progress right now), and commissioningStatus (ONLY "OFFICIALLY_CONFIRMED" with an evidenceUrl when a specific authoritative document/act says the building was put into exploitation — otherwise always "NOT_INDEPENDENTLY_VERIFIED", regardless of how complete the building looks). ` +
@@ -1438,7 +1588,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       ? `TAS/OFFICIAL DOCUMENT TECHNICAL FACTS — PRIMARY SOURCE (mandatory priority rule): the following values were extracted deterministically, in code, directly from the official documents' own text this run. Treat every one of these as ALREADY CONFIRMED — they take priority over anything else you find or infer for the same field, including your own general knowledge or any public-web lead. Weave the relevant ones into officialEvidence/documents[].facts in natural prose (never dump the raw "key=value" form verbatim into your output), and never contradict or "correct" one of these values.\n${formatTasTechnicalFactsForPrompt(tasFacts)}\n`
       : '';
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}.\n` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}.\n` +
       `INTERNAL GROUND TRUTH (for your reasoning only — never mention this line, its states, or its existence to the customer in any form): ${statusLine}.\n` +
       `A source counts as directly, officially checked ONLY when its state above is SEARCH_CONFIRMED or NO_RESULT_CONFIRMED. NO_RESULT_CONFIRMED is evidence ONLY that this one exact verified search returned no matching record on that specific source — NEVER evidence that the underlying property/record/company does not exist at all. Every other state means that source was NOT verified this run — for such a source you must simply not state a finding from it (positive or negative); do not explain why, do not name the state, do not describe any attempt.${trav}\n` +
       `Note on sources: MY.GOV.GE service 176 (naprweb.reestri.gov.ge) and NAPR are the SAME registry — never present them as two independent sources.${histNote}\n` +
@@ -1488,20 +1638,67 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     const scope = publicResearchScope(i.assetClass);
     const scopeNoteLine = scope.scopeNote ? `${scope.scopeNote}\n` : '';
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. Official=${JSON.stringify(o).slice(0, 12000)}.\n` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. Official=${JSON.stringify(o).slice(0, 12000)}.\n` +
       tasFactsNote +
       scopeNoteLine +
       `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${scope.targets.join(', ')}.\n` +
       `For every field below, populate it ONLY when your search actually surfaced supporting evidence for THIS exact project/company/property — never guess, never fill a field with a generic industry statement, never invent a name. No evidence for a field = null (or [] for list fields) — never omit the key and never pad with a placeholder string. Prefer specific names/dates/facts over vague description. Each list field should contain short, concrete, evidence-backed entries (e.g. a real person/company name with their role, not a generic sentence).\n` +
       `If you discover a legal company (developer/owner) — by exact name or identification code — that was not already present in Official.companyProfile above, populate companyId/legalCompany with it as precisely as the evidence supports; a downstream deterministic step (not you) decides whether this triggers any further registry lookup.\n` +
-      `Return {"project":string|null,"developer":string|null,"legalCompany":string|null,"companyId":string|null,"foundersOwnersParticipants":string[],"directorsRepresentatives":string[],"companyHistory":string|null,"previousProjects":string[],"architect":string|null,"architectStudio":string|null,"architectReputation":string|null,"contractors":string[],"constructionCompanies":string[],"engineers":string[],"suppliers":string[],"facade":string|null,"windows":string|null,"elevators":string|null,"structuralSystem":string|null,"constructionMaterials":string|null,"insulation":string|null,"MEP":string|null,"energyEfficiency":string|null,"seismicDesign":string|null,"amenities":string[],"landscaping":string|null,"parking":string|null,"financingBank":string|null,"partners":string[],"constructionStart":string|null,"chronology":string|null,"progressHistory":string|null,"currentPhysicalStatus":string|null,"qualitySignals":string[],"developerReputation":string|null,"architectReputationSignals":string[],"complaints":string[],"disputes":string[],"legalPublicFootprint":string[],"mediaCoverage":string[],"socialPublicFootprint":string[],"awardsRecognition":string[],"facts":string[],"unverified":string[]}.`
+      `Return {"project":string|null,"developer":string|null,"legalCompany":string|null,"companyId":string|null,"foundersOwnersParticipants":string[],"directorsRepresentatives":string[],"companyHistory":string|null,"previousProjects":string[],"architect":string|null,"architectStudio":string|null,"architectReputation":string|null,"contractors":string[],"constructionCompanies":string[],"engineers":string[],"suppliers":string[],"facade":string|null,"windows":string|null,"elevators":string|null,"structuralSystem":string|null,"constructionMaterials":string|null,"insulation":string|null,"MEP":string|null,"energyEfficiency":string|null,"seismicDesign":string|null,"amenities":string[],"landscaping":string|null,"parking":string|null,"financingBank":string|null,"partners":string[],"constructionStart":string|null,"chronology":string|null,"progressHistory":string|null,"currentPhysicalStatus":string|null,"qualitySignals":string[],"developerReputation":string|null,"architectReputationSignals":string[],"complaints":string[],"disputes":string[],"legalPublicFootprint":string[],"mediaCoverage":string[],"socialPublicFootprint":string[],"awardsRecognition":string[],"facts":string[],"unverified":string[],"nearbyPlaces":{"category":"SCHOOL|KINDERGARTEN|SUPERMARKET|PHARMACY|CLINIC|PARK|TRANSPORT|ROAD_ACCESS|CITY_CENTRE|SERVICE","name":string,"note":string|null}[]}.
+` +
+      // WHAT IT IS LIKE TO LIVE THERE HAD NOWHERE TO GO.
+      //
+      // The ten location topics were already in the target list and being
+      // searched for, for every archetype — and then the return schema had
+      // no field to put an answer in, so every one of them was dropped on
+      // the floor. Confirmed on a real production run: nearbyPlaces came
+      // back [] and the report carried no Location or Infrastructure
+      // section at all, correctly, because there was no evidence to write
+      // one from. Both ends of the feature were built; the middle was not.
+      `nearbyPlaces: the few genuinely NEAREST places of each kind that your search actually surfaced for THIS address — not an index of everything in the district, and at most a handful per kind. name is what the place is actually called. note is ONLY what a source literally stated about getting there ("a five-minute walk", "on the same street"); NEVER compute or estimate a distance or a travel time yourself — we have coordinates for neither end, and an invented "350m" is exactly the kind of precise-sounding fabrication this product exists to avoid. Nothing found for a kind = simply no entry for it.`
     );
   }
 
   if (s === 'MARKET') {
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
-      `Research actual public listing/post URLs and comparables: same building/project first, then street/micro-location, similar area/rooms/condition/floor. Include MyHome, SS, developer/project/agency sites, public social pages/posts, news, reviews/forums where accessible. ` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
+      // SEARCH THE WHOLE HIERARCHY, NOT JUST THE BUILDING.
+      // A live report compared five units in one project to each other and
+      // stopped. That answers "what do flats in this building cost", not
+      // "is this property well positioned in its real local market" — and the
+      // second question is the one a buyer is actually asking. Each band is
+      // requested explicitly, because an unasked-for band is one the model
+      // reliably skips once it has found enough same-project listings.
+      `Research actual public listing/post URLs and comparables. Work OUTWARD through the hierarchy and gather from EACH band you can, rather than stopping once one band has enough: (1) the same building/project; (2) the same street and immediately adjacent streets; (3) the same micro-district; (4) the wider district; (5) comparable developments of a similar class elsewhere in the city — a boutique/low-density project must be compared against other boutique/low-density projects, never against arbitrary cheap city stock merely because both are apartments. Prefer listings similar in area, rooms, condition, floor and construction stage. Include MyHome, SS, Korter, developer/project/agency sites, public social pages/posts, news, reviews/forums where accessible. ` +
+      // A BAND NEEDS TWO LISTINGS TO BE USABLE.
+      //
+      // The previous wording here ("relevance, not volume") was meant to stop
+      // padding and instead suppressed collection: the run after it returned
+      // THREE comparables for a property that had historically yielded eight,
+      // one per band. One listing cannot carry a comparison — downstream,
+      // MIN_FOR_BASIS refuses to let it — so a band with a single listing is
+      // effectively a band we failed to research.
+      //
+      // So the instruction is now a floor, not a ceiling, and the anti-padding
+      // rule is kept as a separate sentence rather than as the headline.
+      `DEPTH PER BAND: aim for AT LEAST 3 genuinely comparable listings in each band you can populate, and never stop at one. A band holding a single listing cannot be used for comparison at all, so one listing is only marginally better than none — if you found one, look harder for others like it before moving on. ` +
+      // WHEN TO STOP, TIED TO WHAT THE ARITHMETIC ACTUALLY NEEDS.
+      //
+      // The deterministic step downstream needs MIN_FOR_BASIS = 2 priced,
+      // ACTIVE, residential listings before a tier can carry the analysis at
+      // all. Everything past that is refinement, and production says the
+      // refinement is not arriving: across thirteen market stages, runs that
+      // spent eight searches returned 6.0 usable comparables across 2 tiers
+      // while runs that spent five returned 6.2 across 3. Searching harder
+      // bought variance, not a better comparison - and a market search costs
+      // about $0.04 once the search-content tokens billed at model rates are
+      // counted, so the gap between a four-search and a nine-search market
+      // stage is a third of the entire product's cost.
+      //
+      // A stopping condition, not a cap: expressed as the evidence being
+      // sufficient rather than a number being reached.
+      `WHEN TO STOP SEARCHING: the analysis downstream needs at least 2 priced, ACTIVE, residential comparables in a band before that band can be used at all. Once you hold at least 3 such comparables spread over at least 2 bands - including the most specific band you were able to populate - you have what the report needs, and further searching has measurably NOT improved these reports. Stop there and write up what you found. This is a stopping condition, not a quota: if a band you have already searched is genuinely thin, or something you found contradicts what you were told, keep going. Being right still outranks being cheap. ` +
+      `RELEVANCE STILL BOUNDS IT: never pad a band with listings that are not actually comparable, never invent a listing you cannot support with a specific deep URL, and never describe a band you did not search. If a band genuinely has nothing findable, return nothing for it — an honestly empty band is correct, a fabricated one is not. ` +
       `For every comparable you can support with a specific deep URL (an actual listing/post, never a bare homepage), return a structured record with as many of these fields as the evidence supports: source, url (the exact deep link, required), listingId, project, address, area, rooms, floor, condition, price, currency, pricePerSqm, listingDate, similarity (a short phrase on how comparable it is to the subject property), retrievedAt. If you only have a homepage-level lead (you believe a site has relevant listings but could not retrieve a specific one), do not fabricate a listingId or price for it — omit that comparable or describe it only in priceEvidence as a general, non-specific lead. pricePerSqm (both here and in "subject" below) MUST be a plain numeric string in the SAME currency unit per square meter (no thousands separators, currency symbols or ranges) whenever you have a specific number — a deterministic step downstream computes the median/premium from these numbers directly, so a non-numeric or approximate value here simply will not be counted rather than being parsed loosely. ` +
       `COMPARABLE TIER (mandatory per comparable, 2026-09-07 market-comparable model): classify "comparableType" as exactly one of "SAME_PROJECT" (literally the same building/project/complex as the subject — if the project has named blocks/phases/buildings and you can tell the comparable is a DIFFERENT block/phase than the subject's own, prefer "MICRO_LOCATION" instead, since a different block of the same complex is not the same physical structure), "MICRO_LOCATION" (a different project but the same street/immediate neighborhood/walking-distance area), or "PEER_PROJECT" (a comparable development elsewhere in the city included only for broader market context). This is a REQUIRED classification, never omitted or left to infer downstream — when genuinely uncertain between MICRO_LOCATION and PEER_PROJECT, use PEER_PROJECT (the more conservative, less specific claim). ` +
       `LISTING STATUS (mandatory per comparable — market price MUST reflect what is on the market NOW, never a stale figure): set "listingStatus" from what the page/evidence actually shows — "ACTIVE" only when the listing itself currently reads as available/on the market (no "sold"/"removed"/"no longer available"/"archived" marker, and not a stale page you cannot confirm is still live), "EXPIRED" or "REMOVED" or "SOLD" when the evidence itself says so, otherwise "UNKNOWN" (the safe default when you genuinely cannot tell — never guess ACTIVE just because a page loaded). Also set "propertyType" ("RESIDENTIAL","COMMERCIAL","LAND","OTHER") whenever the evidence supports it. Only ACTIVE + RESIDENTIAL comparables may ever be used for a *current* price range — everything else exists only for historical/contextual reference, so do not skip this field to save effort. ` +
@@ -2704,6 +2901,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const prior = j.result_json || {};
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
   prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
+  prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
 
   if (s === 'IDENTITY') {
     prior.identity = z;
@@ -2903,12 +3101,16 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     jobId: j.id,
     queryType: j.mode,
     entityName: z.entity?.name || i.entity?.name || j.query,
-    entityType: z.entity?.type || i.entity?.type || 'UNKNOWN',
+    // entityType is the model's own free-text description of the property.
+    // It is no longer defaulted to the literal 'UNKNOWN' — that is an internal
+    // enum, and it was reaching the customer's property-type badge. The
+    // frontend decides what to show from assetClass when this says nothing.
+    entityType: z.entity?.type || i.entity?.type || null,
     // v28: evidence-classified, not guessed (see IDENTITY prompt's ASSET
     // CLASS instruction) — lets the frontend/AI-chat follow-up know why a
     // report has no companyProfile/utilitiesMatrix/landProfile section
     // without that ever being phrased as a finding in itself.
-    assetClass: i.assetClass || null,
+    assetClass: i.assetClass || null, // repaired from evidence below, and again on every read
     entityConfidence: identityConfidence,
     overallConfidence: gatedConfidence,
     dueDiligenceCoverage: coverage,
@@ -3059,11 +3261,32 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     requiresManualVerification: manualVerificationActions.length > 0,
     researchProvider: 'openai+playwright',
     costUsage: prior._cost,
+    // Per stage, like costUsage: a search is billed per call and is a real
+    // line in what this verification cost.
+    webSearchCalls: prior._searches,
+    /*
+     * CARRIED THROUGH, BECAUSE finish() REPLACES result_json WHOLESALE.
+     *
+     * The reuse plan is computed when the job is created and was being
+     * silently discarded the moment the report was written — the
+     * measurement survived only for as long as the job was running. Found
+     * by reading it mid-run and then finding it gone from the finished row.
+     */
+    _reusePlan: prior._reusePlan ?? null,
     stage: 'COMPLETE',
     searchedAt: now(),
   };
   result = applyEvidenceGate(result, i, o, reconciledIdentity);
-  return sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
+  const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
+  // The job is already saved. Bookkeeping runs after it and separately, so a
+  // failure here can cost us a number but never a customer's report.
+  await recordVerificationCost(sb, { id: j.id, result_json: result });
+  // And the graph learns whatever this verification actually established.
+  await learnFromVerification(sb, j.id, result);
+  // And what each official source looked like, so the next run can tell
+  // whether re-reading it would say anything new.
+  await recordOfficialSourceVersions(sb, { id: j.id, query: j.query, user_id: j.user_id }, result);
+  return finished;
 }
 
 async function advance(sb: any, k: string, m: string, j: any, l: string): Promise<any> {
@@ -3092,7 +3315,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // MARKET_READY — PUBLIC_RESEARCH is a real stage in between.
     if (j.status === 'CREATED' && j.stage === 'ENREG_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'rstax', 'debtor'];
+      prior._financialQueue = ['enreg', 'debtor'];
       prior._financialReturnStage = 'PUBLIC_RESEARCH_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
@@ -3107,7 +3330,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // already covered by the first chain is never looked up again here.
     if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'rstax', 'debtor'];
+      prior._financialQueue = ['enreg', 'debtor'];
       prior._financialReturnStage = 'MARKET_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
@@ -3120,7 +3343,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // alreadyHasResultFor inside pickFinancialCandidate).
     if (j.status === 'CREATED' && j.stage === 'RECONCILIATION_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'rstax', 'debtor'];
+      prior._financialQueue = ['enreg', 'debtor'];
       prior._financialReturnStage = 'SYNTHESIS_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
@@ -3261,7 +3484,17 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
 // response (see sanitizeForCustomer() below) — it never touches what is
 // persisted to the research_jobs row, so internal DB/admin evidence keeps
 // every one of these fields unchanged.
-const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial', 'source', 'sourceName']);
+// addedInNewer/removedFromOlder are the raw line-by-line diff between two
+// registry extracts. In production those lines are OCR'd text from a legacy
+// Georgian font encoding read back as Latin-1, and they carried a previous
+// owner's name, DATE OF BIRTH and personal number to the customer as
+// mojibake: "ÌÀÒÉÍÀ ÊÀÝÉÔÀÞÄ (ÃÀÁ.01/02/1969) ,P/N: 01018001305". Nothing a
+// customer sees is built from them any more (the UI presents an interpreted
+// summary instead), so they are stripped at the boundary rather than left
+// available for a future render to reintroduce. The underlying rows stay
+// intact in the database for support and for synthesis, which runs
+// server-side on the unsanitized report.
+const CUSTOMER_REPORT_STRIP_KEYS = new Set(['url', 'sourceUrl', 'finalUrl', 'startUrl', 'originalGroundingUrl', 'evidenceUrl', 'verificationUrl', 'linkLabel', 'retrievalMethod', 'trace', 'browserOfficial', 'source', 'sourceName', 'addedInNewer', 'removedFromOlder']);
 
 // ---------------------------------------------------------------------
 // 2026-09 "report intelligence v2" mandate addendum, Sections 5/6/7/10/12:
@@ -3304,6 +3537,37 @@ const TECHNICAL_LEAK_RE =
  * CUSTOMER_REPORT_STRIP_KEYS's key-level stripping. Collapses the leftover
  * whitespace/punctuation debris a removal leaves behind so the sentence
  * still reads naturally. */
+/*
+ * PERSONAL IDENTIFICATION NUMBERS MUST NEVER REACH A CUSTOMER PAYLOAD.
+ *
+ * Found in production: the Evidence drawer for a live report displayed four
+ * private individuals' Georgian personal numbers, carried in technical facts
+ * shaped "ლევან ჩაჩუა პ/ნ 01012012287". They came from building-permit
+ * applications, which name the people who filed them.
+ *
+ * A Georgian personal number is ELEVEN digits. A company identification
+ * number is NINE, is public by design, and is genuinely useful to a buyer
+ * checking a seller in the taxpayer register — so the two must not be
+ * conflated. Only the 11-digit form is removed, together with the "პ/ნ"
+ * label that introduces it, so the person's NAME survives where it is
+ * legitimately relevant.
+ */
+const PERSONAL_ID_RE = /\b\d{11}\b/g;
+// Registry extracts write the label in Latin ("P/N: 01018001305") as well as
+// in Georgian, so both forms are removed together with the number. Stripping
+// the digits alone would leave a dangling "P/N:" on screen.
+const PERSONAL_ID_LABEL_RE = /\s*(?:პ\/?ნ|პირადი\s*ნომერი|personal\s*(?:id|number)|p\s*\/\s*n)\s*[:№#]?\s*\d{11}\b/gi;
+/*
+ * A DATE OF BIRTH IS NOT DUE-DILIGENCE INFORMATION.
+ *
+ * Registry extracts name a previous owner as "მარინა კაციტაძე (დაბ.01/02/1969)".
+ * Who held title is public and legitimately part of an ownership history;
+ * when they were born is not, and it helps no one decide whether to buy.
+ * Only the LABELLED form is removed, so ordinary dates in the same sentence
+ * (a registration date, a contract date) are untouched. The mojibake spelling
+ * is matched too, because these extracts arrive in a legacy font encoding.
+ */
+const BIRTH_DATE_RE = /\s*\(?\s*(?:დაბ|ÃÀÁ|born|род)\s*\.?\s*:?\s*\d{2}[./]\d{2}[./]\d{4}\s*\)?/gi;
 function sanitizeCustomerString(input: string): string {
   if (!input) return input;
   let s = input;
@@ -3315,6 +3579,11 @@ function sanitizeCustomerString(input: string): string {
   s = s.replace(/\((?:via\s+)?[^()]*(?:myhome|ss\.ge|home\.ge|korter|estatehub|villion\.ge|linkedin|facebook|instagram)[^()]*\)/gi, '');
   s = s.replace(FORBIDDEN_SOURCE_NAME_RE, '');
   s = s.replace(TECHNICAL_LEAK_RE, '');
+  // Label first ("… პ/ნ 01012012287" -> "…"), then any bare 11-digit number
+  // that survived in another shape. Company ids (9 digits) are untouched.
+  s = s.replace(PERSONAL_ID_LABEL_RE, '');
+  s = s.replace(PERSONAL_ID_RE, '');
+  s = s.replace(BIRTH_DATE_RE, '');
   // Collapse whitespace/punctuation left behind by the removals above
   // (double spaces, orphaned "()" or " — " fragments, stray commas/hyphens
   // at either end). A trailing "." is deliberately EXCLUDED from this
@@ -3341,8 +3610,72 @@ function sanitizeCustomerString(input: string): string {
 // label"). Every other string field, whatever its key, still gets the
 // full sanitizeCustomerString treatment.
 const CUSTOMER_FACING_URL_KEYS = new Set(['officialPortalUrl']);
+/*
+ * PERMIT PARTICIPANTS ARE NOT BUYER INTELLIGENCE.
+ *
+ * A building permit names the people who filed it: the applicant, the
+ * co-authors of the drawings, the engineers. A name appearing in an
+ * application does not make that person an owner, a shareholder, a director
+ * or a seller — and none of them help someone decide whether to buy the
+ * flat. They were reaching the Evidence drawer as technical facts, carrying
+ * private personal numbers with them.
+ *
+ * They are dropped from the customer payload entirely. The underlying
+ * documents are untouched in the database for support and admin use; this
+ * only decides what a customer is shown.
+ */
+const PERMIT_PARTICIPANT_FACT_KEYS = new Set([
+  'applicant',
+  'applicants',
+  'coauthors',
+  'coauthor',
+  'author',
+  'authors',
+  'architect',
+  'engineer',
+  'designer',
+  'supervisor',
+]);
+
+/** A technical fact whose KEY names a permit participant rather than a
+ *  property attribute. Matched case-insensitively on the fact's own `key`. */
+function isPermitParticipantFact(v: unknown): boolean {
+  if (!v || typeof v !== 'object') return false;
+  const k = (v as Record<string, unknown>).key;
+  return typeof k === 'string' && PERMIT_PARTICIPANT_FACT_KEYS.has(k.trim().toLowerCase());
+}
+/*
+ * ASSET CLASS IS A CLASSIFICATION, NOT A SELF-REPORT.
+ *
+ * The IDENTITY prompt asks the model to classify the property and it answers
+ * MIXED_OR_UNKNOWN far too readily: across sixteen runs of one cadastral code
+ * in production it said MIXED_OR_UNKNOWN thirteen times, while those very
+ * same reports carried a named project (Villion), a developer, a developer
+ * website and a registry-confirmed company id. Research scope and every
+ * downstream "what kind of property is this" decision hang off this field, so
+ * an unknown the evidence already answers is a defect — and it is what left
+ * the customer's property-type badge falling back to free text that merely
+ * restated their own cadastral code.
+ *
+ * This only ever REPAIRS an absent or unknown classification, from evidence
+ * that is already in the report. It never overrides a class the model
+ * committed to, and it never invents one: with no project and no land
+ * evidence it stays MIXED_OR_UNKNOWN. NO EVIDENCE = NO FACT.
+ *
+ * It runs on the assembled report shape rather than on pipeline internals so
+ * that the SAME rule applies to reports already persisted, which are read
+ * through sanitizeForCustomer() below.
+ */
+// resolveAssetClass now lives in src/verify/researchPlan.ts, beside the
+// research plan it feeds, so the archetype tests run the real classifier
+// rather than asserting on its source text.
+
 function sanitizeCustomerReport<T>(value: T, key?: string): T {
-  if (Array.isArray(value)) return value.map((v) => sanitizeCustomerReport(v, key)) as unknown as T;
+  if (Array.isArray(value)) {
+    return value
+      .filter((v) => !isPermitParticipantFact(v))
+      .map((v) => sanitizeCustomerReport(v, key)) as unknown as T;
+  }
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
@@ -3380,13 +3713,617 @@ const FORBIDDEN_LEAK_TOKENS = [
   'frame_not_found',
   'technical failure',
 ];
+/*
+ * THE SAFETY NET HAD NO IDEA WHAT A PERSONAL IDENTIFIER LOOKED LIKE.
+ *
+ * FORBIDDEN_LEAK_TOKENS is a list of literal strings — portal names, internal
+ * field names, technical failure text. It caught none of what actually
+ * reached customers: eleven-digit Georgian personal numbers, dates of birth
+ * of previous owners, and registry OCR in a legacy font encoding read back as
+ * Latin-1. Those are fixed at the primary sanitiser, which is where they
+ * should be fixed. But a last-resort net that cannot see the most sensitive
+ * category of leak is not a net for it, and this class of bug has now
+ * occurred twice.
+ *
+ * These patterns are INDEPENDENT of sanitizeCustomerString: if it is ever
+ * changed, bypassed, or handed a shape it does not recognise, this still
+ * fires. In normal operation it must find nothing — a hit here means the
+ * primary defence has a hole, and it is logged as exactly that.
+ */
+const FORBIDDEN_LEAK_PATTERNS: { name: string; re: RegExp }[] = [
+  // A Georgian personal number is eleven digits. A company id is nine and is
+  // public, so the bound matters in both directions.
+  { name: 'personal_id_11_digits', re: /(?<!\d)\d{11}(?!\d)/g },
+  { name: 'personal_id_label', re: /(?:პ\/?ნ|პირადი\s*ნომერი|p\s*\/\s*n)\s*[:№#]?\s*\d/gi },
+  { name: 'date_of_birth', re: /(?:დაბ|ÃÀÁ|born)\s*\.?\s*:?\s*\d{2}[./]\d{2}[./]\d{4}/gi },
+  // Registry PDFs in a legacy Georgian font decoded as Latin-1. Runs of
+  // accented capitals like "ÌÀÒÉÍÀ ÊÀÝÉÔÀÞÄ" do not occur in real copy.
+  { name: 'mojibake_registry_text', re: /[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÐÒÓÔÕÖÙÚÛÜÝÞ]{4,}/g },
+];
+
 function findLeaks(customerJson: unknown): string[] {
-  const raw = JSON.stringify(customerJson).toLowerCase();
-  return FORBIDDEN_LEAK_TOKENS.filter((token) => raw.includes(token));
+  const json = JSON.stringify(customerJson);
+  const raw = json.toLowerCase();
+  const hits = FORBIDDEN_LEAK_TOKENS.filter((token) => raw.includes(token));
+  for (const { name, re } of FORBIDDEN_LEAK_PATTERNS) {
+    re.lastIndex = 0;
+    if (re.test(json)) hits.push(name);
+  }
+  return hits;
 }
 export function assertNoLeaks(customerJson: unknown): void {
   const leaks = findLeaks(customerJson);
   if (leaks.length) throw new Error(`CUSTOMER_LEAK:${leaks.join(',')}`);
+}
+
+/**
+ * An internal marker, not a sentence: SCREAMING_SNAKE with an underscore.
+ * Real diagnostic text ("OpenAI failed: ...") is left alone, because an
+ * admin reading a terminal job still wants it.
+ */
+const INTERNAL_TERMINAL_MARKER = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+/*
+ * A JAVASCRIPT ERROR IS NOT A MESSAGE FOR A CUSTOMER.
+ *
+ * This is the mechanism behind the reported Continue Verification failure.
+ * advance()'s catch ends with `error: String(e)`, so ANYTHING thrown inside
+ * it is written verbatim into research_jobs.error. INTERNAL_TERMINAL_MARKER
+ * only recognises SCREAMING_SNAKE markers, so a real runtime error sails
+ * straight through it — and VerifyPage's check/run/resume/skip all do
+ * `if (data?.error) throw new Error(data.error)`. The customer is shown the
+ * raw string.
+ *
+ * That is how a TypeError becomes:
+ *
+ *   Cannot read properties of undefined (reading 'filter')
+ *
+ * on a customer's screen. Guarding the one function that happened to throw it
+ * fixes one instance; this closes the class. Reproduced against a disposable
+ * job, where the same path surfaced "Error: missing worker job" — an internal
+ * string, shown to the customer, for a worker session that had simply gone.
+ *
+ * The stored column is deliberately untouched: admin diagnostics still read
+ * the real value straight from the row. Only what leaves for the customer is
+ * replaced, with the same safe terminalReason the markers already use.
+ */
+const RAW_RUNTIME_ERROR = new RegExp(
+  [
+    // "TypeError: ...", "ReferenceError: ...", and a bare "Error: ..."
+    String.raw`^\s*\w*Error\b`,
+    // The V8 phrasings, in case something re-wraps the message.
+    String.raw`Cannot read propert`,
+    String.raw`is not a function`,
+    String.raw`is not defined`,
+    String.raw`undefined is not`,
+    String.raw`null is not`,
+    // A stack frame is never customer copy.
+    String.raw`\n\s*at `,
+  ].join('|'),
+  'i'
+);
+/* ══════════════════════════════════════════════════════════════════════
+ * VERIFYING A PROPERTY BEFORE YOU HAVE AN ACCOUNT
+ *
+ * Somebody who has just been shown a listing and wants to know whether it is
+ * real should not have to create an account to find out. So an anonymous
+ * visitor can start one verification. It runs in full — same research, same
+ * evidence, same synthesis, same job id — and when they sign in it becomes
+ * theirs, appears in their History, and is never re-run. Nothing is paid for
+ * twice.
+ *
+ * What they do NOT get before signing in is the report. That is the whole
+ * bargain, and it is enforced HERE, at the boundary, not in React: the
+ * finished report is simply not in the response. Hiding it in the browser
+ * would mean shipping the entire thing to anyone who opens the network tab,
+ * which is not a gate, it is a curtain.
+ *
+ * WHAT BOUNDS THE SPEND
+ *
+ * A full verification costs real provider money and nobody has paid for this
+ * one. Three limits stack: one job per anonymous session (counted in the
+ * database), a handful of anonymous starts per IP per day, and the mint limit
+ * in anon-session upstream of both. None of them lives in the browser,
+ * because a limit the client keeps is not a limit.
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/** One. This is a taste of the product, not a free tier. */
+const ANON_RESEARCH_JOBS_PER_SESSION = 1;
+/** And a ceiling across sessions, since minting a new one is cheap. */
+const ANON_RESEARCH_STARTS_PER_IP_PER_DAY = 3;
+const ANON_RESEARCH_RATE_LIMIT_OPERATION = 'anon_research_start';
+
+/**
+ * The session a token proves, or null.
+ *
+ * Deliberately the same refusals as the ones homatch-ai makes: both call
+ * anonSessionUsable(), so "claimed" and "expired" cannot come to mean
+ * different things in the two places that ask.
+ */
+async function anonSessionFor(sb: any, token: unknown): Promise<any | null> {
+  if (!anonTokenPlausible(token)) return null;
+  const { data } = await sb
+    .from('anonymous_sessions')
+    .select('id, expires_at, claimed_at, research_jobs')
+    .eq('token_sha256', await sha256Hex(token))
+    .maybeSingle();
+  return anonSessionUsable(data) ? data : null;
+}
+
+/*
+ * WHAT AN ANONYMOUS CALLER MAY SEE OF THEIR OWN JOB.
+ *
+ * An ALLOW-LIST, and the distinction matters. The first version of this
+ * removed the finished report and let the rest of the row through, which
+ * read as safe and was not: research_jobs is forty columns wide and several
+ * of them — evidence, evidence_bundle, documents, synthesis_json — ARE the
+ * research. A deny-list over a table that keeps growing is a leak with a
+ * date on it, because the next column is included by default.
+ *
+ * It also applies at EVERY status, not only when the job finishes. A job one
+ * poll away from COMPLETE has already done nearly all the work, and
+ * result_json mid-run is an unsanitised working draft: sanitizeForCustomer
+ * deliberately only cleans a COMPLETE job, so the partial still carries the
+ * raw official-source evidence the customer boundary exists to strip. Giving
+ * that to someone who has not signed in would make the gate a formality you
+ * could walk around by polling early.
+ *
+ * What is left is exactly enough to WATCH your own research run: is it going,
+ * how far along, did it finish, did it fail. Nothing it found.
+ */
+const ANON_VISIBLE_JOB_FIELDS = [
+  'id',
+  'status',
+  'stage',
+  'progress',
+  'mode',
+  'query',
+  'created_at',
+  'updated_at',
+  'completed_at',
+  'cancelled_at',
+  // A terminal failure still has to be explainable. sanitizeForCustomer has
+  // already replaced any internal marker or raw runtime error by the time
+  // this runs, so what survives here is customer-facing copy.
+  'error',
+  'terminalReason',
+] as const;
+
+function withholdReportUntilSignIn(job: any): any {
+  if (!job) return job;
+  const visible: Record<string, unknown> = {};
+  for (const k of ANON_VISIBLE_JOB_FIELDS) {
+    if (job[k] !== undefined) visible[k] = job[k];
+  }
+  // The one thing added rather than removed: the client turns this into
+  // "Your full research is ready — sign in to view it."
+  if (job.status === 'COMPLETE') visible.awaitingSignIn = true;
+  return visible;
+}
+
+/*
+ * WHAT THIS VERIFICATION COST US.
+ *
+ * Audited before writing: cost_events holds 607 rows and $25.24 of recorded
+ * spend from discovery, matching and signal classification — and not one row
+ * from Verify. Meanwhile every completed verification already carries
+ * per-stage token counts in result_json.costUsage, including the cached
+ * tokens. The most expensive product in the system was the only one with no
+ * cost accounting at all.
+ *
+ * One row per stage rather than one per job, because "the synthesis is cheap
+ * and the public research is not" is the finding that makes any of this
+ * actionable, and a single total hides it.
+ *
+ * Never blocks and never fails a job. A verification the customer has paid
+ * for must not be lost because a bookkeeping insert failed.
+ *
+ * NONE OF THIS REACHES A CUSTOMER. sanitizeForCustomer already strips
+ * costUsage from the response; cost_events is readable only by an admin
+ * policy. What Homatch pays to produce a report is not a fact about the
+ * property, and a report is not cheaper to buy for having been cheaper to
+ * make.
+ */
+/*
+ * WHAT THIS VERIFICATION WOULD NOT HAVE HAD TO PAY FOR.
+ *
+ * Computed at the start of every run, recorded against the job, and ACTED
+ * ON BY NOTHING. Every stage still runs exactly as it did.
+ *
+ * That order is deliberate. Routing away from expensive research before a
+ * benchmark shows quality is materially equivalent is precisely what the
+ * mandate forbids, and a decision nobody has measured is not a decision
+ * worth shipping. Recording it against real verifications turns the saving
+ * from a projection into a number — and if the plan ever proposes skipping
+ * something a report actually needed, that appears in a log rather than in
+ * somebody's due diligence.
+ *
+ * Reuse is computed over the facts we hold about this property AND about
+ * the things it belongs to — its parcel, its project, the company that
+ * built it — because that is where reuse actually pays: a second flat in
+ * the same building needs none of the project research the first one did.
+ */
+/*
+ * THE MARKET DECISION, MADE BEFORE ANY MONEY IS SPENT.
+ *
+ * Reads the narrowest snapshot the property belongs to and asks planMarket()
+ * whether it still answers the question. Everything about the decision is in
+ * marketSnapshot.ts, which is pure; this only supplies the inputs.
+ *
+ * Failing here means the market stage researches normally, which is what it
+ * did before any of this existed.
+ */
+async function planMarketFor(db: any, known: any, plan: any): Promise<any | null> {
+  try {
+    const project = (known?.relatedEntities ?? []).find((r: any) => r.entityType === 'PROJECT');
+    const address = (known?.facts ?? [])
+      .concat(known?.relatedFacts ?? [])
+      .find((f: any) => f.fact_key === 'address.full')?.value_text ?? null;
+
+    const segments = segmentsFor({
+      projectSlug: project?.naturalKey ?? null,
+      district: districtOfAddress(address),
+      city: cityOfAddress(address),
+      propertyType: 'RESIDENTIAL',
+      rooms: null,
+    });
+    if (!segments.length) return null;
+
+    const snapshot = await findSnapshot(db, segments);
+    const decided = planMarket({ snapshot, now: Date.now() });
+
+    return {
+      refresh: decided.refresh,
+      reasons: decided.reasons,
+      searchBudget: decided.searchBudget,
+      summary: decided.summary,
+      scope: decided.snapshot?.scope_type ?? null,
+      confidence: decided.snapshot?.confidence ?? null,
+      usableComparables: decided.snapshot?.usable_comparable_count ?? null,
+      /* Carried so the stage can be handed the answer rather than sent to
+       * find it. Never shown to a customer; stripped at the boundary with the
+       * rest of _reusePlan. */
+      brief: snapshotBrief(decided),
+    };
+  } catch (e) {
+    console.error('research-agent: market plan threw', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+async function shadowReusePlan(db: any, query: string): Promise<any | null> {
+  try {
+    const code = normalizeCadastral(query);
+    if (!code) return null;
+
+    const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', code);
+    /*
+     * entityId is null for a unit we have never verified — but its parcel may
+     * be known, and with it the project and the developer. That is the second
+     * flat in the building, and it is the case this whole layer exists for, so
+     * "we hold no entity for this exact flat" must not be read as "we know
+     * nothing about where it is".
+     */
+    const holdsSomething =
+      !!known.entityId || known.facts.length > 0 || known.relatedFacts.length > 0;
+    if (!holdsSomething) {
+      return { known: false, summary: 'nothing known about this property yet' };
+    }
+
+    const { data: policies } = await db
+      .from('intelligence_freshness_policy')
+      .select('fact_key_pattern, freshness_class, max_age_hours');
+
+    /*
+     * Facts about the property itself and about what it belongs to — and the
+     * kind of property it is, because a private resale has no commissioning
+     * status to establish and counting that as MISSING on every run would
+     * mean public research could never be reused for one.
+     *
+     * The class is whatever the LAST verification of this property concluded.
+     * Unknown rules nothing out, so a first run is unaffected.
+     */
+    const assetClassFact = known.facts.find((f: any) => f.fact_key === 'property.assetClass');
+    const plan = planVerification(
+      [...known.facts, ...known.relatedFacts],
+      policies ?? [],
+      Date.now(),
+      (assetClassFact as any)?.value_text ?? null
+    );
+
+    /*
+     * The facts themselves travel with the plan, and so does the planner's
+     * own verdict on each. One source of truth about what is fresh: a brief
+     * that decided freshness for itself would be a second, and the two would
+     * drift on the day somebody changed a policy.
+     *
+     * Bounded, because this is written into result_json on every job and the
+     * graph grows without limit — a property with two hundred comparables
+     * must not put two hundred rows into the prompt.
+     */
+    /*
+     * ASSESSED PER FACT, NOT PER FACT KEY.
+     *
+     * The planner's decisions carry bare fact keys, and a key is not an
+     * identity: a graph holding eleven listings holds eleven different
+     * answers to `listing.price`. Reading freshness back off the decisions
+     * therefore let one fresh listing vouch for every same-named fact in the
+     * graph, and the brief shipped five comparables' asking prices as this
+     * flat's own. assessFact is the actual source of truth and takes the fact
+     * itself, so asking it directly is both stricter and simpler.
+     */
+    const allFacts = [...known.facts, ...known.relatedFacts];
+    const assessments = allFacts.map((f: any) =>
+      assessFact(f.fact_key, f, policies ?? [], Date.now())
+    );
+    const briefFacts = allFacts
+      .slice(0, 60)
+      .map((f: any) => ({
+        entity_id: f.entity_id ?? null,
+        fact_key: f.fact_key,
+        value_text: f.value_text ?? null,
+        value_number: f.value_number ?? null,
+        value_json: f.value_json ?? null,
+      }));
+
+    return {
+      known: true,
+      briefFacts,
+      assessments,
+      scope: {
+        subjectEntityId: known.entityId,
+        related: known.relatedEntities,
+      },
+      /*
+       * The listings this property has already been measured against.
+       *
+       * Read separately from the lineage walk, which deliberately does not
+       * follow COMPARABLE_TO — a comparable is a different property. These are
+       * never presented as facts about the subject; they exist so the market
+       * stage can refresh what it already found instead of sweeping for it
+       * again. See marketBrief.ts for what is given and what is withheld.
+       */
+      comparables: (await loadComparables(db, known.entityId)).map((c: any) => ({
+        url: c.url,
+        facts: c.facts,
+      })),
+
+      /*
+       * WHETHER THIS RUN HAS TO BUY MARKET RESEARCH AT ALL.
+       *
+       * "What do flats cost in this project" is a fact about a segment, not
+       * about one flat, and it is 45% of what a Verify costs. If a fresh,
+       * confident snapshot already answers it, the honest budget is zero.
+       *
+       * The segment is derived from what is known BEFORE research — the
+       * project reached through lineage, and the district and city read off
+       * the address we already hold. A key that needed the research to compute
+       * could never be looked up.
+       */
+      marketPlan: await planMarketFor(db, known, plan),
+      heldFacts: known.facts.length,
+      relatedFacts: known.relatedFacts.length,
+      reusableFacts: plan.reusableFacts,
+      requiredFacts: plan.requiredFacts,
+      wouldSkip: plan.wouldSkip,
+      summary: plan.summary,
+      escalation: (() => {
+        const e = planEscalation(plan.decisions);
+        return { totalBudget: e.totalBudget, fullBudget: e.fullBudget, summary: e.summary };
+      })(),
+      decisions: plan.decisions.map((d: any) => ({
+        stage: d.stage,
+        wouldRun: d.wouldRun,
+        reason: d.reason,
+        missing: d.missing.length,
+        stale: d.stale.length,
+        conflicting: d.conflicting.length,
+        reused: d.reused.length,
+      })),
+    };
+  } catch (e) {
+    console.error('research-agent: shadow reuse plan threw', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+/*
+ * WHAT EACH OFFICIAL SOURCE SAID, AND WHETHER IT HAD MOVED.
+ *
+ * research_cache was built for this and held zero rows — a source-record
+ * store somebody designed properly and nothing ever used. This fills it.
+ *
+ * Recorded after the fact for now, not consulted before it. Acting on an
+ * UNCHANGED verdict means skipping a paid read, which is routing, and
+ * routing waits for the benchmark like everything else. What this does buy
+ * immediately is the measurement: how often a registry record actually
+ * changes between two verifications is a number nobody has ever had.
+ */
+async function recordOfficialSourceVersions(db: any, job: any, report: any): Promise<void> {
+  try {
+    const results = report?.browserOfficial?.results;
+    if (!Array.isArray(results) || !results.length) return;
+
+    const out = await recordSourceVersions(
+      db,
+      String(job?.query ?? ''),
+      results,
+      sha256Hex
+    );
+    if (!out.observations.length && !out.errors.length) return;
+
+    const changed = out.observations.filter((o: any) => o.state === 'CHANGED').map((o: any) => o.source);
+    console.log(
+      'research-agent: official sources for ' + job.id + ' — ' + summariseSources(out.observations) +
+      (changed.length ? '; moved: ' + changed.join(', ') : '') +
+      (out.errors.length ? '; errors: ' + out.errors.join(' | ') : '')
+    );
+  } catch (e) {
+    console.error('research-agent: recording source versions threw', e instanceof Error ? e.message : String(e));
+  }
+}
+
+/*
+ * WHAT THIS VERIFICATION TEACHES THE GRAPH.
+ *
+ * Every completed Verify should leave Homatch knowing more than it did — not
+ * "a report exists for this code", which cannot be partially refreshed and
+ * cannot say which of its claims has gone stale, but a set of facts each with
+ * a source, a validity and a freshness class.
+ *
+ * harvestReport() decides what may be learned and refuses the rest: the
+ * narrative is never promoted to a fact, a check that established nothing is
+ * not stored as knowledge, and an unverified link between a flat and a
+ * project is not written at all.
+ *
+ * Runs after the report is saved and can never fail it. The graph is an
+ * optimisation; losing an update costs one cheap future verification, while
+ * losing the report costs a customer.
+ */
+async function learnFromVerification(db: any, jobId: string, report: any): Promise<void> {
+  try {
+    const { data: policies } = await db
+      .from('intelligence_freshness_policy')
+      .select('fact_key_pattern, freshness_class, max_age_hours');
+
+    /*
+     * WHO CAN SIGN FOR THE COMPANY IS DERIVED ON READ.
+     *
+     * extractControlStructure() parses the directorate out of the raw registry
+     * extract, and sanitizeForCustomer() merges the result into the report the
+     * customer sees. The stored result_json never carries it: companyProfile
+     * .directors is [] in the raw report, which is exactly what the harvest
+     * was being handed.
+     *
+     * So the same extraction runs here, from the same function, before the
+     * harvest reads the profile. Two parsers for one registry block would be
+     * two parsers to keep in agreement.
+     *
+     * The personal identification numbers that sit beside the names in that
+     * extract are matched and discarded by extractControlStructure itself.
+     * Names and a representation mode are what a buyer needs; the numbers are
+     * not their business and are certainly not shared intelligence.
+     */
+    const control = extractControlStructure((report as any)?.browserOfficial);
+    const forHarvest = (control.directors.length || control.representation)
+      ? {
+          ...report,
+          companyProfile: {
+            ...((report as any)?.companyProfile ?? {}),
+            directors: control.directors,
+            representation: control.representation,
+          },
+        }
+      : report;
+
+    const harvest = harvestReport(forHarvest, policies ?? []);
+    if (!harvest.entities.length) return;
+
+    const out = await persistHarvest(db, harvest, jobId);
+    const changed = out.changes.length
+      ? '; changed: ' + out.changes.map((c: any) => c.factKey).join(', ')
+      : '';
+    const skipped = harvest.skipped.length ? '; not learned: ' + harvest.skipped.length : '';
+    const errors = out.errors.length ? '; errors: ' + out.errors.join(' | ') : '';
+    console.log(
+      'research-agent: graph updated from ' + jobId + ' — ' +
+      out.entities + ' entities, ' +
+      out.factsNew + ' new / ' + out.factsChanged + ' changed / ' + out.factsUnchanged + ' confirmed facts, ' +
+      out.relationshipsNew + ' new / ' + out.relationshipsConfirmed + ' confirmed links' +
+      changed + skipped + errors
+    );
+  } catch (e) {
+    console.error('research-agent: learning from the verification threw', e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function recordVerificationCost(db: any, job: any): Promise<void> {
+  try {
+    const usage = job?.result_json?.costUsage;
+    if (!usage) return;
+
+    // Written once. A job re-driven after a resume must not double-count.
+    const { count } = await db
+      .from('cost_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_id', job.id)
+      .like('operation_type', 'VERIFY_%');
+    if ((count ?? 0) > 0) return;
+
+    const researchModel = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
+    const reportModel = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
+
+    /*
+     * RATES COME FROM THE PRICE BOOK, AND FROM THE RIGHT DATE.
+     *
+     * provider_price_book is effective-dated, so a job completed last month
+     * is priced at last month's rate. Re-pricing history at today's number
+     * would quietly rewrite it, and a COGS figure that changes underneath you
+     * is worse than no figure.
+     */
+    const at = job?.completed_at ?? new Date().toISOString();
+    const { data: priceRows, error: priceError } = await db
+      .from('provider_price_book')
+      .select('provider, model, unit, rate, per_units, currency, effective_from, effective_to')
+      .eq('provider', 'OPENAI');
+    if (priceError) {
+      // Not fatal. Usage is still worth recording without a price on it.
+      console.error(`research-agent: price book unavailable for ${job.id}: ${priceError.message ?? priceError}`);
+    }
+
+    const searches = job?.result_json?.webSearchCalls ?? {};
+    const stages = priceVerification(
+      consumptionFromUsage(
+        usage,
+        // The report is written by verify-synthesis on a different model from
+        // the four research stages. Pricing them as one would misattribute
+        // whichever half is the expensive one.
+        (stage) => (stage === 'synthesis' ? reportModel : researchModel),
+        (stage) => Number(searches?.[stage] ?? 0)
+      ),
+      { provider: 'OPENAI', rows: priceRows ?? [], at }
+    );
+    if (!stages.length) return;
+    const total = totalVerificationCost(stages);
+
+    const rows = stages.map((s) => ({
+      provider: 'OPENAI',
+      operation_type: costOperationFor(s.stage),
+      /*
+       * Not customer-facing, and deliberately explicit about whether the
+       * dollars are real: a zero meaning "no rate for this" must never be
+       * read as a zero meaning "free". Anything unpriced is named, so the gap
+       * is actionable rather than merely visible.
+       */
+      source: [
+        `model=${s.model}`,
+        s.priced ? null : `unpriced=${s.unpricedUnits.join('+')}`,
+        s.webSearches ? `searches=${s.webSearches}` : null,
+      ].filter(Boolean).join(';'),
+      units: s.totalTokens,
+      cost_usd: s.costUsd,
+      success: true,
+      // Some of the prompt came back from the provider's cache. This is the
+      // number the reuse work has to move.
+      cache_hit: s.cachedInputTokens > 0,
+      job_id: job.id,
+    }));
+
+    const { error } = await db.from('cost_events').insert(rows);
+    if (error) {
+      console.error(`research-agent: could not record COGS for ${job.id}: ${error.message ?? error}`);
+      return;
+    }
+    console.log(
+      `research-agent: recorded COGS for ${job.id} — ${stages.length} stages, ` +
+      `${total.totalTokens} tokens (${total.cachedInputTokens} cached), ` +
+      `${total.webSearches} searches, ` +
+      `${total.state} $${total.totalUsd}` +
+      (total.cacheSavingUsd ? ` (cache saved $${total.cacheSavingUsd})` : '') +
+      (total.unpricedUnits.length ? ` — no rate for ${total.unpricedUnits.join(', ')}` : '')
+    );
+  } catch (e) {
+    console.error('research-agent: COGS accounting threw', e instanceof Error ? e.message : String(e));
+  }
 }
 
 function sanitizeForCustomer(job: any): any {
@@ -3410,8 +4347,54 @@ function sanitizeForCustomer(job: any): any {
     const { error: _droppedTransientError, ...withoutError } = job;
     job = withoutError;
   }
+  /*
+   * A TERMINAL job's error IS forwarded, and VerifyPage renders it directly
+   * as `data.error || t('verify_err_research_failed')`. So anything written
+   * into that column by the server is customer-facing copy whether it was
+   * meant to be or not — and the driver writes internal markers there for
+   * admin visibility, e.g. RESEARCH_ABANDONED_BEFORE_COMPLETION.
+   *
+   * Rather than police every writer, the boundary refuses to emit a value
+   * that is obviously an internal token. Dropping it makes the client fall
+   * back to its own localized message, which is the correct copy in all six
+   * languages. The DB row keeps the marker for support.
+   *
+   * `terminalReason` carries the distinction the customer legitimately needs
+   * as a safe enum instead: a run that expired waiting for the customer is
+   * not a run that failed, and must never read like one.
+   */
+  // A raw runtime error never leaves for the customer, whatever the status.
+  // INCOMPLETE is the honest description: the research did not finish, and
+  // nothing about the PROPERTY is being claimed by saying so.
+  if (job && job.error && RAW_RUNTIME_ERROR.test(String(job.error))) {
+    const { error: _rawRuntimeError, ...withoutRaw } = job;
+    job = { ...withoutRaw, terminalReason: 'INCOMPLETE' };
+  }
+  if (job && job.error && INTERNAL_TERMINAL_MARKER.test(String(job.error))) {
+    const marker = String(job.error).trim();
+    const { error: _internalMarker, ...withoutMarker } = job;
+    job = {
+      ...withoutMarker,
+      terminalReason: marker === 'HUMAN_VERIFICATION_EXPIRED' ? 'EXPIRED' : 'INCOMPLETE',
+    };
+  }
   if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
   const r: any = sanitizeCustomerReport({ ...job.result_json });
+  // Applied on READ, so the reports already in the database are classified by
+  // the same rule as new ones rather than staying permanently unknown.
+  r.assetClass = resolveAssetClass(r);
+  // The control structure is read from the UNSANITIZED evidence, which only
+  // exists on this side, and merged in as names plus a representation mode.
+  // Done on read, so the reports already in the database gain it too.
+  const control = extractControlStructure((job.result_json as any)?.browserOfficial);
+  if (control.directors.length || control.representation) {
+    const existing = Array.isArray(r.companyProfile?.directors) ? r.companyProfile.directors : [];
+    const merged = [...existing];
+    for (const d of control.directors.map((x) => sanitizeCustomerString(x)).filter(Boolean)) {
+      if (!merged.some((e: unknown) => String(e).trim() === d)) merged.push(d);
+    }
+    r.companyProfile = { ...(r.companyProfile || {}), directors: merged, representation: control.representation };
+  }
   delete r.browserOfficial;
   delete r.entityConfidence;
   delete r.confidence;
@@ -3434,8 +4417,14 @@ function sanitizeForCustomer(job: any): any {
   delete r.stage;
   delete r.researchProvider;
   delete r.costUsage;
+  delete r.webSearchCalls;
+  // What we already knew, and what a reuse decision would have skipped, is
+  // internal economics. A customer buys the current state of their property,
+  // not a description of how cheaply we assembled it.
+  delete r._reusePlan;
   delete r._worker;
   delete r._cost;
+  delete r._searches;
   delete r._enregEntityRequestedFor;
   // v28: the generalized financial-queue bookkeeping (enreg/rstax/debtor) —
   // same reasoning as _enregEntityRequestedFor above, kept alongside it
@@ -3457,7 +4446,17 @@ function sanitizeForCustomer(job: any): any {
   if (leaks.length) {
     console.error(`research-agent: sanitizeForCustomer residual leak (job ${job.id}): ${leaks.join(', ')}`);
     let raw = JSON.stringify(r);
-    for (const token of leaks) raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '');
+    for (const token of leaks) {
+      // A pattern hit is reported by NAME, so it is removed by its pattern
+      // rather than by deleting the literal name from the payload.
+      const pattern = FORBIDDEN_LEAK_PATTERNS.find((p) => p.name === token);
+      if (pattern) {
+        pattern.re.lastIndex = 0;
+        raw = raw.replace(pattern.re, '');
+        continue;
+      }
+      raw = raw.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '');
+    }
     try {
       return { ...job, result_json: JSON.parse(raw) };
     } catch {
@@ -3466,6 +4465,311 @@ function sanitizeForCustomer(job: any): any {
   }
   return { ...job, result_json: r };
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+ * THE AUTONOMOUS DRIVER
+ *
+ * Until now `advance()` was called from exactly one place: the `status`
+ * action. That made the CUSTOMER'S BROWSER the execution engine. Close the
+ * tab and the state machine stopped mid-flight — not failed, not cancelled,
+ * just frozen in a non-terminal stage with no report and no error, forever.
+ *
+ * research_jobs still holds the proof: 2aa12895-9c2e-49ed-b8ad-c7ebb37c4125
+ * and 533a8c19-f160-4f06-ab27-517c1f661b86, both CREATED/BROWSER_WAITING,
+ * both untouched since the moment their client went away.
+ *
+ * pg_cron now calls `drive` on a schedule. It steps the same advance() the
+ * client steps — one engine, two callers, so there is no second
+ * implementation to drift out of sync.
+ *
+ * HOW IT AVOIDS FIGHTING A CONNECTED CLIENT
+ *
+ * A client polls every ~2.2s, and every poll bumps updated_at. The driver
+ * only looks at jobs whose heartbeat is older than DRIVE_STALE_MS, so a job
+ * somebody is actually watching is never touched and the existing, working
+ * foreground path is completely unchanged. When the client goes away the
+ * heartbeat goes stale and the driver picks the job up.
+ *
+ * A claim guards against the driver racing ITSELF (two ticks overlapping on
+ * a long job) and is always released in a finally.
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/** Jobs the driver may step. WAITING_HUMAN is deliberately absent: it is
+ *  waiting on a person, and ticking it would achieve nothing. */
+const DRIVE_LIVE_STATUSES = ['CREATED', 'RUNNING'];
+/** Leave a job alone while a client is demonstrably still polling it. */
+const DRIVE_STALE_MS = 30_000;
+/** Never resurrect something ancient — that is a support decision, not a tick. */
+const DRIVE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+/** Long enough to cover one whole background invocation. Always released. */
+const DRIVE_CLAIM_TTL_MS = 150_000;
+const DRIVE_BATCH = 6;
+const DRIVE_SYNTHESIS_BATCH = 4;
+/** Inside ONE invocation, step a job repeatedly so a browserless run keeps
+ *  roughly the pace a polling client would give it. */
+const DRIVE_TICKS_PER_JOB = 14;
+const DRIVE_TICK_SPACING_MS = 3_000;
+const DRIVE_WALL_CLOCK_MS = 55_000;
+/** §54: synthesis may retry; research must never be re-run because of it. */
+const MAX_SYNTHESIS_ATTEMPTS = 4;
+/** Longer than any real synthesis, short enough that a stall is not a dead end. */
+const SYNTHESIS_ATTEMPT_TIMEOUT_MS = 4 * 60 * 1000;
+
+async function adminSetting(sb: any, key: string): Promise<string> {
+  const { data } = await sb.from('admin_settings').select('value').eq('key', key).maybeSingle();
+  const v = data?.value;
+  if (v == null) return '';
+  return typeof v === 'string' ? v : String(v);
+}
+
+/** The language the customer STARTED in, persisted at creation. A report
+ *  finished by the driver must not silently change language. */
+function jobLanguage(j: any): string {
+  const stored = String(j?.result_json?._lang || '');
+  // 'ka' rather than the request-time 'en' default: a job old enough to
+  // predate _lang belongs to this product's Georgian-first customer base,
+  // and guessing English would be the more damaging wrong guess.
+  return LANG[stored] ? stored : 'ka';
+}
+
+async function claimJob(sb: any, id: string): Promise<boolean> {
+  const cutoff = new Date(Date.now() - DRIVE_CLAIM_TTL_MS).toISOString();
+  const { data } = await sb
+    .from('research_jobs')
+    .update({ driver_claimed_at: now() })
+    .eq('id', id)
+    .or(`driver_claimed_at.is.null,driver_claimed_at.lt.${cutoff}`)
+    .select('id')
+    .maybeSingle();
+  return !!data;
+}
+
+async function releaseJob(sb: any, id: string): Promise<void> {
+  try {
+    await sb.from('research_jobs').update({ driver_claimed_at: null }).eq('id', id);
+  } catch {
+    /* the claim expires on its own; a failed release is not worth failing the tick */
+  }
+}
+
+/** Step one job for as long as this invocation can afford to. */
+async function driveJob(sb: any, key: string, model: string, id: string): Promise<void> {
+  const deadline = Date.now() + DRIVE_WALL_CLOCK_MS;
+  try {
+    for (let i = 0; i < DRIVE_TICKS_PER_JOB && Date.now() < deadline; i++) {
+      const { data: j, error: readError } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
+      // A read failure is not the same as a finished job. Both stop this
+      // invocation, but only one of them is worth knowing about.
+      if (readError) {
+        console.error(`research-agent drive: could not read job ${id}`, readError);
+        return;
+      }
+      // Terminal, cancelled, or now waiting on a human: the driver's job here
+      // is done and re-ticking would be wrong, not merely wasteful.
+      if (!j || j.cancelled_at || !DRIVE_LIVE_STATUSES.includes(j.status)) return;
+      await advance(sb, key, model, j, jobLanguage(j));
+      if (i + 1 < DRIVE_TICKS_PER_JOB) await new Promise((r) => setTimeout(r, DRIVE_TICK_SPACING_MS));
+    }
+  } catch (e) {
+    // advance() already persists its own failures. Anything reaching here is
+    // the driver's own problem and must not take the whole sweep down.
+    console.error(`research-agent drive: job ${id} tick loop failed`, e);
+  } finally {
+    await releaseJob(sb, id);
+  }
+}
+
+/* SYNTHESIS IS PART OF THE PIPELINE, NOT PART OF THE PAGE.
+ *
+ * Nothing server-side ever called verify-synthesis. The Buyer Intelligence
+ * report existed only because a browser happened to be open at the moment
+ * research finished — and it was rebuilt, at full model cost, every single
+ * time anyone reopened the case. Both halves of that are fixed here: the
+ * driver requests synthesis when research completes, and verify-synthesis
+ * persists the result so it is built exactly once. */
+async function driveSynthesis(sb: any): Promise<void> {
+  /*
+   * PENDING IS A RETRYABLE STATE, NOT A RESTING ONE.
+   *
+   * The first version swept only NONE and FAILED. A synthesis whose caller
+   * was evicted mid-flight — an edge invocation is not guaranteed to outlive
+   * a slow model call — would sit at PENDING forever, and nothing would ever
+   * look at it again: research COMPLETE, no report, no error, no retry. That
+   * is the forbidden state wearing a different column.
+   *
+   * So PENDING is retried too, but only once it is demonstrably stale, so a
+   * synthesis that is legitimately still running is never duplicated.
+   * synthesis_at records when the attempt STARTED and is overwritten with the
+   * success time by verify-synthesis itself.
+   */
+  const staleBefore = Date.now() - SYNTHESIS_ATTEMPT_TIMEOUT_MS;
+  const { data: candidates, error: sweepError } = await sb
+    .from('research_jobs')
+    .select('id,synthesis_attempts,synthesis_state,synthesis_at')
+    .eq('status', 'COMPLETE')
+    .is('deleted_at', null)
+    .in('synthesis_state', ['NONE', 'FAILED', 'PENDING'])
+    .lt('synthesis_attempts', MAX_SYNTHESIS_ATTEMPTS)
+    .order('completed_at', { ascending: true })
+    .limit(DRIVE_SYNTHESIS_BATCH * 3);
+
+  // A swallowed query error is how this sweep went silent once already: an
+  // unsupported filter returned no rows and no exception, so COMPLETE jobs
+  // simply stopped getting reports with nothing anywhere saying why.
+  if (sweepError) {
+    console.error('research-agent drive: synthesis sweep query failed', sweepError);
+    return;
+  }
+
+  /*
+   * The PENDING staleness test is done HERE rather than in the query.
+   *
+   * Expressing it as a PostgREST `.or()` meant embedding an ISO timestamp in
+   * a comma-separated filter string — which is exactly the kind of quoting
+   * that fails quietly. This is a handful of rows; JavaScript can filter it,
+   * and the rule stays readable.
+   */
+  const jobs = (candidates ?? [])
+    .filter((j: any) => {
+      if (j.synthesis_state !== 'PENDING') return true;
+      const started = Date.parse(j.synthesis_at ?? '');
+      // An attempt with no start time recorded predates this bookkeeping and
+      // is by definition not in flight.
+      return !Number.isFinite(started) || started < staleBefore;
+    })
+    .slice(0, DRIVE_SYNTHESIS_BATCH);
+
+  for (const j of jobs ?? []) {
+    // Count the attempt BEFORE making it, so a hard crash still consumes
+    // budget and a permanently poisonous job cannot loop forever. synthesis_at
+    // stamps the START, which is what makes a stalled attempt detectable.
+    await sb
+      .from('research_jobs')
+      .update({
+        synthesis_state: 'PENDING',
+        synthesis_attempts: (j.synthesis_attempts ?? 0) + 1,
+        synthesis_at: now(),
+      })
+      .eq('id', j.id);
+    try {
+      const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/verify-synthesis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'x-internal-driver': '1',
+        },
+        body: JSON.stringify({ jobId: j.id, internal: true }),
+      });
+      if (!res.ok) throw new Error(`verify-synthesis ${res.status}`);
+      // verify-synthesis owns the READY write — it is the only thing that
+      // knows whether a real report came out the other end.
+    } catch (e) {
+      console.error(`research-agent drive: synthesis failed for ${j.id}`, e);
+      await sb.from('research_jobs').update({ synthesis_state: 'FAILED' }).eq('id', j.id);
+    }
+  }
+}
+
+async function driveLiveJobs(sb: any, key: string, model: string): Promise<void> {
+  try {
+    const { data: jobs, error: liveSweepError } = await sb
+      .from('research_jobs')
+      .select('id')
+      .in('status', DRIVE_LIVE_STATUSES)
+      .is('deleted_at', null)
+      .is('cancelled_at', null)
+      .lt('updated_at', new Date(Date.now() - DRIVE_STALE_MS).toISOString())
+      .gt('created_at', new Date(Date.now() - DRIVE_MAX_AGE_MS).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(DRIVE_BATCH);
+
+    /*
+     * A DISCARDED ERROR HERE STOPS ALL RESEARCH, SILENTLY.
+     *
+     * supabase-js does not throw on a query failure, it returns { error }.
+     * This sweep is the only thing that moves a job forward once its client
+     * is gone, so swallowing the error means every live verification quietly
+     * stops advancing with nothing anywhere saying why — the exact failure
+     * the driver exists to remove, one level up from where it was fixed for
+     * synthesis.
+     */
+    if (liveSweepError) {
+      console.error('research-agent drive: live-job sweep query failed', liveSweepError);
+      return;
+    }
+
+    for (const j of jobs ?? []) {
+      if (await claimJob(sb, j.id)) await driveJob(sb, key, model, j.id);
+    }
+  } catch (e) {
+    console.error('research-agent drive: sweep failed', e);
+  }
+  // Runs even if the sweep threw: a COMPLETE job still owes its customer a
+  // report, and that is independent of whatever went wrong above.
+  await driveSynthesis(sb);
+  await retireAbandonedJobs(sb);
+}
+
+/*
+ * Close out what can never finish.
+ *
+ * The forbidden state the customer reported is a live server job with no UI,
+ * no report and NO ERROR — and jobs abandoned before the driver existed are
+ * exactly that. They sit in History as "მიმდინარე" forever, promising a
+ * result that is not coming, because they stopped when their client did and
+ * nothing has stepped them since.
+ *
+ * Past the driver's own working window there is nothing further to try, so
+ * they are marked terminal with a truthful, customer-safe message. Their
+ * collected evidence is untouched — this changes the status that describes
+ * them, never the research they hold.
+ */
+async function retireAbandonedJobs(sb: any): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - DRIVE_MAX_AGE_MS).toISOString();
+    const { data: jobs, error: reaperError } = await sb
+      .from('research_jobs')
+      .select('id,status')
+      .in('status', [...DRIVE_LIVE_STATUSES, 'WAITING_HUMAN'])
+      .is('deleted_at', null)
+      .is('cancelled_at', null)
+      .lt('created_at', cutoff)
+      .limit(DRIVE_BATCH);
+
+    if (reaperError) {
+      console.error('research-agent drive: abandoned-job sweep query failed', reaperError);
+      return;
+    }
+
+    for (const j of jobs ?? []) {
+      /*
+       * Two different things end up here, and they must not be described the
+       * same way. A run that stopped mid-research was abandoned; a run that
+       * was waiting for the CUSTOMER to complete a verification step simply
+       * expired. Neither is a statement about the property — a source we
+       * could not finish is never evidence of risk — but telling someone
+       * their verification "failed" when they just did not come back is a
+       * lie about their own action.
+       *
+       * Both markers are internal. sanitizeForCustomer refuses to emit them
+       * and sends a safe `terminalReason` instead.
+       */
+      await sb.from('research_jobs').update({
+        status: 'FAILED',
+        stage: 'FAILED',
+        error: j.status === 'WAITING_HUMAN'
+          ? 'HUMAN_VERIFICATION_EXPIRED'
+          : 'RESEARCH_ABANDONED_BEFORE_COMPLETION',
+        driver_claimed_at: null,
+        updated_at: now(),
+      }).eq('id', j.id);
+    }
+  } catch (e) {
+    console.error('research-agent drive: retiring abandoned jobs failed', e);
+  }
+}
+
 
 Deno.serve(async (req) => {
   // v29: CORS headers computed per-request from THIS request's own Origin,
@@ -3486,14 +4790,44 @@ Deno.serve(async (req) => {
   // cause of the "blocked by CORS policy" reports. No research-workflow
   // logic below this line was changed.
   try {
+    // `drive` is the cron tick and deliberately sits ABOVE the user-session
+    // check: it belongs to no customer. It is authenticated instead by a
+    // shared secret held in admin_settings, exactly as the existing
+    // continuous-matching-worker cron is. Same shape, same blast radius.
+    const preAuthBody = req.method === 'POST' ? await req.clone().json().catch(() => ({})) : {};
+    if (String(preAuthBody?.action || '') === 'drive') {
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+      const expected = await adminSetting(svc, 'verify_driver_token');
+      if (!expected || req.headers.get('x-cron-token') !== expected) {
+        return json({ error: 'Forbidden' }, 403);
+      }
+      const dk = Deno.env.get('OPENAI_API_KEY');
+      const dm = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
+      if (!dk) return json({ error: 'not configured' }, 503);
+      // Return immediately and keep working: a tick that held the connection
+      // open for a minute would be a tick that pg_cron reports as a timeout.
+      EdgeRuntime.waitUntil(driveLiveJobs(svc, dk, dm));
+      return json({ ok: true, started: true }, 202);
+    }
+
     const a = req.headers.get('Authorization');
     if (!a) return json({ error: 'Authentication required' }, 401);
     const sb = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
     const {
       data: { user },
     } = await sb.auth.getUser(a.replace(/^Bearer\s+/i, ''));
-    if (!user) return json({ error: 'Invalid session' }, 401);
     const b = await req.json().catch(() => ({}));
+    // The anon key is itself a valid bearer, so "no user" here means an
+    // anonymous caller rather than a bad request. They are let through only if
+    // they also present a session secret that proves itself.
+    const anonSession = user ? null : await anonSessionFor(sb, b?.anonSessionToken);
+    if (!user && !anonSession) return json({ error: 'Invalid session' }, 401);
+    /** Scopes a read to whoever actually owns the row — never to a known id. */
+    const ownedBy = (q: any) =>
+      anonSession ? q.eq('anon_session_id', anonSession.id) : q.eq('user_id', user!.id);
+    /** The last thing every job response passes through. */
+    const forCaller = (j: any) =>
+      anonSession ? withholdReportUntilSignIn(sanitizeForCustomer(j)) : sanitizeForCustomer(j);
     const action = String(b.action || 'start');
     const lang = LANG[String(b.locale || b.language)] ? String(b.locale || b.language) : 'en';
     // v30: Gemini removed entirely — OpenAI Responses API only, per the
@@ -3527,9 +4861,47 @@ Deno.serve(async (req) => {
       return json({ error: GENERIC_CONFIG_ERROR_I18N[lang] || GENERIC_CONFIG_ERROR_I18N.en }, 503);
     }
 
+    /* EXPLICIT CANCELLATION — and nothing else.
+     *
+     * Closing a tab, navigating away, losing the network or backgrounding
+     * the browser are NOT cancellation and never reach this. Only the
+     * customer pressing "კვლევის შეწყვეტა" does.
+     *
+     * A cancelled job is CANCELLED, never FAILED: nothing went wrong, and
+     * showing a person a failure because they chose to stop is a lie about
+     * their own action. Everything already collected is preserved — the
+     * result_json is not touched. */
+    if (action === 'cancel') {
+      const id = String(b.jobId || '');
+      const { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
+      if (!j) return json({ error: 'Job not found' }, 404);
+      // Already finished one way or another: cancelling is a no-op, not an
+      // error, and must never overwrite a report the customer already has.
+      if (['COMPLETE', 'FAILED', 'CANCELLED'].includes(j.status)) return json(forCaller(j));
+      const wid = j.result_json?._worker?.jobId;
+      if (wid) {
+        // Best effort only. The worker has no cancel route and adding one
+        // would force a Railway deploy for no gain: the DB row is the
+        // authority, the driver skips cancelled jobs, and the orphaned
+        // browser session is reaped by the worker's own watchdog.
+        try { await wf(`/research/${wid}/skip`, 'POST', {}); } catch { /* already gone */ }
+      }
+      await sb.from('research_jobs').update({
+        status: 'CANCELLED',
+        stage: 'CANCELLED',
+        cancelled_at: now(),
+        driver_claimed_at: null,
+        error: null,
+        progress: { ...(j.progress || {}), phase: 'cancelled' },
+        updated_at: now(),
+      }).eq('id', id);
+      const { data: after } = await sb.from('research_jobs').select('*').eq('id', id).maybeSingle();
+      return json(forCaller(after || { ...j, status: 'CANCELLED', stage: 'CANCELLED' }));
+    }
+
     if (action === 'status' || action === 'resume' || action === 'skip') {
       const id = String(b.jobId || '');
-      let { data: j } = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+      let { data: j } = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
       if (!j) return json({ error: 'Job not found' }, 404);
 
       if (action === 'resume' && j.status === 'WAITING_HUMAN') {
@@ -3619,23 +4991,74 @@ Deno.serve(async (req) => {
           result_json: resumedResultJson,
         };
       }
-      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN'].includes(j.status)) {
+      if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED'].includes(j.status)) {
         await advance(sb, key, model, j, lang);
-        const r = await sb.from('research_jobs').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+        const r = await ownedBy(sb.from('research_jobs').select('*').eq('id', id)).maybeSingle();
         j = r.data || j;
       }
       // v22: strip internal diagnostics from the wire response for finished jobs
       // (see sanitizeForCustomer above). The DB row itself is left untouched —
       // full browserOfficial/cost/provider diagnostics remain queryable there
       // for admin support/debugging, only the customer-facing HTTP body changes.
-      return json(sanitizeForCustomer(j));
+      return json(forCaller(j));
     }
 
     const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';
     const q = mode === 'cadastral' ? String(b.query || '').trim().replace(/\s/g, '') : String(b.query || '').trim().replace(/\s+/g, ' ');
     if (!q) return json({ error: 'Query required' }, 400);
     if (mode === 'cadastral' && !CAD.test(q)) return json({ error: 'Invalid cadastral code' }, 400);
-    const { data: j, error } = await sb.from('research_jobs').insert({ user_id: user.id, mode, query: q, status: 'CREATED', stage: 'QUEUED', progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
+    // `_lang` is what lets a job that finishes with NOBODY WATCHING still be
+    // written in the language the customer chose. Without it the driver would
+    // have to guess, and the report would silently change language whenever
+    // the customer happened to close the tab.
+    if (anonSession) {
+      // One per session. The counter is a column, not a header, so clearing
+      // site data does not reset it — only minting a new session does, and
+      // the IP ceiling below is what bounds that.
+      if ((anonSession.research_jobs ?? 0) >= ANON_RESEARCH_JOBS_PER_SESSION) {
+        return json({ error: 'sign in to run another verification', code: 'ANON_LIMIT_REACHED' }, 402);
+      }
+      const ip =
+        req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        req.headers.get('cf-connecting-ip') ||
+        'unknown';
+      const d = new Date();
+      const dayStartUtc = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
+      const { count } = await sb
+        .from('rate_limit_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('ip_address', ip)
+        .eq('operation', ANON_RESEARCH_RATE_LIMIT_OPERATION)
+        .gte('created_at', dayStartUtc);
+      if ((count ?? 0) >= ANON_RESEARCH_STARTS_PER_IP_PER_DAY) {
+        return json({ error: 'sign in to run another verification', code: 'ANON_LIMIT_REACHED' }, 402);
+      }
+      await sb.from('rate_limit_events').insert({ ip_address: ip, operation: ANON_RESEARCH_RATE_LIMIT_OPERATION });
+      // Counted BEFORE the work starts, unlike the anonymous chat turn. A
+      // verification that fails halfway has still spent provider money, so the
+      // failure mode worth preventing here is an unbounded retry loop, not an
+      // unlucky visitor losing their one free run.
+      await sb
+        .from('anonymous_sessions')
+        .update({ research_jobs: (anonSession.research_jobs ?? 0) + 1 })
+        .eq('id', anonSession.id);
+    }
+    const owner = anonSession
+      ? { user_id: null, anon_session_id: anonSession.id }
+      : { user_id: user!.id };
+    /*
+     * Computed ONCE, here, and carried on the job for the whole run.
+     *
+     * Every stage reads its brief and its search budget back off this stored
+     * plan rather than re-deriving them, so a policy edited mid-run cannot
+     * change what a running verification was told — which is what makes a
+     * before/after measurement mean anything.
+     *
+     * No longer shadow: knownBriefFor() and searchBudgetFor() act on it. The
+     * name is kept because it is what the whole pipeline reads.
+     */
+    const reusePlan = await shadowReusePlan(sb, q);
+    const { data: j, error } = await sb.from('research_jobs').insert({ ...owner, mode, query: q, status: 'CREATED', stage: 'QUEUED', result_json: { _lang: lang, ...(reusePlan ? { _reusePlan: reusePlan } : {}) }, progress: { phase: 'queued', percent: 5 }, updated_at: now() }).select('*').single();
     if (error || !j) return json({ error: 'Could not create research job', detail: error?.message }, 500);
     await advance(sb, key, model, j, lang);
     return json({ accepted: true, jobId: j.id }, 202);

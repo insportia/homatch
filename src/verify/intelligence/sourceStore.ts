@@ -1,0 +1,150 @@
+// HOMATCH — remembering what each official source said, and when.
+//
+// research_cache was built for exactly this and held zero rows. Its columns —
+// fingerprint, content_hash, freshness_status, acquired_at, last_verified_at,
+// source_platform, source_reference — are a source-record store that somebody
+// designed properly and nothing ever used. This fills it rather than adding a
+// table beside it.
+//
+// One row per (source, subject): the TAS record for one cadastral code. Each
+// verification updates the row it already has rather than inserting another,
+// so the table stays one row per thing we watch rather than one per run.
+//
+// NOBODY OWNS ONE OF THESE ROWS. There is deliberately no created_by_user_id.
+// A row records what a PUBLIC REGISTRY said about a cadastral code, keyed by
+// (source, subject), one row per thing watched, and every customer who looks
+// updates the same row — so "created by" is meaningless the moment a second
+// customer touches it, and stamping one customer's identity into a table
+// shared across all of them is the shape of leak this layer exists to avoid.
+//
+// It is also what broke it. That column's foreign key points at the legacy
+// public.users profile table, which is keyed separately from auth.users and
+// reached through its auth_id column. This module passed the job's auth.users
+// id straight into it. Every insert failed on
+// research_cache_created_by_user_id_fkey, the error went into out.errors and
+// from there into a log line nobody was reading, and the table held zero rows
+// across six production verifications while appearing to work.
+//
+// WHAT THIS IS NOT. It is not a cache of answers. Nothing reads a stored
+// result_json back and serves it as research. It records what the source
+// LOOKED LIKE, so the next verification can ask whether re-reading it would
+// tell us anything new — and that question is answered before any paid
+// interpretation, not instead of one.
+
+import {
+  compareToStored,
+  sourceContentHash,
+  sourceFingerprint,
+  type OfficialSourceResult,
+  type SourceObservation,
+} from './sourceVersion.ts';
+
+/** The narrow slice of a Supabase client this module needs. */
+export interface SourceClient {
+  from(table: string): any;
+}
+
+export interface SourceVersionOutcome {
+  observations: SourceObservation[];
+  errors: string[];
+}
+
+/**
+ * Records what every official source said on this run, and reports which of
+ * them had actually changed.
+ *
+ * Never throws. A verification the customer paid for must not be lost because
+ * a bookkeeping row failed to write, and knowing nothing about a source's
+ * version simply means the next run re-reads it — which is what it does today
+ * anyway.
+ */
+export async function recordSourceVersions(
+  db: SourceClient,
+  query: string,
+  results: readonly OfficialSourceResult[] | null | undefined,
+  digest: (s: string) => Promise<string>
+): Promise<SourceVersionOutcome> {
+  const out: SourceVersionOutcome = { observations: [], errors: [] };
+  if (!Array.isArray(results) || !results.length) return out;
+
+  for (const result of results) {
+    try {
+      const source = String(result?.source ?? '').trim();
+      const fingerprint = sourceFingerprint(source, query);
+      if (!fingerprint) continue;
+
+      const hash = await sourceContentHash(result, digest);
+      const now = new Date().toISOString();
+
+      const { data: stored } = await db
+        .from('research_cache')
+        .select('id, content_hash, hit_count')
+        .eq('fingerprint', fingerprint)
+        .maybeSingle();
+
+      const observation = compareToStored(
+        fingerprint,
+        source,
+        String(result?.sourceUrl ?? '') || null,
+        hash,
+        stored?.content_hash ?? null
+      );
+      out.observations.push(observation);
+
+      if (stored?.id) {
+        /*
+         * last_verified_at always moves: we did look. acquired_at only moves
+         * when the content actually changed, so it answers "how old is what
+         * we are holding" rather than "when did we last check", and those are
+         * different questions — the first decides whether a fact is stale,
+         * the second only says somebody looked.
+         */
+        /*
+         * FRESH either way, and not a word about whether it moved.
+         *
+         * freshness_status answers "how old is this", and its vocabulary is
+         * fixed by a CHECK constraint: LIVE, FRESH, AGING, STALE. Writing
+         * 'VERIFIED' or 'CHANGED' into it — which this did — violates that
+         * constraint, and because the update's error was never read, the
+         * failure was perfectly silent: production logged "4 unchanged, 2
+         * changed" while every row kept hit_count 1 and its original
+         * last_verified_at. The read worked; only the write-back did not.
+         *
+         * Whether the content moved is already recorded properly, in
+         * content_hash and acquired_at. It does not also belong in a field
+         * that means something else.
+         */
+        const { error: updateError } = await db
+          .from('research_cache')
+          .update({
+            last_verified_at: now,
+            hit_count: Number(stored.hit_count ?? 0) + 1,
+            freshness_status: 'FRESH',
+            ...(observation.state === 'CHANGED' && hash
+              ? { content_hash: hash, acquired_at: now }
+              : {}),
+          })
+          .eq('id', stored.id);
+        if (updateError) out.errors.push(`${fingerprint}: ${updateError.message ?? updateError}`);
+      } else {
+        const { error } = await db.from('research_cache').insert({
+          fingerprint,
+          provider: 'official-worker',
+          source_platform: source,
+          source_reference: String(result?.sourceUrl ?? '') || null,
+          query_json: { query, source },
+          content_hash: hash,
+          freshness_status: hash ? 'FRESH' : 'UNKNOWN',
+          acquired_at: now,
+          last_verified_at: now,
+          hit_count: 1,
+        });
+        if (error) out.errors.push(`${fingerprint}: ${error.message ?? error}`);
+      }
+    } catch (e) {
+      out.errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return out;
+}

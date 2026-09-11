@@ -63,7 +63,12 @@ test('research-agent still authenticates the caller itself', () => {
   assert.match(agent, /const a = req\.headers\.get\('Authorization'\);/);
   assert.match(agent, /if \(!a\) return json\(\{ error: 'Authentication required' \}, 401\);/);
   assert.match(agent, /await sb\.auth\.getUser\(a\.replace\(\/\^Bearer\\s\+\/i, ''\)\)/);
-  assert.match(agent, /if \(!user\) return json\(\{ error: 'Invalid session' \}, 401\);/);
+  // "No user" is no longer automatically a refusal — an anonymous visitor can
+  // now run one verification — but it is only ever accepted when a session
+  // secret proves itself first. The refusal must still be unconditional for a
+  // caller who presents neither.
+  assert.match(agent, /if \(!user && !anonSession\) return json\(\{ error: 'Invalid session' \}, 401\);/);
+  assert.match(agent, /const anonSession = user \? null : await anonSessionFor\(sb, b\?\.anonSessionToken\);/);
 });
 
 test('research-agent refuses to run when the worker is not configured', () => {

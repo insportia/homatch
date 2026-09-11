@@ -1,0 +1,835 @@
+// HOMATCH — reading from and writing to the intelligence graph.
+//
+// The only module that touches the intelligence tables. Everything it does is
+// driven by the pure logic beside it: harvest.ts decides what may be learned,
+// freshness.ts decides what must be re-checked, and this decides how that
+// becomes rows.
+//
+// THREE OUTCOMES WHEN A FACT IS WRITTEN, and the difference between them is
+// the whole value of the layer:
+//
+//   UNCHANGED  we already knew this and the new observation agrees. Nothing is
+//              inserted; the existing row's last_verified_at moves forward.
+//              This is what makes the next verification cheap.
+//
+//   CHANGED    we knew something different. The old row is superseded rather
+//              than overwritten, so "owner A → owner B" survives as history
+//              with both provenances intact. A buyer asking "has this changed
+//              recently?" is asking about exactly this.
+//
+//   NEW        we did not know it.
+//
+// Overwriting in place would collapse the second case into the first and lose
+// the one thing a returning customer most wants to know.
+//
+// Nothing here throws into a caller's critical path: a verification the
+// customer paid for must never be lost because the graph could not be
+// updated. Failures are logged and the harvest is abandoned, never the report.
+
+import type { Harvest, HarvestedEntity, HarvestedFact, HarvestedRelationship } from './harvest.ts';
+import { aliasKeysFor } from './projectIdentity.ts';
+import type { KnownFact } from './freshness.ts';
+
+/** The narrow slice of a Supabase client this module needs. */
+export interface GraphClient {
+  from(table: string): any;
+}
+
+export interface WriteOutcome {
+  entities: number;
+  factsNew: number;
+  factsChanged: number;
+  factsUnchanged: number;
+  relationshipsNew: number;
+  relationshipsConfirmed: number;
+  /** Facts whose value moved, for the buyer-visible change history. */
+  changes: { factKey: string; from: string | null; to: string | null }[];
+  errors: string[];
+}
+
+const emptyOutcome = (): WriteOutcome => ({
+  entities: 0, factsNew: 0, factsChanged: 0, factsUnchanged: 0,
+  relationshipsNew: 0, relationshipsConfirmed: 0, changes: [], errors: [],
+});
+
+/**
+ * A comparable rendering of a fact's value.
+ *
+ * Used only to answer "is this the same as what we held", so it has to be
+ * stable across two observations of an unchanged fact. Arrays are sorted
+ * because "lift, parking" and "parking, lift" are the same amenities, and a
+ * report that listed them in a different order should not read as a change.
+ */
+export function valueSignature(f: {
+  valueText?: string | null;
+  valueNumber?: number | null;
+  valueJson?: unknown;
+}): string {
+  if (f.valueNumber != null) return `n:${f.valueNumber}`;
+  if (f.valueText != null && String(f.valueText).trim()) return `t:${String(f.valueText).trim()}`;
+  if (f.valueJson != null) {
+    const j = Array.isArray(f.valueJson)
+      ? [...f.valueJson].map((x) => JSON.stringify(x)).sort()
+      : f.valueJson;
+    return `j:${JSON.stringify(j)}`;
+  }
+  return '';
+}
+
+/*
+ * WHEN THE WORDING CHANGES AND THE FACT DOES NOT.
+ *
+ * Measured by running the same verification twice against the same property.
+ * Five facts came back "changed" and only one of them had:
+ *
+ *   "Geo City Digomi LLC"                       → "LLC Geo City Digomi"
+ *   "18 Kristian Stiven Street, Digomi, Tbilisi" → "18 Kristian Stiven Street, Tbilisi"
+ *
+ * Same company. Same address. The research simply phrased them differently,
+ * and an exact comparison called both a change.
+ *
+ * That is worse than untidy. A customer asking "has anything changed since
+ * last time?" would be told the company had been renamed. And a fact that
+ * "changes" on every run is never fresh, so it can never be reused — the
+ * noise quietly destroys the saving the whole layer exists for.
+ *
+ * So comparison — and ONLY comparison — normalises. What gets stored is
+ * always the value exactly as the research gave it.
+ *
+ * Deliberately NOT applied to numbers or enums: 155000 is not 160000, and
+ * CONFIRMED_POSITIVE is not NOT_CONFIRMED. Those are the facts where a
+ * difference is always real, and blurring them would hide the changes that
+ * matter most.
+ */
+const LEGAL_FORM_TOKENS = new Set([
+  'llc', 'ltd', 'inc', 'jsc', 'lp', 'plc', 'co', 'company',
+  'შპს', 'სს', 'ააიპ', 'ი', 'მ',
+]);
+
+/** Significant tokens of a name-like value, lower-cased and order-free. */
+function nameTokens(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .split(' ')
+    .filter((t) => t && !LEGAL_FORM_TOKENS.has(t))
+    .sort();
+}
+
+const setOf = (xs: string[]) => new Set(xs);
+const isSubset = (a: Set<string>, b: Set<string>) => [...a].every((x) => b.has(x));
+
+export type ValueComparison =
+  /** The same fact, however it was worded. */
+  | 'SAME'
+  /** The new value says strictly less than what we hold. Keep the richer one. */
+  | 'LESS_SPECIFIC'
+  /** A genuine difference. */
+  | 'DIFFERENT';
+
+/**
+ * Whether two values say the same thing.
+ *
+ * The LESS_SPECIFIC verdict exists because a second run that returns a
+ * shorter version of an address, or a shorter list of amenities, is not new
+ * information — it is the same fact with detail missing. Superseding the
+ * fuller value with the thinner one would make the graph worse every time it
+ * was re-verified, which is the opposite of the point.
+ */
+export function compareValues(
+  next: { valueText?: string | null; valueNumber?: number | null; valueJson?: unknown },
+  prev: { valueText?: string | null; valueNumber?: number | null; valueJson?: unknown }
+): ValueComparison {
+  if (valueSignature(next) === valueSignature(prev)) return 'SAME';
+
+  // Numbers and enums compare exactly. A difference there is always real.
+  if (next.valueNumber != null || prev.valueNumber != null) return 'DIFFERENT';
+
+  if (typeof next.valueText === 'string' && typeof prev.valueText === 'string') {
+    const a = setOf(nameTokens(next.valueText));
+    const b = setOf(nameTokens(prev.valueText));
+    if (!a.size || !b.size) return 'DIFFERENT';
+    if (a.size === b.size && isSubset(a, b)) return 'SAME';
+    if (isSubset(a, b)) return 'LESS_SPECIFIC';
+    return 'DIFFERENT';
+  }
+
+  if (Array.isArray(next.valueJson) && Array.isArray(prev.valueJson)) {
+    // Lists compare as sets of normalised items, so a reordered or reworded
+    // amenity list is not a change to the building.
+    const norm = (xs: unknown[]) =>
+      setOf(xs.map((x) => (typeof x === 'string' ? nameTokens(x).join(' ') : JSON.stringify(x))).filter(Boolean));
+    const a = norm(next.valueJson);
+    const b = norm(prev.valueJson);
+    if (!a.size || !b.size) return 'DIFFERENT';
+    if (a.size === b.size && isSubset(a, b)) return 'SAME';
+    if (isSubset(a, b)) return 'LESS_SPECIFIC';
+    return 'DIFFERENT';
+  }
+
+  return 'DIFFERENT';
+}
+
+/** The same rendering, for a row already in the database. */
+function rowSignature(row: any): string {
+  return valueSignature({
+    valueText: row?.value_text,
+    valueNumber: row?.value_number == null ? null : Number(row.value_number),
+    valueJson: row?.value_json,
+  });
+}
+
+/** A short, human rendering for the change history. */
+function readableValue(row: any): string | null {
+  if (row?.value_number != null) return String(row.value_number);
+  if (row?.value_text) return String(row.value_text);
+  if (row?.value_json != null) return JSON.stringify(row.value_json);
+  return null;
+}
+
+/**
+ * Finds or creates the node for one real-world thing.
+ *
+ * `last_seen_at` moves on every sighting, which is how a project nobody has
+ * looked at in a year becomes visible as such.
+ */
+/**
+ * Remembers every spelling this run saw for a project.
+ *
+ * Never re-points an alias that already belongs to another project: the unique
+ * index makes a collision do nothing, so the first project to claim a spelling
+ * keeps it and the clash is left for a person rather than silently resolved.
+ * Failing here must never cost a verification its graph write, so it is
+ * swallowed — an unremembered alias means the next run creates a duplicate,
+ * which is exactly what happened before any of this existed.
+ */
+async function rememberAliases(db: GraphClient, entityId: string, e: HarvestedEntity): Promise<void> {
+  if (e.entityType !== 'PROJECT' || !e.aliases?.length) return;
+  try {
+    const rows = aliasKeysFor(e.aliases).map((a) => ({
+      entity_id: entityId,
+      alias_key: a.key,
+      alias_raw: a.raw,
+      script: a.script,
+      source_kind: 'PUBLIC_WEB',
+      confidence: 0.6,
+      resolution: 'AUTO',
+    }));
+    if (rows.length) await db.from('intelligence_project_aliases').insert(rows);
+  } catch {
+    /* see above */
+  }
+}
+
+/** The project a spelling has already been seen to mean, if any. */
+async function entityByAlias(db: GraphClient, e: HarvestedEntity): Promise<string | null> {
+  if (e.entityType !== 'PROJECT') return null;
+  try {
+    const keys = aliasKeysFor([e.naturalKey, ...(e.aliases ?? [])]).map((a) => a.key);
+    if (!keys.length) return null;
+    const { data } = await db
+      .from('intelligence_project_aliases')
+      .select('entity_id, resolution')
+      .in('alias_key', keys)
+      .neq('resolution', 'REJECTED')
+      .limit(1);
+    const hit = (data ?? [])[0] as { entity_id?: string } | undefined;
+    return hit?.entity_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function upsertEntity(db: GraphClient, e: HarvestedEntity): Promise<string | null> {
+  const { data: existing } = await db
+    .from('intelligence_entities')
+    .select('id')
+    .eq('key_kind', e.keyKind)
+    .eq('natural_key', e.naturalKey)
+    .maybeSingle();
+
+  /*
+   * A project already known under a different spelling.
+   *
+   * "Kristian Stiven Street, 18" and the Georgian form of the same address
+   * canonicalise differently — the street-type word normalises, the name does
+   * not, because transliterating Georgian gives "stivenis" and stripping the
+   * genitive is morphology rather than a rewrite. So the match comes from
+   * having SEEN the spelling before, not from guessing that two names mean the
+   * same thing.
+   */
+  if (!existing?.id) {
+    const viaAlias = await entityByAlias(db, e);
+    if (viaAlias) {
+      await db
+        .from('intelligence_entities')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', viaAlias);
+      await rememberAliases(db, viaAlias, e);
+      return viaAlias;
+    }
+  }
+
+  if (existing?.id) {
+    await rememberAliases(db, existing.id, e);
+    await db
+      .from('intelligence_entities')
+      .update({ last_seen_at: new Date().toISOString(), ...(e.displayName ? { display_name: e.displayName } : {}) })
+      .eq('id', existing.id);
+    return existing.id;
+  }
+
+  const { data, error } = await db
+    .from('intelligence_entities')
+    .insert({
+      entity_type: e.entityType,
+      key_kind: e.keyKind,
+      natural_key: e.naturalKey,
+      display_name: e.displayName ?? null,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // Another verification of the same property, running at the same moment,
+    // may have created it between the read and the insert. That is a race to
+    // lose gracefully, not an error.
+    const { data: raced } = await db
+      .from('intelligence_entities')
+      .select('id')
+      .eq('key_kind', e.keyKind)
+      .eq('natural_key', e.naturalKey)
+      .maybeSingle();
+    if (raced?.id) await rememberAliases(db, raced.id, e);
+    return raced?.id ?? null;
+  }
+  if (data?.id) await rememberAliases(db, data.id, e);
+  return data?.id ?? null;
+}
+
+async function writeFact(
+  db: GraphClient,
+  entityId: string,
+  f: HarvestedFact,
+  jobId: string | null,
+  out: WriteOutcome
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  const { data: current } = await db
+    .from('intelligence_facts')
+    .select('id, value_text, value_number, value_json')
+    .eq('entity_id', entityId)
+    .eq('fact_key', f.factKey)
+    .eq('status', 'CURRENT')
+    .maybeSingle();
+
+  const incoming = valueSignature(f);
+  if (!incoming) return;
+
+  if (current) {
+    const verdict = compareValues(f, {
+      valueText: current.value_text,
+      valueNumber: current.value_number == null ? null : Number(current.value_number),
+      valueJson: current.value_json,
+    });
+
+    if (verdict === 'SAME' || verdict === 'LESS_SPECIFIC') {
+      /*
+       * KNOWN AND STILL TRUE. The cheapest outcome there is: no new row, and
+       * the clock on the existing one moves forward so the next verification
+       * finds it fresh.
+       *
+       * LESS_SPECIFIC lands here deliberately. A run that returns a shorter
+       * address or a thinner amenity list has not learned something new — it
+       * has returned the same fact with detail missing, and replacing the
+       * fuller value would make the graph worse every time it was
+       * re-verified.
+       */
+      await db
+        .from('intelligence_facts')
+        .update({ last_verified_at: now, ...(f.confidence != null ? { confidence: f.confidence } : {}) })
+        .eq('id', current.id);
+      out.factsUnchanged += 1;
+      return;
+    }
+  }
+
+  const row = {
+    entity_id: entityId,
+    fact_key: f.factKey,
+    value_text: f.valueText ?? null,
+    value_number: f.valueNumber ?? null,
+    value_json: f.valueJson ?? null,
+    value_unit: f.valueUnit ?? null,
+    source_kind: f.sourceKind,
+    source_ref: f.sourceRef ?? null,
+    evidence_ref: f.evidenceRef ?? null,
+    first_job_id: jobId,
+    retrieved_at: now,
+    last_verified_at: now,
+    confidence: f.confidence ?? null,
+    freshness_class: f.freshnessClass,
+    status: 'CURRENT',
+    ...(current ? { supersedes: current.id } : {}),
+  };
+
+  if (current) {
+    /*
+     * IT CHANGED. The old value is superseded, never overwritten.
+     *
+     * Superseding FIRST, because a partial unique index allows exactly one
+     * CURRENT row per fact and the insert would otherwise collide with the
+     * row it is replacing. That constraint is what makes "two truths" a
+     * failure rather than a silent state.
+     */
+    await db.from('intelligence_facts').update({ status: 'SUPERSEDED', valid_to: now }).eq('id', current.id);
+  }
+
+  const { data: inserted, error } = await db.from('intelligence_facts').insert(row).select('id').single();
+  if (error) {
+    out.errors.push(`${f.factKey}: ${error.message ?? error}`);
+    // Put the old value back rather than leaving the entity with no current
+    // answer at all: a gap reads as "we never knew", which is worse than
+    // "we knew this yesterday".
+    if (current) {
+      await db.from('intelligence_facts').update({ status: 'CURRENT', valid_to: null }).eq('id', current.id);
+    }
+    return;
+  }
+
+  if (current) {
+    await db.from('intelligence_facts').update({ superseded_by: inserted?.id ?? null }).eq('id', current.id);
+    out.factsChanged += 1;
+    out.changes.push({
+      factKey: f.factKey,
+      from: readableValue(current),
+      to: readableValue(row),
+    });
+  } else {
+    out.factsNew += 1;
+  }
+}
+
+async function writeRelationship(
+  db: GraphClient,
+  fromId: string,
+  toId: string,
+  r: HarvestedRelationship,
+  jobId: string | null,
+  out: WriteOutcome
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  const { data: existing } = await db
+    .from('intelligence_relationships')
+    .select('id')
+    .eq('from_entity_id', fromId)
+    .eq('to_entity_id', toId)
+    .eq('relation', r.relation)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await db
+      .from('intelligence_relationships')
+      .update({ last_verified_at: now, status: 'CURRENT' })
+      .eq('id', existing.id);
+    out.relationshipsConfirmed += 1;
+    return;
+  }
+
+  const { error } = await db.from('intelligence_relationships').insert({
+    from_entity_id: fromId,
+    to_entity_id: toId,
+    relation: r.relation,
+    source_kind: r.sourceKind,
+    source_ref: r.sourceRef ?? null,
+    evidence_ref: r.evidenceRef ?? null,
+    first_job_id: jobId,
+    retrieved_at: now,
+    last_verified_at: now,
+    confidence: r.confidence ?? null,
+    // Written explicitly rather than left to the column default. The read
+    // path FILTERS on this, so a row that relies on a default is a row that
+    // disappears the day the default changes — and it would disappear
+    // silently, as a property that suddenly has no parcel.
+    status: 'CURRENT',
+  });
+
+  if (error) out.errors.push(`${r.relation}: ${error.message ?? error}`);
+  else out.relationshipsNew += 1;
+}
+
+/**
+ * Writes a whole harvest, and reports what actually changed.
+ *
+ * Never throws. The caller is finishing a verification somebody paid for, and
+ * the graph is an optimisation: losing an update costs one cheap future
+ * verification, while losing the report costs a customer.
+ */
+export async function persistHarvest(
+  db: GraphClient,
+  harvest: Harvest,
+  jobId: string | null
+): Promise<WriteOutcome> {
+  const out = emptyOutcome();
+  try {
+    const ids = new Map<string, string>();
+    const keyOf = (e: HarvestedEntity) => `${e.keyKind}:${e.naturalKey}`;
+
+    for (const e of harvest.entities) {
+      const id = await upsertEntity(db, e);
+      if (id) { ids.set(keyOf(e), id); out.entities += 1; }
+    }
+
+    for (const f of harvest.facts) {
+      const id = ids.get(keyOf(f.entity));
+      if (id) await writeFact(db, id, f, jobId, out);
+    }
+
+    for (const r of harvest.relationships) {
+      const from = ids.get(keyOf(r.from));
+      const to = ids.get(keyOf(r.to));
+      if (from && to) await writeRelationship(db, from, to, r, jobId, out);
+    }
+  } catch (e) {
+    out.errors.push(e instanceof Error ? e.message : String(e));
+  }
+  return out;
+}
+
+/**
+ * The parcel a unit code sits inside, or null when the code is already one.
+ *
+ * Georgian cadastral codes nest: five dot-separated groups identify a parcel,
+ * anything longer identifies something within it. Kept here rather than
+ * imported from harvest.ts so the read path does not depend on the write path.
+ */
+const PARCEL_GROUP_COUNT = 5;
+export function parentCadastralOf(code: string | null | undefined): string | null {
+  const groups = String(code ?? '').split('.');
+  return groups.length > PARCEL_GROUP_COUNT ? groups.slice(0, PARCEL_GROUP_COUNT).join('.') : null;
+}
+
+/* ------------------------------------------------------------------ *
+ * The read path                                                       *
+ * ------------------------------------------------------------------ */
+
+export interface KnownIntelligence {
+  entityId: string | null;
+  facts: KnownFact[];
+  /** Facts about the parcel, building or project this property belongs to. */
+  relatedFacts: KnownFact[];
+  relatedEntities: { id: string; entityType: string; naturalKey: string; relation: string }[];
+}
+
+/**
+ * THE RELATIONS THAT ARE PART OF THIS PROPERTY'S OWN LINEAGE.
+ *
+ * The traversal below follows these and nothing else. The distinction is not
+ * academic: a COMPARABLE_TO edge points at somebody else's flat, and walking
+ * it pulls that flat's asking price into what we believe about this one.
+ *
+ * Production showed exactly that. The subject unit held four facts; the graph
+ * held eleven comparable listings with about ninety facts between them, and an
+ * unfiltered walk returned forty-four "related" facts that were overwhelmingly
+ * other people's listings. Five different asking prices arrived under the one
+ * key `listing.price`, and the brief then offered them as established fact
+ * about this property. That is the "a parent-parcel fact is not automatically
+ * an exact-unit fact" rule failing one step further out than it was written
+ * for, and it made the research more expensive as well as less true: handed
+ * five contradictory prices for one flat, the market stage searched harder.
+ *
+ * A comparable is still reachable — it is an edge, and the market stage is
+ * what it is for — but it is not lineage and is not walked as if it were.
+ */
+const PROVENANCE_RELATIONS = new Set<string>([
+  'HAS_PARENT_PARCEL',
+  'IN_BUILDING',
+  'PART_OF_PROJECT',
+  'DEVELOPED_BY',
+  'IS_COMPANY',
+  'LOCATED_IN',
+]);
+
+/**
+ * What Homatch already knows about one property.
+ *
+ * Includes facts about the things it BELONGS to — its parcel, its project,
+ * the company that built it — because that is where reuse actually pays.
+ * A second flat in the same building needs none of the project research the
+ * first one paid for.
+ *
+ * A parcel fact is returned as a parcel fact and never merged into the unit's
+ * own: the distinction between "registered against this flat" and "registered
+ * against the land it stands on" is the single most consequential one in a
+ * Georgian due-diligence report.
+ */
+export async function loadKnownIntelligence(
+  db: GraphClient,
+  keyKind: string,
+  naturalKey: string
+): Promise<KnownIntelligence> {
+  const empty: KnownIntelligence = { entityId: null, facts: [], relatedFacts: [], relatedEntities: [] };
+  try {
+    const { data: found } = await db
+      .from('intelligence_entities')
+      .select('id')
+      .eq('key_kind', keyKind)
+      .eq('natural_key', naturalKey)
+      .maybeSingle();
+
+    /*
+     * THE SECOND FLAT IN THE BUILDING.
+     *
+     * This is the case the whole layer exists for, and it did not work.
+     *
+     * A unit we have never verified has no entity of its own, the lookup above
+     * returned nothing, and the plan read "nothing known about this property
+     * yet" — on a flat whose parcel, project and developer were sitting in the
+     * graph with twenty-three facts between them, paid for by the flat
+     * upstairs. Measured in production on 01.72.14.040.030.01.01.004, a unit
+     * inside a parcel whose project had just been researched three times over.
+     *
+     * So when the unit is unknown, the walk starts from its parent parcel
+     * instead. The subject still has NO facts of its own — we genuinely know
+     * nothing about this specific flat, entityId stays null, and nothing here
+     * can be mistaken for something established about it. What comes back is
+     * lineage, and the brief already states lineage as belonging to the thing
+     * named rather than to the unit: "true of the thing named in brackets, NOT
+     * of this unit unless your own research shows it is".
+     *
+     * A parcel fact is not an exact-unit fact. That rule is what makes this
+     * safe, not something this bends.
+     */
+    let entity = found ?? null;
+    let subjectIsTheEntity = true;
+
+    if (!entity?.id && keyKind === 'CADASTRAL_CODE') {
+      const parcel = parentCadastralOf(naturalKey);
+      if (parcel) {
+        const { data: viaParcel } = await db
+          .from('intelligence_entities')
+          .select('id')
+          .eq('key_kind', 'CADASTRAL_CODE')
+          .eq('natural_key', parcel)
+          .maybeSingle();
+        if (viaParcel?.id) {
+          entity = viaParcel;
+          subjectIsTheEntity = false;
+        }
+      }
+    }
+
+    if (!entity?.id) return empty;
+
+    // value_text comes back too: the planner needs one value, the asset
+    // class, to know which fact families this kind of property can even have.
+    const { data: ownFacts } = await db
+      .from('intelligence_facts')
+      .select('entity_id, fact_key, value_text, value_number, value_json, status, last_verified_at, freshness_class, content_hash, source_ref')
+      .eq('entity_id', entity.id)
+      .eq('status', 'CURRENT');
+
+    /*
+     * When the walk started at the parcel because the unit is unknown, the
+     * parcel's facts are LINEAGE, not the subject's. Nothing about a flat we
+     * have never looked at is established, and this is where that stays true.
+     */
+    const facts = subjectIsTheEntity ? ownFacts : [];
+    const standInFacts = subjectIsTheEntity ? [] : ((ownFacts ?? []) as KnownFact[]);
+
+    /*
+     * The parcel has to name itself, or the brief drops its facts: a fact
+     * whose entity is neither the subject nor a listed lineage entity is
+     * discarded, which is what keeps other people's flats out.
+     */
+    const standInEntities: KnownIntelligence['relatedEntities'] = subjectIsTheEntity
+      ? []
+      : [{
+          id: entity.id,
+          entityType: 'PARENT_PARCEL',
+          naturalKey: parentCadastralOf(naturalKey) ?? '',
+          relation: 'HAS_PARENT_PARCEL',
+        }];
+
+    /*
+     * Two plain reads rather than one embedded join.
+     *
+     * PostgREST can embed the far side of a relationship, but naming the
+     * foreign key explicitly — which is required here, because the table
+     * points at intelligence_entities twice — ties this query to a constraint
+     * name that a future migration can rename without anything failing until
+     * production. Two queries are duller, cheaper to reason about, and mean
+     * the same thing.
+     */
+    /*
+     * THREE HOPS: THE PROPERTY'S OWN PROVENANCE CHAIN, AND NOTHING BEYOND IT.
+     *
+     *   unit → parcel → project → developer
+     *
+     * That chain is the property's own lineage and every link in it is either
+     * derived arithmetically or evidenced. Read against the real production
+     * graph, two hops stopped at the project and left the developer's four
+     * researched facts unreachable; one hop stopped at a parcel that held
+     * nothing at all and reused four facts out of eighteen.
+     *
+     * The limit is three because the FOURTH hop leaves the property entirely:
+     * a developer builds other projects, and their facts are about other
+     * people's flats. That is where a graph stops being an answer and starts
+     * being a crawl.
+     *
+     * Everything past the first hop stays in relatedFacts. The distinction
+     * between "registered against this flat" and "true of the land it stands
+     * on, or the company that built it" is the most consequential one in a
+     * Georgian due-diligence report, and it is preserved by construction
+     * rather than by remembering to.
+     */
+    const MAX_HOPS = 3;
+    const relatedEntities: KnownIntelligence['relatedEntities'] = [];
+    const visited = new Set<string>([entity.id]);
+    let frontier = [entity.id];
+
+    for (let hop = 0; hop < MAX_HOPS && frontier.length; hop++) {
+      const { data: edges } = await db
+        .from('intelligence_relationships')
+        .select('to_entity_id, relation')
+        .in('from_entity_id', frontier)
+        .eq('status', 'CURRENT');
+
+      const edgeRows = ((edges ?? []) as { to_entity_id: string; relation: string }[])
+        .filter((e) => e.to_entity_id && !visited.has(e.to_entity_id))
+        .filter((e) => PROVENANCE_RELATIONS.has(e.relation));
+      if (!edgeRows.length) break;
+
+      const ids = [...new Set(edgeRows.map((e) => e.to_entity_id))];
+      const { data: targets } = await db
+        .from('intelligence_entities')
+        .select('id, entity_type, natural_key')
+        .in('id', ids);
+
+      const byId = new Map<string, { id: string; entity_type: string; natural_key: string }>(
+        ((targets ?? []) as { id: string; entity_type: string; natural_key: string }[]).map((t) => [t.id, t])
+      );
+
+      for (const e of edgeRows) {
+        const t = byId.get(e.to_entity_id);
+        if (!t || visited.has(t.id)) continue;
+        visited.add(t.id);
+        relatedEntities.push({ id: t.id, entityType: t.entity_type, naturalKey: t.natural_key, relation: e.relation });
+      }
+      frontier = ids.filter((id) => byId.has(id));
+    }
+
+    let relatedFacts: KnownFact[] = [];
+    if (relatedEntities.length) {
+      const { data: rf } = await db
+        .from('intelligence_facts')
+        .select('entity_id, fact_key, value_text, value_number, value_json, status, last_verified_at, freshness_class, content_hash, source_ref')
+        .in('entity_id', relatedEntities.map((r) => r.id))
+        .eq('status', 'CURRENT');
+      relatedFacts = (rf ?? []) as KnownFact[];
+    }
+
+    /*
+     * entityId is the SUBJECT's entity, and stays null when we only reached
+     * its parcel — there is no entity for this flat, and inventing one would
+     * let a later write attach facts to the wrong thing.
+     */
+    return {
+      entityId: subjectIsTheEntity ? entity.id : null,
+      facts: (facts ?? []) as KnownFact[],
+      relatedFacts: [...standInFacts, ...relatedFacts],
+      relatedEntities: [...standInEntities, ...relatedEntities],
+    };
+  } catch {
+    // Knowing nothing is always a safe answer: the verification simply
+    // researches everything, exactly as it did before this layer existed.
+    return empty;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * The comparables this property has already been measured against     *
+ * ------------------------------------------------------------------ */
+
+/** One comparable listing, as the market stage would have found it. */
+export interface HeldComparable {
+  entityId: string;
+  url: string;
+  facts: Record<string, string | number | null>;
+  /** When any of its facts were last confirmed. Used to order, not to quote. */
+  lastVerifiedAt: string | null;
+}
+
+/**
+ * The listings a previous verification compared this property against.
+ *
+ * READ SEPARATELY FROM THE LINEAGE, AND ON PURPOSE. loadKnownIntelligence
+ * walks provenance only — parcel, project, developer — because a comparable is
+ * a DIFFERENT property and its asking price is not a fact about this one. That
+ * rule stands and this does not weaken it: nothing here is ever presented as
+ * something true of the subject.
+ *
+ * But the market stage's whole job is other people's flats, and re-finding the
+ * same ten listings from scratch on every run is the single largest avoidable
+ * cost in a verification. A comparable's area, rooms, floor, address and
+ * project do not change; its price and its status do. Handing over the stable
+ * half and asking only for the volatile half is the difference between an
+ * incremental refresh and a blind sweep.
+ */
+export async function loadComparables(
+  db: GraphClient,
+  subjectEntityId: string | null | undefined
+): Promise<HeldComparable[]> {
+  if (!subjectEntityId) return [];
+  try {
+    const { data: edges } = await db
+      .from('intelligence_relationships')
+      .select('to_entity_id')
+      .eq('from_entity_id', subjectEntityId)
+      .eq('relation', 'COMPARABLE_TO')
+      .eq('status', 'CURRENT');
+
+    const ids = [...new Set(((edges ?? []) as { to_entity_id: string }[]).map((e) => e.to_entity_id).filter(Boolean))];
+    if (!ids.length) return [];
+
+    const { data: entities } = await db
+      .from('intelligence_entities')
+      .select('id, natural_key')
+      .in('id', ids);
+
+    const { data: facts } = await db
+      .from('intelligence_facts')
+      .select('entity_id, fact_key, value_text, value_number, last_verified_at')
+      .in('entity_id', ids)
+      .eq('status', 'CURRENT');
+
+    const byEntity = new Map<string, HeldComparable>();
+    for (const e of ((entities ?? []) as { id: string; natural_key: string }[])) {
+      if (e?.id && e.natural_key) byEntity.set(e.id, { entityId: e.id, url: e.natural_key, facts: {}, lastVerifiedAt: null });
+    }
+    for (const f of ((facts ?? []) as KnownFact[])) {
+      const c = f.entity_id ? byEntity.get(f.entity_id) : undefined;
+      if (!c || !f.fact_key) continue;
+      c.facts[f.fact_key] = (f as any).value_number ?? f.value_text ?? null;
+      const seen = f.last_verified_at ?? null;
+      if (seen && (!c.lastVerifiedAt || seen > c.lastVerifiedAt)) c.lastVerifiedAt = seen;
+    }
+
+    /*
+     * Most recently confirmed first.
+     *
+     * The set only grows — every run adds whatever it found — so without an
+     * order and a cap the oldest listings would crowd out the ones still
+     * likely to be live, and the brief would get longer for ever.
+     */
+    return [...byEntity.values()].sort((a, b) =>
+      String(b.lastVerifiedAt ?? '').localeCompare(String(a.lastVerifiedAt ?? ''))
+    );
+  } catch {
+    // Knowing no comparables means the market stage researches them all, which
+    // is exactly what it did before this existed.
+    return [];
+  }
+}

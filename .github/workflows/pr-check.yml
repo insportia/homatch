@@ -17,7 +17,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 24, not 20 — matching the deploy workflow rather than adding a
+          # second Node story. The frontend suite imports the .ts domain
+          # modules directly, which needs Node's native type stripping (on by
+          # default from 22.18 / 24). On Node 20 every such test dies with
+          # ERR_UNKNOWN_FILE_EXTENSION, which is why the suite could not be
+          # wired in here at all.
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -28,6 +34,33 @@ jobs:
 
       - name: Lint
         run: pnpm run lint
+
+      # The regression suite. It runs BEFORE the build so a broken invariant
+      # is reported as a failing test rather than as a confusing build error,
+      # and it needs no credentials, no provider calls and no production.
+      - name: Tests
+        run: pnpm test
+
+      # The mobile layout gate needs the harness bundle, which is built from
+      # .env.harness — a stub origin, not a credential. Every request the page
+      # makes is intercepted by the test, so this reaches no network.
+      - name: Build mobile harness
+        run: pnpm run build:harness
+
+      # Real Chrome at 320/360/375/390/430 with the Evidence drawer expanded.
+      # CI=true makes a missing browser or driver a FAILURE rather than a
+      # skip: a workflow that skips its only layout gate reports green while
+      # proving nothing.
+      - name: Mobile regression (real viewports)
+        run: pnpm run test:mobile
+
+      # The edge functions are Deno TypeScript with URL and jsr: imports, so
+      # they sit outside the tsconfig and nothing else parses them. A
+      # research-agent/index.ts that could not be parsed AT ALL once passed
+      # type-check, lint, 796 tests and the mobile gate — and was caught only
+      # by the deploy step, after the commit was already on main.
+      - name: Edge function syntax
+        run: pnpm run check:edge
 
       - name: Build check
         env:

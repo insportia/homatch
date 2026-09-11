@@ -6,11 +6,32 @@ import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySt
 
 // Order per the 2026-09-06 "Fix Homatch Verify by implementing this exact
 // pipeline in code" mandate: TAS Map -> TAS Document -> NAPR Property.
-test('buildInitialSteps: cadastral mode is TAS_MAP/tas/mygov (TAS Map -> TAS Document -> NAPR Property)', () => {
+test('buildInitialSteps: cadastral mode is TAS_MAP -> tas (mygov is no longer scheduled)', () => {
+  // my.gov.ge's property service is CAPTCHA-gated, so scheduling it only ever
+  // paused the run and asked the customer to solve a challenge for a lookup
+  // they can do themselves. It is now recommended as an official self-check
+  // at the end of the report; the workflow itself is untouched.
   assert.deepEqual(
     buildInitialSteps({ mode: 'cadastral' }).map((s) => s.key),
-    ['TAS_MAP', 'tas', 'mygov']
+    ['TAS_MAP', 'tas']
   );
+});
+
+test('buildInitialSteps: property mode is unaffected by the CAPTCHA-source removal', () => {
+  assert.deepEqual(
+    buildInitialSteps({ mode: 'property' }).map((s) => s.key),
+    ['enreg', 'TAS_MAP', 'napr']
+  );
+});
+
+test('no CAPTCHA-gated source is ever planned again', () => {
+  const cadastral = buildInitialSteps({ mode: 'cadastral' }).map((s) => s.key);
+  const property = buildInitialSteps({ mode: 'property' }).map((s) => s.key);
+  const entity = buildEntitySteps([{ identificationCode: '1', name: 'A' }], 1).map((s) => s.source);
+  for (const plan of [cadastral, property, entity]) {
+    assert.ok(!plan.includes('mygov'), 'mygov is scheduled again');
+    assert.ok(!plan.includes('rstax'), 'rstax is scheduled again');
+  }
 });
 test('buildInitialSteps: property mode is enreg/TAS_MAP/napr', () => {
   assert.deepEqual(
@@ -64,21 +85,21 @@ test('buildEntitySteps: bounded by maxEntities (companies, not steps), only conf
     { identificationCode: '3', name: 'D' },
   ];
   const steps = buildEntitySteps(entities, 2);
-  // 2 companies * 3 sources (enreg/rstax/debtor) each = 6 steps.
-  assert.equal(steps.length, 6);
+  // 2 companies * 2 sources (enreg/debtor) each = 4 steps. rstax is gone.
+  assert.equal(steps.length, 4);
   assert.ok(steps.every((s) => s.type === 'entity'));
 });
 
-test('buildEntitySteps: emits enreg -> rstax -> debtor in that exact order, for the SAME idCode/name, per entity', () => {
+test('buildEntitySteps: emits enreg -> debtor in that exact order, for the SAME idCode/name, per entity', () => {
   const steps = buildEntitySteps([{ identificationCode: '405123456', name: 'შპს Example' }], 3);
   assert.deepEqual(
     steps.map((s) => s.source),
-    ['enreg', 'rstax', 'debtor']
+    ['enreg', 'debtor']
   );
   assert.ok(steps.every((s) => s.idCode === '405123456' && s.name === 'შპს Example'));
 });
 
-test('buildEntitySteps: multiple entities each get their own full enreg->rstax->debtor triple, in entity order', () => {
+test('buildEntitySteps: multiple entities each get their own full enreg->debtor pair, in entity order', () => {
   const steps = buildEntitySteps(
     [
       { identificationCode: '1', name: 'A' },
@@ -88,6 +109,6 @@ test('buildEntitySteps: multiple entities each get their own full enreg->rstax->
   );
   assert.deepEqual(
     steps.map((s) => `${s.idCode}:${s.source}`),
-    ['1:enreg', '1:rstax', '1:debtor', '2:enreg', '2:rstax', '2:debtor']
+    ['1:enreg', '1:debtor', '2:enreg', '2:debtor']
   );
 });

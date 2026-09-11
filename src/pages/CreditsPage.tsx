@@ -15,14 +15,34 @@ import { Label } from '@/components/ui/label';
 import {
   Zap, TrendingUp, TrendingDown, CreditCard, ArrowUpRight,
   ArrowDownRight, Clock, Loader2, ExternalLink, Info, Search,
-  Send, MessageCircle, ShoppingCart, Lock, Unlock,
+  Send, MessageCircle, ShoppingCart, Lock, Unlock, Sparkles, Gift,
 } from 'lucide-react';
-import { getCreditAccount, getCreditLedger, initiateTopUp, getResearchProducts, getMyResearchPurchases } from '@/services/api';
+import { getCreditAccount, getCreditLedger, getResearchProducts, getMyResearchPurchases } from '@/services/api';
+import { getCatalogue, getMyCreditLots, startTopUp, formatCredits } from '@/services/billing';
+import { useEntitlements } from '@/hooks/useEntitlements';
+import { PlanBadge } from '@/components/billing/PlanBadge';
+import type { CreditLot, TopupPack, FirstTopupPromo } from '@/types/billing';
 import { purchaseResearchProduct } from '@/services/api3';
 import type { CreditAccount, CreditLedgerEntry, LedgerType, ResearchProduct, ResearchPurchase } from '@/types/types';
 import { toast } from 'sonner';
 
-const TOPUP_PRESETS = [30, 50, 100, 200];
+// Top-up amounts come from topup_packs, not from this file. The old
+// [30, 50, 100, 200] was both a hardcoded offer and, after the
+// redenomination, the wrong currency scale entirely. These are only a
+// fallback for the moment before the catalogue arrives.
+const FALLBACK_PACKS: TopupPack[] = [
+  { code: 'USD_1', amount_cents: 100, credits: 10, sort_order: 1 },
+  { code: 'USD_5', amount_cents: 500, credits: 50, sort_order: 2 },
+  { code: 'USD_10', amount_cents: 1000, credits: 100, sort_order: 3 },
+  { code: 'USD_25', amount_cents: 2500, credits: 250, sort_order: 4 },
+];
+
+const LOT_LABEL: Record<string, string> = {
+  PURCHASED: 'wallet_bucket_purchased',
+  MEMBERSHIP: 'wallet_bucket_membership',
+  PROMOTIONAL: 'wallet_bucket_promotional',
+  ADJUSTMENT: 'wallet_bucket_adjustment',
+};
 
 // Label text is localized via `labelKey` (translated at render time) rather
 // than baked in here, so every ledger type reads correctly in all 6 languages.
@@ -34,6 +54,14 @@ const LEDGER_TYPE_CONFIG: Record<LedgerType, { labelKey: string; icon: React.Ele
   SERVICE_RESERVE:   { labelKey: 'credits_type_service_reserve', icon: Lock,           color: 'text-amber-500' },
   SERVICE_CAPTURE:   { labelKey: 'credits_type_service_capture', icon: ShoppingCart,   color: 'text-muted-foreground' },
   SERVICE_RELEASE:   { labelKey: 'credits_type_service_release', icon: Unlock,         color: 'text-blue-400' },
+  MEMBERSHIP_GRANT:  { labelKey: 'credits_type_membership_grant', icon: Sparkles,       color: 'text-gold-ink' },
+  PROMOTIONAL_GRANT: { labelKey: 'credits_type_promotional_grant',icon: Gift,           color: 'text-gold-ink' },
+  FIRST_TOPUP_BONUS: { labelKey: 'credits_type_first_topup_bonus',icon: Gift,           color: 'text-gold-ink' },
+  EXPIRATION:        { labelKey: 'credits_type_expiration',       icon: Clock,          color: 'text-muted-foreground' },
+  REVERSAL:          { labelKey: 'credits_type_reversal',         icon: ArrowUpRight,   color: 'text-blue-400' },
+  // The one-off 1 Credit = $1.00 -> $0.10 rescale. Its own label so it is
+  // never mistaken for a top-up or a gift in a customer's history.
+  REDENOMINATION:    { labelKey: 'credits_type_redenomination',   icon: TrendingUp,     color: 'text-muted-foreground' },
 };
 
 const PRODUCT_ICON: Record<string, React.ElementType> = {
@@ -79,12 +107,17 @@ function CreditsContent() {
   const { homatchUser } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const ent = useEntitlements();
 
   const [creditAccount, setCreditAccount] = useState<CreditAccount | null>(null);
   const [ledger, setLedger] = useState<CreditLedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTopUp, setShowTopUp] = useState(false);
-  const [topUpAmount, setTopUpAmount] = useState(30);
+  const [packs, setPacks] = useState<TopupPack[]>(FALLBACK_PACKS);
+  const [promo, setPromo] = useState<FirstTopupPromo | null>(null);
+  const [minCents, setMinCents] = useState(100);
+  const [selectedPack, setSelectedPack] = useState<string>('USD_10');
+  const [lots, setLots] = useState<CreditLot[]>([]);
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpResult, setTopUpResult] = useState<{ mock?: boolean; checkoutUrl?: string } | null>(null);
   const [products, setProducts] = useState<ResearchProduct[]>([]);
@@ -94,16 +127,27 @@ function CreditsContent() {
   const loadData = useCallback(async () => {
     if (!homatchUser) return;
     setLoading(true);
-    const [account, entries, prods, myPurchases] = await Promise.all([
+    const [account, entries, prods, myPurchases, myLots] = await Promise.all([
       getCreditAccount(homatchUser.id),
       getCreditLedger(homatchUser.id),
       getResearchProducts(),
       getMyResearchPurchases(),
+      getMyCreditLots(homatchUser.id),
     ]);
     setCreditAccount(account);
     setLedger(entries);
     setProducts(prods.filter(p => p.enabled));
     setPurchases(myPurchases);
+    setLots(myLots);
+    // The offer itself is server-defined: amounts, the bonus rule and the
+    // minimum all come from topup_packs / promotions / admin_settings.
+    try {
+      const cat = await getCatalogue();
+      if (cat.topupPacks?.length) setPacks(cat.topupPacks);
+      setPromo(cat.firstTopupPromo);
+      const smallest = cat.topupPacks?.[0]?.amount_cents;
+      if (smallest) setMinCents(smallest);
+    } catch { /* fallback packs already shown */ }
     setLoading(false);
   }, [homatchUser]);
 
@@ -123,12 +167,10 @@ function CreditsContent() {
   }, [loadData, t]);
 
   const handleTopUp = async () => {
-    if (topUpAmount < 30) {
-      toast.error(t('credits_toast_min_topup'));
-      return;
-    }
     setTopUpLoading(true);
-    const result = await initiateTopUp(topUpAmount);
+    // Send the PACK CODE, not an amount. The server then prices from
+    // topup_packs and a tampered request cannot buy credits it did not pay for.
+    const result = await startTopUp({ packCode: selectedPack });
     setTopUpLoading(false);
 
     if (!result.success) {
@@ -195,6 +237,18 @@ function CreditsContent() {
                   <p className="text-4xl font-semibold text-primary" dir="ltr">{balance.toFixed(2)}</p>
                 )}
                 <p className="text-xs text-muted-foreground mt-1">{t('credits_balance_unit')}</p>
+                {/* A credit's dollar value, from the server, so this line
+                    stays right if credits_per_usd is ever changed. */}
+                {ent.creditsPerUsd > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1" dir="auto">
+                    {t('credits_value_line').replace('{v}', `$${(1 / ent.creditsPerUsd).toFixed(2)}`)}
+                  </p>
+                )}
+                {ent.reserved > 0 && (
+                  <p className="text-xs text-amber-500 mt-1.5" dir="auto">
+                    {t('wallet_reserved')}: {formatCredits(ent.reserved)} CR
+                  </p>
+                )}
               </div>
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
                 <Zap className="h-8 w-8 text-primary" />
@@ -269,6 +323,41 @@ function CreditsContent() {
             )}
           </CardContent>
         </Card>
+        {/* Where the balance came from.
+            Purchased credits never expire and survive a cancelled membership;
+            membership and bonus credits carry their own expiry. Showing one
+            undifferentiated number would hide both facts. */}
+        {lots.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                {t('wallet_where_from')}
+                <PlanBadge planCode={ent.plan} size="sm" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="divide-y divide-border">
+                {lots.map((lot) => (
+                  <div key={lot.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">{t(LOT_LABEL[lot.kind] ?? 'wallet_bucket_adjustment')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {lot.expires_at
+                          ? t('wallet_expires_on').replace('{d}', new Date(lot.expires_at).toLocaleDateString())
+                          : t('wallet_never_expires')}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold shrink-0" dir="ltr">
+                      {formatCredits(lot.credits_available)} CR
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">{t('wallet_purchased_safe')}</p>
+            </CardContent>
+          </Card>
+        )}
+
 
         {/* Transaction history */}
         <Card className="bg-card border-border">
@@ -354,61 +443,77 @@ function CreditsContent() {
               {/* Presets */}
               <div>
                 <Label className="text-xs text-muted-foreground mb-2 block">{t('credits_quick_select')}</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {TOPUP_PRESETS.map(amount => (
-                    <button
-                      key={amount}
-                      onClick={() => setTopUpAmount(amount)}
-                      className={`rounded-lg border py-2 text-sm font-semibold transition-all ${
-                        topUpAmount === amount
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border bg-secondary text-foreground hover:border-primary/50'
-                      }`}
-                      dir="ltr"
-                    >
-                      ${amount}
-                    </button>
-                  ))}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {packs.map((pack) => {
+                    const selected = selectedPack === pack.code;
+                    const bonus = promo && pack.amount_cents >= promo.min_amount_cents
+                      ? Math.min((pack.credits * promo.bonus_match_bps) / 10000, Number(promo.max_bonus_credits))
+                      : 0;
+                    return (
+                      <button
+                        key={pack.code}
+                        onClick={() => setSelectedPack(pack.code)}
+                        className={`relative rounded-lg border py-2.5 text-sm font-semibold transition-all ${
+                          selected
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border bg-secondary text-foreground hover:border-primary/50'
+                        }`}
+                        dir="ltr"
+                      >
+                        ${(pack.amount_cents / 100).toFixed(pack.amount_cents % 100 === 0 ? 0 : 2)}
+                        <span className="block text-[12px] font-normal text-muted-foreground">
+                          {formatCredits(pack.credits + bonus)} CR
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Custom amount */}
-              <div className="space-y-1.5">
-                <Label htmlFor="topup-amount" className="text-sm">{t('credits_topup_amount')}</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                  <Input
-                    id="topup-amount"
-                    type="number"
-                    min={30}
-                    step={10}
-                    value={topUpAmount}
-                    onChange={e => setTopUpAmount(Number(e.target.value))}
-                    className="pl-7 bg-secondary border-border"
-                  />
+              {/* The activation offer, when this account still has it. Whether
+                  it is still available is decided by billing_entitlements()
+                  against promotion_redemptions, never in the browser. */}
+              {promo && (
+                <div className="rounded-lg border border-gold/40 bg-gold-soft/30 p-3">
+                  <p className="text-sm font-semibold">{t('activation_double_value')}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('activation_once')}</p>
                 </div>
-                <p className="text-xs text-muted-foreground" dir="ltr">= {topUpAmount} {t('credits_balance_unit')}</p>
-              </div>
-
-              {topUpAmount < 30 && (
-                <p className="text-xs text-destructive">{t('credits_min_topup')}</p>
               )}
 
-              <div className="rounded-lg bg-secondary/50 border border-border p-3 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{t('credits_amount_label')}</span>
-                  <span className="font-medium text-foreground" dir="ltr">${topUpAmount}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{t('credits_credits_to_add')}</span>
-                  <span className="font-semibold text-primary" dir="ltr">{topUpAmount} CR</span>
-                </div>
-                <Separator className="my-1 bg-border" />
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{t('credits_balance_after')}</span>
-                  <span className="font-semibold text-foreground" dir="ltr">{(balance + topUpAmount).toFixed(2)} CR</span>
-                </div>
-              </div>
+              {(() => {
+                const pack = packs.find((x) => x.code === selectedPack) ?? packs[0];
+                if (!pack) return null;
+                const bonus = promo && pack.amount_cents >= promo.min_amount_cents
+                  ? Math.min((pack.credits * promo.bonus_match_bps) / 10000, Number(promo.max_bonus_credits))
+                  : 0;
+                return (
+                  <div className="rounded-lg bg-secondary/50 border border-border p-3 space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{t('credits_amount_label')}</span>
+                      <span className="font-medium text-foreground" dir="ltr">
+                        ${(pack.amount_cents / 100).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{t('credits_credits_to_add')}</span>
+                      <span className="font-semibold text-primary" dir="ltr">{formatCredits(pack.credits)} CR</span>
+                    </div>
+                    {bonus > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{t('activation_bonus_part').replace('{n}', '')}</span>
+                        <span className="font-semibold text-gold-ink" dir="ltr">+{formatCredits(bonus)} CR</span>
+                      </div>
+                    )}
+                    <Separator className="my-1 bg-border" />
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{t('credits_balance_after')}</span>
+                      <span className="font-semibold text-foreground" dir="ltr">
+                        {formatCredits(balance + pack.credits + bonus)} CR
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -419,7 +524,7 @@ function CreditsContent() {
               </Button>
               <Button
                 onClick={handleTopUp}
-                disabled={topUpLoading || topUpAmount < 30}
+                disabled={topUpLoading || !selectedPack}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
               >
                 {topUpLoading ? (

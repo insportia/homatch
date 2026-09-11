@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
@@ -21,9 +22,12 @@ function GoogleIcon() {
   );
 }
 
+import { consumePendingAsk } from '@/lib/pendingAsk';
+
 const PENDING_URL_KEY = 'homatch_pending_url';
 
 export default function SignupPage() {
+  useSurfaceTheme('light');
   const { signUp, signInWithGoogle, session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -44,6 +48,13 @@ export default function SignupPage() {
 
   useEffect(() => {
     if (!session) return;
+    // See LoginPage: a question asked from the public AI panel takes the user
+    // straight into the assistant instead of being dropped on the dashboard.
+    const pendingAsk = consumePendingAsk();
+    if (pendingAsk) {
+      navigate('/ai', { replace: true, state: { prompt: pendingAsk } });
+      return;
+    }
     const pendingUrl = sessionStorage.getItem(PENDING_URL_KEY);
     const pendingIntent = sessionStorage.getItem('homatch_pending_intent') ?? intent;
     if (pendingIntent === 'analyse' && pendingUrl) {

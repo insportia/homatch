@@ -590,7 +590,7 @@ function PrivateListingContent() {
                         className="w-full h-full object-cover"
                       />
                       {photo.isCover && (
-                        <div className="absolute bottom-0 inset-x-0 text-[10px] font-medium bg-primary/90 text-primary-foreground text-center py-0.5">
+                        <div className="absolute bottom-0 inset-x-0 text-[13px] font-medium bg-primary/90 text-primary-foreground text-center py-0.5">
                           {t('private_photo_cover_badge')}
                         </div>
                       )}

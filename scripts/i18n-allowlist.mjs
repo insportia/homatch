@@ -11,16 +11,54 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // "Webhook" — the integration mechanism's own name. Turkish and Hebrew both
+  // use the English term verbatim in technical usage, exactly as the other
+  // four locales here carry their own real forms; this is an admin-only
+  // Finance label describing how a provider reports cost, not prose.
+  'fin_sync_webhook',
+  // "Plan" — Turkish spells the word identically to English. ka/ru/ar/he all
+  // carry distinct real translations of the same key, so allowlisting the
+  // Turkish case cannot be hiding a gap anywhere else.
+  'fin_col_plan',
+  // "Model" — Turkish spells the word identically to English, exactly as with
+  // fin_col_plan above. ka/ru/ar/he all carry distinct real translations of the
+  // same key, so this cannot be masking a gap elsewhere.
+  'fin_col_model',
   // Product/brand names — never translated in any language.
   'ai_title', // "Homatch AI"
+  // "Know before you buy" — the brand tagline, set beneath the wordmark as
+  // part of the logo lockup. It is a brand mark rather than interface copy
+  // and stays in English in every locale, exactly as it does in the design
+  // reference's Georgian screens.
+  'brand_tagline',
+  // "Homatch" on its own, set as the first line of the hero lockup. It is the
+  // company's name, never translated or transliterated in any locale.
+  'brand_name',
+  // "Developer B2B" — the product's own name for its developer offering,
+  // kept in Latin script in every locale the same way "Homatch AI" is.
+  'mp_dev_eyebrow',
+  // "Email" as a one-word flow-stage label. Georgian and Russian both use
+  // the Latin spelling in everyday product usage; tr/ar/he carry their own
+  // real forms for the same key, so this cannot be hiding a gap there.
+  'mp_dev_stage_email',
   'profile_login_google', // "Google" — third-party trademark
+  // "Premium" — the PAID PLAN's own name, not the adjective. VIP and Premium
+  // are the plan brands and are set in Latin script on the badge, the pricing
+  // card and the profile chip in every locale, exactly as "Homatch AI" is.
+  // Translating one and not the other would make the two tiers look like they
+  // belong to different products. (badge_vip is an acronym and is not flagged.)
+  'badge_premium',
   // Turkish legitimately borrows these exact Latin spellings; the other
   // languages already carry distinct real translations for the same keys,
   // so allowlisting here can't hide a missing translation elsewhere.
   'prop_area', // Turkish "m²" is the standard Turkish abbreviation too
   'prop_price_sqm', // Turkish "/m²"
   'matches_platform', // Turkish "Platform" is a standard loanword
+  // Turkish "Bonus" is the ordinary Turkish word, spelled identically. ka/ru/
+  // ar/he all carry their own distinct forms for this key.
+  'wallet_bucket_promotional',
   'profile_field_plan', // Turkish "Plan" is a standard loanword
+  'admin_sim_plan', // the same Turkish loanword, in the admin simulator
   'comm_filter_platform',
   'admin_sources_platform',
   'admin_signals_platform',
@@ -62,6 +100,15 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // "Platform" above) — ka/tr/ar/he all carry their own real translations
   // for this key, so this can't be hiding a missing one elsewhere.
   'cases_stage_due_diligence',
+  // "Homatch AI" and "Site Studio" — the products' own names, used as the
+  // Site Studio section label and the editor title. Same rule as 'ai_title'
+  // and 'brand_name' above: a name, not interface prose.
+  'studio_sec_ai',
+  'studio_title',
+  // Turkish borrows both of these exact Latin spellings ("Tablet", "Normal");
+  // the other five locales carry their own real forms for the same keys.
+  'studio_device_tablet',
+  'studio_spacing_normal',
 ]);
 
 // Heuristic: values that don't need translating in the first place, so an

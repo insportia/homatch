@@ -266,6 +266,16 @@ jobs:
             # developer-score has never been deployed at all, which is what made
             # /developer/:id a dead route.
             "developer-score"
+            # Billing v2. `billing` is new. The other two were NEVER in either
+            # list, so every repository change to the Verify orchestrator and
+            # to AI Chat since this workflow was written has been unable to
+            # reach production -- including the entitlement wiring that decides
+            # whether a run is funded. Both authenticate the caller themselves
+            # and then act under the service role, so JWT verification is
+            # required, exactly as it already is in production.
+            "billing"
+            "homatch-research"
+            "homatch-ai"
           )
           FAILED=()
           for fn in "${JWT_FUNCTIONS[@]}"; do

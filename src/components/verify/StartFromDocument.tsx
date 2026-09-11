@@ -75,7 +75,7 @@ export const StartFromDocument: React.FC = () => {
           <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
           <div className="min-w-0 flex-1 space-y-1">
             <p className="text-sm font-medium break-words">{t('vc_start_document')}</p>
-            <p className="text-xs text-muted-foreground leading-relaxed break-words">
+            <p className="measure text-base leading-relaxed text-ink-soft break-words">
               {t('vc_start_document_hint')}
             </p>
           </div>

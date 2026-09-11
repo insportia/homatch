@@ -91,7 +91,7 @@ function PhoneVisual({ send }: { send: OutreachSendRow | null }) {
       </div>
       <div className="text-center space-y-1">
         <p className="font-mono text-lg font-semibold">{send.recipient_phone ?? '—'}</p>
-        <Badge className={cn('text-[11px]', CALL_STATUS_STYLES[send.status] ?? '')} variant="outline">
+        <Badge className={cn('text-[14px]', CALL_STATUS_STYLES[send.status] ?? '')} variant="outline">
           {send.status}{send.provider === 'MOCK' ? ` ${t('callcenter_mock_suffix')}` : ''}
         </Badge>
         {isLive && send.call_started_at && (
@@ -304,11 +304,11 @@ export default function AiCallCenterPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm truncate">{c.name}</span>
-                          <Badge variant="outline" className="text-[10px] px-1.5">{c.status}</Badge>
-                          <Badge variant="outline" className="text-[10px] px-1.5 uppercase">{c.language ?? 'en'}</Badge>
+                          <Badge variant="outline" className="text-[13px] px-1.5">{c.status}</Badge>
+                          <Badge variant="outline" className="text-[13px] px-1.5 uppercase">{c.language ?? 'en'}</Badge>
                         </div>
                         {c.call_script && <p className="text-xs text-muted-foreground truncate mt-0.5">{c.call_script}</p>}
-                        <div className="flex gap-4 mt-1 text-[11px] text-muted-foreground">
+                        <div className="flex gap-4 mt-1 text-[14px] text-muted-foreground">
                           <span>{c.audience_count ?? 0} {t('call_contacts')}</span>
                           <span>{c.sent_count ?? 0} {t('call_dialed')}</span>
                           {(c.cost_estimate_usd ?? 0) > 0 && <span>${t('call_est')}: ${c.cost_estimate_usd?.toFixed(2)}</span>}
@@ -426,31 +426,31 @@ export default function AiCallCenterPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-mono text-sm truncate">{s.recipient_phone ?? '—'}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">
+                      <p className="text-[14px] text-muted-foreground truncate">
                         {s.duration_sec != null ? `${Math.floor(s.duration_sec / 60)}:${String(s.duration_sec % 60).padStart(2, '0')}` : '—'}
                         {s.provider === 'MOCK' ? ` · ${t('callcenter_mock_dot_suffix')}` : ''}
                         {s.error_message ? ` · ${s.error_message}` : ''}
                       </p>
                     </div>
-                    <Badge className={cn('text-[10px] shrink-0', CALL_STATUS_STYLES[s.status] ?? '')} variant="outline">{s.status}</Badge>
+                    <Badge className={cn('text-[13px] shrink-0', CALL_STATUS_STYLES[s.status] ?? '')} variant="outline">{s.status}</Badge>
                   </button>
                   {expandedSendId === s.id && (
                     <div className="border-t border-border p-3 space-y-2 bg-muted/20">
                       {s.recording_url && (
                         <div className="space-y-1">
-                          <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><Play className="h-3 w-3" />{t('call_recording')}</p>
+                          <p className="text-[14px] font-medium text-muted-foreground flex items-center gap-1"><Play className="h-3 w-3" />{t('call_recording')}</p>
                           <audio controls src={s.recording_url} className="w-full h-9" />
                         </div>
                       )}
                       {s.summary && (
                         <div>
-                          <p className="text-[11px] font-medium text-muted-foreground">{t('call_summary')}</p>
+                          <p className="text-[14px] font-medium text-muted-foreground">{t('call_summary')}</p>
                           <p className="text-xs">{s.summary}</p>
                         </div>
                       )}
                       {s.transcript && (
                         <div>
-                          <p className="text-[11px] font-medium text-muted-foreground mb-1">{t('call_transcript')}</p>
+                          <p className="text-[14px] font-medium text-muted-foreground mb-1">{t('call_transcript')}</p>
                           <div className="rounded-lg bg-background border border-border p-2.5 max-h-48 overflow-y-auto">
                             <p className="text-xs whitespace-pre-wrap leading-relaxed">{s.transcript}</p>
                           </div>

@@ -34,6 +34,12 @@ const LEDGER_TYPE_KEY: Record<LedgerType, string> = {
   SERVICE_RESERVE: 'credits_type_service_reserve',
   SERVICE_CAPTURE: 'credits_type_service_capture',
   SERVICE_RELEASE: 'credits_type_service_release',
+  MEMBERSHIP_GRANT: 'credits_type_membership_grant',
+  PROMOTIONAL_GRANT: 'credits_type_promotional_grant',
+  FIRST_TOPUP_BONUS: 'credits_type_first_topup_bonus',
+  EXPIRATION: 'credits_type_expiration',
+  REVERSAL: 'credits_type_reversal',
+  REDENOMINATION: 'credits_type_redenomination',
 };
 const PAYMENT_STATUS_KEY: Record<PaymentStatus, string> = {
   PENDING: 'payment_status_pending',
@@ -230,7 +236,7 @@ function ProfileContent() {
             <CardContent className="pt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> {t('profile_field_plan')}</span>
-                <Badge variant="outline" className="uppercase text-[10px]">{homatchUser.plan || t('profile_plan_free')}</Badge>
+                <Badge variant="outline" className="uppercase text-[13px]">{homatchUser.plan || t('profile_plan_free')}</Badge>
               </div>
               <Separator className="bg-border" />
               <div className="flex items-center justify-between">

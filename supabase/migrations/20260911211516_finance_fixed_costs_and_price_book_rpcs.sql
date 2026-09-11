@@ -1,0 +1,15 @@
+-- The last two reporting surfaces: fixed costs and the price book.
+-- Both already had their data; neither had a way to read it. Applied to
+-- production as finance_fixed_costs_and_price_book_rpcs; see that migration in
+-- supabase_migrations.schema_migrations for the exact applied statements.
+--
+-- finance_fixed_costs()   -> recurring company costs, monthly-equivalent, plus
+--                            the infrastructure providers we pay but hold no
+--                            fixed-cost row for. Every row is labelled MANUAL.
+-- finance_upsert_fixed_expense(jsonb) -> corrections supersede, never edit.
+-- finance_price_book()    -> both halves of the book: provider_price_book
+--                            (per-model OpenAI rates Verify prices against) and
+--                            finance_provider_prices (the generic registry
+--                            book), plus the providers that declare dated
+--                            pricing and have no rate on file, which is exactly
+--                            where unpriced usage comes from.

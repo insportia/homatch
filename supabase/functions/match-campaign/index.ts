@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { beginExecution, settleExecution, releaseExecution } from '../_shared/billing.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -80,6 +81,8 @@ Deno.serve(async (req: Request) => {
   const db = createClient(baseUrl, serviceKey);
 
   let jobId: string | null = null;
+  // Visible to the catch below, which is outside the try that creates it.
+  let grantRef: Awaited<ReturnType<typeof beginExecution>> | null = null;
   try {
     const body = await req.json().catch(() => ({}));
     const propertyId = String(body.propertyId || '');
@@ -162,6 +165,52 @@ Deno.serve(async (req: Request) => {
         status: priorJob.status,
         matchesCreated: priorJob.matches_created,
       });
+    }
+
+    /* ---- billing ----
+     *
+     * This is the Find Clients SEARCH. One full search a month is included on
+     * every plan; after that the wallet funds it, with no monthly ceiling on
+     * how many a customer may run.
+     *
+     * Placed AFTER the idempotency check on purpose: a replayed request
+     * returns the earlier job above and never reaches here, so it cannot hold
+     * a second lot of credits for one logical search.
+     *
+     * NOTE FOR THE OPERATOR: unlocking an individual match still charges
+     * separately through atomic_match_unlock, which is the pre-existing and
+     * untouched revenue line for revealing one contact. Whether the search
+     * charge and the per-contact charge should be consolidated is a product
+     * decision, and it is deliberately NOT made here. */
+    const grant = await beginExecution(db, {
+      userId: homatchUser.id,
+      productCode: 'FIND_CLIENTS',
+      idempotencyKey: `findclients:${idempotencyKey}`,
+      jobRef: propertyId,
+      // Present when the customer accepted a best-effort budget smaller than
+      // the estimate ("search with my 10 Credits"). Absent means "as much of
+      // the estimate as the balance covers".
+      authorizedMaxCredits: body.authorizedMaxCredits != null
+        ? Number(body.authorizedMaxCredits) : undefined,
+      metadata: { campaignId, propertyId },
+    });
+    grantRef = grant;
+
+    if (!grant.ok) {
+      const { data: ent } = await db.rpc('billing_entitlements', { p_user_id: homatchUser.id });
+      return json({
+        error: grant.reason === 'BELOW_MIN_VIABLE_BUDGET'
+          ? 'This search needs a little more balance to be worth running.'
+          : 'This search needs Credits to continue.',
+        reasonCode: grant.reason ?? 'BILLING_REQUIRED',
+        planCode: grant.planCode,
+        walletBalance: Number(ent?.wallet?.balance ?? 0),
+        // What they would need, so the client can say it rather than showing a
+        // dead-end "insufficient balance".
+        minViableBudgetCredits: grant.minViableBudgetCredits,
+        budget: grant.budget ?? null,
+        firstTopupPromoAvailable: !!ent?.first_topup_promo_available,
+      }, 402);
     }
 
     const startedAt = new Date().toISOString();
@@ -285,12 +334,29 @@ Deno.serve(async (req: Request) => {
         strongMatches: Number(strongCount || 0),
         required: minStrong,
       });
-      const maxJobs = Math.min(25, Math.max(1, Number(settings.external_discovery_max_jobs_per_property_tick || 10)));
+      // The authorised budget, in the provider's own unit. wallet_reserve
+      // worked this out from what the credits buy at THIS plan's member rate,
+      // so the same 10 Credits authorises more underlying discovery on Premium
+      // than on Free. The worker must not spend past it.
+      const budgetCents = Number(grant.providerBudgetCeilingCents ?? 0);
+      const maxSpendUsd = budgetCents > 0 ? budgetCents / 100 : null;
+
+      // A smaller budget should produce a deliberately SCOPED search, not a
+      // full one interrupted half way. Fewer, highest-yield jobs rather than a
+      // broad sweep that runs out of money mid-sweep.
+      const configuredMax = Math.min(25, Math.max(1, Number(settings.external_discovery_max_jobs_per_property_tick || 10)));
+      const maxJobs = grant.partialBudget
+        ? Math.max(1, Math.min(configuredMax, Math.floor(configuredMax / 2)))
+        : configuredMax;
+
       const external = await invoke(baseUrl, serviceKey, 'discovery-queue-worker', {
         mode: 'execute',
         propertyId,
         campaignId,
         limit: maxJobs,
+        // A hard ceiling, enforced inside the worker before each provider call.
+        maxSpendUsd,
+        qualityTier: grant.qualityTier,
       }, 330_000);
       externalResult = external.data;
       await event(db, jobId, external.status === 423 ? 'EXTERNAL_DISCOVERY_LOCKED' : 'EXTERNAL_DISCOVERY_COMPLETE', {
@@ -302,6 +368,9 @@ Deno.serve(async (req: Request) => {
         failures: Array.isArray(external.data?.failures) ? external.data.failures.length : 0,
         blocked: external.data?.blocked === true,
         reason: external.data?.reason || null,
+        budgetExhausted: external.data?.budgetExhausted === true,
+        spentUsd: Number(external.data?.spentUsd || 0),
+        authorizedSpendUsd: maxSpendUsd,
       });
     }
 
@@ -354,11 +423,73 @@ Deno.serve(async (req: Request) => {
       paidProviderCalls: Number(externalResult?.processed || 0),
     });
 
+    /* ---- the search includes its results ----
+     *
+     * A Find Clients search is a billed execution. Charging again to reveal
+     * what it found would be charging twice for one thing, so every match this
+     * job produced is stamped with the reservation that paid for it and
+     * atomic_match_unlock reveals those for zero.
+     *
+     * Scoped to matches created since this job started, so it cannot
+     * retroactively make somebody's older, separately-priced matches free. */
+    if (grant.reservationId) {
+      const { error: includeErr } = await db
+        .from('matches')
+        .update({ unlock_included_reservation_id: grant.reservationId })
+        .eq('property_id', propertyId)
+        .gte('created_at', startedAt)
+        .is('unlock_included_reservation_id', null);
+      if (includeErr) {
+        // Loud, because the alternative is silently charging a customer twice.
+        console.error('[match-campaign] could not mark results as included', includeErr);
+        await event(db, jobId, 'INCLUDE_MARK_FAILED', { message: includeErr.message });
+      }
+    }
+
+    /* ---- settle on what the pipeline actually spent ----
+     *
+     * totalCost is summed from cost_events written by the providers this run
+     * actually called, so a search that found its answer in existing Homatch
+     * data costs the customer far less than one that had to go out and buy
+     * fresh discovery. That is the reuse economics working as intended. */
+    let creditsCharged = 0;
+    try {
+      const settled = await settleExecution(db, grant, {
+        provider: 'homatch_matching',
+        providerOperation: 'find_clients_search',
+        providerRequestId: jobId ?? undefined,
+        searchCount: Number(externalResult?.processed || 0),
+        durationMs: Date.now() - new Date(startedAt).getTime(),
+        rawProviderCostCents: totalCost * 100,
+        metadata: {
+          quality_tier: grant.qualityTier,
+          result_ceiling: grant.resultCeiling,
+          matches: totalMatches,
+          candidate_signals: candidateSignals,
+        },
+      }, totalMatches > 0 ? 'SUCCESS' : 'PARTIAL');
+      creditsCharged = settled.chargedCredits;
+    } catch (e) {
+      console.error('[match-campaign] settle failed; sweeper will reconcile', e);
+    }
+
     return json({
       success: true,
       jobId,
       campaignId,
       status: totalMatches > 0 ? 'completed' : 'partially_completed',
+      billing: {
+        funding: grant.funding,
+        planCode: grant.planCode,
+        qualityTier: grant.qualityTier,
+        resultCeiling: grant.resultCeiling,
+        creditsCharged,
+        creditsAuthorized: grant.authorizedMaxCredits,
+        // True when the customer chose to search with less than the estimate.
+        partialBudget: grant.partialBudget,
+        // Results of a paid search are included; revealing them costs nothing.
+        resultsIncluded: !!grant.reservationId,
+      },
       matchesCreated: totalMatches,
       candidateSignals,
       costUsd: totalCost,
@@ -366,6 +497,11 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     const errorMessage = message(error);
+    // Our pipeline broke. The customer keeps their credits and, if the run was
+    // allowance-funded, their included search for the month.
+    if (grantRef) {
+      await releaseExecution(db, grantRef, 'pipeline_error').catch(() => undefined);
+    }
     if (jobId) {
       await event(db, jobId, 'JOB_FAILED', { message: errorMessage }).catch(() => undefined);
       await updateJob(db, jobId, {

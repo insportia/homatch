@@ -121,11 +121,25 @@ serve(async (req) => {
     const { data: profileRow } = await supabase.from('users').select('id,plan').eq('auth_id', user.id).maybeSingle();
     if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
     const ownerId = profileRow.id;
-    const plan = profileRow.plan ?? 'FREE';
 
     // Freemium gate: free plan sees a capped number of communities per
-    // property; PLUS/PRO see the full ranked list. This is enforced here
+    // property; a paid plan sees the full ranked list. Enforced here
     // (server-side) rather than trusting a client-supplied limit.
+    //
+    // The plan now comes from billing_current_plan() rather than users.plan.
+    // users.plan is a MIRROR kept in sync by subscription_apply_plan, and the
+    // subscription row is the truth; reading the mirror would go stale the
+    // moment a membership lapsed between the sweeper running and the mirror
+    // being rewritten. The old `plan === 'FREE' ? … : …` test also happened to
+    // treat VIP and PREMIUM identically only because neither string equals
+    // 'FREE' -- correct by accident rather than by intent.
+    //
+    // This feature does NOT charge credits and is not the Broker Finder
+    // product. It ranks communities and posting venues, which is a different
+    // thing from finding an evidenced broker contact.
+    const { data: currentPlan } = await supabase.rpc('billing_current_plan', { p_user_id: ownerId });
+    const plan = String(currentPlan ?? profileRow.plan ?? 'FREE');
+
     const FREE_COMMUNITY_LIMIT = 7;
     const PAID_COMMUNITY_LIMIT = 100;
     const maxAllowed = plan === 'FREE' ? FREE_COMMUNITY_LIMIT : PAID_COMMUNITY_LIMIT;

@@ -153,3 +153,41 @@ export function useLanguage() {
   if (!ctx) throw new Error('useLanguage must be used within LanguageProvider');
   return ctx;
 }
+
+/**
+ * Render a subtree in a different language from the rest of the app.
+ *
+ * Exists for one caller: the Site Studio preview, which has to show the page
+ * in the language being EDITED while the editor's own interface stays in the
+ * admin's language. Someone checking the Arabic homepage should not have the
+ * toolbar flip to Arabic under them, and should not have to change their own
+ * account language to look at it.
+ *
+ * Deliberately narrower than the real provider. It does NOT write
+ * localStorage, does NOT touch document.lang or document.dir, and its setLang
+ * is a no-op: a preview is a view of content, not a change of preference.
+ * Direction for the previewed page is applied by the preview's own wrapper,
+ * scoped to that element, so RTL can be inspected inside an LTR editor.
+ */
+export function LanguageOverride({
+  lang, children,
+}: { lang: SupportedLanguage; children: React.ReactNode }) {
+  const outer = useLanguage();
+
+  const t = useCallback((key: string, vars?: Record<string, string | number>): string => {
+    const bundle = translations[lang] as Record<string, string> | undefined;
+    const english = translations.en as Record<string, string>;
+    const resolved = bundle?.[key] ?? english[key] ?? key;
+    return interpolate(resolved, vars);
+  }, [lang]);
+
+  const value: LanguageContextValue = {
+    lang,
+    setLang: () => { /* a preview does not change anyone's language */ },
+    applyProfileLanguage: outer.applyProfileLanguage,
+    t,
+    isRTL: RTL_LANGUAGES.includes(lang),
+  };
+
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
+}

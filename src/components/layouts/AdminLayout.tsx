@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Building2, Zap, Globe, Radio,
   Activity, Puzzle, CreditCard, Receipt, Server, Settings2,
   ShieldAlert, Wrench, ChevronLeft, Menu, X, AlertTriangle,
-  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send,
+  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send, Paintbrush, BadgeDollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ const NAV = [
   { path: '/admin/matches',      labelKey: 'admin_nav_matches',    icon: Puzzle },
   { path: '/admin/credits',      labelKey: 'admin_nav_credits',    icon: CreditCard },
   { path: '/admin/payments',     labelKey: 'admin_nav_payments',   icon: Receipt },
+  { path: '/admin/finance',      labelKey: 'admin_nav_finance',    icon: BadgeDollarSign },
   { path: '/admin/live-chat-reports', labelKey: 'admin_livechat_title', icon: MessageSquareWarning },
   { path: '/admin/providers',    labelKey: 'admin_nav_providers',  icon: Server },
   { path: '/admin/pricing',      labelKey: 'admin_nav_pricing',    icon: Settings2 },
@@ -37,6 +38,7 @@ const NAV = [
   { path: '/admin/sponsored',    labelKey: 'admin_nav_sponsored',  icon: Activity },
   { path: '/admin/settings',     labelKey: 'admin_nav_settings',   icon: SlidersHorizontal },
   { path: '/admin/health',       labelKey: 'admin_nav_health',     icon: HeartPulse },
+  { path: '/admin/site-studio',  labelKey: 'studio_title',         icon: Paintbrush },
 ];
 
 function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose?: () => void }) {
@@ -47,7 +49,7 @@ function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose
       <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border shrink-0">
         <Link to="/admin" className="flex items-center gap-2" onClick={onClose}>
           <span className="font-bold text-base tracking-tight text-primary">HOMATCH</span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/40 text-primary">ADMIN</Badge>
+          <Badge variant="outline" className="text-[13px] px-1.5 py-0 border-primary/40 text-primary">ADMIN</Badge>
         </Link>
         {onClose && (
           <Button variant="ghost" size="icon" className="md:hidden" onClick={onClose}>
@@ -74,7 +76,7 @@ function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose
               <Icon className="h-4 w-4 shrink-0" />
               <span className="flex-1 truncate">{t(labelKey)}</span>
               {isSpendCap && capWarnings > 0 && (
-                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{capWarnings}</Badge>
+                <Badge variant="destructive" className="text-[13px] px-1.5 py-0 h-4">{capWarnings}</Badge>
               )}
             </Link>
           );

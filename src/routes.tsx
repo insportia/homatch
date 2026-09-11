@@ -32,6 +32,8 @@ import LegacyDealRoomRedirect from './pages/LegacyDealRoomRedirect';
 // is left in place (dormant), not deleted, in case this product surface
 // is revisited later.
 import PartnersPage from './pages/PartnersPage';
+import PricingPage from './pages/PricingPage';
+import AboutPage from './pages/AboutPage';
 // Outreach pages
 import OutreachHubPage from './pages/outreach/OutreachHubPage';
 import CommunitiesPage from './pages/outreach/CommunitiesPage';
@@ -54,6 +56,7 @@ import AdminSignalsPage from './pages/admin/AdminSignalsPage';
 import AdminMatchesPage from './pages/admin/AdminMatchesPage';
 import AdminCreditsPage from './pages/admin/AdminCreditsPage';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
+import AdminFinancePage from './pages/admin/AdminFinancePage';
 import AdminProvidersPage from './pages/admin/AdminProvidersPage';
 import AdminPricingPage from './pages/admin/AdminPricingPage';
 import AdminSpendCapsPage from './pages/admin/AdminSpendCapsPage';
@@ -61,6 +64,7 @@ import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
 import AdminSponsoredPage from './pages/admin/AdminSponsoredPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AdminHealthPage from './pages/admin/AdminHealthPage';
+import SiteStudioPage from './pages/admin/SiteStudioPage';
 import AdminLiveChatReportsPage from './pages/admin/AdminLiveChatReportsPage';
 
 export interface RouteConfig {
@@ -77,6 +81,9 @@ const adminWrap = (page: ReactNode) => <AdminLayout>{page}</AdminLayout>;
 export const routes: RouteConfig[] = [
   // Public
   { name: 'Home',              path: '/',                         element: <HomePage />,          public: true },
+  // What Homatch is, for somebody who arrived here without seeing the home
+  // page first. Product explanation, not a corporate About Us.
+  { name: 'About',             path: '/about',                    element: <AboutPage />,         public: true },
   { name: 'Login',             path: '/auth/login',               element: <LoginPage />,         public: true },
   { name: 'Signup',            path: '/auth/signup',              element: <SignupPage />,        public: true },
   { name: 'Auth Callback',     path: '/auth/callback',            element: <AuthCallbackPage />,  public: true },
@@ -103,6 +110,9 @@ export const routes: RouteConfig[] = [
   // 'My Deals' / '/cases' route intentionally removed from the product
   // (2026-09-06 mandate) — see the CasesPage import comment above.
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },
+  // Public on purpose. A signed-out visitor comparing plans is the whole
+  // point of the page, and the plan catalogue is readable by anon.
+  { name: 'Pricing',           path: '/pricing',                  element: <PricingPage />,       public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
   // Compatibility only. "Deal Room" was briefly a separate destination; it is
@@ -145,6 +155,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Matches',     path: '/admin/matches',            element: adminWrap(<AdminMatchesPage />),     adminOnly: true },
   { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },
   { name: 'Admin Payments',    path: '/admin/payments',           element: adminWrap(<AdminPaymentsPage />),    adminOnly: true },
+  { name: 'Admin Finance',     path: '/admin/finance',            element: adminWrap(<AdminFinancePage />),     adminOnly: true },
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
@@ -153,4 +164,5 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Sponsored',   path: '/admin/sponsored',          element: adminWrap(<AdminSponsoredPage />),   adminOnly: true },
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
+  { name: 'Site Studio',       path: '/admin/site-studio',        element: adminWrap(<SiteStudioPage />),       adminOnly: true },
 ];

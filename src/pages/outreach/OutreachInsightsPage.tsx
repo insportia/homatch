@@ -147,7 +147,7 @@ export default function OutreachInsightsPage() {
                     <CardContent className="p-4">
                       <Icon className="h-4 w-4 text-primary mb-2" />
                       <p className="text-2xl font-semibold text-foreground">{value}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{t(labelKey as Parameters<typeof t>[0])}</p>
+                      <p className="text-[14px] text-muted-foreground mt-0.5">{t(labelKey as Parameters<typeof t>[0])}</p>
                     </CardContent>
                   </Card>
                 ))}
@@ -167,10 +167,10 @@ export default function OutreachInsightsPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="text-sm font-medium truncate">{c.name}</p>
-                              <Badge variant="outline" className="text-[9px] px-1 py-0">{c.campaign_type}</Badge>
-                              <Badge variant="outline" className="text-[9px] px-1 py-0">{c.status}</Badge>
+                              <Badge variant="outline" className="text-[12px] px-1 py-0">{c.campaign_type}</Badge>
+                              <Badge variant="outline" className="text-[12px] px-1 py-0">{c.status}</Badge>
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                            <p className="text-[14px] text-muted-foreground mt-0.5">
                               {c.sent_count ?? 0} {t('insights_metric_sent')} · {c.open_count ?? 0} {t('insights_metric_opened')} · {c.reply_count ?? 0} {t('insights_metric_replies')}
                             </p>
                           </div>
@@ -196,10 +196,10 @@ export default function OutreachInsightsPage() {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="text-sm font-medium truncate">{c.outreach_contacts?.full_name ?? c.recipient_phone ?? '—'}</p>
                               {c.outreach_campaigns?.properties?.title && (
-                                <span className="text-[11px] text-muted-foreground truncate">— {c.outreach_campaigns.properties.title}</span>
+                                <span className="text-[14px] text-muted-foreground truncate">— {c.outreach_campaigns.properties.title}</span>
                               )}
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                            <p className="text-[14px] text-muted-foreground mt-0.5 truncate">
                               {c.status}{c.duration_sec ? ` · ${Math.round(c.duration_sec / 60)}m` : ''}{c.summary ? ` · ${c.summary}` : ''}
                             </p>
                           </div>

@@ -157,10 +157,10 @@ export default function SmsCampaignsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm truncate">{c.name}</span>
-                          <Badge variant="outline" className="text-[10px] px-1.5">{c.status}</Badge>
+                          <Badge variant="outline" className="text-[13px] px-1.5">{c.status}</Badge>
                         </div>
                         {c.sms_template && <p className="text-xs text-muted-foreground truncate mt-0.5">{c.sms_template}</p>}
-                        <div className="flex gap-4 mt-1 text-[11px] text-muted-foreground">
+                        <div className="flex gap-4 mt-1 text-[14px] text-muted-foreground">
                           <span>{c.audience_count ?? 0} {t('sms_recipients')}</span>
                           <span>{c.sent_count ?? 0} {t('sms_sent')}</span>
                           {(c.cost_estimate_usd ?? 0) > 0 && <span>${c.cost_estimate_usd?.toFixed(2)}</span>}

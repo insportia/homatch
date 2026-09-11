@@ -100,7 +100,7 @@ export default function AdminOutreachPage() {
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">{c.owner_email ?? '—'}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs">{c.campaign_type}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant={STATUS_COLOR[c.status] ?? 'outline'} className="text-[10px]">{c.status}</Badge>
+                      <Badge variant={STATUS_COLOR[c.status] ?? 'outline'} className="text-[13px]">{c.status}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs">{c.sent_count}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs">${c.cost_actual_usd.toFixed(2)}</td>

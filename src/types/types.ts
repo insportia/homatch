@@ -490,9 +490,22 @@ export type SignalStrength =
 export type MatchStatus =
   | 'NEW' | 'PREVIEWED' | 'UNLOCKED' | 'ARCHIVED' | 'REJECTED';
 
+/**
+ * Mirrors the `ledger_type` enum in Postgres. CreditsPage maps this
+ * exhaustively, so a value present in the database but missing here renders as
+ * "Adjustment" to the customer rather than as what it actually was.
+ *
+ * SERVICE_RESERVE / SERVICE_CAPTURE / SERVICE_RELEASE are the hold, the charge
+ * and the return of the unused remainder. Billing v2 reuses them rather than
+ * adding RESERVATION_HOLD / USAGE_CHARGE / RESERVATION_RELEASE synonyms.
+ */
 export type LedgerType =
   | 'TOP_UP' | 'MATCH_UNLOCK' | 'ADMIN_ADJUSTMENT' | 'REFUND'
-  | 'SERVICE_RESERVE' | 'SERVICE_CAPTURE' | 'SERVICE_RELEASE';
+  | 'SERVICE_RESERVE' | 'SERVICE_CAPTURE' | 'SERVICE_RELEASE'
+  | 'MEMBERSHIP_GRANT' | 'PROMOTIONAL_GRANT' | 'FIRST_TOPUP_BONUS'
+  | 'EXPIRATION' | 'REVERSAL'
+  // One-off: the 1 Credit = $1.00 -> $0.10 rescale of 2026-09-13.
+  | 'REDENOMINATION';
 
 export type PaymentStatus =
   | 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';

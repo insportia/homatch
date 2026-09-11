@@ -43,6 +43,7 @@ import JSZip from 'npm:jszip@3.10.1';
 import { documentKind, extractDocxText, DOCX_MIME } from '../../../src/dealroom/domain/docx.ts';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { crossCheck, toFindingRows } from '../../../src/dealroom/domain/contractCheck.ts';
+import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
 import {
   buildAnalysisPrompt,
   parseAnalysis,
@@ -307,8 +308,53 @@ serve(async (req) => {
       return json({ state: 'FAILED', reason: 'ANALYSIS_UNAVAILABLE' }, 503);
     }
 
+    /* ---- billing ----
+     *
+     * Everything above is free: an unchanged document short-circuits at
+     * ALREADY_ANALYSED without reaching here, because re-reading an analysis
+     * we already hold costs nothing.
+     *
+     * Below this line the model runs on real money. One Contract Intelligence
+     * analysis a month is included on every plan; after that the wallet pays.
+     * The tier controls how much of the document the model reasons over, never
+     * whether the legal reading is correct: a Standard analysis says the same
+     * true things about the same clauses as a Maximum one. */
+    const svc = serviceClient();
+    const { data: hmUser } = await svc.from('users').select('id').eq('auth_id', userId).maybeSingle();
+    if (!hmUser?.id) return json({ error: 'unauthorized' }, 401);
+
+    const analysisStartedAt = Date.now();
+    const grant = await beginExecution(svc, {
+      userId: hmUser.id,
+      productCode: 'CONTRACT_INTELLIGENCE',
+      // Keyed to the document's content hash, so re-analysing the SAME bytes
+      // after a transient failure reuses the hold rather than placing another.
+      idempotencyKey: `contract:${hmUser.id}:${sha}`,
+      jobRef: documentId,
+      metadata: { pages },
+    });
+
+    if (!grant.ok) {
+      const { data: ent } = await svc.rpc('billing_entitlements', { p_user_id: hmUser.id });
+      await supabase.from('deal_room_documents')
+        .update({ analysis_state: 'PENDING', analysis_error: null }).eq('id', documentId);
+      return json({
+        state: 'BILLING_REQUIRED',
+        reason: grant.reason ?? 'BILLING_REQUIRED',
+        planCode: grant.planCode,
+        walletBalance: Number(ent?.wallet?.balance ?? 0),
+        firstTopupPromoAvailable: !!ent?.first_topup_promo_available,
+      }, 402);
+    }
+
+    const REASONING: Record<string, 'low' | 'medium' | 'high'> = {
+      STANDARD: 'low', ENHANCED: 'medium', MAXIMUM: 'high',
+    };
+
     const { system, user } = buildAnalysisPrompt(text, { interestingFactTypes, language });
     let modelText = '';
+    let modelUsage: any = null;
+    let modelId: string | null = null;
     try {
       const res = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
@@ -319,12 +365,24 @@ serve(async (req) => {
             { role: 'system', content: system },
             { role: 'user', content: user },
           ],
+          reasoning: { effort: REASONING[grant.qualityTier] ?? 'low' },
         }),
       });
-      if (res.ok) modelText = textOf(await res.json());
+      if (res.ok) {
+        const payload = await res.json();
+        modelText = textOf(payload);
+        modelUsage = payload?.usage ?? null;
+        modelId = payload?.model ?? MODEL;
+      }
     } catch {
       // fall through: an empty model response degrades to an empty analysis
       // rather than to invented content.
+    }
+
+    // An empty model response is our failure, not the customer's. Charge
+    // nothing and give an included slot back.
+    if (!modelText) {
+      await releaseExecution(svc, grant, 'model_returned_nothing');
     }
 
     const analysis = parseAnalysis(modelText, text);
@@ -391,6 +449,34 @@ serve(async (req) => {
       })
       .eq('id', documentId);
 
+    /* ---- settle on measured usage ---- */
+    let creditsCharged = 0;
+    if (modelText) {
+      const { data: aiCents } = await svc.rpc('billing_ai_cost_cents', {
+        p_model: modelId ?? MODEL,
+        p_input_tokens: Number(modelUsage?.input_tokens ?? 0),
+        p_cached_tokens: Number(modelUsage?.input_tokens_details?.cached_tokens ?? 0),
+        p_output_tokens: Number(modelUsage?.output_tokens ?? 0),
+        p_web_search_calls: 0,
+      });
+      try {
+        const settled = await settleExecution(svc, grant, {
+          provider: 'openai',
+          providerOperation: 'contract_analysis',
+          model: modelId ?? MODEL,
+          inputTokens: Number(modelUsage?.input_tokens ?? 0),
+          cachedTokens: Number(modelUsage?.input_tokens_details?.cached_tokens ?? 0),
+          outputTokens: Number(modelUsage?.output_tokens ?? 0),
+          durationMs: Date.now() - analysisStartedAt,
+          aiCostCents: Number(aiCents ?? 0),
+          metadata: { pages, quality_tier: grant.qualityTier, findings: checked.length },
+        }, 'SUCCESS');
+        creditsCharged = settled.chargedCredits;
+      } catch (e) {
+        console.error('[document-analyze] settle failed; sweeper will reconcile', e);
+      }
+    }
+
     // The customer's own history of their document (§18). Best-effort: a
     // missing history line must never fail an analysis that succeeded.
     try {
@@ -405,6 +491,12 @@ serve(async (req) => {
 
     return json({
       state: 'DONE',
+      billing: {
+        funding: grant.funding,
+        planCode: grant.planCode,
+        qualityTier: grant.qualityTier,
+        creditsCharged,
+      },
       pages,
       documentType: analysis.documentType,
       summaryCount: analysis.summary.length,

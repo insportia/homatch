@@ -23,6 +23,48 @@ export default {
             }
         },
         extend: {
+            /* ----------------------------------------------------------------
+             * THE TYPE SCALE
+             *
+             * Redefined rather than left at Tailwind's defaults, because the
+             * app leans on two of these steps almost exclusively: text-xs and
+             * text-sm account for 1,142 usages across src/. At Tailwind's
+             * defaults that is 12px and 14px, which is why a measurement sweep
+             * found 107 of 139 text nodes on the home page below 15px, and
+             * paragraphs on /mortgage at 12px.
+             *
+             * Changing the scale here fixes all of them at once and keeps the
+             * fix in one reviewable place, instead of scattering overrides
+             * through 86 files.
+             *
+             * Every step carries its own line-height. A size without a
+             * matching leading is how dense text ends up at 1.2 and long-form
+             * ends up cramped; pairing them means picking a size also picks a
+             * sane rhythm (roughly 1.6 for reading sizes, tighter as the type
+             * grows, per the readability pass).
+             * -------------------------------------------------------------- */
+            fontSize: {
+                /* Truly minor metadata only: timestamps, source ids, counts. */
+                '2xs': ['0.8125rem', { lineHeight: '1.45' }],    /* 13px */
+                /* Badges, eyebrows, table meta. 12 -> 13 -> 14: a second
+                   review found supporting copy still reading small, and this
+                   step carries most of the labels, dates and descriptions on
+                   the dashboard and the history cards. */
+                xs: ['0.875rem', { lineHeight: '1.5' }],         /* 14px */
+                /* The workhorse secondary size, 586 usages. 14 -> 15 -> 16,
+                   which is the stated desktop body floor — most of what this
+                   step sets IS body copy. */
+                sm: ['1rem', { lineHeight: '1.6' }],             /* 16px */
+                /* Body. Was 16px. */
+                base: ['1.0625rem', { lineHeight: '1.65' }],     /* 17px */
+                /* Long-form report body and card titles. */
+                lg: ['1.25rem', { lineHeight: '1.55' }],         /* 20px */
+                xl: ['1.4375rem', { lineHeight: '1.4' }],        /* 23px */
+                '2xl': ['1.625rem', { lineHeight: '1.3' }],      /* 26px */
+                '3xl': ['2rem', { lineHeight: '1.22' }],         /* 32px */
+                '4xl': ['2.5rem', { lineHeight: '1.15' }],       /* 40px */
+                '5xl': ['3.25rem', { lineHeight: '1.08' }],      /* 52px */
+            },
             colors: {
                 border: 'hsl(var(--border))',
                 borderColor: {
@@ -63,6 +105,20 @@ export default {
                 success: 'hsl(var(--success))',
                 warning: 'hsl(var(--warning))',
                 info: 'hsl(var(--info))',
+                // Homatch brand values (see the light-surface block in
+                // index.css). Kept separate from `accent` because `accent` is
+                // a shadcn *role* — hover surfaces, muted highlights — while
+                // these are the brand's gold/sand/ink, used for rules, brand
+                // marks and warm panels.
+                gold: {
+                    DEFAULT: 'hsl(var(--gold))',
+                    // The text-safe gold. --gold is 2.6:1 on warm-white and
+                    // must never carry type on a light ground; this is 5.7:1.
+                    ink: 'hsl(var(--gold-ink))',
+                    soft: 'hsl(var(--gold-soft))'
+                },
+                sand: 'hsl(var(--sand))',
+                'ink-soft': 'hsl(var(--ink-soft))',
                 sidebar: {
                     DEFAULT: 'hsl(var(--sidebar-background))',
                     background: 'hsl(var(--sidebar-background))',
@@ -92,9 +148,19 @@ export default {
                 'gradient-card': 'var(--gradient-card)',
                 'gradient-background': 'var(--gradient-background)'
             },
+            fontFamily: {
+                /* The two role stacks, defined once in index.css so every
+                   script gets a face designed for it. */
+                sans: ['var(--font-body)'],
+                display: ['var(--font-display)'],
+            },
             boxShadow: {
                 card: 'var(--shadow-card)',
-                hover: 'var(--shadow-hover)'
+                hover: 'var(--shadow-hover)',
+                /* Restrained lift for a white card on the neutral page: two
+                   very low-opacity layers rather than one dark one, so the
+                   edge stays soft instead of reading as a drop shadow. */
+                'card-soft': '0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 16px hsl(0 0% 0% / 0.04)',
             },
             keyframes: {
                 'accordion-down': {

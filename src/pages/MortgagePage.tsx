@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -86,10 +87,11 @@ function AccuracyChip({ kind, t }: { kind: 'calculated' | 'official' | 'user' | 
     user: t('mortgage_accuracy_user_provided'),
     estimate: t('mortgage_accuracy_estimate'),
   }[kind];
-  return <Badge variant="outline" className="text-[10px] font-normal normal-case">{label}</Badge>;
+  return <Badge variant="outline" className="text-[13px] font-normal normal-case">{label}</Badge>;
 }
 
 export default function MortgagePage() {
+  useSurfaceTheme('light');
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
   const navigate = useNavigate();
@@ -260,7 +262,7 @@ export default function MortgagePage() {
             </div>
             <div>
               <h1 className="text-xl font-semibold text-foreground">{t('mortgage_page_title')}</h1>
-              <p className="text-sm text-muted-foreground">{t('mortgage_page_subtitle')}</p>
+              <p className="measure text-base text-muted-foreground">{t('mortgage_page_subtitle')}</p>
             </div>
           </div>
           {prefill?.propertyId && (
@@ -296,7 +298,7 @@ export default function MortgagePage() {
                 <Input type="number" inputMode="decimal" min={0} value={downPayment}
                   onChange={e => setDownPayment(e.target.value)} placeholder="30000" />
                 {downPaymentPercentPreview !== null && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="measure text-sm text-muted-foreground">
                     {t('mortgage_down_payment_percent_preview', { pct: downPaymentPercentPreview.toFixed(1) })}
                   </p>
                 )}
@@ -385,7 +387,7 @@ export default function MortgagePage() {
                 <CardTitle className="text-sm uppercase tracking-wide">{t('mortgage_result_title')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground leading-relaxed">
+                <p className="measure text-base leading-relaxed text-muted-foreground">
                   {t('mortgage_result_explainer', {
                     loanAmount: fmt(result.loanAmount, result.currency),
                     monthlyPayment: fmt(result.monthlyPayment, result.currency),
@@ -393,33 +395,33 @@ export default function MortgagePage() {
                   })}
                 </p>
                 <div className="grid sm:grid-cols-2 gap-3">
-                  <div className="p-3 rounded-xl bg-secondary/60 space-y-1">
+                  <div className="rounded-xl bg-secondary/60 p-4 sm:p-5 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{t('mortgage_metric_monthly_payment')}</span>
+                      <span className="t-metric-label">{t('mortgage_metric_monthly_payment')}</span>
                       <AccuracyChip kind="calculated" t={t} />
                     </div>
-                    <div className="text-lg font-semibold">{fmt(result.monthlyPayment, result.currency)}</div>
+                    <div className="t-metric">{fmt(result.monthlyPayment, result.currency)}</div>
                   </div>
-                  <div className="p-3 rounded-xl bg-secondary/60 space-y-1">
+                  <div className="rounded-xl bg-secondary/60 p-4 sm:p-5 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{t('mortgage_metric_total_repayment')}</span>
+                      <span className="t-metric-label">{t('mortgage_metric_total_repayment')}</span>
                       <AccuracyChip kind="calculated" t={t} />
                     </div>
-                    <div className="text-lg font-semibold">{fmt(result.totalRepayment, result.currency)}</div>
+                    <div className="t-metric">{fmt(result.totalRepayment, result.currency)}</div>
                   </div>
-                  <div className="p-3 rounded-xl bg-secondary/60 space-y-1">
+                  <div className="rounded-xl bg-secondary/60 p-4 sm:p-5 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{t('mortgage_metric_total_interest')}</span>
+                      <span className="t-metric-label">{t('mortgage_metric_total_interest')}</span>
                       <AccuracyChip kind="calculated" t={t} />
                     </div>
-                    <div className="text-lg font-semibold">{fmt(result.totalInterest, result.currency)}</div>
+                    <div className="t-metric">{fmt(result.totalInterest, result.currency)}</div>
                   </div>
-                  <div className="p-3 rounded-xl bg-secondary/60 space-y-1">
+                  <div className="rounded-xl bg-secondary/60 p-4 sm:p-5 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{t('mortgage_metric_ltv')}</span>
+                      <span className="t-metric-label">{t('mortgage_metric_ltv')}</span>
                       <AccuracyChip kind="calculated" t={t} />
                     </div>
-                    <div className="text-lg font-semibold">{result.ltvPercent !== null ? `${result.ltvPercent.toFixed(1)}%` : '—'}</div>
+                    <div className="t-metric">{result.ltvPercent !== null ? `${result.ltvPercent.toFixed(1)}%` : '—'}</div>
                   </div>
                 </div>
 
@@ -439,7 +441,7 @@ export default function MortgagePage() {
                       {t(result.effectiveRateUnavailableReason || 'mortgage_effective_rate_unavailable_generic')}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground leading-relaxed">{t('mortgage_effective_rate_explainer')}</p>
+                  <p className="measure text-sm leading-relaxed text-muted-foreground">{t('mortgage_effective_rate_explainer')}</p>
                 </div>
 
                 {homatchUser && (
@@ -461,7 +463,7 @@ export default function MortgagePage() {
                 <CardTitle className="text-sm uppercase tracking-wide">{t('mortgage_schedule_title')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">{t('mortgage_schedule_explainer')}</p>
+                <p className="measure text-sm text-muted-foreground">{t('mortgage_schedule_explainer')}</p>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -503,7 +505,7 @@ export default function MortgagePage() {
                   <CardTitle className="text-sm uppercase tracking-wide">{t('mortgage_term_compare_title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  <p className="text-xs text-muted-foreground">{t('mortgage_term_compare_explainer')}</p>
+                  <p className="measure text-sm text-muted-foreground">{t('mortgage_term_compare_explainer')}</p>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -518,7 +520,7 @@ export default function MortgagePage() {
                           <TableRow key={row.termMonths} className={row.isSelected ? 'bg-primary/5' : ''}>
                             <TableCell className="flex items-center gap-1.5">
                               {t('mortgage_years_value', { years: row.termMonths / 12 })}
-                              {row.isSelected && <Badge variant="outline" className="text-[10px] normal-case font-normal">{t('mortgage_term_compare_selected')}</Badge>}
+                              {row.isSelected && <Badge variant="outline" className="text-[13px] normal-case font-normal">{t('mortgage_term_compare_selected')}</Badge>}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
@@ -545,16 +547,16 @@ export default function MortgagePage() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid sm:grid-cols-2 gap-3">
-                    <div className="p-3 rounded-xl bg-secondary/60 space-y-1">
-                      <span className="text-xs text-muted-foreground">{t('mortgage_metric_pti')}</span>
+                    <div className="rounded-xl bg-secondary/60 p-4 sm:p-5 space-y-1.5">
+                      <span className="t-metric-label">{t('mortgage_metric_pti')}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-lg font-semibold">{affordability.ptiPercent.toFixed(1)}%</span>
                         {affordability.ptiWithinPublishedLimit === true && <Badge className="bg-emerald-600 text-white border-transparent normal-case font-normal">{t('mortgage_within_limit')}</Badge>}
                         {affordability.ptiWithinPublishedLimit === false && <Badge variant="destructive" className="normal-case font-normal">{t('mortgage_outside_limit')}</Badge>}
                       </div>
                     </div>
-                    <div className="p-3 rounded-xl bg-secondary/60 space-y-1">
-                      <span className="text-xs text-muted-foreground">{t('mortgage_metric_ltv')}</span>
+                    <div className="rounded-xl bg-secondary/60 p-4 sm:p-5 space-y-1.5">
+                      <span className="t-metric-label">{t('mortgage_metric_ltv')}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-lg font-semibold">{affordability.ltvPercent !== null ? `${affordability.ltvPercent.toFixed(1)}%` : '—'}</span>
                         {affordability.ltvWithinPublishedLimit === true && <Badge className="bg-emerald-600 text-white border-transparent normal-case font-normal">{t('mortgage_within_limit')}</Badge>}
@@ -563,7 +565,7 @@ export default function MortgagePage() {
                     </div>
                   </div>
                   {(affordability.matchedPtiRuleId || affordability.matchedLtvRuleId) && <AccuracyChip kind="official" t={t} />}
-                  <p className="text-xs text-muted-foreground leading-relaxed">{t('mortgage_affordability_disclaimer')}</p>
+                  <p className="measure text-sm leading-relaxed text-muted-foreground">{t('mortgage_affordability_disclaimer')}</p>
                 </CardContent>
               </Card>
             )}
@@ -583,8 +585,8 @@ export default function MortgagePage() {
                         <span className="text-sm font-medium">{rule.title}</span>
                         <AccuracyChip kind="official" t={t} />
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">{t(rule.humanExplanation)}</p>
-                      <p className="text-xs text-muted-foreground">{t('mortgage_subsidy_disclaimer')}</p>
+                      <p className="measure text-sm leading-relaxed text-muted-foreground">{t(rule.humanExplanation)}</p>
+                      <p className="measure text-sm text-muted-foreground">{t('mortgage_subsidy_disclaimer')}</p>
                     </div>
                   ))}
                 </CardContent>
@@ -608,17 +610,17 @@ export default function MortgagePage() {
               {HIDDEN_TOPICS.map(topic => (
                 <AccordionItem key={topic.key} value={topic.key}>
                   <AccordionTrigger className="text-sm text-left">{t(topic.titleKey)}</AccordionTrigger>
-                  <AccordionContent className="text-sm text-muted-foreground leading-relaxed">
+                  <AccordionContent className="measure text-base leading-[1.7] text-ink-soft">
                     {t(topic.bodyKey)}
                   </AccordionContent>
                 </AccordionItem>
               ))}
             </Accordion>
-            <p className="text-[11px] text-muted-foreground pt-3 leading-relaxed">{t('mortgage_hidden_disclaimer')}</p>
+            <p className="text-[14px] text-muted-foreground pt-3 leading-relaxed">{t('mortgage_hidden_disclaimer')}</p>
           </CardContent>
         </Card>
 
-        <p className="text-[11px] text-muted-foreground text-center leading-relaxed pb-4">
+        <p className="text-[14px] text-muted-foreground text-center leading-relaxed pb-4">
           {t('mortgage_global_disclaimer')}
         </p>
       </div>

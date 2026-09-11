@@ -74,7 +74,7 @@ export default function AdminSourcesPage() {
                       {s.name && <div className="text-xs text-muted-foreground truncate">{s.name}</div>}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant="outline" className="text-[10px]">{s.platform ?? '—'}</Badge>
+                      <Badge variant="outline" className="text-[13px]">{s.platform ?? '—'}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">

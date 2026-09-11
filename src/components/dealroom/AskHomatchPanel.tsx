@@ -75,7 +75,7 @@ export function AskHomatchPanel({
             <div key={m.id} className="flex justify-start">
               <div className="max-w-[92%] sm:max-w-[85%] rounded-2xl rounded-bl-sm bg-muted px-4 py-3 space-y-2">
                 <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
-                <Badge variant={m.grounded.length ? 'secondary' : 'outline'} className="text-[11px] font-normal">
+                <Badge variant={m.grounded.length ? 'secondary' : 'outline'} className="text-[14px] font-normal">
                   {m.grounded.length ? t('dr_ask_grounded') : t('dr_ask_general')}
                 </Badge>
               </div>

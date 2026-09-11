@@ -264,7 +264,7 @@ export default function AdminProvidersPage() {
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-sm font-semibold">{h.provider}</CardTitle>
                       {isDisabled && (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 gap-0.5">
+                        <Badge variant="destructive" className="text-[13px] px-1.5 gap-0.5">
                           <Power className="h-2.5 w-2.5" /> {t('admin_markets_disabled')}
                         </Badge>
                       )}
@@ -291,12 +291,12 @@ export default function AdminProvidersPage() {
                     </div>
                   </div>
                   {h.last_error && (
-                    <p className="text-[11px] text-destructive bg-destructive/10 rounded px-2 py-1 truncate" title={h.last_error}>
+                    <p className="text-[14px] text-destructive bg-destructive/10 rounded px-2 py-1 truncate" title={h.last_error}>
                       {h.last_error}
                     </p>
                   )}
                   {h.last_tested_at && (
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[13px] text-muted-foreground">
                       {t('admin_providers_last_tested')}: {format(new Date(h.last_tested_at), 'MMM d, HH:mm')}
                     </p>
                   )}
@@ -346,7 +346,7 @@ export default function AdminProvidersPage() {
               <CardContent className="p-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold">{p.display_name}</p>
-                  <Badge variant="outline" className={cn('text-[10px] px-1.5', p.health_status === 'ACTIVE' ? 'border-green-500/40 text-green-500' : p.health_status === 'LOCKED' ? 'border-destructive/40 text-destructive' : '')}>
+                  <Badge variant="outline" className={cn('text-[13px] px-1.5', p.health_status === 'ACTIVE' ? 'border-green-500/40 text-green-500' : p.health_status === 'LOCKED' ? 'border-destructive/40 text-destructive' : '')}>
                     {p.health_status === 'LOCKED' && <Lock className="h-2.5 w-2.5 me-1 inline" />}{p.health_status}
                   </Badge>
                 </div>
@@ -356,7 +356,7 @@ export default function AdminProvidersPage() {
                   <div><p className="text-muted-foreground">{t('admin_providers_included_usage')}</p><p className="font-medium">{p.included_usage?.toLocaleString() ?? '—'}</p></div>
                   <div><p className="text-muted-foreground">{t('admin_providers_current_usage')}</p><p className="font-medium">{p.current_usage.toLocaleString()}</p></div>
                 </div>
-                {p.notes && <p className="text-[11px] text-muted-foreground/80 leading-snug">{p.notes}</p>}
+                {p.notes && <p className="text-[14px] text-muted-foreground/80 leading-snug">{p.notes}</p>}
                 <div className="flex items-center gap-2 pt-1">
                   <Switch checked={p.enabled} disabled={togglingTreasury === p.provider_code} onCheckedChange={v => toggleTreasuryEnabled(p.provider_code, v)} />
                   <span className="text-xs text-muted-foreground">{p.enabled ? t('admin_markets_enabled') : t('admin_providers_disabled_kill_switch')}</span>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,8 @@ import {
 import { toast } from 'sonner';
 import { Eye, EyeOff, Zap, Loader2 } from 'lucide-react';
 import { takePendingPath } from '@/services/returnTo';
+
+import { consumePendingAsk } from '@/lib/pendingAsk';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
@@ -28,6 +31,7 @@ function GoogleIcon() {
 }
 
 export default function LoginPage() {
+  useSurfaceTheme('light');
   const { signIn, signInWithGoogle, sendPasswordReset, session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -53,6 +57,14 @@ export default function LoginPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!session) return;
+    // A question typed into the public Homatch AI panel before signing in.
+    // Checked first: it carries its own intent, so it can never be confused
+    // with a parked import URL.
+    const pendingAsk = consumePendingAsk();
+    if (pendingAsk) {
+      navigate('/ai', { replace: true, state: { prompt: pendingAsk } });
+      return;
+    }
     const pendingUrl = sessionStorage.getItem(PENDING_URL_KEY);
     const pendingIntent = sessionStorage.getItem('homatch_pending_intent') ?? intent;
     if (pendingIntent === 'analyse' && pendingUrl) {
@@ -113,7 +125,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
       {/* Left panel — branding */}
       <div className="hidden md:flex md:w-1/2 bg-card border-r border-border flex-col justify-between p-10 relative overflow-hidden">
-        <div className="amber-glow absolute inset-0 pointer-events-none" />
+
         <Link to="/" className="relative z-10 w-fit">
           <HomatchLogo size="md" />
         </Link>

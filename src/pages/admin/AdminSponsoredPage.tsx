@@ -137,9 +137,9 @@ export default function AdminSponsoredPage() {
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm text-foreground">{p.headline}</span>
-                      <Badge variant="secondary" className="text-[10px] border-border">{p.placement}</Badge>
-                      <Badge variant="secondary" className="text-[10px] border-border">{p.category}</Badge>
-                      {!p.enabled && <Badge variant="secondary" className="text-[10px] text-muted-foreground">{t('admin_markets_disabled')}</Badge>}
+                      <Badge variant="secondary" className="text-[13px] border-border">{p.placement}</Badge>
+                      <Badge variant="secondary" className="text-[13px] border-border">{p.category}</Badge>
+                      {!p.enabled && <Badge variant="secondary" className="text-[13px] text-muted-foreground">{t('admin_markets_disabled')}</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground">{p.partner_name} · {p.market} · {p.language}</p>
                     {(p.start_date || p.end_date) && (

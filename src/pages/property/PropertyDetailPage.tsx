@@ -189,7 +189,7 @@ function CampaignPanel({
           ].map(({ label, value, highlight }) => (
             <div key={label} className="rounded-lg bg-secondary/50 p-2 text-center">
               <p className={`text-lg font-semibold ${highlight ? 'text-primary' : 'text-foreground'}`}>{value}</p>
-              <p className="text-[10px] text-muted-foreground">{label}</p>
+              <p className="text-[13px] text-muted-foreground">{label}</p>
             </div>
           ))}
         </div>

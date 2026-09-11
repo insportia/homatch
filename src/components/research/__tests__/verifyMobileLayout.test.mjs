@@ -104,7 +104,11 @@ test('the Verify header and primary action fit narrow screens without horizontal
   // Header row wraps instead of squeezing the title against two buttons.
   assert.match(verifySource, /className="flex flex-wrap items-start justify-between gap-2"/);
   assert.match(verifySource, /className="min-w-0 flex-1"/);
-  assert.match(verifySource, /text-xl sm:text-2xl font-bold break-words/);
+  // The desktop step grew with the readability pass (2xl -> 3xl) and the
+  // weight moved to semibold with the display face. The MOBILE step is the
+  // part this test is actually guarding — it shares a row with two buttons
+  // at 320px — so text-xl stays pinned here deliberately.
+  assert.match(verifySource, /text-xl sm:text-3xl font-semibold break-words/);
   // Search input + button stack under sm, side by side above it.
   assert.match(verifySource, /className="flex flex-col gap-2 sm:flex-row"/);
   assert.match(verifySource, /<Input className="min-w-0 flex-1"/);

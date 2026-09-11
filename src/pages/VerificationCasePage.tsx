@@ -32,7 +32,10 @@ import {
 } from '@/services/dealRooms';
 import { listFindings, uploadDocument, deleteDocument, analyzeDocument, getDocumentAnalysis,
   type DocumentFinding, type AnalysisState, type DocumentAnalysis } from '@/services/dealRoomDocuments';
-import { SynthesisSummary, type SynthesisView } from '@/components/dealroom/SynthesisSummary';
+import { VerifyResultView } from '@/components/verify/VerifyResultView';
+import { loadVerifyResult, getVerifyJobFacts, type VerifyJobFacts } from '@/services/verifyResult';
+import type { NormalizedVerifyResult } from '@/verify/resultNormalizer';
+import { isTerminal } from '@/jobs/jobState';
 import { ActionPlanPanel } from '@/components/dealroom/ActionPlanPanel';
 import { AskHomatchPanel, type AskMessage } from '@/components/dealroom/AskHomatchPanel';
 import { DocumentsPanel } from '@/components/dealroom/DocumentsPanel';
@@ -61,8 +64,12 @@ const VerificationCasePage: React.FC = () => {
   const [notes, setNotes] = useState<{ id: string; body: string; created_at: string }[]>([]);
   const [noteDraft, setNoteDraft] = useState('');
 
-  const [summary, setSummary] = useState<SynthesisView | null>(null);
+  // The verification result, already canonicalised. The page never holds a
+  // raw synthesis payload, which is what made two renderers disagree about
+  // its shape and crash this screen.
+  const [verifyResult, setVerifyResult] = useState<NormalizedVerifyResult | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [verifyFacts, setVerifyFacts] = useState<VerifyJobFacts | null>(null);
 
   const [messages, setMessages] = useState<AskMessage[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -119,24 +126,49 @@ const VerificationCasePage: React.FC = () => {
     reload().catch(() => setRoom(null));
   }, [reload]);
 
-  // The synthesis is fetched once the room is known. It is a separate call
-  // because it may involve a model round-trip, and the rest of the room must
-  // not wait on it.
+  /*
+   * The verification result.
+   *
+   * Separate from reload() because it may involve a model round-trip and the
+   * rest of the case must not wait on it. Canonicalised on the way in by
+   * loadVerifyResult(), so what lands in state is always the same shape
+   * whichever of the three historical payload contracts the row was written
+   * in — that disagreement is what used to crash this screen.
+   *
+   * WHILE THE RESEARCH IS STILL RUNNING it re-reads on a timer, so a customer
+   * who opens the case mid-run watches it fill in rather than being told to
+   * come back. `alive` only stops US from writing into an unmounted
+   * component's state — it does not, and must not, stop the verification
+   * (PART C §30/§50).
+   */
   useEffect(() => {
-    if (!room?.verify_job_id) return;
+    const jobId = room?.verify_job_id;
+    if (!jobId) return;
     let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     setSummaryLoading(true);
-    supabase.functions
-      .invoke('verify-synthesis', { body: { jobId: room.verify_job_id } })
-      .then(({ data, error }) => {
+
+    const tick = async () => {
+      try {
+        const facts = await getVerifyJobFacts(jobId);
         if (!alive) return;
-        if (error || !data || data.error) return;
-        setSummary(data as SynthesisView);
-      })
-      .catch(() => undefined)
-      .finally(() => alive && setSummaryLoading(false));
+        setVerifyFacts(facts);
+        const next = await loadVerifyResult(jobId);
+        if (!alive) return;
+        setVerifyResult(next);
+        // A terminal result never changes again; anything else is worth
+        // another look. The interval is deliberately unhurried — the durable
+        // driver is what advances the work, not this poll.
+        if (!isTerminal(next.state)) timer = setTimeout(tick, 5000);
+      } finally {
+        if (alive) setSummaryLoading(false);
+      }
+    };
+
+    void tick();
     return () => {
       alive = false;
+      if (timer) clearTimeout(timer);
     };
   }, [room?.verify_job_id]);
 
@@ -309,7 +341,16 @@ const VerificationCasePage: React.FC = () => {
           </TabsList>
 
           <TabsContent value="summary" className="mt-5">
-            <SynthesisSummary view={summary} loading={summaryLoading} subtitle={room.address} />
+            <VerifyResultView
+              normalized={verifyResult}
+              initialLoading={summaryLoading && !verifyResult}
+              stage={verifyFacts?.stage ?? null}
+              status={verifyFacts?.status ?? null}
+              createdAt={verifyFacts?.createdAt ?? null}
+              completedAt={verifyFacts?.completedAt ?? null}
+              subjectId={room.verify_job_id}
+              onRetry={room.verify_job_id ? () => navigate(`/verify?job=${room.verify_job_id}`) : undefined}
+            />
           </TabsContent>
 
           <TabsContent value="plan" className="mt-5">

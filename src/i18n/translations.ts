@@ -5,6 +5,18 @@ import type { SupportedLanguage } from '@/types/types';
 
 // en is the canonical key + fallback bundle. Not const so values aren't literal-typed.
 const en = {
+  app_error_generic_hint: 'Something went wrong on our side. Reloading the page usually fixes it.',
+  section_unavailable: 'This section could not be shown',
+  section_unavailable_hint: 'Everything else on this page is unaffected.',
+  verify_report_incomplete: 'Checks we could not complete',
+  verify_report_incomplete_note: 'A source we could not reach says nothing about the property itself.',
+  verify_result_cancelled: 'This verification was cancelled, so no report was produced.',
+  verify_result_keeps_running: 'This keeps running even if you leave the page or close the tab. Come back any time.',
+  verify_result_partial_hint: 'What is ready is shown below. The rest is still being gathered.',
+  verify_result_partial_kept: 'What the check did finish is still shown below.',
+  verify_result_retry: 'Run this check again',
+  verify_result_unavailable: 'We could not load this report.',
+  verify_result_failed: 'This verification did not finish.',
   // Navigation
   nav_dashboard: 'Dashboard',
   nav_mortgage: 'Mortgage',
@@ -2646,6 +2658,18 @@ const en = {
 export type TranslationKey = keyof typeof en;
 
 const ka: Partial<Record<TranslationKey, string>> = {
+  app_error_generic_hint: 'რაღაც ჩვენს მხარეს ვერ იმუშავა. გვერდის განახლება ჩვეულებრივ ასწორებს.',
+  section_unavailable: 'ეს სექცია ვერ გამოჩნდა',
+  section_unavailable_hint: 'გვერდის დანარჩენ ნაწილს ეს არ შეხებია.',
+  verify_report_incomplete: 'შემოწმებები, რომლებიც ვერ დავასრულეთ',
+  verify_report_incomplete_note: 'წყარო, რომელსაც ვერ მივწვდით, თავად ქონებაზე არაფერს ამბობს.',
+  verify_result_cancelled: 'ეს შემოწმება გაუქმდა, ამიტომ ანგარიში არ მომზადებულა.',
+  verify_result_keeps_running: 'შემოწმება გრძელდება მაშინაც, თუ გვერდს დატოვებთ ან ჩანართს დახურავთ. დაბრუნდით ნებისმიერ დროს.',
+  verify_result_partial_hint: 'ქვემოთ ნაჩვენებია ის, რაც უკვე მზადაა. დანარჩენი ჯერ კიდევ გროვდება.',
+  verify_result_partial_kept: 'ის, რაც შემოწმებამ მოასწრო, ქვემოთ მაინც ნაჩვენებია.',
+  verify_result_retry: 'ხელახლა გაუშვით შემოწმება',
+  verify_result_unavailable: 'ამ ანგარიშის ჩატვირთვა ვერ მოხერხდა.',
+  verify_result_failed: 'ეს შემოწმება ვერ დასრულდა.',
   // Navigation
   nav_dashboard: 'პანელი',
   nav_mortgage: 'იპოთეკა',
@@ -5203,6 +5227,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
+  app_error_generic_hint: 'Что-то пошло не так с нашей стороны. Обычно помогает обновление страницы.',
+  section_unavailable: 'Этот раздел не удалось показать',
+  section_unavailable_hint: 'Остальная часть страницы не затронута.',
+  verify_report_incomplete: 'Проверки, которые мы не смогли завершить',
+  verify_report_incomplete_note: 'Источник, до которого мы не смогли добраться, ничего не говорит о самом объекте.',
+  verify_result_cancelled: 'Эта проверка была отменена, поэтому отчёт не был подготовлен.',
+  verify_result_keeps_running: 'Проверка продолжается, даже если вы уйдёте со страницы или закроете вкладку. Возвращайтесь в любое время.',
+  verify_result_partial_hint: 'Ниже показано то, что уже готово. Остальное ещё собирается.',
+  verify_result_partial_kept: 'То, что проверка успела завершить, по-прежнему показано ниже.',
+  verify_result_retry: 'Запустить проверку заново',
+  verify_result_unavailable: 'Не удалось загрузить этот отчёт.',
+  verify_result_failed: 'Эта проверка не была завершена.',
   // Navigation
   nav_dashboard: 'Панель',
   nav_chat: 'Сообщения',
@@ -7753,6 +7789,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
+  app_error_generic_hint: 'Bizim tarafımızda bir sorun oluştu. Sayfayı yenilemek genellikle çözer.',
+  section_unavailable: 'Bu bölüm gösterilemedi',
+  section_unavailable_hint: 'Sayfanın geri kalanı bundan etkilenmedi.',
+  verify_report_incomplete: 'Tamamlayamadığımız kontroller',
+  verify_report_incomplete_note: 'Ulaşamadığımız bir kaynak, mülkün kendisi hakkında hiçbir şey söylemez.',
+  verify_result_cancelled: 'Bu doğrulama iptal edildi, bu nedenle rapor hazırlanmadı.',
+  verify_result_keeps_running: 'Sayfadan ayrılsanız veya sekmeyi kapatsanız da çalışmaya devam eder. İstediğiniz zaman geri dönebilirsiniz.',
+  verify_result_partial_hint: 'Aşağıda hazır olanlar gösteriliyor. Geri kalanı hâlâ toplanıyor.',
+  verify_result_partial_kept: 'Kontrolün tamamlayabildiği kısım aşağıda gösterilmeye devam ediyor.',
+  verify_result_retry: 'Bu kontrolü yeniden çalıştır',
+  verify_result_unavailable: 'Bu rapor yüklenemedi.',
+  verify_result_failed: 'Bu doğrulama tamamlanamadı.',
   // Navigation
   nav_dashboard: 'Panel',
   nav_chat: 'Mesajlar',
@@ -10301,6 +10349,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
+  app_error_generic_hint: 'حدث خطأ من جانبنا. عادةً ما يؤدي تحديث الصفحة إلى حلّه.',
+  section_unavailable: 'تعذّر عرض هذا القسم',
+  section_unavailable_hint: 'لم يتأثّر باقي محتوى هذه الصفحة.',
+  verify_report_incomplete: 'عمليات تحقّق لم نتمكّن من إكمالها',
+  verify_report_incomplete_note: 'المصدر الذي تعذّر الوصول إليه لا يقول شيئًا عن العقار نفسه.',
+  verify_result_cancelled: 'أُلغي هذا التحقّق، لذلك لم يُنتَج أي تقرير.',
+  verify_result_keeps_running: 'يستمر هذا العمل حتى إذا غادرت الصفحة أو أغلقت علامة التبويب. عُد في أي وقت.',
+  verify_result_partial_hint: 'يظهر أدناه ما أصبح جاهزًا، أمّا الباقي فما زال قيد الجمع.',
+  verify_result_partial_kept: 'ما أنجزه الفحص فعليًا لا يزال معروضًا أدناه.',
+  verify_result_retry: 'أعد تشغيل هذا الفحص',
+  verify_result_unavailable: 'تعذّر تحميل هذا التقرير.',
+  verify_result_failed: 'لم يكتمل هذا التحقّق.',
   // Navigation
   nav_dashboard: 'لوحة التحكم',
   nav_chat: 'الرسائل',
@@ -12849,6 +12909,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
+  app_error_generic_hint: 'משהו השתבש אצלנו. רענון הדף בדרך כלל פותר את זה.',
+  section_unavailable: 'לא ניתן להציג את המקטע הזה',
+  section_unavailable_hint: 'שאר הדף לא הושפע.',
+  verify_report_incomplete: 'בדיקות שלא הצלחנו להשלים',
+  verify_report_incomplete_note: 'מקור שלא הצלחנו להגיע אליו אינו מעיד דבר על הנכס עצמו.',
+  verify_result_cancelled: 'האימות הזה בוטל, ולכן לא הופק דוח.',
+  verify_result_keeps_running: 'הבדיקה ממשיכה גם אם תעזבו את הדף או תסגרו את הלשונית. אפשר לחזור בכל רגע.',
+  verify_result_partial_hint: 'מה שמוכן מוצג למטה. השאר עדיין נאסף.',
+  verify_result_partial_kept: 'מה שהבדיקה כן הספיקה להשלים עדיין מוצג למטה.',
+  verify_result_retry: 'הרצת הבדיקה מחדש',
+  verify_result_unavailable: 'לא הצלחנו לטעון את הדוח הזה.',
+  verify_result_failed: 'האימות הזה לא הסתיים.',
   // Navigation
   nav_dashboard: 'לוח בקרה',
   nav_chat: 'הודעות',

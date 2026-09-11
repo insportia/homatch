@@ -31,7 +31,7 @@ const PAGES = {
   'src/pages/VerificationCasePage.tsx': read('src/pages/VerificationCasePage.tsx'),
 };
 const COMPONENTS = {
-  'src/components/dealroom/SynthesisSummary.tsx': read('src/components/dealroom/SynthesisSummary.tsx'),
+  'src/components/verify/VerifyResultView.tsx': read('src/components/verify/VerifyResultView.tsx'),
   'src/components/dealroom/ActionPlanPanel.tsx': read('src/components/dealroom/ActionPlanPanel.tsx'),
   'src/components/dealroom/AskHomatchPanel.tsx': read('src/components/dealroom/AskHomatchPanel.tsx'),
   'src/components/dealroom/DocumentsPanel.tsx': read('src/components/dealroom/DocumentsPanel.tsx'),
@@ -121,7 +121,7 @@ test('long values are allowed to wrap rather than forcing horizontal scroll', ()
   for (const file of [
     'src/components/verify/VerificationCaseList.tsx',
     'src/pages/VerificationCasePage.tsx',
-    'src/components/dealroom/SynthesisSummary.tsx',
+    'src/components/verify/VerifyResultView.tsx',
     'src/components/dealroom/DocumentsPanel.tsx',
   ]) {
     assert.ok(ALL[file].includes('break-words'), `${file} does not wrap long values`);
@@ -147,7 +147,24 @@ test('the verification case tab strip scrolls instead of wrapping to a second ro
  * ---------------------------------------------------------------- */
 
 test('the summary tells the customer that a failed check is not a property defect', () => {
-  assert.ok(COMPONENTS['src/components/dealroom/SynthesisSummary.tsx'].includes('dr_unverified_note'));
+  // The note moved with the block it belongs to when SynthesisSummary was
+  // deleted: it rendered a payload contract verify-synthesis stopped sending
+  // in September, and handed a current one it threw rather than degrading.
+  assert.ok(COMPONENTS['src/components/verify/VerifyResultView.tsx'].includes('verify_report_incomplete_note'));
+});
+
+test('the result view has a screen for every state, not just done and loading', () => {
+  const src = COMPONENTS['src/components/verify/VerifyResultView.tsx'];
+  for (const state of ['PARTIAL', 'CANCELLED', 'PROCESSING', 'QUEUED']) {
+    assert.ok(src.includes(state), `no branch for ${state}`);
+  }
+});
+
+test('a customer is never shown a raw runtime message', () => {
+  // errorKey is always a translation key; the thrown message goes to the log.
+  const src = COMPONENTS['src/components/verify/VerifyResultView.tsx'];
+  assert.ok(src.includes('t(errorKey)'), 'the error is translated');
+  assert.ok(!/technicalDetail/.test(src), 'the technical detail never reaches the view');
 });
 
 test('the assistant labels ungrounded answers rather than presenting them as facts', () => {

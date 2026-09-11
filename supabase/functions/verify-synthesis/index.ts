@@ -98,18 +98,40 @@ function textOf(p: any): string {
  * rebuild later — swallowing the report to report a storage error would cost
  * the thing they actually asked for.
  */
+/*
+ * WRITING THE REPORT BACK.
+ *
+ * This used to write through the CALLER's client and swallow whatever came
+ * back. There is an RLS policy letting an owner update their own
+ * research_jobs row, but the `authenticated` role has no table-level UPDATE
+ * grant — and a policy filters ROWS, it does not grant privileges. So every
+ * write failed with "42501 permission denied for table research_jobs", the
+ * error went into a console line, and a freshly generated report was billed,
+ * returned once and lost. The next view regenerated it and lost it again.
+ *
+ * The fix is not a new grant. Widening UPDATE on research_jobs to every
+ * authenticated user would let somebody rewrite their own result_json, which
+ * later feeds AI context — a much bigger door than the one being closed.
+ * Writing the report back is a SERVER action, so it uses the service client,
+ * exactly as the driver branch already does.
+ *
+ * The authorisation is unchanged and happens before this is ever reached: the
+ * job was loaded through the caller's own RLS-scoped client, so a caller can
+ * only ever persist for a job they were already allowed to see.
+ */
 async function persist(db: any, jobId: string, payload: unknown): Promise<void> {
-  try {
-    await db
-      .from('research_jobs')
-      .update({
-        synthesis_json: payload,
-        synthesis_state: 'READY',
-        synthesis_at: new Date().toISOString(),
-      })
-      .eq('id', jobId);
-  } catch (e) {
-    console.error('verify-synthesis: could not persist report', e instanceof Error ? e.message : String(e));
+  const { error } = await db
+    .from('research_jobs')
+    .update({
+      synthesis_json: payload,
+      synthesis_state: 'READY',
+      synthesis_at: new Date().toISOString(),
+    })
+    .eq('id', jobId);
+
+  if (error) {
+    // Loud, because a silent failure here costs a model call every view.
+    console.error(`verify-synthesis: could not persist report for ${jobId}: ${error.message ?? error}`);
   }
 }
 
@@ -178,6 +200,15 @@ serve(async (req) => {
           { global: { headers: { Authorization: authHeader } } }
         );
 
+    /* READS stay with the caller and stay under RLS. Only the write-back of a
+     * report we just built uses the service client — see persist() for why a
+     * table-level UPDATE grant would be the wrong fix. Falls back to the
+     * caller's client when no service key is configured, so a misconfigured
+     * environment degrades to the old behaviour rather than crashing. */
+    const writer = serviceKey
+      ? createClient(Deno.env.get('SUPABASE_URL')!, serviceKey)
+      : supabase;
+
     if (!internal) {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth?.user?.id) return json({ error: 'unauthorized' }, 401);
@@ -230,7 +261,7 @@ serve(async (req) => {
         empty: true,
       };
       // "No evidence at all" is a real, final answer, not a failure to retry.
-      await persist(supabase, jobId, emptyPayload);
+      await persist(writer, jobId, emptyPayload);
       return json(emptyPayload);
     }
 
@@ -295,7 +326,7 @@ serve(async (req) => {
       empty: false,
     };
 
-    await persist(supabase, jobId, payload);
+    await persist(writer, jobId, payload);
     return json(payload);
   } catch (e) {
     console.error('verify-synthesis failed', e instanceof Error ? e.message : String(e));

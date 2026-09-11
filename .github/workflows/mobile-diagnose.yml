@@ -1,0 +1,91 @@
+# TEMPORARY. Deleted once the mobile gate is fixed.
+#
+# The Validate job has failed at "Mobile regression (real viewports)" on every
+# push since c87f05b1, which skips Deploy Edge Functions and has let production
+# drift behind main across eight functions. The gate passes locally, including
+# with CI=true, so the cause is something about the runner — and the runner
+# logs need repo-admin rights this session does not have.
+#
+# `::error::` workflow commands surface as CHECK ANNOTATIONS, which are
+# readable through the public API without admin. So this job reports what it
+# finds that way rather than to a log nobody can open.
+name: Mobile gate diagnosis
+
+on:
+  push:
+    branches: ['ci/**']
+
+jobs:
+  diagnose:
+    name: Diagnose mobile gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Environment facts
+        run: |
+          {
+            echo "runner=${ImageOS:-?} ${ImageVersion:-?}"
+            echo "node=$(node -v)"
+            echo "chrome_paths:"
+            for p in /usr/bin/google-chrome /usr/bin/google-chrome-stable \
+                     /usr/bin/chromium-browser /usr/bin/chromium; do
+              [ -x "$p" ] && echo "  FOUND $p -> $($p --version 2>&1 | head -1)" || echo "  missing $p"
+            done
+            echo "CHROME_BIN=${CHROME_BIN:-unset}  PLAYWRIGHT_CHROME=${PLAYWRIGHT_CHROME:-unset}"
+            echo "fonts_total=$(fc-list 2>/dev/null | wc -l)"
+            echo "sans_serif_resolves_to=$(fc-match sans-serif 2>/dev/null)"
+            echo "has_dejavu=$(fc-list 2>/dev/null | grep -ci dejavu)"
+            echo "has_liberation=$(fc-list 2>/dev/null | grep -ci liberation)"
+            echo "has_noto_georgian=$(fc-list 2>/dev/null | grep -ci georgian)"
+          } > env.txt
+          cat env.txt
+          # One annotation, newlines escaped so the whole block survives.
+          echo "::error title=ENV::$(sed ':a;N;$!ba;s/\n/%0A/g' env.txt)"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Playwright resolution
+        run: |
+          {
+            node -e "try{require.resolve('playwright-core');console.log('playwright-core=RESOLVED '+require('playwright-core/package.json').version)}catch(e){console.log('playwright-core=MISSING '+e.code)}"
+            echo "browsers_dir=$(ls ~/.cache/ms-playwright 2>/dev/null | tr '\n' ' ' || echo none)"
+          } > pw.txt
+          cat pw.txt
+          echo "::error title=PLAYWRIGHT::$(sed ':a;N;$!ba;s/\n/%0A/g' pw.txt)"
+
+      - name: Build mobile harness
+        run: pnpm run build:harness
+
+      - name: Harness build check
+        run: |
+          {
+            echo "dist_index=$( [ -f dist/index.html ] && echo yes || echo no )"
+            echo "dist_assets=$( [ -d dist/assets ] && echo yes || echo no )"
+            echo "stubproj_in_bundle=$(grep -rl stubproj dist/assets 2>/dev/null | wc -l)"
+            echo "font_refs_in_css=$(grep -roh 'fonts.googleapis[^\"'\'')]*' dist/assets 2>/dev/null | head -3 | tr '\n' ' ')"
+            echo "manrope_in_bundle=$(grep -rl -i manrope dist/assets dist/index.html 2>/dev/null | wc -l)"
+          } > dist.txt
+          cat dist.txt
+          echo "::error title=HARNESS::$(sed ':a;N;$!ba;s/\n/%0A/g' dist.txt)"
+
+      # The real thing, with its output captured rather than discarded.
+      - name: Mobile regression (capturing output)
+        id: mobile
+        continue-on-error: true
+        run: |
+          set +e
+          CI=true node --test tests/mobile/mobileOverflow.test.mjs > mobile.txt 2>&1
+          echo "exit=$?" >> mobile.txt
+          cat mobile.txt
+          # The assertion text is what names the offending elements.
+          tail -c 3000 mobile.txt > mobile.tail
+          echo "::error title=MOBILE::$(sed ':a;N;$!ba;s/\n/%0A/g;s/\r//g' mobile.tail)"

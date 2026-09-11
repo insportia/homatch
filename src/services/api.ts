@@ -2,6 +2,7 @@
 // All Supabase queries go through this file.
 
 import { supabase } from '@/db/supabase';
+import { startJobBestEffort } from '@/services/backgroundJobs';
 import type {
   Property,
   PropertyFacts,
@@ -670,6 +671,7 @@ export async function startMatchingCampaign(
       .maybeSingle();
 
     if (createdJob?.id) {
+      await registerFindClientsJob(String(createdJob.id), propertyId);
       return { jobId: String(createdJob.id), campaignId };
     }
     if (invocationFailure) throw invocationFailure;
@@ -680,7 +682,33 @@ export async function startMatchingCampaign(
   if (!completed) {
     throw invocationFailure ?? new Error('match-campaign did not create a matching job');
   }
+  await registerFindClientsJob(completed.jobId, propertyId);
   return completed;
+}
+
+/**
+ * Put a Find Clients search into the durable job registry (PART C §42).
+ *
+ * matching_jobs and its own worker are what RUN the search; this is what lets
+ * the customer watch it from any other page and find it again when they come
+ * back. jobs-worker mirrors matching_jobs onto this row on every tick, so the
+ * registry cannot claim a search is running that the pipeline has finished.
+ *
+ * The idempotency key is the matching job id, so the two discovery paths above
+ * — the polling loop and the invocation's own answer, which can both reach
+ * this for one search — register one entry rather than two.
+ *
+ * Best-effort: a bookkeeping row that could not be written must never fail a
+ * search the customer has already authorised and paid for.
+ */
+async function registerFindClientsJob(jobId: string, propertyId: string): Promise<void> {
+  await startJobBestEffort({
+    productType: 'FIND_CLIENTS',
+    subjectType: 'MATCHING_JOB',
+    subjectId: jobId,
+    idempotencyKey: `matching:${jobId}`,
+    resultRef: `/properties/${propertyId}/matches`,
+  });
 }
 export async function pauseMatchingCampaign(
   propertyId: string,

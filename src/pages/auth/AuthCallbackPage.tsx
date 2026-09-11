@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
 
@@ -12,6 +13,7 @@ import { consumePendingAsk } from '@/lib/pendingAsk';
 const PENDING_URL_KEY = 'homatch_pending_url';
 
 export default function AuthCallbackPage() {
+  useSurfaceTheme('light');
   const navigate = useNavigate();
   const { t } = useLanguage();
 

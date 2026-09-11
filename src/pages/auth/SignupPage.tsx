@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ import { consumePendingAsk } from '@/lib/pendingAsk';
 const PENDING_URL_KEY = 'homatch_pending_url';
 
 export default function SignupPage() {
+  useSurfaceTheme('light');
   const { signUp, signInWithGoogle, session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();

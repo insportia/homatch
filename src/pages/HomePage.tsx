@@ -6,9 +6,10 @@
 // THE STORY, IN ORDER
 //
 //   what Homatch is → do something with it now → what it understands →
-//   what a property check gives you → how demand is found → what the
-//   purchase costs → the AI that makes the calls → the campaigns that
-//   follow them → the assistant behind all of it → developers → start.
+//   what a property check gives you → what the contract says → how demand
+//   is found → what the purchase costs → the AI that makes the calls → the
+//   campaigns that follow them → the assistant behind all of it →
+//   developers → start.
 //
 // EQUAL PRODUCTS, DIFFERENT SHAPES
 //
@@ -39,6 +40,7 @@ import { HeroSection } from '@/components/home/sections/HeroSection';
 import { ActionLauncherSection } from '@/components/home/sections/ActionLauncherSection';
 import { IntelligenceLayersSection } from '@/components/home/sections/IntelligenceLayersSection';
 import { VerifyShowcaseSection } from '@/components/home/sections/VerifyShowcaseSection';
+import { ContractIntelligenceSection } from '@/components/home/sections/ContractIntelligenceSection';
 import { MatchingShowcaseSection } from '@/components/home/sections/MatchingShowcaseSection';
 import { MortgageSection } from '@/components/home/sections/MortgageSection';
 import { CallCenterSection } from '@/components/home/sections/CallCenterSection';
@@ -58,6 +60,7 @@ export default function HomePage() {
     { key: 'verify', label: t('nav_verify'), target: '/verify' },
     { key: 'mortgage', label: t('nav_mortgage'), target: '/mortgage' },
     { key: 'developers', label: t('mp_nav_developers'), target: 'developers' },
+    { key: 'about', label: t('nav_about'), target: '/about' },
   ];
 
   return (
@@ -69,6 +72,7 @@ export default function HomePage() {
         <ActionLauncherSection />        {/* WHITE  — six tasks, one size        */}
         <IntelligenceLayersSection />    {/* BLACK  — the seven layers           */}
         <VerifyShowcaseSection />        {/* WHITE  — what a check gives back    */}
+        <ContractIntelligenceSection />  {/* WHITE  — the document, read         */}
         <MatchingShowcaseSection />      {/* BLACK  — property to interested people */}
         <MortgageSection />              {/* WHITE  — the financing scenario     */}
         <CallCenterSection />            {/* BLACK  — the call, in progress      */}

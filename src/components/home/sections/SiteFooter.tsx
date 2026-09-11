@@ -27,7 +27,10 @@ export function SiteFooter() {
     {
       key: 'company',
       heading: t('mp_footer_company'),
-      links: [{ key: 'partners', label: t('home_nav_partners'), path: '/partners' }],
+      links: [
+        { key: 'about', label: t('nav_about'), path: '/about' },
+        { key: 'partners', label: t('home_nav_partners'), path: '/partners' },
+      ],
     },
     {
       key: 'legal',

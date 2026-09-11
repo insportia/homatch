@@ -52,14 +52,21 @@ export function HomatchAsk({
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
+  /* Everyone goes to the assistant, signed in or not.
+   *
+   * /ai renders for a signed-out visitor: it pre-fills the question, shows a
+   * sign-in panel, and carries the question onward to sign-up or login. So
+   * sending them to /auth/login first, as this used to, put a form between a
+   * person and the thing they just asked for, for no gain. Signed in, AIPage
+   * auto-sends the prompt, which is what makes a starter question feel like
+   * one click rather than two.
+   *
+   * rememberPendingAsk still runs for the signed-out case, so the question
+   * survives whichever auth entry point they end up using. */
   const submit = (text: string) => {
     const prompt = text.trim();
     if (!prompt) return;
-    if (!session) {
-      rememberPendingAsk(prompt);
-      navigate('/auth/login');
-      return;
-    }
+    if (!session) rememberPendingAsk(prompt);
     navigate('/ai', { state: { prompt } });
   };
 

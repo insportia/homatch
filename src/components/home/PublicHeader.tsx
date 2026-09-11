@@ -36,7 +36,13 @@ export interface HeaderLink {
   target: string;
 }
 
-export function PublicHeader({ links }: { links: HeaderLink[] }) {
+/**
+ * @param solid  Forces the opaque white bar from the top of the page. The
+ *               transparent state only works over a full-bleed black hero;
+ *               on a page that opens on white it renders the logo and the
+ *               navigation white on white, which is how a header disappears.
+ */
+export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; solid?: boolean }) {
   const { session } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -76,7 +82,7 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
   };
 
   /* Inverted while the header is still over the hero. */
-  const onDark = !scrolled && !open;
+  const onDark = !solid && !scrolled && !open;
 
   return (
     <header

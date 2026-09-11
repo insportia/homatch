@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,7 @@ import { CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-react';
 type Phase = 'waiting' | 'ready' | 'expired' | 'done';
 
 export default function ResetPasswordPage() {
+  useSurfaceTheme('light');
   const navigate = useNavigate();
   const { updatePassword } = useAuth();
   const { t, isRTL } = useLanguage();
@@ -94,7 +96,7 @@ export default function ResetPasswordPage() {
 
         {phase === 'done' && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <CheckCircle2 className="h-10 w-10 text-green-400" />
+            <CheckCircle2 className="h-10 w-10 text-[#12A06B]" />
             <p className="text-sm text-foreground font-medium">{t('reset_pw_success')}</p>
             <Button onClick={() => navigate('/dashboard')} className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
               {t('reset_pw_continue')}

@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
+import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -49,6 +52,9 @@ const PLACEMENT_RULES = [
 ];
 
 export default function PartnersPage() {
+  // This page had no header and no footer at all: a signed-out visitor
+  // landed on it with no navigation and no way back except the browser.
+  useSurfaceTheme('light');
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [company, setCompany] = useState('');
@@ -85,12 +91,21 @@ export default function PartnersPage() {
     }
   };
 
+  const headerLinks: HeaderLink[] = [
+    { key: 'home', label: t('mp_nav_start'), target: '/' },
+    { key: 'about', label: t('nav_about'), target: '/about' },
+    { key: 'verify', label: t('nav_verify'), target: '/verify' },
+    { key: 'mortgage', label: t('nav_mortgage'), target: '/mortgage' },
+  ];
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+      <PublicHeader links={headerLinks} solid />
+
       {/* Hero */}
       <section className="relative border-b border-border py-16 px-4">
         <div className="max-w-3xl mx-auto text-center space-y-4">
-          <Badge variant="secondary" className="border-primary/30 text-primary bg-primary/10 mb-2">
+          <Badge variant="secondary" className="mb-2 border-foreground/20 bg-secondary text-gold-ink">
             {t('partners_badge')}
           </Badge>
           <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
@@ -113,14 +128,14 @@ export default function PartnersPage() {
       </section>
 
       {/* Transparency rules */}
-      <section className="py-10 px-4 border-b border-border bg-card/30">
+      <section className="py-10 px-4 border-b border-border bg-secondary/50">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-5 text-center">
             {t('partners_principles_heading')}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {PLACEMENT_RULES.map(({ icon: Icon, textKey }) => (
-              <div key={textKey} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card">
+              <div key={textKey} className="flex items-start gap-3 p-4 rounded-[0.9rem] border border-border bg-card">
                 <Icon className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                 <p className="text-sm text-muted-foreground">{t(textKey)}</p>
               </div>
@@ -138,7 +153,7 @@ export default function PartnersPage() {
               <Card key={titleKey} className="border-border bg-card">
                 <CardContent className="pt-5 pb-5">
                   <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <div className="w-10 h-10 rounded-[0.6rem] border border-foreground/15 bg-secondary flex items-center justify-center shrink-0">
                       <Icon className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -173,16 +188,16 @@ export default function PartnersPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">{t('partners_company_label')}</label>
-                    <input value={company} onChange={(e) => setCompany(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder={t('partners_company_ph')} />
+                    <input value={company} onChange={(e) => setCompany(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25" placeholder={t('partners_company_ph')} />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">{t('partners_email_label')}</label>
-                    <input type="email" required dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" placeholder={t('partners_email_ph')} />
+                    <input type="email" required dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25" placeholder={t('partners_email_ph')} />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">{t('partners_category_label')}</label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-sm text-foreground focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25">
                     <option value="">{t('partners_category_ph')}</option>
                     <option>{t('partners_cat_option_developer')}</option>
                     <option>{t('partners_cat_option_agency')}</option>
@@ -193,12 +208,12 @@ export default function PartnersPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">{t('partners_message_label')}</label>
-                  <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none" placeholder={t('partners_message_ph')} />
+                  <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25 resize-none" placeholder={t('partners_message_ph')} />
                 </div>
                 <Button type="submit" disabled={submitting} className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} {t('partners_send_btn')}
                 </Button>
-                <p className="text-[10px] text-muted-foreground/60 text-center">
+                <p className="text-[10px] text-muted-foreground text-center">
                   {t('partners_disclaimer')}
                 </p>
               </CardContent>
@@ -206,6 +221,8 @@ export default function PartnersPage() {
           </Card>
         </div>
       </section>
+
+      <SiteFooter />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ function GoogleIcon() {
 }
 
 export default function LoginPage() {
+  useSurfaceTheme('light');
   const { signIn, signInWithGoogle, sendPasswordReset, session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -118,7 +120,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
       {/* Left panel — branding */}
       <div className="hidden md:flex md:w-1/2 bg-card border-r border-border flex-col justify-between p-10 relative overflow-hidden">
-        <div className="amber-glow absolute inset-0 pointer-events-none" />
+
         <Link to="/" className="relative z-10 w-fit">
           <HomatchLogo size="md" />
         </Link>

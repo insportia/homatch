@@ -264,8 +264,8 @@ function AIPageInner() {
   if (!session) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[60vh]">
-        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
-          <Bot className="h-8 w-8 text-primary" />
+        <div className="mb-5 grid h-16 w-16 place-items-center rounded-[1rem] border border-foreground/15 bg-secondary">
+          <Bot className="h-8 w-8 text-gold-ink" />
         </div>
         <h2 className="text-xl font-semibold text-foreground mb-2">{t('ai_sign_in_prompt')}</h2>
         <p className="text-sm text-muted-foreground mb-6 max-w-xs leading-relaxed">{t('ai_sign_in_desc')}</p>
@@ -273,11 +273,11 @@ function AIPageInner() {
           <p className="text-xs text-muted-foreground/60 mb-4 max-w-xs italic">"{input}"</p>
         )}
         <div className="flex flex-col sm:flex-row gap-3">
-          <Button className="bg-primary text-primary-foreground hover:bg-primary/90"
+          <Button className="h-11 rounded-full px-6 font-semibold"
             onClick={() => navigate('/auth/signup', { state: { redirect: '/ai', prompt: input } })}>
             {t('nav_signup')}
           </Button>
-          <Button variant="outline" className="border-border"
+          <Button variant="outline" className="h-11 rounded-full border-foreground/25 px-6"
             onClick={() => navigate('/auth/login', { state: { redirect: '/ai', prompt: input } })}>
             {t('nav_login')}
           </Button>

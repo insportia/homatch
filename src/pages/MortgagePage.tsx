@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,6 +91,7 @@ function AccuracyChip({ kind, t }: { kind: 'calculated' | 'official' | 'user' | 
 }
 
 export default function MortgagePage() {
+  useSurfaceTheme('light');
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
   const navigate = useNavigate();

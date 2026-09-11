@@ -1,9 +1,8 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
+import { IntentChips } from '@/components/home/IntentCards';
 import { PAGE } from './primitives';
 
 /**
@@ -33,8 +32,7 @@ import { PAGE } from './primitives';
  * hidden — so a phone never downloads it.
  */
 export function HeroSection() {
-  const { t, isRTL } = useLanguage();
-  const navigate = useNavigate();
+  const { t } = useLanguage();
 
   return (
     <section className="relative isolate overflow-hidden bg-[#080808] text-white">
@@ -96,43 +94,25 @@ export function HeroSection() {
             {t('mp_hero_scope')}
           </p>
 
-          {/* Two ways in, then the assistant. The assistant is present and
-              one keystroke deep, but it no longer stands in for the
-              explanation of the platform — the launcher below does that. */}
-          <div className="mt-7 flex flex-col gap-2.5 sm:mt-9 sm:flex-row sm:items-center sm:gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/verify')}
-              className="group inline-flex h-auto min-h-[3rem] items-center justify-center gap-2.5 rounded-full bg-gold px-5 py-3 text-center text-sm font-semibold text-[#0A0A0A] sm:px-6 transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#080808] motion-reduce:transition-none"
-            >
-              <ShieldCheck className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden="true" />
-              {t('mp_verify_capability_cta')}
-              <ArrowRight
-                className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
-                strokeWidth={2}
-                aria-hidden="true"
-              />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }}
-              className="inline-flex h-auto min-h-[3rem] items-center justify-center rounded-full border border-white/30 px-5 py-3 text-center text-sm font-medium text-white sm:px-6 transition-colors duration-300 hover:border-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none"
-            >
-              {t('mp_hero_explore')}
-            </button>
-          </div>
-
+          {/* THE ONLY INTERACTION IN THE HERO
+              Two generic buttons used to sit here, "Open Verify" and "See
+              what Homatch does". Both were doing the job the rest of the
+              page now does better: the launcher IS the product tour, and
+              Verify has its own tile with a live field in it. A landing page
+              that opens with two buttons is describing itself.
+              What remains is the assistant, and three questions underneath
+              it so nobody has to invent one. Each goes straight into the
+              conversation. */}
           <HomatchAsk
-            className="mt-7 max-w-[34rem] sm:mt-10"
+            className="mt-7 max-w-[34rem] sm:mt-9"
             variant="card"
             tone="dark"
             heading={t('ai_title')}
             placeholder={t('mp_hero_ai_placeholder')}
             actions={[]}
           />
+
+          <IntentChips keys={['buy', 'price', 'contract']} className="mt-4 max-w-[36rem]" />
         </div>
       </div>
     </section>

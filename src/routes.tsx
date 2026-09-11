@@ -32,6 +32,7 @@ import LegacyDealRoomRedirect from './pages/LegacyDealRoomRedirect';
 // is left in place (dormant), not deleted, in case this product surface
 // is revisited later.
 import PartnersPage from './pages/PartnersPage';
+import AboutPage from './pages/AboutPage';
 // Outreach pages
 import OutreachHubPage from './pages/outreach/OutreachHubPage';
 import CommunitiesPage from './pages/outreach/CommunitiesPage';
@@ -77,6 +78,9 @@ const adminWrap = (page: ReactNode) => <AdminLayout>{page}</AdminLayout>;
 export const routes: RouteConfig[] = [
   // Public
   { name: 'Home',              path: '/',                         element: <HomePage />,          public: true },
+  // What Homatch is, for somebody who arrived here without seeing the home
+  // page first. Product explanation, not a corporate About Us.
+  { name: 'About',             path: '/about',                    element: <AboutPage />,         public: true },
   { name: 'Login',             path: '/auth/login',               element: <LoginPage />,         public: true },
   { name: 'Signup',            path: '/auth/signup',              element: <SignupPage />,        public: true },
   { name: 'Auth Callback',     path: '/auth/callback',            element: <AuthCallbackPage />,  public: true },

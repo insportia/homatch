@@ -1,6 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { HomatchLogo } from '@/components/common/HomatchLogo';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
+import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { PAGE } from '@/components/home/sections/primitives';
 import { FileText, Info } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -23,32 +26,27 @@ function Section({ title, children }: SectionProps) {
 }
 
 export default function TermsPage() {
+  useSurfaceTheme('light');
   const { t, lang } = useLanguage();
+
+  const headerLinks: HeaderLink[] = [
+    { key: 'home', label: t('mp_nav_start'), target: '/' },
+    { key: 'about', label: t('nav_about'), target: '/about' },
+    { key: 'privacy', label: t('home_footer_privacy'), target: '/privacy' },
+  ];
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* ── Nav ──────────────────────────────────────────────── */}
-      <header className="border-b border-border/50 px-4 py-4">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <Link to="/">
-            <HomatchLogo size="sm" />
-          </Link>
-          <Link
-            to="/privacy"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {t('terms_nav_privacy_link')}
-          </Link>
-        </div>
-      </header>
+      <PublicHeader links={headerLinks} solid />
 
       {/* ── Content ──────────────────────────────────────────── */}
-      <main className="flex-1 px-4 py-12">
-        <div className="max-w-3xl mx-auto space-y-10">
+      <main className={`flex-1 ${PAGE} py-14 sm:py-20`}>
+        <div className="max-w-[48rem] space-y-10">
           {/* Header */}
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg border border-border bg-secondary">
-              <FileText className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-semibold text-primary uppercase tracking-wide">{t('terms_badge')}</span>
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-foreground/20 bg-secondary">
+              <FileText className="h-3.5 w-3.5 text-gold-ink" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold-ink">{t('terms_badge')}</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-semibold text-foreground text-balance">
               {t('terms_title')}
@@ -57,7 +55,7 @@ export default function TermsPage() {
               {t('terms_last_updated')} {LAST_UPDATED}
             </p>
             {lang !== 'en' && (
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-muted/50 border border-border">
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-secondary/60 border border-border">
                 <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                 <p className="text-xs text-muted-foreground">
                   {t('legal_translation_notice')}
@@ -66,7 +64,7 @@ export default function TermsPage() {
             )}
             <p className="text-sm text-muted-foreground leading-relaxed">
               {t('terms_intro')}{' '}
-              <a href="https://homatch.live" className="text-primary hover:underline">
+              <a href="https://homatch.live" className="font-medium text-gold-ink hover:text-foreground">
                 homatch.live
               </a>{' '}
               {t('terms_intro_cont')}
@@ -78,7 +76,7 @@ export default function TermsPage() {
           <Section title={t('terms_s1_title')}>
             <p>
               {t('terms_s1_body_pre')}{' '}
-              <Link to="/privacy" className="text-primary hover:underline">
+              <Link to="/privacy" className="font-medium text-gold-ink hover:text-foreground">
                 {t('terms_privacy_policy_link')}
               </Link>
               {t('terms_s1_body_post')}
@@ -97,7 +95,7 @@ export default function TermsPage() {
           <Section title={t('terms_s3_title')}>
             <p>
               {t('terms_s3_body1_pre')}{' '}
-              <a href="mailto:support@homatch.live" className="text-primary hover:underline">
+              <a href="mailto:support@homatch.live" className="font-medium text-gold-ink hover:text-foreground">
                 support@homatch.live
               </a>{' '}
               {t('terms_s3_body1_post')}
@@ -144,7 +142,7 @@ export default function TermsPage() {
           <Section title={t('terms_s7_title')}>
             <p>
               {t('terms_s7_body_pre')}{' '}
-              <Link to="/privacy" className="text-primary hover:underline">
+              <Link to="/privacy" className="font-medium text-gold-ink hover:text-foreground">
                 {t('terms_privacy_policy_link')}
               </Link>
               {t('terms_s7_body_post')}
@@ -184,7 +182,7 @@ export default function TermsPage() {
           <Section title={t('terms_s12_title')}>
             <p>
               {t('terms_s12_body_pre')}{' '}
-              <a href="mailto:support@homatch.live" className="text-primary hover:underline">
+              <a href="mailto:support@homatch.live" className="font-medium text-gold-ink hover:text-foreground">
                 support@homatch.live
               </a>
               {t('terms_s12_body_post')}
@@ -207,17 +205,17 @@ export default function TermsPage() {
             <p>
               {t('terms_s15_intro')}
             </p>
-            <div className="mt-2 p-4 rounded-xl border border-border bg-card space-y-1">
+            <div className="mt-2 p-4 rounded-[0.9rem] border border-border bg-card space-y-1">
               <p className="font-medium text-foreground">Homatch</p>
               <p>
                 {t('terms_contact_email_label')}{' '}
-                <a href="mailto:legal@homatch.live" className="text-primary hover:underline">
+                <a href="mailto:legal@homatch.live" className="font-medium text-gold-ink hover:text-foreground">
                   legal@homatch.live
                 </a>
               </p>
               <p>
                 {t('terms_contact_website_label')}{' '}
-                <a href="https://homatch.live" className="text-primary hover:underline">
+                <a href="https://homatch.live" className="font-medium text-gold-ink hover:text-foreground">
                   homatch.live
                 </a>
               </p>
@@ -226,21 +224,7 @@ export default function TermsPage() {
         </div>
       </main>
 
-      {/* ── Footer ───────────────────────────────────────────── */}
-      <footer className="border-t border-border/50 px-4 py-5">
-        <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2">
-          <Link to="/">
-            <HomatchLogo size="sm" />
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link to="/privacy" className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors">{t('terms_footer_privacy')}</Link>
-            <Link to="/terms" className="text-xs text-primary">{t('terms_footer_terms')}</Link>
-          </div>
-          <p className="text-xs text-muted-foreground/50">
-            © {new Date().getFullYear()} {t('terms_footer_copyright')}
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

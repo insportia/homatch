@@ -107,7 +107,28 @@ export async function loadPage(slug: PageSlug): Promise<StudioResult<{
   try {
     const { data, error } = await supabase.rpc('site_get_page', { p_slug: slug });
     if (error) return fail(error);
-    if (!data) return { ok: false, reason: 'UNAVAILABLE' };
+
+    // A null result is the RPC saying "this page has no row yet", which is the
+    // normal state of every page until somebody saves a draft for it. That is
+    // emphatically NOT the same as the backend being unavailable: the editor
+    // should open on the code's own running order, ready to edit. Only an
+    // error from the call itself means unavailable, and `fail` decides that.
+    if (!data) {
+      return {
+        ok: true,
+        value: {
+          page: {
+            slug,
+            title: slug,
+            draft: emptyPage(),
+            published: null,
+            publishedVersion: null,
+            publishedAt: null,
+          },
+          versions: [],
+        },
+      };
+    }
 
     const row = data as Record<string, unknown>;
     const versionsRaw = Array.isArray(row.versions) ? row.versions : [];

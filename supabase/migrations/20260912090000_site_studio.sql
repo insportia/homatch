@@ -257,14 +257,32 @@ begin
     return null;
   end if;
 
+  -- Keys are snake_case to match the column names, and the version history
+  -- rides along in the same call: the editor needs the draft, the published
+  -- document and the list of snapshots together, and three round trips could
+  -- interleave with somebody else's publish and show a mismatched set.
   return jsonb_build_object(
     'slug', v_row.slug,
     'title', v_row.title,
     'draft', v_row.draft,
     'published', v_row.published,
-    'publishedVersion', v_row.published_version,
-    'publishedAt', v_row.published_at,
-    'updatedAt', v_row.updated_at
+    'published_version', v_row.published_version,
+    'published_at', v_row.published_at,
+    'updated_at', v_row.updated_at,
+    'versions', coalesce((
+      select jsonb_agg(
+               jsonb_build_object(
+                 'version', v.version,
+                 'content', v.content,
+                 'note', v.note,
+                 'published_at', v.published_at,
+                 'published_by', v.published_by
+               )
+               order by v.version desc
+             )
+        from public.site_page_versions v
+       where v.page_id = v_row.id
+    ), '[]'::jsonb)
   );
 end $$;
 
@@ -359,7 +377,8 @@ begin
     jsonb_build_object('version', v_version, 'note', p_note)
   );
 
-  return jsonb_build_object('slug', p_slug, 'version', v_version);
+  -- The bare version number: the caller names it to the admin and stores it.
+  return to_jsonb(v_version);
 end $$;
 
 -- ── Restore. Writes a DRAFT, deletes nothing. ───────────────────────────────
@@ -405,7 +424,10 @@ begin
     jsonb_build_object('restoredVersion', p_version, 'currentVersion', v_page.published_version)
   );
 
-  return jsonb_build_object('slug', p_slug, 'restored', p_version);
+  -- The restored document itself. The editor puts this in the draft, so
+  -- returning a receipt here instead would load an empty page over the
+  -- admin's work.
+  return v_content;
 end $$;
 
 -- ── Rollback: republish an earlier version immediately. ─────────────────────
@@ -454,7 +476,8 @@ begin
     jsonb_build_object('toVersion', p_version, 'newVersion', v_new)
   );
 
-  return jsonb_build_object('slug', p_slug, 'version', v_new, 'from', p_version);
+  -- The new version number, as for site_publish.
+  return to_jsonb(v_new);
 end $$;
 
 -- ============================================================================

@@ -45,16 +45,21 @@ export default {
              * -------------------------------------------------------------- */
             fontSize: {
                 /* Truly minor metadata only: timestamps, source ids, counts. */
-                '2xs': ['0.75rem', { lineHeight: '1.45' }],      /* 12px */
-                /* Badges, eyebrows, table meta. Was 12px. */
-                xs: ['0.8125rem', { lineHeight: '1.45' }],       /* 13px */
-                /* The workhorse secondary size. Was 14px. */
-                sm: ['0.9375rem', { lineHeight: '1.6' }],        /* 15px */
+                '2xs': ['0.8125rem', { lineHeight: '1.45' }],    /* 13px */
+                /* Badges, eyebrows, table meta. 12 -> 13 -> 14: a second
+                   review found supporting copy still reading small, and this
+                   step carries most of the labels, dates and descriptions on
+                   the dashboard and the history cards. */
+                xs: ['0.875rem', { lineHeight: '1.5' }],         /* 14px */
+                /* The workhorse secondary size, 586 usages. 14 -> 15 -> 16,
+                   which is the stated desktop body floor — most of what this
+                   step sets IS body copy. */
+                sm: ['1rem', { lineHeight: '1.6' }],             /* 16px */
                 /* Body. Was 16px. */
                 base: ['1.0625rem', { lineHeight: '1.65' }],     /* 17px */
                 /* Long-form report body and card titles. */
-                lg: ['1.1875rem', { lineHeight: '1.6' }],        /* 19px */
-                xl: ['1.375rem', { lineHeight: '1.45' }],        /* 22px */
+                lg: ['1.25rem', { lineHeight: '1.55' }],         /* 20px */
+                xl: ['1.4375rem', { lineHeight: '1.4' }],        /* 23px */
                 '2xl': ['1.625rem', { lineHeight: '1.3' }],      /* 26px */
                 '3xl': ['2rem', { lineHeight: '1.22' }],         /* 32px */
                 '4xl': ['2.5rem', { lineHeight: '1.15' }],       /* 40px */

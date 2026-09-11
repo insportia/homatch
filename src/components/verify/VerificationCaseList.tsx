@@ -72,7 +72,7 @@ export const VerificationCaseList: React.FC = () => {
           <CardContent className="pt-6 pb-6 text-center space-y-2">
             <FolderOpen className="h-8 w-8 mx-auto text-muted-foreground" aria-hidden="true" />
             <p className="font-medium">{t('dr_list_empty')}</p>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed break-words">
+            <p className="mx-auto max-w-md text-base leading-relaxed text-ink-soft break-words">
               {t('dr_list_empty_hint')}
             </p>
           </CardContent>
@@ -87,21 +87,21 @@ export const VerificationCaseList: React.FC = () => {
                 key={c.id}
                 type="button"
                 onClick={() => navigate(`/verify/${c.id}`)}
-                className="w-full text-left rounded-xl border bg-card hover:bg-accent/40 transition-colors p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-xl border bg-card p-5 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-6"
               >
                 <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <p className="font-medium break-words">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <p className="font-display text-lg font-bold tracking-[-0.012em] break-words">
                       {c.title || c.address || c.cadastral_code || t('vc_untitled_case')}
                     </p>
                     {c.cadastral_code && c.title ? (
-                      <p className="text-xs text-muted-foreground break-words">{c.cadastral_code}</p>
+                      <p className="text-sm font-medium text-ink-soft break-words [font-variant-numeric:tabular-nums]">{c.cadastral_code}</p>
                     ) : null}
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       {verdict && VERDICT_KEY[verdict] ? (
                         <Badge variant={VERDICT_VARIANT[verdict] ?? 'secondary'}>{t(VERDICT_KEY[verdict])}</Badge>
                       ) : null}
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm font-medium text-muted-foreground">
                         {t('dr_updated')} {new Date(c.updated_at).toLocaleDateString()}
                       </span>
                     </div>

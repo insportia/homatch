@@ -111,14 +111,14 @@ function Count({ label, value, note, loading }: {
   label: string; value: number; note?: string | null; loading: boolean;
 }) {
   return (
-    <div className="min-w-0 px-5 py-5 sm:px-6">
+    <div className="min-w-0 px-6 py-6 sm:px-7 sm:py-7">
       {loading ? (
         <Skeleton className="h-9 w-14" />
       ) : (
-        <p className="text-[2rem] font-semibold leading-none tracking-tight text-foreground tabular-nums">{value}</p>
+        <p className="font-display text-[2.75rem] font-extrabold leading-none tracking-[-0.03em] text-foreground tabular-nums">{value}</p>
       )}
-      <p className="mt-2.5 text-xs leading-snug text-muted-foreground">{label}</p>
-      {!loading && note && <p className="mt-1 text-xs font-medium text-success">{note}</p>}
+      <p className="mt-3 text-sm font-medium leading-snug text-ink-soft">{label}</p>
+      {!loading && note && <p className="mt-1.5 text-sm font-semibold text-success">{note}</p>}
     </div>
   );
 }
@@ -136,13 +136,13 @@ function ActionTile({ icon: Icon, title, desc, onClick }: {
     <button
       type="button"
       onClick={onClick}
-      className="group flex h-full flex-col items-start p-5 text-start transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:p-6"
+      className="group flex h-full flex-col items-start p-6 text-start transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:p-7"
     >
       <span className="grid h-10 w-10 place-items-center rounded-[0.6rem] border border-foreground/15 bg-secondary text-foreground transition-colors duration-300 group-hover:border-gold/70 group-hover:bg-gold-soft group-hover:text-gold-ink motion-reduce:transition-none" aria-hidden="true">
         <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
       </span>
-      <span className="mt-4 block text-sm font-semibold text-foreground">{title}</span>
-      <span className="mt-1.5 block flex-1 text-xs leading-relaxed text-muted-foreground">{desc}</span>
+      <span className="mt-5 block font-display text-lg font-bold tracking-[-0.012em] text-foreground">{title}</span>
+      <span className="mt-2 block flex-1 text-sm leading-relaxed text-ink-soft">{desc}</span>
       <ArrowRight
         className={`mt-4 h-4 w-4 self-end text-muted-foreground transition-transform group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
         aria-hidden="true"
@@ -454,12 +454,12 @@ function DashboardContent() {
       <div className="space-y-5 md:space-y-6">
         {/* ── 1. Welcome, with the four counts on the same surface ── */}
         <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
-          <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-            <div className="flex flex-col justify-center p-6 md:p-8 lg:p-9">
-              <h1 className="text-balance text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+          <div className="grid md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+            <div className="flex flex-col justify-center p-7 md:p-9 lg:p-11">
+              <h1 className="text-balance text-2xl font-bold tracking-[-0.022em] text-foreground sm:text-3xl lg:text-4xl">
                 {firstName ? t('dash_welcome_back_name', { name: firstName }) : t('dash_welcome_back')}
               </h1>
-              <p className="mt-2.5 max-w-lg text-pretty text-sm leading-relaxed text-muted-foreground">
+              <p className="mt-4 max-w-xl text-pretty text-lg leading-relaxed text-ink-soft">
                 {t('db_welcome_sub')}
               </p>
             </div>
@@ -467,14 +467,14 @@ function DashboardContent() {
             {/* The reference's banner image. Same approved photograph as the
                 Main Page hero, cropped tight so it reads as a texture here
                 rather than competing with the greeting. */}
-            <div className="relative hidden min-h-[10rem] md:block">
-              <SceneMedia scene="hero" alt="" sizes="22rem" position="62% 46%" />
-              <div className="absolute inset-0 bg-[hsl(30_8%_8%/0.28)]" aria-hidden="true" />
-              <div className="absolute inset-y-0 start-0 w-1/3 bg-gradient-to-r from-card to-transparent rtl:bg-gradient-to-l" aria-hidden="true" />
-              <figure className="absolute inset-0 flex items-center p-6">
+            <div className="relative hidden min-h-[15rem] md:block lg:min-h-[17rem]">
+              <SceneMedia scene="hero" alt="" sizes="(min-width:1024px) 40vw, 45vw" position="58% 44%" />
+              <div className="absolute inset-0 bg-[hsl(30_8%_8%/0.18)]" aria-hidden="true" />
+              <div className="absolute inset-y-0 start-0 w-16 bg-gradient-to-r from-card to-transparent rtl:bg-gradient-to-l" aria-hidden="true" />
+              <figure className="absolute inset-0 flex items-end p-7 lg:p-8">
                 <div className="flex gap-3.5">
                   <span className="w-px shrink-0 self-stretch bg-gold" aria-hidden="true" />
-                  <blockquote className="text-pretty text-sm font-medium leading-relaxed text-white drop-shadow-[0_1px_10px_rgba(16,24,36,0.7)]">
+                  <blockquote className="max-w-[22rem] text-pretty text-base font-semibold leading-relaxed text-white drop-shadow-[0_2px_14px_rgba(16,24,36,0.85)]">
                     {t('db_banner_quote')}
                   </blockquote>
                 </div>

@@ -31,7 +31,7 @@
  * a Georgian sentence with a Latin brand name inside it correctly, each in
  * its own designed face.
  * ------------------------------------------------------------------------- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&family=Noto+Sans+Georgian:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500..800&family=Inter:wght@400..700&family=Noto+Sans+Georgian:wght@400..700&family=Noto+Sans+Hebrew:wght@400..700&family=Noto+Sans+Arabic:wght@400..700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -50,7 +50,14 @@
        per-locale switching anywhere in the app. */
     --font-body: 'Inter', 'Noto Sans Georgian', 'Noto Sans Hebrew',
                  'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
-    --font-display: 'Inter Tight', 'Inter', 'Noto Sans Georgian',
+    /* Manrope for display. Inter Tight was a safe neutral and read as
+       exactly that — generic. Manrope has an actual voice at large sizes:
+       near-geometric bowls, a high x-height and flat terminals that stay
+       confident rather than decorative, which is the register a premium
+       intelligence product wants for a headline and a metric. Both faces
+       load as VARIABLE fonts, so the whole 500-800 range costs one file per
+       subset instead of four static weights. */
+    --font-display: 'Manrope', 'Inter', 'Noto Sans Georgian',
                     'Noto Sans Hebrew', 'Noto Sans Arabic', system-ui, sans-serif;
 
     /* The measure a column of reading text is allowed to reach. Long-form
@@ -134,7 +141,11 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body);
-    font-weight: 400;
+    /* 450, not 400. Inter is a variable font here, so this is a real weight
+       rather than a synthesised one, and it is the single cheapest way to
+       stop body copy looking thin on a bright surface without tipping into
+       the heaviness of 500. */
+    font-weight: 450;
     /* 17px base. The old 16px default plus Tailwind's text-sm meant most of
        the interface read at 14px or less; see tailwind.config.js. */
     font-size: 1.0625rem;
@@ -149,8 +160,8 @@
      new heading is correct by default instead of by remembering. */
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
-    font-weight: 600;
-    letter-spacing: -0.011em;
+    font-weight: 700;
+    letter-spacing: -0.018em;
   }
 
   /* Figures that are compared down a column — prices, areas, scores — must
@@ -450,10 +461,12 @@
     --secondary: 40 5% 94%;
     --secondary-foreground: 0 0% 10%;
     --muted: 40 5% 94%;
-    /* Was 34%. Secondary text has to stay comfortably readable rather than
-       looking disabled: this is about 5.7:1 on white, where 34% was ~4.6:1
-       and thin gray metadata was one of the stated complaints. */
-    --muted-foreground: 0 0% 30%;
+    /* 34% -> 30% -> 24%. Supporting copy kept reading as washed out at 30%,
+       and on a dashboard almost every label, date and card description is
+       "supporting". At 24% it is 11.4:1 on a white card: unmistakably ink
+       rather than grey, while still stepping below the 18.7:1 of primary
+       text so the hierarchy survives. */
+    --muted-foreground: 0 0% 24%;
 
     --accent: 38 88% 54%;
     --accent-foreground: 0 0% 6%;
@@ -473,7 +486,8 @@
     --gold-ink: 34 90% 31%;     /* text-safe gold on white */
     --gold-soft: 0 0% 96%;      /* NEUTRAL — gold never fills a surface here */
     --sand: 0 0% 96%;           /* NEUTRAL — kept only so the utility resolves */
-    --ink-soft: 0 0% 22%;
+    /* The reading colour for long-form body that is not a heading. */
+    --ink-soft: 0 0% 16%;
 
     --success: 152 54% 28%;
     --warning: 32 78% 36%;

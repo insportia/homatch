@@ -20,6 +20,10 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // carry distinct real translations of the same key, so allowlisting the
   // Turkish case cannot be hiding a gap anywhere else.
   'fin_col_plan',
+  // "Model" — Turkish spells the word identically to English, exactly as with
+  // fin_col_plan above. ka/ru/ar/he all carry distinct real translations of the
+  // same key, so this cannot be masking a gap elsewhere.
+  'fin_col_model',
   // Product/brand names — never translated in any language.
   'ai_title', // "Homatch AI"
   // "Know before you buy" — the brand tagline, set beneath the wordmark as

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Users, Building2, Zap, Activity, Puzzle, Unlock,
-  TrendingUp, DollarSign, BarChart2, Percent,
+  TrendingUp, DollarSign, BarChart2, Percent, BadgeDollarSign, ArrowRight,
 } from 'lucide-react';
 import { getAdminOverviewStats, getSpendCapStatus } from '@/services/api';
 import type { AdminOverviewStats, SpendCapStatus } from '@/types/types';
@@ -107,6 +108,25 @@ export default function AdminOverviewPage() {
       {/* Finance */}
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{t('admin_overview_section_finance')}</h2>
+
+        {/* The way in to the full cost and unit-economics system. The numbers
+            below are a summary; everything behind this link is the detail --
+            per-provider spend, per-execution COGS, the provider audit and the
+            unpriced backlog. Reachable from here, not only by typing a URL. */}
+        <Link
+          to="/admin/finance"
+          className="mb-3 flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10"
+        >
+          <div className="rounded-lg bg-primary/15 p-2 shrink-0">
+            <BadgeDollarSign className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">{t('fin_title')}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t('admin_overview_finance_cta')}</p>
+          </div>
+          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </Link>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {loading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />) : <>
             <StatCard title={t('admin_overview_unlocks')}      value={fmt(stats?.total_unlocks)}     sub={`${fmtPct(stats?.unlock_conversion_rate)} of matches`} icon={Unlock}    accent />

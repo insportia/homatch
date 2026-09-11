@@ -377,3 +377,108 @@ export interface ProviderRegistry {
   units: { code: string; label: string; precision: number }[];
   providers: ProviderRegistryEntry[];
 }
+
+/** Admin-entered recurring company costs. Always MANUAL, never measured usage. */
+export interface FixedCostRow {
+  id: string;
+  name: string;
+  vendor: string;
+  category: string;
+  amount_usd: number;
+  source_currency: string;
+  billing_frequency: 'ONE_OFF' | 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+  monthly_usd: number;
+  starts_at: string;
+  renews_at: string | null;
+  ends_at: string | null;
+  active: boolean;
+  counts_as_cogs: boolean;
+  notes: string | null;
+  cost_source: 'MANUAL';
+  superseded: boolean;
+}
+
+export interface FixedCosts {
+  monthly_total_usd: number;
+  /** Only the expenses explicitly flagged as cost of goods sold. */
+  monthly_cogs_usd: number;
+  rows: FixedCostRow[];
+  /** Infrastructure providers we pay but hold no fixed-cost row for. */
+  missing: { provider_id: string; provider_name: string; hint: string | null }[];
+}
+
+export interface ModelRate {
+  id: string;
+  provider: string;
+  model: string | null;
+  unit: string;
+  rate: number;
+  per_units: number;
+  currency: string;
+  rate_per_unit_usd: number | null;
+  effective_from: string;
+  effective_to: string | null;
+  current: boolean;
+  source: string | null;
+  notes: string | null;
+}
+
+export interface ProviderRate {
+  id: number;
+  provider_id: string;
+  provider_name: string | null;
+  operation: string;
+  market: string;
+  unit: string;
+  unit_cost: number;
+  currency: string;
+  unit_cost_usd: number | null;
+  convertible: boolean;
+  effective_from: string;
+  effective_to: string | null;
+  current: boolean;
+  note: string | null;
+}
+
+export interface PriceBook {
+  model_rates: ModelRate[];
+  provider_rates: ProviderRate[];
+  /** Declares dated pricing but has no rate on file — the source of unpriced usage. */
+  declared_but_unpriced: {
+    provider_id: string; provider_name: string;
+    billing_unit: string; currency: string;
+  }[];
+  fx: {
+    reporting_currency: string;
+    rates: { currency: string; rate: number; source: string;
+             effective_from: string; effective_to: string | null }[];
+  };
+}
+
+export interface LiveFeedEvent {
+  fact_key: string;
+  occurred_at: string;
+  provider: string;
+  product: string;
+  stage: string | null;
+  operation: string;
+  model: string | null;
+  quantity: number;
+  unit: string;
+  web_searches: number | null;
+  cost_usd: number;
+  cost_source: CostSource;
+  is_unpriced: boolean;
+  job_ref: string | null;
+  user_id: string | null;
+}
+
+export interface LiveFeed {
+  spend_5m: number;
+  spend_1h: number;
+  spend_today: number;
+  events_1h: number;
+  /** Null below a meaningful sample — noise dressed as a number helps nobody. */
+  burn_per_hour: number | null;
+  events: LiveFeedEvent[];
+}

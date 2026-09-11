@@ -14,28 +14,31 @@ import { Money, Pill, TableWrap, Empty, SectionTitle } from './FinanceKit';
  * and showing them beside money a customer actually paid would overstate
  * revenue. Only PURCHASED credits are cash-backed, and the table says so.
  */
-export function FinanceMoneyTabs() {
-  const { t } = useLanguage();
-  const [plans, setPlans] = useState<PlanRow[]>([]);
-  const [credits, setCredits] = useState<CreditEconomics | null>(null);
-  const [users, setUsers] = useState<UserEconomicsRow[]>([]);
+function useLoad<T>(fn: () => Promise<T | null>, deps: React.DependencyList = []) {
+  const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     let alive = true;
-    Promise.all([getFinancePlans(30), getCreditEconomics(), getUserEconomics(30, 'cogs', 25)])
-      .then(([p, c, u]) => {
-        if (!alive) return;
-        setPlans(p ?? []); setCredits(c); setUsers(u ?? []);
-      })
-      .catch(() => { /* shell surfaces it */ })
+    fn()
+      .then(d => { if (alive) setData(d); })
+      .catch(() => { /* the page shell already surfaced the error */ })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return { data, loading };
+}
 
-  if (loading) {
-    return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
-  }
+const Spinner = () => (
+  <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+);
+
+/** Subscriptions: what each plan earns, and what its included allowances cost. */
+export function FinanceSubscriptionsTab() {
+  const { t } = useLanguage();
+  const { data, loading } = useLoad<PlanRow[]>(() => getFinancePlans(30));
+  const plans = data ?? [];
+  if (loading) return <Spinner />;
 
   return (
     <div className="space-y-4">
@@ -89,7 +92,18 @@ export function FinanceMoneyTabs() {
         </CardContent>
       </Card>
 
-      {/* ── Credits ──────────────────────────────────────── */}
+    </div>
+  );
+}
+
+/** Credit economics: what is cash, and what was issued rather than sold. */
+export function FinanceCreditsTab() {
+  const { t } = useLanguage();
+  const { data: credits, loading } = useLoad<CreditEconomics>(() => getCreditEconomics());
+  if (loading) return <Spinner />;
+
+  return (
+    <div className="space-y-4">
       {credits && (
         <Card>
           <CardHeader className="pb-2">
@@ -178,7 +192,19 @@ export function FinanceMoneyTabs() {
         </Card>
       )}
 
-      {/* ── Per-customer ─────────────────────────────────── */}
+    </div>
+  );
+}
+
+/** Per-customer contribution: revenue against attributed provider cost. */
+export function FinanceUsersTab() {
+  const { t } = useLanguage();
+  const { data, loading } = useLoad<UserEconomicsRow[]>(() => getUserEconomics(30, 'cogs', 25));
+  const users = data ?? [];
+  if (loading) return <Spinner />;
+
+  return (
+    <div className="space-y-4">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">{t('fin_user_economics')}</CardTitle>

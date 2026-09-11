@@ -18,7 +18,12 @@ import {
 import { FinanceProvidersTab } from '@/components/admin/finance/FinanceProvidersTab';
 import { FinanceConnectionsTab } from '@/components/admin/finance/FinanceConnectionsTab';
 import { FinanceProductsTab } from '@/components/admin/finance/FinanceProductsTab';
-import { FinanceMoneyTabs } from '@/components/admin/finance/FinanceMoneyTabs';
+import {
+  FinanceSubscriptionsTab, FinanceCreditsTab, FinanceUsersTab,
+} from '@/components/admin/finance/FinanceMoneyTabs';
+import {
+  FinanceLiveSpendTab, FinanceFixedCostsTab, FinancePriceBookTab,
+} from '@/components/admin/finance/FinanceMoreTabs';
 import { FinanceEventsTab } from '@/components/admin/finance/FinanceEventsTab';
 
 /**
@@ -145,11 +150,16 @@ export default function AdminFinancePage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="overview" className="text-xs">{t('fin_tab_overview')}</TabsTrigger>
+          <TabsTrigger value="live" className="text-xs">{t('fin_tab_live')}</TabsTrigger>
           <TabsTrigger value="providers" className="text-xs">{t('fin_tab_providers')}</TabsTrigger>
           <TabsTrigger value="connections" className="text-xs">{t('fin_tab_connections')}</TabsTrigger>
           <TabsTrigger value="products" className="text-xs">{t('fin_tab_products')}</TabsTrigger>
-          <TabsTrigger value="money" className="text-xs">{t('fin_tab_money')}</TabsTrigger>
+          <TabsTrigger value="users" className="text-xs">{t('fin_tab_users')}</TabsTrigger>
+          <TabsTrigger value="credits" className="text-xs">{t('fin_tab_credits')}</TabsTrigger>
+          <TabsTrigger value="subscriptions" className="text-xs">{t('fin_tab_subscriptions')}</TabsTrigger>
+          <TabsTrigger value="fixed" className="text-xs">{t('fin_tab_fixed')}</TabsTrigger>
           <TabsTrigger value="budgets" className="text-xs">{t('fin_tab_budgets')}</TabsTrigger>
+          <TabsTrigger value="pricebook" className="text-xs">{t('fin_tab_pricebook')}</TabsTrigger>
           <TabsTrigger value="alerts" className="text-xs">
             {t('fin_tab_alerts')}
             {alerts.length > 0 && <span className="ms-1 text-muted-foreground">({alerts.length})</span>}
@@ -329,8 +339,23 @@ export default function AdminFinancePage() {
         <TabsContent value="products" className="mt-4">
           <FinanceProductsTab />
         </TabsContent>
-        <TabsContent value="money" className="mt-4">
-          <FinanceMoneyTabs />
+        <TabsContent value="live" className="mt-4">
+          <FinanceLiveSpendTab />
+        </TabsContent>
+        <TabsContent value="users" className="mt-4">
+          <FinanceUsersTab />
+        </TabsContent>
+        <TabsContent value="credits" className="mt-4">
+          <FinanceCreditsTab />
+        </TabsContent>
+        <TabsContent value="subscriptions" className="mt-4">
+          <FinanceSubscriptionsTab />
+        </TabsContent>
+        <TabsContent value="fixed" className="mt-4">
+          <FinanceFixedCostsTab />
+        </TabsContent>
+        <TabsContent value="pricebook" className="mt-4">
+          <FinancePriceBookTab />
         </TabsContent>
 
         {/* ── BUDGETS ──────────────────────────────────────── */}

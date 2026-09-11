@@ -3,6 +3,7 @@ import type {
   FinanceSummary, ProviderRow, ProviderConnection, ProductRow, PlanRow,
   CreditEconomics, UserEconomicsRow, BudgetRow, AlertRow, CostEventPage,
   TimeseriesPoint, MonthRow, MarginMonitor, UnpricedRow, FxStatus, ProviderRegistry,
+  FixedCosts, PriceBook, LiveFeed,
 } from '@/types/finance';
 
 /**
@@ -80,6 +81,12 @@ export const getUnpriced = () =>
 export const getFxStatus = () =>
   rpc<FxStatus>('finance_fx_status');
 
+export const getFixedCosts = () =>
+  rpc<FixedCosts>('finance_fixed_costs');
+
+export const getPriceBook = () =>
+  rpc<PriceBook>('finance_price_book');
+
 export const getVerifyDeepDive = (days = 30) =>
   rpc<Record<string, unknown>>('finance_verify_deep_dive', { p_days: days });
 
@@ -87,7 +94,7 @@ export const getOpenAiBreakdown = (days = 30) =>
   rpc<Record<string, unknown>>('finance_openai_breakdown', { p_days: days });
 
 export const getLiveFeed = (limit = 50) =>
-  rpc<Record<string, unknown>[]>('finance_live_feed', { p_limit: limit });
+  rpc<LiveFeed>('finance_live_feed', { p_limit: limit });
 
 export interface CostEventFilters {
   from?: string; to?: string; provider?: string; product?: string;

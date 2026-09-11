@@ -597,6 +597,8 @@ export interface HeldComparable {
   entityId: string;
   url: string;
   facts: Record<string, string | number | null>;
+  /** When any of its facts were last confirmed. Used to order, not to quote. */
+  lastVerifiedAt: string | null;
 }
 
 /**
@@ -638,21 +640,32 @@ export async function loadComparables(
 
     const { data: facts } = await db
       .from('intelligence_facts')
-      .select('entity_id, fact_key, value_text, value_number')
+      .select('entity_id, fact_key, value_text, value_number, last_verified_at')
       .in('entity_id', ids)
       .eq('status', 'CURRENT');
 
     const byEntity = new Map<string, HeldComparable>();
     for (const e of ((entities ?? []) as { id: string; natural_key: string }[])) {
-      if (e?.id && e.natural_key) byEntity.set(e.id, { entityId: e.id, url: e.natural_key, facts: {} });
+      if (e?.id && e.natural_key) byEntity.set(e.id, { entityId: e.id, url: e.natural_key, facts: {}, lastVerifiedAt: null });
     }
     for (const f of ((facts ?? []) as KnownFact[])) {
       const c = f.entity_id ? byEntity.get(f.entity_id) : undefined;
       if (!c || !f.fact_key) continue;
       c.facts[f.fact_key] = (f as any).value_number ?? f.value_text ?? null;
+      const seen = f.last_verified_at ?? null;
+      if (seen && (!c.lastVerifiedAt || seen > c.lastVerifiedAt)) c.lastVerifiedAt = seen;
     }
 
-    return [...byEntity.values()];
+    /*
+     * Most recently confirmed first.
+     *
+     * The set only grows — every run adds whatever it found — so without an
+     * order and a cap the oldest listings would crowd out the ones still
+     * likely to be live, and the brief would get longer for ever.
+     */
+    return [...byEntity.values()].sort((a, b) =>
+      String(b.lastVerifiedAt ?? '').localeCompare(String(a.lastVerifiedAt ?? ''))
+    );
   } catch {
     // Knowing no comparables means the market stage researches them all, which
     // is exactly what it did before this existed.

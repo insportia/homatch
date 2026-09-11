@@ -74,13 +74,22 @@ export interface MarketBrief {
 /**
  * The block handed to the market stage.
  *
- * Bounded at a size that is worth sending: a property with two hundred stored
- * comparables must not put two hundred rows into a prompt, and beyond a couple
- * of dozen the sweep is cheaper than the list.
+ * HOW MANY IS WORTH SENDING.
+ *
+ * Measured, and the first guess was wrong. At twenty-four the market stage
+ * carried every offered listing into its answer and kept finding more, so the
+ * comparable set compounded run over run — 9, then 16, then 26 — and the stage
+ * went 75,509 tokens to 103,600 with it. That is more Buyer Intelligence, and
+ * it is not a saving: cost scaled with a graph that only ever grows.
+ *
+ * Eight is enough to stop the same listings being re-found without turning the
+ * brief into the report. Ordered most-recently-confirmed first, because a
+ * listing confirmed live last week is likelier still to be live than one
+ * nobody has looked at since the graph learned it.
  */
 export function buildMarketBrief(
   comparables: readonly HeldComparableFacts[] | null | undefined,
-  limit = 24
+  limit = 8
 ): MarketBrief {
   const rows: string[] = [];
   const urls: string[] = [];

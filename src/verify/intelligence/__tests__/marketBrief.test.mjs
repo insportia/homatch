@@ -100,7 +100,11 @@ test('a listing with no usable URL is not offered', () => {
 test('a property with hundreds of comparables does not flood the prompt', () => {
   const many = Array.from({ length: 200 }, (_, i) => comparable(`https://home.ss.ge/x/${i}`));
   const { urls } = buildMarketBrief(many);
-  assert.equal(urls.length, 24, 'the list is unbounded');
+  assert.equal(urls.length, 8, 'the list is unbounded');
+  // Measured: at 24 the stage carried every offered listing into its answer
+  // and kept finding more, so the set compounded 9 -> 16 -> 26 and market
+  // went 75,509 tokens to 103,600 with it. Cost scaled with a graph that
+  // only grows, which is the opposite of the point.
 });
 
 test('a comparable with no stable attributes is still worth its URL', () => {

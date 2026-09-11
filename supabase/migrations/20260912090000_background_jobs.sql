@@ -333,7 +333,7 @@ as $$
 declare
   v_user uuid := auth.uid();
   v_job public.background_jobs;
-  v_released jsonb := null;
+  v_release_pending boolean := false;
 begin
   if v_user is null then
     raise exception 'authentication required' using errcode = '28000';
@@ -380,6 +380,40 @@ begin
     );
   end if;
 
+  /*
+   * WHO IS ALLOWED TO GIVE CREDITS BACK.
+   *
+   * wallet_release() opens with `if auth.role() <> 'service_role' then raise
+   * exception 'FORBIDDEN'`. That is a deliberate rule of the billing layer:
+   * the wallet is never moved by a customer's own session, only by a worker.
+   *
+   * Calling it from here — which runs as the customer — is refused, and the
+   * first version of this function did exactly that inside an exception
+   * block, so the cancellation succeeded and the hold silently stayed on the
+   * balance. That is the stuck reservation §44 exists to prevent, and it was
+   * invisible until the acceptance run went through the real wallet.
+   *
+   * Impersonating service_role inside this SECURITY DEFINER function would
+   * have worked and would have been wrong: one function's judgement standing
+   * in for a rule the billing layer enforces everywhere else, ready to be
+   * copied by the next person who needs a release.
+   *
+   * So the release is DEFERRED. Cancelling records what is owed and
+   * background_jobs_release_cancelled() — called by jobs-worker with the
+   * service key — settles it within thirty seconds through the ordinary path,
+   * writing the ordinary ledger entry.
+   *
+   * No new state was added, because none is needed: a CANCELLED job whose
+   * reservation is still RESERVED IS the outstanding release. Deriving it
+   * means the queue cannot drift out of step with the jobs it describes.
+   */
+  if v_job.reservation_id is not null then
+    select exists (
+      select 1 from public.usage_reservations r
+       where r.id = v_job.reservation_id and r.status = 'RESERVED'
+    ) into v_release_pending;
+  end if;
+
   update public.background_jobs
      set state = 'CANCELLED',
          cancelled_at = now(),
@@ -388,33 +422,13 @@ begin
    where id = p_job_id
   returning * into v_job;
 
-  /*
-   * The reservation goes back.
-   *
-   * Nothing was bought, so nothing is owed. wallet_release() is the existing
-   * path and writes its own ledger entry; reproducing that here would be a
-   * second accounting system. A reservation that is already settled or
-   * released is left alone — this cannot un-settle a charge.
-   */
-  if v_job.reservation_id is not null then
-    begin
-      if exists (select 1 from public.usage_reservations r
-                  where r.id = v_job.reservation_id and r.status = 'RESERVED') then
-        v_released := public.wallet_release(
-          v_job.reservation_id,
-          'JOB_CANCELLED_BEFORE_COMMIT',
-          jsonb_build_object('jobId', v_job.id)
-        );
-      end if;
-    exception when others then
-      -- A release that fails must not un-cancel the job. The sweep
-      -- (wallet_sweep_expired_reservations) is the backstop.
-      v_released := jsonb_build_object('error', 'RELEASE_FAILED');
-    end;
-  end if;
-
-  return jsonb_build_object('ok', true, 'job', public.background_job_public(v_job),
-                            'reservation', v_released);
+  return jsonb_build_object(
+    'ok', true,
+    'job', public.background_job_public(v_job),
+    -- Nothing was bought, so nothing is owed; the credits come back on the
+    -- worker's next tick.
+    'releasePending', v_release_pending
+  );
 end;
 $$;
 
@@ -663,6 +677,51 @@ begin
 end;
 $$;
 
+/**
+ * What cancelling owes the wallet, derived rather than queued.
+ *
+ * Called by jobs-worker with the service key, which is the only role
+ * wallet_release() accepts. wallet_sweep_expired_reservations remains the
+ * hour-scale backstop beneath this.
+ */
+create or replace function public.background_jobs_release_cancelled(p_limit integer default 25)
+returns jsonb
+language plpgsql security definer set search_path to ''
+as $$
+declare
+  v_job record;
+  v_released int := 0;
+  v_failed int := 0;
+begin
+  perform public.background_jobs_assert_worker();
+
+  for v_job in
+    select b.id, b.reservation_id
+      from public.background_jobs b
+      join public.usage_reservations r on r.id = b.reservation_id
+     where b.state = 'CANCELLED'
+       and b.committed_at is null
+       and r.status = 'RESERVED'
+     order by b.cancelled_at asc
+     limit least(greatest(p_limit, 1), 200)
+  loop
+    begin
+      perform public.wallet_release(
+        v_job.reservation_id,
+        'JOB_CANCELLED_BEFORE_COMMIT',
+        jsonb_build_object('jobId', v_job.id)
+      );
+      v_released := v_released + 1;
+    exception when others then
+      -- One reservation that will not release must not stop the rest.
+      v_failed := v_failed + 1;
+    end;
+  end loop;
+
+  return jsonb_build_object('released', v_released, 'failed', v_failed);
+end;
+$$;
+
 -- ── Admin force actions (§45) ──────────────────────────────────────────────
 
 /**
@@ -738,6 +797,7 @@ revoke all on function public.background_jobs_mine(integer, integer) from public
 revoke all on function public.background_job_get(uuid) from public;
 revoke all on function public.background_job_for_subject(text, uuid) from public;
 revoke all on function public.background_jobs_recover_stuck(integer, integer) from public;
+revoke all on function public.background_jobs_release_cancelled(integer) from public;
 revoke all on function public.background_job_admin_force(uuid, text, text) from public;
 
 -- What a signed-in customer may do: start their own work, stop it inside the
@@ -753,6 +813,7 @@ grant execute on function public.background_job_for_subject(text, uuid) to authe
 grant execute on function public.background_job_progress(uuid, text, smallint, text, text, jsonb) to service_role;
 grant execute on function public.background_job_finish(uuid, text, text, text, text, text) to service_role;
 grant execute on function public.background_jobs_recover_stuck(integer, integer) to service_role;
+grant execute on function public.background_jobs_release_cancelled(integer) to service_role;
 grant execute on function public.background_job_admin_force(uuid, text, text) to authenticated, service_role;
 
 -- ── Realtime ───────────────────────────────────────────────────────────────

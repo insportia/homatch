@@ -95,8 +95,24 @@ export interface NormalSection {
   cites: string[];
 }
 
+/**
+ * Where the opening sentence came from.
+ *
+ * 'MODEL' is the summary the pipeline wrote for that purpose. The other two
+ * are BORROWED from elsewhere in the same report because no summary was
+ * produced — see ensureSummaryStatement() for why that is allowed and what it
+ * is not allowed to do.
+ */
+export type SummarySource = 'MODEL' | 'FINAL_VIEW' | 'SECTION' | 'NONE';
+
 export interface NormalReport {
-  summary: { label: OverallLabel; statement: string; highlights: NormalSummaryHighlight[] };
+  summary: {
+    label: OverallLabel;
+    statement: string;
+    highlights: NormalSummaryHighlight[];
+    /** Never rendered as text. Lets a caller say "in summary" only when it is. */
+    statementSource: SummarySource;
+  };
   keyFindings: NormalKeyFinding[];
   sections: NormalSection[];
   attentionPoints: { point: string; why: string; cites: string[] }[];
@@ -287,6 +303,61 @@ export function detectPayloadVersion(raw: unknown): PayloadVersion {
   return 'NONE';
 }
 
+/**
+ * THE FIRST THING A BUYER READS MUST SAY SOMETHING (PART A §4).
+ *
+ * 24 of the 58 reports persisted in production are structurally current and
+ * carry no summary.statement at all — 8 written in DETERMINISTIC mode, where
+ * the model's prose was rejected by the grounding gate, and 16 in MODEL mode
+ * that simply did not populate it. Every one of them has sections. Opening
+ * their report on a verdict word and then jumping straight into PROJECT is
+ * not a summary, and it is what those customers see today.
+ *
+ * So the opening sentence is BORROWED when it is missing, in this order:
+ *
+ *   finalView   the pipeline's own closing judgement on this property. A
+ *               real, grounded sentence — 16 of the 24 have one.
+ *   section     the opening of the first section that has prose. The
+ *               remaining 8.
+ *
+ * WHAT THIS IS NOT ALLOWED TO DO: compose a sentence. Nothing here writes
+ * prose, joins facts, or derives a conclusion — it relocates a sentence the
+ * pipeline already produced and grounded for this exact property. A summary
+ * assembled here would be an unvalidated claim wearing the report's
+ * authority, which is the one thing the whole synthesis design exists to
+ * prevent.
+ *
+ * statementSource records which happened, so a renderer can label a borrowed
+ * opening honestly rather than presenting it as a written summary.
+ */
+const SENTENCE_END = /(?<=[.!?。])\s+/;
+const PARAGRAPH_BREAK = /\n{2,}/;
+
+export function ensureSummaryStatement(report: NormalReport): NormalReport {
+  if (report.summary.statement) {
+    return { ...report, summary: { ...report.summary, statementSource: 'MODEL' } };
+  }
+
+  const finalView = report.finalView.trim();
+  if (finalView) {
+    return { ...report, summary: { ...report.summary, statement: finalView, statementSource: 'FINAL_VIEW' } };
+  }
+
+  const firstProse = report.sections.find((s) => s.body.trim())?.body.trim() ?? '';
+  if (firstProse) {
+    // The opening sentence, or the opening paragraph when it is one
+    // unbroken sentence. Never truncated mid-word into an ellipsis.
+    const opening = firstProse.split(SENTENCE_END)[0]?.trim() ?? '';
+    const statement =
+      opening && opening.length <= 400 ? opening : firstProse.split(PARAGRAPH_BREAK)[0].trim();
+    if (statement) {
+      return { ...report, summary: { ...report.summary, statement, statementSource: 'SECTION' } };
+    }
+  }
+
+  return { ...report, summary: { ...report.summary, statementSource: 'NONE' } };
+}
+
 const EMPTY_REPORT_FIELDS = {
   keyFindings: [] as NormalKeyFinding[],
   attentionPoints: [] as NormalReport['attentionPoints'],
@@ -316,11 +387,12 @@ function fromV1(o: Record<string, unknown>): NormalVerifyResult {
 
   return {
     report: hasContent
-      ? {
+      ? ensureSummaryStatement({
           ...EMPTY_REPORT_FIELDS,
           summary: {
             label,
             statement: '',
+            statementSource: 'NONE' as SummarySource,
             highlights: reasons.map((r) => ({
               dimension: '',
               sentiment,
@@ -330,7 +402,7 @@ function fromV1(o: Record<string, unknown>): NormalVerifyResult {
             })),
           },
           sections,
-        }
+        })
       : null,
     evidence: [],
     snapshot: null,
@@ -381,9 +453,10 @@ function fromV2(o: Record<string, unknown>): NormalVerifyResult {
   return {
     ...siblingsOf(o),
     report: hasContent
-      ? {
+      ? ensureSummaryStatement({
           summary: {
             label: normalizeLabel(overall.label),
+            statementSource: 'NONE' as SummarySource,
             // v2 split the answer in two: a one-line view and a paragraph
             // under it. v3 has one statement, so they are joined rather than
             // one of them being dropped — both were shown to that customer.
@@ -399,7 +472,7 @@ function fromV2(o: Record<string, unknown>): NormalVerifyResult {
             recommend: asBool(asObject(r.contractUpload).recommend),
             text: asString(asObject(r.contractUpload).text),
           },
-        }
+        })
       : null,
     empty: asBool(o.empty) || !hasContent,
   };
@@ -426,8 +499,13 @@ function fromV3(o: Record<string, unknown>): NormalVerifyResult {
   return {
     ...siblingsOf(o),
     report: hasContent
-      ? {
-          summary: { label: normalizeLabel(summary.label), statement, highlights },
+      ? ensureSummaryStatement({
+          summary: {
+            label: normalizeLabel(summary.label),
+            statement,
+            highlights,
+            statementSource: 'NONE' as SummarySource,
+          },
           keyFindings,
           sections,
           attentionPoints: asArray(r.attentionPoints).map(normalizeAttentionPoint).filter((a) => a.point),
@@ -437,7 +515,7 @@ function fromV3(o: Record<string, unknown>): NormalVerifyResult {
             recommend: asBool(asObject(r.contractUpload).recommend),
             text: asString(asObject(r.contractUpload).text),
           },
-        }
+        })
       : null,
     empty: asBool(o.empty) || !hasContent,
   };

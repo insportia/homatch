@@ -174,10 +174,69 @@ test('v1: the verdict reasons are preserved as highlights, not invented into pro
     ['One active mortgage', 'Area matches the registry']
   );
   // Nothing was fabricated to fill v3's richer fields.
-  assert.equal(result.report.summary.statement, '');
   assert.deepEqual(result.report.keyFindings, []);
-  assert.equal(result.report.highlightsDimensionInvented, undefined);
   for (const h of result.report.summary.highlights) assert.equal(h.dimension, '');
+  // v1 never had a summary statement, so the opening is BORROWED from the
+  // report's own first section rather than written here — and says so.
+  assert.equal(result.report.summary.statementSource, 'SECTION');
+  assert.equal(result.report.summary.statement, 'Two registered owners appear on the extract.');
+});
+
+/* ------------------------------------------------------------------ *
+ * The opening sentence (PART A §4)                                    *
+ * ------------------------------------------------------------------ */
+
+test('a report that HAS a summary keeps it, and is marked as the real thing', () => {
+  const { result } = normalizeVerifyPayload(V3);
+  assert.equal(result.report.summary.statementSource, 'MODEL');
+  assert.match(result.report.summary.statement, /950-970 USD/);
+});
+
+test('24 of 58 production reports have no summary: the opening falls back to finalView', () => {
+  // Measured against the real persisted rows on 2026-09-12. 16 of those 24
+  // carry a finalView the pipeline wrote and grounded for that property.
+  const { result } = normalizeVerifyPayload({
+    report: {
+      summary: { label: 'BALANCED', statement: '', highlights: [] },
+      sections: [{ key: 'MARKET', title: 'Market', body: 'Three listings.' }],
+      finalView: 'Reasonable, subject to the contract.',
+    },
+  });
+  assert.equal(result.report.summary.statement, 'Reasonable, subject to the contract.');
+  assert.equal(result.report.summary.statementSource, 'FINAL_VIEW');
+});
+
+test('with no finalView either, the opening is the first section opening sentence', () => {
+  const { result } = normalizeVerifyPayload({
+    report: {
+      summary: { label: 'POSITIVE' },
+      sections: [
+        { key: 'PROJECT', title: 'Project', body: '  ' },
+        { key: 'MARKET', title: 'Market', body: 'Comparable flats sit at 970 per sqm. A second sentence follows.' },
+      ],
+    },
+  });
+  assert.equal(result.report.summary.statement, 'Comparable flats sit at 970 per sqm.');
+  assert.equal(result.report.summary.statementSource, 'SECTION');
+});
+
+test('the fallback RELOCATES a sentence and never composes one', () => {
+  const source = 'The registry lists two owners.';
+  const { result } = normalizeVerifyPayload({
+    report: { summary: { label: 'BALANCED' }, sections: [{ key: 'A', title: 'A', body: source }] },
+  });
+  // Every word of the opening came from the report. Nothing was joined,
+  // derived or written here — an assembled summary would be an unvalidated
+  // claim wearing the report's authority.
+  assert.ok(source.includes(result.report.summary.statement));
+});
+
+test('a report with nothing to borrow says so rather than inventing an opening', () => {
+  const { result } = normalizeVerifyPayload({
+    report: { summary: { label: 'BALANCED', highlights: [{ headline: 'Only a highlight' }] }, sections: [] },
+  });
+  assert.equal(result.report.summary.statement, '');
+  assert.equal(result.report.summary.statementSource, 'NONE');
 });
 
 test('v1: incompleteSources survive, because no later version carried them', () => {

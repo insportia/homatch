@@ -14,7 +14,7 @@
 // research_jobs says it finished, because the only thing that ever sets it is
 // a read of research_jobs.
 //
-// FOUR JOBS, ONE TICK
+// FIVE JOBS, ONE TICK
 //
 //   1. MIRROR   every live background_jobs row onto its subject's real state.
 //   2. DRIVE    start document analysis that is queued, and keep it moving.
@@ -22,6 +22,10 @@
 //                been stuck on "Reading document…" since 13:52 on 2026-09-11.
 //   3. UNSTICK  documents whose analysis landed but whose state never moved.
 //   4. SWEEP    jobs whose worker stopped breathing (§47).
+//   5. REFUND   give back the credits a cancellation owes. wallet_release()
+//                is service-role only by design, and the customer's own
+//                cancel RPC runs as the customer — so the release lands
+//                here, within one tick, through the ordinary ledger path.
 //
 // Authenticated by a shared secret in admin_settings, exactly as the existing
 // verify driver and continuous-matching-worker are. It belongs to no customer,
@@ -359,16 +363,19 @@ serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    const [mirrored, docsStarted, unstuck, swept] = await Promise.all([
+    const [mirrored, docsStarted, unstuck, swept, refunded] = await Promise.all([
       mirror(sb),
       driveDocuments(sb, url, serviceKey),
       unstickDocuments(sb),
       sb.rpc('background_jobs_recover_stuck', { p_stale_minutes: 5, p_limit: 50 })
         .then((r) => r.data)
         .catch(() => null),
+      sb.rpc('background_jobs_release_cancelled', { p_limit: 25 })
+        .then((r) => r.data)
+        .catch(() => null),
     ]);
 
-    return json({ ok: true, mirrored, docsStarted, unstuck, swept });
+    return json({ ok: true, mirrored, docsStarted, unstuck, swept, refunded });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));
     return json({ error: 'internal_error' }, 500);

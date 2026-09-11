@@ -236,7 +236,7 @@ function ProfileContent() {
             <CardContent className="pt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> {t('profile_field_plan')}</span>
-                <Badge variant="outline" className="uppercase text-[12px]">{homatchUser.plan || t('profile_plan_free')}</Badge>
+                <Badge variant="outline" className="uppercase text-[13px]">{homatchUser.plan || t('profile_plan_free')}</Badge>
               </div>
               <Separator className="bg-border" />
               <div className="flex items-center justify-between">

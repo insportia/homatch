@@ -73,7 +73,7 @@ export function IntelligenceLayersSection() {
     <section id="intelligence" className="scroll-mt-20 bg-[#0D0D0D] text-white">
       <div className={`${PAGE} ${SECTION_Y}`}>
         <div className="max-w-[46rem]">
-          <p className="flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.24em] text-gold">
+          <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.24em] text-gold">
             <span className="h-px w-7 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_layers_eyebrow')}
           </p>
@@ -136,7 +136,7 @@ export function IntelligenceLayersSection() {
                       aria-hidden="true"
                     />
                     <span
-                      className={`shrink-0 font-mono text-[13px] tabular-nums tracking-widest transition-colors duration-300 motion-reduce:transition-none ${
+                      className={`shrink-0 font-mono text-[14px] tabular-nums tracking-widest transition-colors duration-300 motion-reduce:transition-none ${
                         on ? 'text-gold' : 'text-white/35'
                       }`}
                       aria-hidden="true"
@@ -161,11 +161,11 @@ export function IntelligenceLayersSection() {
               the rows below it — a section that moves under the reader's eye
               while they are reading it. */}
           <div className="order-2 min-w-0 rounded-[0.9rem] border border-white/15 bg-[#171717] p-6 lg:order-none">
-            <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
+            <p className="text-[14px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
             <p className="mt-3 min-h-[7.5rem] text-pretty text-sm leading-relaxed text-white/70 sm:min-h-[8.5rem]">
               {t(LAYERS[active].desc)}
             </p>
-            <p className="border-t border-white/[0.12] pt-4 text-[13px] uppercase tracking-[0.16em] text-white/35">
+            <p className="border-t border-white/[0.12] pt-4 text-[14px] uppercase tracking-[0.16em] text-white/35">
               {String(active + 1).padStart(2, '0')} / {String(LAYERS.length).padStart(2, '0')}
             </p>
           </div>
@@ -237,7 +237,7 @@ function MobileStack({ active, onPick }: { active: number; onPick: (i: number) =
                 </span>
 
                 <span
-                  className={`shrink-0 font-mono text-[13px] tabular-nums transition-colors duration-200 motion-reduce:transition-none ${
+                  className={`shrink-0 font-mono text-[14px] tabular-nums transition-colors duration-200 motion-reduce:transition-none ${
                     on ? 'text-gold' : 'text-white/30'
                   }`}
                   aria-hidden="true"
@@ -251,8 +251,8 @@ function MobileStack({ active, onPick }: { active: number; onPick: (i: number) =
       </ol>
 
       <div className="mt-5 rounded-[0.9rem] border border-white/15 bg-[#171717] p-4">
-        <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
-        <p className="mt-2 min-h-[5.5rem] text-pretty text-[15px] leading-relaxed text-white/70">
+        <p className="text-[14px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
+        <p className="mt-2 min-h-[5.5rem] text-pretty text-[16px] leading-relaxed text-white/70">
           {t(LAYERS[active].desc)}
         </p>
       </div>

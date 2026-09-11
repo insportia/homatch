@@ -72,12 +72,12 @@ export default function AdminSpendCapsPage() {
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-muted-foreground">${cap.spent_usd.toFixed(2)} / ${cap.cap_usd}</span>
                     {cap.blocked && (
-                      <Badge variant="destructive" className="text-[12px] px-1.5 gap-0.5">
+                      <Badge variant="destructive" className="text-[13px] px-1.5 gap-0.5">
                         <ShieldOff className="h-2.5 w-2.5" /> BLOCKED
                       </Badge>
                     )}
                     {!cap.blocked && cap.warning && (
-                      <Badge variant="outline" className="text-[12px] px-1.5 gap-0.5 border-amber-400 text-amber-600">
+                      <Badge variant="outline" className="text-[13px] px-1.5 gap-0.5 border-amber-400 text-amber-600">
                         <AlertTriangle className="h-2.5 w-2.5" /> WARNING
                       </Badge>
                     )}

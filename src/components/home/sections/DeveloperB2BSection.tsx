@@ -119,7 +119,7 @@ export function DeveloperB2BSection() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-white">{t(stage.labelKey)}</p>
                   </div>
-                  <span className="shrink-0 text-[13px] font-semibold tabular-nums tracking-[0.16em] text-white/35" aria-hidden="true">
+                  <span className="shrink-0 text-[14px] font-semibold tabular-nums tracking-[0.16em] text-white/35" aria-hidden="true">
                     {`0${i + 1}`}
                   </span>
                 </li>

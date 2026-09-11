@@ -40,7 +40,7 @@ function CapBar({ cap }: { cap: SpendCapStatus }) {
         <span className="font-medium">{cap.provider}</span>
         <span className="text-muted-foreground">${cap.spent_usd.toFixed(2)} / ${cap.cap_usd}</span>
         {(cap.warning || cap.blocked) && (
-          <Badge variant={cap.blocked ? 'destructive' : 'outline'} className="text-[12px] px-1.5 py-0 ml-1">
+          <Badge variant={cap.blocked ? 'destructive' : 'outline'} className="text-[13px] px-1.5 py-0 ml-1">
             {cap.blocked ? 'BLOCKED' : 'WARNING'}
           </Badge>
         )}

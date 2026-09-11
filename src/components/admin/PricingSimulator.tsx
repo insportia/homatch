@@ -155,7 +155,7 @@ export function PricingSimulator() {
                           // The pre-floor figure is shown alongside, because
                           // "the floor engaged" is the single most important
                           // thing an operator can learn from this screen.
-                          <span className="ms-2 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] text-destructive">
+                          <span className="ms-2 rounded bg-destructive/15 px-1.5 py-0.5 text-[12px] text-destructive">
                             {t('admin_sim_floor_applied')} {c(p.plan_price_before_floor_cents)}
                           </span>
                         )}
@@ -197,7 +197,7 @@ function NumField({ label, value, onChange, placeholder }: {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border bg-secondary/40 p-2">
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-[12px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="font-semibold" dir="ltr">{value}</p>
     </div>
   );

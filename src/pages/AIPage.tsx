@@ -31,7 +31,7 @@ const EVIDENCE_CFG: Record<EvidenceStatus, { color: string; label: string }> = {
 };
 function EvidenceBadge({ status }: { status: EvidenceStatus }) {
   const cfg = EVIDENCE_CFG[status] ?? EVIDENCE_CFG.UNVERIFIED;
-  return <span className={`text-[12px] px-1.5 py-0.5 rounded border font-medium ${cfg.color}`}>{cfg.label}</span>;
+  return <span className={`text-[13px] px-1.5 py-0.5 rounded border font-medium ${cfg.color}`}>{cfg.label}</span>;
 }
 
 // ── Research result card (parsed from streaming assistant message) ────────────
@@ -61,7 +61,7 @@ function ResearchCard({
         <CardTitle className="flex flex-wrap items-center gap-2">
           <Star className="h-4 w-4 text-primary" />
           <span className="font-semibold">{report.entityName ?? t('ai_entity_default')}</span>
-          {report.entityType && <Badge variant="outline" className="text-[12px]">{report.entityType}</Badge>}
+          {report.entityType && <Badge variant="outline" className="text-[13px]">{report.entityType}</Badge>}
           {report.confidence !== undefined && (
             <span className="text-xs text-muted-foreground ml-auto">{t('ai_confidence')}: {report.confidence}%</span>
           )}
@@ -100,7 +100,7 @@ function ResearchCard({
         {(report.actions ?? []).length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             {report.actions!.map(a => (
-              <Button key={a.id} size="sm" variant="outline" className="h-7 text-[13px] gap-1 border-border"
+              <Button key={a.id} size="sm" variant="outline" className="h-7 text-[14px] gap-1 border-border"
                 onClick={() => {
                   if (a.type === 'navigate' && a.path) onNavigate(a.path);
                   else if (a.type === 'external' && a.path) window.open(a.path, '_blank');
@@ -314,7 +314,7 @@ function AIPageInner() {
                 }`}
               >
                 <div className="truncate">{conv.title}</div>
-                <div className="text-[12px] text-muted-foreground/60 mt-0.5">
+                <div className="text-[13px] text-muted-foreground/60 mt-0.5">
                   {formatDistanceToNow(conv.updatedAt, { addSuffix: true })}
                 </div>
               </button>
@@ -337,7 +337,7 @@ function AIPageInner() {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Bot className="h-5 w-5 text-primary shrink-0" />
             <span className="font-semibold text-sm text-foreground truncate">{t('ai_title')}</span>
-            <Badge variant="secondary" className="text-[12px] px-1.5 py-0 shrink-0">{t('ai_beta_badge')}</Badge>
+            <Badge variant="secondary" className="text-[13px] px-1.5 py-0 shrink-0">{t('ai_beta_badge')}</Badge>
           </div>
           {messages.length > 0 && (
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
@@ -405,7 +405,7 @@ function AIPageInner() {
               </Button>
             )}
           </div>
-          <p className="text-center text-[12px] text-muted-foreground/50 mt-2">
+          <p className="text-center text-[13px] text-muted-foreground/50 mt-2">
             {t('ai_disclaimer')}
           </p>
         </div>

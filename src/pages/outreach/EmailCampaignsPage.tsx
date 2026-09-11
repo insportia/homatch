@@ -196,11 +196,11 @@ export default function EmailCampaignsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm truncate">{c.name}</span>
-                          <Badge className={`text-[12px] px-1.5 ${STATUS_STYLES[c.status]}`}>{c.status}</Badge>
-                          <Badge variant="outline" className="text-[12px] px-1.5 uppercase">{c.language ?? 'en'}</Badge>
+                          <Badge className={`text-[13px] px-1.5 ${STATUS_STYLES[c.status]}`}>{c.status}</Badge>
+                          <Badge variant="outline" className="text-[13px] px-1.5 uppercase">{c.language ?? 'en'}</Badge>
                         </div>
                         {c.subject && <p className="text-xs text-muted-foreground truncate mt-0.5">{c.subject}</p>}
-                        <div className="flex gap-4 mt-1 text-[13px] text-muted-foreground">
+                        <div className="flex gap-4 mt-1 text-[14px] text-muted-foreground">
                           <span className="flex items-center gap-1"><BarChart2 className="h-3 w-3" />{c.audience_count ?? 0} {t('email_audience')}</span>
                           <span>{c.sent_count ?? 0} {t('email_sent')}</span>
                           <span>{c.open_count ?? 0} {t('email_opens')}</span>

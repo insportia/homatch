@@ -109,7 +109,7 @@ export function providerBadge(key: string, value: string) {
     value === 'NOT_CONFIGURED' ? 'bg-muted text-muted-foreground border-border' :
     'bg-yellow-500/15 text-yellow-700 border-yellow-300';
   return (
-    <span key={key} className={cn('text-[12px] font-mono px-1.5 py-0.5 rounded border', color)}>
+    <span key={key} className={cn('text-[13px] font-mono px-1.5 py-0.5 rounded border', color)}>
       {key.toUpperCase()}: {value}
     </span>
   );
@@ -347,7 +347,7 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
           <ScrollArea className="h-48 rounded-md border border-border bg-muted/30">
             <div ref={scrollRef} className="p-2 space-y-1">
               {visibleEvents.map(ev => (
-                <div key={ev.id} className="flex items-start gap-1.5 text-[13px] font-mono">
+                <div key={ev.id} className="flex items-start gap-1.5 text-[14px] font-mono">
                   {eventIcon(ev.event_type)}
                   <span className={cn(
                     'shrink-0',

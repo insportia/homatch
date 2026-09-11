@@ -152,7 +152,7 @@ export function ContinueWithCredits({
             {promo ? t('activation_cta') : t('cta_top_up')}
           </Button>
           {promo && (
-            <p className="mt-2 text-center text-[13px] text-muted-foreground">{t('activation_once')}</p>
+            <p className="mt-2 text-center text-[14px] text-muted-foreground">{t('activation_once')}</p>
           )}
         </div>
 

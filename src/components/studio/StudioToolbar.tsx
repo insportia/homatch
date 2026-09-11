@@ -41,12 +41,12 @@ export function StudioToolbar({
   return (
     <div className="flex flex-wrap items-center gap-2 border-b bg-card px-3 py-2">
       <Select value={slug} onValueChange={v => setSlug(v as PageSlug)}>
-        <SelectTrigger className="h-8 w-[130px] text-[14px]">
+        <SelectTrigger className="h-8 w-[130px] text-[15px]">
           <SelectValue placeholder={t('studio_page')} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="home" className="text-[14px]">{t('mp_nav_start')}</SelectItem>
-          <SelectItem value="about" className="text-[14px]">{t('nav_about')}</SelectItem>
+          <SelectItem value="home" className="text-[15px]">{t('mp_nav_start')}</SelectItem>
+          <SelectItem value="about" className="text-[15px]">{t('nav_about')}</SelectItem>
         </SelectContent>
       </Select>
 
@@ -58,7 +58,7 @@ export function StudioToolbar({
             key={l}
             type="button"
             onClick={() => setLocale(l)}
-            className={`rounded px-2 py-1 text-[13px] font-medium transition-colors ${
+            className={`rounded px-2 py-1 text-[14px] font-medium transition-colors ${
               locale === l ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
             }`}
           >
@@ -78,7 +78,7 @@ export function StudioToolbar({
               onClick={() => setDevice(d.key)}
               title={label}
               aria-label={label}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[13px] transition-colors ${
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[14px] transition-colors ${
                 device === d.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
               }`}
             >
@@ -92,26 +92,26 @@ export function StudioToolbar({
       <Button
         variant={forceRTL ? 'default' : 'outline'}
         size="sm"
-        className="h-8 text-[13px]"
+        className="h-8 text-[14px]"
         onClick={() => setForceRTL(!forceRTL)}
       >
         {t('studio_rtl')}
       </Button>
 
       <Select value={mode} onValueChange={v => setMode(v as TranslationMode)}>
-        <SelectTrigger className="h-8 w-[190px] text-[14px]">
+        <SelectTrigger className="h-8 w-[190px] text-[15px]">
           <SelectValue placeholder={t('studio_mode')} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="manual" className="text-[14px]">{t('studio_mode_manual')}</SelectItem>
-          <SelectItem value="suggest" className="text-[14px]">{t('studio_mode_suggest')}</SelectItem>
-          <SelectItem value="auto_all" className="text-[14px]">{t('studio_mode_auto')}</SelectItem>
+          <SelectItem value="manual" className="text-[15px]">{t('studio_mode_manual')}</SelectItem>
+          <SelectItem value="suggest" className="text-[15px]">{t('studio_mode_suggest')}</SelectItem>
+          <SelectItem value="auto_all" className="text-[15px]">{t('studio_mode_auto')}</SelectItem>
         </SelectContent>
       </Select>
 
       {mode !== 'manual' && (
         <Button
-          variant="outline" size="sm" className="h-8 gap-1.5 text-[13px]"
+          variant="outline" size="sm" className="h-8 gap-1.5 text-[14px]"
           disabled={translating || unavailable}
           onClick={() => void runTranslation('page')}
         >
@@ -126,10 +126,10 @@ export function StudioToolbar({
 
       <div className="ms-auto flex items-center gap-2">
         {dirty && (
-          <span className="text-[13px] text-amber-600">{t('studio_unsaved')}</span>
+          <span className="text-[14px] text-amber-600">{t('studio_unsaved')}</span>
         )}
         <Button
-          variant="outline" size="sm" className="h-8 gap-1.5 text-[13px]"
+          variant="outline" size="sm" className="h-8 gap-1.5 text-[14px]"
           disabled={saving || unavailable || !dirty}
           onClick={() => void save()}
         >
@@ -137,7 +137,7 @@ export function StudioToolbar({
           {t('studio_save_draft')}
         </Button>
         <Button
-          size="sm" className="h-8 gap-1.5 text-[13px]"
+          size="sm" className="h-8 gap-1.5 text-[14px]"
           disabled={saving || unavailable}
           onClick={() => void publish()}
         >

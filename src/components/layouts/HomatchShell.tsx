@@ -313,7 +313,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
               >
                 <Bell className="h-4 w-4" aria-hidden="true" />
                 {unread > 0 && (
-                  <span className="absolute -end-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-destructive px-1 text-[12px] font-bold text-destructive-foreground">
+                  <span className="absolute -end-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-destructive px-1 text-[13px] font-bold text-destructive-foreground">
                     {unread > 9 ? '9+' : unread}
                   </span>
                 )}

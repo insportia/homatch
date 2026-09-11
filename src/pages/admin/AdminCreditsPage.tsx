@@ -82,7 +82,7 @@ export default function AdminCreditsPage() {
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <Badge variant="outline" className="text-[12px]">{TYPE_KEYS[e.type] ? t(TYPE_KEYS[e.type]) : e.type}</Badge>
+                          <Badge variant="outline" className="text-[13px]">{TYPE_KEYS[e.type] ? t(TYPE_KEYS[e.type]) : e.type}</Badge>
                         </div>
                       </td>
                       <td className={`px-4 py-2.5 whitespace-nowrap text-xs font-mono font-medium ${isCredit ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>

@@ -46,7 +46,7 @@ export default function TermsPage() {
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-foreground/20 bg-secondary">
               <FileText className="h-3.5 w-3.5 text-gold-ink" />
-              <span className="text-[13px] font-semibold uppercase tracking-[0.16em] text-gold-ink">{t('terms_badge')}</span>
+              <span className="text-[14px] font-semibold uppercase tracking-[0.16em] text-gold-ink">{t('terms_badge')}</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-semibold text-foreground text-balance">
               {t('terms_title')}

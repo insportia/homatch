@@ -70,12 +70,12 @@ export default function AdminMatchesPage() {
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">{m.users?.email ?? '—'}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs font-mono">{m.match_score ?? '—'}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant={STRENGTH_VARIANT[m.signal_strength] ?? 'outline'} className="text-[12px]">
+                      <Badge variant={STRENGTH_VARIANT[m.signal_strength] ?? 'outline'} className="text-[13px]">
                         {m.signal_strength ?? '—'}
                       </Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant={m.status === 'UNLOCKED' ? 'default' : 'outline'} className="text-[12px]">
+                      <Badge variant={m.status === 'UNLOCKED' ? 'default' : 'outline'} className="text-[13px]">
                         {m.status ?? '—'}
                       </Badge>
                     </td>

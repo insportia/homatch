@@ -196,7 +196,7 @@ export default function AdminSettingsPage() {
                             />
                             <Badge
                               variant={val === 'true' ? 'destructive' : 'outline'}
-                              className="text-[12px] px-1.5"
+                              className="text-[13px] px-1.5"
                             >
                               {val === 'true' ? 'ON' : 'OFF'}
                             </Badge>

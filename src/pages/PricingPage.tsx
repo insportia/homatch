@@ -141,7 +141,7 @@ export default function PricingPage() {
 
       <main className={`${PAGE} py-12 sm:py-16 lg:py-20`}>
         <header className="max-w-3xl">
-          <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-gold-ink">
+          <p className="text-[14px] font-medium uppercase tracking-[0.18em] text-gold-ink">
             {t('nav_pricing')}
           </p>
           <h1 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-balance">
@@ -172,7 +172,7 @@ export default function PricingPage() {
 
             {savings?.eligible && (
               <section className="mt-10 rounded-xl border border-gold/30 bg-gold-soft/40 p-5 sm:p-6">
-                <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-gold-ink">
+                <p className="text-[14px] font-medium uppercase tracking-[0.18em] text-gold-ink">
                   {t('savings_title')}
                 </p>
                 <p className="mt-2 text-sm sm:text-base text-foreground">
@@ -251,7 +251,7 @@ function PlanCard({
       {plan.marketing_label_key && (
         <span
           className={[
-            'absolute -top-2.5 start-6 rounded-full px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wider',
+            'absolute -top-2.5 start-6 rounded-full px-2.5 py-1 text-[13px] font-semibold uppercase tracking-wider',
             isPremium ? 'bg-gold text-background' : 'bg-foreground text-background',
           ].join(' ')}
         >

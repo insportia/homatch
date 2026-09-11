@@ -62,7 +62,7 @@ export function CanonicalGroupBanner({ propertyId }: Props) {
                       href={src.source_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[12px] text-primary flex items-center gap-0.5 hover:underline truncate"
+                      className="text-[13px] text-primary flex items-center gap-0.5 hover:underline truncate"
                     >
                       <ExternalLink className="h-2.5 w-2.5 shrink-0" />
                       {src.source_url.replace(/^https?:\/\//, '').slice(0, 40)}
@@ -77,7 +77,7 @@ export function CanonicalGroupBanner({ propertyId }: Props) {
                   </p>
                 )}
                 {src.is_canonical && (
-                  <span className="text-[12px] text-primary">{t('canon_is_canonical')}</span>
+                  <span className="text-[13px] text-primary">{t('canon_is_canonical')}</span>
                 )}
               </div>
             </div>

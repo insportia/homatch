@@ -87,7 +87,7 @@ function AccuracyChip({ kind, t }: { kind: 'calculated' | 'official' | 'user' | 
     user: t('mortgage_accuracy_user_provided'),
     estimate: t('mortgage_accuracy_estimate'),
   }[kind];
-  return <Badge variant="outline" className="text-[12px] font-normal normal-case">{label}</Badge>;
+  return <Badge variant="outline" className="text-[13px] font-normal normal-case">{label}</Badge>;
 }
 
 export default function MortgagePage() {
@@ -520,7 +520,7 @@ export default function MortgagePage() {
                           <TableRow key={row.termMonths} className={row.isSelected ? 'bg-primary/5' : ''}>
                             <TableCell className="flex items-center gap-1.5">
                               {t('mortgage_years_value', { years: row.termMonths / 12 })}
-                              {row.isSelected && <Badge variant="outline" className="text-[12px] normal-case font-normal">{t('mortgage_term_compare_selected')}</Badge>}
+                              {row.isSelected && <Badge variant="outline" className="text-[13px] normal-case font-normal">{t('mortgage_term_compare_selected')}</Badge>}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
@@ -616,11 +616,11 @@ export default function MortgagePage() {
                 </AccordionItem>
               ))}
             </Accordion>
-            <p className="text-[13px] text-muted-foreground pt-3 leading-relaxed">{t('mortgage_hidden_disclaimer')}</p>
+            <p className="text-[14px] text-muted-foreground pt-3 leading-relaxed">{t('mortgage_hidden_disclaimer')}</p>
           </CardContent>
         </Card>
 
-        <p className="text-[13px] text-muted-foreground text-center leading-relaxed pb-4">
+        <p className="text-[14px] text-muted-foreground text-center leading-relaxed pb-4">
           {t('mortgage_global_disclaimer')}
         </p>
       </div>

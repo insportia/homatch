@@ -43,7 +43,7 @@ export function RichTextSection() {
         <div className={variant === 'centered' ? 'mx-auto max-w-[44rem] text-center' : 'max-w-[44rem]'}>
           {eyebrow && (
             <p
-              className={`text-[13px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}
+              className={`text-[14px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}
             >
               {eyebrow}
             </p>

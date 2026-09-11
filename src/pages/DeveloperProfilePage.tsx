@@ -80,11 +80,11 @@ function ProjectRow({ project }: { project: DeveloperProject }) {
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         {project.commissioned && (
-          <Badge className="text-[12px] h-4 px-1 bg-green-500/15 text-green-400 border-green-500/30 border">
+          <Badge className="text-[13px] h-4 px-1 bg-green-500/15 text-green-400 border-green-500/30 border">
             <CheckCircle className="h-2.5 w-2.5 mr-0.5" /> {t('dev_commissioned')}
           </Badge>
         )}
-        <span className={`text-[12px] px-2 py-0.5 rounded-full border font-medium ${cls}`}>{project.status}</span>
+        <span className={`text-[13px] px-2 py-0.5 rounded-full border font-medium ${cls}`}>{project.status}</span>
       </div>
     </div>
   );
@@ -206,7 +206,7 @@ export default function DeveloperProfilePage() {
                     ].map(item => (
                       <div key={item.label} className="text-center p-2 bg-secondary rounded-lg">
                         <p className="text-base font-bold text-foreground">{item.value}</p>
-                        <p className="text-[12px] text-muted-foreground leading-tight mt-0.5">{item.label}</p>
+                        <p className="text-[13px] text-muted-foreground leading-tight mt-0.5">{item.label}</p>
                       </div>
                     ))}
                   </div>
@@ -285,7 +285,7 @@ export default function DeveloperProfilePage() {
                   </div>
                 )
               }
-              <p className="text-[12px] text-muted-foreground mt-3 border-t border-border pt-3">
+              <p className="text-[13px] text-muted-foreground mt-3 border-t border-border pt-3">
                 {t('trust_disclaimer')}
               </p>
             </CardContent>

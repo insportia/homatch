@@ -58,7 +58,7 @@ export default function AdminCampaignsPage() {
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">{c.users?.email ?? '—'}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant={STATUS_COLOR[c.status] ?? 'outline'} className="text-[12px]">{STATUS_KEYS[c.status] ? t(STATUS_KEYS[c.status]) : c.status}</Badge>
+                      <Badge variant={STATUS_COLOR[c.status] ?? 'outline'} className="text-[13px]">{STATUS_KEYS[c.status] ? t(STATUS_KEYS[c.status]) : c.status}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">
                       {c.monthly_budget_credits != null ? `$${Number(c.monthly_budget_credits).toFixed(0)}/mo` : '—'}

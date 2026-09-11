@@ -60,7 +60,7 @@ export function MatchingShowcaseSection() {
       <div className={`${PAGE} relative ${SECTION_Y}`}>
         <div className="flex items-center gap-3.5">
           <FeatureGlyph name="matching" size={48} tone="dark" className="sm:h-14 sm:w-14" />
-          <p className="text-[13px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'mp_match_eyebrow')}</p>
+          <p className="text-[14px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'mp_match_eyebrow')}</p>
         </div>
 
         {/* The headline is the sentence this product is named by; the
@@ -98,7 +98,7 @@ export function MatchingShowcaseSection() {
                 >
                   <beat.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
                 </span>
-                <span className="font-mono text-[13px] tabular-nums text-white/30" aria-hidden="true">
+                <span className="font-mono text-[14px] tabular-nums text-white/30" aria-hidden="true">
                   {String(i + 1).padStart(2, '0')}
                 </span>
               </div>
@@ -111,10 +111,10 @@ export function MatchingShowcaseSection() {
         <div className="mt-3.5 grid gap-5 sm:mt-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:items-center">
           <div className="min-w-0 rounded-[0.9rem] border border-white/15 bg-[#171717] p-5 sm:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-white/55">
+              <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-white/55">
                 {t('mp_result_match_why')}
               </p>
-              <span className="rounded-full border border-white/25 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.14em] text-white/70">
+              <span className="rounded-full border border-white/25 px-2.5 py-1 text-[13px] font-semibold uppercase tracking-[0.14em] text-white/70">
                 {t('mp_result_illustrative')}
               </span>
             </div>
@@ -126,7 +126,7 @@ export function MatchingShowcaseSection() {
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/20 text-white/50" aria-hidden="true">
                       <UserSearch className="h-4 w-4" strokeWidth={1.75} />
                     </span>
-                    <span className="min-w-0 flex-1 text-[15px] leading-snug text-white/80">{t(row.reason)}</span>
+                    <span className="min-w-0 flex-1 text-[16px] leading-snug text-white/80">{t(row.reason)}</span>
                   </div>
                   <div className="ms-11 mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <div className={`h-full rounded-full bg-gold ${row.width}`} />

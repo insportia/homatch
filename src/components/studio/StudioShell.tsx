@@ -35,7 +35,7 @@ export function StudioShell() {
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       <div className="flex items-baseline gap-3 px-3 pb-1 pt-2">
         <h1 className="text-base font-semibold">{t('studio_title')}</h1>
-        <p className="text-[14px] text-muted-foreground">{t('studio_subtitle')}</p>
+        <p className="text-[15px] text-muted-foreground">{t('studio_subtitle')}</p>
       </div>
 
       <StudioToolbar
@@ -49,17 +49,17 @@ export function StudioShell() {
       {/* The editor is usable with the backend absent: the admin can see the
           page and its structure, and is told plainly why nothing saves. */}
       {studio.unavailable && (
-        <p className="border-b bg-amber-500/10 px-4 py-2 text-[14px] text-amber-800">
+        <p className="border-b bg-amber-500/10 px-4 py-2 text-[15px] text-amber-800">
           {t('studio_unavailable')}
         </p>
       )}
 
-      <p className="border-b bg-muted/50 px-4 py-1.5 text-[13px] text-muted-foreground">
+      <p className="border-b bg-muted/50 px-4 py-1.5 text-[14px] text-muted-foreground">
         {t('studio_draft_only')} {t('studio_mode_hint')}
       </p>
 
       {studio.loading ? (
-        <div className="flex flex-1 items-center justify-center gap-2 text-[15px] text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center gap-2 text-[16px] text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t('studio_loading')}
         </div>

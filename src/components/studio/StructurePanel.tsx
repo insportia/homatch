@@ -55,7 +55,7 @@ export function StructurePanel({ studio }: { studio: StudioState }) {
                 >
                   <StateDot state={worst} />
                   <span
-                    className={`min-w-0 flex-1 truncate text-[15px] ${
+                    className={`min-w-0 flex-1 truncate text-[16px] ${
                       section.enabled ? '' : 'text-muted-foreground line-through'
                     }`}
                   >
@@ -115,7 +115,7 @@ export function StructurePanel({ studio }: { studio: StudioState }) {
               key={def.type}
               variant="ghost"
               size="sm"
-              className="w-full justify-start gap-2 text-[15px]"
+              className="w-full justify-start gap-2 text-[16px]"
               onClick={() => addSection(def.type)}
             >
               <Plus className="h-3.5 w-3.5" />

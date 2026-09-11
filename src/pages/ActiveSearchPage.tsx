@@ -62,10 +62,10 @@ function SubCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant={sub.is_active ? 'default' : 'secondary'} className="text-[12px] h-4 px-1.5">
+              <Badge variant={sub.is_active ? 'default' : 'secondary'} className="text-[13px] h-4 px-1.5">
                 {sub.is_active ? t('as_status_active') : t('as_status_paused')}
               </Badge>
-              <Badge variant="outline" className="text-[12px] h-4 px-1.5">
+              <Badge variant="outline" className="text-[13px] h-4 px-1.5">
                 {sub.side === 'DEMAND' ? t('as_side_demand') : t('as_side_supply')}
               </Badge>
             </div>
@@ -337,10 +337,10 @@ export default function ActiveSearchPage() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <TabsList>
                 <TabsTrigger value="demand">
-                  {t('as_tab_looking')} {demandSubs.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[12px]">{demandSubs.length}</Badge>}
+                  {t('as_tab_looking')} {demandSubs.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[13px]">{demandSubs.length}</Badge>}
                 </TabsTrigger>
                 <TabsTrigger value="supply">
-                  {t('as_tab_my_properties')} {supplySubs.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[12px]">{supplySubs.length}</Badge>}
+                  {t('as_tab_my_properties')} {supplySubs.length > 0 && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[13px]">{supplySubs.length}</Badge>}
                 </TabsTrigger>
               </TabsList>
               <div className="flex gap-2">

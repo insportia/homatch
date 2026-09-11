@@ -461,7 +461,7 @@ function CreditsContent() {
                         dir="ltr"
                       >
                         ${(pack.amount_cents / 100).toFixed(pack.amount_cents % 100 === 0 ? 0 : 2)}
-                        <span className="block text-[11px] font-normal text-muted-foreground">
+                        <span className="block text-[12px] font-normal text-muted-foreground">
                           {formatCredits(pack.credits + bonus)} CR
                         </span>
                       </button>

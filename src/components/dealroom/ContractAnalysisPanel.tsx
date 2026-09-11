@@ -147,7 +147,7 @@ export function ContractAnalysisPanel({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium break-words">{c.label}</span>
                   {ATTENTION_KEY[c.attention] && (
-                    <Badge variant="outline" className="text-[13px]">
+                    <Badge variant="outline" className="text-[14px]">
                       {t(ATTENTION_KEY[c.attention])}
                     </Badge>
                   )}
@@ -180,7 +180,7 @@ export function ContractAnalysisPanel({
             {analysis.obligations.map((o, i) => (
               <div key={i}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary" className="text-[13px]">
+                  <Badge variant="secondary" className="text-[14px]">
                     {t(PARTY_KEY[o.party] ?? 'dr_ca_party_unclear')}
                   </Badge>
                   <span className="text-sm font-medium break-words">{o.label}</span>

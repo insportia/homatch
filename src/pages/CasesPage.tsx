@@ -108,7 +108,7 @@ function useStageLabel() {
 function StageBadge({ stage }: { stage: TransactionCaseStage }) {
   const label = useStageLabel();
   return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full border text-[13px] font-medium whitespace-nowrap', STAGE_STYLE[stage])}>
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full border text-[14px] font-medium whitespace-nowrap', STAGE_STYLE[stage])}>
       {label(stage)}
     </span>
   );
@@ -450,7 +450,7 @@ function CaseCard({ item, onOpen }: { item: TransactionCase; onOpen: () => void 
             <div className="flex items-center gap-2 flex-wrap">
               <StageBadge stage={item.stage} />
               {item.checklist.length > 0 && (
-                <span className="text-[12px] text-muted-foreground">{doneCount}/{item.checklist.length}</span>
+                <span className="text-[13px] text-muted-foreground">{doneCount}/{item.checklist.length}</span>
               )}
             </div>
             <p className="text-sm font-medium text-foreground break-words">{item.title}</p>
@@ -464,7 +464,7 @@ function CaseCard({ item, onOpen }: { item: TransactionCase; onOpen: () => void 
                 {item.offer_amount.toLocaleString()} {item.offer_currency ?? ''}
               </div>
             )}
-            <div className="text-[12px] text-muted-foreground">
+            <div className="text-[13px] text-muted-foreground">
               {t('cases_updated_label')} {new Date(item.updated_at).toLocaleDateString()}
             </div>
           </div>

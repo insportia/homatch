@@ -69,7 +69,7 @@ export function CallCenterSection() {
           <div className="min-w-0">
             <div className="flex items-center gap-4">
               <FeatureGlyph name="calls" size={48} tone="dark" className="sm:h-14 sm:w-14" />
-              <p className="text-[13px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'call_center_title')}</p>
+              <p className="text-[14px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'call_center_title')}</p>
             </div>
 
             <h2
@@ -86,7 +86,7 @@ export function CallCenterSection() {
               {POINTS.map(point => (
                 <li key={point.key} className="bg-[#171717] p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-white">{t(point.title)}</h3>
-                  <p className="mt-2 text-pretty text-[15px] leading-relaxed text-white/60">{t(point.desc)}</p>
+                  <p className="mt-2 text-pretty text-[16px] leading-relaxed text-white/60">{t(point.desc)}</p>
                 </li>
               ))}
             </ul>
@@ -111,14 +111,14 @@ export function CallCenterSection() {
           {STAGES.map((stage, i) => (
             <li key={stage} className="flex items-center gap-2.5 bg-[#171717] px-3.5 py-3.5 sm:gap-3 sm:px-4 sm:py-4">
               <span
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[13px] font-semibold tabular-nums ${
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[14px] font-semibold tabular-nums ${
                   i === STAGES.length - 1 ? 'bg-gold text-[#0D0D0D]' : 'border border-white/25 text-white/55'
                 }`}
                 aria-hidden="true"
               >
                 {i + 1}
               </span>
-              <span className="min-w-0 text-[14px] font-medium leading-tight text-white/85 sm:text-[15px]">{t(stage)}</span>
+              <span className="min-w-0 text-[15px] font-medium leading-tight text-white/85 sm:text-[16px]">{t(stage)}</span>
             </li>
           ))}
         </ol>
@@ -141,14 +141,14 @@ function LiveCallPanel() {
       <div className="rounded-[1.1rem] border border-white/[0.18] bg-[#171717] p-6 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.9)] sm:p-7">
         {/* Status */}
         <div className="flex items-center justify-between gap-4">
-          <span className="inline-flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.18em] text-gold">
+          <span className="inline-flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.18em] text-gold">
             <span className="relative grid h-2 w-2 place-items-center">
               <span className="hm-ring absolute inset-0 rounded-full" />
               <span className="relative h-2 w-2 rounded-full bg-gold" />
             </span>
             {t('mp_cc_live')}
           </span>
-          <span className="font-mono text-[13px] tabular-nums text-white/40">02:14</span>
+          <span className="font-mono text-[14px] tabular-nums text-white/40">02:14</span>
         </div>
 
         {/* The voice */}
@@ -186,8 +186,8 @@ function LiveCallPanel() {
 function Row({ label, value, pending = false }: { label: string; value: string; pending?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4 bg-[#171717] px-4 py-3">
-      <dt className="min-w-0 text-[14px] text-white/50">{label}</dt>
-      <dd className={`min-w-0 text-end text-[14px] font-medium ${pending ? 'text-white/40' : 'text-white'}`}>{value}</dd>
+      <dt className="min-w-0 text-[15px] text-white/50">{label}</dt>
+      <dd className={`min-w-0 text-end text-[15px] font-medium ${pending ? 'text-white/40' : 'text-white'}`}>{value}</dd>
     </div>
   );
 }

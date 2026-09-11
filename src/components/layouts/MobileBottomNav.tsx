@@ -39,7 +39,7 @@ export function MobileBottomNav() {
                 }`}
               />
               <span
-                className={`text-[12px] font-medium ${
+                className={`text-[13px] font-medium ${
                   item.highlight
                     ? 'text-primary'
                     : active

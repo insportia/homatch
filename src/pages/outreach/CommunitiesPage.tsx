@@ -189,14 +189,14 @@ export default function CommunitiesPage() {
                   <CardHeader className="p-4 pb-2">
                     <div className="flex items-start justify-between gap-2">
                       <CardTitle className="text-sm font-medium text-balance leading-snug">{c.name}</CardTitle>
-                      <Badge variant="outline" className={`text-[12px] shrink-0 ${PLATFORM_COLORS[c.platform as CommunityPlatform] ?? ''}`}>
+                      <Badge variant="outline" className={`text-[13px] shrink-0 ${PLATFORM_COLORS[c.platform as CommunityPlatform] ?? ''}`}>
                         {c.platform}
                       </Badge>
                     </div>
                     {c.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{c.description}</p>}
                   </CardHeader>
                   <CardContent className="p-4 pt-0 space-y-2">
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[14px] text-muted-foreground">
                       {(c.city || c.country) && (
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />{[c.city, c.country].filter(Boolean).join(', ')}
@@ -215,7 +215,7 @@ export default function CommunitiesPage() {
                     {(c.tags?.length ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {c.tags!.slice(0, 4).map((tag) => (
-                          <span key={tag} className="inline-flex items-center gap-0.5 text-[12px] bg-muted text-muted-foreground rounded px-1.5 py-0.5">
+                          <span key={tag} className="inline-flex items-center gap-0.5 text-[13px] bg-muted text-muted-foreground rounded px-1.5 py-0.5">
                             <Tag className="h-2.5 w-2.5" />{tag}
                           </span>
                         ))}

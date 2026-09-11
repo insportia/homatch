@@ -183,7 +183,7 @@ function FindingRow({ finding }: { finding: DocumentFinding }) {
         <span className="font-medium break-words">{finding.label}</span>
         {finding.value ? <span className="break-words">{finding.value}</span> : null}
         {finding.severity === 'IMPORTANT' ? (
-          <Badge variant="destructive" className="text-[13px]">!</Badge>
+          <Badge variant="destructive" className="text-[14px]">!</Badge>
         ) : null}
       </div>
       {/* The quote is the provenance. A finding that cannot point at the text

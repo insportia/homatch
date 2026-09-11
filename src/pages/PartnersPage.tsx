@@ -161,7 +161,7 @@ export default function PartnersPage() {
                       <p className="text-sm text-muted-foreground mb-3">{t(descKey)}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {placementKeys.map(pKey => (
-                          <Badge key={pKey} variant="secondary" className="text-[12px] border-border">
+                          <Badge key={pKey} variant="secondary" className="text-[13px] border-border">
                             <CheckCircle2 className="h-2.5 w-2.5 mr-1 text-primary" />{t(pKey)}
                           </Badge>
                         ))}
@@ -213,7 +213,7 @@ export default function PartnersPage() {
                 <Button type="submit" disabled={submitting} className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} {t('partners_send_btn')}
                 </Button>
-                <p className="text-[12px] text-muted-foreground text-center">
+                <p className="text-[13px] text-muted-foreground text-center">
                   {t('partners_disclaimer')}
                 </p>
               </CardContent>

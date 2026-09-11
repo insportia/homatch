@@ -69,7 +69,7 @@ function NicknameSetupDialog({ userId, onDone }: { userId: string; onDone: (p: L
             onKeyDown={e => { if (e.key === 'Enter') submit(); }}
           />
           {error && <p className="text-xs text-destructive">{error}</p>}
-          <p className="text-[13px] text-muted-foreground">{t('live_chat_nickname_hint')}</p>
+          <p className="text-[14px] text-muted-foreground">{t('live_chat_nickname_hint')}</p>
         </div>
         <DialogFooter>
           <Button className="w-full" disabled={checking || nickname.length < 3} onClick={submit}>
@@ -262,7 +262,7 @@ export default function LiveChatPage() {
             <Radio className="h-5 w-5 text-primary" />
             <div className="flex-1 min-w-0">
               <h1 className="text-base font-semibold">{t('live_chat_title')}</h1>
-              <p className="text-[13px] text-muted-foreground">{t('live_chat_subtitle')}</p>
+              <p className="text-[14px] text-muted-foreground">{t('live_chat_subtitle')}</p>
             </div>
           </div>
 
@@ -290,15 +290,15 @@ export default function LiveChatPage() {
                     <div key={msg.id} className={cn('flex gap-2', isMine ? 'justify-end' : 'justify-start')}>
                       {!isMine && (
                         <Avatar className="h-7 w-7 shrink-0 mt-1">
-                          <AvatarFallback style={{ backgroundColor: (author?.avatar_color ?? '#6366f1') + '33', color: author?.avatar_color ?? '#6366f1' }} className="text-[12px] font-semibold">
+                          <AvatarFallback style={{ backgroundColor: (author?.avatar_color ?? '#6366f1') + '33', color: author?.avatar_color ?? '#6366f1' }} className="text-[13px] font-semibold">
                             {initialsFor(author?.nickname ?? '??')}
                           </AvatarFallback>
                         </Avatar>
                       )}
                       <div className={cn('max-w-[75%] group', isMine && 'flex flex-col items-end')}>
-                        {!isMine && <p className="text-[13px] font-medium text-muted-foreground mb-0.5 px-1">{author?.nickname ?? t('live_chat_unknown_user')}</p>}
+                        {!isMine && <p className="text-[14px] font-medium text-muted-foreground mb-0.5 px-1">{author?.nickname ?? t('live_chat_unknown_user')}</p>}
                         {replySource && !isDeleted && (
-                          <div className="text-[12px] text-muted-foreground border-l-2 border-primary/40 pl-1.5 mb-1 truncate max-w-[220px]">
+                          <div className="text-[13px] text-muted-foreground border-l-2 border-primary/40 pl-1.5 mb-1 truncate max-w-[220px]">
                             {profiles[replySource.user_id]?.nickname ?? '…'}: {replySource.body.slice(0, 60)}
                           </div>
                         )}
@@ -309,7 +309,7 @@ export default function LiveChatPage() {
                             (isDeleted || isHidden) && 'italic text-muted-foreground bg-transparent border border-dashed border-border',
                           )}>
                             {isDeleted ? t('live_chat_message_deleted') : isHidden ? t('live_chat_message_hidden') : msg.body}
-                            {msg.edited_at && !isDeleted && <span className="text-[11px] opacity-60 ms-1.5">{t('live_chat_edited')}</span>}
+                            {msg.edited_at && !isDeleted && <span className="text-[12px] opacity-60 ms-1.5">{t('live_chat_edited')}</span>}
                           </div>
                           {!isDeleted && !isHidden && (
                             <DropdownMenu>
@@ -336,7 +336,7 @@ export default function LiveChatPage() {
                             </DropdownMenu>
                           )}
                         </div>
-                        <span className="text-[11px] text-muted-foreground mt-0.5 px-1">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-[12px] text-muted-foreground mt-0.5 px-1">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
                   );

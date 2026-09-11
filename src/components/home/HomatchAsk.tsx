@@ -76,7 +76,7 @@ export function HomatchAsk({
   return (
     <div className={className}>
       {heading && (
-        <p className={`mb-3.5 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}>
+        <p className={`mb-3.5 flex items-center gap-2 text-[14px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}>
           <Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
           {heading}
         </p>

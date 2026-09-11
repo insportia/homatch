@@ -125,7 +125,7 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
           {session ? (
             <Button
               size="sm"
-              className={`h-10 whitespace-nowrap rounded-full px-5 text-[15px] font-semibold ${
+              className={`h-10 whitespace-nowrap rounded-full px-5 text-[16px] font-semibold ${
                 onDark ? 'bg-gold text-[#0D0D0D] hover:bg-white' : ''
               }`}
               onClick={() => navigate('/dashboard')}
@@ -145,7 +145,7 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
               </button>
               <Button
                 size="sm"
-                className={`hidden h-10 whitespace-nowrap rounded-full px-5 text-[15px] font-semibold sm:inline-flex ${
+                className={`hidden h-10 whitespace-nowrap rounded-full px-5 text-[16px] font-semibold sm:inline-flex ${
                   onDark ? 'bg-gold text-[#0D0D0D] hover:bg-white' : ''
                 }`}
                 onClick={() => navigate('/auth/signup')}

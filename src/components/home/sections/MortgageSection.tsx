@@ -51,7 +51,7 @@ export function MortgageSection() {
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="mortgage" size={48} className="sm:h-14 sm:w-14" />
-            <p className="min-w-0 text-[13px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+            <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
               {sf('eyebrow', 'mp_mortgage_eyebrow')}
             </p>
           </div>
@@ -74,7 +74,7 @@ export function MortgageSection() {
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[17px] font-semibold leading-snug text-foreground">{t(point.title)}</span>
-                  <span className="mt-1 block text-pretty text-[15px] leading-relaxed text-ink-soft sm:text-sm">
+                  <span className="mt-1 block text-pretty text-[16px] leading-relaxed text-ink-soft sm:text-sm">
                     {t(point.desc)}
                   </span>
                 </span>
@@ -99,21 +99,21 @@ export function MortgageSection() {
         {/* ── The scenario ─────────────────────────────────────── */}
         <div className="min-w-0 overflow-hidden rounded-[1.1rem] border border-foreground/15 bg-card shadow-hover" role="img" aria-label={t('mp_mortgage_title')}>
           <div className="flex items-center justify-between gap-3 border-b border-foreground/[0.12] px-5 py-4 sm:px-6">
-            <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {t('mp_mortgage_scenario')}
             </p>
             {/* Two columns of the same shape: the point is that a second set
                 of terms sits beside the first, not what is in them. */}
             <div className="flex shrink-0 items-center gap-2" aria-hidden="true">
-              <span className="grid h-6 w-6 place-items-center rounded-[0.35rem] bg-primary text-[13px] font-semibold text-primary-foreground">A</span>
-              <span className="grid h-6 w-6 place-items-center rounded-[0.35rem] border border-foreground/20 text-[13px] font-semibold text-muted-foreground">B</span>
+              <span className="grid h-6 w-6 place-items-center rounded-[0.35rem] bg-primary text-[14px] font-semibold text-primary-foreground">A</span>
+              <span className="grid h-6 w-6 place-items-center rounded-[0.35rem] border border-foreground/20 text-[14px] font-semibold text-muted-foreground">B</span>
             </div>
           </div>
 
           <dl className="divide-y divide-foreground/10">
             {ROWS.map(row => (
               <div key={row} className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
-                <dt className="min-w-0 flex-1 text-[15px] text-ink-soft sm:text-sm">{t(row)}</dt>
+                <dt className="min-w-0 flex-1 text-[16px] text-ink-soft sm:text-sm">{t(row)}</dt>
                 <dd className="flex shrink-0 items-center gap-2" aria-hidden="true">
                   <span className="h-2 w-14 rounded-full bg-foreground/20 sm:w-20" />
                   <span className="h-2 w-10 rounded-full bg-foreground/10 sm:w-14" />
@@ -123,7 +123,7 @@ export function MortgageSection() {
           </dl>
 
           <div className="flex items-center justify-between gap-4 bg-primary px-5 py-5 text-primary-foreground sm:px-6">
-            <p className="min-w-0 text-[15px] font-semibold uppercase tracking-[0.14em] text-gold sm:text-sm">
+            <p className="min-w-0 text-[16px] font-semibold uppercase tracking-[0.14em] text-gold sm:text-sm">
               {t('mp_mortgage_row_result')}
             </p>
             <span className="flex shrink-0 items-center gap-2" aria-hidden="true">

@@ -63,10 +63,10 @@ export default function AdminPropertiesPage() {
                       {[p.property_facts?.city, p.property_facts?.country_code].filter(Boolean).join(', ') || '—'}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant="outline" className="text-[12px]">{p.property_type ?? '—'}</Badge>
+                      <Badge variant="outline" className="text-[13px]">{p.property_type ?? '—'}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <Badge variant="secondary" className="text-[12px]">{p.source_type ?? '—'}</Badge>
+                      <Badge variant="secondary" className="text-[13px]">{p.source_type ?? '—'}</Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">
                       {p.created_at ? format(new Date(p.created_at), 'MMM d, yyyy') : '—'}

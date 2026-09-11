@@ -50,7 +50,7 @@ export const SECTION_Y = 'py-14 sm:py-20 lg:py-28';
  */
 export function Eyebrow({ children, tone = 'dark' }: { children: React.ReactNode; tone?: 'dark' | 'light' }) {
   return (
-    <p className={`text-[13px] font-semibold uppercase tracking-[0.22em] ${tone === 'light' ? 'text-gold' : 'text-gold-ink'}`}>
+    <p className={`text-[14px] font-semibold uppercase tracking-[0.22em] ${tone === 'light' ? 'text-gold' : 'text-gold-ink'}`}>
       {children}
     </p>
   );

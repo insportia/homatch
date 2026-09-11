@@ -21,7 +21,7 @@ export default function SiteStudioPage() {
   return (
     <Suspense
       fallback={(
-        <div className="flex h-[60vh] items-center justify-center gap-2 text-[15px] text-muted-foreground">
+        <div className="flex h-[60vh] items-center justify-center gap-2 text-[16px] text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t('studio_loading')}
         </div>

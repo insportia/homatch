@@ -123,7 +123,7 @@ export default function AdminPricingPage() {
             draft && FIELDS.map(f => (
               <div key={f.key}>
                 <Label className="text-xs font-medium">{f.label}</Label>
-                {f.hint && <p className="text-[13px] text-muted-foreground mb-1">{f.hint}</p>}
+                {f.hint && <p className="text-[14px] text-muted-foreground mb-1">{f.hint}</p>}
                 <Input
                   type="number"
                   min={f.min} max={f.max} step={f.step}
@@ -171,7 +171,7 @@ export default function AdminPricingPage() {
               <div key={p.code} className="flex items-center gap-3 p-3 rounded-lg border border-border flex-wrap">
                 <div className="flex-1 min-w-[160px]">
                   <p className="text-sm font-medium">{p.name}</p>
-                  <p className="text-[13px] text-muted-foreground">
+                  <p className="text-[14px] text-muted-foreground">
                     {t('admin_pricing_cogs_prefix')}{(p.reference_cogs_cents / 100).toFixed(2)} {t('admin_pricing_target_contribution_prefix')}{(p.target_contribution_cents / 100).toFixed(2)} {t('admin_pricing_vat_prefix')} {(p.vat_rate_bps / 100).toFixed(0)}%
                   </p>
                 </div>

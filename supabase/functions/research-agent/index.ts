@@ -2,6 +2,12 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
 import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
+import {
+  costOperationFor,
+  parseRateTable,
+  priceVerification,
+  totalVerificationCost,
+} from '../../../src/verify/cogs.ts';
 
 // v28 (2026-09-06, "HOMATCH VERIFY — FINAL PRE-PUSH CONSOLIDATION / ADAPTIVE
 // RESEARCH ENGINE / RECORDED OFFICIAL WORKFLOWS" — the FINANCIAL/COMPANY
@@ -3058,7 +3064,11 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     searchedAt: now(),
   };
   result = applyEvidenceGate(result, i, o, reconciledIdentity);
-  return sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
+  const finished = await sb.from('research_jobs').update({ status: 'COMPLETE', stage: 'COMPLETE', response_id: null, result_json: result, evidence_bundle: ev, progress: { phase: 'complete', percent: 100 }, completed_at: now(), updated_at: now(), error: null }).eq('id', j.id);
+  // The job is already saved. Bookkeeping runs after it and separately, so a
+  // failure here can cost us a number but never a customer's report.
+  await recordVerificationCost(sb, { id: j.id, result_json: result });
+  return finished;
 }
 
 async function advance(sb: any, k: string, m: string, j: any, l: string): Promise<any> {
@@ -3670,6 +3680,88 @@ function withholdReportUntilSignIn(job: any): any {
   // "Your full research is ready — sign in to view it."
   if (job.status === 'COMPLETE') visible.awaitingSignIn = true;
   return visible;
+}
+
+/*
+ * WHAT THIS VERIFICATION COST US.
+ *
+ * Audited before writing: cost_events holds 607 rows and $25.24 of recorded
+ * spend from discovery, matching and signal classification — and not one row
+ * from Verify. Meanwhile every completed verification already carries
+ * per-stage token counts in result_json.costUsage, including the cached
+ * tokens. The most expensive product in the system was the only one with no
+ * cost accounting at all.
+ *
+ * One row per stage rather than one per job, because "the synthesis is cheap
+ * and the public research is not" is the finding that makes any of this
+ * actionable, and a single total hides it.
+ *
+ * Never blocks and never fails a job. A verification the customer has paid
+ * for must not be lost because a bookkeeping insert failed.
+ *
+ * NONE OF THIS REACHES A CUSTOMER. sanitizeForCustomer already strips
+ * costUsage from the response; cost_events is readable only by an admin
+ * policy. What Homatch pays to produce a report is not a fact about the
+ * property, and a report is not cheaper to buy for having been cheaper to
+ * make.
+ */
+async function recordVerificationCost(db: any, job: any): Promise<void> {
+  try {
+    const usage = job?.result_json?.costUsage;
+    if (!usage) return;
+
+    // Written once. A job re-driven after a resume must not double-count.
+    const { count } = await db
+      .from('cost_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_id', job.id)
+      .like('operation_type', 'VERIFY_%');
+    if ((count ?? 0) > 0) return;
+
+    const researchModel = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
+    const reportModel = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
+    const rates = parseRateTable(Deno.env.get('OPENAI_TOKEN_PRICES'));
+
+    const stages = priceVerification(
+      usage,
+      // The report is written by verify-synthesis on a different model from
+      // the four research stages. Pricing them as one would misattribute
+      // whichever half is the expensive one.
+      (stage) => (stage === 'synthesis' ? reportModel : researchModel),
+      rates
+    );
+    if (!stages.length) return;
+    const total = totalVerificationCost(stages);
+
+    const rows = stages.map((s) => ({
+      provider: 'OPENAI',
+      operation_type: costOperationFor(s.stage),
+      // Not a customer-facing string, and deliberately explicit about whether
+      // the dollars are real: a zero that means "no rate configured" must
+      // never be read as a zero that means "free".
+      source: s.priced ? `model=${s.model}` : `model=${s.model};unpriced`,
+      units: s.totalTokens,
+      cost_usd: s.costUsd,
+      success: true,
+      // Some of the prompt came back from the provider's cache. This is the
+      // number the reuse work has to move.
+      cache_hit: s.cachedInputTokens > 0,
+      job_id: job.id,
+    }));
+
+    const { error } = await db.from('cost_events').insert(rows);
+    if (error) {
+      console.error(`research-agent: could not record COGS for ${job.id}: ${error.message ?? error}`);
+      return;
+    }
+    console.log(
+      `research-agent: recorded COGS for ${job.id} — ${stages.length} stages, ` +
+      `${total.totalTokens} tokens, ${total.cachedInputTokens} cached, ` +
+      `$${total.totalUsd}${total.fullyPriced ? '' : ' (INCOMPLETE: a stage ran on an unpriced model)'}`
+    );
+  } catch (e) {
+    console.error('research-agent: COGS accounting threw', e instanceof Error ? e.message : String(e));
+  }
 }
 
 function sanitizeForCustomer(job: any): any {

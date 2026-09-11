@@ -209,75 +209,92 @@
    warm-white) and is the ONLY one allowed to carry text on a light ground.
    Anything else would be luxury styling paid for with legibility. */
 @layer base {
+  /* ══════════════════════════════════════════════════════════════════
+     THE LIGHT SURFACE — BLACK / WHITE / GOLD
+     ══════════════════════════════════════════════════════════════════
+
+     The previous pass ran on a warm-white canvas with champagne accents and
+     cream fills. It photographed as beige. Every warm hue is gone: the
+     canvas is pure white, the ink and every dark section are NEUTRAL
+     near-black (hue 0, saturation 0 — not navy, not charcoal-blue, not
+     brown), and the only chroma left on the page is Homatch gold.
+
+     GOLD IS A SIGNAL, NOT A SURFACE. It draws rules, marks, selected states
+     and small premium details. It never fills a background — that is what
+     made the last pass muddy — so `--gold-soft` and `--sand` now resolve to
+     a neutral grey and no cream tint can re-enter through them.
+
+     Two golds, because one cannot do both jobs:
+       --gold      the brand mark's own colour. 3.0:1 on white — correct for
+                   rules, icons, and any text on a BLACK ground (8.4:1).
+       --gold-ink  the same hue darkened to 5.6:1 on white. The ONLY gold
+                   allowed to carry text on a light ground.  */
   :root[data-surface='light'] {
-    /* Finer geometry than the last pass: large radii are what made the
-       surfaces read as generic SaaS boxes. */
     --radius: 0.625rem;
 
-    --background: 40 22% 98%;   /* warm-white canvas, only just warm  */
-    --foreground: 30 6% 9%;     /* near-black ink            */
+    --background: 0 0% 100%;    /* pure white, no warmth whatsoever */
+    --foreground: 0 0% 6%;      /* neutral near-black ink           */
 
     --card: 0 0% 100%;
-    --card-foreground: 30 6% 9%;
+    --card-foreground: 0 0% 6%;
     --popover: 0 0% 100%;
-    --popover-foreground: 30 6% 9%;
+    --popover-foreground: 0 0% 6%;
 
     /* Black is the action colour. Gold is an accent and never a button fill
        on a light ground — it has nowhere near the contrast for it. */
-    --primary: 30 6% 9%;
-    --primary-foreground: 45 40% 98%;
+    --primary: 0 0% 5%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 40 14% 96%;    /* warm tint, used sparingly           */
-    --secondary-foreground: 30 6% 14%;
-    --muted: 40 12% 96%;
-    --muted-foreground: 30 5% 29%;
+    --secondary: 0 0% 96%;      /* neutral grey fill, no beige */
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 34%;
 
-    --accent: 36 38% 56%;
-    --accent-foreground: 30 6% 9%;
+    --accent: 38 88% 54%;
+    --accent-foreground: 0 0% 6%;
 
-    --destructive: 6 62% 44%;
-    --destructive-foreground: 45 40% 98%;
+    --destructive: 0 66% 44%;
+    --destructive-foreground: 0 0% 100%;
 
-    /* Hairlines. Deliberately low-contrast: the design's structure comes
-       from space and type, and a border is only ever a whisper of it. */
-    --border: 34 8% 84%;
-    --input: 34 8% 78%;
-    --ring: 36 38% 46%;
+    /* Hairlines that are actually visible. Neutral, so a 1px rule on white
+       reads as a drawn line rather than as a warm smudge. */
+    --border: 0 0% 87%;
+    --input: 0 0% 78%;
+    --ring: 38 88% 40%;
 
-    --gold: 36 38% 56%;         /* #B99A68 — rules, icons, dark-surface text */
-    --gold-ink: 36 42% 33%;     /* the text-safe gold on light grounds       */
-    --gold-soft: 40 48% 93%;
-    --sand: 40 16% 95%;
-    --ink-soft: 30 6% 19%;
+    --gold: 38 88% 54%;         /* the brand mark's own gold */
+    --gold-ink: 34 90% 31%;     /* text-safe gold on white */
+    --gold-soft: 0 0% 96%;      /* NEUTRAL — gold never fills a surface here */
+    --sand: 0 0% 96%;           /* NEUTRAL — kept only so the utility resolves */
+    --ink-soft: 0 0% 22%;
 
-    --success: 152 42% 30%;
-    --warning: 32 66% 38%;
-    --info: 210 40% 34%;
+    --success: 152 54% 28%;
+    --warning: 32 78% 36%;
+    --info: 214 62% 34%;
 
-    --chart-1: 36 38% 56%;
-    --chart-2: 30 6% 26%;
-    --chart-3: 152 34% 34%;
-    --chart-4: 36 20% 62%;
-    --chart-5: 18 44% 46%;
+    --chart-1: 38 88% 54%;
+    --chart-2: 0 0% 20%;
+    --chart-3: 152 44% 32%;
+    --chart-4: 0 0% 62%;
+    --chart-5: 268 34% 44%;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 32 6% 26%;
-    --sidebar-primary: 30 6% 9%;
-    --sidebar-primary-foreground: 45 40% 98%;
-    --sidebar-accent: 43 26% 96%;
-    --sidebar-accent-foreground: 30 6% 9%;
-    --sidebar-border: 34 8% 85%;
-    --sidebar-ring: 36 38% 46%;
+    --sidebar-foreground: 0 0% 26%;
+    --sidebar-primary: 0 0% 5%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 6%;
+    --sidebar-border: 0 0% 88%;
+    --sidebar-ring: 38 88% 40%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(36 40% 58%) 0%, hsl(32 38% 44%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(45 30% 99%) 100%);
-    --gradient-amber-glow: radial-gradient(ellipse at 50% 0%, hsl(36 38% 56% / 0.09) 0%, transparent 62%);
+    --gradient-primary: linear-gradient(135deg, hsl(40 92% 60%) 0%, hsl(32 88% 46%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 100%) 100%);
+    --gradient-amber-glow: radial-gradient(ellipse at 50% 0%, hsl(38 88% 54% / 0.10) 0%, transparent 62%);
 
-    /* Minimal elevation. Contrast and fine lines carry the hierarchy; a
-       floating card shadow would undo both. */
-    --shadow-card: 0 1px 2px hsl(30 8% 12% / 0.035);
-    --shadow-hover: 0 1px 2px hsl(30 8% 12% / 0.04), 0 10px 28px -18px hsl(30 8% 12% / 0.22);
-    --shadow-amber: 0 8px 26px -14px hsl(36 40% 34% / 0.22);
+    /* Minimal elevation. Contrast and fine lines carry the hierarchy. */
+    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.04);
+    --shadow-hover: 0 1px 2px hsl(0 0% 0% / 0.05), 0 18px 40px -24px hsl(0 0% 0% / 0.28);
+    --shadow-amber: 0 10px 30px -16px hsl(38 88% 40% / 0.35);
   }
 
   /* The viewport behind the page (overscroll/rubber-band area) otherwise
@@ -302,9 +319,9 @@
     border-color: hsl(var(--border));
   }
   :root[data-surface='light'] .status-low-balance {
-    background: hsl(32 62% 46% / 0.12);
-    color: hsl(32 66% 32%);
-    border-color: hsl(32 56% 46% / 0.26);
+    background: hsl(38 88% 54% / 0.14);
+    color: hsl(34 90% 29%);
+    border-color: hsl(38 80% 46% / 0.30);
   }
   :root[data-surface='light'] .status-private {
     background: hsl(265 30% 50% / 0.10);
@@ -350,5 +367,39 @@
   }
   .rule-x {
     background-image: linear-gradient(to right, transparent, hsl(var(--border)) 8%, hsl(var(--border)) 92%, transparent);
+  }
+}
+
+@layer utilities {
+  /* ── The AI Call Center's live-call visual ───────────────────────────
+     A waveform and a pulse, defined once here rather than as inline style
+     objects, so both have a real prefers-reduced-motion answer: the bars
+     hold a static mid-height and the ring stops expanding. Nothing else on
+     the page animates on its own. */
+  @keyframes hm-wave {
+    0%, 100% { transform: scaleY(0.28); }
+    50%      { transform: scaleY(1); }
+  }
+  .hm-wave > span {
+    transform-origin: center;
+    animation: hm-wave 1.15s ease-in-out infinite;
+  }
+
+  @keyframes hm-ring {
+    0%        { transform: scale(1);   opacity: 0.5; }
+    70%, 100% { transform: scale(2.4); opacity: 0; }
+  }
+  .hm-ring::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: hsl(38 88% 54%);
+    animation: hm-ring 1.9s ease-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hm-wave > span { animation: none; transform: scaleY(0.62); }
+    .hm-ring::after { animation: none; opacity: 0; }
   }
 }

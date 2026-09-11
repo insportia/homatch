@@ -9,8 +9,8 @@ import { SceneMedia } from '@/components/home/media/SceneMedia';
 /**
  * REGION 11 — the closing image.
  *
- * A full-bleed cinematic band under a navy scrim, so the page ends on the
- * same register it opened on rather than on a coloured rectangle. The scrim
+ * A full-bleed cinematic band under a NEUTRAL black scrim, so the page ends
+ * on the register it opened on rather than on a coloured rectangle. The scrim
  * is heavy enough to hold centred type at AA contrast at every width, which
  * is why it is a flat wash plus a vertical gradient rather than a light tint.
  */
@@ -21,7 +21,7 @@ export function ClosingCTASection() {
 
   return (
     <section className="relative isolate overflow-hidden">
-      <div className="absolute inset-0" aria-hidden="true">
+      <div className="absolute inset-0 saturate-[0.45]" aria-hidden="true">
         <SceneMedia
           scene="closing"
           alt=""
@@ -32,8 +32,8 @@ export function ClosingCTASection() {
           position="46% 58%"
           positionMobile="58% 62%"
         />
-        <div className="absolute inset-0 bg-[hsl(30_8%_7%/0.70)]" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[hsl(30_8%_5%/0.88)] via-transparent to-[hsl(30_8%_5%/0.5)]" />
+        <div className="absolute inset-0 bg-[#080808]/78" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-[#080808]/55 to-[#080808]/70" />
       </div>
 
       <div className="relative mx-auto flex min-h-[clamp(24rem,52vh,36rem)] w-full max-w-[90rem] flex-col items-center justify-center px-5 py-20 text-center sm:px-8 lg:px-10">
@@ -43,13 +43,13 @@ export function ClosingCTASection() {
         >
           {t('mp_cta_title')}
         </h2>
-        <p className="mt-5 max-w-[36rem] text-pretty text-[15px] leading-relaxed text-white/75 sm:text-base">
+        <p className="mt-5 max-w-[36rem] text-pretty text-[15px] leading-relaxed text-white/85 sm:text-base">
           {t('mp_cta_body')}
         </p>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
           <Button
-            className="h-[3.25rem] gap-2.5 rounded-full bg-gold px-8 text-[15px] text-primary hover:bg-gold/90"
+            className="h-[3.25rem] gap-2.5 rounded-full bg-gold px-8 text-[15px] font-semibold text-[#0A0A0A] hover:bg-white"
             onClick={() => navigate(session ? '/dashboard' : '/auth/signup')}
           >
             {session ? t('nav_dashboard') : t('mp_cta_primary')}

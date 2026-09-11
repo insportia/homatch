@@ -1,104 +1,131 @@
 import React from 'react';
-import { Building2, Calculator, ShieldCheck, Sparkles, UserSearch } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
-import { HomatchAsk, type AskAction } from '@/components/home/HomatchAsk';
-import { Eyebrow, HERO_SPLIT, PAGE_INSET } from './primitives';
+import { HomatchAsk } from '@/components/home/HomatchAsk';
+import { PAGE } from './primitives';
 
 /**
  * REGION 01 — the hero.
  *
- * THE INTERACTION IS THE PRODUCT
+ * WHAT IT HAS TO SAY, AND IN WHAT ORDER
  *
- * This hero has no "Get started" and no "See how it works". A landing page
- * that leads with those is describing a product; Homatch's whole claim is
- * that you can ask it something, so the primary — and only — interaction
- * here is the Homatch AI console, with prepared intelligence actions beneath
- * it. Both go into the real assistant (see HomatchAsk).
+ * Homatch is smart real-estate decisions, on one platform. That sentence —
+ * not a mood — is the hero. So the composition is: what this is, what it
+ * covers, and then immediately a way in. The previous pass opened with an
+ * abstract two-line couplet and a bare assistant field, which described a
+ * feeling and left a visitor with nothing to press.
  *
- * There is deliberately no cadastral field here either. Verification is one
- * capability of several, and putting its search in the hero would say the
- * product is a cadastral lookup. It lives in the verification region, where
- * it belongs.
+ * WHY IT IS BLACK
  *
- * THE PHOTOGRAPH IS DESKTOP-ONLY
+ * The page is black, white and gold, and the photograph is the one warm
+ * object on it. Laid on white it dragged the whole first screen towards
+ * beige. On black, graded down and washed with gold, it reads as texture
+ * behind the type instead of as a property advertisement — and the white
+ * launcher directly beneath it lands as a hard, bright cut.
  *
- * Below lg the photograph is not rendered at all — not hidden with CSS,
- * removed from the DOM, so a phone never downloads it. Stacked above a hero
- * whose subject is a text field, it pushed the actual interaction below the
- * fold and made the first screen read as a property advertisement. On mobile
- * the hero is type plus the console, which is a truer first impression.
+ * The hero is deliberately SHORT. It is sized so the first row of the action
+ * launcher is already on screen at a normal laptop height; the product has
+ * to be reachable, not scrolled to.
  *
- * There is no pull-quote on the photograph. It was decoration over someone
- * else's composition; the image reads better with nothing on it.
+ * Below lg the photograph is not rendered at all — removed from the DOM, not
+ * hidden — so a phone never downloads it.
  */
 export function HeroSection() {
-  const { t } = useLanguage();
-
-  /* Icon-led shortcuts into the assistant. Each is a question a real
-     customer actually has; `prompt` is what gets sent when the visible label
-     is a shorter form of it. */
-  const actions: AskAction[] = [
-    { key: 'client', icon: UserSearch, label: t('mp_hero_action_client'), prompt: t('mp_hero_action_client_prompt') },
-    { key: 'property', icon: Building2, label: t('mp_hero_action_property'), prompt: t('mp_hero_action_property_prompt') },
-    { key: 'verify', icon: ShieldCheck, label: t('mp_hero_action_verify'), prompt: t('mp_hero_action_verify_prompt') },
-    { key: 'mortgage', icon: Calculator, label: t('mp_hero_action_mortgage'), prompt: t('mp_hero_action_mortgage_prompt') },
-    { key: 'capabilities', icon: Sparkles, label: t('mp_hero_action_capabilities'), prompt: t('mp_hero_action_capabilities_prompt') },
-  ];
+  const { t, isRTL } = useLanguage();
+  const navigate = useNavigate();
 
   return (
-    <section className="relative isolate">
-      {/* ── The photograph: lg and up only ──────────────────────────
-          Starts where the copy column ends (--hero-split) and bleeds to the
-          viewport edge, floor to ceiling, with one large inner-bottom
-          radius. Absolute rather than a grid column so the copy governs the
-          hero's height instead of the image's aspect ratio doing it. */}
-      <div
-        className="absolute inset-y-0 end-0 hidden overflow-hidden rounded-bl-[3.5rem] rtl:rounded-bl-none rtl:rounded-br-[3.5rem] lg:block"
-        style={{ insetInlineStart: HERO_SPLIT }}
-      >
-        <SceneMedia
-          scene="hero"
-          alt={t('mp_hero_image_alt')}
-          priority
-          sizes="52vw"
-          position="46% 52%"
-        />
-        {/* The warm-white dissolve on the inner edge, so the photograph never
-            ends on a hard vertical line against the page. */}
-        <div
-          className="pointer-events-none absolute inset-y-0 start-0 w-[26%] min-w-[8rem] bg-gradient-to-r from-background via-background/55 to-transparent rtl:bg-gradient-to-l"
-          aria-hidden="true"
-        />
+    <section className="relative isolate overflow-hidden bg-[#080808] text-white">
+      {/* ── The photograph, lg and up ───────────────────────────── */}
+      <div className="absolute inset-0 hidden lg:block" aria-hidden="true">
+        {/* The plate runs well past the wipe's opaque end, so the image's own
+            left edge never shows as a seam. Desaturated a little: the sunset
+            is the one warm object on a black-white-gold page, and at full
+            chroma it pulls the whole first screen orange. */}
+        <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.72]">
+          <SceneMedia scene="hero" alt="" priority sizes="78vw" position="52% 52%" />
+        </div>
+        <div className="absolute inset-0 bg-[#080808]/45" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#080808] from-30% via-[#080808]/88 to-transparent rtl:bg-gradient-to-l" />
+        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#080808] to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#080808]/85 to-transparent" />
       </div>
 
-      {/* ── The copy column ─────────────────────────────────────── */}
-      <div className="relative lg:w-[var(--hero-split)]" style={{ ['--hero-split' as string]: HERO_SPLIT }}>
-        <div className={`${PAGE_INSET} pe-5 sm:pe-8 lg:pe-14`}>
-          <div className="flex min-h-[clamp(28rem,64vh,42rem)] flex-col justify-center py-16 lg:py-24">
-            <Eyebrow>{t('mp_hero_eyebrow')}</Eyebrow>
+      {/* One gold bloom, so the black is lit rather than flat. It is the only
+          gold on this ground that is not a line or a control. */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: 'radial-gradient(58rem 30rem at 12% 0%, hsl(38 88% 54% / 0.11), transparent 62%)' }}
+        aria-hidden="true"
+      />
 
-            <h1
-              className="mt-6 text-balance font-semibold leading-[1.05] tracking-[-0.028em] text-foreground"
-              style={{ fontSize: 'clamp(2.1rem, 3vw, 2.95rem)' }}
+      <div className={`${PAGE} relative`}>
+        {/* pt covers the fixed header; the black band itself starts at y=0. */}
+        <div className="flex min-h-[clamp(30rem,70vh,40rem)] max-w-[46rem] flex-col justify-center pb-14 pt-[7rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
+          <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-gold">
+            <span className="h-px w-7 bg-gold" aria-hidden="true" />
+            {t('mp_hero_eyebrow')}
+          </p>
+
+          {/* The product statement. "Homatch" is set as its own mass so the
+              name is unmistakable before the sentence is even read. */}
+          <h1
+            className="mt-6 text-balance font-semibold leading-[1.04] tracking-[-0.03em] text-white"
+            style={{ fontSize: 'clamp(2.2rem, 4.6vw, 3.9rem)' }}
+          >
+            {t('mp_hero_h1')}
+          </h1>
+
+          <p
+            className="mt-5 text-balance font-semibold leading-[1.2] tracking-[-0.015em] text-gold"
+            style={{ fontSize: 'clamp(1.1rem, 1.9vw, 1.5rem)' }}
+          >
+            {t('mp_hero_h2')}
+          </p>
+
+          <p className="mt-5 max-w-[38rem] text-pretty text-[15px] leading-[1.7] text-white/70 sm:text-base">
+            {t('mp_hero_scope')}
+          </p>
+
+          {/* Two ways in, then the assistant. The assistant is present and
+              one keystroke deep, but it no longer stands in for the
+              explanation of the platform — the launcher below does that. */}
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={() => navigate('/verify')}
+              className="group inline-flex h-12 items-center justify-center gap-2.5 rounded-full bg-gold px-6 text-sm font-semibold text-[#0A0A0A] transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#080808] motion-reduce:transition-none"
             >
-              <span className="block">{t('mp_hero_line1')}</span>
-              <span className="block">{t('mp_hero_line2')}</span>
-              <span className="block text-gold-ink">{t('mp_hero_line3')}</span>
-            </h1>
+              <ShieldCheck className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden="true" />
+              {t('mp_verify_capability_cta')}
+              <ArrowRight
+                className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
+                strokeWidth={2}
+                aria-hidden="true"
+              />
+            </button>
 
-            <p className="mt-6 max-w-[33rem] text-pretty text-[15px] leading-[1.75] text-ink-soft">
-              {t('mp_hero_sub')}
-            </p>
-
-            <HomatchAsk
-              className="mt-10 max-w-[42rem]"
-              variant="console"
-              heading={t('ai_title')}
-              placeholder={t('mp_hero_ai_placeholder')}
-              actions={actions}
-            />
+            <button
+              type="button"
+              onClick={() => {
+                document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              className="inline-flex h-12 items-center justify-center rounded-full border border-white/30 px-6 text-sm font-medium text-white transition-colors duration-300 hover:border-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none"
+            >
+              {t('mp_hero_explore')}
+            </button>
           </div>
+
+          <HomatchAsk
+            className="mt-10 max-w-[34rem]"
+            variant="card"
+            tone="dark"
+            heading={t('ai_title')}
+            placeholder={t('mp_hero_ai_placeholder')}
+            actions={[]}
+          />
         </div>
       </div>
     </section>

@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Building2, Mail, MessagesSquare, PhoneCall, Radar, Users } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { Button } from '@/components/ui/button';
 import { Eyebrow, PAGE } from './primitives';
 
@@ -44,10 +45,21 @@ export function DeveloperB2BSection() {
   ];
 
   return (
-    <section id="developers" className="relative scroll-mt-24 overflow-hidden bg-primary text-primary-foreground">
+    <section id="developers" className="relative scroll-mt-24 overflow-hidden bg-[#080808] text-white">
+      {/* The city, at the bottom of its exposure range: a texture that says
+          "a development, in a real place" without turning the region warm. */}
+      {/* The city, in black and white. At full chroma a Tbilisi sunset behind
+          this much type is both a legibility problem and the single largest
+          source of warm colour on a black-white-gold page; desaturated to
+          nothing and held at a tenth of its exposure it is pure texture. */}
+      <div className="absolute inset-0 saturate-0" aria-hidden="true">
+        <SceneMedia scene="platform" alt="" sizes="100vw" position="50% 58%" />
+        <div className="absolute inset-0 bg-[#080808]/90" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#080808] via-[#080808]/78 to-[#080808]" />
+      </div>
       <div
         className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(70rem 36rem at 20% -10%, hsl(36 38% 56% / 0.14), transparent 66%)' }}
+        style={{ background: 'radial-gradient(70rem 36rem at 20% -10%, hsl(38 88% 54% / 0.16), transparent 66%)' }}
         aria-hidden="true"
       />
 
@@ -96,7 +108,7 @@ export function DeveloperB2BSection() {
               {STAGES.map((stage, i) => (
                 <li key={stage.key} className="relative flex items-center gap-5 py-3.5">
                   <span
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-[0.6rem] border border-white/25 bg-[hsl(30_8%_11%)] text-gold"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-[0.6rem] border border-white/25 bg-[#111111] text-gold"
                     aria-hidden="true"
                   >
                     <stage.icon className="h-[18px] w-[18px]" strokeWidth={1.75} />

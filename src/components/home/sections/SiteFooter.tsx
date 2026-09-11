@@ -17,6 +17,7 @@ export function SiteFooter() {
       heading: t('mp_footer_product'),
       links: [
         { key: 'verify', label: t('nav_verify'), path: '/verify' },
+        { key: 'contract', label: t('mp_contract_title'), path: session ? '/verify' : '/auth/signup' },
         { key: 'mortgage', label: t('nav_mortgage'), path: '/mortgage' },
         { key: 'ai', label: t('ai_title'), path: session ? '/ai' : '/auth/signup' },
         { key: 'calls', label: t('call_center_title'), path: session ? '/outreach/calls' : '/auth/signup' },
@@ -57,7 +58,7 @@ export function SiteFooter() {
                   <button
                     type="button"
                     onClick={() => navigate(link.path)}
-                    className="text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="min-h-0 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {link.label}
                   </button>

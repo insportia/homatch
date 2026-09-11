@@ -11,6 +11,9 @@ interface LogoProps {
    * canonical asset either way — only the text block changes.
    */
   withTagline?: boolean;
+  /** 'light' is the wordmark on a dark ground. The brand mark itself is the
+      same asset either way — only the type changes. */
+  tone?: 'dark' | 'light';
   className?: string;
 }
 
@@ -20,7 +23,7 @@ const sizes = {
   lg: { icon: 44, text: 'text-2xl', gap: 'gap-3', tagline: 'text-[11px]' },
 };
 
-export function HomatchLogo({ size = 'md', iconOnly = false, withTagline = false, className = '' }: LogoProps) {
+export function HomatchLogo({ size = 'md', iconOnly = false, withTagline = false, tone = 'dark', className = '' }: LogoProps) {
   const s = sizes[size];
   const { t } = useLanguage();
 
@@ -38,14 +41,14 @@ export function HomatchLogo({ size = 'md', iconOnly = false, withTagline = false
       {!iconOnly && (
         <span className="flex flex-col items-start leading-none min-w-0">
           <span
-            className={`font-semibold tracking-widest ${s.text} text-foreground`}
+            className={`font-semibold tracking-widest ${s.text} ${tone === 'light' ? 'text-white' : 'text-foreground'}`}
             style={{ letterSpacing: '0.12em', fontFamily: 'Montserrat, sans-serif' }}
           >
             HOMATCH
           </span>
           {withTagline && (
             <span
-              className={`${s.tagline} mt-1 font-medium uppercase text-muted-foreground truncate max-w-full`}
+              className={`${s.tagline} mt-1 font-medium uppercase truncate max-w-full ${tone === 'light' ? 'text-white/55' : 'text-muted-foreground'}`}
               style={{ letterSpacing: '0.14em' }}
             >
               {t('brand_tagline')}

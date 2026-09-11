@@ -12,8 +12,17 @@ import { PAGE } from '@/components/home/sections/primitives';
  * REGION 01 — the header.
  *
  * Quiet by design: no border and no background at the top of the page, so the
- * hero reads as one uninterrupted composition; a hairline and a cream wash
- * fade in only once the page has scrolled under it. Spacing and type carry
+ * hero reads as one uninterrupted composition; a hairline and a white wash
+ * fade in only once the page has scrolled under it.
+ *
+ * IT SITS ON BLACK UNTIL IT DOESN'T
+ *
+ * The hero is a black band, so at the top of the page every control here is
+ * white-on-transparent. Past the hero the header becomes a white bar and the
+ * same controls flip to near-black. One `scrolled` flag drives both, which is
+ * why the tone is threaded through rather than set per element.
+ *
+ * Spacing and type carry
  * the hierarchy — the navigation has no pills, and there is exactly one
  * filled control.
  *
@@ -66,10 +75,13 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
     document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  /* Inverted while the header is still over the hero. */
+  const onDark = !scrolled && !open;
+
   return (
     <header
-      className={`sticky top-0 z-50 transition-colors duration-300 motion-reduce:transition-none ${
-        scrolled || open ? 'border-b border-border bg-background/92 backdrop-blur-md' : 'border-b border-transparent bg-transparent'
+      className={`fixed inset-x-0 top-0 z-50 transition-colors duration-300 motion-reduce:transition-none ${
+        onDark ? 'border-b border-transparent bg-transparent' : 'border-b border-border bg-background/95 backdrop-blur-md'
       }`}
     >
       <div className={`${PAGE} flex h-[4.5rem] items-center gap-6 md:h-[5.5rem]`}>
@@ -83,7 +95,7 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
           className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
           aria-label={t('home_nav_home_aria')}
         >
-          <HomatchLogo size="md" withTagline />
+          <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} />
         </button>
 
         <nav className="mx-auto hidden items-center gap-8 lg:flex">
@@ -92,7 +104,9 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
               key={link.key}
               type="button"
               onClick={() => go(link.target)}
-              className="relative text-sm text-ink-soft transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className={`relative text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
+              }`}
             >
               {link.label}
             </button>
@@ -100,10 +114,16 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
         </nav>
 
         <div className="ms-auto flex items-center gap-3 lg:ms-0">
-          <LanguageSwitcher showGlobe triggerClassName="h-9 px-2" />
+          <LanguageSwitcher showGlobe triggerClassName={`h-9 px-2 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
 
           {session ? (
-            <Button size="sm" className="h-10 rounded-full px-5 text-[13px]" onClick={() => navigate('/dashboard')}>
+            <Button
+              size="sm"
+              className={`h-10 rounded-full px-5 text-[13px] font-semibold ${
+                onDark ? 'bg-gold text-[#0A0A0A] hover:bg-white' : ''
+              }`}
+              onClick={() => navigate('/dashboard')}
+            >
               {t('nav_dashboard')}
             </Button>
           ) : (
@@ -111,11 +131,19 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
               <button
                 type="button"
                 onClick={() => navigate('/auth/login')}
-                className="hidden text-sm text-ink-soft transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:inline"
+                className={`hidden text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:inline ${
+                  onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
+                }`}
               >
                 {t('nav_login')}
               </button>
-              <Button size="sm" className="hidden h-10 rounded-full px-5 text-[13px] sm:inline-flex" onClick={() => navigate('/auth/signup')}>
+              <Button
+                size="sm"
+                className={`hidden h-10 rounded-full px-5 text-[13px] font-semibold sm:inline-flex ${
+                  onDark ? 'bg-gold text-[#0A0A0A] hover:bg-white' : ''
+                }`}
+                onClick={() => navigate('/auth/signup')}
+              >
                 {t('nav_signup')}
               </Button>
             </>
@@ -126,7 +154,9 @@ export function PublicHeader({ links }: { links: HeaderLink[] }) {
             onClick={() => setOpen(v => !v)}
             aria-expanded={open}
             aria-label={open ? t('mp_nav_menu_close') : t('mp_nav_menu_open')}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-border text-foreground lg:hidden"
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border lg:hidden ${
+              onDark ? 'border-white/35 text-white' : 'border-foreground/25 text-foreground'
+            }`}
           >
             {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>

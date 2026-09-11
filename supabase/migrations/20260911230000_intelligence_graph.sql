@@ -350,6 +350,12 @@ values
   ('registry.',         'HIGH_VOLATILITY',   6,    'Current registry state of the exact unit.'),
   ('listing.price',     'HIGH_VOLATILITY',   24,   'An asking price is only current while it is asked.'),
   ('listing.status',    'HIGH_VOLATILITY',   24,   'Active, withdrawn, sold.'),
+  -- Only the price and the status of a listing move while it is live. Its
+  -- area, rooms, floor, condition and address do not, and without a rule of
+  -- their own they would default to STALE and keep the market stage at full
+  -- effort for ever. Found by reading a real plan: seven listing facts came
+  -- back stale thirty minutes after being written.
+  ('listing.',          'MEDIUM_VOLATILITY', 336,  'Everything about a listing except its price and status.'),
   ('company.representation', 'HIGH_VOLATILITY', 24, 'Who can sign, when a signature is imminent.'),
 
   ('commissioning.',    'MEDIUM_VOLATILITY', 336,  'Two weeks. Moves, but not daily.'),

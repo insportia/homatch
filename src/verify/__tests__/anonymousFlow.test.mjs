@@ -107,9 +107,15 @@ test('an anonymous caller receives no Homatch internal data', () => {
   // "no user" must never be read as "every user": the internal block is
   // scoped by uid, and an anonymous caller has none.
   const src = aiFn();
-  const i = src.indexOf('const internal: any = { properties: [], matches: [], intents: [] };');
+  const i = src.indexOf('const internal: any = {');
   assert.ok(i > 0, 'the internal data block moved');
-  assert.ok(/^\s*if \(uid\) \{/m.test(src.slice(i, i + 300)),
+  const declaration = src.slice(i, src.indexOf(';', i));
+  // Every kind of internal data starts empty and is only filled for an
+  // account — matched by shape rather than by an exact literal, so adding a
+  // new kind cannot quietly skip this check.
+  const kinds = declaration.match(/(\w+): \[\]/g) ?? [];
+  assert.ok(kinds.length >= 4, `only ${kinds.length} kinds of internal data default to empty`);
+  assert.ok(/^\s*if \(uid\) \{/m.test(src.slice(i, i + 400)),
     'the internal data lookup is not gated on an account');
 });
 

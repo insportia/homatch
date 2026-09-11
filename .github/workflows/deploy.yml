@@ -253,6 +253,16 @@ jobs:
             "contact-import"
             "social-post-generate"
             "community-recommend"
+            # The assistant, and the anonymous session it needs.
+            #
+            # homatch-ai has been production since day one and was NEVER listed
+            # here: every version was deployed by hand, so repository changes to
+            # it could not reach customers. anon-session is new. Both take the
+            # caller's JWT -- the anon key is a valid one, which is exactly how
+            # a visitor without an account reaches them, and the function itself
+            # then decides what that caller is allowed to see.
+            "homatch-ai"
+            "anon-session"
             # developer-score has never been deployed at all, which is what made
             # /developer/:id a dead route.
             "developer-score"

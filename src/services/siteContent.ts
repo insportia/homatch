@@ -171,13 +171,20 @@ export async function loadPage(slug: PageSlug): Promise<StudioResult<{
  * is no window in which half an edit is stored.
  */
 export async function saveDraft(
-  slug: PageSlug, content: SitePageContent, note?: string,
+  slug: PageSlug, content: SitePageContent,
 ): Promise<StudioResult<void>> {
   try {
+    // Argument NAMES are the contract here: PostgREST resolves an RPC by the
+    // names in the body, so a renamed parameter is a 404 rather than a type
+    // error. These three must match site_save_draft's signature exactly.
+    //
+    // There is deliberately no note. A note describes a publish, and is
+    // stored on the version snapshot that publishing creates; a draft save
+    // has nothing to attach one to.
     const { error } = await supabase.rpc('site_save_draft', {
       p_slug: slug,
       p_content: content as unknown as Record<string, unknown>,
-      p_note: note ?? null,
+      p_title: null,
     });
     if (error) return fail(error);
     return { ok: true, value: undefined };

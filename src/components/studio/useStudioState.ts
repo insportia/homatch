@@ -340,7 +340,7 @@ export function useStudioState(): StudioState {
     // Publish means "make the stored draft live", so the draft in front of
     // the admin has to BE the stored draft. Saving first removes the gap
     // where an unsaved edit is visible but not what would go out.
-    const saved = await saveDraft(slug, draft, note);
+    const saved = await saveDraft(slug, draft);
     if (!handle(saved)) { setSaving(false); return; }
 
     const result = await publishPage(slug, note);

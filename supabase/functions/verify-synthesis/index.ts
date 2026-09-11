@@ -29,6 +29,10 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
+import { draftSnapshot, segmentsFor } from '../../../src/verify/intelligence/marketSnapshot.ts';
+import { writeSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts';
+import { districtOfAddress, cityOfAddress } from '../../../src/verify/intelligence/locationIntelligence.ts';
+import { projectSlug } from '../../../src/verify/intelligence/harvest.ts';
 import { buildIntelligencePrompt } from '../../../src/verify/intelligence/prompt.ts';
 import { resolveAssetClass } from '../../../src/verify/researchPlan.ts';
 import { finalizeReport } from '../../../src/verify/intelligence/report.ts';
@@ -169,6 +173,87 @@ function withCredibleParticipants(payload: Record<string, unknown>): Record<stri
   return { ...payload, people: { ...people, people: kept } };
 }
 
+
+/*
+ * WHAT THIS VERIFICATION LEARNED ABOUT THE MARKET.
+ *
+ * A snapshot is written for the NARROWEST segment the property genuinely
+ * belongs to — its project if we know one, otherwise its district, otherwise
+ * its city. Only one, and only the narrowest: writing the same median against
+ * a project AND a district AND a city would let a single building's prices
+ * masquerade as a district answer for every other building in it.
+ *
+ * draftSnapshot refuses anything too thin to be worth reusing, so a run that
+ * found two listings stores nothing rather than storing something that would
+ * immediately force a refresh.
+ *
+ * Never throws. Bookkeeping must not cost a customer their report.
+ */
+async function recordMarketSnapshot(db: any, job: any, bundle: any): Promise<void> {
+  try {
+    const market = bundle?.market;
+    if (!market) return;
+
+    const profile = job?.result_json?.projectProfile ?? {};
+    const address = profile.address ?? bundle?.snapshot?.address ?? null;
+
+    const segments = segmentsFor({
+      projectSlug: projectSlug(profile.name),
+      district: districtOfAddress(address),
+      city: cityOfAddress(address),
+      propertyType: 'RESIDENTIAL',
+      /*
+       * ROOMS ARE DELIBERATELY NOT IN THE KEY YET.
+       *
+       * A segment key has to be computable identically BEFORE research (to
+       * find a snapshot) and AFTER it (to store one). Room count is only known
+       * afterwards, so keying on it would mean every lookup missed and every
+       * write landed in a segment nothing could ever find again — the most
+       * expensive possible outcome, since it costs the write and saves
+       * nothing.
+       *
+       * The column exists and roomBandOf() is tested, so this becomes a key
+       * dimension the moment rooms are known at plan time. Until then the
+       * honest key is the one both ends can actually compute.
+       */
+      rooms: null,
+    });
+    if (!segments.length) return;
+
+    /*
+     * Distinct sources behind the comparables. One portal is one opinion, and
+     * confidence should know the difference.
+     */
+    const comparables = Array.isArray(job?.result_json?.market?.comparables)
+      ? job.result_json.market.comparables
+      : [];
+    const sourceCount = new Set(
+      comparables.map((c: any) => String(c?.source ?? '').trim().toLowerCase()).filter(Boolean)
+    ).size;
+
+    const draft = draftSnapshot(segments[0], market, {
+      sourceCount: Math.max(1, sourceCount),
+      refreshReason: job?.result_json?._marketPlan?.reasons?.[0] ?? 'INITIAL',
+    });
+    if (!draft) return;
+
+    const out = await writeSnapshot(db, draft, {
+      jobId: job.id,
+      city: cityOfAddress(address) ?? null,
+      district: districtOfAddress(address) ?? null,
+    });
+
+    console.log(
+      'verify-synthesis: market snapshot for ' + job.id + ' — ' +
+      (out.written
+        ? `${out.segmentKey} ${draft.confidence} (${draft.usableComparableCount} comparables${out.superseded ? ', superseded previous' : ''})`
+        : `not written: ${out.reason ?? 'unknown'}`)
+    );
+  } catch (e) {
+    console.error('verify-synthesis: market snapshot threw', e instanceof Error ? e.message : String(e));
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -248,6 +333,21 @@ serve(async (req) => {
     // to explain it, never to do the arithmetic.
     const fx = await fetchFx(earliestEvidenceDate(pkg.items));
     const bundle = buildIntelligenceBundle(job.result_json, pkg, fx);
+
+    /*
+     * WHAT THIS VERIFICATION LEARNED ABOUT THE MARKET, KEPT.
+     *
+     * bundle.market is the deterministic answer — median, band, tier, sample
+     * size — computed from comparables that were actually gathered. Until now
+     * it was quoted once and discarded, so the next flat in the same building
+     * paid for the same five-band sweep to rebuild it. That sweep is 45% of
+     * what a Verify costs.
+     *
+     * Stored against the SEGMENT it describes rather than the job that
+     * happened to compute it. Bookkeeping: it runs after the report is safe
+     * and can never cost a customer their answer.
+     */
+    await recordMarketSnapshot(writer, job, bundle);
 
     // No evidence at all is a legitimate outcome, not an error: every source
     // may have been technically unavailable. Say so plainly rather than

@@ -9,6 +9,9 @@ import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
+import { planMarket, segmentsFor, snapshotBrief } from '../../../src/verify/intelligence/marketSnapshot.ts';
+import { findSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts';
+import { districtOfAddress, cityOfAddress } from '../../../src/verify/intelligence/locationIntelligence.ts';
 import { planEscalation, searchBudgetInstruction } from '../../../src/verify/intelligence/escalation.ts';
 import { summariseSources } from '../../../src/verify/intelligence/sourceVersion.ts';
 import {
@@ -1453,7 +1456,19 @@ function knownBriefFor(j: any, s: Stage): string {
       ? buildMarketBrief(Array.isArray(plan.comparables) ? plan.comparables : [])
       : { text: '', urls: [] as string[] };
 
-    const joined = [brief.text, market.text].filter(Boolean).join('\n');
+    /*
+     * THE MARKET ANSWER ITSELF, WHEN WE ALREADY HAVE IT.
+     *
+     * A fresh, confident snapshot for this segment means the range is already
+     * established from real listings, and the arithmetic behind it is done in
+     * code. The stage still writes the market section - the report is built
+     * from its output - but it is handed the answer instead of being sent to
+     * rebuild it. Empty whenever the plan says refresh, so nothing stale is
+     * ever quoted as current.
+     */
+    const snapshotText = s === 'MARKET' ? String(plan.marketPlan?.brief ?? '') : '';
+
+    const joined = [brief.text, snapshotText, market.text].filter(Boolean).join('\n');
     return joined ? `\n${joined}\n` : '';
   } catch {
     return '';
@@ -1492,6 +1507,38 @@ function searchBudgetFor(j: any, s: Stage): string {
         reused: new Array(Number(d.reused) || 0).fill('?'),
       }))
     );
+    /*
+     * MARKET IS DECIDED BY ITS SNAPSHOT, NOT BY THE FACT LADDER.
+     *
+     * The escalation ladder counts facts the graph holds about the SUBJECT,
+     * and a market is not a fact about the subject - so it always read market
+     * as unknown and authorised a full sweep. planMarket() knows better: it
+     * has looked at the actual snapshot for this segment and decided whether
+     * the question is already answered.
+     */
+    if (stage === 'market') {
+      const mp = j?.result_json?._reusePlan?.marketPlan;
+      if (mp && typeof mp.searchBudget === 'number') {
+        if (!mp.refresh && mp.searchBudget === 0) {
+          return [
+            '',
+            'SEARCH BUDGET: none needed for this step.',
+            'The market range above is already established for this segment from',
+            'real listings, and the arithmetic is done in code. Spend no searches',
+            'rebuilding it. This is a budget, not a gag: if your own evidence',
+            'contradicts that range, say so and search to establish what is true.',
+            'Being right outranks being cheap.',
+          ].join('\n');
+        }
+        return searchBudgetInstruction({
+          stage: 'market',
+          level: 'TARGETED',
+          searchBudget: mp.searchBudget,
+          reason: String(mp.summary ?? ''),
+        } as any);
+      }
+    }
+
     const effort = plan.efforts.find((e: any) => e.stage === stage);
     return searchBudgetInstruction(effort);
   } catch {
@@ -3895,6 +3942,54 @@ function withholdReportUntilSignIn(job: any): any {
  * built it — because that is where reuse actually pays: a second flat in
  * the same building needs none of the project research the first one did.
  */
+/*
+ * THE MARKET DECISION, MADE BEFORE ANY MONEY IS SPENT.
+ *
+ * Reads the narrowest snapshot the property belongs to and asks planMarket()
+ * whether it still answers the question. Everything about the decision is in
+ * marketSnapshot.ts, which is pure; this only supplies the inputs.
+ *
+ * Failing here means the market stage researches normally, which is what it
+ * did before any of this existed.
+ */
+async function planMarketFor(db: any, known: any, plan: any): Promise<any | null> {
+  try {
+    const project = (known?.relatedEntities ?? []).find((r: any) => r.entityType === 'PROJECT');
+    const address = (known?.facts ?? [])
+      .concat(known?.relatedFacts ?? [])
+      .find((f: any) => f.fact_key === 'address.full')?.value_text ?? null;
+
+    const segments = segmentsFor({
+      projectSlug: project?.naturalKey ?? null,
+      district: districtOfAddress(address),
+      city: cityOfAddress(address),
+      propertyType: 'RESIDENTIAL',
+      rooms: null,
+    });
+    if (!segments.length) return null;
+
+    const snapshot = await findSnapshot(db, segments);
+    const decided = planMarket({ snapshot, now: Date.now() });
+
+    return {
+      refresh: decided.refresh,
+      reasons: decided.reasons,
+      searchBudget: decided.searchBudget,
+      summary: decided.summary,
+      scope: decided.snapshot?.scope_type ?? null,
+      confidence: decided.snapshot?.confidence ?? null,
+      usableComparables: decided.snapshot?.usable_comparable_count ?? null,
+      /* Carried so the stage can be handed the answer rather than sent to
+       * find it. Never shown to a customer; stripped at the boundary with the
+       * rest of _reusePlan. */
+      brief: snapshotBrief(decided),
+    };
+  } catch (e) {
+    console.error('research-agent: market plan threw', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 async function shadowReusePlan(db: any, query: string): Promise<any | null> {
   try {
     const code = normalizeCadastral(query);
@@ -3991,6 +4086,20 @@ async function shadowReusePlan(db: any, query: string): Promise<any | null> {
         url: c.url,
         facts: c.facts,
       })),
+
+      /*
+       * WHETHER THIS RUN HAS TO BUY MARKET RESEARCH AT ALL.
+       *
+       * "What do flats cost in this project" is a fact about a segment, not
+       * about one flat, and it is 45% of what a Verify costs. If a fresh,
+       * confident snapshot already answers it, the honest budget is zero.
+       *
+       * The segment is derived from what is known BEFORE research — the
+       * project reached through lineage, and the district and city read off
+       * the address we already hold. A key that needed the research to compute
+       * could never be looked up.
+       */
+      marketPlan: await planMarketFor(db, known, plan),
       heldFacts: known.facts.length,
       relatedFacts: known.relatedFacts.length,
       reusableFacts: plan.reusableFacts,

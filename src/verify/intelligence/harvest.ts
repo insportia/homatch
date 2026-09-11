@@ -555,8 +555,17 @@ function harvestComparables(
      * this verification made about this property.
      */
     if (subject) {
+      /*
+       * FROM THE PROPERTY TO THE LISTING, not the other way round.
+       *
+       * The question ever asked is "what was this property compared against",
+       * and the graph is walked outward from the property. Recorded the other
+       * way, the comparables sat one edge away in the wrong direction and
+       * were unreachable from the only place anyone starts — which is exactly
+       * what the production graph showed.
+       */
       out.relationships.push({
-        from: listing, to: subject, relation: 'COMPARABLE_TO',
+        from: subject, to: listing, relation: 'COMPARABLE_TO',
         sourceKind: 'MARKET_LISTING', sourceRef: key, evidenceRef: evidence,
         confidence: 0.6,
       });

@@ -417,13 +417,20 @@ test('a listing with no URL is not stored, because it could never be recognised 
   assert.equal(listingKey(null), null);
 });
 
-test('a comparable is linked to the property it was a comparable for', () => {
+test('a comparable is linked FROM the property it was a comparable for', () => {
   // The same listing is a close comparison for the flat next door and a poor
-  // one for a warehouse across the city.
+  // one for a warehouse across the city — so the edge records which property
+  // it was a comparable FOR.
+  //
+  // Direction matters as much as existence. The graph is walked outward from
+  // the property, and recorded the other way round these sat one edge away in
+  // the wrong direction, unreachable from the only place anyone starts. That
+  // is what the production graph showed.
   const h = withMarket([REAL_COMPARABLE]);
   const r = h.relationships.find((x) => x.relation === 'COMPARABLE_TO');
   assert.ok(r, 'the comparable was not linked to the subject');
-  assert.equal(r.to.naturalKey, '01.72.14.040.030.01.02.017');
+  assert.equal(r.from.naturalKey, '01.72.14.040.030.01.02.017', 'the edge points the wrong way');
+  assert.equal(r.to.entityType, 'LISTING');
   assert.equal(r.sourceKind, 'MARKET_LISTING');
 });
 

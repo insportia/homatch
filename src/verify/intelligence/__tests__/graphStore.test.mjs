@@ -347,20 +347,48 @@ test('project facts arrive as related, never as the unit\'s own', async () => {
     'the project research is still not reachable');
 });
 
-test('the walk stops at two hops', async () => {
-  // The third hop is where a graph stops being an answer and starts being a
-  // crawl: a company builds other projects, and their facts are about other
-  // properties.
+test('the walk follows the whole provenance chain, and stops there', async () => {
+  // unit → parcel → project → developer is the property's own lineage, and
+  // every link in it is derived or evidenced. The FOURTH hop leaves the
+  // property entirely: a developer builds other projects, and their facts are
+  // about other people's flats.
   const db = makeDb();
   await persistHarvest(db, harvestReport(REPORT, POLICIES), 'job-1');
 
-  // A second, unrelated project by the same company — three hops from the unit.
-  const other = { ...REPORT, exactUnit: { code: '09.99.99.999.999.01.02.001', verified: false }, projectProfile: { ...REPORT.projectProfile, name: 'Somewhere Else Entirely' } };
+  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+  const types = known.relatedEntities.map((r) => r.entityType);
+  assert.ok(types.includes('PARENT_PARCEL'), 'the parcel is unreachable');
+  assert.ok(types.includes('PROJECT'), 'the project is unreachable');
+  assert.ok(types.includes('COMPANY'), 'the developer is unreachable, so its research cannot be reused');
+
+  // A second, unrelated property built by the same company: four hops away.
+  const other = {
+    ...REPORT,
+    exactUnit: { code: '09.99.99.999.999.01.02.001', verified: false },
+    projectProfile: { ...REPORT.projectProfile, name: 'Somewhere Else Entirely' },
+  };
   await persistHarvest(db, harvestReport(other, POLICIES), 'job-2');
 
-  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
-  assert.ok(!known.relatedEntities.some((r) => r.naturalKey === 'somewhere-else-entirely'),
+  const after = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+  assert.ok(!after.relatedEntities.some((r) => r.naturalKey === 'somewhere-else-entirely'),
     'the walk reached another property\'s project');
+});
+
+test('the comparables of a property are reachable from it', async () => {
+  // Recorded the other way round they sat one edge away in the wrong
+  // direction, unreachable from the only place anyone starts — which is
+  // exactly what the production graph showed.
+  const db = makeDb();
+  const withComps = {
+    ...REPORT,
+    market: { comparables: [{ url: 'https://home.ge/x/1', price: '150000', area: '80' }] },
+  };
+  await persistHarvest(db, harvestReport(withComps, POLICIES), 'job-1');
+  const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', '01.72.14.040.030.01.02.017');
+  assert.ok(known.relatedEntities.some((r) => r.entityType === 'LISTING'),
+    'the comparables cannot be found from the property they were comparables for');
+  assert.ok(known.relatedFacts.some((f) => f.fact_key === 'listing.price'),
+    'a stored asking price is unreachable');
 });
 
 test('a cycle in the graph does not loop forever', async () => {

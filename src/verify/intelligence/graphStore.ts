@@ -469,7 +469,7 @@ export async function loadKnownIntelligence(
     // class, to know which fact families this kind of property can even have.
     const { data: facts } = await db
       .from('intelligence_facts')
-      .select('fact_key, value_text, status, last_verified_at, freshness_class, content_hash, source_ref')
+      .select('fact_key, value_text, value_number, value_json, status, last_verified_at, freshness_class, content_hash, source_ref')
       .eq('entity_id', entity.id)
       .eq('status', 'CURRENT');
 
@@ -484,28 +484,33 @@ export async function loadKnownIntelligence(
      * the same thing.
      */
     /*
-     * TWO HOPS, AND NO MORE.
+     * THREE HOPS: THE PROPERTY'S OWN PROVENANCE CHAIN, AND NOTHING BEYOND IT.
      *
-     * One hop reaches the parcel. The project stands on the parcel and the
-     * company built the project, so a second hop is what actually reaches the
-     * research worth reusing — measured in production, a flat whose link to
-     * its project could not be verified had seven researched project facts
-     * sitting unreachable and reused three facts out of eighteen.
+     *   unit → parcel → project → developer
      *
-     * The limit is two because the third hop is where a graph stops being an
-     * answer and starts being a crawl: a company builds other projects, and
-     * their facts are about other properties.
+     * That chain is the property's own lineage and every link in it is either
+     * derived arithmetically or evidenced. Read against the real production
+     * graph, two hops stopped at the project and left the developer's four
+     * researched facts unreachable; one hop stopped at a parcel that held
+     * nothing at all and reused four facts out of eighteen.
+     *
+     * The limit is three because the FOURTH hop leaves the property entirely:
+     * a developer builds other projects, and their facts are about other
+     * people's flats. That is where a graph stops being an answer and starts
+     * being a crawl.
      *
      * Everything past the first hop stays in relatedFacts. The distinction
      * between "registered against this flat" and "true of the land it stands
-     * on" is the most consequential one in a Georgian due-diligence report,
-     * and it is preserved by construction rather than by remembering to.
+     * on, or the company that built it" is the most consequential one in a
+     * Georgian due-diligence report, and it is preserved by construction
+     * rather than by remembering to.
      */
+    const MAX_HOPS = 3;
     const relatedEntities: KnownIntelligence['relatedEntities'] = [];
     const visited = new Set<string>([entity.id]);
     let frontier = [entity.id];
 
-    for (let hop = 0; hop < 2 && frontier.length; hop++) {
+    for (let hop = 0; hop < MAX_HOPS && frontier.length; hop++) {
       const { data: edges } = await db
         .from('intelligence_relationships')
         .select('to_entity_id, relation')
@@ -539,7 +544,7 @@ export async function loadKnownIntelligence(
     if (relatedEntities.length) {
       const { data: rf } = await db
         .from('intelligence_facts')
-        .select('entity_id, fact_key, status, last_verified_at, freshness_class, content_hash, source_ref')
+        .select('entity_id, fact_key, value_text, value_number, value_json, status, last_verified_at, freshness_class, content_hash, source_ref')
         .in('entity_id', relatedEntities.map((r) => r.id))
         .eq('status', 'CURRENT');
       relatedFacts = (rf ?? []) as KnownFact[];

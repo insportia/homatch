@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LanguageOverride } from '@/contexts/LanguageContext';
+import { LanguageOverride, useLanguage } from '@/contexts/LanguageContext';
 import { SitePage } from '@/site/render/SitePage';
 import { RTL_LANGUAGES } from '@/types/types';
 import type { Locale, SitePageContent } from '@/site/model';
@@ -67,6 +67,7 @@ export type DeviceKey = typeof DEVICE_WIDTHS[number]['key'];
 function PreviewFrame({
   width, rtl, locale, children,
 }: { width: number | null; rtl: boolean; locale: Locale; children: React.ReactNode }) {
+  const { t } = useLanguage();
   const ref = useRef<HTMLIFrameElement>(null);
   const [body, setBody] = useState<HTMLElement | null>(null);
 
@@ -100,7 +101,7 @@ function PreviewFrame({
   return (
     <iframe
       ref={ref}
-      title="preview"
+      title={t('studio_preview')}
       onLoad={attach}
       className="h-full bg-background shadow-sm ring-1 ring-border"
       style={{ width: width ? `${width}px` : '100%', border: 0 }}

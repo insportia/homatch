@@ -6,6 +6,8 @@ import { harvestReport, normalizeCadastral } from '../../../src/verify/intellige
 import { persistHarvest, loadKnownIntelligence } from '../../../src/verify/intelligence/graphStore.ts';
 import { planVerification } from '../../../src/verify/intelligence/stagePlan.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
+import { buildKnownBrief } from '../../../src/verify/intelligence/knownBrief.ts';
+import { planEscalation, searchBudgetInstruction } from '../../../src/verify/intelligence/escalation.ts';
 import { summariseSources } from '../../../src/verify/intelligence/sourceVersion.ts';
 import {
   consumptionFromUsage,
@@ -1397,14 +1399,95 @@ function formatTasTechnicalFactsForPrompt(facts: AggregatedTasFact[]): string {
   return lines.join('\n');
 }
 
+/*
+ * REUSE, TAKEN AS A SAVING RATHER THAN AS A SKIP.
+ *
+ * The obvious implementation — skip a stage whose facts we already hold —
+ * removes that stage's output from result_json, and the buyer's report is
+ * written from those same fields. The report would quietly lose a section.
+ * Cheaper and worse is not the trade on offer.
+ *
+ * So every stage still runs. What changes is that it is handed what we
+ * already established and told to spend its searches on what is missing. The
+ * report keeps every field it had, because the model restates a known fact
+ * from context instead of paying to find it again.
+ *
+ * The brief carries only facts the PLANNER judged fresh, and never the
+ * registry families at any age — see knownBrief.ts for why.
+ *
+ * VERIFY_REUSE_ROUTING=off turns it back into today's behaviour without a
+ * deploy, because a saving that cannot be switched off is a saving nobody can
+ * investigate.
+ */
+function knownBriefFor(j: any): string {
+  if ((Deno.env.get('VERIFY_REUSE_ROUTING') ?? 'on').toLowerCase() === 'off') return '';
+  const plan = j?.result_json?._reusePlan;
+  if (!plan?.known || !Array.isArray(plan.briefFacts) || !plan.briefFacts.length) return '';
+  try {
+    const brief = buildKnownBrief(plan.briefFacts, plan.assessments ?? []);
+    return brief.text ? `\n${brief.text}\n` : '';
+  } catch {
+    return '';
+  }
+}
+
+/*
+ * HOW HARD THIS STAGE SHOULD WORK.
+ *
+ * A web search is billed per call, and a stage holding nine of its ten facts
+ * has no business running a full discovery sweep to re-find them. The budget
+ * falls with what is known and never reaches zero — "we already know this" and
+ * "do not look" are different instructions, and a contradiction is worth
+ * finding.
+ *
+ * The registry stage is exempt and always works at full effort: throttling it
+ * would throttle exactly the check a buyer is exposed to.
+ */
+function searchBudgetFor(j: any, s: Stage): string {
+  if ((Deno.env.get('VERIFY_REUSE_ROUTING') ?? 'on').toLowerCase() === 'off') return '';
+  const decisions = j?.result_json?._reusePlan?.decisions;
+  if (!Array.isArray(decisions) || !decisions.length) return '';
+  try {
+    const stage = s.toLowerCase();
+    const plan = planEscalation(
+      decisions.map((d: any) => ({
+        stage: d.stage,
+        wouldRun: d.wouldRun,
+        reason: d.reason ?? '',
+        // The stored plan keeps counts rather than keys; the ladder only ever
+        // reads their lengths, so a placeholder array of the right size is
+        // the same input.
+        missing: new Array(Number(d.missing) || 0).fill('?'),
+        stale: new Array(Number(d.stale) || 0).fill('?'),
+        conflicting: new Array(Number(d.conflicting) || 0).fill('?'),
+        reused: new Array(Number(d.reused) || 0).fill('?'),
+      }))
+    );
+    const effort = plan.efforts.find((e: any) => e.stage === stage);
+    return searchBudgetInstruction(effort);
+  } catch {
+    return '';
+  }
+}
+
 function prompt(s: Stage, j: any, p: any, l: string): string {
   const L = LANG[l] || 'English';
   const q = j.query;
   const b = JSON.stringify(p.browserOfficial || {}).slice(0, 24000);
+  /*
+   * Appended to whichever stage prompt is built below. SYNTHESIS is excluded:
+   * it reasons over the evidence this run actually gathered, and handing it a
+   * separate list of remembered facts would be a second, unciteable source.
+   *
+   * The brief is rung 0 of the escalation ladder — what we already know — and
+   * the budget is rung 3, targeted search. The stage still chooses how to
+   * spend what it is given; nothing here forbids a search.
+   */
+  const known = s === 'SYNTHESIS' ? '' : knownBriefFor(j) + searchBudgetFor(j, s);
 
   if (s === 'IDENTITY') {
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}, mode=${j.mode}. Identify the exact entity and evidence-backed expansion terms. ` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}, mode=${j.mode}. Identify the exact entity and evidence-backed expansion terms. ` +
       `ASSET CLASS (v28): from the actual evidence gathered, classify this property's assetClass as one of APARTMENT_IN_PROJECT / PRIVATE_RESALE / PRIVATE_HOUSE / LAND / COMMERCIAL / RENTAL / UNDER_CONSTRUCTION / COMPANY_OWNED / MIXED_OR_UNKNOWN — never assume every property has the same evidence shape (a private resale apartment has no developer/company research to do; a land parcel has no utilities/commissioning; a company-owned unit may). Use MIXED_OR_UNKNOWN rather than guessing when the evidence does not clearly indicate one category. This classification only shapes how deep/which categories of research make sense — it never itself becomes a customer-facing risk statement. ` +
       `Also research the marketed PROJECT/DEVELOPMENT this property likely belongs to (its public name, developer, physical building/complex) as thoroughly as public web evidence allows — this is a separate concept from the bare cadastral/unit identity. ` +
       `For construction/completion, keep THREE separate concepts and never merge them: declaredCompletionTarget (a developer/marketing target date, labeled as declared, never as actual), observedConstructionStatus (what current public evidence — photos, posts, listings — shows about physical progress right now), and commissioningStatus (ONLY "OFFICIALLY_CONFIRMED" with an evidenceUrl when a specific authoritative document/act says the building was put into exploitation — otherwise always "NOT_INDEPENDENTLY_VERIFIED", regardless of how complete the building looks). ` +
@@ -1429,7 +1512,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
       ? `TAS/OFFICIAL DOCUMENT TECHNICAL FACTS — PRIMARY SOURCE (mandatory priority rule): the following values were extracted deterministically, in code, directly from the official documents' own text this run. Treat every one of these as ALREADY CONFIRMED — they take priority over anything else you find or infer for the same field, including your own general knowledge or any public-web lead. Weave the relevant ones into officialEvidence/documents[].facts in natural prose (never dump the raw "key=value" form verbatim into your output), and never contradict or "correct" one of these values.\n${formatTasTechnicalFactsForPrompt(tasFacts)}\n`
       : '';
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}.\n` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}.\n` +
       `INTERNAL GROUND TRUTH (for your reasoning only — never mention this line, its states, or its existence to the customer in any form): ${statusLine}.\n` +
       `A source counts as directly, officially checked ONLY when its state above is SEARCH_CONFIRMED or NO_RESULT_CONFIRMED. NO_RESULT_CONFIRMED is evidence ONLY that this one exact verified search returned no matching record on that specific source — NEVER evidence that the underlying property/record/company does not exist at all. Every other state means that source was NOT verified this run — for such a source you must simply not state a finding from it (positive or negative); do not explain why, do not name the state, do not describe any attempt.${trav}\n` +
       `Note on sources: MY.GOV.GE service 176 (naprweb.reestri.gov.ge) and NAPR are the SAME registry — never present them as two independent sources.${histNote}\n` +
@@ -1479,7 +1562,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     const scope = publicResearchScope(i.assetClass);
     const scopeNoteLine = scope.scopeNote ? `${scope.scopeNote}\n` : '';
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. Official=${JSON.stringify(o).slice(0, 12000)}.\n` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. Official=${JSON.stringify(o).slice(0, 12000)}.\n` +
       tasFactsNote +
       scopeNoteLine +
       `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${scope.targets.join(', ')}.\n` +
@@ -1502,7 +1585,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
 
   if (s === 'MARKET') {
     return (
-      `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
       // SEARCH THE WHOLE HIERARCHY, NOT JUST THE BUILDING.
       // A live report compared five units in one project to each other and
       // stopped. That answers "what do flats in this building cost", not
@@ -3798,20 +3881,52 @@ async function shadowReusePlan(db: any, query: string): Promise<any | null> {
       (assetClassFact as any)?.value_text ?? null
     );
 
+    /*
+     * The facts themselves travel with the plan, and so does the planner's
+     * own verdict on each. One source of truth about what is fresh: a brief
+     * that decided freshness for itself would be a second, and the two would
+     * drift on the day somebody changed a policy.
+     *
+     * Bounded, because this is written into result_json on every job and the
+     * graph grows without limit — a property with two hundred comparables
+     * must not put two hundred rows into the prompt.
+     */
+    const allFacts = [...known.facts, ...known.relatedFacts];
+    const assessments = plan.decisions.flatMap((d: any) =>
+      d.reused.map((factKey: string) => ({ factKey, state: 'FRESH' }))
+    );
+    const usable = new Set(assessments.map((a: any) => a.factKey));
+    const briefFacts = allFacts
+      .filter((f: any) => usable.has(f.fact_key))
+      .slice(0, 60)
+      .map((f: any) => ({
+        fact_key: f.fact_key,
+        value_text: f.value_text ?? null,
+        value_number: f.value_number ?? null,
+        value_json: f.value_json ?? null,
+      }));
+
     return {
       known: true,
+      briefFacts,
+      assessments,
       heldFacts: known.facts.length,
       relatedFacts: known.relatedFacts.length,
       reusableFacts: plan.reusableFacts,
       requiredFacts: plan.requiredFacts,
       wouldSkip: plan.wouldSkip,
       summary: plan.summary,
+      escalation: (() => {
+        const e = planEscalation(plan.decisions);
+        return { totalBudget: e.totalBudget, fullBudget: e.fullBudget, summary: e.summary };
+      })(),
       decisions: plan.decisions.map((d: any) => ({
         stage: d.stage,
         wouldRun: d.wouldRun,
         reason: d.reason,
         missing: d.missing.length,
         stale: d.stale.length,
+        conflicting: d.conflicting.length,
         reused: d.reused.length,
       })),
     };

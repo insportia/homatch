@@ -177,10 +177,30 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     });
 
     await page.goto(`${BASE}${route.path}`, { waitUntil: 'domcontentloaded' });
-    // Give the app a moment to mount and settle its first data pass.
-    await page.waitForTimeout(1200);
 
-    const result = await page.evaluate((vw) => {
+    /*
+     * WAIT FOR THE APP, THEN FOR THE ANSWER TO STOP CHANGING.
+     *
+     * `domcontentloaded` fires before React has mounted anything, so what
+     * follows used to be a flat 1200ms and a single measurement. Wall clock
+     * is not a fixed amount of WORK: nine browser test files run in parallel
+     * on one machine, and under that load the sample could land mid-mount --
+     * where a tree that is half laid out is legitimately wider than the
+     * settled one. That produced a failure that could not be reproduced on
+     * its own and passed four runs in a row, which is the worst kind: it
+     * teaches everyone to re-run the gate instead of reading it.
+     *
+     * Measuring until two consecutive samples agree removes the guess. A
+     * layout that is stably broken fails exactly as it did before; one that
+     * never settles is REPORTED as never settling, rather than passing on
+     * whichever frame happened to be sampled.
+     */
+    await page.waitForFunction(
+      () => document.body.innerText.trim().length > 0,
+      null, { timeout: 20000 },
+    ).catch(() => { /* an empty page is a real result: `mounted` reports it */ });
+
+    const sample = (vw) => {
       const de = document.documentElement;
       const offenders = [];
       for (const el of document.querySelectorAll('body *')) {
@@ -200,7 +220,18 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
         clientWidth: de.clientWidth,
         offenders: offenders.slice(0, 4),
       };
-    }, width);
+    };
+
+    let previous = null;
+    let result = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const now = await page.evaluate(sample, width);
+      const shape = JSON.stringify([now.mounted, now.scrollWidth, now.clientWidth, now.offenders]);
+      if (previous === shape) { result = { ...now, settled: true }; break; }
+      previous = shape;
+      result = { ...now, settled: false };
+      await page.waitForTimeout(500);
+    }
 
     await ctx.close();
     return result;
@@ -215,6 +246,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     const r = await measure(route, 320, 'ka');
     checked.push(`${route.path}@320/ka`);
     if (!r.mounted) { failures.push(`${route.name} (${route.path}) @320 ka: rendered nothing`); continue; }
+    if (!r.settled) { failures.push(`${route.name} (${route.path}) @320 ka: layout never settled`); continue; }
     if (r.scrollWidth > r.clientWidth + 1 || r.offenders.length) {
       failures.push(`${route.name} (${route.path}) @320 ka: scrollWidth=${r.scrollWidth} clientWidth=${r.clientWidth}\n    ${r.offenders.join('\n    ')}`);
     }
@@ -226,6 +258,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     for (const width of WIDTHS.filter((w) => w !== 320)) {
       const r = await measure(route, width, 'en');
       checked.push(`${route.path}@${width}/en`);
+      if (!r.settled) { failures.push(`${route.name} (${route.path}) @${width} en: layout never settled`); continue; }
       if (r.scrollWidth > r.clientWidth + 1 || r.offenders.length) {
         failures.push(`${route.name} (${route.path}) @${width} en: scrollWidth=${r.scrollWidth}\n    ${r.offenders.join('\n    ')}`);
       }
@@ -237,6 +270,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
   for (const route of SPREAD) {
     const r = await measure(route, 390, 'he');
     checked.push(`${route.path}@390/he`);
+    if (!r.settled) { failures.push(`${route.name} (${route.path}) @390 he: layout never settled`); continue; }
     if (r.scrollWidth > r.clientWidth + 1 || r.offenders.length) {
       failures.push(`${route.name} (${route.path}) @390 he (RTL): scrollWidth=${r.scrollWidth}\n    ${r.offenders.join('\n    ')}`);
     }

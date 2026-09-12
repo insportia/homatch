@@ -45,6 +45,32 @@ export interface SectionLink {
 export type SectionTheme = 'light' | 'dark';
 export type SectionSpacing = 'compact' | 'normal' | 'spacious';
 
+/**
+ * One repeated child of a section: a card, a step, a question.
+ *
+ * It carries its own id, and that id is the point. Inline editing
+ * addresses "the body of item card-3 in section features-1", which stays
+ * true when the card is reordered, duplicated, or edited to say something
+ * else. Addressing it by position or by its current text does not.
+ */
+export interface SiteItem {
+  id: string;
+  content: Record<string, LocalizedText>;
+  /**
+   * Translation state for this child, kept ON the child.
+   *
+   * The alternative was to namespace item fields into the section's own i18n
+   * map, under keys like "card-3.title". That map would then need pruning
+   * whenever a card was deleted and rewriting whenever one was duplicated --
+   * two bookkeeping jobs that simply do not exist if the state travels with
+   * the thing it describes.
+   */
+  i18n: Record<string, FieldI18n>;
+  media: Record<string, SectionMedia | null>;
+  /** Icon NAMES from the curated set — never markup. See normalizeItem. */
+  icons: Record<string, string>;
+}
+
 export interface SiteSection {
   /** Stable across reorders and versions. */
   id: string;
@@ -61,6 +87,17 @@ export interface SiteSection {
   i18n: Record<string, FieldI18n>;
   media: Record<string, SectionMedia | null>;
   links: Record<string, SectionLink>;
+  /**
+   * Icon choices, by slot. A NAME from the curated set, not markup.
+   *
+   * That is the safety argument for letting an admin change an icon at
+   * all: an icon slot cannot hold an <svg onload=...> because it does not
+   * hold markup. A name the code does not recognise falls back to the
+   * icon the section ships.
+   */
+  icons: Record<string, string>;
+  /** Repeated children, in the order they render. */
+  items: SiteItem[];
 }
 
 export interface SitePageSeo {
@@ -95,7 +132,7 @@ export function emptySeo(): SitePageSeo {
 export function makeSection(type: string, id: string, variant = 'default'): SiteSection {
   return {
     id, type, enabled: true, variant, theme: null, spacing: 'normal',
-    content: {}, i18n: {}, media: {}, links: {},
+    content: {}, i18n: {}, media: {}, links: {}, icons: {}, items: [],
   };
 }
 
@@ -123,12 +160,12 @@ export function setLocalized(current: LocalizedText | undefined, locale: Locale,
   return next;
 }
 
-export function setSectionField(
-  section: SiteSection, field: string, locale: Locale, value: string,
-): SiteSection {
+export function setSectionField<T extends FieldHost>(
+  host: T, field: string, locale: Locale, value: string,
+): T {
   return {
-    ...section,
-    content: { ...section.content, [field]: setLocalized(section.content[field], locale, value) },
+    ...host,
+    content: { ...host.content, [field]: setLocalized(host.content[field], locale, value) },
   };
 }
 
@@ -200,14 +237,34 @@ export function emptyFieldI18n(): FieldI18n {
   return { state: {}, suggestion: {} };
 }
 
-function fieldI18nOf(section: SiteSection, field: string): FieldI18n {
-  const existing = section.i18n?.[field];
+/**
+ * ANYTHING THAT HOLDS TRANSLATABLE FIELDS.
+ *
+ * A section holds them. So does each repeated child of a section -- a card, a
+ * step, a question. Both need the same rules: an edit touches one locale, the
+ * others are flagged rather than changed, a machine suggestion sits beside the
+ * approved value instead of replacing it, and automatic translation refuses to
+ * overwrite what a person reviewed.
+ *
+ * Those rules are written once, below, against this shape. The generic
+ * parameter is what keeps them ONE implementation rather than two: a card that
+ * translated by slightly different rules from the section around it is exactly
+ * the kind of divergence nobody notices until a published page is half in the
+ * wrong language.
+ */
+export interface FieldHost {
+  content: Record<string, LocalizedText>;
+  i18n: Record<string, FieldI18n>;
+}
+
+function fieldI18nOf(host: FieldHost, field: string): FieldI18n {
+  const existing = host.i18n?.[field];
   return existing ? { ...existing, state: { ...existing.state }, suggestion: { ...existing.suggestion } }
     : emptyFieldI18n();
 }
 
-function withFieldI18n(section: SiteSection, field: string, meta: FieldI18n): SiteSection {
-  return { ...section, i18n: { ...section.i18n, [field]: meta } };
+function withFieldI18n<T extends FieldHost>(host: T, field: string, meta: FieldI18n): T {
+  return { ...host, i18n: { ...host.i18n, [field]: meta } };
 }
 
 /**
@@ -217,17 +274,17 @@ function withFieldI18n(section: SiteSection, field: string, meta: FieldI18n): Si
  * showing the site's own reviewed copy, so it is `current`, not "missing".
  */
 export function localeState(
-  section: SiteSection, field: string, locale: Locale,
+  host: FieldHost, field: string, locale: Locale,
 ): LocaleState {
-  const stored = section.i18n?.[field]?.state?.[locale];
+  const stored = host.i18n?.[field]?.state?.[locale];
   if (stored) return stored;
   return 'current';
 }
 
 export function suggestionFor(
-  section: SiteSection, field: string, locale: Locale,
+  host: FieldHost, field: string, locale: Locale,
 ): string | undefined {
-  const v = section.i18n?.[field]?.suggestion?.[locale];
+  const v = host.i18n?.[field]?.suggestion?.[locale];
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
 
@@ -242,10 +299,10 @@ export function suggestionFor(
  * A locale with no override is not flagged: there is nothing of the admin's
  * to go stale, and the site default is already correct in that language.
  */
-export function editLocale(
-  section: SiteSection, field: string, locale: Locale, value: string,
-): SiteSection {
-  const next = setSectionField(section, field, locale, value);
+export function editLocale<T extends FieldHost>(
+  host: T, field: string, locale: Locale, value: string,
+): T {
+  const next = setSectionField(host, field, locale, value);
   const meta = fieldI18nOf(next, field);
 
   meta.source = locale;
@@ -270,21 +327,21 @@ export function editLocale(
 }
 
 /** Attach a machine suggestion. Never touches the approved value. */
-export function setSuggestion(
-  section: SiteSection, field: string, locale: Locale, text: string,
-): SiteSection {
-  const meta = fieldI18nOf(section, field);
+export function setSuggestion<T extends FieldHost>(
+  host: T, field: string, locale: Locale, text: string,
+): T {
+  const meta = fieldI18nOf(host, field);
   const trimmed = text.trim();
   if (trimmed === '') {
     delete meta.suggestion[locale];
     if (meta.state[locale] === 'ai_suggested') delete meta.state[locale];
-    return withFieldI18n(section, field, meta);
+    return withFieldI18n(host, field, meta);
   }
   meta.suggestion[locale] = text;
   // A reviewed translation keeps its state: the suggestion sits beside it and
   // the badge must keep saying a human approved what is live.
   if (meta.state[locale] !== 'reviewed') meta.state[locale] = 'ai_suggested';
-  return withFieldI18n(section, field, meta);
+  return withFieldI18n(host, field, meta);
 }
 
 /**
@@ -294,13 +351,13 @@ export function setSuggestion(
  * reviewed locale gets a suggestion instead, so "auto translate everything"
  * still cannot overwrite somebody's approved wording.
  */
-export function applyAutoTranslation(
-  section: SiteSection, field: string, locale: Locale, text: string,
-): SiteSection {
-  if (localeState(section, field, locale) === 'reviewed') {
-    return setSuggestion(section, field, locale, text);
+export function applyAutoTranslation<T extends FieldHost>(
+  host: T, field: string, locale: Locale, text: string,
+): T {
+  if (localeState(host, field, locale) === 'reviewed') {
+    return setSuggestion(host, field, locale, text);
   }
-  const next = setSectionField(section, field, locale, text);
+  const next = setSectionField(host, field, locale, text);
   const meta = fieldI18nOf(next, field);
   meta.state[locale] = 'ai_suggested';
   delete meta.suggestion[locale];
@@ -308,12 +365,12 @@ export function applyAutoTranslation(
 }
 
 /** Approve a suggestion: it becomes the value, and the state becomes human. */
-export function applySuggestion(
-  section: SiteSection, field: string, locale: Locale,
-): SiteSection {
-  const text = suggestionFor(section, field, locale);
-  if (text === undefined) return section;
-  const next = setSectionField(section, field, locale, text);
+export function applySuggestion<T extends FieldHost>(
+  host: T, field: string, locale: Locale,
+): T {
+  const text = suggestionFor(host, field, locale);
+  if (text === undefined) return host;
+  const next = setSectionField(host, field, locale, text);
   const meta = fieldI18nOf(next, field);
   delete meta.suggestion[locale];
   meta.state[locale] = 'reviewed';
@@ -321,27 +378,29 @@ export function applySuggestion(
 }
 
 /** Throw the suggestion away. The approved value is never involved. */
-export function dismissSuggestion(
-  section: SiteSection, field: string, locale: Locale,
-): SiteSection {
-  const meta = fieldI18nOf(section, field);
+export function dismissSuggestion<T extends FieldHost>(
+  host: T, field: string, locale: Locale,
+): T {
+  const meta = fieldI18nOf(host, field);
   delete meta.suggestion[locale];
   if (meta.state[locale] === 'ai_suggested') delete meta.state[locale];
-  return withFieldI18n(section, field, meta);
+  return withFieldI18n(host, field, meta);
 }
 
 /** Mark a locale reviewed without changing its text, for "this is still fine". */
-export function markReviewed(
-  section: SiteSection, field: string, locale: Locale,
-): SiteSection {
-  const meta = fieldI18nOf(section, field);
+export function markReviewed<T extends FieldHost>(
+  host: T, field: string, locale: Locale,
+): T {
+  const meta = fieldI18nOf(host, field);
   meta.state[locale] = 'reviewed';
-  return withFieldI18n(section, field, meta);
+  return withFieldI18n(host, field, meta);
 }
 
 /** Fields and locales that a translate action should act on. */
 export interface TranslationTarget {
   sectionId: string;
+  /** Set when the field belongs to a repeated child rather than the section. */
+  itemId?: string;
   field: string;
   locale: Locale;
   /** The text to translate from. */
@@ -367,15 +426,17 @@ export function translationTargets(
   },
 ): TranslationTarget[] {
   const out: TranslationTarget[] = [];
-  for (const section of page.sections) {
-    if (opts.sectionId && section.id !== opts.sectionId) continue;
-    for (const [field, text] of Object.entries(section.content)) {
+
+  /* One host's fields. A section and each of its children are walked by the
+     same function, so a card cannot be quietly left out of a translate run. */
+  const collect = (host: FieldHost, sectionId: string, itemId?: string) => {
+    for (const [field, text] of Object.entries(host.content)) {
       if (opts.field && field !== opts.field) continue;
       const source = readLocalized(text, opts.sourceLocale);
       if (source === undefined) continue;
       for (const locale of LOCALES) {
         if (locale === opts.sourceLocale) continue;
-        const state = localeState(section, field, locale);
+        const state = localeState(host, field, locale);
         const hasValue = readLocalized(text, locale) !== undefined;
         const stale = state === 'needs_update';
         const missing = !hasValue;
@@ -384,9 +445,15 @@ export function translationTargets(
           (opts.includeMissing === true && missing) ||
           (opts.includeReviewed === true && state === 'reviewed');
         if (!wanted) continue;
-        out.push({ sectionId: section.id, field, locale, source, sourceLocale: opts.sourceLocale });
+        out.push({ sectionId, itemId, field, locale, source, sourceLocale: opts.sourceLocale });
       }
     }
+  };
+
+  for (const section of page.sections) {
+    if (opts.sectionId && section.id !== opts.sectionId) continue;
+    collect(section, section.id);
+    for (const item of section.items) collect(item, section.id, item.id);
   }
   return out;
 }
@@ -397,10 +464,11 @@ export function translationSummary(page: SitePageContent): Record<Locale, {
 }> {
   const base = () => ({ current: 0, needsUpdate: 0, suggested: 0, reviewed: 0 });
   const out = Object.fromEntries(LOCALES.map(l => [l, base()])) as Record<Locale, ReturnType<typeof base>>;
-  for (const section of page.sections) {
-    for (const field of Object.keys(section.content)) {
+
+  const count = (host: FieldHost) => {
+    for (const field of Object.keys(host.content)) {
       for (const locale of LOCALES) {
-        switch (localeState(section, field, locale)) {
+        switch (localeState(host, field, locale)) {
           case 'needs_update': out[locale].needsUpdate += 1; break;
           case 'ai_suggested': out[locale].suggested += 1; break;
           case 'reviewed': out[locale].reviewed += 1; break;
@@ -408,6 +476,13 @@ export function translationSummary(page: SitePageContent): Record<Locale, {
         }
       }
     }
+  };
+
+  for (const section of page.sections) {
+    count(section);
+    // The summary is what tells an admin a language is finished. A page whose
+    // cards were never translated must not be able to report that it is.
+    for (const item of section.items) count(item);
   }
   return out;
 }
@@ -557,6 +632,87 @@ function cleanLocalized(raw: unknown): LocalizedText {
   return out;
 }
 
+/*
+ * THE FOUR CLEANERS.
+ *
+ * A section and each of its children store the same four kinds of thing, so
+ * they are cleaned by the same four functions. That is not tidiness: the
+ * media cleaner is where a javascript: URL stops being an image src, and a
+ * second copy of that check, written later, for children, is precisely the
+ * copy that would be missing a case.
+ */
+
+function cleanContent(raw: unknown): Record<string, LocalizedText> {
+  const out: Record<string, LocalizedText> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const cleaned = cleanLocalized(v);
+    if (Object.keys(cleaned).length) out[k] = cleaned;
+  }
+  return out;
+}
+
+function cleanI18n(raw: unknown): Record<string, FieldI18n> {
+  const out: Record<string, FieldI18n> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const STATES: readonly string[] = ['current', 'needs_update', 'ai_suggested', 'reviewed'];
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== 'object') continue;
+    const m = v as Record<string, unknown>;
+    const meta = emptyFieldI18n();
+    if (typeof m.source === 'string' && (LOCALES as readonly string[]).includes(m.source)) {
+      meta.source = m.source as Locale;
+    }
+    if (m.state && typeof m.state === 'object') {
+      for (const locale of LOCALES) {
+        const st = (m.state as Record<string, unknown>)[locale];
+        if (typeof st === 'string' && STATES.includes(st)) meta.state[locale] = st as LocaleState;
+      }
+    }
+    if (m.suggestion && typeof m.suggestion === 'object') {
+      for (const locale of LOCALES) {
+        const sg = (m.suggestion as Record<string, unknown>)[locale];
+        if (typeof sg === 'string' && sg.length > 0) meta.suggestion[locale] = sg;
+      }
+    }
+    out[k] = meta;
+  }
+  return out;
+}
+
+function cleanMedia(raw: unknown): Record<string, SectionMedia | null> {
+  const out: Record<string, SectionMedia | null> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== 'object') continue;
+    const m = v as Record<string, unknown>;
+    const url = typeof m.url === 'string' ? m.url.trim() : '';
+    // An image or video src is a URL like any other, and a data: or
+    // javascript: src is exactly the injection this function exists to stop.
+    if (!url || UNSAFE_SCHEME.test(url)) continue;
+    out[k] = { url, alt: cleanLocalized(m.alt) };
+  }
+  return out;
+}
+
+/**
+ * Icon choices: a NAME, never markup.
+ *
+ * Length-capped and character-restricted here so that even if a future caller
+ * forgets to check the name against the curated set, what reaches the DOM is
+ * a short identifier rather than an arbitrary string.
+ */
+function cleanIcons(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v !== 'string') continue;
+    const name = v.trim();
+    if (name && name.length <= 48 && /^[A-Za-z0-9-]+$/.test(name)) out[k] = name;
+  }
+  return out;
+}
+
 export function normalizeSection(raw: unknown, rules: NormalizeRules): SiteSection | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -574,52 +730,9 @@ export function normalizeSection(raw: unknown, rules: NormalizeRules): SiteSecti
   const spacing: SectionSpacing =
     r.spacing === 'compact' || r.spacing === 'spacious' ? r.spacing : 'normal';
 
-  const content: Record<string, LocalizedText> = {};
-  if (r.content && typeof r.content === 'object') {
-    for (const [k, v] of Object.entries(r.content as Record<string, unknown>)) {
-      const cleaned = cleanLocalized(v);
-      if (Object.keys(cleaned).length) content[k] = cleaned;
-    }
-  }
-
-  const i18n: Record<string, FieldI18n> = {};
-  if (r.i18n && typeof r.i18n === 'object') {
-    const STATES: readonly string[] = ['current', 'needs_update', 'ai_suggested', 'reviewed'];
-    for (const [k, v] of Object.entries(r.i18n as Record<string, unknown>)) {
-      if (!v || typeof v !== 'object') continue;
-      const m = v as Record<string, unknown>;
-      const meta = emptyFieldI18n();
-      if (typeof m.source === 'string' && (LOCALES as readonly string[]).includes(m.source)) {
-        meta.source = m.source as Locale;
-      }
-      if (m.state && typeof m.state === 'object') {
-        for (const locale of LOCALES) {
-          const st = (m.state as Record<string, unknown>)[locale];
-          if (typeof st === 'string' && STATES.includes(st)) meta.state[locale] = st as LocaleState;
-        }
-      }
-      if (m.suggestion && typeof m.suggestion === 'object') {
-        for (const locale of LOCALES) {
-          const sg = (m.suggestion as Record<string, unknown>)[locale];
-          if (typeof sg === 'string' && sg.length > 0) meta.suggestion[locale] = sg;
-        }
-      }
-      i18n[k] = meta;
-    }
-  }
-
-  const media: Record<string, SectionMedia | null> = {};
-  if (r.media && typeof r.media === 'object') {
-    for (const [k, v] of Object.entries(r.media as Record<string, unknown>)) {
-      if (!v || typeof v !== 'object') continue;
-      const m = v as Record<string, unknown>;
-      const url = typeof m.url === 'string' ? m.url.trim() : '';
-      // An image src is a URL like any other, and a data: or javascript:
-      // src is exactly the injection this whole function exists to stop.
-      if (!url || UNSAFE_SCHEME.test(url)) continue;
-      media[k] = { url, alt: cleanLocalized(m.alt) };
-    }
-  }
+  const content = cleanContent(r.content);
+  const i18n = cleanI18n(r.i18n);
+  const media = cleanMedia(r.media);
 
   const links: Record<string, SectionLink> = {};
   if (r.links && typeof r.links === 'object') {
@@ -633,7 +746,163 @@ export function normalizeSection(raw: unknown, rules: NormalizeRules): SiteSecti
     }
   }
 
-  return { id, type, enabled: r.enabled !== false, variant, theme, spacing, content, i18n, media, links };
+  const icons = cleanIcons(r.icons);
+
+  const items: SiteItem[] = [];
+  if (Array.isArray(r.items)) {
+    for (const raw of r.items) {
+      const item = normalizeItem(raw);
+      if (item) items.push(item);
+    }
+  }
+
+  return {
+    id, type, enabled: r.enabled !== false, variant, theme, spacing,
+    content, i18n, media, links, icons, items,
+  };
+}
+
+/**
+ * One repeated child, cleaned.
+ *
+ * Returns null for anything that is not an object, so a malformed entry
+ * drops out of the list rather than rendering as a blank card.
+ */
+export function normalizeItem(raw: unknown): SiteItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+
+  const id = typeof r.id === 'string' && r.id
+    ? r.id
+    : `item-${Math.random().toString(36).slice(2, 10)}`;
+
+  return {
+    id,
+    content: cleanContent(r.content),
+    i18n: cleanI18n(r.i18n),
+    media: cleanMedia(r.media),
+    icons: cleanIcons(r.icons),
+  };
+}
+
+/** A new, empty repeated child. */
+export function makeItem(id: string): SiteItem {
+  return { id, content: {}, i18n: {}, media: {}, icons: {} };
+}
+
+/**
+ * Apply an operation to ONE child, and leave the rest of the page identical.
+ *
+ * Every item-level edit goes through here, which is why each of them is a
+ * one-liner below. Returning the section unchanged when the operation was a
+ * no-op matters more than it looks: the editor treats a new page object as a
+ * change worth recording, so an edit that changed nothing would otherwise
+ * cost an undo step and mark a clean draft dirty.
+ */
+export function onItem(
+  section: SiteSection, itemId: string, fn: (item: SiteItem) => SiteItem,
+): SiteSection {
+  const at = section.items.findIndex(i => i.id === itemId);
+  if (at < 0) return section;
+  const next = fn(section.items[at]);
+  if (next === section.items[at]) return section;
+  const items = [...section.items];
+  items[at] = next;
+  return { ...section, items };
+}
+
+/**
+ * Move a repeated child within its section.
+ *
+ * Bounds are a no-op rather than a wrap: an editor pressing "up" on the
+ * first card means nothing, and must not mean "send it to the bottom".
+ */
+export function moveItem(section: SiteSection, itemId: string, delta: number): SiteSection {
+  const from = section.items.findIndex(i => i.id === itemId);
+  if (from < 0) return section;
+  const to = from + delta;
+  if (to < 0 || to >= section.items.length) return section;
+  return { ...section, items: reorder(section.items, from, to) };
+}
+
+/** Add a child, at the end or directly after another. */
+export function addItem(section: SiteSection, id: string, afterId?: string): SiteSection {
+  const items = [...section.items];
+  const at = afterId ? items.findIndex(i => i.id === afterId) : -1;
+  const created = makeItem(id);
+  if (at === -1) items.push(created);
+  else items.splice(at + 1, 0, created);
+  return { ...section, items };
+}
+
+/** Remove a child. An unknown id changes nothing. */
+export function removeItem(section: SiteSection, itemId: string): SiteSection {
+  if (!section.items.some(i => i.id === itemId)) return section;
+  return { ...section, items: section.items.filter(i => i.id !== itemId) };
+}
+
+/**
+ * Copy a child, directly below itself.
+ *
+ * Deep-cloned for the same reason a duplicated SECTION is: the localized
+ * strings are nested objects, and a shallow copy would leave two cards
+ * sharing one set of words in six languages.
+ */
+export function duplicateItem(section: SiteSection, itemId: string, newId: string): SiteSection {
+  const at = section.items.findIndex(i => i.id === itemId);
+  if (at < 0) return section;
+  const copy: SiteItem = { ...structuredClone(section.items[at]), id: newId };
+  const items = [...section.items];
+  items.splice(at + 1, 0, copy);
+  return { ...section, items };
+}
+
+/**
+ * A human edit to one locale of one repeated child.
+ *
+ * Deliberately editLocale, not a private copy of it: a card's words are
+ * flagged, sourced and protected from automatic overwriting by exactly the
+ * rules that govern the heading above the card.
+ */
+export function editItemField(
+  section: SiteSection, itemId: string, field: string, locale: Locale, value: string,
+): SiteSection {
+  return onItem(section, itemId, item => editLocale(item, field, locale, value));
+}
+
+/** Set, or clear, one icon slot on a repeated child. */
+export function setItemIcon(
+  section: SiteSection, itemId: string, slot: string, name: string | null,
+): SiteSection {
+  return onItem(section, itemId, item => {
+    const icons = { ...item.icons };
+    if (name === null) delete icons[slot];
+    else icons[slot] = name;
+    return { ...item, icons };
+  });
+}
+
+/** Set, or clear, one icon slot on the section itself. */
+export function setSectionIcon(
+  section: SiteSection, slot: string, name: string | null,
+): SiteSection {
+  const icons = { ...section.icons };
+  if (name === null) delete icons[slot];
+  else icons[slot] = name;
+  return { ...section, icons };
+}
+
+/** Set, or clear, one media slot on a repeated child. */
+export function setItemMedia(
+  section: SiteSection, itemId: string, slot: string,
+  value: SectionMedia | null,
+): SiteSection {
+  return onItem(section, itemId, item => {
+    const media = { ...item.media };
+    if (value === null) delete media[slot];
+    else media[slot] = value;
+    return { ...item, media };
+  });
 }
 
 function normalizeSeo(raw: unknown): SitePageSeo {

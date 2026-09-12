@@ -115,9 +115,6 @@ export function MatchingShowcaseSection() {
               <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-white/55">
                 {t('mp_result_match_why')}
               </p>
-              <span className="rounded-full border border-white/25 px-2.5 py-1 text-[13px] font-semibold uppercase tracking-[0.14em] text-white/70">
-                {t('mp_result_illustrative')}
-              </span>
             </div>
 
             <ul className="mt-5 space-y-4">

@@ -191,40 +191,70 @@ function DocumentPanel({ step }: { step: number }) {
           <FileText className="h-4 w-4 shrink-0 text-gold-ink" strokeWidth={2} aria-hidden="true" />
           <span className="min-w-0 truncate text-[15px] font-medium text-foreground">{t('mp_ci_doc_label')}</span>
         </span>
-        <span className="shrink-0 rounded-full border border-foreground/20 px-2.5 py-1 text-[13px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {t('mp_result_illustrative')}
-        </span>
       </div>
 
-      {/* The page */}
-      <div className="relative space-y-2.5 p-5 sm:p-6" aria-hidden="true">
-        {LINES.map((w, i) => {
-          const isClause = i === CLAUSE;
-          /* Step 0: the page is still arriving, so it is faint.
-             Step 1: it has been read, so every line is solid.
-             Step 2+: the clause is lifted out of the rest. */
-          const read = step >= 1;
-          const lifted = step >= 2 && isClause;
-          return (
-            <span
-              key={i}
-              className={`block h-2.5 rounded-full transition-[background-color,opacity] duration-500 motion-reduce:transition-none ${
-                lifted ? 'bg-gold' : read ? 'bg-foreground/[0.16]' : 'bg-foreground/[0.07]'
-              } ${step >= 2 && !isClause ? 'opacity-45' : 'opacity-100'}`}
-              style={{ width: `${w}%` }}
-            />
-          );
-        })}
+      {/*
+        * THE PAGE, AND THE READING PASS OVER IT.
+        *
+        * The previous version faded each ruled line from 7% to 16% and
+        * called that reading. It is the visual language of a form filling
+        * itself in — untrue about what the extraction does, and cheap to
+        * look at.
+        *
+        * This is a pass instead. A soft band travels down the page while
+        * the document is being read, and the lines sit at their real
+        * weight underneath it rather than brightening one by one. When the
+        * clause is found the band stops, the rest of the page recedes, and
+        * the clause alone is held.
+        *
+        * The band is one CSS animation on one element. It is not driven by
+        * per-line state, so there is nothing to stagger, nothing to get out
+        * of step, and nothing to recalculate on a resize.
+        */}
+      <div className="relative overflow-hidden p-5 sm:p-6" aria-hidden="true">
+        <div className="space-y-2.5">
+          {LINES.map((w, i) => {
+            const isClause = i === CLAUSE;
+            const held = step >= 2 && isClause;
+            const receded = step >= 2 && !isClause;
+            return (
+              <span
+                key={i}
+                className={`block h-2.5 rounded-full transition-[background-color,opacity] duration-500 motion-reduce:transition-none ${
+                  held ? 'bg-gold' : 'bg-foreground/[0.16]'
+                } ${receded ? 'opacity-35' : 'opacity-100'}`}
+                style={{ width: `${w}%` }}
+              />
+            );
+          })}
+        </div>
 
-        {/* The gold rule that marks the clause, once it has been found. */}
+        {/*
+          * The reading pass.
+          *
+          * Present only while the document is actually being read, so it
+          * stops of its own accord rather than looping behind a result
+          * that has already been found. The stylesheet holds the keyframes
+          * and the reduced-motion answer — see index.css, hm-read.
+          */}
+        {step < 2 && (
+          <span className="hm-read pointer-events-none absolute inset-x-0 top-0 h-24" />
+        )}
+
+        {/*
+          * What was found, once it has been.
+          *
+          * A rule around the clause rather than a highlight over it: the
+          * clause is already gold, and stacking a wash on top of it would
+          * make the one line that matters harder to read, not easier.
+          */}
         <span
           className={`pointer-events-none absolute inset-x-4 h-[2.75rem] rounded-[0.5rem] border-2 border-gold transition-opacity duration-500 motion-reduce:transition-none sm:inset-x-5 ${
             step >= 2 ? 'opacity-100' : 'opacity-0'
           }`}
-          style={{ top: `calc(${CLAUSE} * 1.25rem + 0.55rem)` }}
+          style={{ top: `calc(${CLAUSE} * 1.25rem + 1.55rem)` }}
         />
       </div>
-
       {/* What the reading produced */}
       <div className="border-t border-foreground/[0.12] bg-secondary/50 p-5 sm:p-6">
         {step < 2 ? (

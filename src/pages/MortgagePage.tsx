@@ -9,6 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { PageBlocks } from '@/site/render/PageBlocks';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
@@ -619,6 +620,10 @@ export default function MortgagePage() {
         <p className="text-[14px] text-muted-foreground text-center leading-relaxed pb-4">
           {t('mortgage_global_disclaimer')}
         </p>
+
+        {/* Blocks added in Site Studio. Renders nothing until somebody
+            adds one. */}
+        <PageBlocks slug="mortgage" />
       </div>
     </AppLayout>
   );

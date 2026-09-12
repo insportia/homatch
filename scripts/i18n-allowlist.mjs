@@ -58,6 +58,12 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // ar/he all carry their own distinct forms for this key.
   'wallet_bucket_promotional',
   'profile_field_plan', // Turkish "Plan" is a standard loanword
+  // "Video" — Turkish spells the word identically to English. ka/ru/ar/he all
+  // carry their own distinct forms for both keys, so allowlisting the Turkish
+  // case cannot be hiding a gap anywhere else. These are the Site Studio
+  // labels for the video block and its media slot.
+  'studio_sec_video',
+  'studio_m_video',
   'admin_sim_plan', // the same Turkish loanword, in the admin simulator
   'comm_filter_platform',
   'admin_sources_platform',

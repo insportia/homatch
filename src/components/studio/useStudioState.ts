@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
@@ -14,6 +14,10 @@ import {
   setSuggestion, translationTargets,
 } from '@/site/model';
 import { SECTION_DEFS, sectionDef } from '@/site/registry';
+import {
+  type History, canRedo, canUndo, emptyHistory, record as recordStep, redo as redoStep,
+  undo as undoStep,
+} from '@/site/history';
 import { DEFAULT_HOME_ORDER, DEFAULT_ABOUT_ORDER } from '@/site/render/SitePage';
 import { translateBatch, type BatchItem } from '@/site/translate';
 
@@ -53,6 +57,14 @@ export interface StudioState {
 
   draft: SitePageContent;
   dirty: boolean;
+
+  /** Step back and forward through this session's edits. */
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Throw away every unsaved edit and return to the loaded draft. */
+  discard: () => void;
 
   selectedId: string | null;
   select: (id: string | null) => void;
@@ -107,6 +119,60 @@ export function useStudioState(): StudioState {
   const [versions, setVersions] = useState<SiteVersion[]>([]);
   const [draft, setDraft] = useState<SitePageContent>(() => seedPage('home'));
   const [dirty, setDirty] = useState(false);
+
+  /*
+   * UNDO AND REDO.
+   *
+   * Snapshots of the whole page, because an edit replaces the whole page
+   * object anyway. See site/history.ts for why this is not an operation
+   * log: there is no "invert a duplicate" or "invert a locale-scoped
+   * text edit" to get subtly wrong.
+   */
+  const [history, setHistory] = useState<History<SitePageContent>>(emptyHistory);
+
+  /**
+   * The ONE way an edit reaches the draft.
+   *
+   * Every mutation used to call setDraft directly — twelve call sites,
+   * each of which would have had to remember to record a step, and the
+   * thirteenth would not have. Recording here means a new editing action
+   * is undoable by construction rather than by discipline.
+   *
+   * Loading and saving deliberately do NOT come through here: replacing
+   * the page with what the server returned is not a step to step back
+   * through.
+   */
+  const edit = useCallback((fn: (prev: SitePageContent) => SitePageContent) => {
+    setDraft(prev => {
+      const next = fn(prev);
+      // A no-op edit — committing a field to the value it already held —
+      // must not consume an undo step.
+      if (next === prev) return prev;
+      setHistory(h => recordStep(h, prev));
+      setDirty(true);
+      return next;
+    });
+  }, []);
+
+  const undo = useCallback(() => {
+    setDraft(present => {
+      const step = undoStep(historyRef.current, present);
+      if (!step) return present;
+      setHistory(step.history);
+      setDirty(true);
+      return step.present;
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    setDraft(present => {
+      const step = redoStep(historyRef.current, present);
+      if (!step) return present;
+      setHistory(step.history);
+      setDirty(true);
+      return step.present;
+    });
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [locale, setLocale] = useState<Locale>('en');
   const [mode, setMode] = useState<TranslationMode>(DEFAULT_TRANSLATION_MODE);
@@ -157,6 +223,10 @@ export function useStudioState(): StudioState {
 
   /* ── Editing ──────────────────────────────────────────────── */
 
+  /* Read inside the setDraft updater, which cannot close over state. */
+  const historyRef = useRef(history);
+  historyRef.current = history;
+
   const selected = useMemo(
     () => draft.sections.find(s => s.id === selectedId) ?? null,
     [draft.sections, selectedId],
@@ -164,12 +234,11 @@ export function useStudioState(): StudioState {
 
   /** Replace one section, leaving the rest of the page identical. */
   const patch = useCallback((id: string, fn: (s: SiteSection) => SiteSection) => {
-    setDraft(prev => ({
+    edit(prev => ({
       ...prev,
       sections: prev.sections.map(s => (s.id === id ? fn(s) : s)),
     }));
-    setDirty(true);
-  }, []);
+  }, [edit]);
 
   const editField = useCallback((field: string, value: string) => {
     if (!selectedId) return;
@@ -232,7 +301,7 @@ export function useStudioState(): StudioState {
   const setEnabled = useCallback((enabled: boolean, id?: string) => {
     const target = id ?? selectedId;
     if (!target) return;
-    setDraft(prev => setSectionEnabled(prev, target, enabled));
+    edit(prev => setSectionEnabled(prev, target, enabled));
     setDirty(true);
   }, [selectedId]);
 
@@ -258,7 +327,7 @@ export function useStudioState(): StudioState {
   }, [selectedId, locale, patch]);
 
   const move = useCallback((id: string, delta: number) => {
-    setDraft(prev => moveSection(prev, id, delta));
+    edit(prev => moveSection(prev, id, delta));
     setDirty(true);
   }, []);
 
@@ -273,7 +342,7 @@ export function useStudioState(): StudioState {
     const def = sectionDef(type);
     if (!def || !def.repeatable) return;
     const id = `${type}-${crypto.randomUUID().slice(0, 8)}`;
-    setDraft(prev => insertSectionAfter(prev, type, id, afterId));
+    edit(prev => insertSectionAfter(prev, type, id, afterId));
     setDirty(true);
     setSelectedId(id);
   }, []);
@@ -290,7 +359,7 @@ export function useStudioState(): StudioState {
    * supports.
    */
   const duplicateSection = useCallback((id: string) => {
-    setDraft(prev => {
+    edit(prev => {
       const source = prev.sections.find(x => x.id === id);
       // Same rule as delete: only the block that can genuinely repeat.
       if (!source || !sectionDef(source.type)?.repeatable) return prev;
@@ -305,13 +374,13 @@ export function useStudioState(): StudioState {
     // region of the shipped design, and the honest control for it is "hide",
     // which is reversible and which the code still renders by default.
     if (!section || !sectionDef(section.type)?.repeatable) return;
-    setDraft(prev => ({ ...prev, sections: prev.sections.filter(s => s.id !== id) }));
+    edit(prev => ({ ...prev, sections: prev.sections.filter(s => s.id !== id) }));
     setDirty(true);
     setSelectedId(null);
   }, [draft.sections]);
 
   const setSeo = useCallback((p: Partial<SitePageContent['seo']>) => {
-    setDraft(prev => ({ ...prev, seo: { ...prev.seo, ...p } }));
+    edit(prev => ({ ...prev, seo: { ...prev.seo, ...p } }));
     setDirty(true);
   }, []);
 
@@ -381,7 +450,10 @@ export function useStudioState(): StudioState {
       return;
     }
 
-    setDraft(prev => ({
+    /* A translation run is one undoable step: it can rewrite every
+       locale of every field, which is exactly the change somebody is
+       most likely to want back in one press. */
+    edit(prev => ({
       ...prev,
       sections: prev.sections.map(section => {
         let next = section;
@@ -410,6 +482,21 @@ export function useStudioState(): StudioState {
     else toast.error(t('studio_error'));
     return false;
   }
+
+  /**
+   * Throw the session away.
+   *
+   * Back to what the server last gave us, which is what `save` would
+   * otherwise have to be undone repeatedly to reach. History is cleared
+   * with it: stepping back INTO discarded work would make discard a lie.
+   */
+  const discard = useCallback(() => {
+    const base = record?.draft;
+    setDraft(base && base.sections.length > 0 ? base : seedPage(slug));
+    setHistory(emptyHistory());
+    setDirty(false);
+    setSelectedId(null);
+  }, [record, slug]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -469,7 +556,8 @@ export function useStudioState(): StudioState {
 
   return {
     slug, setSlug, loading, unavailable, record, versions,
-    draft, dirty, selectedId, select: setSelectedId, selected,
+    draft, dirty,
+    undo, redo, canUndo: canUndo(history), canRedo: canRedo(history), discard, selectedId, select: setSelectedId, selected,
     locale, setLocale, mode, setMode,
     editField,
     editSectionField, setVariant, setTheme, setSpacing, setEnabled, setMedia,

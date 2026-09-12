@@ -1,5 +1,8 @@
 import React from 'react';
-import { Languages, Loader2, Monitor, MousePointerClick, Save, Send, Smartphone, Tablet } from 'lucide-react';
+import {
+  Languages, Loader2, Monitor, MousePointerClick, Redo2, RotateCcw, Save, Send,
+  Smartphone, Tablet, Undo2,
+} from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +40,7 @@ export function StudioToolbar({
   const { t } = useLanguage();
   const {
     slug, setSlug, locale, setLocale, mode, setMode, dirty, saving,
+    undo, redo, canUndo, canRedo, discard,
     save, publish, unavailable, translating, translateProgress, runTranslation,
   } = studio;
 
@@ -93,6 +97,46 @@ export function StudioToolbar({
 
       {/* Click-to-edit is a mode, not the default: an admin reviewing the
           page should be able to click a link and follow it. */}
+      {/*
+        * UNDO AND REDO.
+        *
+        * First in the utility run, because they are the answer to
+        * "I did not mean that" and somebody looking for that answer
+        * should not have to read the rest of the bar first.
+        */}
+      <div className="flex items-center rounded-md border">
+        <Button
+          variant="ghost" size="sm" className="h-8 w-8 rounded-e-none p-0"
+          onClick={undo}
+          disabled={!canUndo}
+          title={t('studio_undo')}
+          aria-label={t('studio_undo')}
+        >
+          <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
+        </Button>
+        <Button
+          variant="ghost" size="sm" className="h-8 w-8 rounded-s-none border-s p-0"
+          onClick={redo}
+          disabled={!canRedo}
+          title={t('studio_redo')}
+          aria-label={t('studio_redo')}
+        >
+          <Redo2 className="h-3.5 w-3.5" aria-hidden="true" />
+        </Button>
+      </div>
+
+      {/* Only offered when there is something to throw away. */}
+      {dirty && (
+        <Button
+          variant="ghost" size="sm" className="h-8 gap-1.5 text-[14px] text-muted-foreground"
+          onClick={discard}
+          title={t('studio_discard_hint')}
+        >
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+          {t('studio_discard')}
+        </Button>
+      )}
+
       <Button
         variant={inlineEdit ? 'default' : 'outline'}
         size="sm"

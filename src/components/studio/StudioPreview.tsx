@@ -123,6 +123,36 @@ function PreviewFrame({
       doc.addEventListener('submit', (e) => e.preventDefault(), true);
     }
 
+    /*
+     * KEYSTROKES OUT OF THE FRAME.
+     *
+     * The caret lives in the preview document, which is a separate
+     * document: its key events reach that document and stop. So Ctrl+Z
+     * pressed while looking at the page did nothing at all, because the
+     * editor's own listener is on the editor's document.
+     *
+     * Re-dispatching a copy lets one handler serve both, and the copy
+     * carries the flags the intent is read from. Registered once,
+     * alongside the stylesheets.
+     */
+    if (!doc.body.dataset.studioKeyBridge) {
+      doc.body.dataset.studioKeyBridge = 'on';
+      doc.addEventListener('keydown', (e) => {
+        const mod = e.ctrlKey || e.metaKey;
+        if (!mod) return;
+        const key = e.key.toLowerCase();
+        if (key !== 'z' && key !== 'y') return;
+        // An editable field owns its own undo: mid-word, Ctrl+Z should
+        // take back the word rather than the last committed edit.
+        const el = e.target as HTMLElement | null;
+        if (el?.isContentEditable) return;
+        e.preventDefault();
+        window.parent?.document.dispatchEvent(new KeyboardEvent('keydown', {
+          key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey,
+        }));
+      });
+    }
+
     setBody(doc.body);
     /*
      * Tells the preview document whether it is being edited.

@@ -32,7 +32,7 @@ const STATUS_STYLES: Record<OutreachCampaignStatus, string> = {
 export default function EmailCampaignsPage() {
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
-  const { status: providerStatus } = useOutreachProviderStatus();
+  const { status: providerStatus, loading: providerLoading } = useOutreachProviderStatus();
   const [campaigns, setCampaigns] = useState<OutreachCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -164,15 +164,20 @@ export default function EmailCampaignsPage() {
             </Button>
           </div>
 
-          <Alert variant={providerStatus?.email.real ? 'default' : undefined} className={providerStatus?.email.real ? 'border-green-500/40 bg-green-500/5' : ''}>
+          <Alert variant={providerStatus?.email?.real ? 'default' : undefined} className={providerStatus?.email?.real ? 'border-green-500/40 bg-green-500/5' : ''}>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-xs">
-              {!providerStatus
+              {/* "Checking" is only true while the request is in flight.
+                  A finished request that could not tell us is UNKNOWN, and
+                  the honest answer to unknown is the conservative one — the
+                  same message a disabled channel shows. It used to sit on
+                  "checking…" forever instead. */}
+              {providerLoading
                 ? t('outreach_status_checking')
-                : providerStatus.kill_switch
+                : providerStatus?.kill_switch
                 ? t('outreach_status_kill_switch')
-                : providerStatus.email.real
-                ? t('email_sending_real', { provider: providerStatus.email.provider })
+                : providerStatus?.email?.real
+                ? t('email_sending_real', { provider: providerStatus?.email?.provider })
                 : t('email_sending_disabled')}
             </AlertDescription>
           </Alert>

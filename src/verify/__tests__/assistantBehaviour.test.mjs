@@ -53,15 +53,27 @@ test('an unrelated question is redirected, not refused and not answered', () => 
 /* ── offering the product ────────────────────────────────────────────── */
 
 test('Verify is offered when it would help, and described as what it is', () => {
+  /*
+   * This used to read the 'OFFERING VERIFY' section. That section became
+   * the full service list when the assistant was taught about Contract
+   * Intelligence, finding buyers, Mortgage and outreach. The heading moved;
+   * the three properties it was actually guarding did not, so they are
+   * asserted against the new text rather than against the old wording.
+   */
   const src = ai();
-  const i = src.indexOf('OFFERING VERIFY');
-  assert.ok(i > 0, 'the assistant is never told what Verify is');
-  const rule = src.slice(i, i + 700);
-  assert.match(rule, /ONE specific property rather than general advice/);
+  const i = src.indexOf('WHAT HOMATCH CAN ACTUALLY DO FOR THEM');
+  assert.ok(i > 0, 'the assistant is never told what its own products are');
+  const rule = src.slice(i, i + 2600);
+
+  // 1. Verify is still described as what it is, not as a lookup form.
+  assert.match(rule, /deep research on ONE specific property/);
   assert.match(rule, /official registries and public sources/);
-  // The failure mode of any in-product offer.
-  assert.match(rule, /Do not pitch it, do not repeat it once said/);
-  assert.match(rule, /never offer it as a substitute for answering the question you were asked/);
+
+  // 2. An offer is never a substitute for the answer.
+  assert.match(rule, /never a substitute for one and never the point of it/);
+
+  // 3. Saying it once is enough. Repetition is pressure, not help.
+  assert.match(rule, /Do not mention the same one again in the next turn/);
 });
 
 /* ── the customer's own research ─────────────────────────────────────── */

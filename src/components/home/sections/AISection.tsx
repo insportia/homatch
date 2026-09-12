@@ -7,7 +7,7 @@ import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { IntentCards } from '@/components/home/IntentCards';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField } from '@/site/content';
+import { useSectionField, useFieldProps } from '@/site/content';
 
 /**
  * REGION 09 — Homatch AI.
@@ -28,6 +28,7 @@ import { useSectionField } from '@/site/content';
  */
 export function AISection() {
   const sf = useSectionField();
+  const fp = useFieldProps();
   const { t } = useLanguage();
 
   const reach = [
@@ -45,7 +46,7 @@ export function AISection() {
     <section id="how" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
       <div className="flex items-center gap-3.5">
         <FeatureGlyph name="ai" size={48} className="sm:h-14 sm:w-14" />
-        <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+        <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
           {sf('eyebrow', 'mp_flow_eyebrow')}
         </p>
       </div>
@@ -54,10 +55,10 @@ export function AISection() {
         <h2
           className="max-w-[34rem] text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground"
           style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
-        >
+         {...fp('title')}>
           {sf('title', 'mp_flow_title')}
         </h2>
-        <p className="text-pretty text-[16px] leading-[1.65] text-ink-soft sm:text-base sm:leading-[1.7]">
+        <p className="text-pretty text-[16px] leading-[1.65] text-ink-soft sm:text-base sm:leading-[1.7]" {...fp('body')}>
           {sf('body', 'mp_flow_sub')}
         </p>
       </div>

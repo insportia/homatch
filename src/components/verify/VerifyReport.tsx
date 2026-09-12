@@ -448,7 +448,7 @@ const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ sum
   return (
     <header className="rounded-2xl border border-border bg-card/50 p-5 sm:p-6 space-y-5">
       <div className="space-y-2">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <p className="text-2xs uppercase tracking-wider text-muted-foreground">
           {t('verify_ir_summary_title')}
         </p>
         <p className="text-xl sm:text-2xl font-semibold leading-tight break-words">
@@ -469,7 +469,7 @@ const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ sum
               <div key={i} className={`rounded-lg border border-border border-s-2 ${st.edge} bg-background/50 p-3 min-w-0`}>
                 <div className="flex items-center gap-2">
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${st.dot}`} aria-hidden="true" />
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground break-words">
+                  <p className="text-2xs uppercase tracking-wide text-muted-foreground break-words">
                     {t(`verify_dim_${String(h.dimension || '').toLowerCase()}`)}
                   </p>
                 </div>
@@ -534,7 +534,7 @@ const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ me
   <div className="flex flex-wrap gap-2">
     {metrics.slice(0, 4).map((m, i) => (
       <div key={i} className="rounded-lg border border-border bg-muted/40 px-3 py-1.5 min-w-0">
-        <span className="block text-[10px] uppercase tracking-wide text-muted-foreground break-words">
+        <span className="block text-2xs uppercase tracking-wide text-muted-foreground break-words">
           {clean(m.label)}
         </span>
         <span className="block text-sm font-semibold tabular-nums break-words">{clean(m.value)}</span>
@@ -594,7 +594,7 @@ const CompanyGraph: React.FC<{ people: PersonBlock[]; owner?: string }> = ({ peo
       ) : null}
       {historical.length ? (
         <div className="ps-4 space-y-1">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs uppercase tracking-wide text-muted-foreground">
             {t('verify_ir_people_historical')}
           </p>
           <div className="border-s border-dashed border-border ps-3 divide-y divide-border/40">
@@ -638,7 +638,7 @@ const Snapshot: React.FC<{ s: PropertySnapshot }> = ({ s }) => {
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
         {rows.map(([k, v]) => (
           <div key={k} className="min-w-0">
-            <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{t(k)}</dt>
+            <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{t(k)}</dt>
             <dd className="text-sm break-words">{readable(v as string)}</dd>
           </div>
         ))}
@@ -724,7 +724,7 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
 
       {l.profile ? (
         <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs uppercase tracking-wide text-muted-foreground">
             {t('verify_area_context_label')}
           </p>
           <p className="text-sm leading-6 break-words">{readable(l.profile.character)}</p>
@@ -782,7 +782,7 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
         ) : null}
       </div>
 
-      <div className="flex justify-between text-[11px] text-muted-foreground">
+      <div className="flex justify-between text-2xs text-muted-foreground">
         <span>{m.min.toLocaleString()}</span>
         <span>{t('verify_ir_market_median')} {m.median.toLocaleString()}</span>
         <span>{m.max.toLocaleString()}</span>
@@ -805,7 +805,7 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
         <dl className="divide-y divide-border/60 border-t border-border/60 pt-1">
           {m.tiers.map((tr) => (
             <div key={tr.tier} className="flex items-baseline justify-between gap-3 py-1.5 min-w-0">
-              <dt className="text-[11px] text-muted-foreground break-words min-w-0">
+              <dt className="text-2xs text-muted-foreground break-words min-w-0">
                 {t(`verify_mkt_${tr.tier.toLowerCase()}`)}
                 <span className="ms-1 opacity-70">
                   {tr.count} {t('verify_mkt_listings')}
@@ -831,7 +831,7 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
       ) : null}
 
       {m.basisIsThin ? (
-        <p className="text-[11px] leading-5 text-muted-foreground break-words">
+        <p className="text-2xs leading-5 text-muted-foreground break-words">
           {t('verify_mkt_thin_note')}
         </p>
       ) : null}
@@ -845,7 +845,7 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
           {m.qualityFactors.map((q, i) => (
             <span
               key={i}
-              className={`rounded-full border px-2 py-0.5 text-[11px] break-words ${
+              className={`rounded-full border px-2 py-0.5 text-2xs break-words ${
                 q.direction === 'SUPPORTS_PREMIUM'
                   ? 'border-border text-foreground/80'
                   : 'border-dashed border-border text-muted-foreground'

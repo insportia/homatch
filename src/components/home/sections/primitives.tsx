@@ -48,9 +48,22 @@ export const SECTION_Y = 'py-14 sm:py-20 lg:py-28';
  * 2.6:1 on warm-white, which is unreadable at 11px. The decorative gold is
  * reserved for rules, icons and dark surfaces, where it clears 6.9:1.
  */
-export function Eyebrow({ children, tone = 'dark' }: { children: React.ReactNode; tone?: 'dark' | 'light' }) {
+/**
+ * The small label above a heading.
+ *
+ * `rest` is forwarded onto the paragraph so a caller can spread the Studio
+ * field mark onto it. Without that, an eyebrow rendered through this
+ * component would be the one piece of copy on the page that inline editing
+ * could not see — the attributes would be accepted and silently dropped.
+ */
+export function Eyebrow({
+  children, tone = 'dark', ...rest
+}: { children: React.ReactNode; tone?: 'dark' | 'light' } & React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={`text-[14px] font-semibold uppercase tracking-[0.22em] ${tone === 'light' ? 'text-gold' : 'text-gold-ink'}`}>
+    <p
+      className={`text-[14px] font-semibold uppercase tracking-[0.22em] ${tone === 'light' ? 'text-gold' : 'text-gold-ink'}`}
+      {...rest}
+    >
       {children}
     </p>
   );

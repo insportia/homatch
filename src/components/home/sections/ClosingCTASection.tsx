@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
-import { useSectionField, useSectionMedia } from '@/site/content';
+import { useSectionField, useSectionMedia, useFieldProps , useIsEditing , useMediaProps} from '@/site/content';
 
 /**
  * REGION 11 — the closing image.
@@ -18,13 +18,16 @@ import { useSectionField, useSectionMedia } from '@/site/content';
 export function ClosingCTASection() {
   const photo = useSectionMedia()('photo');
   const sf = useSectionField();
+  const fp = useFieldProps();
+  const mp = useMediaProps();
+  const editing = useIsEditing();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
   return (
     <section className="relative isolate overflow-hidden">
-      <div className="absolute inset-0 saturate-[0.45]" aria-hidden="true">
+      <div className="absolute inset-0 saturate-[0.45]" aria-hidden="true" {...mp('photo')}>
         <SceneMedia
           scene="closing"
           alt={photo?.alt ?? ''}
@@ -44,10 +47,10 @@ export function ClosingCTASection() {
         <h2
           className="max-w-[36rem] text-balance font-semibold leading-[1.06] tracking-[-0.025em] text-white"
           style={{ fontSize: 'clamp(1.55rem, 6vw, 3.15rem)' }}
-        >
+         {...fp('title')}>
           {sf('title', 'mp_cta_title')}
         </h2>
-        <p className="mt-5 max-w-[36rem] text-pretty text-[17px] leading-relaxed text-white/85 sm:text-base">
+        <p className="mt-5 max-w-[36rem] text-pretty text-[17px] leading-relaxed text-white/85 sm:text-base" {...fp('body')}>
           {sf('body', 'mp_cta_body')}
         </p>
 
@@ -56,7 +59,17 @@ export function ClosingCTASection() {
             className="h-[3.25rem] gap-2.5 rounded-full bg-gold px-8 text-[17px] font-semibold text-[#0D0D0D] hover:bg-white"
             onClick={() => navigate(session ? '/dashboard' : '/auth/signup')}
           >
-            {session ? t('nav_dashboard') : sf('cta', 'mp_cta_primary')}
+            {/*
+              * In the editor the STORED label is always what shows.
+              *
+              * On the live site a signed-in visitor sees "Dashboard" instead
+              * of the call to action, which is right for them and wrong for
+              * an admin: they are signed in by definition, so the one label
+              * they can never see is the one they are trying to edit.
+              */}
+            <span {...fp('cta')}>
+              {session && !editing ? t('nav_dashboard') : sf('cta', 'mp_cta_primary')}
+            </span>
             <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
           </Button>
           <Button
@@ -64,7 +77,7 @@ export function ClosingCTASection() {
             className="h-[3.25rem] rounded-full border-white/30 bg-transparent px-8 text-[17px] text-white hover:bg-white/10 hover:text-white"
             onClick={() => navigate('/verify')}
           >
-            {t('mp_verify_capability_cta')}
+            <span {...fp('cta_secondary')}>{sf('cta_secondary', 'mp_verify_capability_cta')}</span>
           </Button>
         </div>
       </div>

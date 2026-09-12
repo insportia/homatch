@@ -206,7 +206,16 @@ export const DocumentReader: React.FC<{
   onOpenChange: (v: boolean) => void;
   /** Where this document contributed to the verification (§21). */
   usedInVerification?: boolean;
-}> = ({ doc, open, onOpenChange, usedInVerification }) => {
+  /**
+   * 'sheet'  the original right-hand drawer. Still correct on a phone,
+   *          where a full-screen overlay IS the reading surface.
+   * 'inline' the same body rendered as the centre pane of the workspace.
+   *          On a laptop a contract is the thing you came to read, and a
+   *          drawer hanging off the right edge makes it a footnote to the
+   *          list. Everything below this line is identical in both.
+   */
+  variant?: 'sheet' | 'inline';
+}> = ({ doc, open, onOpenChange, usedInVerification, variant = 'sheet' }) => {
   const { t } = useLanguage();
   const [text, setText] = useState<{ text: string; pages: number | null } | null>(null);
   const [events, setEvents] = useState<DocumentEvent[] | null>(null);
@@ -253,14 +262,8 @@ export const DocumentReader: React.FC<{
     }
   };
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      {/* Wide, and full-width on a phone: this is a reading surface. */}
-      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="break-words pe-8">{doc.name}</SheetTitle>
-        </SheetHeader>
-
+  const body = (
+    <>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="font-normal">{t(DOCUMENT_CATEGORY_KEY[doc.category])}</Badge>
           <Badge variant="outline" className="font-normal">{t(DOCUMENT_STATUS_KEY[doc.status])}</Badge>
@@ -394,6 +397,30 @@ export const DocumentReader: React.FC<{
             </SectionBoundary>
           </TabsContent>
         </Tabs>
+    </>
+  );
+
+  // The centre pane of the workspace. The title is a real heading here
+  // rather than a dialog title, because it is page content.
+  if (variant === 'inline') {
+    return (
+      <div className="min-w-0">
+        <h2 className="font-display text-xl font-bold tracking-[-0.015em] break-words sm:text-2xl">
+          {doc.name}
+        </h2>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {/* Full-width on a phone: there, the overlay IS the reading surface. */}
+      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="break-words pe-8">{doc.name}</SheetTitle>
+        </SheetHeader>
+        {body}
       </SheetContent>
     </Sheet>
   );

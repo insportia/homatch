@@ -5,7 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { Button } from '@/components/ui/button';
 import { Eyebrow, PAGE, SECTION_Y } from './primitives';
-import { useSectionField, useSectionMedia } from '@/site/content';
+import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '@/site/content';
 
 /**
  * REGION 06 — Developer B2B.
@@ -38,6 +38,8 @@ const STAGES = [
 export function DeveloperB2BSection() {
   const backdrop = useSectionMedia()('backdrop');
   const sf = useSectionField();
+  const fp = useFieldProps();
+  const mp = useMediaProps();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
@@ -55,7 +57,7 @@ export function DeveloperB2BSection() {
           this much type is both a legibility problem and the single largest
           source of warm colour on a black-white-gold page; desaturated to
           nothing and held at a tenth of its exposure it is pure texture. */}
-      <div className="absolute inset-0 saturate-0" aria-hidden="true">
+      <div className="absolute inset-0 saturate-0" aria-hidden="true" {...mp('backdrop')}>
         <SceneMedia scene="platform" alt={backdrop?.alt ?? ''} sizes="100vw" position="50% 58%" overrideUrl={backdrop?.url} />
         <div className="absolute inset-0 bg-[#0D0D0D]/90" />
         <div className="absolute inset-0 bg-gradient-to-b from-[#0D0D0D] via-[#0D0D0D]/78 to-[#0D0D0D]" />
@@ -69,14 +71,14 @@ export function DeveloperB2BSection() {
       <div className={`${PAGE} relative ${SECTION_Y}`}>
         <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-20">
           <div>
-            <Eyebrow tone="light">{sf('eyebrow', 'mp_dev_eyebrow')}</Eyebrow>
+            <Eyebrow tone="light" {...fp('eyebrow')}>{sf('eyebrow', 'mp_dev_eyebrow')}</Eyebrow>
             <h2
               className="mt-5 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-white"
               style={{ fontSize: 'clamp(1.4rem, 5.6vw, 3.1rem)' }}
-            >
+             {...fp('title')}>
               {sf('title', 'mp_dev_title')}
             </h2>
-            <p className="mt-6 max-w-[36rem] text-pretty text-[17px] leading-[1.75] text-white/75 sm:text-base">
+            <p className="mt-6 max-w-[36rem] text-pretty text-[17px] leading-[1.75] text-white/75 sm:text-base" {...fp('body')}>
               {sf('body', 'mp_dev_sub')}
             </p>
 
@@ -93,7 +95,7 @@ export function DeveloperB2BSection() {
               className="mt-9 h-auto min-h-12 gap-2.5 whitespace-normal rounded-full bg-gold px-6 py-3 text-start text-sm text-primary hover:bg-gold/90 sm:px-7"
               onClick={() => navigate('/partners')}
             >
-              {t('mp_dev_cta')}
+              <span {...fp('cta')}>{sf('cta', 'mp_dev_cta')}</span>
               <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} strokeWidth={1.75} aria-hidden="true" />
             </Button>
           </div>

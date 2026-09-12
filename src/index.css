@@ -431,10 +431,15 @@
        read as a surface sitting on a page, and a long screen was an
        unbroken white field. This is a 3% step down at a hair of warmth
        (hsl 48 6% 97% = #F8F8F6): enough that white cards lift off it and
-       the eye gets a rest, nowhere near enough to read as beige. The
-       saturation is deliberately tiny; at 6% of 97% lightness it is a
-       neutral that happens not to be clinical. */
-    --background: 48 6% 97%;    /* #F8F8F6 — premium neutral, not beige */
+       the eye gets a rest, nowhere near enough to read as beige.
+
+       SECOND PASS: 48deg at 97% still read as too white AND carried a faint
+       warm cast — 48deg is a yellow hue, which is the direction the brief
+       explicitly rules out. This is 90deg (the neutral green-grey axis) at
+       96%, so the canvas steps further from white and any warmth is gone.
+       The saturation stays at 6%, which at this lightness is a neutral that
+       simply is not clinical. */
+    --background: 90 6% 96%;    /* #F4F5F2 — cool neutral canvas */
     --foreground: 0 0% 7%;      /* neutral near-black ink               */
 
     /* Cards are the white now, which is what makes them elevated content
@@ -456,11 +461,11 @@
     --primary: 0 0% 5%;
     --primary-foreground: 0 0% 100%;
 
-    /* These sat at 96% against a 100% page. Against a 97% page they need to
-       be a touch deeper to read as a fill at all. */
-    --secondary: 40 5% 94%;
+    /* Secondary fills have to stay visible against the canvas, so they step
+       down with it and share its hue rather than reintroducing warmth. */
+    --secondary: 90 5% 92%;
     --secondary-foreground: 0 0% 10%;
-    --muted: 40 5% 94%;
+    --muted: 90 5% 92%;
     /* 34% -> 30% -> 24%. Supporting copy kept reading as washed out at 30%,
        and on a dashboard almost every label, date and card description is
        "supporting". At 24% it is 11.4:1 on a white card: unmistakably ink
@@ -476,9 +481,8 @@
 
     /* Hairlines that are actually visible. Neutral, so a 1px rule on white
        reads as a drawn line rather than as a warm smudge. */
-    /* Softer than 87% now that it sits on a 97% page rather than white, so
-       a hairline separates without drawing itself. */
-    --border: 40 4% 89%;
+    /* A hairline that separates without drawing itself, on the same axis. */
+    --border: 90 4% 87%;
     --input: 0 0% 80%;
     --ring: 38 88% 40%;
 
@@ -619,8 +623,160 @@
     animation: hm-ring 1.9s ease-out infinite;
   }
 
+  /* ── A wide thing that scrolls sideways ────────────────────────────
+
+     Shadows that appear at whichever edge still has content behind it,
+     with no scroll listener and no JavaScript at all.
+
+     Four layers. Two are 'local', so they scroll WITH the content and are
+     therefore only visible when the content is scrolled away from that
+     edge; two are 'scroll', pinned to the container. The local covers sit
+     on top of the pinned shadows and hide them until there is something
+     to hide — which is exactly the condition we want to signal.
+
+     The cover colour must match the surface behind the table, so it is
+     the background token rather than a literal white. */
+  .scroll-x-shadow {
+    background-image:
+      linear-gradient(to right, hsl(var(--background)), hsl(var(--background))),
+      linear-gradient(to left,  hsl(var(--background)), hsl(var(--background))),
+      linear-gradient(to right, hsl(0 0% 0% / 0.10), hsl(0 0% 0% / 0)),
+      linear-gradient(to left,  hsl(0 0% 0% / 0.10), hsl(0 0% 0% / 0));
+    background-position: left center, right center, left center, right center;
+    background-repeat: no-repeat;
+    background-size: 28px 100%, 28px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+
+  /* ── Site Studio: text you can type on ─────────────────────────────
+
+     The affordance is an OUTLINE, never a border and never padding.
+     Both of those take space in the layout, so the page would shift the
+     moment a field became editable and shift back when it stopped — and
+     the whole promise of editing on the canvas is that what you see is
+     what you get. An outline is painted outside the box and changes
+     nothing about where anything sits.
+
+     Typography is deliberately untouched: no font, size, weight, colour,
+     line-height or alignment appears here, so an editable heading is
+     still exactly the heading it will be when published. */
+  [data-hm-field][contenteditable] {
+    outline: 1px dashed hsl(38 88% 54% / 0.5);
+    outline-offset: 3px;
+    border-radius: 2px;
+    cursor: text;
+    transition: outline-color 140ms ease;
+  }
+
+  [data-hm-field][contenteditable]:hover {
+    outline-color: hsl(38 88% 54% / 0.85);
+  }
+
+  /* The caret's own field. Solid, and a touch of warmth behind the text
+     so it reads as the active one without altering the text colour. */
+  [data-hm-field][contenteditable]:focus,
+  [data-hm-field][data-hm-editing='on'] {
+    outline: 2px solid hsl(38 88% 54%);
+    outline-offset: 3px;
+    background-color: hsl(38 88% 54% / 0.07);
+  }
+
+  /* The browser's own focus ring would be a second, conflicting outline. */
+  [data-hm-field][contenteditable]:focus-visible {
+    outline: 2px solid hsl(38 88% 54%);
+  }
+
+  /* ── Site Studio: while editing, the page is words, not controls ───
+
+     A CTA label lives inside its button. Clicking it put focus on the
+     BUTTON rather than on the label, and then the first space in
+     "Start the check" activated the button and navigated the editor away
+     — the preview iframe was destroyed mid-sentence. Space and Enter are
+     how a button is pressed from the keyboard, so any editable text
+     inside one is a trap.
+
+     So in edit mode the rendered page stops being interactive: its links
+     and buttons take no pointer events, and only the editable text does.
+     Nothing can be followed, submitted or activated by accident, which is
+     also the answer to "real links must not navigate away while Studio is
+     in edit mode". Scoped to [data-studio-section] so Studio's own
+     floating controls, which are portalled into the same document, keep
+     working. */
+  [data-hm-editing='on'] [data-studio-section] a[href],
+  [data-hm-editing='on'] [data-studio-section] button,
+  [data-hm-editing='on'] [data-studio-section] input,
+  [data-hm-editing='on'] [data-studio-section] select,
+  [data-hm-editing='on'] [data-studio-section] textarea {
+    pointer-events: none;
+  }
+
+  /* ...except the words themselves, which is the whole point. */
+  [data-hm-editing='on'] [data-studio-section] [data-hm-field] {
+    pointer-events: auto;
+  }
+
+  /* ── A document being read ─────────────────────────────────────────
+     The sweep that passes over the document mark while a contract is
+     being extracted. It says work is happening TO THIS, rather than
+     somewhere else on the page. The global reduced-motion floor below
+     collapses it to a single frame; the spinner underneath is always
+     rendered, so there is still an answer when nothing may move. */
+  @keyframes hm-scan {
+    0%   { transform: translateY(-120%); opacity: 0; }
+    18%  { opacity: 1; }
+    82%  { opacity: 1; }
+    100% { transform: translateY(320%); opacity: 0; }
+  }
+  .hm-scan {
+    background: linear-gradient(
+      to bottom,
+      hsl(38 88% 54% / 0) 0%,
+      hsl(38 88% 54% / 0.35) 50%,
+      hsl(38 88% 54% / 0) 100%
+    );
+    animation: hm-scan 1.6s ease-in-out infinite;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .hm-wave > span { animation: none; transform: scaleY(0.62); }
     .hm-ring::after { animation: none; opacity: 0; }
+  }
+    .hm-scan { animation: none; opacity: 0; }
+}
+
+/* ── When somebody asks everything to stop moving ──────────────────────
+
+   The per-component answers above cover what this codebase animates on
+   purpose. They do not cover what it animates by accident: every
+   `animate-*` utility from tailwindcss-animate, every Radix open/close
+   transition on a dialog, sheet, dropdown or accordion, every `transition-`
+   class on a hover. Each of those would need its own media query, and the
+   next one somebody adds would not have one.
+
+   So this is a floor, applied once, to everything. A person who has told
+   their operating system to stop animating things gets a product that
+   does not animate.
+
+   Not `animation: none`: that CANCELS an animation, and anything whose
+   final state is set by its keyframes — a Radix dialog that fades in —
+   would be stuck at its starting state, invisible. A duration of ~0
+   instead runs the whole animation within one frame, so it ENDS, fires
+   its animationend, and leaves the element exactly where it belongs.
+   That is also why it is 0.01ms rather than 0.
+
+   `scroll-behavior: auto` undoes the smooth scrolling set on :root; a
+   smooth scroll is motion, and an unrequested one.  */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  html:focus-within {
+    scroll-behavior: auto !important;
   }
 }

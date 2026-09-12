@@ -167,8 +167,8 @@ export default function OutreachInsightsPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="text-sm font-medium truncate">{c.name}</p>
-                              <Badge variant="outline" className="text-[12px] px-1 py-0">{c.campaign_type}</Badge>
-                              <Badge variant="outline" className="text-[12px] px-1 py-0">{c.status}</Badge>
+                              <Badge variant="outline" className="text-2xs px-1 py-0">{c.campaign_type}</Badge>
+                              <Badge variant="outline" className="text-2xs px-1 py-0">{c.status}</Badge>
                             </div>
                             <p className="text-[14px] text-muted-foreground mt-0.5">
                               {c.sent_count ?? 0} {t('insights_metric_sent')} · {c.open_count ?? 0} {t('insights_metric_opened')} · {c.reply_count ?? 0} {t('insights_metric_replies')}

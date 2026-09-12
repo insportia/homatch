@@ -124,7 +124,7 @@ const SUPPORTED_LANGS = [
 export default function AiCallCenterPage() {
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
-  const { status: providerStatus } = useOutreachProviderStatus();
+  const { status: providerStatus, loading: providerLoading } = useOutreachProviderStatus();
   const [campaigns, setCampaigns] = useState<OutreachCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -273,15 +273,20 @@ export default function AiCallCenterPage() {
               <Plus className="h-4 w-4 me-2" />{t('call_new_campaign')}
             </Button>
           </div>
-          <Alert variant={providerStatus?.calling.real ? 'default' : undefined} className={providerStatus?.calling.real ? 'border-green-500/40 bg-green-500/5' : ''}>
+          <Alert variant={providerStatus?.calling?.real ? 'default' : undefined} className={providerStatus?.calling?.real ? 'border-green-500/40 bg-green-500/5' : ''}>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-xs">
-              {!providerStatus
+              {/* "Checking" is only true while the request is in flight.
+                  A finished request that could not tell us is UNKNOWN, and
+                  the honest answer to unknown is the conservative one — the
+                  same message a disabled channel shows. It used to sit on
+                  "checking…" forever instead. */}
+              {providerLoading
                 ? t('outreach_status_checking')
-                : providerStatus.kill_switch
+                : providerStatus?.kill_switch
                 ? t('outreach_status_kill_switch')
-                : providerStatus.calling.real
-                ? t('call_calling_real', { provider: providerStatus.calling.provider })
+                : providerStatus?.calling?.real
+                ? t('call_calling_real', { provider: providerStatus?.calling?.provider })
                 : t('call_calling_disabled')}
             </AlertDescription>
           </Alert>

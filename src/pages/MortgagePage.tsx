@@ -330,27 +330,27 @@ export default function MortgagePage() {
                   <div className="grid sm:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t('mortgage_label_effective_rate_bank')}</Label>
-                      <Input type="number" step="0.01" value={effectiveRateFromBank} onChange={e => setEffectiveRateFromBank(e.target.value)} />
+                      <Input type="number" inputMode="decimal" step="0.01" value={effectiveRateFromBank} onChange={e => setEffectiveRateFromBank(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t('mortgage_label_origination_fee_percent')}</Label>
-                      <Input type="number" step="0.01" value={originationFeePercent} onChange={e => setOriginationFeePercent(e.target.value)} />
+                      <Input type="number" inputMode="decimal" step="0.01" value={originationFeePercent} onChange={e => setOriginationFeePercent(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t('mortgage_label_monthly_fee')}</Label>
-                      <Input type="number" step="0.01" value={monthlyFeeFlat} onChange={e => setMonthlyFeeFlat(e.target.value)} />
+                      <Input type="number" inputMode="decimal" step="0.01" value={monthlyFeeFlat} onChange={e => setMonthlyFeeFlat(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t('mortgage_label_insurance_annual')}</Label>
-                      <Input type="number" step="0.01" value={insuranceAnnualFlat} onChange={e => setInsuranceAnnualFlat(e.target.value)} />
+                      <Input type="number" inputMode="decimal" step="0.01" value={insuranceAnnualFlat} onChange={e => setInsuranceAnnualFlat(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t('mortgage_label_valuation_fee')}</Label>
-                      <Input type="number" step="0.01" value={valuationFeeFlat} onChange={e => setValuationFeeFlat(e.target.value)} />
+                      <Input type="number" inputMode="decimal" step="0.01" value={valuationFeeFlat} onChange={e => setValuationFeeFlat(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t('mortgage_label_grace_period')}</Label>
-                      <Input type="number" step="1" value={gracePeriodMonths} onChange={e => setGracePeriodMonths(e.target.value)} />
+                      <Input type="number" inputMode="decimal" step="1" value={gracePeriodMonths} onChange={e => setGracePeriodMonths(e.target.value)} />
                     </div>
                   </div>
                 </AccordionContent>
@@ -361,11 +361,11 @@ export default function MortgagePage() {
             <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-border">
               <div className="space-y-1.5">
                 <Label className="text-xs">{t('mortgage_label_monthly_income')}</Label>
-                <Input type="number" step="0.01" value={monthlyIncome} onChange={e => setMonthlyIncome(e.target.value)} placeholder={t('mortgage_optional_placeholder')} />
+                <Input type="number" inputMode="decimal" step="0.01" value={monthlyIncome} onChange={e => setMonthlyIncome(e.target.value)} placeholder={t('mortgage_optional_placeholder')} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">{t('mortgage_label_existing_debt')}</Label>
-                <Input type="number" step="0.01" value={existingDebt} onChange={e => setExistingDebt(e.target.value)} placeholder={t('mortgage_optional_placeholder')} />
+                <Input type="number" inputMode="decimal" step="0.01" value={existingDebt} onChange={e => setExistingDebt(e.target.value)} placeholder={t('mortgage_optional_placeholder')} />
               </div>
             </div>
 
@@ -464,8 +464,7 @@ export default function MortgagePage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="measure text-sm text-muted-foreground">{t('mortgage_schedule_explainer')}</p>
-                <div className="overflow-x-auto">
-                  <Table>
+                <Table aria-label={t('mortgage_schedule_title')}>
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t('mortgage_schedule_col_month')}</TableHead>
@@ -490,8 +489,7 @@ export default function MortgagePage() {
                         </TableRow>
                       ))}
                     </TableBody>
-                  </Table>
-                </div>
+                </Table>
                 <Button variant="ghost" size="sm" onClick={() => setShowFullSchedule(v => !v)}>
                   {showFullSchedule ? t('mortgage_schedule_show_summary') : t('mortgage_schedule_show_full')}
                 </Button>
@@ -506,8 +504,7 @@ export default function MortgagePage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <p className="measure text-sm text-muted-foreground">{t('mortgage_term_compare_explainer')}</p>
-                  <div className="overflow-x-auto">
-                    <Table>
+                  <Table aria-label={t('mortgage_term_compare_title')}>
                       <TableHeader>
                         <TableRow>
                           <TableHead>{t('mortgage_term_compare_col_term')}</TableHead>
@@ -533,8 +530,7 @@ export default function MortgagePage() {
                           </TableRow>
                         ))}
                       </TableBody>
-                    </Table>
-                  </div>
+                  </Table>
                 </CardContent>
               </Card>
             )}

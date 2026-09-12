@@ -27,7 +27,7 @@ export function MobileBottomNav() {
             <Link
               key={item.path}
               to={item.path}
-              className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full"
+              className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5"
             >
               <item.icon
                 className={`h-5 w-5 ${
@@ -39,7 +39,12 @@ export function MobileBottomNav() {
                 }`}
               />
               <span
-                className={`text-[13px] font-medium ${
+                /* Georgian nav words are long and unhyphenated. At 320px
+                   each of five slots is about 64px, which none of them
+                   fit, so the label used to escape the bar. It truncates
+                   instead — the icon above it carries the meaning — and
+                   steps down one size only at the narrowest widths. */
+                className={`w-full truncate text-center text-[12px] leading-tight sm:text-[13px] font-medium ${
                   item.highlight
                     ? 'text-primary'
                     : active

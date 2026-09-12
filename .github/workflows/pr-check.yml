@@ -53,6 +53,12 @@ jobs:
       # proving nothing.
       - name: Mobile regression (real viewports)
         run: pnpm run test:mobile
+      # The same real Chrome, driving Site Studio: click a section, edit the
+      # text in place, paste markup at it, add/duplicate/move/hide/delete a
+      # block. Four defects that passed type-check, lint and every unit test
+      # were found only by doing this, so it runs on every change.
+      - name: Site Studio regression (real browser)
+        run: pnpm run test:studio
 
       # The edge functions are Deno TypeScript with URL and jsr: imports, so
       # they sit outside the tsconfig and nothing else parses them. A

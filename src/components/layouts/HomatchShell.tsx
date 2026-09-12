@@ -27,9 +27,11 @@ import { getCreditAccount } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { InstallApp } from '@/components/common/InstallApp';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 
 interface NavItem {
   key: string;
@@ -68,6 +70,9 @@ interface HomatchShellProps {
 }
 
 export function HomatchShell({ children }: HomatchShellProps) {
+  // Same reason as AppLayout: the surface is the shell's job. The dashboard
+  // happened to look right only because DashboardPage claimed it itself.
+  useSurfaceTheme('light');
   const { homatchUser, signOut } = useAuth();
   const { t, isRTL } = useLanguage();
   const location = useLocation();
@@ -267,7 +272,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
 
       <div className="min-w-0 lg:ps-64">
         <header className="sticky top-0 z-30 border-b border-border bg-background/[0.92] backdrop-blur-md">
-          <div className="flex h-16 items-center gap-3 px-4 md:h-20 md:px-6 lg:px-8">
+          <div className="flex h-16 items-center gap-2 px-3 sm:gap-3 sm:px-4 md:h-20 md:px-6 lg:px-8">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
@@ -286,7 +291,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
             </div>
             <div className="flex-1 sm:hidden" />
 
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex min-w-0 shrink items-center gap-1 sm:gap-1.5">
               {/* Available balance. Commercially important, so it is a
                   first-class control in the header rather than something
                   buried in a menu. */}
@@ -294,15 +299,16 @@ export function HomatchShell({ children }: HomatchShellProps) {
                 type="button"
                 onClick={() => navigate('/credits')}
                 aria-label={t('db_credits_aria')}
-                className="flex h-10 items-center gap-2 rounded-full border border-foreground/20 px-3 text-foreground transition-colors hover:border-gold hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-10 min-w-0 shrink items-center gap-1.5 rounded-full border border-foreground/20 px-2.5 text-foreground transition-colors hover:border-gold hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-2 sm:px-3"
               >
                 <CoinsIcon className="h-4 w-4 shrink-0 text-gold-ink" strokeWidth={1.75} aria-hidden="true" />
-                <span className="text-sm font-semibold tabular-nums leading-none">
+                <span className="min-w-0 truncate text-sm font-semibold tabular-nums leading-none">
                   {credits === null ? '—' : credits.toFixed(1)}
                 </span>
                 <span className="hidden text-xs text-muted-foreground lg:inline">{t('nav_credits')}</span>
               </button>
 
+              <div className="hidden sm:block"><InstallApp compact /></div>
               <LanguageSwitcher showGlobe triggerClassName="h-10 rounded-full px-2.5" />
 
               <button

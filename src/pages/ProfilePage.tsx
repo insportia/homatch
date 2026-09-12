@@ -21,7 +21,7 @@ import type { CreditAccount, CreditLedgerEntry, LedgerType, Payment, PaymentStat
 import { toast } from 'sonner';
 import {
   User as UserIcon, Mail, Phone, Calendar, Shield, Zap, CreditCard, Lock,
-  Loader2, Save, ExternalLink, CheckCircle2, KeyRound, Chrome,
+  Loader2, Save, ExternalLink, CheckCircle2, KeyRound, Chrome, UserX,
 } from 'lucide-react';
 
 // Every value of these two small, fixed backend enums must render as
@@ -56,7 +56,7 @@ function initialsOf(name: string | null | undefined, email: string | undefined):
 }
 
 function ProfileContent() {
-  const { homatchUser, supaUser, session, refreshUser, sendPasswordReset, updatePassword, signOut } = useAuth();
+  const { homatchUser, supaUser, session, loading: authLoading, refreshUser, sendPasswordReset, updatePassword, signOut } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
 
@@ -163,10 +163,40 @@ function ProfileContent() {
     else toast.success(t('auth_forgot_sent'));
   };
 
+  /*
+   * A SPINNER IS NOT AN ANSWER TO "THERE IS NO PROFILE".
+   *
+   * This used to be `if (!homatchUser) return <spinner/>` with nothing
+   * else: no text, no time limit, no way out. It is the correct thing to
+   * show while the profile is being fetched, and the wrong thing after
+   * that fetch has finished and come back with nothing — which happens to
+   * a signed-in account whose profile row is missing, or whose read was
+   * refused. Those people sat on a spinning circle forever.
+   *
+   * The auth context does not resolve `loading` until the profile fetch
+   * has settled, so the two states really are distinguishable here.
+   */
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center gap-3 py-24" role="status">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden="true" />
+        <span className="text-base text-muted-foreground">{t('profile_loading')}</span>
+      </div>
+    );
+  }
+
   if (!homatchUser) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <div className="mx-auto flex max-w-md flex-col items-center gap-4 py-20 text-center">
+        <div className="grid h-14 w-14 place-items-center rounded-[1rem] border border-border bg-secondary">
+          <UserX className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+        </div>
+        <h1 className="font-display text-2xl font-bold tracking-[-0.015em]">{t('profile_missing_title')}</h1>
+        <p className="measure text-base leading-relaxed text-ink-soft">{t('profile_missing_body')}</p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button onClick={() => { void refreshUser(); }}>{t('profile_missing_retry')}</Button>
+          <Button variant="outline" onClick={() => { void signOut(); }}>{t('nav_logout')}</Button>
+        </div>
       </div>
     );
   }

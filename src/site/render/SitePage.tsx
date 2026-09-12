@@ -1,5 +1,6 @@
 import React from 'react';
 import { SectionScope } from '../content';
+import { Reveal } from '@/components/common/Reveal';
 import { KNOWN_SECTION_TYPES } from '../registry';
 import type { SitePageContent } from '../model';
 import { resolveSections } from './order';
@@ -78,9 +79,28 @@ export interface SitePageProps {
   /** Editor only: click-to-select in the live preview. */
   onSelect?: (id: string) => void;
   selectedId?: string | null;
+  /**
+   * Editor only: told what each field rendered as, per section, so the
+   * inline edit layer can find the element that produced it.
+   */
+  /**
+   * True inside Site Studio. Sections then mark the elements that render
+   * editable copy with their section, field and locale, which is how the
+   * editor knows what a caret is sitting in.
+   */
+  editing?: boolean;
+  /**
+   * Editor only: a click landed on a marked picture.
+   *
+   * Reported from the section's own click handler rather than from a
+   * listener the editor attaches to the preview document — that handler
+   * demonstrably runs for every click on a section, which a separately
+   * attached one did not.
+   */
+  onSelectMedia?: (sectionId: string, slot: string | null) => void;
 }
 
-export function SitePage({ slug, content, onSelect, selectedId }: SitePageProps) {
+export function SitePage({ slug, content, onSelect, selectedId, editing, onSelectMedia }: SitePageProps) {
   // onSelect is set only by the editor, so it doubles as the signal that
   // hidden sections should still be drawn.
   const resolved = resolveSections(slug, content, Boolean(onSelect));
@@ -98,6 +118,7 @@ export function SitePage({ slug, content, onSelect, selectedId }: SitePageProps)
             section={section}
             onSelect={onSelect}
             selectedId={selectedId}
+            editing={editing}
           >
             <Component />
           </SectionScope>
@@ -105,25 +126,73 @@ export function SitePage({ slug, content, onSelect, selectedId }: SitePageProps)
 
         const key = section?.id ?? `${type}-${i}`;
 
-        // On the public site this is the whole story: no wrapper element, no
-        // extra div, nothing the editor adds to what visitors download.
-        if (!onSelect || !section) return <React.Fragment key={key}>{body}</React.Fragment>;
+        /*
+         * THE PUBLIC SITE: each section arrives as you reach it.
+         *
+         * Reveal is the motion system's own primitive, so this inherits
+         * every rule in it: nothing moves at all for somebody who asked
+         * their operating system to stop, or whose browser reports data
+         * saver; a phone gets a shorter, smaller version; and anything
+         * already on screen when the page loads is shown immediately
+         * rather than waiting for a scroll that may never come.
+         *
+         * NOT staggered. Stagger is for a group of small things arriving
+         * together; a full-width section arrives on its own, and delaying
+         * it behind a sibling would just make the page feel slow.
+         *
+         * The editor is excluded deliberately — `onSelect` is only
+         * supplied by Site Studio. A section at opacity 0 waiting for a
+         * scroll is not something to click, select or type into, and the
+         * transform while it moves would fight the floating controls
+         * positioned over it.
+         */
+        if (!onSelect) return <Reveal key={key}>{body}</Reveal>;
 
-        // In the editor, a click target over the section. It is a sibling
-        // overlay rather than a handler on the section itself, so a real
-        // button inside the preview does not have to compete with it and the
-        // page's own interactivity keeps working underneath.
+        // In the editor, but a code-only region with no stored section:
+        // nothing to select, so nothing to wrap.
+        if (!section) return <React.Fragment key={key}>{body}</React.Fragment>;
+
+        /*
+         * IN THE EDITOR, THE SECTION IS A CLICK TARGET — AND NOTHING MORE.
+         *
+         * This used to be a button covering the whole section, which meant
+         * that while it was there NOTHING underneath could be clicked,
+         * including the text. Click-to-edit could never receive a click,
+         * so every edit went through the sidebar and the canvas was a
+         * picture of the page rather than the page.
+         *
+         * Now the overlay is decoration only — pointer-events-none, always
+         * — and selecting is a handler on the wrapper. Clicks reach the
+         * real page underneath: a caret lands in the words, and the edit
+         * layer stops that click here so typing never doubles as
+         * selecting something else.
+         *
+         * The handler is on a div rather than a button on purpose. The
+         * sections contain their own buttons, links and inputs, and
+         * nesting those inside a button is invalid HTML and breaks them.
+         * Selection is reachable from the structure list for anyone using
+         * a keyboard, which is also where reordering lives.
+         */
+        const isSelected = selectedId === section.id;
         return (
-          <div key={key} className="relative">
+          <div
+            key={key}
+            className="relative"
+            data-studio-section={section.id}
+            onClick={(e) => {
+              onSelect(section.id);
+              // Which picture, if any, was under the pointer.
+              const hit = (e.target as HTMLElement | null)?.closest?.('[data-hm-media]');
+              onSelectMedia?.(section.id, hit?.getAttribute('data-hm-media') ?? null);
+            }}
+          >
             {body}
-            <button
-              type="button"
-              onClick={() => onSelect(section.id)}
-              aria-label={section.type}
-              className={`absolute inset-0 z-10 w-full cursor-pointer transition-colors ${
-                selectedId === section.id
+            <div
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 z-10 transition-colors ${
+                isSelected
                   ? 'ring-2 ring-inset ring-primary'
-                  : 'hover:bg-primary/[0.06] hover:ring-1 hover:ring-inset hover:ring-primary/40'
+                  : 'hover:bg-primary/[0.04]'
               } ${section.enabled ? '' : 'bg-background/60'}`}
             />
           </div>

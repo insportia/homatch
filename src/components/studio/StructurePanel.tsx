@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronUp, Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { sectionDef } from '@/site/registry';
@@ -18,7 +18,10 @@ import { StateDot } from './StateDot';
  */
 export function StructurePanel({ studio }: { studio: StudioState }) {
   const { t } = useLanguage();
-  const { draft, selectedId, select, move, setEnabled, addSection, removeSection, locale } = studio;
+  const {
+    draft, selectedId, select, move, setEnabled, addSection, duplicateSection,
+    removeSection, locale,
+  } = studio;
 
   return (
     <div className="flex h-full flex-col">
@@ -90,13 +93,22 @@ export function StructurePanel({ studio }: { studio: StudioState }) {
                       : <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
                   </Button>
                   {def?.repeatable && (
-                    <Button
-                      variant="ghost" size="icon" className="h-7 w-7"
-                      onClick={() => removeSection(section.id)}
-                      aria-label={t('studio_delete')}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
+                    <>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7"
+                        onClick={() => duplicateSection(section.id)}
+                        aria-label={t('studio_duplicate')}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7"
+                        onClick={() => removeSection(section.id)}
+                        aria-label={t('studio_delete')}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -116,7 +128,10 @@ export function StructurePanel({ studio }: { studio: StudioState }) {
               variant="ghost"
               size="sm"
               className="w-full justify-start gap-2 text-[16px]"
-              onClick={() => addSection(def.type)}
+              // Below the selected section when there is one, so the new
+              // block lands where the admin is working rather than at
+              // the bottom of a page they then have to scroll to.
+              onClick={() => addSection(def.type, selectedId ?? undefined)}
             >
               <Plus className="h-3.5 w-3.5" />
               {t(def.labelKey)}

@@ -8,7 +8,8 @@ import {
 import {
   DEFAULT_TRANSLATION_MODE, type Locale, type SitePageContent, type SiteSection,
   type SiteVersion, type TranslationMode,
-  applyAutoTranslation, applySuggestion, dismissSuggestion, editLocale,
+  applyAutoTranslation, applySuggestion, dismissSuggestion, duplicateSection as duplicate,
+  editLocale, insertSectionAfter,
   emptyPage, makeSection, markReviewed, moveSection, setSectionEnabled,
   setSuggestion, translationTargets,
 } from '@/site/model';
@@ -65,13 +66,19 @@ export interface StudioState {
   setMode: (mode: TranslationMode) => void;
 
   editField: (field: string, value: string) => void;
+  /** Edit a field on a NAMED section — used by inline, on-page editing. */
+  editSectionField: (
+    sectionId: string, field: string, value: string, atLocale?: Locale,
+  ) => void;
   setVariant: (variant: string) => void;
   setTheme: (theme: 'light' | 'dark' | null) => void;
   setSpacing: (spacing: SiteSection['spacing']) => void;
   setEnabled: (enabled: boolean, id?: string) => void;
-  setMedia: (slot: string, url: string | null, alt?: string) => void;
+  setMedia: (slot: string, url: string | null, alt?: string, atSection?: string) => void;
   move: (id: string, delta: number) => void;
-  addSection: (type: string) => void;
+  addSection: (type: string, afterId?: string) => void;
+  /** Copy a repeatable section, with its content, directly below itself. */
+  duplicateSection: (id: string) => void;
   removeSection: (id: string) => void;
   setSeo: (patch: Partial<SitePageContent['seo']>) => void;
 
@@ -169,6 +176,33 @@ export function useStudioState(): StudioState {
     patch(selectedId, s => editLocale(s, field, locale, value));
   }, [selectedId, locale, patch]);
 
+  /**
+   * The same edit, but for a named section.
+   *
+   * Inline editing on the page commits from a blur handler, and by then
+   * the click that moved the caret may already have changed the selection.
+   * Routing that through `selectedId` is the same mistake setEnabled had:
+   * it would write the text into whichever section happened to be selected
+   * at commit time. The element knows which section it belongs to, so it
+   * says so.
+   */
+  const editSectionField = useCallback((
+    sectionId: string, field: string, value: string, atLocale?: Locale,
+  ) => {
+    /*
+     * The locale is the ELEMENT's, not the editor's.
+     *
+     * Both are almost always the same, and 'almost always' is the problem:
+     * a commit fires on blur, and switching language is a click somewhere
+     * else, which blurs. Reading the editor's current locale at that
+     * moment would write English text into the Georgian field of the
+     * language the admin had just switched to. The element was rendered in
+     * a known locale and carries it, so the edit goes where the words came
+     * from.
+     */
+    patch(sectionId, s => editLocale(s, field, atLocale ?? locale, value));
+  }, [locale, patch]);
+
   const setVariant = useCallback((variant: string) => {
     if (!selectedId) return;
     patch(selectedId, s => ({ ...s, variant }));
@@ -202,9 +236,20 @@ export function useStudioState(): StudioState {
     setDirty(true);
   }, [selectedId]);
 
-  const setMedia = useCallback((slot: string, url: string | null, alt?: string) => {
-    if (!selectedId) return;
-    patch(selectedId, s => {
+  /**
+   * Replace, or clear, one image slot.
+   *
+   * `atSection` is explicit for the same reason the inline text commit's
+   * section is: clicking a picture on the canvas selects its section, and
+   * an upload finishes some seconds later, by which time the selection
+   * may have moved. The picture that was clicked is the one that changes.
+   */
+  const setMedia = useCallback((
+    slot: string, url: string | null, alt?: string, atSection?: string,
+  ) => {
+    const target = atSection ?? selectedId;
+    if (!target) return;
+    patch(target, s => {
       const media = { ...s.media };
       if (url === null) delete media[slot];
       else media[slot] = { url, alt: { ...(media[slot]?.alt ?? {}), [locale]: alt ?? '' } };
@@ -217,13 +262,41 @@ export function useStudioState(): StudioState {
     setDirty(true);
   }, []);
 
-  const addSection = useCallback((type: string) => {
+  /**
+   * Add a section, optionally directly below an existing one.
+   *
+   * `afterId` is what makes "Add below" mean what it says. Without it a
+   * new block always lands at the bottom of the page, and the admin has
+   * to walk it up one press at a time.
+   */
+  const addSection = useCallback((type: string, afterId?: string) => {
     const def = sectionDef(type);
     if (!def || !def.repeatable) return;
     const id = `${type}-${crypto.randomUUID().slice(0, 8)}`;
-    setDraft(prev => ({ ...prev, sections: [...prev.sections, makeSection(type, id)] }));
+    setDraft(prev => insertSectionAfter(prev, type, id, afterId));
     setDirty(true);
     setSelectedId(id);
+  }, []);
+
+  /**
+   * Copy a section, with its words, directly below the original.
+   *
+   * Deep-cloned, because the localized content and media objects are
+   * nested: a shallow copy would leave the duplicate sharing the
+   * original's strings, and editing one would silently edit both.
+   *
+   * Restricted to repeatable types for the same reason delete is. There
+   * is one hero, and a second copy of it is not a page the design
+   * supports.
+   */
+  const duplicateSection = useCallback((id: string) => {
+    setDraft(prev => {
+      const source = prev.sections.find(x => x.id === id);
+      // Same rule as delete: only the block that can genuinely repeat.
+      if (!source || !sectionDef(source.type)?.repeatable) return prev;
+      return duplicate(prev, id, `${source.type}-${crypto.randomUUID().slice(0, 8)}`);
+    });
+    setDirty(true);
   }, []);
 
   const removeSection = useCallback((id: string) => {
@@ -398,8 +471,9 @@ export function useStudioState(): StudioState {
     slug, setSlug, loading, unavailable, record, versions,
     draft, dirty, selectedId, select: setSelectedId, selected,
     locale, setLocale, mode, setMode,
-    editField, setVariant, setTheme, setSpacing, setEnabled, setMedia,
-    move, addSection, removeSection, setSeo,
+    editField,
+    editSectionField, setVariant, setTheme, setSpacing, setEnabled, setMedia,
+    move, addSection, duplicateSection, removeSection, setSeo,
     acceptSuggestion, rejectSuggestion, approveLocale,
     translating, translateProgress, runTranslation,
     saving, save, publish, restore, rollback,

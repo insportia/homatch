@@ -5,7 +5,7 @@ import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { IntentChips } from '@/components/home/IntentCards';
 import { AiTalkPanel } from '@/components/home/AiTalkPanel';
 import { PAGE } from './primitives';
-import { useSectionField, useSectionMedia } from '@/site/content';
+import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '@/site/content';
 
 /**
  * REGION 01 — the hero.
@@ -36,6 +36,8 @@ import { useSectionField, useSectionMedia } from '@/site/content';
 export function HeroSection() {
   const photo = useSectionMedia()('photo');
   const sf = useSectionField();
+  const fp = useFieldProps();
+  const mp = useMediaProps();
   const { t } = useLanguage();
 
   return (
@@ -54,7 +56,18 @@ export function HeroSection() {
           height is unchanged, and the panel reserves its space before any
           voice code loads (§133). */}
       <div className="absolute inset-0 hidden lg:block" aria-hidden="true">
-        <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.6] opacity-75">
+        {/* The plate runs well past the wipe's opaque end, so the image's own
+            left edge never shows as a seam. Desaturated a little: the sunset
+            is the one warm object on a black-white-gold page, and at full
+            chroma it pulls the whole first screen orange.
+
+            Pushed back further than it used to be — 0.6 and 75% rather than
+            0.72 at full opacity — because AI TALK now sits in front of it.
+            The photograph was the right-hand side of the hero when it was the
+            only thing there; with a panel over it, the same chroma competes.
+            Still bound to Site Studio's `photo` field, so a published hero
+            image keeps working and stays editable in place. */}
+        <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.6] opacity-75" {...mp('photo')}>
           <SceneMedia scene="hero" alt={photo?.alt ?? ''} priority sizes="78vw" position="52% 52%" overrideUrl={photo?.url} />
         </div>
         <div className="absolute inset-0 bg-[#0D0D0D]/58" />
@@ -77,11 +90,16 @@ export function HeroSection() {
             max-w-[46rem] and every class it had, so the copy sits exactly
             where it sat; the right column is the space the photograph used to
             fill on its own. Below lg there is one column and the panel follows
-            the chips, sized so it never takes the whole viewport (§81). */}
+            the chips, sized so it never takes the whole viewport (§81).
+
+            The min-height moved from the left column to the grid, because it
+            is now the grid that owns the band's height. Every field keeps its
+            useFieldProps binding, so the hero stays editable in place in Site
+            Studio exactly as it was. */}
         <div className="grid min-h-[clamp(27rem,68vh,40rem)] items-center gap-8 lg:grid-cols-[minmax(0,46rem)_minmax(0,1fr)] lg:gap-10">
           {/* pt covers the fixed header; the black band itself starts at y=0. */}
           <div className="flex max-w-[46rem] flex-col justify-center pb-11 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
-          <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold">
+          <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold" {...fp('eyebrow')}>
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_hero_eyebrow')}
           </p>
@@ -94,22 +112,22 @@ export function HeroSection() {
             className="mt-5 text-balance font-semibold leading-[1.07] tracking-[-0.03em] text-white sm:mt-6"
             style={{ fontSize: 'clamp(1.5rem, 7.4vw, 3.9rem)' }}
           >
-            <span className="block">{sf('brand', 'brand_name')}</span>
+            <span className="block" {...fp('brand')}>{sf('brand', 'brand_name')}</span>
             {/* Balanced from sm up, where equal line lengths look composed.
                 On a narrow phone balance splits the phrase in the wrong
                 place ("Smart real / estate decisions"), so the narrowest
                 case fills greedily and breaks after the noun instead. */}
-            <span className="block text-pretty text-white/90 sm:text-balance">{sf('title', 'mp_hero_h1')}</span>
+            <span className="block text-pretty text-white/90 sm:text-balance" {...fp('title')}>{sf('title', 'mp_hero_h1')}</span>
           </h1>
 
           <p
             className="mt-4 text-balance font-semibold leading-[1.25] tracking-[-0.015em] text-gold sm:mt-5"
             style={{ fontSize: 'clamp(0.98rem, 3.4vw, 1.5rem)' }}
-          >
+           {...fp('subtitle')}>
             {sf('subtitle', 'mp_hero_h2')}
           </p>
 
-          <p className="mt-4 max-w-[38rem] text-pretty text-[16px] leading-[1.6] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[38rem] text-pretty text-[16px] leading-[1.6] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]" {...fp('body')}>
             {sf('body', 'mp_hero_scope')}
           </p>
 

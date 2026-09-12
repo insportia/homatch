@@ -6,6 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { InstallApp } from '@/components/common/InstallApp';
 import { PAGE } from '@/components/home/sections/primitives';
 
 /**
@@ -90,7 +91,7 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
         onDark ? 'border-b border-transparent bg-transparent' : 'border-b border-border bg-background/95 backdrop-blur-md'
       }`}
     >
-      <div className={`${PAGE} flex h-[4.5rem] items-center gap-6 md:h-[5.5rem]`}>
+      <div className={`${PAGE} flex h-[4.5rem] items-center gap-3 sm:gap-6 md:h-[5.5rem]`}>
         <button
           type="button"
           onClick={() => {
@@ -98,10 +99,11 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
             navigate('/');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
+          className="min-w-0 shrink rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
           aria-label={t('home_nav_home_aria')}
         >
-          <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} />
+          <HomatchLogo size="md" withTagline={false} tone={onDark ? 'light' : 'dark'} className="sm:hidden" />
+          <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} className="hidden sm:flex" />
         </button>
 
         <nav className="mx-auto hidden items-center gap-6 lg:flex xl:gap-8">
@@ -120,6 +122,7 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
         </nav>
 
         <div className="ms-auto flex items-center gap-3 lg:ms-0">
+          <div className="hidden sm:block"><InstallApp /></div>
           <LanguageSwitcher showGlobe triggerClassName={`h-9 px-2 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
 
           {session ? (

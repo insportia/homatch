@@ -111,7 +111,16 @@ test('the Verify header and primary action fit narrow screens without horizontal
   assert.match(verifySource, /text-xl sm:text-3xl font-semibold break-words/);
   // Search input + button stack under sm, side by side above it.
   assert.match(verifySource, /className="flex flex-col gap-2 sm:flex-row"/);
-  assert.match(verifySource, /<Input className="min-w-0 flex-1"/);
+  /*
+   * The input fills the row FROM sm, and not before.
+   *
+   * This used to be a bare `flex-1`, which was the intent above stated
+   * for the wrong axis. flex-1 sets flex-basis on the MAIN axis, and
+   * until sm this container is a COLUMN — so on a phone it was sizing the
+   * input's HEIGHT, overriding the field height and collapsing it to
+   * 32px against a 44px fingertip. Measured in a real browser at 390px.
+   */
+  assert.match(verifySource, /<Input className="min-w-0 sm:flex-1"/);
   assert.match(verifySource, /<Button className="w-full sm:w-auto shrink-0" onClick=\{\(\)=>run\(\)\}/);
 });
 

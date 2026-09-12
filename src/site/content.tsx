@@ -30,14 +30,26 @@ interface SectionScopeValue {
   /** Set only inside the editor, where clicking the preview selects. */
   onSelect?: (id: string) => void;
   selectedId?: string | null;
+  /**
+   * True only inside Site Studio.
+   *
+   * Sections use this to mark the elements that render editable copy, and
+   * to show a prompt where a field is empty. On the public site it is
+   * false and every one of those additions costs nothing: no attributes,
+   * no wrappers, nothing extra in what a visitor downloads.
+   */
+  editing?: boolean;
 }
 
 const SectionScopeCtx = createContext<SectionScopeValue>({ section: null });
 
 export function SectionScope({
-  section, onSelect, selectedId, children,
+  section, onSelect, selectedId, editing, children,
 }: SectionScopeValue & { children: React.ReactNode }) {
-  const value = useMemo(() => ({ section, onSelect, selectedId }), [section, onSelect, selectedId]);
+  const value = useMemo(
+    () => ({ section, onSelect, selectedId, editing }),
+    [section, onSelect, selectedId, editing],
+  );
   return <SectionScopeCtx.Provider value={value}>{children}</SectionScopeCtx.Provider>;
 }
 
@@ -49,8 +61,82 @@ export function useSectionScope(): SectionScopeValue {
 export function useSectionField(): (field: string, fallbackKey: TranslationKey) => string {
   const { section } = useContext(SectionScopeCtx);
   const { t, lang } = useLanguage();
-  return (field, fallbackKey) =>
-    readLocalized(section?.content[field], lang as Locale) ?? t(fallbackKey);
+  return (field, fallbackKey) => (
+    readLocalized(section?.content[field], lang as Locale) ?? t(fallbackKey)
+  );
+}
+
+/** The attribute names the editor looks for. One place, so they cannot drift. */
+export const FIELD_ATTR = {
+  section: 'data-hm-section',
+  field: 'data-hm-field',
+  item: 'data-hm-item',
+  locale: 'data-hm-locale',
+} as const;
+
+export interface MediaMark {
+  'data-hm-section'?: string;
+  'data-hm-media'?: string;
+}
+
+/**
+ * WHICH IMAGE SLOT THIS ELEMENT SHOWS.
+ *
+ * Spread onto the element that wraps a picture, the same way useFieldProps
+ * is spread onto the element that carries a piece of copy. It is what lets
+ * an admin click the photograph they can see and be offered THAT
+ * photograph, instead of finding the right slot in a form and hoping.
+ */
+export function useMediaProps(): (slot: string) => MediaMark {
+  const { section, editing } = useContext(SectionScopeCtx);
+  return (slot) => {
+    if (!editing || !section) return {};
+    return { [FIELD_ATTR.section]: section.id, 'data-hm-media': slot };
+  };
+}
+
+export interface FieldMark {
+  'data-hm-section'?: string;
+  'data-hm-field'?: string;
+  'data-hm-item'?: string;
+  'data-hm-locale'?: string;
+}
+
+/**
+ * WHICH MODEL FIELD THIS ELEMENT IS.
+ *
+ * Spread onto the element that actually renders a piece of copy:
+ *
+ *   <h1 className="..." {...fp('title')}>{sf('title', 'mp_hero_h1')}</h1>
+ *
+ * The editor then knows, from the DOM node alone, exactly which section,
+ * field, repeated item and locale a caret is sitting in. That identity is
+ * the whole point.
+ *
+ * WHY NOT MATCH ON THE TEXT
+ *
+ * The first version of inline editing found elements by comparing their
+ * rendered text to the value the model held. It worked once and then
+ * broke: the comparison ran against the value from BEFORE the edit, so a
+ * field stopped being editable the moment it was edited, and two fields
+ * that happened to say the same thing were indistinguishable. Identity
+ * cannot be derived from content that is about to change.
+ *
+ * Returns nothing at all outside the editor, so the public site's HTML is
+ * byte for byte what it was before.
+ */
+export function useFieldProps(): (field: string, item?: string) => FieldMark {
+  const { section, editing } = useContext(SectionScopeCtx);
+  const { lang } = useLanguage();
+  return (field, item) => {
+    if (!editing || !section) return {};
+    return {
+      [FIELD_ATTR.section]: section.id,
+      [FIELD_ATTR.field]: field,
+      [FIELD_ATTR.locale]: lang,
+      ...(item ? { [FIELD_ATTR.item]: item } : {}),
+    };
+  };
 }
 
 /**
@@ -65,6 +151,18 @@ export function useSectionRaw(): (field: string) => string | undefined {
   const { section } = useContext(SectionScopeCtx);
   const { lang } = useLanguage();
   return field => readLocalized(section?.content[field], lang as Locale);
+}
+
+/**
+ * Is this section being rendered INSIDE Site Studio?
+ *
+ * A section may legitimately render nothing on the public site — an
+ * announcement nobody has written yet — and still need to be visible and
+ * writable in the editor, which is the one place its absence is a problem
+ * to be solved rather than the correct result.
+ */
+export function useIsEditing(): boolean {
+  return useContext(SectionScopeCtx).editing === true;
 }
 
 /** The section's own settings, with defaults when rendered outside a scope. */

@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField } from '@/site/content';
+import { useSectionField, useFieldProps } from '@/site/content';
 
 /**
  * REGION 08 — email campaigns.
@@ -44,6 +44,7 @@ const STAGES = [
 
 export function EmailCampaignsSection() {
   const sf = useSectionField();
+  const fp = useFieldProps();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -57,7 +58,7 @@ export function EmailCampaignsSection() {
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="email" size={48} className="sm:h-14 sm:w-14" />
-            <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+            <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
               {sf('eyebrow', 'mp_email_eyebrow')}
             </p>
           </div>
@@ -65,10 +66,10 @@ export function EmailCampaignsSection() {
           <h2
             className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
-          >
+           {...fp('title')}>
             {sf('title', 'mp_email_show_title')}
           </h2>
-          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]" {...fp('body')}>
             {sf('body', 'mp_email_desc')}
           </p>
 
@@ -86,7 +87,7 @@ export function EmailCampaignsSection() {
             onClick={open}
             className="group mt-7 inline-flex h-12 items-center justify-center gap-2.5 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:mt-9"
           >
-            {t('mp_email_cta')}
+            <span {...fp('cta')}>{sf('cta', 'mp_email_cta')}</span>
             <ArrowRight
               className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
               strokeWidth={2}

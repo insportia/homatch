@@ -78,7 +78,19 @@ real `RouteGuard`, the real `AdminLayout` admin check, the real
 
 `tests/browser/harnessIsolation.test.mjs` enforces that, and runs in `npm test`
 rather than behind a separate command — a security gate you have to remember to
-run is not a gate. It fails the build if any file under `src/` gains an
+run is not a gate.
+
+> **Correction, recorded rather than quietly fixed.** When this report was first
+> written that sentence was false. The edit meant to widen `scripts/run-tests.mjs`
+> from `src/` to `src/ + tests/matrix/ + tests/browser/` had silently failed to
+> apply; only its import line landed. So `npm test` was still walking `src/`
+> alone, the run really was 1820, and all 27 tests in `tests/matrix/` and
+> `tests/browser/` — the harness isolation gate among them — were not running at
+> all. Found while preparing the go-live checklist, when the suite total did not
+> move after six tests were added. The runner is fixed and the suite is now
+> 1847; the isolation gate is enforced for real.
+
+It fails the build if any file under `src/` gains an
 auth-bypass env flag, a hardcoded `setSession`, a `fakeSession()`, or any import
 from the test tree; if `vite.config.ts` or `index.html` learns about the harness;
 if `.env.harness` ever points somewhere real or holds anything JWT-shaped.
@@ -210,7 +222,7 @@ No horizontal overflow at any width in any locale.
 | Generated-code drift (`sync-comm-domain --check`) | PASS — all 12 generated files match |
 | Edge parse (`npm run check:edge`) | PASS — all 63 functions parse, resolve and bind |
 | i18n coverage / keys / audit | PASS ×3 — 4,165 keys × 6 locales at 100% |
-| Unit suite (`npm test`) | **1820 / 1820** |
+| Unit suite (`npm test`) | **1847 / 1847** |
 | Worker suite (`npm run test:worker`) | **317 / 317** |
 | Production build | PASS |
 | Browser sweep (`npm run test:surfaces`) | **PASS** — 104 visits, 0 defects |

@@ -9,3 +9,34 @@ verify_jwt = false
 # jobs_worker_token held in admin_settings and refuses anything else with 403.
 [functions.jobs-worker]
 verify_jwt = false
+
+# ── Communications ──────────────────────────────────────────────────────────
+#
+# The three functions here are not called by a browser, so they cannot present
+# a user JWT and the gateway check has to be off. Each authenticates itself:
+#
+#   whatsapp-webhook     Meta's X-Hub-Signature-256 HMAC against
+#                        META_WHATSAPP_APP_SECRET, plus the hub.verify_token
+#                        challenge Meta uses to register the subscription.
+#   voice-webhook        Vapi's shared secret (VAPI_WEBHOOK_SECRET), compared
+#                        in constant time; 401 without it.
+#   comm-dispatch-worker a pg_cron tick, like jobs-worker above; anything that
+#                        is not an internal caller gets 403.
+#
+# These entries exist so a manual `supabase functions deploy` matches what CI
+# does. The workflow passes --no-verify-jwt explicitly; this file is what makes
+# a deploy run by hand agree with it, which is exactly the drift that left
+# homatch-ai hand-deployed for months.
+#
+# Every OTHER communications function is browser-facing and keeps JWT
+# verification on — including ai-talk-session, because the anon key is a valid
+# JWT and the anonymous identity work happens inside the function.
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.voice-webhook]
+verify_jwt = false
+
+[functions.comm-dispatch-worker]
+verify_jwt = false

@@ -1,5 +1,6 @@
 import React from 'react';
 import { SectionScope } from '../content';
+import { Reveal } from '@/components/common/Reveal';
 import { KNOWN_SECTION_TYPES } from '../registry';
 import type { SitePageContent } from '../model';
 import { resolveSections } from './order';
@@ -113,9 +114,31 @@ export function SitePage({ slug, content, onSelect, selectedId, onRecordField }:
 
         const key = section?.id ?? `${type}-${i}`;
 
-        // On the public site this is the whole story: no wrapper element, no
-        // extra div, nothing the editor adds to what visitors download.
-        if (!onSelect || !section) return <React.Fragment key={key}>{body}</React.Fragment>;
+        /*
+         * THE PUBLIC SITE: each section arrives as you reach it.
+         *
+         * Reveal is the motion system's own primitive, so this inherits
+         * every rule in it: nothing moves at all for somebody who asked
+         * their operating system to stop, or whose browser reports data
+         * saver; a phone gets a shorter, smaller version; and anything
+         * already on screen when the page loads is shown immediately
+         * rather than waiting for a scroll that may never come.
+         *
+         * NOT staggered. Stagger is for a group of small things arriving
+         * together; a full-width section arrives on its own, and delaying
+         * it behind a sibling would just make the page feel slow.
+         *
+         * The editor is excluded deliberately — `onSelect` is only
+         * supplied by Site Studio. A section at opacity 0 waiting for a
+         * scroll is not something to click, select or type into, and the
+         * transform while it moves would fight the floating controls
+         * positioned over it.
+         */
+        if (!onSelect) return <Reveal key={key}>{body}</Reveal>;
+
+        // In the editor, but a code-only region with no stored section:
+        // nothing to select, so nothing to wrap.
+        if (!section) return <React.Fragment key={key}>{body}</React.Fragment>;
 
         // In the editor, a click target over the section. It is a sibling
         // overlay rather than a handler on the section itself, so a real

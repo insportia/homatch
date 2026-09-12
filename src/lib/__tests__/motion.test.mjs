@@ -150,3 +150,44 @@ test('the floor shortens animations rather than cancelling them', () => {
     'cancelling animations can leave keyframe-positioned elements invisible');
   assert.match(block, /animation-iteration-count: 1 !important/);
 });
+
+/*
+ * WHERE THE REVEAL IS ALLOWED TO RUN.
+ *
+ * The public site reveals its sections as you reach them. Site Studio renders
+ * the same components and must not: a section at opacity 0 waiting for a
+ * scroll is not something an admin can click, select or type into, and the
+ * transform while it moves would fight the controls floating over it.
+ *
+ * `onSelect` is supplied only by the editor, which is what separates the two
+ * render paths.
+ */
+const sitePage = readFileSync('src/site/render/SitePage.tsx', 'utf8');
+const reveal = readFileSync('src/components/common/Reveal.tsx', 'utf8');
+
+test('the public site reveals its sections', () => {
+  assert.ok(
+    sitePage.includes('if (!onSelect) return <Reveal key={key}>{body}</Reveal>;'),
+    'the public render path no longer reveals sections',
+  );
+});
+
+test('the editor never animates a section in', () => {
+  // Everything from the editor's wrapper onwards is the editing path.
+  const editorPart = sitePage.slice(sitePage.indexOf('data-studio-section'));
+  assert.equal(editorPart.includes('<Reveal'), false);
+});
+
+test('a reveal can never leave content invisible', () => {
+  // Four separate ways of failing VISIBLE rather than hidden. The usual
+  // scroll-reveal bug is a blank space where a paragraph should be, and
+  // nobody notices in development because development scrolls.
+  assert.ok(reveal.includes('if (!animated) return createElement(Tag, { className }, children);'),
+    'with motion off there must be no observer and no opacity at all');
+  assert.ok(reveal.includes("typeof IntersectionObserver === 'undefined'"),
+    'a browser without the API must show the content immediately');
+  assert.ok(reveal.includes('getBoundingClientRect().top < window.innerHeight'),
+    'anything already on screen must not wait for a scroll that may never come');
+  assert.ok(reveal.includes('io.disconnect()'),
+    'a revealed element must stop being observed, or it can un-reveal');
+});

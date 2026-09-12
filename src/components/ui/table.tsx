@@ -2,11 +2,42 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * A table that survives a phone.
+ *
+ * It already scrolled sideways rather than overflowing the page, which is
+ * what stops a wide table breaking the layout. Two things were still
+ * missing, and both of them are about whether anyone can actually reach
+ * the columns that are off screen:
+ *
+ *   KEYBOARD  A scroll container with nothing focusable inside it cannot
+ *             be scrolled from a keyboard at all. The columns past the
+ *             right edge were simply unreachable without a mouse or a
+ *             touchscreen. tabIndex makes the region itself focusable,
+ *             which is what the arrow keys then scroll.
+ *
+ *   DISCOVERY A table that is cut off at the edge, with no shadow and no
+ *             partial column showing, looks like a table that ends there.
+ *             The scroll-x-shadow utility fades in a shadow at whichever
+ *             edge still has content behind it — pure CSS, driven by the
+ *             background-attachment trick, so it costs no scroll handler.
+ *
+ * `aria-label` should be passed by the caller; the region is announced as
+ * a landmark, and an unnamed landmark is noise.
+ */
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  <div
+    role="region"
+    tabIndex={0}
+    aria-label={props["aria-label"]}
+    className={cn(
+      "scroll-x-shadow relative w-full overflow-auto rounded-md",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    )}
+  >
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm [font-variant-numeric:tabular-nums]", className)}

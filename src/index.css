@@ -623,6 +623,31 @@
     animation: hm-ring 1.9s ease-out infinite;
   }
 
+  /* ── A wide thing that scrolls sideways ────────────────────────────
+
+     Shadows that appear at whichever edge still has content behind it,
+     with no scroll listener and no JavaScript at all.
+
+     Four layers. Two are 'local', so they scroll WITH the content and are
+     therefore only visible when the content is scrolled away from that
+     edge; two are 'scroll', pinned to the container. The local covers sit
+     on top of the pinned shadows and hide them until there is something
+     to hide — which is exactly the condition we want to signal.
+
+     The cover colour must match the surface behind the table, so it is
+     the background token rather than a literal white. */
+  .scroll-x-shadow {
+    background-image:
+      linear-gradient(to right, hsl(var(--background)), hsl(var(--background))),
+      linear-gradient(to left,  hsl(var(--background)), hsl(var(--background))),
+      linear-gradient(to right, hsl(0 0% 0% / 0.10), hsl(0 0% 0% / 0)),
+      linear-gradient(to left,  hsl(0 0% 0% / 0.10), hsl(0 0% 0% / 0));
+    background-position: left center, right center, left center, right center;
+    background-repeat: no-repeat;
+    background-size: 28px 100%, 28px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+
   /* ── A document being read ─────────────────────────────────────────
      The sweep that passes over the document mark while a contract is
      being extracted. It says work is happening TO THIS, rather than

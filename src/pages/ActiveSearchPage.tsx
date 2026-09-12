@@ -4,6 +4,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -224,7 +225,7 @@ function AddDemandDialog({ open, onClose, onCreated }: { open: boolean; onClose:
         <div className="space-y-3 mt-1">
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">{t('as_field_city')}</label>
-            <input className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder={t('as_city_ph')} value={city} onChange={e => setCity(e.target.value)} />
+            <Input placeholder={t('as_city_ph')} value={city} onChange={e => setCity(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -247,7 +248,7 @@ function AddDemandDialog({ open, onClose, onCreated }: { open: boolean; onClose:
           </div>
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">{t('as_field_budget_max')}</label>
-            <input type="number" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder={t('as_budget_ph')} value={budgetMax} onChange={e => setBudgetMax(e.target.value)} />
+            <Input type="number" inputMode="numeric" placeholder={t('as_budget_ph')} value={budgetMax} onChange={e => setBudgetMax(e.target.value)} />
           </div>
         </div>
         <DialogFooter>

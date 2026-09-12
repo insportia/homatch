@@ -453,3 +453,53 @@ them, and it needs a real Georgian speaker on a real call. **→ B.**
   `social-collect`, `spend-cap-check`). A pattern match, not a verified finding
   — `payment-webhook` looked identical until its real signature check was read.
   Worth someone reading. Not this branch's, and not a blocker for it.
+
+---
+
+## CLOSEOUT UPDATE — 2026-09-13
+
+Re-verified on the merged tree at `f8ecf35a`. What changed since this document
+was written:
+
+**Billing now fails closed (was D3, now fixed in code).** `evaluateExecutionGate`
+runs per send, immediately before the provider adapter. No active price, no
+resolvable price, a zero price on a product not declared free, a malformed
+number, an insufficient balance, a missing reservation, an active kill switch,
+a domain or compliance verdict that is not ALLOW — each refuses, and 22 tests
+assert `provider.calls === 0` rather than a verdict string. The launch path
+refuses the same case so the customer is told why in the moment they ask.
+
+**"Held for a human" was dialling.** The first version of that gate refused
+BLOCK and let everything else through — including REVIEW, which is what the
+classifier actually returns for political campaigning, unrelated e-commerce, a
+generic blast and B2B lead generation. Only ALLOW allows now, on both the
+domain and the compliance axis. A 15-case release corpus proves it end to end.
+
+**Outbound arrives switched off.** The route seed gave TELEPHONY and MESSAGING
+`enabled=true` with `kill_switch` defaulting to false, so outbound would have
+been live the instant the migration landed. Both now arrive kill-switched.
+
+**A2 verification query 6 expectation changes** — `TELEPHONY` and `MESSAGING`
+now expect `kill_switch = true` on arrival, not false.
+
+**Live provider state, re-checked:** Cartesia 200, Vapi 200, Meta 401 on both
+endpoints with all three credentials present. Meta is unchanged.
+
+**Migration pre-flight, re-run:** 0 `comm_` tables, 0 `comm_` functions, all
+four outreach tables still empty, every FK target present, `is_admin()` present,
+`notification_type` present with none of the nine new values, 0 index
+collisions, 0 trigger collisions. WAL archiving on; recovery point
+`2026-09-12 20:11:53+00`, LSN `15/77004BE0`.
+
+**One thing this document got wrong.** It said the migration could be applied
+by the deploy workflow with `run_migrations: true`. It cannot, safely: that job
+runs `supabase db push`, and the ledger head is `20260911230000` while nine
+later migrations sit unrecorded — several of them already applied by hand
+(`site_pages`, `market_snapshots`, `finance_provider_prices`,
+`intelligence_entities` all exist). A push would replay all nine before
+reaching the Communications pair. The repair list in the workflow covers only
+the 2026-08-27/29 baseline, not these.
+
+That ledger drift is pre-existing and is not this workstream's to resolve. The
+Communications migrations must therefore be applied **selectively**, not by
+`db push`.

@@ -331,7 +331,7 @@ export default function LiveChatPage() {
                             (isDeleted || isHidden) && 'italic text-muted-foreground bg-transparent border border-dashed border-border',
                           )}>
                             {isDeleted ? t('live_chat_message_deleted') : isHidden ? t('live_chat_message_hidden') : msg.body}
-                            {msg.edited_at && !isDeleted && <span className="text-[12px] opacity-60 ms-1.5">{t('live_chat_edited')}</span>}
+                            {msg.edited_at && !isDeleted && <span className="text-2xs opacity-60 ms-1.5">{t('live_chat_edited')}</span>}
                           </div>
                           {!isDeleted && !isHidden && (
                             <DropdownMenu>
@@ -358,7 +358,7 @@ export default function LiveChatPage() {
                             </DropdownMenu>
                           )}
                         </div>
-                        <span className="text-[12px] text-muted-foreground mt-0.5 px-1">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-2xs text-muted-foreground mt-0.5 px-1">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
                   );

@@ -199,7 +199,7 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
                         {c.housing_focus === 'secondary' && (
-                          <Badge variant="outline" className="text-[12px] px-1 py-0 text-muted-foreground shrink-0">{t('community_general_badge')}</Badge>
+                          <Badge variant="outline" className="text-2xs px-1 py-0 text-muted-foreground shrink-0">{t('community_general_badge')}</Badge>
                         )}
                       </div>
                       <p className="text-[14px] text-muted-foreground truncate">

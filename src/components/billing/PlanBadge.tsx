@@ -37,7 +37,7 @@ export function PlanBadge({
 
   const isPremium = planCode === 'PREMIUM';
   const dims = size === 'sm'
-    ? 'px-1.5 py-[1px] text-[12px] tracking-[0.1em]'
+    ? 'px-1.5 py-[1px] text-2xs tracking-[0.1em]'
     : 'px-2 py-0.5 text-[13px] tracking-[0.12em]';
 
   return (

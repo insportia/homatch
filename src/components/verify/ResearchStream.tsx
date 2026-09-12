@@ -111,7 +111,7 @@ export function ResearchStream({
           <p className="tabular-nums text-lg font-semibold leading-none">{pct}%</p>
           {/* Labelled honestly: this is an estimate, and the number beside it
               is not — one is guessed, the other is measured. */}
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mt-1">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground/70 mt-1">
             {t('verify_progress_estimated')}
           </p>
         </div>
@@ -132,8 +132,8 @@ export function ResearchStream({
           />
         </div>
         <div className="flex items-center justify-between gap-3 mt-2">
-          <span className="text-[11px] text-muted-foreground">{t(`verify_pstep_${phase.toLowerCase()}`)}</span>
-          <span className="tabular-nums text-[11px] text-muted-foreground">{elapsed}</span>
+          <span className="text-2xs text-muted-foreground">{t(`verify_pstep_${phase.toLowerCase()}`)}</span>
+          <span className="tabular-nums text-2xs text-muted-foreground">{elapsed}</span>
         </div>
       </div>
 
@@ -148,7 +148,7 @@ export function ResearchStream({
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" aria-hidden="true" />
             <span className="min-w-0">
               <span className="block text-sm break-words">{t(k)}</span>
-              <span className="block text-[10px] uppercase tracking-wider text-muted-foreground/60 break-words">
+              <span className="block text-2xs uppercase tracking-wider text-muted-foreground/60 break-words">
                 {PHASE_TAG[phase]}
               </span>
             </span>
@@ -160,13 +160,13 @@ export function ResearchStream({
           research itself; none of it is implied by the stage we reached. */}
       {facts.length > 0 && (
         <div className="rounded-xl border border-border/60 bg-background/40 p-3 sm:p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-2">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground/70 mb-2">
             {t('verify_stream_found_so_far')}
           </p>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
             {facts.map((f) => (
               <div key={f.id} className="min-w-0 flex items-baseline gap-2">
-                <dt className="text-[11px] text-muted-foreground shrink-0">{t(f.labelKey)}</dt>
+                <dt className="text-2xs text-muted-foreground shrink-0">{t(f.labelKey)}</dt>
                 <dd className="text-xs font-medium break-words min-w-0">{f.value}</dd>
               </div>
             ))}

@@ -44,6 +44,9 @@ const FILES = [
   'domainClassifier.ts',
   'risk.ts',
   'cost.ts',
+  // The fail-closed gate every billable provider action passes. It runs in the
+  // dispatcher, so the edge copy is the one that actually guards the money.
+  'executionGate.ts',
   'statusMap.ts',
   'transcript.ts',
   'handoff.ts',

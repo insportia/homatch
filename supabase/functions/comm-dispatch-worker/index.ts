@@ -27,6 +27,7 @@ import { createVapiProvider, vapiCredentialsPresent } from '../_shared/comm/vapi
 import { buildAgentRuntime } from '../_shared/comm/agentPrompt.ts';
 import { evaluateKillSwitch } from '../_shared/comm/generated/risk.ts';
 import { canDispatchWithinCap } from '../_shared/comm/generated/cost.ts';
+import { evaluateExecutionGate } from '../_shared/comm/generated/executionGate.ts';
 
 /** A tick does bounded work. The next tick picks up where this one stopped. */
 const CAMPAIGNS_PER_TICK = 5;
@@ -154,7 +155,7 @@ async function runCampaign(sb: Sb, campaign: Campaign): Promise<Record<string, u
       continue;
     }
 
-    const ok = await executeSend(sb, campaign, send);
+    const ok = await executeSend(sb, campaign, send, health);
     if (ok) executed++;
   }
 
@@ -167,14 +168,14 @@ async function runCampaign(sb: Sb, campaign: Campaign): Promise<Record<string, u
   return { campaignId: campaign.id, claimed: rows.length, executed, stoppedForCap };
 }
 
-async function executeSend(sb: Sb, campaign: Campaign, send: Record<string, unknown>): Promise<boolean> {
+async function executeSend(
+  sb: Sb,
+  campaign: Campaign,
+  send: Record<string, unknown>,
+  health: CampaignHealth,
+): Promise<boolean> {
   const sendId = send.id as string;
   const phone = String(send.recipient_phone ?? '');
-
-  if (!/^\+\d{7,15}$/.test(phone)) {
-    await fail(sb, sendId, 'no usable phone number');
-    return false;
-  }
 
   // Re-checked at the moment of sending, not only when the queue was built. A
   // contact can opt out between launch and their turn in a 5,000-row campaign,
@@ -183,15 +184,87 @@ async function executeSend(sb: Sb, campaign: Campaign, send: Record<string, unkn
     .select('suppressed, do_not_contact, do_not_call, unsubscribed, whatsapp_opted_out')
     .eq('id', send.contact_id as string).maybeSingle();
 
-  const blocked = contact && (
+  const contactable = !contact || !(
     contact.suppressed || contact.do_not_contact || contact.unsubscribed
     || (campaign.campaign_type === 'AI_CALL' && contact.do_not_call)
     || (campaign.campaign_type === 'WHATSAPP' && contact.whatsapp_opted_out)
   );
-  if (blocked) {
-    await sb.from('outreach_sends')
-      .update({ status: 'SUPPRESSED', error_message: 'the contact is no longer contactable', updated_at: new Date().toISOString() })
-      .eq('id', sendId);
+
+  /* ── THE LAST GATE BEFORE MONEY LEAVES ────────────────────────────────────
+   *
+   * Everything above decides whether this send is worth attempting. This
+   * decides whether Homatch is allowed to pay for it, and it is the only
+   * check standing between a queued row and a provider adapter.
+   *
+   * It did not used to exist. Pricing was checked once, at launch, and an
+   * inactive price was treated as "run anyway, reserve nothing" — so the
+   * dispatcher placed real calls at real rates, charged nobody, and wrote a
+   * null cost. Checking at launch was also the wrong moment: a campaign
+   * launched while priced and dispatched an hour after an admin deactivated
+   * pricing would keep spending, because nothing between the queue and the
+   * adapter ever asked again.
+   *
+   * So the question is asked here, per send, immediately before the call —
+   * and it fails closed. A price that cannot be resolved is a refusal, not a
+   * zero.
+   */
+  const billing = await resolveBilling(sb, campaign);
+  const gate = evaluateExecutionGate({
+    action: campaign.campaign_type === 'WHATSAPP' ? 'SEND_WHATSAPP' : 'PLACE_CALL',
+    requestValid: /^\+\d{7,15}$/.test(phone),
+    contactContactable: contactable,
+    domainVerdict: health.domainVerdict,
+    riskDecision: health.riskDecision,
+    killSwitchPaused: false, // evaluated once per campaign in runCampaign, above
+    channelEnabled: health.channelEnabled,
+    channelKillSwitch: health.channelKillSwitch,
+    providerHealthy: health.providerHealthy,
+    productFound: billing.productFound,
+    productEnabled: billing.productEnabled,
+    pricingActive: billing.pricingActive,
+    unitNetCents: billing.unitNetCents,
+    freeAllowed: billing.freeAllowed,
+    availableCredits: billing.availableCredits,
+    requiredCredits: billing.requiredCredits,
+    reservationRequired: billing.reservationRequired,
+    reservationHeld: billing.reservationHeld,
+    spentCents: health.spentUsd * 100,
+    inFlightCents: health.inFlightUsd * 100,
+    nextUnitMaxCents: estimatedUnitCeilingCents(campaign),
+    campaignCapCents: campaign.max_spend_usd != null ? Number(campaign.max_spend_usd) * 100 : null,
+    accountDailyRemainingCents: health.accountDailyRemainingUsd * 100,
+  });
+
+  if (!gate.allow) {
+    logEvent('dispatch', 'execution_refused', {
+      sendId, campaignId: campaign.id, refusal: gate.refusal, pause: gate.pauseCampaign,
+    });
+
+    if (gate.refusal === 'CONTACT_SUPPRESSED') {
+      await sb.from('outreach_sends').update({
+        status: 'SUPPRESSED', error_message: gate.detail, updated_at: new Date().toISOString(),
+      }).eq('id', sendId);
+      return false;
+    }
+
+    // Everything else would fail identically for every remaining unit, so the
+    // row goes back to PENDING and the campaign stops. Failing the row instead
+    // would destroy work the owner can still rescue by fixing the price or
+    // topping up.
+    await sb.from('outreach_sends').update({
+      status: 'PENDING',
+      error_message: gate.detail,
+      next_attempt_at: new Date(Date.now() + 300_000).toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', sendId);
+
+    if (gate.pauseCampaign) {
+      await sb.from('outreach_campaigns').update({
+        status: 'PAUSED',
+        paused_reason: gate.detail,
+        compliance_state: gate.refusal,
+      }).eq('id', campaign.id).eq('status', 'RUNNING');
+    }
     return false;
   }
 
@@ -200,6 +273,74 @@ async function executeSend(sb: Sb, campaign: Campaign, send: Record<string, unkn
 
   await fail(sb, sendId, `channel ${campaign.campaign_type} is not dispatched by this worker`);
   return false;
+}
+
+/**
+ * What this unit costs the customer, and whether they can pay for it.
+ *
+ * Every field defaults to the refusing value. A query that errors, a product
+ * row that is absent, an RPC that returns nothing — all of them arrive at the
+ * gate as "cannot be priced" rather than as a zero or an undefined that reads
+ * as falsy somewhere downstream.
+ */
+async function resolveBilling(sb: Sb, campaign: Campaign): Promise<{
+  productFound: boolean; productEnabled: boolean; pricingActive: boolean;
+  unitNetCents: number | null; freeAllowed: boolean;
+  availableCredits: number | null; requiredCredits: number | null;
+  reservationRequired: boolean; reservationHeld: boolean;
+}> {
+  const closed = {
+    productFound: false, productEnabled: false, pricingActive: false,
+    unitNetCents: null, freeAllowed: false,
+    availableCredits: null, requiredCredits: null,
+    reservationRequired: true, reservationHeld: false,
+  };
+
+  const productCode = campaign.campaign_type === 'WHATSAPP' ? 'WHATSAPP' : 'AI_CALL';
+
+  const { data: product, error: productErr } = await sb.from('billable_products')
+    .select('code, enabled, kill_switch, pricing_active, standard_retail_cents, requires_reservation, config')
+    .eq('code', productCode).maybeSingle();
+  if (productErr || !product) return closed;
+
+  // A product-level kill switch is as absolute as a route-level one.
+  if (product.kill_switch) return { ...closed, productFound: true };
+
+  // The authoritative price. billing_price_quote owns the arithmetic; a second
+  // copy of it here would be a second answer waiting to disagree.
+  const { data: quote } = await sb.rpc('billing_price_quote', {
+    p_product_code: productCode, p_plan_code: null, p_landed_cogs_cents: null,
+  });
+  const row = Array.isArray(quote) ? quote[0] : null;
+
+  const unitNetCents = row && Number.isFinite(Number(row.final_price_cents))
+    ? Number(row.final_price_cents)
+    : null;
+  const requiredCredits = row && Number.isFinite(Number(row.credits))
+    ? Number(row.credits)
+    : null;
+
+  const { data: wallet } = await sb.from('credit_accounts')
+    .select('balance, reserved').eq('user_id', campaign.owner_id).maybeSingle();
+  const availableCredits = wallet && Number.isFinite(Number(wallet.balance))
+    ? Number(wallet.balance) - Number(wallet.reserved ?? 0)
+    : null;
+
+  const { data: reservation } = await sb.from('credit_reservations')
+    .select('id, status').eq('job_ref', campaign.id).eq('status', 'HELD').maybeSingle();
+
+  return {
+    productFound: true,
+    productEnabled: Boolean(product.enabled),
+    pricingActive: Boolean(product.pricing_active),
+    unitNetCents,
+    // Free has to be declared on the product, never inferred from a zero.
+    freeAllowed: Boolean((product.config as Record<string, unknown> | null)?.free_at_zero),
+    availableCredits,
+    requiredCredits,
+    reservationRequired: Boolean(product.requires_reservation),
+    reservationHeld: Boolean(reservation),
+  };
 }
 
 async function sendWhatsApp(sb: Sb, campaign: Campaign, send: Record<string, unknown>, phone: string): Promise<boolean> {
@@ -327,7 +468,20 @@ interface Health {
   spentUsd: number; inFlightUsd: number;
   campaignCapUsd: number | null; accountDailyRemainingUsd: number;
   providerHealthy: boolean; channelQualityDegraded: boolean;
+  /* Read for the execution gate, which asks them per send rather than once per
+   * campaign. enabled and kill_switch are separate on purpose: turning a
+   * provider off during an incident must not erase the fact that it is
+   * normally on. */
+  channelEnabled: boolean; channelKillSwitch: boolean;
+  /* The campaign's stored classification and compliance decision. Both default
+   * to null, and the gate treats null as a refusal — an unclassified campaign
+   * is not an allowed one. */
+  domainVerdict: 'ALLOW' | 'REVIEW' | 'BLOCK' | null;
+  riskDecision: 'ALLOW' | 'REVIEW' | 'BLOCK' | 'THROTTLE' | null;
 }
+
+/** Named for the gate's parameter, so the two cannot drift apart silently. */
+type CampaignHealth = Health;
 
 async function campaignHealth(sb: Sb, campaignId: string, ownerId: string): Promise<Health> {
   const { data: sends } = await sb.from('outreach_sends')
@@ -349,6 +503,15 @@ async function campaignHealth(sb: Sb, campaignId: string, ownerId: string): Prom
     .select('enabled, kill_switch')
     .eq('role', campaign?.campaign_type === 'WHATSAPP' ? 'MESSAGING' : 'TELEPHONY')
     .order('priority').limit(1).maybeSingle();
+
+  // The decision the launch gate recorded for this campaign. The dispatcher
+  // re-reads it rather than trusting that launch is still true: an admin can
+  // block a campaign after it started, and that has to stop the next send.
+  const { data: assessment } = await sb.from('comm_risk_assessments')
+    .select('decision, domain_verdict')
+    .eq('campaign_id', campaignId)
+    .order('created_at', { ascending: false })
+    .limit(1).maybeSingle();
 
   const midnight = new Date(); midnight.setUTCHours(0, 0, 0, 0);
   const { data: todaySends } = await sb.from('outreach_sends')
@@ -372,6 +535,12 @@ async function campaignHealth(sb: Sb, campaignId: string, ownerId: string): Prom
     campaignCapUsd: campaign?.max_spend_usd != null ? Number(campaign.max_spend_usd) : null,
     accountDailyRemainingUsd: Math.max(0, dailyCap - spentTodayUsd),
     providerHealthy: Boolean(route ? route.enabled && !route.kill_switch : true),
+    // Absent routing is NOT permission. With no row there is nothing saying
+    // this channel may send, and the gate must refuse rather than assume.
+    channelEnabled: Boolean(route?.enabled),
+    channelKillSwitch: Boolean(route?.kill_switch),
+    domainVerdict: (assessment?.domain_verdict as Health['domainVerdict']) ?? null,
+    riskDecision: (assessment?.decision as Health['riskDecision']) ?? null,
     // Only what Meta actually told us (§33). No rating means no claim either way.
     channelQualityDegraded: String(account?.quality_rating ?? '').toUpperCase() === 'RED'
       || account?.status === 'ACTION_REQUIRED',

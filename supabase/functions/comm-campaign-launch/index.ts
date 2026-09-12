@@ -215,11 +215,28 @@ async function reserveForCampaign(sb: Sb, params: {
     return { ok: true, reservationId: grant.reservationId ?? undefined, reason: grant.funding };
   }
 
-  // Pricing that is switched off is not a refusal to launch. The campaign runs
-  // and its usage is recorded; there is simply nothing to hold.
+  /*
+   * PRICING THAT IS SWITCHED OFF IS A REFUSAL TO LAUNCH.
+   *
+   * This used to return ok. The reasoning was that charging for something with
+   * no configured price would be worse than not charging — true about the
+   * invoice, wrong about the action. The honest answer to "I cannot price
+   * this" is not to do it for free; it is not to do it.
+   *
+   * What it actually produced: publish an agent, import contacts, press
+   * Launch, and the dispatcher placed real PSTN calls at real provider rates,
+   * held nothing, charged nobody and wrote a null cost. The only thing between
+   * that and an unbounded bill was a per-tier daily cap.
+   *
+   * The dispatcher now refuses the same case per send, immediately before the
+   * adapter (evaluateExecutionGate), so this is the outer of two gates rather
+   * than the only one. It stays here because refusing at launch tells the
+   * customer why in the moment they asked, rather than leaving them a campaign
+   * that silently never sends.
+   */
   if (grant.reason === 'PRODUCT_PRICING_INACTIVE' || grant.reason === 'PRODUCT_DISABLED') {
-    logEvent('campaign-launch', 'unpriced_product', { productCode: params.productCode, reason: grant.reason });
-    return { ok: true, reason: grant.reason };
+    logEvent('campaign-launch', 'refused_unpriced', { productCode: params.productCode, reason: grant.reason });
+    return { ok: false, reason: grant.reason };
   }
 
   return {

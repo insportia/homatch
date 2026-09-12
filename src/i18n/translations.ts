@@ -3739,6 +3739,7 @@ const en = {
   pwa_ios_step3: 'Tap Add',
   pwa_dismiss: 'Not now',
   pwa_close: 'Close',
+  doc_pick_to_read: 'Choose a document to read it here',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -7396,6 +7397,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'შეეხე Add-ს',
   pwa_dismiss: 'ახლა არა',
   pwa_close: 'დახურვა',
+  doc_pick_to_read: 'აირჩიე დოკუმენტი წასაკითხად',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -11044,6 +11046,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'Нажмите «Добавить»',
   pwa_dismiss: 'Не сейчас',
   pwa_close: 'Закрыть',
+  doc_pick_to_read: 'Выберите документ, чтобы прочитать его здесь',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -14690,6 +14693,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'Ekle\'ye dokunun',
   pwa_dismiss: 'Şimdi değil',
   pwa_close: 'Kapat',
+  doc_pick_to_read: 'Burada okumak için bir belge seçin',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -18336,6 +18340,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'اضغط إضافة',
   pwa_dismiss: 'ليس الآن',
   pwa_close: 'إغلاق',
+  doc_pick_to_read: 'اختر مستندًا لقراءته هنا',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -21982,6 +21987,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'הקישו הוספה',
   pwa_dismiss: 'לא עכשיו',
   pwa_close: 'סגירה',
+  doc_pick_to_read: 'בחרו מסמך כדי לקרוא אותו כאן',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

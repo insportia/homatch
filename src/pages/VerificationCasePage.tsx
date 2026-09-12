@@ -38,6 +38,7 @@ import {
 } from '@/services/documentWorkspace';
 import { DocumentWorkspace } from '@/components/documents/DocumentWorkspace';
 import { DocumentReader } from '@/components/documents/DocumentReader';
+import { useIsDesktop } from '@/hooks/use-mobile';
 import type { DocumentCategory } from '@/documents/documentModel';
 import { useJobs } from '@/contexts/JobsContext';
 import type { BackgroundJob } from '@/services/backgroundJobs';
@@ -69,6 +70,7 @@ const VerificationCasePage: React.FC = () => {
   // round trip PER DOCUMENT to find out whether it had been analysed.
   const [documents, setDocuments] = useState<WorkspaceDocument[]>([]);
   const [findings, setFindings] = useState<DocumentFinding[]>([]);
+  const isDesktop = useIsDesktop();
   const [readerDoc, setReaderDoc] = useState<WorkspaceDocument | null>(null);
   const [readerOpen, setReaderOpen] = useState(false);
   const [notes, setNotes] = useState<{ id: string; body: string; created_at: string }[]>([]);

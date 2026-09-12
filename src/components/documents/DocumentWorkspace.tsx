@@ -30,7 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Upload, ChevronsDownUp, ChevronsUpDown, Search, Scale, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Upload, ChevronsDownUp, ChevronsUpDown, Search, Scale, AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
 import { ALLOWED_MIME, validateUpload } from '@/services/dealRoomDocuments';
 import type { DocumentFinding } from '@/services/dealRoomDocuments';
 import type { WorkspaceDocument } from '@/services/documentWorkspace';
@@ -40,6 +40,8 @@ import {
   type DocumentSort, type DocumentCategory,
 } from '@/documents/documentModel';
 import { DocumentCard, type DocumentCardActions } from './DocumentCard';
+import { DocumentReader } from './DocumentReader';
+import { useIsDesktop } from '@/hooks/use-mobile';
 import { SectionBoundary } from '@/components/common/SectionBoundary';
 
 const REJECTION_KEY: Record<string, string> = {
@@ -61,7 +63,20 @@ export const DocumentWorkspace: React.FC<{
   busy?: boolean;
   /** Ids that contributed to the verification result (§21). */
   usedInVerification?: Set<string>;
-}> = ({ documents, findings, jobs, onUpload, actions, busy, usedInVerification }) => {
+  /**
+   * The document currently being read, and how to change it.
+   *
+   * Hoisted here so the LIBRARY and the READER are two views of one
+   * selection. Without it the workspace is a list that launches a drawer,
+   * which is what made "which document am I looking at, and what else is
+   * there" unanswerable on a laptop.
+   */
+  activeDoc?: WorkspaceDocument | null;
+  onSelectDoc?: (doc: WorkspaceDocument) => void;
+}> = ({ documents, findings, jobs, onUpload, actions, busy, usedInVerification, activeDoc, onSelectDoc }) => {
+  /* Two panes are only worth it where there is room for two panes. Decided
+     in JS, not CSS, because the inline reader fetches text on mount. */
+  const isDesktop = useIsDesktop();
   const { t } = useLanguage();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [rejection, setRejection] = useState<string | null>(null);
@@ -135,20 +150,51 @@ export const DocumentWorkspace: React.FC<{
     return map.size > 1 ? map : null;
   }, [visible]);
 
-  const renderCard = (d: WorkspaceDocument) => (
-    <DocumentCard
-      key={d.id}
-      doc={d}
-      job={jobs.get(d.id) ?? null}
-      expanded={isExpanded(d)}
-      onToggle={() => toggle(d.id)}
-      actions={actions}
-      busy={busy}
-      usedInVerification={usedInVerification?.has(d.id)}
-    />
-  );
+  const renderCard = (d: WorkspaceDocument) => {
+    const card = (
+      <DocumentCard
+        key={d.id}
+        doc={d}
+        job={jobs.get(d.id) ?? null}
+        expanded={isExpanded(d)}
+        onToggle={() => toggle(d.id)}
+        actions={actions}
+        busy={busy}
+        usedInVerification={usedInVerification?.has(d.id)}
+      />
+    );
+    if (!isDesktop || !onSelectDoc) return card;
 
-  return (
+    /*
+     * On a laptop the card also SELECTS. A gold rule marks the open one, so
+     * "which document am I reading" is answerable without reading a title.
+     *
+     * The wrapper is a plain div with a click handler rather than a button,
+     * because the card already contains buttons, a dropdown and a
+     * confirmation dialog — nesting those inside a button is invalid and
+     * breaks the menu. Keyboard users reach every one of those controls
+     * directly, and the row adds no capability they lose.
+     */
+    const open = activeDoc?.id === d.id;
+    return (
+      <div
+        key={d.id}
+        onClick={() => onSelectDoc(d)}
+        className={`rounded-xl transition-shadow ${open ? 'ring-2 ring-gold ring-offset-2 ring-offset-background' : 'cursor-pointer hover:shadow-card-soft'}`}
+      >
+        {card}
+      </div>
+    );
+  };
+
+  /*
+   * THE LIBRARY.
+   *
+   * Exactly what this component rendered before — upload, contradictions,
+   * agreements, search, sort, the cards. Nothing about it changed except
+   * where it sits.
+   */
+  const library = (
     <div className="space-y-4">
       {/* ── Upload ────────────────────────────────────────── */}
       <Card>
@@ -287,6 +333,54 @@ export const DocumentWorkspace: React.FC<{
         <Scale className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
         <span className="min-w-0 break-words">{t('dr_docs_legal_note')}</span>
       </p>
+    </div>
+  );
+
+  /*
+   * BELOW lg: one column, and the reader stays the full-screen Sheet the
+   * page already opens. On a phone an overlay IS the reading surface, so
+   * there is nothing to gain by changing it.
+   */
+  if (!isDesktop) return library;
+
+  /*
+   * FROM lg: the document is the main surface and the library sits beside
+   * it, permanently. The complaint this answers is that reading happened in
+   * a drawer hanging off the right edge, which made the contract a footnote
+   * to the list and put every other document behind a close button.
+   *
+   * The library is the narrower column because choosing is a glance and
+   * reading is the work. It scrolls independently and sticks, so switching
+   * documents never costs a scroll back to the top.
+   */
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+      <div className="min-w-0 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto lg:pe-1">
+        {library}
+      </div>
+
+      <div className="min-w-0">
+        {activeDoc ? (
+          <div className="rounded-xl border border-border bg-card p-6 xl:p-8">
+            <DocumentReader
+              doc={activeDoc}
+              open
+              onOpenChange={() => { /* inline: there is nothing to close */ }}
+              usedInVerification={usedInVerification?.has(activeDoc.id)}
+              variant="inline"
+            />
+          </div>
+        ) : (
+          /* Not a blank panel: it names what this column is for, so an
+             empty workspace reads as "choose one" rather than as a bug. */
+          <div className="flex min-h-[24rem] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/60 p-10 text-center">
+            <FileText className="h-10 w-10 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
+            <p className="mt-4 max-w-sm text-base leading-relaxed text-ink-soft">
+              {documents.length === 0 ? t('dr_docs_empty') : t('doc_pick_to_read')}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

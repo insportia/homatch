@@ -715,6 +715,46 @@
     pointer-events: auto;
   }
 
+  /* ── The reading pass over a contract ──────────────────────────────
+
+     A soft band that travels down the page while the document is being
+     read. It replaced ruled lines that brightened one by one, which was
+     the visual language of a form filling itself in — untrue about what
+     the extraction does, and cheap to look at.
+
+     The gradient is warm at its centre and transparent at both edges, so
+     what moves is a soft focus rather than a hard scanner line. The
+     element is 6rem tall and travels the height of its container plus
+     its own height, which is why the translate runs past 100%.
+
+     `mix-blend-mode: multiply` keeps it behind the ink: the ruled lines
+     stay legible under the band instead of being washed out by it. */
+  @keyframes hm-read {
+    0%   { transform: translateY(-100%); opacity: 0; }
+    12%  { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { transform: translateY(420%); opacity: 0; }
+  }
+
+  .hm-read {
+    background: linear-gradient(
+      to bottom,
+      hsl(38 88% 54% / 0) 0%,
+      hsl(38 88% 54% / 0.16) 45%,
+      hsl(38 88% 54% / 0.22) 55%,
+      hsl(38 88% 54% / 0) 100%
+    );
+    mix-blend-mode: multiply;
+    animation: hm-read 2.6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  }
+
+  /* A dark section inverts the blend: multiply on near-black paints
+     nothing, so the band has to lighten instead. */
+  .bg-\[\#0D0D0D\] .hm-read,
+  .dark .hm-read {
+    mix-blend-mode: screen;
+  }
+
   /* ── A document being read ─────────────────────────────────────────
      The sweep that passes over the document mark while a contract is
      being extracted. It says work is happening TO THIS, rather than
@@ -742,6 +782,7 @@
     .hm-ring::after { animation: none; opacity: 0; }
   }
     .hm-scan { animation: none; opacity: 0; }
+    .hm-read { animation: none; opacity: 0; }
 }
 
 /* ── When somebody asks everything to stop moving ──────────────────────

@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  DISMISS_DAYS, isIOS, isIOSSafari, isStandalone, rememberDismissal,
-  resolveInstallMode, wasDismissed,
+  DISMISS_DAYS, isIOS, isIOSSafari, isStandalone, rememberMuted,
+  resolveInstallMode, wasMuted,
 } from '../pwa.ts';
 
 /*
@@ -79,23 +79,23 @@ function memoryStorage(seed = {}) {
 test('a dismissal is respected, then expires', () => {
   const store = memoryStorage();
   const t0 = 1_000_000_000_000;
-  rememberDismissal(t0, store);
-  assert.equal(wasDismissed(t0 + 1000, store), true, 'still dismissed a second later');
+  rememberMuted(t0, store);
+  assert.equal(wasMuted(t0 + 1000, store), true, 'still dismissed a second later');
   const justInside = t0 + (DISMISS_DAYS * 24 * 60 * 60 * 1000) - 1000;
-  assert.equal(wasDismissed(justInside, store), true, 'still dismissed just inside the window');
+  assert.equal(wasMuted(justInside, store), true, 'still dismissed just inside the window');
   const justOutside = t0 + (DISMISS_DAYS * 24 * 60 * 60 * 1000) + 1000;
-  assert.equal(wasDismissed(justOutside, store), false, 'offered again after the window');
+  assert.equal(wasMuted(justOutside, store), false, 'offered again after the window');
 });
 
 test('a corrupt or absent dismissal is treated as not dismissed', () => {
-  assert.equal(wasDismissed(Date.now(), memoryStorage()), false);
-  assert.equal(wasDismissed(Date.now(), memoryStorage({ homatch_install_dismissed_at: 'nonsense' })), false);
+  assert.equal(wasMuted(Date.now(), memoryStorage()), false);
+  assert.equal(wasMuted(Date.now(), memoryStorage({ homatch_install_dismissed_at: 'nonsense' })), false);
 });
 
 test('storage that throws does not permanently suppress the CTA', () => {
   const hostile = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
-  assert.equal(wasDismissed(Date.now(), hostile), false);
-  assert.doesNotThrow(() => rememberDismissal(Date.now(), hostile));
+  assert.equal(wasMuted(Date.now(), hostile), false);
+  assert.doesNotThrow(() => rememberMuted(Date.now(), hostile));
 });
 
 /* ── the decision ───────────────────────────────────────────────────── */
@@ -103,41 +103,41 @@ test('storage that throws does not permanently suppress the CTA', () => {
 test('an installed app never offers to install itself', () => {
   // Standalone beats everything, including a prompt Chromium is still holding.
   assert.equal(resolveInstallMode({
-    standalone: true, hasNativePrompt: true, iosSafari: true, dismissed: false,
-  }), 'standalone');
+    standalone: true, hasNativePrompt: true, iosSafari: true, muted: false,
+   installable: false,}), 'standalone');
 });
 
 test('Chromium with a held prompt gets the one-tap install', () => {
   assert.equal(resolveInstallMode({
-    standalone: false, hasNativePrompt: true, iosSafari: false, dismissed: false,
-  }), 'native');
+    standalone: false, hasNativePrompt: true, iosSafari: false, muted: false,
+   installable: false,}), 'native');
 });
 
 test('iOS Safari gets instructions, never a native prompt', () => {
   // The whole point: there is no API here, so the mode must not be 'native'.
   const mode = resolveInstallMode({
-    standalone: false, hasNativePrompt: false, iosSafari: true, dismissed: false,
-  });
+    standalone: false, hasNativePrompt: false, iosSafari: true, muted: false,
+   installable: false,});
   assert.equal(mode, 'ios-manual');
   assert.notEqual(mode, 'native');
 });
 
 test('a browser that can do neither is offered nothing', () => {
   assert.equal(resolveInstallMode({
-    standalone: false, hasNativePrompt: false, iosSafari: false, dismissed: false,
-  }), 'unavailable');
+    standalone: false, hasNativePrompt: false, iosSafari: false, muted: false,
+   installable: false,}), 'unavailable');
 });
 
 test('a dismissal suppresses both affordances but not standalone', () => {
   assert.equal(resolveInstallMode({
-    standalone: false, hasNativePrompt: true, iosSafari: false, dismissed: true,
-  }), 'unavailable');
+    standalone: false, hasNativePrompt: true, iosSafari: false, muted: true,
+   installable: false,}), 'unavailable');
   assert.equal(resolveInstallMode({
-    standalone: false, hasNativePrompt: false, iosSafari: true, dismissed: true,
-  }), 'unavailable');
+    standalone: false, hasNativePrompt: false, iosSafari: true, muted: true,
+   installable: false,}), 'unavailable');
   assert.equal(resolveInstallMode({
-    standalone: true, hasNativePrompt: false, iosSafari: false, dismissed: true,
-  }), 'standalone');
+    standalone: true, hasNativePrompt: false, iosSafari: false, muted: true,
+   installable: false,}), 'standalone');
 });
 
 /*
@@ -183,4 +183,83 @@ test('it still only registers in a real build', () => {
   // A dev server serves the unhashed module graph; caching it serves
   // yesterday's code back to whoever is editing it.
   assert.match(main, /if \('serviceWorker' in navigator && import\.meta\.env\.PROD\)/);
+});
+
+/*
+ * DISMISSING THE BROWSER'S DIALOG IS NOT "NEVER ASK ME AGAIN".
+ *
+ * This is the bug the install control actually had. resolveInstallMode
+ * treated one flag as both "not now" and "never", and InstallApp set it when
+ * Chromium's own dialog came back `dismissed`. So the sequence that a curious
+ * visitor performs — press Install, read the dialog, change your mind — removed
+ * the entry point for sixty days. It looked exactly like a button that had
+ * broken itself.
+ *
+ * Muting is now a separate, explicit act, available only from the sheet.
+ */
+
+test('a snoozed prompt leaves the control on the page', () => {
+  // Chromium, prompt already spent by a dismissal: still installable.
+  assert.equal(
+    resolveInstallMode({
+      standalone: false, hasNativePrompt: false, iosSafari: false,
+      installable: true, muted: false,
+    }),
+    'pending',
+    'dismissing the native dialog must not remove the way back in',
+  );
+});
+
+test('only an explicit mute hides the control', () => {
+  assert.equal(
+    resolveInstallMode({
+      standalone: false, hasNativePrompt: true, iosSafari: false,
+      installable: true, muted: true,
+    }),
+    'unavailable',
+  );
+});
+
+test('a browser that cannot install is offered nothing', () => {
+  // Firefox and desktop Safari: a button here could never work.
+  assert.equal(
+    resolveInstallMode({
+      standalone: false, hasNativePrompt: false, iosSafari: false,
+      installable: false, muted: false,
+    }),
+    'unavailable',
+  );
+});
+
+test('an installed app never offers to install itself', () => {
+  for (const installable of [true, false]) {
+    for (const muted of [true, false]) {
+      assert.equal(
+        resolveInstallMode({
+          standalone: true, hasNativePrompt: true, iosSafari: true, installable, muted,
+        }),
+        'standalone',
+      );
+    }
+  }
+});
+
+test('the control is reachable from every surface it should be', () => {
+  // A phone is where installing matters most, and where it used to be
+  // impossible: the component was `hidden sm:block` and appeared in no menu.
+  const header = readFileSync('src/components/home/PublicHeader.tsx', 'utf8');
+  assert.match(header, /<InstallApp tone=\{onDark \? 'dark' : 'auto'\} \/>/, 'desktop utility cluster');
+  assert.match(header, /<InstallApp variant="block" \/>/, 'mobile menu');
+  assert.equal(
+    /hidden sm:block"><InstallApp/.test(header), false,
+    'install must not be hidden from small screens',
+  );
+});
+
+test('the install control is visible at rest, not on hover', () => {
+  // On the black hero it was a dark hairline over near-black — invisible
+  // until a hover background introduced it.
+  const src = readFileSync('src/components/common/InstallApp.tsx', 'utf8');
+  assert.match(src, /bg-white\/12 text-white ring-1 ring-inset ring-white\/30/, 'dark tone has its own surface');
+  assert.match(src, /bg-gold-soft text-gold-ink ring-1 ring-inset/, 'light tone has its own surface');
 });

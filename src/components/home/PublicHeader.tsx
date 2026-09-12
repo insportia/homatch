@@ -121,9 +121,29 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
           ))}
         </nav>
 
-        <div className="ms-auto flex items-center gap-3 lg:ms-0">
-          <div className="hidden sm:block"><InstallApp /></div>
-          <LanguageSwitcher showGlobe triggerClassName={`h-9 px-2 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
+        {/*
+          * TWO GROUPS, NOT ONE ROW OF LEFTOVERS.
+          *
+          * Install and language are utilities; sign in and sign up are the
+          * account. They used to share one gap, so the eye read five
+          * equally weighted controls and the row sprawled. A hairline
+          * between the groups costs one pixel and does the work that
+          * spacing alone could not.
+          */}
+        <div className="ms-auto flex items-center gap-2.5 lg:ms-0">
+          <div className="hidden items-center gap-1.5 sm:flex">
+            <InstallApp tone={onDark ? 'dark' : 'auto'} />
+            <LanguageSwitcher showGlobe triggerClassName={`h-10 px-2.5 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
+          </div>
+
+          {/* On a phone the language switcher stays in the bar — it is the
+              one utility somebody may need before opening anything. */}
+          <div className="sm:hidden"><LanguageSwitcher showGlobe triggerClassName={`h-10 px-2 ${onDark ? 'text-white hover:bg-white/10' : ''}`} /></div>
+
+          <span
+            className={`hidden h-6 w-px sm:block ${onDark ? 'bg-white/20' : 'bg-border'}`}
+            aria-hidden="true"
+          />
 
           {session ? (
             <Button
@@ -172,8 +192,14 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
         </div>
       </div>
 
+      {/* Scroll-safe: five links plus the utility area is taller than a
+          320x568 screen, and the panel must not trap what it cannot show.
+          The inset clears the home indicator on a modern phone. */}
       {open && (
-        <div className="border-t border-border bg-background lg:hidden">
+        <div
+          className="max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain border-t border-border bg-background md:max-h-[calc(100dvh-5.5rem)] lg:hidden"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           <nav className={`${PAGE} flex flex-col py-3`}>
             {links.map(link => (
               <button
@@ -195,6 +221,27 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
                 </Button>
               </div>
             )}
+
+            {/*
+              * THE UTILITY AREA.
+              *
+              * Install used to be `hidden sm:block` and appeared nowhere in
+              * this menu, so on a phone there was no way to install the app
+              * at all — the one place it matters most. It is a filled block
+              * here rather than a pill, because it is the only action in
+              * this area and should look like one.
+              *
+              * The language switcher repeats here deliberately. It is in the
+              * bar too, but somebody who has opened the menu is looking for
+              * settings, and this is where they will look.
+              */}
+            <div className="mt-4 space-y-3 border-t border-border pt-4">
+              <InstallApp variant="block" />
+              <div className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-border px-4 py-2.5">
+                <span className="text-[15px] font-medium text-ink-soft">{t('nav_language')}</span>
+                <LanguageSwitcher showGlobe triggerClassName="h-9 px-2.5" />
+              </div>
+            </div>
           </nav>
         </div>
       )}

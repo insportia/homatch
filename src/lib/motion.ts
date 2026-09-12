@@ -67,7 +67,20 @@ export interface RevealShape {
  */
 export function revealShape(level: MotionLevel): RevealShape {
   if (level === 'none') return { distance: 0, duration: 0, stagger: 0 };
-  if (level === 'simplified') return { distance: 10, duration: 340, stagger: 0 };
+  /*
+   * A PHONE REVEAL HAS TO BE VISIBLE TO COUNT AS ONE.
+   *
+   * This was 10px over 340ms. That is not restrained, it is imperceptible:
+   * a tenth of a finger's width, finished before the eye settles, on a screen
+   * the reader is already moving. The product shipped with reveals that
+   * technically ran and that nobody could see -- which is worse than having
+   * none, because it looks like the page is simply static.
+   *
+   * 18px over 480ms is still shorter and smaller than the desktop 22/520,
+   * still one quiet rise rather than a bounce, and it is actually perceptible
+   * while scrolling.
+   */
+  if (level === 'simplified') return { distance: 18, duration: 480, stagger: 45 };
   return { distance: 22, duration: 520, stagger: 70 };
 }
 

@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, FileText, Upload } from 'lucide-react';
+import { ArrowRight, Upload } from 'lucide-react';
+import { ContractDocument } from './ContractDocument';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
@@ -44,41 +45,20 @@ export function ContractIntelligenceSection() {
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
+  /*
+   * The four steps are a READING AID, not an animation.
+   *
+   * They used to cycle on a setInterval started at mount, which on a phone
+   * meant the sequence had been going round for half a minute before anybody
+   * scrolled far enough to see it. The moving part of this region is now the
+   * document beside it, which starts when it is actually on screen; these
+   * stay put until somebody presses one.
+   */
   const [step, setStep] = useState(0);
-  const [held, setHeld] = useState(false);
-  const [autoplay, setAutoplay] = useState(false);
-  const reduced = useRef(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync = () => {
-      reduced.current = still.matches;
-      setAutoplay(!still.matches);
-    };
-    sync();
-    still.addEventListener('change', sync);
-    return () => still.removeEventListener('change', sync);
-  }, []);
-
-  /* It walks itself so the idea lands without interaction, and stops the
-     moment a visitor touches it, because something that advances under a
-     thumb is worse than something that waits. */
-  useEffect(() => {
-    if (!autoplay || held) return;
-    const id = window.setInterval(() => setStep(s => (s + 1) % STEPS.length), 2800);
-    return () => window.clearInterval(id);
-  }, [autoplay, held]);
 
   return (
     <section id="contract" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
-      <div
-        className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:items-center lg:gap-16"
-        onMouseEnter={() => setHeld(true)}
-        onMouseLeave={() => setHeld(false)}
-        onFocusCapture={() => setHeld(true)}
-        onBlurCapture={() => setHeld(false)}
-      >
+      <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:items-center lg:gap-16">
         {/* ── The argument ─────────────────────────────────────── */}
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
@@ -160,123 +140,29 @@ export function ContractIntelligenceSection() {
           </p>
         </div>
 
-        {/* ── The document ─────────────────────────────────────── */}
-        <DocumentPanel step={step} />
-      </div>
-    </section>
-  );
-}
-
-/**
- * The document, at whichever step is selected. Everything in it is shape:
- * the page is ruled lines, the clause under attention is a gold band, and
- * the explanation panel carries the kind of question Homatch answers rather
- * than an answer about somebody's real contract.
- */
-function DocumentPanel({ step }: { step: number }) {
-  const { t } = useLanguage();
-
-  /* Line 6 is the clause the illustration singles out. */
-  const LINES = [96, 88, 92, 74, 90, 86, 70, 93, 80, 62];
-  const CLAUSE = 6;
-
-  return (
-    <div
-      className="min-w-0 overflow-hidden rounded-[1.1rem] border border-foreground/15 bg-card shadow-hover"
-      role="img"
-      aria-label={t('mp_ci_panel_alt')}
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-foreground/[0.12] px-5 py-3.5 sm:px-6">
-        <span className="inline-flex min-w-0 items-center gap-2.5">
-          <FileText className="h-4 w-4 shrink-0 text-gold-ink" strokeWidth={2} aria-hidden="true" />
-          <span className="min-w-0 truncate text-[15px] font-medium text-foreground">{t('mp_ci_doc_label')}</span>
-        </span>
-      </div>
-
-      {/*
-        * THE PAGE, AND THE READING PASS OVER IT.
-        *
-        * The previous version faded each ruled line from 7% to 16% and
-        * called that reading. It is the visual language of a form filling
-        * itself in — untrue about what the extraction does, and cheap to
-        * look at.
-        *
-        * This is a pass instead. A soft band travels down the page while
-        * the document is being read, and the lines sit at their real
-        * weight underneath it rather than brightening one by one. When the
-        * clause is found the band stops, the rest of the page recedes, and
-        * the clause alone is held.
-        *
-        * The band is one CSS animation on one element. It is not driven by
-        * per-line state, so there is nothing to stagger, nothing to get out
-        * of step, and nothing to recalculate on a resize.
-        */}
-      <div className="relative overflow-hidden p-5 sm:p-6" aria-hidden="true">
-        <div className="space-y-2.5">
-          {LINES.map((w, i) => {
-            const isClause = i === CLAUSE;
-            const held = step >= 2 && isClause;
-            const receded = step >= 2 && !isClause;
-            return (
-              <span
-                key={i}
-                className={`block h-2.5 rounded-full transition-[background-color,opacity] duration-500 motion-reduce:transition-none ${
-                  held ? 'bg-gold' : 'bg-foreground/[0.16]'
-                } ${receded ? 'opacity-35' : 'opacity-100'}`}
-                style={{ width: `${w}%` }}
-              />
-            );
-          })}
-        </div>
-
-        {/*
-          * The reading pass.
-          *
-          * Present only while the document is actually being read, so it
-          * stops of its own accord rather than looping behind a result
-          * that has already been found. The stylesheet holds the keyframes
-          * and the reduced-motion answer — see index.css, hm-read.
-          */}
-        {step < 2 && (
-          <span className="hm-read pointer-events-none absolute inset-x-0 top-0 h-24" />
-        )}
-
-        {/*
-          * What was found, once it has been.
-          *
-          * A rule around the clause rather than a highlight over it: the
-          * clause is already gold, and stacking a wash on top of it would
-          * make the one line that matters harder to read, not easier.
-          */}
-        <span
-          className={`pointer-events-none absolute inset-x-4 h-[2.75rem] rounded-[0.5rem] border-2 border-gold transition-opacity duration-500 motion-reduce:transition-none sm:inset-x-5 ${
-            step >= 2 ? 'opacity-100' : 'opacity-0'
-          }`}
-          style={{ top: `calc(${CLAUSE} * 1.25rem + 1.55rem)` }}
+        {/* ── The document, being read ─────────────────────────── */}
+        <ContractDocument
+          copy={{
+            heading: sf('doc_heading', 'mp_ci_doc_heading'),
+            fileName: sf('doc_file', 'mp_ci_doc_label'),
+            scanning: sf('doc_scanning', 'mp_ci_scanning'),
+            complete: sf('doc_complete', 'mp_ci_st_complete'),
+            note: sf('doc_note', 'mp_ci_panel_note'),
+            alt: t('mp_ci_panel_alt'),
+            labels: {
+              parties: sf('f_parties', 'mp_ci_f_parties'),
+              property: sf('f_property', 'mp_ci_f_property'),
+              price: sf('f_price', 'mp_ci_f_price'),
+              clause: sf('f_clause', 'mp_ci_f_clause'),
+            },
+            states: {
+              detected: sf('st_detected', 'mp_ci_st_detected'),
+              verified: sf('st_verified', 'mp_ci_st_verified'),
+              review: sf('st_review', 'mp_ci_st_review'),
+            },
+          }}
         />
       </div>
-      {/* What the reading produced */}
-      <div className="border-t border-foreground/[0.12] bg-secondary/50 p-5 sm:p-6">
-        {step < 2 ? (
-          <p className="text-[16px] leading-relaxed text-muted-foreground">{t('mp_ci_state_reading')}</p>
-        ) : (
-          <>
-            <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-gold-ink">
-              {t('mp_ci_found_label')}
-            </p>
-            <p className="mt-2 text-pretty text-sm font-medium leading-snug text-foreground">{t('mp_ci_found')}</p>
-            {step >= 3 && (
-              <div className="mt-4 rounded-[0.7rem] bg-primary p-4 text-primary-foreground">
-                <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-gold">
-                  {t('mp_ci_plain_label')}
-                </p>
-                <p className="mt-2 text-pretty text-[16px] leading-relaxed">{t('mp_ci_plain')}</p>
-              </div>
-            )}
-          </>
-        )}
-        <p className="mt-4 text-pretty text-xs leading-relaxed text-muted-foreground">{t('mp_ci_panel_note')}</p>
-      </div>
-    </div>
+    </section>
   );
 }

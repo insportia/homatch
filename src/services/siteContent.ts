@@ -46,6 +46,7 @@ export type PageSlug =
   | 'mortgage'
   | 'privacy'
   | 'terms'
+  | 'verify'
   /**
    * The header and the footer, which belong to the SITE rather than to any
    * one page. No route renders this slug; src/site/render/ShellScope.tsx
@@ -62,6 +63,7 @@ export const EDITABLE_PAGES: ReadonlyArray<{ slug: PageSlug; path: string; label
   { slug: 'mortgage', path: '/mortgage', labelKey: 'nav_mortgage' },
   { slug: 'privacy', path: '/privacy', labelKey: 'home_footer_privacy' },
   { slug: 'terms', path: '/terms', labelKey: 'home_footer_terms' },
+  { slug: 'verify', path: '/verify', labelKey: 'nav_verify' },
   // Last, because it is not a page: it is what surrounds all of them.
   { slug: 'shell', path: '/', labelKey: 'studio_page_shell' },
 ];

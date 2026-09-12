@@ -72,13 +72,18 @@ test('at none, a reveal has nothing to reveal', () => {
   assert.deepEqual(revealShape('none'), { distance: 0, duration: 0, stagger: 0 });
 });
 
-test('a reveal on a phone is shorter, smaller and unstaggered', () => {
+test('a reveal on a phone is shorter and smaller, but still visible', () => {
   const full = revealShape('full');
   const simple = revealShape('simplified');
   assert.ok(simple.distance < full.distance, 'the travel should be shorter on a phone');
   assert.ok(simple.duration < full.duration, 'it should take less time on a phone');
-  assert.equal(simple.stagger, 0, 'staggering a list on a phone makes the last item feel broken');
+  assert.ok(simple.stagger < full.stagger, 'a phone stagger should be tighter than a desktop one');
   assert.ok(full.stagger > 0);
+  /* The reason this test exists at all: the phone shape was 10px over 340ms,
+     which ran correctly and which nobody could see. A reveal that is not
+     perceptible is not restraint, it is a static page with extra work. */
+  assert.ok(simple.distance >= 14, `a ${simple.distance}px rise is not perceptible on a phone`);
+  assert.ok(simple.duration >= 450, `${simple.duration}ms is too brief to read as movement`);
 });
 
 test('durations scale down but never collapse except at none', () => {

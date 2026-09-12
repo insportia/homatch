@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
+import { PublicHeader, HeaderSpacer, type HeaderLink } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { PageBlocks } from '@/site/render/PageBlocks';
 import { Button } from '@/components/ui/button';
@@ -102,6 +102,7 @@ export default function PartnersPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <PublicHeader links={headerLinks} solid />
+      <HeaderSpacer />
 
       {/* Hero */}
       <section className="relative border-b border-border py-16 px-4">

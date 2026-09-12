@@ -58,9 +58,17 @@ export function Reveal({
     // No element, or a browser without the API: show it and move on.
     if (!el || typeof IntersectionObserver === 'undefined') { setShown(true); return; }
 
-    // Already on screen at mount — above the fold — so there is nothing to
-    // wait for, and waiting would delay the content of the first paint.
-    if (el.getBoundingClientRect().top < window.innerHeight) { setShown(true); return; }
+    /*
+     * Already on screen at mount, so there is nothing to wait for and waiting
+     * would delay the content of the first paint.
+     *
+     * The threshold is 60% of the viewport, not 100%. At 100% anything merely
+     * POKING into the bottom edge counted as "already visible" and was shown
+     * final immediately -- and on a phone, where sections are tall and stack
+     * one per screen, that was most of them. The reveal ran for nobody: by
+     * the time the reader scrolled down, every section had already arrived.
+     */
+    if (el.getBoundingClientRect().top < window.innerHeight * 0.6) { setShown(true); return; }
 
     const io = new IntersectionObserver(entries => {
       for (const e of entries) {

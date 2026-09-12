@@ -21,6 +21,14 @@ export type InstallMode =
   /** Chromium held a prompt for us; one click installs. */
   | 'native'
   /**
+   * Installed during this visit.
+   *
+   * The browser will not let a page launch an installed app on command, so
+   * the honest next action is an OPEN control rather than a claim that we
+   * launched it. See InstallApp for what the press actually does.
+   */
+  | 'installed'
+  /**
    * The browser can install, but has not offered a prompt yet.
    *
    * beforeinstallprompt fires late, and on a browser that has not yet
@@ -126,8 +134,13 @@ export function resolveInstallMode(opts: {
    * now", and "not now" leaves the door where it was.
    */
   muted: boolean;
+  /** An install completed in this tab. */
+  installed?: boolean;
 }): InstallMode {
   if (opts.standalone) return 'standalone';
+  /* Installed beats muted: somebody who has just installed it wants the door,
+     not silence, and "don't offer me this again" was about the offer. */
+  if (opts.installed) return 'installed';
   if (opts.muted) return 'unavailable';
   if (opts.hasNativePrompt) return 'native';
   if (opts.iosSafari) return 'ios-manual';

@@ -187,6 +187,21 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('title', 'studio_f_title', 'mp_ci_title'),
       f('body', 'studio_f_body', 'mp_ci_sub', 'textarea'),
       f('cta', 'studio_f_cta', 'mp_contract_cta'),
+      /* The document-analysis scene. Every word in it is a label rather
+         than contract prose, so all of it is safe to hand to an admin --
+         and it has to be, or the scene only reads correctly in English. */
+      f('doc_heading', 'mp_ci_doc_heading', 'mp_ci_doc_heading'),
+      f('doc_file', 'mp_ci_doc_label', 'mp_ci_doc_label'),
+      f('doc_scanning', 'mp_ci_scanning', 'mp_ci_scanning'),
+      f('doc_complete', 'mp_ci_st_complete', 'mp_ci_st_complete'),
+      f('doc_note', 'mp_ci_panel_note', 'mp_ci_panel_note', 'textarea'),
+      f('f_parties', 'mp_ci_f_parties', 'mp_ci_f_parties'),
+      f('f_property', 'mp_ci_f_property', 'mp_ci_f_property'),
+      f('f_price', 'mp_ci_f_price', 'mp_ci_f_price'),
+      f('f_clause', 'mp_ci_f_clause', 'mp_ci_f_clause'),
+      f('st_detected', 'mp_ci_st_detected', 'mp_ci_st_detected'),
+      f('st_verified', 'mp_ci_st_verified', 'mp_ci_st_verified'),
+      f('st_review', 'mp_ci_st_review', 'mp_ci_st_review'),
     ],
     media: [],
   },

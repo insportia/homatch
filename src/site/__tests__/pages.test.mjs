@@ -38,6 +38,7 @@ const ROUTES = {
   mortgage: 'src/pages/MortgagePage.tsx',
   privacy: 'src/pages/PrivacyPage.tsx',
   terms: 'src/pages/TermsPage.tsx',
+  verify: 'src/pages/VerifyPage.tsx',
 };
 
 test('the page list was actually found', () => {
@@ -132,8 +133,26 @@ test('the official-record image carries no cadastral number', () => {
 });
 
 test('the document is READ, not filled in', () => {
-  const src = readFileSync('src/components/home/sections/ContractIntelligenceSection.tsx', 'utf8');
-  // The old treatment animated text appearing in form fields, which claimed
-  // the product writes contracts. It reads them.
-  assert.match(src, /hm-read/, 'the reading treatment is gone');
+  const doc = readFileSync('src/components/home/sections/ContractDocument.tsx', 'utf8');
+  const section = readFileSync('src/components/home/sections/ContractIntelligenceSection.tsx', 'utf8');
+
+  // It must look like a contract, not a loading skeleton: a heading, the
+  // parties, the property, the price and a clause, each a region the scan
+  // can reach and report on.
+  for (const region of ['parties', 'property', 'price', 'clause']) {
+    assert.match(doc, new RegExp(`'${region}'`), `the document has no ${region} region`);
+  }
+
+  /*
+   * AND IT MUST START WHEN IT IS SEEN.
+   *
+   * The previous version ran on a setInterval started at mount, so on a phone
+   * the sequence had already been round several times before anybody scrolled
+   * to it — the complaint that the animation "does not work on mobile" was
+   * really that it was always over by the time it was visible.
+   */
+  assert.match(doc, /IntersectionObserver/, 'the scan does not wait to be seen');
+  // A CALL, not the word: the comment above the removal says "setInterval".
+  assert.equal(/setInterval\s*\(/.test(section), false,
+    'something in this section still animates on a timer started at mount');
 });

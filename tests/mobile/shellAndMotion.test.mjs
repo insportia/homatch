@@ -93,6 +93,19 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 const rgb = (s) => (s.match(/\d+(\.\d+)?/g) ?? []).slice(0, 3).map(Number);
+/** Alpha of an rgba() string, or 1 for an opaque colour. */
+const alphaOf = (s) => {
+  const n = (s.match(/[\d.]+/g) ?? []).map(Number);
+  return n.length >= 4 ? n[3] : 1;
+};
+/** A translucent colour flattened onto the one painted behind it. */
+const over = (fg, bg) => {
+  const a = alphaOf(fg);
+  const f = rgb(fg); const b = rgb(bg);
+  if (f.length < 3) return b;
+  if (b.length < 3 || a >= 1) return f;
+  return f.map((c, i) => Math.round(c * a + b[i] * (1 - a)));
+};
 
 async function serve(t, chromium) {
   const server = spawn(
@@ -170,11 +183,34 @@ test('the install control is visible, reachable and does not delete itself', opt
     await page.evaluate(() => window.__fireInstallPrompt());
     await page.waitForTimeout(600);
 
-    /* ── 1. In the menu, not hidden behind a hover ───────────────────── */
-    /* The MENU toggle, by what it is for. `header button[aria-expanded]`
-       also matches the language dropdown's Radix trigger, which is hidden at
-       these widths — so the first match was an invisible button. */
-    const menuButton = page.locator('header button[aria-expanded]:visible').last();
+    /* ── 1. On the utility strip, before the menu is even opened ─────── */
+    /*
+     * The strip's control is measured FIRST, and separately, because it is
+     * the one on a dark surface. The previous version of this test opened
+     * the menu and measured whichever control it found — always the menu's,
+     * on a light panel — and so never looked at the dark-tone skin at all.
+     * That is how `bg-white/12`, which names no Tailwind rule and generates
+     * nothing, shipped as a fully transparent button.
+     */
+    const strip = page.locator('button:visible').filter({ hasText: /Install app/i }).first();
+    assert.ok(await strip.count() > 0, `no install control on the utility strip at ${width}px`);
+    const stripLook = await strip.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { background: cs.backgroundColor, color: cs.color };
+    });
+    assert.equal(/rgba\(0, 0, 0, 0\)|transparent/.test(stripLook.background), false,
+      `the strip's install control is transparent at ${width}px — it has no surface of its own`);
+
+    /* ── 2. And in the menu as well ──────────────────────────────────── */
+    /*
+     * The menu toggle BY ITS NAME.
+     *
+     * `header button[aria-expanded]` also matches the language trigger on the
+     * utility strip, and `.last()` picked exactly that — so this opened a
+     * language dropdown, never the menu, and then measured the strip's button
+     * while believing it was the menu's.
+     */
+    const menuButton = page.getByRole('button', { name: /open menu/i }).first();
     assert.ok(await menuButton.count() > 0, `no menu control in the header at ${width}px`);
     await menuButton.click();
     await page.waitForTimeout(700);
@@ -209,19 +245,22 @@ test('the install control is visible, reachable and does not delete itself', opt
     assert.ok(look.left >= -1 && look.right <= width + 1,
       `the install control hangs outside the ${width}px viewport`);
 
-    const surface = rgb(look.background);
-    const behind = rgb(look.behind);
     assert.ok(
-      surface.length === 3 && !/rgba\(0, 0, 0, 0\)/.test(look.background),
+      !/rgba\(0, 0, 0, 0\)|transparent/.test(look.background),
       `the install control has no background of its own at ${width}px — it is invisible until hover`,
     );
+    /*
+     * Composite the surface over what is behind it before comparing.
+     *
+     * A translucent surface read naively gives its own colour, so white text
+     * on 12% white scored 1.00:1 and looked like a contrast failure when the
+     * control is in fact perfectly legible over a dark header. Flattening the
+     * alpha is what makes the number mean what it says.
+     */
+    const flat = over(look.background, look.behind);
     assert.ok(
-      contrast(rgb(look.color), surface) >= 4.5,
-      `the install label is ${contrast(rgb(look.color), surface).toFixed(2)}:1 on its own surface at ${width}px`,
-    );
-    assert.ok(
-      contrast(surface, behind) >= 1.2,
-      `the install control is indistinguishable from what is behind it at ${width}px`,
+      contrast(rgb(look.color), flat) >= 4.5,
+      `the install label is ${contrast(rgb(look.color), flat).toFixed(2)}:1 where it is painted at ${width}px`,
     );
 
     /* ── 3. The language selector is reachable on a phone ────────────── */
@@ -254,7 +293,7 @@ test('refusing the browser dialog is "not now", never "never again"', opts, asyn
   await page.evaluate(() => { window.__installOutcome = 'dismissed'; window.__fireInstallPrompt(); });
   await page.waitForTimeout(500);
 
-  await page.locator('header button[aria-expanded]:visible').last().click();
+  await page.getByRole('button', { name: /open menu/i }).first().click();
   await page.waitForTimeout(700);
 
   const button = page.locator('button:visible').filter({ hasText: /Install app/i }).first();
@@ -276,7 +315,7 @@ test('refusing the browser dialog is "not now", never "never again"', opts, asyn
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
-  await page.locator('header button[aria-expanded]:visible').last().click();
+  await page.getByRole('button', { name: /open menu/i }).first().click();
   await page.waitForTimeout(700);
   assert.ok(
     await page.locator('button:visible').filter({ hasText: /Install app/i }).count() > 0,

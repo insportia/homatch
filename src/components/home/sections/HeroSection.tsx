@@ -98,7 +98,7 @@ export function HeroSection() {
             Studio exactly as it was. */}
         <div className="grid min-h-[clamp(27rem,68vh,40rem)] items-center gap-8 lg:grid-cols-[minmax(0,46rem)_minmax(0,1fr)] lg:gap-10">
           {/* pt covers the fixed header; the black band itself starts at y=0. */}
-          <div className="flex max-w-[46rem] flex-col justify-center pb-11 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
+          <div className="flex max-w-[46rem] flex-col justify-center pb-11 pt-[9.75rem] sm:pb-16 sm:pt-[11rem] lg:pb-20 lg:pt-[9rem]">
           <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold" {...fp('eyebrow')}>
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_hero_eyebrow')}

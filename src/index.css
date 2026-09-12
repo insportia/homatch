@@ -777,12 +777,18 @@
     animation: hm-scan 1.6s ease-in-out infinite;
   }
 
+  /* The per-component reduced-motion answers.
+     These four were, briefly, two rules INSIDE this query and two just
+     outside it -- one stray brace -- which meant .hm-scan and .hm-read were
+     hidden for everybody, always. The document-reading band and the
+     extraction sweep simply did not exist, and nothing said so: an
+     animation that never runs looks exactly like a design decision. */
   @media (prefers-reduced-motion: reduce) {
     .hm-wave > span { animation: none; transform: scaleY(0.62); }
     .hm-ring::after { animation: none; opacity: 0; }
-  }
     .hm-scan { animation: none; opacity: 0; }
     .hm-read { animation: none; opacity: 0; }
+  }
 }
 
 /* ── When somebody asks everything to stop moving ──────────────────────

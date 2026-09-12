@@ -91,7 +91,7 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
         onDark ? 'border-b border-transparent bg-transparent' : 'border-b border-border bg-background/95 backdrop-blur-md'
       }`}
     >
-      <div className={`${PAGE} flex h-[4.5rem] items-center gap-6 md:h-[5.5rem]`}>
+      <div className={`${PAGE} flex h-[4.5rem] items-center gap-3 sm:gap-6 md:h-[5.5rem]`}>
         <button
           type="button"
           onClick={() => {
@@ -99,10 +99,11 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
             navigate('/');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
+          className="min-w-0 shrink rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
           aria-label={t('home_nav_home_aria')}
         >
-          <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} />
+          <HomatchLogo size="md" withTagline={false} tone={onDark ? 'light' : 'dark'} className="sm:hidden" />
+          <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} className="hidden sm:flex" />
         </button>
 
         <nav className="mx-auto hidden items-center gap-6 lg:flex xl:gap-8">

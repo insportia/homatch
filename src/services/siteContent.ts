@@ -45,7 +45,13 @@ export type PageSlug =
   | 'partners'
   | 'mortgage'
   | 'privacy'
-  | 'terms';
+  | 'terms'
+  /**
+   * The header and the footer, which belong to the SITE rather than to any
+   * one page. No route renders this slug; src/site/render/ShellScope.tsx
+   * reads it, and Site Studio opens it like any other page.
+   */
+  | 'shell';
 
 /** Every editable page, with the route it publishes to. */
 export const EDITABLE_PAGES: ReadonlyArray<{ slug: PageSlug; path: string; labelKey: string }> = [
@@ -56,6 +62,8 @@ export const EDITABLE_PAGES: ReadonlyArray<{ slug: PageSlug; path: string; label
   { slug: 'mortgage', path: '/mortgage', labelKey: 'nav_mortgage' },
   { slug: 'privacy', path: '/privacy', labelKey: 'home_footer_privacy' },
   { slug: 'terms', path: '/terms', labelKey: 'home_footer_terms' },
+  // Last, because it is not a page: it is what surrounds all of them.
+  { slug: 'shell', path: '/', labelKey: 'studio_page_shell' },
 ];
 
 export interface SitePageRecord {

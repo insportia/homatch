@@ -389,6 +389,69 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     media: [],
   },
 
+
+  /* ── The site's own chrome ─────────────────────────────────────── *
+   *                                                                   *
+   * The header and the footer are not part of any page, so they live  *
+   * on a slug no route renders and are handed to the real components  *
+   * by ShellScope. An admin renames "Verify" once, and it is renamed  *
+   * on all seven pages.                                               *
+   *                                                                   *
+   * Every field's LABEL here is the translation key it falls back to.  *
+   * The label for the Verify nav item is the word "Verify", in the     *
+   * admin's own language, which is exactly what the field is -- and it *
+   * costs no new string to say so.                                     *
+   *                                                                   *
+   * Every field HAS a fallback, which is the safety property that      *
+   * matters most on this particular block: there is no stored value,   *
+   * no failed fetch and no bad save that can leave the site with an    *
+   * unlabelled navigation.                                             *
+   * ──────────────────────────────────────────────────────────────── */
+  {
+    type: 'site_header',
+    labelKey: 'studio_sec_header',
+    variants: ['default'],
+    themes: [],
+    // There is one header. It is hidden by nothing and duplicated by nobody.
+    repeatable: false,
+    fields: [
+      f('nav_start', 'mp_nav_start', 'mp_nav_start'),
+      f('nav_intelligence', 'mp_nav_capabilities', 'mp_nav_capabilities'),
+      f('nav_verify', 'nav_verify', 'nav_verify'),
+      f('nav_mortgage', 'nav_mortgage', 'nav_mortgage'),
+      f('nav_developers', 'mp_nav_developers', 'mp_nav_developers'),
+      f('nav_about', 'nav_about', 'nav_about'),
+      f('nav_partners', 'home_nav_partners', 'home_nav_partners'),
+      f('cta_login', 'nav_login', 'nav_login'),
+      f('cta_signup', 'nav_signup', 'nav_signup'),
+    ],
+    media: [],
+  },
+  {
+    type: 'site_footer',
+    labelKey: 'studio_sec_footer',
+    variants: ['default'],
+    themes: [],
+    repeatable: false,
+    fields: [
+      f('tagline', 'mp_footer_tagline', 'mp_footer_tagline', 'textarea'),
+      f('heading_product', 'mp_footer_product', 'mp_footer_product'),
+      f('heading_company', 'mp_footer_company', 'mp_footer_company'),
+      f('heading_legal', 'mp_footer_legal', 'mp_footer_legal'),
+      f('link_verify', 'nav_verify', 'nav_verify'),
+      f('link_contract', 'mp_contract_title', 'mp_contract_title'),
+      f('link_mortgage', 'nav_mortgage', 'nav_mortgage'),
+      f('link_ai', 'ai_title', 'ai_title'),
+      f('link_calls', 'call_center_title', 'call_center_title'),
+      f('link_email', 'mp_email_title', 'mp_email_title'),
+      f('link_about', 'nav_about', 'nav_about'),
+      f('link_partners', 'home_nav_partners', 'home_nav_partners'),
+      f('link_privacy', 'home_footer_privacy', 'home_footer_privacy'),
+      f('link_terms', 'home_footer_terms', 'home_footer_terms'),
+    ],
+    media: [],
+  },
+
   /* ── The blocks an admin builds out of ─────────────────────────── *
    *                                                                   *
    * Everything above is a region of the designed site, made editable. *

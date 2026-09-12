@@ -8,6 +8,9 @@ import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { InstallApp } from '@/components/common/InstallApp';
 import { PAGE } from '@/components/home/sections/primitives';
+import { useFieldProps, useSectionField } from '@/site/content';
+import { ShellScope } from '@/site/render/ShellScope';
+import type { TranslationKey } from '@/i18n/translations';
 
 /**
  * REGION 01 — the header.
@@ -43,7 +46,34 @@ export interface HeaderLink {
  *               on a page that opens on white it renders the logo and the
  *               navigation white on white, which is how a header disappears.
  */
-export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; solid?: boolean }) {
+/**
+ * THE NAVIGATION LABELS AN ADMIN MAY REWRITE.
+ *
+ * Keyed by the link key the pages already use, and valued with the
+ * translation key that link already falls back to. A key that is not here --
+ * the About page's in-page anchors, say -- simply keeps the label the page
+ * passed, which is why adding a link in code needs no edit here to work.
+ *
+ * Must stay in step with the `site_header` fields in src/site/registry.ts;
+ * the test beside that file checks that it does.
+ */
+const NAV_FIELDS: Readonly<Record<string, TranslationKey>> = {
+  start: 'mp_nav_start',
+  home: 'mp_nav_start',
+  intelligence: 'mp_nav_capabilities',
+  verify: 'nav_verify',
+  mortgage: 'nav_mortgage',
+  developers: 'mp_nav_developers',
+  about: 'nav_about',
+  partners: 'home_nav_partners',
+};
+
+/** The header, wrapped in whatever the site has stored for its chrome. */
+export function PublicHeader(props: { links: HeaderLink[]; solid?: boolean }) {
+  return <ShellScope part="site_header"><HeaderBody {...props} /></ShellScope>;
+}
+
+function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boolean }) {
   const { session } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -72,6 +102,21 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
       window.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  /*
+   * A label the admin has rewritten, else the reviewed copy for that key,
+   * else whatever the page passed.
+   *
+   * `sf` cannot return undefined -- with no override it returns t(key) -- so
+   * the third branch exists only for the links this block does not declare.
+   */
+  const sf = useSectionField();
+  const fp = useFieldProps();
+  const labelFor = (link: HeaderLink) => {
+    const field = NAV_FIELDS[link.key];
+    return field ? sf(field, field) : link.label;
+  };
+  const markFor = (link: HeaderLink) => (NAV_FIELDS[link.key] ? fp(NAV_FIELDS[link.key]) : {});
 
   const go = (target: string) => {
     setOpen(false);
@@ -115,8 +160,9 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
               className={`relative whitespace-nowrap [overflow-wrap:normal] text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                 onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
               }`}
+              {...markFor(link)}
             >
-              {link.label}
+              {labelFor(link)}
             </button>
           ))}
         </nav>
@@ -207,8 +253,9 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
                 type="button"
                 onClick={() => go(link.target)}
                 className="rounded-xl py-3.5 text-start text-[17px] text-foreground transition-colors hover:text-gold"
+                {...markFor(link)}
               >
-                {link.label}
+                {labelFor(link)}
               </button>
             ))}
             {!session && (

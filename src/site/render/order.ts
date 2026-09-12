@@ -36,6 +36,16 @@ export const DEFAULT_ABOUT_ORDER: readonly string[] = [
  */
 const CONTENT_ONLY: readonly string[] = [];
 
+/**
+ * The site's own chrome, edited as a page in its own right.
+ *
+ * Not rendered by any route: ShellScope hands these two sections to the real
+ * header and footer wherever they appear. Site Studio renders them here so
+ * that editing a navigation label is the same act as editing a heading --
+ * click the words, type.
+ */
+export const SHELL_ORDER: readonly string[] = ['site_header', 'site_footer'];
+
 const ORDERS: Readonly<Record<string, readonly string[]>> = {
   home: DEFAULT_HOME_ORDER,
   about: DEFAULT_ABOUT_ORDER,
@@ -44,6 +54,7 @@ const ORDERS: Readonly<Record<string, readonly string[]>> = {
   mortgage: CONTENT_ONLY,
   privacy: CONTENT_ONLY,
   terms: CONTENT_ONLY,
+  shell: SHELL_ORDER,
 };
 
 /**

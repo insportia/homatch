@@ -95,6 +95,12 @@ function fakeSession() {
   };
 }
 
+/** A stubbed PostgREST reply, with the CORS header the client insists on. */
+const json = (b) => ({
+  status: 200, contentType: 'application/json',
+  headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b),
+});
+
 const ADMIN = {
   id: 'u1', auth_id: 'u1', email: 'admin@example.test',
   is_admin: true, preferred_language: 'en', full_name: 'Admin',
@@ -132,11 +138,6 @@ test('an admin can build a page out of cards, questions and a video', opts, asyn
      presses play, and this is how that is checked rather than asserted. */
   const external = [];
   const rpcCalls = [];
-
-  const json = (b) => ({
-    status: 200, contentType: 'application/json',
-    headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b),
-  });
 
   await page.route('**', async (r) => {
     const url = r.request().url();
@@ -371,4 +372,157 @@ test('an admin can build a page out of cards, questions and a video', opts, asyn
     `building a page called ${rpcCalls.join(', ')} — a draft is written only when the admin asks`,
   );
   assert.deepEqual(pageErrors, [], 'the editor threw while a page was being built');
+});
+
+test('the navigation and footer are edited once, for the whole site', opts, async (t) => {
+  if (skipReason) assert.fail(`shell gate could not run: ${skipReason}`);
+
+  const { chromium } = resolvePlaywright();
+  const server = spawn(
+    process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    ['vite', 'preview', '--port', String(PORT + 1), '--strictPort', '--host', '127.0.0.1'],
+    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
+  );
+  const SITE = `http://127.0.0.1:${PORT + 1}`;
+  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+  t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
+  for (let i = 0; i < 80; i += 1) {
+    try { await fetch(SITE); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
+  }
+
+  /* Wide enough that the PREVIEW pane clears 1024px once the two side
+     panels are subtracted — below that the desktop navigation is correctly
+     not rendered, and there is nothing to click. */
+  const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  await ctx.addInitScript(([k, s]) => {
+    window.localStorage.setItem(k, JSON.stringify(s));
+    window.localStorage.setItem('homatch_lang', 'en');
+  }, ['sb-stubproj-auth-token', fakeSession()]);
+
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
+
+  /* What the admin saves, held here, and served back to the public pages —
+     which is how "edited once, for the whole site" is actually checked
+     rather than asserted about a single component. */
+  let stored = null;
+
+  await page.route('**', async (r) => {
+    const url = r.request().url();
+    if (url.startsWith(SITE)) return r.continue();
+    if (r.request().method() === 'OPTIONS') {
+      return r.fulfill({
+        status: 204,
+        headers: {
+          'access-control-allow-origin': '*',
+          'access-control-allow-headers': '*',
+          'access-control-allow-methods': '*',
+        },
+      });
+    }
+    if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
+    if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
+    if (url.includes('/rest/v1/rpc/')) {
+      const name = url.split('/rpc/')[1].split('?')[0];
+      if (name === 'site_get_page') return r.fulfill(json({ page: null, versions: [] }));
+      if (name === 'site_save_draft') {
+        const body = JSON.parse(r.request().postData() ?? '{}');
+        if (body.p_slug === 'shell' || body.slug === 'shell') {
+          stored = body.p_content ?? body.content ?? null;
+        }
+        return r.fulfill(json(null));
+      }
+      return r.fulfill(json(null));
+    }
+    if (url.includes('/rest/v1/users')) return r.fulfill(json(ADMIN));
+    /* The published read the public header and footer make. */
+    if (url.includes('/rest/v1/site_pages')) {
+      const wantsShell = /slug=eq\.shell/.test(url);
+      return r.fulfill(json(wantsShell && stored ? { published: stored } : null));
+    }
+    if (url.includes('/rest/v1/')) return r.fulfill(json([]));
+    return r.fulfill(json({}));
+  });
+
+  await page.goto(`${SITE}/admin/site-studio`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(4000);
+
+  /* ── 1. The chrome is a page you can open ───────────────────────────── */
+  /* The page selector is a listbox, not a native <select>: open it, then
+     choose. Its options do not exist in the DOM until it is open. */
+  await page.locator('[role="combobox"]').first().click();
+  await page.waitForTimeout(500);
+  await page.locator('[role="option"]', { hasText: /Header & footer/ }).first().click();
+  await page.waitForTimeout(3500);
+
+  const frame = page.frameLocator('iframe').first();
+  /* The label is marked in the desktop bar AND in the phone menu — the same
+     field, in both places an admin might click it — so ask for the one that
+     is actually on screen. */
+  const navVerify = frame
+    .locator('[data-hm-section="site_header-1"][data-hm-field="nav_verify"]:visible').first();
+  assert.ok(await navVerify.count() > 0,
+    'the navigation labels are not editable where they are rendered');
+  assert.equal(await navVerify.getAttribute('contenteditable'), 'plaintext-only',
+    'a navigation label is marked but not editable');
+
+  /* ── 2. Type on it, exactly as on any other text ────────────────────── */
+  await navVerify.scrollIntoViewIfNeeded();
+  await navVerify.click();
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('Check a record');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(800);
+  assert.equal((await navVerify.textContent()).trim(), 'Check a record',
+    'the navigation label did not take the edit');
+
+  /* SPACE inside a nav item must type a space, not press the button and
+     navigate the editor away from Studio. */
+  assert.equal(await page.locator('iframe').count(), 1,
+    'editing a navigation label destroyed the preview');
+
+  /* ── 3. The footer's headings are editable too ──────────────────────── */
+  const legal = frame
+    .locator('[data-hm-section="site_footer-1"][data-hm-field="heading_legal"]:visible').first();
+  assert.ok(await legal.count() > 0, 'the footer headings are not editable');
+  await legal.scrollIntoViewIfNeeded();
+  await legal.click();
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('The small print');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(800);
+  assert.equal((await legal.textContent()).trim(), 'The small print');
+
+  /* ── 4. Saved once, the public pages all say it ─────────────────────── */
+  await page.locator('button', { hasText: /^Save draft$/ }).first().click();
+  await page.waitForTimeout(1500);
+  assert.ok(stored, 'saving the chrome page stored nothing');
+
+  for (const route of ['/', '/about', '/partners']) {
+    const visitor = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await visitor.addInitScript(() => window.localStorage.setItem('homatch_lang', 'en'));
+    const pub = await visitor.newPage();
+    await pub.route('**', async (r) => {
+      const url = r.request().url();
+      if (url.startsWith(SITE)) return r.continue();
+      if (url.includes('/rest/v1/site_pages')) {
+        const wantsShell = /slug=eq\.shell/.test(url);
+        return r.fulfill(json(wantsShell ? { published: stored } : null));
+      }
+      if (url.includes('/rest/v1/')) return r.fulfill(json([]));
+      return r.fulfill(json({}));
+    });
+    await pub.goto(`${SITE}${route}`, { waitUntil: 'domcontentloaded' });
+    await pub.waitForTimeout(2500);
+
+    const text = await pub.locator('footer').first().textContent();
+    assert.match(text, /The small print/,
+      `the footer heading edited once did not reach ${route}`);
+    await visitor.close();
+  }
+
+  assert.deepEqual(errors, [], 'the editor threw while the chrome was being edited');
 });

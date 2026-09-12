@@ -181,6 +181,33 @@ test('the verification report has no horizontal overflow at real phone widths', 
    */
   const measured = [];
 
+  /*
+   * THE TWO TYPEFACES THIS LAYOUT HAS TO SURVIVE.
+   *
+   * The harness intercepts every request, so the webfont never loads and
+   * the browser falls back to whatever the machine has. On the CI runner
+   * that is DejaVu Sans; on a Windows laptop it is Segoe UI, which is
+   * narrower. The gate was therefore measuring a DIFFERENT typeface in
+   * the two places — which is exactly how it passed locally and failed on
+   * the runner for months, with the same code.
+   *
+   * So it now measures both, and both must be clean:
+   *
+   *   product   the stack as shipped, whatever the machine resolves it to
+   *   fallback  a deliberately WIDE face, standing in for every machine
+   *             where the webfont has not arrived
+   *
+   * Verdana is the stand-in because it is wider than DejaVu for Latin
+   * text and is present on the developer machines here; where it is
+   * absent the stack falls through to sans-serif, which on the runner is
+   * DejaVu — the real CI condition either way.
+   *
+   * This is not a hypothetical. A customer on a slow connection sees the
+   * fallback for the first seconds of every visit.
+   */
+  const FONT_MODES = ['product', 'fallback'];
+
+  for (const fontMode of FONT_MODES) {
   for (const width of WIDTHS) {
     const ctx = await browser.newContext({
       viewport: { width, height: 900 },
@@ -188,6 +215,29 @@ test('the verification report has no horizontal overflow at real phone widths', 
       isMobile: width <= 430,
       hasTouch: width <= 430,
     });
+
+    /*
+     * Forced at DOMContentLoaded, into the head.
+     *
+     * A <style> appended to documentElement before <head> exists is not
+     * applied at all, and one inserted earlier in the cascade loses to
+     * index.css's own :root rule. Last in the head, with !important on
+     * the custom property, is what actually takes effect — verified by
+     * reading back the computed font-family.
+     */
+    if (fontMode === 'fallback') {
+      await ctx.addInitScript(() => {
+        const put = () => {
+          const st = document.createElement('style');
+          st.textContent = ':root{'
+            + '--font-body:Verdana,sans-serif !important;'
+            + '--font-display:Verdana,sans-serif !important}';
+          document.head.appendChild(st);
+        };
+        if (document.readyState === 'loading') addEventListener('DOMContentLoaded', put);
+        else put();
+      });
+    }
 
     await ctx.addInitScript(
       ([key, session]) => {
@@ -260,6 +310,7 @@ test('the verification report has no horizontal overflow at real phone widths', 
         }
       }
       return {
+        font: getComputedStyle(document.body).fontFamily.split(',')[0].replace(/['"]/g, ''),
         hasArticle: !!document.querySelector('article'),
         pageOverflow: de.scrollWidth > de.clientWidth,
         scrollWidth: de.scrollWidth,
@@ -273,11 +324,20 @@ test('the verification report has no horizontal overflow at real phone widths', 
 
     assert.ok(result.hasArticle, `${width}px: the report never rendered — the harness stubs are wrong`);
     assert.equal(result.clientWidth, width, `${width}px: the viewport was not actually applied`);
-    measured.push(width);
+    if (fontMode === 'product') measured.push(width);
+
+    /* The font actually in use, read back rather than assumed — an
+       override that silently failed to apply would make this half of the
+       run a duplicate of the other half. */
+    if (fontMode === 'fallback' && !result.font.startsWith('Verdana')) {
+      failures.push(`${width}px: the fallback font was not applied (got ${result.font})`);
+    }
+
     if (result.pageOverflow || result.offenders.length) {
-      failures.push(`${width}px: scrollWidth=${result.scrollWidth} clientWidth=${result.clientWidth}\n` +
+      failures.push(`${width}px [${fontMode} font]: scrollWidth=${result.scrollWidth} clientWidth=${result.clientWidth}\n` +
         result.offenders.map((o) => `    ${o.tag}.${o.cls} right=${o.right} "${o.text}"`).join('\n'));
     }
+  }
   }
 
   // Coverage first: an overflow-free run that measured nothing is not a pass.

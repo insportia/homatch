@@ -31,27 +31,24 @@ interface SectionScopeValue {
   onSelect?: (id: string) => void;
   selectedId?: string | null;
   /**
-   * Editor only: called with the exact string a field just rendered as.
+   * True only inside Site Studio.
    *
-   * This is what makes click-to-edit possible without rewriting all
-   * nineteen section components. useSectionField returns a STRING — the
-   * components interpolate it into JSX and into attributes like
-   * `placeholder`, so it cannot become a React element without breaking
-   * them. Recording the value instead lets the edit layer find the element
-   * that rendered it and make THAT editable, and it means only fields the
-   * registry declares are ever editable.
+   * Sections use this to mark the elements that render editable copy, and
+   * to show a prompt where a field is empty. On the public site it is
+   * false and every one of those additions costs nothing: no attributes,
+   * no wrappers, nothing extra in what a visitor downloads.
    */
-  recordField?: (field: string, value: string) => void;
+  editing?: boolean;
 }
 
 const SectionScopeCtx = createContext<SectionScopeValue>({ section: null });
 
 export function SectionScope({
-  section, onSelect, selectedId, recordField, children,
+  section, onSelect, selectedId, editing, children,
 }: SectionScopeValue & { children: React.ReactNode }) {
   const value = useMemo(
-    () => ({ section, onSelect, selectedId, recordField }),
-    [section, onSelect, selectedId, recordField],
+    () => ({ section, onSelect, selectedId, editing }),
+    [section, onSelect, selectedId, editing],
   );
   return <SectionScopeCtx.Provider value={value}>{children}</SectionScopeCtx.Provider>;
 }
@@ -62,13 +59,83 @@ export function useSectionScope(): SectionScopeValue {
 
 /** Resolve a section field: stored override for this locale, else the key. */
 export function useSectionField(): (field: string, fallbackKey: TranslationKey) => string {
-  const { section, recordField } = useContext(SectionScopeCtx);
+  const { section } = useContext(SectionScopeCtx);
   const { t, lang } = useLanguage();
-  return (field, fallbackKey) => {
-    const value = readLocalized(section?.content[field], lang as Locale) ?? t(fallbackKey);
-    // A no-op everywhere except inside Site Studio.
-    recordField?.(field, value);
-    return value;
+  return (field, fallbackKey) => (
+    readLocalized(section?.content[field], lang as Locale) ?? t(fallbackKey)
+  );
+}
+
+/** The attribute names the editor looks for. One place, so they cannot drift. */
+export const FIELD_ATTR = {
+  section: 'data-hm-section',
+  field: 'data-hm-field',
+  item: 'data-hm-item',
+  locale: 'data-hm-locale',
+} as const;
+
+export interface MediaMark {
+  'data-hm-section'?: string;
+  'data-hm-media'?: string;
+}
+
+/**
+ * WHICH IMAGE SLOT THIS ELEMENT SHOWS.
+ *
+ * Spread onto the element that wraps a picture, the same way useFieldProps
+ * is spread onto the element that carries a piece of copy. It is what lets
+ * an admin click the photograph they can see and be offered THAT
+ * photograph, instead of finding the right slot in a form and hoping.
+ */
+export function useMediaProps(): (slot: string) => MediaMark {
+  const { section, editing } = useContext(SectionScopeCtx);
+  return (slot) => {
+    if (!editing || !section) return {};
+    return { [FIELD_ATTR.section]: section.id, 'data-hm-media': slot };
+  };
+}
+
+export interface FieldMark {
+  'data-hm-section'?: string;
+  'data-hm-field'?: string;
+  'data-hm-item'?: string;
+  'data-hm-locale'?: string;
+}
+
+/**
+ * WHICH MODEL FIELD THIS ELEMENT IS.
+ *
+ * Spread onto the element that actually renders a piece of copy:
+ *
+ *   <h1 className="..." {...fp('title')}>{sf('title', 'mp_hero_h1')}</h1>
+ *
+ * The editor then knows, from the DOM node alone, exactly which section,
+ * field, repeated item and locale a caret is sitting in. That identity is
+ * the whole point.
+ *
+ * WHY NOT MATCH ON THE TEXT
+ *
+ * The first version of inline editing found elements by comparing their
+ * rendered text to the value the model held. It worked once and then
+ * broke: the comparison ran against the value from BEFORE the edit, so a
+ * field stopped being editable the moment it was edited, and two fields
+ * that happened to say the same thing were indistinguishable. Identity
+ * cannot be derived from content that is about to change.
+ *
+ * Returns nothing at all outside the editor, so the public site's HTML is
+ * byte for byte what it was before.
+ */
+export function useFieldProps(): (field: string, item?: string) => FieldMark {
+  const { section, editing } = useContext(SectionScopeCtx);
+  const { lang } = useLanguage();
+  return (field, item) => {
+    if (!editing || !section) return {};
+    return {
+      [FIELD_ATTR.section]: section.id,
+      [FIELD_ATTR.field]: field,
+      [FIELD_ATTR.locale]: lang,
+      ...(item ? { [FIELD_ATTR.item]: item } : {}),
+    };
   };
 }
 
@@ -89,26 +156,13 @@ export function useSectionRaw(): (field: string) => string | undefined {
 /**
  * Is this section being rendered INSIDE Site Studio?
  *
- * `recordField` is supplied only by the editor's preview, so its presence
- * is the honest signal. A section may legitimately render nothing on the
- * public site — an announcement nobody has written yet — and still need
- * to be visible and writable in the editor, which is the one place its
- * absence is a problem to be solved rather than the correct result.
+ * A section may legitimately render nothing on the public site — an
+ * announcement nobody has written yet — and still need to be visible and
+ * writable in the editor, which is the one place its absence is a problem
+ * to be solved rather than the correct result.
  */
 export function useIsEditing(): boolean {
-  return useContext(SectionScopeCtx).recordField !== undefined;
-}
-
-/**
- * Announce what a field rendered as, so the editor can find it in the DOM.
- *
- * useSectionField does this for itself. A section that renders a value it
- * did NOT get from there — a placeholder standing in for empty copy —
- * has to say so, or inline editing will not see it.
- */
-export function useRecordField(): (field: string, value: string) => void {
-  const { recordField } = useContext(SectionScopeCtx);
-  return (field, value) => recordField?.(field, value);
+  return useContext(SectionScopeCtx).editing === true;
 }
 
 /** The section's own settings, with defaults when rendered outside a scope. */

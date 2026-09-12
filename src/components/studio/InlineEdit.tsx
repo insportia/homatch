@@ -1,190 +1,228 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { FIELD_ATTR } from '@/site/content';
 
 /**
- * CLICK THE TEXT ON THE PAGE AND EDIT IT THERE.
+ * EDITING THE PAGE BY TYPING ON IT.
  *
- * WHY THIS IS A DOM LAYER AND NOT A COMPONENT
+ * Every element that renders editable copy carries its own identity —
+ * section, field, item, locale — put there by the component that rendered it
+ * (see useFieldProps). This layer turns those elements into text boxes in
+ * place. Nothing is duplicated into a sidebar, nothing is matched by
+ * appearance, and the element that becomes editable is the element you can
+ * see.
  *
- * Nineteen section components render their copy as `{sf('title', 'key')}`.
- * `useSectionField` returns a STRING, and the components interpolate it into
- * JSX and into attributes — `placeholder={sf(...)}` among them — so it
- * cannot be turned into a React element without breaking them. Rewriting all
- * nineteen to use an <Editable> wrapper would be a large, risky change to
- * files whose only job is the public site's appearance.
+ * WHY IDENTITY COMES FROM THE MODEL AND NOT FROM THE TEXT
  *
- * So the hook records the exact string each field rendered as, and this
- * layer finds the element in the already-rendered DOM that produced it and
- * makes that element editable. The components are untouched, and only fields
- * the registry declares can ever become editable — which is the same
- * allowlist the inspector uses.
+ * The first version of this found elements by comparing their text to the
+ * value the model held. It worked exactly once. The comparison ran against
+ * the value from BEFORE the edit, so a field stopped being editable the
+ * moment it was edited, and two fields that happened to say the same thing
+ * were indistinguishable. Identity cannot be derived from content that is
+ * about to change — so it is not derived at all, it is declared.
  *
  * WHAT IT REFUSES TO DO
  *
- * It never reads innerHTML. A commit takes `textContent` only, so nothing a
- * paste can carry — markup, a script, a style attribute — can reach the
- * stored draft. The model stores plain localized strings and this cannot
- * change that.
+ * It never reads innerHTML. A commit takes `textContent` only, and paste is
+ * intercepted and reinserted as plain text, so nothing a clipboard can carry
+ * — markup, a script, an onerror attribute — reaches the stored draft. The
+ * model holds plain localized strings and this cannot change that.
  */
 
-export interface EditableFieldRef {
-  /** The field key in the section's registry definition. */
+export interface FieldTarget {
+  sectionId: string;
   field: string;
-  /** The exact string it rendered as, used to find its element. */
-  value: string;
-  /** Whether the registry says this field is multiline. */
-  multiline: boolean;
+  item?: string;
+  locale: string;
 }
 
-export interface InlineEditLayerProps {
-  /** The rendered section's root element, inside the preview document. */
+export interface InlineEditProps {
+  /** The rendered page's root, inside the preview document. */
   root: HTMLElement | null;
-  /**
-   * Which fields may be edited, and what they currently say — READ WHEN
-   * THE EFFECT RUNS, not when the parent rendered.
-   *
-   * A snapshot array is wrong here, and wrong in a way that only shows up
-   * on the second edit. The values are recorded by the section components
-   * DURING their render, which happens after the parent has already
-   * computed its props. So a snapshot always carries the previous pass's
-   * text: right the first time, and one edit stale ever after. The layer
-   * would then hunt the DOM for text that is no longer there, find
-   * nothing, and silently leave the field uneditable.
-   *
-   * Effects run after the whole tree has committed, so asking then gets
-   * the text the page is actually showing.
-   */
-  getFields: () => EditableFieldRef[];
-  /**
-   * Changes whenever the rendered content might have. Only used to
-   * re-run the effect; its value is never read.
-   */
-  revision: unknown;
-  /** Commit a new value for a field. */
-  onCommit: (field: string, value: string) => void;
-  /** Off while the admin is only navigating. */
+  /** Whether a field takes newlines, according to the registry. */
+  isMultiline: (sectionId: string, field: string) => boolean;
+  /** Commit a new value. Called once, and only on a real change. */
+  onCommit: (target: FieldTarget, value: string) => void;
+  /** Told which field the caret entered, so the shell can follow along. */
+  onFocusField?: (target: FieldTarget) => void;
+  /** Off while the admin is only looking. */
   enabled: boolean;
+  /** Re-scan when the page's content or locale changes. */
+  revision: unknown;
 }
 
-/** Marks the deepest element whose own text is exactly `value`. */
-function findElementFor(root: HTMLElement, value: string, claimed: Set<Element>): HTMLElement | null {
-  const target = value.trim();
-  if (!target) return null;
+const SEL = `[${FIELD_ATTR.field}]`;
 
-  const doc = root.ownerDocument;
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-  let best: HTMLElement | null = null;
+/** Non-breaking spaces come back from contenteditable; the model stores real ones. */
+const normalise = (s: string) => s.replace(/ /g, ' ');
 
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const el = node as HTMLElement;
-    if (claimed.has(el)) continue;
-    // Editing a control's label in place would fight the control.
-    if (el.closest('button, a, input, textarea, select')) continue;
-    if ((el.textContent ?? '').trim() !== target) continue;
-    // Deepest wins: a <p> and the <span> inside it can both match, and the
-    // span is the element that actually rendered the string.
-    best = el;
-  }
-  return best;
+function targetOf(el: HTMLElement): FieldTarget | null {
+  const sectionId = el.getAttribute(FIELD_ATTR.section);
+  const field = el.getAttribute(FIELD_ATTR.field);
+  if (!sectionId || !field) return null;
+  return {
+    sectionId,
+    field,
+    item: el.getAttribute(FIELD_ATTR.item) ?? undefined,
+    locale: el.getAttribute(FIELD_ATTR.locale) ?? '',
+  };
 }
 
 /**
- * Applies the affordance to a rendered section.
+ * Applies editing to every marked element in the page.
  *
- * Runs as an effect against real DOM rather than rendering anything, which
- * is why it returns null.
+ * Runs as an effect against real DOM rather than rendering anything, which is
+ * why it returns null. React owns the text; this owns the affordance.
  */
-export function InlineEditLayer({ root, getFields, revision, onCommit, enabled }: InlineEditLayerProps) {
-  // Held in a ref so the listeners below always see the current committer
-  // without being torn down and rebuilt on every keystroke elsewhere.
+export function InlineEditLayer({
+  root, isMultiline, onCommit, onFocusField, enabled, revision,
+}: InlineEditProps) {
+  // Held in refs so the listeners always see the current callbacks without
+  // being torn down and rebuilt while somebody is typing.
   const commitRef = useRef(onCommit);
   commitRef.current = onCommit;
-
-  const fieldsRef = useRef(getFields);
-  fieldsRef.current = getFields;
+  const focusRef = useRef(onFocusField);
+  focusRef.current = onFocusField;
+  const multilineRef = useRef(isMultiline);
+  multilineRef.current = isMultiline;
 
   const apply = useCallback(() => {
     if (!root) return () => {};
-    const claimed = new Set<Element>();
     const cleanups: Array<() => void> = [];
 
-    for (const { field, value, multiline } of fieldsRef.current()) {
-      const el = findElementFor(root, value, claimed);
-      if (!el) continue;
-      claimed.add(el);
+    for (const node of Array.from(root.querySelectorAll<HTMLElement>(SEL))) {
+      const target = targetOf(node);
+      if (!target) continue;
 
-      el.setAttribute('data-studio-field', field);
-      if (!enabled) continue;
+      if (!enabled) {
+        node.removeAttribute('contenteditable');
+        node.style.cursor = '';
+        continue;
+      }
 
-      el.setAttribute('contenteditable', 'plaintext-only');
-      el.setAttribute('spellcheck', 'false');
-      el.setAttribute('role', 'textbox');
-      if (multiline) el.setAttribute('aria-multiline', 'true');
-      el.style.outline = '1px dashed hsl(38 88% 54% / 0.55)';
-      el.style.outlineOffset = '2px';
-      el.style.borderRadius = '2px';
-      el.style.cursor = 'text';
+      const multiline = multilineRef.current(target.sectionId, target.field);
 
-      const original = value;
+      /*
+       * plaintext-only is the first line of defence, not the only one. It
+       * stops the browser producing markup as you type; the paste handler
+       * below stops the clipboard bringing any in. Firefox only shipped the
+       * value in 2024, which is why neither is load-bearing on its own.
+       */
+      node.setAttribute('contenteditable', 'plaintext-only');
+      node.setAttribute('spellcheck', 'false');
+      node.setAttribute('role', 'textbox');
+      if (multiline) node.setAttribute('aria-multiline', 'true');
+      node.style.cursor = 'text';
 
-      const onFocus = () => { el.style.outline = '2px solid hsl(38 88% 54%)'; };
-      const onBlurEl = () => {
-        el.style.outline = '1px dashed hsl(38 88% 54% / 0.55)';
+      /*
+       * The value as it stood when the caret arrived — not when this effect
+       * ran. Escape restores this and a commit is compared against it, so
+       * both are measured from where the editing actually began.
+       */
+      let original = normalise(node.textContent ?? '');
+
+      const onFocus = () => {
+        original = normalise(node.textContent ?? '');
+        node.dataset.hmEditing = 'on';
+        focusRef.current?.(target);
+      };
+
+      const commit = () => {
         // textContent, never innerHTML: a paste must not be able to carry
         // markup into the stored draft.
-        const next = (el.textContent ?? '').trim();
-        if (next !== original.trim()) commitRef.current(field, next);
+        const next = normalise(node.textContent ?? '');
+        if (next.trim() === original.trim()) return;
+        commitRef.current(target, next.trim());
       };
+
+      const onBlur = () => {
+        delete node.dataset.hmEditing;
+        commit();
+      };
+
+      /*
+       * Is this text living inside something the keyboard can press?
+       *
+       * A CTA label sits inside its button. Space and Enter are how a
+       * button is activated from the keyboard, and that activation is a
+       * DEFAULT ACTION — stopPropagation does not touch it, and neither
+       * does making the button ignore pointer events. Typing the first
+       * space of "Start the check" pressed the button and navigated the
+       * editor away from Site Studio, destroying the preview mid-word.
+       */
+      const inControl = node.closest('button, a[href], summary, [role="button"]') !== null;
+
       const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === ' ' && inControl) {
+          // Insert the space ourselves, so the button never sees the key.
+          e.preventDefault();
+          node.ownerDocument.execCommand('insertText', false, ' ');
+          return;
+        }
         if (e.key === 'Escape') {
           // Cancel: put the text back and leave, committing nothing.
           e.preventDefault();
-          el.textContent = original;
-          el.blur();
+          e.stopPropagation();
+          node.textContent = original;
+          node.blur();
           return;
         }
-        if (e.key === 'Enter' && !multiline) {
-          // A single-line field commits on Enter rather than growing a line
-          // the stored value cannot represent.
-          e.preventDefault();
-          el.blur();
-        }
-        if (e.key === 'Enter' && multiline && !e.shiftKey) {
-          // Multiline: Enter is a newline, Shift+Enter commits, so the
-          // common case is the one that does not lose work.
+        if (e.key === 'Enter') {
+          // A heading is one line. Enter finishes it rather than growing a
+          // second line the stored value cannot represent.
+          // preventDefault here also stops Enter pressing a surrounding button.
+          if (!multiline || inControl) { e.preventDefault(); node.blur(); return; }
+          // A paragraph takes newlines, so Enter makes one and Shift+Enter
+          // is the deliberate "done" — the opposite way round from a chat
+          // box, because here the common action is writing another line.
+          if (e.shiftKey) { e.preventDefault(); node.blur(); }
         }
       };
-      // The preview is also click-to-select; editing must not re-select and
-      // re-render the element out from under the caret.
+
+      const onPaste = (e: ClipboardEvent) => {
+        /*
+         * Take the plain text and insert it ourselves.
+         *
+         * Left alone, pasting rich content inserts the clipboard's HTML —
+         * images, links, styles, and anything else it carries. Reading only
+         * text/plain and writing that back is what makes "paste an
+         * <img onerror=...>" produce those characters and nothing else.
+         */
+        e.preventDefault();
+        const text = e.clipboardData?.getData('text/plain') ?? '';
+        const clean = multiline ? text : text.replace(/[\r\n]+/g, ' ');
+        node.ownerDocument.execCommand('insertText', false, clean);
+      };
+
+      const onDrop = (e: DragEvent) => {
+        // A drop is a paste by another name and carries the same HTML.
+        // There is no safe way to accept it here, so it is refused.
+        e.preventDefault();
+      };
+
+      // The preview is also click-to-select. A click that lands on text
+      // belongs to the caret, and must not be read as a click on the section.
       const stop = (e: Event) => e.stopPropagation();
 
-      el.addEventListener('focus', onFocus);
-      el.addEventListener('blur', onBlurEl);
-      el.addEventListener('keydown', onKeyDown as EventListener);
-      el.addEventListener('click', stop);
-      el.addEventListener('mousedown', stop);
+      node.addEventListener('focus', onFocus);
+      node.addEventListener('blur', onBlur);
+      node.addEventListener('keydown', onKeyDown as EventListener);
+      node.addEventListener('paste', onPaste as EventListener);
+      node.addEventListener('drop', onDrop as EventListener);
+      node.addEventListener('click', stop);
+      node.addEventListener('mousedown', stop);
 
       cleanups.push(() => {
-        el.removeEventListener('focus', onFocus);
-        el.removeEventListener('blur', onBlurEl);
-        el.removeEventListener('keydown', onKeyDown as EventListener);
-        el.removeEventListener('click', stop);
-        el.removeEventListener('mousedown', stop);
-        el.removeAttribute('contenteditable');
-        el.removeAttribute('spellcheck');
-        el.removeAttribute('role');
-        el.removeAttribute('aria-multiline');
-        el.removeAttribute('data-studio-field');
-        el.style.outline = '';
-        el.style.outlineOffset = '';
-        el.style.borderRadius = '';
-        el.style.cursor = '';
+        node.removeEventListener('focus', onFocus);
+        node.removeEventListener('blur', onBlur);
+        node.removeEventListener('keydown', onKeyDown as EventListener);
+        node.removeEventListener('paste', onPaste as EventListener);
+        node.removeEventListener('drop', onDrop as EventListener);
+        node.removeEventListener('click', stop);
+        node.removeEventListener('mousedown', stop);
       });
     }
 
     return () => { for (const c of cleanups) c(); };
-    // `revision` is a dependency on purpose: it is how this effect learns
-    // that the page's text may have changed and the elements need finding
-    // again. biome-ignore lint/correctness/useExhaustiveDependencies: intentional.
   }, [root, enabled, revision]);
 
   useEffect(() => apply(), [apply]);

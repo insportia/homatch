@@ -5,7 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField, useSectionMedia } from '@/site/content';
+import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '@/site/content';
 
 /**
  * REGION 05 — Buyer Intelligence.
@@ -22,6 +22,8 @@ import { useSectionField, useSectionMedia } from '@/site/content';
 export function VerifyShowcaseSection() {
   const plate = useSectionMedia()('plate');
   const sf = useSectionField();
+  const fp = useFieldProps();
+  const mp = useMediaProps();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
@@ -34,16 +36,16 @@ export function VerifyShowcaseSection() {
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
             <FeatureGlyph name="verify" size={48} className="sm:h-14 sm:w-14" />
-            <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink">{sf('eyebrow', 'mp_verify_eyebrow')}</p>
+            <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>{sf('eyebrow', 'mp_verify_eyebrow')}</p>
           </div>
 
           <h2
             className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
-          >
+           {...fp('title')}>
             {sf('title', 'mp_verify_show_title')}
           </h2>
-          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]" {...fp('body')}>
             {sf('body', 'mp_verify_capability_desc')}
           </p>
 
@@ -70,7 +72,7 @@ export function VerifyShowcaseSection() {
             onClick={() => navigate('/verify')}
             className="group mt-7 inline-flex h-12 sm:mt-9 items-center justify-center gap-2.5 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
           >
-            {t('mp_verify_capability_cta')}
+            <span {...fp('cta')}>{sf('cta', 'mp_verify_capability_cta')}</span>
             <ArrowRight
               className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
               strokeWidth={2}
@@ -83,7 +85,7 @@ export function VerifyShowcaseSection() {
         <div className="min-w-0 overflow-hidden rounded-[1.1rem] border border-foreground/15 bg-card shadow-hover">
           {/* The property under examination. Graded hard so the photograph
               reads as a black-and-gold plate rather than as a listing. */}
-          <div className="relative h-36 saturate-[0.6] sm:h-44">
+          <div className="relative h-36 saturate-[0.6] sm:h-44" {...mp('plate')}>
             <SceneMedia scene="verification" alt={plate?.alt ?? ''} sizes="(min-width: 1024px) 40vw, 100vw" position="50% 55%" overrideUrl={plate?.url} />
             <div className="absolute inset-0 bg-[#0D0D0D]/72" aria-hidden="true" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0D] via-[#0D0D0D]/45 to-[#0D0D0D]/25" aria-hidden="true" />

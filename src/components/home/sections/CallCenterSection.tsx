@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField } from '@/site/content';
+import { useSectionField, useFieldProps } from '@/site/content';
 
 /**
  * REGION 04 — the AI Call Center, on its own.
@@ -48,6 +48,7 @@ const POINTS = [
 
 export function CallCenterSection() {
   const sf = useSectionField();
+  const fp = useFieldProps();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -69,16 +70,16 @@ export function CallCenterSection() {
           <div className="min-w-0">
             <div className="flex items-center gap-4">
               <FeatureGlyph name="calls" size={48} tone="dark" className="sm:h-14 sm:w-14" />
-              <p className="text-[14px] font-semibold uppercase tracking-[0.24em] text-gold">{sf('eyebrow', 'call_center_title')}</p>
+              <p className="text-[14px] font-semibold uppercase tracking-[0.24em] text-gold" {...fp('eyebrow')}>{sf('eyebrow', 'call_center_title')}</p>
             </div>
 
             <h2
               className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-white sm:mt-7"
               style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.9rem)' }}
-            >
+             {...fp('title')}>
               {sf('title', 'mp_cc_title')}
             </h2>
-            <p className="mt-4 max-w-[36rem] text-pretty text-[16px] leading-[1.65] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
+            <p className="mt-4 max-w-[36rem] text-pretty text-[16px] leading-[1.65] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]" {...fp('body')}>
               {sf('body', 'mp_cc_sub')}
             </p>
 
@@ -97,7 +98,7 @@ export function CallCenterSection() {
               className="group mt-7 inline-flex h-12 sm:mt-9 items-center justify-center gap-2.5 rounded-full bg-gold px-6 text-sm font-semibold text-[#0D0D0D] transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D0D0D] motion-reduce:transition-none"
             >
               <PhoneCall className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden="true" />
-              {t('mp_calls_cta')}
+              <span {...fp('cta')}>{sf('cta', 'mp_calls_cta')}</span>
               <ArrowRight className={arrow} strokeWidth={2} aria-hidden="true" />
             </button>
           </div>

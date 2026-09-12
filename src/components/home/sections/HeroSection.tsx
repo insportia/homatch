@@ -4,7 +4,7 @@ import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { IntentChips } from '@/components/home/IntentCards';
 import { PAGE } from './primitives';
-import { useSectionField, useSectionMedia } from '@/site/content';
+import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '@/site/content';
 
 /**
  * REGION 01 — the hero.
@@ -35,6 +35,8 @@ import { useSectionField, useSectionMedia } from '@/site/content';
 export function HeroSection() {
   const photo = useSectionMedia()('photo');
   const sf = useSectionField();
+  const fp = useFieldProps();
+  const mp = useMediaProps();
   const { t } = useLanguage();
 
   return (
@@ -45,7 +47,7 @@ export function HeroSection() {
             left edge never shows as a seam. Desaturated a little: the sunset
             is the one warm object on a black-white-gold page, and at full
             chroma it pulls the whole first screen orange. */}
-        <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.72]">
+        <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.72]" {...mp('photo')}>
           <SceneMedia scene="hero" alt={photo?.alt ?? ''} priority sizes="78vw" position="52% 52%" overrideUrl={photo?.url} />
         </div>
         <div className="absolute inset-0 bg-[#0D0D0D]/45" />
@@ -65,7 +67,7 @@ export function HeroSection() {
       <div className={`${PAGE} relative`}>
         {/* pt covers the fixed header; the black band itself starts at y=0. */}
         <div className="flex min-h-[clamp(27rem,68vh,40rem)] max-w-[46rem] flex-col justify-center pb-11 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
-          <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold">
+          <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold" {...fp('eyebrow')}>
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_hero_eyebrow')}
           </p>
@@ -78,22 +80,22 @@ export function HeroSection() {
             className="mt-5 text-balance font-semibold leading-[1.07] tracking-[-0.03em] text-white sm:mt-6"
             style={{ fontSize: 'clamp(1.5rem, 7.4vw, 3.9rem)' }}
           >
-            <span className="block">{sf('brand', 'brand_name')}</span>
+            <span className="block" {...fp('brand')}>{sf('brand', 'brand_name')}</span>
             {/* Balanced from sm up, where equal line lengths look composed.
                 On a narrow phone balance splits the phrase in the wrong
                 place ("Smart real / estate decisions"), so the narrowest
                 case fills greedily and breaks after the noun instead. */}
-            <span className="block text-pretty text-white/90 sm:text-balance">{sf('title', 'mp_hero_h1')}</span>
+            <span className="block text-pretty text-white/90 sm:text-balance" {...fp('title')}>{sf('title', 'mp_hero_h1')}</span>
           </h1>
 
           <p
             className="mt-4 text-balance font-semibold leading-[1.25] tracking-[-0.015em] text-gold sm:mt-5"
             style={{ fontSize: 'clamp(0.98rem, 3.4vw, 1.5rem)' }}
-          >
+           {...fp('subtitle')}>
             {sf('subtitle', 'mp_hero_h2')}
           </p>
 
-          <p className="mt-4 max-w-[38rem] text-pretty text-[16px] leading-[1.6] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]">
+          <p className="mt-4 max-w-[38rem] text-pretty text-[16px] leading-[1.6] text-white/70 sm:mt-5 sm:text-base sm:leading-[1.7]" {...fp('body')}>
             {sf('body', 'mp_hero_scope')}
           </p>
 

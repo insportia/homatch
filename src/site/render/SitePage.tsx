@@ -83,10 +83,24 @@ export interface SitePageProps {
    * Editor only: told what each field rendered as, per section, so the
    * inline edit layer can find the element that produced it.
    */
-  onRecordField?: (sectionId: string, field: string, value: string) => void;
+  /**
+   * True inside Site Studio. Sections then mark the elements that render
+   * editable copy with their section, field and locale, which is how the
+   * editor knows what a caret is sitting in.
+   */
+  editing?: boolean;
+  /**
+   * Editor only: a click landed on a marked picture.
+   *
+   * Reported from the section's own click handler rather than from a
+   * listener the editor attaches to the preview document — that handler
+   * demonstrably runs for every click on a section, which a separately
+   * attached one did not.
+   */
+  onSelectMedia?: (sectionId: string, slot: string | null) => void;
 }
 
-export function SitePage({ slug, content, onSelect, selectedId, onRecordField }: SitePageProps) {
+export function SitePage({ slug, content, onSelect, selectedId, editing, onSelectMedia }: SitePageProps) {
   // onSelect is set only by the editor, so it doubles as the signal that
   // hidden sections should still be drawn.
   const resolved = resolveSections(slug, content, Boolean(onSelect));
@@ -104,9 +118,7 @@ export function SitePage({ slug, content, onSelect, selectedId, onRecordField }:
             section={section}
             onSelect={onSelect}
             selectedId={selectedId}
-            recordField={section && onRecordField
-              ? (f, v) => onRecordField(section.id, f, v)
-              : undefined}
+            editing={editing}
           >
             <Component />
           </SectionScope>
@@ -140,40 +152,49 @@ export function SitePage({ slug, content, onSelect, selectedId, onRecordField }:
         // nothing to select, so nothing to wrap.
         if (!section) return <React.Fragment key={key}>{body}</React.Fragment>;
 
-        // In the editor, a click target over the section. It is a sibling
-        // overlay rather than a handler on the section itself, so a real
-        // button inside the preview does not have to compete with it and the
-        // page's own interactivity keeps working underneath.
-        //
-        // ONCE SELECTED, THE OVERLAY STEPS ASIDE.
-        //
-        // It covers the whole section, so while it is a button nothing
-        // underneath can be clicked — including the text. That is correct
-        // for a section you have not chosen yet, and fatal for the one you
-        // have: click-to-edit would be unreachable, because every click
-        // would land on the overlay instead of the words. So the selected
-        // section keeps the ring and gives up the clicks.
+        /*
+         * IN THE EDITOR, THE SECTION IS A CLICK TARGET — AND NOTHING MORE.
+         *
+         * This used to be a button covering the whole section, which meant
+         * that while it was there NOTHING underneath could be clicked,
+         * including the text. Click-to-edit could never receive a click,
+         * so every edit went through the sidebar and the canvas was a
+         * picture of the page rather than the page.
+         *
+         * Now the overlay is decoration only — pointer-events-none, always
+         * — and selecting is a handler on the wrapper. Clicks reach the
+         * real page underneath: a caret lands in the words, and the edit
+         * layer stops that click here so typing never doubles as
+         * selecting something else.
+         *
+         * The handler is on a div rather than a button on purpose. The
+         * sections contain their own buttons, links and inputs, and
+         * nesting those inside a button is invalid HTML and breaks them.
+         * Selection is reachable from the structure list for anyone using
+         * a keyboard, which is also where reordering lives.
+         */
         const isSelected = selectedId === section.id;
         return (
-          <div key={key} className="relative" data-studio-section={section.id}>
+          <div
+            key={key}
+            className="relative"
+            data-studio-section={section.id}
+            onClick={(e) => {
+              onSelect(section.id);
+              // Which picture, if any, was under the pointer.
+              const hit = (e.target as HTMLElement | null)?.closest?.('[data-hm-media]');
+              onSelectMedia?.(section.id, hit?.getAttribute('data-hm-media') ?? null);
+            }}
+          >
             {body}
-            {isSelected ? (
-              <div
-                aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 z-10 ring-2 ring-inset ring-primary ${
-                  section.enabled ? '' : 'bg-background/60'
-                }`}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => onSelect(section.id)}
-                aria-label={section.type}
-                className={`absolute inset-0 z-10 w-full cursor-pointer transition-colors hover:bg-primary/[0.06] hover:ring-1 hover:ring-inset hover:ring-primary/40 ${
-                  section.enabled ? '' : 'bg-background/60'
-                }`}
-              />
-            )}
+            <div
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 z-10 transition-colors ${
+                isSelected
+                  ? 'ring-2 ring-inset ring-primary'
+                  : 'hover:bg-primary/[0.04]'
+              } ${section.enabled ? '' : 'bg-background/60'}`}
+            />
           </div>
         );
       })}

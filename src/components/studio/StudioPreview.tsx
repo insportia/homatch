@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { LanguageOverride, useLanguage } from '@/contexts/LanguageContext';
 import { SitePage } from '@/site/render/SitePage';
-import { InlineEditLayer, type EditableFieldRef } from './InlineEdit';
+import { InlineEditLayer, type FieldTarget } from './InlineEdit';
 import { SectionControls, type SectionControlsApi } from './SectionControls';
+import { MediaControls, type MediaTarget } from './MediaControls';
 import { sectionDef } from '@/site/registry';
 import { RTL_LANGUAGES } from '@/types/types';
 import type { Locale, SitePageContent } from '@/site/model';
@@ -71,11 +72,14 @@ export type DeviceKey = typeof DEVICE_WIDTHS[number]['key'];
 const FRAME_DOC = '<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>';
 
 function PreviewFrame({
-  width, rtl, locale, children, onBody,
-}: { width: number | null; rtl: boolean; locale: Locale; children: React.ReactNode;
+  width, rtl, locale, children, onBody, editing,
+}: { width: number | null; rtl: boolean; locale: Locale; children: React.ReactNode; editing: boolean;
      onBody?: (body: HTMLElement | null) => void }) {
   const { t } = useLanguage();
   const ref = useRef<HTMLIFrameElement>(null);
+  // Read inside attach(), which must not be rebuilt when the mode flips.
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
   const [body, setBody] = useState<HTMLElement | null>(null);
 
   const attach = useCallback(() => {
@@ -120,6 +124,15 @@ function PreviewFrame({
     }
 
     setBody(doc.body);
+    /*
+     * Tells the preview document whether it is being edited.
+     *
+     * The stylesheet uses it to make the rendered page inert — see
+     * index.css. An attribute rather than a class so it cannot collide
+     * with anything Tailwind generates.
+     */
+    doc.body.dataset.hmEditing = editingRef.current ? 'on' : 'off';
+
     onBody?.(doc.body);
   }, [rtl, locale]);
 
@@ -127,6 +140,12 @@ function PreviewFrame({
   // onLoad may already have passed by the time this effect runs, so attach
   // from both rather than relying on the event alone.
   useEffect(() => { attach(); }, [attach]);
+
+  // The mode can flip long after the frame was attached.
+  useEffect(() => {
+    const doc = ref.current?.contentDocument;
+    if (doc?.body) doc.body.dataset.hmEditing = editing ? 'on' : 'off';
+  }, [editing]);
 
   return (
     <iframe
@@ -154,8 +173,22 @@ function PreviewFrame({
 }
 
 interface StudioPreviewProps {
-  /** Editor only: commit an inline text edit on the selected section. */
-  onInlineEdit?: (sectionId: string, field: string, value: string) => void;
+  /**
+   * Commit an edit made on the page itself.
+   *
+   * The target names the section, field, repeated item and locale the
+   * caret was in, so this never has to guess from the selection — which
+   * can have moved by the time a blur commits.
+   */
+  onInlineEdit?: (target: FieldTarget, value: string) => void;
+  /** The floating image actions, built by the shell that owns the state. */
+  media?: {
+    busy: boolean;
+    hasOverride: (sectionId: string, slot: string) => boolean;
+    labels: { replace: string; uploading: string; remove: string };
+    onReplace: (sectionId: string, slot: string) => void;
+    onRemove: (sectionId: string, slot: string) => void;
+  } | null;
   /** The floating per-section actions, built by the shell that owns the state. */
   controls?: SectionControlsApi | null;
   /** Whether click-to-edit is armed. */
@@ -171,44 +204,32 @@ interface StudioPreviewProps {
 }
 
 export function StudioPreview({
-  slug, content, locale, device, forceRTL, selectedId, onSelect, onInlineEdit, editing = true, controls = null,
+  slug, content, locale, device, forceRTL, selectedId, onSelect, onInlineEdit, editing = true, controls = null, media = null,
 }: StudioPreviewProps) {
-  /*
-   * What each field of each section rendered as, this pass.
-   *
-   * A ref, not state: it is written DURING render by
-   * useSectionField and read by an effect afterwards, so state
-   * here would loop. Rebuilt every render, which is what keeps it
-   * correct after an edit changes a value.
-   */
-  const rendered = useRef(new Map<string, Map<string, string>>());
   const [previewBody, setPreviewBody] = useState<HTMLElement | null>(null);
+  const [mediaTarget, setMediaTarget] = useState<MediaTarget | null>(null);
 
-  const record = useCallback((sectionId: string, field: string, value: string) => {
-    const forSection = rendered.current.get(sectionId) ?? new Map<string, string>();
-    forSection.set(field, value);
-    rendered.current.set(sectionId, forSection);
-  }, []);
+
+
+
+
 
   const selectedSection = content.sections.find((x) => x.id === selectedId) ?? null;
   const def = selectedSection ? sectionDef(selectedSection.type) : undefined;
 
   /*
-   * Only fields the REGISTRY declares are ever editable, which is the
-   * same allowlist the inspector uses.
+   * Is this field multiline?
    *
-   * A function rather than an array, because the values it reads are
-   * written during the children's render. See InlineEditLayer's
-   * `getFields` for what a snapshot would break.
+   * Asked of the REGISTRY, by section id and field key — the same
+   * allowlist the inspector uses. A field the registry does not declare
+   * has no answer here and cannot be edited, because nothing rendered it
+   * with a mark in the first place.
    */
-  const getEditableFields = useCallback((): EditableFieldRef[] => {
-    if (!selectedSection || !def) return [];
-    const values = rendered.current.get(selectedSection.id);
-    if (!values) return [];
-    return def.fields
-      .map((f) => ({ field: f.key, value: values.get(f.key) ?? '', multiline: f.kind === 'textarea' }))
-      .filter((f) => f.value.length > 0);
-  }, [selectedSection, def]);
+  const isMultiline = useCallback((sectionId: string, field: string) => {
+    const target = content.sections.find((x) => x.id === sectionId);
+    const d = target ? sectionDef(target.type) : undefined;
+    return d?.fields.find((f) => f.key === field)?.kind === 'textarea';
+  }, [content]);
 
   /*
    * The selected section's element inside the preview document.
@@ -301,27 +322,53 @@ export function StudioPreview({
 
   return (
     <div className="flex h-full justify-center overflow-auto bg-muted/40 p-4">
-      <PreviewFrame width={width} rtl={rtl} locale={locale} onBody={setPreviewBody}>
+      <PreviewFrame width={width} rtl={rtl} locale={locale} onBody={setPreviewBody} editing={Boolean(editing && onInlineEdit)}>
         <LanguageOverride lang={locale as SupportedLanguage}>
           <SitePage
             slug={slug}
             content={content}
             selectedId={selectedId}
             onSelect={onSelect}
-            onRecordField={record}
+            editing
+            onSelectMedia={(sectionId, slot) => setMediaTarget(slot ? { sectionId, slot } : null)}
           />
         </LanguageOverride>
-        {/* Applies the edit affordance to the selected section, inside the
-            preview document. Renders nothing itself. */}
         <SectionControls root={sectionRoot} body={previewBody} api={controls} />
+
+        {media && (
+          <MediaControls
+            body={previewBody}
+            target={mediaTarget}
+            revision={content}
+            busy={media.busy}
+            hasOverride={Boolean(mediaTarget && media.hasOverride(mediaTarget.sectionId, mediaTarget.slot))}
+            labels={media.labels}
+            onReplace={() => mediaTarget && media.onReplace(mediaTarget.sectionId, mediaTarget.slot)}
+            onRemove={() => mediaTarget && media.onRemove(mediaTarget.sectionId, mediaTarget.slot)}
+          />
+        )}
+
+        {/*
+          * EVERY marked field on the page, not just the selected section's.
+          *
+          * This is the difference between "select a block, then edit it"
+          * and editing the page. A single click has to put the caret in the
+          * words under the pointer, wherever they are — so the whole
+          * document is armed, and selection follows the caret rather than
+          * gating it.
+          */}
         <InlineEditLayer
-          root={sectionRoot}
-          getFields={getEditableFields}
-          revision={content}
-          enabled={Boolean(editing && onInlineEdit && selectedSection)}
-          onCommit={(field, value) => {
-            if (selectedSection && onInlineEdit) onInlineEdit(selectedSection.id, field, value);
+          root={previewBody}
+          isMultiline={isMultiline}
+          revision={`${locale}:${JSON.stringify(content.sections.map((x) => x.id))}`}
+          enabled={Boolean(editing && onInlineEdit)}
+          onFocusField={(target) => {
+            // Typing in a block is a stronger statement about what you are
+            // working on than having clicked it, so the structure list and
+            // the inspector follow the caret.
+            if (target.sectionId !== selectedId) onSelect(target.sectionId);
           }}
+          onCommit={(target, value) => onInlineEdit?.(target, value)}
         />
       </PreviewFrame>
     </div>

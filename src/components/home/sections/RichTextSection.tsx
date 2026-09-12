@@ -18,7 +18,7 @@
 // type becomes an element.
 import React from 'react';
 import {
-  useIsEditing, useRecordField, useSectionRaw, useSectionSettings, spacingClass,
+  useFieldProps, useIsEditing, useSectionRaw, useSectionSettings, spacingClass,
 } from '@/site/content';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PAGE } from './primitives';
@@ -29,7 +29,7 @@ export function RichTextSection() {
   const raw = useSectionRaw();
   const { variant, theme, spacing } = useSectionSettings();
   const editing = useIsEditing();
-  const record = useRecordField();
+  const fp = useFieldProps();
   const { t } = useLanguage();
 
   const storedEyebrow = raw('eyebrow');
@@ -53,13 +53,6 @@ export function RichTextSection() {
   const title = storedTitle || (editing ? t('studio_ph_title') : undefined);
   const body = storedBody || (editing ? t('studio_ph_body') : '');
 
-  // The placeholders stand where real fields will, so the edit layer is
-  // told what they say and can make them writable in place.
-  if (editing) {
-    if (!storedEyebrow && eyebrow) record('eyebrow', eyebrow);
-    if (!storedTitle && title) record('title', title);
-    if (!storedBody && body) record('body', body);
-  }
 
   // A block with no title in THIS language has not been written for this
   // language yet. See the header: nothing is better than a fragment.
@@ -75,6 +68,7 @@ export function RichTextSection() {
           {eyebrow && (
             <p
               className={`text-[14px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}
+              {...fp('eyebrow')}
             >
               {eyebrow}
             </p>
@@ -82,10 +76,33 @@ export function RichTextSection() {
           <h2
             className={`mt-4 text-balance font-semibold leading-[1.1] tracking-[-0.025em] ${dark ? 'text-white' : 'text-foreground'}`}
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.5rem)' }}
+            {...fp('title')}
           >
             {title}
           </h2>
-          {paragraphs.map((p, i) => (
+
+          {/*
+            * ONE ELEMENT WHILE EDITING, PARAGRAPHS WHEN PUBLISHED.
+            *
+            * The model stores `body` as a single string and splits it on blank
+            * lines to make paragraphs. That is right for reading and wrong for
+            * a caret: an admin clicking the second paragraph would be editing
+            * a FRAGMENT of the stored value, and committing it would replace
+            * the whole field with that fragment.
+            *
+            * So the editor gets the real string in one box, with the line
+            * breaks preserved visually by pre-wrap. Same classes, same
+            * typography; only the paragraph gaps differ, and only while
+            * editing.
+            */}
+          {editing ? (
+            <p
+              className={`mt-4 whitespace-pre-wrap text-pretty text-[16px] leading-[1.7] sm:text-base ${dark ? 'text-white/70' : 'text-ink-soft'}`}
+              {...fp('body')}
+            >
+              {body}
+            </p>
+          ) : paragraphs.map((p, i) => (
             <p
               key={p.slice(0, 32) + String(i)}
               className={`mt-4 text-pretty text-[16px] leading-[1.7] sm:text-base ${dark ? 'text-white/70' : 'text-ink-soft'}`}

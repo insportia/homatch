@@ -648,6 +648,73 @@
     background-attachment: local, local, scroll, scroll;
   }
 
+  /* ── Site Studio: text you can type on ─────────────────────────────
+
+     The affordance is an OUTLINE, never a border and never padding.
+     Both of those take space in the layout, so the page would shift the
+     moment a field became editable and shift back when it stopped — and
+     the whole promise of editing on the canvas is that what you see is
+     what you get. An outline is painted outside the box and changes
+     nothing about where anything sits.
+
+     Typography is deliberately untouched: no font, size, weight, colour,
+     line-height or alignment appears here, so an editable heading is
+     still exactly the heading it will be when published. */
+  [data-hm-field][contenteditable] {
+    outline: 1px dashed hsl(38 88% 54% / 0.5);
+    outline-offset: 3px;
+    border-radius: 2px;
+    cursor: text;
+    transition: outline-color 140ms ease;
+  }
+
+  [data-hm-field][contenteditable]:hover {
+    outline-color: hsl(38 88% 54% / 0.85);
+  }
+
+  /* The caret's own field. Solid, and a touch of warmth behind the text
+     so it reads as the active one without altering the text colour. */
+  [data-hm-field][contenteditable]:focus,
+  [data-hm-field][data-hm-editing='on'] {
+    outline: 2px solid hsl(38 88% 54%);
+    outline-offset: 3px;
+    background-color: hsl(38 88% 54% / 0.07);
+  }
+
+  /* The browser's own focus ring would be a second, conflicting outline. */
+  [data-hm-field][contenteditable]:focus-visible {
+    outline: 2px solid hsl(38 88% 54%);
+  }
+
+  /* ── Site Studio: while editing, the page is words, not controls ───
+
+     A CTA label lives inside its button. Clicking it put focus on the
+     BUTTON rather than on the label, and then the first space in
+     "Start the check" activated the button and navigated the editor away
+     — the preview iframe was destroyed mid-sentence. Space and Enter are
+     how a button is pressed from the keyboard, so any editable text
+     inside one is a trap.
+
+     So in edit mode the rendered page stops being interactive: its links
+     and buttons take no pointer events, and only the editable text does.
+     Nothing can be followed, submitted or activated by accident, which is
+     also the answer to "real links must not navigate away while Studio is
+     in edit mode". Scoped to [data-studio-section] so Studio's own
+     floating controls, which are portalled into the same document, keep
+     working. */
+  [data-hm-editing='on'] [data-studio-section] a[href],
+  [data-hm-editing='on'] [data-studio-section] button,
+  [data-hm-editing='on'] [data-studio-section] input,
+  [data-hm-editing='on'] [data-studio-section] select,
+  [data-hm-editing='on'] [data-studio-section] textarea {
+    pointer-events: none;
+  }
+
+  /* ...except the words themselves, which is the whole point. */
+  [data-hm-editing='on'] [data-studio-section] [data-hm-field] {
+    pointer-events: auto;
+  }
+
   /* ── A document being read ─────────────────────────────────────────
      The sweep that passes over the document mark while a contract is
      being extracted. It says work is happening TO THIS, rather than

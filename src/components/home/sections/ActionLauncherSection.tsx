@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField } from '@/site/content';
+import { useSectionField, useFieldProps } from '@/site/content';
 
 /**
  * REGION 02 — the action launcher.
@@ -50,6 +50,7 @@ import { useSectionField } from '@/site/content';
  */
 export function ActionLauncherSection() {
   const sf = useSectionField();
+  const fp = useFieldProps();
   const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
@@ -67,18 +68,18 @@ export function ActionLauncherSection() {
     <section id="start" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
         <div className="max-w-[40rem]">
-          <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink">
+          <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_launch_eyebrow')}
           </p>
           <h2
             className="mt-3.5 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground"
             style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
-          >
+           {...fp('title')}>
             {sf('title', 'mp_launch_title')}
           </h2>
         </div>
-        <p className="max-w-[22rem] text-pretty text-[16px] leading-[1.6] text-ink-soft sm:text-sm">
+        <p className="max-w-[22rem] text-pretty text-[16px] leading-[1.6] text-ink-soft sm:text-sm" {...fp('body')}>
           {sf('body', 'mp_launch_sub')}
         </p>
       </div>

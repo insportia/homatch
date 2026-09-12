@@ -56,6 +56,7 @@ import WhatsAppInboxPage from './pages/outreach/WhatsAppInboxPage';
 import WhatsAppTemplatesPage from './pages/outreach/WhatsAppTemplatesPage';
 import ChannelAccountsPage from './pages/outreach/ChannelAccountsPage';
 import CommunicationsAnalyticsPage from './pages/outreach/CommunicationsAnalyticsPage';
+import CallsPage from './pages/outreach/CallsPage';
 // Admin pages
 import AdminLayout from './components/layouts/AdminLayout';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
@@ -157,6 +158,7 @@ export const routes: RouteConfig[] = [
   { name: 'Email Campaigns',   path: '/outreach/email',           element: <EmailCampaignsPage /> },
   { name: 'SMS Campaigns',     path: '/outreach/sms',             element: <SmsCampaignsPage /> },
   { name: 'AI Call Center',    path: '/outreach/calls',           element: <AiCallCenterPage /> },
+  { name: 'Calls',             path: '/outreach/calls/log',       element: <CallsPage /> },
   { name: 'Outreach Insights', path: '/outreach/insights',        element: <OutreachInsightsPage /> },
   { name: 'Agents',            path: '/outreach/agents',          element: <AgentsPage /> },
   { name: 'Agent Builder',     path: '/outreach/agents/:id',      element: <AgentBuilderPage />, visible: false },

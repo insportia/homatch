@@ -105,8 +105,8 @@ export default function CommunicationsOverviewPage() {
       <AppLayout>
         <div className="mx-auto max-w-6xl space-y-5">
           <PageHeader
-            title={t('comm_title')}
-            subtitle={t('comm_subtitle')}
+            title={t('comms_title')}
+            subtitle={t('comms_subtitle')}
             primary={{ label: t('comm_new_campaign'), onClick: () => navigate('/outreach/campaigns/new') }}
             secondary={{ label: t('comm_create_agent'), onClick: () => navigate('/outreach/agents') }}
           >
@@ -246,7 +246,7 @@ export default function CommunicationsOverviewPage() {
             </div>
           </section>
 
-          <nav aria-label={t('comm_title')} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <nav aria-label={t('comms_title')} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <QuickLink icon={Bot} labelKey="comm_nav_agents" onClick={() => navigate('/outreach/agents')} />
             <QuickLink icon={Users} labelKey="comm_nav_contacts" onClick={() => navigate('/outreach/contact-lists')} />
             <QuickLink icon={BarChart3} labelKey="comm_nav_analytics" onClick={() => navigate('/outreach/analytics')} />

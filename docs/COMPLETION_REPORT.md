@@ -227,8 +227,17 @@ Two notes, stated rather than hidden:
   is green now on this branch across repeated runs; I am not claiming to have
   fixed it, only recording that it currently passes.
 
-### 1.11 Branch pushed — DONE
-Isolated branch only. Not merged to main. Not promoted to production.
+### 1.11 Branch pushed, preview updated — DONE
+Isolated branch only, pushed as commit `154fa2da`. Not merged to main. Not
+promoted to production.
+
+The existing branch preview updated itself from that push and is live:
+
+    https://homatch-git-feat-ai-communications-hub-insportia.vercel.app
+
+Vercel reports it `READY` with `target: null` — a preview deployment, not a
+production one. The three production deployments in the project's history all
+belong to `main` and are untouched by this branch.
 
 ### 1.12 This report — DONE
 

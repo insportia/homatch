@@ -361,6 +361,41 @@ test('Site Studio edits the page itself, and cannot be made to store markup', op
   assert.ok(anchored, 'the image toolbar is not anchored to the image it acts on');
   assert.equal(page.url(), urlBefore, 'clicking a picture navigated the editor away');
 
+  /* ── The narrow previews are editable too ────────────────────────────── */
+  for (const width of ['390', '320']) {
+    await page.locator('button', { hasText: new RegExp(`^${width}$`) }).first().click();
+    await page.waitForTimeout(1600);
+    const narrow = page.frameLocator('iframe').first();
+
+    await narrow.locator('[data-studio-section="hero-1"]').first().click({ position: { x: 8, y: 8 } });
+    await page.waitForTimeout(1000);
+
+    const t = narrow.locator('[data-hm-section="hero-1"][data-hm-field="title"]').first();
+    await t.scrollIntoViewIfNeeded();
+    await t.click();
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type(`Edited at ${width}`);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(700);
+    assert.equal((await t.textContent()).trim(), `Edited at ${width}`,
+      `text is not editable in the ${width}px preview`);
+
+    /* The editor's own furniture must not be the thing that overflows a
+       phone, and a floating toolbar wider than the screen is unusable. */
+    const fit = await narrow.locator('[role="toolbar"]').first().evaluate((bar) => {
+      const r = bar.getBoundingClientRect();
+      const win = bar.ownerDocument.defaultView;
+      const de = bar.ownerDocument.documentElement;
+      return {
+        within: r.left >= -1 && r.right <= win.innerWidth + 1,
+        overflow: de.scrollWidth > de.clientWidth + 1,
+      };
+    });
+    assert.ok(fit.within, `the section toolbar hangs outside the ${width}px preview`);
+    assert.equal(fit.overflow, false, `the ${width}px preview scrolls sideways`);
+  }
+
   /* ── Nothing above wrote anything, or cost anything ──────────────────── */
   assert.deepEqual(
     rpcCalls.filter((n) => n.startsWith('site_') && n !== 'site_get_page'), [],

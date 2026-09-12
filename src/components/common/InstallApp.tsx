@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useReducer, useState } from 'react';
 import { Download, Share, Plus, X, Check } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
-  type BeforeInstallPromptEvent, type InstallMode,
-  canInstall, isIOSSafari, isStandalone, rememberMuted, resolveInstallMode, wasMuted,
+  type InstallMode,
+  canInstall, heldInstallPrompt, installedInThisTab, isIOSSafari, isStandalone,
+  rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted, watchInstall,
 } from '@/lib/pwa';
 
 /**
@@ -30,6 +31,18 @@ import {
  *
  * Closing a dialog means "not now". Only the explicit "don't show me this
  * again" in the iOS sheet mutes the control, and only for that period.
+ *
+ * WHY THE PROMPT IS NOT HELD HERE
+ *
+ * `beforeinstallprompt` fires once, at the window, early. A control that
+ * registers its own listener on mount only sees it if it was already on
+ * screen — and the control in the phone's menu is mounted when the menu is
+ * OPENED, which is always afterwards. It held nothing, reported `pending`,
+ * and offered the manual instructions instead: on a phone, one-tap install
+ * was unreachable, and nothing said so.
+ *
+ * So lib/pwa.ts listens once for the page and every control reads from
+ * there. See the note on that store.
  */
 export function InstallApp({
   compact = false, tone = 'auto', variant = 'pill', className = '',
@@ -47,60 +60,43 @@ export function InstallApp({
   className?: string;
 }) {
   const { t } = useLanguage();
-  const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [mode, setMode] = useState<InstallMode>('unavailable');
   const [sheet, setSheet] = useState<null | 'ios' | 'pending'>(null);
-  const [justInstalled, setJustInstalled] = useState(false);
+  const [muted, setMuted] = useState(false);
 
-  const recompute = useCallback((held: BeforeInstallPromptEvent | null) => {
-    setMode(resolveInstallMode({
-      standalone: isStandalone(),
-      hasNativePrompt: held !== null,
-      iosSafari: isIOSSafari(),
-      installable: canInstall(),
-      muted: wasMuted(),
-    }));
+  /*
+   * Re-render when the page's install state changes, and read it fresh.
+   *
+   * Not a copy in state: a copy is what produced the bug in the header note.
+   * There is one prompt, one "was it installed here", and every control on
+   * the page is a view of them.
+   */
+  const [, restate] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    // Also re-read on mount: everything below is computed from browser state
+    // that the first render, before hydration, could not see.
+    restate();
+    return watchInstall(restate);
   }, []);
 
-  useEffect(() => {
-    recompute(null);
-
-    const onBeforeInstall = (e: Event) => {
-      // Chromium shows its own mini-infobar unless this is prevented; we
-      // want the prompt to happen on OUR button, in context.
-      e.preventDefault();
-      const held = e as BeforeInstallPromptEvent;
-      setPrompt(held);
-      recompute(held);
-    };
-    // Fired after a successful install, in the tab that triggered it.
-    const onInstalled = () => {
-      setPrompt(null);
-      setJustInstalled(true);
-      setMode('standalone');
-    };
-
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
-  }, [recompute]);
+  const prompt = heldInstallPrompt();
+  const justInstalled = installedInThisTab();
+  const mode: InstallMode = resolveInstallMode({
+    standalone: isStandalone(),
+    hasNativePrompt: prompt !== null,
+    iosSafari: isIOSSafari(),
+    installable: canInstall(),
+    muted: muted || wasMuted(),
+  });
 
   const onClick = useCallback(async () => {
     if (mode === 'ios-manual') { setSheet('ios'); return; }
+    // No prompt to replay: the honest answer is the browser's own menu.
     if (mode === 'pending' || !prompt) { setSheet('pending'); return; }
-
-    await prompt.prompt();
-    const { outcome } = await prompt.userChoice;
-    // The event is single-use: Chromium will not let it be replayed. A
-    // dismissal is NOT a mute — the control stays, in its pending state,
-    // and explains itself if pressed again.
-    setPrompt(null);
-    if (outcome === 'accepted') setJustInstalled(true);
-    recompute(null);
-  }, [mode, prompt, recompute]);
+    /* The event is single-use — Chromium will not replay it. A dismissal is
+       NOT a mute: the control stays, in its pending state, and explains
+       itself if pressed again. */
+    await showInstallPrompt();
+  }, [mode, prompt]);
 
   if (mode === 'standalone') {
     /* Installed. Said once, quietly, rather than leaving a dead button. */
@@ -153,7 +149,7 @@ export function InstallApp({
         <Sheet
           kind={sheet}
           onClose={() => setSheet(null)}
-          onMute={() => { rememberMuted(); setSheet(null); setMode('unavailable'); }}
+          onMute={() => { rememberMuted(); setSheet(null); setMuted(true); }}
         />
       )}
     </>

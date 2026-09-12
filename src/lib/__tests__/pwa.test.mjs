@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  DISMISS_DAYS, isIOS, isIOSSafari, isStandalone, rememberMuted,
-  resolveInstallMode, wasMuted,
+  DISMISS_DAYS, heldInstallPrompt, installedInThisTab, isIOS, isIOSSafari,
+  isStandalone, rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted,
+  watchInstall,
 } from '../pwa.ts';
 
 /*
@@ -262,4 +263,57 @@ test('the install control is visible at rest, not on hover', () => {
   const src = readFileSync('src/components/common/InstallApp.tsx', 'utf8');
   assert.match(src, /bg-white\/12 text-white ring-1 ring-inset ring-white\/30/, 'dark tone has its own surface');
   assert.match(src, /bg-gold-soft text-gold-ink ring-1 ring-inset/, 'light tone has its own surface');
+});
+
+/*
+ * ONE PROMPT FOR THE PAGE, NOT ONE PER CONTROL.
+ *
+ * `beforeinstallprompt` fires once, at the window, early. A control that
+ * registers its own listener when it mounts sees the event only if it was
+ * already on screen — and the control inside a phone's menu is mounted when
+ * the menu is OPENED, which is always afterwards. It held nothing, fell back
+ * to "your browser can install this from its own menu", and on the device
+ * where installing matters most, one-tap install was unreachable.
+ *
+ * Nothing reported it: the control was present, looked right, and gave a
+ * plausible answer. So the guard is structural — the listener belongs to the
+ * module, and the component must not grow its own again.
+ */
+const pwaSource = readFileSync('src/lib/pwa.ts', 'utf8');
+const installSource = readFileSync('src/components/common/InstallApp.tsx', 'utf8');
+
+test('the page listens for the install prompt exactly once', () => {
+  assert.equal(
+    (pwaSource.match(/addEventListener\('beforeinstallprompt'/g) ?? []).length, 1,
+    'the store registers the window listener more than once',
+  );
+  assert.equal(
+    installSource.includes("addEventListener('beforeinstallprompt'"), false,
+    'the control registers its own listener again — a control mounted later will hold nothing',
+  );
+  assert.equal(
+    installSource.includes("addEventListener('appinstalled'"), false,
+    'the control listens for appinstalled itself instead of reading the shared state',
+  );
+});
+
+test('the listener is wired at module scope, before React has mounted anything', () => {
+  // Wiring it from the first subscriber would be too late for a browser that
+  // fires the event during the initial script evaluation.
+  assert.match(pwaSource, /^wire\(\);$/m,
+    'nothing calls wire() at module scope, so the listener depends on a component mounting');
+});
+
+test('the store is safe where there is no window at all', () => {
+  // It is imported by a module the server renders; a ReferenceError here is
+  // a blank page rather than a missing button.
+  assert.equal(heldInstallPrompt(), null);
+  assert.equal(installedInThisTab(), false);
+  const stop = watchInstall(() => {});
+  assert.equal(typeof stop, 'function');
+  stop();
+});
+
+test('spending a prompt that was never offered says so, rather than throwing', async () => {
+  assert.equal(await showInstallPrompt(), 'unavailable');
 });

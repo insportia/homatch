@@ -145,3 +145,104 @@ export function resolveInstallMode(opts: {
   if (opts.installable) return 'pending';
   return 'unavailable';
 }
+
+/* ------------------------------------------------------------------ *
+ * THE ONE CAPTURED PROMPT                                             *
+ * ------------------------------------------------------------------ */
+
+/**
+ * `beforeinstallprompt` fires ONCE, at the window, and the event it delivers
+ * is the only way to install without the browser's own menu.
+ *
+ * Every install control used to hold its own copy, captured by its own
+ * listener. That works for exactly one control: the one already on screen
+ * when the event arrives. The control inside the phone's menu is mounted when
+ * the menu is OPENED — always after the event — so it registered its listener
+ * too late, held nothing, and offered the manual instructions instead. On a
+ * phone, where installing matters most, one-tap install was unreachable.
+ *
+ * So the prompt is held HERE, once, for the page. A control mounted at any
+ * later moment reads the same captured event, and a control that uses it
+ * spends it for everyone — because there is only one, and Chromium will not
+ * replay it.
+ */
+let heldPrompt: BeforeInstallPromptEvent | null = null;
+let installedHere = false;
+const watchers = new Set<() => void>();
+
+function announce(): void {
+  for (const watcher of watchers) watcher();
+}
+
+/**
+ * Listen at the window, once per page.
+ *
+ * Called at module scope, so the listener is in place as soon as anything
+ * imports this — well before React has mounted anything, and therefore
+ * before the event can realistically arrive.
+ */
+function wire(): void {
+  if (typeof window === 'undefined') return;
+  window.addEventListener('beforeinstallprompt', (e: Event) => {
+    // Chromium shows its own mini-infobar unless this is prevented; the
+    // prompt should happen on OUR control, in context.
+    e.preventDefault();
+    heldPrompt = e as BeforeInstallPromptEvent;
+    announce();
+  });
+  window.addEventListener('appinstalled', () => {
+    heldPrompt = null;
+    installedHere = true;
+    announce();
+  });
+}
+wire();
+
+/** Subscribe to changes in the held prompt. Returns the unsubscribe. */
+export function watchInstall(onChange: () => void): () => void {
+  watchers.add(onChange);
+  return () => { watchers.delete(onChange); };
+}
+
+/** The captured prompt, or null if the browser has not offered one. */
+export function heldInstallPrompt(): BeforeInstallPromptEvent | null {
+  return heldPrompt;
+}
+
+/** Did an install complete in this tab? Distinct from "is standalone". */
+export function installedInThisTab(): boolean {
+  return installedHere;
+}
+
+/**
+ * Spend the prompt.
+ *
+ * Chromium will not let a `beforeinstallprompt` be replayed, so once it has
+ * been shown it is gone whatever the customer chose. `accepted` is recorded
+ * so the control can say so; `dismissed` changes nothing but the fact that
+ * there is no longer a prompt to replay — it is "not now", never "never".
+ */
+export async function showInstallPrompt(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
+  const prompt = heldPrompt;
+  if (!prompt) return 'unavailable';
+  heldPrompt = null;
+  try {
+    await prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome === 'accepted') installedHere = true;
+    announce();
+    return outcome;
+  } catch {
+    // A browser that refuses to show the dialog leaves the control in its
+    // pending state, which explains the browser's own menu.
+    announce();
+    return 'unavailable';
+  }
+}
+
+/** Test seam: forget the captured prompt and the install that followed it. */
+export function resetInstallState(): void {
+  heldPrompt = null;
+  installedHere = false;
+  announce();
+}

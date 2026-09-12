@@ -93,7 +93,9 @@ const SURFACES = [
   { id: 'numbers',        path: '/outreach/numbers',            customer: true,  anchor: 'main h1' },
   { id: 'analytics',      path: '/outreach/analytics',          customer: true,  anchor: 'main h1' },
   { id: 'call-center',    path: '/outreach/calls',              customer: true,  anchor: 'main h1' },
-  { id: 'calls-log',      path: '/outreach/calls/log',          customer: true,  anchor: 'main h1' },
+  // The legacy path. It must not 404 and must not render its own page —
+  // it redirects to the AI Call Center, and the sweep checks it lands.
+  { id: 'calls-log',      path: '/outreach/calls/log',          customer: true,  anchor: 'main h1', redirectsTo: '/outreach/calls' },
   { id: 'billing',        path: '/outreach/billing',            customer: true,  anchor: 'main h1' },
   { id: 'home-ai-talk',   path: '/',                            customer: true,  anchor: 'h1' },
   { id: 'admin-providers',path: '/admin/providers',             customer: false, anchor: 'h1' },
@@ -348,6 +350,7 @@ const AUDIT = ({ vw, keys, notALeak, customer, providerWords, placeholderWords }
     scrollWidth: document.documentElement.scrollWidth,
     textLength: allText.length,
     signedOut: /\/auth\/login/.test(location.pathname),
+    path: location.pathname,
     leaked, placeholders, providers,
     offenders: offenders.slice(0, 6),
     nameless: nameless.slice(0, 6),
@@ -476,6 +479,9 @@ test('every Communications surface renders, translates, fits and flips', opts, a
       if (r.pageOverflow || r.offenders.length) {
         failures.push(`${label}: horizontal overflow, scrollWidth=${r.scrollWidth} clientWidth=${r.clientWidth}\n` +
           r.offenders.map((o) => `      ${o.tag}.${o.cls} left=${o.left} right=${o.right} "${o.text}"`).join('\n'));
+      }
+      if (surface.redirectsTo && r.path !== surface.redirectsTo) {
+        failures.push(`${label}: expected a redirect to ${surface.redirectsTo}, landed on ${r.path}`);
       }
       const wantDir = RTL_LANGS.includes(lang) ? 'rtl' : 'ltr';
       if (r.dir !== wantDir) failures.push(`${label}: document direction is "${r.dir}", expected "${wantDir}"`);

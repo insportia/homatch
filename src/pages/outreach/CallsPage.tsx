@@ -1,8 +1,19 @@
-// HOMATCH — Calls, and what happened on each one.
+// HOMATCH — the AI Call Center.
 //
-// §18, §19 and §20. The old AI Call Center is still on /outreach/calls and
-// still creates campaigns; this is the operations view beside it: what is on
-// the wire right now, everything that has happened, and one call in full.
+// §18, §19 and §20. This is what /outreach/calls mounts: what is on the wire
+// right now, everything that has happened, and one call in full.
+//
+// It was not always. This page shipped at /outreach/calls/log while the
+// pre-Communications screen kept /outreach/calls — the route the home page,
+// the footer, the action launcher, the shell nav and the Communications hub
+// all point at. So the product had a real call centre nothing linked to, and
+// a legacy one every path led to, whose banner told customers that AI calling
+// was disabled and campaigns ran with a MOCK provider. Neither half of that
+// was true any more.
+//
+// Campaign creation lives in the campaign screens rather than here: one
+// six-step builder that knows about both calling and WhatsApp beats two
+// half-builders that each know about one.
 //
 // §20's recording rule is the one with teeth. A recording is played through a
 // URL the provider gave us and that Homatch stores privately — it is never
@@ -119,10 +130,15 @@ export default function CallsPage() {
     <RouteGuard>
       <AppLayout>
         <div className="mx-auto max-w-6xl space-y-4">
+          {/* This page IS the AI Call Center now, so its old "Call Center"
+              button pointed at itself. What an operator standing here actually
+              wants next is to start a campaign, or to see the ones already
+              running — both of which live in the campaign screens. */}
           <PageHeader
             title={t('comm_calls_title')}
             subtitle={t('comm_calls_subtitle')}
-            secondary={{ label: t('comm_call_center'), onClick: () => navigate('/outreach/calls') }}
+            primary={{ label: t('comm_new_campaign'), onClick: () => navigate('/outreach/campaigns/new') }}
+            secondary={{ label: t('comm_campaigns_title'), onClick: () => navigate('/outreach/campaigns?channel=AI_CALL') }}
           />
 
           {error ? <ErrorState messageKey={error} onRetry={() => { setLoading(true); void load(); }} /> : null}

@@ -22,10 +22,21 @@ import { readFileSync } from 'node:fs';
  */
 
 const hook = readFileSync('src/hooks/useOutreachProviderStatus.ts', 'utf8');
+/*
+ * The `calling` entry used to read AiCallCenterPage. That page has been
+ * retired: /outreach/calls now mounts CallsPage, the Communications call
+ * centre, which does not use this hook at all — it reads channel state from
+ * comm_provider_routes through comm-provider-status rather than from the old
+ * outreach_* settings this hook wraps.
+ *
+ * Email and SMS still use it, are still on the legacy provider path, and are
+ * still the two screens the crash this file guards actually killed. So the
+ * guard keeps its teeth for the pages it applies to, rather than being
+ * deleted along with the third one.
+ */
 const PAGES = {
   email: readFileSync('src/pages/outreach/EmailCampaignsPage.tsx', 'utf8'),
   sms: readFileSync('src/pages/outreach/SmsCampaignsPage.tsx', 'utf8'),
-  calling: readFileSync('src/pages/outreach/AiCallCenterPage.tsx', 'utf8'),
 };
 
 test('the hook checks the payload instead of asserting it', () => {

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
@@ -40,7 +41,6 @@ import CommunitiesPage from './pages/outreach/CommunitiesPage';
 import ContactListsPage from './pages/outreach/ContactListsPage';
 import EmailCampaignsPage from './pages/outreach/EmailCampaignsPage';
 import SmsCampaignsPage from './pages/outreach/SmsCampaignsPage';
-import AiCallCenterPage from './pages/outreach/AiCallCenterPage';
 import OutreachInsightsPage from './pages/outreach/OutreachInsightsPage';
 // Communications Hub. These EVOLVE the Outreach area rather than replacing it:
 // every route above still exists and still works (§8).
@@ -158,8 +158,26 @@ export const routes: RouteConfig[] = [
   { name: 'Contact Lists',     path: '/outreach/contact-lists',   element: <ContactListsPage /> },
   { name: 'Email Campaigns',   path: '/outreach/email',           element: <EmailCampaignsPage /> },
   { name: 'SMS Campaigns',     path: '/outreach/sms',             element: <SmsCampaignsPage /> },
-  { name: 'AI Call Center',    path: '/outreach/calls',           element: <AiCallCenterPage /> },
-  { name: 'Calls',             path: '/outreach/calls/log',       element: <CallsPage /> },
+  /*
+   * /outreach/calls IS the AI Call Center, and it mounts CallsPage.
+   *
+   * It used to mount AiCallCenterPage, the pre-Communications screen, while
+   * the real one sat at /outreach/calls/log where nothing linked to it. So
+   * every route into the product — the home page, the footer, the action
+   * launcher, the shell nav, the site registry, and the Communications hub's
+   * own channel card — delivered people to a page whose banner read "AI
+   * calling is disabled (outreach_calling_enabled=false). Campaigns are
+   * created as DRAFT with MOCK provider."
+   *
+   * That sentence was true of the old screen and false of the product: AI
+   * calling is real, it is kill-switched pending pricing, and it reads its
+   * state from comm_provider_routes rather than the old outreach_* flags.
+   *
+   * /outreach/calls/log redirects here rather than 404ing, because it was
+   * briefly live and may be bookmarked.
+   */
+  { name: 'AI Call Center',    path: '/outreach/calls',           element: <CallsPage /> },
+  { name: 'Calls (legacy path)', path: '/outreach/calls/log',     element: <Navigate to="/outreach/calls" replace />, visible: false },
   { name: 'Outreach Insights', path: '/outreach/insights',        element: <OutreachInsightsPage /> },
   { name: 'Agents',            path: '/outreach/agents',          element: <AgentsPage /> },
   { name: 'Agent Builder',     path: '/outreach/agents/:id',      element: <AgentBuilderPage />, visible: false },

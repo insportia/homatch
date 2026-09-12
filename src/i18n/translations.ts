@@ -669,7 +669,6 @@ const en = {
   call_center_title: 'AI Call Center',
   call_center_subtitle: 'Configure AI voice campaigns grounded in verified property facts',
   call_new_campaign: 'New Call Campaign',
-  call_calling_disabled: 'AI calling is disabled (outreach_calling_enabled=false). Campaigns are created as DRAFT with MOCK provider.',
   call_empty_title: 'No call campaigns yet',
   call_empty_desc: 'Configure your first AI call campaign with a grounded agent script.',
   call_campaign_name: 'Campaign Name',
@@ -1991,8 +1990,6 @@ const en = {
   nf_desc: 'The page may have been deleted or does not exist. Please check the URL is correct.',
   nf_back_home: 'Back to home',
   callcenter_no_active_call: 'No active call',
-  callcenter_mock_suffix: '(MOCK)',
-  callcenter_mock_dot_suffix: 'MOCK',
 
   // ── PartnersPage keys ──────────────────────────────────────────────
   partners_badge: 'Partner with Homatch',
@@ -2381,7 +2378,6 @@ const en = {
   // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
   email_sending_real: 'Real email sending is ON via {provider} — messages will actually be delivered.',
   sms_sending_real: 'Real SMS sending is ON via {provider} — messages will actually be delivered.',
-  call_calling_real: 'Real AI calling is ON via {provider} — calls will actually be placed.',
   outreach_status_checking: 'Checking provider status…',
   outreach_status_kill_switch: 'Global provider kill switch is ON — all sends run in simulation (MOCK) mode regardless of individual settings.',
 
@@ -4414,7 +4410,6 @@ const en = {
   comm_calls_live: 'On the line now',
   comm_calls_search: 'Search by number',
   comm_calls_qualified_only: 'Qualified only',
-  comm_call_center: 'Call centre',
   comm_call_detail: 'Call',
   comm_call_not_found: 'That call no longer exists',
   comm_call_recording: 'Recording',
@@ -5251,7 +5246,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   call_center_title: 'AI ზარების ცენტრი',
   call_center_subtitle: 'AI ხმოვანი კამპანიები',
   call_new_campaign: 'ახალი ზარის კამპანია',
-  call_calling_disabled: 'AI ზარები გათიშულია. კამპანიები იქმნება DRAFT სახით.',
   call_empty_title: 'ზარის კამპანიები ჯერ არ არის',
   call_empty_desc: 'შექმენით პირველი AI ზარის კამპანია.',
   call_campaign_name: 'კამპანიის სახელი',
@@ -6477,8 +6471,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   nf_desc: 'გვერდი შესაძლოა წაშლილია ან არ არსებობს. გთხოვთ, გადაამოწმოთ URL-ის სისწორე.',
   nf_back_home: 'მთავარ გვერდზე დაბრუნება',
   callcenter_no_active_call: 'აქტიური ზარი არ არის',
-  callcenter_mock_suffix: '(სატესტო)',
-  callcenter_mock_dot_suffix: 'სატესტო',
 
   // ── PartnersPage keys ──────────────────────────────────────────────
   partners_badge: 'პარტნიორობა Homatch-თან',
@@ -6867,7 +6859,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
   email_sending_real: 'რეალური ელ-ფოსტის გაგზავნა ჩართულია {provider}-ის მეშვეობით — შეტყობინებები ნამდვილად გაიგზავნება.',
   sms_sending_real: 'რეალური SMS გაგზავნა ჩართულია {provider}-ის მეშვეობით — შეტყობინებები ნამდვილად გაიგზავნება.',
-  call_calling_real: 'რეალური AI ზარები ჩართულია {provider}-ის მეშვეობით — ზარები ნამდვილად განხორციელდება.',
   outreach_status_checking: 'პროვაიდერის სტატუსის შემოწმება…',
   outreach_status_kill_switch: 'გლობალური პროვაიდერის გამორთვის ღილაკი ჩართულია — ყველა გაგზავნა მუშაობს სიმულაციის (MOCK) რეჟიმში, მიუხედავად ცალკეული პარამეტრებისა.',
 
@@ -8884,7 +8875,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   comm_calls_live: 'ახლა ხაზზე',
   comm_calls_search: 'ძებნა ნომრით',
   comm_calls_qualified_only: 'მხოლოდ კვალიფიცირებული',
-  comm_call_center: 'ქოლ ცენტრი',
   comm_call_detail: 'ზარი',
   comm_call_not_found: 'ეს ზარი აღარ არსებობს',
   comm_call_recording: 'ჩანაწერი',
@@ -9713,7 +9703,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   call_center_title: 'AI-колл-центр',
   call_center_subtitle: 'AI-звонки на основе проверенных фактов',
   call_new_campaign: 'Новая кампания звонков',
-  call_calling_disabled: 'AI-звонки отключены. Кампании создаются как DRAFT.',
   call_empty_title: 'Кампаний звонков пока нет',
   call_empty_desc: 'Создайте первую AI-кампанию звонков.',
   call_campaign_name: 'Название кампании',
@@ -10937,8 +10926,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   nf_desc: 'Возможно, страница была удалена или не существует. Проверьте правильность URL.',
   nf_back_home: 'На главную',
   callcenter_no_active_call: 'Нет активного звонка',
-  callcenter_mock_suffix: '(ТЕСТ)',
-  callcenter_mock_dot_suffix: 'ТЕСТ',
 
   // ── PartnersPage keys ──────────────────────────────────────────────
   partners_badge: 'Партнёрство с Homatch',
@@ -11327,7 +11314,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
   email_sending_real: 'Реальная отправка email ВКЛЮЧЕНА через {provider} — сообщения будут действительно доставлены.',
   sms_sending_real: 'Реальная отправка SMS ВКЛЮЧЕНА через {provider} — сообщения будут действительно доставлены.',
-  call_calling_real: 'Реальные AI-звонки ВКЛЮЧЕНЫ через {provider} — звонки будут действительно совершены.',
   outreach_status_checking: 'Проверка статуса провайдера…',
   outreach_status_kill_switch: 'Глобальный аварийный выключатель провайдеров ВКЛЮЧЁН — все отправки выполняются в режиме симуляции (MOCK), независимо от отдельных настроек.',
 
@@ -13345,7 +13331,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   comm_calls_live: 'Сейчас на линии',
   comm_calls_search: 'Поиск по номеру',
   comm_calls_qualified_only: 'Только квалифиц.',
-  comm_call_center: 'Колл-центр',
   comm_call_detail: 'Звонок',
   comm_call_not_found: 'Такого звонка больше нет',
   comm_call_recording: 'Запись',
@@ -14144,7 +14129,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   call_center_title: 'AI Çağrı Merkezi',
   call_center_subtitle: 'Doğrulanmış mülk gerçeklerine dayalı AI sesli kampanyalar',
   call_new_campaign: 'Yeni Arama Kampanyası',
-  call_calling_disabled: 'AI aramaları devre dışı. Kampanyalar TASLAK olarak oluşturulur.',
   call_empty_title: 'Henüz arama kampanyası yok',
   call_empty_desc: 'İlk AI arama kampanyanızı yapılandırın.',
   call_campaign_name: 'Kampanya Adı',
@@ -15396,8 +15380,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   nf_desc: 'Sayfa silinmiş veya mevcut olmayabilir. Lütfen URL\'nin doğru olduğunu kontrol edin.',
   nf_back_home: 'Ana sayfaya dön',
   callcenter_no_active_call: 'Aktif çağrı yok',
-  callcenter_mock_suffix: '(TEST)',
-  callcenter_mock_dot_suffix: 'TEST',
 
   // ── PartnersPage keys ──────────────────────────────────────────────
   partners_badge: 'Homatch ile Ortaklık',
@@ -15786,7 +15768,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
   email_sending_real: 'Gerçek e-posta gönderimi {provider} üzerinden AÇIK — mesajlar gerçekten teslim edilecek.',
   sms_sending_real: 'Gerçek SMS gönderimi {provider} üzerinden AÇIK — mesajlar gerçekten teslim edilecek.',
-  call_calling_real: 'Gerçek AI aramaları {provider} üzerinden AÇIK — aramalar gerçekten yapılacak.',
   outreach_status_checking: 'Sağlayıcı durumu kontrol ediliyor…',
   outreach_status_kill_switch: 'Genel sağlayıcı acil durdurma anahtarı AÇIK — bireysel ayarlardan bağımsız olarak tüm gönderimler simülasyon (MOCK) modunda çalışır.',
 
@@ -17804,7 +17785,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   comm_calls_live: 'Şu anda hatta',
   comm_calls_search: 'Numaraya göre ara',
   comm_calls_qualified_only: 'Yalnızca nitelikli',
-  comm_call_center: 'Çağrı merkezi',
   comm_call_detail: 'Arama',
   comm_call_not_found: 'Bu arama artık mevcut değil',
   comm_call_recording: 'Kayıt',
@@ -18602,7 +18582,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   call_center_title: 'مركز الاتصال بالذكاء الاصطناعي',
   call_center_subtitle: 'حملات اتصال صوتي مبنية على حقائق موثقة',
   call_new_campaign: 'حملة اتصال جديدة',
-  call_calling_disabled: 'الاتصال بالذكاء الاصطناعي معطل. تُنشأ الحملات كمسودة.',
   call_empty_title: 'لا توجد حملات اتصال بعد',
   call_empty_desc: 'أنشئ أول حملة اتصال.',
   call_campaign_name: 'اسم الحملة',
@@ -19855,8 +19834,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   nf_desc: 'ربما تم حذف الصفحة أو أنها غير موجودة. يرجى التحقق من صحة الرابط.',
   nf_back_home: 'العودة إلى الرئيسية',
   callcenter_no_active_call: 'لا توجد مكالمة نشطة',
-  callcenter_mock_suffix: '(تجريبي)',
-  callcenter_mock_dot_suffix: 'تجريبي',
 
   // ── PartnersPage keys ──────────────────────────────────────────────
   partners_badge: 'الشراكة مع Homatch',
@@ -20245,7 +20222,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
   email_sending_real: 'إرسال البريد الإلكتروني الحقيقي مُفعّل عبر {provider} — سيتم تسليم الرسائل فعليًا.',
   sms_sending_real: 'إرسال الرسائل النصية الحقيقي مُفعّل عبر {provider} — سيتم تسليم الرسائل فعليًا.',
-  call_calling_real: 'الاتصال الحقيقي بالذكاء الاصطناعي مُفعّل عبر {provider} — سيتم إجراء المكالمات فعليًا.',
   outreach_status_checking: 'جارٍ التحقق من حالة المزوّد…',
   outreach_status_kill_switch: 'مفتاح الإيقاف العام لمزوّدي الخدمة مُفعّل — تعمل جميع عمليات الإرسال في وضع المحاكاة (MOCK) بغض النظر عن الإعدادات الفردية.',
 
@@ -22263,7 +22239,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   comm_calls_live: 'على الخط الآن',
   comm_calls_search: 'البحث بالرقم',
   comm_calls_qualified_only: 'المؤهلون فقط',
-  comm_call_center: 'مركز الاتصال',
   comm_call_detail: 'المكالمة',
   comm_call_not_found: 'هذه المكالمة لم تعد موجودة',
   comm_call_recording: 'التسجيل',
@@ -23061,7 +23036,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   call_center_title: 'מרכז שיחות AI',
   call_center_subtitle: 'קמפייני שיחות קוליות מבוססי עובדות מאומתות',
   call_new_campaign: 'קמפיין שיחות חדש',
-  call_calling_disabled: 'שיחות AI מושבתות. קמפיינים נוצרים כטיוטה.',
   call_empty_title: 'אין קמפייני שיחות עדיין',
   call_empty_desc: 'הגדר את קמפיין שיחות ה-AI הראשון.',
   call_campaign_name: 'שם הקמפיין',
@@ -24314,8 +24288,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   nf_desc: 'ייתכן שהדף נמחק או שאינו קיים. אנא בדקו שכתובת ה-URL נכונה.',
   nf_back_home: 'חזרה לדף הבית',
   callcenter_no_active_call: 'אין שיחה פעילה',
-  callcenter_mock_suffix: '(הדגמה)',
-  callcenter_mock_dot_suffix: 'הדגמה',
 
   // ── PartnersPage keys ──────────────────────────────────────────────
   partners_badge: 'שותפות עם Homatch',
@@ -24704,7 +24676,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   // ── Outreach provider real-status (Task #62/64) ──────────────────────────────────────────────
   email_sending_real: 'שליחת אימייל אמיתית פעילה דרך {provider} — הודעות אכן יישלחו.',
   sms_sending_real: 'שליחת SMS אמיתית פעילה דרך {provider} — הודעות אכן יישלחו.',
-  call_calling_real: 'שיחות AI אמיתיות פעילות דרך {provider} — שיחות אכן יתבצעו.',
   outreach_status_checking: 'בודק את סטטוס הספק…',
   outreach_status_kill_switch: 'מתג הכיבוי הגלובלי של הספקים מופעל — כל השליחות פועלות במצב סימולציה (MOCK) ללא קשר להגדרות הפרטניות.',
 
@@ -26722,7 +26693,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   comm_calls_live: 'על הקו כעת',
   comm_calls_search: 'חיפוש לפי מספר',
   comm_calls_qualified_only: 'מוסמכים בלבד',
-  comm_call_center: 'מוקד שיחות',
   comm_call_detail: 'שיחה',
   comm_call_not_found: 'השיחה הזו כבר לא קיימת',
   comm_call_recording: 'הקלטה',

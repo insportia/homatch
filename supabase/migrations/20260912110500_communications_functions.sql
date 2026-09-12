@@ -670,3 +670,69 @@ end $$;
 
 revoke all on function public.comm_purge_expired() from public;
 grant execute on function public.comm_purge_expired() to service_role;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 15. LEAST-PRIVILEGE GRANTS — REVOKE FROM THE NAMED ROLES, NOT JUST PUBLIC
+-- ════════════════════════════════════════════════════════════════════════════
+--
+-- Every `revoke all on function ... from public` above is necessary and was
+-- not sufficient, and the difference cost this migration a real security hole
+-- on first application.
+--
+-- Supabase ships ALTER DEFAULT PRIVILEGES granting EXECUTE on newly created
+-- functions to anon, authenticated and service_role. Those are NAMED ROLES.
+-- Revoking from PUBLIC does not touch a named role's grant, so each function
+-- above was created, silently handed an anon grant by the default privilege,
+-- and then had a different grant revoked.
+--
+-- The exposure was not theoretical. PostgREST publishes the public schema as
+-- RPC, so anyone holding only the publishable anon key could call:
+--
+--   comm_purge_expired()        SECURITY DEFINER, DELETEs talk sessions
+--   comm_record_inbound(...)    writes a conversation and a message under
+--                               ANY owner_id it is handed
+--   comm_enqueue_campaign(...)  queues sends
+--   comm_apply_message_status() rewrites delivery state
+--   comm_claim_sends(...)       claims another tenant's queue
+--
+-- So: revoke from all three named roles AND from PUBLIC, then grant back the
+-- four a signed-in customer genuinely needs. Written as a loop over the actual
+-- catalogue rather than a hand-list, because the failure mode here is a
+-- function somebody adds later and forgets to lock down.
+
+do $$
+declare fn record;
+begin
+  for fn in
+    select p.oid::regprocedure as sig
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname like 'comm\_%'
+  loop
+    execute format('revoke all on function %s from public, anon, authenticated, service_role', fn.sig);
+  end loop;
+end $$;
+
+-- What a signed-in customer may call, and why each one is safe to expose:
+--   comm_audience_summary      SECURITY INVOKER, so RLS decides what it counts
+--   comm_set_conversation_mode checks owner_id / assigned_to itself
+--   comm_publish_agent         checks owner_id, raises 42501 otherwise
+--   comm_user_resume_campaign  SECURITY INVOKER, filters on auth.uid()
+grant execute on function public.comm_audience_summary(uuid, uuid, text) to authenticated, service_role;
+grant execute on function public.comm_set_conversation_mode(uuid, text, text, uuid, text) to authenticated, service_role;
+grant execute on function public.comm_publish_agent(uuid, uuid) to authenticated, service_role;
+grant execute on function public.comm_user_resume_campaign(uuid) to authenticated;
+
+-- The dispatcher's and the webhooks' tools. Service role only.
+grant execute on function public.comm_enqueue_campaign(uuid, uuid, int) to service_role;
+grant execute on function public.comm_claim_sends(uuid, int, int) to service_role;
+grant execute on function public.comm_reclaim_stale_sends() to service_role;
+grant execute on function public.comm_claim_webhook_event(text, text, text, jsonb) to service_role;
+grant execute on function public.comm_finish_webhook_event(text, text, text) to service_role;
+grant execute on function public.comm_record_inbound(uuid, text, text, text, uuid, text, text, text, text, text, timestamptz) to service_role;
+grant execute on function public.comm_apply_message_status(text, text, text, text, text, timestamptz) to service_role;
+grant execute on function public.comm_compliance_pause(uuid, text, text) to service_role;
+grant execute on function public.comm_purge_expired() to service_role;
+
+-- comm_touch_updated_at keeps nothing. A trigger runs as part of the statement
+-- under the table owner; nobody calls it directly, so an execute grant on it
+-- is surface with no purpose.

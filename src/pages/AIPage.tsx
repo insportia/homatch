@@ -422,7 +422,7 @@ function AIPageInner() {
           </Button>
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Bot className="h-5 w-5 text-primary shrink-0" />
-            <span className="font-semibold text-sm text-foreground truncate">{t('ai_title')}</span>
+            <h1 className="truncate text-sm font-semibold text-foreground">{t('ai_title')}</h1>
             <Badge variant="secondary" className="text-[13px] px-1.5 py-0 shrink-0">{t('ai_beta_badge')}</Badge>
           </div>
           {messages.length > 0 && (

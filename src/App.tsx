@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import IntersectObserver from '@/components/common/IntersectObserver';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { routes } from './routes';
+import NotFoundPage from './pages/NotFoundPage';
 import { reportError } from '@/lib/errorReporting';
 import { JobsProvider } from '@/contexts/JobsContext';
 import { JobIndicator } from '@/components/jobs/JobIndicator';
@@ -54,5 +55,5 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState>{
  * page that throws must not take the progress indicator with it, since the
  * job is still running and that is exactly when the customer needs to see so.
  */
-const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><NavigationCounter/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<Navigate to="/" replace/>}/></Routes></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></JobsProvider></AuthProvider></LanguageProvider></Router>;
+const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><NavigationCounter/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></JobsProvider></AuthProvider></LanguageProvider></Router>;
 export default App;

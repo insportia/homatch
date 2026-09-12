@@ -242,10 +242,32 @@ export default function LiveChatPage() {
     }
   };
 
+  /*
+   * THE PAGE EXISTS BEHIND THE SETUP DIALOG.
+   *
+   * This branch used to render the dialog and NOTHING else. A dialog is
+   * portalled out of the page, so what was actually behind it was an
+   * empty document with no heading — measured as four characters of
+   * content, all of them the back button. Anyone who dismissed the dialog
+   * was looking at a blank screen, and there was no h1 for a screen
+   * reader to land on.
+   */
   if (!profileLoading && homatchUser && !profile) {
     return (
       <RouteGuard>
         <AppLayout>
+          <div className="mx-auto max-w-3xl">
+            <div className="flex items-center gap-2">
+              <Radio className="h-5 w-5 text-primary" aria-hidden="true" />
+              <div>
+                <h1 className="font-display text-2xl font-bold tracking-[-0.015em]">{t('live_chat_title')}</h1>
+                <p className="text-base text-ink-soft">{t('live_chat_subtitle')}</p>
+              </div>
+            </div>
+            <p className="measure mt-4 text-base leading-relaxed text-muted-foreground">
+              {t('live_chat_nickname_needed')}
+            </p>
+          </div>
           <NicknameSetupDialog userId={homatchUser.id} onDone={setProfile} />
         </AppLayout>
       </RouteGuard>
@@ -257,7 +279,7 @@ export default function LiveChatPage() {
   return (
     <RouteGuard>
       <AppLayout noPadding>
-        <div className="flex flex-col h-[calc(100dvh-3.5rem)] md:h-[calc(100vh-3.5rem)] overflow-hidden max-w-3xl mx-auto w-full">
+        <div className="mx-auto flex h-[calc(100dvh-4rem)] w-full max-w-3xl flex-col overflow-hidden md:h-[calc(100dvh-5rem)]">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
             <Radio className="h-5 w-5 text-primary" />
             <div className="flex-1 min-w-0">

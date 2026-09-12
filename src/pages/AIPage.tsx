@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -19,6 +18,14 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RouteGuard } from '@/components/common/RouteGuard';
+
+/*
+ * The composer sits at the bottom of the window, which on a modern phone
+ * is underneath the home indicator, and under the app's own tab bar.
+ */
+const BOTTOM_INSET = 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]';
+/** The same, plus the 4rem mobile tab bar, which does not exist from md. */
+const NAV_CLEARANCE = 'pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-3';
 
 // ── Evidence status badge ──────────────────────────────────────
 type EvidenceStatus = 'VERIFIED' | 'HOMATCH_DATA' | 'FOUND_ONLINE' | 'CONFLICTING' | 'UNVERIFIED';
@@ -142,11 +149,11 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
               key={labelKey}
               type="button"
               onClick={() => onPrompt(label)}
-              className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-secondary/50 hover:border-primary/40 transition-colors text-left group"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-start transition-colors hover:border-primary/40 hover:bg-secondary/50 group"
             >
               <Icon className="h-4 w-4 text-primary shrink-0" />
               <span className="text-base text-muted-foreground transition-colors group-hover:text-foreground">{label}</span>
-              <ChevronRight className="h-3 w-3 text-muted-foreground/40 ml-auto shrink-0" />
+              <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40 ms-auto rtl:rotate-180" />
             </button>
           );
         })}
@@ -178,17 +185,28 @@ function MessageBubble({
   }
 
   return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
+    /*
+     * justify, not flex-row-reverse.
+     *
+     * row-reverse puts the user on the right in English and on the LEFT
+     * in Arabic and Hebrew, because the row was already laid out
+     * right-to-left and reversing it undoes that. `justify-end` means
+     * "the end of the line" in whichever direction the line runs, which
+     * is what "my own messages" means in every language.
+     */
+    <div className={`flex gap-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
         <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
           <Bot className="h-4 w-4 text-primary" />
         </div>
       )}
       <div className={`max-w-[80%] ${isUser ? '' : 'flex-1 min-w-0'}`}>
+        {/* Logical corners: the tail belongs at the top of the side the
+            bubble is aligned to, which swaps with the text direction. */}
         <div className={`prose-block rounded-2xl px-4 py-3.5 text-base leading-[1.65] ${
           isUser
-            ? 'bg-primary text-primary-foreground rounded-tr-sm'
-            : 'bg-card border border-border text-foreground rounded-tl-sm'
+            ? 'rounded-se-sm bg-primary text-primary-foreground'
+            : 'rounded-ss-sm border border-border bg-card text-foreground'
         }`}>
           {isUser ? (
             <span>{content}</span>
@@ -214,7 +232,7 @@ function AIPageInner() {
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const didAutoSend = useRef(false);
 
   const {
@@ -239,10 +257,53 @@ function AIPageInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Scroll to bottom on new messages
+  /*
+   * FOLLOW THE STREAM, UNLESS SOMEBODY IS READING.
+   *
+   * This used to scroll to the bottom on every token. Two things went
+   * wrong with that. Scrolling back to re-read an earlier answer was
+   * impossible while a reply was still arriving, because the view yanked
+   * itself down again several times a second. And `behavior: 'smooth'`
+   * restarts its animation on every call, so it never actually settled.
+   *
+   * So: follow only when the reader is already at the bottom, which is
+   * what following along means, and jump rather than animate while
+   * tokens are still arriving.
+   */
+  const scroller = useRef<HTMLDivElement>(null);
+  const [following, setFollowing] = useState(true);
+
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el) return;
+    // A generous threshold: "near the bottom" is a human judgement, and
+    // an exact comparison flips off the moment one line of text arrives.
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setFollowing(distance < 120);
+  };
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamContent]);
+    if (!following) return;
+    bottomRef.current?.scrollIntoView({ behavior: streaming ? 'instant' : 'smooth' });
+  }, [messages, streamContent, following, streaming]);
+
+  /*
+   * GROW TO FIT WHAT WAS TYPED.
+   *
+   * A textarea does not resize itself. Height is cleared before it is
+   * measured because scrollHeight only ever reports the CONTENT height
+   * when the box is not already constraining it — without the reset the
+   * field can grow but never shrink again after a deletion.
+   *
+   * The cap lives in CSS (max-h), so once the text passes six lines the
+   * box stops growing and scrolls instead of eating the conversation.
+   */
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
@@ -297,9 +358,24 @@ function AIPageInner() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
+    /*
+     * h-full, not a height calculated from the viewport.
+     *
+     * It was 100vh minus 3.5rem. The header is 4rem, and 5rem from md, so
+     * the number was wrong in both directions — and a number copied from
+     * one component into another is wrong again the next time either
+     * changes. The shell is now a fixed-height flex column for full-bleed
+     * screens, so "the space that is left" is something the browser
+     * works out rather than something this file guesses.
+     *
+     * It also means dvh is applied in exactly one place. 100vh on a phone
+     * is the height of the viewport WITHOUT the keyboard and does not
+     * change when one opens, which on a screen whose entire purpose is
+     * typing put the box you type into behind the keyboard.
+     */
+    <div className="flex h-full overflow-hidden">
       {/* Sidebar — conversation history */}
-      <aside className={`shrink-0 border-r border-border bg-card flex-col
+      <aside className={`shrink-0 border-e border-border bg-card flex-col
         ${sidebarOpen ? 'flex' : 'hidden'} md:flex w-64`}>
         <div className="p-3 border-b border-border">
           <Button onClick={handleNewChat} size="sm" className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
@@ -317,7 +393,7 @@ function AIPageInner() {
                 key={conv.id}
                 type="button"
                 onClick={() => { loadConversation(conv.id); setSidebarOpen(false); }}
-                className={`w-full text-left p-2.5 rounded-lg text-sm transition-colors truncate ${
+                className={`w-full text-start p-2.5 rounded-lg text-sm transition-colors truncate ${
                   activeConvId === conv.id
                     ? 'bg-primary/10 text-foreground font-medium'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
@@ -358,7 +434,13 @@ function AIPageInner() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
+        {/* overscroll-contain: without it, reaching the end of the
+            conversation on a phone starts scrolling the page behind it. */}
+        <div
+          ref={scroller}
+          onScroll={onScroll}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4"
+        >
           {messages.length === 0 && !streaming ? (
             <EmptyState onPrompt={p => sendMessage(p)} />
           ) : (
@@ -374,7 +456,7 @@ function AIPageInner() {
                   <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                     <Loader2 className="h-4 w-4 text-primary animate-spin" />
                   </div>
-                  <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3">
+                  <div className="rounded-2xl rounded-ss-sm border border-border bg-card px-4 py-3">
                     <div className="flex gap-1.5 items-center">
                       {[0,1,2].map(i => (
                         <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce"
@@ -391,27 +473,67 @@ function AIPageInner() {
 
         <Separator />
 
-        {/* Input bar */}
-        <div className="p-4 shrink-0">
-          <div className="max-w-2xl mx-auto flex gap-2">
-            <Input
+        {/*
+          * THE COMPOSER.
+          *
+          * A textarea, not a single-line input. Shift+Enter was already
+          * bound to "new line" and the control it was bound to could not
+          * hold one, so the second line of a question was invisible.
+          *
+          * It grows to about six lines and then scrolls, so pasting a
+          * long question does not push the conversation off the screen.
+          *
+          * text-base is 17px. Safari zooms the whole page when a focused
+          * field is smaller than 16px, and the zoom does not come back
+          * when the field is blurred, so every iPhone user would be left
+          * on a magnified, sideways-scrolling page after one question.
+          */}
+        {/*
+          * The bottom inset clears two different things at once.
+          *
+          * On a phone the app has a fixed bottom navigation bar sitting
+          * over the last 4rem of the window, so the composer has to stop
+          * above it or the send button is behind a tab. From md that bar
+          * is gone and so is the space. And underneath both, the home
+          * indicator inset, which is 0 on hardware that has none.
+          *
+          * The bar only exists for somebody signed in, which is why this
+          * asks rather than always reserving the room.
+          */}
+        <div className={`shrink-0 px-4 pt-3 ${session ? NAV_CLEARANCE : BOTTOM_INSET}`}>
+          <div className="mx-auto flex max-w-2xl items-end gap-2">
+            <textarea
               ref={inputRef}
+              rows={1}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('ai_input_placeholder')}
               disabled={streaming}
-              className="flex-1 bg-secondary border-border text-sm"
+              aria-label={t('ai_input_placeholder')}
+              className={
+                'max-h-[9.5rem] min-h-[2.75rem] flex-1 resize-none rounded-[1.25rem] border '
+                + 'border-border bg-secondary px-4 py-3 text-base leading-[1.5] '
+                + 'placeholder:text-muted-foreground focus-visible:outline-none '
+                + 'focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'
+              }
             />
             {streaming ? (
-              <Button size="sm" variant="ghost" onClick={cancelStream}
-                className="h-9 w-9 p-0 border border-border text-muted-foreground hover:text-destructive">
-                <StopCircle className="h-4 w-4" />
+              <Button
+                variant="ghost" onClick={cancelStream}
+                aria-label={t('ai_stop')}
+                className="h-11 w-11 shrink-0 rounded-full border border-border p-0 text-muted-foreground hover:text-destructive"
+              >
+                <StopCircle className="h-5 w-5" />
               </Button>
             ) : (
-              <Button size="sm" onClick={handleSend} disabled={!input.trim()}
-                className="h-9 w-9 p-0 bg-primary text-primary-foreground hover:bg-primary/90">
-                <Send className="h-4 w-4" />
+              <Button
+                onClick={handleSend} disabled={!input.trim()}
+                aria-label={t('ai_send')}
+                className="h-11 w-11 shrink-0 rounded-full bg-primary p-0 text-primary-foreground hover:bg-primary/90"
+              >
+                {/* The paper plane points along the text direction. */}
+                <Send className="h-5 w-5 rtl:-scale-x-100" />
               </Button>
             )}
           </div>

@@ -857,19 +857,41 @@ on conflict (code) do nothing;
 -- claims a capability that has not been observed: the WHATSAPP_CALL role is
 -- seeded disabled precisely because it has not.
 
-insert into public.comm_provider_routes (role, provider, priority, enabled, country_scope, credential_env_names, config) values
-  ('STT',           'CARTESIA', 10,  true,  '{}',      array['CARTESIA_API_KEY'],
+-- THE TWO ROLES THAT SPEND MONEY ARRIVE KILL-SWITCHED.
+--
+-- TELEPHONY places PSTN calls and MESSAGING sends WhatsApp. Every other role
+-- below is an input to work that has already been authorised. Seeding those
+-- two open would mean that the instant this migration lands on a production
+-- database, outbound is live — before anyone has approved a price, verified a
+-- provider, or placed a single real call.
+--
+-- So they arrive off. Lifting them is a deliberate admin action taken after
+-- the activation gate passes (docs/GO_LIVE_CHECKLIST.md), audited like any
+-- other, and reversible from Admin → Providers in one click.
+--
+-- This is the second of two independent controls, not the only one. The
+-- execution gate refuses any send whose customer price cannot be resolved, and
+-- production has no active price for either product today. Either one alone
+-- stops a call; having both is the point.
+--
+-- `enabled` stays true while `kill_switch` is true, deliberately: the route is
+-- configured and visible, and an incident must never erase the fact that it is
+-- normally on.
+
+insert into public.comm_provider_routes (role, provider, priority, enabled, kill_switch, country_scope, credential_env_names, config) values
+  ('STT',           'CARTESIA', 10,  true,  false, '{}',      array['CARTESIA_API_KEY'],
       jsonb_build_object('model', 'ink-whisper', 'note', 'Georgian is the release gate; model id is admin-editable and not hardcoded in application logic.')),
-  ('TTS',           'CARTESIA', 10,  true,  '{}',      array['CARTESIA_API_KEY'],
+  ('TTS',           'CARTESIA', 10,  true,  false, '{}',      array['CARTESIA_API_KEY'],
       jsonb_build_object('model', 'sonic-2')),
-  ('ORCHESTRATOR',  'CARTESIA', 10,  true,  '{}',      array['CARTESIA_API_KEY'],
+  ('ORCHESTRATOR',  'CARTESIA', 10,  true,  false, '{}',      array['CARTESIA_API_KEY'],
       jsonb_build_object('note', 'Browser realtime. The homepage demo needs no telephony leg and must not pay for one.')),
-  ('ORCHESTRATOR',  'VAPI',     20,  true,  '{}',      array['VAPI_PRIVATE_API_KEY'],
+  ('ORCHESTRATOR',  'VAPI',     20,  true,  false, '{}',      array['VAPI_PRIVATE_API_KEY'],
       jsonb_build_object('note', 'Telephony orchestration for outbound PSTN calls.')),
-  ('TELEPHONY',     'VAPI',     10,  true,  '{}',      array['VAPI_PRIVATE_API_KEY'], '{}'::jsonb),
-  ('MESSAGING',     'META',     10,  true,  '{}',      array['META_WHATSAPP_ACCESS_TOKEN', 'META_WHATSAPP_PHONE_NUMBER_ID', 'META_WHATSAPP_BUSINESS_ACCOUNT_ID'],
-      jsonb_build_object('api_version', 'v21.0')),
-  ('WHATSAPP_CALL', 'META',     10,  false, '{}',      array['META_WHATSAPP_ACCESS_TOKEN'],
+  ('TELEPHONY',     'VAPI',     10,  true,  true,  '{}',      array['VAPI_PRIVATE_API_KEY'],
+      jsonb_build_object('note', 'Arrives kill-switched. Lifted by an admin once the activation gate passes.')),
+  ('MESSAGING',     'META',     10,  true,  true,  '{}',      array['META_WHATSAPP_ACCESS_TOKEN', 'META_WHATSAPP_PHONE_NUMBER_ID', 'META_WHATSAPP_BUSINESS_ACCOUNT_ID'],
+      jsonb_build_object('api_version', 'v21.0', 'note', 'Arrives kill-switched, as TELEPHONY does.')),
+  ('WHATSAPP_CALL', 'META',     10,  false, true,  '{}',      array['META_WHATSAPP_ACCESS_TOKEN'],
       jsonb_build_object('note', 'Disabled because this business account has not been observed to support WhatsApp Calling. Enabling it is an admin action taken after Meta confirms, not a default.'))
 on conflict (role, provider) do nothing;
 

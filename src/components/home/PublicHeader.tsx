@@ -6,6 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { InstallApp } from '@/components/common/InstallApp';
 import { PAGE } from '@/components/home/sections/primitives';
 
 /**
@@ -120,6 +121,7 @@ export function PublicHeader({ links, solid = false }: { links: HeaderLink[]; so
         </nav>
 
         <div className="ms-auto flex items-center gap-3 lg:ms-0">
+          <div className="hidden sm:block"><InstallApp /></div>
           <LanguageSwitcher showGlobe triggerClassName={`h-9 px-2 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
 
           {session ? (

@@ -1,5 +1,8 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
+import { SmartBack } from '@/components/common/SmartBack';
+import { parentRouteFor } from '@/lib/backNavigation';
 import { AppHeader } from './AppHeader';
 import { MobileBottomNav } from './MobileBottomNav';
 import { AIFloatingButton } from '@/components/common/AIFloatingButton';
@@ -37,6 +40,23 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
    */
   useSurfaceTheme('light');
   const { session } = useAuth();
+  const { pathname } = useLocation();
+
+  /*
+   * ONE BACK BUTTON, DECIDED ONCE.
+   *
+   * Mounted by the shell rather than by each screen, for the same reason the
+   * surface is: 25 pages cannot be relied on to each remember, and the ones
+   * that forgot are exactly the deep-linkable ones where being stranded
+   * hurts most. A route with no parent in the table (the dashboard, the
+   * hubs) renders nothing, so this adds chrome only where there is somewhere
+   * to go back TO.
+   *
+   * Full-bleed screens opt out: the AI chat fills the viewport and owns its
+   * own header, so a bar above it would eat the height the conversation
+   * needs.
+   */
+  const showBack = !hidePadding && parentRouteFor(pathname) !== null;
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background overflow-x-hidden">
@@ -49,6 +69,11 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
           session ? 'pb-24 md:pb-8' : '',
         ].join(' ')}
       >
+        {showBack && (
+          <div className={noPadding ? 'px-4 pb-4 pt-4 md:px-6' : 'pb-4'}>
+            <SmartBack />
+          </div>
+        )}
         {children}
       </main>
       {session && <MobileBottomNav />}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { InstallApp } from '@/components/common/InstallApp';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -117,6 +118,7 @@ export function AppHeader() {
 
         {/* Right side */}
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0 min-w-0">
+          <div className="hidden sm:block"><InstallApp compact /></div>
           <LanguageSwitcher />
 
           {session ? (

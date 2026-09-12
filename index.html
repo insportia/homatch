@@ -5,7 +5,18 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to
+         anything on a notched iPhone; without it an installed app renders
+         inside the safe area and the design never sees the inset. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0D0D0D" />
+    <!-- iOS reads none of the manifest; these are its equivalents. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Homatch" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <script>
       // First-paint surface palette. useSurfaceTheme() sets this for real once
       // React mounts, but the browser paints <body> before the bundle has even

@@ -3729,6 +3729,16 @@ const en = {
   verify_err_stop_failed: 'Could not stop the research. Please try again.',
   verify_depth_title: 'Deep research can take 10–30 minutes',
   verify_depth_body: 'Homatch analyses several independent sources and public records and brings what it finds together into a single Buyer Intelligence report. You do not need to keep this page open — the research continues in the background, and you can come back to the result from your history at any time.',
+  /* Install / PWA */
+  pwa_install: 'Install App',
+  pwa_install_aria: 'Install the Homatch app on this device',
+  pwa_ios_title: 'Add Homatch to your Home Screen',
+  pwa_ios_lead: 'Safari installs apps from the Share menu.',
+  pwa_ios_step1: 'Tap Share at the bottom of Safari',
+  pwa_ios_step2: 'Choose Add to Home Screen',
+  pwa_ios_step3: 'Tap Add',
+  pwa_dismiss: 'Not now',
+  pwa_close: 'Close',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -7376,6 +7386,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_err_stop_failed: 'კვლევის შეწყვეტა ვერ მოხერხდა. გთხოვთ, სცადოთ ხელახლა.',
   verify_depth_title: 'ღრმა კვლევას შესაძლოა 10–30 წუთი დასჭირდეს',
   verify_depth_body: 'Homatch რამდენიმე დამოუკიდებელ წყაროსა და საჯარო მონაცემს აანალიზებს და მიღებულ ინფორმაციას ერთიან Buyer Intelligence ანგარიშში აერთიანებს. გვერდის ღია დატოვება აუცილებელი არ არის — კვლევა ფონურ რეჟიმში გაგრძელდება და შედეგს ისტორიიდან ნებისმიერ დროს დაუბრუნდებით.',
+  /* Install / PWA */
+  pwa_install: 'აპლიკაციის დაყენება',
+  pwa_install_aria: 'დააყენე Homatch-ის აპლიკაცია ამ მოწყობილობაზე',
+  pwa_ios_title: 'დაამატე Homatch მთავარ ეკრანზე',
+  pwa_ios_lead: 'Safari აპლიკაციებს Share მენიუდან აყენებს.',
+  pwa_ios_step1: 'შეეხე Share-ს Safari-ს ქვედა ნაწილში',
+  pwa_ios_step2: 'აირჩიე Add to Home Screen',
+  pwa_ios_step3: 'შეეხე Add-ს',
+  pwa_dismiss: 'ახლა არა',
+  pwa_close: 'დახურვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -11014,6 +11034,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_err_stop_failed: 'Не удалось остановить исследование. Попробуйте ещё раз.',
   verify_depth_title: 'Глубокое исследование может занять 10–30 минут',
   verify_depth_body: 'Homatch анализирует несколько независимых источников и открытых данных и объединяет найденное в единый отчёт Buyer Intelligence. Держать страницу открытой не нужно — исследование продолжится в фоновом режиме, а вернуться к результату можно в любой момент из истории.',
+  /* Install / PWA */
+  pwa_install: 'Установить приложение',
+  pwa_install_aria: 'Установить приложение Homatch на это устройство',
+  pwa_ios_title: 'Добавьте Homatch на главный экран',
+  pwa_ios_lead: 'Safari устанавливает приложения через меню «Поделиться».',
+  pwa_ios_step1: 'Нажмите «Поделиться» внизу Safari',
+  pwa_ios_step2: 'Выберите «На экран «Домой»»',
+  pwa_ios_step3: 'Нажмите «Добавить»',
+  pwa_dismiss: 'Не сейчас',
+  pwa_close: 'Закрыть',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -14650,6 +14680,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_err_stop_failed: 'Araştırma durdurulamadı. Lütfen tekrar deneyin.',
   verify_depth_title: 'Derin araştırma 10–30 dakika sürebilir',
   verify_depth_body: 'Homatch birkaç bağımsız kaynağı ve kamuya açık kaydı analiz eder ve bulduklarını tek bir Buyer Intelligence raporunda birleştirir. Bu sayfayı açık tutmanız gerekmez — araştırma arka planda devam eder ve sonuca istediğiniz zaman geçmişinizden dönebilirsiniz.',
+  /* Install / PWA */
+  pwa_install: 'Uygulamayı Yükle',
+  pwa_install_aria: 'Homatch uygulamasını bu cihaza yükle',
+  pwa_ios_title: 'Homatch\'i Ana Ekrana ekleyin',
+  pwa_ios_lead: 'Safari uygulamaları Paylaş menüsünden yükler.',
+  pwa_ios_step1: 'Safari\'nin altındaki Paylaş\'a dokunun',
+  pwa_ios_step2: 'Ana Ekrana Ekle seçeneğini seçin',
+  pwa_ios_step3: 'Ekle\'ye dokunun',
+  pwa_dismiss: 'Şimdi değil',
+  pwa_close: 'Kapat',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -18286,6 +18326,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_err_stop_failed: 'تعذّر إيقاف البحث. يرجى المحاولة مرة أخرى.',
   verify_depth_title: 'قد يستغرق البحث العميق من 10 إلى 30 دقيقة',
   verify_depth_body: 'يحلل Homatch عدة مصادر مستقلة وسجلات عامة ويجمع ما يجده في تقرير Buyer Intelligence واحد. لا حاجة لإبقاء هذه الصفحة مفتوحة — يستمر البحث في الخلفية، ويمكنك العودة إلى النتيجة من سجلك في أي وقت.',
+  /* Install / PWA */
+  pwa_install: 'تثبيت التطبيق',
+  pwa_install_aria: 'ثبّت تطبيق Homatch على هذا الجهاز',
+  pwa_ios_title: 'أضف Homatch إلى الشاشة الرئيسية',
+  pwa_ios_lead: 'يثبّت Safari التطبيقات من قائمة المشاركة.',
+  pwa_ios_step1: 'اضغط مشاركة أسفل Safari',
+  pwa_ios_step2: 'اختر إضافة إلى الشاشة الرئيسية',
+  pwa_ios_step3: 'اضغط إضافة',
+  pwa_dismiss: 'ليس الآن',
+  pwa_close: 'إغلاق',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -21922,6 +21972,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_err_stop_failed: 'לא ניתן היה לעצור את המחקר. נסו שוב.',
   verify_depth_title: 'מחקר מעמיק עשוי לקחת 10–30 דקות',
   verify_depth_body: 'Homatch מנתח כמה מקורות עצמאיים ורישומים ציבוריים ומאחד את הממצאים לדוח Buyer Intelligence אחד. אין צורך להשאיר את הדף פתוח — המחקר ממשיך ברקע, ותוכלו לחזור לתוצאה מההיסטוריה בכל עת.',
+  /* Install / PWA */
+  pwa_install: 'התקנת האפליקציה',
+  pwa_install_aria: 'התקינו את אפליקציית Homatch במכשיר הזה',
+  pwa_ios_title: 'הוסיפו את Homatch למסך הבית',
+  pwa_ios_lead: 'ספארי מתקין אפליקציות מתפריט השיתוף.',
+  pwa_ios_step1: 'הקישו שיתוף בתחתית ספארי',
+  pwa_ios_step2: 'בחרו הוספה למסך הבית',
+  pwa_ios_step3: 'הקישו הוספה',
+  pwa_dismiss: 'לא עכשיו',
+  pwa_close: 'סגירה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

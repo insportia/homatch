@@ -27,6 +27,7 @@ import { getCreditAccount } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { InstallApp } from '@/components/common/InstallApp';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -307,6 +308,7 @@ export function HomatchShell({ children }: HomatchShellProps) {
                 <span className="hidden text-xs text-muted-foreground lg:inline">{t('nav_credits')}</span>
               </button>
 
+              <div className="hidden sm:block"><InstallApp compact /></div>
               <LanguageSwitcher showGlobe triggerClassName="h-10 rounded-full px-2.5" />
 
               <button

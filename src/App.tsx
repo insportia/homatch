@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import IntersectObserver from '@/components/common/IntersectObserver';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -8,6 +8,24 @@ import { routes } from './routes';
 import { reportError } from '@/lib/errorReporting';
 import { JobsProvider } from '@/contexts/JobsContext';
 import { JobIndicator } from '@/components/jobs/JobIndicator';
+import { noteInAppNavigation } from '@/lib/backNavigation';
+
+/*
+ * Counts route changes so SmartBack can tell the difference between "there
+ * is a Homatch screen behind us" and "this tab opened straight onto a deep
+ * link". It has to live inside <Router> to see the location at all, and it
+ * renders nothing. The FIRST location is not a navigation — arriving is not
+ * going back — so the initial mount is skipped.
+ */
+const NavigationCounter: React.FC = () => {
+  const { pathname } = useLocation();
+  const first = React.useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    noteInAppNavigation();
+  }, [pathname]);
+  return null;
+};
 const DomMutationGuard: React.FC = () => { useEffect(() => { document.documentElement.setAttribute('translate','no'); document.documentElement.classList.add('notranslate'); document.body.setAttribute('translate','no'); document.body.classList.add('notranslate'); return()=>{document.documentElement.removeAttribute('translate');document.documentElement.classList.remove('notranslate');document.body.removeAttribute('translate');document.body.classList.remove('notranslate');};},[]); return null; };
 interface EBState { hasError:boolean }
 /*
@@ -36,5 +54,5 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState>{
  * page that throws must not take the progress indicator with it, since the
  * job is still running and that is exactly when the customer needs to see so.
  */
-const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<Navigate to="/" replace/>}/></Routes></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></JobsProvider></AuthProvider></LanguageProvider></Router>;
+const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><NavigationCounter/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<Navigate to="/" replace/>}/></Routes></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></JobsProvider></AuthProvider></LanguageProvider></Router>;
 export default App;

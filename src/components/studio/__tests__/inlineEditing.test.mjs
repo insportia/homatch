@@ -55,7 +55,12 @@ test('only fields the registry declares can be edited', () => {
   // editable because a component marked it, and components mark the fields
   // the registry gave them.
   assert.match(preview, /const isMultiline = useCallback\(\(sectionId: string, field: string\)/);
-  assert.match(preview, /d\?\.fields\.find\(\(f\) => f\.key === field\)\?\.kind === 'textarea'/);
+  // The answer comes from the section's declared fields, or -- for a field
+  // that only exists inside a repeated child -- from the child's. Never from
+  // the element, and never from a guess.
+  assert.match(preview, /sectionDef\(target\.type\)\?\.fields\.find\(\(f\) => f\.key === field\)/);
+  assert.match(preview, /itemsDef\(target\.type\)\?\.fields\.find\(\(f\) => f\.key === field\)/);
+  assert.match(preview, /\(own \?\? child\)\?\.kind === 'textarea'/);
 });
 
 test('the whole page is editable, not just the selected section', () => {

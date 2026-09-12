@@ -182,7 +182,7 @@ test('a reveal can never leave content invisible', () => {
   // Four separate ways of failing VISIBLE rather than hidden. The usual
   // scroll-reveal bug is a blank space where a paragraph should be, and
   // nobody notices in development because development scrolls.
-  assert.ok(reveal.includes('if (!animated) return createElement(Tag, { className }, children);'),
+  assert.ok(reveal.includes('if (!animated) return createElement(Tag, { className, ...rest }, children);'),
     'with motion off there must be no observer and no opacity at all');
   assert.ok(reveal.includes("typeof IntersectionObserver === 'undefined'"),
     'a browser without the API must show the content immediately');

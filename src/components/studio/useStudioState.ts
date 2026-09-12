@@ -8,12 +8,15 @@ import {
 import {
   DEFAULT_TRANSLATION_MODE, type Locale, type SitePageContent, type SiteSection,
   type SiteVersion, type TranslationMode,
+  type FieldHost,
   applyAutoTranslation, applySuggestion, dismissSuggestion, duplicateSection as duplicate,
   editLocale, insertSectionAfter,
-  emptyPage, makeSection, markReviewed, moveSection, setSectionEnabled,
+  emptyPage, makeSection, markReviewed, moveSection, onItem, setSectionEnabled,
   setSuggestion, translationTargets,
+  addItem as addChild, duplicateItem as duplicateChild, editItemField,
+  moveItem as moveChild, removeItem as removeChild, setItemIcon, setSectionIcon,
 } from '@/site/model';
-import { SECTION_DEFS, sectionDef } from '@/site/registry';
+import { SECTION_DEFS, itemsDef, sectionDef } from '@/site/registry';
 import {
   type History, canRedo, canUndo, emptyHistory, record as recordStep, redo as redoStep,
   undo as undoStep,
@@ -96,6 +99,21 @@ export interface StudioState {
   setSpacing: (spacing: SiteSection['spacing']) => void;
   setEnabled: (enabled: boolean, id?: string) => void;
   setMedia: (slot: string, url: string | null, alt?: string, atSection?: string) => void;
+
+  /* ── A section's repeated children ──────────────────────────── */
+
+  /** Edit one localized field of one child, named by identity. */
+  editItemText: (
+    sectionId: string, itemId: string, field: string, value: string, atLocale?: Locale,
+  ) => void;
+  /** Add a child, optionally directly after another. Refused past `max`. */
+  addItem: (sectionId: string, afterId?: string) => void;
+  removeItem: (sectionId: string, itemId: string) => void;
+  moveItem: (sectionId: string, itemId: string, delta: number) => void;
+  duplicateItem: (sectionId: string, itemId: string) => void;
+  /** Choose an icon by NAME. `null` returns the slot to the section default. */
+  setIcon: (slot: string, name: string | null, itemId?: string) => void;
+
   move: (id: string, delta: number) => void;
   addSection: (type: string, afterId?: string) => void;
   /** Copy a repeatable section, with its content, directly below itself. */
@@ -103,9 +121,11 @@ export interface StudioState {
   removeSection: (id: string) => void;
   setSeo: (patch: Partial<SitePageContent['seo']>) => void;
 
-  acceptSuggestion: (field: string, locale: Locale) => void;
-  rejectSuggestion: (field: string, locale: Locale) => void;
-  approveLocale: (field: string, locale: Locale) => void;
+  /* Reviewing a translation. `itemId` names a repeated child, because a
+     card's Arabic needs approving exactly as the heading's does. */
+  acceptSuggestion: (field: string, locale: Locale, itemId?: string) => void;
+  rejectSuggestion: (field: string, locale: Locale, itemId?: string) => void;
+  approveLocale: (field: string, locale: Locale, itemId?: string) => void;
 
   translating: boolean;
   translateProgress: { done: number; total: number } | null;
@@ -335,6 +355,71 @@ export function useStudioState(): StudioState {
     });
   }, [selectedId, locale, patch]);
 
+  /* ── Repeated children ────────────────────────────────────── */
+
+  /**
+   * The child's own locale, for the same reason the section's field edit
+   * takes one: the commit fires on blur, and by then the admin may have
+   * switched language, which is itself a blur.
+   */
+  const editItemText = useCallback((
+    sectionId: string, itemId: string, field: string, value: string, atLocale?: Locale,
+  ) => {
+    patch(sectionId, s => editItemField(s, itemId, field, atLocale ?? locale, value));
+  }, [locale, patch]);
+
+  /**
+   * Add a child.
+   *
+   * `max` comes from the registry and is a DESIGN limit, not a storage one:
+   * past it the block stops looking like the thing it was designed as. Being
+   * refused with a message is better than discovering that at the tenth card.
+   */
+  const addItem = useCallback((sectionId: string, afterId?: string) => {
+    const section = draft.sections.find(x => x.id === sectionId);
+    const def = section ? itemsDef(section.type) : undefined;
+    if (!section || !def) return;
+    if (section.items.length >= def.max) {
+      toast.info(t('studio_item_max', { n: def.max }));
+      return;
+    }
+    patch(sectionId, s => addChild(s, `item-${crypto.randomUUID().slice(0, 8)}`, afterId));
+  }, [draft.sections, patch, t]);
+
+  const removeItem = useCallback((sectionId: string, itemId: string) => {
+    patch(sectionId, s => removeChild(s, itemId));
+  }, [patch]);
+
+  const moveItem = useCallback((sectionId: string, itemId: string, delta: number) => {
+    patch(sectionId, s => moveChild(s, itemId, delta));
+  }, [patch]);
+
+  const duplicateItem = useCallback((sectionId: string, itemId: string) => {
+    const section = draft.sections.find(x => x.id === sectionId);
+    const def = section ? itemsDef(section.type) : undefined;
+    if (!section || !def) return;
+    if (section.items.length >= def.max) {
+      toast.info(t('studio_item_max', { n: def.max }));
+      return;
+    }
+    patch(sectionId, s => duplicateChild(s, itemId, `item-${crypto.randomUUID().slice(0, 8)}`));
+  }, [draft.sections, patch, t]);
+
+  /**
+   * Choose an icon.
+   *
+   * A NAME, never markup -- see src/site/icons.ts for why that is the whole
+   * safety argument for making icons editable at all. Clearing returns the
+   * slot to whatever the component ships, which is why null is a value here
+   * rather than an empty string.
+   */
+  const setIcon = useCallback((slot: string, name: string | null, itemId?: string) => {
+    if (!selectedId) return;
+    patch(selectedId, s => (itemId
+      ? setItemIcon(s, itemId, slot, name)
+      : setSectionIcon(s, slot, name)));
+  }, [selectedId, patch]);
+
   const move = useCallback((id: string, delta: number) => {
     edit(prev => moveSection(prev, id, delta));
     setDirty(true);
@@ -351,7 +436,31 @@ export function useStudioState(): StudioState {
     const def = sectionDef(type);
     if (!def || !def.repeatable) return;
     const id = `${type}-${crypto.randomUUID().slice(0, 8)}`;
-    edit(prev => insertSectionAfter(prev, type, id, afterId));
+    const group = def.items;
+
+    edit(prev => {
+      const next = insertSectionAfter(prev, type, id, afterId);
+      if (!group) return next;
+      /*
+       * A block that repeats arrives with children.
+       *
+       * Added empty, it is a heading over nothing: there is no card to type
+       * into, and the fact that it repeats at all is hidden behind a control
+       * the admin has to go and find. Three empty cards show what the block
+       * is on the first press, and deleting one is a single click.
+       */
+      return {
+        ...next,
+        sections: next.sections.map(s => {
+          if (s.id !== id) return s;
+          let seeded = s;
+          for (let i = 0; i < group.seed; i += 1) {
+            seeded = addChild(seeded, `item-${crypto.randomUUID().slice(0, 8)}`);
+          }
+          return seeded;
+        }),
+      };
+    });
     setDirty(true);
     setSelectedId(id);
   }, []);
@@ -395,20 +504,25 @@ export function useStudioState(): StudioState {
 
   /* ── Translation review ───────────────────────────────────── */
 
-  const acceptSuggestion = useCallback((field: string, target: Locale) => {
+  /**
+   * The three review actions, for a section or for one of its children.
+   *
+   * `review` exists so the three cannot drift: each is the same "act on a
+   * field host, which is either the section or the child named by itemId",
+   * differing only in which model function does the acting.
+   */
+  const review = useCallback((
+    fn: <T extends FieldHost>(host: T, field: string, locale: Locale) => T,
+  ) => (field: string, target: Locale, itemId?: string) => {
     if (!selectedId) return;
-    patch(selectedId, s => applySuggestion(s, field, target));
+    patch(selectedId, s => (itemId
+      ? onItem(s, itemId, child => fn(child, field, target))
+      : fn(s, field, target)));
   }, [selectedId, patch]);
 
-  const rejectSuggestion = useCallback((field: string, target: Locale) => {
-    if (!selectedId) return;
-    patch(selectedId, s => dismissSuggestion(s, field, target));
-  }, [selectedId, patch]);
-
-  const approveLocale = useCallback((field: string, target: Locale) => {
-    if (!selectedId) return;
-    patch(selectedId, s => markReviewed(s, field, target));
-  }, [selectedId, patch]);
+  const acceptSuggestion = useMemo(() => review(applySuggestion), [review]);
+  const rejectSuggestion = useMemo(() => review(dismissSuggestion), [review]);
+  const approveLocale = useMemo(() => review(markReviewed), [review]);
 
   /* ── Translation generation ───────────────────────────────── */
 
@@ -468,12 +582,21 @@ export function useStudioState(): StudioState {
         let next = section;
         for (const { item, text } of results) {
           if (item.sectionId !== section.id) continue;
-          // The mode decides where the machine output lands, and the model
-          // decides whether that is allowed: applyAutoTranslation still
-          // refuses to overwrite a locale a human reviewed.
-          next = mode === 'auto_all'
-            ? applyAutoTranslation(next, item.field, item.locale, text)
-            : setSuggestion(next, item.field, item.locale, text);
+          /*
+           * The mode decides where the machine output lands, and the model
+           * decides whether that is allowed: applyAutoTranslation still
+           * refuses to overwrite a locale a human reviewed.
+           *
+           * A target that names a child is applied TO that child. Both
+           * branches call the same two functions -- the rules for a card are
+           * the rules for the heading above it, reached through onItem.
+           */
+          const write = <T extends FieldHost>(host: T): T => (
+            mode === 'auto_all'
+              ? applyAutoTranslation(host, item.field, item.locale, text)
+              : setSuggestion(host, item.field, item.locale, text)
+          );
+          next = item.itemId ? onItem(next, item.itemId, write) : write(next);
         }
         return next;
       }),
@@ -570,6 +693,7 @@ export function useStudioState(): StudioState {
     locale, setLocale, mode, setMode,
     editField,
     editSectionField, setVariant, setTheme, setSpacing, setEnabled, setMedia,
+    editItemText, addItem, removeItem, moveItem, duplicateItem, setIcon,
     move, addSection, duplicateSection, removeSection, setSeo,
     acceptSuggestion, rejectSuggestion, approveLocale,
     translating, translateProgress, runTranslation,

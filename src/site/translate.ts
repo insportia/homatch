@@ -150,6 +150,8 @@ export async function translateText(req: TranslateRequest): Promise<TranslateOut
 
 export interface BatchItem {
   sectionId: string;
+  /** Set when the field belongs to a repeated child of that section. */
+  itemId?: string;
   field: string;
   locale: Locale;
   source: string;

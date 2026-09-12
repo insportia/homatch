@@ -95,8 +95,8 @@ export function SectionControls({
    * The focus is deferred a frame because arming the mode is what adds
    * `contenteditable`; focusing in the same tick would run before the
    * edit layer has touched the DOM and would silently do nothing.
-   * `[data-studio-field]` is stamped by that layer, so this can only
-   * ever land on a field the registry declares.
+   * `[data-hm-field]` is declared by the component that rendered the
+   * copy, so this can only ever land on a field the registry allows.
    */
   const onEditHere = useCallback(() => {
     api?.onEdit();
@@ -104,7 +104,7 @@ export function SectionControls({
     if (!el) return;
     const win = el.ownerDocument.defaultView;
     win?.requestAnimationFrame(() => {
-      el.querySelector<HTMLElement>('[data-studio-field]')?.focus();
+      el.querySelector<HTMLElement>('[data-hm-field]')?.focus();
     });
   }, [api, root]);
 

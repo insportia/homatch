@@ -41,6 +41,57 @@ export interface SectionFieldDef {
 export interface SectionMediaDef {
   slot: string;
   labelKey: TranslationKey;
+  /**
+   * A picture, or a video address.
+   *
+   * Both live in the same `media` map on the model, because both are a URL
+   * with a caption. They differ in the editor -- one opens a file picker, the
+   * other takes a pasted address checked by src/site/video.ts -- and in what
+   * the component renders.
+   */
+  kind?: 'image' | 'video';
+}
+
+/**
+ * One icon slot an admin may change.
+ *
+ * The stored value is a NAME from src/site/icons.ts, never markup, which is
+ * the reason an icon is editable at all. See that module for the argument.
+ */
+export interface SectionIconDef {
+  slot: string;
+  labelKey: TranslationKey;
+}
+
+/**
+ * THE SHAPE OF ONE REPEATED CHILD.
+ *
+ * A section with this declared has children an admin can add, reorder,
+ * duplicate and delete -- cards, questions, steps. The child's own fields are
+ * declared exactly like the section's, and for the same reason: the editor
+ * offers what is declared and nothing else, so an admin cannot invent a field
+ * the component does not render.
+ *
+ * `max` is not a database limit. It is the point past which the design stops
+ * working: a nine-card grid on a phone is a column of nine identical boxes,
+ * and the honest place to say so is before the tenth is added.
+ */
+export interface ItemGroupDef {
+  /** What one child is called, in the list and on the add control. */
+  itemLabelKey: TranslationKey;
+  max: number;
+  /**
+   * How many children a freshly added block starts with.
+   *
+   * Not zero. A block that arrives as a heading with nothing under it looks
+   * broken, gives an admin nothing to type into, and hides the fact that it
+   * repeats at all behind a control they have to go and find. Starting with
+   * three empty cards shows what the block IS on the first press.
+   */
+  seed: number;
+  fields: readonly SectionFieldDef[];
+  icons: readonly SectionIconDef[];
+  media: readonly SectionMediaDef[];
 }
 
 export interface SectionDef {
@@ -52,6 +103,14 @@ export interface SectionDef {
   themes: readonly ('light' | 'dark')[];
   fields: readonly SectionFieldDef[];
   media: readonly SectionMediaDef[];
+  /**
+   * Icon slots. Optional because the twenty sections that shipped before
+   * icons were editable have none, and writing `icons: []` twenty times says
+   * nothing that the absence does not already say.
+   */
+  icons?: readonly SectionIconDef[];
+  /** Declared only by sections whose children repeat. */
+  items?: ItemGroupDef;
   /** May an admin add another one of these to a page? */
   repeatable: boolean;
 }
@@ -329,6 +388,87 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     ],
     media: [],
   },
+
+  /* ── The blocks an admin builds out of ─────────────────────────── *
+   *                                                                   *
+   * Everything above is a region of the designed site, made editable. *
+   * These three are different: they exist to be ADDED, several times, *
+   * on any page, and their content is entirely the admin's. That is   *
+   * why they are the ones with repeating children, icon slots and a   *
+   * video address -- and why each carries no fallback translation     *
+   * key, because there is no shipped copy for content nobody has      *
+   * written yet.                                                      *
+   * ──────────────────────────────────────────────────────────────── */
+  {
+    type: 'feature_cards',
+    labelKey: 'studio_sec_feature_cards',
+    // 'steps' numbers the cards; it is the same content read as a sequence,
+    // which is why it is a variant rather than a second section type.
+    variants: ['grid', 'list', 'steps'],
+    themes: ['light', 'dark'],
+    repeatable: true,
+    fields: [
+      f('eyebrow', 'studio_f_eyebrow', null),
+      f('title', 'studio_f_title', null),
+      f('body', 'studio_f_body', null, 'textarea'),
+    ],
+    media: [],
+    items: {
+      itemLabelKey: 'studio_item_card',
+      // Three across on a desktop grid; four rows of that is already a page
+      // of its own.
+      max: 12,
+      seed: 3,
+      fields: [
+        f('title', 'studio_f_title', null),
+        f('body', 'studio_f_body', null, 'textarea'),
+      ],
+      icons: [{ slot: 'glyph', labelKey: 'studio_i_glyph' }],
+      media: [],
+    },
+  },
+  {
+    type: 'faq',
+    labelKey: 'studio_sec_faq',
+    variants: ['default', 'two_column'],
+    themes: ['light', 'dark'],
+    repeatable: true,
+    fields: [
+      f('eyebrow', 'studio_f_eyebrow', null),
+      f('title', 'studio_f_title', null),
+      f('body', 'studio_f_body', null, 'textarea'),
+    ],
+    media: [],
+    items: {
+      itemLabelKey: 'studio_item_question',
+      max: 20,
+      seed: 3,
+      fields: [
+        f('question', 'studio_f_question', null),
+        f('answer', 'studio_f_answer', null, 'textarea'),
+      ],
+      icons: [],
+      media: [],
+    },
+  },
+  {
+    type: 'video_block',
+    labelKey: 'studio_sec_video',
+    variants: ['default', 'wide'],
+    themes: ['light', 'dark'],
+    repeatable: true,
+    fields: [
+      f('eyebrow', 'studio_f_eyebrow', null),
+      f('title', 'studio_f_title', null),
+      f('body', 'studio_f_body', null, 'textarea'),
+    ],
+    media: [
+      { slot: 'video', labelKey: 'studio_m_video', kind: 'video' },
+      // Shown until somebody presses play, so the page does not open six
+      // third-party connections nobody asked for.
+      { slot: 'poster', labelKey: 'studio_m_poster' },
+    ],
+  },
 ];
 
 const BY_TYPE = new Map(SECTION_DEFS.map(d => [d.type, d]));
@@ -341,6 +481,11 @@ export const KNOWN_SECTION_TYPES: readonly string[] = SECTION_DEFS.map(d => d.ty
 
 export function variantsFor(type: string): readonly string[] {
   return BY_TYPE.get(type)?.variants ?? ['default'];
+}
+
+/** The repeating-child shape for a type, or undefined if it has none. */
+export function itemsDef(type: string): ItemGroupDef | undefined {
+  return BY_TYPE.get(type)?.items;
 }
 
 /** Public routes a link may point at. Kept here rather than derived from

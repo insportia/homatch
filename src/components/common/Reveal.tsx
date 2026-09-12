@@ -29,14 +29,22 @@ import { EASING, revealShape } from '@/lib/motion';
  * arrives late enough to read as a bug.
  */
 export function Reveal({
-  children, delayIndex = 0, className, as: Tag = 'div',
+  children, delayIndex = 0, className, as: Tag = 'div', ...rest
 }: {
   children: React.ReactNode;
   /** Position within a group, for staggering. No effect where stagger is 0. */
   delayIndex?: number;
   className?: string;
   as?: 'div' | 'section' | 'li' | 'article';
-}) {
+  /**
+   * Anything else is forwarded to the element.
+   *
+   * Site Studio marks the element that renders a repeated child so it can be
+   * found and given its own controls. Without this, a card wrapped in Reveal
+   * would be the one kind of content the editor could not address — the
+   * attributes would be accepted here and silently dropped.
+   */
+} & React.HTMLAttributes<HTMLElement>) {
   const level = useMotion();
   const shape = revealShape(level);
   const ref = useRef<HTMLElement | null>(null);
@@ -68,7 +76,7 @@ export function Reveal({
     return () => io.disconnect();
   }, [animated]);
 
-  if (!animated) return createElement(Tag, { className }, children);
+  if (!animated) return createElement(Tag, { className, ...rest }, children);
 
   /*
    * createElement rather than <Tag …>: with a polymorphic tag, JSX resolves
@@ -78,6 +86,7 @@ export function Reveal({
   return createElement(
     Tag,
     {
+      ...rest,
       ref,
       className,
       style: {

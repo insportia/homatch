@@ -22,6 +22,9 @@ import {
   AboutSourcesSection, AboutIntlSection, AboutAskSection,
 } from '@/components/home/sections/about';
 import { RichTextSection } from '@/components/home/sections/RichTextSection';
+import {
+  FeatureCardsSection, FaqSection, VideoBlockSection,
+} from '@/components/home/sections/blocks';
 
 /**
  * THE PUBLIC RENDERER
@@ -67,6 +70,9 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   about_intl: AboutIntlSection,
   about_ask: AboutAskSection,
   rich_text: RichTextSection,
+  feature_cards: FeatureCardsSection,
+  faq: FaqSection,
+  video_block: VideoBlockSection,
 };
 
 export {

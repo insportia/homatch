@@ -161,6 +161,8 @@ const en = {
   // Navigation
   nav_dashboard: 'Dashboard',
   nav_mortgage: 'Mortgage',
+  nav_pricing_page: 'Pricing',
+  studio_page_partners: 'Partners',
   nav_chat: 'Messages',
   nav_viewings: 'Viewings',
   nav_active_search: 'Alerts',
@@ -3935,6 +3937,8 @@ const ka: Partial<Record<TranslationKey, string>> = {
   // Navigation
   nav_dashboard: 'პანელი',
   nav_mortgage: 'იპოთეკა',
+  nav_pricing_page: 'ფასები',
+  studio_page_partners: 'პარტნიორები',
   nav_chat: 'შეტყობინებები',
   nav_viewings: 'ნახვები',
   nav_active_search: 'გაფრთხილებები',
@@ -10267,6 +10271,8 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mortgage_within_limit: 'В пределах опубликованного лимита',
   mortgage_years_value: '{{years}} лет',
   nav_mortgage: 'Ипотека',
+  nav_pricing_page: 'Цены',
+  studio_page_partners: 'Партнёры',
 
 
   // Verification Center
@@ -13948,6 +13954,8 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mortgage_within_limit: 'Yayımlanan limit içinde',
   mortgage_years_value: '{{years}} yıl',
   nav_mortgage: 'Konut Kredisi',
+  nav_pricing_page: 'Fiyatlar',
+  studio_page_partners: 'Ortaklar',
 
 
   // Verification Center
@@ -17629,6 +17637,8 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mortgage_within_limit: 'ضمن الحد المنشور',
   mortgage_years_value: '{{years}} سنة',
   nav_mortgage: 'الرهن العقاري',
+  nav_pricing_page: 'الأسعار',
+  studio_page_partners: 'الشركاء',
 
 
   // Verification Center
@@ -21310,6 +21320,8 @@ const he: Partial<Record<TranslationKey, string>> = {
   mortgage_within_limit: 'בתוך המגבלה שפורסמה',
   mortgage_years_value: '{{years}} שנים',
   nav_mortgage: 'משכנתא',
+  nav_pricing_page: 'מחירים',
+  studio_page_partners: 'שותפים',
 
 
   // Verification Center

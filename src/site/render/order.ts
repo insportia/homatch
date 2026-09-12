@@ -26,8 +26,35 @@ export const DEFAULT_ABOUT_ORDER: readonly string[] = [
   'about_intl', 'about_ask',
 ];
 
+/**
+ * Pages that are composed ENTIRELY of admin-added blocks.
+ *
+ * Their shipped content is still rendered by their own component — this
+ * is the band beside it, which starts empty and holds whatever an admin
+ * adds. An empty default order is not a missing page; it is a page whose
+ * blocks are all content-managed.
+ */
+const CONTENT_ONLY: readonly string[] = [];
+
+const ORDERS: Readonly<Record<string, readonly string[]>> = {
+  home: DEFAULT_HOME_ORDER,
+  about: DEFAULT_ABOUT_ORDER,
+  pricing: CONTENT_ONLY,
+  partners: CONTENT_ONLY,
+  mortgage: CONTENT_ONLY,
+  privacy: CONTENT_ONLY,
+  terms: CONTENT_ONLY,
+};
+
+/**
+ * The running order the code ships for a page.
+ *
+ * An unknown slug falls back to the home order deliberately: that is what
+ * the single call site did before, and a typo in a slug should render the
+ * home page rather than an empty document.
+ */
 export function defaultOrderFor(slug: string): readonly string[] {
-  return slug === 'about' ? DEFAULT_ABOUT_ORDER : DEFAULT_HOME_ORDER;
+  return ORDERS[slug] ?? DEFAULT_HOME_ORDER;
 }
 
 export interface ResolvedSection {

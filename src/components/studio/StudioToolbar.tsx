@@ -9,7 +9,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { LOCALES, type Locale, type TranslationMode } from '@/site/model';
-import type { PageSlug } from '@/services/siteContent';
+import { EDITABLE_PAGES, type PageSlug } from '@/services/siteContent';
+import type { TranslationKey } from '@/i18n/translations';
 import { DEVICE_WIDTHS, type DeviceKey } from './StudioPreview';
 import type { StudioState } from './useStudioState';
 
@@ -51,8 +52,13 @@ export function StudioToolbar({
           <SelectValue placeholder={t('studio_page')} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="home" className="text-[15px]">{t('mp_nav_start')}</SelectItem>
-          <SelectItem value="about" className="text-[15px]">{t('nav_about')}</SelectItem>
+          {/* Every editable page, from one list, so adding a page to the
+              site adds it to the editor rather than to a to-do. */}
+          {EDITABLE_PAGES.map(page => (
+            <SelectItem key={page.slug} value={page.slug} className="text-[15px]">
+              {t(page.labelKey as TranslationKey)}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 

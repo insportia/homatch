@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { PageBlocks } from '@/site/render/PageBlocks';
 import { PAGE } from '@/components/home/sections/primitives';
 import { FileText, Info } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -223,6 +224,10 @@ export default function TermsPage() {
           </Section>
         </div>
       </main>
+
+      {/* Blocks added in Site Studio. Renders nothing until
+          somebody adds one. */}
+      <PageBlocks slug="terms" />
 
       <SiteFooter />
     </div>

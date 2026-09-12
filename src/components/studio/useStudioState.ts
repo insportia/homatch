@@ -18,7 +18,7 @@ import {
   type History, canRedo, canUndo, emptyHistory, record as recordStep, redo as redoStep,
   undo as undoStep,
 } from '@/site/history';
-import { DEFAULT_HOME_ORDER, DEFAULT_ABOUT_ORDER } from '@/site/render/SitePage';
+import { defaultOrderFor } from '@/site/render/order';
 import { translateBatch, type BatchItem } from '@/site/translate';
 
 /**
@@ -37,7 +37,16 @@ import { translateBatch, type BatchItem } from '@/site/translate';
 
 /** A page starts as the running order the code ships, made editable. */
 function seedPage(slug: PageSlug): SitePageContent {
-  const order = slug === 'about' ? DEFAULT_ABOUT_ORDER : DEFAULT_HOME_ORDER;
+  /*
+   * The page's OWN running order, asked of the one place that knows it.
+   *
+   * This used to be `slug === 'about' ? about : home`, which was correct
+   * while there were two pages and silently wrong the moment there were
+   * seven: opening Pricing seeded it with the home page's twelve
+   * sections, so the editor showed the wrong page and a save would have
+   * published it.
+   */
+  const order = defaultOrderFor(slug);
   return {
     ...emptyPage(),
     sections: order.map(type => makeSection(type, `${type}-1`)),

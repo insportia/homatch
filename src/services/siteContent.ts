@@ -31,7 +31,32 @@ import {
 import { NORMALIZE_RULES } from '@/site/registry';
 
 /** Pages Site Studio is allowed to address. Mirrors the seeded slugs. */
-export type PageSlug = 'home' | 'about';
+/**
+ * The pages Site Studio can open.
+ *
+ * Every public route is here, not just the two that happen to be built
+ * out of registry sections. A page that cannot be opened cannot be
+ * corrected, and 'the marketing site' is not only the home page.
+ */
+export type PageSlug =
+  | 'home'
+  | 'about'
+  | 'pricing'
+  | 'partners'
+  | 'mortgage'
+  | 'privacy'
+  | 'terms';
+
+/** Every editable page, with the route it publishes to. */
+export const EDITABLE_PAGES: ReadonlyArray<{ slug: PageSlug; path: string; labelKey: string }> = [
+  { slug: 'home', path: '/', labelKey: 'mp_nav_start' },
+  { slug: 'about', path: '/about', labelKey: 'nav_about' },
+  { slug: 'pricing', path: '/pricing', labelKey: 'nav_pricing_page' },
+  { slug: 'partners', path: '/partners', labelKey: 'studio_page_partners' },
+  { slug: 'mortgage', path: '/mortgage', labelKey: 'nav_mortgage' },
+  { slug: 'privacy', path: '/privacy', labelKey: 'home_footer_privacy' },
+  { slug: 'terms', path: '/terms', labelKey: 'home_footer_terms' },
+];
 
 export interface SitePageRecord {
   slug: PageSlug;

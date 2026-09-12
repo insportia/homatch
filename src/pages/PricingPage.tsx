@@ -6,6 +6,7 @@ import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { PageBlocks } from '@/site/render/PageBlocks';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { PlanBadge } from '@/components/billing/PlanBadge';
@@ -189,6 +190,10 @@ export default function PricingPage() {
           </>
         )}
       </main>
+
+      {/* Blocks added in Site Studio. Renders nothing until
+          somebody adds one. */}
+      <PageBlocks slug="pricing" />
 
       <SiteFooter />
     </div>

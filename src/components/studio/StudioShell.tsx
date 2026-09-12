@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { uploadAsset } from '@/services/siteContent';
 import { Loader2 } from 'lucide-react';
@@ -9,7 +9,9 @@ import { HistoryPanel } from './HistoryPanel';
 import { StudioToolbar } from './StudioToolbar';
 import { StudioPreview, type DeviceKey } from './StudioPreview';
 import type { SectionControlsApi } from './SectionControls';
-import { sectionDef } from '@/site/registry';
+import type { ItemControlsApi } from './ItemControls';
+import { itemsDef, sectionDef } from '@/site/registry';
+import { historyIntent } from '@/site/history';
 import type { Locale } from '@/site/model';
 import { ADDABLE, useStudioState } from './useStudioState';
 
@@ -36,6 +38,40 @@ export function StudioShell() {
   const [device, setDevice] = useState<DeviceKey>('desktop');
   const [forceRTL, setForceRTL] = useState(false);
   const [inlineEdit, setInlineEdit] = useState(true);
+
+  /*
+   * CTRL+Z, AND THE WARNING BEFORE LEAVING.
+   *
+   * The shortcut is bound on the document because the caret is usually
+   * inside the preview iframe, whose own document does not bubble key
+   * events out to this one — so the preview forwards them (see
+   * StudioPreview) and this handles both.
+   *
+   * An editable field handles its own undo: pressing Ctrl+Z mid-word
+   * should take back the word, not the last committed edit.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const intent = historyIntent(e);
+      if (!intent) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.isContentEditable || /^(INPUT|TEXTAREA)$/.test(el?.tagName ?? '')) return;
+      e.preventDefault();
+      if (intent === 'undo') studio.undo();
+      else studio.redo();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [studio]);
+
+  /* Unsaved work must not leave silently. The browser decides the
+     wording; all a page can do is say that there is something to lose. */
+  useEffect(() => {
+    if (!studio.dirty) return;
+    const onLeave = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', onLeave);
+    return () => window.removeEventListener('beforeunload', onLeave);
+  }, [studio.dirty]);
 
   /*
    * REPLACING THE PICTURE YOU CLICKED.
@@ -123,6 +159,31 @@ export function StudioShell() {
     };
   }, [section, index, studio, addable, t]);
 
+  /*
+   * The same actions the inspector's list offers, on the cards themselves.
+   *
+   * Null unless the selected block actually has repeating children, which is
+   * what keeps a page of ordinary sections free of floating toolbars.
+   */
+  const group = section ? itemsDef(section.type) : undefined;
+  const items: ItemControlsApi | null = useMemo(() => {
+    if (!section || !group || studio.unavailable) return null;
+    return {
+      sectionId: section.id,
+      itemIds: section.items.map(x => x.id),
+      canAdd: section.items.length < group.max,
+      labels: {
+        add: t('studio_item_add'), up: t('studio_item_up'),
+        down: t('studio_item_down'), duplicate: t('studio_item_duplicate'),
+        remove: t('studio_item_remove'),
+      },
+      onAddAfter: (id) => studio.addItem(section.id, id),
+      onMove: (id, delta) => studio.moveItem(section.id, id, delta),
+      onDuplicate: (id) => studio.duplicateItem(section.id, id),
+      onRemove: (id) => studio.removeItem(section.id, id),
+    };
+  }, [section, group, studio, t]);
+
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       {/* One picker for the whole editor. The slot it fills is decided by
@@ -186,10 +247,18 @@ export function StudioShell() {
               selectedId={studio.selectedId}
               onSelect={studio.select}
               editing={inlineEdit && !studio.unavailable}
-              onInlineEdit={(target, value) => studio.editSectionField(
-                target.sectionId, target.field, value, target.locale as Locale,
-              )}
+              /* A mark that names a repeated child is an edit to that
+                 child. The element said which one; nothing here has to work
+                 it out from the selection, which may have moved. */
+              onInlineEdit={(target, value) => (target.item
+                ? studio.editItemText(
+                  target.sectionId, target.item, target.field, value, target.locale as Locale,
+                )
+                : studio.editSectionField(
+                  target.sectionId, target.field, value, target.locale as Locale,
+                ))}
               controls={inlineEdit ? controls : null}
+              items={inlineEdit ? items : null}
               media={inlineEdit && !studio.unavailable ? media : null}
             />
           </main>

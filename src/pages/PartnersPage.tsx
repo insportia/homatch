@@ -4,6 +4,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { PageBlocks } from '@/site/render/PageBlocks';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -221,6 +222,10 @@ export default function PartnersPage() {
           </Card>
         </div>
       </section>
+
+      {/* Blocks added in Site Studio. Renders nothing until
+          somebody adds one. */}
+      <PageBlocks slug="partners" />
 
       <SiteFooter />
     </div>

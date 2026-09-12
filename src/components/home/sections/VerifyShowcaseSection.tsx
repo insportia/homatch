@@ -83,20 +83,36 @@ export function VerifyShowcaseSection() {
 
         {/* ── The report ───────────────────────────────────────── */}
         <div className="min-w-0 overflow-hidden rounded-[1.1rem] border border-foreground/15 bg-card shadow-hover">
-          {/* The property under examination. Graded hard so the photograph
-              reads as a black-and-gold plate rather than as a listing. */}
-          <div className="relative h-36 saturate-[0.6] sm:h-44" {...mp('plate')}>
-            <SceneMedia scene="verification" alt={plate?.alt ?? ''} sizes="(min-width: 1024px) 40vw, 100vw" position="50% 55%" overrideUrl={plate?.url} />
-            <div className="absolute inset-0 bg-[#0D0D0D]/72" aria-hidden="true" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0D] via-[#0D0D0D]/45 to-[#0D0D0D]/25" aria-hidden="true" />
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5">
-              <div className="min-w-0">
-                <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold">{t('mp_result_prop_label')}</p>
-                <p className="mt-1.5 font-mono text-[16px] tabular-nums text-white/85">01.18.06.019.055.03</p>
-              </div>
-              <span className="shrink-0 rounded-full border border-white/30 px-2.5 py-1 text-[13px] font-semibold uppercase tracking-[0.14em] text-white/80">
-                {t('mp_result_illustrative')}
-              </span>
+          {/*
+            * THE PHOTOGRAPH, SEEN RATHER THAN CROPPED.
+            *
+            * It was a 144px strip — a fixed height with the image covering
+            * it, so most of the building was outside the box at every
+            * width. An aspect ratio keeps the whole frame in view and lets
+            * it grow with the column instead of staying a letterbox.
+            *
+            * The cadastral number that sat over it is gone. A real
+            * identifier printed on a marketing page invites somebody to
+            * read it as a specific property, and it was covering the
+            * photograph it was supposed to be labelling.
+            */}
+          <div className="relative aspect-[16/10] saturate-[0.72] sm:aspect-[16/9]" {...mp('plate')}>
+            <SceneMedia
+              scene="verification"
+              alt={plate?.alt ?? ''}
+              sizes="(min-width: 1024px) 40vw, 100vw"
+              position="50% 45%"
+              overrideUrl={plate?.url}
+            />
+            {/* Lighter than before: the plate no longer has to carry text,
+                so it no longer has to be dark enough to read text on. */}
+            <div className="absolute inset-0 bg-[#0D0D0D]/28" aria-hidden="true" />
+            <div
+              className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-[#0D0D0D]/85 to-transparent"
+              aria-hidden="true"
+            />
+            <div className="absolute inset-x-0 bottom-0 p-5">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold">{t('mp_result_prop_label')}</p>
             </div>
           </div>
 

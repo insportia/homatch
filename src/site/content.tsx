@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
-import { readLocalized, type Locale, type SiteSection } from './model';
+import { readLocalized, type Locale, type SiteItem, type SiteSection } from './model';
+import { iconFor } from './icons';
+import { isVideo, parseVideo, type VideoRef } from './video';
+import type { LucideIcon } from 'lucide-react';
 
 /**
  * HOW A SECTION READS ITS COPY
@@ -71,6 +74,8 @@ export const FIELD_ATTR = {
   section: 'data-hm-section',
   field: 'data-hm-field',
   item: 'data-hm-item',
+  /** On the ELEMENT that wraps a whole repeated child, not on its fields. */
+  itemRoot: 'data-hm-item-root',
   locale: 'data-hm-locale',
 } as const;
 
@@ -92,6 +97,29 @@ export function useMediaProps(): (slot: string) => MediaMark {
   return (slot) => {
     if (!editing || !section) return {};
     return { [FIELD_ATTR.section]: section.id, 'data-hm-media': slot };
+  };
+}
+
+export interface ItemMark {
+  'data-hm-section'?: string;
+  'data-hm-item-root'?: string;
+}
+
+/**
+ * WHICH REPEATED CHILD THIS ELEMENT IS.
+ *
+ * Spread onto the element that wraps a whole card, question or step — not
+ * onto its individual fields, which carry useFieldProps instead.
+ *
+ * The editor uses it to put that child's own controls on it: move up, move
+ * down, duplicate, delete, on the thing itself rather than in a list an admin
+ * has to map back to what they can see.
+ */
+export function useItemProps(): (itemId: string) => ItemMark {
+  const { section, editing } = useContext(SectionScopeCtx);
+  return itemId => {
+    if (!editing || !section) return {};
+    return { [FIELD_ATTR.section]: section.id, [FIELD_ATTR.itemRoot]: itemId };
   };
 }
 
@@ -183,6 +211,72 @@ export function useSectionMedia(): (slot: string) => { url: string; alt: string 
     const m = section?.media[slot];
     if (!m) return null;
     return { url: m.url, alt: readLocalized(m.alt, lang as Locale) ?? '' };
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Repeated children                                                    *
+ * ------------------------------------------------------------------ */
+
+/**
+ * The section's children, in order.
+ *
+ * Empty outside a scope and empty for a section that has none, so a component
+ * can map over this without asking whether it is on the public site, in the
+ * editor, or being rendered with no stored content at all.
+ */
+export function useSectionItems(): SiteItem[] {
+  const { section } = useContext(SectionScopeCtx);
+  return section?.items ?? [];
+}
+
+/**
+ * One field of one child.
+ *
+ * No fallback translation key, deliberately, and for the same reason
+ * useSectionRaw has none: a card exists only because an admin created it, so
+ * there is no shipped six-language copy for it to fall back TO. A card
+ * without words in this language renders without words; see the section
+ * components for what they do about that.
+ */
+export function useItemField(): (item: SiteItem, field: string) => string | undefined {
+  const { lang } = useLanguage();
+  return (item, field) => readLocalized(item.content[field], lang as Locale);
+}
+
+/**
+ * The icon a child asked for, or the one the section ships.
+ *
+ * Resolved through iconFor, so a stored name this build no longer has renders
+ * the fallback instead of a hole. That matters more than it sounds: icon sets
+ * get curated, and a page published last year must not break because a glyph
+ * was retired this year.
+ */
+export function useItemIcon(): (item: SiteItem, slot: string, fallback: LucideIcon) => LucideIcon {
+  return (item, slot, fallback) => iconFor(item.icons[slot], fallback);
+}
+
+/** The same, for an icon slot on the section itself. */
+export function useSectionIcon(): (slot: string, fallback: LucideIcon) => LucideIcon {
+  const { section } = useContext(SectionScopeCtx);
+  return (slot, fallback) => iconFor(section?.icons[slot], fallback);
+}
+
+/**
+ * The video in a slot, already checked and turned into something embeddable.
+ *
+ * Returns null for a slot that is empty OR that holds an address the
+ * allowlist refuses. The refusal happens here, at render, and not only in the
+ * editor, because the stored value could have arrived from an older build, a
+ * restored version, or a direct database write.
+ */
+export function useSectionVideo(): (slot: string) => VideoRef | null {
+  const { section } = useContext(SectionScopeCtx);
+  return slot => {
+    const url = section?.media[slot]?.url;
+    if (!url) return null;
+    const parsed = parseVideo(url);
+    return isVideo(parsed) ? parsed : null;
   };
 }
 

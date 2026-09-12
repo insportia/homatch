@@ -182,7 +182,7 @@ test('a reveal can never leave content invisible', () => {
   // Four separate ways of failing VISIBLE rather than hidden. The usual
   // scroll-reveal bug is a blank space where a paragraph should be, and
   // nobody notices in development because development scrolls.
-  assert.ok(reveal.includes('if (!animated) return createElement(Tag, { className }, children);'),
+  assert.ok(reveal.includes('if (!animated) return createElement(Tag, { className, ...rest }, children);'),
     'with motion off there must be no observer and no opacity at all');
   assert.ok(reveal.includes("typeof IntersectionObserver === 'undefined'"),
     'a browser without the API must show the content immediately');
@@ -190,4 +190,79 @@ test('a reveal can never leave content invisible', () => {
     'anything already on screen must not wait for a scroll that may never come');
   assert.ok(reveal.includes('io.disconnect()'),
     'a revealed element must stop being observed, or it can un-reveal');
+});
+
+/*
+ * THE STYLESHEET'S OWN REDUCED-MOTION ANSWERS.
+ *
+ * Four rules turn off the four things this product animates by itself. They
+ * were, briefly, two inside the media query and two just outside it — a
+ * single stray brace — and the result was not "reduced motion is broken". It
+ * was that the document-reading band and the extraction sweep were hidden for
+ * EVERYONE, permanently, because `animation: none; opacity: 0` at the same
+ * specificity simply wins.
+ *
+ * Nothing reported it, and nothing could: an animation that never runs looks
+ * exactly like a design decision. So the structure is asserted here, by
+ * finding the media blocks and checking each rule is genuinely inside one.
+ */
+
+/** The character ranges covered by `@media (prefers-reduced-motion: reduce)`. */
+function reducedMotionRanges(text) {
+  const ranges = [];
+  const marker = '@media (prefers-reduced-motion: reduce)';
+  let from = 0;
+  for (;;) {
+    const at = text.indexOf(marker, from);
+    if (at === -1) return ranges;
+    const open = text.indexOf('{', at);
+    let depth = 0;
+    let i = open;
+    for (; i < text.length; i += 1) {
+      if (text[i] === '{') depth += 1;
+      else if (text[i] === '}') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    ranges.push([open, i]);
+    from = i;
+  }
+}
+
+test('every "stop this animation" rule is actually inside the media query', () => {
+  const ranges = reducedMotionRanges(css);
+  assert.ok(ranges.length >= 1, 'no reduced-motion block found at all');
+
+  for (const rule of ['.hm-wave > span {', '.hm-ring::after {', '.hm-scan {', '.hm-read {']) {
+    // The LAST occurrence: each class is defined first and overridden second.
+    const at = css.lastIndexOf(rule);
+    assert.ok(at > 0, `${rule} has no reduced-motion answer at all`);
+    assert.ok(
+      ranges.some(([a, b]) => at > a && at < b),
+      `${rule} sits outside the reduced-motion query, so it applies to everyone`,
+    );
+  }
+});
+
+test('the band that says a document is being read is not hidden by default', () => {
+  // The positive half of the test above: outside any media query, .hm-read
+  // must still have its animation and must not be forced transparent.
+  const ranges = reducedMotionRanges(css);
+  const outside = (at) => !ranges.some(([a, b]) => at > a && at < b);
+
+  const declared = css.indexOf('.hm-read {');
+  assert.ok(outside(declared), 'the base .hm-read rule must not be inside a media query');
+  const block = css.slice(declared, css.indexOf('}', declared));
+  assert.match(block, /animation: hm-read/);
+  assert.equal(block.includes('opacity: 0'), false);
+});
+
+test('the global floor slows animations rather than cancelling them', () => {
+  // `animation: none` cancels, so anything whose FINAL state comes from its
+  // keyframes — a dialog that fades in — would be stuck invisible at its
+  // starting frame. A near-zero duration still ends, and ends in the right
+  // place.
+  assert.match(css, /animation-duration: 0\.01ms !important/);
+  assert.equal(/\*,\s*\*::before,\s*\*::after\s*\{[^}]*animation:\s*none/.test(css), false);
 });

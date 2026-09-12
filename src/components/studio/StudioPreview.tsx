@@ -5,7 +5,8 @@ import { SitePage } from '@/site/render/SitePage';
 import { InlineEditLayer, type FieldTarget } from './InlineEdit';
 import { SectionControls, type SectionControlsApi } from './SectionControls';
 import { MediaControls, type MediaTarget } from './MediaControls';
-import { sectionDef } from '@/site/registry';
+import { ItemControls, type ItemControlsApi } from './ItemControls';
+import { itemsDef, sectionDef } from '@/site/registry';
 import { RTL_LANGUAGES } from '@/types/types';
 import type { Locale, SitePageContent } from '@/site/model';
 import type { SupportedLanguage } from '@/types/types';
@@ -123,6 +124,36 @@ function PreviewFrame({
       doc.addEventListener('submit', (e) => e.preventDefault(), true);
     }
 
+    /*
+     * KEYSTROKES OUT OF THE FRAME.
+     *
+     * The caret lives in the preview document, which is a separate
+     * document: its key events reach that document and stop. So Ctrl+Z
+     * pressed while looking at the page did nothing at all, because the
+     * editor's own listener is on the editor's document.
+     *
+     * Re-dispatching a copy lets one handler serve both, and the copy
+     * carries the flags the intent is read from. Registered once,
+     * alongside the stylesheets.
+     */
+    if (!doc.body.dataset.studioKeyBridge) {
+      doc.body.dataset.studioKeyBridge = 'on';
+      doc.addEventListener('keydown', (e) => {
+        const mod = e.ctrlKey || e.metaKey;
+        if (!mod) return;
+        const key = e.key.toLowerCase();
+        if (key !== 'z' && key !== 'y') return;
+        // An editable field owns its own undo: mid-word, Ctrl+Z should
+        // take back the word rather than the last committed edit.
+        const el = e.target as HTMLElement | null;
+        if (el?.isContentEditable) return;
+        e.preventDefault();
+        window.parent?.document.dispatchEvent(new KeyboardEvent('keydown', {
+          key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey,
+        }));
+      });
+    }
+
     setBody(doc.body);
     /*
      * Tells the preview document whether it is being edited.
@@ -191,6 +222,8 @@ interface StudioPreviewProps {
   } | null;
   /** The floating per-section actions, built by the shell that owns the state. */
   controls?: SectionControlsApi | null;
+  /** The floating per-card actions for the selected block, if it has cards. */
+  items?: ItemControlsApi | null;
   /** Whether click-to-edit is armed. */
   editing?: boolean;
   slug: string;
@@ -204,7 +237,8 @@ interface StudioPreviewProps {
 }
 
 export function StudioPreview({
-  slug, content, locale, device, forceRTL, selectedId, onSelect, onInlineEdit, editing = true, controls = null, media = null,
+  slug, content, locale, device, forceRTL, selectedId, onSelect, onInlineEdit,
+  editing = true, controls = null, media = null, items = null,
 }: StudioPreviewProps) {
   const [previewBody, setPreviewBody] = useState<HTMLElement | null>(null);
   const [mediaTarget, setMediaTarget] = useState<MediaTarget | null>(null);
@@ -227,8 +261,14 @@ export function StudioPreview({
    */
   const isMultiline = useCallback((sectionId: string, field: string) => {
     const target = content.sections.find((x) => x.id === sectionId);
-    const d = target ? sectionDef(target.type) : undefined;
-    return d?.fields.find((f) => f.key === field)?.kind === 'textarea';
+    if (!target) return false;
+    const own = sectionDef(target.type)?.fields.find((f) => f.key === field);
+    // A field key can belong to the section, to its repeated children, or to
+    // both — a card's `body` is a paragraph exactly as the section's is. The
+    // child's declaration is consulted only where the section has none, so a
+    // key declared in both cannot be answered by the wrong one.
+    const child = itemsDef(target.type)?.fields.find((f) => f.key === field);
+    return (own ?? child)?.kind === 'textarea';
   }, [content]);
 
   /*
@@ -334,6 +374,7 @@ export function StudioPreview({
           />
         </LanguageOverride>
         <SectionControls root={sectionRoot} body={previewBody} api={controls} />
+        <ItemControls body={previewBody} api={items} revision={content} />
 
         {media && (
           <MediaControls

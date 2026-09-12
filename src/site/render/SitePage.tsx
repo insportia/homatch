@@ -22,6 +22,11 @@ import {
   AboutSourcesSection, AboutIntlSection, AboutAskSection,
 } from '@/components/home/sections/about';
 import { RichTextSection } from '@/components/home/sections/RichTextSection';
+import {
+  FeatureCardsSection, FaqSection, VideoBlockSection,
+} from '@/components/home/sections/blocks';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { SiteHeaderBlock } from './ShellBlocks';
 
 /**
  * THE PUBLIC RENDERER
@@ -67,6 +72,12 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   about_intl: AboutIntlSection,
   about_ask: AboutAskSection,
   rich_text: RichTextSection,
+  feature_cards: FeatureCardsSection,
+  faq: FaqSection,
+  video_block: VideoBlockSection,
+  /* The site's chrome, rendered only on the 'shell' page. See ShellScope. */
+  site_header: SiteHeaderBlock,
+  site_footer: SiteFooter,
 };
 
 export {

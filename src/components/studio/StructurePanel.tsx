@@ -36,13 +36,18 @@ export function StructurePanel({ studio }: { studio: StudioState }) {
 
           // Does anything in this section need a look in the language the
           // admin is currently editing? The dot is the whole answer.
-          const worst = def?.fields.reduce<'current' | 'needs_update' | 'ai_suggested' | 'reviewed'>(
-            (acc, f) => {
-              const state = localeState(section, f.key, locale);
-              if (state === 'needs_update') return 'needs_update';
-              if (state === 'ai_suggested' && acc !== 'needs_update') return 'ai_suggested';
-              return acc;
-            }, 'current') ?? 'current';
+          let worst: 'current' | 'needs_update' | 'ai_suggested' | 'reviewed' = 'current';
+          const note = (state: typeof worst) => {
+            if (state === 'needs_update') worst = 'needs_update';
+            else if (state === 'ai_suggested' && worst !== 'needs_update') worst = 'ai_suggested';
+          };
+          for (const f of def?.fields ?? []) note(localeState(section, f.key, locale));
+          /* The cards count too. A block whose every word lives in its
+             children — a set of questions and answers — would otherwise
+             always report itself as fine. */
+          for (const item of section.items) {
+            for (const f of def?.items?.fields ?? []) note(localeState(item, f.key, locale));
+          }
 
           return (
             <li key={section.id}>

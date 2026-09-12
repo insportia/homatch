@@ -13,10 +13,12 @@
       // a cold load. Kept to a literal path list rather than anything clever:
       // if it ever disagrees with the routes, React corrects it on mount.
       (function () {
-        var p = location.pathname.replace(/\/+$/, '') || '/';
-        if (p === '/' || p === '/dashboard') {
-          document.documentElement.setAttribute('data-surface', 'light');
-        }
+        // Light is now the palette for the whole customer product, so this
+        // is unconditional rather than a two-path allowlist. It used to name
+        // '/' and '/dashboard', which is why every other screen painted the
+        // dark palette for a frame before React corrected it — and why the
+        // 27 screens that never claimed the surface at all stayed dark.
+        document.documentElement.setAttribute('data-surface', 'light');
       })();
     </script>
   </head>

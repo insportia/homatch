@@ -30,6 +30,7 @@ import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 
 interface NavItem {
   key: string;
@@ -68,6 +69,9 @@ interface HomatchShellProps {
 }
 
 export function HomatchShell({ children }: HomatchShellProps) {
+  // Same reason as AppLayout: the surface is the shell's job. The dashboard
+  // happened to look right only because DashboardPage claimed it itself.
+  useSurfaceTheme('light');
   const { homatchUser, signOut } = useAuth();
   const { t, isRTL } = useLanguage();
   const location = useLocation();

@@ -431,10 +431,15 @@
        read as a surface sitting on a page, and a long screen was an
        unbroken white field. This is a 3% step down at a hair of warmth
        (hsl 48 6% 97% = #F8F8F6): enough that white cards lift off it and
-       the eye gets a rest, nowhere near enough to read as beige. The
-       saturation is deliberately tiny; at 6% of 97% lightness it is a
-       neutral that happens not to be clinical. */
-    --background: 48 6% 97%;    /* #F8F8F6 — premium neutral, not beige */
+       the eye gets a rest, nowhere near enough to read as beige.
+
+       SECOND PASS: 48deg at 97% still read as too white AND carried a faint
+       warm cast — 48deg is a yellow hue, which is the direction the brief
+       explicitly rules out. This is 90deg (the neutral green-grey axis) at
+       96%, so the canvas steps further from white and any warmth is gone.
+       The saturation stays at 6%, which at this lightness is a neutral that
+       simply is not clinical. */
+    --background: 90 6% 96%;    /* #F4F5F2 — cool neutral canvas */
     --foreground: 0 0% 7%;      /* neutral near-black ink               */
 
     /* Cards are the white now, which is what makes them elevated content
@@ -456,11 +461,11 @@
     --primary: 0 0% 5%;
     --primary-foreground: 0 0% 100%;
 
-    /* These sat at 96% against a 100% page. Against a 97% page they need to
-       be a touch deeper to read as a fill at all. */
-    --secondary: 40 5% 94%;
+    /* Secondary fills have to stay visible against the canvas, so they step
+       down with it and share its hue rather than reintroducing warmth. */
+    --secondary: 90 5% 92%;
     --secondary-foreground: 0 0% 10%;
-    --muted: 40 5% 94%;
+    --muted: 90 5% 92%;
     /* 34% -> 30% -> 24%. Supporting copy kept reading as washed out at 30%,
        and on a dashboard almost every label, date and card description is
        "supporting". At 24% it is 11.4:1 on a white card: unmistakably ink
@@ -476,9 +481,8 @@
 
     /* Hairlines that are actually visible. Neutral, so a 1px rule on white
        reads as a drawn line rather than as a warm smudge. */
-    /* Softer than 87% now that it sits on a 97% page rather than white, so
-       a hairline separates without drawing itself. */
-    --border: 40 4% 89%;
+    /* A hairline that separates without drawing itself, on the same axis. */
+    --border: 90 4% 87%;
     --input: 0 0% 80%;
     --ring: 38 88% 40%;
 

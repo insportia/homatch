@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { AppHeader } from './AppHeader';
 import { MobileBottomNav } from './MobileBottomNav';
 import { AIFloatingButton } from '@/components/common/AIFloatingButton';
@@ -18,6 +19,23 @@ interface AppLayoutProps {
 // it would duplicate the actions. The component file is left dormant rather
 // than deleted, the same way CasesPage was.
 export function AppLayout({ children, noPadding = false, hidePadding = false }: AppLayoutProps) {
+  /*
+   * THE SURFACE BELONGS TO THE SHELL, NOT TO EACH PAGE.
+   *
+   * This was a per-page opt-in, and only 13 of 40 customer pages had opted
+   * in. Every other one — AI, Chat, Live Chat, Credits, Profile, Activity,
+   * Viewings, the property flows, the whole of Outreach, the verification
+   * case — rendered on the DARK root palette, which is exactly why opening a
+   * product from the new home page felt like arriving at a different, older
+   * website.
+   *
+   * Making it the shell's business fixes all of them at once and means a new
+   * page is correct by existing rather than by remembering a hook. The hook
+   * counts claimants, so the pages that still call it themselves are
+   * harmless; a screen that genuinely wants the dark palette opts out by not
+   * using this shell.
+   */
+  useSurfaceTheme('light');
   const { session } = useAuth();
 
   return (

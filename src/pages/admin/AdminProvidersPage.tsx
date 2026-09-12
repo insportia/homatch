@@ -12,6 +12,7 @@ import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { CommunicationsRoutingPanel } from '@/components/admin/CommunicationsRoutingPanel';
 
 const STATUS_CONFIG = {
   NOT_CONFIGURED:        { labelKey: 'admin_providers_not_configured', color: 'bg-muted text-muted-foreground',              icon: MinusCircle },
@@ -208,6 +209,11 @@ export default function AdminProvidersPage() {
             onCheckedChange={toggleGlobalKillSwitch}
             disabled={savingKill}
             className={globalKillSwitch ? 'data-[state=checked]:bg-destructive' : ''}
+            /* The heading beside it is a <p>, not a <label>, so nothing tied
+               the two together: a screen reader announced "switch, off" with
+               no clue what it switches — and this one stops every provider on
+               the platform. */
+            aria-label={t('admin_providers_kill_switch_label')}
           />
         </div>
       </div>
@@ -358,13 +364,23 @@ export default function AdminProvidersPage() {
                 </div>
                 {p.notes && <p className="text-[14px] text-muted-foreground/80 leading-snug">{p.notes}</p>}
                 <div className="flex items-center gap-2 pt-1">
-                  <Switch checked={p.enabled} disabled={togglingTreasury === p.provider_code} onCheckedChange={v => toggleTreasuryEnabled(p.provider_code, v)} />
+                  <Switch
+                    checked={p.enabled}
+                    disabled={togglingTreasury === p.provider_code}
+                    onCheckedChange={v => toggleTreasuryEnabled(p.provider_code, v)}
+                    aria-label={`${p.provider_code} — ${t('admin_markets_enabled')}`}
+                  />
                   <span className="text-xs text-muted-foreground">{p.enabled ? t('admin_markets_enabled') : t('admin_providers_disabled_kill_switch')}</span>
                 </div>
               </CardContent>
             </Card>
           ))}
       </div>
+
+      {/* Communications routing (§54). A section here rather than a new Admin
+          nav entry: it is provider configuration, and this is the provider
+          screen (§105). */}
+      <CommunicationsRoutingPanel />
     </div>
   );
 }

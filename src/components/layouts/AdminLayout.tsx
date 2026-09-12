@@ -140,6 +140,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             size="icon"
             className="md:hidden shrink-0"
             onClick={() => setMobileOpen(true)}
+            /* The only way into admin navigation on a phone. It had no name. */
+            aria-label={t('general_menu')}
           >
             <Menu className="h-5 w-5" />
           </Button>

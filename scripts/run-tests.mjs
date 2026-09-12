@@ -22,7 +22,7 @@
  * version, and fails loudly if the suite ever resolves to nothing rather than
  * silently "passing" with zero tests.
  */
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 

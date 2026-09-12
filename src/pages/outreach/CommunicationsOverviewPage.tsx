@@ -20,7 +20,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, BarChart3, Bot, ChevronRight, Mail, MessageSquare,
-  Megaphone, Phone, Users, Rocket,
+  Megaphone, Phone, Users, Rocket, Wallet,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -246,10 +246,11 @@ export default function CommunicationsOverviewPage() {
             </div>
           </section>
 
-          <nav aria-label={t('comms_title')} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <nav aria-label={t('comms_title')} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <QuickLink icon={Bot} labelKey="comm_nav_agents" onClick={() => navigate('/outreach/agents')} />
             <QuickLink icon={Users} labelKey="comm_nav_contacts" onClick={() => navigate('/outreach/contact-lists')} />
             <QuickLink icon={BarChart3} labelKey="comm_nav_analytics" onClick={() => navigate('/outreach/analytics')} />
+            <QuickLink icon={Wallet} labelKey="comm_billing_title" onClick={() => navigate('/outreach/billing')} />
             <QuickLink icon={Activity} labelKey="comm_nav_insights" onClick={() => navigate('/outreach/insights')} />
           </nav>
         </div>

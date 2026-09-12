@@ -13,6 +13,7 @@ import type { AdminSetting } from '@/types/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { CommunicationsVoicePanel } from '@/components/admin/CommunicationsVoicePanel';
 
 // ── Setting groups ─────────────────────────────────────────────
 const SETTING_GROUPS: { label: string; keys: string[]; danger?: boolean }[] = [
@@ -177,6 +178,10 @@ export default function AdminSettingsPage() {
                         {meta.type === 'boolean' ? (
                           <div className="flex items-center gap-2 shrink-0">
                             <Switch
+                              /* meta.label is rendered in a <Label> with no
+                                 htmlFor, so the switch itself had no name.
+                                 This is the one that turns mock data on. */
+                              aria-label={meta.label}
                               checked={val === 'true'}
                               onCheckedChange={async (checked) => {
                                 const newVal = String(checked);
@@ -235,6 +240,11 @@ export default function AdminSettingsPage() {
           ))}
         </div>
       )}
+
+      {/* Voice tuning and the AI Talk allowance (§55, §59). Both are stored in
+          admin_settings, which is what this page is for, so they belong here
+          rather than behind another nav entry. */}
+      <CommunicationsVoicePanel />
 
       <p className="text-xs text-muted-foreground">
         {t('admin_settings_enforcement_note')}{' '}

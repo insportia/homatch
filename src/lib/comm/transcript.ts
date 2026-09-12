@@ -247,14 +247,35 @@ const CONTINUATION_TOKENS = [
   'და', 'ან', 'მაგრამ', 'რომ', 'რადგან', 'ანუ', 'დაახლოებით', 'ერთი', 'წუთით',
   'მინდა', 'მჭირდება', 'ვეძებ', 'ვფიქრობ', 'ვგულისხმობ', 'ესეიგი',
   'ეე', 'ემმ', 'მმმ', 'აა',
+  /*
+   * Words that OPEN something and cannot close a turn.
+   *
+   * Added after GE-VOICE-CORPUS-v1 measured the agent cutting in on all five
+   * of these shapes. A relative pronoun introduces a clause, a correlative
+   * demands one, a bound numeral stem is half of a number, and an intensifier
+   * is waiting for the word it intensifies. None of them is where a Georgian
+   * speaker stops.
+   *
+   * The trade is deliberately one-sided. Being wrong here costs the caller
+   * 280ms of extra patience (the continuation grace instead of the complete
+   * threshold). Being wrong the other way means the agent talks over them.
+   * Those are not comparable, so the doubtful cases go in this list.
+   */
+  'რომელიც', 'რომელსაც', 'რომელშიც', 'ისეთი', 'ისეთს', 'ისეთი', 'ის', 'იმ',
+  'ძალიან', 'უფრო', 'ყველაზე', 'საკმაოდ', 'შედარებით',
+  // Bound stems of spelled numerals: "ას" is half of "ას ორმოცდაათი".
+  'ას', 'ორას', 'სამას', 'ოთხას', 'ხუთას', 'ექვსას', 'შვიდას', 'რვაას', 'ცხრაას',
   // Russian
   'и', 'или', 'но', 'что', 'потому', 'примерно', 'около', 'значит', 'типа',
   'ээ', 'ммм', 'нуу',
+  'который', 'которая', 'которое', 'такой', 'такая', 'очень', 'более', 'самый',
   // English
   'and', 'or', 'but', 'because', 'about', 'around', 'like', 'so', 'well',
   'um', 'uh', 'erm', 'hmm',
+  'which', 'that', 'such', 'very', 'more', 'most', 'quite', 'rather',
   // Turkish
   've', 'veya', 'ama', 'yaklaşık', 'şey', 'yani',
+  'hangi', 'öyle', 'çok', 'daha', 'en',
 ];
 
 /** Endings that mean the sentence closed. */

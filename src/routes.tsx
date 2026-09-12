@@ -57,6 +57,7 @@ import WhatsAppTemplatesPage from './pages/outreach/WhatsAppTemplatesPage';
 import ChannelAccountsPage from './pages/outreach/ChannelAccountsPage';
 import CommunicationsAnalyticsPage from './pages/outreach/CommunicationsAnalyticsPage';
 import CallsPage from './pages/outreach/CallsPage';
+import CommunicationsBillingPage from './pages/outreach/CommunicationsBillingPage';
 // Admin pages
 import AdminLayout from './components/layouts/AdminLayout';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
@@ -171,6 +172,7 @@ export const routes: RouteConfig[] = [
   { name: 'WhatsApp Templates', path: '/outreach/whatsapp/templates', element: <WhatsAppTemplatesPage />, visible: false },
   { name: 'Phone Numbers',     path: '/outreach/numbers',         element: <ChannelAccountsPage />, visible: false },
   { name: 'Communications Analytics', path: '/outreach/analytics', element: <CommunicationsAnalyticsPage /> },
+  { name: 'Communications Billing', path: '/outreach/billing',    element: <CommunicationsBillingPage /> },
   // Admin (wrapped in AdminLayout which enforces is_admin server-side)
   { name: 'Admin Overview',    path: '/admin',                    element: adminWrap(<AdminOverviewPage />),    adminOnly: true },
   { name: 'Admin Users',       path: '/admin/users',              element: adminWrap(<AdminUsersPage />),       adminOnly: true },

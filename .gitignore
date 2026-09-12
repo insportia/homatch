@@ -77,3 +77,13 @@ history/*.json
 # Build output from .rules/testBuild.sh. Never committed: a stray `git add -A`
 # otherwise sweeps several thousand bundled files into a commit.
 .dist-ci/
+
+# `npm run lint` on Windows leaves a 180KB file literally named `nul`.
+#
+# scripts/lint.sh pipes Tailwind to /dev/null; the Tailwind CLI does not
+# recognise that path on Windows and writes a real file with that name instead.
+# It is compiled CSS, it is regenerated on every lint, and it has turned up as
+# an untracked stray in more than one worktree. Ignored rather than deleted in
+# the script, because `nul` is a reserved device name on Windows and a `rm nul`
+# in a shared script is the kind of line that behaves differently everywhere.
+nul

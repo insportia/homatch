@@ -234,13 +234,75 @@ async function checkMeta(probe: boolean, routes: Route[], sb: SupabaseClient): P
   const account = await provider.describeAccount();
   const templates = account.ok ? await provider.listTemplates() : null;
 
-  if (!account.ok) {
-    return { ...base, health: 'DOWN', latencyMs: account.latencyMs ?? null, errorCode: account.error?.code ?? 'UNKNOWN' };
-  }
-
-  // What the platform-owned number row says about itself, refreshed from Meta.
+  // What the platform-owned number row says about itself. Read before the
+  // branch, because a FAILED probe has to correct it just as much as a
+  // successful one does.
   const { data: stored } = await sb.from('comm_channel_accounts')
     .select('id, environment, status').eq('provider', 'META').is('owner_id', null).maybeSingle();
+
+  if (!account.ok) {
+    /*
+     * "DOWN" plus an error code is not enough for the person who has to fix it.
+     *
+     * There are two completely different failures behind a red Meta card, and
+     * they need opposite actions:
+     *
+     *   the secrets are missing        -> set them (health is NOT_CONFIGURED,
+     *                                    handled above, never reaches here)
+     *   the secrets are set and Meta
+     *   REJECTED them                  -> the token is expired or revoked;
+     *                                    reissue it in Business Manager
+     *
+     * The second is the state this deployment is actually in, and an admin
+     * reading "DOWN / AUTH" could reasonably spend an hour re-entering
+     * credentials that were never missing. So the distinction is said in
+     * words, and `credentialsRejected` is put in facts so the UI can act on
+     * it without parsing English.
+     *
+     * §54 still holds: this says a token was rejected. It never says which
+     * token, and it never echoes Meta's body, which can quote a request
+     * containing a phone number.
+     */
+    const rejected = account.error?.code === 'AUTH';
+
+    /*
+     * A NUMBER THAT CANNOT SEND MUST STOP SAYING "CONNECTED".
+     *
+     * comm_channel_accounts.status is what the customer's WhatsApp screen
+     * reads. It was only ever written on a SUCCESSFUL probe, so a token that
+     * expired last week left the row saying CONNECTED — and a customer
+     * looking at a green channel while every send failed. That is precisely
+     * the dishonesty §100 forbids, and it is the state this deployment is in
+     * right now.
+     *
+     * So a failed probe writes the truth back. ACTION_REQUIRED is the
+     * existing vocabulary for "someone has to do something before this
+     * works", and getChannelStatus() already maps it for the customer.
+     */
+    if (stored && stored.status !== 'ACTION_REQUIRED') {
+      await sb.from('comm_channel_accounts')
+        .update({ status: 'ACTION_REQUIRED' })
+        .eq('id', stored.id);
+    }
+
+    return {
+      ...base,
+      health: 'DOWN',
+      latencyMs: account.latencyMs ?? null,
+      errorCode: account.error?.code ?? 'UNKNOWN',
+      detail: rejected
+        ? 'Every WhatsApp credential is configured, and Meta rejected them. The access token is expired or revoked — reissue it in Meta Business Manager and update the secret. Nothing in this repository can fix it.'
+        : `Meta is configured but did not answer successfully (${account.error?.code ?? 'UNKNOWN'}). WhatsApp sending and syncing are unavailable until it does.`,
+      facts: {
+        apiVersion: META_API_VERSION,
+        webhookReady: webhook.ok,
+        // Booleans only, so the UI can distinguish the two failures without
+        // being handed anything sensitive.
+        credentialsPresent: true,
+        credentialsRejected: rejected,
+      },
+    };
+  }
 
   if (stored) {
     await sb.from('comm_channel_accounts').update({

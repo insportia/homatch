@@ -16,7 +16,9 @@
     "i18n:all": "node scripts/i18n-check.mjs && node scripts/i18n-keys-check.mjs && node scripts/i18n-audit.mjs",
     "build:harness": "vite build --mode harness",
     "test:mobile": "node --test tests/mobile/mobileOverflow.test.mjs",
-    "test:mobile:setup": "node scripts/setup-mobile-test.mjs"
+    "test:mobile:setup": "node scripts/setup-mobile-test.mjs",
+    "test:surfaces": "npm run build:harness && node --test --test-timeout=2400000 tests/browser/commSurfaces.test.mjs",
+    "test:voice": "node --test src/lib/comm/__tests__/georgianCorpus.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

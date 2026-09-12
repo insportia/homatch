@@ -166,6 +166,12 @@ export function AppHeader() {
                     variant="ghost"
                     size="sm"
                     className="hidden md:flex gap-1.5 h-8 px-2 text-muted-foreground hover:text-foreground"
+                    /* An avatar and a chevron are not a name. Without this the
+                       trigger is announced as "button" and nothing more — the
+                       one control in the header a screen reader could not
+                       identify. Found by the Communications surface sweep,
+                       which checks every visible control on every screen. */
+                    aria-label={t('nav_profile')}
                   >
                     <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center">
                       <User className="h-3 w-3 text-muted-foreground" />
@@ -196,7 +202,10 @@ export function AppHeader() {
               {/* Mobile hamburger */}
               <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="sm" className="md:hidden h-8 w-8 p-0">
+                  {/* The only way into navigation on a phone, and it had no
+                      name at all — a screen reader user could reach every
+                      page except by knowing this button exists. */}
+                  <Button variant="ghost" size="sm" className="md:hidden h-8 w-8 p-0" aria-label={t('general_menu')}>
                     <Menu className="h-4 w-4" />
                   </Button>
                 </SheetTrigger>

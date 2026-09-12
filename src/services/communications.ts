@@ -20,7 +20,8 @@ import type {
   AgentListRow, AttentionItem, ChannelStatusCard, CommAgent, CommCampaign,
   CommChannelAccount, CommContact, CommConversation, CommExtraction, CommMessage,
   CommOverviewStats, CommSend, CommTemplate, LaunchPreview, RiskAssessmentRow, TrustSummary,
-  AnalyticsFilter, AnalyticsResult,
+  AnalyticsFilter, AnalyticsResult, CommunicationsSpend,
+  ProviderRouteRow, ProviderReportRow, CommVoiceTuning, AiTalkLimits,
 } from '@/types/communications';
 import { customerFacingComplianceLabel } from '@/lib/comm/vocabulary';
 
@@ -791,16 +792,112 @@ export async function listRiskAssessments(filter: {
   return (data ?? []) as RiskAssessmentRow[];
 }
 
+/**
+ * Probe every provider. Read-only and free on all of them (§57).
+ *
+ * A POST to comm-provider-status is what actually contacts Cartesia, Vapi and
+ * Meta; a GET only reads what was last stored, so opening the Admin page does
+ * not fire three live requests every time.
+ */
 export function probeProviders(provider?: string) {
-  return invoke<{ ok: boolean; providers: unknown[]; routes: unknown[] }>(
+  return invoke<{ ok: boolean; providers: ProviderReportRow[]; routes: ProviderRouteRow[] }>(
     `comm-provider-status${provider ? `?provider=${provider}` : ''}`, {},
   );
 }
 
-export async function readProviderStatus(): Promise<{ providers: unknown[]; routes: unknown[] } | null> {
+export type ProviderStatusResult =
+  | { ok: true; providers: ProviderReportRow[]; routes: ProviderRouteRow[] }
+  | { ok: false; reason: string };
+
+/**
+ * Read the stored routing and provider health.
+ *
+ * Returns a NAMED reason on failure rather than null. comm_provider_routes
+ * ships in a migration the owner has not applied and comm-provider-status
+ * ships in a function that has not been deployed, so "it did not work" is not
+ * useful to an admin — "the function is not deployed" is.
+ */
+export async function readProviderStatus(): Promise<ProviderStatusResult> {
   const { data, error } = await supabase.functions.invoke('comm-provider-status', { method: 'GET' });
-  if (error) return null;
-  return data as { providers: unknown[]; routes: unknown[] };
+  if (error) {
+    const status = (error as { context?: { status?: number } }).context?.status;
+    return {
+      ok: false,
+      reason: status === 404
+        ? 'comm-provider-status is not deployed yet'
+        : status === 403
+          ? 'this account is not an administrator'
+          : `comm-provider-status returned ${status ?? 'no response'}`,
+    };
+  }
+  const payload = data as { providers?: ProviderReportRow[]; routes?: ProviderRouteRow[] } | null;
+  return { ok: true, providers: payload?.providers ?? [], routes: payload?.routes ?? [] };
+}
+
+/**
+ * Flip one routing flag.
+ *
+ * Written straight to comm_provider_routes under the admin's own session, so
+ * the table's RLS decides — this is not a path that borrows the service role.
+ */
+export async function setProviderRouteFlag(
+  role: string,
+  provider: string,
+  field: 'enabled' | 'kill_switch',
+  value: boolean,
+): Promise<boolean> {
+  const { error } = await supabase.from('comm_provider_routes')
+    .update({ [field]: value })
+    .eq('role', role)
+    .eq('provider', provider);
+  return !error;
+}
+
+// ── Admin settings ──────────────────────────────────────────────────────────
+//
+// admin_settings already exists in production, so unlike the routing table
+// these two read and write for real today.
+
+async function readSetting<T>(key: string): Promise<T | null> {
+  const { data, error } = await supabase.from('admin_settings').select('value').eq('key', key).maybeSingle();
+  if (error || !data) return null;
+  return (data.value as T) ?? null;
+}
+
+async function writeSetting(key: string, value: unknown, description: string): Promise<boolean> {
+  const { error } = await supabase.from('admin_settings')
+    .upsert({ key, value, description, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  return !error;
+}
+
+export function getCommVoiceTuning(): Promise<Partial<CommVoiceTuning> | null> {
+  return readSetting<Partial<CommVoiceTuning>>('comm_voice_tuning');
+}
+
+export function saveCommVoiceTuning(value: CommVoiceTuning): Promise<boolean> {
+  return writeSetting(
+    'comm_voice_tuning', value,
+    'Endpointing, interruption and recording defaults read by _shared/comm/agentPrompt.ts loadVoiceTuning().',
+  );
+}
+
+export function getAiTalkLimits(): Promise<Partial<AiTalkLimits> | null> {
+  return readSetting<Partial<AiTalkLimits>>('ai_talk_limits');
+}
+
+export async function saveAiTalkLimits(value: AiTalkLimits): Promise<boolean> {
+  // ai-talk-session reads the allowance from ai_talk_limits and the on/off
+  // switch from ai_talk_enabled, so the two are written together.
+  const { enabled, ...limits } = value;
+  const a = await writeSetting(
+    'ai_talk_limits', limits,
+    'Anonymous AI Talk allowance enforced server-side by ai-talk-session (§28).',
+  );
+  const b = await writeSetting(
+    'ai_talk_enabled', enabled,
+    'Master switch for the public homepage AI Talk demo.',
+  );
+  return a && b;
 }
 
 export function syncWhatsApp() {
@@ -845,4 +942,120 @@ function startOfTodayIso(): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
+}
+
+// ── Billing ─────────────────────────────────────────────────────────────────
+
+/**
+ * What Communications cost, over a bounded window.
+ *
+ * Reads the rows the dispatcher and the webhooks already write — there is no
+ * separate billing ledger for this product (§43). `cost_usd` on those rows is
+ * the CUSTOMER charge, computed server-side from configured pricing; this
+ * function sums, it never prices.
+ *
+ * A null cost is carried through as null rather than coerced to zero: a call
+ * that completed while AI_CALL pricing is inactive was not free, it was
+ * unpriced, and the screen says so.
+ */
+export async function getCommunicationsSpend(sinceIso: string): Promise<CommunicationsSpend> {
+  const empty: CommunicationsSpend = {
+    totalUsd: 0,
+    series: [],
+    byProduct: {
+      AI_CALL: { amountUsd: 0, units: 0 },
+      WHATSAPP: { amountUsd: 0, units: 0 },
+      AI_TALK: { amountUsd: 0, units: 0 },
+    },
+    items: [],
+    campaigns: [],
+    unpricedProducts: [],
+  };
+
+  const uid = await currentUserId();
+  if (!uid) return empty;
+
+  // Capped at 180 days for the same reason getAnalytics is (§85).
+  const since = new Date(
+    Math.max(new Date(sinceIso).getTime(), Date.now() - 180 * 86_400_000),
+  ).toISOString();
+
+  const [{ data: sends }, { data: campaigns }] = await Promise.all([
+    supabase.from('outreach_sends')
+      .select('id, channel, status, cost_usd, duration_sec, created_at, campaign_id')
+      .eq('owner_id', uid)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(20_000),
+    supabase.from('outreach_campaigns')
+      .select('id, name, status, campaign_type, cost_estimate_usd, cost_actual_usd, created_at')
+      .eq('owner_id', uid)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(200),
+  ]);
+
+  const rows = sends ?? [];
+  const campaignName = new Map((campaigns ?? []).map((c) => [c.id, c.name as string]));
+
+  const byDate = new Map<string, number>();
+  const result: CommunicationsSpend = { ...empty, byProduct: { ...empty.byProduct } };
+  const unpriced = new Set<string>();
+
+  for (const row of rows) {
+    // A unit that never left is not usage.
+    if (['PENDING', 'QUEUED', 'SUPPRESSED'].includes(row.status)) continue;
+
+    const product = row.channel === 'AI_CALL' ? 'AI_CALL' : row.channel === 'WHATSAPP' ? 'WHATSAPP' : null;
+    if (!product) continue;
+
+    const amount = row.cost_usd === null || row.cost_usd === undefined ? null : Number(row.cost_usd);
+    if (amount === null) unpriced.add(product);
+
+    const bucket = result.byProduct[product];
+    bucket.units += 1;
+    bucket.amountUsd += amount ?? 0;
+    result.totalUsd += amount ?? 0;
+
+    const day = String(row.created_at).slice(0, 10);
+    byDate.set(day, (byDate.get(day) ?? 0) + (amount ?? 0));
+
+    if (result.items.length < 100) {
+      result.items.push({
+        id: row.id,
+        at: row.created_at,
+        product,
+        reference: campaignName.get(row.campaign_id) ?? null,
+        unitsLabel: product === 'AI_CALL'
+          ? formatSeconds(row.duration_sec)
+          : '1',
+        amountUsd: amount,
+      });
+    }
+  }
+
+  result.series = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, amountUsd]) => ({ date, amountUsd }));
+
+  result.campaigns = (campaigns ?? [])
+    .filter((c) => ['AI_CALL', 'WHATSAPP'].includes(c.campaign_type))
+    .filter((c) => Number(c.cost_estimate_usd) > 0 || Number(c.cost_actual_usd) > 0)
+    .slice(0, 25)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      estimateUsd: Number(c.cost_estimate_usd) || 0,
+      actualUsd: Number(c.cost_actual_usd) || 0,
+    }));
+
+  result.unpricedProducts = [...unpriced];
+  return result;
+}
+
+function formatSeconds(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '·';
+  const m = Math.floor(seconds / 60);
+  return `${m}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 }

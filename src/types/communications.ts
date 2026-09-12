@@ -385,3 +385,96 @@ export interface AnalyticsResult {
   qualified: number;
   costPerQualifiedUsd: number | null;
 }
+
+/**
+ * What Communications has cost this customer.
+ *
+ * §47: what they are CHARGED, and nothing else. There is deliberately no
+ * provider, no COGS and no margin field anywhere in this type, so a
+ * customer-facing component cannot render one even by accident — those live in
+ * Admin Finance against finance_provider_cost_events.
+ */
+export interface CommunicationsSpendItem {
+  id: string;
+  at: string;
+  product: 'AI_CALL' | 'WHATSAPP' | 'AI_TALK';
+  /** The campaign or conversation this belonged to, for a human to recognise. */
+  reference: string | null;
+  /** Already formatted: "2:14" for a call, "1 message" for a send. */
+  unitsLabel: string;
+  /**
+   * null means the unit completed but carries no charge, because the product's
+   * pricing is not active. Rendering that as $0.00 would claim it was free.
+   */
+  amountUsd: number | null;
+}
+
+export interface CommunicationsSpend {
+  totalUsd: number;
+  series: Array<{ date: string; amountUsd: number }>;
+  byProduct: Record<'AI_CALL' | 'WHATSAPP' | 'AI_TALK', { amountUsd: number; units: number }>;
+  items: CommunicationsSpendItem[];
+  campaigns: Array<{ id: string; name: string; status: string; estimateUsd: number; actualUsd: number }>;
+  /** Products that produced usage but have no active price. */
+  unpricedProducts: string[];
+}
+
+// ── Admin: routing and voice ────────────────────────────────────────────────
+
+/**
+ * One row of comm_provider_routes, as Admin sees it.
+ *
+ * §139: `credentialsPresent` is a BOOLEAN and `credentialNames` are names.
+ * There is deliberately no field on this type that could hold a secret value,
+ * so no component can render one.
+ */
+export interface ProviderRouteRow {
+  role: string;
+  provider: string;
+  priority: number;
+  enabled: boolean;
+  killSwitch: boolean;
+  credentialsPresent: boolean;
+  credentialNames: string[];
+  countryScope: string[];
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastError: string | null;
+  lastLatencyMs: number | null;
+}
+
+export interface ProviderReportRow {
+  provider: string;
+  roles: string[];
+  health: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'DISABLED' | 'NOT_CONFIGURED';
+  credentials: Array<{ name: string; present: boolean }>;
+  latencyMs: number | null;
+  lastTestedAt: string | null;
+  detail: string | null;
+  errorCode: string | null;
+  /** Only what the provider itself reported (§33). */
+  facts: Record<string, unknown> | null;
+}
+
+/** Every key here is read by a specific piece of server code. See CommunicationsVoicePanel. */
+export interface CommVoiceTuning {
+  min_silence_ms: number;
+  complete_silence_ms: number;
+  continuation_grace_ms: number;
+  max_silence_ms: number;
+  semantic_endpointing: boolean;
+  interruption_enabled: boolean;
+  interruption_threshold_ms: number;
+  georgian_lock_threshold: number;
+  max_call_duration_sec: number;
+  recording_default: boolean;
+}
+
+export interface AiTalkLimits {
+  session_seconds: number;
+  daily_seconds: number;
+  global_concurrent: number;
+  per_visitor_concurrent: number;
+  daily_sessions: number;
+  enabled: boolean;
+}

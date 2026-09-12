@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   DISMISS_DAYS, isIOS, isIOSSafari, isStandalone, rememberDismissal,
   resolveInstallMode, wasDismissed,
@@ -137,4 +138,49 @@ test('a dismissal suppresses both affordances but not standalone', () => {
   assert.equal(resolveInstallMode({
     standalone: true, hasNativePrompt: false, iosSafari: false, dismissed: true,
   }), 'standalone');
+});
+
+/*
+ * REGISTRATION MUST NOT DEPEND ON THE APP BOOTING.
+ *
+ * The registration used to sit below createRoot().render(), so anything that
+ * threw on the way to rendering took installability with it — no worker, no
+ * install prompt, no offline shell, and nothing in the UI to say why. Proved
+ * by building without Supabase credentials: the client throws "supabaseUrl is
+ * required" while main.tsx is still executing, and the registration line was
+ * never reached. After the move, the same broken build still registers and
+ * activates its worker.
+ *
+ * It also no longer hangs off `load`. That event fires once, and a listener
+ * attached after it has fired never runs at all.
+ */
+const main = readFileSync('src/main.tsx', 'utf8');
+
+test('the service worker is registered before the app is mounted', () => {
+  const registerAt = main.indexOf("serviceWorker.register('/sw.js')");
+  // `createRoot(document` and not `createRoot(`: the comment explaining this
+  // very rule says "createRoot().render()", and matching prose instead of
+  // code made the assertion compare the comment against itself.
+  const renderAt = main.indexOf('createRoot(document');
+  assert.notEqual(registerAt, -1, 'nothing registers the service worker');
+  assert.notEqual(renderAt, -1);
+  assert.ok(
+    registerAt < renderAt,
+    'registration sits after render, so a failure to mount would also cost installability',
+  );
+});
+
+test('registration does not wait for an event that may already have fired', () => {
+  assert.equal(
+    /addEventListener\('load'/.test(main), false,
+    'a load listener attached after load has fired never runs',
+  );
+  assert.match(main, /requestIdleCallback/);
+  assert.match(main, /window\.setTimeout\(register, \d+\)/);
+});
+
+test('it still only registers in a real build', () => {
+  // A dev server serves the unhashed module graph; caching it serves
+  // yesterday's code back to whoever is editing it.
+  assert.match(main, /if \('serviceWorker' in navigator && import\.meta\.env\.PROD\)/);
 });

@@ -3,6 +3,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { IntentChips } from '@/components/home/IntentCards';
+import { AiTalkPanel } from '@/components/home/AiTalkPanel';
 import { PAGE } from './primitives';
 import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '@/site/content';
 
@@ -41,16 +42,35 @@ export function HeroSection() {
 
   return (
     <section className="relative isolate overflow-hidden bg-[#0D0D0D] text-white">
-      {/* ── The photograph, lg and up ───────────────────────────── */}
+      {/* ── The photograph, lg and up ───────────────────────────────
+          WHAT CHANGED HERE, AND WHAT DID NOT
+
+          This plate used to be the whole of the hero's right-hand side: a
+          photograph under a wipe, with nothing to press. AI TALK now occupies
+          that space (§26), and the photograph stays as what it always really
+          was — the one warm object on a black-white-gold page — pushed a
+          little further back so the panel reads as the thing in front of it.
+
+          It is still bound to Site Studio's `photo` field, so a published hero
+          image keeps working. Nothing in the left column moved, the band's own
+          height is unchanged, and the panel reserves its space before any
+          voice code loads (§133). */}
       <div className="absolute inset-0 hidden lg:block" aria-hidden="true">
         {/* The plate runs well past the wipe's opaque end, so the image's own
             left edge never shows as a seam. Desaturated a little: the sunset
             is the one warm object on a black-white-gold page, and at full
-            chroma it pulls the whole first screen orange. */}
-        <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.72]" {...mp('photo')}>
+            chroma it pulls the whole first screen orange.
+
+            Pushed back further than it used to be — 0.6 and 75% rather than
+            0.72 at full opacity — because AI TALK now sits in front of it.
+            The photograph was the right-hand side of the hero when it was the
+            only thing there; with a panel over it, the same chroma competes.
+            Still bound to Site Studio's `photo` field, so a published hero
+            image keeps working and stays editable in place. */}
+        <div className="absolute inset-y-0 end-0 w-[78%] saturate-[0.6] opacity-75" {...mp('photo')}>
           <SceneMedia scene="hero" alt={photo?.alt ?? ''} priority sizes="78vw" position="52% 52%" overrideUrl={photo?.url} />
         </div>
-        <div className="absolute inset-0 bg-[#0D0D0D]/45" />
+        <div className="absolute inset-0 bg-[#0D0D0D]/58" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#0D0D0D] from-30% via-[#0D0D0D]/88 to-transparent rtl:bg-gradient-to-l" />
         <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#0D0D0D] to-transparent" />
         <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#0D0D0D]/85 to-transparent" />
@@ -65,8 +85,20 @@ export function HeroSection() {
       />
 
       <div className={`${PAGE} relative`}>
-        {/* pt covers the fixed header; the black band itself starts at y=0. */}
-        <div className="flex min-h-[clamp(27rem,68vh,40rem)] max-w-[46rem] flex-col justify-center pb-11 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
+        {/* THE ONE STRUCTURAL CHANGE ON THIS PAGE.
+            A two-column grid from lg up. The left column keeps its own
+            max-w-[46rem] and every class it had, so the copy sits exactly
+            where it sat; the right column is the space the photograph used to
+            fill on its own. Below lg there is one column and the panel follows
+            the chips, sized so it never takes the whole viewport (§81).
+
+            The min-height moved from the left column to the grid, because it
+            is now the grid that owns the band's height. Every field keeps its
+            useFieldProps binding, so the hero stays editable in place in Site
+            Studio exactly as it was. */}
+        <div className="grid min-h-[clamp(27rem,68vh,40rem)] items-center gap-8 lg:grid-cols-[minmax(0,46rem)_minmax(0,1fr)] lg:gap-10">
+          {/* pt covers the fixed header; the black band itself starts at y=0. */}
+          <div className="flex max-w-[46rem] flex-col justify-center pb-11 pt-[6.5rem] sm:pb-16 sm:pt-[8rem] lg:pb-20 lg:pt-[9rem]">
           <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold" {...fp('eyebrow')}>
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_hero_eyebrow')}
@@ -118,6 +150,14 @@ export function HeroSection() {
           />
 
           <IntentChips keys={['buy', 'price', 'contract']} className="mt-4 max-w-[36rem]" />
+          </div>
+
+          {/* AI TALK. A marketing demonstration of what Homatch understands,
+              not a second assistant: HomatchAsk above is still AI Chat, on its
+              own route, unchanged (§26). */}
+          <div className="pb-11 sm:pb-16 lg:pb-20 lg:pt-[9rem]">
+            <AiTalkPanel className="mx-auto max-w-[26rem] lg:mx-0 lg:max-w-none" />
+          </div>
         </div>
       </div>
     </section>

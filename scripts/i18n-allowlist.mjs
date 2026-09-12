@@ -109,6 +109,27 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // the other five locales carry their own real forms for the same keys.
   'studio_device_tablet',
   'studio_spacing_normal',
+  // ── Communications Hub ──────────────────────────────────────────────────
+  // "WhatsApp" — Meta's brand name, kept in its Latin spelling in Georgian,
+  // Russian and Turkish exactly as the existing WhatsApp/Telegram entries
+  // above already are. Arabic and Hebrew carry their own transliterations for
+  // all three of these keys, so none of them can be masking a real gap.
+  'comm_channel_whatsapp',
+  'comm_kpi_whatsapp',
+  'comm_series_whatsapp',
+  // "SMS" — an acronym with no translated form in Georgian, Russian, Turkish
+  // or Hebrew; Arabic carries a real translated form for the same key.
+  'comm_channel_sms',
+  // "AI" — the two-letter acronym, used verbatim in Georgian and Hebrew
+  // product usage. ru/tr/ar all carry their own distinct forms of the same
+  // key, so this cannot hide a missing translation elsewhere.
+  'comm_inbox_filter_ai',
+  'comm_mode_ai',
+  // Turkish spells both of these identically to English ("Test", "Video").
+  // The other four locales carry distinct real translations.
+  'comm_step_test',
+  'comm_kind_video',
+
 ]);
 
 // Heuristic: values that don't need translating in the first place, so an

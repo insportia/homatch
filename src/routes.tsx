@@ -42,6 +42,22 @@ import EmailCampaignsPage from './pages/outreach/EmailCampaignsPage';
 import SmsCampaignsPage from './pages/outreach/SmsCampaignsPage';
 import AiCallCenterPage from './pages/outreach/AiCallCenterPage';
 import OutreachInsightsPage from './pages/outreach/OutreachInsightsPage';
+// Communications Hub. These EVOLVE the Outreach area rather than replacing it:
+// every route above still exists and still works (§8).
+import CommunicationsOverviewPage from './pages/outreach/CommunicationsOverviewPage';
+import AgentsPage from './pages/outreach/AgentsPage';
+import AgentBuilderPage from './pages/outreach/AgentBuilderPage';
+import CampaignsPage from './pages/outreach/CampaignsPage';
+import CampaignBuilderPage from './pages/outreach/CampaignBuilderPage';
+import ContactImportPage from './pages/outreach/ContactImportPage';
+import ContactProfilePage from './pages/outreach/ContactProfilePage';
+import WhatsAppPage from './pages/outreach/WhatsAppPage';
+import WhatsAppInboxPage from './pages/outreach/WhatsAppInboxPage';
+import WhatsAppTemplatesPage from './pages/outreach/WhatsAppTemplatesPage';
+import ChannelAccountsPage from './pages/outreach/ChannelAccountsPage';
+import CommunicationsAnalyticsPage from './pages/outreach/CommunicationsAnalyticsPage';
+import CallsPage from './pages/outreach/CallsPage';
+import CommunicationsBillingPage from './pages/outreach/CommunicationsBillingPage';
 // Admin pages
 import AdminLayout from './components/layouts/AdminLayout';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
@@ -64,6 +80,7 @@ import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
 import AdminSponsoredPage from './pages/admin/AdminSponsoredPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AdminHealthPage from './pages/admin/AdminHealthPage';
+import AdminRiskPage from './pages/admin/AdminRiskPage';
 import SiteStudioPage from './pages/admin/SiteStudioPage';
 import AdminLiveChatReportsPage from './pages/admin/AdminLiveChatReportsPage';
 
@@ -135,13 +152,27 @@ export const routes: RouteConfig[] = [
   { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
   { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
   // Outreach
-  { name: 'Outreach Hub',      path: '/outreach',                 element: <OutreachHubPage /> },
+  { name: 'Communications',    path: '/outreach',                 element: <CommunicationsOverviewPage /> },
+  { name: 'Outreach Hub',      path: '/outreach/hub',             element: <OutreachHubPage />,  visible: false },
   { name: 'Communities',       path: '/outreach/communities',     element: <CommunitiesPage /> },
   { name: 'Contact Lists',     path: '/outreach/contact-lists',   element: <ContactListsPage /> },
   { name: 'Email Campaigns',   path: '/outreach/email',           element: <EmailCampaignsPage /> },
   { name: 'SMS Campaigns',     path: '/outreach/sms',             element: <SmsCampaignsPage /> },
   { name: 'AI Call Center',    path: '/outreach/calls',           element: <AiCallCenterPage /> },
+  { name: 'Calls',             path: '/outreach/calls/log',       element: <CallsPage /> },
   { name: 'Outreach Insights', path: '/outreach/insights',        element: <OutreachInsightsPage /> },
+  { name: 'Agents',            path: '/outreach/agents',          element: <AgentsPage /> },
+  { name: 'Agent Builder',     path: '/outreach/agents/:id',      element: <AgentBuilderPage />, visible: false },
+  { name: 'Campaigns',         path: '/outreach/campaigns',       element: <CampaignsPage /> },
+  { name: 'Campaign Builder',  path: '/outreach/campaigns/new',   element: <CampaignBuilderPage />, visible: false },
+  { name: 'Import Contacts',   path: '/outreach/contacts/import', element: <ContactImportPage />, visible: false },
+  { name: 'Contact',           path: '/outreach/contacts/:id',    element: <ContactProfilePage />, visible: false },
+  { name: 'WhatsApp',          path: '/outreach/whatsapp',        element: <WhatsAppPage /> },
+  { name: 'WhatsApp Inbox',    path: '/outreach/whatsapp/inbox',  element: <WhatsAppInboxPage /> },
+  { name: 'WhatsApp Templates', path: '/outreach/whatsapp/templates', element: <WhatsAppTemplatesPage />, visible: false },
+  { name: 'Phone Numbers',     path: '/outreach/numbers',         element: <ChannelAccountsPage />, visible: false },
+  { name: 'Communications Analytics', path: '/outreach/analytics', element: <CommunicationsAnalyticsPage /> },
+  { name: 'Communications Billing', path: '/outreach/billing',    element: <CommunicationsBillingPage /> },
   // Admin (wrapped in AdminLayout which enforces is_admin server-side)
   { name: 'Admin Overview',    path: '/admin',                    element: adminWrap(<AdminOverviewPage />),    adminOnly: true },
   { name: 'Admin Users',       path: '/admin/users',              element: adminWrap(<AdminUsersPage />),       adminOnly: true },
@@ -164,5 +195,6 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Sponsored',   path: '/admin/sponsored',          element: adminWrap(<AdminSponsoredPage />),   adminOnly: true },
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
+  { name: 'Admin Risk',        path: '/admin/risk',               element: adminWrap(<AdminRiskPage />),        adminOnly: true },
   { name: 'Site Studio',       path: '/admin/site-studio',        element: adminWrap(<SiteStudioPage />),       adminOnly: true },
 ];

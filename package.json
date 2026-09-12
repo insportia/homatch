@@ -18,7 +18,9 @@
     "test:mobile": "node --test tests/mobile/mobileOverflow.test.mjs tests/mobile/routeOverflow.test.mjs tests/mobile/chatComposer.test.mjs tests/mobile/formControls.test.mjs tests/mobile/routeHealth.test.mjs tests/mobile/textContrast.test.mjs",
     "test:studio": "node --test tests/studio/inlineEditing.test.mjs",
     "test:browser": "npm run test:mobile && npm run test:studio",
-    "test:mobile:setup": "node scripts/setup-mobile-test.mjs"
+    "test:mobile:setup": "node scripts/setup-mobile-test.mjs",
+    "test:surfaces": "npm run build:harness && node --test --test-timeout=2400000 tests/browser/commSurfaces.test.mjs",
+    "test:voice": "node --test src/lib/comm/__tests__/georgianCorpus.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -61,6 +63,7 @@
     "eventsource-parser": "^3.0.3",
     "input-otp": "^1.4.2",
     "ky": "^1.2.3",
+    "libphonenumber-js": "1.13.13",
     "lucide-react": "^0.576.0",
     "miaoda-react-devkit": "0.1.1-beta.18",
     "miaoda-sc-plugin": "1.0.63",
@@ -76,6 +79,7 @@
     "react-resizable-panels": "^2.1.8",
     "react-router": "^7.9.5",
     "react-router-dom": "^7.9.5",
+    "read-excel-file": "9.3.10",
     "recharts": "2.15.4",
     "sonner": "^2.0.7",
     "streamdown": "^1.1.6",

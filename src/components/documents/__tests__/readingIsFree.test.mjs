@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 const reader = readFileSync('src/components/documents/DocumentReader.tsx', 'utf8');
 const workspace = readFileSync('src/components/documents/DocumentWorkspace.tsx', 'utf8');
 const card = readFileSync('src/components/documents/DocumentCard.tsx', 'utf8');
+const dropZone = readFileSync('src/components/documents/DropZone.tsx', 'utf8');
 
 /** The calls that cost money, by the names the services export. */
 const BILLED = ['analyzeDocument', 'beginExecution', 'settleExecution', 'reserveCredits'];
@@ -72,4 +73,37 @@ test('the inline reader is given no way to close, and no way to re-run', () => {
   // and wiring it to anything stateful would be a second source of truth.
   assert.match(workspace, /variant="inline"/);
   assert.match(workspace, /inline: there is nothing to close/);
+});
+
+test('choosing a file is not the same event as paying for an analysis', () => {
+  // The upload control became a drop zone, which means a contract can now
+  // arrive by being let go of rather than by a deliberate trip through a
+  // file picker. That makes it MORE important, not less, that this
+  // component hands the file onward and does nothing else: a drop is easy
+  // to do by accident.
+  for (const call of BILLED) {
+    assert.equal(
+      dropZone.includes(call), false,
+      `DropZone references ${call}; choosing a file must not bill`,
+    );
+  }
+  // It has one output, and validation is not its job either.
+  assert.match(dropZone, /onFile: \(file: File\) => void;/);
+  assert.equal(dropZone.includes('validateUpload'), false);
+  assert.equal(dropZone.includes('supabase'), false);
+});
+
+test('a missed drop cannot navigate the page away', () => {
+  // Drop a PDF anywhere outside the zone and the browser opens it,
+  // discarding whatever the customer was in the middle of.
+  assert.match(dropZone, /window\.addEventListener\('drop', swallow\)/);
+  assert.match(dropZone, /window\.addEventListener\('dragover', swallow\)/);
+});
+
+test('the drag highlight does not flicker over child elements', () => {
+  // dragleave fires on every crossing into a child, so a boolean flag
+  // blinks as the pointer moves across the icon and the text inside.
+  assert.match(dropZone, /depth\.current \+= 1/);
+  assert.match(dropZone, /depth\.current = Math\.max\(0, depth\.current - 1\)/);
+  assert.match(dropZone, /if \(depth\.current === 0\) setOver\(false\)/);
 });

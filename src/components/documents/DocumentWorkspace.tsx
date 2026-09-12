@@ -23,6 +23,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import type { TranslationKey } from '@/i18n/translations';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Upload, ChevronsDownUp, ChevronsUpDown, Search, Scale, AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Search, Scale, AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
 import { ALLOWED_MIME, validateUpload } from '@/services/dealRoomDocuments';
 import type { DocumentFinding } from '@/services/dealRoomDocuments';
 import type { WorkspaceDocument } from '@/services/documentWorkspace';
@@ -40,6 +41,7 @@ import {
   type DocumentSort, type DocumentCategory,
 } from '@/documents/documentModel';
 import { DocumentCard, type DocumentCardActions } from './DocumentCard';
+import { DropZone } from './DropZone';
 import { DocumentReader } from './DocumentReader';
 import { useIsDesktop } from '@/hooks/use-mobile';
 import { SectionBoundary } from '@/components/common/SectionBoundary';
@@ -78,7 +80,6 @@ export const DocumentWorkspace: React.FC<{
      in JS, not CSS, because the inline reader fetches text on mount. */
   const isDesktop = useIsDesktop();
   const { t } = useLanguage();
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const [rejection, setRejection] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<DocumentSort>('NEWEST');
@@ -196,27 +197,17 @@ export const DocumentWorkspace: React.FC<{
    */
   const library = (
     <div className="space-y-4">
-      {/* ── Upload ────────────────────────────────────────── */}
-      <Card>
-        <CardContent className="pt-5 space-y-3">
-          <input
-            ref={inputRef}
-            type="file"
-            accept={ALLOWED_MIME.join(',')}
-            className="hidden"
-            onChange={(e) => {
-              pick(e.target.files?.[0]);
-              e.target.value = '';
-            }}
-          />
-          <Button onClick={() => inputRef.current?.click()} disabled={busy} className="w-full sm:w-auto gap-2">
-            <Upload className="h-4 w-4" aria-hidden="true" />
-            {t('dr_docs_upload')}
-          </Button>
-          <p className="text-sm text-muted-foreground leading-relaxed break-words">{t('dr_docs_hint')}</p>
-          {rejection ? <p className="text-sm text-destructive break-words">{t(rejection)}</p> : null}
-        </CardContent>
-      </Card>
+      {/* ── Upload ──────────────────────────────────────────
+          A drop zone rather than a button, because dragging a contract
+          out of an email is what people actually do with one. It picks
+          the file and nothing else: `pick` still validates it and
+          `onUpload` still owns what happens next. */}
+      <DropZone
+        onFile={pick}
+        busy={busy}
+        accept={ALLOWED_MIME.join(',')}
+        error={rejection ? t(rejection as TranslationKey) : null}
+      />
 
       {/* ── What the documents disagree with ──────────────── */}
       {contradictions.length > 0 ? (

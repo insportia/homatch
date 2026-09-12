@@ -623,8 +623,68 @@
     animation: hm-ring 1.9s ease-out infinite;
   }
 
+  /* ── A document being read ─────────────────────────────────────────
+     The sweep that passes over the document mark while a contract is
+     being extracted. It says work is happening TO THIS, rather than
+     somewhere else on the page. The global reduced-motion floor below
+     collapses it to a single frame; the spinner underneath is always
+     rendered, so there is still an answer when nothing may move. */
+  @keyframes hm-scan {
+    0%   { transform: translateY(-120%); opacity: 0; }
+    18%  { opacity: 1; }
+    82%  { opacity: 1; }
+    100% { transform: translateY(320%); opacity: 0; }
+  }
+  .hm-scan {
+    background: linear-gradient(
+      to bottom,
+      hsl(38 88% 54% / 0) 0%,
+      hsl(38 88% 54% / 0.35) 50%,
+      hsl(38 88% 54% / 0) 100%
+    );
+    animation: hm-scan 1.6s ease-in-out infinite;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .hm-wave > span { animation: none; transform: scaleY(0.62); }
     .hm-ring::after { animation: none; opacity: 0; }
+  }
+    .hm-scan { animation: none; opacity: 0; }
+}
+
+/* ── When somebody asks everything to stop moving ──────────────────────
+
+   The per-component answers above cover what this codebase animates on
+   purpose. They do not cover what it animates by accident: every
+   `animate-*` utility from tailwindcss-animate, every Radix open/close
+   transition on a dialog, sheet, dropdown or accordion, every `transition-`
+   class on a hover. Each of those would need its own media query, and the
+   next one somebody adds would not have one.
+
+   So this is a floor, applied once, to everything. A person who has told
+   their operating system to stop animating things gets a product that
+   does not animate.
+
+   Not `animation: none`: that CANCELS an animation, and anything whose
+   final state is set by its keyframes — a Radix dialog that fades in —
+   would be stuck at its starting state, invisible. A duration of ~0
+   instead runs the whole animation within one frame, so it ENDS, fires
+   its animationend, and leaves the element exactly where it belongs.
+   That is also why it is 0.01ms rather than 0.
+
+   `scroll-behavior: auto` undoes the smooth scrolling set on :root; a
+   smooth scroll is motion, and an unrequested one.  */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  html:focus-within {
+    scroll-behavior: auto !important;
   }
 }

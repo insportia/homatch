@@ -174,17 +174,42 @@ export function evaluateExecutionGate(input: ExecutionGateInput): ExecutionGateR
     return refuse('CONTACT_SUPPRESSED', 'the contact is no longer contactable');
   }
 
-  // ── 2. Policy. These pause the campaign; every unit would fail the same. ──
-  if (input.domainVerdict === 'BLOCK') {
-    return refuse('DOMAIN_REJECTED', 'this campaign is not real-estate work', true);
+  /* ── 2. Policy. These pause the campaign; every unit would fail the same. ──
+   *
+   * ONLY 'ALLOW' ALLOWS. Not "anything that is not BLOCK".
+   *
+   * The first version of this gate refused BLOCK and null and let everything
+   * else through, which quietly meant REVIEW dialled. REVIEW is the verdict
+   * the classifier returns for campaigns it is not sure about — and it is the
+   * verdict four of the six prohibited categories in the release corpus
+   * actually produce: political campaigning, unrelated e-commerce, a generic
+   * marketing blast, and unrelated B2B lead generation all come back REVIEW
+   * rather than BLOCK, because the word lists cannot be certain and a human is
+   * meant to look.
+   *
+   * So "held for a human" meant "dialled immediately", and the gate reported
+   * itself as working. A verdict that means "someone must decide" cannot be
+   * the same as "go ahead".
+   */
+  if (input.domainVerdict !== 'ALLOW') {
+    const detail = input.domainVerdict === 'BLOCK'
+      ? 'this campaign is not real-estate work'
+      : input.domainVerdict === 'REVIEW'
+        ? 'this campaign is waiting for a human to review it'
+        : 'this campaign has not been classified';
+    return refuse('DOMAIN_REJECTED', detail, true);
   }
-  if (input.domainVerdict === null) {
-    // Never classified. Fail closed: an unclassified campaign is not an
-    // allowed one, and §6 is explicit that the gate runs before execution.
-    return refuse('DOMAIN_REJECTED', 'this campaign has not been classified', true);
-  }
-  if (input.riskDecision === 'BLOCK') {
-    return refuse('RISK_REJECTED', 'compliance blocked this campaign', true);
+  if (input.riskDecision !== 'ALLOW') {
+    // Same rule on the compliance side. THROTTLE and REVIEW are both "not
+    // now", and a campaign under either must not keep dialling while it waits.
+    const detail = input.riskDecision === 'BLOCK'
+      ? 'compliance blocked this campaign'
+      : input.riskDecision === 'THROTTLE'
+        ? 'compliance is holding this campaign back'
+        : input.riskDecision === 'REVIEW'
+          ? 'compliance is waiting for a human to review this campaign'
+          : 'this campaign has no compliance decision';
+    return refuse('RISK_REJECTED', detail, true);
   }
   if (input.killSwitchPaused) {
     return refuse('COMPLIANCE_PAUSED', 'the campaign was paused automatically', true);

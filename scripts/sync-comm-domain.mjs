@@ -86,8 +86,25 @@ for (const name of FILES) {
   const expected = render(name);
 
   if (check) {
+    /*
+     * Compared with line endings normalised, because otherwise this guard is
+     * only correct on Linux.
+     *
+     * The repository has core.autocrlf=true and no .gitattributes, so every
+     * one of these files is committed as LF and checked out on Windows as
+     * CRLF. The generator writes '\n'. So a byte-for-byte comparison says
+     * "out of date" for all thirteen files on any Windows machine that has
+     * done a fresh checkout — while the content is identical — and says
+     * nothing on the Linux runner, where both sides happen to be LF.
+     *
+     * A drift guard that fires on every Windows clone is a guard people learn
+     * to ignore, which is worse than not having one. What it is actually for
+     * is catching a CHANGE to src/lib/comm that was not mirrored, and a line
+     * ending is not that.
+     */
+    const normalise = (s) => s.replace(/\r\n/g, '\n');
     const actual = existsSync(target) ? readFileSync(target, 'utf8') : null;
-    if (actual !== expected) {
+    if (actual === null || normalise(actual) !== normalise(expected)) {
       console.error(`[comm-sync] ${target} is out of date with ${SRC}/${name}`);
       mismatches++;
     }

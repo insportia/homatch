@@ -1,5 +1,5 @@
 import React from 'react';
-import { Languages, Loader2, Monitor, Save, Send, Smartphone, Tablet } from 'lucide-react';
+import { Languages, Loader2, Monitor, MousePointerClick, Save, Send, Smartphone, Tablet } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,13 +24,15 @@ const LOCALE_LABELS: Record<Locale, string> = {
  * changed when it has not.
  */
 export function StudioToolbar({
-  studio, device, setDevice, forceRTL, setForceRTL,
+  studio, device, setDevice, forceRTL, setForceRTL, inlineEdit, setInlineEdit,
 }: {
   studio: StudioState;
   device: DeviceKey;
   setDevice: (d: DeviceKey) => void;
   forceRTL: boolean;
   setForceRTL: (v: boolean) => void;
+  inlineEdit: boolean;
+  setInlineEdit: (v: boolean) => void;
 }) {
   const { t } = useLanguage();
   const {
@@ -88,6 +90,21 @@ export function StudioToolbar({
           );
         })}
       </div>
+
+      {/* Click-to-edit is a mode, not the default: an admin reviewing the
+          page should be able to click a link and follow it. */}
+      <Button
+        variant={inlineEdit ? 'default' : 'outline'}
+        size="sm"
+        className="h-8 gap-1.5 text-[14px]"
+        onClick={() => setInlineEdit(!inlineEdit)}
+        title={t('studio_inline_hint')}
+        aria-pressed={inlineEdit}
+        disabled={unavailable}
+      >
+        <MousePointerClick className="h-3.5 w-3.5" aria-hidden="true" />
+        {t('studio_inline_edit')}
+      </Button>
 
       <Button
         variant={forceRTL ? 'default' : 'outline'}

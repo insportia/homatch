@@ -30,14 +30,29 @@ interface SectionScopeValue {
   /** Set only inside the editor, where clicking the preview selects. */
   onSelect?: (id: string) => void;
   selectedId?: string | null;
+  /**
+   * Editor only: called with the exact string a field just rendered as.
+   *
+   * This is what makes click-to-edit possible without rewriting all
+   * nineteen section components. useSectionField returns a STRING — the
+   * components interpolate it into JSX and into attributes like
+   * `placeholder`, so it cannot become a React element without breaking
+   * them. Recording the value instead lets the edit layer find the element
+   * that rendered it and make THAT editable, and it means only fields the
+   * registry declares are ever editable.
+   */
+  recordField?: (field: string, value: string) => void;
 }
 
 const SectionScopeCtx = createContext<SectionScopeValue>({ section: null });
 
 export function SectionScope({
-  section, onSelect, selectedId, children,
+  section, onSelect, selectedId, recordField, children,
 }: SectionScopeValue & { children: React.ReactNode }) {
-  const value = useMemo(() => ({ section, onSelect, selectedId }), [section, onSelect, selectedId]);
+  const value = useMemo(
+    () => ({ section, onSelect, selectedId, recordField }),
+    [section, onSelect, selectedId, recordField],
+  );
   return <SectionScopeCtx.Provider value={value}>{children}</SectionScopeCtx.Provider>;
 }
 
@@ -47,10 +62,14 @@ export function useSectionScope(): SectionScopeValue {
 
 /** Resolve a section field: stored override for this locale, else the key. */
 export function useSectionField(): (field: string, fallbackKey: TranslationKey) => string {
-  const { section } = useContext(SectionScopeCtx);
+  const { section, recordField } = useContext(SectionScopeCtx);
   const { t, lang } = useLanguage();
-  return (field, fallbackKey) =>
-    readLocalized(section?.content[field], lang as Locale) ?? t(fallbackKey);
+  return (field, fallbackKey) => {
+    const value = readLocalized(section?.content[field], lang as Locale) ?? t(fallbackKey);
+    // A no-op everywhere except inside Site Studio.
+    recordField?.(field, value);
+    return value;
+  };
 }
 
 /**
@@ -65,6 +84,31 @@ export function useSectionRaw(): (field: string) => string | undefined {
   const { section } = useContext(SectionScopeCtx);
   const { lang } = useLanguage();
   return field => readLocalized(section?.content[field], lang as Locale);
+}
+
+/**
+ * Is this section being rendered INSIDE Site Studio?
+ *
+ * `recordField` is supplied only by the editor's preview, so its presence
+ * is the honest signal. A section may legitimately render nothing on the
+ * public site — an announcement nobody has written yet — and still need
+ * to be visible and writable in the editor, which is the one place its
+ * absence is a problem to be solved rather than the correct result.
+ */
+export function useIsEditing(): boolean {
+  return useContext(SectionScopeCtx).recordField !== undefined;
+}
+
+/**
+ * Announce what a field rendered as, so the editor can find it in the DOM.
+ *
+ * useSectionField does this for itself. A section that renders a value it
+ * did NOT get from there — a placeholder standing in for empty copy —
+ * has to say so, or inline editing will not see it.
+ */
+export function useRecordField(): (field: string, value: string) => void {
+  const { recordField } = useContext(SectionScopeCtx);
+  return (field, value) => recordField?.(field, value);
 }
 
 /** The section's own settings, with defaults when rendered outside a scope. */

@@ -433,6 +433,46 @@ export function moveSection(page: SitePageContent, id: string, delta: number): S
   return { ...page, sections: reorder(page.sections, from, from + delta) };
 }
 
+/**
+ * Insert a new section directly below `afterId`.
+ *
+ * An `afterId` that is not on the page appends, rather than throwing or
+ * dropping the section: the page is the source of truth, and a stale id
+ * from a control the admin clicked must not silently lose the action.
+ */
+export function insertSectionAfter(
+  page: SitePageContent, type: string, id: string, afterId?: string,
+): SitePageContent {
+  const sections = [...page.sections];
+  const at = afterId ? sections.findIndex(s => s.id === afterId) : -1;
+  const created = makeSection(type, id);
+  if (at === -1) sections.push(created);
+  else sections.splice(at + 1, 0, created);
+  return { ...page, sections };
+}
+
+/**
+ * Copy a section, with everything it says, directly below itself.
+ *
+ * The clone is DEEP. A section's content, media and i18n bookkeeping are
+ * nested objects, so a spread would leave the copy sharing the original's
+ * localized strings — and editing either one would change both, in every
+ * language, with nothing on screen to suggest why.
+ *
+ * Returns the page unchanged when the id is unknown, so a caller cannot
+ * corrupt the page by acting on a section that has already gone.
+ */
+export function duplicateSection(
+  page: SitePageContent, id: string, newId: string,
+): SitePageContent {
+  const at = page.sections.findIndex(s => s.id === id);
+  if (at < 0) return page;
+  const copy: SiteSection = { ...structuredClone(page.sections[at]), id: newId };
+  const sections = [...page.sections];
+  sections.splice(at + 1, 0, copy);
+  return { ...page, sections };
+}
+
 export function setSectionEnabled(page: SitePageContent, id: string, enabled: boolean): SitePageContent {
   return {
     ...page,

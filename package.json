@@ -15,7 +15,9 @@
     "i18n:keys": "node scripts/i18n-keys-check.mjs",
     "i18n:all": "node scripts/i18n-check.mjs && node scripts/i18n-keys-check.mjs && node scripts/i18n-audit.mjs",
     "build:harness": "vite build --mode harness",
-    "test:mobile": "node --test tests/mobile/mobileOverflow.test.mjs",
+    "test:mobile": "node --test tests/mobile/mobileOverflow.test.mjs tests/mobile/routeOverflow.test.mjs",
+    "test:studio": "node --test tests/studio/inlineEditing.test.mjs",
+    "test:browser": "npm run test:mobile && npm run test:studio",
     "test:mobile:setup": "node scripts/setup-mobile-test.mjs"
   },
   "dependencies": {

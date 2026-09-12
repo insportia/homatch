@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { StructurePanel } from './StructurePanel';
@@ -6,7 +6,9 @@ import { Inspector } from './Inspector';
 import { HistoryPanel } from './HistoryPanel';
 import { StudioToolbar } from './StudioToolbar';
 import { StudioPreview, type DeviceKey } from './StudioPreview';
-import { useStudioState } from './useStudioState';
+import type { SectionControlsApi } from './SectionControls';
+import { sectionDef } from '@/site/registry';
+import { ADDABLE, useStudioState } from './useStudioState';
 
 /**
  * HOMATCH SITE STUDIO
@@ -30,6 +32,47 @@ export function StudioShell() {
   const studio = useStudioState();
   const [device, setDevice] = useState<DeviceKey>('desktop');
   const [forceRTL, setForceRTL] = useState(false);
+  const [inlineEdit, setInlineEdit] = useState(true);
+
+  /*
+   * The floating controls for whichever section is selected.
+   *
+   * Assembled here because this is where the state lives; the preview's
+   * job is to position them over the right block, not to know what a
+   * section is. Every action is one the structure list already offers,
+   * so there is one set of rules about what may be deleted and what may
+   * only be hidden.
+   */
+  const index = studio.draft.sections.findIndex(x => x.id === studio.selectedId);
+  const section = index === -1 ? null : studio.draft.sections[index];
+  const addable = ADDABLE[0] ?? null;
+
+  const controls: SectionControlsApi | null = useMemo(() => {
+    if (!section || studio.unavailable) return null;
+    return {
+      canMoveUp: index > 0,
+      canMoveDown: index < studio.draft.sections.length - 1,
+      repeatable: Boolean(sectionDef(section.type)?.repeatable),
+      enabled: section.enabled,
+      addLabel: addable ? t(addable.labelKey) : '',
+      labels: {
+        edit: t('studio_edit_text'), addBelow: t('studio_add_below'),
+        moveUp: t('studio_move_up'), moveDown: t('studio_move_down'),
+        duplicate: t('studio_duplicate'), hide: t('studio_hide'),
+        show: t('studio_show'), delete: t('studio_delete'),
+      },
+      // Arming the mode is this component's business; putting the caret
+      // in the right word is the control's, which already holds the
+      // element. See SectionControls.
+      onEdit: () => setInlineEdit(true),
+      onAddBelow: () => { if (addable) studio.addSection(addable.type, section.id); },
+      onMoveUp: () => studio.move(section.id, -1),
+      onMoveDown: () => studio.move(section.id, 1),
+      onDuplicate: () => studio.duplicateSection(section.id),
+      onToggleEnabled: () => studio.setEnabled(!section.enabled, section.id),
+      onDelete: () => studio.removeSection(section.id),
+    };
+  }, [section, index, studio, addable, t]);
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
@@ -44,6 +87,8 @@ export function StudioShell() {
         setDevice={setDevice}
         forceRTL={forceRTL}
         setForceRTL={setForceRTL}
+        inlineEdit={inlineEdit}
+        setInlineEdit={setInlineEdit}
       />
 
       {/* The editor is usable with the backend absent: the admin can see the
@@ -78,6 +123,9 @@ export function StudioShell() {
               forceRTL={forceRTL}
               selectedId={studio.selectedId}
               onSelect={studio.select}
+              editing={inlineEdit && !studio.unavailable}
+              onInlineEdit={studio.editSectionField}
+              controls={inlineEdit ? controls : null}
             />
           </main>
 

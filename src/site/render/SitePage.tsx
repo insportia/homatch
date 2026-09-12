@@ -78,9 +78,14 @@ export interface SitePageProps {
   /** Editor only: click-to-select in the live preview. */
   onSelect?: (id: string) => void;
   selectedId?: string | null;
+  /**
+   * Editor only: told what each field rendered as, per section, so the
+   * inline edit layer can find the element that produced it.
+   */
+  onRecordField?: (sectionId: string, field: string, value: string) => void;
 }
 
-export function SitePage({ slug, content, onSelect, selectedId }: SitePageProps) {
+export function SitePage({ slug, content, onSelect, selectedId, onRecordField }: SitePageProps) {
   // onSelect is set only by the editor, so it doubles as the signal that
   // hidden sections should still be drawn.
   const resolved = resolveSections(slug, content, Boolean(onSelect));
@@ -98,6 +103,9 @@ export function SitePage({ slug, content, onSelect, selectedId }: SitePageProps)
             section={section}
             onSelect={onSelect}
             selectedId={selectedId}
+            recordField={section && onRecordField
+              ? (f, v) => onRecordField(section.id, f, v)
+              : undefined}
           >
             <Component />
           </SectionScope>
@@ -113,19 +121,36 @@ export function SitePage({ slug, content, onSelect, selectedId }: SitePageProps)
         // overlay rather than a handler on the section itself, so a real
         // button inside the preview does not have to compete with it and the
         // page's own interactivity keeps working underneath.
+        //
+        // ONCE SELECTED, THE OVERLAY STEPS ASIDE.
+        //
+        // It covers the whole section, so while it is a button nothing
+        // underneath can be clicked — including the text. That is correct
+        // for a section you have not chosen yet, and fatal for the one you
+        // have: click-to-edit would be unreachable, because every click
+        // would land on the overlay instead of the words. So the selected
+        // section keeps the ring and gives up the clicks.
+        const isSelected = selectedId === section.id;
         return (
-          <div key={key} className="relative">
+          <div key={key} className="relative" data-studio-section={section.id}>
             {body}
-            <button
-              type="button"
-              onClick={() => onSelect(section.id)}
-              aria-label={section.type}
-              className={`absolute inset-0 z-10 w-full cursor-pointer transition-colors ${
-                selectedId === section.id
-                  ? 'ring-2 ring-inset ring-primary'
-                  : 'hover:bg-primary/[0.06] hover:ring-1 hover:ring-inset hover:ring-primary/40'
-              } ${section.enabled ? '' : 'bg-background/60'}`}
-            />
+            {isSelected ? (
+              <div
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-0 z-10 ring-2 ring-inset ring-primary ${
+                  section.enabled ? '' : 'bg-background/60'
+                }`}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => onSelect(section.id)}
+                aria-label={section.type}
+                className={`absolute inset-0 z-10 w-full cursor-pointer transition-colors hover:bg-primary/[0.06] hover:ring-1 hover:ring-inset hover:ring-primary/40 ${
+                  section.enabled ? '' : 'bg-background/60'
+                }`}
+              />
+            )}
           </div>
         );
       })}

@@ -676,26 +676,45 @@ function VoicePreviewButton({ voiceId, language }: { voiceId: string; language: 
 
   const play = useCallback(async () => {
     if (playing) { stop(); return; }
+
     setBusy(true);
+    let res: Awaited<ReturnType<typeof previewVoice>>;
     try {
-      const res = await previewVoice(voiceId, language);
-      if (!res.ok) { toast.error(t('comms_voice_preview_failed')); return; }
-      currentPreview?.pause();
-      const audio = new Audio(res.url);
-      currentPreview = audio;
-      audio.onended = () => { setPlaying(false); currentPreview = null; };
-      // This runs inside a click, so autoplay policy permits it. A refusal is
-      // still reported rather than leaving a button stuck mid-state.
-      try {
-        await audio.play();
-        setPlaying(true);
-      } catch {
-        toast.error(t('comms_voice_preview_failed'));
-        setPlaying(false);
-      }
+      res = await previewVoice(voiceId, language);
     } finally {
+      // Busy means "fetching the clip", and the clip has now either arrived or
+      // not. It deliberately does NOT cover playback.
+      //
+      // It used to. play() returns a promise that resolves when playback
+      // BEGINS, and on a machine with no usable audio output that promise can
+      // simply never settle — so the await never returned, the finally never
+      // ran, and the button span for good on audio the server had already
+      // delivered and billed for. Nothing after this line is allowed to decide
+      // whether the control is responsive.
       setBusy(false);
     }
+
+    if (!res.ok) { toast.error(t('comms_voice_preview_failed')); return; }
+
+    currentPreview?.pause();
+    const audio = new Audio(res.url);
+    currentPreview = audio;
+    audio.onended = () => { setPlaying(false); currentPreview = null; };
+    audio.onerror = () => {
+      toast.error(t('comms_voice_preview_failed'));
+      setPlaying(false);
+      currentPreview = null;
+    };
+
+    // Optimistic: the click is the gesture autoplay policy asks for, so this
+    // is expected to start. A rejection corrects it; a promise that never
+    // settles no longer traps anything.
+    setPlaying(true);
+    void audio.play().catch(() => {
+      toast.error(t('comms_voice_preview_failed'));
+      setPlaying(false);
+      currentPreview = null;
+    });
   }, [playing, stop, voiceId, language, t]);
 
   return (

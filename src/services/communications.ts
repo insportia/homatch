@@ -199,9 +199,35 @@ export async function previewVoice(
   const payload = data as { ok?: boolean; audioBase64?: string; mime?: string };
   if (!payload?.ok || !payload.audioBase64) return { ok: false };
 
-  const url = `data:${payload.mime ?? 'audio/mpeg'};base64,${payload.audioBase64}`;
+  /*
+   * A blob URL, not a data: URL.
+   *
+   * A data: URL carries the whole clip as a string on every assignment, and
+   * some media stacks decode it lazily enough that the element never reaches a
+   * playable state — which is how the play button sat on a spinner after the
+   * audio had already arrived. A blob is handed to the element by reference
+   * and either decodes or errors.
+   *
+   * Held for the life of the page rather than revoked after each play: the
+   * point of the cache is that auditioning the same voice twice is not billed
+   * twice, and a revoked URL would be billed again. The bound is the number of
+   * distinct voices someone previews in one sitting.
+   */
+  const url = blobUrlFromBase64(payload.audioBase64, payload.mime ?? 'audio/mpeg');
+  if (!url) return { ok: false };
   previewCache.set(key, url);
   return { ok: true, url };
+}
+
+function blobUrlFromBase64(base64: string, mime: string): string | null {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+  } catch {
+    return null;
+  }
 }
 
 export async function listVoices(): Promise<Array<{ id: string; name: string; description: string | null; language: string | null }>> {

@@ -167,14 +167,44 @@ function sniffDelimiter(text: string): string {
  */
 export async function parseXlsx(file: Blob): Promise<{ headers: string[]; rows: string[][] }> {
   const { default: readXlsxFile } = await import('read-excel-file/browser');
-  // No schema: every cell comes back raw, and each is converted to its
-  // displayed text here rather than being coerced to a JS number.
-  // The library types a sheet as its own Sheet<> shape; at runtime it is a
-  // plain array of rows of cells, which is all this needs.
-  const sheet = (await readXlsxFile(file as File)) as unknown as unknown[][];
-  const asText = sheet.map((row) => row.map(cellToText));
+
+  /*
+   * EVERY .xlsx IMPORT FAILED HERE, FOR EVERY FILE.
+   *
+   * This used to assert, in a comment, that the library returns "a plain array
+   * of rows of cells". read-excel-file 9.x does not: it returns one entry per
+   * worksheet, `[{ sheet, data }]`. So `.map(row => row.map(...))` was calling
+   * .map on a worksheet OBJECT, which threw, which readFile caught, which the
+   * wizard showed as "this file could not be read" — for every spreadsheet
+   * anyone ever uploaded.
+   *
+   * Found by uploading a real .xlsx to production rather than by reading this
+   * function, which is the only way it could have been found: the assumption
+   * was stated as a fact in a comment, and the failure was swallowed into a
+   * generic message.
+   *
+   * Both shapes are accepted now. The library has returned each of them across
+   * versions, and this file should not break again the next time it changes
+   * its mind.
+   */
+  const parsed = (await readXlsxFile(file as File)) as unknown;
+  const grid = extractGrid(parsed);
+
+  const asText = grid.map((row) => row.map(cellToText));
   const headers = (asText.shift() ?? []).map((h: string) => h.trim());
   return { headers, rows: asText.slice(0, MAX_ROWS) };
+}
+
+/** Rows, whether the reader handed back rows or a list of worksheets. */
+function extractGrid(parsed: unknown): unknown[][] {
+  if (!Array.isArray(parsed)) return [];
+  const first = parsed[0];
+  // A list of worksheets: take the first sheet's rows.
+  if (first && !Array.isArray(first) && typeof first === 'object' && Array.isArray((first as { data?: unknown }).data)) {
+    return (first as { data: unknown[][] }).data;
+  }
+  // Already rows.
+  return parsed as unknown[][];
 }
 
 /**

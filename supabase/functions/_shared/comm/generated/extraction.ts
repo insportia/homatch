@@ -85,10 +85,25 @@ export function extractDeterministic(text: string): ExtractionRecord {
   const currency = money.find((m) => m.currency)?.currency ?? null;
 
   const lower = String(text ?? '').toLowerCase();
+  /*
+   * BUY IS THE HARDEST OF THE THREE, IN GEORGIAN.
+   *
+   * The pattern used to require the literal adjacent words "მინდა ბინა", and
+   * almost nobody says it that way: "კრწანისში მინდა ორ საძინებლიანი ბინა"
+   * puts a district and two adjectives between the verb and the noun. So the
+   * single most common opening sentence in the whole product came back with
+   * no intent at all, and the assistant asked whether they wanted to buy or
+   * rent immediately after being told.
+   *
+   * The gap is bounded and stops at sentence punctuation, so "ბინა მაქვს.
+   * მინდა ვნახო რამე" does not read as wanting to buy one.
+   */
   const transactionType =
-    /\b(rent|rental|lease)\b|ქირავდება|ვქირაობ|ქირით|аренд|снять|kiralık/u.test(lower) ? 'RENT'
-    : /\b(sell|selling)\b|ვყიდი|იყიდება|продать|продаю|satılık/u.test(lower) ? 'SELL'
-    : /\b(buy|buying|purchase)\b|ვყიდულობ|ყიდვა|მინდა ბინა|купить|куплю|satın/u.test(lower) ? 'BUY'
+    /\b(rent|rental|lease)\b|ქირავდება|ვქირაობ|ქირაობ|ქირით|გასაქირავებ|аренд|снять|kiralık/u.test(lower) ? 'RENT'
+    : /\b(sell|selling)\b|ვყიდი\b|გასაყიდ|იყიდება|продать|продаю|satılık/u.test(lower) ? 'SELL'
+    : /\b(buy|buying|purchase)\b|ვყიდულობ|ვიყიდ|ყიდვა|შეძენ|შესაძენ|шеиძინ|купить|куплю|покупк|satın/u.test(lower)
+      || /მინდა[^.?!]{0,40}?(ბინა|ბინის|სახლ|ფართ|ნაკვეთ)/u.test(lower)
+      || /ვეძებ[^.?!]{0,40}?(ბინა|ბინის|სახლ|ფართ)/u.test(lower) ? 'BUY'
     : null;
 
   // Confidence reflects how much was actually found, not a flat constant: an

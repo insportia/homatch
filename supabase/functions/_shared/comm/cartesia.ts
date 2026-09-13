@@ -436,6 +436,105 @@ export function synthesizePreview(params: {
   return synthesizeSpeech({ ...params, text: previewPhrase(params.language) });
 }
 
+/** The rate the voice is synthesised at for streamed playback. */
+export const PCM_SAMPLE_RATE = 24_000;
+
+/**
+ * One phrase, as raw samples rather than an mp3 file.
+ *
+ * WHY RAW AND WHY PER PHRASE
+ *
+ * A reply used to be synthesised whole, as one mp3, and nothing was audible
+ * until the last syllable of it had been generated. Measured on production:
+ * 1.9-2.6 seconds of silence after the sentence was already written.
+ *
+ * Sent phrase by phrase, the voice starts after the FIRST phrase — a few
+ * hundred milliseconds — while the rest is still being made. That only works
+ * if the pieces can be joined without a seam, and mp3 cannot: every frame
+ * boundary carries encoder padding, so consecutive clips click. Raw PCM has
+ * no such thing. The browser schedules each piece to start exactly where the
+ * previous one ended, and the result is one continuous voice.
+ *
+ * Same endpoint, same voice, same model ladder as synthesizeSpeech. Only the
+ * container differs.
+ */
+export async function synthesizePcm(params: {
+  voiceId: string;
+  language: string;
+  text: string;
+  timeoutMs?: number;
+}): Promise<ProviderResult<{ pcmBase64: string; sampleRate: number; model: string }>> {
+  const transcript = String(params.text ?? '').slice(0, 1200);
+  if (!transcript.trim()) {
+    return {
+      ok: false, sideEffect: 'NONE',
+      error: { code: 'UNKNOWN', message: 'nothing to speak', retryable: false },
+    };
+  }
+
+  let last: ProviderResult<never>['error'] | undefined;
+  for (const model of TTS_MODELS) {
+    const started = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 15_000);
+    try {
+      const res = await fetch(`${CARTESIA_API}/tts/bytes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${requireSecret('CARTESIA_API_KEY')}`,
+          'Cartesia-Version': CARTESIA_VERSION,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model_id: model,
+          transcript,
+          voice: { mode: 'id', id: params.voiceId },
+          language: String(params.language ?? 'en').toLowerCase(),
+          output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: PCM_SAMPLE_RATE },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        last = classifyCartesia(res.status, body);
+        if (last?.code === 'AUTH' || last?.code === 'RATE_LIMIT') break;
+        continue;
+      }
+
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (!bytes.length) {
+        last = { code: 'UNKNOWN', message: 'provider returned no audio', retryable: false };
+        continue;
+      }
+
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+
+      return {
+        ok: true, sideEffect: 'COMMITTED', latencyMs: Date.now() - started,
+        data: { pcmBase64: btoa(binary), sampleRate: PCM_SAMPLE_RATE, model },
+      };
+    } catch (e) {
+      const aborted = (e as Error)?.name === 'AbortError';
+      last = {
+        code: aborted ? 'TIMEOUT' : 'TRANSIENT',
+        message: String((e as Error)?.message ?? e), retryable: true,
+      };
+      if (aborted) break;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return {
+    ok: false, sideEffect: 'NONE',
+    error: last ?? { code: 'UNKNOWN', message: 'synthesis failed', retryable: true },
+  };
+}
+
 /**
  * Speak arbitrary text in one voice.
  *

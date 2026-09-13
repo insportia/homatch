@@ -174,6 +174,120 @@ function llmFailureReason(result: LlmResult): string {
  * Returns null when there is no parseable object at all — the caller then
  * falls back deliberately rather than saving something half-read.
  */
+/**
+ * The same call, delivered a word at a time.
+ *
+ * WHY A SECOND ENTRY POINT AND NOT A FLAG
+ *
+ * callLlm returns a result object and every caller in this file depends on
+ * that shape. A voice turn needs the opposite: the FIRST few words, as early
+ * as possible, because the sentence they form can be sent to synthesis while
+ * the model is still writing the rest.
+ *
+ * That is the single biggest thing standing between AI TALK and a
+ * conversation. Measured on production: a complete reply took 1.2-1.5s to
+ * write and 1.9-2.6s to speak, and nothing was audible until both had
+ * finished. Split at the first sentence, the voice starts while the second
+ * sentence is still being written.
+ *
+ * Everything else — endpoint, model, reasoning budget, the deliberate absence
+ * of temperature and structured output — is identical to callLlm on purpose.
+ * Two request shapes against one model is how the last outage happened.
+ */
+export interface LlmStreamEvent {
+  type: 'delta' | 'done' | 'error';
+  text?: string;
+  error?: string;
+  status?: number | null;
+}
+
+export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStreamEvent> {
+  const model = opts.model ?? DEFAULT_MODEL;
+  if (!llmAvailable()) { yield { type: 'error', error: 'no_api_key' }; return; }
+
+  const budget = opts.maxTokens ?? 600;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${requireSecret('OPENAI_API_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        instructions: opts.system,
+        input: [{ role: 'user', content: opts.user }],
+        max_output_tokens: Math.min(4000, Math.max(1200, budget * 2)),
+        reasoning: { effort: 'low' },
+        store: false,
+        stream: true,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok || !res.body) {
+      yield { type: 'error', error: `provider returned ${res.status}`, status: res.status };
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let sawText = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by a blank line. A frame can arrive split
+      // across reads, so only whole ones are consumed.
+      let cut = buffer.indexOf('\n\n');
+      while (cut !== -1) {
+        const frame = buffer.slice(0, cut);
+        buffer = buffer.slice(cut + 2);
+        cut = buffer.indexOf('\n\n');
+
+        for (const line of frame.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          const raw = line.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let event: { type?: string; delta?: string; text?: string;
+            response?: { status?: string; incomplete_details?: { reason?: string } } };
+          try { event = JSON.parse(raw); } catch { continue; }
+
+          // The Responses stream names its text deltas explicitly. Reasoning
+          // deltas have their own type and are deliberately NOT forwarded:
+          // they are the model thinking, not the model speaking.
+          if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
+            sawText = true;
+            yield { type: 'delta', text: event.delta };
+          } else if (event.type === 'response.failed' || event.type === 'error') {
+            yield { type: 'error', error: 'response_failed' };
+            return;
+          }
+        }
+      }
+    }
+
+    if (!sawText) {
+      // A reasoning model that spent its whole budget thinking. The caller
+      // needs to know it got nothing rather than an empty sentence.
+      yield { type: 'error', error: 'empty' };
+      return;
+    }
+    yield { type: 'done' };
+  } catch (e) {
+    const aborted = (e as Error)?.name === 'AbortError';
+    yield { type: 'error', error: aborted ? 'timeout' : String((e as Error)?.message ?? e).slice(0, 160) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function extractJson(text: string): unknown {
   const attempts: string[] = [text.trim()];
 

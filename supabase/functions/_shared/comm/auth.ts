@@ -21,6 +21,16 @@ export const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
 };
 
+/**
+ * The same CORS headers, for a response that is not JSON.
+ *
+ * Streamed replies build their own Response, and a stream without these is a
+ * stream the browser refuses to read.
+ */
+export function corsHeaders(): Record<string, string> {
+  return { ...CORS_HEADERS };
+}
+
 export function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,

@@ -56,6 +56,10 @@ const FILES = [
   'researchPlan.ts',
   'phone.ts',
   'goLive.ts',
+  // What the AI TALK conversation already knows, so the assistant stops
+  // asking for facts it has been given. The edge function builds the prompt,
+  // so the edge copy is the one that decides what gets re-asked.
+  'conversationState.ts',
 ];
 
 /* Pinned, matching package.json. A floating version here would be a second,

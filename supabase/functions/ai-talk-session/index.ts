@@ -24,15 +24,21 @@
 // place a telephone call, and the grant it mints has no telephony scope.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { serviceClient, json, preflight, logEvent, authenticate } from '../_shared/comm/auth.ts';
-import { cartesiaCredentialsPresent, synthesizeSpeech } from '../_shared/comm/cartesia.ts';
-import { callLlm } from '../_shared/comm/llm.ts';
+import { serviceClient, json, preflight, logEvent, authenticate, corsHeaders } from '../_shared/comm/auth.ts';
+import {
+  cartesiaCredentialsPresent, synthesizeSpeech, synthesizePcm, PCM_SAMPLE_RATE,
+} from '../_shared/comm/cartesia.ts';
+import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
 import {
   decideGrant, grantExpiry, shouldEndSession, hashVisitor,
   DEFAULT_TALK_LIMITS, type TalkLimits,
 } from '../_shared/comm/generated/talkAllowance.ts';
 import { extractDeterministic, scoreLead } from '../_shared/comm/generated/extraction.ts';
+import {
+  updateTalkState, describeState, stateGaps, stateIsRich, sanitiseTalkState,
+  type TalkState,
+} from '../_shared/comm/generated/conversationState.ts';
 
 /**
  * THE VOICE THIS ASSISTANT SPEAKS IN.
@@ -45,7 +51,7 @@ import { extractDeterministic, scoreLead } from '../_shared/comm/generated/extra
 const HOMATCH_TALK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
 
 interface TalkRequest {
-  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak';
+  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak' | 'converse';
   sessionId?: string;
   anonSessionId?: string;
   consumedSeconds?: number;
@@ -70,6 +76,8 @@ interface TalkRequest {
   textOnly?: boolean;
   /** speak: the sentence to synthesise, from the turn that just returned it. */
   speakText?: string;
+  /** converse: what the conversation already knows, carried by the client. */
+  state?: unknown;
   /**
    * transcribe: a language to prefer, or absent to let the provider decide.
    *
@@ -102,6 +110,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'turn':      return await turn(sb, body);
     case 'transcribe': return await transcribe(sb, body);
     case 'speak':     return await speak(sb, body);
+    case 'converse':  return await converse(sb, body);
     case 'heartbeat': return await heartbeat(sb, body);
     case 'end':       return await end(sb, body);
     default:          return json({ error: 'unknown_action' }, 400);
@@ -321,6 +330,240 @@ async function activeSession(
     return { refusal: json({ ok: false, ended: true, reason: 'SESSION_EXPIRED' }, 409) };
   }
   return { row: { id: String(session.id), turns: session.turns as number | null } };
+}
+
+/**
+ * One turn, streamed: words as they are written, voice as it is made.
+ *
+ * WHY THIS REPLACED turn + speak
+ *
+ * Measured on production, last word to first sound: 6.8 seconds. The shape of
+ * it was the problem, not any one stage. Transcription finished, THEN the
+ * model wrote the whole reply, THEN the whole reply was synthesised, THEN a
+ * sound came out — three complete waits in a row, each one finishing before
+ * the next could start.
+ *
+ * Here they overlap. The model streams; the moment a speakable phrase is
+ * complete it goes to synthesis while the model keeps writing; the audio for
+ * phrase one is on its way back before phrase two exists. The visitor sees
+ * words appear almost immediately and hears the voice start on the first
+ * phrase rather than the last.
+ *
+ * Server-sent events rather than a websocket: this is one request with one
+ * ordered answer, and a socket would add a connection to hold open, a
+ * reconnect path and a second thing to get wrong.
+ */
+async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
+  if (!body.sessionId) return json({ error: 'session_required' }, 400);
+
+  const said = String(body.text ?? '').trim().slice(0, 1000);
+  if (!said) return json({ ok: false, reason: 'EMPTY' }, 400);
+
+  const guard = await activeSession(sb, body.sessionId);
+  if ('refusal' in guard) return guard.refusal;
+  const session = guard.row;
+
+  const locale = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
+  const heard = scriptLanguage(said)
+    ?? (body.languageHint ? String(body.languageHint).toLowerCase().slice(0, 5) : null);
+  const replyLanguage = heard ?? locale;
+
+  // What the conversation already knows, plus whatever this sentence added.
+  const state = updateTalkState(sanitiseTalkState(body.state), said, replyLanguage);
+
+  const history = Array.isArray(body.history) ? body.history.slice(-6) : [];
+  const conversation = history
+    .map((h) => `${h.role === 'assistant' ? 'Homatch' : 'Visitor'}: ${String(h.content ?? '').slice(0, 300)}`)
+    .join('\n');
+
+  const known = describeState(state);
+  const gaps = stateGaps(state);
+
+  const user = [
+    conversation ? `Recent turns:\n${conversation}\n` : '',
+    known ? `ALREADY KNOWN — never ask for any of this again:\n${known}\n` : '',
+    gaps.length && !stateIsRich(state)
+      ? `Still unknown, in order of usefulness: ${gaps.join('; ')}.\n`
+      : 'Enough is known to stop interrogating. Be useful about what they already told you.\n',
+    `Visitor just said: "${said}"`,
+    '',
+    'Answer out loud, in one or two short sentences, then at most one question.',
+  ].filter(Boolean).join('\n');
+
+  await sb.from('comm_talk_sessions')
+    .update({ turns: Number(session.turns ?? 0) + 1 })
+    .eq('id', session.id);
+
+  const startedAt = Date.now();
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      let closed = false;
+      const send = (event: string, data: unknown) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch { closed = true; }
+      };
+
+      // Synthesis runs beside the model rather than after it. The promises are
+      // kept in order so the browser can schedule the pieces back to back;
+      // only the AWAIT is deferred, not the work.
+      const spoken: Array<Promise<{ index: number; pcmBase64: string | null; ms: number }>> = [];
+      let spokenChars = 0;
+      const speakPhrase = (phrase: string) => {
+        const index = spoken.length;
+        spokenChars += phrase.length;
+        spoken.push((async () => {
+          const at = Date.now();
+          const out = await synthesizePcm({
+            voiceId: HOMATCH_TALK_VOICE_ID, language: replyLanguage, text: phrase,
+          });
+          return {
+            index,
+            pcmBase64: out.ok && out.data ? out.data.pcmBase64 : null,
+            ms: Date.now() - at,
+          };
+        })());
+      };
+
+      let full = '';
+      let pending = '';
+      let firstTextAt = 0;
+      let failed: string | null = null;
+
+      try {
+        for await (const event of streamLlm({
+          system: publicDemoInstructions(replyLanguage),
+          user,
+          maxTokens: 180,
+          timeoutMs: 20_000,
+        })) {
+          if (event.type === 'error') { failed = event.error ?? 'llm'; break; }
+          if (event.type === 'done') break;
+          if (event.type !== 'delta' || !event.text) continue;
+
+          if (!firstTextAt) {
+            firstTextAt = Date.now() - startedAt;
+            send('open', { ms: firstTextAt, language: replyLanguage });
+          }
+          full += event.text;
+          pending += event.text;
+          send('text', { delta: event.text });
+
+          // The FIRST phrase is allowed to be short, because it is the one
+          // the visitor is waiting on. Later ones are longer, because by then
+          // the voice is already playing and a longer phrase sounds better
+          // than a chopped one.
+          const minChars = spoken.length === 0 ? 14 : 45;
+          let phrase = takePhrase(pending, minChars);
+          while (phrase) {
+            speakPhrase(phrase);
+            pending = pending.slice(phrase.length);
+            phrase = takePhrase(pending, spoken.length === 0 ? 14 : 45);
+          }
+        }
+
+        if (!failed && pending.trim()) speakPhrase(pending.trim());
+
+        if (failed || !full.trim()) {
+          logEvent('ai-talk', 'converse_llm_failed', { reason: failed ?? 'empty' });
+          send('failed', { reason: 'ASSISTANT_FAILED' });
+          controller.close();
+          return;
+        }
+
+        send('reply', { text: full.trim(), language: replyLanguage });
+
+        let firstAudioAt = 0;
+        let ttsMs = 0;
+        let audioBytes = 0;
+        for (const promise of spoken) {
+          const piece = await promise;
+          ttsMs += piece.ms;
+          if (!piece.pcmBase64) continue;
+          if (!firstAudioAt) firstAudioAt = Date.now() - startedAt;
+          audioBytes += Math.round(piece.pcmBase64.length * 0.75);
+          send('audio', {
+            index: piece.index,
+            pcmBase64: piece.pcmBase64,
+            sampleRate: PCM_SAMPLE_RATE,
+          });
+        }
+
+        if (!firstAudioAt) send('voiceless', { reason: 'VOICE_UNAVAILABLE' });
+
+        send('state', { state });
+        send('done', {
+          firstTextMs: firstTextAt,
+          firstAudioMs: firstAudioAt || null,
+          totalMs: Date.now() - startedAt,
+          ttsMs,
+          chars: full.length,
+          phrases: spoken.length,
+        });
+        logEvent('ai-talk', 'converse_ok', {
+          sessionId: session.id, firstTextMs: firstTextAt, firstAudioMs: firstAudioAt || null,
+          totalMs: Date.now() - startedAt, phrases: spoken.length, bytes: audioBytes,
+          language: replyLanguage,
+        });
+      } catch (e) {
+        logEvent('ai-talk', 'converse_crashed', { detail: String((e as Error)?.message ?? e).slice(0, 160) });
+        send('failed', { reason: 'ASSISTANT_FAILED' });
+      } finally {
+        try { controller.close(); } catch { /* already closed */ }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      ...corsHeaders(),
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+    },
+  });
+}
+
+/**
+ * The next complete thing that can be spoken, or empty if there is not one yet.
+ *
+ * Speaking a fragment that the model is about to continue is what makes a
+ * streamed voice sound broken, so a phrase only counts when it ends on real
+ * punctuation. Georgian uses the same full stop and question mark as English;
+ * the Armenian-style terminators and the Arabic comma are here because the
+ * same path serves those languages too.
+ *
+ * The long-line escape hatch exists because a model occasionally writes one
+ * clause of sixty words with no punctuation at all, and waiting for a full
+ * stop that never arrives would hold the voice back for the whole reply.
+ */
+function takePhrase(buffer: string, minChars: number): string {
+  if (buffer.length < minChars) return '';
+
+  const TERMINATORS = ['.', '!', '?', '…', '։', '؟', '۔', ';', ':', '\n'];
+  let best = -1;
+  for (const t of TERMINATORS) {
+    const at = buffer.indexOf(t, minChars - 1);
+    if (at !== -1 && (best === -1 || at < best)) best = at;
+  }
+  if (best !== -1) {
+    // Take the punctuation and any space after it, so the next phrase does
+    // not start with a stray gap.
+    let end = best + 1;
+    while (end < buffer.length && /\s/.test(buffer[end])) end++;
+    return buffer.slice(0, end);
+  }
+
+  // No punctuation in sight: break at a word boundary once it is long enough
+  // that a clause is likely finished.
+  if (buffer.length >= 160) {
+    const space = buffer.lastIndexOf(' ', 160);
+    if (space > minChars) return buffer.slice(0, space + 1);
+  }
+  return '';
 }
 
 /**
@@ -631,17 +874,25 @@ async function resolveAnonSession(sb: Sb, candidate: string | undefined): Promis
 /**
  * What Homatch is, said to a model, in the language the visitor is speaking.
  *
- * GEORGIAN IS NOT A TRANSLATION TARGET HERE, IT IS THE DEFAULT
+ * THIS IS THE BRAIN, AND IT WAS THE WEAKEST PART
  *
- * The failure this guards against is a reply composed in English and rendered
- * into Georgian word by word: grammatical, and immediately recognisable as
- * not written by a Georgian. The instructions name that explicitly, because a
- * model told only "reply in Georgian" produces exactly that.
+ * The assistant read as a generic chatbot that happened to mention property:
+ * it asked for a district it had just been told, answered in paragraphs
+ * nobody would say out loud, and knew none of the vocabulary a Tbilisi buyer
+ * actually uses. Three separate problems, and only the last of them is
+ * knowledge.
  *
- * The vocabulary block is not decoration. A visitor who says "მწვანე
- * კარკასი" has named a specific construction stage with a specific price
- * consequence, and an assistant that treats it as a colour is not a
- * real-estate assistant.
+ * RE-ASKING is solved above this function, by conversation state: the turn
+ * carries a list of what is already known and an instruction never to ask for
+ * any of it again.
+ *
+ * LENGTH is solved here, hard, because a voice reply is not a chat reply. Two
+ * sentences and one question. A model left to itself writes six.
+ *
+ * GEORGIAN is not a translation target. A reply composed in English and
+ * rendered word by word is grammatical and instantly recognisable as not
+ * written by a Georgian, so the instructions say so explicitly — a model told
+ * only "reply in Georgian" produces exactly that.
  */
 function publicDemoInstructions(language: string): string {
   const names: Record<string, string> = {
@@ -650,30 +901,34 @@ function publicDemoInstructions(language: string): string {
   const name = names[language] ?? names[language.split('-')[0]] ?? 'the language the visitor is speaking';
 
   const lines = [
-    'You are Homatch, a real-estate intelligence assistant for the Georgian market, speaking to a visitor on a public website.',
+    'You are Homatch, a real-estate intelligence assistant for the Georgian market, talking to a visitor by voice.',
     '',
     'LANGUAGE',
-    `Reply in ${name}. Reply in whatever language the visitor is actually speaking, turn by turn:`,
-    'if they switch language mid-conversation, switch with them and keep everything you already understood.',
-    'Never ask them to choose a language and never mention which one you are using.',
+    `Reply in ${name}. Follow the visitor turn by turn: if they change language mid-conversation, change with`,
+    'them and keep everything you already understood. Never ask them to pick a language, never mention which',
+    'one you are using. Georgian speakers mix in English and Russian terms constantly — property, developer,',
+    'ROI, mortgage, price per square. Understand those as the Georgian sentence they sit in.',
     '',
-    'HOW TO SOUND',
-    'This is spoken aloud, so keep every reply to one or two short sentences. Ask one question at a time.',
-    'Plain words only: no markdown, no lists, no emoji, no abbreviations that cannot be read out.',
+    'HOW TO SPEAK',
+    'This is heard, not read. One or two short sentences, then AT MOST one question. Never a list, never',
+    'bullet points, never markdown, never an abbreviation that cannot be read aloud. If they ask for detail,',
+    'give it — still spoken, still short. Acknowledge what they just told you before you ask anything.',
     '',
-    'WHAT YOU ARE FOR',
-    'Understand what kind of property they want: buy, sell, rent or invest; roughly where; roughly what budget; how many rooms.',
+    'WHAT YOU KNOW',
+    'Buying, selling, renting and investing. Mortgages and instalment plans. Developer due diligence and',
+    'project risk. Property verification, the public registry, extracts, encumbrances. Purchase and',
+    'preliminary sale contracts. Districts and how they differ. Price per square metre, rental yield and ROI.',
+    'Floors, parking, areas, room counts, and the shell states a flat is sold in.',
     '',
     'RULES',
-    '- Say at the start that you are an AI assistant.',
+    '- Say you are an AI assistant when you first speak, once, briefly.',
     '- You have NO access to any specific listing, price, availability or any person\'s records.',
     '  Never state a price, a property, an address or an availability. If asked, say plainly that you',
     '  cannot look that up here and that Homatch can do it properly once they continue on the site.',
-    '- Never guarantee anything. Never mention a rate of return.',
+    '- Never guarantee anything. Never quote a rate of return as a fact.',
     '- Do not ask for a name, a phone number, an email address or any identifying detail.',
     '- Talk about property only. If the conversation goes elsewhere, bring it back once, politely,',
     '  and if it does not come back, say this demo is only about property and wrap up.',
-    '- People pause mid-sentence. Wait for them to finish rather than answering into a gap.',
     '- Write the name Homatch in Latin letters, always, in every language. Never transliterate it',
     '  into Georgian, Cyrillic, Arabic or Hebrew script.',
   ];
@@ -682,16 +937,16 @@ function publicDemoInstructions(language: string): string {
     lines.push(
       '',
       'GEORGIAN',
-      'Write modern, natural, spoken Georgian — the Georgian a professional broker in Tbilisi would actually speak.',
-      'Do NOT compose in English and translate: no English word order, no Russian-influenced grammar,',
-      'no unnecessarily formal register, no English terms where an ordinary Georgian word exists.',
-      'Keep English only where Georgian speakers genuinely use it, such as ROI.',
+      'Write modern, natural, spoken Georgian — the Georgian a professional broker in Tbilisi would speak.',
+      'Do NOT compose in English and translate: no English word order, no Russian-influenced grammar, no',
+      'unnecessarily formal register, no English term where an ordinary Georgian word exists. Keep English',
+      'only where Georgian speakers genuinely use it, such as ROI.',
       '',
-      'You know what these mean and can use them correctly:',
+      'You know what these mean and use them correctly:',
       'მწვანე კარკასი, თეთრი კარკასი, შავი კარკასი, ახალაშენებული, ძველი აშენებული, მშენებარე,',
-      'საკადასტრო კოდი, საჯარო რეესტრი, ამონაწერი, ხელშეკრულება, წინასწარი ნასყიდობის ხელშეკრულება,',
-      'იპოთეკა, განვადება, კვადრატული მეტრი, ფასი კვადრატულზე, სართული, საძინებელი, პარკინგი,',
-      'დეველოპერი, ინვესტიცია, ქირის შემოსავალი, ბინის სტატუსი.',
+      'საკადასტრო კოდი, საჯარო რეესტრი, ამონაწერი, ყადაღა, ხელშეკრულება, წინასწარი ნასყიდობის ხელშეკრულება,',
+      'იპოთეკა, განვადება, თანამონაწილეობა, კვადრატული მეტრი, ფასი კვადრატულზე, სართული, საძინებელი,',
+      'პარკინგი, დეველოპერი, ინვესტიცია, ქირის შემოსავალი, უკუგება, ბინის სტატუსი, აქტი.',
       'Knowing the terms is not knowing any actual property: the rules above still hold.',
     );
   }

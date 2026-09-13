@@ -254,7 +254,8 @@ export function AiTalkPanel({ className }: { className?: string }) {
             },
           });
           const reply = turn as {
-            ok?: boolean; text?: string; audioBase64?: string | null; mime?: string; voiceId?: string;
+            ok?: boolean; text?: string; audioBase64?: string | null; mime?: string;
+            voiceId?: string; llmMs?: number | null; ttsMs?: number | null;
           } | null;
           if (turnError || !reply?.ok || !reply.text) return null;
 
@@ -269,6 +270,8 @@ export function AiTalkPanel({ className }: { className?: string }) {
             audioBase64: reply.audioBase64 ?? null,
             mime: reply.mime,
             voiceId: reply.voiceId,
+            llmMs: reply.llmMs ?? null,
+            ttsMs: reply.ttsMs ?? null,
           };
         },
       },

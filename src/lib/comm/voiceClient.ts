@@ -154,7 +154,12 @@ export interface VoiceDiagnostics {
   /** The most recent words, so a person can see them appear. */
   lastTranscript: string | null;
   turnsSent: number;
+  /** The whole turn round trip, and the server's own split of it. */
   lastTurnMs: number | null;
+  lastLlmMs: number | null;
+  lastTtsMs: number | null;
+  /** Their last word to the first sound back: the only number they feel. */
+  lastPlaybackMs: number | null;
   lastReplyChars: number | null;
   lastAudioBytes: number | null;
   playbacks: number;
@@ -170,6 +175,9 @@ export interface AssistantTurn {
   audioBase64: string | null;
   mime?: string;
   voiceId?: string;
+  /** Server-measured halves of the turn, so a slow one can be attributed. */
+  llmMs?: number | null;
+  ttsMs?: number | null;
 }
 
 export interface VoiceCallbacks {
@@ -285,6 +293,8 @@ export class VoiceSession {
     lastSttLanguage: null as string | null, lastTranscript: null as string | null,
     turnsSent: 0, lastTurnMs: null as number | null,
     lastReplyChars: null as number | null, lastAudioBytes: null as number | null,
+    lastLlmMs: null as number | null, lastTtsMs: null as number | null,
+    lastPlaybackMs: null as number | null,
     playbacks: 0, lastError: null as string | null,
   };
   private diagHandle: number | null = null;
@@ -417,6 +427,9 @@ export class VoiceSession {
       lastTranscript: this.diag.lastTranscript,
       turnsSent: this.diag.turnsSent,
       lastTurnMs: this.diag.lastTurnMs,
+      lastLlmMs: this.diag.lastLlmMs,
+      lastTtsMs: this.diag.lastTtsMs,
+      lastPlaybackMs: this.diag.lastPlaybackMs,
       lastReplyChars: this.diag.lastReplyChars,
       lastAudioBytes: this.diag.lastAudioBytes,
       playbacks: this.diag.playbacks,
@@ -768,6 +781,8 @@ export class VoiceSession {
     }
 
     this.diag.lastReplyChars = reply.text.length;
+    this.diag.lastLlmMs = reply.llmMs ?? null;
+    this.diag.lastTtsMs = reply.ttsMs ?? null;
     this.diag.lastAudioBytes = reply.audioBase64 ? Math.round(reply.audioBase64.length * 0.75) : 0;
 
     this.marks.llmFirstTokenAtMs = Date.now();
@@ -839,6 +854,11 @@ export class VoiceSession {
         audio.play().then(
           () => {
             this.diag.playbacks += 1;
+            // The number a person actually experiences: their last word to
+            // the first sound coming back.
+            if (this.marks.speechEndedAtMs) {
+              this.diag.lastPlaybackMs = Date.now() - this.marks.speechEndedAtMs;
+            }
             this.milestone('playback_started');
             this.setState('RESPONDING');
           },

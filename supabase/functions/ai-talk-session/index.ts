@@ -363,6 +363,7 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     .map((h) => `${h.role === 'assistant' ? 'Homatch' : 'Visitor'}: ${String(h.content ?? '').slice(0, 500)}`)
     .join('\n');
 
+  const thoughtAt = Date.now();
   const reply = await callLlm({
     system: publicDemoInstructions(replyLanguage),
     user: [
@@ -383,7 +384,9 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     return json({ ok: false, reason: 'ASSISTANT_FAILED' }, 502);
   }
 
+  const llmMs = Date.now() - thoughtAt;
   const text = reply.text.trim().slice(0, 800);
+  const spokeAt = Date.now();
 
   const spoken = await synthesizeSpeech({
     voiceId: HOMATCH_TALK_VOICE_ID,
@@ -402,7 +405,10 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     });
     // The sentence still exists and is still worth showing. A silent reply is
     // a degraded conversation; a blank one is a broken product.
-    return json({ ok: true, text, audioBase64: null, voiceId: HOMATCH_TALK_VOICE_ID, spoken: false });
+    return json({
+      ok: true, text, audioBase64: null, voiceId: HOMATCH_TALK_VOICE_ID, spoken: false,
+      llmMs, ttsMs: Date.now() - spokeAt,
+    });
   }
 
   await sb.from('comm_talk_sessions')
@@ -418,6 +424,10 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     mime: spoken.data.mime,
     voiceId: HOMATCH_TALK_VOICE_ID,
     spoken: true,
+    // Where the time actually went, so a slow turn can be attributed to the
+    // half that was slow instead of guessed at.
+    llmMs,
+    ttsMs: Date.now() - spokeAt,
   });
 }
 

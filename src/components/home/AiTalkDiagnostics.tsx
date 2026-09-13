@@ -47,7 +47,13 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
     bytes === null || bytes === undefined ? '—' : `${(bytes / 1024).toFixed(1)} kB`;
 
   return (
-    <div className="mt-2 w-full overflow-hidden rounded-lg border border-white/10 bg-black/60 px-3 py-2 font-mono text-[11px] leading-relaxed">
+    /* dir="ltr" because field names and numbers are not prose: in Arabic or
+       Hebrew the page is RTL and "Bytes sent 12.4 kB" would be reordered into
+       something that reads as a different number. */
+    <div
+      dir="ltr"
+      className="mt-2 w-full overflow-hidden rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-left font-mono text-[11px] leading-relaxed"
+    >
       <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-gold/70">
         <span>AI Talk diagnostics</span>
         <span className="text-white/30">temporary</span>
@@ -98,6 +104,14 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
         tone={d.lastSttChars ? 'good' : 'idle'}
       />
       <Row label="Turns sent" value={`${d.turnsSent}${d.lastTurnMs !== null ? ` (${d.lastTurnMs} ms)` : ''}`} tone={d.turnsSent > 0 ? 'good' : 'idle'} />
+      {/* The server's own split of that round trip, so a slow turn can be
+          attributed to the half that was slow. */}
+      <Row label="  think / speak" value={`${ms(d.lastLlmMs)} / ${ms(d.lastTtsMs)}`} />
+      <Row
+        label="Last word → sound"
+        value={ms(d.lastPlaybackMs)}
+        tone={d.lastPlaybackMs !== null && d.lastPlaybackMs < 6000 ? 'good' : d.lastPlaybackMs !== null ? 'bad' : 'idle'}
+      />
       <Row label="Reply" value={d.lastReplyChars === null ? '—' : `${d.lastReplyChars} chars, ${kb(d.lastAudioBytes)} audio`} />
       <Row label="Playbacks" value={n(d.playbacks)} tone={d.playbacks > 0 ? 'good' : 'idle'} />
       <Row label="Last error" value={d.lastError ?? 'none'} tone={d.lastError ? 'bad' : 'good'} />

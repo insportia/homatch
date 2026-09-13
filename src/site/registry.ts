@@ -191,6 +191,25 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('eyebrow', 'studio_f_eyebrow', 'mp_layers_eyebrow'),
       f('title', 'studio_f_title', 'mp_layers_title'),
       f('body', 'studio_f_body', 'mp_layers_sub', 'textarea'),
+      /* THE BUILDING SCENE. Stage labels, callout labels and the
+         illustrative values shown beside the analysed unit. The animation
+         must not depend on literal English: it plays in six languages, and
+         the demo numbers are an admin's to change. */
+      f('bi_stage_idle', 'bi_stage_idle', 'bi_stage_idle'),
+      f('bi_stage_scan', 'bi_stage_scan', 'bi_stage_scan'),
+      f('bi_stage_floors', 'bi_stage_floors', 'bi_stage_floors'),
+      f('bi_stage_floor', 'bi_stage_floor', 'bi_stage_floor'),
+      f('bi_stage_unit', 'bi_stage_unit', 'bi_stage_unit'),
+      f('bi_stage_done', 'bi_stage_done', 'bi_stage_done'),
+      f('bi_cal_floor', 'bi_cal_floor', 'bi_cal_floor'),
+      f('bi_cal_area', 'bi_cal_area', 'bi_cal_area'),
+      f('bi_cal_rooms', 'bi_cal_rooms', 'bi_cal_rooms'),
+      f('bi_cal_status', 'bi_cal_status', 'bi_cal_status'),
+      f('bi_val_floor', 'bi_val_floor', 'bi_val_floor'),
+      f('bi_val_area', 'bi_val_area', 'bi_val_area'),
+      f('bi_val_rooms', 'bi_val_rooms', 'bi_val_rooms'),
+      f('bi_val_status', 'bi_val_status', 'bi_val_status'),
+      f('bi_note', 'bi_note', 'bi_note'),
     ],
     media: [],
   },

@@ -107,9 +107,23 @@ async function start(
   const day = new Date(Date.now() - 86_400_000).toISOString();
 
   const [{ data: todays }, { count: activeForVisitor }, { count: activeGlobal }] = await Promise.all([
+    /*
+     * A SESSION THAT NEVER HAPPENED MUST NOT COST SOMEBODY THEIR ALLOWANCE.
+     *
+     * ABORTED means the session row was written and then the provider,
+     * or this function, failed before the visitor could say a word. Those
+     * counted against the six-per-day cap, so a broken deployment quietly
+     * spent every visitor's allowance and then told them they had used it up.
+     *
+     * That is exactly what happened here: a run of aborted sessions from a
+     * provider fault left the daily limit exhausted for people who had never
+     * had a conversation at all.
+     */
     sb.from('comm_talk_sessions')
       .select('consumed_seconds')
-      .eq('ip_hash', ipHash).gte('created_at', day).limit(100),
+      .eq('ip_hash', ipHash).gte('created_at', day)
+      .neq('state', 'ABORTED')
+      .limit(100),
     sb.from('comm_talk_sessions')
       .select('*', { count: 'exact', head: true })
       .eq('ip_hash', ipHash).eq('state', 'ACTIVE').gt('expires_at', new Date().toISOString()),

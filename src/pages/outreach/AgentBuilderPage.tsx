@@ -16,10 +16,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, ArrowRight, Check, Loader2, Mic, MicOff, Sparkles, Play, Square,
+  ArrowLeft, ArrowRight, Check, Loader2, Mic, Mic2, MicOff, Sparkles, Play, Square,
   Bot, MessageSquareText, BookOpen, AudioLines, ClipboardCheck,
 } from 'lucide-react';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import { AddVoiceDialog } from '@/components/communications/AddVoiceDialog';
 import { useAssistantContext } from '@/components/assistant/AssistantContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,7 +42,7 @@ import {
 } from '@/components/communications/primitives';
 import {
   getAgent, updateAgent, generateAgentCopy, publishAgent, previewAgent,
-  requestAgentTestGrant, listVoices, previewVoice,
+  requestAgentTestGrant, listVoices, previewVoice, listMyVoices, deleteCustomVoice,
 } from '@/services/communications';
 import type { CommAgent } from '@/types/communications';
 import type { VoiceSession, VoiceState } from '@/lib/comm/voiceClient';
@@ -738,15 +739,29 @@ function VoicePreviewButton({ voiceId, language }: { voiceId: string; language: 
 function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: Partial<CommAgent>) => void }) {
   const { t } = useLanguage();
   const [voices, setVoices] = useState<Array<{ id: string; name: string; description: string | null; language: string | null }>>([]);
+  const [mine, setMine] = useState<Array<{ voiceId: string; name: string; status: string; confirmedAt: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('ALL');
+  const [adding, setAdding] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      setVoices(await listVoices());
-      setLoading(false);
-    })();
+  const reload = useCallback(async () => {
+    const [catalogue, own] = await Promise.all([listVoices(), listMyVoices()]);
+    setVoices(catalogue);
+    setMine(own);
+    setLoading(false);
   }, []);
+
+  useEffect(() => { void reload(); }, [reload]);
+
+  const removeMine = useCallback(async (voiceId: string) => {
+    const ok = await deleteCustomVoice(voiceId);
+    if (!ok) { toast.error(t('comm_save_failed')); return; }
+    // If the agent was pointed at the voice that just went away, stop
+    // pointing at it: an agent referencing a deleted voice fails at the call,
+    // which is the worst possible moment to find out.
+    if (draft.voice_id === voiceId) patch({ voice_id: null, voice_label: null });
+    await reload();
+  }, [draft.voice_id, patch, reload, t]);
 
   const shown = voices.filter((v) => filter === 'ALL' || v.language === filter);
   const languagesAvailable = [...new Set(voices.map((v) => v.language).filter(Boolean))] as string[];
@@ -758,18 +773,79 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
           <h2 className="text-sm font-semibold">{t('comm_voice_title')}</h2>
           <p className="text-[13px] text-muted-foreground">{t('comm_voice_subtitle')}</p>
         </div>
-        {languagesAvailable.length ? (
-          <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger className="h-8 w-[130px] text-xs" aria-label={t('comm_agent_languages')}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">{t('comm_filter_all')}</SelectItem>
-              {languagesAvailable.map((l) => <SelectItem key={l} value={l}>{l.toUpperCase()}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        ) : null}
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {languagesAvailable.length ? (
+            <Select value={filter} onValueChange={setFilter}>
+              <SelectTrigger className="h-8 w-[130px] text-xs" aria-label={t('comm_agent_languages')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">{t('comm_filter_all')}</SelectItem>
+                {languagesAvailable.map((l) => <SelectItem key={l} value={l}>{l.toUpperCase()}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setAdding(true)}>
+            <Mic2 className="h-3.5 w-3.5" aria-hidden="true" />
+            {t('voice_add')}
+          </Button>
+        </div>
       </div>
+
+      <AddVoiceDialog
+        open={adding}
+        onOpenChange={setAdding}
+        defaultLanguage={draft.languages?.[0] ?? 'ka'}
+        onCreated={(voiceId, name) => {
+          // Select it immediately: somebody who just cloned a voice wants to
+          // use it, and making them find it in a list of a hundred is a worse
+          // answer than choosing it for them and letting them change it.
+          patch({ voice_id: voiceId, voice_label: name });
+          void reload();
+        }}
+      />
+
+      {/*
+        * MY VOICES.
+        *
+        * Listed from the consent records rather than by filtering the
+        * provider catalogue, because the consent record is what proves the
+        * voice is this account's to use — and it is also the only place that
+        * knows a clone was attempted and failed.
+        */}
+      {mine.length ? (
+        <div className="rounded-xl border p-3">
+          <h3 className="text-xs font-semibold">{t('voice_my_voices')}</h3>
+          <ul className="mt-2 space-y-1.5">
+            {mine.map((v) => {
+              const selected = draft.voice_id === v.voiceId;
+              return (
+                <li key={v.voiceId} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => patch({ voice_id: v.voiceId, voice_label: v.name })}
+                    className={cn(
+                      'flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg border p-2.5 text-start transition-colors',
+                      selected ? 'border-gold bg-gold/[0.06]' : 'hover:border-foreground/20',
+                    )}
+                  >
+                    <span className="min-w-0 truncate text-xs font-medium">{v.name}</span>
+                    {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-gold" aria-hidden="true" /> : null}
+                  </button>
+                  <VoicePreviewButton voiceId={v.voiceId} language={draft.languages?.[0] ?? 'en'} />
+                  <Button
+                    variant="ghost" size="sm" className="h-8 shrink-0 text-2xs text-muted-foreground"
+                    onClick={() => void removeMine(v.voiceId)}
+                  >
+                    {t('voice_remove')}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
 
       {loading ? <LoadingBlock rows={3} /> : !voices.length ? (
         // §92: the catalogue being unavailable is not a broken page. The agent

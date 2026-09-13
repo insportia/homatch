@@ -31,13 +31,14 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { CommunicationsGoLivePanel } from '@/components/admin/CommunicationsGoLivePanel';
 import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   readProviderStatus, probeProviders, setProviderRouteFlag,
 } from '@/services/communications';
-import type { ProviderRouteRow, ProviderReportRow } from '@/types/communications';
+import type { ProviderRouteRow, ProviderReportRow, ChannelReadinessRow } from '@/types/communications';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -57,6 +58,7 @@ export function CommunicationsRoutingPanel() {
 
   const [routes, setRoutes] = useState<ProviderRouteRow[]>([]);
   const [providers, setProviders] = useState<ProviderReportRow[]>([]);
+  const [readiness, setReadiness] = useState<ChannelReadinessRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
@@ -71,9 +73,11 @@ export function CommunicationsRoutingPanel() {
       setUnavailable(result.reason);
       setRoutes([]);
       setProviders([]);
+      setReadiness([]);
     } else {
       setRoutes(result.routes);
       setProviders(result.providers);
+      setReadiness(result.readiness);
     }
     setLoading(false);
   }, []);
@@ -114,6 +118,12 @@ export function CommunicationsRoutingPanel() {
     .filter((g) => g.rows.length > 0);
 
   return (
+    <div className="space-y-4">
+    {/* The go-live checklist sits ABOVE the routing table on purpose: it is
+        the question an admin arrives with, and the switches below are what
+        they touch once it is answered. */}
+    <CommunicationsGoLivePanel readiness={readiness} probing={probing} onRecheck={() => void onProbe()} />
+
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
         <div>
@@ -307,5 +317,6 @@ export function CommunicationsRoutingPanel() {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }

@@ -490,3 +490,117 @@ export async function synthesizePreview(params: {
 
   return { ok: false, sideEffect: 'NONE', error: last ?? { code: 'UNKNOWN', message: 'no model accepted', retryable: false } };
 }
+
+// ── Custom voices ───────────────────────────────────────────────────────────
+
+/**
+ * What a clip has to be before it is worth sending to the provider.
+ *
+ * Checked here as well as in the browser, because a browser check is a
+ * courtesy and a server check is the rule. The ceiling exists so one request
+ * cannot push twenty megabytes through an edge function; the floor exists
+ * because the provider needs a few seconds of speech and a 2KB file is a
+ * mistake, not a voice.
+ */
+export const CLIP_MIN_BYTES = 8_000;
+export const CLIP_MAX_BYTES = 10 * 1024 * 1024;
+export const CLIP_MIME_ALLOWED = [
+  'audio/wav', 'audio/x-wav', 'audio/wave',
+  'audio/mpeg', 'audio/mp3',
+  'audio/mp4', 'audio/m4a', 'audio/x-m4a',
+  'audio/ogg', 'audio/webm',
+];
+
+export function clipRejectionReason(bytes: number, mime: string): string | null {
+  if (!CLIP_MIME_ALLOWED.includes(mime.toLowerCase().split(';')[0].trim())) {
+    return 'unsupported_format';
+  }
+  if (bytes < CLIP_MIN_BYTES) return 'too_short';
+  if (bytes > CLIP_MAX_BYTES) return 'too_large';
+  return null;
+}
+
+/**
+ * Clone a voice from a clip the customer supplied.
+ *
+ * The clip is streamed straight to the provider and never written to Homatch
+ * storage. Keeping a library of voice samples would create precisely the
+ * liability the consent record exists to bound, and nothing in this product
+ * needs the audio again once the provider has a voice id.
+ *
+ * `access: 'private'` is not configurable. A cloned voice belongs to the
+ * account that cloned it; publishing someone's voice to a shared library on
+ * their behalf is not a decision a checkbox can carry.
+ */
+export async function cloneCartesiaVoice(params: {
+  clip: Uint8Array;
+  mime: string;
+  name: string;
+  language: string;
+  description?: string;
+}): Promise<ProviderResult<{ voiceId: string }>> {
+  const form = new FormData();
+  form.append('clip', new Blob([params.clip], { type: params.mime }), 'clip');
+  form.append('name', params.name.slice(0, 80));
+  form.append('language', String(params.language ?? 'en').toLowerCase().slice(0, 5));
+  form.append('mode', 'similarity');
+  form.append('enhance', 'true');
+  form.append('access', 'private');
+  if (params.description) form.append('description', params.description.slice(0, 300));
+
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const res = await fetch(`${CARTESIA_API}/voices/clone`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${requireSecret('CARTESIA_API_KEY')}`,
+        'Cartesia-Version': CARTESIA_VERSION,
+        // No Content-Type: fetch sets the multipart boundary itself, and
+        // setting it by hand produces a body the provider cannot parse.
+      },
+      body: form,
+      signal: controller.signal,
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      return {
+        ok: false, sideEffect: 'MAYBE', latencyMs: Date.now() - started,
+        error: classifyCartesia(res.status, text),
+      };
+    }
+
+    let voiceId: string | null = null;
+    try { voiceId = (JSON.parse(text) as { id?: string })?.id ?? null; } catch { voiceId = null; }
+    if (!voiceId) {
+      return {
+        ok: false, sideEffect: 'MAYBE', latencyMs: Date.now() - started,
+        error: { code: 'UNKNOWN', message: 'the provider created a voice without returning an id', retryable: false },
+      };
+    }
+
+    return { ok: true, sideEffect: 'COMMITTED', latencyMs: Date.now() - started, data: { voiceId } };
+  } catch (e) {
+    const aborted = (e as Error)?.name === 'AbortError';
+    return {
+      ok: false, sideEffect: 'MAYBE', latencyMs: Date.now() - started,
+      error: {
+        code: aborted ? 'TIMEOUT' : 'TRANSIENT',
+        message: String((e as Error)?.message ?? e), retryable: true,
+      },
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Remove a voice this account created. Used to undo a failed or unwanted clone. */
+export async function deleteCartesiaVoice(voiceId: string): Promise<ProviderResult<null>> {
+  const res = await providerFetch(`${CARTESIA_API}/voices/${encodeURIComponent(voiceId)}`, {
+    method: 'DELETE', headers: headers(), timeoutMs: 15_000,
+  }, classifyCartesia);
+  if (!res.ok) return { ok: false, sideEffect: 'NONE', error: res.error };
+  return { ok: true, sideEffect: 'COMMITTED', data: null };
+}

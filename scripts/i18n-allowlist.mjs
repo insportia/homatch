@@ -26,6 +26,9 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'fin_col_model',
   // Product/brand names — never translated in any language.
   'ai_title', // "Homatch AI"
+  // "WhatsApp" — Meta's product name on the admin go-live checklist, the
+  // same brand string already allowlisted for the workspace navigation.
+  'golive_ch_whatsapp',
   // "WhatsApp" — Meta's product name, written the same way in Georgian,
   // Russian and Turkish. ar and he carry their own real transliterations of
   // the same key, so this cannot be hiding a missing translation.

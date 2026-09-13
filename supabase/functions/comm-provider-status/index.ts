@@ -28,6 +28,7 @@ import {
   metaWebhookSecretsPresent, META_API_VERSION,
 } from '../_shared/comm/meta.ts';
 import { hasSecret } from '../_shared/comm/contracts.ts';
+import { evaluateGoLive } from '../_shared/comm/generated/goLive.ts';
 
 type Health = 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'DISABLED' | 'NOT_CONFIGURED';
 
@@ -106,9 +107,70 @@ Deno.serve(async (req: Request): Promise<Response> => {
     logEvent('provider-status', 'probed', { count: reports.length, by: caller.userId });
   }
 
+  /*
+   * GO-LIVE READINESS.
+   *
+   * Computed from the reports just gathered plus the tables that decide
+   * whether a channel may spend money. It is the answer to "what is stopping
+   * this?", which the routing panel above could not give: that panel shows
+   * credentials and switches, and a channel can have every credential set, no
+   * switch thrown, and still be unable to place a call because nobody has
+   * priced it or registered a caller number.
+   *
+   * Admin-only, like everything else in this function.
+   */
+  const reportFor = (name: string) => reports.find((r) => r.provider === name) ?? null;
+  const healthyish = (name: string): boolean | null => {
+    const r = reportFor(name);
+    if (!r) return null;
+    if (!probe) return null;              // never probed is not a pass
+    return r.health === 'HEALTHY' || r.health === 'DEGRADED' || r.health === 'DISABLED';
+  };
+  const metaStatus = (): number | null => {
+    const r = reportFor('META');
+    if (!r || !probe) return null;
+    if (r.health === 'HEALTHY' || r.health === 'DISABLED') return 200;
+    const s = (r.facts as { httpStatus?: number | null } | null)?.httpStatus;
+    return typeof s === 'number' ? s : null;
+  };
+
+  const [{ data: products }, { data: accounts }, { data: baseAgent }, { data: wallets }] = await Promise.all([
+    sb.from('billable_products')
+      .select('code, enabled, pricing_active, standard_retail_cents, reference_landed_cogs_cents')
+      .in('code', ['AI_CALL', 'AI_TALK', 'WHATSAPP']),
+    sb.from('comm_channel_accounts').select('channel, phone_e164, status'),
+    sb.from('admin_settings').select('value').eq('key', 'cartesia_base_agent_id').maybeSingle(),
+    sb.from('credit_accounts').select('balance, reserved'),
+  ]);
+
+  const usableCredit = (wallets ?? []).reduce(
+    (sum: number, w: { balance: number | null; reserved: number | null }) =>
+      sum + Math.max(0, Number(w.balance ?? 0) - Number(w.reserved ?? 0)),
+    0,
+  );
+
+  const readiness = evaluateGoLive({
+    routes: (routes ?? []).map((r) => ({
+      role: String(r.role), provider: String(r.provider),
+      enabled: r.enabled === true, kill_switch: r.kill_switch === true,
+    })),
+    products: (products ?? []) as never,
+    accounts: (accounts ?? []) as never,
+    hasSecret,
+    probes: {
+      cartesiaOk: healthyish('CARTESIA'),
+      vapiOk: healthyish('VAPI'),
+      metaPhoneStatus: metaStatus(),
+      metaWabaStatus: metaStatus(),
+    },
+    baseAgentReady: typeof baseAgent?.value === 'string' && baseAgent.value.length > 0,
+    walletBalance: usableCredit,
+  });
+
   return json({
     ok: true,
     probed: probe,
+    readiness,
     providers: reports,
     routes: (routes ?? []).map((r) => ({
       role: r.role,
@@ -300,6 +362,11 @@ async function checkMeta(probe: boolean, routes: Route[], sb: SupabaseClient): P
         // being handed anything sensitive.
         credentialsPresent: true,
         credentialsRejected: rejected,
+        // The HTTP status Meta actually returned. A number, not a body: the
+        // body can quote a request containing a phone number, the status
+        // cannot, and "401" is the single most useful fact for whoever has to
+        // decide whether to reissue a token.
+        httpStatus: account.error?.providerCode ?? null,
       },
     };
   }

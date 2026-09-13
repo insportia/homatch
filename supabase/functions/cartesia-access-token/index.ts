@@ -25,6 +25,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { authenticate, serviceClient, json, preflight, checkRateLimit, logEvent } from '../_shared/comm/auth.ts';
 import {
   createCartesiaProvider, cartesiaCredentialsPresent, listCartesiaVoices, synthesizePreview,
+  cloneCartesiaVoice, deleteCartesiaVoice, clipRejectionReason,
 } from '../_shared/comm/cartesia.ts';
 
 /**
@@ -39,6 +40,19 @@ const MINTS_PER_HOUR = 30;
 
 /** Previews synthesise billable audio, so they are counted separately. */
 const PREVIEWS_PER_HOUR = 60;
+
+/** Cloning is slow, billable and rarely repeated. A low ceiling is correct. */
+const CLONES_PER_DAY = 10;
+
+/**
+ * The sentence the customer agrees to, verbatim, and its version.
+ *
+ * Stored WITH each consent row rather than referenced, so changing the
+ * wording later cannot be read backwards onto confirmations already given.
+ */
+const CONSENT_VERSION = '2026-09-13';
+const CONSENT_TEXT =
+  'I confirm that I own this voice or have permission to use it.';
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return preflight();
@@ -64,7 +78,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Read the body once: both the preview action and the mint path need it.
-  let body: { ttlSeconds?: number; scopes?: string[]; action?: string; voiceId?: string; language?: string } = {};
+  let body: {
+    ttlSeconds?: number; scopes?: string[]; action?: string; voiceId?: string; language?: string;
+    name?: string; mime?: string; clipBase64?: string; consent?: boolean;
+    source?: string; description?: string;
+  } = {};
   try { body = await req.json(); } catch { /* an empty body means "the defaults" */ }
 
   /*
@@ -101,6 +119,124 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     logEvent('cartesia-token', 'preview_ok', { model: audio.data.model });
     return json({ ok: true, audioBase64: audio.data.audioBase64, mime: audio.data.mime });
+  }
+
+  /*
+   * CUSTOM VOICE.
+   *
+   * The order below is the feature. Consent is written to the database BEFORE
+   * the provider is contacted, so a clone cannot exist without a record of who
+   * authorised it — including a clone whose provider call then fails, which is
+   * exactly the case where evidence matters most.
+   *
+   * The clip itself is never persisted by Homatch. It is decoded, validated,
+   * streamed to the provider and dropped. A library of voice samples is the
+   * liability this whole flow exists to bound.
+   */
+  if (body.action === 'clone') {
+    const name = String(body.name ?? '').trim();
+    const mime = String(body.mime ?? '').trim();
+    const base64 = String(body.clipBase64 ?? '');
+    const source = body.source === 'RECORD' ? 'RECORD' : 'UPLOAD';
+
+    if (!name) return json({ error: 'name_required', code: 'NAME_REQUIRED' }, 400);
+
+    // Consent is not a field on a form the server trusts loosely. The client
+    // must send the exact confirmation, and anything else is refused outright
+    // rather than defaulted to "yes".
+    if (body.consent !== true) {
+      return json({ error: 'consent_required', code: 'CONSENT_REQUIRED' }, 422);
+    }
+
+    let clip: Uint8Array;
+    try {
+      const binary = atob(base64);
+      clip = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) clip[i] = binary.charCodeAt(i);
+    } catch {
+      return json({ error: 'clip_unreadable', code: 'CLIP_INVALID' }, 400);
+    }
+
+    const rejection = clipRejectionReason(clip.byteLength, mime);
+    if (rejection) return json({ error: rejection, code: rejection.toUpperCase() }, 422);
+
+    const cloneLimit = await checkRateLimit(sb, 'cartesia_voice_clone', CLONES_PER_DAY, 86_400, { userId: caller.userId });
+    if (!cloneLimit.allowed) {
+      return json({ error: 'rate_limited', retryAfter: cloneLimit.retryAfterSeconds }, 429);
+    }
+
+    const { data: consentRow, error: consentErr } = await sb.from('comm_voice_consents').insert({
+      owner_id: caller.userId,
+      voice_name: name,
+      provider: 'CARTESIA',
+      consent_text: CONSENT_TEXT,
+      consent_version: CONSENT_VERSION,
+      source,
+      clip_bytes: clip.byteLength,
+      clip_mime: mime,
+      status: 'PENDING',
+    }).select('id').maybeSingle();
+
+    // No record, no clone. This is the one failure here that must not degrade
+    // into "carry on anyway".
+    if (consentErr || !consentRow) {
+      logEvent('cartesia-token', 'consent_write_failed', { code: consentErr?.code ?? null });
+      return json({ error: 'consent_not_recorded', code: 'CONSENT_NOT_RECORDED' }, 500);
+    }
+
+    const cloned = await cloneCartesiaVoice({
+      clip, mime, name,
+      language: String(body.language ?? 'en'),
+      description: typeof body.description === 'string' ? body.description : undefined,
+    });
+
+    if (!cloned.ok || !cloned.data) {
+      await sb.from('comm_voice_consents').update({
+        status: 'FAILED',
+        failure_reason: cloned.error?.code ?? 'UNKNOWN',
+        updated_at: new Date().toISOString(),
+      }).eq('id', consentRow.id);
+
+      logEvent('cartesia-token', 'clone_failed', {
+        code: cloned.error?.code ?? null,
+        status: cloned.error?.providerCode ?? null,
+        detail: cloned.error?.message ?? null,
+      });
+      return json({ error: 'clone_failed', code: 'CLONE_FAILED' }, 502);
+    }
+
+    await sb.from('comm_voice_consents').update({
+      status: 'READY',
+      provider_voice_id: cloned.data.voiceId,
+      updated_at: new Date().toISOString(),
+    }).eq('id', consentRow.id);
+
+    logEvent('cartesia-token', 'clone_ok', { userId: caller.userId });
+    return json({ ok: true, voiceId: cloned.data.voiceId, name });
+  }
+
+  /*
+   * Removing a custom voice.
+   *
+   * Only a voice this account actually cloned, proved by a consent row. The
+   * provider would happily delete any voice the API key owns, which includes
+   * every other customer's.
+   */
+  if (body.action === 'delete_voice') {
+    const voiceId = String(body.voiceId ?? '').trim();
+    if (!voiceId) return json({ error: 'voice_required' }, 400);
+
+    const { data: owned } = await sb.from('comm_voice_consents')
+      .select('id').eq('owner_id', caller.userId).eq('provider_voice_id', voiceId).limit(1).maybeSingle();
+    if (!owned) return json({ error: 'not_found', code: 'NOT_YOURS' }, 404);
+
+    const removed = await deleteCartesiaVoice(voiceId);
+    if (!removed.ok) {
+      logEvent('cartesia-token', 'voice_delete_failed', { code: removed.error?.code ?? null });
+      return json({ error: 'delete_failed' }, 502);
+    }
+    await sb.from('comm_voice_consents').delete().eq('id', owned.id);
+    return json({ ok: true });
   }
 
   const limit = await checkRateLimit(sb, 'cartesia_token_mint', MINTS_PER_HOUR, 3600, { userId: caller.userId });

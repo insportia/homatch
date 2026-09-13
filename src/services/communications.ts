@@ -22,6 +22,7 @@ import type {
   CommOverviewStats, CommSend, CommTemplate, LaunchPreview, RiskAssessmentRow, TrustSummary,
   AnalyticsFilter, AnalyticsResult, CommunicationsSpend,
   ProviderRouteRow, ProviderReportRow, CommVoiceTuning, AiTalkLimits,
+  ChannelReadinessRow,
 } from '@/types/communications';
 import { customerFacingComplianceLabel } from '@/lib/comm/vocabulary';
 import { parsePhone } from '@/lib/comm/phone';
@@ -228,6 +229,92 @@ function blobUrlFromBase64(base64: string, mime: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Clone a voice from a clip the customer supplied.
+ *
+ * The consent flag is sent explicitly and the server refuses without it; it is
+ * not a default and not something this function can imply. The clip goes to
+ * the server as base64 and is never stored by Homatch — see the comment on
+ * cloneCartesiaVoice for why keeping voice samples is the thing to avoid.
+ */
+export async function cloneVoice(params: {
+  file: File;
+  name: string;
+  language: string;
+  consent: boolean;
+  source?: 'UPLOAD' | 'RECORD';
+}): Promise<
+  | { ok: true; voiceId: string }
+  | { ok: false; reason: 'CONSENT_REQUIRED' | 'TOO_SHORT' | 'TOO_LARGE' | 'UNSUPPORTED_FORMAT' | 'RATE_LIMITED' | 'FAILED' }
+> {
+  if (!params.consent) return { ok: false, reason: 'CONSENT_REQUIRED' };
+
+  const clipBase64 = await fileToBase64(params.file);
+  if (!clipBase64) return { ok: false, reason: 'FAILED' };
+
+  const res = await invoke<{ ok: boolean; voiceId: string }>('cartesia-access-token', {
+    action: 'clone',
+    name: params.name,
+    language: params.language,
+    mime: params.file.type || 'audio/mpeg',
+    clipBase64,
+    consent: true,
+    source: params.source ?? 'UPLOAD',
+  });
+
+  if (!res.ok) {
+    const code = String(res.error ?? '');
+    if (code === 'CONSENT_REQUIRED') return { ok: false, reason: 'CONSENT_REQUIRED' };
+    if (code === 'TOO_SHORT') return { ok: false, reason: 'TOO_SHORT' };
+    if (code === 'TOO_LARGE') return { ok: false, reason: 'TOO_LARGE' };
+    if (code === 'UNSUPPORTED_FORMAT') return { ok: false, reason: 'UNSUPPORTED_FORMAT' };
+    if (res.status === 429) return { ok: false, reason: 'RATE_LIMITED' };
+    return { ok: false, reason: 'FAILED' };
+  }
+  return { ok: true, voiceId: res.data.voiceId };
+}
+
+export async function deleteCustomVoice(voiceId: string): Promise<boolean> {
+  const res = await invoke<{ ok: boolean }>('cartesia-access-token', { action: 'delete_voice', voiceId });
+  return res.ok;
+}
+
+/** The voices this account cloned, with the consent that authorised each. */
+export async function listMyVoices(): Promise<Array<{
+  voiceId: string; name: string; status: string; confirmedAt: string;
+}>> {
+  const uid = await currentUserId();
+  if (!uid) return [];
+  const { data } = await supabase.from('comm_voice_consents')
+    .select('provider_voice_id, voice_name, status, confirmed_at')
+    .eq('owner_id', uid)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return (data ?? [])
+    .filter((r) => r.provider_voice_id)
+    .map((r) => ({
+      voiceId: r.provider_voice_id as string,
+      name: r.voice_name as string,
+      status: r.status as string,
+      confirmedAt: r.confirmed_at as string,
+    }));
+}
+
+function fileToBase64(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () => {
+      const result = String(reader.result ?? '');
+      // readAsDataURL gives "data:<mime>;base64,<payload>"; the server wants
+      // the payload alone.
+      const comma = result.indexOf(',');
+      resolve(comma === -1 ? null : result.slice(comma + 1));
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export async function listVoices(): Promise<Array<{ id: string; name: string; description: string | null; language: string | null }>> {
@@ -1028,13 +1115,13 @@ export async function listRiskAssessments(filter: {
  * not fire three live requests every time.
  */
 export function probeProviders(provider?: string) {
-  return invoke<{ ok: boolean; providers: ProviderReportRow[]; routes: ProviderRouteRow[] }>(
+  return invoke<{ ok: boolean; providers: ProviderReportRow[]; routes: ProviderRouteRow[]; readiness: ChannelReadinessRow[] }>(
     `comm-provider-status${provider ? `?provider=${provider}` : ''}`, {},
   );
 }
 
 export type ProviderStatusResult =
-  | { ok: true; providers: ProviderReportRow[]; routes: ProviderRouteRow[] }
+  | { ok: true; providers: ProviderReportRow[]; routes: ProviderRouteRow[]; readiness: ChannelReadinessRow[] }
   | { ok: false; reason: string };
 
 /**
@@ -1058,8 +1145,15 @@ export async function readProviderStatus(): Promise<ProviderStatusResult> {
           : `comm-provider-status returned ${status ?? 'no response'}`,
     };
   }
-  const payload = data as { providers?: ProviderReportRow[]; routes?: ProviderRouteRow[] } | null;
-  return { ok: true, providers: payload?.providers ?? [], routes: payload?.routes ?? [] };
+  const payload = data as {
+    providers?: ProviderReportRow[]; routes?: ProviderRouteRow[]; readiness?: ChannelReadinessRow[];
+  } | null;
+  return {
+    ok: true,
+    providers: payload?.providers ?? [],
+    routes: payload?.routes ?? [],
+    readiness: payload?.readiness ?? [],
+  };
 }
 
 /**

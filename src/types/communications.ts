@@ -428,6 +428,22 @@ export interface CommunicationsSpend {
  * There is deliberately no field on this type that could hold a secret value,
  * so no component can render one.
  */
+/** One go-live condition, as computed by src/lib/comm/goLive.ts. */
+export interface ReadinessCheckRow {
+  key: string;
+  ok: boolean;
+  /** Admin-only technical detail. Names a credential at most; never a value. */
+  detail: string | null;
+  ownerAction: boolean;
+}
+
+export interface ChannelReadinessRow {
+  channel: 'TELEPHONY' | 'AI_TALK' | 'WHATSAPP' | 'NUMBERS';
+  ready: boolean;
+  blockedBy: string[];
+  checks: ReadinessCheckRow[];
+}
+
 export interface ProviderRouteRow {
   role: string;
   provider: string;

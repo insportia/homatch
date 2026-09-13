@@ -55,6 +55,7 @@ const FILES = [
   'talkAllowance.ts',
   'researchPlan.ts',
   'phone.ts',
+  'goLive.ts',
 ];
 
 /* Pinned, matching package.json. A floating version here would be a second,

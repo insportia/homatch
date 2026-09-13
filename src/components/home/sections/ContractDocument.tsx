@@ -142,11 +142,22 @@ export function ContractDocument({ copy }: { copy: DocumentCopy }) {
             */}
           {!still && !done && (
             <span
-              className="pointer-events-none absolute inset-x-0 z-10 h-16 transition-transform duration-[1100ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
+              className="pointer-events-none absolute inset-x-0 z-10 h-24 transition-transform duration-[1100ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
                 top: 0,
-                transform: `translateY(${[0, 34, 104, 176, 268][Math.min(phase, 4)]}px)`,
-                background: 'linear-gradient(to bottom, hsl(38 88% 54% / 0) 0%, hsl(38 88% 54% / 0.20) 50%, hsl(38 88% 54% / 0) 100%)',
+                transform: `translateY(${[0, 30, 100, 172, 262][Math.min(phase, 4)]}px)`,
+                /*
+                 * A READ EDGE, NOT A WASH.
+                 *
+                 * The first version was a 20% gradient over 64px, which on a
+                 * phone in daylight is indistinguishable from the paper. This
+                 * is a stronger body with a bright 2px line at its leading
+                 * edge — the line is what the eye actually tracks, and it is
+                 * what makes the band read as something travelling rather
+                 * than a patch that fades.
+                 */
+                background:
+                  'linear-gradient(to bottom, hsl(38 88% 54% / 0) 0%, hsl(38 88% 54% / 0.38) 62%, hsl(38 88% 54% / 0.55) 92%, hsl(38 92% 48% / 0.9) 100%)',
               }}
             />
           )}

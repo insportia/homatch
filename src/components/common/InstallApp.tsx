@@ -44,6 +44,47 @@ import {
  * So lib/pwa.ts listens once for the page and every control reads from
  * there. See the note on that store.
  */
+/**
+ * THE PAGE'S INSTALL STATE, FOR ANYONE WHO NEEDS TO LAY OUT AROUND IT.
+ *
+ * The control renders nothing at all in three of its states — unsupported
+ * browser, already running as the app, and muted by an explicit "don't show
+ * me this again". A caller that reserves room for it anyway draws a hole:
+ * the mobile utility strip rendered its divider and a flex-1 gap beside the
+ * language chip, so somebody who had once dismissed the sheet saw a wide
+ * empty rectangle where the button used to be.
+ *
+ * So the state is readable BEFORE the control is rendered, from the same
+ * store the control itself reads. One source, so the strip and the button
+ * cannot disagree about whether there is anything to show.
+ */
+export function useInstallMode(): InstallMode {
+  const [, restate] = useReducer((n: number) => n + 1, 0);
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    restate();
+    return watchInstall(restate);
+  }, []);
+  // Kept so a mute performed in one control collapses the other immediately.
+  useEffect(() => {
+    const id = window.setInterval(() => setMuted(wasMuted()), 2000);
+    return () => window.clearInterval(id);
+  }, []);
+  return resolveInstallMode({
+    standalone: isStandalone(),
+    hasNativePrompt: heldInstallPrompt() !== null,
+    iosSafari: isIOSSafari(),
+    installable: canInstall(),
+    muted: muted || wasMuted(),
+    installed: installedInThisTab(),
+  });
+}
+
+/** Is there an app action worth giving room to? */
+export function hasInstallAction(mode: InstallMode): boolean {
+  return mode !== 'unavailable' && mode !== 'standalone';
+}
+
 export function InstallApp({
   compact = false, tone = 'auto', variant = 'pill', className = '',
 }: {

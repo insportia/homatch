@@ -6,7 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
-import { InstallApp } from '@/components/common/InstallApp';
+import { InstallApp, useInstallMode, hasInstallAction } from '@/components/common/InstallApp';
 import { PAGE } from '@/components/home/sections/primitives';
 import { useFieldProps, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
@@ -74,6 +74,10 @@ export function PublicHeader(props: { links: HeaderLink[]; solid?: boolean }) {
 }
 
 function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boolean }) {
+  /* Read BEFORE laying out, so the strip never reserves room for a control
+     that is about to render nothing. See useInstallMode. */
+  const installMode = useInstallMode();
+  const canOfferApp = hasInstallAction(installMode);
   const { session } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -312,8 +316,21 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
         */}
       {!open && (
         <div className={`${PAGE} lg:hidden`}>
+          {/*
+            * `inline-flex`, not a full-width row.
+            *
+            * When the app control has nothing to offer -- an unsupported
+            * browser, already running as the installed app, or an explicit
+            * "don't show me this again" -- it renders nothing, and a
+            * full-width strip was left drawing a divider and a wide empty
+            * rectangle next to the language chip. That is the blank field.
+            * Sized to its contents, the strip is simply a language control
+            * when that is all there is.
+            */}
           <div
-            className={`mb-2 flex items-center gap-2 rounded-[0.9rem] border p-1.5 ${
+            className={`mb-2 inline-flex max-w-full items-center gap-2 rounded-[0.9rem] border p-1.5 ${
+              canOfferApp ? 'flex w-full' : ''
+            } ${
               onDark
                 ? 'border-white/15 bg-white/[0.07] backdrop-blur-sm'
                 : 'border-border bg-card/95 backdrop-blur-sm'
@@ -324,16 +341,17 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
               compact
               triggerClassName={`h-10 shrink-0 px-3 ${onDark ? 'text-white hover:bg-white/10' : ''}`}
             />
-            <span
-              className={`h-5 w-px shrink-0 ${onDark ? 'bg-white/20' : 'bg-border'}`}
-              aria-hidden="true"
-            />
-            {/* Takes the rest of the row, so a long Georgian or Russian label
-                has somewhere to go instead of squeezing the language code. */}
-            <InstallApp
-              tone={onDark ? 'dark' : 'auto'}
-              className="min-w-0 flex-1"
-            />
+            {canOfferApp && (
+              <>
+                <span
+                  className={`h-5 w-px shrink-0 ${onDark ? 'bg-white/20' : 'bg-border'}`}
+                  aria-hidden="true"
+                />
+                {/* Takes the rest of the row, so a long Georgian or Russian
+                    label has somewhere to go instead of squeezing the code. */}
+                <InstallApp tone={onDark ? 'dark' : 'auto'} className="min-w-0 flex-1" />
+              </>
+            )}
           </div>
         </div>
       )}

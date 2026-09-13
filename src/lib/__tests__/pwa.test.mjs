@@ -259,10 +259,44 @@ test('the control is reachable from every surface it should be', () => {
 
 test('the install control is visible at rest, not on hover', () => {
   // On the black hero it was a dark hairline over near-black — invisible
-  // until a hover background introduced it.
+  // until a hover background introduced it. Both tones must paint something.
   const src = readFileSync('src/components/common/InstallApp.tsx', 'utf8');
-  assert.match(src, /bg-white\/12 text-white ring-1 ring-inset ring-white\/30/, 'dark tone has its own surface');
+  assert.match(src, /bg-white\/\[0?\.\d+\] text-white ring-1 ring-inset/, 'dark tone has its own surface');
   assert.match(src, /bg-gold-soft text-gold-ink ring-1 ring-inset/, 'light tone has its own surface');
+});
+
+test('no opacity modifier names a rule Tailwind will not generate', () => {
+  /*
+   * THE TEST THAT SHOULD HAVE EXISTED.
+   *
+   * The previous version of the test above pinned the literal `bg-white/12`
+   * — and `/12` is not on Tailwind's opacity scale, which goes in fives. It
+   * generates NOTHING. So the button was fully transparent on every dark
+   * surface it ever appeared on, and the test asserting its appearance was
+   * pinning the bug in place.
+   *
+   * A dead utility class fails silently and looks exactly like a design
+   * choice, so this checks the whole family rather than one string: every
+   * `/NN` must be on the scale, and anything else must be an arbitrary
+   * value in brackets, which always generates.
+   */
+  const files = [
+    'src/components/common/InstallApp.tsx',
+    'src/components/home/PublicHeader.tsx',
+    'src/components/home/sections/ContractDocument.tsx',
+  ];
+  const bad = [];
+  for (const file of files) {
+    // Comments discuss the broken class by name; only real classes count.
+    const src = readFileSync(file, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*/g, '');
+    for (const m of src.matchAll(/(?:bg|text|border|ring|from|to|via|shadow)-[a-z-]+[/](\d+)(?![\d])/g)) {
+      if (Number(m[1]) % 5 !== 0) bad.push(`${file}: ${m[0]}`);
+    }
+  }
+  assert.deepEqual(bad, [],
+    `these classes name no Tailwind rule and generate nothing: ${bad.join(', ')}`);
 });
 
 /*

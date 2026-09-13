@@ -146,6 +146,38 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('eyebrow', 'studio_f_eyebrow', 'mp_launch_eyebrow'),
       f('title', 'studio_f_title', 'mp_launch_title'),
       f('body', 'studio_f_body', 'mp_launch_sub', 'textarea'),
+      /* THE SIX TILES. Title, subtext and call to action for each — the
+         menu labels, menu subtext and CTA copy that were hardcoded, and
+         that an admin could see on the page but not change. Each falls
+         back to the reviewed key it always used. */
+      f('tile_verify_t', 'mp_tile_verify_t', 'mp_tile_verify_t'),
+      f('tile_verify_d', 'mp_tile_verify_d', 'mp_tile_verify_d', 'textarea'),
+      f('tile_verify_a', 'mp_launch_verify_go', 'mp_launch_verify_go'),
+      f('tile_contract_t', 'mp_contract_title', 'mp_contract_title'),
+      f('tile_contract_d', 'mp_tile_contract_d', 'mp_tile_contract_d', 'textarea'),
+      f('tile_contract_a', 'mp_contract_cta', 'mp_contract_cta'),
+      f('tile_match_t', 'mp_tile_match_t', 'mp_tile_match_t'),
+      f('tile_match_d', 'mp_tile_match_d', 'mp_tile_match_d', 'textarea'),
+      f('tile_match_a', 'mp_match_cta', 'mp_match_cta'),
+      f('tile_mortgage_t', 'mp_mortgage_title', 'mp_mortgage_title'),
+      f('tile_mortgage_d', 'mp_tile_mortgage_d', 'mp_tile_mortgage_d', 'textarea'),
+      f('tile_mortgage_a', 'mp_mortgage_cta', 'mp_mortgage_cta'),
+      f('tile_calls_t', 'call_center_title', 'call_center_title'),
+      f('tile_calls_d', 'mp_tile_calls_d', 'mp_tile_calls_d', 'textarea'),
+      f('tile_calls_a', 'mp_calls_cta', 'mp_calls_cta'),
+      f('tile_email_t', 'mp_email_title', 'mp_email_title'),
+      f('tile_email_d', 'mp_tile_email_d', 'mp_tile_email_d', 'textarea'),
+      f('tile_email_a', 'mp_email_cta', 'mp_email_cta'),
+    ],
+    /* And the icon on each tile. Unset keeps the drawn glyph the tile
+       shipped with; choosing one replaces it from the curated set. */
+    icons: [
+      { slot: 'tile_verify', labelKey: 'mp_tile_verify_t' },
+      { slot: 'tile_contract', labelKey: 'mp_contract_title' },
+      { slot: 'tile_match', labelKey: 'mp_tile_match_t' },
+      { slot: 'tile_mortgage', labelKey: 'mp_mortgage_title' },
+      { slot: 'tile_calls', labelKey: 'call_center_title' },
+      { slot: 'tile_email', labelKey: 'mp_email_title' },
     ],
     media: [],
   },

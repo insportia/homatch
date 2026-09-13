@@ -37,6 +37,12 @@ import { spawnSync } from 'node:child_process';
  *                   check and the fixture shape check. The isolation one is a
  *                   security gate, and a gate you have to remember to run
  *                   separately is not enforced.
+ *   supabase/functions/
+ *                   pure helpers in edge code. Added because a test written
+ *                   beside llm.ts ran zero times and reported nothing: the
+ *                   suite said 2060 passed both before and after it was
+ *                   added, which is exactly as useless as not writing it.
+ *                   Edge code that can be tested without Deno should be.
  *
  * The browser SWEEP itself (tests/browser/commSurfaces.test.mjs) is excluded:
  * it needs a harness build and a real Chrome, takes minutes, and skips without
@@ -44,7 +50,7 @@ import { spawnSync } from 'node:child_process';
  * It has its own command, `npm run test:surfaces`, exactly as tests/mobile/
  * has `npm run test:mobile`.
  */
-const ROOTS = ['src', 'tests/matrix', 'tests/browser'];
+const ROOTS = ['src', 'tests/matrix', 'tests/browser', 'supabase/functions'];
 const EXCLUDE = [/commSurfaces\.test\.mjs$/];
 const files = [];
 

@@ -184,7 +184,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // nobody ever saw a 401. Non-200 is enough: the check fails either way.
       return reach === null ? null : reach ? 200 : 0;
     }
-    if (r.health === 'HEALTHY' || r.health === 'DISABLED') return 200;
+    // DEGRADED belongs here for the same reason it belongs in healthyish:
+    // Meta accepted the token and answered. What is degraded is the webhook
+    // configuration, which has its own two checks — VERIFY_TOKEN and
+    // APP_SECRET — and those are the ones that should be red.
+    //
+    // Without DEGRADED in this list, a working token fell through to
+    // facts.httpStatus, which is only ever written on the FAILURE path, and
+    // TOKEN_ACCEPTED read "not probed" immediately after a successful probe.
+    if (r.health === 'HEALTHY' || r.health === 'DEGRADED' || r.health === 'DISABLED') return 200;
     const s = (r.facts as { httpStatus?: number | null } | null)?.httpStatus;
     return typeof s === 'number' ? s : null;
   };

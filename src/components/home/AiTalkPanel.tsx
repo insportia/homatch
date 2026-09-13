@@ -52,6 +52,7 @@ const STATE_KEY = {
   ENDED: 'talk_state_ended',
   LIMIT_REACHED: 'talk_state_limit_reached',
   MIC_DENIED: 'talk_state_mic_denied',
+  MIC_UNAVAILABLE: 'talk_state_mic_unavailable',
   PROVIDER_ERROR: 'talk_state_provider_error',
 } satisfies Record<VoiceState, string>;
 
@@ -69,6 +70,7 @@ function toneOf(state: VoiceState): { dot: string; chip: string; beat: boolean }
     case 'RECONNECTING':
       return { dot: 'bg-amber-300', chip: 'bg-amber-300/10 text-amber-200', beat: true };
     case 'MIC_DENIED':
+    case 'MIC_UNAVAILABLE':
     case 'PROVIDER_ERROR':
       return { dot: 'bg-rose-400', chip: 'bg-rose-400/10 text-rose-200', beat: false };
     case 'ENDED':
@@ -241,7 +243,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-3 py-3 sm:px-4">
-        {state === 'IDLE' || state === 'ENDED' || state === 'LIMIT_REACHED' || state === 'MIC_DENIED' || state === 'PROVIDER_ERROR' ? (
+        {state === 'IDLE' || state === 'ENDED' || state === 'LIMIT_REACHED' || state === 'MIC_DENIED' || state === 'MIC_UNAVAILABLE' || state === 'PROVIDER_ERROR' ? (
           <RestingFace
             state={state}
             onStart={() => void start()}
@@ -292,10 +294,11 @@ function RestingFace({
     ENDED: 'talk_ended_body',
     LIMIT_REACHED: 'talk_limit_body',
     MIC_DENIED: 'talk_mic_denied_body',
+    MIC_UNAVAILABLE: 'talk_mic_unavailable_body',
     PROVIDER_ERROR: 'talk_unavailable_body',
   };
 
-  const unavailable = state === 'PROVIDER_ERROR' || state === 'MIC_DENIED';
+  const unavailable = state === 'PROVIDER_ERROR' || state === 'MIC_DENIED' || state === 'MIC_UNAVAILABLE';
   const finished = state === 'ENDED' || state === 'LIMIT_REACHED';
 
   const sf = useSectionField();

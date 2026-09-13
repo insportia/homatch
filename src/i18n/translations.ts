@@ -4747,6 +4747,9 @@ const en = {
   testcall_blocked: "Calling is not activated for this workspace yet.",
   testcall_blocked_admin: "An administrator can see the exact blockers in Admin → Providers.",
   testcall_bad_number: "That number could not be read. Include the country code.",
+  talk_state_mic_unavailable: "Microphone unavailable",
+  talk_mic_unavailable_body: "No working microphone was found. Check that one is connected and not in use by another app, then try again.",
+  comm_test_mic_unavailable: "No working microphone was found. Check that one is connected and not in use by another app.",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -9412,6 +9415,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   testcall_blocked: "ამ სამუშაო სივრცისთვის დარეკვა ჯერ არ არის გააქტიურებული.",
   testcall_blocked_admin: "ადმინისტრატორს ზუსტი დამაბრკოლებლები ხედავს Admin → Providers-ში.",
   testcall_bad_number: "ეს ნომერი ვერ წაიკითხა. მიუთითეთ ქვეყნის კოდი.",
+  talk_state_mic_unavailable: "მიკროფონი მიუწვდომელია",
+  talk_mic_unavailable_body: "მოქმედი მიკროფონი ვერ მოიძებნა. შეამოწმეთ, არის თუ არა შეერთებული და არ იყენებს თუ არა სხვა აპლიკაცია, შემდეგ სცადეთ ხელახლა.",
+  comm_test_mic_unavailable: "მოქმედი მიკროფონი ვერ მოიძებნა. შეამოწმეთ, არის თუ არა შეერთებული და არ იყენებს თუ არა სხვა აპლიკაცია.",
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -14068,6 +14074,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   testcall_blocked: "Звонки для этого рабочего пространства ещё не активированы.",
   testcall_blocked_admin: "Администратор видит точные причины в Admin → Providers.",
   testcall_bad_number: "Не удалось распознать номер. Укажите код страны.",
+  talk_state_mic_unavailable: "Микрофон недоступен",
+  talk_mic_unavailable_body: "Рабочий микрофон не найден. Проверьте, подключён ли он и не занят ли другим приложением, затем повторите.",
+  comm_test_mic_unavailable: "Рабочий микрофон не найден. Проверьте, подключён ли он и не занят ли другим приложением.",
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -18722,6 +18731,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   testcall_blocked: "Bu çalışma alanı için arama henüz etkinleştirilmedi.",
   testcall_blocked_admin: "Bir yönetici tam engelleri Admin → Providers bölümünde görebilir.",
   testcall_bad_number: "Bu numara okunamadı. Ülke kodunu ekleyin.",
+  talk_state_mic_unavailable: "Mikrofon kullanılamıyor",
+  talk_mic_unavailable_body: "Çalışan bir mikrofon bulunamadı. Bağlı olduğundan ve başka bir uygulama tarafından kullanılmadığından emin olup tekrar deneyin.",
+  comm_test_mic_unavailable: "Çalışan bir mikrofon bulunamadı. Bağlı olduğundan ve başka bir uygulama tarafından kullanılmadığından emin olun.",
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -23376,6 +23388,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   testcall_blocked: "لم يتم تفعيل الاتصال لمساحة العمل هذه بعد.",
   testcall_blocked_admin: "يمكن للمسؤول رؤية العوائق الدقيقة في Admin ← Providers.",
   testcall_bad_number: "تعذّر قراءة الرقم. أدرج رمز الدولة.",
+  talk_state_mic_unavailable: "الميكروفون غير متاح",
+  talk_mic_unavailable_body: "لم يُعثر على ميكروفون يعمل. تأكد من توصيله وعدم استخدامه من تطبيق آخر، ثم حاول مرة أخرى.",
+  comm_test_mic_unavailable: "لم يُعثر على ميكروفون يعمل. تأكد من توصيله وعدم استخدامه من تطبيق آخر.",
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -28030,6 +28045,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   testcall_blocked: "ההתקשרות עדיין לא הופעלה עבור מרחב העבודה הזה.",
   testcall_blocked_admin: "מנהל יכול לראות את החסמים המדויקים ב-Admin ← Providers.",
   testcall_bad_number: "לא ניתן לקרוא את המספר. כללו קידומת מדינה.",
+  talk_state_mic_unavailable: "המיקרופון אינו זמין",
+  talk_mic_unavailable_body: "לא נמצא מיקרופון פעיל. ודאו שהוא מחובר ואינו בשימוש ביישום אחר, ונסו שוב.",
+  comm_test_mic_unavailable: "לא נמצא מיקרופון פעיל. ודאו שהוא מחובר ואינו בשימוש ביישום אחר.",
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

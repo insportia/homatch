@@ -968,10 +968,14 @@ function TestStep({
         <p className="text-[13px] text-muted-foreground">{t('comm_test_subtitle')}</p>
       </div>
 
-      {state === 'MIC_DENIED' ? (
+      {state === 'MIC_DENIED' || state === 'MIC_UNAVAILABLE' ? (
         <Alert variant="destructive">
           <MicOff className="h-4 w-4" />
-          <AlertDescription className="text-xs">{t('comm_test_mic_denied')}</AlertDescription>
+          <AlertDescription className="text-xs">
+            {/* Two different problems, two different instructions. "Allow the
+                microphone" is useless advice to somebody who has none. */}
+            {t(state === 'MIC_DENIED' ? 'comm_test_mic_denied' : 'comm_test_mic_unavailable')}
+          </AlertDescription>
         </Alert>
       ) : null}
 

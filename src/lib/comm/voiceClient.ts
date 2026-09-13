@@ -34,10 +34,50 @@ import {
   type TranscriptTurn, type LanguageState, type EndpointConfig, type LatencyMarks,
 } from './transcript.ts';
 
+
+/**
+ * Why the microphone could not be opened, in terms a person can act on.
+ *
+ * The DOM names are precise and the advice differs completely between them:
+ * NotAllowed means "say yes", NotFound means "there is no microphone",
+ * NotReadable means "something else is holding it, close it".
+ */
+export type MicFailure = 'MIC_DENIED' | 'MIC_MISSING' | 'MIC_BUSY' | 'MIC_TIMEOUT' | 'AUDIO_UNAVAILABLE';
+
+function classifyMicError(e: unknown): MicFailure {
+  const err = e as { name?: string; message?: string } | null;
+  if (err?.message === 'MIC_TIMEOUT') return 'MIC_TIMEOUT';
+  switch (err?.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+    case 'PermissionDeniedError':
+      return 'MIC_DENIED';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'MIC_MISSING';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'MIC_BUSY';
+    default:
+      return 'AUDIO_UNAVAILABLE';
+  }
+}
+
+/** Reject with `label` if the promise has not settled in time. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(label)), ms);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (err) => { window.clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 export type VoiceState =
   | 'IDLE' | 'CONNECTING' | 'LISTENING' | 'UNDERSTANDING' | 'RESPONDING'
   | 'INTERRUPTED' | 'RECONNECTING' | 'ENDED' | 'LIMIT_REACHED'
-  | 'MIC_DENIED' | 'PROVIDER_ERROR';
+  | 'MIC_DENIED' | 'MIC_UNAVAILABLE' | 'PROVIDER_ERROR';
 
 export interface VoiceGrant {
   token: string;
@@ -108,13 +148,28 @@ export class VoiceSession {
   async start(): Promise<void> {
     this.setState('CONNECTING');
     try {
-      await this.openMicrophone();
+      /*
+       * getUserMedia CAN HANG FOREVER, AND DID.
+       *
+       * It resolves when the browser decides, and the browser may never
+       * decide: a permission prompt left open, a device another application
+       * is holding, a virtual device that never initialises. There was no
+       * timeout here, so "Connecting" was a terminal state — the control span
+       * and nothing ever contradicted it. Observed on a machine with no
+       * microphone at all.
+       *
+       * Thirty seconds is deliberately generous: a person reading a
+       * permission dialog is not stuck, and cutting them off at five would
+       * turn a normal grant into a failure.
+       */
+      await withTimeout(this.openMicrophone(), 30_000, 'MIC_TIMEOUT');
     } catch (e) {
-      // A refused microphone is a normal outcome with its own screen, not an
-      // error state to be logged and forgotten (§98 case B).
-      const denied = (e as Error)?.name === 'NotAllowedError' || (e as Error)?.name === 'SecurityError';
-      this.setState(denied ? 'MIC_DENIED' : 'PROVIDER_ERROR', (e as Error)?.message);
-      this.cb.onError?.(denied ? 'MIC_DENIED' : 'AUDIO_UNAVAILABLE');
+      // Each of these is a different thing to tell somebody, and they used to
+      // collapse into two. "Allow the microphone" is useless advice to a
+      // person who has no microphone.
+      const reason = classifyMicError(e);
+      this.setState(reason === 'MIC_DENIED' ? 'MIC_DENIED' : 'MIC_UNAVAILABLE', (e as Error)?.message);
+      this.cb.onError?.(reason);
       return;
     }
 
@@ -167,7 +222,7 @@ export class VoiceSession {
     await this.audioContext?.close().catch(() => { /* already closed */ });
     this.audioContext = null;
 
-    if (this.state !== 'LIMIT_REACHED' && this.state !== 'MIC_DENIED') {
+    if (this.state !== 'LIMIT_REACHED' && this.state !== 'MIC_DENIED' && this.state !== 'MIC_UNAVAILABLE') {
       this.setState('ENDED', reason);
     }
   }

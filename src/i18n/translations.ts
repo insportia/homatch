@@ -4704,6 +4704,12 @@ const en = {
   comms_numbers_buy_title: "Getting a new number",
   comms_numbers_buy_body: "Buying a number from inside Homatch is not switched on for this workspace yet. Your existing numbers keep working, and an administrator can connect more.",
   comms_numbers_capability_note: "A number can only do what its provider confirms it can do. A voice number is not automatically usable on WhatsApp.",
+  comms_agent_ready_title: "Agent published",
+  comms_agent_ready_body: "It is ready to use. Most people test it first, then point it at a list.",
+  comms_next_test: "Test this agent",
+  comms_next_campaign: "Create a campaign with it",
+  comms_next_contacts: "Add or import contacts",
+  comms_next_later: "Not now",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -9326,6 +9332,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   comms_numbers_buy_title: "ახალი ნომრის მიღება",
   comms_numbers_buy_body: "ნომრის ყიდვა უშუალოდ Homatch-იდან ამ სამუშაო სივრცისთვის ჯერ არ არის ჩართული. თქვენი არსებული ნომრები მუშაობს და ადმინისტრატორს შეუძლია დაამატოს სხვა.",
   comms_numbers_capability_note: "ნომერს მხოლოდ ის შეუძლია, რასაც პროვაიდერი ადასტურებს. ხმოვანი ნომერი ავტომატურად არ გამოდგება WhatsApp-ისთვის.",
+  comms_agent_ready_title: "აგენტი გამოქვეყნდა",
+  comms_agent_ready_body: "ის მზადაა გამოსაყენებლად. ჩვეულებრივ ჯერ ტესტავენ, შემდეგ კი სიაზე მიმართავენ.",
+  comms_next_test: "აგენტის ტესტირება",
+  comms_next_campaign: "კამპანიის შექმნა მასთან ერთად",
+  comms_next_contacts: "კონტაქტების დამატება ან იმპორტი",
+  comms_next_later: "ახლა არა",
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -13939,6 +13951,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   comms_numbers_buy_title: "Получение нового номера",
   comms_numbers_buy_body: "Покупка номера прямо в Homatch для этого рабочего пространства пока не включена. Существующие номера продолжают работать, а администратор может подключить новые.",
   comms_numbers_capability_note: "Номер может только то, что подтверждает его провайдер. Голосовой номер не становится автоматически пригодным для WhatsApp.",
+  comms_agent_ready_title: "Агент опубликован",
+  comms_agent_ready_body: "Он готов к работе. Обычно его сначала тестируют, а затем направляют на список.",
+  comms_next_test: "Протестировать агента",
+  comms_next_campaign: "Создать кампанию с ним",
+  comms_next_contacts: "Добавить или импортировать контакты",
+  comms_next_later: "Не сейчас",
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -18550,6 +18568,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   comms_numbers_buy_title: "Yeni numara edinme",
   comms_numbers_buy_body: "Numarayı doğrudan Homatch üzerinden satın alma bu çalışma alanı için henüz açık değil. Mevcut numaralarınız çalışmaya devam eder ve yönetici yenilerini bağlayabilir.",
   comms_numbers_capability_note: "Bir numara yalnızca sağlayıcısının onayladığı işlevleri yapabilir. Sesli bir numara otomatik olarak WhatsApp’ta kullanılamaz.",
+  comms_agent_ready_title: "Temsilci yayımlandı",
+  comms_agent_ready_body: "Kullanıma hazır. Çoğu kişi önce test eder, sonra bir listeye yönlendirir.",
+  comms_next_test: "Bu temsilciyi test et",
+  comms_next_campaign: "Bununla kampanya oluştur",
+  comms_next_contacts: "Kişi ekle veya içe aktar",
+  comms_next_later: "Şimdi değil",
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -23161,6 +23185,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   comms_numbers_buy_title: "الحصول على رقم جديد",
   comms_numbers_buy_body: "شراء رقم من داخل Homatch غير مُفعَّل بعد في مساحة العمل هذه. تظل أرقامك الحالية تعمل، ويمكن للمسؤول ربط أرقام أخرى.",
   comms_numbers_capability_note: "لا يستطيع الرقم سوى ما يؤكده مزوّده. الرقم الصوتي ليس صالحًا تلقائيًا للاستخدام على واتساب.",
+  comms_agent_ready_title: "تم نشر الوكيل",
+  comms_agent_ready_body: "إنه جاهز للاستخدام. يختبره معظم الناس أولًا، ثم يوجّهونه إلى قائمة.",
+  comms_next_test: "اختبر هذا الوكيل",
+  comms_next_campaign: "أنشئ حملة باستخدامه",
+  comms_next_contacts: "أضف جهات اتصال أو استوردها",
+  comms_next_later: "ليس الآن",
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -27772,6 +27802,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   comms_numbers_buy_title: "קבלת מספר חדש",
   comms_numbers_buy_body: "רכישת מספר מתוך Homatch עדיין אינה מופעלת במרחב העבודה הזה. המספרים הקיימים ממשיכים לפעול, ומנהל יכול לחבר נוספים.",
   comms_numbers_capability_note: "מספר יכול לבצע רק את מה שהספק שלו מאשר. מספר קולי אינו שמיש אוטומטית בוואטסאפ.",
+  comms_agent_ready_title: "הסוכן פורסם",
+  comms_agent_ready_body: "הוא מוכן לשימוש. רוב האנשים בודקים אותו קודם, ואז מפנים אותו לרשימה.",
+  comms_next_test: "בדיקת הסוכן",
+  comms_next_campaign: "יצירת קמפיין איתו",
+  comms_next_contacts: "הוספה או ייבוא של אנשי קשר",
+  comms_next_later: "לא עכשיו",
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

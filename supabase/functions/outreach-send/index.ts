@@ -57,9 +57,18 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
+    /*
+     * The AUTH id owns the row, not the profile id.
+     *
+     * outreach_sends.owner_id carries no foreign key, so writing
+     * public.users.id here did not fail — it produced send records that the
+     * owner's own SELECT policy (owner_id = auth.uid()) does not match, i.e.
+     * a campaign history invisible to the person whose campaign it was. The
+     * profile lookup stays as the check that this caller is a customer.
+     */
     const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
     if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
-    const ownerId = profileRow.id;
+    const ownerId = user.id;
 
     const { campaign_id } = await req.json();
     if (!campaign_id) return new Response(JSON.stringify({ error: 'campaign_id required' }), { status: 400, headers: corsHeaders });

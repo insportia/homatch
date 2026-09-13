@@ -94,9 +94,24 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
+    /*
+     * WHICH ID OWNS AN IMPORTED CONTACT.
+     *
+     * This used to resolve public.users.id and write that into
+     * outreach_contacts.owner_id. That column has a foreign key to
+     * auth.users(id), and public.users.id is not an auth.users id — it is a
+     * separate primary key — so every import failed the constraint. The table
+     * held zero rows, which is what that looks like from the outside.
+     *
+     * The profile row is still required, because a caller with no profile is
+     * not a customer of this product and should not be importing anything.
+     * But the owner written is the AUTH id: the one the foreign key demands
+     * and the one the RLS policy now matches, so an imported contact is
+     * visible to the person who imported it.
+     */
     const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
     if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
-    const ownerId = profileRow.id;
+    const ownerId = user.id;
 
     const {
       list_id,

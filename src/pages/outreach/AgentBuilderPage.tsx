@@ -20,6 +20,7 @@ import {
   Bot, MessageSquareText, BookOpen, AudioLines, ClipboardCheck,
 } from 'lucide-react';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import { useAssistantContext } from '@/components/assistant/AssistantContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,9 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -73,9 +77,34 @@ export default function AgentBuilderPage() {
   const [rough, setRough] = useState('');
   const [preview, setPreview] = useState<{ summary: Record<string, unknown>; systemPrompt: string } | null>(null);
   const [hasTested, setHasTested] = useState(false);
+  const [published, setPublished] = useState(false);
 
   const step = (params.get('step') ?? 'identity') as typeof STEPS[number]['id'];
   const stepIndex = Math.max(0, STEPS.findIndex((s) => s.id === step));
+
+  /*
+   * Tell the assistant what this page is, so "what should I write here?" has
+   * something to answer about — and so its answer has somewhere to go.
+   *
+   * Only the wizard's own state travels: which step, which template, how many
+   * languages. No contact, no transcript, no credential.
+   */
+  const patchRef = useRef<(p: Partial<CommAgent>) => void>(() => {});
+  useAssistantContext({
+    surface: 'agent-builder',
+    title: t('comm_agents_title'),
+    step: t(STEPS[stepIndex]?.labelKey as TKey),
+    facts: {
+      template: draft.template_code ?? null,
+      languages: (draft.languages ?? []).join(',') || null,
+      hasPurpose: draft.purpose?.trim() ? 'yes' : 'no',
+      voiceChosen: draft.voice_id ? 'yes' : 'no',
+    },
+    fields: [
+      { key: 'purpose', label: t('comm_agent_purpose'), apply: (v) => patchRef.current({ purpose: v }) },
+      { key: 'introduction', label: t('comm_agent_intro'), apply: (v) => patchRef.current({ introduction: v }) },
+    ],
+  });
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -97,6 +126,10 @@ export default function AgentBuilderPage() {
   const patch = useCallback((next: Partial<CommAgent>) => {
     setDraft((d) => ({ ...d, ...next }));
   }, []);
+
+  /* The assistant's Insert actions are registered above `patch` exists, so
+   * they go through a ref rather than capturing a stale closure. */
+  patchRef.current = patch;
 
   const save = useCallback(async (): Promise<boolean> => {
     if (!id) return false;
@@ -202,7 +235,15 @@ export default function AgentBuilderPage() {
       }
       toast.success(t('comm_publish_done').replace('{v}', String(result.data.version)));
       await load();
-      navigate('/outreach/agents');
+      /*
+       * Publishing used to end at /outreach/agents — a list, with no
+       * indication of what the agent was for or what to do with it next. An
+       * agent exists in order to call a list of people, and the two things
+       * standing between here and that are a test and a campaign. So say so,
+       * rather than returning the customer to a table and letting them work it
+       * out.
+       */
+      setPublished(true);
     } finally {
       setPublishing(false);
     }
@@ -292,6 +333,51 @@ export default function AgentBuilderPage() {
               )}
             </div>
           </div>
+
+          {/* Publishing is not the end of a task, it is the middle of one. */}
+          <Dialog open={published} onOpenChange={setPublished}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-base">
+                  <Check className="h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+                  {t('comms_agent_ready_title')}
+                </DialogTitle>
+                <DialogDescription className="text-[13px] leading-snug [overflow-wrap:anywhere]">
+                  {t('comms_agent_ready_body')}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-2">
+                <Button
+                  className="w-full justify-start gap-2"
+                  onClick={() => { setPublished(false); setParams({ step: 'test' }, { replace: true }); }}
+                >
+                  <Mic className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {t('comms_next_test')}
+                </Button>
+                <Button
+                  variant="outline" className="w-full justify-start gap-2"
+                  onClick={() => navigate(`/outreach/campaigns/new?agent=${id}&channel=AI_CALL`)}
+                >
+                  <MessageSquareText className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {t('comms_next_campaign')}
+                </Button>
+                <Button
+                  variant="outline" className="w-full justify-start gap-2"
+                  onClick={() => navigate('/outreach/contacts')}
+                >
+                  <BookOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {t('comms_next_contacts')}
+                </Button>
+                <Button
+                  variant="ghost" size="sm" className="w-full"
+                  onClick={() => { setPublished(false); navigate('/outreach/agents'); }}
+                >
+                  {t('comms_next_later')}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
     </CommsWorkspace>
   );

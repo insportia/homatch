@@ -28,9 +28,19 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
+    /*
+     * The AUTH id owns the row, not the profile id.
+     *
+     * outreach_campaigns.owner_id is a foreign key to auth.users(id), and the
+     * owner RLS policy matches auth.uid(). Writing public.users.id here — a
+     * different primary key on a different table — failed the constraint and,
+     * where a constraint was absent, produced rows the owner could not read
+     * back. The profile is still required, because a caller without one is not
+     * a customer of this product.
+     */
     const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
     if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
-    const ownerId = profileRow.id;
+    const ownerId = user.id;
 
     const body = await req.json();
     const {

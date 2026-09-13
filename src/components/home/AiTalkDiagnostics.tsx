@@ -121,6 +121,11 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
           : `batch${d.liveFellBack ? ` — fell back: ${d.liveFellBack}` : ''}`}
         tone={d.liveMode === 'live' ? 'good' : 'idle'}
       />
+      <Row
+        label="Voice refused"
+        value={d.voiceFailure ?? '—'}
+        tone={d.voiceFailure ? 'bad' : 'idle'}
+      />
       <Row label="Last error" value={d.lastError ?? 'none'} tone={d.lastError ? 'bad' : 'good'} />
 
       {d.lastTranscript ? (

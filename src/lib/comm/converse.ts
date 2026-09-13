@@ -133,7 +133,12 @@ function toConverseEvent(name: string, data: Record<string, unknown>): ConverseE
         }
         : null;
     case 'voiceless':
-      return { type: 'voiceless', reason: str(data.reason) };
+      return {
+        type: 'voiceless',
+        reason: str(data.reason),
+        providerCode: str(data.providerCode),
+        providerStatus: num(data.providerStatus),
+      };
     case 'state':
       return 'state' in data ? { type: 'state', state: data.state } : null;
     case 'done':

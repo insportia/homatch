@@ -536,7 +536,11 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
        * The drain below runs as its own task. It sends each piece the moment
        * that piece is ready, in order, while the model is still writing.
        */
-      const spoken: Array<Promise<{ index: number; pcmBase64: string | null; ms: number }>> = [];
+      const spoken: Array<Promise<{
+        index: number; pcmBase64: string | null; ms: number;
+        code: string | null; status: number | null;
+      }>> = [];
+      let voiceFailure: { code: string | null; status: number | null } | null = null;
       let llmFinished = false;
       let wake: (() => void) | null = null;
       const nudge = () => { const w = wake; wake = null; w?.(); };
@@ -552,6 +556,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             index,
             pcmBase64: out.ok && out.data ? out.data.pcmBase64 : null,
             ms: Date.now() - at,
+            code: out.ok ? null : (out.error?.code ?? null),
+            status: out.ok ? null : (out.error?.providerCode ?? null),
           };
         })());
         nudge();
@@ -572,7 +578,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           const piece = await spoken[sent];
           sent += 1;
           ttsMs += piece.ms;
-          if (!piece.pcmBase64) continue;
+          if (!piece.pcmBase64) {
+            if (!voiceFailure) voiceFailure = { code: piece.code, status: piece.status };
+            continue;
+          }
           if (!firstAudioAt) firstAudioAt = Date.now() - startedAt;
           audioBytes += Math.round(piece.pcmBase64.length * 0.75);
           send('audio', {
@@ -640,7 +649,16 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         send('reply', { text: full.trim(), language: replyLanguage });
 
         await drain;
-        if (!firstAudioAt) send('voiceless', { reason: 'VOICE_UNAVAILABLE' });
+        if (!firstAudioAt) {
+          logEvent('ai-talk', 'converse_voiceless', {
+            code: voiceFailure?.code ?? null, status: voiceFailure?.status ?? null,
+          });
+          send('voiceless', {
+            reason: 'VOICE_UNAVAILABLE',
+            providerCode: voiceFailure?.code ?? null,
+            providerStatus: voiceFailure?.status ?? null,
+          });
+        }
 
         send('state', { state });
         send('done', {
@@ -888,7 +906,17 @@ async function speak(sb: Sb, body: TalkRequest): Promise<Response> {
       status: spoken.error?.providerCode ?? null,
       detail: spoken.error?.message ?? null,
     });
-    return json({ ok: false, reason: 'VOICE_UNAVAILABLE' }, 502);
+    // The code and the status, and nothing else.
+    //
+    // "Voice unavailable" with no way to tell a provider outage from a
+    // product defect is the exact thing this whole surface has been paying
+    // for. Neither value names anything we sent; the visitor never sees
+    // either; the diagnostics readout does.
+    return json({
+      ok: false, reason: 'VOICE_UNAVAILABLE',
+      providerCode: spoken.error?.code ?? null,
+      providerStatus: spoken.error?.providerCode ?? null,
+    }, 502);
   }
 
   return json({

@@ -113,7 +113,7 @@ export type ConverseEvent =
   | { type: 'text'; delta: string }
   | { type: 'reply'; text: string; language?: string }
   | { type: 'audio'; pcmBase64: string; sampleRate: number; index?: number }
-  | { type: 'voiceless'; reason?: string }
+  | { type: 'voiceless'; reason?: string; providerCode?: string; providerStatus?: number }
   | { type: 'state'; state: unknown }
   | { type: 'done'; firstTextMs?: number; firstAudioMs?: number | null; totalMs?: number; ttsMs?: number }
   | { type: 'failed'; reason?: string };
@@ -189,6 +189,8 @@ export interface VoiceDiagnostics {
   liveModel: string | null;
   /** Why the live path was given up on, when it was. */
   liveFellBack: string | null;
+  /** What the speech provider said when it refused. A code and a status. */
+  voiceFailure: string | null;
   state: VoiceState;
 }
 
@@ -385,6 +387,7 @@ export class VoiceSession {
     liveMode: 'batch' as 'live' | 'batch',
     liveModel: null as string | null,
     liveFellBack: null as string | null,
+    voiceFailure: null as string | null,
   };
   private diagHandle: number | null = null;
 
@@ -543,6 +546,7 @@ export class VoiceSession {
       liveMode: this.diag.liveMode,
       liveModel: this.diag.liveModel,
       liveFellBack: this.diag.liveFellBack,
+      voiceFailure: this.diag.voiceFailure,
       state: this.state,
     };
   }
@@ -1096,6 +1100,8 @@ export class VoiceSession {
             break;
           case 'voiceless':
             this.diag.lastError = 'VOICE_UNAVAILABLE';
+            this.diag.voiceFailure = [event.providerCode, event.providerStatus]
+              .filter((v) => v !== undefined && v !== null).join(' ') || null;
             this.cb.onError?.('VOICE_UNAVAILABLE');
             break;
           case 'done':

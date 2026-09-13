@@ -98,8 +98,12 @@ export function CommunicationsRoutingPanel() {
       // The POST already carries readiness computed WITH the live probe.
       // Reloading over GET afterwards and using only that answer is how the
       // checklist went green for one render and then back to grey.
-      if (result.data?.readiness?.length) setReadiness(result.data.readiness);
+      // load() reads over GET, which derives reachability from stored state.
+      // It runs first so routes and provider cards refresh; the probe's own
+      // readiness is applied AFTER, because it is the more direct evidence and
+      // must not be clobbered by the reload.
       await load();
+      if (result.data?.readiness?.length) setReadiness(result.data.readiness);
     } finally {
       setProbing(false);
     }

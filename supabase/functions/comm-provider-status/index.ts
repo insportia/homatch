@@ -72,10 +72,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (probe) {
     for (const r of reports) {
+      /*
+       * DEGRADED IS A SUCCESSFUL CONNECTION.
+       *
+       * checkVapi returns DEGRADED when the provider answered perfectly and
+       * VAPI_WEBHOOK_SECRET is missing — a real gap, but not a connection
+       * failure. This wrote only last_error_at for it and never
+       * last_success_at, so the stored state said the provider had failed and
+       * never succeeded. The go-live checklist then read that back and told an
+       * admin "the provider rejected our credentials or is down" about a
+       * provider that had just answered in 219ms.
+       *
+       * Telling somebody their credentials are rejected when they are fine is
+       * worse than saying nothing: it sends them to rotate a working key.
+       *
+       * Reachability and completeness are now recorded separately, which is
+       * what they are. The missing webhook secret still blocks go-live — it
+       * has its own check, and that one is accurate.
+       */
+      const reached = r.health === 'HEALTHY' || r.health === 'DEGRADED' || r.health === 'DISABLED';
       await sb.from('comm_provider_routes')
         .update({
-          last_success_at: r.health === 'HEALTHY' ? r.lastTestedAt : undefined,
-          last_error_at: r.health === 'DOWN' || r.health === 'DEGRADED' ? r.lastTestedAt : undefined,
+          last_success_at: reached ? r.lastTestedAt : undefined,
+          last_error_at: reached ? undefined : r.lastTestedAt,
           last_error: r.errorCode,
           last_latency_ms: r.latencyMs,
         })
@@ -88,7 +107,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         provider: r.provider,
         status: r.health,
         last_tested_at: r.lastTestedAt,
-        last_success_at: r.health === 'HEALTHY' ? r.lastTestedAt : undefined,
+        last_success_at: reached ? r.lastTestedAt : undefined,
         latency_ms: r.latencyMs,
         last_error: r.errorCode,
         updated_at: r.lastTestedAt,

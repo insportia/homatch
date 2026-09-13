@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PAGE, SECTION_Y } from './primitives';
+import { BuildingScene } from './BuildingScene';
 import { useSectionField, useFieldProps } from '@/site/content';
 
 /**
@@ -38,6 +39,7 @@ const LAYERS = [
 ] as const;
 
 export function IntelligenceLayersSection() {
+
   const sf = useSectionField();
   const fp = useFieldProps();
   const { t } = useLanguage();
@@ -49,6 +51,29 @@ export function IntelligenceLayersSection() {
      and something that moves while a thumb is reaching for it is a worse
      experience than one that waits. */
   const [autoplay, setAutoplay] = useState(false);
+  /*
+   * Every visible word in the building scene, through the content model.
+   * The animation must not depend on literal English: it plays in six
+   * languages, and an admin can change any of these labels.
+   */
+  const buildingCopy = {
+    stages: [
+      sf('bi_stage_idle', 'bi_stage_idle'),
+      sf('bi_stage_scan', 'bi_stage_scan'),
+      sf('bi_stage_floors', 'bi_stage_floors'),
+      sf('bi_stage_floor', 'bi_stage_floor'),
+      sf('bi_stage_unit', 'bi_stage_unit'),
+      sf('bi_stage_done', 'bi_stage_done'),
+    ],
+    callouts: [
+      { label: sf('bi_cal_floor', 'bi_cal_floor'), value: sf('bi_val_floor', 'bi_val_floor') },
+      { label: sf('bi_cal_area', 'bi_cal_area'), value: sf('bi_val_area', 'bi_val_area') },
+      { label: sf('bi_cal_rooms', 'bi_cal_rooms'), value: sf('bi_val_rooms', 'bi_val_rooms') },
+      { label: sf('bi_cal_status', 'bi_cal_status'), value: sf('bi_val_status', 'bi_val_status') },
+    ],
+    note: sf('bi_note', 'bi_note'),
+    alt: t('bi_alt'),
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -95,7 +120,12 @@ export function IntelligenceLayersSection() {
             stack still reads as a tower, but the label lives OUTSIDE the
             shape where it can be read at any size. One tap swaps the active
             floor; nothing moves on its own. */}
-        <MobileStack active={active} onPick={setActive} />
+        {/* The building, on a phone. Not a list of slabs: the same drawing
+            the desktop gets, scaled, because a tapering stack of bars was
+            the "cake" this section was accused of being. */}
+        <div className="mt-8 lg:hidden">
+          <BuildingScene copy={buildingCopy} />
+        </div>
 
         {/* Three columns from lg: the picture, the floors, and the floor you
             are on. Two columns left a wide dead band to the right of seven
@@ -108,7 +138,7 @@ export function IntelligenceLayersSection() {
           onFocusCapture={() => setHeld(true)}
           onBlurCapture={() => setHeld(false)}
         >
-          <Tower active={active} />
+          <BuildingScene copy={buildingCopy} />
 
           {/* The floors, as a list. Selecting one drives the tower; this is
               the accessible control, and the tower is its picture. */}

@@ -35,6 +35,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { PhoneTestCard } from '@/components/communications/PhoneTestCard';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -905,6 +907,7 @@ function TestStep({
   agentId, onTested, tested, onSave,
 }: { agentId: string; onTested: () => void; tested: boolean; onSave: () => Promise<boolean> }) {
   const { t } = useLanguage();
+  const { homatchUser } = useAuth();
   const [state, setState] = useState<VoiceState>('IDLE');
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
   const [level, setLevel] = useState(0);
@@ -958,6 +961,7 @@ function TestStep({
   const live = ['LISTENING', 'UNDERSTANDING', 'RESPONDING', 'INTERRUPTED'].includes(state);
 
   return (
+    <div className="space-y-3">
     <Card><CardContent className="space-y-3 p-4">
       <div>
         <h2 className="text-sm font-semibold">{t('comm_test_title')}</h2>
@@ -1009,6 +1013,13 @@ function TestStep({
         </div>
       ) : null}
     </CardContent></Card>
+
+    {/* The other way to test the same agent: a real phone, one number, every
+        gate a campaign would pass. Browser first because it needs nothing but
+        a microphone; phone second because it costs money and needs telephony
+        actually activated. */}
+    <PhoneTestCard agentId={agentId} isAdmin={homatchUser?.is_admin === true} />
+    </div>
   );
 }
 

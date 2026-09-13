@@ -25,10 +25,18 @@ import { authenticate, serviceClient, json, preflight, logEvent } from '../_shar
 import { decideLaunch } from '../_shared/comm/policy.ts';
 import { classifyDomainWithLlm } from '../_shared/comm/llm.ts';
 import { beginExecution } from '../_shared/billing.ts';
+import { evaluateGoLive } from '../_shared/comm/generated/goLive.ts';
+import { parsePhone } from '../_shared/comm/generated/phone.ts';
+import { hasSecret } from '../_shared/comm/contracts.ts';
+import { createVapiProvider, vapiPing } from '../_shared/comm/vapi.ts';
+import { buildAgentRuntime } from '../_shared/comm/agentPrompt.ts';
 
 interface LaunchBody {
-  campaignId: string;
-  action?: 'preview' | 'launch';
+  campaignId?: string;
+  action?: 'preview' | 'launch' | 'test_call' | 'test_call_preview';
+  /** test_call only. */
+  agentId?: string;
+  toE164?: string;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -40,9 +48,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   let body: LaunchBody;
   try { body = await req.json() as LaunchBody; } catch { return json({ error: 'bad_request' }, 400); }
-  if (!body?.campaignId) return json({ error: 'campaign_id_required' }, 400);
-
   const sb = serviceClient();
+
+  // ONE call, to ONE number, through every gate a campaign would pass.
+  if (body.action === 'test_call' || body.action === 'test_call_preview') {
+    return await testCall(sb, caller.userId, body, body.action === 'test_call');
+  }
+
+  if (!body?.campaignId) return json({ error: 'campaign_id_required' }, 400);
   const isPreview = body.action !== 'launch';
 
   const decision = await decideLaunch({
@@ -244,4 +257,153 @@ async function reserveForCampaign(sb: Sb, params: {
     reason: grant.reason ?? 'UNAVAILABLE',
     shortfall: grant.budget?.creditsShortOfViable,
   };
+}
+
+// ── One real test call ──────────────────────────────────────────────────────
+
+/**
+ * Place exactly one call, to one number, having passed every gate a campaign
+ * would pass.
+ *
+ * WHY THIS IS NOT A CAMPAIGN OF SIZE ONE
+ *
+ * A campaign needs an audience, a schedule, a dispatcher and a throughput
+ * decision. None of that is wanted when somebody simply needs to hear whether
+ * their agent works on a real phone, and building a one-row campaign to get
+ * there means the dispatcher must be enabled — which is the thing that then
+ * starts dialling lists.
+ *
+ * WHAT IS NOT RELAXED
+ *
+ * Everything else. Provider reachable, webhook signing configured, channel
+ * enabled, kill switch off, product priced and active, balance sufficient,
+ * reservation actually held, caller number real. A test that skips a gate
+ * tests a system nobody is going to run.
+ *
+ * `test_call_preview` answers "what is stopping this?" and contacts nobody.
+ * `test_call` is the only path that reaches the provider, and only when the
+ * preview would have returned nothing.
+ */
+async function testCall(
+  sb: Sb, userId: string, body: LaunchBody, execute: boolean,
+): Promise<Response> {
+  const agentId = String(body.agentId ?? '').trim();
+  if (!agentId) return json({ error: 'agent_required', code: 'AGENT_REQUIRED' }, 400);
+
+  // The destination is parsed, not trusted. A string that is not a number must
+  // never reach a dialler.
+  const parsed = parsePhone(String(body.toE164 ?? ''), null);
+  if (!parsed.e164) {
+    return json({ ok: false, blockers: ['DESTINATION_INVALID'], code: 'DESTINATION_INVALID' }, 422);
+  }
+
+  // The agent must belong to the caller. A test call is a real call, and
+  // borrowing somebody else's agent to make one is not a test.
+  const { data: agent } = await sb.from('comm_agents')
+    .select('*').eq('id', agentId).eq('owner_id', userId).maybeSingle();
+  if (!agent) return json({ ok: false, blockers: ['AGENT_NOT_FOUND'], code: 'AGENT_NOT_FOUND' }, 404);
+
+  const [{ data: routes }, { data: products }, { data: accounts }, { data: wallets }] = await Promise.all([
+    sb.from('comm_provider_routes').select('role, provider, enabled, kill_switch'),
+    sb.from('billable_products')
+      .select('code, enabled, pricing_active, standard_retail_cents, reference_landed_cogs_cents')
+      .in('code', ['AI_CALL']),
+    sb.from('comm_channel_accounts').select('channel, phone_e164, status, provider_number_id'),
+    sb.from('credit_accounts').select('balance, reserved').eq('user_id', userId),
+  ]);
+
+  const usableCredit = (wallets ?? []).reduce(
+    (sum: number, w: { balance: number | null; reserved: number | null }) =>
+      sum + Math.max(0, Number(w.balance ?? 0) - Number(w.reserved ?? 0)), 0,
+  );
+
+  // The channel gates, from the same evaluator the Admin checklist uses, so
+  // the two cannot disagree about whether telephony may run.
+  const ping = await vapiPing();
+  const readiness = evaluateGoLive({
+    routes: (routes ?? []).map((r) => ({
+      role: String(r.role), provider: String(r.provider),
+      enabled: r.enabled === true, kill_switch: r.kill_switch === true,
+    })),
+    products: (products ?? []) as never,
+    accounts: (accounts ?? []) as never,
+    hasSecret,
+    probes: {
+      cartesiaOk: null, vapiOk: ping.ok,
+      metaPhoneStatus: null, metaWabaStatus: null,
+    },
+    baseAgentReady: true,
+    walletBalance: usableCredit,
+  });
+  const telephony = readiness.find((r) => r.channel === 'TELEPHONY');
+  const blockers = [...(telephony?.blockedBy ?? [])];
+
+  const callerNumber = (accounts ?? []).find(
+    (a: { channel: string; phone_e164: string | null; status: string }) =>
+      a.channel === 'VOICE' && a.phone_e164 && a.status === 'ACTIVE',
+  ) as { phone_e164: string; provider_number_id: string | null } | undefined;
+
+  if (!execute || blockers.length) {
+    return json({
+      ok: blockers.length === 0,
+      blockers,
+      // Admin-facing detail, same vocabulary as the go-live checklist.
+      checks: telephony?.checks ?? [],
+      destination: parsed.e164,
+      agentName: agent.name,
+    }, blockers.length && execute ? 422 : 200);
+  }
+
+  /*
+   * Past this line money can be spent, so the order is the same one the
+   * campaign path uses: reserve first, and only call the provider if the
+   * reservation is actually held.
+   */
+  const idempotencyKey = `test_call:${userId}:${parsed.e164}:${Math.floor(Date.now() / 60_000)}`;
+  const reservation = await beginExecution(sb, {
+    userId,
+    productCode: 'AI_CALL',
+    idempotencyKey,
+    expectedUnits: 1,
+  });
+
+  if (!reservation.ok) {
+    logEvent('campaign-launch', 'test_call_reservation_refused', { reason: reservation.reason ?? null });
+    return json({ ok: false, blockers: ['RESERVATION_FAILED'], code: reservation.reason ?? 'RESERVATION_FAILED' }, 422);
+  }
+
+  // The PUBLISHED snapshot, not the draft. A test that runs the unsaved
+  // version tests something that will never answer a real phone.
+  const runtime = await buildAgentRuntime(sb, { agentId: String(agent.id) });
+  if (!runtime) {
+    return json({ ok: false, blockers: ['AGENT_NOT_PUBLISHED'], code: 'AGENT_NOT_PUBLISHED' }, 422);
+  }
+
+  const placed = await createVapiProvider().placeCall({
+    toE164: parsed.e164,
+    agent: runtime.config,
+    // A test call is short by construction. Two minutes is enough to hear
+    // whether the agent works and short enough that a forgotten call cannot
+    // run up a bill.
+    maxDurationSec: 120,
+    webhookUrl: `${Deno.env.get('SUPABASE_URL')}/functions/v1/voice-webhook`,
+    recordingEnabled: false,
+    fromNumberId: callerNumber?.provider_number_id ?? undefined,
+    idempotencyKey,
+    metadata: { testCall: 'true', agentId: String(agent.id), ownerId: userId },
+  });
+
+  if (!placed.ok) {
+    logEvent('campaign-launch', 'test_call_failed', {
+      code: placed.error?.code ?? null, status: placed.error?.providerCode ?? null,
+    });
+    return json({ ok: false, blockers: ['PROVIDER_REFUSED'], code: placed.error?.code ?? 'PROVIDER_REFUSED' }, 502);
+  }
+
+  logEvent('campaign-launch', 'test_call_placed', { userId, agentId: agent.id });
+  return json({
+    ok: true,
+    providerCallId: placed.data?.providerCallId ?? null,
+    destination: parsed.e164,
+  });
 }

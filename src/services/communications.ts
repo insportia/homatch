@@ -409,6 +409,43 @@ export function previewLaunch(campaignId: string) {
   return invoke<LaunchPreview>('comm-campaign-launch', { campaignId, action: 'preview' });
 }
 
+export interface TestCallResult {
+  ok: boolean;
+  blockers: string[];
+  checks: Array<{ key: string; ok: boolean; detail: string | null; ownerAction: boolean }>;
+  destination?: string;
+  agentName?: string;
+  providerCallId?: string | null;
+  code?: string;
+}
+
+/**
+ * What is stopping one real test call, without contacting anybody.
+ *
+ * Runs the same channel gates the Admin go-live checklist runs and the same
+ * ones a campaign launch would run, so "it said I could and then refused" is
+ * not a state this can reach.
+ */
+export async function previewTestCall(params: { agentId: string; toE164: string }) {
+  return invoke<TestCallResult>('comm-campaign-launch', {
+    action: 'test_call_preview', agentId: params.agentId, toE164: params.toE164,
+  });
+}
+
+/**
+ * Place one real call, to one number.
+ *
+ * The server refuses unless every gate passes; this function cannot and does
+ * not weaken any of them. It is deliberately NOT a campaign: a campaign needs
+ * the dispatcher, and enabling the dispatcher to hear one agent speak is how
+ * a list gets dialled by accident.
+ */
+export async function runTestCall(params: { agentId: string; toE164: string }) {
+  return invoke<TestCallResult>('comm-campaign-launch', {
+    action: 'test_call', agentId: params.agentId, toE164: params.toE164,
+  });
+}
+
 export function launchCampaign(campaignId: string) {
   return invoke<LaunchPreview>('comm-campaign-launch', { campaignId, action: 'launch' });
 }

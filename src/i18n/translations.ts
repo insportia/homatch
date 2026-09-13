@@ -4737,6 +4737,16 @@ const en = {
   voice_remove: "Remove",
   voice_none_yet: "No voices of your own yet.",
   comm_rate_limited: "You have done that too many times. Try again later.",
+  testcall_title: "Test on a real phone",
+  testcall_sub: "One call, to one number you control. This is not a campaign and dials nobody else.",
+  testcall_destination: "Number to call",
+  testcall_check: "Check what is needed",
+  testcall_place: "Place test call",
+  testcall_placed: "Test call placed",
+  testcall_ready: "Everything needed for a test call is in place.",
+  testcall_blocked: "Calling is not activated for this workspace yet.",
+  testcall_blocked_admin: "An administrator can see the exact blockers in Admin → Providers.",
+  testcall_bad_number: "That number could not be read. Include the country code.",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -9392,6 +9402,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   voice_remove: "წაშლა",
   voice_none_yet: "საკუთარი ხმები ჯერ არ გაქვთ.",
   comm_rate_limited: "ეს ძალიან ბევრჯერ გააკეთეთ. სცადეთ მოგვიანებით.",
+  testcall_title: "ტესტი ნამდვილ ტელეფონზე",
+  testcall_sub: "ერთი ზარი, ერთ ნომერზე, რომელიც თქვენ გეკუთვნით. ეს არ არის კამპანია და სხვას არავის დაურეკავს.",
+  testcall_destination: "ნომერი, რომელზეც დავრეკოთ",
+  testcall_check: "შემოწმება, რა არის საჭირო",
+  testcall_place: "სატესტო ზარის განხორციელება",
+  testcall_placed: "სატესტო ზარი განხორციელდა",
+  testcall_ready: "სატესტო ზარისთვის ყველაფერი მზადაა.",
+  testcall_blocked: "ამ სამუშაო სივრცისთვის დარეკვა ჯერ არ არის გააქტიურებული.",
+  testcall_blocked_admin: "ადმინისტრატორს ზუსტი დამაბრკოლებლები ხედავს Admin → Providers-ში.",
+  testcall_bad_number: "ეს ნომერი ვერ წაიკითხა. მიუთითეთ ქვეყნის კოდი.",
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -14038,6 +14058,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   voice_remove: "Удалить",
   voice_none_yet: "Своих голосов пока нет.",
   comm_rate_limited: "Вы сделали это слишком много раз. Повторите позже.",
+  testcall_title: "Тест на настоящем телефоне",
+  testcall_sub: "Один звонок на один ваш номер. Это не кампания и никому другому не звонит.",
+  testcall_destination: "Номер для звонка",
+  testcall_check: "Проверить, что требуется",
+  testcall_place: "Совершить тестовый звонок",
+  testcall_placed: "Тестовый звонок совершён",
+  testcall_ready: "Всё необходимое для тестового звонка готово.",
+  testcall_blocked: "Звонки для этого рабочего пространства ещё не активированы.",
+  testcall_blocked_admin: "Администратор видит точные причины в Admin → Providers.",
+  testcall_bad_number: "Не удалось распознать номер. Укажите код страны.",
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -18682,6 +18712,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   voice_remove: "Kaldır",
   voice_none_yet: "Henüz kendi sesiniz yok.",
   comm_rate_limited: "Bunu çok fazla kez yaptınız. Daha sonra tekrar deneyin.",
+  testcall_title: "Gerçek telefonda test",
+  testcall_sub: "Kontrolünüzdeki tek bir numaraya tek bir arama. Bu bir kampanya değildir ve başka kimseyi aramaz.",
+  testcall_destination: "Aranacak numara",
+  testcall_check: "Neyin gerektiğini denetle",
+  testcall_place: "Test aramasını başlat",
+  testcall_placed: "Test araması yapıldı",
+  testcall_ready: "Test araması için gereken her şey hazır.",
+  testcall_blocked: "Bu çalışma alanı için arama henüz etkinleştirilmedi.",
+  testcall_blocked_admin: "Bir yönetici tam engelleri Admin → Providers bölümünde görebilir.",
+  testcall_bad_number: "Bu numara okunamadı. Ülke kodunu ekleyin.",
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -23326,6 +23366,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   voice_remove: "إزالة",
   voice_none_yet: "لا توجد أصوات خاصة بك بعد.",
   comm_rate_limited: "لقد قمت بذلك مرات كثيرة. حاول لاحقًا.",
+  testcall_title: "اختبار على هاتف حقيقي",
+  testcall_sub: "مكالمة واحدة إلى رقم واحد تملكه. هذه ليست حملة ولا تتصل بأي شخص آخر.",
+  testcall_destination: "الرقم المطلوب الاتصال به",
+  testcall_check: "تحقق مما هو مطلوب",
+  testcall_place: "إجراء مكالمة اختبارية",
+  testcall_placed: "تم إجراء المكالمة الاختبارية",
+  testcall_ready: "كل ما يلزم لإجراء مكالمة اختبارية جاهز.",
+  testcall_blocked: "لم يتم تفعيل الاتصال لمساحة العمل هذه بعد.",
+  testcall_blocked_admin: "يمكن للمسؤول رؤية العوائق الدقيقة في Admin ← Providers.",
+  testcall_bad_number: "تعذّر قراءة الرقم. أدرج رمز الدولة.",
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -27970,6 +28020,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   voice_remove: "הסרה",
   voice_none_yet: "אין עדיין קולות משלכם.",
   comm_rate_limited: "ביצעתם זאת יותר מדי פעמים. נסו שוב מאוחר יותר.",
+  testcall_title: "בדיקה בטלפון אמיתי",
+  testcall_sub: "שיחה אחת למספר אחד שבשליטתכם. זה אינו קמפיין ואינו מתקשר לאף אחד אחר.",
+  testcall_destination: "מספר להתקשרות",
+  testcall_check: "בדיקה מה נדרש",
+  testcall_place: "ביצוע שיחת בדיקה",
+  testcall_placed: "שיחת הבדיקה בוצעה",
+  testcall_ready: "כל הנדרש לשיחת בדיקה קיים.",
+  testcall_blocked: "ההתקשרות עדיין לא הופעלה עבור מרחב העבודה הזה.",
+  testcall_blocked_admin: "מנהל יכול לראות את החסמים המדויקים ב-Admin ← Providers.",
+  testcall_bad_number: "לא ניתן לקרוא את המספר. כללו קידומת מדינה.",
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -584,7 +584,43 @@ export async function createContact(
     return { ok: false, reason: reason === 'DUPLICATE' ? 'DUPLICATE' : reason };
   }
   if (!data) return { ok: false, reason: 'UNAVAILABLE' };
+
+  await refreshListCounts(listId, uid);
   return { ok: true, contact: data as CommContact };
+}
+
+/**
+ * Bring a list's denormalised counters back in line with its actual contacts.
+ *
+ * total_rows and valid_rows were only ever maintained by the import path, so a
+ * hand-added contact left the list reading "0 rows, 0 with usable numbers".
+ * The campaign builder shows exactly those two numbers when choosing an
+ * audience — so a list holding a real person advertised itself as empty, which
+ * is the same as not being able to add the person at all.
+ *
+ * Counted rather than incremented: an increment drifts the first time anything
+ * deletes a contact, and a counter that is wrong in the direction of "more
+ * people than exist" is a counter that overstates an audience about to be
+ * dialled. A recount is always right and costs one query.
+ *
+ * A failure here is deliberately not fatal — the contact is already saved, and
+ * refusing to report success because a display counter did not update would
+ * be a worse answer than a stale count.
+ */
+async function refreshListCounts(listId: string, ownerId: string): Promise<void> {
+  const [{ count: total }, { count: valid }] = await Promise.all([
+    supabase.from('outreach_contacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('list_id', listId).eq('owner_id', ownerId),
+    supabase.from('outreach_contacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('list_id', listId).eq('owner_id', ownerId)
+      .eq('phone_valid', true).eq('suppressed', false).eq('unsubscribed', false),
+  ]);
+
+  await supabase.from('outreach_contact_lists')
+    .update({ total_rows: total ?? 0, valid_rows: valid ?? 0 })
+    .eq('id', listId);
 }
 
 export async function listContacts(params: {

@@ -56,12 +56,24 @@ export function AiTalkOrb({ mode, level, className }: OrbProps) {
     if (!ctx) return;
 
     let raf = 0;
+    let timer = 0;
     let width = 0;
     let height = 0;
+    /*
+     * THE LOOP ONLY RUNS WHEN THERE IS SOMETHING TO SEE.
+     *
+     * This sits on the homepage, which means it is on screen for every
+     * visitor whether or not they ever press the button. A permanently
+     * running animation frame there is real battery on a phone and real CPU
+     * on a laptop, for a shape that is doing almost nothing.
+     *
+     * So it pauses when the tab is hidden and when the panel is scrolled out
+     * of view, and it idles at a quarter of the frame rate when nothing is
+     * happening. Sixty frames a second is for a voice reacting to a voice.
+     */
+    let visible = true;
+    let hidden = document.visibilityState === 'hidden';
 
-    // The level is smoothed here rather than at the source: the raw value is
-    // correct and jumps, and a visualiser that jumps reads as broken rather
-    // than as responsive.
     let smoothed = 0;
     let phase = 0;
 
@@ -76,13 +88,38 @@ export function AiTalkOrb({ mode, level, className }: OrbProps) {
     };
 
     resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
+    const sizeObserver = new ResizeObserver(resize);
+    sizeObserver.observe(canvas);
+
+    const seenObserver = new IntersectionObserver((entries) => {
+      visible = entries.some((e) => e.isIntersecting);
+      schedule();
+    }, { threshold: 0 });
+    seenObserver.observe(canvas);
+
+    const onVisibility = () => { hidden = document.visibilityState === 'hidden'; schedule(); };
+    document.addEventListener('visibilitychange', onVisibility);
 
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
+    function schedule() {
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      if (timer) { clearTimeout(timer); timer = 0; }
+      if (hidden || !visible) return;
+
+      const busy = modeRef.current !== 'IDLE' && modeRef.current !== 'ERROR';
+      if (busy && !reduced) {
+        raf = requestAnimationFrame(() => { draw(); schedule(); });
+      } else {
+        // Resting: a slow breath, four frames a second, which is plenty for
+        // something moving by a couple of pixels.
+        timer = window.setTimeout(() => {
+          raf = requestAnimationFrame(() => { draw(); schedule(); });
+        }, reduced ? 1000 : 250);
+      }
+    }
+
     const draw = () => {
-      raf = requestAnimationFrame(draw);
       const m = modeRef.current;
 
       let target = 0;
@@ -92,7 +129,10 @@ export function AiTalkOrb({ mode, level, className }: OrbProps) {
       const shaped = Math.pow(target, 0.55);
       smoothed += (shaped - smoothed) * (shaped > smoothed ? 0.35 : 0.08);
 
-      phase += reduced ? 0.004 : 0.016;
+      // Advance by wall time rather than by frame, so the breath is the same
+      // speed whether the loop is running at 60fps or at 4.
+      const now = performance.now();
+      phase = (now / 1000) * (reduced ? 0.25 : 1.0);
 
       const cx = width / 2;
       const cy = height / 2;
@@ -130,8 +170,8 @@ export function AiTalkOrb({ mode, level, className }: OrbProps) {
       ctx.arc(cx, cy, bodyR, 0, Math.PI * 2);
       ctx.fill();
 
-      // A ring that traces the level. Twelve points, interpolated, so it
-      // deforms like a membrane rather than pulsing like a circle.
+      // A ring that traces the level, deforming like a membrane rather than
+      // pulsing like a circle.
       const ringR = base * (0.44 + breath * 0.6 + energy * 0.22);
       ctx.beginPath();
       const POINTS = 96;
@@ -166,10 +206,14 @@ export function AiTalkOrb({ mode, level, className }: OrbProps) {
       }
     };
 
-    raf = requestAnimationFrame(draw);
+    draw();
+    schedule();
     return () => {
-      cancelAnimationFrame(raf);
-      observer.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+      if (timer) clearTimeout(timer);
+      sizeObserver.disconnect();
+      seenObserver.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 

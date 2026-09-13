@@ -230,6 +230,25 @@ export function AiTalkPanel({ className }: { className?: string }) {
     sessionRef.current = session;
     await session.start();
 
+    /*
+     * A SESSION THAT NEVER OPENED MUST BE GIVEN BACK.
+     *
+     * start() returns having set MIC_DENIED, MIC_UNAVAILABLE or
+     * PROVIDER_ERROR when it could not get a microphone or a transcription
+     * socket. The row on the server is still ACTIVE at that point, and the
+     * server refuses a second session while one is active — so a visitor who
+     * allowed the microphone and pressed the new Try again button would have
+     * been refused by the leftover row from their own failed attempt.
+     *
+     * Below this, the heartbeat also used to start regardless, beating for a
+     * client with no microphone and no socket.
+     */
+    const settled = session.currentState;
+    if (settled !== 'LISTENING') {
+      await endSession(`failed_${settled.toLowerCase()}`);
+      return;
+    }
+
     // The heartbeat is what makes the allowance real: the server clamps the
     // reported figure against its own clock and ends the session when the
     // grant is spent, whatever this page believes.
@@ -346,7 +365,20 @@ function RestingFace({
     PROVIDER_ERROR: 'talk_unavailable_body',
   };
 
-  const unavailable = state === 'PROVIDER_ERROR' || state === 'MIC_DENIED' || state === 'MIC_UNAVAILABLE';
+  /*
+   * A MICROPHONE PROBLEM IS THE USER'S TO CLEAR, SO IT NEEDS A BUTTON.
+   *
+   * Both mic messages end with "try again" — allow access and try again, plug
+   * one in and try again — and the panel used to offer nothing to try it with.
+   * The only way back was a page reload, which is not something the copy asks
+   * for and not something a visitor should have to guess.
+   *
+   * PROVIDER_ERROR stays without one on purpose: nothing the visitor does to
+   * their own machine clears it, and a retry button that cannot work is worse
+   * than none.
+   */
+  const micProblem = state === 'MIC_DENIED' || state === 'MIC_UNAVAILABLE';
+  const unavailable = state === 'PROVIDER_ERROR' || micProblem;
   const finished = state === 'ENDED' || state === 'LIMIT_REACHED';
 
   const sf = useSectionField();
@@ -377,14 +409,14 @@ function RestingFace({
       </p>
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        {!unavailable ? (
+        {state !== 'PROVIDER_ERROR' ? (
           <button
             type="button"
             onClick={onStart}
             className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-black transition-colors hover:bg-white/90"
           >
             <Mic className="h-3.5 w-3.5" aria-hidden="true" />
-            {t(finished ? 'talk_again' : 'talk_start')}
+            {t(finished || micProblem ? 'talk_again' : 'talk_start')}
           </button>
         ) : null}
 

@@ -385,11 +385,28 @@ async function heartbeat(sb: Sb, body: TalkRequest): Promise<Response> {
 async function end(sb: Sb, body: TalkRequest): Promise<Response> {
   if (!body.sessionId) return json({ error: 'session_required' }, 400);
 
+  const reason = String(body.endedReason ?? 'user_ended').slice(0, 80);
+  const consumed = Math.max(0, Number(body.consumedSeconds ?? 0));
+
+  /*
+   * A CONVERSATION THAT NEVER STARTED IS ABORTED, NOT ENDED.
+   *
+   * The browser reports `failed_mic_denied`, `failed_mic_unavailable` or
+   * `failed_provider_error` when start() could not open a microphone or a
+   * transcription socket. Nobody spoke, so the row must not read as a
+   * conversation that happened: ABORTED is excluded from the daily
+   * allowance, and ENDED is not.
+   *
+   * The zero-seconds condition is what keeps this honest. A session that
+   * carried speech stays ENDED whatever the browser calls it.
+   */
+  const aborted = consumed === 0 && reason.startsWith('failed_');
+
   await sb.from('comm_talk_sessions').update({
-    state: 'ENDED',
+    state: aborted ? 'ABORTED' : 'ENDED',
     ended_at: new Date().toISOString(),
-    ended_reason: String(body.endedReason ?? 'user_ended').slice(0, 80),
-    consumed_seconds: Math.max(0, Number(body.consumedSeconds ?? 0)),
+    ended_reason: reason,
+    consumed_seconds: consumed,
   }).eq('id', body.sessionId).eq('state', 'ACTIVE');
 
   return json({ ok: true });

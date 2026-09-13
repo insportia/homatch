@@ -29,6 +29,7 @@ import {
   cartesiaCredentialsPresent, synthesizeSpeech, synthesizePcm, PCM_SAMPLE_RATE,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
+import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
 import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
 import {
   decideGrant, grantExpiry, shouldEndSession, hashVisitor,
@@ -51,7 +52,7 @@ import {
 const HOMATCH_TALK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
 
 interface TalkRequest {
-  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak' | 'converse';
+  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak' | 'converse' | 'listen';
   sessionId?: string;
   anonSessionId?: string;
   consumedSeconds?: number;
@@ -111,6 +112,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'transcribe': return await transcribe(sb, body);
     case 'speak':     return await speak(sb, body);
     case 'converse':  return await converse(sb, body);
+    case 'listen':    return await listen(sb, body);
     case 'heartbeat': return await heartbeat(sb, body);
     case 'end':       return await end(sb, body);
     default:          return json({ error: 'unknown_action' }, 400);
@@ -227,6 +229,96 @@ async function start(
     // the browser cannot widen it.
     instructions: publicDemoInstructions(String(body.locale ?? 'ka')),
   });
+}
+
+/**
+ * A short-lived credential for transcribing while somebody is still speaking.
+ *
+ * WHY THE BROWSER IS GIVEN ANYTHING AT ALL
+ *
+ * Transcription is server-side for a reason — the key that can write Georgian
+ * must not be in a page. But batch transcription means the audio cannot even
+ * start being read until the sentence has ended, and that wait is now the
+ * largest single block of the remaining latency: measured on production,
+ * 1.5 seconds of transcription on top of a 0.7 second silence gate, before
+ * the model has seen a word.
+ *
+ * The realtime path removes both. It also produces partial text WHILE the
+ * person speaks, which is the difference between a transcript that appears
+ * and a transcript that keeps up.
+ *
+ * What the browser receives is an EPHEMERAL secret: minted here, scoped to
+ * transcription, and expiring in minutes. It is not the API key, it cannot
+ * generate text or speech, and the session it belongs to is already spending
+ * its own metered allowance.
+ *
+ * A failure here is not an error. The browser keeps the batch path and the
+ * conversation still works, a little slower — which is why this returns
+ * ok:false rather than a status nobody can act on.
+ */
+async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
+  if (!body.sessionId) return json({ error: 'session_required' }, 400);
+
+  const guard = await activeSession(sb, body.sessionId);
+  if ('refusal' in guard) return guard.refusal;
+
+  if (!hasSecret('OPENAI_API_KEY')) return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
+
+  const model = Deno.env.get('OPENAI_REALTIME_TRANSCRIBE_MODEL') ?? 'gpt-live-transcribe';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${requireSecret('OPENAI_API_KEY')}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        expires_after: { anchor: 'created_at', seconds: 600 },
+        session: {
+          type: 'transcription',
+          audio: {
+            input: {
+              format: { type: 'audio/pcm', rate: 24_000 },
+              transcription: { model },
+              turn_detection: { type: 'server_vad', silence_duration_ms: 500 },
+            },
+          },
+        },
+      }),
+      signal: controller.signal,
+    });
+
+    const raw = await res.text();
+    if (!res.ok) {
+      // Named, bounded, and never the key. An admin needs to know which
+      // parameter the provider disliked; nobody needs the request echoed.
+      logEvent('ai-talk', 'listen_unavailable', {
+        status: res.status, detail: raw.slice(0, 200), model,
+      });
+      return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
+    }
+
+    const parsed = JSON.parse(raw) as { value?: string; expires_at?: number };
+    if (!parsed.value) return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
+
+    return json({
+      ok: true,
+      token: parsed.value,
+      expiresAt: parsed.expires_at ?? null,
+      model,
+      sampleRate: 24_000,
+    });
+  } catch (e) {
+    logEvent('ai-talk', 'listen_failed', {
+      detail: String((e as Error)?.message ?? e).slice(0, 160),
+    });
+    return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -480,7 +572,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           // Two spoken sentences is about 60 tokens; the rest is headroom for
           // reasoning. A model left with room for 1,200 writes 1,200, and the
           // visitor waits through every one of them being spoken aloud.
-          maxOutputTokens: 520,
+          maxOutputTokens: 340,
           timeoutMs: 20_000,
         })) {
           if (event.type === 'error') { failed = event.error ?? 'llm'; break; }
@@ -949,6 +1041,9 @@ function publicDemoInstructions(language: string): string {
 
   const lines = [
     'You are Homatch, a real-estate intelligence assistant for the Georgian market, talking to a visitor by voice.',
+    '',
+    'THE ONE RULE THAT MATTERS MOST: at most two sentences and at most 35 words, in total, every time.',
+    'A third sentence is a mistake, not a bonus. Everything below assumes you are keeping to it.',
     '',
     'LANGUAGE',
     `Reply in ${name}. Follow the visitor turn by turn: if they change language mid-conversation, change with`,

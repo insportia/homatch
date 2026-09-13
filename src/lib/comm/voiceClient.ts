@@ -41,6 +41,7 @@ import {
   Resampler, floatToPcm16, rms, encodeWav, joinBlocks, bytesToBase64,
   TARGET_SAMPLE_RATE,
 } from './audio.ts';
+import { LiveTranscriber, LIVE_SAMPLE_RATE, type LiveGrant } from './liveTranscribe.ts';
 
 
 /**
@@ -183,6 +184,11 @@ export interface VoiceDiagnostics {
   playbacks: number;
   /** The last thing that went wrong, as a code. Never a stack, never a key. */
   lastError: string | null;
+  /** Which transcription path is carrying this session. */
+  liveMode: 'live' | 'batch';
+  liveModel: string | null;
+  /** Why the live path was given up on, when it was. */
+  liveFellBack: string | null;
   state: VoiceState;
 }
 
@@ -244,6 +250,14 @@ export interface VoiceCallbacks {
    * microphone.
    */
   onTranscribe: (audioBase64: string, languageHint: string | null) => Promise<TranscriptionReply | null>;
+  /**
+   * Ask for a credential that can transcribe while somebody is still talking.
+   *
+   * Optional, and allowed to refuse. When it returns null — or the socket
+   * will not hold — the batch path above carries the session instead, a
+   * little slower. An optimisation with a fallback, not a dependency.
+   */
+  onListenGrant?: () => Promise<LiveGrant | null>;
   /**
    * One streamed turn: their sentence in, our words and our voice out, as
    * they are produced.
@@ -318,6 +332,11 @@ export class VoiceSession {
   private micStream: MediaStream | null = null;
   private processor: ScriptProcessorNode | null = null;
   private resampler: Resampler | null = null;
+  /** A second conversion, to the rate the live socket was opened at. */
+  private liveResampler: Resampler | null = null;
+  private live: LiveTranscriber | null = null;
+  /** The id of the user turn currently being revised by partial text. */
+  private livePartialId: string | null = null;
   private playbackTime = 0;
   /** True while the assistant is speaking: mic blocks are dropped, not kept. */
   private micGated = false;
@@ -363,6 +382,9 @@ export class VoiceSession {
     lastLlmMs: null as number | null, lastTtsMs: null as number | null,
     lastPlaybackMs: null as number | null,
     playbacks: 0, lastError: null as string | null,
+    liveMode: 'batch' as 'live' | 'batch',
+    liveModel: null as string | null,
+    liveFellBack: null as string | null,
   };
   private diagHandle: number | null = null;
 
@@ -456,6 +478,8 @@ export class VoiceSession {
 
     this.milestone('mic_open');
 
+    await this.openLiveTranscription();
+
     this.startedAt = Date.now();
     this.setState('LISTENING');
 
@@ -516,6 +540,9 @@ export class VoiceSession {
       lastAudioBytes: this.diag.lastAudioBytes,
       playbacks: this.diag.playbacks,
       lastError: this.diag.lastError,
+      liveMode: this.diag.liveMode,
+      liveModel: this.diag.liveModel,
+      liveFellBack: this.diag.liveFellBack,
       state: this.state,
     };
   }
@@ -533,6 +560,8 @@ export class VoiceSession {
     this.stopPlayback();
 
     this.dropCapture();
+    this.live?.close();
+    this.live = null;
     this.processor?.disconnect();
     this.processor = null;
     this.micStream?.getTracks().forEach((tr) => tr.stop());
@@ -668,7 +697,30 @@ export class VoiceSession {
      * dropped rather than the track being stopped, so resuming is instant and
      * there is no second permission moment.
      */
+    // The live socket is told about the assistant rather than starved of
+    // audio: it has to discard what it already buffered, or our own voice
+    // comes back as their next sentence.
+    this.live?.setGated(this.micGated || this.muted);
+
     if (this.muted || this.micGated || this.transcribing) { this.dropCapture(); return; }
+
+    /*
+     * WHEN THE LIVE SOCKET IS UP, IT IS THE ONLY CONSUMER.
+     *
+     * Running both would pay for every sentence twice and answer it twice.
+     * The endpointing is the provider's as well — its voice detection hears a
+     * pause inside a sentence differently from the end of one, which is the
+     * thing an energy threshold here was never going to get right.
+     */
+    if (this.live?.isReady && this.liveResampler) {
+      const live = this.liveResampler.process(input);
+      if (live.length) {
+        this.diag.samplesCaptured += live.length;
+        this.diag.bytesSent += live.length * 2;
+        this.live.append(floatToPcm16(live));
+      }
+      return;
+    }
 
     const block = this.resampler ? this.resampler.process(input) : input.slice();
     if (!block.length) return;
@@ -715,6 +767,112 @@ export class VoiceSession {
       this.prerollSamples -= this.preroll[0].length;
       this.preroll.shift();
     }
+  }
+
+
+  /**
+   * Try the live socket. Fall back silently if it will not hold.
+   *
+   * Silently on purpose: a visitor has no use for the difference, and the
+   * difference is a second of latency rather than a broken conversation. It
+   * is recorded in the diagnostics, where somebody can act on it.
+   */
+  private async openLiveTranscription(): Promise<void> {
+    if (!this.cb.onListenGrant || !this.audioContext) return;
+
+    let grant: LiveGrant | null = null;
+    try { grant = await this.cb.onListenGrant(); } catch { grant = null; }
+    if (!grant?.token || this.closed) { this.diag.liveMode = 'batch'; return; }
+
+    const rate = grant.sampleRate ?? LIVE_SAMPLE_RATE;
+    const live = new LiveTranscriber(grant, {
+      onSpeechStart: () => {
+        this.lastVoiceAt = Date.now();
+        if (this.state === 'UNDERSTANDING' && !this.turnInFlight) this.setState('LISTENING');
+      },
+      onSpeechEnd: () => {
+        // The provider's endpointer, not ours. This is the moment the wait
+        // a person actually feels begins.
+        this.marks.speechEndedAtMs = Date.now();
+        this.marks.endpointConfirmedAtMs = Date.now();
+        if (!this.turnInFlight) this.setState('UNDERSTANDING');
+      },
+      onPartial: (text) => this.showPartial(text),
+      onFinal: (text) => { void this.onLiveFinal(text); },
+      onUnavailable: (reason) => {
+        // Back to the batch path for the rest of the session, rather than a
+        // conversation that quietly stops hearing anybody.
+        this.diag.lastError = this.diag.lastError ?? null;
+        this.diag.liveMode = 'batch';
+        this.diag.liveFellBack = reason;
+        this.live?.close();
+        this.live = null;
+        this.publishDiagnostics();
+      },
+    });
+
+    const opened = await live.open();
+    if (!opened || this.closed) { this.diag.liveMode = 'batch'; return; }
+
+    this.live = live;
+    this.liveResampler = new Resampler(this.audioContext.sampleRate, rate);
+    this.diag.liveMode = 'live';
+    this.diag.liveModel = grant.model ?? null;
+  }
+
+  /** Words that are still arriving. Shown, never committed. */
+  private showPartial(text: string): void {
+    if (!text.trim() || this.closed) return;
+    if (!this.livePartialId) {
+      this.utteranceSeq += 1;
+      this.livePartialId = `u${this.utteranceSeq}`;
+    }
+    this.turns = reduceTranscript(this.turns, {
+      id: this.livePartialId,
+      speaker: 'USER',
+      text,
+      final: false,
+      language: this.language.current,
+      atMs: Date.now(),
+    });
+    this.diag.lastTranscript = text.slice(0, 160);
+    this.cb.onTranscript(this.turns);
+  }
+
+  /** The finished sentence, from the live socket. */
+  private async onLiveFinal(text: string): Promise<void> {
+    if (this.closed || this.turnInFlight) return;
+
+    const said = text.trim();
+    const id = this.livePartialId ?? `u${++this.utteranceSeq}`;
+    this.livePartialId = null;
+
+    if (!said) { this.resumeListening(); return; }
+
+    this.diag.sttOk += 1;
+    this.diag.sttRequests += 1;
+    this.diag.lastSttChars = said.length;
+    this.diag.lastTranscript = said.slice(0, 160);
+    if (this.marks.speechEndedAtMs) {
+      this.diag.lastSttMs = Date.now() - this.marks.speechEndedAtMs;
+    }
+    this.marks.transcriptFinalAtMs = Date.now();
+
+    this.turns = reduceTranscript(this.turns, {
+      id, speaker: 'USER', text: said, final: true,
+      language: this.language.current, atMs: Date.now(),
+    });
+    this.milestone('first_transcript', this.turns.length);
+    this.cb.onTranscript(this.turns);
+
+    const before = this.language.current;
+    this.language = stabiliseLanguage(this.language, { text: said, detected: null, confidence: 0.8 });
+    if (this.language.current !== before || this.language.locked) {
+      this.cb.onLanguage(this.language.current, this.language.locked);
+    }
+
+    this.publishDiagnostics();
+    await this.takeTurn(said);
   }
 
   private dropCapture(): void {

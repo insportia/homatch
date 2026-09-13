@@ -30,7 +30,14 @@ globalThis.Deno = globalThis.Deno ?? { env: { get: () => undefined } };
 const { scriptLanguage, normaliseLanguage } =
   await import('../../../supabase/functions/_shared/comm/transcribe.ts');
 
-const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
+/*
+ * Line endings are normalised on the way in.
+ *
+ * This repository is worked on from Windows, and every assertion here that
+ * slices source by looking for a bare newline silently matches nothing in a
+ * CRLF file — which reads as a test failing for a reason that is not there.
+ */
+const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8').split(String.fromCharCode(13)).join('');
 const CLIENT = '../comm/voiceClient.ts';
 const SESSION = '../../../supabase/functions/ai-talk-session/index.ts';
 const TRANSCRIBE = '../../../supabase/functions/_shared/comm/transcribe.ts';
@@ -249,4 +256,62 @@ test('a split turn is still counted once, before either half can be skipped', ()
     /turns: Number\(session\.turns \?\? 0\) \+ 1/.test(before),
     'the turn must be counted before the early return, or omitting the second half buys free turns',
   );
+});
+
+test('the live socket never holds anything but an ephemeral credential', () => {
+  const src = read('../comm/liveTranscribe.ts');
+
+  // A WebSocket subprotocol is visible to anything that can see the
+  // connection, which is exactly why what travels in it must expire.
+  assert.ok(/openai-insecure-api-key\.\$\{this\.grant\.token\}/.test(src),
+    'the credential travels as a subprotocol, because a browser cannot set a header');
+  assert.ok(!/OPENAI_API_KEY/.test(src), 'no API key name belongs in browser code');
+  assert.ok(!/console\./.test(src), 'nothing here should log');
+});
+
+test('a live socket that dies hands the session back rather than going quiet', () => {
+  // The whole class of bug this product has already paid for: a transport
+  // that stopped while the panel went on saying "Listening".
+  const src = read('../comm/liveTranscribe.ts');
+  const at = src.indexOf('socket.onclose');
+  assert.ok(at > 0, 'the close handler is gone');
+  const branch = src.slice(at, at + 500);
+  assert.ok(/onUnavailable\('SOCKET_CLOSED'\)/.test(branch),
+    'a socket that closes mid-conversation must be reported');
+
+  // And every other way it can fail reports too.
+  for (const reason of ['SOCKET_ERROR', 'SOCKET_TIMEOUT', 'SOCKET_REFUSED', 'PROVIDER_ERROR']) {
+    assert.ok(src.includes(reason), `${reason} should be a reported outcome`);
+  }
+});
+
+test('only one transcriber consumes the microphone at a time', () => {
+  // Running both would pay for every sentence twice and answer it twice.
+  const src = read(CLIENT);
+  const at = src.indexOf('if (this.live?.isReady && this.liveResampler) {');
+  assert.ok(at > 0, 'the live branch is gone');
+  const branch = src.slice(at, at + 500);
+  assert.ok(/return;/.test(branch), 'the live branch must not fall through into batch capture');
+});
+
+test('our own voice is discarded rather than transcribed as theirs', () => {
+  const src = read('../comm/liveTranscribe.ts');
+  const at = src.indexOf('setGated(gated: boolean)');
+  assert.ok(at > 0, 'the gate is gone');
+  const branch = src.slice(at, at + 400);
+  assert.ok(/input_audio_buffer\.clear/.test(branch),
+    'ungating must clear what the socket buffered while the assistant was speaking');
+});
+
+test('the live path is an optimisation, and the server says so', () => {
+  const src = read(SESSION);
+  const at = src.indexOf('async function listen(');
+  assert.ok(at > 0, 'the listen action is gone');
+  const body = src.slice(at, src.indexOf('\n}\n', at));
+
+  // Every refusal is a 200 with ok:false. A status nobody can act on would
+  // make an optimisation look like an outage.
+  assert.ok(!/reason: 'UNAVAILABLE' }, 5\d\d/.test(body), 'a refused grant must not be an error status');
+  assert.ok(/reason: 'UNAVAILABLE' }, 200/.test(body), 'a refused grant is a normal answer');
+  assert.ok(/models = \[/.test(body), 'model availability is per-account, so more than one is tried');
 });

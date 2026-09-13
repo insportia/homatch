@@ -301,6 +301,25 @@ export function AiTalkPanel({ className }: { className?: string }) {
         },
 
         /*
+         * A credential that can transcribe while they are still speaking.
+         *
+         * Allowed to refuse: when it does, the batch path above carries the
+         * session instead. The difference is about a second, not a broken
+         * conversation, so the visitor is never told about it.
+         */
+        onListenGrant: async () => {
+          if (!sessionIdRef.current) return null;
+          const { data: ear, error: earError } = await supabase.functions.invoke('ai-talk-session', {
+            body: { action: 'listen', sessionId: sessionIdRef.current },
+          });
+          const grant = ear as {
+            ok?: boolean; token?: string; model?: string; sampleRate?: number;
+          } | null;
+          if (earError || !grant?.ok || !grant.token) return null;
+          return { token: grant.token, model: grant.model, sampleRate: grant.sampleRate };
+        },
+
+        /*
          * The turn, as it is produced.
          *
          * Words arrive while the model is still writing, and audio arrives

@@ -114,6 +114,13 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
       />
       <Row label="Reply" value={d.lastReplyChars === null ? '—' : `${d.lastReplyChars} chars, ${kb(d.lastAudioBytes)} audio`} />
       <Row label="Playbacks" value={n(d.playbacks)} tone={d.playbacks > 0 ? 'good' : 'idle'} />
+      <Row
+        label="Transcription"
+        value={d.liveMode === 'live'
+          ? `live${d.liveModel ? ` (${d.liveModel})` : ''}`
+          : `batch${d.liveFellBack ? ` — fell back: ${d.liveFellBack}` : ''}`}
+        tone={d.liveMode === 'live' ? 'good' : 'idle'}
+      />
       <Row label="Last error" value={d.lastError ?? 'none'} tone={d.lastError ? 'bad' : 'good'} />
 
       {d.lastTranscript ? (

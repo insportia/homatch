@@ -264,67 +264,85 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
 
   if (!hasSecret('OPENAI_API_KEY')) return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
 
-  const model = Deno.env.get('OPENAI_REALTIME_TRANSCRIBE_MODEL') ?? 'gpt-live-transcribe';
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  /*
+   * A LADDER, BECAUSE MODEL AVAILABILITY IS PER-ACCOUNT.
+   *
+   * The realtime transcription models are not all enabled everywhere, and a
+   * model this account cannot use comes back as a flat 400 with no hint that
+   * the model was the problem. Rather than pin one and have the feature go
+   * dark on a different account, the newest is tried first and each refusal
+   * falls through to the next. The same pattern the speech ladder already
+   * uses.
+   *
+   * If none of them work the batch path continues to serve, which is why
+   * this cannot fail the request.
+   */
+  const configured = Deno.env.get('OPENAI_REALTIME_TRANSCRIBE_MODEL');
+  const models = [configured, 'gpt-live-transcribe', 'gpt-transcribe', 'gpt-4o-transcribe']
+    .filter((m): m is string => Boolean(m));
 
-  try {
-    const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${requireSecret('OPENAI_API_KEY')}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        expires_after: { anchor: 'created_at', seconds: 600 },
-        session: {
-          type: 'transcription',
-          audio: {
-            input: {
-              format: { type: 'audio/pcm', rate: 24_000 },
-              transcription: { model },
-              turn_detection: { type: 'server_vad', silence_duration_ms: 500 },
+  let lastStatus: number | null = null;
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${requireSecret('OPENAI_API_KEY')}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          expires_after: { anchor: 'created_at', seconds: 600 },
+          session: {
+            type: 'transcription',
+            audio: {
+              input: {
+                format: { type: 'audio/pcm', rate: 24_000 },
+                transcription: { model },
+                turn_detection: { type: 'server_vad', silence_duration_ms: 500 },
+              },
             },
           },
-        },
-      }),
-      signal: controller.signal,
-    });
-
-    const raw = await res.text();
-    if (!res.ok) {
-      // Named, bounded, and never the key. An admin needs to know which
-      // parameter the provider disliked; nobody needs the request echoed.
-      logEvent('ai-talk', 'listen_unavailable', {
-        status: res.status, detail: raw.slice(0, 200), model,
+        }),
+        signal: controller.signal,
       });
-      // The STATUS travels back, and nothing else.
-      //
-      // It is a number, it names nothing we sent, and it is the difference
-      // between "that model is not on this account" and "that parameter is
-      // wrong" — which is otherwise only visible in a log this project's
-      // tooling cannot currently read. The browser never shows it.
-      return json({ ok: false, reason: 'UNAVAILABLE', providerStatus: res.status }, 200);
+
+      const raw = await res.text();
+      if (!res.ok) {
+        lastStatus = res.status;
+        logEvent('ai-talk', 'listen_model_refused', {
+          status: res.status, model, detail: raw.slice(0, 200),
+        });
+        continue;
+      }
+
+      const parsed = JSON.parse(raw) as { value?: string; expires_at?: number };
+      if (!parsed.value) { lastStatus = 200; continue; }
+
+      logEvent('ai-talk', 'listen_granted', { model });
+      return json({
+        ok: true,
+        token: parsed.value,
+        expiresAt: parsed.expires_at ?? null,
+        model,
+        sampleRate: 24_000,
+      });
+    } catch (e) {
+      logEvent('ai-talk', 'listen_failed', {
+        model, detail: String((e as Error)?.message ?? e).slice(0, 160),
+      });
+    } finally {
+      clearTimeout(timer);
     }
-
-    const parsed = JSON.parse(raw) as { value?: string; expires_at?: number };
-    if (!parsed.value) return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
-
-    return json({
-      ok: true,
-      token: parsed.value,
-      expiresAt: parsed.expires_at ?? null,
-      model,
-      sampleRate: 24_000,
-    });
-  } catch (e) {
-    logEvent('ai-talk', 'listen_failed', {
-      detail: String((e as Error)?.message ?? e).slice(0, 160),
-    });
-    return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
-  } finally {
-    clearTimeout(timer);
   }
+
+  // The STATUS travels back, and nothing else. It is a number, it names
+  // nothing we sent, and it is the difference between "no model here" and
+  // "wrong parameter" — which is otherwise only visible in a log this
+  // project's tooling cannot currently read. The browser never shows it.
+  return json({ ok: false, reason: 'UNAVAILABLE', providerStatus: lastStatus }, 200);
 }
 
 /**

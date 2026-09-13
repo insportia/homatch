@@ -4,7 +4,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { useEntitlements } from '@/hooks/useEntitlements';
-import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
+import { PublicHeader, HeaderSpacer, type HeaderLink } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { PageBlocks } from '@/site/render/PageBlocks';
 import { Button } from '@/components/ui/button';
@@ -139,6 +139,7 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <PublicHeader links={headerLinks} solid />
+      <HeaderSpacer />
 
       <main className={`${PAGE} py-12 sm:py-16 lg:py-20`}>
         <header className="max-w-3xl">

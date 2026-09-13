@@ -54,6 +54,7 @@ const ORDERS: Readonly<Record<string, readonly string[]>> = {
   mortgage: CONTENT_ONLY,
   privacy: CONTENT_ONLY,
   terms: CONTENT_ONLY,
+  verify: CONTENT_ONLY,
   shell: SHELL_ORDER,
 };
 

@@ -133,7 +133,17 @@ const QUICK_PROMPTS = [
 function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
   const { t } = useLanguage();
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+    /*
+     * Centred with `my-auto`, not `justify-center`.
+     *
+     * A centred flex child that grows taller than its container is clipped
+     * at the TOP, and no amount of scrolling brings it back. At 320px in
+     * Georgian these four cards do exactly that. `my-auto` inside a
+     * min-height wrapper centres when there is room and simply starts at the
+     * top when there is not.
+     */
+    <div className="flex min-h-full flex-col items-center px-5 py-8 text-center sm:px-8">
+      <div className="my-auto flex w-full max-w-2xl flex-col items-center">
       <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
         <Sparkles className="h-7 w-7 text-primary" />
       </div>
@@ -157,6 +167,7 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
             </button>
           );
         })}
+        </div>
       </div>
     </div>
   );
@@ -334,7 +345,7 @@ function AIPageInner() {
    * The limit is the server's: a counter the browser owns is not a limit. */
   if (!session && anonLimitReached) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[60vh]">
+      <div className="flex-1 flex flex-col items-center justify-center px-5 py-8 text-center min-h-[60vh] sm:p-8">
         <div className="mb-5 grid h-16 w-16 place-items-center rounded-[1rem] border border-foreground/15 bg-secondary">
           <Bot className="h-8 w-8 text-gold-ink" />
         </div>
@@ -500,7 +511,7 @@ function AIPageInner() {
           * The bar only exists for somebody signed in, which is why this
           * asks rather than always reserving the room.
           */}
-        <div className={`shrink-0 px-4 pt-3 ${session ? NAV_CLEARANCE : BOTTOM_INSET}`}>
+        <div className={`shrink-0 px-5 pt-3 sm:px-4 ${session ? NAV_CLEARANCE : BOTTOM_INSET}`}>
           <div className="mx-auto flex max-w-2xl items-end gap-2">
             <textarea
               ref={inputRef}
@@ -512,7 +523,17 @@ function AIPageInner() {
               disabled={streaming}
               aria-label={t('ai_input_placeholder')}
               className={
-                'max-h-[9.5rem] min-h-[2.75rem] flex-1 resize-none rounded-[1.25rem] border '
+                /*
+                 * TWO LINES OF ROOM ON A PHONE.
+                 *
+                 * The floor was 2.75rem — one line plus padding. The
+                 * placeholder is a sentence, and in Georgian or Russian it
+                 * wraps to two: at 320px the second line was sliced in half
+                 * by the box, which is the "Homatch AI looks cropped" this
+                 * screen was accused of. Autosize still grows the field for
+                 * what is typed; this only stops the empty state being cut.
+                 */
+                'max-h-[9.5rem] min-h-[4.5rem] sm:min-h-[2.75rem] flex-1 resize-none rounded-[1.25rem] border '
                 + 'border-border bg-secondary px-4 py-3 text-base leading-[1.5] '
                 + 'placeholder:text-muted-foreground focus-visible:outline-none '
                 + 'focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'

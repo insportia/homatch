@@ -6,7 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
-import { InstallApp } from '@/components/common/InstallApp';
+import { InstallApp, useInstallMode, hasInstallAction } from '@/components/common/InstallApp';
 import { PAGE } from '@/components/home/sections/primitives';
 import { useFieldProps, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
@@ -74,6 +74,10 @@ export function PublicHeader(props: { links: HeaderLink[]; solid?: boolean }) {
 }
 
 function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boolean }) {
+  /* Read BEFORE laying out, so the strip never reserves room for a control
+     that is about to render nothing. See useInstallMode. */
+  const installMode = useInstallMode();
+  const canOfferApp = hasInstallAction(installMode);
   const { session } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -182,9 +186,14 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
             <LanguageSwitcher showGlobe triggerClassName={`h-10 px-2.5 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
           </div>
 
-          {/* On a phone the language switcher stays in the bar — it is the
-              one utility somebody may need before opening anything. */}
-          <div className="sm:hidden"><LanguageSwitcher showGlobe triggerClassName={`h-10 px-2 ${onDark ? 'text-white hover:bg-white/10' : ''}`} /></div>
+          {/*
+            * No language control in the phone BAR.
+            *
+            * It used to sit here as well, which left the bar carrying a
+            * wordmark, a language code and a menu button in 320px — the
+            * squeeze this header was accused of. The utility strip below
+            * owns language now, at a comfortable size, beside Install.
+            */}
 
           <span
             className={`hidden h-6 w-px sm:block ${onDark ? 'bg-white/20' : 'bg-border'}`}
@@ -292,6 +301,76 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
           </nav>
         </div>
       )}
+
+      {/*
+        * THE MOBILE UTILITY STRIP.
+        *
+        * Language and Install/Open, as ONE component rather than two controls
+        * pushed to opposite edges of a bar. It sits under the header on a
+        * phone, where the bar itself has room for the logo, the language code
+        * and the menu and nothing more.
+        *
+        * Hidden while the menu is open, because the menu carries its own copy
+        * of both and two live install buttons on one screen is a question
+        * about which one is real.
+        */}
+      {!open && (
+        <div className={`${PAGE} lg:hidden`}>
+          {/*
+            * `inline-flex`, not a full-width row.
+            *
+            * When the app control has nothing to offer -- an unsupported
+            * browser, already running as the installed app, or an explicit
+            * "don't show me this again" -- it renders nothing, and a
+            * full-width strip was left drawing a divider and a wide empty
+            * rectangle next to the language chip. That is the blank field.
+            * Sized to its contents, the strip is simply a language control
+            * when that is all there is.
+            */}
+          <div
+            className={`mb-2 inline-flex max-w-full items-center gap-2 rounded-[0.9rem] border p-1.5 ${
+              canOfferApp ? 'flex w-full' : ''
+            } ${
+              onDark
+                ? 'border-white/15 bg-white/[0.07] backdrop-blur-sm'
+                : 'border-border bg-card/95 backdrop-blur-sm'
+            }`}
+          >
+            <LanguageSwitcher
+              showGlobe
+              compact
+              triggerClassName={`h-10 shrink-0 px-3 ${onDark ? 'text-white hover:bg-white/10' : ''}`}
+            />
+            {canOfferApp && (
+              <>
+                <span
+                  className={`h-5 w-px shrink-0 ${onDark ? 'bg-white/20' : 'bg-border'}`}
+                  aria-hidden="true"
+                />
+                {/* Takes the rest of the row, so a long Georgian or Russian
+                    label has somewhere to go instead of squeezing the code. */}
+                <InstallApp tone={onDark ? 'dark' : 'auto'} className="min-w-0 flex-1" />
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
+}
+
+/**
+ * The room the fixed header occupies, given back to the page.
+ *
+ * The header is `position: fixed`, so every page's first element starts at
+ * y=0 underneath it — measured at 390px, `<main>` on both the home page and
+ * Pricing began at 0 under a 73px bar. The hero gets away with it because it
+ * is a full-bleed black band designed to sit behind a transparent header; a
+ * white page does not, and its first heading was partly covered.
+ *
+ * So a page with a solid header gets a spacer the height of the header. Pages
+ * with a transparent header over a hero deliberately get none.
+ */
+export function HeaderSpacer() {
+  return <div className="h-[8.5rem] md:h-[9.5rem] lg:h-[5.5rem]" aria-hidden="true" />;
 }

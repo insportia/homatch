@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
+import { PublicHeader, HeaderSpacer, type HeaderLink } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { PageBlocks } from '@/site/render/PageBlocks';
 import { PAGE } from '@/components/home/sections/primitives';
@@ -39,6 +39,7 @@ export default function TermsPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <PublicHeader links={headerLinks} solid />
+      <HeaderSpacer />
 
       {/* ── Content ──────────────────────────────────────────── */}
       <main className={`flex-1 ${PAGE} py-14 sm:py-20`}>

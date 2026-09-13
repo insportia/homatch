@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useReducer, useState } from 'react';
-import { Download, Share, Plus, X, Check } from 'lucide-react';
+import { Download, Share, Plus, X, Check, ExternalLink } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   type InstallMode,
@@ -44,6 +44,47 @@ import {
  * So lib/pwa.ts listens once for the page and every control reads from
  * there. See the note on that store.
  */
+/**
+ * THE PAGE'S INSTALL STATE, FOR ANYONE WHO NEEDS TO LAY OUT AROUND IT.
+ *
+ * The control renders nothing at all in three of its states — unsupported
+ * browser, already running as the app, and muted by an explicit "don't show
+ * me this again". A caller that reserves room for it anyway draws a hole:
+ * the mobile utility strip rendered its divider and a flex-1 gap beside the
+ * language chip, so somebody who had once dismissed the sheet saw a wide
+ * empty rectangle where the button used to be.
+ *
+ * So the state is readable BEFORE the control is rendered, from the same
+ * store the control itself reads. One source, so the strip and the button
+ * cannot disagree about whether there is anything to show.
+ */
+export function useInstallMode(): InstallMode {
+  const [, restate] = useReducer((n: number) => n + 1, 0);
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    restate();
+    return watchInstall(restate);
+  }, []);
+  // Kept so a mute performed in one control collapses the other immediately.
+  useEffect(() => {
+    const id = window.setInterval(() => setMuted(wasMuted()), 2000);
+    return () => window.clearInterval(id);
+  }, []);
+  return resolveInstallMode({
+    standalone: isStandalone(),
+    hasNativePrompt: heldInstallPrompt() !== null,
+    iosSafari: isIOSSafari(),
+    installable: canInstall(),
+    muted: muted || wasMuted(),
+    installed: installedInThisTab(),
+  });
+}
+
+/** Is there an app action worth giving room to? */
+export function hasInstallAction(mode: InstallMode): boolean {
+  return mode !== 'unavailable' && mode !== 'standalone';
+}
+
 export function InstallApp({
   compact = false, tone = 'auto', variant = 'pill', className = '',
 }: {
@@ -86,9 +127,24 @@ export function InstallApp({
     iosSafari: isIOSSafari(),
     installable: canInstall(),
     muted: muted || wasMuted(),
+    installed: justInstalled,
   });
 
   const onClick = useCallback(async () => {
+    /*
+     * INSTALLED, AND THE HONEST NEXT ACTION.
+     *
+     * No browser lets a page launch an installed app on demand — and faking
+     * it, by showing a spinner and doing nothing, is worse than saying what
+     * is true. So the control becomes a door: opening the app's own scope.
+     * Where the platform honours installed scope this lands in the app
+     * window; where it does not, it is a new tab, which is a real thing that
+     * really happened rather than a pretend launch.
+     */
+    if (mode === 'installed') {
+      window.open(window.location.origin, '_blank', 'noopener');
+      return;
+    }
     if (mode === 'ios-manual') { setSheet('ios'); return; }
     // No prompt to replay: the honest answer is the browser's own menu.
     if (mode === 'pending' || !prompt) { setSheet('pending'); return; }
@@ -98,20 +154,8 @@ export function InstallApp({
     await showInstallPrompt();
   }, [mode, prompt]);
 
-  if (mode === 'standalone') {
-    /* Installed. Said once, quietly, rather than leaving a dead button. */
-    if (!justInstalled) return null;
-    return (
-      <span
-        className={`inline-flex min-h-[2.5rem] items-center gap-2 rounded-full px-3 text-sm font-medium ${
-          tone === 'dark' ? 'text-white/80' : 'text-ink-soft'
-        } ${className}`}
-      >
-        <Check className="h-4 w-4 shrink-0 text-[#12A06B]" strokeWidth={2.5} aria-hidden="true" />
-        {!compact && t('pwa_installed')}
-      </span>
-    );
-  }
+  /* Already running as the installed app: there is nothing to offer. */
+  if (mode === 'standalone') return null;
   if (mode === 'unavailable') return null;
 
   /*
@@ -130,7 +174,12 @@ export function InstallApp({
     ? 'w-full min-h-[3rem] rounded-[0.9rem] px-4 text-[17px]'
     : `min-h-[2.5rem] rounded-full text-sm ${compact ? 'w-10 px-0' : 'px-4'}`;
   const skin = tone === 'dark'
-    ? 'bg-white/12 text-white ring-1 ring-inset ring-white/30 hover:bg-white/20 hover:ring-white/50'
+    /* bg-white/[0.12], not bg-white/12. Tailwind's opacity scale goes in
+       fives, so `/12` names no rule at all and silently generates nothing:
+       this button has been fully transparent on every dark surface it has
+       ever appeared on — the exact "invisible until hover" it was supposed
+       to have fixed. An arbitrary value keeps the intended 12%. */
+    ? 'bg-white/[0.12] text-white ring-1 ring-inset ring-white/30 hover:bg-white/20 hover:ring-white/50'
     : 'bg-gold-soft text-gold-ink ring-1 ring-inset ring-gold/45 hover:bg-gold hover:text-[#0D0D0D] hover:ring-gold';
 
   return (
@@ -138,11 +187,17 @@ export function InstallApp({
       <button
         type="button"
         onClick={() => { void onClick(); }}
-        aria-label={t('pwa_install_aria')}
+        aria-label={mode === 'installed' ? t('pwa_open_aria') : t('pwa_install_aria')}
         className={`${base} ${shape} ${skin} ${className}`}
       >
-        <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
-        {!compact && <span className="whitespace-nowrap">{t('pwa_install')}</span>}
+        {mode === 'installed'
+          ? <ExternalLink className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+          : <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />}
+        {!compact && (
+          <span className="min-w-0 truncate">
+            {mode === 'installed' ? t('pwa_open') : t('pwa_install')}
+          </span>
+        )}
       </button>
 
       {sheet && (

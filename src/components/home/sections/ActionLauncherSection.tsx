@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Upload } from 'lucide-react';
+import { ArrowRight, Upload, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField, useFieldProps } from '@/site/content';
+import { useSectionField, useFieldProps, useSectionIconName } from '@/site/content';
+import { iconFor } from '@/site/icons';
 
 /**
  * REGION 02 — the action launcher.
@@ -49,6 +50,19 @@ import { useSectionField, useFieldProps } from '@/site/content';
  * worse than a launcher with one fewer tile.
  */
 export function ActionLauncherSection() {
+  /*
+   * A tile's icon, if one has been chosen.
+   *
+   * Site Studio stores an icon as a NAME from the curated set. Undefined
+   * means nobody has chosen one, and the tile keeps the drawn glyph it
+   * shipped with — so an untouched page is byte for byte what it was.
+   */
+  const iconName = useSectionIconName();
+  const tileIcon = (key: string) => {
+    const chosen = iconName(`tile_${key}`);
+    return chosen ? iconFor(chosen, Sparkles) : undefined;
+  };
+
   const sf = useSectionField();
   const fp = useFieldProps();
   const { session } = useAuth();
@@ -87,7 +101,14 @@ export function ActionLauncherSection() {
       <div className="mt-8 grid gap-3.5 sm:mt-10 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
         {/* Verify — the one tile with a live field, because it is the one
             capability whose entry point is public and takes a single value. */}
-        <Tile glyph="verify" title={t('mp_tile_verify_t')} desc={t('mp_tile_verify_d')} as="div">
+        <Tile
+          glyph="verify"
+          field="tile_verify"
+          icon={tileIcon('verify')}
+          title={sf('tile_verify_t', 'mp_tile_verify_t')}
+          desc={sf('tile_verify_d', 'mp_tile_verify_d')}
+          as="div"
+        >
           <form
             onSubmit={e => {
               e.preventDefault();
@@ -119,47 +140,57 @@ export function ActionLauncherSection() {
 
         <Tile
           glyph="contract"
-          title={t('mp_contract_title')}
-          desc={t('mp_tile_contract_d')}
+          field="tile_contract"
+          icon={tileIcon('contract')}
+          title={sf('tile_contract_t', 'mp_contract_title')}
+          desc={sf('tile_contract_d', 'mp_tile_contract_d')}
           onClick={gated('/verify')}
           action={
             <span className="inline-flex items-center gap-2">
               <Upload className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
-              {t('mp_contract_cta')}
+              <span {...fp('tile_contract_a')}>{sf('tile_contract_a', 'mp_contract_cta')}</span>
             </span>
           }
         />
 
         <Tile
           glyph="matching"
-          title={t('mp_tile_match_t')}
-          desc={t('mp_tile_match_d')}
+          field="tile_match"
+          icon={tileIcon('match')}
+          title={sf('tile_match_t', 'mp_tile_match_t')}
+          desc={sf('tile_match_d', 'mp_tile_match_d')}
           onClick={gated('/property/add')}
-          action={t('mp_match_cta')}
+          action={sf('tile_match_a', 'mp_match_cta')}
         />
 
         <Tile
           glyph="mortgage"
-          title={t('mp_mortgage_title')}
-          desc={t('mp_tile_mortgage_d')}
+          field="tile_mortgage"
+          icon={tileIcon('mortgage')}
+          title={sf('tile_mortgage_t', 'mp_mortgage_title')}
+          desc={sf('tile_mortgage_d', 'mp_tile_mortgage_d')}
           onClick={() => navigate('/mortgage')}
-          action={t('mp_mortgage_cta')}
+          action={sf('tile_mortgage_a', 'mp_mortgage_cta')}
         />
 
         <Tile
           glyph="calls"
-          title={t('call_center_title')}
-          desc={t('mp_tile_calls_d')}
+          field="tile_calls"
+          icon={tileIcon('calls')}
+          title={sf('tile_calls_t', 'call_center_title')}
+          desc={sf('tile_calls_d', 'mp_tile_calls_d')}
           onClick={gated('/outreach/calls')}
-          action={t('mp_calls_cta')}
+          action={sf('tile_calls_a', 'mp_calls_cta')}
         />
 
         <Tile
           glyph="email"
-          title={t('mp_email_title')}
-          desc={t('mp_tile_email_d')}
+          field="tile_email"
+          icon={tileIcon('email')}
+          title={sf('tile_email_t', 'mp_email_title')}
+          desc={sf('tile_email_d', 'mp_tile_email_d')}
           onClick={gated('/outreach/email')}
-          action={t('mp_email_cta')}
+          action={sf('tile_email_a', 'mp_email_cta')}
         />
       </div>
     </section>
@@ -176,7 +207,7 @@ export function ActionLauncherSection() {
  * ------------------------------------------------------------------ */
 
 function Tile({
-  glyph, title, desc, action, onClick, as = 'button', children,
+  glyph, title, desc, action, onClick, as = 'button', children, field, icon,
 }: {
   glyph: GlyphName;
   title: string;
@@ -185,8 +216,14 @@ function Tile({
   onClick?: () => void;
   as?: 'button' | 'div';
   children?: React.ReactNode;
+  /** Field-key prefix, so this tile's copy is addressable in the editor. */
+  field?: string;
+  /** A curated icon chosen in Site Studio, replacing the shipped glyph. */
+  icon?: React.ComponentType<{ className?: string; strokeWidth?: number }>;
 }) {
   const { isRTL } = useLanguage();
+  const fp = useFieldProps();
+  const mark = (part: string) => (field ? fp(`${field}_${part}`) : {});
 
   const body = (
     <>
@@ -194,27 +231,39 @@ function Tile({
           60px of picture before its first word; they stack from sm, where
           there is height to spend on the composition. */}
       <div className="flex items-center gap-3.5 sm:block">
-        <FeatureGlyph
-          name={glyph}
-          size={48}
-          className="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none sm:h-14 sm:w-14"
-        />
+        {/* A chosen icon replaces the shipped glyph; with none chosen the
+            tile draws exactly what it always drew. */}
+        {icon ? (
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[0.9rem] border border-foreground/15 bg-secondary text-foreground transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none sm:h-14 sm:w-14">
+            {React.createElement(icon, { className: 'h-6 w-6', strokeWidth: 1.75 })}
+          </span>
+        ) : (
+          <FeatureGlyph
+            name={glyph}
+            size={48}
+            className="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none sm:h-14 sm:w-14"
+          />
+        )}
         <h3
           className="min-w-0 flex-1 text-balance font-semibold leading-[1.2] tracking-[-0.012em] text-foreground sm:mt-5"
           style={{ fontSize: 'clamp(1.05rem, 1.45vw, 1.3rem)' }}
+          {...mark('t')}
         >
           {title}
         </h3>
       </div>
 
-      <p className="mt-3 text-pretty text-[16px] leading-[1.6] text-ink-soft sm:mt-2.5 sm:text-[16px] sm:leading-[1.65]">
+      <p
+        className="mt-3 text-pretty text-[16px] leading-[1.6] text-ink-soft sm:mt-2.5 sm:text-[16px] sm:leading-[1.65]"
+        {...mark('d')}
+      >
         {desc}
       </p>
 
       <div className="mt-5 border-t border-foreground/[0.12] pt-4 sm:mt-6 sm:pt-5">
         {children ?? (
           <span className="inline-flex items-center gap-2 text-start text-sm font-semibold text-foreground transition-colors duration-300 group-hover:text-gold-ink motion-reduce:transition-none">
-            {action}
+            <span {...mark('a')}>{action}</span>
             <ArrowRight
               className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
               strokeWidth={2}

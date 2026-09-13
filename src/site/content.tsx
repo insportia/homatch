@@ -256,6 +256,18 @@ export function useItemIcon(): (item: SiteItem, slot: string, fallback: LucideIc
   return (item, slot, fallback) => iconFor(item.icons[slot], fallback);
 }
 
+/**
+ * The NAME stored in an icon slot, or undefined if nobody chose one.
+ *
+ * useSectionIcon always returns a component -- the fallback when unset -- so
+ * it cannot answer "has an admin picked one here?". A component that keeps
+ * its own drawn glyph until overridden needs to know the difference.
+ */
+export function useSectionIconName(): (slot: string) => string | undefined {
+  const { section } = useContext(SectionScopeCtx);
+  return slot => section?.icons[slot];
+}
+
 /** The same, for an icon slot on the section itself. */
 export function useSectionIcon(): (slot: string, fallback: LucideIcon) => LucideIcon {
   const { section } = useContext(SectionScopeCtx);

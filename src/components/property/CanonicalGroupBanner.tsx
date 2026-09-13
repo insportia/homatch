@@ -26,7 +26,7 @@ export function CanonicalGroupBanner({ propertyId }: Props) {
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        <button className="w-full flex items-center justify-between gap-3 p-3 bg-primary/8 border border-primary/20 rounded-xl text-left hover:bg-primary/12 transition-colors group">
+        <button className="w-full flex items-center justify-between gap-3 p-3 bg-primary/5 border border-primary/20 rounded-xl text-left hover:bg-primary/10 transition-colors group">
           <div className="flex items-center gap-2 flex-wrap">
             <TrendingDown className="h-4 w-4 text-primary shrink-0" />
             <span className="text-sm font-medium text-foreground">

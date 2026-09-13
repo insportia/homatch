@@ -122,7 +122,7 @@ export default function AdminSettingsPage() {
 
       {/* Production safety alert */}
       {isMockOn && (
-        <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/8 px-4 py-3">
+        <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3">
           <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-destructive">{t('admin_settings_mock_mode_on')}</p>

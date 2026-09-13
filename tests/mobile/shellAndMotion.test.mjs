@@ -410,3 +410,166 @@ test('the page moves on a phone, and stops dead when asked to', opts, async (t) 
   assert.equal(quietOpacities.filter((o) => o < 0.99).length, 0,
     'reduced motion left part of the page invisible');
 });
+
+/*
+ * ── IS IT BIG ENOUGH TO NOTICE? ─────────────────────────────────────────
+ *
+ * The test above proves nothing was left invisible. That is the safety
+ * property, and it passed throughout the period when the reported problem
+ * was "mobile animations do not work" — because the animations DID run.
+ * They ran 10px in 340ms, which is a tenth of a finger's width finishing
+ * before the eye settles, and they ran while the section was still 80px
+ * into view and the reader was looking somewhere else.
+ *
+ * So this measures the two things a person actually perceives: how far a
+ * thing travels, and whether it travels while they are looking at it. The
+ * floor is 16px, which is the smallest movement that reads as an arrival on
+ * a phone rather than as a font swap.
+ *
+ * Every sample scrolls WHILE watching, because a reader does not stop short
+ * of a section and wait for it.
+ */
+const MOTION_FLOOR_PX = 16;
+
+test('the motion on a phone is big enough for a person to see', opts, async (t) => {
+  if (skipReason) assert.fail(`shell gate could not run: ${skipReason}`);
+  const { chromium } = resolvePlaywright();
+  const browser = await serve(t, chromium);
+
+  const failures = [];
+
+  for (const width of [390, 320]) {
+    /* A fresh load per measurement. Scrolling the page to "warm" it fires
+       every IntersectionObserver on the way past, so every sequence would
+       have finished before it was sampled. */
+    const open = async () => {
+      const ctx = await browser.newContext({
+        viewport: { width, height: 800 }, isMobile: true, hasTouch: true,
+        reducedMotion: 'no-preference',
+      });
+      await ctx.addInitScript(() => window.localStorage.setItem('homatch_lang', 'en'));
+      const page = await ctx.newPage();
+      await stub(page);
+      await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(1500);
+      return { ctx, page };
+    };
+
+    /** Sample opacity and translateY for `n` ticks. */
+    const sample = async (page, selector, ticks, scrollBy = 0) => {
+      const ys = []; const os = [];
+      for (let i = 0; i < ticks; i += 1) {
+        if (scrollBy) await page.evaluate((n) => window.scrollBy(0, n), scrollBy);
+        const s = await page.evaluate((q) => {
+          const el = document.querySelector(q);
+          if (!el) return null;
+          const cs = getComputedStyle(el);
+          const m = new DOMMatrixReadOnly(cs.transform === 'none' ? '' : cs.transform);
+          return { o: Number(cs.opacity), y: m.m42 };
+        }, selector);
+        if (s) { ys.push(s.y); os.push(s.o); }
+        await page.waitForTimeout(70);
+      }
+      if (!ys.length) return null;
+      return {
+        travel: Math.round(Math.max(...ys) - Math.min(...ys)),
+        fade: Math.max(...os) - Math.min(...os),
+        end: os[os.length - 1],
+      };
+    };
+
+    /* 1. A section arriving as the reader scrolls into it. */
+    {
+      const { ctx, page } = await open();
+      const top = await page.evaluate(() => {
+        const sec = [...document.querySelectorAll('main section')]
+          .find((s) => s.getBoundingClientRect().top > window.innerHeight * 1.4);
+        if (!sec) return null;
+        // Reveal wraps the section from OUTSIDE, so the wrapper is the parent.
+        sec.parentElement?.setAttribute('data-motion-probe', '');
+        return sec.getBoundingClientRect().top + window.scrollY;
+      });
+      if (top === null) {
+        failures.push(`${width}: no section below the fold to measure`);
+      } else {
+        /* Stop exactly one viewport short, not "somewhere near": the reveal
+           fires when the section crosses 70% of the screen, and a step loop
+           that overshoots by up to 240px starts sampling after it has
+           already begun -- which is how this measured 7px one run and 18px
+           the next. */
+        await page.evaluate((n) => window.scrollTo(0, n), Math.max(0, top - 800));
+        await page.waitForTimeout(250);
+        const seen = await sample(page, '[data-motion-probe]', 26, 32);
+        if (!seen) failures.push(`${width}: the reveal wrapper vanished`);
+        else if (seen.travel < MOTION_FLOOR_PX) {
+          failures.push(`${width}: a section arrives with ${seen.travel}px of travel`);
+        } else if (seen.fade < 0.5) {
+          failures.push(`${width}: a section arrives with almost no fade (${seen.fade.toFixed(2)})`);
+        }
+      }
+      await ctx.close();
+    }
+
+    /* 2. The building's findings, and its layer story. */
+    {
+      const { ctx, page } = await open();
+      await page.evaluate(() => document.querySelector('#intelligence')
+        ?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const finding = await sample(page, '#intelligence dl > div', 70);
+      if (!finding) failures.push(`${width}: the building reports no findings`);
+      else if (finding.travel < MOTION_FLOOR_PX) {
+        failures.push(`${width}: a building finding arrives with ${finding.travel}px of travel`);
+      }
+
+      /* The seven layers and their explanation used to live inside a
+         `hidden lg:grid` container, so a phone visitor got the drawing and
+         four numbers and never learned what the section was arguing. */
+      const rows = await page.evaluate(() => [...document.querySelectorAll('#intelligence li button')]
+        .filter((e) => e.getBoundingClientRect().width > 0).length);
+      if (rows < 7) failures.push(`${width}: only ${rows} of the seven layers are on the phone`);
+
+      const panel = await page.evaluate(() => [...document.querySelectorAll('#intelligence p')]
+        .some((e) => e.getBoundingClientRect().width > 0 && (e.textContent || '').includes(' / ')));
+      if (!panel) failures.push(`${width}: the active layer has no explanation on the phone`);
+
+      /* And it moves on its own: the highlight used to walk only from lg up. */
+      const walked = await page.evaluate(async () => {
+        const lit = () => document.querySelector('#intelligence [aria-current="true"] span:last-child')
+          ?.textContent?.trim() ?? null;
+        const a = lit();
+        await new Promise((r) => setTimeout(r, 4200));
+        return a !== lit();
+      });
+      if (!walked) failures.push(`${width}: the layer highlight does not advance on a phone`);
+      await ctx.close();
+    }
+
+    /* 3. Property Intelligence tells its story in order. */
+    {
+      const { ctx, page } = await open();
+      await page.evaluate(() => {
+        const head = [...document.querySelectorAll('p')]
+          .find((e) => /confirmed in/i.test(e.textContent || ''));
+        head?.scrollIntoView({ block: 'center', behavior: 'instant' });
+      });
+      const filled = await page.evaluate(async () => {
+        const head = [...document.querySelectorAll('p')]
+          .find((e) => /confirmed in/i.test(e.textContent || ''));
+        if (!head) return null;
+        const panel = head.parentElement;
+        const shown = () => [...panel.querySelectorAll('p, li, div')]
+          .filter((e) => Number(getComputedStyle(e).opacity) > 0.9).length;
+        const first = shown();
+        await new Promise((r) => setTimeout(r, 4800));
+        return { first, last: shown() };
+      });
+      if (!filled) failures.push(`${width}: Property Intelligence is not on the page`);
+      else if (filled.last <= filled.first) {
+        failures.push(`${width}: Property Intelligence arrives all at once (${filled.first} then ${filled.last})`);
+      }
+      await ctx.close();
+    }
+  }
+
+  assert.deepEqual(failures, [], failures.join('\n'));
+});

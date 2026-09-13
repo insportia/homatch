@@ -46,10 +46,20 @@ export function IntelligenceLayersSection() {
   const [active, setActive] = useState(0);
   const [held, setHeld] = useState(false);
 
-  /* The highlight walks the tower on its own, but ONLY where the tower is:
-     from lg up, with motion allowed. On a phone the floors are the control,
-     and something that moves while a thumb is reaching for it is a worse
-     experience than one that waits. */
+  /*
+   * THE HIGHLIGHT WALKS THE TOWER ON A PHONE TOO.
+   *
+   * It used to be gated on `(min-width: 1024px)`, on the reasoning that a
+   * phone visitor would tap and that something moving under a reaching thumb
+   * is worse than something still. That reasoning produced a phone
+   * composition where nothing moved at all AND -- because the layer list and
+   * its description were both inside the desktop-only grid -- nothing said
+   * what the seven layers were either. A visitor on a phone got a drawing of
+   * a building and four numbers.
+   *
+   * So it runs at every width now, and `held` still stops it the moment a
+   * finger or a cursor is on the list: interaction wins, absence does not.
+   */
   const [autoplay, setAutoplay] = useState(false);
   /*
    * Every visible word in the building scene, through the content model.
@@ -77,16 +87,11 @@ export function IntelligenceLayersSection() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const desktop = window.matchMedia('(min-width: 1024px)');
     const still = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync = () => setAutoplay(desktop.matches && !still.matches);
+    const sync = () => setAutoplay(!still.matches);
     sync();
-    desktop.addEventListener('change', sync);
     still.addEventListener('change', sync);
-    return () => {
-      desktop.removeEventListener('change', sync);
-      still.removeEventListener('change', sync);
-    };
+    return () => still.removeEventListener('change', sync);
   }, []);
 
   useEffect(() => {
@@ -114,17 +119,35 @@ export function IntelligenceLayersSection() {
           </p>
         </div>
 
-        {/* ── The phone composition ────────────────────────────────
-            Seven rows, each one a floor of the building AND its own touch
-            target. The slab tapers with the floor it stands for, so the
-            stack still reads as a tower, but the label lives OUTSIDE the
-            shape where it can be read at any size. One tap swaps the active
-            floor; nothing moves on its own. */}
-        {/* The building, on a phone. Not a list of slabs: the same drawing
-            the desktop gets, scaled, because a tapering stack of bars was
-            the "cake" this section was accused of being. */}
-        <div className="mt-8 lg:hidden">
+        {/*
+          * ── THE PHONE COMPOSITION ─────────────────────────────────
+          *
+          * The same three things the desktop shows, stacked instead of
+          * placed side by side: the building, the layer it is currently
+          * reading, and the seven layers as a list you can tap.
+          *
+          * Until now this was the building alone. The list and the sentence
+          * lived inside the `hidden lg:grid` container below, so a phone
+          * visitor was shown a drawing and four numbers and never learned
+          * what the seven layers were -- the section's entire argument,
+          * absent, on the device most people arrive on.
+          *
+          * Order matters: picture, then what it found, then the control. The
+          * sentence sits directly under the drawing because it is the
+          * caption for what just moved.
+          */}
+        <div
+          className="mt-8 lg:hidden"
+          onPointerDown={() => setHeld(true)}
+          onPointerUp={() => setHeld(false)}
+        >
           <BuildingScene copy={buildingCopy} />
+          <div className="mt-6">
+            <LayerPanel active={active} />
+          </div>
+          <div className="mt-6">
+            <LayerList active={active} onPick={setActive} />
+          </div>
         </div>
 
         {/* Three columns from lg: the picture, the floors, and the floor you
@@ -140,65 +163,12 @@ export function IntelligenceLayersSection() {
         >
           <BuildingScene copy={buildingCopy} />
 
-          {/* The floors, as a list. Selecting one drives the tower; this is
-              the accessible control, and the tower is its picture. */}
-          <ul className="order-3 min-w-0 lg:order-none">
-            {LAYERS.map((layer, i) => {
-              const on = i === active;
-              return (
-                <li key={layer.key}>
-                  <button
-                    type="button"
-                    onClick={() => setActive(i)}
-                    onMouseEnter={() => setActive(i)}
-                    onFocus={() => setActive(i)}
-                    aria-current={on}
-                    className={`group relative flex w-full items-center gap-3.5 border-b py-3.5 ps-4 sm:gap-4 sm:py-4 text-start transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold motion-reduce:transition-none ${
-                      on ? 'border-gold/60' : 'border-white/[0.12] hover:border-white/30'
-                    }`}
-                  >
-                    {/* The gold bar is what ties this row to the lit floor.
-                        A colour shift alone was too quiet to read as a link
-                        between the two columns. */}
-                    <span
-                      className={`absolute inset-y-2 start-0 w-[3px] rounded-full transition-colors duration-300 motion-reduce:transition-none ${
-                        on ? 'bg-gold' : 'bg-transparent'
-                      }`}
-                      aria-hidden="true"
-                    />
-                    <span
-                      className={`shrink-0 font-mono text-[14px] tabular-nums tracking-widest transition-colors duration-300 motion-reduce:transition-none ${
-                        on ? 'text-gold' : 'text-white/35'
-                      }`}
-                      aria-hidden="true"
-                    >
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    <span
-                      className={`min-w-0 flex-1 text-[17px] leading-snug transition-colors duration-300 motion-reduce:transition-none sm:text-lg ${
-                        on ? 'font-semibold text-white' : 'font-medium text-white/55 group-hover:text-white/85'
-                      }`}
-                    >
-                      {t(layer.label)}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="order-3 min-w-0 lg:order-none">
+            <LayerList active={active} onPick={setActive} />
+          </div>
 
-          {/* The floor you are on, in a block of fixed height. Inside the list
-              this sentence changed a row's height on every tick and shunted
-              the rows below it — a section that moves under the reader's eye
-              while they are reading it. */}
-          <div className="order-2 min-w-0 rounded-[0.9rem] border border-white/15 bg-[#171717] p-6 lg:order-none">
-            <p className="text-[14px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
-            <p className="mt-3 min-h-[7.5rem] text-pretty text-sm leading-relaxed text-white/70 sm:min-h-[8.5rem]">
-              {t(LAYERS[active].desc)}
-            </p>
-            <p className="border-t border-white/[0.12] pt-4 text-[14px] uppercase tracking-[0.16em] text-white/35">
-              {String(active + 1).padStart(2, '0')} / {String(LAYERS.length).padStart(2, '0')}
-            </p>
+          <div className="order-2 min-w-0 lg:order-none">
+            <LayerPanel active={active} />
           </div>
         </div>
       </div>
@@ -207,161 +177,81 @@ export function IntelligenceLayersSection() {
 }
 
 /**
- * THE PHONE COMPOSITION
+ * THE SEVEN LAYERS, AS A LIST YOU CAN TAP.
  *
- * The desktop tower is a picture beside a list. Shrunk onto a 320px screen
- * that became a small diagram with unreadable floors and a list repeating it
- * underneath, which is two weak things instead of one good one.
+ * One component for both widths. It used to be two — a desktop list inside
+ * the grid and a `MobileStack` that nothing rendered — and the phone quietly
+ * ended up with neither.
  *
- * Here the building IS the list. Each row carries a slab whose width is that
- * floor's width in the tower, so the stack still tapers and still reads as a
- * building, and the label sits beside the slab rather than inside it. The
- * whole row is the touch target at 48px, the active floor is gold with a
- * brighter border and a bolder label, and the sentence for the active floor
- * sits underneath in a block of fixed height so nothing jumps when it
- * changes. In RTL the whole row mirrors, slab and label together.
+ * Rows are 48px minimum, which is a thumb, and the active row carries a gold
+ * bar rather than only a colour shift: a shift in text colour is the kind of
+ * signal that survives a design review and not daylight.
  */
-function MobileStack({ active, onPick }: { active: number; onPick: (i: number) => void }) {
+function LayerList({ active, onPick }: { active: number; onPick: (i: number) => void }) {
   const { t } = useLanguage();
-  const floors = LAYERS.length;
-
   return (
-    <div className="mt-8 lg:hidden">
-      {/* Drawn top down as FINANCING first and PROPERTY last, the same way
-          the desktop tower is stacked: the property is the ground the rest
-          of it stands on, so it is the widest slab and it is at the bottom.
-          The numbers count down as you read, which is how floors are
-          numbered in a building and removes any doubt about which end is
-          the base. */}
-      <ol>
-        {[...LAYERS].reverse().map((layer, position) => {
-          const i = floors - 1 - position;
-          const on = i === active;
-          const width = 46 + ((floors - 1 - i) / (floors - 1)) * 54;
-          return (
-            <li key={layer.key}>
-              <button
-                type="button"
-                onClick={() => onPick(i)}
-                aria-current={on}
-                className={`flex w-full items-center gap-3.5 rounded-[0.55rem] py-1.5 text-start transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold motion-reduce:transition-none ${
-                  on ? 'bg-white/[0.06]' : ''
+    <ul>
+      {LAYERS.map((layer, i) => {
+        const on = i === active;
+        return (
+          <li key={layer.key}>
+            <button
+              type="button"
+              onClick={() => onPick(i)}
+              onMouseEnter={() => onPick(i)}
+              onFocus={() => onPick(i)}
+              aria-current={on}
+              className={`group relative flex min-h-[48px] w-full items-center gap-3.5 border-b py-3.5 ps-4 text-start transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold motion-reduce:transition-none sm:gap-4 sm:py-4 ${
+                on ? 'border-gold/60' : 'border-white/[0.12] hover:border-white/30'
+              }`}
+            >
+              <span
+                className={`absolute inset-y-2 start-0 w-[3px] rounded-full transition-colors duration-300 motion-reduce:transition-none ${
+                  on ? 'bg-gold' : 'bg-transparent'
+                }`}
+                aria-hidden="true"
+              />
+              <span
+                className={`shrink-0 font-mono text-[14px] tabular-nums tracking-widest transition-colors duration-300 motion-reduce:transition-none ${
+                  on ? 'text-gold' : 'text-white/35'
+                }`}
+                aria-hidden="true"
+              >
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span
+                className={`min-w-0 flex-1 text-pretty text-[17px] leading-snug transition-colors duration-300 motion-reduce:transition-none sm:text-lg ${
+                  on ? 'font-semibold text-white' : 'font-medium text-white/55 group-hover:text-white/85'
                 }`}
               >
-                {/* The floor. A fixed 7rem track keeps every slab on the same
-                    centre line, so the taper is visible rather than implied. */}
-                <span className="flex h-11 w-[7rem] shrink-0 items-center justify-center" aria-hidden="true">
-                  <span
-                    className={`h-[1.6rem] rounded-[0.2rem] border transition-[background-color,border-color] duration-200 motion-reduce:transition-none ${
-                      on ? 'border-gold bg-gold' : 'border-white/25 bg-white/[0.07]'
-                    }`}
-                    style={{ width: `${width}%` }}
-                  />
-                </span>
-
-                <span
-                  className={`min-w-0 flex-1 text-[17px] leading-snug transition-colors duration-200 motion-reduce:transition-none ${
-                    on ? 'font-semibold text-white' : 'font-medium text-white/55'
-                  }`}
-                >
-                  {t(layer.label)}
-                </span>
-
-                <span
-                  className={`shrink-0 font-mono text-[14px] tabular-nums transition-colors duration-200 motion-reduce:transition-none ${
-                    on ? 'text-gold' : 'text-white/30'
-                  }`}
-                  aria-hidden="true"
-                >
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="mt-5 rounded-[0.9rem] border border-white/15 bg-[#171717] p-4">
-        <p className="text-[14px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
-        <p className="mt-2 min-h-[5.5rem] text-pretty text-[16px] leading-relaxed text-white/70">
-          {t(LAYERS[active].desc)}
-        </p>
-      </div>
-    </div>
+                {t(layer.label)}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
 /**
- * The tower. Seven floors, bottom to top, tapering — the property is the
- * ground it all stands on and financing is what sits on top of the finished
- * picture. The lit floor is gold and steps out of the stack.
+ * What the currently-lit layer means.
+ *
+ * A fixed minimum height, because inside the list this sentence changed a
+ * row's height on every tick and shunted the rows below it — a section that
+ * moves under the reader's eye while they are reading it.
  */
-function Tower({ active }: { active: number }) {
-  const floors = LAYERS.length;
-  const H = 46;
-  const GAP = 9;
-  const topY = 34;
-
+function LayerPanel({ active }: { active: number }) {
+  const { t } = useLanguage();
   return (
-    <div className="relative mx-auto w-full max-w-[17rem] sm:max-w-[19rem] lg:mx-0">
-      <svg
-        viewBox="0 0 300 440"
-        className="h-auto w-full"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-      >
-        {/* The mast, and the ground it stands on. */}
-        <path d="M150 6 V30" stroke="hsl(38 88% 54%)" strokeWidth="2.5" strokeLinecap="round" />
-        <circle cx="150" cy="6" r="3.5" fill="hsl(38 88% 54%)" />
-
-        {LAYERS.map((layer, i) => {
-          /* Index 0 is the ground floor, so it is drawn last from the top. */
-          const fromTop = floors - 1 - i;
-          const y = topY + fromTop * (H + GAP);
-          /* Widest at the bottom: the property is the ground everything else
-             is stacked on, and a tower that narrows upward is the only way
-             this reads as a building rather than as a bar chart. */
-          const width = 124 + fromTop * 21;
-          const x = 150 - width / 2;
-          const on = i === active;
-
-          return (
-            <g
-              key={layer.key}
-              style={{
-                transform: on ? 'translateX(10px)' : 'translateX(0)',
-                transition: 'transform 420ms cubic-bezier(0.22,1,0.36,1)',
-              }}
-              className="motion-reduce:!transform-none motion-reduce:![transition:none]"
-            >
-              <rect
-                x={x}
-                y={y}
-                width={width}
-                height={H}
-                rx="4"
-                fill={on ? 'hsl(38 88% 54%)' : '#1A1A1A'}
-                stroke={on ? 'hsl(38 88% 68%)' : 'rgba(255,255,255,0.28)'}
-                strokeWidth="1.5"
-                style={{ transition: 'fill 420ms ease, stroke 420ms ease' }}
-              />
-              {/* Glazing. On the lit floor it reads as black windows in a gold
-                  slab; on the rest as faint light in a dark one. */}
-              <g fill={on ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.22)'} style={{ transition: 'fill 420ms ease' }}>
-                {Array.from({ length: Math.max(3, Math.floor((width - 20) / 30)) }).map((_, c, arr) => {
-                  const span = arr.length * 30 - 14;
-                  const startX = x + (width - span) / 2;
-                  return <rect key={c} x={startX + c * 30} y={y + 13} width={16} height={20} rx="1.5" />;
-                })}
-              </g>
-            </g>
-          );
-        })}
-
-        {/* The plinth: a gold rule the whole structure sits on. */}
-        <rect x="18" y={topY + floors * (H + GAP) + 4} width="264" height="4" rx="2" fill="hsl(38 88% 54%)" opacity="0.65" />
-      </svg>
+    <div className="min-w-0 rounded-[0.9rem] border border-white/15 bg-[#171717] p-5 sm:p-6">
+      <p className="text-[14px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
+      <p className="mt-3 min-h-[7.5rem] text-pretty text-sm leading-relaxed text-white/70 sm:min-h-[8.5rem]">
+        {t(LAYERS[active].desc)}
+      </p>
+      <p className="border-t border-white/[0.12] pt-4 text-[14px] uppercase tracking-[0.16em] text-white/35">
+        {String(active + 1).padStart(2, '0')} / {String(LAYERS.length).padStart(2, '0')}
+      </p>
     </div>
   );
 }

@@ -149,7 +149,7 @@ export default function AdminHealthPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/8 px-4 py-3">
+        <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3">
           <XCircle className="h-4 w-4 text-destructive shrink-0" />
           <p className="text-sm text-destructive">{error}</p>
         </div>

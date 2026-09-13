@@ -103,9 +103,9 @@ export function Delta({ value }: { value: number | null | undefined }) {
 }
 
 const PILL_TONES: Record<string, string> = {
-  good: 'bg-emerald-500/12 text-emerald-400 border-emerald-500/25',
-  warn: 'bg-amber-500/12 text-amber-400 border-amber-500/25',
-  bad: 'bg-red-500/12 text-red-400 border-red-500/25',
+  good: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
+  warn: 'bg-amber-500/10 text-amber-400 border-amber-500/25',
+  bad: 'bg-red-500/10 text-red-400 border-red-500/25',
   gold: 'bg-gold-soft/40 text-gold-ink border-gold/30',
   muted: 'bg-muted/40 text-muted-foreground border-border/60',
 };

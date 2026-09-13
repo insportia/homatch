@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   DISMISS_DAYS, heldInstallPrompt, installedInThisTab, isIOS, isIOSSafari,
   isStandalone, rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted,
@@ -280,11 +281,24 @@ test('no opacity modifier names a rule Tailwind will not generate', () => {
    * `/NN` must be on the scale, and anything else must be an arbitrary
    * value in brackets, which always generates.
    */
-  const files = [
-    'src/components/common/InstallApp.tsx',
-    'src/components/home/PublicHeader.tsx',
-    'src/components/home/sections/ContractDocument.tsx',
-  ];
+  /*
+   * WIDENED, BECAUSE THREE FILES WAS NOT THE PROBLEM.
+   *
+   * This checked the three files the first dead class was found in. Running
+   * it across the whole tree found six more, in four other components: a
+   * findings card whose border had never rendered, three admin status
+   * badges, and a banner's hover state. Every one of them looked deliberate
+   * in the source and produced nothing in the browser.
+   */
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.tsx')) files.push(full);
+    }
+  };
+  walk('src');
   const bad = [];
   for (const file of files) {
     // Comments discuss the broken class by name; only real classes count.

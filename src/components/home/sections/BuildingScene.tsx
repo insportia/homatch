@@ -418,6 +418,24 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
         * a desktop. They appear one at a time as the analysis reaches them,
         * which is the difference between a result and a caption.
         */}
+      {/*
+        * THE FINDINGS.
+        *
+        * Three things were wrong with them on a phone, and all three are the
+        * kind that survive review because they look right in the source:
+        *
+        *   `border-white/12` generated no CSS at all. Tailwind's opacity
+        *   scale runs in fives, so /12 is not a class -- the cards had no
+        *   border on any device, which is why they read as floating text.
+        *
+        *   6px of travel is not motion. It is the distance a line of text
+        *   moves when a font finishes loading, and on a phone held at arm's
+        *   length nobody perceives it as an arrival.
+        *
+        *   `truncate` on the value cut "Registered" to "Regi..." in
+        *   Georgian and Russian, where these words are longer. A finding
+        *   that has to be guessed at is not a finding.
+        */}
       <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
         {copy.callouts.map((rawCallout, i) => {
           /* The first callout is the storey. While the pointer (or a tap) is
@@ -430,15 +448,15 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
           return (
           <div
             key={c.label}
-            className="rounded-[0.7rem] border border-white/12 bg-white/[0.04] px-3 py-2.5"
+            className="min-w-0 rounded-[0.7rem] border border-white/15 bg-white/[0.04] px-3 py-2.5"
             style={{
               opacity: unitPicked ? 1 : 0,
-              transform: unitPicked ? 'none' : 'translateY(6px)',
-              transition: still ? undefined : `opacity 500ms ease ${i * 110}ms, transform 500ms ease ${i * 110}ms`,
+              transform: unitPicked ? 'none' : 'translateY(20px)',
+              transition: still ? undefined : `opacity 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms, transform 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms`,
             }}
           >
-            <dt className="truncate text-[13px] uppercase tracking-[0.14em] text-white/45">{c.label}</dt>
-            <dd className="mt-0.5 truncate text-[17px] font-semibold text-white">{c.value}</dd>
+            <dt className="text-[13px] uppercase tracking-[0.14em] text-white/45">{c.label}</dt>
+            <dd className="mt-0.5 text-pretty text-[17px] font-semibold leading-tight text-white">{c.value}</dd>
           </div>
           );
         })}

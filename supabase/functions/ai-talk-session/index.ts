@@ -407,14 +407,26 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         } catch { closed = true; }
       };
 
-      // Synthesis runs beside the model rather than after it. The promises are
-      // kept in order so the browser can schedule the pieces back to back;
-      // only the AWAIT is deferred, not the work.
+      /*
+       * SYNTHESIS RUNS BESIDE THE MODEL, AND SO DOES SENDING IT.
+       *
+       * The first version got half of this right: phrases were synthesised as
+       * they were written, and then every audio event was flushed after the
+       * model had finished. Measured on production, that put first audio at
+       * 3.7 seconds behind first text at 1.4 — the parallelism was real and
+       * entirely invisible, because nothing left the server until the slowest
+       * thing had ended.
+       *
+       * The drain below runs as its own task. It sends each piece the moment
+       * that piece is ready, in order, while the model is still writing.
+       */
       const spoken: Array<Promise<{ index: number; pcmBase64: string | null; ms: number }>> = [];
-      let spokenChars = 0;
+      let llmFinished = false;
+      let wake: (() => void) | null = null;
+      const nudge = () => { const w = wake; wake = null; w?.(); };
+
       const speakPhrase = (phrase: string) => {
         const index = spoken.length;
-        spokenChars += phrase.length;
         spoken.push((async () => {
           const at = Date.now();
           const out = await synthesizePcm({
@@ -426,7 +438,34 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             ms: Date.now() - at,
           };
         })());
+        nudge();
       };
+
+      let firstAudioAt = 0;
+      let ttsMs = 0;
+      let audioBytes = 0;
+
+      const drain = (async () => {
+        let sent = 0;
+        for (;;) {
+          if (sent >= spoken.length) {
+            if (llmFinished) return;
+            await new Promise<void>((resolve) => { wake = resolve; });
+            continue;
+          }
+          const piece = await spoken[sent];
+          sent += 1;
+          ttsMs += piece.ms;
+          if (!piece.pcmBase64) continue;
+          if (!firstAudioAt) firstAudioAt = Date.now() - startedAt;
+          audioBytes += Math.round(piece.pcmBase64.length * 0.75);
+          send('audio', {
+            index: piece.index,
+            pcmBase64: piece.pcmBase64,
+            sampleRate: PCM_SAMPLE_RATE,
+          });
+        }
+      })();
 
       let full = '';
       let pending = '';
@@ -437,7 +476,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         for await (const event of streamLlm({
           system: publicDemoInstructions(replyLanguage),
           user,
-          maxTokens: 180,
+          maxTokens: 120,
           timeoutMs: 20_000,
         })) {
           if (event.type === 'error') { failed = event.error ?? 'llm'; break; }
@@ -456,8 +495,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           // the visitor is waiting on. Later ones are longer, because by then
           // the voice is already playing and a longer phrase sounds better
           // than a chopped one.
-          const minChars = spoken.length === 0 ? 14 : 45;
-          let phrase = takePhrase(pending, minChars);
+          let phrase = takePhrase(pending, spoken.length === 0 ? 14 : 45);
           while (phrase) {
             speakPhrase(phrase);
             pending = pending.slice(phrase.length);
@@ -466,6 +504,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         }
 
         if (!failed && pending.trim()) speakPhrase(pending.trim());
+        llmFinished = true;
+        nudge();
 
         if (failed || !full.trim()) {
           logEvent('ai-talk', 'converse_llm_failed', { reason: failed ?? 'empty' });
@@ -476,22 +516,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
 
         send('reply', { text: full.trim(), language: replyLanguage });
 
-        let firstAudioAt = 0;
-        let ttsMs = 0;
-        let audioBytes = 0;
-        for (const promise of spoken) {
-          const piece = await promise;
-          ttsMs += piece.ms;
-          if (!piece.pcmBase64) continue;
-          if (!firstAudioAt) firstAudioAt = Date.now() - startedAt;
-          audioBytes += Math.round(piece.pcmBase64.length * 0.75);
-          send('audio', {
-            index: piece.index,
-            pcmBase64: piece.pcmBase64,
-            sampleRate: PCM_SAMPLE_RATE,
-          });
-        }
-
+        await drain;
         if (!firstAudioAt) send('voiceless', { reason: 'VOICE_UNAVAILABLE' });
 
         send('state', { state });
@@ -512,6 +537,11 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         logEvent('ai-talk', 'converse_crashed', { detail: String((e as Error)?.message ?? e).slice(0, 160) });
         send('failed', { reason: 'ASSISTANT_FAILED' });
       } finally {
+        // Whatever happened, the drain must not be left waiting for a phrase
+        // that is never coming: the response cannot close around a live task.
+        llmFinished = true;
+        nudge();
+        await drain.catch(() => { /* already reported */ });
         try { controller.close(); } catch { /* already closed */ }
       }
     },
@@ -921,7 +951,7 @@ function publicDemoInstructions(language: string): string {
     'Floors, parking, areas, room counts, and the shell states a flat is sold in.',
     '',
     'RULES',
-    '- Say you are an AI assistant when you first speak, once, briefly.',
+    '- Say you are an AI assistant in your FIRST reply only, in a few words. Never again after that.',
     '- You have NO access to any specific listing, price, availability or any person\'s records.',
     '  Never state a price, a property, an address or an availability. If asked, say plainly that you',
     '  cannot look that up here and that Homatch can do it properly once they continue on the site.',

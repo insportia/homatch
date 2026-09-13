@@ -99,6 +99,24 @@ export interface VoiceGrant {
   endpointing?: Partial<EndpointConfig>;
 }
 
+/**
+ * One event from a streamed turn.
+ *
+ * The server writes and speaks at the same time, so a turn is not a reply, it
+ * is a sequence: words as they are written, then audio for each phrase as it
+ * is made. Consuming it as an async iterable keeps the ordering guarantees
+ * the server already provides instead of rebuilding them out of callbacks.
+ */
+export type ConverseEvent =
+  | { type: 'open'; ms?: number; language?: string }
+  | { type: 'text'; delta: string }
+  | { type: 'reply'; text: string; language?: string }
+  | { type: 'audio'; pcmBase64: string; sampleRate: number; index?: number }
+  | { type: 'voiceless'; reason?: string }
+  | { type: 'state'; state: unknown }
+  | { type: 'done'; firstTextMs?: number; firstAudioMs?: number | null; totalMs?: number; ttsMs?: number }
+  | { type: 'failed'; reason?: string };
+
 /** What came back from one utterance sent for transcription. */
 export interface TranscriptionReply {
   text: string | null;
@@ -226,6 +244,16 @@ export interface VoiceCallbacks {
    * microphone.
    */
   onTranscribe: (audioBase64: string, languageHint: string | null) => Promise<TranscriptionReply | null>;
+  /**
+   * One streamed turn: their sentence in, our words and our voice out, as
+   * they are produced.
+   *
+   * When present this replaces onUserTurn entirely. Voice Studio still uses
+   * the older request-and-reply path, which is why both exist.
+   */
+  onConverse?: (text: string) => AsyncIterable<ConverseEvent>;
+  /** The conversation state the server sent back, to carry into the next turn. */
+  onConversationState?: (state: unknown) => void;
   /** Live counters, about once a second. Counts and codes, never a key. */
   onDiagnostics?: (d: VoiceDiagnostics) => void;
 }
@@ -293,6 +321,8 @@ export class VoiceSession {
   private playbackTime = 0;
   /** True while the assistant is speaking: mic blocks are dropped, not kept. */
   private micGated = false;
+  /** True while the visitor has muted themselves. Their choice, not ours. */
+  private muted = false;
   /** Guards against two turns in flight. */
   private turnInFlight = false;
   /** True while an utterance is being transcribed. */
@@ -302,6 +332,12 @@ export class VoiceSession {
   private assistantSeq = 0;
   private currentAudio: HTMLAudioElement | null = null;
   private playingSources: AudioBufferSourceNode[] = [];
+  /** Where the next streamed phrase should start, on the audio clock. */
+  private queueTime = 0;
+  /** Reads the level of what the assistant is saying, for the visualiser. */
+  private outputAnalyser: AnalyserNode | null = null;
+  private outputGain: GainNode | null = null;
+  private outputBins: Uint8Array<ArrayBuffer> | null = null;
 
   // ── Utterance capture ───────────────────────────────────────────────────
   /** Resampled blocks of the utterance being spoken right now. */
@@ -366,6 +402,21 @@ export class VoiceSession {
   }
 
   get currentState(): VoiceState { return this.state; }
+
+  /**
+   * Stop listening without stopping the session.
+   *
+   * The track is left running rather than stopped: stopping it would hand the
+   * device back and unmuting would need a second permission moment on some
+   * browsers. Blocks are dropped instead, which is instant in both directions
+   * and visibly true — the level meter and the orb go flat.
+   */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (muted) this.dropCapture();
+  }
+
+  get isMuted(): boolean { return this.muted; }
 
   get consumedSeconds(): number {
     return this.startedAt ? Math.floor((Date.now() - this.startedAt) / 1000) : 0;
@@ -545,6 +596,19 @@ export class VoiceSession {
 
     this.resampler = new Resampler(this.audioContext.sampleRate, TARGET_SAMPLE_RATE);
 
+    /*
+     * Everything the assistant says goes through one gain node with an
+     * analyser on it. That is what lets the visualiser react to the actual
+     * voice rather than to a timer pretending to be one, and it gives
+     * barge-in somewhere to duck.
+     */
+    this.outputGain = this.audioContext.createGain();
+    this.outputAnalyser = this.audioContext.createAnalyser();
+    this.outputAnalyser.fftSize = 256;
+    this.outputBins = new Uint8Array(new ArrayBuffer(this.outputAnalyser.frequencyBinCount));
+    this.outputGain.connect(this.outputAnalyser);
+    this.outputAnalyser.connect(this.audioContext.destination);
+
     const source = this.audioContext.createMediaStreamSource(this.micStream);
 
     // ScriptProcessor is deprecated and is used deliberately: an AudioWorklet
@@ -583,7 +647,7 @@ export class VoiceSession {
     // An open device that yields silence is its own failure and used to be
     // indistinguishable from a working one.
     this.milestone('first_input_audio');
-    this.cb.onLevel(level);
+    this.cb.onLevel(this.muted ? 0 : level);
 
     // How long this block represents, from the rate the device actually runs
     // at rather than the rate we wish it ran at.
@@ -604,7 +668,7 @@ export class VoiceSession {
      * dropped rather than the track being stopped, so resuming is instant and
      * there is no second permission moment.
      */
-    if (this.micGated || this.transcribing) { this.dropCapture(); return; }
+    if (this.muted || this.micGated || this.transcribing) { this.dropCapture(); return; }
 
     const block = this.resampler ? this.resampler.process(input) : input.slice();
     if (!block.length) return;
@@ -791,11 +855,125 @@ export class VoiceSession {
     this.diag.turnsSent += 1;
 
     // Gate the microphone BEFORE anything can come back, so the first audio
-    // frame of the reply cannot be transcribed as if the visitor said it.
+    // of the reply cannot be transcribed as if the visitor said it.
     this.micGated = true;
     this.setState('UNDERSTANDING');
     this.milestone('user_turn_sent', said.length);
 
+    try {
+      if (this.cb.onConverse) await this.streamedTurn(said, askedAt);
+      else await this.requestReplyTurn(said, askedAt);
+    } finally {
+      this.turnInFlight = false;
+      this.publishDiagnostics();
+    }
+  }
+
+  /**
+   * A turn that arrives while it is still being produced.
+   *
+   * The sentence appears word by word and the voice starts on the first
+   * phrase, not the last. Everything here is about not waiting for a stage
+   * that has already produced something usable.
+   */
+  private async streamedTurn(said: string, askedAt: number): Promise<void> {
+    this.assistantSeq += 1;
+    const id = `a${this.assistantSeq}`;
+    let text = '';
+    let failure: string | null = null;
+    let spoke = false;
+
+    this.queueTime = 0;
+
+    try {
+      for await (const event of this.cb.onConverse!(said)) {
+        if (this.closed) return;
+
+        switch (event.type) {
+          case 'text': {
+            text += event.delta;
+            if (!this.marks.llmFirstTokenAtMs) {
+              this.marks.llmFirstTokenAtMs = Date.now();
+              this.milestone('assistant_text', 0);
+            }
+            // Shown as a non-final turn: it is still being written, and
+            // reduceTranscript revises rather than appends for the same id.
+            this.turns = reduceTranscript(this.turns, {
+              id, speaker: 'AGENT', text, final: false,
+              language: this.language.current, atMs: Date.now(),
+            });
+            this.cb.onTranscript(this.turns);
+            break;
+          }
+          case 'reply': {
+            text = event.text || text;
+            this.turns = reduceTranscript(this.turns, {
+              id, speaker: 'AGENT', text, final: true,
+              language: event.language ?? this.language.current, atMs: Date.now(),
+            });
+            this.cb.onTranscript(this.turns);
+            this.diag.lastReplyChars = text.length;
+            break;
+          }
+          case 'audio': {
+            this.enqueuePcm(event.pcmBase64, event.sampleRate);
+            this.diag.lastAudioBytes = (this.diag.lastAudioBytes ?? 0)
+              + Math.round(event.pcmBase64.length * 0.75);
+            if (!spoke) {
+              spoke = true;
+              this.diag.playbacks += 1;
+              this.marks.ttsFirstAudioAtMs = Date.now();
+              if (this.marks.speechEndedAtMs) {
+                this.diag.lastPlaybackMs = Date.now() - this.marks.speechEndedAtMs;
+              }
+              this.milestone('tts_audio_received', event.pcmBase64.length);
+              this.milestone('playback_started');
+              this.setState('RESPONDING');
+              this.cb.onLatency?.(latencyBreakdown(this.marks));
+            }
+            break;
+          }
+          case 'state':
+            this.cb.onConversationState?.(event.state);
+            break;
+          case 'voiceless':
+            this.diag.lastError = 'VOICE_UNAVAILABLE';
+            this.cb.onError?.('VOICE_UNAVAILABLE');
+            break;
+          case 'done':
+            this.diag.lastTurnMs = Date.now() - askedAt;
+            this.diag.lastLlmMs = event.firstTextMs ?? null;
+            this.diag.lastTtsMs = event.ttsMs ?? null;
+            break;
+          case 'failed':
+            failure = event.reason ?? 'ASSISTANT_FAILED';
+            break;
+          default:
+            break;
+        }
+      }
+    } catch {
+      failure = failure ?? 'ASSISTANT_FAILED';
+    }
+
+    if (this.closed) return;
+
+    if (failure || !text.trim()) {
+      this.diag.lastError = failure ?? 'ASSISTANT_FAILED';
+      this.milestone('failed', 'ASSISTANT');
+      this.cb.onError?.(failure ?? 'ASSISTANT_FAILED');
+      this.resumeListening();
+      return;
+    }
+
+    this.history.push({ role: 'assistant', content: text });
+    // Wait for the audio that is already scheduled, then hand the floor back.
+    await this.awaitPlayback();
+    this.resumeListening();
+  }
+
+  /** The older path: one request, one complete reply. Voice Studio uses it. */
+  private async requestReplyTurn(said: string, askedAt: number): Promise<void> {
     let reply: AssistantTurn | null = null;
     try {
       reply = await this.cb.onUserTurn(said);
@@ -804,7 +982,6 @@ export class VoiceSession {
     }
 
     if (this.closed) return;
-
     this.diag.lastTurnMs = Date.now() - askedAt;
 
     if (!reply?.text) {
@@ -812,15 +989,12 @@ export class VoiceSession {
       this.milestone('failed', 'ASSISTANT');
       this.cb.onError?.('ASSISTANT_FAILED');
       this.resumeListening();
-      this.turnInFlight = false;
-      this.publishDiagnostics();
       return;
     }
 
     this.diag.lastReplyChars = reply.text.length;
     this.diag.lastLlmMs = reply.llmMs ?? null;
     this.diag.lastTtsMs = reply.ttsMs ?? null;
-    this.diag.lastAudioBytes = reply.audioBase64 ? Math.round(reply.audioBase64.length * 0.75) : 0;
 
     this.marks.llmFirstTokenAtMs = Date.now();
     this.assistantSeq += 1;
@@ -836,11 +1010,6 @@ export class VoiceSession {
     this.cb.onTranscript(this.turns);
     this.history.push({ role: 'assistant', content: reply.text });
 
-    /*
-     * The sentence is on screen by now. The voice is fetched second, on
-     * purpose: thinking and speaking take about the same time, and held
-     * together the visitor watches nothing happen for the sum of both.
-     */
     let audioBase64 = reply.audioBase64;
     let mime = reply.mime;
     if (!audioBase64 && this.cb.onSpeak) {
@@ -855,14 +1024,9 @@ export class VoiceSession {
     }
 
     if (!audioBase64) {
-      // Synthesis failed but the sentence is real and already on screen. A
-      // silent turn is a degraded conversation; pretending it did not happen
-      // would be a broken one.
       this.diag.lastError = 'VOICE_UNAVAILABLE';
       this.cb.onError?.('VOICE_UNAVAILABLE');
       this.resumeListening();
-      this.turnInFlight = false;
-      this.publishDiagnostics();
       return;
     }
 
@@ -870,8 +1034,71 @@ export class VoiceSession {
     this.marks.ttsFirstAudioAtMs = Date.now();
     this.cb.onLatency?.(latencyBreakdown(this.marks));
     await this.speak(audioBase64, mime ?? 'audio/mpeg');
-    this.turnInFlight = false;
-    this.publishDiagnostics();
+  }
+
+  /**
+   * Schedule one phrase of the reply so it abuts the phrase before it.
+   *
+   * Raw samples, and an explicit start time on the audio clock rather than
+   * "play when it arrives". Chunks arrive faster than real time and out of
+   * rhythm with each other; played on arrival they talk over themselves, and
+   * played with any rounding between them they click.
+   */
+  private enqueuePcm(pcmBase64: string, sampleRate: number): void {
+    const ctx = this.audioContext;
+    if (!ctx || !this.outputGain) return;
+
+    const binary = atob(pcmBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const samples = Math.floor(bytes.byteLength / 2);
+    if (!samples) return;
+
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const buffer = ctx.createBuffer(1, samples, sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let i = 0; i < samples; i++) channel[i] = view.getInt16(i * 2, true) / 0x8000;
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.outputGain);
+
+    // A small lead-in on the first piece only: starting at exactly
+    // currentTime races the audio thread and drops the first milliseconds.
+    const now = ctx.currentTime;
+    if (this.queueTime < now) this.queueTime = now + 0.06;
+    source.start(this.queueTime);
+    this.queueTime += buffer.duration;
+
+    this.playingSources.push(source);
+    source.onended = () => {
+      this.playingSources = this.playingSources.filter((s) => s !== source);
+    };
+  }
+
+  /** Resolve once everything scheduled has finished sounding. */
+  private async awaitPlayback(): Promise<void> {
+    const ctx = this.audioContext;
+    if (!ctx) return;
+    const deadline = Date.now() + 60_000;
+    while (!this.closed && Date.now() < deadline) {
+      const remaining = this.queueTime - ctx.currentTime;
+      if (remaining <= 0.02 && !this.playingSources.length) break;
+      await new Promise((r) => setTimeout(r, Math.min(250, Math.max(40, remaining * 1000))));
+    }
+    if (!this.closed) this.milestone('playback_ended');
+  }
+
+  /** How loud the assistant is right now, 0-1, for the visualiser. */
+  get outputLevel(): number {
+    if (!this.outputAnalyser || !this.outputBins) return 0;
+    this.outputAnalyser.getByteTimeDomainData(this.outputBins);
+    let sum = 0;
+    for (let i = 0; i < this.outputBins.length; i++) {
+      const v = (this.outputBins[i] - 128) / 128;
+      sum += v * v;
+    }
+    return Math.sqrt(sum / this.outputBins.length);
   }
 
   /**

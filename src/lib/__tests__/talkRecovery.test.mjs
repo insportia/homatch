@@ -29,24 +29,47 @@ const FUNCTION = '../../../supabase/functions/ai-talk-session/index.ts';
 test('every resting state offers a way back', () => {
   const src = read(PANEL);
 
-  // The button that restarts a session, and whatever guards it.
-  const at = src.indexOf('onClick={onStart}');
-  assert.ok(at > 0, 'the restart button no longer calls onStart');
-  const guard = src.slice(src.lastIndexOf('{', at - 200), at);
+  // The restart control lives in the branch taken whenever the panel is
+  // neither live nor connecting — which is every resting state there is,
+  // including the microphone failures and PROVIDER_ERROR.
+  const at = src.indexOf('onClick={() => void start()}');
+  assert.ok(at > 0, 'the restart button no longer starts a session');
 
-  assert.ok(
-    !/\{!unavailable \?/.test(guard),
-    'the restart button is hidden for unavailable states again — a mic problem is the visitor\'s to clear, so it needs a button',
-  );
+  const guard = src.slice(Math.max(0, at - 900), at);
   assert.ok(
     !/state !== 'PROVIDER_ERROR'/.test(guard),
-    'PROVIDER_ERROR now covers a single failed transcription call, which is usually gone by the next attempt',
+    'PROVIDER_ERROR now covers a single failed turn, which is usually gone by the next attempt',
+  );
+  assert.ok(
+    !/\{!unavailable \?/.test(guard),
+    'the restart button is hidden for unavailable states again — a mic problem is theirs to clear',
   );
 
   // And it must say "again", not "start", once they have already tried.
   assert.ok(
-    /finished \|\| unavailable \? 'talk_again'/.test(src),
+    /state === 'IDLE' \? 'talk_start' : 'talk_again'/.test(src),
     'a retry after a failure should read as trying again, not as starting fresh',
+  );
+});
+
+test('a visitor is never shown a counter, a byte total or a provider name', () => {
+  // The whole diagnostics surface moved behind ?debugAiTalk=1. A panel that
+  // renders it unconditionally is the regression this guards.
+  const src = read(PANEL);
+
+  const at = src.indexOf('<AiTalkDiagnostics');
+  assert.ok(at > 0, 'the diagnostics component is gone entirely');
+  const guard = src.slice(Math.max(0, at - 120), at);
+  assert.ok(/debug \?/.test(guard), 'the diagnostics block must be rendered only when debug is on');
+
+  assert.ok(
+    /debugAiTalk/.test(src),
+    'there must be an explicit way for a developer to turn diagnostics on',
+  );
+  // And the gate must not be something a visitor arrives with by accident.
+  assert.ok(
+    /sessionStorage/.test(src),
+    'the debug flag should live in sessionStorage, not anywhere a visitor inherits it',
   );
 });
 

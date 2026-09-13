@@ -95,6 +95,10 @@ export function CommunicationsRoutingPanel() {
       const result = await probeProviders();
       if (!result.ok) { toast.error(t('admin_routing_probe_failed')); return; }
       toast.success(t('admin_routing_probe_done'));
+      // The POST already carries readiness computed WITH the live probe.
+      // Reloading over GET afterwards and using only that answer is how the
+      // checklist went green for one render and then back to grey.
+      if (result.data?.readiness?.length) setReadiness(result.data.readiness);
       await load();
     } finally {
       setProbing(false);

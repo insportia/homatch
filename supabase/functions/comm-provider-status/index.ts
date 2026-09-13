@@ -120,15 +120,51 @@ Deno.serve(async (req: Request): Promise<Response> => {
    * Admin-only, like everything else in this function.
    */
   const reportFor = (name: string) => reports.find((r) => r.provider === name) ?? null;
+
+  /*
+   * Reachability on a GET comes from what the last probe STORED.
+   *
+   * A GET does not contact anyone — that is the whole reason it exists, so
+   * opening Admin does not fire three provider calls. But returning "not
+   * probed" on every GET meant pressing "Recheck connection" turned a card
+   * green for one render and then straight back to grey, because the panel
+   * reloads over GET afterwards. The probe result was real and was being
+   * thrown away.
+   *
+   * comm_provider_routes already carries last_success_at and last_error_at,
+   * written by the probe below. A success more recent than the last error is
+   * evidence, not a guess. Never probed at all is still null, and null still
+   * blocks.
+   */
+  const storedReach = (name: string): boolean | null => {
+    const rows = (routes ?? []).filter((r) => r.provider === name);
+    if (!rows.length) return null;
+    const newest = (key: 'last_success_at' | 'last_error_at') => rows
+      .map((r) => (r[key] ? Date.parse(String(r[key])) : 0))
+      .reduce((a, b) => Math.max(a, b), 0);
+    const ok = newest('last_success_at');
+    const bad = newest('last_error_at');
+    if (!ok && !bad) return null;
+    return ok >= bad;
+  };
+
   const healthyish = (name: string): boolean | null => {
     const r = reportFor(name);
     if (!r) return null;
-    if (!probe) return null;              // never probed is not a pass
+    if (!probe) return storedReach(name);
     return r.health === 'HEALTHY' || r.health === 'DEGRADED' || r.health === 'DISABLED';
   };
+
   const metaStatus = (): number | null => {
     const r = reportFor('META');
-    if (!r || !probe) return null;
+    if (!r) return null;
+    if (!probe) {
+      const reach = storedReach('META');
+      // A stored failure cannot say WHICH status without inventing one, and
+      // inventing a status is how "401" would appear on a screen where
+      // nobody ever saw a 401. Non-200 is enough: the check fails either way.
+      return reach === null ? null : reach ? 200 : 0;
+    }
     if (r.health === 'HEALTHY' || r.health === 'DISABLED') return 200;
     const s = (r.facts as { httpStatus?: number | null } | null)?.httpStatus;
     return typeof s === 'number' ? s : null;

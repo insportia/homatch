@@ -439,7 +439,13 @@
        96%, so the canvas steps further from white and any warmth is gone.
        The saturation stays at 6%, which at this lightness is a neutral that
        simply is not clinical. */
-    --background: 90 6% 96%;    /* #F4F5F2 — cool neutral canvas */
+    /* 96% was "cool neutral" on paper and still read as a white sheet: two
+       shades off white is not a canvas, it is white with a rounding error.
+       93% on a graphite axis is the first value where a white card visibly
+       sits ON something. The hue moves from 90 (the green-grey axis) to 214
+       (blue-grey) because graphite is what was asked for and green-grey at
+       low saturation drifts towards warm under a yellow accent. */
+    --background: 214 8% 93%;   /* #EAECEE — cool graphite canvas */
     --foreground: 0 0% 7%;      /* neutral near-black ink               */
 
     /* Cards are the white now, which is what makes them elevated content
@@ -463,9 +469,12 @@
 
     /* Secondary fills have to stay visible against the canvas, so they step
        down with it and share its hue rather than reintroducing warmth. */
-    --secondary: 90 5% 92%;
+    /* A step BELOW the canvas now, not level with it: at 92% against a 96%
+       page these were nearly invisible, which is why filled controls looked
+       like holes. */
+    --secondary: 214 8% 88%;
     --secondary-foreground: 0 0% 10%;
-    --muted: 90 5% 92%;
+    --muted: 214 8% 88%;
     /* 34% -> 30% -> 24%. Supporting copy kept reading as washed out at 30%,
        and on a dashboard almost every label, date and card description is
        "supporting". At 24% it is 11.4:1 on a white card: unmistakably ink
@@ -482,7 +491,7 @@
     /* Hairlines that are actually visible. Neutral, so a 1px rule on white
        reads as a drawn line rather than as a warm smudge. */
     /* A hairline that separates without drawing itself, on the same axis. */
-    --border: 90 4% 87%;
+    --border: 214 9% 82%;
     --input: 0 0% 80%;
     --ring: 38 88% 40%;
 
@@ -777,6 +786,20 @@
     animation: hm-scan 1.6s ease-in-out infinite;
   }
 
+  /* AI TALK's answering bars.
+     While the agent is speaking there is no amplitude on this side to bind
+     to -- the microphone level belongs to the visitor, not to the reply --
+     so these run on their own clock, staggered per bar so the group reads
+     as a voice rather than a blinking row. Listening bars are NOT animated
+     here: those are sized from real measured energy, in the component. */
+  @keyframes hm-talk-bar {
+    0%, 100% { transform: scaleY(0.3); }
+    50%      { transform: scaleY(1); }
+  }
+  .hm-talk-bar {
+    animation: hm-talk-bar 820ms ease-in-out infinite;
+  }
+
   /* The per-component reduced-motion answers.
      These four were, briefly, two rules INSIDE this query and two just
      outside it -- one stray brace -- which meant .hm-scan and .hm-read were
@@ -788,6 +811,9 @@
     .hm-ring::after { animation: none; opacity: 0; }
     .hm-scan { animation: none; opacity: 0; }
     .hm-read { animation: none; opacity: 0; }
+    /* Held at a readable height rather than zero: the bars ARE the speaking
+       indicator, and a collapsed row would say "silent". */
+    .hm-talk-bar { animation: none; transform: scaleY(0.55); }
   }
 }
 

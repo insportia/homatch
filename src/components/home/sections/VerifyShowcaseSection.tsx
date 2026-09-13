@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowRight, Check, FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
-import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '@/site/content';
+import { PAGE, SECTION_Y } from './primitives';
+import { useMotion } from '@/hooks/useMotion';
+import { useSectionField, useSectionMedia, useFieldProps, useMediaProps, useSectionIconName } from '@/site/content';
+import { iconFor } from '@/site/icons';
 
 /**
  * REGION 05 — Buyer Intelligence.
@@ -27,7 +29,68 @@ export function VerifyShowcaseSection() {
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
 
-  const confirmed = [t('mp_verify_frag_identity'), t('mp_verify_frag_official'), t('mp_market_1_title')];
+  /*
+   * THE REPORT IS CONTENT, NOT A FIXTURE.
+   *
+   * Every line of this panel was a hardcoded t() call, which meant the one
+   * screen a visitor reads most carefully was the one nobody could change
+   * without a deploy. Nine strings and three icons are now addressable, each
+   * falling back to the same reviewed key it always used, so an untouched
+   * site renders exactly what it rendered before.
+   */
+  const icon = useSectionIconName();
+  const OkIcon = iconFor(icon('pi_ok'), Check);
+  const WarnIcon = iconFor(icon('pi_warn'), AlertCircle);
+  const NextIcon = iconFor(icon('pi_next'), FileText);
+
+  const confirmed: Array<[string, string]> = [
+    ['pi_l1', sf('pi_l1', 'mp_verify_frag_identity')],
+    ['pi_l2', sf('pi_l2', 'mp_verify_frag_official')],
+    ['pi_l3', sf('pi_l3', 'mp_market_1_title')],
+  ];
+
+  /*
+   * THE FINDINGS ARRIVE IN ORDER.
+   *
+   * A report that is simply present says "here is a page". A report whose
+   * lines land one after another says "this was worked out", which is the
+   * whole claim of the section. Six steps, started only when the panel is
+   * genuinely on screen — on a phone this sits far down a long page, and a
+   * timer started at mount finishes long before a thumb arrives.
+   *
+   * Identical on both widths: the phone gets the same story, not a static
+   * summary of it.
+   */
+  const still = useMotion() === 'none';
+  const panel = useRef<HTMLDivElement | null>(null);
+  const [step, setStep] = useState(0);
+  const STEPS = 6;
+
+  useEffect(() => {
+    if (still) { setStep(STEPS); return; }
+    const el = panel.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setStep(STEPS); return; }
+    let timers: number[] = [];
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        io.disconnect();
+        timers = Array.from({ length: STEPS }, (_, i) => window.setTimeout(
+          () => setStep(i + 1), 300 + i * 620,
+        ));
+      }
+    }, { threshold: 0.3 });
+    io.observe(el);
+    return () => { io.disconnect(); timers.forEach(clearTimeout); };
+  }, [still]);
+
+  /** Visible once the sequence has reached this line. 20px is a movement a
+      reader notices; the 6px this pass replaced was not. */
+  const enter = (n: number) => ({
+    opacity: step > n ? 1 : 0,
+    transform: step > n ? 'none' : 'translateY(20px)',
+    transition: still ? undefined : 'opacity 520ms cubic-bezier(0.16,1,0.3,1), transform 520ms cubic-bezier(0.16,1,0.3,1)',
+  });
 
   return (
     <section id="verify" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
@@ -112,37 +175,51 @@ export function VerifyShowcaseSection() {
               aria-hidden="true"
             />
             <div className="absolute inset-x-0 bottom-0 p-5">
-              <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold">{t('mp_result_prop_label')}</p>
+              <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold" {...fp('pi_label')}>
+                {sf('pi_label', 'mp_result_prop_label')}
+              </p>
             </div>
           </div>
 
-          <div className="p-5 sm:p-7">
-            <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {t('mp_result_prop_confirmed')}
+          <div className="p-5 sm:p-7" ref={panel}>
+            <p
+              className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+              style={enter(0)}
+              {...fp('pi_confirmed')}
+            >
+              {sf('pi_confirmed', 'mp_result_prop_confirmed')}
             </p>
             <ul className="mt-3 space-y-2">
-              {confirmed.map(line => (
-                <li key={line} className="flex items-start gap-2.5 text-sm text-foreground">
-                  <Check className="mt-[3px] h-3.5 w-3.5 shrink-0 text-[#12A06B]" strokeWidth={3} aria-hidden="true" />
-                  <span className="min-w-0">{line}</span>
+              {confirmed.map(([field, line], i) => (
+                <li key={field} className="flex items-start gap-2.5 text-sm text-foreground" style={enter(i + 1)}>
+                  <OkIcon className="mt-[3px] h-3.5 w-3.5 shrink-0 text-[#12A06B]" strokeWidth={3} aria-hidden="true" />
+                  <span className="min-w-0" {...fp(field)}>{line}</span>
                 </li>
               ))}
             </ul>
 
-            <p className="mt-6 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {t('mp_result_prop_attention')}
+            <p
+              className="mt-6 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+              style={enter(4)}
+              {...fp('pi_attention')}
+            >
+              {sf('pi_attention', 'mp_result_prop_attention')}
             </p>
-            <p className="mt-3 flex items-start gap-2.5 text-sm text-foreground">
-              <AlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-gold-ink" strokeWidth={2.5} aria-hidden="true" />
-              <span className="min-w-0">{t('mp_result_prop_attention_line')}</span>
+            <p className="mt-3 flex items-start gap-2.5 text-sm text-foreground" style={enter(4)}>
+              <WarnIcon className="mt-[2px] h-3.5 w-3.5 shrink-0 text-gold-ink" strokeWidth={2.5} aria-hidden="true" />
+              <span className="min-w-0" {...fp('pi_attention_line')}>
+                {sf('pi_attention_line', 'mp_result_prop_attention_line')}
+              </span>
             </p>
 
-            <div className="mt-6 rounded-[0.7rem] bg-primary p-4 text-primary-foreground">
+            <div className="mt-6 rounded-[0.7rem] bg-primary p-4 text-primary-foreground" style={enter(5)}>
               <p className="flex items-center gap-2 text-[14px] font-semibold uppercase tracking-[0.16em] text-gold">
-                <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
-                {t('mp_result_prop_next')}
+                <NextIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+                <span className="min-w-0" {...fp('pi_next')}>{sf('pi_next', 'mp_result_prop_next')}</span>
               </p>
-              <p className="mt-2 text-pretty text-sm leading-relaxed">{t('mp_result_prop_next_line')}</p>
+              <p className="mt-2 text-pretty text-sm leading-relaxed" {...fp('pi_next_line')}>
+                {sf('pi_next_line', 'mp_result_prop_next_line')}
+              </p>
             </div>
           </div>
         </div>

@@ -91,6 +91,22 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
   const still = level === 'none';
   const ref = useRef<HTMLDivElement | null>(null);
   const [phase, setPhase] = useState(0);
+  /*
+   * WHERE THE POINTER IS, AS A FLOOR.
+   *
+   * Exploring a building should not require clicking it. Once the sequence
+   * has settled, moving the pointer over the façade moves the analysis: the
+   * floor under the cursor is the floor being read, and the unit under it is
+   * the unit. Null means "nobody is pointing", and the scene falls back to
+   * the floor the sequence chose.
+   */
+  const [hover, setHover] = useState<{ floor: number; unit: number } | null>(null);
+
+  /** One step up the stack, wrapping at the roof. Shared by tap and timer. */
+  const nextFloor = (h: { floor: number; unit: number } | null) => ({
+    floor: ((h?.floor ?? PICKED) + 1) % FLOORS,
+    unit: h?.unit ?? LEFT_MODULES.length + PICKED_UNIT,
+  });
 
   /*
    * Starts when it is SEEN. A timer started at mount has always finished by
@@ -124,17 +140,81 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
   const unitPicked = phase >= 4;
   const done = phase >= LAST;
 
-  const pickedY = floorTop(PICKED);
-  const unit = RIGHT_MODULES[PICKED_UNIT];
+  /* The pointer wins once the story has finished telling itself. */
+  const activeFloor = done && hover ? hover.floor : PICKED;
+  const pickedY = floorTop(activeFloor);
+  const ALL_MODULES = [...LEFT_MODULES, ...RIGHT_MODULES];
+  const unit = done && hover
+    ? ALL_MODULES[hover.unit]
+    : RIGHT_MODULES[PICKED_UNIT];
+
+  /**
+   * Pointer position in the SVG's own coordinates, turned into a floor and a
+   * unit. getBoundingClientRect rather than offsetX, because the SVG is
+   * scaled to its container and offsets are in screen pixels.
+   */
+  const onPointer = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!done || e.pointerType === 'touch') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const y = ((e.clientY - r.top) / r.height) * H;
+    const x = ((e.clientX - r.left) / r.width) * W;
+    if (y < ROOF || y > STACK_BOTTOM) { setHover(null); return; }
+    const floor = Math.min(FLOORS - 1, Math.max(0, Math.floor((y - ROOF) / FLOOR_H)));
+    let unitIndex = ALL_MODULES.findIndex(m => x >= m.x && x < m.x + m.w);
+    if (unitIndex < 0) unitIndex = x < CORE_L ? 0 : ALL_MODULES.length - 1;
+    setHover({ floor, unit: unitIndex });
+  };
+
+  /*
+   * TOUCH HAS NO HOVER, so a tap steps to the next floor.
+   *
+   * The alternative was to leave the phone with a still picture after the
+   * sequence ends, which is the "static downgrade" this scene exists to
+   * avoid. Stepping keeps the building explorable with one thumb and needs
+   * no gesture anybody has to be taught.
+   */
+  const stepFloor = () => {
+    if (!done) return;
+    setHover(nextFloor);
+  };
+
+  /*
+   * AND IT KEEPS GOING WITHOUT ONE.
+   *
+   * Tap-to-step alone was not enough. Measured on a 390px phone, the first
+   * tap moved the focus and the next two did nothing: taps in the same place
+   * inside half a second are a zoom gesture, and the browser swallowed the
+   * click. So the scene now advances itself wherever there is no hover to
+   * drive it, and a tap simply takes the next step early and restarts the
+   * clock -- which is what `hover` in the dependency list buys.
+   *
+   * `touch-manipulation` on the SVG is the other half: it tells the browser
+   * there is no double-tap zoom to wait for, so the taps that DO land are not
+   * delayed either.
+   *
+   * Desktop is untouched. `(hover: none)` is false there, the pointer is in
+   * charge, and a building that wandered off under a stationary cursor would
+   * be worse than one that stayed still.
+   */
+  useEffect(() => {
+    if (!done || still) return;
+    if (typeof window.matchMedia !== 'function') return;
+    if (!window.matchMedia('(hover: none)').matches) return;
+    const id = window.setTimeout(() => setHover(nextFloor), 2200);
+    return () => clearTimeout(id);
+  }, [done, still, hover]);
 
   return (
     <div ref={ref} className="min-w-0">
       <div className="relative mx-auto w-full max-w-[22rem] lg:max-w-none">
         <svg
           viewBox={`0 0 ${W} ${H}`}
-          className="h-auto w-full"
+          className={`h-auto w-full touch-manipulation ${done ? 'cursor-crosshair' : ''}`}
           role="img"
           aria-label={copy.alt}
+          onPointerMove={onPointer}
+          onPointerLeave={() => setHover(null)}
+          onClick={stepFloor}
         >
           <defs>
             {/* Glass: cool, slightly lit from the upper left. */}
@@ -270,30 +350,32 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
             )}
 
             {/* ── The floor under analysis ─────────────────────────────── */}
+            {/* `y` is animated, not just faded, so the marker SLIDES between
+                floors as the pointer moves rather than blinking. */}
             <rect
               x={LEFT - 1} y={pickedY}
               width={RIGHT - LEFT + 2} height={FLOOR_H}
               fill="hsl(38 88% 54%)"
               opacity={floorPicked ? 0.1 : 0}
-              style={{ transition: still ? undefined : 'opacity 700ms ease' }}
+              style={{ transition: still ? undefined : 'opacity 700ms ease, y 260ms cubic-bezier(0.4,0,0.2,1)' }}
             />
             <rect
               x={LEFT - 1} y={pickedY}
               width={RIGHT - LEFT + 2} height={FLOOR_H}
               fill="none" stroke="hsl(38 88% 54%)" strokeWidth="1.6"
               opacity={floorPicked ? 1 : 0}
-              style={{ transition: still ? undefined : 'opacity 700ms ease' }}
+              style={{ transition: still ? undefined : 'opacity 700ms ease, y 260ms cubic-bezier(0.4,0,0.2,1)' }}
             />
 
             {/* Unit divisions inside that floor, then the one unit. */}
-            {[...LEFT_MODULES, ...RIGHT_MODULES].map((m, j) => (
+            {ALL_MODULES.map((m, j) => (
               <rect
                 key={j}
                 x={m.x + 1} y={pickedY + 2}
                 width={m.w - 2} height={FLOOR_H - 4}
                 fill="none" stroke="hsl(38 88% 54%)" strokeWidth="0.6"
                 opacity={unitPicked ? 0.45 : 0}
-                style={{ transition: still ? undefined : 'opacity 500ms ease' }}
+                style={{ transition: still ? undefined : 'opacity 500ms ease, y 260ms cubic-bezier(0.4,0,0.2,1)' }}
               />
             ))}
             <rect
@@ -301,7 +383,7 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
               width={unit.w - 2} height={FLOOR_H - 4}
               fill="hsl(38 88% 54%)"
               opacity={unitPicked ? 0.5 : 0}
-              style={{ transition: still ? undefined : 'opacity 600ms ease' }}
+              style={{ transition: still ? undefined : 'opacity 600ms ease, x 260ms cubic-bezier(0.4,0,0.2,1), y 260ms cubic-bezier(0.4,0,0.2,1)' }}
             />
           </g>
 
@@ -311,8 +393,12 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
               x1={unit.x + unit.w / 2} y1={pickedY + FLOOR_H / 2}
               x2={RIGHT + 22} y2={pickedY + FLOOR_H / 2}
               stroke="hsl(38 88% 54%)" strokeWidth="0.9" opacity="0.7"
+              style={{ transition: still ? undefined : 'all 260ms cubic-bezier(0.4,0,0.2,1)' }}
             />
-            <circle cx={unit.x + unit.w / 2} cy={pickedY + FLOOR_H / 2} r="2.6" fill="hsl(38 88% 54%)" />
+            <circle
+              cx={unit.x + unit.w / 2} cy={pickedY + FLOOR_H / 2} r="2.6" fill="hsl(38 88% 54%)"
+              style={{ transition: still ? undefined : 'all 260ms cubic-bezier(0.4,0,0.2,1)' }}
+            />
           </g>
         </svg>
 
@@ -333,7 +419,15 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
         * which is the difference between a result and a caption.
         */}
       <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
-        {copy.callouts.map((c, i) => (
+        {copy.callouts.map((rawCallout, i) => {
+          /* The first callout is the storey. While the pointer (or a tap) is
+             choosing a floor it reports THAT floor, so the number and the
+             highlight can never disagree; with nothing chosen it falls back
+             to the editable demo value. */
+          const c = i === 0 && hover
+            ? { ...rawCallout, value: String(storeyOf(hover.floor)) }
+            : rawCallout;
+          return (
           <div
             key={c.label}
             className="rounded-[0.7rem] border border-white/12 bg-white/[0.04] px-3 py-2.5"
@@ -346,11 +440,12 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
             <dt className="truncate text-[13px] uppercase tracking-[0.14em] text-white/45">{c.label}</dt>
             <dd className="mt-0.5 truncate text-[17px] font-semibold text-white">{c.value}</dd>
           </div>
-        ))}
+          );
+        })}
       </dl>
       <p className="mt-3 text-[13px] leading-relaxed text-white/40">{copy.note}</p>
     </div>
   );
 }
 
-export { FLOORS, PICKED, storeyOf };
+export { FLOORS, PICKED };

@@ -133,6 +133,12 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('subtitle', 'studio_f_subtitle', 'mp_hero_h2'),
       f('body', 'studio_f_body', 'mp_hero_scope', 'textarea'),
       f('placeholder', 'studio_f_placeholder', 'mp_hero_ai_placeholder'),
+      // AI TALK sits inside the hero, so its copy belongs to the hero's
+      // fields. Its STATE labels deliberately do not: "Listening" is the
+      // product reporting a fact about itself, not a message to tune.
+      f('talk_badge', 'talk_badge', 'talk_badge'),
+      f('talk_title', 'talk_title', 'talk_title'),
+      f('talk_languages', 'talk_languages', 'talk_languages'),
     ],
     media: [{ slot: 'photo', labelKey: 'studio_m_photo' }],
   },
@@ -224,6 +230,22 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('title', 'studio_f_title', 'mp_verify_show_title'),
       f('body', 'studio_f_body', 'mp_verify_capability_desc', 'textarea'),
       f('cta', 'studio_f_cta', 'mp_verify_capability_cta'),
+      // The report itself. Nine lines that used to be reachable only through
+      // a deploy.
+      f('pi_label', 'mp_result_prop_label', 'mp_result_prop_label'),
+      f('pi_confirmed', 'mp_result_prop_confirmed', 'mp_result_prop_confirmed'),
+      f('pi_l1', 'mp_verify_frag_identity', 'mp_verify_frag_identity'),
+      f('pi_l2', 'mp_verify_frag_official', 'mp_verify_frag_official'),
+      f('pi_l3', 'mp_market_1_title', 'mp_market_1_title'),
+      f('pi_attention', 'mp_result_prop_attention', 'mp_result_prop_attention'),
+      f('pi_attention_line', 'mp_result_prop_attention_line', 'mp_result_prop_attention_line', 'textarea'),
+      f('pi_next', 'mp_result_prop_next', 'mp_result_prop_next'),
+      f('pi_next_line', 'mp_result_prop_next_line', 'mp_result_prop_next_line', 'textarea'),
+    ],
+    icons: [
+      { slot: 'pi_ok', labelKey: 'mp_result_prop_confirmed' },
+      { slot: 'pi_warn', labelKey: 'mp_result_prop_attention' },
+      { slot: 'pi_next', labelKey: 'mp_result_prop_next' },
     ],
     media: [{ slot: 'plate', labelKey: 'studio_m_photo' }],
   },

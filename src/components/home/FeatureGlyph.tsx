@@ -200,6 +200,9 @@ const ART: Record<GlyphName, (p: Palette) => React.ReactNode> = {
  * @param tone  'light' draws the tinted tile (white cards); 'dark' drops it
  *              to a translucent white tile so the same art reads on black
  */
+/** Drawn when a stored name matches nothing this build ships. */
+const FALLBACK: GlyphName = 'verify';
+
 export function FeatureGlyph({
   name,
   size = 64,
@@ -211,7 +214,21 @@ export function FeatureGlyph({
   tone?: 'light' | 'dark';
   className?: string;
 }) {
-  const palette = PALETTES[name];
+  /*
+   * AN UNKNOWN NAME MUST DRAW SOMETHING, NOT EXPLODE.
+   *
+   * `ART[name](palette)` on a name this build does not have is a TypeError
+   * that takes the whole section down with it, and `PALETTES[name].tile` is
+   * the same. That was fine while every name was a literal in this file; it
+   * stopped being fine the moment icons became content an admin can store,
+   * because a page saved against one build can be rendered by the next.
+   *
+   * So a name nothing matches falls back to a real glyph. Whatever else goes
+   * wrong, a visitor never sees a missing tile and never sees an identifier
+   * where a picture should be.
+   */
+  const key: GlyphName = name in ART ? name : FALLBACK;
+  const palette = PALETTES[key];
   const radius = size * 0.28;
 
   return (
@@ -237,7 +254,7 @@ export function FeatureGlyph({
       {/* The art is inset from the tile so every glyph shares one optical
           margin regardless of how wide its subject is. */}
       <g transform="translate(32 32) scale(0.78) translate(-32 -32)">
-        {ART[name](palette)}
+        {ART[key](palette)}
       </g>
     </svg>
   );

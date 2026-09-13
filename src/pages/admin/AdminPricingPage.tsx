@@ -11,6 +11,7 @@ import type { PricingConfig, ResearchProduct } from '@/types/types';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PricingSimulator } from '@/components/admin/PricingSimulator';
+import { PlanCatalogue } from '@/components/admin/PlanCatalogue';
 
 type FieldDef = { key: keyof PricingConfig; label: string; hint: string; min: number; max: number; step: number };
 
@@ -102,12 +103,19 @@ export default function AdminPricingPage() {
     }
   };
 
+  /* Wider than it was: the plan catalogue is a grid of fields per plan,
+     and 2xl squeezed it into one column of inputs. */
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="max-w-5xl space-y-4">
       <div>
         <h1 className="text-xl font-bold">{t('admin_pricing_title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">{t('admin_pricing_intro_desc')}</p>
       </div>
+      {/* The offer first, the algorithm second. What a plan costs and what
+          it includes is what somebody opens this page to change; the match
+          pricing model below it is tuned far less often. */}
+      <PlanCatalogue />
+
       <PricingSimulator />
 
       <Card>

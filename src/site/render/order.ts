@@ -60,7 +60,9 @@ export const SHELL_ORDER: readonly string[] = ['site_header', 'site_footer'];
 const ORDERS: Readonly<Record<string, readonly string[]>> = {
   home: DEFAULT_HOME_ORDER,
   about: DEFAULT_ABOUT_ORDER,
-  pricing: CONTENT_ONLY,
+  /* The heading. Everything else on /pricing is the live plan catalogue,
+     which is data rather than content, plus whatever an admin adds. */
+  pricing: ['pricing_intro'],
   partners: CONTENT_ONLY,
   developers: DEFAULT_DEVELOPERS_ORDER,
   mortgage: CONTENT_ONLY,

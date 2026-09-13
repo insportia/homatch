@@ -21,7 +21,7 @@ import type { PageSlug } from '@/services/siteContent';
  * It renders nothing at all until somebody adds something, so a page nobody
  * has touched is byte for byte the page that shipped.
  */
-export function PageBlocks({ slug }: { slug: PageSlug }) {
+export function PageBlocks({ slug, except }: { slug: PageSlug; except?: readonly string[] }) {
   const published = usePublishedPage(slug);
 
   // No stored page, or a stored page with nothing in it: render nothing.
@@ -29,5 +29,8 @@ export function PageBlocks({ slug }: { slug: PageSlug }) {
   // coded content and the footer.
   if (!published || published.sections.length === 0) return null;
 
-  return <SitePage slug={slug} content={published} />;
+  /* `except` is how a page renders one of its own sections somewhere else.
+     See SitePage's props: Pricing puts its heading above the plan grid and
+     everything an admin adds below it. */
+  return <SitePage slug={slug} content={published} except={except} />;
 }

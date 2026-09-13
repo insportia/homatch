@@ -11,8 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, Plus, RefreshCw, Sparkles, Loader2 } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,9 +77,8 @@ export default function WhatsAppTemplatesPage() {
   }, [editing, load, t]);
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-4xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/whatsapp')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_channel_whatsapp')}
           </Button>
@@ -158,8 +156,7 @@ export default function WhatsAppTemplatesPage() {
           onSave={() => void onSave()}
           busy={busy}
         />
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

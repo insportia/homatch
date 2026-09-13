@@ -23,8 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wallet, ArrowUpRight, Phone, MessageSquare, AudioLines, AlertTriangle } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -127,9 +126,8 @@ export default function CommunicationsBillingPage() {
   const maxDaily = Math.max(0.0001, ...(spend?.series ?? []).map((d) => d.amountUsd));
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-5xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <PageHeader
             title={t('comm_billing_title')}
             subtitle={t('comm_billing_subtitle')}
@@ -367,7 +365,6 @@ export default function CommunicationsBillingPage() {
             </section>
           ) : null}
         </div>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }

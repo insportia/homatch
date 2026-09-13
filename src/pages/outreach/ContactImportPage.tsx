@@ -17,8 +17,7 @@ import {
   ArrowLeft, ArrowRight, Upload, Download, FileSpreadsheet, Loader2,
   CheckCircle2, AlertTriangle, ShieldCheck,
 } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -227,9 +226,8 @@ export default function ContactImportPage() {
   }, []);
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-3xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/contact-lists')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_contact_lists')}
           </Button>
@@ -506,8 +504,7 @@ export default function ContactImportPage() {
             </div>
           ) : null}
         </div>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

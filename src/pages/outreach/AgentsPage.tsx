@@ -12,8 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bot, Copy, MoreHorizontal, Pause, Play, Plus, Search, Archive, Mic } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -120,9 +119,8 @@ export default function AgentsPage() {
   }, [load, t]);
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-5xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <PageHeader
             title={t('comm_agents_title')}
             subtitle={t('comm_agents_subtitle')}
@@ -258,8 +256,7 @@ export default function AgentsPage() {
         </div>
 
         <CreateAgentDialog open={creating} onOpenChange={setCreating} onCreate={onCreate} busy={busy} />
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

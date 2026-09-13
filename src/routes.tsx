@@ -49,6 +49,7 @@ import AgentsPage from './pages/outreach/AgentsPage';
 import AgentBuilderPage from './pages/outreach/AgentBuilderPage';
 import CampaignsPage from './pages/outreach/CampaignsPage';
 import CampaignBuilderPage from './pages/outreach/CampaignBuilderPage';
+import ContactsPage from './pages/outreach/ContactsPage';
 import ContactImportPage from './pages/outreach/ContactImportPage';
 import ContactProfilePage from './pages/outreach/ContactProfilePage';
 import WhatsAppPage from './pages/outreach/WhatsAppPage';
@@ -183,6 +184,9 @@ export const routes: RouteConfig[] = [
   { name: 'Agent Builder',     path: '/outreach/agents/:id',      element: <AgentBuilderPage />, visible: false },
   { name: 'Campaigns',         path: '/outreach/campaigns',       element: <CampaignsPage /> },
   { name: 'Campaign Builder',  path: '/outreach/campaigns/new',   element: <CampaignBuilderPage />, visible: false },
+  /* The audience had an import wizard and a per-person profile and no list.
+     This is where a customer looks at who they can actually reach. */
+  { name: 'Contacts',          path: '/outreach/contacts',        element: <ContactsPage /> },
   { name: 'Import Contacts',   path: '/outreach/contacts/import', element: <ContactImportPage />, visible: false },
   { name: 'Contact',           path: '/outreach/contacts/:id',    element: <ContactProfilePage />, visible: false },
   { name: 'WhatsApp',          path: '/outreach/whatsapp',        element: <WhatsAppPage /> },

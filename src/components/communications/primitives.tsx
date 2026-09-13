@@ -35,6 +35,8 @@ export interface KpiProps {
   /** Marks the one figure on a row that is the headline. Used sparingly. */
   accent?: boolean;
   loading?: boolean;
+  /** A quiet glyph, so a row of six numbers is scannable rather than uniform. */
+  icon?: React.ComponentType<{ className?: string }>;
 }
 
 /**
@@ -44,22 +46,37 @@ export interface KpiProps {
  * zero attempts is unknown, and showing 0% would be a confident lie about an
  * account that has simply not started yet.
  */
-export function Kpi({ labelKey, value, sub, accent, loading }: KpiProps) {
+export function Kpi({ labelKey, value, sub, accent, loading, icon: Icon }: KpiProps) {
   const { t } = useLanguage();
   return (
-    <Card className={cn('min-w-0', accent && 'border-gold/40 bg-gold/[0.04]')}>
-      <CardContent className="p-3 sm:p-4">
-        <p className="truncate text-[13px] font-medium uppercase tracking-wide text-muted-foreground">
-          {t(labelKey as TKey)}
-        </p>
+    <Card className={cn(
+      'min-w-0 transition-colors',
+      accent ? 'border-gold/40 bg-gold/[0.04]' : 'hover:border-foreground/15',
+    )}>
+      <CardContent className="flex min-h-[5.5rem] flex-col p-3 sm:p-4">
+        <div className="flex items-start gap-1.5">
+          {/*
+           * NOT `truncate`.
+           *
+           * These labels were sized around English. "Answer rate" is eleven
+           * characters; "პასუხის მაჩვენებელი" is nineteen, and Georgian has no
+           * shorter form of it. Truncating cut the word in half on every
+           * Georgian screen, which is how a KPI ends up reading "პასუხის მაჩ…".
+           * Two lines of label is the correct answer; a clipped word is not.
+           */}
+          <p data-kpi-label className="min-w-0 flex-1 text-[13px] font-medium uppercase leading-[1.25] tracking-wide text-muted-foreground [overflow-wrap:anywhere]">
+            {t(labelKey as TKey)}
+          </p>
+          {Icon ? <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', accent ? 'text-gold-ink' : 'text-muted-foreground/60')} aria-hidden="true" /> : null}
+        </div>
         {loading ? (
-          <Skeleton className="mt-2 h-7 w-20" />
+          <Skeleton className="mt-auto h-7 w-20" />
         ) : (
-          <p className={cn('mt-1 truncate text-xl font-semibold tabular-nums sm:text-2xl', accent && 'text-gold-ink')}>
+          <p className={cn('mt-auto pt-1.5 text-xl font-semibold tabular-nums sm:text-2xl', accent && 'text-gold-ink')}>
             {value === null || value === undefined ? <span className="text-muted-foreground">·</span> : value}
           </p>
         )}
-        {sub ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p> : null}
+        {sub ? <p className="mt-0.5 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">{sub}</p> : null}
       </CardContent>
     </Card>
   );

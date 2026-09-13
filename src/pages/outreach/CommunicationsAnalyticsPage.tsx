@@ -11,8 +11,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3 } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -68,9 +67,8 @@ export default function CommunicationsAnalyticsPage() {
   const maxSeries = Math.max(1, ...(data?.series ?? []).map((d) => d.calls + d.messages));
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-6xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <PageHeader title={t('comm_analytics_title')} subtitle={t('comm_analytics_subtitle')}>
             <Select value={range} onValueChange={(v) => setRange(v as Range)}>
               <SelectTrigger className="h-8 w-[110px] text-xs" aria-label={t('comm_date_range')}><SelectValue /></SelectTrigger>
@@ -203,8 +201,7 @@ export default function CommunicationsAnalyticsPage() {
             </>
           )}
         </div>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

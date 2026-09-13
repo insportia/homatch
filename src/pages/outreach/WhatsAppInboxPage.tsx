@@ -24,8 +24,7 @@ import {
   ArrowLeft, Bot, Check, CheckCheck, Clock, Info, Loader2, MessageSquare,
   Search, Send, User, X, AlertTriangle,
 } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -177,9 +176,8 @@ export default function WhatsAppInboxPage() {
   }, [selected, loadList, t]);
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-7xl">
+    <CommsWorkspace>
+        <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/whatsapp')}>
@@ -380,8 +378,7 @@ export default function WhatsAppInboxPage() {
             </div>
           </SheetContent>
         </Sheet>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

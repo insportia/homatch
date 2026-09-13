@@ -26,6 +26,13 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'fin_col_model',
   // Product/brand names — never translated in any language.
   'ai_title', // "Homatch AI"
+  // "WhatsApp" — Meta's product name, written the same way in Georgian,
+  // Russian and Turkish. ar and he carry their own real transliterations of
+  // the same key, so this cannot be hiding a missing translation.
+  'comms_nav_whatsapp',
+  // "SMS" — the abbreviation is the word in ka/ru/tr/he alike. ar carries a
+  // real Arabic form, which is why the gap-check on this key still has teeth.
+  'comms_cb_sms',
   // "Know before you buy" — the brand tagline, set beneath the wordmark as
   // part of the logo lockup. It is a brand mark rather than interface copy
   // and stays in English in every locale, exactly as it does in the design

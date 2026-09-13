@@ -19,8 +19,7 @@ import {
   ArrowLeft, ArrowRight, Check, Loader2, Mic, MicOff, Sparkles, Play, Square,
   Bot, MessageSquareText, BookOpen, AudioLines, ClipboardCheck,
 } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -187,21 +186,20 @@ export default function AgentBuilderPage() {
 
   if (loading) {
     return (
-      <RouteGuard><AppLayout><div className="mx-auto max-w-3xl"><LoadingBlock rows={6} /></div></AppLayout></RouteGuard>
+      <CommsWorkspace><div><LoadingBlock rows={6} /></div></CommsWorkspace>
     );
   }
   if (error || !agent) {
     return (
-      <RouteGuard><AppLayout><div className="mx-auto max-w-3xl">
+      <CommsWorkspace><div>
         <ErrorState messageKey={error ?? 'comm_agent_not_found'} onRetry={() => { setLoading(true); void load(); }} />
-      </div></AppLayout></RouteGuard>
+      </div></CommsWorkspace>
     );
   }
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-3xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/agents')}>
               <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_agents_title')}
@@ -259,8 +257,7 @@ export default function AgentBuilderPage() {
             </div>
           </div>
         </div>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

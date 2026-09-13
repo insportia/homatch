@@ -13,8 +13,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Ban, MessageSquare, Phone, PhoneOff, ShieldAlert, User, Clock, Sparkles,
 } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -85,12 +84,12 @@ export default function ContactProfilePage() {
   }, [contact, load, t]);
 
   if (loading) {
-    return <RouteGuard><AppLayout><div className="mx-auto max-w-4xl"><LoadingBlock rows={6} /></div></AppLayout></RouteGuard>;
+    return <CommsWorkspace><div><LoadingBlock rows={6} /></div></CommsWorkspace>;
   }
   if (error || !contact) {
-    return <RouteGuard><AppLayout><div className="mx-auto max-w-4xl">
+    return <CommsWorkspace><div>
       <ErrorState messageKey={error ?? 'comm_contact_not_found'} onRetry={() => { setLoading(true); void load(); }} />
-    </div></AppLayout></RouteGuard>;
+    </div></CommsWorkspace>;
   }
 
   const blocked = Boolean(contact.suppressed || contact.do_not_contact || contact.unsubscribed);
@@ -110,9 +109,8 @@ export default function ContactProfilePage() {
   ];
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-4xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/contact-lists')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_contact_lists')}
           </Button>
@@ -248,8 +246,7 @@ export default function ContactProfilePage() {
             </CardContent></Card>
           </div>
         </div>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

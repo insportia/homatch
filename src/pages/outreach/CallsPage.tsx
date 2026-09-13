@@ -27,9 +27,12 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Phone, PhoneCall, Search, X } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import {
+  Phone, PhoneCall, Search, X, Bot, Users, Megaphone, Target, Clock,
+  TrendingUp, Wallet, PhoneOff, ArrowRight,
+} from 'lucide-react';
+import { CommsWorkspace, Section } from '@/components/communications/CommsWorkspace';
+import { ChannelModule } from '@/components/communications/ChannelModule';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,9 +48,9 @@ import {
   LiveDot, ScrollTable, formatUsd, formatDuration, formatPhone, relativeTime,
 } from '@/components/communications/primitives';
 import {
-  listCalls, listLiveCalls, getCall, listCampaigns, subscribeToCalls,
+  listCalls, listLiveCalls, getCall, listCampaigns, listAgents, subscribeToCalls,
 } from '@/services/communications';
-import type { CommSend, CommExtraction, CommCampaign } from '@/types/communications';
+import type { CommSend, CommExtraction, CommCampaign, AgentListRow } from '@/types/communications';
 import { isCallLive } from '@/lib/comm/vocabulary';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -61,6 +64,7 @@ export default function CallsPage() {
   const [live, setLive] = useState<CommSend[]>([]);
   const [calls, setCalls] = useState<CommSend[]>([]);
   const [campaigns, setCampaigns] = useState<CommCampaign[]>([]);
+  const [agents, setAgents] = useState<AgentListRow[]>([]);
   const [detail, setDetail] = useState<{ send: CommSend | null; extraction: CommExtraction | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +80,7 @@ export default function CallsPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [liveRows, rows, campaignRows] = await Promise.all([
+      const [liveRows, rows, campaignRows, agentRows] = await Promise.all([
         listLiveCalls(),
         listCalls({
           status, outcome, search: search.trim() || undefined,
@@ -85,10 +89,12 @@ export default function CallsPage() {
           limit: 200,
         }),
         listCampaigns({ channel: 'AI_CALL', limit: 100 }),
+        listAgents(8),
       ]);
       setLive(liveRows);
       setCalls(rows);
       setCampaigns(campaignRows);
+      setAgents(agentRows);
     } catch {
       setError('comm_calls_load_failed');
     } finally {
@@ -126,31 +132,104 @@ export default function CallsPage() {
     };
   }, [calls]);
 
-  return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-6xl space-y-4">
-          {/* This page IS the AI Call Center now, so its old "Call Center"
-              button pointed at itself. What an operator standing here actually
-              wants next is to start a campaign, or to see the ones already
-              running — both of which live in the campaign screens. */}
-          <PageHeader
-            title={t('comm_calls_title')}
-            subtitle={t('comm_calls_subtitle')}
-            primary={{ label: t('comm_new_campaign'), onClick: () => navigate('/outreach/campaigns/new') }}
-            secondary={{ label: t('comm_campaigns_title'), onClick: () => navigate('/outreach/campaigns?channel=AI_CALL') }}
-          />
+  /*
+   * Outcomes, counted from the calls actually loaded. Only codes that really
+   * occurred appear, so an account with three interested callers shows one
+   * tile rather than six categories of zero.
+   */
+  const outcomeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of calls) {
+      if (!c.outcome) continue;
+      counts.set(c.outcome, (counts.get(c.outcome) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [calls]);
 
+  const hasNothing = !loading && !calls.length && !campaigns.length;
+
+  return (
+    <CommsWorkspace
+      header={
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-gold-ink">
+              {t('comms_ch_calls')}
+            </p>
+            <h1 className="mt-0.5 text-xl font-semibold leading-tight sm:text-2xl">{t('comm_calls_title')}</h1>
+            <p className="mt-1 max-w-[46rem] text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+              {t('comm_calls_subtitle')}
+            </p>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/campaigns/new?channel=AI_CALL')}>
+              {t('comms_calls_new_campaign')}
+            </Button>
+            <Button variant="outline" size="sm" className="h-8" onClick={() => navigate('/outreach/campaigns?channel=AI_CALL')}>
+              {t('comm_campaigns_title')}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={() => navigate('/outreach/agents')}>
+              {t('comms_create_agent')}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={() => navigate('/outreach/contacts/import')}>
+              {t('comms_import_contacts')}
+            </Button>
+          </div>
+        </div>
+      }
+    >
           {error ? <ErrorState messageKey={error} onRetry={() => { setLoading(true); void load(); }} /> : null}
 
-          <KpiRow cols={6}>
-            <Kpi labelKey="comm_kpi_calls" value={stats.total} loading={loading} />
-            <Kpi labelKey="comm_kpi_answer_rate" value={stats.answerRate} loading={loading} />
-            <Kpi labelKey="comm_kpi_avg_duration" value={formatDuration(stats.avgDuration)} loading={loading} />
-            <Kpi labelKey="comm_kpi_qualified" value={stats.qualified} accent loading={loading} />
-            <Kpi labelKey="comm_outcome_callback" value={stats.callbacks} loading={loading} />
-            <Kpi labelKey="comm_kpi_cost_per_lead" value={formatUsd(stats.costPerLead, language)} loading={loading} />
-          </KpiRow>
+          {/*
+           * A BRAND NEW ACCOUNT IS NOT AN EMPTY TABLE.
+           *
+           * With no calls and no campaigns there is nothing to measure, so
+           * measuring it would be six zeros pretending to be performance. What
+           * a first-time operator needs instead is what this thing does and
+           * where to start, which is a product rather than a placeholder.
+           */}
+          {hasNothing ? (
+            <Card className="border-foreground/10">
+              <CardContent className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold leading-snug">{t('comms_calls_start_title')}</h2>
+                  <p className="mt-1 max-w-[42rem] text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                    {t('comms_calls_start_body')}
+                  </p>
+                  <ul className="mt-3 grid gap-x-5 gap-y-1.5 sm:grid-cols-2">
+                    {['comms_calls_cap_1', 'comms_calls_cap_2', 'comms_calls_cap_3', 'comms_calls_cap_4'].map((k) => (
+                      <li key={k} className="flex items-start gap-2 text-[13px] leading-snug text-muted-foreground">
+                        <span className="mt-[0.45rem] h-1 w-1 shrink-0 rounded-full bg-gold" aria-hidden="true" />
+                        <span className="min-w-0 [overflow-wrap:anywhere]">{t(k as TKey)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex flex-wrap gap-2 lg:flex-col">
+                  <Button size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/agents')}>
+                    <Bot className="h-3.5 w-3.5" aria-hidden="true" />{t('comms_create_agent')}
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/contacts/import')}>
+                    <Users className="h-3.5 w-3.5" aria-hidden="true" />{t('comms_import_contacts')}
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/campaigns/new?channel=AI_CALL')}>
+                    <Megaphone className="h-3.5 w-3.5" aria-hidden="true" />{t('comms_calls_new_campaign')}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <Section titleKey="comms_calls_performance" sub={t('comms_calls_performance_sub')}>
+            <KpiRow cols={6}>
+              <Kpi labelKey="comm_kpi_calls" icon={PhoneCall} value={stats.total} loading={loading} />
+              <Kpi labelKey="comm_kpi_answer_rate" icon={TrendingUp} value={stats.answerRate} loading={loading} />
+              <Kpi labelKey="comm_kpi_avg_duration" icon={Clock} value={formatDuration(stats.avgDuration)} loading={loading} />
+              <Kpi labelKey="comm_kpi_qualified" icon={Target} value={stats.qualified} accent loading={loading} />
+              <Kpi labelKey="comm_outcome_callback" icon={Phone} value={stats.callbacks} loading={loading} />
+              <Kpi labelKey="comm_kpi_cost_per_lead" icon={Wallet} value={formatUsd(stats.costPerLead, language)} loading={loading} />
+            </KpiRow>
+          </Section>
 
           {/* §18's Live Calls panel. Shown only when something is actually on
               the wire, so it is never an empty box pretending to be a feature. */}
@@ -175,7 +254,7 @@ export default function CallsPage() {
                             {call.language ? call.language.toUpperCase() : '·'}
                           </span>
                         </span>
-                        <span className="flex shrink-0 items-center gap-2">
+                        <span className="flex min-w-0 flex-wrap items-center gap-2">
                           {call.call_started_at ? <LiveTimer startedAt={call.call_started_at} /> : null}
                           <StatusBadge status={call.status} />
                         </span>
@@ -187,6 +266,131 @@ export default function CallsPage() {
             </Card>
           ) : null}
 
+          {/* ── Campaigns and agents, side by side ─────────────────────
+              The two things a call centre is made of. Neither was on this
+              screen before, so an operator could see what had happened but
+              not what was running or who was running it. */}
+          <div className="grid gap-4 xl:grid-cols-3">
+            <Section
+              className="xl:col-span-2"
+              titleKey="comms_calls_campaigns"
+              sub={t('comms_calls_campaigns_sub')}
+              action={{ label: t('comms_see_all'), onClick: () => navigate('/outreach/campaigns?channel=AI_CALL') }}
+            >
+              {loading ? <LoadingBlock rows={2} /> : campaigns.length === 0 ? (
+                <EmptyState
+                  icon={Megaphone}
+                  titleKey="comms_calls_no_campaigns"
+                  bodyKey="comms_calls_no_campaigns_body"
+                  action={{ labelKey: 'comms_calls_new_campaign', onClick: () => navigate('/outreach/campaigns/new?channel=AI_CALL') }}
+                />
+              ) : (
+                <ul className="grid gap-2">
+                  {campaigns.slice(0, 5).map((c) => {
+                    const sent = c.sent_count ?? 0;
+                    const pct = c.audience_count ? Math.min(100, Math.round((sent / c.audience_count) * 100)) : 0;
+                    return (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          onClick={() => setCampaignId(c.id)}
+                          className="w-full min-w-0 rounded-lg border bg-card p-3 text-start transition-colors hover:border-foreground/25"
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <PhoneCall className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
+                            <StatusBadge status={c.status} />
+                          </span>
+                          {/* Progress is sent over audience, both real columns.
+                              A campaign with no audience shows no bar rather
+                              than a full one. */}
+                          {c.audience_count ? (
+                            <span className="mt-2 block h-1 w-full overflow-hidden rounded-full bg-foreground/10">
+                              <span
+                                className="block h-full rounded-full bg-gold transition-[width] duration-500 motion-reduce:transition-none"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </span>
+                          ) : null}
+                          <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-muted-foreground">
+                            <span className="tabular-nums">{sent}/{c.audience_count}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{relativeTime(c.launched_at ?? c.created_at, language)}</span>
+                            {c.cost_actual_usd ? (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="tabular-nums">{formatUsd(c.cost_actual_usd, language)}</span>
+                              </>
+                            ) : null}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Section>
+
+            <Section
+              titleKey="comms_your_agents"
+              action={{ label: t('comms_see_all'), onClick: () => navigate('/outreach/agents') }}
+            >
+              {loading ? <LoadingBlock rows={2} /> : agents.length === 0 ? (
+                <EmptyState
+                  icon={Bot}
+                  titleKey="comms_no_agents"
+                  bodyKey="comms_no_agents_body"
+                  action={{ labelKey: 'comms_create_agent', onClick: () => navigate('/outreach/agents') }}
+                />
+              ) : (
+                <ul className="grid gap-2">
+                  {agents.slice(0, 5).map((a) => (
+                    <li key={a.id}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/outreach/agents/${a.id}`)}
+                        className="flex w-full min-w-0 items-center gap-2.5 rounded-lg border bg-card p-2.5 text-start transition-colors hover:border-foreground/25"
+                      >
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink">
+                          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-medium">{a.name}</span>
+                          <span className="block truncate text-[13px] text-muted-foreground">
+                            {a.voice_label ?? (a.languages ?? []).join(' · ').toUpperCase() ?? '·'}
+                          </span>
+                        </span>
+                        <StatusBadge status={a.status} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+          </div>
+
+          {/* ── Outcomes, counted from the calls actually in view ───────── */}
+          {outcomeCounts.length ? (
+            <Section titleKey="comms_calls_outcomes" sub={t('comms_calls_outcomes_sub')}>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {outcomeCounts.map(([code, n]) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => setOutcome(code)}
+                    className="min-w-0 rounded-lg border bg-card p-3 text-start transition-colors hover:border-foreground/25"
+                  >
+                    <p className="text-[13px] leading-[1.25] text-muted-foreground [overflow-wrap:anywhere]">
+                      {t(`comm_outcome_${code.toLowerCase()}`)}
+                    </p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">{n}</p>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          <Section titleKey="comms_calls_recent" sub={t('comms_calls_recent_sub')}>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[160px] flex-1">
               <Search className="pointer-events-none absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -279,7 +483,7 @@ export default function CallsPage() {
               </table>
             </ScrollTable>
           )}
-        </div>
+          </Section>
 
         <Sheet open={Boolean(selectedId)} onOpenChange={(open) => !open && setParams({}, { replace: true })}>
           <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
@@ -287,8 +491,7 @@ export default function CallsPage() {
             <CallDetail data={detail} />
           </SheetContent>
         </Sheet>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

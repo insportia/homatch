@@ -16,20 +16,27 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Inbox, MessageSquare, FileText, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import {
+  Inbox, MessageSquare, FileText, Plus, RefreshCw, ShieldAlert,
+  PhoneForwarded, Users, Send, CheckCheck, Eye, Reply,
+} from 'lucide-react';
+import { CommsWorkspace, Section } from '@/components/communications/CommsWorkspace';
+import { ChannelModule } from '@/components/communications/ChannelModule';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
-  Kpi, KpiRow, PageHeader, LoadingBlock, ErrorState, StatusBadge,
+  Kpi, KpiRow, LoadingBlock, ErrorState, StatusBadge, EmptyState,
   formatUsd, formatRate, relativeTime,
 } from '@/components/communications/primitives';
-import { getAnalytics, listChannelAccounts, listConversations } from '@/services/communications';
-import type { AnalyticsResult, CommChannelAccount } from '@/types/communications';
+import {
+  getAnalytics, listChannelAccounts, listConversations, listTemplates, listCampaigns,
+} from '@/services/communications';
+import type {
+  AnalyticsResult, CommChannelAccount, CommConversation, CommTemplate, CommCampaign,
+} from '@/types/communications';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -40,6 +47,9 @@ export default function WhatsAppPage() {
   const [account, setAccount] = useState<CommChannelAccount | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsResult | null>(null);
   const [unread, setUnread] = useState(0);
+  const [threads, setThreads] = useState<CommConversation[]>([]);
+  const [templates, setTemplates] = useState<CommTemplate[]>([]);
+  const [campaigns, setCampaigns] = useState<CommCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,14 +58,20 @@ export default function WhatsAppPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [accounts, stats, conversations] = await Promise.all([
+      const [accounts, stats, conversations, recentThreads, tpl, camp] = await Promise.all([
         listChannelAccounts(),
         getAnalytics({ since, channel: 'WHATSAPP' }),
         listConversations({ unread: true, limit: 100 }),
+        listConversations({ limit: 6 }),
+        listTemplates(),
+        listCampaigns({ channel: 'WHATSAPP', limit: 10 }),
       ]);
       setAccount(accounts.find((a) => a.channel === 'WHATSAPP') ?? null);
       setAnalytics(stats);
       setUnread(conversations.reduce((s, c) => s + c.unread_count, 0));
+      setThreads(recentThreads);
+      setTemplates(tpl);
+      setCampaigns(camp);
     } catch {
       setError('comm_whatsapp_load_failed');
     } finally {
@@ -75,16 +91,38 @@ export default function WhatsAppPage() {
   ];
   const funnelMax = Math.max(1, ...funnel.map(([, v]) => v));
 
+  const approved = templates.filter((x) => x.status === 'APPROVED').length;
+
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-5xl space-y-4">
-          <PageHeader
-            title={t('comm_channel_whatsapp')}
-            subtitle={t('comm_whatsapp_subtitle')}
-            primary={{ label: t('comm_new_campaign'), onClick: () => navigate('/outreach/campaigns/new?channel=WHATSAPP') }}
-            secondary={{ label: t('comm_open_inbox'), onClick: () => navigate('/outreach/whatsapp/inbox') }}
-          />
+    <CommsWorkspace
+      header={
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-gold-ink">
+              {t('comms_ch_wa')}
+            </p>
+            <h1 className="mt-0.5 text-xl font-semibold leading-tight sm:text-2xl">{t('comm_channel_whatsapp')}</h1>
+            <p className="mt-1 max-w-[46rem] text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+              {t('comm_whatsapp_subtitle')}
+            </p>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/campaigns/new?channel=WHATSAPP')}>
+              {t('comms_wa_new_campaign')}
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/whatsapp/inbox')}>
+              {t('comm_open_inbox')}
+              {unread > 0 ? (
+                <Badge className="h-4 min-w-4 justify-center px-1 text-2xs tabular-nums">{unread}</Badge>
+              ) : null}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={() => navigate('/outreach/whatsapp/templates')}>
+              {t('comm_templates')}
+            </Button>
+          </div>
+        </div>
+      }
+    >
 
           {error ? <ErrorState messageKey={error} onRetry={() => { setLoading(true); void load(); }} /> : null}
 
@@ -195,9 +233,116 @@ export default function WhatsAppPage() {
               )}
             </CardContent>
           </Card>
-        </div>
-      </AppLayout>
-    </RouteGuard>
+
+          {/* ── Messaging campaigns, conversations, templates ────────────
+              WhatsApp is its own product. It gets its own campaign list, its
+              own recent conversations and its own template state, so nothing
+              here requires a telephony campaign to exist first. */}
+          <div className="grid gap-4 xl:grid-cols-3">
+            <Section
+              className="xl:col-span-2"
+              titleKey="comms_wa_campaigns"
+              sub={t('comms_wa_campaigns_sub')}
+              action={{ label: t('comms_see_all'), onClick: () => navigate('/outreach/campaigns?channel=WHATSAPP') }}
+            >
+              {loading ? <LoadingBlock rows={2} /> : campaigns.length === 0 ? (
+                <EmptyState
+                  icon={MessageSquare}
+                  titleKey="comms_wa_no_campaigns"
+                  bodyKey="comms_wa_no_campaigns_body"
+                  action={{ labelKey: 'comms_wa_new_campaign', onClick: () => navigate('/outreach/campaigns/new?channel=WHATSAPP') }}
+                />
+              ) : (
+                <ul className="grid gap-2">
+                  {campaigns.slice(0, 5).map((c) => {
+                    const sent = c.sent_count ?? 0;
+                    const pct = c.audience_count ? Math.min(100, Math.round((sent / c.audience_count) * 100)) : 0;
+                    return (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/outreach/campaigns?channel=WHATSAPP&open=${c.id}`)}
+                          className="w-full min-w-0 rounded-lg border bg-card p-3 text-start transition-colors hover:border-foreground/25"
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
+                            <StatusBadge status={c.status} />
+                          </span>
+                          {c.audience_count ? (
+                            <span className="mt-2 block h-1 w-full overflow-hidden rounded-full bg-foreground/10">
+                              <span className="block h-full rounded-full bg-gold transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${pct}%` }} />
+                            </span>
+                          ) : null}
+                          <span className="mt-1.5 block text-[13px] tabular-nums text-muted-foreground">
+                            {sent}/{c.audience_count} · {relativeTime(c.launched_at ?? c.created_at, language)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Section>
+
+            <Section
+              titleKey="comms_wa_conversations"
+              action={{ label: t('comm_open_inbox'), onClick: () => navigate('/outreach/whatsapp/inbox') }}
+            >
+              {loading ? <LoadingBlock rows={2} /> : threads.length === 0 ? (
+                <EmptyState
+                  icon={Inbox}
+                  titleKey="comms_wa_no_threads"
+                  bodyKey="comms_wa_no_threads_body"
+                />
+              ) : (
+                <ul className="grid gap-2">
+                  {threads.slice(0, 5).map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/outreach/whatsapp/inbox?thread=${c.id}`)}
+                        className="flex w-full min-w-0 items-start gap-2.5 rounded-lg border bg-card p-2.5 text-start transition-colors hover:border-foreground/25"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                              {c.peer_name || c.peer_address}
+                            </span>
+                            {c.unread_count > 0 ? (
+                              <Badge className="h-4 min-w-4 justify-center px-1 text-2xs tabular-nums">{c.unread_count}</Badge>
+                            ) : null}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">
+                            {c.last_message_preview ?? '·'}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-3 grid gap-2">
+                <QuickCard icon={FileText} labelKey="comm_templates" badge={templates.length ? `${approved}/${templates.length}` : null} onClick={() => navigate('/outreach/whatsapp/templates')} />
+                <QuickCard icon={Users} labelKey="comms_nav_contacts" onClick={() => navigate('/outreach/contacts')} />
+              </div>
+            </Section>
+          </div>
+
+          {/* ── WhatsApp Calling, as its own direction ────────────────────
+              Shown here rather than hidden, and clearly not a phone campaign.
+              Its state is what the platform actually knows, never a guess. */}
+          <Section titleKey="comms_ch_wacall" sub={t('comms_ch_wacall_purpose')}>
+            <ChannelModule
+              icon={PhoneForwarded}
+              titleKey="comms_ch_wacall"
+              purposeKey="comms_ch_wacall_purpose"
+              state="NOT_ACTIVATED"
+              stateDetailKey="comms_ch_wacall_detail"
+            />
+          </Section>
+    </CommsWorkspace>
   );
 }
 

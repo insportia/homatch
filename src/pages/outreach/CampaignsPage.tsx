@@ -12,8 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Megaphone, MoreHorizontal, Pause, Play, Plus, ShieldAlert } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -93,9 +92,8 @@ export default function CampaignsPage() {
   }, [load, t]);
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-6xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <PageHeader
             title={t('comm_campaigns_title')}
             subtitle={t('comm_campaigns_subtitle')}
@@ -216,7 +214,6 @@ export default function CampaignsPage() {
             </ScrollTable>
           )}
         </div>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }

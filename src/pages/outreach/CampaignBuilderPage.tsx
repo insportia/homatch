@@ -16,8 +16,7 @@ import {
   ArrowLeft, ArrowRight, Rocket, Loader2, Phone, MessageSquare, Mail, Users,
   ShieldCheck, CalendarClock, Eye,
 } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,6 +39,26 @@ import type { CommCampaign, LaunchPreview, AgentListRow, CommTemplate, CommChann
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
+/**
+ * What a customer is actually choosing between.
+ *
+ * Three primary directions, each its own product. WhatsApp Calling is listed
+ * only where the platform supports it; it is NOT folded into AI Phone Calls,
+ * because a WhatsApp call and a PSTN call reach different people under
+ * different rules.
+ */
+const CHANNEL_CHOICES: Array<{
+  code: string;
+  icon: typeof Phone;
+  titleKey: string;
+  bodyKey: string;
+  secondary?: boolean;
+}> = [
+  { code: 'AI_CALL',  icon: Phone,          titleKey: 'comms_cb_calls',  bodyKey: 'comms_cb_calls_body' },
+  { code: 'WHATSAPP', icon: MessageSquare,  titleKey: 'comms_cb_wa',     bodyKey: 'comms_cb_wa_body' },
+  { code: 'SMS',      icon: MessageSquare,  titleKey: 'comms_cb_sms',    bodyKey: 'comms_cb_sms_body', secondary: true },
+];
+
 const STEPS = ['channel', 'audience', 'content', 'schedule', 'review', 'launch'] as const;
 type Step = typeof STEPS[number];
 
@@ -55,7 +74,21 @@ export default function CampaignBuilderPage() {
   const stepIndex = Math.max(0, STEPS.indexOf(step));
 
   const [campaign, setCampaign] = useState<CommCampaign | null>(null);
-  const [draft, setDraft] = useState<Partial<CommCampaign>>({ campaign_type: 'AI_CALL', max_attempts: 1, concurrency: 1 });
+  /*
+   * The channel can arrive in the URL, because every "New WhatsApp campaign"
+   * button in the product should land on a WhatsApp campaign rather than on an
+   * AI_CALL draft the customer has to notice and change. Anything unrecognised
+   * falls back to AI_CALL, which is what the builder defaulted to before.
+   */
+  const initialChannel = (() => {
+    const c = (params.get('channel') ?? '').toUpperCase();
+    return CHANNEL_CHOICES.some((x) => x.code === c) ? c : 'AI_CALL';
+  })();
+  const [draft, setDraft] = useState<Partial<CommCampaign>>({
+    campaign_type: initialChannel as CommCampaign['campaign_type'],
+    max_attempts: 1,
+    concurrency: 1,
+  });
   const [lists, setLists] = useState<ContactListRow[]>([]);
   const [agents, setAgents] = useState<AgentListRow[]>([]);
   const [templates, setTemplates] = useState<CommTemplate[]>([]);
@@ -158,16 +191,15 @@ export default function CampaignBuilderPage() {
   }, [campaignId, navigate, t]);
 
   if (loading) {
-    return <RouteGuard><AppLayout><div className="mx-auto max-w-3xl"><LoadingBlock rows={6} /></div></AppLayout></RouteGuard>;
+    return <CommsWorkspace><div><LoadingBlock rows={6} /></div></CommsWorkspace>;
   }
 
   const isCall = draft.campaign_type === 'AI_CALL';
   const isWhatsApp = draft.campaign_type === 'WHATSAPP';
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-3xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/campaigns')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_campaigns_title')}
           </Button>
@@ -206,28 +238,53 @@ export default function CampaignBuilderPage() {
                   className="h-9 text-sm" maxLength={120}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t('comm_col_channel')}</Label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {[
-                    { code: 'AI_CALL', icon: Phone, key: 'comm_channel_ai_call' },
-                    { code: 'WHATSAPP', icon: MessageSquare, key: 'comm_channel_whatsapp' },
-                    { code: 'EMAIL', icon: Mail, key: 'comm_channel_email' },
-                    { code: 'SMS', icon: MessageSquare, key: 'comm_channel_sms' },
-                  ].map(({ code, icon: Icon, key }) => (
-                    <button
-                      key={code} type="button"
-                      aria-pressed={draft.campaign_type === code}
-                      onClick={() => patch({ campaign_type: code as CommCampaign['campaign_type'] })}
-                      className={cn(
-                        'flex items-center gap-2 rounded-lg border p-3 text-start text-xs transition-colors',
-                        draft.campaign_type === code ? 'border-gold bg-gold/[0.06]' : 'hover:border-foreground/20',
-                      )}
-                    >
-                      <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                      {t(key as TKey)}
-                    </button>
-                  ))}
+              {/*
+               * WHICH PRODUCT AM I USING? — answered first, and answered
+               * properly.
+               *
+               * These used to be four equal chips reading "AI Call",
+               * "WhatsApp", "Email", "SMS", which told a customer nothing
+               * about what they were choosing between. A phone campaign and a
+               * WhatsApp campaign are different products with different
+               * economics, different compliance and different results; the
+               * choice deserves a sentence each.
+               *
+               * Email and SMS stay on the older channel path and say so
+               * rather than being quietly offered as equals.
+               */}
+              <div className="space-y-2">
+                <Label className="text-xs">{t('comms_cb_choose_channel')}</Label>
+                <div className="grid gap-2 lg:grid-cols-3">
+                  {CHANNEL_CHOICES.map(({ code, icon: Icon, titleKey, bodyKey, secondary }) => {
+                    const on = draft.campaign_type === code;
+                    return (
+                      <button
+                        key={code} type="button"
+                        aria-pressed={on}
+                        onClick={() => patch({ campaign_type: code as CommCampaign['campaign_type'] })}
+                        className={cn(
+                          'flex min-w-0 flex-col rounded-xl border p-3.5 text-start transition-colors',
+                          on ? 'border-gold bg-gold/[0.06]' : 'hover:border-foreground/25',
+                          secondary && !on && 'opacity-75',
+                        )}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={cn(
+                            'grid h-7 w-7 shrink-0 place-items-center rounded-md border',
+                            on ? 'border-gold/40 bg-gold/[0.08] text-gold-ink' : 'border-border bg-muted/60 text-muted-foreground',
+                          )}>
+                            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 text-sm font-semibold leading-snug [overflow-wrap:anywhere]">
+                            {t(titleKey as TKey)}
+                          </span>
+                        </span>
+                        <span className="mt-2 text-[13px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                          {t(bodyKey as TKey)}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </CardContent></Card>
@@ -481,8 +538,7 @@ export default function CampaignBuilderPage() {
             ) : null}
           </div>
         </div>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }
 

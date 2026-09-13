@@ -14,8 +14,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Phone, MessageSquare, ShieldAlert, RefreshCw } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -49,9 +48,8 @@ export default function ChannelAccountsPage() {
   const anyTest = accounts.some((a) => a.environment === 'TEST');
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="mx-auto max-w-5xl space-y-4">
+    <CommsWorkspace>
+        <div className="space-y-4">
           <PageHeader
             title={t('comm_numbers_title')}
             subtitle={t('comm_numbers_subtitle')}
@@ -144,7 +142,6 @@ export default function ChannelAccountsPage() {
             </CardContent>
           </Card>
         </div>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }

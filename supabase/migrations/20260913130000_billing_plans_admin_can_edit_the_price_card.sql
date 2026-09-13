@@ -69,4 +69,4 @@ GRANT UPDATE (
 ) ON public.billing_plans TO authenticated;
 
 COMMENT ON POLICY billing_plans_admin_write ON public.billing_plans IS
-  'Admins edit the price card from Admin > Pricing. Writes are column-scoped by the grants in 20260913120000: code, profit_share_to_customer_bps and config are not writable from the client, and row creation/removal is not granted at all.';
+  'Admins edit the price card from Admin > Pricing. Writes are column-scoped by the grants in 20260913130000: code, profit_share_to_customer_bps and config are not writable from the client, and row creation/removal is not granted at all.';

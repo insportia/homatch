@@ -240,7 +240,7 @@ export function formatCredits(credits: number): string {
 // and rows cannot be created or deleted from here. So a non-admin calling
 // this gets no rows, and an admin calling it with extra fields gets a
 // privilege error rather than a silent write. See
-// 20260913120000_billing_plans_admin_can_edit_the_price_card.sql.
+// 20260913130000_billing_plans_admin_can_edit_the_price_card.sql.
 
 /** Every plan, including the disabled ones. Admin-only by RLS. */
 export async function listPlansForAdmin(): Promise<BillingPlanRow[]> {

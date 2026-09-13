@@ -515,9 +515,18 @@ export async function ensureManualList(): Promise<string | null> {
     owner_id: uid,
     name: MANUAL_LIST_NAME,
     source_format: 'MANUAL',
-    import_status: 'COMPLETED',
+    // READY, and not for cosmetic reasons twice over. import_status is a CHECK
+    // over PENDING/ANALYZING/READY/FAILED/ARCHIVED — 'COMPLETED' is not in it
+    // and the insert is rejected outright. And READY is what the campaign
+    // builder filters audiences on, so it is also the value that makes a
+    // hand-added contact reachable by a campaign. A manual list has nothing to
+    // analyse, so it is ready the moment it exists.
+    import_status: 'READY',
   }).select('id').maybeSingle();
-  if (error || !data) return null;
+  if (error || !data) {
+    if (import.meta.env?.DEV) console.error('[comm] manual list insert rejected', error?.code, error?.message);
+    return null;
+  }
   return data.id as string;
 }
 

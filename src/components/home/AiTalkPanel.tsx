@@ -128,6 +128,15 @@ const FAILURE_KEY: Record<string, string> = {
   TRANSCRIBE_FAILED: 'talk_err_stt',
   NETWORK: 'talk_err_assistant',
   SESSION_NOT_ACTIVE: 'talk_ended_body',
+  /*
+   * "Temporarily unavailable" for a conversation you already have open.
+   *
+   * The server refuses a second session while one is still live — two tabs,
+   * or a tab closed without ending the session, which expires on its own a
+   * minute later. That is a completely different sentence from a provider
+   * being down, and it was being told as the same one.
+   */
+  BUSY: 'talk_busy_body',
 };
 
 interface Intelligence {
@@ -252,6 +261,8 @@ export function AiTalkPanel({ className }: { className?: string }) {
     // id is the whole of what it needs.
     if (error || !grant?.ok || !grant.sessionId) {
       setState(grant?.userMessage === 'LIMIT_REACHED' ? 'LIMIT_REACHED' : 'PROVIDER_ERROR');
+      // BUSY is not an outage and must not read as one.
+      if (grant?.userMessage === 'BUSY') setFailure('BUSY');
       return;
     }
 

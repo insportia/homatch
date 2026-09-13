@@ -14,9 +14,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, Rocket, Loader2, Phone, MessageSquare, Mail, Users,
-  ShieldCheck, CalendarClock, Eye,
+  ShieldCheck, CalendarClock, Eye, Check, X, Minus,
 } from 'lucide-react';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import { buildLaunchChecklist } from '@/lib/comm/launchChecklist';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -550,7 +551,12 @@ export default function CampaignBuilderPage() {
             </CardContent></Card>
           ) : null}
 
-          {step === 'review' ? <ReviewPanel preview={preview} language={language} /> : null}
+          {step === 'review' ? (
+            <>
+              <LaunchChecklist draft={draft} preview={preview} />
+              <ReviewPanel preview={preview} language={language} />
+            </>
+          ) : null}
 
           {step === 'launch' ? (
             <Card><CardContent className="space-y-3 p-4">
@@ -595,6 +601,79 @@ export default function CampaignBuilderPage() {
  * compliance label. Not the risk score, not the weights, not the tier
  * thresholds — those are in the Admin Risk centre and are not the customer's.
  */
+/**
+ * What is still outstanding, as a list.
+ *
+ * The server refuses on the FIRST failed gate and returns one sentence, so a
+ * customer who clears it meets the next one, and the next. Shown as a list,
+ * the same information tells them how far away they actually are — and which
+ * of the remaining items are not theirs to fix.
+ */
+function LaunchChecklist({
+  draft, preview,
+}: { draft: Partial<CommCampaign>; preview: LaunchPreview | null }) {
+  const { t } = useLanguage();
+
+  const items = buildLaunchChecklist({
+    channel: draft.campaign_type ?? null,
+    agentId: draft.agent_id ?? null,
+    contactListId: draft.contact_list_id ?? null,
+    templateId: draft.template_id ?? null,
+    eligible: preview?.audience?.eligible ?? null,
+    refusalCode: preview && !preview.ok ? preview.code : null,
+    previewed: Boolean(preview),
+  });
+
+  const LABEL: Record<string, TKey> = {
+    AGENT: 'launch_item_agent',
+    TEMPLATE: 'launch_item_template',
+    AUDIENCE: 'launch_item_audience',
+    AUDIENCE_REACHABLE: 'launch_item_audience_reachable',
+    COMPLIANCE: 'launch_item_compliance',
+    CALLER_NUMBER: 'launch_item_caller_number',
+    CHANNEL_ACTIVE: 'launch_item_channel_active',
+    PRICING: 'launch_item_pricing',
+    BALANCE: 'launch_item_balance',
+    SPEND_CAP: 'launch_item_spend_cap',
+  };
+
+  return (
+    <Card><CardContent className="space-y-2 p-4">
+      <h2 className="text-sm font-semibold">{t('launch_checklist_title')}</h2>
+      <ul className="space-y-1.5">
+        {items.map((item) => (
+          <li key={item.key} className="flex items-start gap-2 text-xs">
+            {item.state === 'DONE' ? (
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" aria-hidden="true" />
+            ) : item.state === 'MISSING' ? (
+              <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" aria-hidden="true" />
+            ) : (
+              <Minus className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            )}
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+              <span className={cn(item.state === 'MISSING' && 'font-medium')}>
+                {t(LABEL[item.key] ?? 'launch_item_unknown')}
+              </span>
+              {/* Said plainly, so nobody goes looking through their own
+                  settings for a switch that belongs to an administrator. */}
+              {item.state === 'MISSING' && item.needsAdmin ? (
+                <span className="ms-1.5 text-2xs text-muted-foreground">
+                  · {t('launch_item_admin')}
+                </span>
+              ) : null}
+              {item.state === 'UNKNOWN' ? (
+                <span className="ms-1.5 text-2xs text-muted-foreground">
+                  · {t('launch_item_unknown')}
+                </span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </CardContent></Card>
+  );
+}
+
 function ReviewPanel({
   preview, language, compact,
 }: { preview: LaunchPreview | null; language: string; compact?: boolean }) {

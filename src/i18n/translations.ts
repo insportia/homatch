@@ -4750,6 +4750,19 @@ const en = {
   talk_state_mic_unavailable: "Microphone unavailable",
   talk_mic_unavailable_body: "No working microphone was found. Check that one is connected and not in use by another app, then try again.",
   comm_test_mic_unavailable: "No working microphone was found. Check that one is connected and not in use by another app.",
+  launch_checklist_title: "Before this can launch",
+  launch_item_agent: "AI agent chosen",
+  launch_item_template: "Message template chosen",
+  launch_item_audience: "Contact list chosen",
+  launch_item_audience_reachable: "Someone in the list is reachable",
+  launch_item_compliance: "Passes the safety check",
+  launch_item_caller_number: "A number to call from",
+  launch_item_channel_active: "This channel is activated",
+  launch_item_pricing: "Pricing is set for this channel",
+  launch_item_balance: "Enough credit to start",
+  launch_item_spend_cap: "Within the spending limit",
+  launch_item_admin: "An administrator sets this up",
+  launch_item_unknown: "Not checked yet",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -9418,6 +9431,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   talk_state_mic_unavailable: "მიკროფონი მიუწვდომელია",
   talk_mic_unavailable_body: "მოქმედი მიკროფონი ვერ მოიძებნა. შეამოწმეთ, არის თუ არა შეერთებული და არ იყენებს თუ არა სხვა აპლიკაცია, შემდეგ სცადეთ ხელახლა.",
   comm_test_mic_unavailable: "მოქმედი მიკროფონი ვერ მოიძებნა. შეამოწმეთ, არის თუ არა შეერთებული და არ იყენებს თუ არა სხვა აპლიკაცია.",
+  launch_checklist_title: "სანამ ეს გაეშვება",
+  launch_item_agent: "AI აგენტი არჩეულია",
+  launch_item_template: "შეტყობინების შაბლონი არჩეულია",
+  launch_item_audience: "კონტაქტების სია არჩეულია",
+  launch_item_audience_reachable: "სიაში ვინმე მისაწვდომია",
+  launch_item_compliance: "უსაფრთხოების შემოწმება გავლილია",
+  launch_item_caller_number: "ნომერი, საიდანაც დაირეკება",
+  launch_item_channel_active: "ეს არხი გააქტიურებულია",
+  launch_item_pricing: "ამ არხისთვის ფასი დაყენებულია",
+  launch_item_balance: "დასაწყებად საკმარისი ბალანსი",
+  launch_item_spend_cap: "ხარჯვის ლიმიტის ფარგლებში",
+  launch_item_admin: "ამას ადმინისტრატორი აყენებს",
+  launch_item_unknown: "ჯერ არ შემოწმებულა",
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -14077,6 +14103,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   talk_state_mic_unavailable: "Микрофон недоступен",
   talk_mic_unavailable_body: "Рабочий микрофон не найден. Проверьте, подключён ли он и не занят ли другим приложением, затем повторите.",
   comm_test_mic_unavailable: "Рабочий микрофон не найден. Проверьте, подключён ли он и не занят ли другим приложением.",
+  launch_checklist_title: "Перед запуском",
+  launch_item_agent: "Выбран AI-агент",
+  launch_item_template: "Выбран шаблон сообщения",
+  launch_item_audience: "Выбран список контактов",
+  launch_item_audience_reachable: "В списке есть доступные контакты",
+  launch_item_compliance: "Проверка безопасности пройдена",
+  launch_item_caller_number: "Номер, с которого звонить",
+  launch_item_channel_active: "Этот канал активирован",
+  launch_item_pricing: "Для канала задана цена",
+  launch_item_balance: "Достаточно кредитов для старта",
+  launch_item_spend_cap: "В пределах лимита расходов",
+  launch_item_admin: "Это настраивает администратор",
+  launch_item_unknown: "Ещё не проверено",
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -18734,6 +18773,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   talk_state_mic_unavailable: "Mikrofon kullanılamıyor",
   talk_mic_unavailable_body: "Çalışan bir mikrofon bulunamadı. Bağlı olduğundan ve başka bir uygulama tarafından kullanılmadığından emin olup tekrar deneyin.",
   comm_test_mic_unavailable: "Çalışan bir mikrofon bulunamadı. Bağlı olduğundan ve başka bir uygulama tarafından kullanılmadığından emin olun.",
+  launch_checklist_title: "Başlatmadan önce",
+  launch_item_agent: "AI temsilcisi seçildi",
+  launch_item_template: "Mesaj şablonu seçildi",
+  launch_item_audience: "Kişi listesi seçildi",
+  launch_item_audience_reachable: "Listede ulaşılabilir biri var",
+  launch_item_compliance: "Güvenlik denetimini geçiyor",
+  launch_item_caller_number: "Aranacak numara için hat",
+  launch_item_channel_active: "Bu kanal etkinleştirildi",
+  launch_item_pricing: "Bu kanal için fiyat belirlendi",
+  launch_item_balance: "Başlamak için yeterli kredi",
+  launch_item_spend_cap: "Harcama limiti içinde",
+  launch_item_admin: "Bunu bir yönetici ayarlar",
+  launch_item_unknown: "Henüz denetlenmedi",
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -23391,6 +23443,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   talk_state_mic_unavailable: "الميكروفون غير متاح",
   talk_mic_unavailable_body: "لم يُعثر على ميكروفون يعمل. تأكد من توصيله وعدم استخدامه من تطبيق آخر، ثم حاول مرة أخرى.",
   comm_test_mic_unavailable: "لم يُعثر على ميكروفون يعمل. تأكد من توصيله وعدم استخدامه من تطبيق آخر.",
+  launch_checklist_title: "قبل أن يبدأ هذا",
+  launch_item_agent: "تم اختيار وكيل الذكاء الاصطناعي",
+  launch_item_template: "تم اختيار قالب الرسالة",
+  launch_item_audience: "تم اختيار قائمة جهات الاتصال",
+  launch_item_audience_reachable: "يوجد في القائمة من يمكن الوصول إليه",
+  launch_item_compliance: "يجتاز فحص السلامة",
+  launch_item_caller_number: "رقم للاتصال منه",
+  launch_item_channel_active: "هذه القناة مُفعَّلة",
+  launch_item_pricing: "تم تحديد التسعير لهذه القناة",
+  launch_item_balance: "رصيد كافٍ للبدء",
+  launch_item_spend_cap: "ضمن حد الإنفاق",
+  launch_item_admin: "يقوم المسؤول بإعداد ذلك",
+  launch_item_unknown: "لم يُفحص بعد",
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -28048,6 +28113,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   talk_state_mic_unavailable: "המיקרופון אינו זמין",
   talk_mic_unavailable_body: "לא נמצא מיקרופון פעיל. ודאו שהוא מחובר ואינו בשימוש ביישום אחר, ונסו שוב.",
   comm_test_mic_unavailable: "לא נמצא מיקרופון פעיל. ודאו שהוא מחובר ואינו בשימוש ביישום אחר.",
+  launch_checklist_title: "לפני שניתן להשיק",
+  launch_item_agent: "נבחר סוכן AI",
+  launch_item_template: "נבחרה תבנית הודעה",
+  launch_item_audience: "נבחרה רשימת אנשי קשר",
+  launch_item_audience_reachable: "יש ברשימה מישהו שניתן להשיג",
+  launch_item_compliance: "עובר את בדיקת הבטיחות",
+  launch_item_caller_number: "מספר שממנו מתקשרים",
+  launch_item_channel_active: "הערוץ הזה מופעל",
+  launch_item_pricing: "נקבע תמחור לערוץ הזה",
+  launch_item_balance: "יתרה מספקת כדי להתחיל",
+  launch_item_spend_cap: "בתוך מגבלת ההוצאה",
+  launch_item_admin: "מנהל מגדיר זאת",
+  launch_item_unknown: "טרם נבדק",
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

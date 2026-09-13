@@ -380,7 +380,20 @@ export function AiTalkPanel({ className }: { className?: string }) {
     // grant is spent, whatever this page believes.
     heartbeatRef.current = window.setInterval(async () => {
       if (!sessionIdRef.current || !sessionRef.current) return;
-      const transcript = turnsRef.current.map((turn) => turn.text).join(' ').slice(-2000);
+      /*
+       * ONLY WHAT THE VISITOR SAID.
+       *
+       * This transcript is what the server extracts facts from, and it was
+       * the whole conversation — so the assistant offering "buy, rent, sell
+       * or invest?" put the word RENT into the extraction and the chip came
+       * back saying they intend to rent. Their own words are the only
+       * evidence of what they want.
+       */
+      const transcript = turnsRef.current
+        .filter((turn) => turn.speaker === 'USER' && turn.final)
+        .map((turn) => turn.text)
+        .join(' ')
+        .slice(-2000);
       const { data: beat } = await supabase.functions.invoke('ai-talk-session', {
         body: {
           action: 'heartbeat',
@@ -588,7 +601,17 @@ function Transcript({ turns }: { turns: TranscriptTurn[] }) {
   useEffect(() => {
     const el = scroller.current;
     if (!el || !atBottom.current) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    /*
+     * Text that is still arriving is followed INSTANTLY; a finished turn
+     * glides.
+     *
+     * A smooth scroll takes about as long as the next few words take to
+     * arrive, so during streaming it never catches up and the newest line
+     * sits half off the bottom of the panel — which is what a sentence
+     * appearing while you read it must never do.
+     */
+    const streaming = turns.length > 0 && !turns[turns.length - 1].final;
+    el.scrollTo({ top: el.scrollHeight, behavior: streaming ? 'auto' : 'smooth' });
   }, [turns]);
 
   const onScroll = useCallback(() => {

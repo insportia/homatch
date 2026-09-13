@@ -151,3 +151,30 @@ test('the panel claims no landmark that belongs to the page', () => {
     );
   }
 });
+
+test('the intelligence strip reads only what the visitor said', () => {
+  /*
+   * The assistant offering "buy, rent, sell or invest?" put the word RENT
+   * into the extraction, and the chip came back telling somebody who had
+   * just asked to BUY that they intended to rent. Their own words are the
+   * only evidence of what they want.
+   */
+  const src = read(PANEL);
+  const at = src.indexOf('const transcript = turnsRef.current');
+  assert.ok(at > 0, 'the heartbeat transcript is built somewhere else now');
+  const expr = src.slice(at, at + 400);
+
+  assert.ok(/speaker === 'USER'/.test(expr), 'assistant turns must not reach the extraction');
+  assert.ok(/turn\.final/.test(expr), 'a partial that is still being revised is not evidence of anything');
+});
+
+test('streaming text is followed instantly, and a finished turn glides', () => {
+  // A smooth scroll takes about as long as the next few words take to
+  // arrive, so during streaming it never catches up and the newest line sits
+  // half off the bottom of the panel.
+  const src = read(PANEL);
+  assert.ok(
+    /behavior: streaming \? 'auto' : 'smooth'/.test(src),
+    'the transcript must keep up with text that is still arriving',
+  );
+});

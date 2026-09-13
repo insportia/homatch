@@ -25,15 +25,28 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serviceClient, json, preflight, logEvent, authenticate } from '../_shared/comm/auth.ts';
-import { createCartesiaProvider, cartesiaCredentialsPresent, ensureBaseAgent } from '../_shared/comm/cartesia.ts';
+import {
+  createCartesiaProvider, cartesiaCredentialsPresent, synthesizeSpeech,
+} from '../_shared/comm/cartesia.ts';
+import { callLlm } from '../_shared/comm/llm.ts';
 import {
   decideGrant, grantExpiry, shouldEndSession, hashVisitor,
   DEFAULT_TALK_LIMITS, type TalkLimits,
 } from '../_shared/comm/generated/talkAllowance.ts';
 import { extractDeterministic, scoreLead } from '../_shared/comm/generated/extraction.ts';
 
+/**
+ * THE VOICE THIS ASSISTANT SPEAKS IN.
+ *
+ * Fixed, server-side, and not overridable from the browser. The main page
+ * used to send voiceId: null, which left the choice to whatever default the
+ * provider felt like — so the one thing a brand voice has to be, consistent,
+ * was the one thing it was not.
+ */
+const HOMATCH_TALK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
+
 interface TalkRequest {
-  action: 'start' | 'heartbeat' | 'end';
+  action: 'start' | 'heartbeat' | 'end' | 'turn';
   sessionId?: string;
   anonSessionId?: string;
   consumedSeconds?: number;
@@ -41,6 +54,10 @@ interface TalkRequest {
   /** Sent on heartbeat so the hero can show live intelligence (§27). */
   transcript?: string;
   endedReason?: string;
+  /** turn: the visitor's finished utterance. */
+  text?: string;
+  /** turn: prior turns, oldest first, so the reply is in context. */
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -62,6 +79,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   switch (body.action) {
     case 'start':     return await start(sb, req, body, limits, enabled, userId);
+    case 'turn':      return await turn(sb, body);
     case 'heartbeat': return await heartbeat(sb, body);
     case 'end':       return await end(sb, body);
     default:          return json({ error: 'unknown_action' }, 400);
@@ -132,33 +150,25 @@ async function start(
     return json({ ok: false, reason: 'ERROR', userMessage: 'UNAVAILABLE' }, 500);
   }
 
-  // The agent to stream against. Provisioned once and cached; the real
-  // instructions travel in the websocket start frame, not in the provider's
-  // stored agent.
-  const baseAgent = await ensureBaseAgent(sb as never, { language: String(body.locale ?? 'ka') });
-  if (!baseAgent.ok || !baseAgent.data) {
-    await sb.from('comm_talk_sessions')
-      .update({ state: 'ABORTED', ended_at: new Date().toISOString(), ended_reason: 'no_base_agent' })
-      .eq('id', session.id);
-    logEvent('ai-talk', 'base_agent_unavailable', {
-      code: baseAgent.error?.code ?? null,
-      status: baseAgent.error?.providerCode ?? null,
-      detail: baseAgent.error?.message ?? null,
-    });
-    return json({ ok: false, reason: 'PROVIDER_ERROR', userMessage: 'UNAVAILABLE' }, 502);
-  }
-
-  // The grant's TTL is the wall-clock window, not the talk allowance, and the
-  // adapter caps it. The browser never sees CARTESIA_API_KEY (§139).
+  /*
+   * THE BROWSER GETS ONE CAPABILITY: LISTENING.
+   *
+   * This used to provision a Cartesia "agent" and hand the browser an `agent`
+   * scope so it could hold the whole conversation over the agents websocket.
+   * That socket carries AUDIO ONLY — it has no transcript events at all — so
+   * an assistant transcript was not merely unimplemented, it was unobtainable,
+   * and the voice was whatever the provider defaulted to.
+   *
+   * The conversation is now assembled here instead: the browser transcribes,
+   * this function thinks and speaks. So the token needs `stt` and nothing
+   * else. No `agent`, and still no `tts` — a leaked token must not be usable
+   * to synthesise arbitrary audio on Homatch's account, and it no longer
+   * needs to be, because synthesis happens server-side.
+   */
   const provider = createCartesiaProvider();
   const grant = await provider.mintGrant({
     ttlSeconds: Math.ceil((expiresAt.getTime() - Date.now()) / 1000),
-    // `agent` to hold the conversation, `stt` for the second socket that
-    // produces the visible transcript — the agents socket carries no
-    // transcript events, and §24 makes visible partial transcription a gate.
-    // `tts` is deliberately NOT granted: a leaked token must not be usable to
-    // synthesise arbitrary audio on Homatch's account.
-    scopes: ['agent', 'stt'],
+    scopes: ['stt'],
   });
 
   if (!grant.ok || !grant.data) {
@@ -181,12 +191,121 @@ async function start(
     grantedSeconds: session.granted_seconds,
     expiresAt: session.expires_at,
     token: grant.data.token,
-    agentId: baseAgent.data.agentId,
     provider: 'CARTESIA',
+    // Returned so the client can assert it, and so a support question about
+    // which voice was used has an answer that is not a guess.
+    voiceId: HOMATCH_TALK_VOICE_ID,
     // §29: the public demo gets general Homatch capability and no private
     // context whatsoever. This instruction is assembled here, server-side, so
     // the browser cannot widen it.
     instructions: publicDemoInstructions(String(body.locale ?? 'ka')),
+  });
+}
+
+/**
+ * One conversational turn: their sentence in, our sentence and our voice out.
+ *
+ * WHY THE SERVER DOES THIS AND NOT THE BROWSER
+ *
+ * The browser transcribes, because streaming microphone audio has to start
+ * where the microphone is. Everything after that happens here, for three
+ * reasons that were each a real failure before:
+ *
+ *   the assistant's TEXT exists, because we generate it — the provider's
+ *   agents socket returns audio and nothing else, so there was never anything
+ *   to put in a transcript;
+ *
+ *   the VOICE is ours, because we pass the id — the browser used to send
+ *   null and the provider chose;
+ *
+ *   the Cartesia key stays here, and the browser receives bytes.
+ *
+ * Returns text and audio together so the UI can show the sentence at the same
+ * moment it starts speaking it, rather than after.
+ */
+async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
+  if (!body.sessionId) return json({ error: 'session_required' }, 400);
+
+  const said = String(body.text ?? '').trim();
+  if (!said) return json({ ok: false, reason: 'EMPTY' }, 400);
+
+  // The session is the authorisation. An expired or ended one cannot spend
+  // another model call or another second of synthesis.
+  const { data: session } = await sb.from('comm_talk_sessions')
+    .select('id, state, granted_seconds, consumed_seconds, expires_at, created_at, turns')
+    .eq('id', body.sessionId).maybeSingle();
+
+  if (!session || session.state !== 'ACTIVE') {
+    return json({ ok: false, ended: true, reason: 'SESSION_NOT_ACTIVE' }, 409);
+  }
+  if (Date.parse(String(session.expires_at)) <= Date.now()) {
+    await sb.from('comm_talk_sessions')
+      .update({ state: 'ENDED', ended_at: new Date().toISOString(), ended_reason: 'expired' })
+      .eq('id', session.id);
+    return json({ ok: false, ended: true, reason: 'SESSION_EXPIRED' }, 409);
+  }
+
+  const locale = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
+
+  // Prior turns, bounded. A demo conversation that keeps its whole history
+  // would grow the prompt without bound on a path anyone can call.
+  const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+  const conversation = history
+    .map((h) => `${h.role === 'assistant' ? 'Homatch' : 'Visitor'}: ${String(h.content ?? '').slice(0, 500)}`)
+    .join('\n');
+
+  const reply = await callLlm({
+    system: publicDemoInstructions(locale),
+    user: [
+      conversation ? `Conversation so far:\n${conversation}\n` : '',
+      `Visitor just said: "${said.slice(0, 1000)}"`,
+      '',
+      'Reply as Homatch, out loud, in one or two short spoken sentences.',
+      'Plain words only: no markdown, no lists, no emoji, nothing that cannot be said aloud.',
+    ].filter(Boolean).join('\n'),
+    maxTokens: 220,
+    timeoutMs: 20_000,
+  });
+
+  if (!reply.ok || !reply.text?.trim()) {
+    logEvent('ai-talk', 'turn_llm_failed', {
+      reason: reply.error ?? 'empty', status: reply.status ?? null,
+    });
+    return json({ ok: false, reason: 'ASSISTANT_FAILED' }, 502);
+  }
+
+  const text = reply.text.trim().slice(0, 800);
+
+  const spoken = await synthesizeSpeech({
+    voiceId: HOMATCH_TALK_VOICE_ID,
+    language: locale,
+    text,
+  });
+
+  if (!spoken.ok || !spoken.data) {
+    logEvent('ai-talk', 'turn_tts_failed', {
+      code: spoken.error?.code ?? null,
+      status: spoken.error?.providerCode ?? null,
+      detail: spoken.error?.message ?? null,
+    });
+    // The sentence still exists and is still worth showing. A silent reply is
+    // a degraded conversation; a blank one is a broken product.
+    return json({ ok: true, text, audioBase64: null, voiceId: HOMATCH_TALK_VOICE_ID, spoken: false });
+  }
+
+  await sb.from('comm_talk_sessions')
+    .update({ turns: Number(session.turns ?? 0) + 1 })
+    .eq('id', session.id);
+
+  logEvent('ai-talk', 'turn_ok', { sessionId: session.id, model: spoken.data.model });
+
+  return json({
+    ok: true,
+    text,
+    audioBase64: spoken.data.audioBase64,
+    mime: spoken.data.mime,
+    voiceId: HOMATCH_TALK_VOICE_ID,
+    spoken: true,
   });
 }
 

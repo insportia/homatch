@@ -429,11 +429,32 @@ export function previewPhrase(language: string): string {
  */
 const TTS_MODELS = ['sonic-3', 'sonic-2', 'sonic-english', 'sonic'];
 
-export async function synthesizePreview(params: {
+export function synthesizePreview(params: {
   voiceId: string;
   language: string;
 }): Promise<ProviderResult<{ audioBase64: string; mime: string; model: string }>> {
-  const transcript = previewPhrase(params.language);
+  return synthesizeSpeech({ ...params, text: previewPhrase(params.language) });
+}
+
+/**
+ * Speak arbitrary text in one voice.
+ *
+ * The same /tts/bytes path the preview uses, which is the one production has
+ * actually proved (preview_ok, model sonic-3). It runs SERVER-side: the
+ * browser receives audio bytes and never the Cartesia key.
+ */
+export async function synthesizeSpeech(params: {
+  voiceId: string;
+  language: string;
+  text: string;
+}): Promise<ProviderResult<{ audioBase64: string; mime: string; model: string }>> {
+  const transcript = String(params.text ?? '').slice(0, 2000);
+  if (!transcript.trim()) {
+    return {
+      ok: false, sideEffect: 'NONE',
+      error: { code: 'UNKNOWN', message: 'nothing to speak', retryable: false },
+    };
+  }
   let last: ProviderResult<never>['error'] | undefined;
 
   for (const model of TTS_MODELS) {

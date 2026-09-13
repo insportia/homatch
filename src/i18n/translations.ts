@@ -4763,6 +4763,8 @@ const en = {
   launch_item_spend_cap: "Within the spending limit",
   launch_item_admin: "An administrator sets this up",
   launch_item_unknown: "Not checked yet",
+  voice_trace_title: "Session trace",
+  voice_trace_hint: "Where the session got to. Timings and counts only — nothing that was said.",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -9444,6 +9446,8 @@ const ka: Partial<Record<TranslationKey, string>> = {
   launch_item_spend_cap: "ხარჯვის ლიმიტის ფარგლებში",
   launch_item_admin: "ამას ადმინისტრატორი აყენებს",
   launch_item_unknown: "ჯერ არ შემოწმებულა",
+  voice_trace_title: "სესიის კვალი",
+  voice_trace_hint: "სად მივიდა სესია. მხოლოდ დრო და რაოდენობა — არაფერი ნათქვამიდან.",
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -14116,6 +14120,8 @@ const ru: Partial<Record<TranslationKey, string>> = {
   launch_item_spend_cap: "В пределах лимита расходов",
   launch_item_admin: "Это настраивает администратор",
   launch_item_unknown: "Ещё не проверено",
+  voice_trace_title: "Трассировка сессии",
+  voice_trace_hint: "До какого этапа дошла сессия. Только тайминги и счётчики — ничего из сказанного.",
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -18786,6 +18792,8 @@ const tr: Partial<Record<TranslationKey, string>> = {
   launch_item_spend_cap: "Harcama limiti içinde",
   launch_item_admin: "Bunu bir yönetici ayarlar",
   launch_item_unknown: "Henüz denetlenmedi",
+  voice_trace_title: "Oturum izi",
+  voice_trace_hint: "Oturumun nereye kadar geldiği. Yalnızca süreler ve sayılar — söylenenler değil.",
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -23456,6 +23464,8 @@ const ar: Partial<Record<TranslationKey, string>> = {
   launch_item_spend_cap: "ضمن حد الإنفاق",
   launch_item_admin: "يقوم المسؤول بإعداد ذلك",
   launch_item_unknown: "لم يُفحص بعد",
+  voice_trace_title: "تتبّع الجلسة",
+  voice_trace_hint: "إلى أين وصلت الجلسة. التوقيتات والأعداد فقط — لا شيء مما قيل.",
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -28126,6 +28136,8 @@ const he: Partial<Record<TranslationKey, string>> = {
   launch_item_spend_cap: "בתוך מגבלת ההוצאה",
   launch_item_admin: "מנהל מגדיר זאת",
   launch_item_unknown: "טרם נבדק",
+  voice_trace_title: "מעקב הפעלה",
+  voice_trace_hint: "עד היכן הגיעה ההפעלה. תזמונים וספירות בלבד — דבר ממה שנאמר.",
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

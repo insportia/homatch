@@ -99,6 +99,29 @@ export interface VoiceCallbacks {
   onSecondsConsumed: (seconds: number) => void;
   onLatency?: (breakdown: ReturnType<typeof latencyBreakdown>) => void;
   onError?: (code: string) => void;
+  /**
+   * One line per lifecycle milestone, for diagnostics.
+   *
+   * A failed session used to be a single red state with no way to tell WHERE
+   * it stopped: no microphone, no socket, socket open but no audio in, audio
+   * in but no response out. Those need completely different fixes.
+   *
+   * Milestones carry timings and counts only. No transcript text, no audio,
+   * no token — what was said is the customer's, and a diagnostic trail is not
+   * a place to keep it.
+   */
+  onMilestone?: (milestone: VoiceMilestone) => void;
+}
+
+export interface VoiceMilestone {
+  event:
+    | 'session_granted' | 'mic_open' | 'agent_socket_open' | 'stt_socket_open'
+    | 'first_input_audio' | 'first_transcript' | 'agent_responding'
+    | 'first_output_audio' | 'session_ended' | 'failed';
+  /** Milliseconds since start() was called. */
+  atMs: number;
+  /** A code or a count. Never content. */
+  detail?: string | number | null;
 }
 
 const AGENTS_WS = 'wss://api.cartesia.ai/agents/stream';
@@ -123,6 +146,10 @@ export class VoiceSession {
   private language: LanguageState;
   private state: VoiceState = 'IDLE';
   private startedAt = 0;
+  /** When start() was called, so milestones are relative to the attempt and
+   *  not to the moment the session finally succeeded. */
+  private attemptAt = 0;
+  private seenMilestones = new Set<string>();
   private lastVoiceAt = 0;
   private sustainedSpeechMs = 0;
   private agentAudioStartedAt = 0;
@@ -139,6 +166,17 @@ export class VoiceSession {
     this.language = { current: grant.primaryLanguage || 'ka', locked: false, votes: [] };
   }
 
+  /** Record a milestone once. Repeats are noise: the FIRST is the fact. */
+  private milestone(event: VoiceMilestone['event'], detail?: string | number | null): void {
+    if (this.seenMilestones.has(event)) return;
+    this.seenMilestones.add(event);
+    this.cb.onMilestone?.({
+      event,
+      atMs: this.attemptAt ? Date.now() - this.attemptAt : 0,
+      detail: detail ?? null,
+    });
+  }
+
   get currentState(): VoiceState { return this.state; }
 
   get consumedSeconds(): number {
@@ -146,6 +184,9 @@ export class VoiceSession {
   }
 
   async start(): Promise<void> {
+    this.attemptAt = Date.now();
+    this.seenMilestones.clear();
+    this.milestone('session_granted', this.grant.maxDurationSec);
     this.setState('CONNECTING');
     try {
       /*
@@ -168,18 +209,27 @@ export class VoiceSession {
       // collapse into two. "Allow the microphone" is useless advice to a
       // person who has no microphone.
       const reason = classifyMicError(e);
+      this.milestone('failed', reason);
       this.setState(reason === 'MIC_DENIED' ? 'MIC_DENIED' : 'MIC_UNAVAILABLE', (e as Error)?.message);
       this.cb.onError?.(reason);
       return;
     }
 
+    this.milestone('mic_open');
+
     try {
       await this.openAgentSocket();
+      this.milestone('agent_socket_open');
       // The transcript stream is a convenience. If it fails, the conversation
       // still works and the user simply does not see the words — far better
       // than refusing to talk to them at all.
-      this.openSttSocket().catch(() => { /* transcript display is optional */ });
+      this.openSttSocket()
+        .then(() => this.milestone('stt_socket_open'))
+        .catch(() => { /* transcript display is optional */ });
     } catch {
+      // The microphone worked and the socket did not. Without this, both
+      // failures looked identical from outside.
+      this.milestone('failed', 'AGENT_SOCKET');
       this.setState('PROVIDER_ERROR');
       this.cb.onError?.('PROVIDER_ERROR');
       await this.stop('provider_error');
@@ -223,6 +273,7 @@ export class VoiceSession {
     this.audioContext = null;
 
     if (this.state !== 'LIMIT_REACHED' && this.state !== 'MIC_DENIED' && this.state !== 'MIC_UNAVAILABLE') {
+      this.milestone('session_ended', reason);
       this.setState('ENDED', reason);
     }
   }
@@ -257,6 +308,10 @@ export class VoiceSession {
     this.processor.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
       const level = rms(input);
+      // Proof that the microphone is producing samples, not just that it
+      // opened. An open device that yields silence is its own failure and
+      // used to be indistinguishable from a working one.
+      this.milestone('first_input_audio');
       this.cb.onLevel(level);
       this.trackVoiceActivity(level);
 
@@ -320,6 +375,7 @@ export class VoiceSession {
 
           case 'media_output': {
             if (this.state !== 'RESPONDING') {
+              this.milestone('agent_responding');
               this.marks.ttsFirstAudioAtMs = Date.now();
               this.cb.onLatency?.(latencyBreakdown(this.marks));
               this.agentAudioStartedAt = Date.now();
@@ -328,7 +384,10 @@ export class VoiceSession {
             const payload = typeof msg.payload === 'string' ? msg.payload
               : typeof (msg.media as Record<string, unknown>)?.payload === 'string'
                 ? String((msg.media as Record<string, unknown>).payload) : null;
-            if (payload) this.playPcm(base64ToBytes(payload));
+            if (payload) {
+              this.milestone('first_output_audio');
+              this.playPcm(base64ToBytes(payload));
+            }
             break;
           }
 
@@ -423,6 +482,9 @@ export class VoiceSession {
       language: detected,
       atMs: Date.now(),
     });
+    // The COUNT, never the words. Whether transcription is arriving is a
+    // diagnostic; what was said is the customer's.
+    this.milestone('first_transcript', this.turns.length);
     this.cb.onTranscript(this.turns);
 
     const before = this.language.current;

@@ -47,7 +47,7 @@ import {
   requestAgentTestGrant, listVoices, previewVoice, listMyVoices, deleteCustomVoice,
 } from '@/services/communications';
 import type { CommAgent } from '@/types/communications';
-import type { VoiceSession, VoiceState } from '@/lib/comm/voiceClient';
+import type { VoiceSession, VoiceState, VoiceMilestone } from '@/lib/comm/voiceClient';
 import type { TranscriptTurn } from '@/lib/comm/transcript';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -912,6 +912,7 @@ function TestStep({
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
   const [level, setLevel] = useState(0);
   const [latency, setLatency] = useState<number | null>(null);
+  const [trace, setTrace] = useState<VoiceMilestone[]>([]);
   const sessionRef = useRef<VoiceSession | null>(null);
 
   useEffect(() => () => { void sessionRef.current?.stop('unmount'); }, []);
@@ -919,6 +920,7 @@ function TestStep({
   const start = useCallback(async () => {
     setState('CONNECTING');
     setTurns([]);
+    setTrace([]);
     // Save first: testing an agent whose latest edits are still in local state
     // tests the wrong agent.
     await onSave();
@@ -945,6 +947,10 @@ function TestStep({
         onLevel: setLevel,
         onSecondsConsumed: () => { /* the session enforces its own ceiling */ },
         onLatency: (b) => setLatency(b.perceivedMs),
+        // Where the session actually got to. A red state alone cannot tell
+        // apart "no microphone", "no socket", "socket open but silent" and
+        // "heard me but never answered" — and those need different fixes.
+        onMilestone: (m) => setTrace((prev) => [...prev, m]),
       },
     );
     sessionRef.current = session;
@@ -1015,6 +1021,30 @@ function TestStep({
             </p>
           ))}
         </div>
+      ) : null}
+      {/* Shown once a session has been attempted, successful or not. The
+          trace is the difference between "it did not work" and knowing which
+          of five completely different things went wrong. */}
+      {trace.length ? (
+        <details className="rounded-lg border p-2.5">
+          <summary className="cursor-pointer text-xs font-medium">{t('voice_trace_title')}</summary>
+          <p className="mt-1 text-2xs text-muted-foreground [overflow-wrap:anywhere]">
+            {t('voice_trace_hint')}
+          </p>
+          <ul className="mt-2 space-y-0.5">
+            {trace.map((m, i) => (
+              <li key={`${m.event}-${i}`} className="flex items-baseline gap-2 font-mono text-2xs">
+                <span className="w-14 shrink-0 tabular-nums text-muted-foreground">
+                  {(m.atMs / 1000).toFixed(2)}s
+                </span>
+                <span className={cn('min-w-0 [overflow-wrap:anywhere]', m.event === 'failed' && 'text-destructive')}>
+                  {m.event}
+                  {m.detail !== null && m.detail !== undefined ? ` · ${m.detail}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
     </CardContent></Card>
 

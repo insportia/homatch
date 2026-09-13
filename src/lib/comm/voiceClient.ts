@@ -4,35 +4,43 @@
 // Studio's live agent test. Neither places a telephone call (§28), so there is
 // no telephony leg and no per-minute carrier cost.
 //
-// WHY THERE ARE TWO SOCKETS
+// WHY THE MICROPHONE NO LONGER STREAMS TO A TRANSCRIPTION SOCKET
 //
-// Cartesia's agents socket carries exactly four server events: ack,
-// media_output, clear and transfer_call. It carries NO transcript. That was
-// checked against the API reference rather than assumed, and it decides the
-// architecture, because §24 makes visible partial transcription a release gate
-// and §27 needs the words in order to show live intelligence.
+// It used to open a WebSocket to Cartesia STT and stream PCM at it. That is a
+// better design in the abstract — words arrive while the sentence is still
+// being spoken — and it cannot work for this product, for two measured
+// reasons.
 //
-// So the microphone feeds two places at once:
+// Georgian. Asked for language=ka, ink-whisper accepted the socket and then
+// dropped it at about five seconds with close code 1006 and no error frame;
+// ink-2 answered language_not_supported. Left without a language it heard the
+// Georgian correctly and wrote it in Latin letters. Homatch is a Georgia-first
+// product, so that is not a limitation to work around, it is the product.
 //
-//   agents socket  the conversation. Audio up, audio down, `clear` for barge-in.
-//   STT socket     the words, with is_final, which is what lets a partial be
-//                  REVISED rather than appended (§24's named failure).
+// And the language had to be chosen before anybody spoke, because it lives in
+// the socket URL. A visitor who switches from Georgian to Russian mid-sentence
+// cannot be served by a connection that was told what they were going to say.
 //
-// That costs a second stream of speech-to-text, deliberately, because the
-// alternative is a voice demo that cannot show what it heard.
+// So the microphone is captured here, one utterance at a time, and the words
+// come back from the server, which has a provider that can write Georgian and
+// works the language out for itself.
 //
 // WHAT THIS FILE NEVER DOES
 //
-// It never holds an API key. The token arrives from ai-talk-session or
-// comm-agent, is short-lived and scoped, and is minted server-side (§139). It
-// never decides its own allowance: the server grants seconds, this reports
-// consumption, and the server ends the session.
+// It never holds an API key. It never keeps audio: an utterance is captured,
+// sent, and the buffer dropped. It never decides its own allowance — the
+// server grants seconds, this reports consumption, and the server ends the
+// session.
 
 import {
-  reduceTranscript, stabiliseLanguage, decideEndpoint, decideBargeIn,
-  latencyBreakdown, DEFAULT_ENDPOINTING, DEFAULT_BARGE_IN,
+  reduceTranscript, stabiliseLanguage, decideBargeIn,
+  latencyBreakdown, DEFAULT_BARGE_IN,
   type TranscriptTurn, type LanguageState, type EndpointConfig, type LatencyMarks,
 } from './transcript.ts';
+import {
+  Resampler, floatToPcm16, rms, encodeWav, joinBlocks, bytesToBase64,
+  TARGET_SAMPLE_RATE,
+} from './audio.ts';
 
 
 /**
@@ -80,11 +88,79 @@ export type VoiceState =
   | 'MIC_DENIED' | 'MIC_UNAVAILABLE' | 'PROVIDER_ERROR';
 
 export interface VoiceGrant {
-  /** Scoped to `stt` only. Never carries the Cartesia API key. */
-  token: string;
+  /**
+   * The language to START in, from the page the visitor is reading.
+   *
+   * A preference, not a decision. What they actually speak decides, from the
+   * first transcript onwards, and they may change their mind mid-conversation.
+   */
   primaryLanguage: string;
   maxDurationSec: number;
   endpointing?: Partial<EndpointConfig>;
+}
+
+/** What came back from one utterance sent for transcription. */
+export interface TranscriptionReply {
+  text: string | null;
+  /** ISO-639-1 as the server settled it, or null when it could not tell. */
+  language?: string | null;
+  /** Round trip, for the latency breakdown. */
+  ms?: number | null;
+}
+
+/**
+ * Every number this session can honestly report about itself.
+ *
+ * Written because "the microphone is clearly listening and nothing appears"
+ * described four completely different faults and there was no way to tell
+ * them apart from outside: no samples, samples but no capture, capture but no
+ * request, request but no words. Each of those has its own counter here, and
+ * none of them is inferred — every field is a count of something that
+ * actually happened.
+ */
+export interface VoiceDiagnostics {
+  micReady: boolean;
+  /** MediaStreamTrack.readyState: 'live' or 'ended'. */
+  trackState: string | null;
+  trackMuted: boolean | null;
+  trackEnabled: boolean | null;
+  /** What the browser ACTUALLY gave us, which is not always what was asked. */
+  contextSampleRate: number | null;
+  contextState: string | null;
+  /** The rate the audio is converted to before it is sent. */
+  sendSampleRate: number;
+  resampling: boolean;
+  /** Live input level, 0 to 1, and the loudest block seen so far. */
+  rms: number;
+  peakRms: number;
+  /** Blocks the audio callback has delivered, and samples kept for sending. */
+  blocks: number;
+  samplesCaptured: number;
+  bytesSent: number;
+  capturing: boolean;
+  /** Silence since the last block that was loud enough to be speech. */
+  silenceMs: number | null;
+  utterances: number;
+  lastUtteranceMs: number | null;
+  lastUtteranceBytes: number | null;
+  /** Transcription requests, and how they went. */
+  sttRequests: number;
+  sttOk: number;
+  sttEmpty: number;
+  sttFailed: number;
+  lastSttMs: number | null;
+  lastSttChars: number | null;
+  lastSttLanguage: string | null;
+  /** The most recent words, so a person can see them appear. */
+  lastTranscript: string | null;
+  turnsSent: number;
+  lastTurnMs: number | null;
+  lastReplyChars: number | null;
+  lastAudioBytes: number | null;
+  playbacks: number;
+  /** The last thing that went wrong, as a code. Never a stack, never a key. */
+  lastError: string | null;
+  state: VoiceState;
 }
 
 /** What the server returns for one turn: the sentence, and the voice saying it. */
@@ -125,12 +201,24 @@ export interface VoiceCallbacks {
    * network.
    */
   onUserTurn: (text: string) => Promise<AssistantTurn | null>;
+  /**
+   * Send one finished utterance and get the words back.
+   *
+   * Injected for the same reason as onUserTurn: this class owns audio and
+   * turn-taking, the caller owns the endpoint and the session id. It is also
+   * what lets the whole loop be driven in a test with no network and no
+   * microphone.
+   */
+  onTranscribe: (audioBase64: string, languageHint: string | null) => Promise<TranscriptionReply | null>;
+  /** Live counters, about once a second. Counts and codes, never a key. */
+  onDiagnostics?: (d: VoiceDiagnostics) => void;
 }
 
 export interface VoiceMilestone {
   event:
-    | 'session_granted' | 'mic_open' | 'audio_context_running' | 'stt_socket_open'
-    | 'first_input_audio' | 'first_transcript' | 'user_turn_sent'
+    | 'session_granted' | 'mic_open' | 'audio_context_running'
+    | 'first_input_audio' | 'first_speech' | 'first_utterance_sent'
+    | 'first_transcript' | 'user_turn_sent'
     | 'assistant_text' | 'tts_audio_received' | 'playback_started'
     | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'failed';
   /** Milliseconds since start() was called. */
@@ -139,31 +227,67 @@ export interface VoiceMilestone {
   detail?: string | number | null;
 }
 
-const STT_WS = 'wss://api.cartesia.ai/stt/websocket';
-/** Pinned to the date-versioned STT contract. */
-const CARTESIA_WS_VERSION = '2026-08-14';
+/**
+ * What counts as somebody speaking.
+ *
+ * Deliberately low. A quiet phone held at arm's length in a room with a fan
+ * in it produces less level than a laptop headset, and a threshold tuned on a
+ * headset is a microphone that never hears anybody.
+ */
+const SPEECH_RMS = 0.012;
 
-/** 16 kHz mono PCM: what the STT models want. */
-const SAMPLE_RATE = 16_000;
-const FRAME_MS = 100;
+/** Silence that ends an utterance. Long enough to think mid-sentence. */
+const END_SILENCE_MS = 900;
+
+/** Audio kept from before speech was detected, so no first syllable is lost. */
+const PREROLL_MS = 400;
+
+/** Below this there is nothing worth a provider call — a cough, a door. */
+const MIN_SPEECH_MS = 320;
+
+/** A single utterance ceiling, so one long monologue cannot grow unbounded. */
+const MAX_UTTERANCE_MS = 30_000;
 
 export class VoiceSession {
-  private sttSocket: WebSocket | null = null;
   private audioContext: AudioContext | null = null;
   private micStream: MediaStream | null = null;
   private processor: ScriptProcessorNode | null = null;
+  private resampler: Resampler | null = null;
   private playbackTime = 0;
-  /** True while the assistant is speaking: mic frames are dropped, not sent. */
+  /** True while the assistant is speaking: mic blocks are dropped, not kept. */
   private micGated = false;
-  /** Guards against two turns in flight if STT finalises twice quickly. */
+  /** Guards against two turns in flight. */
   private turnInFlight = false;
+  /** True while an utterance is being transcribed. */
+  private transcribing = false;
   /** Sent to the server so each reply is in context. */
   private history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   private assistantSeq = 0;
-  /** How much of the final user transcript has already been answered. */
-  private answeredChars = 0;
   private currentAudio: HTMLAudioElement | null = null;
   private playingSources: AudioBufferSourceNode[] = [];
+
+  // ── Utterance capture ───────────────────────────────────────────────────
+  /** Resampled blocks of the utterance being spoken right now. */
+  private capture: Float32Array[] = [];
+  private captureSamples = 0;
+  private capturing = false;
+  /** A rolling window of what came before speech was detected. */
+  private preroll: Float32Array[] = [];
+  private prerollSamples = 0;
+
+  // ── Diagnostics. Every one of these is counted, never inferred. ─────────
+  private diag = {
+    blocks: 0, samplesCaptured: 0, bytesSent: 0, rms: 0, peakRms: 0,
+    utterances: 0, lastUtteranceMs: null as number | null,
+    lastUtteranceBytes: null as number | null,
+    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0,
+    lastSttMs: null as number | null, lastSttChars: null as number | null,
+    lastSttLanguage: null as string | null, lastTranscript: null as string | null,
+    turnsSent: 0, lastTurnMs: null as number | null,
+    lastReplyChars: null as number | null, lastAudioBytes: null as number | null,
+    playbacks: 0, lastError: null as string | null,
+  };
+  private diagHandle: number | null = null;
 
   private turns: TranscriptTurn[] = [];
   private language: LanguageState;
@@ -240,26 +364,6 @@ export class VoiceSession {
 
     this.milestone('mic_open');
 
-    /*
-     * STT IS NO LONGER OPTIONAL, BECAUSE IT IS NOW THE CONVERSATION.
-     *
-     * It used to be a display convenience running beside an agents socket
-     * that held the actual dialogue, so a failure here only cost the visible
-     * words and was swallowed. Now it is the only thing that hears anybody:
-     * without it there is no user text, so there is no turn to answer and no
-     * reply to speak. A failure has to stop the session and say so.
-     */
-    try {
-      await this.openSttSocket();
-      this.milestone('stt_socket_open');
-    } catch {
-      this.milestone('failed', 'STT_SOCKET');
-      this.setState('PROVIDER_ERROR');
-      this.cb.onError?.('STT_UNAVAILABLE');
-      await this.stop('stt_unavailable');
-      return;
-    }
-
     this.startedAt = Date.now();
     this.setState('LISTENING');
 
@@ -272,8 +376,57 @@ export class VoiceSession {
         void this.stop('allowance');
         this.setState('LIMIT_REACHED');
       }
-      this.evaluateTurn();
     }, 250);
+
+    // Diagnostics are published on their own clock, not on the audio
+    // callback's: the audio callback runs 50 times a second and a React state
+    // update per block would cost more than the transcription does.
+    this.diagHandle = window.setInterval(() => this.publishDiagnostics(), 700);
+    this.publishDiagnostics();
+  }
+
+  /** Everything this session can honestly say about itself, right now. */
+  diagnostics(): VoiceDiagnostics {
+    const track = this.micStream?.getAudioTracks()[0] ?? null;
+    return {
+      micReady: Boolean(track && track.readyState === 'live'),
+      trackState: track?.readyState ?? null,
+      trackMuted: track ? track.muted : null,
+      trackEnabled: track ? track.enabled : null,
+      contextSampleRate: this.audioContext?.sampleRate ?? null,
+      contextState: this.audioContext?.state ?? null,
+      sendSampleRate: TARGET_SAMPLE_RATE,
+      resampling: this.resampler ? !this.resampler.passthrough : false,
+      rms: this.diag.rms,
+      peakRms: this.diag.peakRms,
+      blocks: this.diag.blocks,
+      samplesCaptured: this.diag.samplesCaptured,
+      bytesSent: this.diag.bytesSent,
+      capturing: this.capturing,
+      silenceMs: this.lastVoiceAt ? Date.now() - this.lastVoiceAt : null,
+      utterances: this.diag.utterances,
+      lastUtteranceMs: this.diag.lastUtteranceMs,
+      lastUtteranceBytes: this.diag.lastUtteranceBytes,
+      sttRequests: this.diag.sttRequests,
+      sttOk: this.diag.sttOk,
+      sttEmpty: this.diag.sttEmpty,
+      sttFailed: this.diag.sttFailed,
+      lastSttMs: this.diag.lastSttMs,
+      lastSttChars: this.diag.lastSttChars,
+      lastSttLanguage: this.diag.lastSttLanguage,
+      lastTranscript: this.diag.lastTranscript,
+      turnsSent: this.diag.turnsSent,
+      lastTurnMs: this.diag.lastTurnMs,
+      lastReplyChars: this.diag.lastReplyChars,
+      lastAudioBytes: this.diag.lastAudioBytes,
+      playbacks: this.diag.playbacks,
+      lastError: this.diag.lastError,
+      state: this.state,
+    };
+  }
+
+  private publishDiagnostics(): void {
+    this.cb.onDiagnostics?.(this.diagnostics());
   }
 
   async stop(reason = 'user_ended'): Promise<void> {
@@ -281,12 +434,10 @@ export class VoiceSession {
     this.closed = true;
 
     if (this.tickHandle !== null) { clearInterval(this.tickHandle); this.tickHandle = null; }
+    if (this.diagHandle !== null) { clearInterval(this.diagHandle); this.diagHandle = null; }
     this.stopPlayback();
 
-    try { this.sttSocket?.send('close'); } catch { /* already gone */ }
-    this.sttSocket?.close();
-    this.sttSocket = null;
-
+    this.dropCapture();
     this.processor?.disconnect();
     this.processor = null;
     this.micStream?.getTracks().forEach((tr) => tr.stop());
@@ -312,12 +463,27 @@ export class VoiceSession {
         noiseSuppression: true,
         autoGainControl: true,
         channelCount: 1,
-        sampleRate: SAMPLE_RATE,
+        // A REQUEST, and a request the device is free to refuse. Nothing below
+        // this line assumes it was granted.
+        sampleRate: TARGET_SAMPLE_RATE,
       },
     });
 
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    this.audioContext = new Ctx({ sampleRate: SAMPLE_RATE });
+    /*
+     * THE CONTEXT IS CONSTRUCTED WITHOUT A sampleRate OPTION, ON PURPOSE.
+     *
+     * Asking for 16 kHz and being handed 48 kHz is the normal outcome on a
+     * phone, and on some browsers asking at all throws. The old code asked,
+     * assumed, and then told the transcription service the audio was 16 kHz —
+     * so on every device that refused, each second of speech was labelled as
+     * a third of a second and came back as nothing. The level meter still
+     * moved, which is why it read as "the microphone works and nothing else".
+     *
+     * Take whatever rate the device gives and convert it below, where the
+     * conversion is deterministic and has tests.
+     */
+    this.audioContext = new Ctx();
 
     /*
      * A CONSTRUCTED AudioContext IS NOT A RUNNING ONE.
@@ -326,16 +492,14 @@ export class VoiceSession {
      * a user gesture, and this one is built after an await on getUserMedia,
      * by which point the transient activation may already have lapsed. A
      * suspended context does not advance currentTime and does not emit a
-     * sound — which is exactly "the states change and I hear nothing".
-     *
-     * start() is reached from the Start Conversation click, so resuming here
-     * is permitted. It is awaited rather than fired and forgotten, so that
-     * anything scheduled afterwards is scheduled against a clock that moves.
+     * sound.
      */
     if (this.audioContext.state === 'suspended') {
-      await this.audioContext.resume().catch(() => { /* reported below */ });
+      await this.audioContext.resume().catch(() => { /* shows in diagnostics */ });
     }
     if (this.audioContext.state === 'running') this.milestone('audio_context_running');
+
+    this.resampler = new Resampler(this.audioContext.sampleRate, TARGET_SAMPLE_RATE);
 
     const source = this.audioContext.createMediaStreamSource(this.micStream);
 
@@ -343,29 +507,9 @@ export class VoiceSession {
     // needs a separate module file served from the same origin, which the
     // published bundle does not guarantee, and this path works in every
     // browser Homatch supports today.
-    const frameSize = nextPowerOfTwo((SAMPLE_RATE * FRAME_MS) / 1000);
-    this.processor = this.audioContext.createScriptProcessor(frameSize, 1, 1);
-
+    this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
     this.processor.onaudioprocess = (event) => {
-      const input = event.inputBuffer.getChannelData(0);
-      const level = rms(input);
-      // Proof that the microphone is producing samples, not just that it
-      // opened. An open device that yields silence is its own failure and
-      // used to be indistinguishable from a working one.
-      this.milestone('first_input_audio');
-      this.cb.onLevel(level);
-      this.trackVoiceActivity(level);
-
-      /*
-       * THE MICROPHONE IS MUTED WHILE THE ASSISTANT SPEAKS.
-       *
-       * Echo cancellation is not enough on a laptop speaker: the reply comes
-       * back in, STT transcribes it, and the assistant answers itself. Frames
-       * are dropped rather than the track being stopped, so resuming is
-       * instant and there is no second permission moment.
-       */
-      if (this.micGated) return;
-      this.sendSttAudio(floatToPcm16(input));
+      this.onAudioBlock(event.inputBuffer.getChannelData(0));
     };
 
     source.connect(this.processor);
@@ -377,77 +521,207 @@ export class VoiceSession {
     sink.connect(this.audioContext.destination);
   }
 
-  // ── The visible transcript ────────────────────────────────────────────────
+  /**
+   * One block from the microphone.
+   *
+   * Runs about ten times a second, so it does arithmetic and nothing else: no
+   * promises, no React, no network. The only decisions it makes are which
+   * samples belong to the utterance being spoken, and when that utterance
+   * ended.
+   */
+  private onAudioBlock(input: Float32Array): void {
+    const level = rms(input);
+    this.diag.blocks += 1;
+    this.diag.rms = level;
+    if (level > this.diag.peakRms) this.diag.peakRms = level;
 
-  private openSttSocket(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const params = new URLSearchParams({
-        // ink-whisper is the model that accepts a language hint, which matters
-        // because Georgian is the case this has to get right.
-        model: 'ink-whisper',
-        encoding: 'pcm_s16le',
-        sample_rate: String(SAMPLE_RATE),
-        cartesia_version: CARTESIA_WS_VERSION,
-        access_token: this.grant.token,
-        language: this.language.current,
-      });
-      const socket = new WebSocket(`${STT_WS}?${params.toString()}`);
-      this.sttSocket = socket;
+    // Proof that the microphone is producing samples, not just that it opened.
+    // An open device that yields silence is its own failure and used to be
+    // indistinguishable from a working one.
+    this.milestone('first_input_audio');
+    this.cb.onLevel(level);
 
-      const timeout = window.setTimeout(() => reject(new Error('stt timeout')), 8_000);
-      socket.onopen = () => { clearTimeout(timeout); resolve(); };
-      socket.onerror = () => { clearTimeout(timeout); reject(new Error('stt error')); };
+    // How long this block represents, from the rate the device actually runs
+    // at rather than the rate we wish it ran at.
+    const blockMs = this.audioContext
+      ? (input.length / this.audioContext.sampleRate) * 1000
+      : 0;
+    this.trackVoiceActivity(level, blockMs);
 
-      socket.onmessage = (event) => {
-        let msg: { type?: string; text?: string; is_final?: boolean; language?: string };
-        try { msg = JSON.parse(String(event.data)); } catch { return; }
-        if (msg.type !== 'transcript' || typeof msg.text !== 'string') return;
-        this.onSttTranscript(msg.text, Boolean(msg.is_final), msg.language ?? null);
-      };
-    });
+    // The silence clock. Set here, before the gate below, so that a voice
+    // heard while the assistant is speaking still counts as a voice.
+    if (level >= SPEECH_RMS) this.lastVoiceAt = Date.now();
+
+    /*
+     * THE MICROPHONE IS IGNORED WHILE THE ASSISTANT SPEAKS.
+     *
+     * Echo cancellation is not enough on a laptop speaker: the reply comes
+     * back in and is transcribed as if the visitor had said it. Blocks are
+     * dropped rather than the track being stopped, so resuming is instant and
+     * there is no second permission moment.
+     */
+    if (this.micGated || this.transcribing) { this.dropCapture(); return; }
+
+    const block = this.resampler ? this.resampler.process(input) : input.slice();
+    if (!block.length) return;
+
+    if (level >= SPEECH_RMS) {
+      if (!this.capturing) {
+        // Start from the pre-roll, or the first syllable is gone before
+        // anything noticed a voice. A Georgian word can lose its whole first
+        // consonant in the time it takes the level to cross a threshold.
+        this.capturing = true;
+        this.capture = this.preroll.slice();
+        this.captureSamples = this.prerollSamples;
+        this.milestone('first_speech');
+      }
+      this.capture.push(block);
+      this.captureSamples += block.length;
+      this.diag.samplesCaptured += block.length;
+      return;
+    }
+
+    if (this.capturing) {
+      // Trailing silence belongs to the utterance: a transcription model uses
+      // it to hear that the sentence is over.
+      this.capture.push(block);
+      this.captureSamples += block.length;
+      this.diag.samplesCaptured += block.length;
+
+      const silenceMs = this.lastVoiceAt ? Date.now() - this.lastVoiceAt : 0;
+      const lengthMs = (this.captureSamples / TARGET_SAMPLE_RATE) * 1000;
+      if (silenceMs >= END_SILENCE_MS || lengthMs >= MAX_UTTERANCE_MS) {
+        void this.finishUtterance();
+      }
+      return;
+    }
+
+    // Not speaking and not capturing: keep the last PREROLL_MS, so the next
+    // utterance does not start mid-word.
+    this.preroll.push(block);
+    this.prerollSamples += block.length;
+    const keep = (PREROLL_MS / 1000) * TARGET_SAMPLE_RATE;
+    while (this.prerollSamples > keep && this.preroll.length > 1) {
+      this.prerollSamples -= this.preroll[0].length;
+      this.preroll.shift();
+    }
+  }
+
+  private dropCapture(): void {
+    this.capture = [];
+    this.captureSamples = 0;
+    this.capturing = false;
+    this.preroll = [];
+    this.prerollSamples = 0;
   }
 
   /**
-   * Fold one STT result into the visible transcript.
+   * Send what was just said, and show what comes back.
    *
-   * `text` from this API is the delta since the last final, so an utterance
-   * keeps ONE id until it finalises. That id is what makes reduceTranscript
-   * replace rather than append, which is §24's requirement stated exactly:
-   * "UI must replace/revise partial transcript rather than permanently
-   * appending incorrect text."
+   * The old design could not fail visibly here: transcription was a socket
+   * that had already been declared healthy at connect time, so when the
+   * provider dropped it the panel went on saying "Listening" to somebody
+   * talking to nothing. Every branch below ends in either words on the screen
+   * or a state that admits the problem.
    */
-  private onSttTranscript(text: string, isFinal: boolean, detected: string | null): void {
-    if (!this.currentUtteranceId) {
-      this.utteranceSeq += 1;
-      this.currentUtteranceId = `u${this.utteranceSeq}`;
+  private async finishUtterance(): Promise<void> {
+    if (!this.capturing || this.transcribing || this.closed) return;
+
+    const blocks = this.capture;
+    const samples = this.captureSamples;
+    this.capture = [];
+    this.captureSamples = 0;
+    this.capturing = false;
+    this.preroll = [];
+    this.prerollSamples = 0;
+
+    const lengthMs = (samples / TARGET_SAMPLE_RATE) * 1000;
+    if (lengthMs < MIN_SPEECH_MS) return;   // a cough, a chair, a door
+
+    this.transcribing = true;
+    this.marks.speechEndedAtMs = this.lastVoiceAt || Date.now();
+    this.setState('UNDERSTANDING');
+
+    const wav = encodeWav(floatToPcm16(joinBlocks(blocks)), TARGET_SAMPLE_RATE);
+    this.diag.utterances += 1;
+    this.diag.lastUtteranceMs = Math.round(lengthMs);
+    this.diag.lastUtteranceBytes = wav.byteLength;
+    this.diag.bytesSent += wav.byteLength;
+    this.milestone('first_utterance_sent', wav.byteLength);
+    this.publishDiagnostics();
+
+    const sentAt = Date.now();
+    this.diag.sttRequests += 1;
+    let reply: TranscriptionReply | null = null;
+    try {
+      reply = await this.cb.onTranscribe(
+        bytesToBase64(wav),
+        // Only hint once the conversation has actually settled into a
+        // language. Hinting from the page's locale is how a Russian speaker
+        // reading a Georgian page gets Georgian letters back.
+        this.language.locked ? this.language.current : null,
+      );
+    } catch {
+      reply = null;
+    }
+    this.diag.lastSttMs = Date.now() - sentAt;
+
+    if (this.closed) { this.transcribing = false; return; }
+
+    if (!reply) {
+      this.diag.sttFailed += 1;
+      this.diag.lastError = 'TRANSCRIBE_FAILED';
+      this.transcribing = false;
+      this.milestone('failed', 'TRANSCRIBE');
+      this.cb.onError?.('TRANSCRIBE_FAILED');
+      // Transcription that failed is not a conversation that is listening.
+      this.setState('PROVIDER_ERROR');
+      this.publishDiagnostics();
+      return;
     }
 
+    const said = (reply.text ?? '').trim();
+    if (!said) {
+      // Silence, or noise. Explicitly NOT a model call: answering nothing
+      // produces an assistant talking to itself.
+      this.diag.sttEmpty += 1;
+      this.diag.lastSttChars = 0;
+      this.transcribing = false;
+      this.resumeListening();
+      this.publishDiagnostics();
+      return;
+    }
+
+    this.diag.sttOk += 1;
+    this.diag.lastSttChars = said.length;
+    this.diag.lastSttLanguage = reply.language ?? null;
+    this.diag.lastTranscript = said.slice(0, 160);
+    this.marks.transcriptFinalAtMs = Date.now();
+    this.marks.endpointConfirmedAtMs = Date.now();
+
+    this.utteranceSeq += 1;
     this.turns = reduceTranscript(this.turns, {
-      id: this.currentUtteranceId,
+      id: 'u' + this.utteranceSeq,
       speaker: 'USER',
-      text,
-      final: isFinal,
-      language: detected,
+      text: said,
+      final: true,
+      language: reply.language ?? null,
       atMs: Date.now(),
     });
-    // The COUNT, never the words. Whether transcription is arriving is a
-    // diagnostic; what was said is the customer's.
     this.milestone('first_transcript', this.turns.length);
     this.cb.onTranscript(this.turns);
 
     const before = this.language.current;
-    this.language = stabiliseLanguage(this.language, { text, detected, confidence: isFinal ? 0.8 : 0.5 });
+    this.language = stabiliseLanguage(this.language, {
+      text: said, detected: reply.language ?? null, confidence: 0.8,
+    });
     if (this.language.current !== before || this.language.locked) {
       this.cb.onLanguage(this.language.current, this.language.locked);
     }
 
-    if (isFinal) {
-      this.marks.transcriptFinalAtMs = Date.now();
-      this.currentUtteranceId = null;
-      // The whole conversation hangs off this line: a finished sentence is a
-      // turn, and a turn is what produces a reply.
-      void this.takeTurn();
-    }
+    this.transcribing = false;
+    this.publishDiagnostics();
+    await this.takeTurn(said);
   }
 
   /**
@@ -458,22 +732,13 @@ export class VoiceSession {
    * starts, not after it finishes — because reading the answer while hearing
    * it is what makes this feel like a conversation rather than a wait.
    */
-  private async takeTurn(): Promise<void> {
-    if (this.closed || this.turnInFlight) return;
-
-    // Everything the person has actually finished saying and that has not yet
-    // been answered.
-    const said = this.turns
-      .filter((t) => t.speaker === 'USER' && t.final)
-      .map((t) => t.text)
-      .join(' ')
-      .slice(this.answeredChars)
-      .trim();
-    if (!said) return;
+  private async takeTurn(said: string): Promise<void> {
+    if (this.closed || this.turnInFlight || !said.trim()) return;
 
     this.turnInFlight = true;
-    this.answeredChars += said.length;
     this.history.push({ role: 'user', content: said });
+    const askedAt = Date.now();
+    this.diag.turnsSent += 1;
 
     // Gate the microphone BEFORE anything can come back, so the first audio
     // frame of the reply cannot be transcribed as if the visitor said it.
@@ -490,14 +755,22 @@ export class VoiceSession {
 
     if (this.closed) return;
 
+    this.diag.lastTurnMs = Date.now() - askedAt;
+
     if (!reply?.text) {
+      this.diag.lastError = 'ASSISTANT_FAILED';
       this.milestone('failed', 'ASSISTANT');
       this.cb.onError?.('ASSISTANT_FAILED');
       this.resumeListening();
       this.turnInFlight = false;
+      this.publishDiagnostics();
       return;
     }
 
+    this.diag.lastReplyChars = reply.text.length;
+    this.diag.lastAudioBytes = reply.audioBase64 ? Math.round(reply.audioBase64.length * 0.75) : 0;
+
+    this.marks.llmFirstTokenAtMs = Date.now();
     this.assistantSeq += 1;
     this.turns = reduceTranscript(this.turns, {
       id: `a${this.assistantSeq}`,
@@ -522,8 +795,11 @@ export class VoiceSession {
     }
 
     this.milestone('tts_audio_received', reply.audioBase64.length);
+    this.marks.ttsFirstAudioAtMs = Date.now();
+    this.cb.onLatency?.(latencyBreakdown(this.marks));
     await this.speak(reply.audioBase64, reply.mime ?? 'audio/mpeg');
     this.turnInFlight = false;
+    this.publishDiagnostics();
   }
 
   /**
@@ -562,6 +838,7 @@ export class VoiceSession {
 
         audio.play().then(
           () => {
+            this.diag.playbacks += 1;
             this.milestone('playback_started');
             this.setState('RESPONDING');
           },
@@ -594,20 +871,22 @@ export class VoiceSession {
     this.milestone('listening_resumed');
   }
 
-  private sendSttAudio(pcm: Int16Array): void {
-    if (this.sttSocket?.readyState !== WebSocket.OPEN) return;
-    // Binary frames here, unlike the agents socket's base64 JSON. The cast is
-    // safe: this buffer is allocated by floatToPcm16 and is never shared.
-    this.sttSocket.send(pcm.buffer as ArrayBuffer);
-  }
-
   // ── Turn taking ───────────────────────────────────────────────────────────
 
-  private trackVoiceActivity(level: number): void {
+  /**
+   * Barge-in only.
+   *
+   * NOT end-of-utterance: that is decided in onAudioBlock against
+   * SPEECH_RMS, and deliberately at a much lower level. Interrupting a
+   * playing reply should take a raised voice; being heard at all should not.
+   * These were the same threshold once, which meant the silence clock only
+   * ticked for someone shouting, and an utterance could only end by reaching
+   * the thirty-second ceiling.
+   */
+  private trackVoiceActivity(level: number, blockMs: number): void {
     const speaking = level >= DEFAULT_BARGE_IN.energyThreshold;
     if (speaking) {
-      this.sustainedSpeechMs += FRAME_MS;
-      this.lastVoiceAt = Date.now();
+      this.sustainedSpeechMs += blockMs;
 
       if (this.state === 'RESPONDING') {
         // §24's barge-in. DUCK first, STOP only on sustained speech, and
@@ -634,68 +913,7 @@ export class VoiceSession {
     }
   }
 
-  /**
-   * Has the person finished?
-   *
-   * The decision itself is decideEndpoint in transcript.ts, which is pure and
-   * tested. This only supplies it with the silence and the text so far — and
-   * notably does NOT end the turn itself, because the agents socket runs its
-   * own endpointer. What this drives is the UI's UNDERSTANDING state, so the
-   * visible behaviour matches the conversational behaviour instead of
-   * flickering on a different timer.
-   */
-  private evaluateTurn(): void {
-    if (this.state !== 'LISTENING' || !this.lastVoiceAt) return;
-
-    const partial = this.turns[this.turns.length - 1];
-    const decision = decideEndpoint({
-      text: partial?.final === false ? partial.text : (partial?.text ?? ''),
-      silenceMs: Date.now() - this.lastVoiceAt,
-      sttFinal: partial?.final ?? false,
-      config: { ...DEFAULT_ENDPOINTING, ...this.grant.endpointing },
-    });
-
-    if (decision.endOfTurn && partial?.text?.trim()) {
-      this.marks.speechEndedAtMs = this.lastVoiceAt;
-      this.marks.endpointConfirmedAtMs = Date.now();
-      this.setState('UNDERSTANDING');
-    }
-  }
-
   // ── Playback ──────────────────────────────────────────────────────────────
-
-  /**
-   * Play one chunk of agent audio, scheduled so chunks abut rather than
-   * overlap.
-   *
-   * `as_available` delivery means chunks arrive faster than real time, so the
-   * client has to pace them. Playing each one immediately on arrival produces
-   * a voice talking over itself.
-   */
-  private playPcm(bytes: Uint8Array): void {
-    if (!this.audioContext) return;
-    const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
-    const buffer = this.audioContext.createBuffer(1, pcm.length, SAMPLE_RATE);
-    const channel = buffer.getChannelData(0);
-    for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 0x8000;
-
-    const source = this.audioContext.createBufferSource();
-    source.buffer = buffer;
-    const gain = this.audioContext.createGain();
-    source.connect(gain);
-    gain.connect(this.audioContext.destination);
-
-    const now = this.audioContext.currentTime;
-    this.playbackTime = Math.max(this.playbackTime, now);
-    source.start(this.playbackTime);
-    this.playbackTime += buffer.duration;
-
-    this.playingSources.push(source);
-    source.onended = () => {
-      this.playingSources = this.playingSources.filter((s) => s !== source);
-      if (!this.playingSources.length && this.state === 'RESPONDING') this.setState('LISTENING');
-    };
-  }
 
   private duckPlayback(): void {
     // Cheapest correct duck: the sources are already connected through their
@@ -717,45 +935,4 @@ export class VoiceSession {
     this.state = state;
     this.cb.onState(state, detail);
   }
-}
-
-// ── Audio helpers ───────────────────────────────────────────────────────────
-
-function rms(samples: Float32Array): number {
-  let sum = 0;
-  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
-  return Math.sqrt(sum / Math.max(1, samples.length));
-}
-
-function floatToPcm16(input: Float32Array): Int16Array {
-  const out = new Int16Array(input.length);
-  for (let i = 0; i < input.length; i++) {
-    const s = Math.max(-1, Math.min(1, input[i]));
-    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return out;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  // Chunked: String.fromCharCode(...bytes) on a 3200-byte frame is fine, on a
-  // larger one it blows the argument limit.
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-  return out;
-}
-
-function nextPowerOfTwo(n: number): number {
-  // ScriptProcessor accepts only these sizes.
-  const allowed = [256, 512, 1024, 2048, 4096, 8192, 16384];
-  return allowed.find((v) => v >= n) ?? 4096;
 }

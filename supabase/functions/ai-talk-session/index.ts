@@ -25,9 +25,7 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serviceClient, json, preflight, logEvent, authenticate } from '../_shared/comm/auth.ts';
-import {
-  createCartesiaProvider, cartesiaCredentialsPresent, synthesizeSpeech,
-} from '../_shared/comm/cartesia.ts';
+import { cartesiaCredentialsPresent, synthesizeSpeech } from '../_shared/comm/cartesia.ts';
 import { callLlm } from '../_shared/comm/llm.ts';
 import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
 import {
@@ -177,38 +175,22 @@ async function start(
   }
 
   /*
-   * THE BROWSER GETS ONE CAPABILITY: LISTENING.
+   * THE BROWSER GETS NO PROVIDER CAPABILITY AT ALL.
    *
-   * This used to provision a Cartesia "agent" and hand the browser an `agent`
-   * scope so it could hold the whole conversation over the agents websocket.
-   * That socket carries AUDIO ONLY — it has no transcript events at all — so
-   * an assistant transcript was not merely unimplemented, it was unobtainable,
-   * and the voice was whatever the provider defaulted to.
+   * Three designs, in order. First the browser was given an `agent` scope and
+   * held the whole conversation over Cartesia's agents websocket — a socket
+   * that carries audio and no transcript, so an assistant transcript was not
+   * merely unimplemented, it was unobtainable. Then it was given an `stt`
+   * scope and streamed the microphone itself, which works in English and
+   * Russian and cannot transcribe Georgian at all.
    *
-   * The conversation is now assembled here instead: the browser transcribes,
-   * this function thinks and speaks. So the token needs `stt` and nothing
-   * else. No `agent`, and still no `tts` — a leaked token must not be usable
-   * to synthesise arbitrary audio on Homatch's account, and it no longer
-   * needs to be, because synthesis happens server-side.
+   * Now it holds nothing. It captures audio, posts it here, and receives
+   * words, a sentence and bytes of speech. That is not only a smaller
+   * exposure, it is also one fewer provider call standing between a visitor
+   * and the Start button: this function used to mint a grant before the
+   * session could begin, so a Cartesia hiccup meant the demo would not open
+   * even though the conversation itself would have worked.
    */
-  const provider = createCartesiaProvider();
-  const grant = await provider.mintGrant({
-    ttlSeconds: Math.ceil((expiresAt.getTime() - Date.now()) / 1000),
-    scopes: ['stt'],
-  });
-
-  if (!grant.ok || !grant.data) {
-    await sb.from('comm_talk_sessions')
-      .update({ state: 'ABORTED', ended_at: new Date().toISOString(), ended_reason: 'provider_unavailable' })
-      .eq('id', session.id);
-    logEvent('ai-talk', 'mint_failed', {
-      code: grant.error?.code ?? null,
-      status: grant.error?.providerCode ?? null,
-      detail: grant.error?.message ?? null,
-    });
-    return json({ ok: false, reason: 'PROVIDER_ERROR', userMessage: 'UNAVAILABLE' }, 502);
-  }
-
   logEvent('ai-talk', 'granted', { sessionId: session.id, seconds: decision.seconds });
 
   return json({
@@ -216,8 +198,6 @@ async function start(
     sessionId: session.id,
     grantedSeconds: session.granted_seconds,
     expiresAt: session.expires_at,
-    token: grant.data.token,
-    provider: 'CARTESIA',
     // Returned so the client can assert it, and so a support question about
     // which voice was used has an answer that is not a guess.
     voiceId: HOMATCH_TALK_VOICE_ID,
@@ -228,27 +208,6 @@ async function start(
   });
 }
 
-/**
- * One conversational turn: their sentence in, our sentence and our voice out.
- *
- * WHY THE SERVER DOES THIS AND NOT THE BROWSER
- *
- * The browser transcribes, because streaming microphone audio has to start
- * where the microphone is. Everything after that happens here, for three
- * reasons that were each a real failure before:
- *
- *   the assistant's TEXT exists, because we generate it — the provider's
- *   agents socket returns audio and nothing else, so there was never anything
- *   to put in a transcript;
- *
- *   the VOICE is ours, because we pass the id — the browser used to send
- *   null and the provider chose;
- *
- *   the Cartesia key stays here, and the browser receives bytes.
- *
- * Returns text and audio together so the UI can show the sentence at the same
- * moment it starts speaking it, rather than after.
- */
 /**
  * One finished utterance, turned into words.
  *
@@ -352,6 +311,23 @@ async function activeSession(
   return { row: { id: String(session.id), turns: session.turns as number | null } };
 }
 
+/**
+ * One conversational turn: their sentence in, our sentence and our voice out.
+ *
+ * WHY ALL OF THIS IS SERVER-SIDE
+ *
+ *   the assistant's TEXT exists, because we generate it — the provider's
+ *   agents socket returns audio and nothing else, so there was never anything
+ *   to put in a transcript;
+ *
+ *   the VOICE is ours, because we pass the id — the browser used to send
+ *   null and the provider chose;
+ *
+ *   the Cartesia key stays here, and the browser receives bytes.
+ *
+ * Returns text and audio together so the UI can show the sentence at the same
+ * moment it starts speaking it, rather than after.
+ */
 async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
   if (!body.sessionId) return json({ error: 'session_required' }, 400);
 
@@ -364,7 +340,21 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
   if ('refusal' in guard) return guard.refusal;
   const session = guard.row;
 
+  /*
+   * TWO LANGUAGES, AND ONLY ONE OF THEM DECIDES THE REPLY.
+   *
+   * `locale` is the page the visitor happens to be reading. `spokenLanguage`
+   * is what just came out of their mouth, as the script of the transcript
+   * settles it. A Russian speaker on the Georgian homepage must be answered
+   * in Russian, and must be able to switch back mid-conversation without
+   * touching a selector — so the spoken language wins, every turn, and the
+   * page locale is only the fallback for the very first words.
+   */
   const locale = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
+  const heardLanguage = scriptLanguage(said) ?? (body.languageHint
+    ? String(body.languageHint).toLowerCase().slice(0, 5)
+    : null);
+  const replyLanguage = heardLanguage ?? locale;
 
   // Prior turns, bounded. A demo conversation that keeps its whole history
   // would grow the prompt without bound on a path anyone can call.
@@ -374,7 +364,7 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     .join('\n');
 
   const reply = await callLlm({
-    system: publicDemoInstructions(locale),
+    system: publicDemoInstructions(replyLanguage),
     user: [
       conversation ? `Conversation so far:\n${conversation}\n` : '',
       `Visitor just said: "${said.slice(0, 1000)}"`,
@@ -397,7 +387,10 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
 
   const spoken = await synthesizeSpeech({
     voiceId: HOMATCH_TALK_VOICE_ID,
-    language: locale,
+    // The language the reply was WRITTEN in, not the page it will be read on.
+    // Georgian text announced as English is how a voice ends up spelling its
+    // way through a Georgian sentence.
+    language: replyLanguage,
     text,
   });
 
@@ -565,19 +558,43 @@ async function resolveAnonSession(sb: Sb, candidate: string | undefined): Promis
  * browser so that a modified page cannot widen the agent's remit, and kept
  * deliberately short so it is easy to audit.
  */
-function publicDemoInstructions(locale: string): string {
+/**
+ * What Homatch is, said to a model, in the language the visitor is speaking.
+ *
+ * GEORGIAN IS NOT A TRANSLATION TARGET HERE, IT IS THE DEFAULT
+ *
+ * The failure this guards against is a reply composed in English and rendered
+ * into Georgian word by word: grammatical, and immediately recognisable as
+ * not written by a Georgian. The instructions name that explicitly, because a
+ * model told only "reply in Georgian" produces exactly that.
+ *
+ * The vocabulary block is not decoration. A visitor who says "მწვანე
+ * კარკასი" has named a specific construction stage with a specific price
+ * consequence, and an assistant that treats it as a colour is not a
+ * real-estate assistant.
+ */
+function publicDemoInstructions(language: string): string {
   const names: Record<string, string> = {
     ka: 'Georgian', en: 'English', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew',
   };
-  return [
-    'You are Homatch, a real-estate intelligence assistant, speaking to a visitor on a public website.',
-    `Open in ${names[locale] ?? 'Georgian'}. If they speak another language, switch to it and stay there.`,
+  const name = names[language] ?? names[language.split('-')[0]] ?? 'the language the visitor is speaking';
+
+  const lines = [
+    'You are Homatch, a real-estate intelligence assistant for the Georgian market, speaking to a visitor on a public website.',
     '',
-    'Your job in this short conversation is to understand what kind of property they are interested in:',
-    'whether they want to buy, sell, rent or invest, roughly where, roughly what budget, and how many rooms.',
-    'Ask one question at a time. Keep every reply to one or two spoken sentences.',
+    'LANGUAGE',
+    `Reply in ${name}. Reply in whatever language the visitor is actually speaking, turn by turn:`,
+    'if they switch language mid-conversation, switch with them and keep everything you already understood.',
+    'Never ask them to choose a language and never mention which one you are using.',
     '',
-    'Rules:',
+    'HOW TO SOUND',
+    'This is spoken aloud, so keep every reply to one or two short sentences. Ask one question at a time.',
+    'Plain words only: no markdown, no lists, no emoji, no abbreviations that cannot be read out.',
+    '',
+    'WHAT YOU ARE FOR',
+    'Understand what kind of property they want: buy, sell, rent or invest; roughly where; roughly what budget; how many rooms.',
+    '',
+    'RULES',
     '- Say at the start that you are an AI assistant.',
     '- You have NO access to any specific listing, price, availability or any person\'s records.',
     '  Never state a price, a property, an address or an availability. If asked, say plainly that you',
@@ -587,5 +604,25 @@ function publicDemoInstructions(locale: string): string {
     '- Talk about property only. If the conversation goes elsewhere, bring it back once, politely,',
     '  and if it does not come back, say this demo is only about property and wrap up.',
     '- People pause mid-sentence. Wait for them to finish rather than answering into a gap.',
-  ].join('\n');
+  ];
+
+  if (name === 'Georgian') {
+    lines.push(
+      '',
+      'GEORGIAN',
+      'Write modern, natural, spoken Georgian — the Georgian a professional broker in Tbilisi would actually speak.',
+      'Do NOT compose in English and translate: no English word order, no Russian-influenced grammar,',
+      'no unnecessarily formal register, no English terms where an ordinary Georgian word exists.',
+      'Keep English only where Georgian speakers genuinely use it, such as ROI.',
+      '',
+      'You know what these mean and can use them correctly:',
+      'მწვანე კარკასი, თეთრი კარკასი, შავი კარკასი, ახალაშენებული, ძველი აშენებული, მშენებარე,',
+      'საკადასტრო კოდი, საჯარო რეესტრი, ამონაწერი, ხელშეკრულება, წინასწარი ნასყიდობის ხელშეკრულება,',
+      'იპოთეკა, განვადება, კვადრატული მეტრი, ფასი კვადრატულზე, სართული, საძინებელი, პარკინგი,',
+      'დეველოპერი, ინვესტიცია, ქირის შემოსავალი, ბინის სტატუსი.',
+      'Knowing the terms is not knowing any actual property: the rules above still hold.',
+    );
+  }
+
+  return lines.join('\n');
 }

@@ -24,7 +24,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { cn } from '@/lib/utils';
-import type { VoiceSession, VoiceState } from '@/lib/comm/voiceClient';
+import type { VoiceSession, VoiceState, VoiceDiagnostics } from '@/lib/comm/voiceClient';
+import { AiTalkDiagnostics } from './AiTalkDiagnostics';
 import type { TranscriptTurn } from '@/lib/comm/transcript';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -108,6 +109,21 @@ export function AiTalkPanel({ className }: { className?: string }) {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [intelligence, setIntelligence] = useState<Intelligence | null>(null);
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
+  /** The same value, readable from inside a callback that never re-renders. */
+  const detectedRef = useRef<string | null>(null);
+  /**
+   * Live counters from the voice runtime.
+   *
+   * TEMPORARY, and visible on purpose. "The microphone is clearly listening
+   * and no transcript appears" described four different faults with the same
+   * symptom, and from outside the browser there was no way to tell which one
+   * was happening. Every value below is counted by the runtime, never
+   * inferred, and none of it is a transcript of anything except the last
+   * thing this visitor themselves said.
+   *
+   * Remove this block once Georgian speech-in is confirmed on real phones.
+   */
+  const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics | null>(null);
 
   const sessionRef = useRef<VoiceSession | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -147,6 +163,9 @@ export function AiTalkPanel({ className }: { className?: string }) {
     setTurns([]);
     setIntelligence(null);
     setFailure(null);
+    setDiagnostics(null);
+    setDetectedLanguage(null);
+    detectedRef.current = null;
     historyRef.current = [];
 
     const { data, error } = await supabase.functions.invoke('ai-talk-session', {
@@ -158,10 +177,10 @@ export function AiTalkPanel({ className }: { className?: string }) {
       voiceId?: string; userMessage?: string;
     } | null;
 
-    // No agentId to check any more: there is no provider-side agent in this
-    // path. The token is the only thing the browser needs, and it is scoped to
-    // transcription alone.
-    if (error || !grant?.ok || !grant.token) {
+    // No provider grant is checked any more, because the browser is no longer
+    // given one: transcription and synthesis both happen server-side. A
+    // session id is the whole of what this page needs.
+    if (error || !grant?.ok || !grant.sessionId) {
       // §92/§134: a friendly outcome, never a raw API exception, and the hero
       // does not break.
       setState(grant?.userMessage === 'LIMIT_REACHED' ? 'LIMIT_REACHED' : 'PROVIDER_ERROR');
@@ -177,17 +196,40 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
     const session = new Session(
       {
-        token: grant.token,
         primaryLanguage: language,
         maxDurationSec: grantedRef.current,
       },
       {
         onState: (s) => setState(s),
         onTranscript: (next) => setTurns([...next]),
-        onLanguage: (lang) => setDetectedLanguage(lang),
+        onLanguage: (lang) => { detectedRef.current = lang; setDetectedLanguage(lang); },
         onLevel: (l) => setLevel(l),
         onSecondsConsumed: (consumed) => setRemaining(Math.max(0, grantedRef.current - consumed)),
         onError: (code) => setFailure(code),
+        onDiagnostics: (d) => setDiagnostics(d),
+        /*
+         * One utterance out, the words back.
+         *
+         * The microphone used to stream straight to Cartesia's transcription
+         * socket. That socket will not transcribe Georgian — asked for
+         * language=ka it is dropped with no error at all — so the audio goes
+         * to the server instead, which has a provider that can write Georgian
+         * and works out the spoken language for itself.
+         */
+        onTranscribe: async (audioBase64, languageHint) => {
+          if (!sessionIdRef.current) return null;
+          const { data: heard, error: heardError } = await supabase.functions.invoke('ai-talk-session', {
+            body: {
+              action: 'transcribe',
+              sessionId: sessionIdRef.current,
+              audioBase64,
+              ...(languageHint ? { languageHint } : {}),
+            },
+          });
+          const result = heard as { ok?: boolean; text?: string | null; language?: string | null; ms?: number } | null;
+          if (heardError || !result?.ok) return null;
+          return { text: result.text ?? null, language: result.language ?? null, ms: result.ms ?? null };
+        },
         /*
          * One turn: their sentence out, our sentence and our voice back.
          *
@@ -203,6 +245,11 @@ export function AiTalkPanel({ className }: { className?: string }) {
               sessionId: sessionIdRef.current,
               text,
               locale: language,
+              // What they are SPEAKING, which is not the page they are
+              // reading. The server prefers the script of the sentence itself
+              // and falls back to this; the page locale is only the fallback
+              // for the very first words.
+              ...(detectedRef.current ? { languageHint: detectedRef.current } : {}),
               history: historyRef.current.slice(-8),
             },
           });
@@ -279,6 +326,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
   const fp = useFieldProps();
 
   return (
+    <div className={cn('flex w-full flex-col', className)}>
     <div
       className={cn(
         // §133 still holds: the panel reserves its own space before the voice
@@ -290,7 +338,6 @@ export function AiTalkPanel({ className }: { className?: string }) {
         // and is not hostage to how narrow the phone is.
         'relative flex w-full flex-col overflow-hidden rounded-xl border border-white/10 bg-black/40 backdrop-blur-sm',
         'h-[23rem] sm:h-[25rem] lg:h-auto lg:aspect-[4/3]',
-        className,
       )}
       aria-live="polite"
     >
@@ -312,6 +359,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
         {state === 'IDLE' || state === 'ENDED' || state === 'LIMIT_REACHED' || state === 'MIC_DENIED' || state === 'MIC_UNAVAILABLE' || state === 'PROVIDER_ERROR' ? (
           <RestingFace
             state={state}
+            failure={failure}
             onStart={() => void start()}
             onContinue={() => navigate('/ai')}
           />
@@ -348,12 +396,18 @@ export function AiTalkPanel({ className }: { className?: string }) {
         </div>
       ) : null}
     </div>
+
+    {/* TEMPORARY. Outside the panel because the panel reserves a fixed height
+        and clips its own overflow; inside it, this would be invisible on the
+        phone it exists to diagnose. */}
+    <AiTalkDiagnostics d={diagnostics} />
+    </div>
   );
 }
 
 function RestingFace({
-  state, onStart, onContinue,
-}: { state: VoiceState; onStart: () => void; onContinue: () => void }) {
+  state, onStart, onContinue, failure,
+}: { state: VoiceState; onStart: () => void; onContinue: () => void; failure: string | null }) {
   const { t } = useLanguage();
 
   const messageKey: Record<string, string> = {
@@ -373,9 +427,11 @@ function RestingFace({
    * The only way back was a page reload, which is not something the copy asks
    * for and not something a visitor should have to guess.
    *
-   * PROVIDER_ERROR stays without one on purpose: nothing the visitor does to
-   * their own machine clears it, and a retry button that cannot work is worse
-   * than none.
+   * PROVIDER_ERROR is included now too. It was withheld on the grounds that
+   * nothing the visitor does clears it, which was true when it only meant
+   * "no credentials". It now also means a single transcription call failed,
+   * and that is very often gone by the next attempt. A button that sometimes
+   * works beats a dead end that never does.
    */
   const micProblem = state === 'MIC_DENIED' || state === 'MIC_UNAVAILABLE';
   const unavailable = state === 'PROVIDER_ERROR' || micProblem;
@@ -399,7 +455,9 @@ function RestingFace({
         {sf('talk_title', 'talk_title')}
       </p>
       <p className="mt-1 max-w-[22rem] text-pretty text-[13px] leading-relaxed text-white/60">
-        {t(messageKey[state] as TKey)}
+        {/* A named failure is more use than "temporarily unavailable": one
+            says speech recognition, the other says nothing at all. */}
+        {t((failure && FAILURE_KEY[failure] ? FAILURE_KEY[failure] : messageKey[state]) as TKey)}
       </p>
       {/* The languages moved out of the header, where they shared a 288px row
           with the badge, into the body, where they have the width to be read
@@ -409,16 +467,16 @@ function RestingFace({
       </p>
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        {state !== 'PROVIDER_ERROR' ? (
+        {(
           <button
             type="button"
             onClick={onStart}
             className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-black transition-colors hover:bg-white/90"
           >
             <Mic className="h-3.5 w-3.5" aria-hidden="true" />
-            {t(finished || micProblem ? 'talk_again' : 'talk_start')}
+            {t(finished || unavailable ? 'talk_again' : 'talk_start')}
           </button>
-        ) : null}
+        )}
 
         {/* §132: one relevant CTA at the end, not a paywall and not signup spam. */}
         {finished || unavailable ? (
@@ -516,6 +574,7 @@ const FAILURE_KEY: Record<string, string> = {
   PLAYBACK_FAILED: 'talk_err_playback',
   PLAYBACK_BLOCKED: 'talk_err_playback',
   STT_UNAVAILABLE: 'talk_err_stt',
+  TRANSCRIBE_FAILED: 'talk_err_stt',
 };
 
 /**

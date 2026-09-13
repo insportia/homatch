@@ -324,6 +324,21 @@ function fileToBase64(file: File): Promise<string | null> {
  * server. The browser sends what was heard and receives what to say and the
  * audio that says it.
  */
+/**
+ * One utterance from the tester's microphone, turned into words.
+ *
+ * Server-side, because the transcription provider that can write Georgian is
+ * reached with a key that must never be in a browser.
+ */
+export function runAgentTranscribe(
+  agentId: string, audioBase64: string, languageHint: string | null,
+) {
+  return invoke<{ ok: boolean; text: string | null; language: string | null; ms: number }>(
+    'comm-agent',
+    { action: 'transcribe', agentId, audioBase64, ...(languageHint ? { languageHint } : {}) },
+  );
+}
+
 export function runAgentTestTurn(
   agentId: string,
   text: string,

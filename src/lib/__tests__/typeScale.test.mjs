@@ -43,6 +43,12 @@ const EXEMPT = [
   'src/components/admin/',                        // internal tooling, desktop only
   'src/pages/admin/',
   'src/components/layouts/MobileBottomNav.tsx',   // five labels in 320px, in Georgian
+  // TEMPORARY. A dense engineering readout of live counters, shown while
+  // Georgian speech-in is confirmed on real phones. It is a monospace
+  // instrument panel rather than text to read, and it has to fit twenty
+  // labelled values on a 390px screen without scrolling past the thing it
+  // describes. It is meant to be deleted, not restyled.
+  'src/components/home/AiTalkDiagnostics.tsx',
 ];
 
 /**

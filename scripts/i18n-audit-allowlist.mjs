@@ -14,6 +14,14 @@ export const AUDIT_ALLOWED_FILE_GLOBS = [
   // Static translation data itself is expected to contain literal strings
   // in every language — that's its job, not a bug.
   'src/i18n/translations.ts',
+  // TEMPORARY. The AI Talk live readout: an engineering diagnostic shown to
+  // the product owner while Georgian speech-in is being confirmed on real
+  // phones. Its labels are field names ("Input rate", "Bytes sent"), not
+  // product copy, and translating them would make them harder to compare
+  // against the code they name. It is meant to be DELETED rather than
+  // translated — if it is still here after that confirmation, that is the
+  // bug, not the missing translations.
+  'src/components/home/AiTalkDiagnostics.tsx',
 ];
 
 // Regexes for strings that are structurally never user-facing prose

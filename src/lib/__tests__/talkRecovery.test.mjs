@@ -26,7 +26,7 @@ const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const PANEL = '../../components/home/AiTalkPanel.tsx';
 const FUNCTION = '../../../supabase/functions/ai-talk-session/index.ts';
 
-test('a microphone failure still offers a way back', () => {
+test('every resting state offers a way back', () => {
   const src = read(PANEL);
 
   // The button that restarts a session, and whatever guards it.
@@ -36,17 +36,31 @@ test('a microphone failure still offers a way back', () => {
 
   assert.ok(
     !/\{!unavailable \?/.test(guard),
-    'the restart button is hidden for every unavailable state again — a mic problem is the visitor\'s to clear, so it needs a button',
+    'the restart button is hidden for unavailable states again — a mic problem is the visitor\'s to clear, so it needs a button',
   );
   assert.ok(
-    /state !== 'PROVIDER_ERROR'/.test(guard),
-    'the restart button should be withheld only when nothing the visitor does could help',
+    !/state !== 'PROVIDER_ERROR'/.test(guard),
+    'PROVIDER_ERROR now covers a single failed transcription call, which is usually gone by the next attempt',
   );
 
   // And it must say "again", not "start", once they have already tried.
   assert.ok(
-    /micProblem \? 'talk_again'/.test(src),
+    /finished \|\| unavailable \? 'talk_again'/.test(src),
     'a retry after a failure should read as trying again, not as starting fresh',
+  );
+});
+
+test('a resting failure says which thing failed, when it knows', () => {
+  // "The voice demo is temporarily unavailable" over a failed transcription
+  // call tells a visitor nothing they can act on, and told us nothing either.
+  const src = read(PANEL);
+  assert.ok(
+    /TRANSCRIBE_FAILED: 'talk_err_stt'/.test(src),
+    'a failed transcription should map to the speech-recognition sentence',
+  );
+  assert.ok(
+    /FAILURE_KEY\[failure\] \? FAILURE_KEY\[failure\] : messageKey\[state\]/.test(src),
+    'the resting face should prefer a named failure over the generic state copy',
   );
 });
 

@@ -45,6 +45,7 @@ import {
 import {
   getAgent, updateAgent, generateAgentCopy, publishAgent, previewAgent,
   requestAgentTestGrant, runAgentTestTurn, listVoices, previewVoice, listMyVoices, deleteCustomVoice,
+  runAgentTranscribe,
 } from '@/services/communications';
 import type { CommAgent } from '@/types/communications';
 import type { VoiceSession, VoiceState, VoiceMilestone } from '@/lib/comm/voiceClient';
@@ -933,7 +934,6 @@ function TestStep({
 
     const session = new Session(
       {
-        token: grant.data.token,
         primaryLanguage: grant.data.primaryLanguage,
         maxDurationSec: grant.data.maxDurationSec,
         endpointing: grant.data.endpointing,
@@ -949,6 +949,14 @@ function TestStep({
         // apart "no microphone", "no socket", "socket open but silent" and
         // "heard me but never answered" — and those need different fixes.
         onMilestone: (m) => setTrace((prev) => [...prev, m]),
+        /* Words come from the server now. Cartesia's transcription socket
+         * cannot write Georgian, and an agent for Georgian callers that
+         * cannot be tested in Georgian is not tested. */
+        onTranscribe: async (audioBase64, languageHint) => {
+          const heard = await runAgentTranscribe(agentId, audioBase64, languageHint);
+          if (!heard.ok) return null;
+          return { text: heard.data.text, language: heard.data.language, ms: heard.data.ms };
+        },
         /* The agent's own prompt and the agent's own voice, assembled server
          * side. Testing a stand-in in someone else's voice tests nothing. */
         onUserTurn: async (text) => {

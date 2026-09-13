@@ -24,9 +24,10 @@ import {
   createCartesiaProvider, cartesiaCredentialsPresent, synthesizeSpeech,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm } from '../_shared/comm/llm.ts';
+import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
 
 interface AgentRequest {
-  action: 'generate' | 'publish' | 'preview' | 'test' | 'turn';
+  action: 'generate' | 'publish' | 'preview' | 'test' | 'turn' | 'transcribe';
   agentId?: string;
   rough?: string;
   template?: string;
@@ -35,6 +36,10 @@ interface AgentRequest {
   /** turn: what the tester just said, and the conversation so far. */
   text?: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
+  audioBase64?: string;
+  /** transcribe: a language to prefer, or absent to let the provider decide. */
+  languageHint?: string;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -55,6 +60,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'preview':  return await preview(sb, caller.userId, body);
     case 'test':     return await test(sb, caller.userId, body);
     case 'turn':     return await agentTurn(sb, caller.userId, body);
+    case 'transcribe': return await agentTranscribe(sb, caller.userId, body);
     default:         return json({ error: 'unknown_action' }, 400);
   }
 });
@@ -267,6 +273,60 @@ async function test(sb: Sb, userId: string, body: AgentRequest): Promise<Respons
  * speaks in the agent's OWN voice. Testing a simplified stand-in in somebody
  * else's voice tests nothing anyone is going to ship.
  */
+/**
+ * One utterance from the Voice Studio tester, turned into words.
+ *
+ * The same move as AI Talk, for the same reason: the browser used to stream
+ * the microphone straight to Cartesia STT, and Cartesia will not transcribe
+ * Georgian. An agent built for Georgian callers could not be tested in
+ * Georgian, which is most of the point of testing it.
+ *
+ * The audio is transcribed and dropped. Nothing is stored and no transcript
+ * reaches a log.
+ */
+async function agentTranscribe(sb: Sb, userId: string, body: AgentRequest): Promise<Response> {
+  if (!body.agentId) return json({ error: 'agent_required' }, 400);
+
+  const { data: agent } = await sb.from('comm_agents')
+    .select('owner_id').eq('id', body.agentId).maybeSingle();
+  if (!agent || agent.owner_id !== userId) return json({ error: 'forbidden' }, 403);
+
+  const limit = await checkRateLimit(sb, 'agent_test_transcribe', 240, 3600, { userId });
+  if (!limit.allowed) return json({ error: 'rate_limited', retryAfter: limit.retryAfterSeconds }, 429);
+
+  if (!transcriptionAvailable()) return json({ ok: false, reason: 'UNAVAILABLE' }, 503);
+
+  const b64 = String(body.audioBase64 ?? '');
+  if (!b64) return json({ ok: false, reason: 'EMPTY' }, 400);
+  if (b64.length > 2_800_000) return json({ ok: false, reason: 'TOO_LONG' }, 413);
+
+  let audio: Uint8Array;
+  try {
+    const bin = atob(b64);
+    audio = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) audio[i] = bin.charCodeAt(i);
+  } catch {
+    return json({ ok: false, reason: 'BAD_AUDIO' }, 400);
+  }
+
+  const result = await transcribeSpeech({
+    audio,
+    mime: 'audio/wav',
+    languageHint: body.languageHint ? String(body.languageHint).slice(0, 5) : null,
+  });
+
+  if (!result.ok) {
+    logEvent('comm-agent', 'transcribe_failed', {
+      bytes: audio.byteLength, model: result.model,
+      status: result.status ?? null, detail: result.error ?? null,
+    });
+    return json({ ok: false, reason: 'TRANSCRIBE_FAILED' }, 502);
+  }
+
+  const language = (result.text ? scriptLanguage(result.text) : null) ?? result.language ?? null;
+  return json({ ok: true, text: result.text, language, ms: result.latencyMs });
+}
+
 async function agentTurn(sb: Sb, userId: string, body: AgentRequest): Promise<Response> {
   if (!body.agentId) return json({ error: 'agent_required' }, 400);
   const said = String(body.text ?? '').trim();

@@ -192,7 +192,26 @@ test('Site Studio edits the page itself, and cannot be made to store markup', op
 
   /** A field's element, addressed by identity rather than by its text. */
   const F = (sectionId, field) => `[data-hm-section="${sectionId}"][data-hm-field="${field}"]`;
-  const textOf = async (sel) => (await frame.locator(sel).first().textContent() ?? '').trim();
+  /*
+   * A field that has VANISHED is the interesting failure, and the least
+   * informative one.
+   *
+   * When a section throws during a re-render, its error boundary takes the
+   * whole section away, and every assertion after that reports the same
+   * thing: a thirty-second wait for a selector. The page's own error is the
+   * half that says why, and it was being collected and never shown — so a CI
+   * failure that could not be reproduced locally had nothing to go on at all.
+   */
+  const textOf = async (sel) => {
+    try {
+      return (await frame.locator(sel).first().textContent() ?? '').trim();
+    } catch (e) {
+      e.message += pageErrors.length
+        ? `\n  the page raised: ${pageErrors.join('\n  ')}`
+        : '\n  (the page raised no error, so the element was removed rather than crashed)';
+      throw e;
+    }
+  };
 
   async function typeInto(sel, value, commitKey = 'Enter') {
     const el = frame.locator(sel).first();

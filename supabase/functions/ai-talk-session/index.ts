@@ -597,6 +597,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           // reasoning. A model left with room for 1,200 writes 1,200, and the
           // visitor waits through every one of them being spoken aloud.
           maxOutputTokens: 340,
+          // Two sentences about a flat is not a reasoning problem, and the
+          // thinking was the largest and least predictable part of the wait.
+          reasoningEffort: 'minimal',
           timeoutMs: 20_000,
         })) {
           if (event.type === 'error') { failed = event.error ?? 'llm'; break; }

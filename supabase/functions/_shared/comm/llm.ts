@@ -52,6 +52,15 @@ interface LlmCallOptions {
    * waits through every one of them being synthesised.
    */
   maxOutputTokens?: number;
+  /**
+   * How much the model is allowed to think before it starts writing.
+   *
+   * Measured on production, the same Georgian turn, several times: the time
+   * to the FIRST token ranged from 0.55s to 3.0s, and that variance is the
+   * largest thing left in a spoken reply. It is reasoning, and a two-sentence
+   * answer to "I want a two-bedroom in Krtsanisi" does not need any.
+   */
+  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
   /** Forces a JSON object back, so callers never have to scrape prose. */
   json?: boolean;
   maxTokens?: number;
@@ -212,6 +221,16 @@ export interface LlmStreamEvent {
   status?: number | null;
 }
 
+/**
+ * Whether this deployment's model accepts the lowest reasoning setting.
+ *
+ * Module scope, so one refusal teaches every later request in the same
+ * instance rather than costing a retry per turn. It starts as "assume yes"
+ * because that is the fast path and the cost of being wrong is one extra
+ * round trip, once.
+ */
+let minimalEffortSupported = true;
+
 export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStreamEvent> {
   const model = opts.model ?? DEFAULT_MODEL;
   if (!llmAvailable()) { yield { type: 'error', error: 'no_api_key' }; return; }
@@ -220,24 +239,37 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
 
+  const wanted = opts.reasoningEffort ?? 'low';
+  const effort = wanted === 'minimal' && !minimalEffortSupported ? 'low' : wanted;
+
+  const ask = (level: string) => fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${requireSecret('OPENAI_API_KEY')}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      instructions: opts.system,
+      input: [{ role: 'user', content: opts.user }],
+      max_output_tokens: opts.maxOutputTokens ?? Math.min(4000, Math.max(1200, budget * 2)),
+      reasoning: { effort: level },
+      store: false,
+      stream: true,
+    }),
+    signal: controller.signal,
+  });
+
   try {
-    const res = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${requireSecret('OPENAI_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        instructions: opts.system,
-        input: [{ role: 'user', content: opts.user }],
-        max_output_tokens: opts.maxOutputTokens ?? Math.min(4000, Math.max(1200, budget * 2)),
-        reasoning: { effort: 'low' },
-        store: false,
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
+    let res = await ask(effort);
+
+    // A model that will not take the lowest setting says so with a 400. One
+    // retry, and the instance remembers, so this costs a round trip once
+    // rather than on every turn.
+    if (!res.ok && res.status === 400 && effort === 'minimal') {
+      minimalEffortSupported = false;
+      res = await ask('low');
+    }
 
     if (!res.ok || !res.body) {
       yield { type: 'error', error: `provider returned ${res.status}`, status: res.status };

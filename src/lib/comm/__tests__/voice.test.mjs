@@ -323,6 +323,40 @@ test('a currency is never invented', () => {
   assert.equal(dollars.value, 180_000);
   const [lari] = parseMoney('180 ათასი ლარი');
   assert.equal(lari.currency, 'GEL');
+
+  /*
+   * დოლარი CONTAINS ლარი.
+   *
+   * Testing for lari first matched inside the Georgian word for dollar, so a
+   * visitor saying "180,000 დოლარის ბიუჯეტით" had their budget shown back to
+   * them as 180,000 lari — out by a factor of 2.7, in the currency the
+   * Georgian market quotes property in. Caught in a live production
+   * conversation, which is the only place it could have been caught: nobody
+   * types that sentence.
+   */
+  const [spoken] = parseMoney('კრწანისში ბინის ყიდვა დაახლოებით 180,000 დოლარის ბიუჯეტით');
+  assert.equal(spoken.value, 180_000);
+  assert.equal(spoken.currency, 'USD', 'დოლარი is dollars, however much of ლარი it contains');
+
+  const [russian] = parseMoney('бюджет примерно 180 000 долларов');
+  assert.equal(russian.currency, 'USD');
+});
+
+test('a bedroom count survives being spoken rather than typed', () => {
+  // Nobody dictates "2 საძინებელი". They say "ორი საძინებლით", and a voice
+  // conversation therefore lost the room count entirely.
+  assert.equal(parseBedrooms('ორი საძინებლით'), 2);
+  assert.equal(parseBedrooms('სამი საძინებელი მინდა'), 3);
+  assert.equal(parseBedrooms('двухкомнатная квартира'), 2);
+  assert.equal(parseBedrooms('two bedrooms please'), 2);
+  assert.equal(parseBedrooms('iki yatak odası'), 2);
+
+  // Digits still win, and still work.
+  assert.equal(parseBedrooms('3 საძინებელი'), 3);
+
+  // A number word with no room word next to it is not a bedroom count.
+  assert.equal(parseBedrooms('ორი კვირაა ვეძებ'), null);
+  assert.equal(parseBedrooms('ორი თვის წინ ვნახე ბინა'), null);
 });
 
 test('"მდე" makes a figure a ceiling, not a target', () => {
@@ -332,7 +366,8 @@ test('"მდე" makes a figure a ceiling, not a target', () => {
 
 test('bedroom counts are read in four languages', () => {
   assert.equal(parseBedrooms('2 bedrooms'), 2);
-  assert.equal(parseBedrooms('ორი საძინებელი'), null);
+  // Was null, and was wrong to be: this is how the count is actually spoken.
+  assert.equal(parseBedrooms('ორი საძინებელი'), 2);
   assert.equal(parseBedrooms('3 საძინებელი'), 3);
   assert.equal(parseBedrooms('2 комнатная'), 2);
   assert.equal(parseBedrooms('3 yatak odası'), 3);

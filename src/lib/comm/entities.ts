@@ -72,12 +72,24 @@ const ALIASES: Record<string, string> = {
   'lisi lake': 'lisi', 'озеро лиси': 'lisi',
 };
 
-/** A currency word written after the number. */
+/**
+ * A currency word written after the number.
+ *
+ * ORDER MATTERS, AND IT COST 2.7x TO GET WRONG.
+ *
+ * დოლარი — the Georgian for dollar — CONTAINS ლარი, the Georgian for lari.
+ * Testing for lari first matched inside the word for dollar, so a visitor
+ * saying "180,000 დოლარის ბიუჯეტით" had their budget read back to them as
+ * 180,000 lari. Caught on production in a live Georgian conversation.
+ *
+ * Dollars and euros are therefore tested first and return early, which leaves
+ * the lari test to run only on a tail that contains neither.
+ */
 function currencyFromTail(tail: string): string {
   const t = tail.toLowerCase();
-  if (/ლარ|gel|₾/u.test(t)) return 'gel';
-  if (/დოლარ|доллар|usd|\$/u.test(t)) return 'usd';
-  if (/ევრ|евро|eur|€/u.test(t)) return 'eur';
+  if (/დოლარ|доллар|dollar|usd|\$/u.test(t)) return 'usd';
+  if (/ევრ|евро|euro|eur|€/u.test(t)) return 'eur';
+  if (/ლარ|лари|gel|₾/u.test(t)) return 'gel';
   return '';
 }
 
@@ -262,6 +274,37 @@ export function parseBedrooms(text: string): number | null {
       const n = Number(m[1]);
       if (Number.isFinite(n) && n >= 0 && n <= 20) return n;
     }
+  }
+  return spelledBedrooms(s);
+}
+
+/**
+ * Bedroom counts written as words rather than digits.
+ *
+ * Nobody dictates "2 საძინებელი" into a microphone; they say "ორი
+ * საძინებლით". Transcription writes what was said, so a spoken conversation
+ * produced no bedroom count at all while the same sentence typed produced
+ * one — the panel showed a district and a budget and silently omitted the
+ * number of rooms. Seen on production in Georgian.
+ *
+ * Small numbers only. A property with eleven bedrooms exists; somebody
+ * saying so in words does not.
+ */
+const SPELLED_NUMBERS: Array<[RegExp, number]> = [
+  [/ერთ/u, 1], [/ორ/u, 2], [/სამ/u, 3], [/ოთხ/u, 4], [/ხუთ/u, 5],
+  [/одно|одна|один/u, 1], [/двух|две|два/u, 2], [/трёх|трех|три/u, 3],
+  [/четырёх|четырех|четыре/u, 4], [/пяти|пять/u, 5],
+  [/\bone\b/u, 1], [/\btwo\b/u, 2], [/\bthree\b/u, 3], [/\bfour\b/u, 4], [/\bfive\b/u, 5],
+  [/\bbir\b/u, 1], [/\biki\b/u, 2], [/\büç\b/u, 3], [/\bdört\b/u, 4], [/\bbeş\b/u, 5],
+];
+
+function spelledBedrooms(s: string): number | null {
+  // The number word has to sit next to the room word, or the "ორი" in "ორი
+  // კვირაა ვეძებ" becomes a bedroom count.
+  const noun = s.match(/(.{0,24})(საძინებ|комнат|спальн|bedroom|yatak\s?oda)/u);
+  if (!noun) return null;
+  for (const [re, n] of SPELLED_NUMBERS) {
+    if (re.test(noun[1])) return n;
   }
   return null;
 }

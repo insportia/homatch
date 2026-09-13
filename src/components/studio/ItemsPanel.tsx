@@ -48,7 +48,7 @@ export function ItemsPanel({ studio, def }: { studio: StudioState; def: ItemGrou
   const full = items.length >= def.max;
 
   return (
-    <div className="border-b py-4">
+    <div className="border-b py-4" data-studio-items>
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-[15px] font-medium">{t('studio_items')}</h3>
         <Button

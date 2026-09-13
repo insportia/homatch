@@ -167,16 +167,22 @@ test('an admin can build a page out of cards, questions and a video', opts, asyn
   });
 
   await page.goto(`${BASE}/admin/site-studio`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(6000);
   const frame = page.frameLocator('iframe').first();
 
   const ids = () => frame.locator('[data-studio-section]')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-studio-section')));
 
-  /** Add a block by name from the structure list, and return its section id. */
+  /** Add a block by name from the block library, and return its section id.
+      The library replaced a row of buttons pinned under the layer list: the
+      catalogue is long enough now that a searchable dialog beats a column of
+      every name at once. */
   async function addBlock(label) {
     const before = await ids();
-    await page.locator('aside button', { hasText: new RegExp(`^${label}$`) }).first().click();
+    await page.getByRole('button', { name: /add a block/i }).first().click();
+    await page.waitForTimeout(400);
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('button', { hasText: new RegExp(`^${label}`) }).first().click();
     await page.waitForTimeout(2200);
     const id = (await ids()).find((x) => !before.includes(x));
     assert.ok(id, `adding "${label}" created nothing`);
@@ -296,8 +302,10 @@ test('an admin can build a page out of cards, questions and a video', opts, asyn
   /* ── 7. An icon is a choice from a list, and it lands on that card ───── */
   await cardsOf(cards).first().click({ position: { x: 8, y: 8 } });
   await page.waitForTimeout(800);
-  // Open the first card's row in the inspector's item list.
-  const itemRow = page.locator('aside li button[aria-expanded]').first();
+  // Open the first card's row in the inspector's item list. Scoped by name:
+  // the layer tree on the other side of the screen also has expandable rows,
+  // and "the first one on the page" is the wrong one.
+  const itemRow = page.locator('[data-studio-items] li button[aria-expanded]').first();
   await itemRow.click();
   await page.waitForTimeout(500);
 
@@ -446,7 +454,7 @@ test('the navigation and footer are edited once, for the whole site', opts, asyn
   });
 
   await page.goto(`${SITE}/admin/site-studio`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(6000);
 
   /* ── 1. The chrome is a page you can open ───────────────────────────── */
   /* The page selector is a listbox, not a native <select>: open it, then
@@ -454,7 +462,7 @@ test('the navigation and footer are edited once, for the whole site', opts, asyn
   await page.locator('[role="combobox"]').first().click();
   await page.waitForTimeout(500);
   await page.locator('[role="option"]', { hasText: /Header & footer/ }).first().click();
-  await page.waitForTimeout(3500);
+  await page.waitForTimeout(6000);
 
   const frame = page.frameLocator('iframe').first();
   /* The label is marked in the desktop bar AND in the phone menu — the same

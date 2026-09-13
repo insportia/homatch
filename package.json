@@ -16,7 +16,7 @@
     "i18n:all": "node scripts/i18n-check.mjs && node scripts/i18n-keys-check.mjs && node scripts/i18n-audit.mjs",
     "build:harness": "vite build --mode harness",
     "test:mobile": "node --test tests/mobile/mobileOverflow.test.mjs tests/mobile/routeOverflow.test.mjs tests/mobile/chatComposer.test.mjs tests/mobile/formControls.test.mjs tests/mobile/routeHealth.test.mjs tests/mobile/textContrast.test.mjs tests/mobile/shellAndMotion.test.mjs tests/mobile/appShell.test.mjs",
-    "test:studio": "node --test tests/studio/inlineEditing.test.mjs && node --test tests/studio/blocks.test.mjs && node --test tests/studio/translationAndHistory.test.mjs",
+    "test:studio": "node --test tests/studio/inlineEditing.test.mjs && node --test tests/studio/blocks.test.mjs && node --test tests/studio/layers.test.mjs && node --test tests/studio/translationAndHistory.test.mjs",
     "test:browser": "npm run test:mobile && npm run test:studio",
     "test:mobile:setup": "node scripts/setup-mobile-test.mjs",
     "test:surfaces": "npm run build:harness && node --test --test-timeout=2400000 tests/browser/commSurfaces.test.mjs",

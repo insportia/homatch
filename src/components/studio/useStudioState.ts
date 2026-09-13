@@ -15,6 +15,7 @@ import {
   setSuggestion, translationTargets,
   addItem as addChild, duplicateItem as duplicateChild, editItemField,
   moveItem as moveChild, removeItem as removeChild, setItemIcon, setSectionIcon,
+  orderSections, orderItems,
 } from '@/site/model';
 import { SECTION_DEFS, itemsDef, sectionDef } from '@/site/registry';
 import {
@@ -110,11 +111,15 @@ export interface StudioState {
   addItem: (sectionId: string, afterId?: string) => void;
   removeItem: (sectionId: string, itemId: string) => void;
   moveItem: (sectionId: string, itemId: string, delta: number) => void;
+  /** The order a drag produced, applied whole. See orderItems(). */
+  orderChildren: (sectionId: string, ids: readonly string[]) => void;
   duplicateItem: (sectionId: string, itemId: string) => void;
   /** Choose an icon by NAME. `null` returns the slot to the section default. */
   setIcon: (slot: string, name: string | null, itemId?: string) => void;
 
   move: (id: string, delta: number) => void;
+  /** The order a drag produced, applied whole. See orderSections(). */
+  orderSectionIds: (ids: readonly string[]) => void;
   addSection: (type: string, afterId?: string) => void;
   /** Copy a repeatable section, with its content, directly below itself. */
   duplicateSection: (id: string) => void;
@@ -425,6 +430,25 @@ export function useStudioState(): StudioState {
     setDirty(true);
   }, []);
 
+  /*
+   * WHAT A DRAG REPORTS.
+   *
+   * Not "moved from 4 to 2" — the whole order it produced. A drag can cross
+   * several rows, can be cancelled halfway, and can land between two rows
+   * that both moved while it was in flight; turning that into a delta is
+   * arithmetic that is wrong in exactly the cases nobody tests. The model
+   * validates the list as a permutation and refuses anything else, so a
+   * stale drag is a no-op rather than a way to lose a section.
+   */
+  const orderSectionIds = useCallback((ids: readonly string[]) => {
+    edit(prev => orderSections(prev, ids));
+    setDirty(true);
+  }, []);
+
+  const orderChildren = useCallback((sectionId: string, ids: readonly string[]) => {
+    patch(sectionId, s => orderItems(s, ids));
+  }, [patch]);
+
   /**
    * Add a section, optionally directly below an existing one.
    *
@@ -693,8 +717,8 @@ export function useStudioState(): StudioState {
     locale, setLocale, mode, setMode,
     editField,
     editSectionField, setVariant, setTheme, setSpacing, setEnabled, setMedia,
-    editItemText, addItem, removeItem, moveItem, duplicateItem, setIcon,
-    move, addSection, duplicateSection, removeSection, setSeo,
+    editItemText, addItem, removeItem, moveItem, orderChildren, duplicateItem, setIcon,
+    move, orderSectionIds, addSection, duplicateSection, removeSection, setSeo,
     acceptSuggestion, rejectSuggestion, approveLocale,
     translating, translateProgress, runTranslation,
     saving, save, publish, restore, rollback,

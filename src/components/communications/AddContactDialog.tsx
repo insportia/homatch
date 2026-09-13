@@ -23,9 +23,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { createContact } from '@/services/communications';
 import { parsePhone } from '@/lib/comm/phone';
+import { countryOptions, countryLabel } from '@/lib/comm/countries';
 
-/** Countries the product actually operates in, plus the ones its customers call. */
-const COUNTRIES = ['GE', 'US', 'GB', 'DE', 'TR', 'RU', 'UA', 'IL', 'AE', 'AM', 'AZ'];
+/**
+ * Languages are the six the product speaks. Countries are all of them.
+ *
+ * Those are different kinds of list and were briefly the same length. A
+ * language Homatch cannot speak is a language it should not offer; a country
+ * Homatch has never had a customer in is still a country somebody's contact
+ * lives in, and the parser has always been able to handle it.
+ */
 const LANGUAGES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
 
 export function AddContactDialog({
@@ -35,7 +42,10 @@ export function AddContactDialog({
   onOpenChange: (next: boolean) => void;
   onAdded: () => void;
 }) {
-  const { t } = useLanguage();
+  // `uiLocale` is the language the CUSTOMER is reading in, used to name the
+  // countries. `language` below is the language this CONTACT speaks. Two
+  // different things that briefly wanted the same variable name.
+  const { t, lang: uiLocale } = useLanguage();
   const [phone, setPhone] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -43,6 +53,7 @@ export function AddContactDialog({
   const [language, setLanguage] = useState('ka');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const countries = useMemo(() => countryOptions(uiLocale), [uiLocale]);
 
   /* Live, so the customer sees the number resolve as they type rather than
    * finding out it was unusable after pressing Save. */
@@ -126,7 +137,7 @@ export function AddContactDialog({
                 id="ac-country" value={country} onChange={(e) => setCountry(e.target.value)}
                 className="h-9 w-full rounded-md border bg-background px-2 text-sm"
               >
-                {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {countries.map((c) => <option key={c.code} value={c.code}>{countryLabel(c)}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">

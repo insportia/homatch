@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { countryOptions, countryLabel } from '@/lib/comm/countries';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
@@ -52,7 +53,7 @@ const MAPPABLE: ContactField[] = [
 const CONSENT_TERMS_VERSION = '2026-09-v1';
 
 export default function ContactImportPage() {
-  const { t } = useLanguage();
+  const { t, lang: language } = useLanguage();
   const { supaUser: user } = useAuth();
   const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -64,6 +65,7 @@ export default function ContactImportPage() {
   const [prepared, setPrepared] = useState<PreparedRow[]>([]);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [defaultCountry, setDefaultCountry] = useState('GE');
+  const countries = useMemo(() => countryOptions(language), [language]);
   const [duplicateMode, setDuplicateMode] = useState<'SKIP' | 'UPDATE'>('SKIP');
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -343,8 +345,12 @@ export default function ContactImportPage() {
                 <Select value={defaultCountry} onValueChange={onCountryChange}>
                   <SelectTrigger className="h-9 w-[200px] text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {['GE', 'RU', 'TR', 'AM', 'AZ', 'UA', 'IL', 'AE', 'GB', 'US', 'DE'].map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    {/* Every country the phone metadata knows, named in the
+                        reader's language. This was eleven hand-typed codes,
+                        which meant a sheet of Spanish or Brazilian numbers in
+                        local form could not be resolved at all. */}
+                    {countries.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{countryLabel(c)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

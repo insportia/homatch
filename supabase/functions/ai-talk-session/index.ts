@@ -29,6 +29,7 @@ import {
   createCartesiaProvider, cartesiaCredentialsPresent, synthesizeSpeech,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm } from '../_shared/comm/llm.ts';
+import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
 import {
   decideGrant, grantExpiry, shouldEndSession, hashVisitor,
   DEFAULT_TALK_LIMITS, type TalkLimits,
@@ -46,7 +47,7 @@ import { extractDeterministic, scoreLead } from '../_shared/comm/generated/extra
 const HOMATCH_TALK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
 
 interface TalkRequest {
-  action: 'start' | 'heartbeat' | 'end' | 'turn';
+  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe';
   sessionId?: string;
   anonSessionId?: string;
   consumedSeconds?: number;
@@ -58,6 +59,16 @@ interface TalkRequest {
   text?: string;
   /** turn: prior turns, oldest first, so the reply is in context. */
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
+  audioBase64?: string;
+  /**
+   * transcribe: a language to prefer, or absent to let the provider decide.
+   *
+   * Absent is the normal case. A hint is only sent once the conversation has
+   * settled into a language, and even then it is a preference — the provider
+   * is free to disagree, and the script of what comes back has the last word.
+   */
+  languageHint?: string;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -80,6 +91,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   switch (body.action) {
     case 'start':     return await start(sb, req, body, limits, enabled, userId);
     case 'turn':      return await turn(sb, body);
+    case 'transcribe': return await transcribe(sb, body);
     case 'heartbeat': return await heartbeat(sb, body);
     case 'end':       return await end(sb, body);
     default:          return json({ error: 'unknown_action' }, 400);
@@ -237,6 +249,109 @@ async function start(
  * Returns text and audio together so the UI can show the sentence at the same
  * moment it starts speaking it, rather than after.
  */
+/**
+ * One finished utterance, turned into words.
+ *
+ * WHY THE AUDIO COMES HERE INSTEAD OF GOING STRAIGHT TO A PROVIDER
+ *
+ * It used to stream from the browser to Cartesia's STT socket on a scoped
+ * grant. That is a good design and it has one fatal property for this
+ * product: Cartesia will not transcribe Georgian. Asked for language=ka it
+ * drops the socket with no error frame (ink-whisper) or answers
+ * language_not_supported (ink-2), and left to itself it writes Georgian in
+ * Latin letters. Homatch is a Georgia-first product, so the transcription
+ * moves here, to a provider that returns Georgian in Georgian script and
+ * works out the language on its own.
+ *
+ * The audio is transcribed and dropped. Nothing is stored, and the words are
+ * never written to a log.
+ */
+async function transcribe(sb: Sb, body: TalkRequest): Promise<Response> {
+  if (!body.sessionId) return json({ error: 'session_required' }, 400);
+
+  const session = await activeSession(sb, body.sessionId);
+  if ('refusal' in session) return session.refusal;
+
+  if (!transcriptionAvailable()) {
+    logEvent('ai-talk', 'transcribe_not_configured');
+    return json({ ok: false, reason: 'UNAVAILABLE' }, 503);
+  }
+
+  const b64 = String(body.audioBase64 ?? '');
+  if (!b64) return json({ ok: false, reason: 'EMPTY' }, 400);
+  // Roughly a minute of 16 kHz mono PCM. An utterance longer than that is not
+  // an utterance, and this endpoint is reachable by anyone with a session.
+  if (b64.length > 2_800_000) return json({ ok: false, reason: 'TOO_LONG' }, 413);
+
+  let audio: Uint8Array;
+  try {
+    const bin = atob(b64);
+    audio = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) audio[i] = bin.charCodeAt(i);
+  } catch {
+    return json({ ok: false, reason: 'BAD_AUDIO' }, 400);
+  }
+
+  const result = await transcribeSpeech({
+    audio,
+    mime: 'audio/wav',
+    languageHint: body.languageHint ? String(body.languageHint).slice(0, 5) : null,
+  });
+
+  if (!result.ok) {
+    // Sizes and codes, never audio and never words.
+    logEvent('ai-talk', 'transcribe_failed', {
+      sessionId: session.row.id, bytes: audio.byteLength,
+      model: result.model, status: result.status ?? null, detail: result.error ?? null,
+      ms: result.latencyMs,
+    });
+    return json({ ok: false, reason: 'TRANSCRIBE_FAILED' }, 502);
+  }
+
+  // The script of the transcript outranks whatever the provider labelled it.
+  // Georgian is the only thing written in Mkhedruli, and a provider that says
+  // "en" over a line of it is simply wrong.
+  const language = (result.text ? scriptLanguage(result.text) : null) ?? result.language ?? null;
+
+  logEvent('ai-talk', 'transcribe_ok', {
+    sessionId: session.row.id, bytes: audio.byteLength, model: result.model,
+    chars: result.text?.length ?? 0, language, ms: result.latencyMs,
+  });
+
+  return json({
+    ok: true,
+    text: result.text,
+    language,
+    model: result.model,
+    ms: result.latencyMs,
+  });
+}
+
+/**
+ * The session, or the refusal to hand back instead.
+ *
+ * Shared by transcribe and turn so the two cannot drift into disagreeing
+ * about what an expired session is.
+ */
+async function activeSession(
+  sb: Sb, sessionId: string,
+): Promise<{ row: { id: string; turns: number | null } } | { refusal: Response }> {
+  const { data: session } = await sb.from('comm_talk_sessions')
+    .select('id, state, granted_seconds, consumed_seconds, expires_at, created_at, turns')
+    .eq('id', sessionId).maybeSingle();
+
+  if (!session || session.state !== 'ACTIVE') {
+    return { refusal: json({ ok: false, ended: true, reason: 'SESSION_NOT_ACTIVE' }, 409) };
+  }
+  if (Date.parse(String(session.expires_at)) <= Date.now()) {
+    await sb.from('comm_talk_sessions')
+      .update({ state: 'ENDED', ended_at: new Date().toISOString(), ended_reason: 'expired' })
+      .eq('id', session.id);
+    return { refusal: json({ ok: false, ended: true, reason: 'SESSION_EXPIRED' }, 409) };
+  }
+  return { row: { id: String(session.id), turns: session.turns as number | null } };
+}
+
 async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
   if (!body.sessionId) return json({ error: 'session_required' }, 400);
 
@@ -245,19 +360,9 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
 
   // The session is the authorisation. An expired or ended one cannot spend
   // another model call or another second of synthesis.
-  const { data: session } = await sb.from('comm_talk_sessions')
-    .select('id, state, granted_seconds, consumed_seconds, expires_at, created_at, turns')
-    .eq('id', body.sessionId).maybeSingle();
-
-  if (!session || session.state !== 'ACTIVE') {
-    return json({ ok: false, ended: true, reason: 'SESSION_NOT_ACTIVE' }, 409);
-  }
-  if (Date.parse(String(session.expires_at)) <= Date.now()) {
-    await sb.from('comm_talk_sessions')
-      .update({ state: 'ENDED', ended_at: new Date().toISOString(), ended_reason: 'expired' })
-      .eq('id', session.id);
-    return json({ ok: false, ended: true, reason: 'SESSION_EXPIRED' }, 409);
-  }
+  const guard = await activeSession(sb, body.sessionId);
+  if ('refusal' in guard) return guard.refusal;
+  const session = guard.row;
 
   const locale = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
 

@@ -382,15 +382,30 @@ const VerificationCasePage: React.FC = () => {
         </div>
 
         <Tabs defaultValue={initialTab}>
-          {/* Horizontally scrollable on narrow screens rather than wrapping
-              into two rows, which would push content below the fold at 320px. */}
-          <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
+          {/*
+            * A SCROLLING RAIL, NOT FIVE SQUASHED LABELS.
+            *
+            * This markup was already asking for a scroll and not getting one:
+            * the triggers shrank instead of overflowing, so the labels ran
+            * across each other at 390px and below. The trigger is now
+            * `shrink-0` in the primitive, which is what makes the overflow
+            * real; `hm-rail` takes away the scrollbar and makes a flick land
+            * on a tab.
+            *
+            * It is sticky on a phone, because a verification report is long
+            * and the section selector is the thing you want back when you are
+            * four screens deep in evidence. It sits under the app topbar
+            * rather than over the content -- `top-16` is that bar's height.
+            */}
+          <div className="sticky top-16 z-20 -mx-4 bg-background/95 px-4 py-2 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
+          <TabsList className="hm-rail w-full flex-nowrap justify-start overflow-x-auto">
             <TabsTrigger value="summary">{t('dr_tab_summary')}</TabsTrigger>
             <TabsTrigger value="plan">{t('dr_tab_plan')}</TabsTrigger>
             <TabsTrigger value="documents">{t('dr_tab_documents')}</TabsTrigger>
             <TabsTrigger value="ask">{t('dr_tab_ask')}</TabsTrigger>
             <TabsTrigger value="notes">{t('dr_tab_notes')}</TabsTrigger>
           </TabsList>
+          </div>
 
           <TabsContent value="summary" className="mt-5">
             <VerifyResultView

@@ -96,23 +96,63 @@ function ProfileContent() {
     toast.success(t('profile_save_success'));
   };
 
-  // ── Identity (Google vs password) ───────────────────────────
-  const [identities, setIdentities] = useState<string[] | null>(null);
+  /*
+   * ── HOW YOU SIGNED IN ───────────────────────────────────────
+   *
+   * WHY THIS WAS SHOWING AN ERROR
+   *
+   * The only source consulted was `auth.getUserIdentities()`, a network call
+   * to GoTrue that needs a live, unexpired access token and the identity
+   * endpoint enabled. When it fails — an expired token on a tab left open, a
+   * project without identity linking, an offline moment — the page put a red
+   * toast in front of a customer who has done nothing wrong, and `identities`
+   * stayed null forever, which also silently hid the change-password section
+   * from a real password user.
+   *
+   * WHAT IT USES NOW
+   *
+   * The session already carries the answer. `user.identities` is part of the
+   * user object the session was built from, and `app_metadata.providers` is
+   * the list GoTrue itself stamps on the token. Both are already in memory,
+   * cost nothing, and are correct. The network call is kept, because it is
+   * the only thing that notices an identity linked in another tab — but it
+   * is now a REFINEMENT: it may replace what the session said, and if it
+   * fails it changes nothing and says nothing.
+   *
+   * If every source is empty the field falls back to "Email account" rather
+   * than to an error, because an account that exists was created somehow.
+   */
+  const sessionProviders = React.useMemo(() => {
+    const u = session?.user;
+    if (!u) return null;
+    const meta = u.app_metadata as { provider?: string; providers?: string[] } | undefined;
+    const named = [
+      ...(u.identities ?? []).map(i => i.provider),
+      ...(meta?.providers ?? []),
+      ...(meta?.provider ? [meta.provider] : []),
+    ].filter(Boolean);
+    return named.length ? [...new Set(named)] : null;
+  }, [session]);
+
+  const [linked, setLinked] = useState<string[] | null>(null);
   useEffect(() => {
+    let live = true;
     supabase.auth.getUserIdentities().then(({ data, error }) => {
-      if (error) throw error;
-      setIdentities((data?.identities ?? []).map(i => i.provider));
+      if (error || !live) return;
+      const found = (data?.identities ?? []).map(i => i.provider).filter(Boolean);
+      if (found.length) setLinked([...new Set(found)]);
     }).catch((err) => {
-      // Previously unchecked: on failure `identities` stayed null forever,
-      // which makes hasGoogle/hasEmailAuth both silently default to false —
-      // that can hide the "change password" section from a real email/
-      // password user. Surface it instead of failing silently.
-      console.error('[ProfilePage] failed to load identities:', err);
-      toast.error(t('profile_identities_load_error'));
+      // Logged, never surfaced: the session already answered the question.
+      console.warn('[ProfilePage] identity refresh unavailable:', err);
     });
-  }, [session, t]);
+    return () => { live = false; };
+  }, [session]);
+
+  const identities = linked ?? sessionProviders;
   const hasGoogle = identities?.includes('google') ?? false;
-  const hasEmailAuth = identities?.includes('email') ?? false;
+  /* An account with no provider we recognise is still an email account: that
+     is the only way one can exist without a linked identity. */
+  const hasEmailAuth = identities ? identities.includes('email') : true;
 
   // ── Billing ──────────────────────────────────────────────────
   const [creditAccount, setCreditAccount] = useState<CreditAccount | null>(null);
@@ -280,7 +320,13 @@ function ProfileContent() {
                   {t('profile_field_login_method')}
                 </span>
                 <span className="text-foreground text-xs">
-                  {hasGoogle && hasEmailAuth ? t('profile_login_both') : hasGoogle ? t('profile_login_google') : t('profile_login_password')}
+                  {hasGoogle && hasEmailAuth
+                    ? t('profile_login_both')
+                    : hasGoogle
+                      ? t('profile_login_google')
+                      : identities
+                        ? t('profile_login_password')
+                        : t('profile_login_email_account')}
                 </span>
               </div>
               <Separator className="bg-border" />

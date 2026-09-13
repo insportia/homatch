@@ -3626,6 +3626,13 @@ const en = {
   billing_insufficient: 'Not enough Credits for this run.',
   billing_payg_disabled: 'Pay as you go is temporarily unavailable.',
   nav_pricing: 'Pricing',
+  nav_group_workspace: 'Workspace',
+  nav_group_intelligence: 'Intelligence',
+  nav_group_comms: 'Communications',
+  nav_ai_comms: 'AI Communications',
+  nav_account_section: 'Account',
+  nav_account_billing: 'Billing',
+  profile_login_email_account: 'Email account',
 
   // -- Admin pricing simulator --
   admin_sim_title: 'Pricing simulator',
@@ -8309,6 +8316,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   billing_insufficient: 'ამ გაშვებისთვის კრედიტები არ არის საკმარისი.',
   billing_payg_disabled: 'გადახდა მოხმარებისამებრ დროებით მიუწვდომელია.',
   nav_pricing: 'ტარიფები',
+  nav_group_workspace: 'სამუშაო სივრცე',
+  nav_group_intelligence: 'ინტელექტი',
+  nav_group_comms: 'კომუნიკაციები',
+  nav_ai_comms: 'AI კომუნიკაციები',
+  nav_account_section: 'ანგარიში',
+  nav_account_billing: 'ბილინგი',
+  profile_login_email_account: 'ელფოსტის ანგარიში',
 
   // -- Admin pricing simulator --
   admin_sim_title: 'ფასების სიმულატორი',
@@ -12983,6 +12997,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   billing_insufficient: 'Недостаточно кредитов для этого запуска.',
   billing_payg_disabled: 'Оплата по мере использования временно недоступна.',
   nav_pricing: 'Тарифы',
+  nav_group_workspace: 'Рабочая область',
+  nav_group_intelligence: 'Аналитика',
+  nav_group_comms: 'Коммуникации',
+  nav_ai_comms: 'AI-коммуникации',
+  nav_account_section: 'Аккаунт',
+  nav_account_billing: 'Оплата',
+  profile_login_email_account: 'Аккаунт по email',
 
   // -- Admin pricing simulator --
   admin_sim_title: 'Симулятор цен',
@@ -17655,6 +17676,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   billing_insufficient: 'Bu çalıştırma için yeterli Krediniz yok.',
   billing_payg_disabled: 'Kullandıkça öde geçici olarak kullanılamıyor.',
   nav_pricing: 'Fiyatlandırma',
+  nav_group_workspace: 'Çalışma alanı',
+  nav_group_intelligence: 'Zekâ',
+  nav_group_comms: 'İletişim',
+  nav_ai_comms: 'Yapay zekâ iletişimi',
+  nav_account_section: 'Hesap',
+  nav_account_billing: 'Faturalama',
+  profile_login_email_account: 'E-posta hesabı',
 
   // -- Admin pricing simulator --
   admin_sim_title: 'Fiyat simülatörü',
@@ -22327,6 +22355,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   billing_insufficient: 'رصيدك غير كافٍ لهذا التشغيل.',
   billing_payg_disabled: 'الدفع حسب الاستخدام غير متاح مؤقتاً.',
   nav_pricing: 'الأسعار',
+  nav_group_workspace: 'مساحة العمل',
+  nav_group_intelligence: 'الذكاء',
+  nav_group_comms: 'الاتصالات',
+  nav_ai_comms: 'اتصالات الذكاء الاصطناعي',
+  nav_account_section: 'الحساب',
+  nav_account_billing: 'الفوترة',
+  profile_login_email_account: 'حساب بريد إلكتروني',
 
   // -- Admin pricing simulator --
   admin_sim_title: 'محاكي التسعير',
@@ -26999,6 +27034,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   billing_insufficient: 'אין מספיק קרדיטים להרצה הזו.',
   billing_payg_disabled: 'תשלום לפי שימוש אינו זמין כרגע.',
   nav_pricing: 'תמחור',
+  nav_group_workspace: 'סביבת עבודה',
+  nav_group_intelligence: 'מודיעין',
+  nav_group_comms: 'תקשורת',
+  nav_ai_comms: 'תקשורת AI',
+  nav_account_section: 'חשבון',
+  nav_account_billing: 'חיובים',
+  profile_login_email_account: 'חשבון אימייל',
 
   // -- Admin pricing simulator --
   admin_sim_title: 'סימולטור תמחור',

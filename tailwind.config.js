@@ -115,7 +115,12 @@ export default {
                     // The text-safe gold. --gold is 2.6:1 on warm-white and
                     // must never carry type on a light ground; this is 5.7:1.
                     ink: 'hsl(var(--gold-ink))',
-                    soft: 'hsl(var(--gold-soft))'
+                    soft: 'hsl(var(--gold-soft))',
+                    // The pressed state of anything filled with gold, and the
+                    // rule drawn around it. Named so no screen reaches for a
+                    // one-off `bg-[#...]` yellow again.
+                    hover: 'hsl(var(--gold-hover))',
+                    border: 'hsl(var(--gold-border))'
                 },
                 sand: 'hsl(var(--sand))',
                 'ink-soft': 'hsl(var(--ink-soft))',

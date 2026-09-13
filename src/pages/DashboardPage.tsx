@@ -29,7 +29,11 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { HomatchShell } from '@/components/layouts/HomatchShell';
+// The dashboard used to reach for HomatchShell directly, which is why it
+// was the only screen with a sidebar. It now comes through AppLayout like
+// every other authenticated page -- same shell, plus the assistant, the
+// floating button and the mobile bottom nav it was quietly missing.
+import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { HomatchAsk, type AskAction } from '@/components/home/HomatchAsk';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
@@ -450,7 +454,7 @@ function DashboardContent() {
     !loading && !error && data.properties.length === 0 && data.matchTotals.total === 0 && data.verifications.length === 0;
 
   return (
-    <HomatchShell>
+    <AppLayout>
       <div className="space-y-5 md:space-y-6">
         {/* ── 1. Welcome, with the four counts on the same surface ── */}
         <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
@@ -716,7 +720,7 @@ function DashboardContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </HomatchShell>
+    </AppLayout>
   );
 }
 

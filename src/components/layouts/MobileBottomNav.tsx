@@ -27,14 +27,22 @@ export function MobileBottomNav() {
             <Link
               key={item.path}
               to={item.path}
-              className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5"
+              aria-current={active ? 'page' : undefined}
+              className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5"
             >
+              {/* The same gold bar the desktop rail draws beside an active
+                  row, turned on its side. Previously the only signal was
+                  foreground-vs-muted text, which on a phone in daylight is
+                  not a signal. */}
+              {active && (
+                <span className="absolute inset-x-3 top-0 h-1 rounded-b-full bg-gold" aria-hidden="true" />
+              )}
               <item.icon
                 className={`h-5 w-5 ${
                   item.highlight
                     ? 'text-primary'
                     : active
-                    ? 'text-foreground'
+                    ? 'text-gold-ink'
                     : 'text-muted-foreground'
                 }`}
               />
@@ -48,7 +56,7 @@ export function MobileBottomNav() {
                   item.highlight
                     ? 'text-primary'
                     : active
-                    ? 'text-foreground'
+                    ? 'text-gold-ink'
                     : 'text-muted-foreground'
                 }`}
               >

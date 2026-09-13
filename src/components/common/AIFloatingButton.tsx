@@ -1,17 +1,26 @@
 import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Bot } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAssistant } from '@/components/assistant/AssistantContext';
 
 /**
  * Floating "Ask Homatch AI" button shown on all authenticated pages
  * except the AI page itself. Respects RTL layout (AR/HE).
  * On mobile it sits just above the bottom nav bar.
+ *
+ * IT OPENS, IT DOES NOT NAVIGATE.
+ *
+ * This used to call navigate('/ai'). Inside the agent wizard or the campaign
+ * builder that unmounted the route, so asking a question threw away every
+ * unsaved field and reset the step — which made the button something to avoid
+ * precisely where it was most useful. It now opens the assistant over the
+ * current page, which stays mounted and therefore stays filled in.
  */
 export function AIFloatingButton() {
-  const navigate = useNavigate();
   const location = useLocation();
   const { t, isRTL } = useLanguage();
+  const { setOpen } = useAssistant();
 
   // Don't show on the AI page itself
   if (location.pathname === '/ai') return null;
@@ -20,7 +29,7 @@ export function AIFloatingButton() {
     <button
       type="button"
       aria-label={t('ai_floating_label')}
-      onClick={() => navigate('/ai')}
+      onClick={() => setOpen(true)}
       className={[
         'fixed z-40 flex items-center gap-2',
         'bg-primary text-primary-foreground shadow-hover',

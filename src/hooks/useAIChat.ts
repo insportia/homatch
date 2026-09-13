@@ -22,7 +22,7 @@ export interface AIConversation {
 }
 
 export interface PageContext {
-  type: 'property' | 'developer' | 'match' | 'verify' | 'general';
+  type: 'property' | 'developer' | 'match' | 'verify' | 'general' | 'workspace';
   data?: Record<string, unknown>;
 }
 

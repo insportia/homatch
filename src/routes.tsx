@@ -192,7 +192,7 @@ export const routes: RouteConfig[] = [
   { name: 'WhatsApp',          path: '/outreach/whatsapp',        element: <WhatsAppPage /> },
   { name: 'WhatsApp Inbox',    path: '/outreach/whatsapp/inbox',  element: <WhatsAppInboxPage /> },
   { name: 'WhatsApp Templates', path: '/outreach/whatsapp/templates', element: <WhatsAppTemplatesPage />, visible: false },
-  { name: 'Phone Numbers',     path: '/outreach/numbers',         element: <ChannelAccountsPage />, visible: false },
+  { name: 'Phone Numbers',     path: '/outreach/numbers',         element: <ChannelAccountsPage />, visible: true },
   { name: 'Communications Analytics', path: '/outreach/analytics', element: <CommunicationsAnalyticsPage /> },
   { name: 'Communications Billing', path: '/outreach/billing',    element: <CommunicationsBillingPage /> },
   // Admin (wrapped in AdminLayout which enforces is_admin server-side)

@@ -37,7 +37,7 @@ import {
 } from '@/components/communications/primitives';
 import {
   getAgent, updateAgent, generateAgentCopy, publishAgent, previewAgent,
-  requestAgentTestGrant, listVoices,
+  requestAgentTestGrant, listVoices, previewVoice,
 } from '@/services/communications';
 import type { CommAgent } from '@/types/communications';
 import type { VoiceSession, VoiceState } from '@/lib/comm/voiceClient';
@@ -136,6 +136,30 @@ export default function AgentBuilderPage() {
           : 'comm_generate_failed'));
         return;
       }
+      /*
+       * GENERATION MUST NOT QUIETLY EAT WHAT SOMEBODY WROTE.
+       *
+       * This used to patch straight over purpose, introduction, goal and
+       * questions. If the customer had already written a purpose and then
+       * pressed Generate to improve one OTHER field, their sentence was gone
+       * with nothing to bring it back.
+       *
+       * The replacement still happens — that is what the button is for — but
+       * it is announced when it destroyed something, and it is reversible.
+       */
+      const previous = {
+        purpose: draft.purpose,
+        introduction: draft.introduction,
+        primary_goal: draft.primary_goal,
+        qualification_questions: draft.qualification_questions,
+      };
+      const replacedSomething = Boolean(
+        (result.data.purpose && draft.purpose?.trim())
+        || (result.data.introduction && draft.introduction?.trim())
+        || (result.data.primaryGoal && draft.primary_goal?.trim())
+        || (result.data.questions?.length && draft.qualification_questions?.length),
+      );
+
       patch({
         purpose: result.data.purpose ?? draft.purpose,
         introduction: result.data.introduction ?? draft.introduction,
@@ -144,7 +168,19 @@ export default function AgentBuilderPage() {
           ? result.data.questions
           : draft.qualification_questions,
       });
-      toast.success(t('comm_generate_done'));
+
+      if (replacedSomething) {
+        toast.success(t('comm_generate_done'), {
+          description: t('comms_generate_replaced'),
+          duration: 12_000,
+          action: {
+            label: t('comms_generate_undo'),
+            onClick: () => { patch(previous); toast.success(t('comms_generate_restored')); },
+          },
+        });
+      } else {
+        toast.success(t('comm_generate_done'));
+      }
     } finally {
       setGenerating(false);
     }
@@ -527,6 +563,73 @@ function KnowledgeStep({ draft, patch }: { draft: Partial<CommAgent>; patch: (p:
  * Homatch made up would be a claim about a person's voice that nobody can
  * stand behind.
  */
+/**
+ * Play one voice saying one short line.
+ *
+ * §12 forbids inventing a description of how a speaker sounds, which leaves
+ * exactly one honest way to tell a customer what a voice is like: play it.
+ *
+ * Audio is fetched on first press and replayed from cache afterwards, and only
+ * one preview plays at a time — auditioning voices should not turn into three
+ * of them talking over each other.
+ */
+let currentPreview: HTMLAudioElement | null = null;
+
+function VoicePreviewButton({ voiceId, language }: { voiceId: string; language: string }) {
+  const { t } = useLanguage();
+  const [busy, setBusy] = useState(false);
+  const [playing, setPlaying] = useState(false);
+
+  const stop = useCallback(() => {
+    currentPreview?.pause();
+    currentPreview = null;
+    setPlaying(false);
+  }, []);
+
+  useEffect(() => stop, [stop]);
+
+  const play = useCallback(async () => {
+    if (playing) { stop(); return; }
+    setBusy(true);
+    try {
+      const res = await previewVoice(voiceId, language);
+      if (!res.ok) { toast.error(t('comms_voice_preview_failed')); return; }
+      currentPreview?.pause();
+      const audio = new Audio(res.url);
+      currentPreview = audio;
+      audio.onended = () => { setPlaying(false); currentPreview = null; };
+      // This runs inside a click, so autoplay policy permits it. A refusal is
+      // still reported rather than leaving a button stuck mid-state.
+      try {
+        await audio.play();
+        setPlaying(true);
+      } catch {
+        toast.error(t('comms_voice_preview_failed'));
+        setPlaying(false);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [playing, stop, voiceId, language, t]);
+
+  return (
+    <button
+      type="button"
+      onClick={() => void play()}
+      disabled={busy}
+      aria-label={playing ? t('comms_voice_stop') : t('comms_voice_play')}
+      title={playing ? t('comms_voice_stop') : t('comms_voice_play')}
+      className="me-1.5 grid h-8 w-8 shrink-0 place-items-center rounded-md border text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+    >
+      {busy
+        ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        : playing
+        ? <Square className="h-3.5 w-3.5" aria-hidden="true" />
+        : <Play className="h-3.5 w-3.5" aria-hidden="true" />}
+    </button>
+  );
+}
+
 function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: Partial<CommAgent>) => void }) {
   const { t } = useLanguage();
   const [voices, setVoices] = useState<Array<{ id: string; name: string; description: string | null; language: string | null }>>([]);
@@ -572,15 +675,18 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
           {shown.map((v) => {
             const selected = draft.voice_id === v.id;
             return (
-              <li key={v.id}>
+              <li
+                key={v.id}
+                className={cn(
+                  'flex items-center gap-1 rounded-lg border transition-colors',
+                  selected ? 'border-gold bg-gold/[0.06]' : 'hover:border-foreground/20',
+                )}
+              >
                 <button
                   type="button"
                   aria-pressed={selected}
                   onClick={() => patch({ voice_id: v.id, voice_label: v.name })}
-                  className={cn(
-                    'flex w-full items-center justify-between gap-2 rounded-lg border p-2.5 text-start transition-colors',
-                    selected ? 'border-gold bg-gold/[0.06]' : 'hover:border-foreground/20',
-                  )}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-2 p-2.5 text-start"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-xs font-medium">{v.name}</span>
@@ -593,6 +699,12 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
                     {selected ? <Check className="h-3.5 w-3.5 text-gold" aria-hidden="true" /> : null}
                   </span>
                 </button>
+                {/* Hearing the voice is a separate act from choosing it: a
+                    customer should be able to audition three before picking. */}
+                <VoicePreviewButton
+                  voiceId={v.id}
+                  language={draft.languages?.[0] ?? v.language ?? 'en'}
+                />
               </li>
             );
           })}

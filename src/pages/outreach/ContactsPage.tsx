@@ -30,6 +30,7 @@ import {
   formatPhone, relativeTime,
 } from '@/components/communications/primitives';
 import { listContacts } from '@/services/communications';
+import { AddContactDialog } from '@/components/communications/AddContactDialog';
 import type { CommContact } from '@/types/communications';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -43,6 +44,7 @@ export default function ContactsPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -84,7 +86,11 @@ export default function ContactsPage() {
             </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/contacts/import')}>
+            <Button size="sm" className="h-8 gap-1.5" onClick={() => setAdding(true)}>
+              <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('comms_contact_add')}
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/contacts/import')}>
               <Upload className="h-3.5 w-3.5" aria-hidden="true" />
               {t('comms_import_contacts')}
             </Button>
@@ -95,6 +101,12 @@ export default function ContactsPage() {
         </div>
       }
     >
+      <AddContactDialog
+        open={adding}
+        onOpenChange={setAdding}
+        onAdded={() => { setLoading(true); void load(); }}
+      />
+
       {error ? <ErrorState messageKey={error} onRetry={() => { setLoading(true); void load(); }} /> : null}
 
       <KpiRow cols={6}>
@@ -125,7 +137,7 @@ export default function ContactsPage() {
             icon={UserPlus}
             titleKey="comms_contacts_empty"
             bodyKey="comms_contacts_empty_body"
-            action={{ labelKey: 'comms_import_contacts', onClick: () => navigate('/outreach/contacts/import') }}
+            action={{ labelKey: 'comms_contact_add', onClick: () => setAdding(true) }}
           />
         ) : (
           <ScrollTable minWidth={820}>

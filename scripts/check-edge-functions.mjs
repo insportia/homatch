@@ -38,20 +38,46 @@ for (const dir of readdirSync(ROOT)) {
   try {
     if (statSync(index).isFile()) entries.push(index);
   } catch {
-    /* a directory without an index.ts is shared code, not a function */
+    /* a directory without an index.ts is shared code, collected below */
   }
 }
+
+/*
+ * THE SHARED FILES HAVE TO BE PARSED TOO.
+ *
+ * This list used to be entrypoints only, and pass 1 runs with --noResolve,
+ * which means imports are never followed. So a syntax error inside
+ * _shared/**  was invisible: this script printed "all 63 edge functions parse"
+ * while _shared/comm/llm.ts carried an unterminated string literal, and the
+ * first thing that noticed was `supabase functions deploy` failing in
+ * production with "Failed to deploy: comm-agent comm-campaign-launch".
+ *
+ * A gate that reports success over a file that cannot be bundled is worse
+ * than no gate, because it is believed. Every .ts under the functions tree is
+ * parsed now, whether or not anything imports it yet.
+ */
+const shared = [];
+const walkShared = (dir) => {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) { walkShared(full); continue; }
+    if (entry.endsWith('.ts') && !entry.endsWith('.d.ts') && !entries.includes(full)) {
+      shared.push(full);
+    }
+  }
+};
+walkShared(ROOT);
 
 if (entries.length === 0) {
   console.error(`No edge functions found under ${ROOT}/ — refusing to report success.`);
   process.exit(1);
 }
 
-console.log(`[edge-check] parsing ${entries.length} edge function(s)...`);
+console.log(`[edge-check] parsing ${entries.length} edge function(s) and ${shared.length} shared file(s)...`);
 
 const res = spawnSync(
   process.platform === 'win32' ? 'npx.cmd' : 'npx',
-  ['tsc', '--noEmit', '--noResolve', '--allowJs', 'false', '--target', 'esnext', '--module', 'esnext', ...entries],
+  ['tsc', '--noEmit', '--noResolve', '--allowJs', 'false', '--target', 'esnext', '--module', 'esnext', ...entries, ...shared],
   { encoding: 'utf8', shell: process.platform === 'win32' }
 );
 

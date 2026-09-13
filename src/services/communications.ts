@@ -172,6 +172,38 @@ export function requestAgentTestGrant(agentId: string) {
   }>('comm-agent', { action: 'test', agentId });
 }
 
+/**
+ * Real audio for one voice, in one language.
+ *
+ * Synthesised by the server from the same credential the call will use, so
+ * what a customer hears here is what the agent will actually sound like. The
+ * key never reaches the browser; the audio does.
+ *
+ * Previews cost money to generate, so the result is cached for the lifetime of
+ * the page: clicking the same voice twice replays it rather than paying twice.
+ */
+const previewCache = new Map<string, string>();
+
+export async function previewVoice(
+  voiceId: string, language: string,
+): Promise<{ ok: true; url: string } | { ok: false }> {
+  const key = `${voiceId}:${language}`;
+  const cached = previewCache.get(key);
+  if (cached) return { ok: true, url: cached };
+
+  const { data, error } = await supabase.functions.invoke('cartesia-access-token', {
+    body: { action: 'preview', voiceId, language },
+  });
+  if (error) return { ok: false };
+
+  const payload = data as { ok?: boolean; audioBase64?: string; mime?: string };
+  if (!payload?.ok || !payload.audioBase64) return { ok: false };
+
+  const url = `data:${payload.mime ?? 'audio/mpeg'};base64,${payload.audioBase64}`;
+  previewCache.set(key, url);
+  return { ok: true, url };
+}
+
 export async function listVoices(): Promise<Array<{ id: string; name: string; description: string | null; language: string | null }>> {
   const { data, error } = await supabase.functions.invoke('cartesia-access-token', { method: 'GET' });
   if (error) return [];

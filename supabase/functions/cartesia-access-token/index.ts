@@ -23,7 +23,9 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { authenticate, serviceClient, json, preflight, checkRateLimit, logEvent } from '../_shared/comm/auth.ts';
-import { createCartesiaProvider, cartesiaCredentialsPresent, listCartesiaVoices } from '../_shared/comm/cartesia.ts';
+import {
+  createCartesiaProvider, cartesiaCredentialsPresent, listCartesiaVoices, synthesizePreview,
+} from '../_shared/comm/cartesia.ts';
 
 /**
  * Enough for a live test of an agent, short enough that a leaked token is
@@ -34,6 +36,9 @@ const MAX_TTL_SECONDS = 600;
 
 /** A person testing voices does that a handful of times, not a hundred. */
 const MINTS_PER_HOUR = 30;
+
+/** Previews synthesise billable audio, so they are counted separately. */
+const PREVIEWS_PER_HOUR = 60;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return preflight();
@@ -58,6 +63,46 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: true, voices: voices.data });
   }
 
+  // Read the body once: both the preview action and the mint path need it.
+  let body: { ttlSeconds?: number; scopes?: string[]; action?: string; voiceId?: string; language?: string } = {};
+  try { body = await req.json(); } catch { /* an empty body means "the defaults" */ }
+
+  /*
+   * VOICE PREVIEW.
+   *
+   * Choosing a voice from a list of names is choosing blind — §12 forbids
+   * inventing a description of how a speaker sounds, so the only honest way to
+   * tell a customer what a voice sounds like is to let them hear it.
+   *
+   * It shares this endpoint because it shares everything that matters: the
+   * same credential, the same authenticated caller, the same reason the key
+   * must never reach the browser. It gets its OWN rate limit because a preview
+   * synthesises billable audio and a grant does not.
+   */
+  if (body.action === 'preview') {
+    const voiceId = String(body.voiceId ?? '').trim();
+    if (!voiceId) return json({ error: 'voice_required' }, 400);
+
+    const previewLimit = await checkRateLimit(sb, 'cartesia_voice_preview', PREVIEWS_PER_HOUR, 3600, { userId: caller.userId });
+    if (!previewLimit.allowed) {
+      logEvent('cartesia-token', 'preview_rate_limited', { userId: caller.userId });
+      return json({ error: 'rate_limited', retryAfter: previewLimit.retryAfterSeconds }, 429);
+    }
+
+    const audio = await synthesizePreview({ voiceId, language: String(body.language ?? 'en') });
+    if (!audio.ok || !audio.data) {
+      logEvent('cartesia-token', 'preview_failed', {
+        code: audio.error?.code ?? null,
+        status: audio.error?.providerCode ?? null,
+        detail: audio.error?.message ?? null,
+      });
+      return json({ error: 'preview_unavailable' }, 502);
+    }
+
+    logEvent('cartesia-token', 'preview_ok', { model: audio.data.model });
+    return json({ ok: true, audioBase64: audio.data.audioBase64, mime: audio.data.mime });
+  }
+
   const limit = await checkRateLimit(sb, 'cartesia_token_mint', MINTS_PER_HOUR, 3600, { userId: caller.userId });
   if (!limit.allowed) {
     logEvent('cartesia-token', 'rate_limited', { userId: caller.userId });
@@ -66,8 +111,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   let requestedTtl = DEFAULT_TTL_SECONDS;
   let scopes = ['agent'];
-  try {
-    const body = await req.json() as { ttlSeconds?: number; scopes?: string[] };
+  {
     if (Number.isFinite(body?.ttlSeconds)) {
       requestedTtl = Math.min(MAX_TTL_SECONDS, Math.max(30, Math.floor(Number(body.ttlSeconds))));
     }
@@ -77,8 +121,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       scopes = body.scopes.filter((s) => ['agent', 'tts', 'stt'].includes(String(s)));
       if (!scopes.length) scopes = ['agent'];
     }
-  } catch {
-    /* an empty body is the ordinary case and means "the defaults" */
   }
 
   const provider = createCartesiaProvider();

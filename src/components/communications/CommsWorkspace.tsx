@@ -26,7 +26,7 @@ import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, PhoneCall, MessageCircle, Bot, Users, Megaphone,
-  Inbox as InboxIcon, BarChart3, Wallet, Menu, X,
+  Inbox as InboxIcon, BarChart3, Wallet, Menu, X, Hash,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -63,6 +63,10 @@ const NAV: Array<{
   { to: '/outreach/contacts',   labelKey: 'comms_nav_contacts',  icon: Users },
   { to: '/outreach/campaigns',  labelKey: 'comms_nav_campaigns', icon: Megaphone },
   { to: '/outreach/whatsapp/inbox', labelKey: 'comms_nav_inbox', icon: InboxIcon },
+  /* Numbers was routed but not linked from anywhere and marked invisible, so
+   * the identities the product speaks through were unreachable in the product
+   * that speaks through them. */
+  { to: '/outreach/numbers',    labelKey: 'comm_numbers_title',  icon: Hash },
   { to: '/outreach/analytics',  labelKey: 'comms_nav_analytics', icon: BarChart3 },
   { to: '/outreach/billing',    labelKey: 'comms_nav_billing',   icon: Wallet },
 ];

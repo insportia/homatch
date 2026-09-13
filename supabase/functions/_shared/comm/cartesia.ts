@@ -390,3 +390,103 @@ export async function transcribeAudio(params: {
     clearTimeout(timer);
   }
 }
+
+// ── Voice preview ───────────────────────────────────────────────────────────
+
+/**
+ * The sentence a preview speaks.
+ *
+ * Localised, and deliberately about property: a customer choosing a voice for
+ * a real-estate agent is judging how it sounds saying THIS, not how it sounds
+ * reading a pangram. Kept to one short line because previews are synthesised
+ * on demand and every character is billable.
+ */
+const PREVIEW_PHRASE: Record<string, string> = {
+  ka: 'გამარჯობათ, გირეკავთ Homatch-იდან იმ ბინასთან დაკავშირებით, რომელიც დაგაინტერესათ.',
+  en: 'Hello, I am calling from Homatch about the apartment you asked about.',
+  ru: 'Здравствуйте, я звоню из Homatch по поводу квартиры, которой вы интересовались.',
+  tr: 'Merhaba, sorduğunuz daire hakkında Homatch’tan arıyorum.',
+  ar: 'مرحبًا، أتصل بك من Homatch بخصوص الشقة التي سألت عنها.',
+  he: 'שלום, אני מתקשר מ-Homatch בנוגע לדירה ששאלת עליה.',
+};
+
+export function previewPhrase(language: string): string {
+  return PREVIEW_PHRASE[String(language ?? '').toLowerCase()] ?? PREVIEW_PHRASE.en;
+}
+
+/**
+ * Synthesise the preview line in one voice.
+ *
+ * WHY THE MODEL IS A LIST
+ *
+ * Cartesia names its TTS models by generation and retires them, and this
+ * repository has never called /tts/bytes before, so there is no model id here
+ * that production has ever proved. Rather than hardcode one guess and ship a
+ * feature that silently does nothing, each candidate is tried in order and the
+ * one the provider accepts is reported back to the caller, which records it.
+ * A credential or rate-limit refusal stops the loop immediately — a different
+ * model id cannot fix either of those.
+ */
+const TTS_MODELS = ['sonic-3', 'sonic-2', 'sonic-english', 'sonic'];
+
+export async function synthesizePreview(params: {
+  voiceId: string;
+  language: string;
+}): Promise<ProviderResult<{ audioBase64: string; mime: string; model: string }>> {
+  const transcript = previewPhrase(params.language);
+  let last: ProviderResult<never>['error'] | undefined;
+
+  for (const model of TTS_MODELS) {
+    const started = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const res = await fetch(`${CARTESIA_API}/tts/bytes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${requireSecret('CARTESIA_API_KEY')}`,
+          'Cartesia-Version': CARTESIA_VERSION,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model_id: model,
+          transcript,
+          voice: { mode: 'id', id: params.voiceId },
+          language: String(params.language ?? 'en').toLowerCase(),
+          output_format: { container: 'mp3', encoding: 'mp3', sample_rate: 44100, bit_rate: 128000 },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        last = classifyCartesia(res.status, body);
+        // Not a schema problem: another model id will fail identically.
+        if (last?.code === 'AUTH' || last?.code === 'RATE_LIMIT') break;
+        continue;
+      }
+
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (!bytes.length) { last = { code: 'UNKNOWN', message: 'provider returned no audio', retryable: false }; continue; }
+
+      // Chunked so a long clip cannot blow the argument limit on spread.
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+
+      return {
+        ok: true, sideEffect: 'COMMITTED', latencyMs: Date.now() - started,
+        data: { audioBase64: btoa(binary), mime: 'audio/mpeg', model },
+      };
+    } catch (e) {
+      const aborted = (e as Error)?.name === 'AbortError';
+      last = { code: aborted ? 'TIMEOUT' : 'TRANSIENT', message: String((e as Error)?.message ?? e), retryable: true };
+      if (aborted) break;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return { ok: false, sideEffect: 'NONE', error: last ?? { code: 'UNKNOWN', message: 'no model accepted', retryable: false } };
+}

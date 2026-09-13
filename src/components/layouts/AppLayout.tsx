@@ -6,6 +6,8 @@ import { parentRouteFor } from '@/lib/backNavigation';
 import { AppHeader } from './AppHeader';
 import { MobileBottomNav } from './MobileBottomNav';
 import { AIFloatingButton } from '@/components/common/AIFloatingButton';
+import { AssistantProvider } from '@/components/assistant/AssistantContext';
+import { AssistantDrawer } from '@/components/assistant/AssistantDrawer';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface AppLayoutProps {
@@ -79,6 +81,9 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
    * can also use h-full instead of guessing at the header height.
    */
   return (
+    /* The provider wraps the whole shell so the floating button, the drawer and
+     * whatever page is mounted in <main> all share one assistant. */
+    <AssistantProvider>
     <div
       className={hidePadding
         ? 'flex h-[100dvh] w-full flex-col overflow-hidden bg-background'
@@ -104,6 +109,8 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
       </main>
       {session && <MobileBottomNav />}
       {session && <AIFloatingButton />}
+      {session && <AssistantDrawer />}
     </div>
+    </AssistantProvider>
   );
 }

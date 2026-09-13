@@ -129,6 +129,31 @@ export default function ChannelAccountsPage() {
             </ScrollTable>
           )}
 
+          {/*
+            * PROCUREMENT, STATED HONESTLY.
+            *
+            * Buying a number from inside the product needs a provider that can
+            * search purchasable inventory and quote a real cost. Nothing
+            * configured here does: the telephony provider lists the numbers the
+            * account already owns and has no inventory-search endpoint at all.
+            *
+            * So this says so. It does NOT render a catalogue of numbers that
+            * cannot be bought, and it does not print a price that no provider
+            * quoted — an invented price is worse than an absent one, because a
+            * customer can act on it.
+            */}
+          <Card>
+            <CardContent className="p-4">
+              <h2 className="text-sm font-semibold">{t('comms_numbers_buy_title')}</h2>
+              <p className="mt-1 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                {t('comms_numbers_buy_body')}
+              </p>
+              <p className="mt-2 text-[13px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                {t('comms_numbers_capability_note')}
+              </p>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardContent className="p-4">
               <h2 className="text-sm font-semibold">{t('comm_numbers_production_title')}</h2>

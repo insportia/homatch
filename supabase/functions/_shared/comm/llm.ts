@@ -165,8 +165,7 @@ function responseText(p: {
       if (c?.type === 'output_text' && c.text) parts.push(c.text);
     }
   }
-  return parts.join('
-').trim();
+  return parts.join('\n').trim();
 }
 
 /**

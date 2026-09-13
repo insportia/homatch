@@ -131,6 +131,22 @@ export default function CampaignBuilderPage() {
         if (campaignId) {
           const existing = await getCampaign(campaignId);
           if (existing) { setCampaign(existing); setDraft(existing); }
+        } else {
+          /*
+           * "Create campaign" from an agent lands here with ?agent=<id>, so the
+           * agent the customer was just looking at is already chosen.
+           *
+           * The id is checked against the agents this account can actually
+           * see — listAgents() is owner-scoped — rather than written into the
+           * draft because it appeared in the address bar. A campaign carrying
+           * someone else's agent_id would be refused by the foreign key and the
+           * launch gate anyway, but a URL parameter should never get as far as
+           * the draft in the first place.
+           */
+          const wanted = params.get('agent');
+          if (wanted && agentRows.some((a) => a.id === wanted)) {
+            setDraft((d) => ({ ...d, agent_id: wanted }));
+          }
         }
       } catch {
         setError('comm_campaigns_load_failed');
@@ -138,6 +154,7 @@ export default function CampaignBuilderPage() {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
   const patch = useCallback((next: Partial<CommCampaign>) => setDraft((d) => ({ ...d, ...next })), []);

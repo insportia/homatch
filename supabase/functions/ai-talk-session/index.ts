@@ -477,6 +477,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           system: publicDemoInstructions(replyLanguage),
           user,
           maxTokens: 120,
+          // Two spoken sentences is about 60 tokens; the rest is headroom for
+          // reasoning. A model left with room for 1,200 writes 1,200, and the
+          // visitor waits through every one of them being spoken aloud.
+          maxOutputTokens: 520,
           timeoutMs: 20_000,
         })) {
           if (event.type === 'error') { failed = event.error ?? 'llm'; break; }
@@ -495,11 +499,11 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           // the visitor is waiting on. Later ones are longer, because by then
           // the voice is already playing and a longer phrase sounds better
           // than a chopped one.
-          let phrase = takePhrase(pending, spoken.length === 0 ? 14 : 45);
+          let phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
           while (phrase) {
             speakPhrase(phrase);
             pending = pending.slice(phrase.length);
-            phrase = takePhrase(pending, spoken.length === 0 ? 14 : 45);
+            phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
           }
         }
 
@@ -570,10 +574,23 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
  * clause of sixty words with no punctuation at all, and waiting for a full
  * stop that never arrives would hold the voice back for the whole reply.
  */
-function takePhrase(buffer: string, minChars: number): string {
+function takePhrase(buffer: string, minChars: number, opening = false): string {
   if (buffer.length < minChars) return '';
 
-  const TERMINATORS = ['.', '!', '?', '…', '։', '؟', '۔', ';', ':', '\n'];
+  /*
+   * The opening phrase may end on a comma or a dash.
+   *
+   * "გასაგებია," and "Да," are how a person actually begins answering, and
+   * they are speakable on their own. Waiting for the first full stop instead
+   * costs the whole first sentence — measured at about 1.5 seconds of silence
+   * after the model had already started writing.
+   *
+   * Only the opening: mid-reply, breaking on every comma would chop the voice
+   * into fragments for no gain, because by then it is already speaking.
+   */
+  const TERMINATORS = opening
+    ? ['.', '!', '?', '…', '։', '؟', '۔', ';', ':', ',', '،', '—', '\n']
+    : ['.', '!', '?', '…', '։', '؟', '۔', ';', ':', '\n'];
   let best = -1;
   for (const t of TERMINATORS) {
     const at = buffer.indexOf(t, minChars - 1);
@@ -949,6 +966,9 @@ function publicDemoInstructions(language: string): string {
     'project risk. Property verification, the public registry, extracts, encumbrances. Purchase and',
     'preliminary sale contracts. Districts and how they differ. Price per square metre, rental yield and ROI.',
     'Floors, parking, areas, room counts, and the shell states a flat is sold in.',
+    '',
+    'That is what you can DRAW ON, not an agenda to read out. Never list considerations. When something',
+    'matters, name the ONE that matters most and say why in a few words.',
     '',
     'RULES',
     '- Say you are an AI assistant in your FIRST reply only, in a few words. Never again after that.',

@@ -41,6 +41,17 @@ export function llmAvailable(): boolean {
 interface LlmCallOptions {
   system: string;
   user: string;
+  /**
+   * A hard ceiling on the provider's own budget, bypassing the doubling below.
+   *
+   * The doubling exists because reasoning tokens come out of the same
+   * allowance, and a caller asking for 200 tokens of prose that gets 200
+   * tokens total can spend all of them thinking and return nothing. That is
+   * the right default and the wrong behaviour for a spoken turn, where a
+   * model given room for 1,200 tokens writes 1,200 tokens and the visitor
+   * waits through every one of them being synthesised.
+   */
+  maxOutputTokens?: number;
   /** Forces a JSON object back, so callers never have to scrape prose. */
   json?: boolean;
   maxTokens?: number;
@@ -220,7 +231,7 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
         model,
         instructions: opts.system,
         input: [{ role: 'user', content: opts.user }],
-        max_output_tokens: Math.min(4000, Math.max(1200, budget * 2)),
+        max_output_tokens: opts.maxOutputTokens ?? Math.min(4000, Math.max(1200, budget * 2)),
         reasoning: { effort: 'low' },
         store: false,
         stream: true,

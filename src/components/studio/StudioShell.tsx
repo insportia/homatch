@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { uploadAsset } from '@/services/siteContent';
 import { Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { StructurePanel } from './StructurePanel';
+import { LayersPanel } from './LayersPanel';
 import { Inspector } from './Inspector';
 import { HistoryPanel } from './HistoryPanel';
 import { StudioToolbar } from './StudioToolbar';
@@ -234,7 +234,7 @@ export function StudioShell() {
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,21rem)]">
           <aside className="hidden min-h-0 border-e lg:block">
-            <StructurePanel studio={studio} />
+            <LayersPanel studio={studio} />
           </aside>
 
           <main className="min-h-0 overflow-hidden">

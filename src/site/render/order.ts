@@ -44,13 +44,27 @@ const CONTENT_ONLY: readonly string[] = [];
  * that editing a navigation label is the same act as editing a heading --
  * click the words, type.
  */
+/**
+ * The Developer / B2B page.
+ *
+ * Problem and system are one block: the workflow only makes sense directly
+ * under the thing it answers, and splitting them let an admin reorder them
+ * into a diagram with no question above it.
+ */
+export const DEFAULT_DEVELOPERS_ORDER: readonly string[] = [
+  'dev_hero', 'dev_flow', 'dev_api', 'closing_cta',
+];
+
 export const SHELL_ORDER: readonly string[] = ['site_header', 'site_footer'];
 
 const ORDERS: Readonly<Record<string, readonly string[]>> = {
   home: DEFAULT_HOME_ORDER,
   about: DEFAULT_ABOUT_ORDER,
-  pricing: CONTENT_ONLY,
+  /* The heading. Everything else on /pricing is the live plan catalogue,
+     which is data rather than content, plus whatever an admin adds. */
+  pricing: ['pricing_intro'],
   partners: CONTENT_ONLY,
+  developers: DEFAULT_DEVELOPERS_ORDER,
   mortgage: CONTENT_ONLY,
   privacy: CONTENT_ONLY,
   terms: CONTENT_ONLY,

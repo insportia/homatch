@@ -43,6 +43,7 @@ export type PageSlug =
   | 'about'
   | 'pricing'
   | 'partners'
+  | 'developers'
   | 'mortgage'
   | 'privacy'
   | 'terms'
@@ -60,6 +61,7 @@ export const EDITABLE_PAGES: ReadonlyArray<{ slug: PageSlug; path: string; label
   { slug: 'about', path: '/about', labelKey: 'nav_about' },
   { slug: 'pricing', path: '/pricing', labelKey: 'nav_pricing_page' },
   { slug: 'partners', path: '/partners', labelKey: 'studio_page_partners' },
+  { slug: 'developers', path: '/developers', labelKey: 'studio_page_developers' },
   { slug: 'mortgage', path: '/mortgage', labelKey: 'nav_mortgage' },
   { slug: 'privacy', path: '/privacy', labelKey: 'home_footer_privacy' },
   { slug: 'terms', path: '/terms', labelKey: 'home_footer_terms' },

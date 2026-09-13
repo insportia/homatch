@@ -41,7 +41,7 @@ export function FaqSection() {
 
   if (!intro.written && items.length === 0 && !editing) return null;
 
-  const hairline = dark ? 'border-white/15' : 'border-foreground/12';
+  const hairline = dark ? 'border-white/15' : 'border-foreground/10';
   const q = `text-[16px] font-semibold leading-snug tracking-[-0.01em] ${dark ? 'text-white' : 'text-foreground'}`;
   const a = `mt-3 text-pretty text-[15px] leading-[1.75] ${dark ? 'text-white/70' : 'text-ink-soft'}`;
 

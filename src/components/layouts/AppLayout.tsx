@@ -4,6 +4,7 @@ import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { SmartBack } from '@/components/common/SmartBack';
 import { parentRouteFor } from '@/lib/backNavigation';
 import { AppHeader } from './AppHeader';
+import { HomatchShell } from './HomatchShell';
 import { MobileBottomNav } from './MobileBottomNav';
 import { AIFloatingButton } from '@/components/common/AIFloatingButton';
 import { AssistantProvider } from '@/components/assistant/AssistantContext';
@@ -80,6 +81,51 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
    * no scroll of its own, and owns its bottom spacing — which is how it
    * can also use h-full instead of guessing at the header height.
    */
+  const body = (
+    <>
+      {showBack && (
+        <div className={noPadding ? 'px-4 pb-4 pt-4 md:px-6' : 'pb-4'}>
+          <SmartBack />
+        </div>
+      )}
+      {children}
+    </>
+  );
+
+  /*
+   * ── ONE SHELL FOR THE SIGNED-IN PRODUCT ──────────────────────────────
+   *
+   * This is the fix for "some authenticated pages suddenly show a top
+   * navigation instead of the sidebar". They all did. HomatchShell was
+   * written to be reusable and then used by exactly one page — the dashboard
+   * — while the other twenty-six authenticated screens came through here and
+   * got AppHeader, which is a second complete navigation with ten links of
+   * its own. Verify, Mortgage, Profile, Credits, Activity, the property
+   * flows, the whole of Communications: rail gone, horizontal menu instead.
+   *
+   * Routing the choice through the SESSION rather than through each page
+   * means a screen cannot get it wrong by forgetting, and a new screen is
+   * correct by existing. AppHeader keeps its job for signed-out visitors,
+   * because several of these routes are deliberately public — a visitor can
+   * run a verification or a mortgage calculation without an account, and a
+   * sidebar full of tools they cannot open is not navigation.
+   *
+   * The assistant, the floating button and the mobile bottom nav are fixed
+   * chrome and sit outside the shell's scroll container in both branches.
+   */
+  if (session) {
+    return (
+      <AssistantProvider>
+        <HomatchShell noPadding={noPadding} hidePadding={hidePadding}>
+          {body}
+        </HomatchShell>
+        <MobileBottomNav />
+        <AIFloatingButton />
+        <AssistantDrawer />
+      </AssistantProvider>
+    );
+  }
+
   return (
     /* The provider wraps the whole shell so the floating button, the drawer and
      * whatever page is mounted in <main> all share one assistant. */
@@ -95,21 +141,10 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
           'min-w-0 flex-1 overflow-x-hidden',
           hidePadding ? 'min-h-0' : '',
           !noPadding && !hidePadding ? 'px-4 py-6 md:px-6 md:py-8' : '',
-          // Clears the fixed mobile nav. A full-bleed screen does this
-          // itself, against its own bottom edge.
-          session && !hidePadding ? 'pb-24 md:pb-8' : '',
         ].join(' ')}
       >
-        {showBack && (
-          <div className={noPadding ? 'px-4 pb-4 pt-4 md:px-6' : 'pb-4'}>
-            <SmartBack />
-          </div>
-        )}
-        {children}
+        {body}
       </main>
-      {session && <MobileBottomNav />}
-      {session && <AIFloatingButton />}
-      {session && <AssistantDrawer />}
     </div>
     </AssistantProvider>
   );

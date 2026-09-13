@@ -107,6 +107,8 @@
     --gold: 38 92% 55%;
     --gold-ink: 38 92% 62%;
     --gold-soft: 38 40% 18%;
+    --gold-hover: 38 92% 62%;   /* lifts on a dark ground */
+    --gold-border: 38 70% 40%;
     --sand: 222 18% 14%;
     --ink-soft: 210 15% 70%;
     --gradient-primary: linear-gradient(135deg, hsl(38 92% 55%) 0%, hsl(28 85% 48%) 100%);
@@ -495,9 +497,38 @@
     --input: 0 0% 80%;
     --ring: 38 88% 40%;
 
-    --gold: 38 88% 54%;         /* the brand mark's own gold */
-    --gold-ink: 34 90% 31%;     /* text-safe gold on white */
-    --gold-soft: 0 0% 96%;      /* NEUTRAL — gold never fills a surface here */
+    /* ── THE FOUR GOLDS ────────────────────────────────────────────
+       One token per job, so no screen has to invent a yellow of its own.
+
+         --gold         the brand mark's colour. Fills a control that MATTERS:
+                        the primary CTA, a selected row, an active tab. Black
+                        text goes on it (14.6:1) — never white, never grey.
+         --gold-hover   the same hue, one step down, for the pressed/hover
+                        state of anything filled with --gold.
+         --gold-ink     darkened to 5.6:1 on white. The ONLY gold allowed to
+                        carry text on a light ground.
+         --gold-soft    a QUIET gold surface for backgrounds that should read
+                        as touched-by-gold rather than as the main event.
+
+       WHY --gold-soft CHANGED
+
+       It was `0 0% 96%` — a neutral grey — from a pass that ruled gold out
+       as a surface entirely. The consequence was every "selected" and
+       "active" state in the application: `bg-gold-soft` on a `0 0% 96%`
+       canvas is a 0% colour difference, so a selected card looked exactly
+       like an unselected one, and the accent people described as "washed
+       out, almost invisible" was in fact ABSENT.
+
+       It is now a real gold at 91% lightness. It stays clear of beige by
+       staying SATURATED: beige is a warm hue at low saturation, and 88%
+       saturation at this hue reads unmistakably as gold. It is a background
+       only — text on it is --foreground or --gold-ink, both well past the
+       floor. */
+    --gold: 38 88% 54%;
+    --gold-hover: 38 88% 47%;
+    --gold-ink: 34 90% 31%;
+    --gold-soft: 41 88% 91%;
+    --gold-border: 38 72% 58%;  /* a rule that reads as gold on white */
     --sand: 0 0% 96%;           /* NEUTRAL — kept only so the utility resolves */
     /* The reading colour for long-form body that is not a heading. */
     --ink-soft: 0 0% 16%;
@@ -785,6 +816,19 @@
     );
     animation: hm-scan 1.6s ease-in-out infinite;
   }
+
+  /* A rail you scroll with a thumb, not with a scrollbar.
+     A 15px scrollbar under a 44px tab rail on a phone is a third of the
+     control's height spent on chrome nobody touches; the overflow is still
+     scrollable by drag, wheel and keyboard, and `snap` makes a flick land on
+     a tab rather than between two. */
+  .hm-rail {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    scroll-snap-type: x proximity;
+  }
+  .hm-rail::-webkit-scrollbar { display: none; }
+  .hm-rail > * { scroll-snap-align: start; }
 
   /* AI TALK's answering bars.
      While the agent is speaking there is no amplitude on this side to bind

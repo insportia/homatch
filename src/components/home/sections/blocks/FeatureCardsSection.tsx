@@ -61,7 +61,7 @@ export function FeatureCardsSection() {
               list || steps
                 ? 'flex flex-col gap-px'
                 : 'grid gap-px sm:grid-cols-2 lg:grid-cols-3'
-            } ${dark ? 'bg-white/12' : 'bg-foreground/10'}`}
+            } ${dark ? 'bg-white/10' : 'bg-foreground/10'}`}
           >
             {items.map((item, i) => {
               const Glyph = itemIcon(item, 'glyph', Sparkles);

@@ -34,6 +34,7 @@ import LegacyDealRoomRedirect from './pages/LegacyDealRoomRedirect';
 // is revisited later.
 import PartnersPage from './pages/PartnersPage';
 import PricingPage from './pages/PricingPage';
+import DevelopersPage from './pages/DevelopersPage';
 import AboutPage from './pages/AboutPage';
 // Outreach pages
 import OutreachHubPage from './pages/outreach/OutreachHubPage';
@@ -131,6 +132,15 @@ export const routes: RouteConfig[] = [
   // Public on purpose. A signed-out visitor comparing plans is the whole
   // point of the page, and the plan catalogue is readable by anon.
   { name: 'Pricing',           path: '/pricing',                  element: <PricingPage />,       public: true },
+  /*
+   * HOMATCH FOR DEVELOPERS.
+   *
+   * Public, and composed from registry sections rather than written as JSX,
+   * because it is a commercial offer whose packaging is still being decided
+   * and every sentence on it needs to be changeable without a deploy. See
+   * DevelopersPage for what it deliberately does not claim.
+   */
+  { name: 'Developers',        path: '/developers',               element: <DevelopersPage />,    public: true },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
   // Compatibility only. "Deal Room" was briefly a separate destination; it is

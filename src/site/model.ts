@@ -515,6 +515,43 @@ export function moveSection(page: SitePageContent, id: string, delta: number): S
  * dropping the section: the page is the source of truth, and a stale id
  * from a control the admin clicked must not silently lose the action.
  */
+/**
+ * Put the sections in exactly this order.
+ *
+ * The delta version above answers "one step up"; a drag answers "this whole
+ * order, now". Reconciling a drag into a series of deltas is arithmetic
+ * nobody should have to trust, so the drag reports the order it produced and
+ * this validates it: the ids must be a permutation of the page's own, or the
+ * page is returned untouched. That makes a stale drag — a section deleted in
+ * another tab mid-gesture — a no-op rather than a way to drop content.
+ */
+export function orderSections(page: SitePageContent, ids: readonly string[]): SitePageContent {
+  const byId = new Map(page.sections.map(s => [s.id, s]));
+  if (ids.length !== page.sections.length) return page;
+  const next: SiteSection[] = [];
+  for (const id of ids) {
+    const found = byId.get(id);
+    if (!found) return page;
+    byId.delete(id);
+    next.push(found);
+  }
+  return { ...page, sections: next };
+}
+
+/** The same contract, for a section's children. */
+export function orderItems(section: SiteSection, ids: readonly string[]): SiteSection {
+  const byId = new Map(section.items.map(i => [i.id, i]));
+  if (ids.length !== section.items.length) return section;
+  const next: SiteItem[] = [];
+  for (const id of ids) {
+    const found = byId.get(id);
+    if (!found) return section;
+    byId.delete(id);
+    next.push(found);
+  }
+  return { ...section, items: next };
+}
+
 export function insertSectionAfter(
   page: SitePageContent, type: string, id: string, afterId?: string,
 ): SitePageContent {

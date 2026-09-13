@@ -7,6 +7,8 @@ import { useEntitlements } from '@/hooks/useEntitlements';
 import { PublicHeader, HeaderSpacer, type HeaderLink } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { PageBlocks } from '@/site/render/PageBlocks';
+import { SitePage } from '@/site/render/SitePage';
+import { usePublishedPage } from '@/site/render/usePublishedPage';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { PlanBadge } from '@/components/billing/PlanBadge';
@@ -62,6 +64,9 @@ const INCLUDED_KEY: Record<string, string> = {
 export default function PricingPage() {
   useSurfaceTheme('light');
   const { t } = useLanguage();
+  /* The stored overrides for this page. Null until somebody edits it, and
+     the section then renders the reviewed copy it ships with. */
+  const storedPage = usePublishedPage('pricing');
   const navigate = useNavigate();
   const { homatchUser } = useAuth();
   const ent = useEntitlements();
@@ -142,17 +147,10 @@ export default function PricingPage() {
       <HeaderSpacer />
 
       <main className={`${PAGE} py-12 sm:py-16 lg:py-20`}>
-        <header className="max-w-3xl">
-          <p className="text-[14px] font-medium uppercase tracking-[0.18em] text-gold-ink">
-            {t('nav_pricing')}
-          </p>
-          <h1 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-balance">
-            {t('pricing_page_title')}
-          </h1>
-          <p className="mt-4 text-base sm:text-lg text-muted-foreground text-pretty">
-            {t('pricing_page_sub')}
-          </p>
-        </header>
+        {/* The heading is stored content now; the plan grid below it is
+            still read from the server on every load, so the words and the
+            numbers cannot drift apart. */}
+        <SitePage slug="pricing" content={storedPage} only={['pricing_intro']} />
 
         {loading ? (
           <div className="mt-16 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -194,7 +192,9 @@ export default function PricingPage() {
 
       {/* Blocks added in Site Studio. Renders nothing until
           somebody adds one. */}
-      <PageBlocks slug="pricing" />
+      {/* Everything an admin ADDED, below the plans. The heading is
+          excluded because it has already been rendered above them. */}
+      <PageBlocks slug="pricing" except={['pricing_intro']} />
 
       <SiteFooter />
     </div>

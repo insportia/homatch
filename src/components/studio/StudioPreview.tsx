@@ -32,6 +32,23 @@ import type { SupportedLanguage } from '@/types/types';
  * Intelligence Layers composition is a different layout, not a narrower one.
  */
 
+/*
+ * "DESKTOP" IS THE PANE, AND THE PANE HAS TO STAY WIDE ENOUGH.
+ *
+ * A stated width (1280) was tried here and reverted. It is the more honest
+ * definition — a narrower editor window does not make the website narrower —
+ * but a frame wider than its pane has to be scrolled to, and clicking a
+ * block on the right of the page then means scrolling the pane first. In an
+ * editor whose whole premise is "click the thing you can see", that is a
+ * worse trade than the one it fixes.
+ *
+ * So the pane stays the measure, and the LAYER PANEL's width is the thing
+ * that has to stay modest: at a 1920px browser the frame gets 1040px, and
+ * the site's `lg` breakpoint is 1024. Widening the left panel by two rem put
+ * the frame at 1008 and silently turned the desktop preview into the tablet
+ * one. Anything added to either side panel has to be checked against that
+ * number.
+ */
 export const DEVICE_WIDTHS = [
   { key: 'desktop', width: null as number | null, labelKey: 'studio_device_desktop' },
   { key: 'tablet', width: 834, labelKey: 'studio_device_tablet' },
@@ -195,7 +212,10 @@ function PreviewFrame({
        */
       srcDoc={FRAME_DOC}
       onLoad={attach}
-      className="h-full bg-background shadow-sm ring-1 ring-border"
+      /* shrink-0: the frame is a stated width, and a flex parent narrower
+         than it must scroll rather than squeeze it. Without this the
+         "desktop" preview silently became whatever was left over. */
+      className="h-full shrink-0 bg-background shadow-sm ring-1 ring-border"
       style={{ width: width ? `${width}px` : '100%', border: 0 }}
     >
       {body ? createPortal(children, body) : null}
@@ -360,8 +380,11 @@ export function StudioPreview({
 
   const rtl = forceRTL || RTL_LANGUAGES.includes(locale as SupportedLanguage);
 
+  /* `justify-start` until there is room to centre: a 1280px frame centred in
+     a 1000px pane hides its left edge behind the scroll origin, where no
+     amount of scrolling reaches it. */
   return (
-    <div className="flex h-full justify-center overflow-auto bg-muted/40 p-4">
+    <div className="flex h-full justify-start overflow-auto bg-muted/40 p-4 xl:justify-center">
       <PreviewFrame width={width} rtl={rtl} locale={locale} onBody={setPreviewBody} editing={Boolean(editing && onInlineEdit)}>
         <LanguageOverride lang={locale as SupportedLanguage}>
           <SitePage

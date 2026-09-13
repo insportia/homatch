@@ -249,6 +249,105 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     ],
     media: [{ slot: 'plate', labelKey: 'studio_m_photo' }],
   },
+  /*
+    * THE DEVELOPER / B2B PAGE.
+    *
+    * Three blocks, and every word in them is a field. That matters more here
+    * than anywhere else on the site: the commercial packaging for developers
+    * is still being decided, and an offer that can only be changed by a
+    * deploy is an offer that goes stale between decisions.
+    *
+    * None of them is repeatable. They are the page's own regions, in the
+    * order the argument is made -- problem, system, integrations -- and a
+    * second copy of any one of them would be a page that argues twice.
+    */
+  {
+    type: 'pricing_intro',
+    labelKey: 'studio_sec_pricing_intro',
+    variants: ['default'],
+    themes: [],
+    repeatable: false,
+    fields: [
+      f('eyebrow', 'studio_f_eyebrow', 'nav_pricing'),
+      f('title', 'studio_f_title', 'pricing_page_title'),
+      f('body', 'studio_f_body', 'pricing_page_sub', 'textarea'),
+    ],
+    media: [],
+  },
+  {
+    type: 'dev_hero',
+    labelKey: 'studio_sec_dev_hero',
+    variants: ['default'],
+    themes: [],
+    repeatable: false,
+    fields: [
+      f('eyebrow', 'studio_f_eyebrow', 'mp_dev_eyebrow'),
+      f('title', 'studio_f_title', 'mp_dev_title'),
+      f('body', 'studio_f_body', 'mp_dev_sub', 'textarea'),
+      f('cta', 'studio_f_cta', 'mp_dev_cta'),
+      f('cta_secondary', 'studio_f_cta_secondary', 'devp_hero_cta2'),
+    ],
+    media: [],
+  },
+  {
+    type: 'dev_flow',
+    labelKey: 'studio_sec_dev_flow',
+    variants: ['default'],
+    themes: [],
+    repeatable: false,
+    fields: [
+      f('problem_eyebrow', 'devp_problem_eyebrow', 'devp_problem_eyebrow'),
+      f('problem_title', 'devp_problem_title', 'devp_problem_title'),
+      f('problem_body', 'devp_problem_body', 'devp_problem_body', 'textarea'),
+      f('eyebrow', 'studio_f_eyebrow', 'devp_flow_eyebrow'),
+      f('title', 'studio_f_title', 'devp_flow_title'),
+      f('body', 'studio_f_body', 'devp_flow_body', 'textarea'),
+      f('step_project', 'mp_dev_stage_project', 'mp_dev_stage_project'),
+      f('desc_project', 'devp_step1_d', 'devp_step1_d', 'textarea'),
+      f('step_demand', 'mp_dev_stage_demand', 'mp_dev_stage_demand'),
+      f('desc_demand', 'devp_step2_d', 'devp_step2_d', 'textarea'),
+      f('step_qualify', 'mp_dev_stage_people', 'mp_dev_stage_people'),
+      f('desc_qualify', 'devp_step3_d', 'devp_step3_d', 'textarea'),
+      f('step_reach', 'mp_dev_stage_calls', 'mp_dev_stage_calls'),
+      f('desc_reach', 'devp_step4_d', 'devp_step4_d', 'textarea'),
+      f('step_followup', 'mp_dev_stage_followup', 'mp_dev_stage_followup'),
+      f('desc_followup', 'devp_step5_d', 'devp_step5_d', 'textarea'),
+      f('note', 'studio_f_note', 'devp_demo_note', 'textarea'),
+    ],
+    icons: [
+      { slot: 'step_project', labelKey: 'mp_dev_stage_project' },
+      { slot: 'step_demand', labelKey: 'mp_dev_stage_demand' },
+      { slot: 'step_qualify', labelKey: 'mp_dev_stage_people' },
+      { slot: 'step_reach', labelKey: 'mp_dev_stage_calls' },
+      { slot: 'step_followup', labelKey: 'mp_dev_stage_followup' },
+    ],
+    media: [],
+  },
+  {
+    type: 'dev_api',
+    labelKey: 'studio_sec_dev_api',
+    variants: ['default'],
+    themes: [],
+    repeatable: false,
+    fields: [
+      f('eyebrow', 'studio_f_eyebrow', 'devp_api_eyebrow'),
+      f('title', 'studio_f_title', 'devp_api_title'),
+      f('body', 'studio_f_body', 'devp_api_body', 'textarea'),
+      f('point_feed_t', 'studio_f_title', 'devp_api_eyebrow'),
+      f('point_feed_d', 'studio_f_body', 'devp_api_body', 'textarea'),
+      f('point_connect_t', 'studio_f_title', 'devp_api_eyebrow'),
+      f('point_connect_d', 'studio_f_body', 'devp_api_body', 'textarea'),
+      f('point_control_t', 'studio_f_title', 'devp_api_eyebrow'),
+      f('point_control_d', 'studio_f_body', 'devp_api_body', 'textarea'),
+      f('note', 'studio_f_note', 'devp_api_note', 'textarea'),
+    ],
+    icons: [
+      { slot: 'feed', labelKey: 'devp_api_eyebrow' },
+      { slot: 'connect', labelKey: 'devp_api_eyebrow' },
+      { slot: 'control', labelKey: 'devp_api_eyebrow' },
+    ],
+    media: [],
+  },
   {
     type: 'contract_intelligence',
     labelKey: 'studio_sec_contract',
@@ -534,6 +633,7 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('link_email', 'mp_email_title', 'mp_email_title'),
       f('link_about', 'nav_about', 'nav_about'),
       f('link_partners', 'home_nav_partners', 'home_nav_partners'),
+      f('link_developers', 'mp_nav_developers', 'mp_nav_developers'),
       f('link_privacy', 'home_footer_privacy', 'home_footer_privacy'),
       f('link_terms', 'home_footer_terms', 'home_footer_terms'),
     ],

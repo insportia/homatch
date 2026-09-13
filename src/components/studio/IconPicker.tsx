@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ICON_NAMES, ICON_SET } from '@/site/icons';
 
@@ -35,11 +36,37 @@ export function IconPicker({
   labelKey: string;
 }) {
   const { t } = useLanguage();
+  const [q, setQ] = useState('');
+
+  /*
+   * SEARCH, BECAUSE FORTY-FOUR IS TOO MANY TO SCAN.
+   *
+   * The grid is eight across and scrolls, so most of the set is off screen
+   * and the only way to find "Landmark" was to read every icon in order.
+   * Matching on the NAME rather than on a tag list is deliberate: the name is
+   * the identifier that gets stored, so what an admin types is the thing they
+   * will see again in the field.
+   */
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return ICON_NAMES;
+    return ICON_NAMES.filter(name => name.toLowerCase().includes(needle));
+  }, [q]);
+
+  /* What is on the page right now, drawn rather than named. */
+  const Current = value ? ICON_SET[value] : null;
 
   return (
     <div className="space-y-2 border-b py-4">
       <div className="flex items-center justify-between gap-2">
-        <Label className="text-[15px] font-medium">{t(labelKey)}</Label>
+        <Label className="flex min-w-0 items-center gap-2 text-[15px] font-medium">
+          {Current && (
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded border bg-secondary text-foreground">
+              <Current className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+            </span>
+          )}
+          <span className="min-w-0 truncate">{t(labelKey)}</span>
+        </Label>
         {value && (
           <button
             type="button"
@@ -51,12 +78,20 @@ export function IconPicker({
         )}
       </div>
 
+      <Input
+        value={q}
+        onChange={e => setQ(e.target.value)}
+        placeholder={t('studio_library_search')}
+        aria-label={t('studio_icon_pick')}
+        className="h-8 text-[15px]"
+      />
+
       <div
         role="radiogroup"
         aria-label={t('studio_icon_pick')}
         className="grid max-h-44 grid-cols-8 gap-1 overflow-y-auto rounded-md border p-1.5"
       >
-        {ICON_NAMES.map(name => {
+        {shown.map(name => {
           const Glyph = ICON_SET[name];
           const chosen = value === name;
           return (
@@ -81,6 +116,11 @@ export function IconPicker({
             </button>
           );
         })}
+        {shown.length === 0 && (
+          <p className="col-span-8 px-1 py-3 text-center text-[14px] text-muted-foreground">
+            {t('studio_library_empty')}
+          </p>
+        )}
       </div>
     </div>
   );

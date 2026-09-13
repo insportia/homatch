@@ -109,7 +109,7 @@ export function VideoBlockSection() {
               )}
               <span className="absolute inset-0 bg-[#0D0D0D]/28" aria-hidden="true" />
               <span className="absolute inset-0 grid place-items-center">
-                <span className="grid h-16 w-16 place-items-center rounded-full bg-white/92 text-[#0D0D0D] shadow-[0_8px_30px_rgba(0,0,0,0.28)] transition-transform duration-300 group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none">
+                <span className="grid h-16 w-16 place-items-center rounded-full bg-white/90 text-[#0D0D0D] shadow-[0_8px_30px_rgba(0,0,0,0.28)] transition-transform duration-300 group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none">
                   <Play className="ms-0.5 h-6 w-6 fill-current" strokeWidth={1.5} aria-hidden="true" />
                 </span>
               </span>

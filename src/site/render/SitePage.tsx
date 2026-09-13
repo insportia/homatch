@@ -16,12 +16,14 @@ import { CallCenterSection } from '@/components/home/sections/CallCenterSection'
 import { EmailCampaignsSection } from '@/components/home/sections/EmailCampaignsSection';
 import { AISection } from '@/components/home/sections/AISection';
 import { DeveloperB2BSection } from '@/components/home/sections/DeveloperB2BSection';
+import { DevHeroSection, DevFlowSection, DevApiSection } from '@/components/home/sections/developers';
 import { ClosingCTASection } from '@/components/home/sections/ClosingCTASection';
 import {
   AboutHeroSection, AboutWhatSection, AboutMarketSection,
   AboutSourcesSection, AboutIntlSection, AboutAskSection,
 } from '@/components/home/sections/about';
 import { RichTextSection } from '@/components/home/sections/RichTextSection';
+import { PricingIntroSection } from '@/components/home/sections/PricingIntroSection';
 import {
   FeatureCardsSection, FaqSection, VideoBlockSection,
 } from '@/components/home/sections/blocks';
@@ -64,6 +66,9 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   email_campaign: EmailCampaignsSection,
   homatch_ai: AISection,
   developers: DeveloperB2BSection,
+  dev_hero: DevHeroSection,
+  dev_flow: DevFlowSection,
+  dev_api: DevApiSection,
   closing_cta: ClosingCTASection,
   about_hero: AboutHeroSection,
   about_what: AboutWhatSection,
@@ -72,6 +77,7 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   about_intl: AboutIntlSection,
   about_ask: AboutAskSection,
   rich_text: RichTextSection,
+  pricing_intro: PricingIntroSection,
   feature_cards: FeatureCardsSection,
   faq: FaqSection,
   video_block: VideoBlockSection,
@@ -109,12 +115,34 @@ export interface SitePageProps {
    * attached one did not.
    */
   onSelectMedia?: (sectionId: string, slot: string | null) => void;
+  /*
+   * Render only these section types, or everything except them.
+   *
+   * Needed by pages that are PART JSX and part content. The Pricing page is
+   * the case: its heading is now a section, and it belongs above the plan
+   * grid, while the blocks an admin adds belong below it. One page, two
+   * places, one stored document -- so the page asks for the heading at the
+   * top and for everything else further down, rather than the two fighting
+   * over one mount point.
+   *
+   * The editor passes neither and therefore sees the whole page, which is
+   * what a preview has to be.
+   */
+  only?: readonly string[];
+  except?: readonly string[];
 }
 
-export function SitePage({ slug, content, onSelect, selectedId, editing, onSelectMedia }: SitePageProps) {
+export function SitePage({
+  slug, content, onSelect, selectedId, editing, onSelectMedia, only, except,
+}: SitePageProps) {
   // onSelect is set only by the editor, so it doubles as the signal that
   // hidden sections should still be drawn.
-  const resolved = resolveSections(slug, content, Boolean(onSelect));
+  const all = resolveSections(slug, content, Boolean(onSelect));
+  const resolved = all.filter(({ type }) => {
+    if (only) return only.includes(type);
+    if (except) return !except.includes(type);
+    return true;
+  });
 
   return (
     <>

@@ -76,9 +76,22 @@ export function Reveal({
         setShown(true);
         io.disconnect();
       }
-      // A negative bottom margin so the element finishes arriving as it comes
-      // into view, rather than starting only once it is already fully visible.
-    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.01 });
+      /*
+       * WHERE THE TRIGGER LINE SITS, AND WHY IT MOVED.
+       *
+       * It was -10%, which puts the line 90% of the way down the viewport.
+       * On a phone that fires when roughly eighty pixels of a section has
+       * appeared above the bottom edge — and the animation then runs for
+       * 480ms on a strip of the section the reader has not arrived at yet.
+       * By the time the words are in front of them, the reveal is over.
+       * Technically it ran. Nobody saw it, which is the complaint.
+       *
+       * -30% puts the line at 70% of the viewport, so roughly a third of a
+       * screen of the section is showing before it starts. The reveal then
+       * plays across content the eye is actually on. The 0.6 shortcut above
+       * is the same idea from the other direction, and the two agree.
+       */
+    }, { rootMargin: '0px 0px -30% 0px', threshold: 0.02 });
 
     io.observe(el);
     return () => io.disconnect();

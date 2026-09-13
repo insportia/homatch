@@ -20,6 +20,7 @@ import type {
   UpgradeSavings,
   CreditLot,
   UsageReservation,
+  BillingPlanRow,
 } from '@/types/billing';
 
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
@@ -221,4 +222,48 @@ export function formatCredits(credits: number): string {
   // 13 would misstate what was taken.
   const rounded = Math.round(credits * 100) / 100;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+}
+
+// ── The price card, as an admin edits it ────────────────────────────────────
+//
+// WHY THESE TWO GO THROUGH THE TABLE AND NOT THE EDGE FUNCTION
+//
+// Everything above reads DERIVED answers — a quote, an entitlement, a savings
+// figure — and those are decided server-side precisely so the browser cannot
+// influence them. This is the opposite kind of call: the plan catalogue is
+// input, not output, and the row an admin is editing is the source rather than
+// a rendering of it.
+//
+// The authority is the database. RLS (billing_plans_admin_write) restricts
+// every row to is_admin(), and the column grants decide how much of a row is
+// writable at all: `code`, `config` and the internal margin lever are not,
+// and rows cannot be created or deleted from here. So a non-admin calling
+// this gets no rows, and an admin calling it with extra fields gets a
+// privilege error rather than a silent write. See
+// 20260913130000_billing_plans_admin_can_edit_the_price_card.sql.
+
+/** Every plan, including the disabled ones. Admin-only by RLS. */
+export async function listPlansForAdmin(): Promise<BillingPlanRow[]> {
+  const { data, error } = await supabase
+    .from('billing_plans')
+    .select('code, name, monthly_price_cents, membership_credits_grant, membership_rollover_cap, quality_tier, badge_key, priority_level, marketing_label_key, sort_order, enabled')
+    .order('sort_order', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BillingPlanRow[];
+}
+
+/** The fields an admin may change. Anything absent here is not writable. */
+export type PlanPatch = Partial<Pick<
+  BillingPlanRow,
+  'name' | 'monthly_price_cents' | 'membership_credits_grant'
+  | 'membership_rollover_cap' | 'quality_tier' | 'badge_key'
+  | 'priority_level' | 'marketing_label_key' | 'sort_order'
+>> & { enabled?: boolean };
+
+export async function updatePlan(code: string, patch: PlanPatch): Promise<void> {
+  const { error } = await supabase
+    .from('billing_plans')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('code', code);
+  if (error) throw new Error(error.message);
 }

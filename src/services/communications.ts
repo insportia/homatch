@@ -24,6 +24,7 @@ import type {
   ProviderRouteRow, ProviderReportRow, CommVoiceTuning, AiTalkLimits,
 } from '@/types/communications';
 import { customerFacingComplianceLabel } from '@/lib/comm/vocabulary';
+import { parsePhone } from '@/lib/comm/phone';
 
 export type { AnalyticsFilter, AnalyticsResult } from '@/types/communications';
 
@@ -194,9 +195,29 @@ export async function getCampaign(id: string): Promise<CommCampaign | null> {
   return (data as CommCampaign) ?? null;
 }
 
-export async function createCampaign(input: Partial<CommCampaign>): Promise<CommCampaign | null> {
+/**
+ * Why this returns a reason instead of null.
+ *
+ * It used to be `if (error) return null`, and the Campaign Builder turned that
+ * into "campaign could not be saved" with nothing behind it — which is exactly
+ * how an RLS policy that could never be satisfied survived in production
+ * unnoticed. The database always said precisely what was wrong; this function
+ * was throwing it away.
+ *
+ * The reason returned here is a CODE, not the driver's message: the message
+ * can name policies and columns, and §92 keeps that away from a customer. The
+ * caller maps the code to a sentence; the technical detail goes to the console
+ * for support.
+ */
+export type SaveFailure =
+  | 'NOT_SIGNED_IN' | 'DENIED' | 'INVALID' | 'DUPLICATE' | 'UNAVAILABLE';
+
+export async function createCampaign(
+  input: Partial<CommCampaign>,
+): Promise<{ ok: true; campaign: CommCampaign } | { ok: false; reason: SaveFailure }> {
   const uid = await currentUserId();
-  if (!uid) return null;
+  if (!uid) return { ok: false, reason: 'NOT_SIGNED_IN' };
+
   const { data, error } = await supabase.from('outreach_campaigns').insert({
     owner_id: uid,
     name: input.name ?? 'Untitled campaign',
@@ -204,8 +225,27 @@ export async function createCampaign(input: Partial<CommCampaign>): Promise<Comm
     status: 'DRAFT',
     ...stripReadOnly(input as Record<string, unknown>),
   }).select('*').maybeSingle();
-  if (error) return null;
-  return data as CommCampaign;
+
+  if (error) return { ok: false, reason: classifyWriteError(error) };
+  if (!data) return { ok: false, reason: 'UNAVAILABLE' };
+  return { ok: true, campaign: data as CommCampaign };
+}
+
+/**
+ * PostgREST/Postgres codes that mean something a customer can act on.
+ *
+ * 42501 and the RLS violation both mean "not yours"; 23502/23514/22P02 mean the
+ * row was malformed; 23505 is a duplicate. Everything else is ours to fix, so
+ * it degrades to UNAVAILABLE rather than inventing an explanation.
+ */
+function classifyWriteError(error: { code?: string; message?: string }): SaveFailure {
+  const code = String(error?.code ?? '');
+  const msg = String(error?.message ?? '');
+  if (import.meta.env?.DEV) console.error('[comm] write rejected', code, msg);
+  if (code === '42501' || /row-level security/i.test(msg)) return 'DENIED';
+  if (code === '23505') return 'DUPLICATE';
+  if (code === '23502' || code === '23514' || code === '22P02' || code === '23503') return 'INVALID';
+  return 'UNAVAILABLE';
 }
 
 export async function updateCampaign(id: string, patch: Partial<CommCampaign>): Promise<boolean> {
@@ -420,6 +460,91 @@ export async function listChannelAccounts(): Promise<CommChannelAccount[]> {
 }
 
 // ── Contacts ────────────────────────────────────────────────────────────────
+
+/**
+ * The list a manually-added contact lands in.
+ *
+ * outreach_contacts.list_id is NOT NULL — a contact cannot exist outside a
+ * list — which is why "Add contact" could not simply insert a row. Rather than
+ * make every customer invent a list before they can type one phone number,
+ * manual additions go to a single reusable list, created on first use.
+ */
+const MANUAL_LIST_NAME = 'Added manually';
+
+export async function ensureManualList(): Promise<string | null> {
+  const uid = await currentUserId();
+  if (!uid) return null;
+
+  const { data: existing } = await supabase.from('outreach_contact_lists')
+    .select('id').eq('owner_id', uid).eq('name', MANUAL_LIST_NAME).limit(1).maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const { data, error } = await supabase.from('outreach_contact_lists').insert({
+    owner_id: uid,
+    name: MANUAL_LIST_NAME,
+    source_format: 'MANUAL',
+    import_status: 'COMPLETED',
+  }).select('id').maybeSingle();
+  if (error || !data) return null;
+  return data.id as string;
+}
+
+export interface NewContactInput {
+  phone: string;
+  full_name?: string;
+  email?: string;
+  language?: string;
+  country?: string;
+  notes?: string;
+  listId?: string;
+}
+
+/**
+ * Add one contact by hand.
+ *
+ * The phone is parsed BEFORE the insert, with parsePhone() — the same parser
+ * the import path uses, so a number typed here and the same number imported
+ * from a sheet become one identity rather than two. A number that will not
+ * resolve is refused here, where the customer can fix it, rather than stored
+ * and discovered later by a call that does not connect.
+ */
+export async function createContact(
+  input: NewContactInput,
+): Promise<{ ok: true; contact: CommContact } | { ok: false; reason: SaveFailure | 'BAD_PHONE' | 'DUPLICATE' }> {
+  const uid = await currentUserId();
+  if (!uid) return { ok: false, reason: 'NOT_SIGNED_IN' };
+
+  const parsed = parsePhone(input.phone, input.country ?? null);
+  if (!parsed.e164) return { ok: false, reason: 'BAD_PHONE' };
+
+  const listId = input.listId ?? await ensureManualList();
+  if (!listId) return { ok: false, reason: 'UNAVAILABLE' };
+
+  // Same person, already here? Report it rather than creating a second row
+  // that will be dialled separately.
+  const { data: dupe } = await supabase.from('outreach_contacts')
+    .select('id').eq('owner_id', uid).eq('phone', parsed.e164).limit(1).maybeSingle();
+  if (dupe?.id) return { ok: false, reason: 'DUPLICATE' };
+
+  const { data, error } = await supabase.from('outreach_contacts').insert({
+    owner_id: uid,
+    list_id: listId,
+    phone: parsed.e164,
+    phone_valid: parsed.valid,
+    full_name: input.full_name?.trim() || null,
+    email: input.email?.trim()?.toLowerCase() || null,
+    language: input.language || null,
+    country: parsed.country ?? input.country ?? null,
+    notes: input.notes?.trim() || null,
+  }).select('*').maybeSingle();
+
+  if (error) {
+    const reason = classifyWriteError(error);
+    return { ok: false, reason: reason === 'DUPLICATE' ? 'DUPLICATE' : reason };
+  }
+  if (!data) return { ok: false, reason: 'UNAVAILABLE' };
+  return { ok: true, contact: data as CommContact };
+}
 
 export async function listContacts(params: {
   listId?: string; search?: string; stage?: string; page?: number; pageSize?: number;

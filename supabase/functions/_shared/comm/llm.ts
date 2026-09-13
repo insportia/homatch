@@ -32,7 +32,7 @@ import { requireSecret, hasSecret, providerFetch } from './contracts.ts';
  * exists so a missing settings row degrades to something that works rather
  * than to nothing.
  */
-const DEFAULT_MODEL = Deno.env.get('OPENAI_FAST_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-4o-mini';
+const DEFAULT_MODEL = Deno.env.get('OPENAI_FAST_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-5.6-luna';
 
 export function llmAvailable(): boolean {
   return hasSecret('OPENAI_API_KEY');
@@ -57,6 +57,8 @@ interface LlmResult {
   outputTokens: number;
   model: string;
   error?: string;
+  /** Provider HTTP status, for admin diagnostics. Never shown to a customer. */
+  status?: string | number | null;
 }
 
 /**
@@ -74,7 +76,21 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
 
   if (!llmAvailable()) return { ...empty, error: 'no_api_key' };
 
-  const res = await providerFetch('https://api.openai.com/v1/chat/completions', {
+  // WHY THE RESPONSES API AND NOT chat/completions
+  //
+  // This file used to POST to /v1/chat/completions with `max_tokens` and an
+  // explicit `temperature`. Both are rejected by the model this project
+  // actually runs: OPENAI_MODEL is documented in docs/COGS_PRICING.md as the
+  // report model and is a gpt-5.6-*, which takes `max_completion_tokens` and
+  // refuses a non-default temperature. So every call from this file — agent
+  // generation, stage 4 of the domain gate, transcript extraction, WhatsApp
+  // drafting — was failing against the configured model while the rest of the
+  // product talked to the same key perfectly well through /v1/responses.
+  //
+  // There is now ONE OpenAI surface in this codebase, and it is the one
+  // homatch-ai has been using in production all along.
+  const budget = opts.maxTokens ?? 600;
+  const res = await providerFetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${requireSecret('OPENAI_API_KEY')}`,
@@ -82,24 +98,45 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
     },
     body: JSON.stringify({
       model,
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: Math.min(2000, opts.maxTokens ?? 600),
-      ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
-      messages: [
-        { role: 'system', content: opts.system },
-        { role: 'user', content: opts.user },
-      ],
+      instructions: opts.system,
+      input: [{ role: 'user', content: opts.user }],
+      // Reasoning tokens are drawn from this same budget. The callers here ask
+      // for 200-800 tokens of CONTENT; handing that straight to
+      // max_output_tokens let a reasoning model spend the entire allowance
+      // thinking and return an empty string, which is the other half of why
+      // "Generate with AI" failed intermittently rather than cleanly.
+      max_output_tokens: Math.min(4000, Math.max(1200, budget * 2)),
+      reasoning: { effort: 'low' },
+      store: false,
+      // `temperature` is deliberately NOT sent: reasoning models reject any
+      // non-default value, and a call that 400s is less deterministic than a
+      // call that varies slightly. Determinism here comes from json mode and
+      // from prompts that state the schema.
+      ...(opts.json ? { text: { format: { type: 'json_object' } } } : {}),
     }),
     timeoutMs: opts.timeoutMs ?? 20_000,
   });
 
-  if (!res.ok) return { ...empty, error: res.error?.code ?? 'UNKNOWN' };
+  if (!res.ok) {
+    return { ...empty, error: res.error?.code ?? 'UNKNOWN', status: res.error?.providerCode ?? null };
+  }
 
   const payload = res.json as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    output_text?: string;
+    output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
+    status?: string;
+    incomplete_details?: { reason?: string };
+    usage?: { input_tokens?: number; output_tokens?: number };
   };
-  const text = payload?.choices?.[0]?.message?.content ?? null;
+
+  const text = responseText(payload);
+
+  // An answer that ran out of room is not an answer. Saying so lets the caller
+  // fall back deliberately instead of saving a truncated half-sentence.
+  if (!text && payload?.status === 'incomplete') {
+    return { ...empty, error: `incomplete:${payload.incomplete_details?.reason ?? 'unknown'}` };
+  }
+
   let parsed: unknown = null;
   if (opts.json && text) {
     try { parsed = JSON.parse(text); } catch { parsed = null; }
@@ -107,12 +144,29 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
 
   return {
     ok: true,
-    text,
+    text: text || null,
     parsed,
-    inputTokens: payload?.usage?.prompt_tokens ?? 0,
-    outputTokens: payload?.usage?.completion_tokens ?? 0,
+    inputTokens: payload?.usage?.input_tokens ?? 0,
+    outputTokens: payload?.usage?.output_tokens ?? 0,
     model,
   };
+}
+
+/** The Responses API returns either a flattened string or a content tree. */
+function responseText(p: {
+  output_text?: string;
+  output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
+}): string {
+  if (typeof p?.output_text === 'string' && p.output_text) return p.output_text;
+  const parts: string[] = [];
+  for (const item of p?.output ?? []) {
+    if (item?.type !== 'message') continue;
+    for (const c of item.content ?? []) {
+      if (c?.type === 'output_text' && c.text) parts.push(c.text);
+    }
+  }
+  return parts.join('
+').trim();
 }
 
 /**

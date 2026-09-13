@@ -140,7 +140,11 @@ async function start(
     await sb.from('comm_talk_sessions')
       .update({ state: 'ABORTED', ended_at: new Date().toISOString(), ended_reason: 'no_base_agent' })
       .eq('id', session.id);
-    logEvent('ai-talk', 'base_agent_unavailable', { code: baseAgent.error?.code ?? null });
+    logEvent('ai-talk', 'base_agent_unavailable', {
+      code: baseAgent.error?.code ?? null,
+      status: baseAgent.error?.providerCode ?? null,
+      detail: baseAgent.error?.message ?? null,
+    });
     return json({ ok: false, reason: 'PROVIDER_ERROR', userMessage: 'UNAVAILABLE' }, 502);
   }
 
@@ -161,7 +165,11 @@ async function start(
     await sb.from('comm_talk_sessions')
       .update({ state: 'ABORTED', ended_at: new Date().toISOString(), ended_reason: 'provider_unavailable' })
       .eq('id', session.id);
-    logEvent('ai-talk', 'mint_failed', { code: grant.error?.code ?? null });
+    logEvent('ai-talk', 'mint_failed', {
+      code: grant.error?.code ?? null,
+      status: grant.error?.providerCode ?? null,
+      detail: grant.error?.message ?? null,
+    });
     return json({ ok: false, reason: 'PROVIDER_ERROR', userMessage: 'UNAVAILABLE' }, 502);
   }
 

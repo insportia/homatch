@@ -145,6 +145,48 @@ export function createCartesiaProvider(): RealtimeProvider {
  * The id is cached in admin_settings so this costs one API call ever, not one
  * per session.
  */
+/**
+ * The placeholder identity of the stored agent.
+ *
+ * Written defensively rather than left blank so that a session which somehow
+ * fails to override it still behaves inside the product boundary.
+ */
+const BASE_INSTRUCTIONS =
+  'You are a real-estate assistant for Homatch. Speak briefly. Never state a price, '
+  + 'an address, availability or any legal or financial fact you have not been given.';
+
+/**
+ * Keep Cartesia's own reason for refusing an agent-create.
+ *
+ * The blanket rule (§74) is that a provider error body is never retained,
+ * because provider errors echo the request and requests carry phone numbers.
+ * THIS request carries no customer data at all — a fixed name and a fixed
+ * instruction string — so the schema complaint is safe to keep, and without it
+ * an admin sees "UNKNOWN" and has nothing to act on.
+ */
+function classifyCartesia(status: number, body: string): ProviderResult<never>['error'] {
+  if (status === 401 || status === 403) {
+    return { code: 'AUTH', message: 'the provider rejected our credentials', retryable: false, providerCode: status };
+  }
+  if (status === 429) {
+    return { code: 'RATE_LIMIT', message: 'the provider is rate limiting us', retryable: true, providerCode: status };
+  }
+  if (status >= 500) {
+    return { code: 'TRANSIENT', message: `provider returned ${status}`, retryable: true, providerCode: status };
+  }
+  let detail = '';
+  try {
+    const j = JSON.parse(body) as { title?: string; message?: string };
+    detail = [j?.title, j?.message].filter(Boolean).join(': ').slice(0, 300);
+  } catch { detail = body.slice(0, 200); }
+  return {
+    code: 'UNKNOWN',
+    message: `provider returned ${status}${detail ? ` — ${detail}` : ''}`,
+    retryable: false,
+    providerCode: status,
+  };
+}
+
 export async function ensureBaseAgent(
   sb: { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: { value?: unknown } | null }> } }; upsert: (v: unknown, o?: unknown) => Promise<unknown> } },
   defaults: { voiceId?: string | null; language?: string } = {},
@@ -157,32 +199,64 @@ export async function ensureBaseAgent(
     return { ok: true, sideEffect: 'NONE', data: { agentId: cached, created: false } };
   }
 
-  const res = await providerFetch(`${CARTESIA_API}/v1/agents`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${requireSecret('CARTESIA_API_KEY')}`,
-      'Cartesia-Version': CARTESIA_AGENTS_VERSION,
-      'Content-Type': 'application/json',
+  // WHAT THE STORED AGENT IS FOR, AND WHY IT IS NEARLY EMPTY
+  //
+  // Every session overrides instructions, voice and language in the websocket
+  // start frame. The stored agent is a handle, not a configuration — so the
+  // create request should carry the minimum the API requires and nothing
+  // speculative.
+  //
+  // It used to send a full nested config: initial_message: null, an empty
+  // audio.output (voice_id was `undefined`, which JSON.stringify drops), a
+  // model object and language: { primary: 'ka' }. Cartesia rejected it with a
+  // 4xx, ensureBaseAgent returned UNKNOWN, and ai-talk-session turned that
+  // into PROVIDER_ERROR/UNAVAILABLE — which is why AI Talk and the agent
+  // browser test could not start at all. admin_settings has never held a
+  // cartesia_base_agent_id, so this request has never once succeeded.
+  //
+  // Each candidate below is a strictly smaller request than the one before.
+  // The first that the provider accepts wins, and whichever it is, the shape
+  // is recorded so this stops being guesswork the next time the API moves.
+  const candidates: Array<{ shape: string; body: Record<string, unknown> }> = [
+    {
+      shape: 'minimal',
+      body: { name: 'Homatch', config: { instructions: BASE_INSTRUCTIONS } },
     },
-    body: JSON.stringify({
-      name: 'Homatch',
-      config: {
-        // A placeholder, overridden on every connect. It is written
-        // defensively rather than left blank so that a session which somehow
-        // fails to override still behaves within the product boundary.
-        instructions: 'You are a real-estate assistant for Homatch. Speak briefly. Never state a price, '
-          + 'an address, availability or any legal or financial fact you have not been given.',
-        initial_message: null,
-        model: { id: 'sonic-agent', temperature: 0.4 },
-        language: { primary: defaults.language ?? 'en' },
-        audio: {
-          input: { noise_suppression: 'auto' },
-          output: { voice_id: defaults.voiceId ?? undefined },
-        },
+    {
+      shape: 'with_model',
+      body: {
+        name: 'Homatch',
+        config: { instructions: BASE_INSTRUCTIONS, model: { id: 'sonic-agent' } },
       },
-    }),
-    timeoutMs: 15_000,
-  });
+    },
+    {
+      shape: 'name_only',
+      body: { name: 'Homatch' },
+    },
+  ];
+
+  let res!: Awaited<ReturnType<typeof providerFetch>>;
+  let shape = '';
+  for (const candidate of candidates) {
+    shape = candidate.shape;
+    res = await providerFetch(`${CARTESIA_API}/v1/agents`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${requireSecret('CARTESIA_API_KEY')}`,
+        'Cartesia-Version': CARTESIA_AGENTS_VERSION,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(candidate.body),
+      timeoutMs: 15_000,
+    }, classifyCartesia);
+
+    if (res.ok) break;
+    // A credential or rate-limit problem is not a schema problem: a smaller
+    // body will not fix it, and retrying twice more only wastes the caller's
+    // time and the provider's patience.
+    const code = res.error?.code;
+    if (code === 'AUTH' || code === 'RATE_LIMIT' || code === 'TIMEOUT') break;
+  }
 
   if (!res.ok) return { ok: false, sideEffect: 'NONE', latencyMs: res.latencyMs, error: res.error };
 
@@ -195,7 +269,11 @@ export async function ensureBaseAgent(
   }
 
   await sb.from('admin_settings').upsert(
-    { key: SETTING_KEY, value: agentId, description: 'Base Cartesia agent; per-session prompt and voice are sent in the websocket start frame.' },
+    {
+      key: SETTING_KEY,
+      value: agentId,
+      description: `Base Cartesia agent (accepted shape: ${shape}); per-session prompt and voice are sent in the websocket start frame.`,
+    },
     { onConflict: 'key' },
   );
 

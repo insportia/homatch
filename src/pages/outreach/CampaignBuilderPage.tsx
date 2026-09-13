@@ -47,6 +47,20 @@ type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
  * because a WhatsApp call and a PSTN call reach different people under
  * different rules.
  */
+/**
+ * What a save failure means to the person who pressed Save.
+ *
+ * Codes come from the service, which classifies the Postgres error. None of
+ * these sentences names a table, a policy or a column.
+ */
+const SAVE_FAILURE_MESSAGE: Record<string, TKey> = {
+  NOT_SIGNED_IN: 'comm_save_signed_out',
+  DENIED:        'comm_save_denied',
+  INVALID:       'comm_save_invalid',
+  DUPLICATE:     'comm_save_duplicate',
+  UNAVAILABLE:   'comm_save_failed',
+};
+
 const CHANNEL_CHOICES: Array<{
   code: string;
   icon: typeof Phone;
@@ -128,16 +142,31 @@ export default function CampaignBuilderPage() {
 
   const patch = useCallback((next: Partial<CommCampaign>) => setDraft((d) => ({ ...d, ...next })), []);
 
+  /**
+   * Saving a DRAFT is not launching.
+   *
+   * A draft is configuration. It must persist whether or not the channel is
+   * activated, whether or not pricing is live, and whether or not there is any
+   * credit — none of those are conditions on writing a row. The money gate
+   * lives on launch, and only there.
+   *
+   * The failure path used to be `if (!created) toast('could not be saved')`,
+   * which is how an RLS policy that could never be satisfied stayed invisible.
+   * The reason now reaches the customer as a sentence they can act on.
+   */
   const persist = useCallback(async (): Promise<string | null> => {
     if (campaignId) {
       await updateCampaign(campaignId, draft);
       return campaignId;
     }
     const created = await createCampaign(draft);
-    if (!created) { toast.error(t('comm_save_failed')); return null; }
-    setCampaign(created);
-    setParams({ id: created.id, step }, { replace: true });
-    return created.id;
+    if (!created.ok) {
+      toast.error(t(SAVE_FAILURE_MESSAGE[created.reason] ?? 'comm_save_failed'));
+      return null;
+    }
+    setCampaign(created.campaign);
+    setParams({ id: created.campaign.id, step }, { replace: true });
+    return created.campaign.id;
   }, [campaignId, draft, step, setParams, t]);
 
   const goTo = useCallback(async (next: Step) => {

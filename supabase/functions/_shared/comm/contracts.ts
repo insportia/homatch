@@ -278,11 +278,14 @@ function defaultClassify(status: number, body: string): ProviderResult<never>['e
   }
   return {
     code: 'UNKNOWN',
-    // Truncated deliberately: provider error bodies echo the request, and the
-    // request contains a phone number (§74).
+    // The body is NOT forwarded: provider error bodies echo the request, and
+    // the request contains a phone number (§74). The status is carried
+    // instead — it is the one fact that identifies the failure without
+    // repeating anything we sent, and without it an admin sees only
+    // "UNKNOWN", which is what made the AI Talk outage undiagnosable.
     message: `provider returned ${status}`,
     retryable: false,
-    providerCode: body.slice(0, 0) || null,
+    providerCode: status,
   };
 }
 

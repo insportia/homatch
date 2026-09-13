@@ -4664,6 +4664,10 @@ const en = {
   comms_cb_sms_body: 'The older text channel. Kept for lists where WhatsApp does not reach.',
   comm_lead_stage: 'Stage',
   comm_templates: 'Templates',
+  comm_save_signed_out: "Your session ended. Sign in again to save this.",
+  comm_save_denied: "You do not have permission to save this.",
+  comm_save_invalid: "Some required details are missing or not valid.",
+  comm_save_duplicate: "This already exists.",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -9246,6 +9250,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   comms_cb_sms_body: 'ძველი ტექსტური არხი. შენარჩუნებულია იმ სიებისთვის, სადაც WhatsApp ვერ აღწევს.',
   comm_lead_stage: 'ეტაპი',
   comm_templates: 'შაბლონები',
+  comm_save_signed_out: "სესია დასრულდა. შესანახად ხელახლა შედით სისტემაში.",
+  comm_save_denied: "ამის შენახვის უფლება არ გაქვთ.",
+  comm_save_invalid: "ზოგიერთი აუცილებელი ველი აკლია ან არასწორია.",
+  comm_save_duplicate: "ეს უკვე არსებობს.",
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -13819,6 +13827,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   comms_cb_sms_body: 'Старый текстовый канал. Оставлен для списков, куда не доходит WhatsApp.',
   comm_lead_stage: 'Этап',
   comm_templates: 'Шаблоны',
+  comm_save_signed_out: "Сеанс завершён. Войдите снова, чтобы сохранить.",
+  comm_save_denied: "У вас нет прав на сохранение.",
+  comm_save_invalid: "Некоторые обязательные поля не заполнены или неверны.",
+  comm_save_duplicate: "Это уже существует.",
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -18390,6 +18402,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   comms_cb_sms_body: 'Eski metin kanalı. WhatsApp’ın ulaşmadığı listeler için tutuldu.',
   comm_lead_stage: 'Aşama',
   comm_templates: 'Şablonlar',
+  comm_save_signed_out: "Oturumunuz sona erdi. Kaydetmek için tekrar giriş yapın.",
+  comm_save_denied: "Bunu kaydetme izniniz yok.",
+  comm_save_invalid: "Bazı zorunlu bilgiler eksik veya geçersiz.",
+  comm_save_duplicate: "Bu zaten mevcut.",
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -22961,6 +22977,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   comms_cb_sms_body: 'قناة نصية أقدم. أُبقيت للقوائم التي لا يصلها واتساب.',
   comm_lead_stage: 'المرحلة',
   comm_templates: 'القوالب',
+  comm_save_signed_out: "انتهت جلستك. سجّل الدخول مرة أخرى للحفظ.",
+  comm_save_denied: "ليس لديك إذن لحفظ هذا.",
+  comm_save_invalid: "بعض التفاصيل المطلوبة ناقصة أو غير صالحة.",
+  comm_save_duplicate: "هذا موجود بالفعل.",
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -27532,6 +27552,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   comms_cb_sms_body: 'ערוץ הטקסט הישן. נשמר לרשימות שוואטסאפ לא מגיע אליהן.',
   comm_lead_stage: 'שלב',
   comm_templates: 'תבניות',
+  comm_save_signed_out: "ההפעלה הסתיימה. היכנסו שוב כדי לשמור.",
+  comm_save_denied: "אין לכם הרשאה לשמור זאת.",
+  comm_save_invalid: "חלק מהפרטים הנדרשים חסרים או אינם תקינים.",
+  comm_save_duplicate: "זה כבר קיים.",
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

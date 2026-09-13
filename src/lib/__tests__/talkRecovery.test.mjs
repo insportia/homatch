@@ -128,3 +128,26 @@ test('the server records a conversation that never happened as ABORTED', () => {
     'the daily allowance must keep excluding aborted sessions, or this downgrade buys the visitor nothing',
   );
 });
+
+test('the panel claims no landmark that belongs to the page', () => {
+  /*
+   * A <footer> inside the hero is the page's FIRST footer.
+   *
+   * Which is how "the footer" came to mean "the Start talking button" to
+   * everything that goes looking for one — a Site Studio regression caught
+   * it asserting the site footer and finding a voice control. A screen
+   * reader would have made exactly the same mistake, and nobody would have
+   * filed that.
+   *
+   * The panel is a region. The region is the <section> it already is.
+   */
+  const src = read(PANEL);
+  const markup = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+
+  for (const tag of ['footer', 'header', 'main', 'nav', 'aside']) {
+    assert.ok(
+      !new RegExp(`<${tag}[\s>]`).test(markup),
+      `<${tag}> inside the panel takes a landmark that belongs to the page`,
+    );
+  }
+});

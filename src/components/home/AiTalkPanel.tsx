@@ -417,8 +417,16 @@ export function AiTalkPanel({ className }: { className?: string }) {
         )}
         aria-live="polite"
       >
-        {/* One quiet line: what it is doing, and how long is left. */}
-        <header className="flex shrink-0 items-center justify-between px-4 pt-3.5">
+        {/*
+          A plain div, not <header>.
+
+          A landmark element inside the hero makes this panel's status line
+          the page's first banner and its control row the page's first
+          FOOTER — which is how "the footer" came to mean "the Start talking
+          button" to everything that looks for one, including a screen
+          reader. The panel is a region, and the region is the <section>.
+        */}
+        <div className="flex shrink-0 items-center justify-between px-4 pt-3.5">
           <span className="flex min-w-0 items-center gap-2">
             <span
               className={cn(
@@ -439,7 +447,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
               {String(remaining % 60).padStart(2, '0')}
             </span>
           ) : null}
-        </header>
+        </div>
 
         {/* The voice itself. */}
         <div className={cn(
@@ -470,7 +478,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
         {intelligence && live ? <IntelligenceStrip data={intelligence} /> : null}
 
         {/* Controls. Three at most, ever. */}
-        <footer className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-4 pb-[max(0.875rem,env(safe-area-inset-bottom))] pt-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-4 pb-[max(0.875rem,env(safe-area-inset-bottom))] pt-3">
           {live ? (
             <>
               <button
@@ -519,7 +527,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
               ) : null}
             </>
           )}
-        </footer>
+        </div>
 
         {/* The panel names itself for anybody reading it with a screen reader,
             and for the Site Studio field map. It is not a badge a visitor

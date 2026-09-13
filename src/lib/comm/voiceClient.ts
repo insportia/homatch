@@ -210,6 +210,14 @@ export interface VoiceCallbacks {
    */
   onUserTurn: (text: string) => Promise<AssistantTurn | null>;
   /**
+   * Fetch the audio for a sentence that has already been shown.
+   *
+   * Optional. When it is supplied, onUserTurn is expected to return text with
+   * no audio and this is called straight after — which puts the sentence on
+   * screen while the voice is still being synthesised, instead of after.
+   */
+  onSpeak?: (text: string) => Promise<{ audioBase64: string | null; mime?: string; ttsMs?: number | null } | null>;
+  /**
    * Send one finished utterance and get the words back.
    *
    * Injected for the same reason as onUserTurn: this class owns audio and
@@ -244,14 +252,35 @@ export interface VoiceMilestone {
  */
 const SPEECH_RMS = 0.012;
 
-/** Silence that ends an utterance. Long enough to think mid-sentence. */
-const END_SILENCE_MS = 900;
+/**
+ * Silence that ends an utterance.
+ *
+ * Long enough to pause mid-sentence, short enough that it is not most of the
+ * wait. It is the one part of the round trip that costs nothing to shorten,
+ * so it is kept as tight as a natural pause allows.
+ */
+const END_SILENCE_MS = 700;
 
 /** Audio kept from before speech was detected, so no first syllable is lost. */
 const PREROLL_MS = 400;
 
 /** Below this there is nothing worth a provider call — a cough, a door. */
 const MIN_SPEECH_MS = 320;
+
+/**
+ * VOICED audio required before an utterance is sent, as opposed to total
+ * length.
+ *
+ * A clip that is mostly silence with one thump in it is not speech, and
+ * sending it is worse than dropping it: asked to transcribe near-silence with
+ * a vocabulary hint, the model hands the hint back as though somebody had
+ * said it. Observed in production — a 1.2-second clip came back as the
+ * Georgian real-estate glossary, word for word, and went to the assistant as
+ * a sentence the visitor had supposedly spoken.
+ *
+ * The server refuses those too. This stops them being paid for.
+ */
+const MIN_VOICED_MS = 260;
 
 /** A single utterance ceiling, so one long monologue cannot grow unbounded. */
 const MAX_UTTERANCE_MS = 30_000;
@@ -279,6 +308,8 @@ export class VoiceSession {
   private capture: Float32Array[] = [];
   private captureSamples = 0;
   private capturing = false;
+  /** Milliseconds of this utterance that were actually above the speech floor. */
+  private voicedMs = 0;
   /** A rolling window of what came before speech was detected. */
   private preroll: Float32Array[] = [];
   private prerollSamples = 0;
@@ -586,8 +617,10 @@ export class VoiceSession {
         this.capturing = true;
         this.capture = this.preroll.slice();
         this.captureSamples = this.prerollSamples;
+        this.voicedMs = 0;
         this.milestone('first_speech');
       }
+      this.voicedMs += blockMs;
       this.capture.push(block);
       this.captureSamples += block.length;
       this.diag.samplesCaptured += block.length;
@@ -624,6 +657,7 @@ export class VoiceSession {
     this.capture = [];
     this.captureSamples = 0;
     this.capturing = false;
+    this.voicedMs = 0;
     this.preroll = [];
     this.prerollSamples = 0;
   }
@@ -649,7 +683,10 @@ export class VoiceSession {
     this.prerollSamples = 0;
 
     const lengthMs = (samples / TARGET_SAMPLE_RATE) * 1000;
-    if (lengthMs < MIN_SPEECH_MS) return;   // a cough, a chair, a door
+    const voicedMs = this.voicedMs;
+    this.voicedMs = 0;
+    // A cough, a chair, a door — or a room with a fan in it.
+    if (lengthMs < MIN_SPEECH_MS || voicedMs < MIN_VOICED_MS) return;
 
     this.transcribing = true;
     this.marks.speechEndedAtMs = this.lastVoiceAt || Date.now();
@@ -799,20 +836,40 @@ export class VoiceSession {
     this.cb.onTranscript(this.turns);
     this.history.push({ role: 'assistant', content: reply.text });
 
-    if (!reply.audioBase64) {
+    /*
+     * The sentence is on screen by now. The voice is fetched second, on
+     * purpose: thinking and speaking take about the same time, and held
+     * together the visitor watches nothing happen for the sum of both.
+     */
+    let audioBase64 = reply.audioBase64;
+    let mime = reply.mime;
+    if (!audioBase64 && this.cb.onSpeak) {
+      const voice = await this.cb.onSpeak(reply.text).catch(() => null);
+      if (this.closed) return;
+      if (voice?.audioBase64) {
+        audioBase64 = voice.audioBase64;
+        mime = voice.mime ?? mime;
+        this.diag.lastTtsMs = voice.ttsMs ?? null;
+        this.diag.lastAudioBytes = Math.round(audioBase64.length * 0.75);
+      }
+    }
+
+    if (!audioBase64) {
       // Synthesis failed but the sentence is real and already on screen. A
       // silent turn is a degraded conversation; pretending it did not happen
       // would be a broken one.
+      this.diag.lastError = 'VOICE_UNAVAILABLE';
       this.cb.onError?.('VOICE_UNAVAILABLE');
       this.resumeListening();
       this.turnInFlight = false;
+      this.publishDiagnostics();
       return;
     }
 
-    this.milestone('tts_audio_received', reply.audioBase64.length);
+    this.milestone('tts_audio_received', audioBase64.length);
     this.marks.ttsFirstAudioAtMs = Date.now();
     this.cb.onLatency?.(latencyBreakdown(this.marks));
-    await this.speak(reply.audioBase64, reply.mime ?? 'audio/mpeg');
+    await this.speak(audioBase64, mime ?? 'audio/mpeg');
     this.turnInFlight = false;
     this.publishDiagnostics();
   }

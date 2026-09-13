@@ -244,6 +244,10 @@ export function AiTalkPanel({ className }: { className?: string }) {
               action: 'turn',
               sessionId: sessionIdRef.current,
               text,
+              // The sentence comes back on its own and the voice is fetched
+              // straight after, so the reply is readable while it is still
+              // being spoken rather than only once it has been.
+              textOnly: true,
               locale: language,
               // What they are SPEAKING, which is not the page they are
               // reading. The server prefers the script of the sentence itself
@@ -273,6 +277,24 @@ export function AiTalkPanel({ className }: { className?: string }) {
             llmMs: reply.llmMs ?? null,
             ttsMs: reply.ttsMs ?? null,
           };
+        },
+        /* The voice for a sentence already on screen, in Homatch's own voice,
+         * chosen server-side. */
+        onSpeak: async (text) => {
+          if (!sessionIdRef.current) return null;
+          const { data: voice, error: voiceError } = await supabase.functions.invoke('ai-talk-session', {
+            body: {
+              action: 'speak',
+              sessionId: sessionIdRef.current,
+              speakText: text,
+              locale: detectedRef.current ?? language,
+            },
+          });
+          const said = voice as {
+            ok?: boolean; audioBase64?: string | null; mime?: string; ttsMs?: number | null;
+          } | null;
+          if (voiceError || !said?.ok || !said.audioBase64) return null;
+          return { audioBase64: said.audioBase64, mime: said.mime, ttsMs: said.ttsMs ?? null };
         },
       },
     );

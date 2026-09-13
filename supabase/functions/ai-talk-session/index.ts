@@ -45,7 +45,7 @@ import { extractDeterministic, scoreLead } from '../_shared/comm/generated/extra
 const HOMATCH_TALK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
 
 interface TalkRequest {
-  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe';
+  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak';
   sessionId?: string;
   anonSessionId?: string;
   consumedSeconds?: number;
@@ -59,6 +59,17 @@ interface TalkRequest {
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
   audioBase64?: string;
+  /**
+   * turn: return the sentence without waiting for it to be synthesised.
+   *
+   * Thinking and speaking are sequential and cost about the same. Held
+   * together, the visitor sees nothing for the sum of both. Split, the
+   * sentence is on screen while the voice is still being made — which is how
+   * a real conversation behaves, where you see somebody draw breath.
+   */
+  textOnly?: boolean;
+  /** speak: the sentence to synthesise, from the turn that just returned it. */
+  speakText?: string;
   /**
    * transcribe: a language to prefer, or absent to let the provider decide.
    *
@@ -90,6 +101,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'start':     return await start(sb, req, body, limits, enabled, userId);
     case 'turn':      return await turn(sb, body);
     case 'transcribe': return await transcribe(sb, body);
+    case 'speak':     return await speak(sb, body);
     case 'heartbeat': return await heartbeat(sb, body);
     case 'end':       return await end(sb, body);
     default:          return json({ error: 'unknown_action' }, 400);
@@ -386,6 +398,18 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
 
   const llmMs = Date.now() - thoughtAt;
   const text = reply.text.trim().slice(0, 800);
+
+  await sb.from('comm_talk_sessions')
+    .update({ turns: Number(session.turns ?? 0) + 1 })
+    .eq('id', session.id);
+
+  if (body.textOnly) {
+    // The caller will ask for the voice next. Counted as a turn here, so a
+    // caller that never asks cannot get free turns by omitting the second half.
+    logEvent('ai-talk', 'turn_text_ok', { sessionId: session.id, llmMs });
+    return json({ ok: true, text, audioBase64: null, voiceId: HOMATCH_TALK_VOICE_ID, spoken: false, llmMs });
+  }
+
   const spokeAt = Date.now();
 
   const spoken = await synthesizeSpeech({
@@ -411,10 +435,6 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     });
   }
 
-  await sb.from('comm_talk_sessions')
-    .update({ turns: Number(session.turns ?? 0) + 1 })
-    .eq('id', session.id);
-
   logEvent('ai-talk', 'turn_ok', { sessionId: session.id, model: spoken.data.model });
 
   return json({
@@ -427,6 +447,46 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     // Where the time actually went, so a slow turn can be attributed to the
     // half that was slow instead of guessed at.
     llmMs,
+    ttsMs: Date.now() - spokeAt,
+  });
+}
+
+/**
+ * Say a sentence the assistant has already written.
+ *
+ * The second half of a split turn. It takes the text back from the browser
+ * rather than holding it server-side between two requests, which is fine
+ * because the only thing that can be smuggled in here is a sentence to read
+ * aloud in Homatch's own voice, bounded in length, on a live session that is
+ * already spending its own allowance.
+ */
+async function speak(sb: Sb, body: TalkRequest): Promise<Response> {
+  if (!body.sessionId) return json({ error: 'session_required' }, 400);
+
+  const guard = await activeSession(sb, body.sessionId);
+  if ('refusal' in guard) return guard.refusal;
+
+  const text = String(body.speakText ?? '').trim().slice(0, 800);
+  if (!text) return json({ ok: false, reason: 'EMPTY' }, 400);
+
+  const language = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
+  const spokeAt = Date.now();
+  const spoken = await synthesizeSpeech({ voiceId: HOMATCH_TALK_VOICE_ID, language, text });
+
+  if (!spoken.ok || !spoken.data) {
+    logEvent('ai-talk', 'speak_failed', {
+      code: spoken.error?.code ?? null,
+      status: spoken.error?.providerCode ?? null,
+      detail: spoken.error?.message ?? null,
+    });
+    return json({ ok: false, reason: 'VOICE_UNAVAILABLE' }, 502);
+  }
+
+  return json({
+    ok: true,
+    audioBase64: spoken.data.audioBase64,
+    mime: spoken.data.mime,
+    voiceId: HOMATCH_TALK_VOICE_ID,
     ttsMs: Date.now() - spokeAt,
   });
 }
@@ -614,6 +674,8 @@ function publicDemoInstructions(language: string): string {
     '- Talk about property only. If the conversation goes elsewhere, bring it back once, politely,',
     '  and if it does not come back, say this demo is only about property and wrap up.',
     '- People pause mid-sentence. Wait for them to finish rather than answering into a gap.',
+    '- Write the name Homatch in Latin letters, always, in every language. Never transliterate it',
+    '  into Georgian, Cyrillic, Arabic or Hebrew script.',
   ];
 
   if (name === 'Georgian') {

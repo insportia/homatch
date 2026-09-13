@@ -186,3 +186,67 @@ test('the server refuses an utterance too large to be one', () => {
   assert.ok(!/result\.text[^?]/.test(logCall),
     'the transcript must never be written to a log');
 });
+
+test('near-silence never becomes a sentence the visitor did not say', async () => {
+  // Measured in production: a 1.2-second clip came back as the Georgian
+  // real-estate glossary, word for word, and went on to the assistant as
+  // something the visitor had supposedly said. Whisper-family models do this
+  // when there is very little audio and a vocabulary prompt.
+  const { looksLikeHintEcho } =
+    await import('../../../supabase/functions/_shared/comm/transcribe.ts');
+
+  const hint = 'უძრავი ქონება, ბინა, სახლი, კომერციული ფართი, მიწის ნაკვეთი. '
+    + 'თბილისი, ვაკე, საბურთალო, კრწანისი, ორთაჭალა, ისანი. '
+    + 'იპოთეკა, განვადება, ბიუჯეტი, კვადრატული მეტრი, სართული, საძინებელი, პარკინგი.';
+
+  assert.equal(looksLikeHintEcho(hint, hint), true, 'the glossary handed straight back is an echo');
+  assert.equal(
+    looksLikeHintEcho('ბინა, სახლი, კომერციული ფართი, მიწის ნაკვეთი, თბილისი, ვაკე, საბურთალო, კრწანისი', hint),
+    true,
+    'a reordered fragment of the glossary is still an echo',
+  );
+
+  // And a real sentence must survive, even though it is made of the same
+  // vocabulary — that vocabulary is in the hint precisely because people say it.
+  assert.equal(
+    looksLikeHintEcho('გამარჯობა, მინდა ვიყიდო ორსაძინებლიანი ბინა კრწანისში, ბიუჯეტი დაახლოებით ას სამოცი ათასი დოლარი', hint),
+    false,
+    'a real request must not be mistaken for an echo',
+  );
+  // Short answers are never judged: "ბინა" is entirely glossary and entirely valid.
+  assert.equal(looksLikeHintEcho('ბინა', hint), false);
+  assert.equal(looksLikeHintEcho('კი, სწორია', hint), false);
+});
+
+test('an utterance must contain real voiced audio before it is paid for', () => {
+  const src = read(CLIENT);
+  assert.ok(/const MIN_VOICED_MS = \d+;/.test(src), 'voiced audio should have its own floor');
+  assert.ok(
+    /voicedMs < MIN_VOICED_MS/.test(src),
+    'total length is not enough — a clip that is mostly silence with one thump in it is not speech',
+  );
+});
+
+test('the sentence is shown before the voice is fetched', () => {
+  const src = read(CLIENT);
+  assert.ok(/onSpeak/.test(src), 'there should be a second call for the audio');
+  const at = src.indexOf('if (!audioBase64 && this.cb.onSpeak)');
+  assert.ok(at > 0, 'the split was removed');
+  // The assistant turn must already be in the transcript by the time audio is
+  // requested, or the split buys nothing.
+  assert.ok(
+    src.indexOf("this.milestone('assistant_text'") < at,
+    'the sentence must reach the transcript before the audio request starts',
+  );
+});
+
+test('a split turn is still counted once, before either half can be skipped', () => {
+  const src = read(SESSION);
+  const at = src.indexOf('if (body.textOnly)');
+  assert.ok(at > 0, 'the text-only branch is gone');
+  const before = src.slice(src.indexOf('const llmMs = Date.now() - thoughtAt;'), at);
+  assert.ok(
+    /turns: Number\(session\.turns \?\? 0\) \+ 1/.test(before),
+    'the turn must be counted before the early return, or omitting the second half buys free turns',
+  );
+});

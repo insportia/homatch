@@ -88,6 +88,31 @@ export function transcriptionAvailable(): boolean {
   return hasSecret('OPENAI_API_KEY');
 }
 
+/**
+ * Did the model hand the vocabulary hint back as if somebody had said it?
+ *
+ * Whisper-family models do this on near-silence: given very little audio and
+ * a prompt, they return the prompt. Observed in production on a 1.2-second
+ * clip — the "transcript" was the Georgian real-estate glossary below, word
+ * for word, and it went on to the assistant as a sentence the visitor had
+ * supposedly spoken.
+ *
+ * Word overlap rather than substring matching, because the echo is not always
+ * verbatim: it comes back reordered and re-punctuated. A real sentence about
+ * a flat in Krtsanisi shares a handful of words with the glossary; an echo
+ * shares nearly all of them.
+ */
+export function looksLikeHintEcho(text: string, hint: string): boolean {
+  const words = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2);
+  const said = words(text);
+  // Short answers cannot be judged this way and do not need to be: "ბინა"
+  // overlaps the glossary completely and is a perfectly good thing to say.
+  if (said.length < 8) return false;
+  const known = new Set(words(hint));
+  const shared = said.filter((w) => known.has(w)).length;
+  return shared / said.length >= 0.75;
+}
+
 export interface TranscribeOptions {
   audio: Uint8Array;
   /** The container actually sent. WAV is what the browser produces here. */
@@ -148,7 +173,8 @@ async function callOnce(
     form.append('file', new Blob([opts.audio.slice()], { type: opts.mime ?? 'audio/wav' }), 'speech.wav');
     form.append('model', model);
     form.append('response_format', model === FALLBACK_MODEL ? 'verbose_json' : 'json');
-    form.append('prompt', [GEORGIAN_REAL_ESTATE_HINT, opts.hint ?? ''].filter(Boolean).join(' ').slice(0, 900));
+    const prompt = [GEORGIAN_REAL_ESTATE_HINT, opts.hint ?? ''].filter(Boolean).join(' ').slice(0, 900);
+    form.append('prompt', prompt);
     if (opts.languageHint) form.append('language', opts.languageHint.slice(0, 5));
 
     const res = await fetch(ENDPOINT, {
@@ -174,7 +200,12 @@ async function callOnce(
       };
     }
 
-    const text = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+    let text = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+    if (text && looksLikeHintEcho(text, prompt)) {
+      // Treated as silence, which is what it was. Reporting it as a failure
+      // would show an error for a visitor who simply said nothing.
+      text = '';
+    }
     const language = typeof parsed.language === 'string' ? normaliseLanguage(parsed.language) : null;
 
     return {

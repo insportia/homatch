@@ -96,6 +96,14 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
   const [state, setState] = useState<VoiceState>('IDLE');
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
+  /**
+   * The last thing that went wrong mid-conversation.
+   *
+   * Separate from `state`, because most of these are RECOVERABLE: one turn
+   * failed and the session is still listening. Folding them into the state
+   * machine would end a conversation that is still alive.
+   */
+  const [failure, setFailure] = useState<string | null>(null);
   const [level, setLevel] = useState(0);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [intelligence, setIntelligence] = useState<Intelligence | null>(null);
@@ -104,6 +112,8 @@ export function AiTalkPanel({ className }: { className?: string }) {
   const sessionRef = useRef<VoiceSession | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const grantedRef = useRef<number>(0);
+  /** Sent with each turn so the reply is in context. Bounded to recent turns. */
+  const historyRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const heartbeatRef = useRef<number | null>(null);
   const turnsRef = useRef<TranscriptTurn[]>([]);
 
@@ -136,6 +146,8 @@ export function AiTalkPanel({ className }: { className?: string }) {
     setState('CONNECTING');
     setTurns([]);
     setIntelligence(null);
+    setFailure(null);
+    historyRef.current = [];
 
     const { data, error } = await supabase.functions.invoke('ai-talk-session', {
       body: { action: 'start', locale: language },
@@ -143,10 +155,13 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
     const grant = data as {
       ok?: boolean; sessionId?: string; grantedSeconds?: number; token?: string;
-      agentId?: string; instructions?: string; userMessage?: string;
+      voiceId?: string; userMessage?: string;
     } | null;
 
-    if (error || !grant?.ok || !grant.token || !grant.agentId) {
+    // No agentId to check any more: there is no provider-side agent in this
+    // path. The token is the only thing the browser needs, and it is scoped to
+    // transcription alone.
+    if (error || !grant?.ok || !grant.token) {
       // §92/§134: a friendly outcome, never a raw API exception, and the hero
       // does not break.
       setState(grant?.userMessage === 'LIMIT_REACHED' ? 'LIMIT_REACHED' : 'PROVIDER_ERROR');
@@ -163,10 +178,6 @@ export function AiTalkPanel({ className }: { className?: string }) {
     const session = new Session(
       {
         token: grant.token,
-        agentId: grant.agentId,
-        systemPrompt: grant.instructions ?? '',
-        firstMessage: '',
-        voiceId: null,
         primaryLanguage: language,
         maxDurationSec: grantedRef.current,
       },
@@ -176,7 +187,43 @@ export function AiTalkPanel({ className }: { className?: string }) {
         onLanguage: (lang) => setDetectedLanguage(lang),
         onLevel: (l) => setLevel(l),
         onSecondsConsumed: (consumed) => setRemaining(Math.max(0, grantedRef.current - consumed)),
-        onError: () => { /* the state callback already carried it */ },
+        onError: (code) => setFailure(code),
+        /*
+         * One turn: their sentence out, our sentence and our voice back.
+         *
+         * The reply and the audio arrive together, from the server, which is
+         * what makes the assistant transcript possible at all — and what makes
+         * the voice ours rather than a provider default.
+         */
+        onUserTurn: async (text) => {
+          if (!sessionIdRef.current) return null;
+          const { data: turn, error: turnError } = await supabase.functions.invoke('ai-talk-session', {
+            body: {
+              action: 'turn',
+              sessionId: sessionIdRef.current,
+              text,
+              locale: language,
+              history: historyRef.current.slice(-8),
+            },
+          });
+          const reply = turn as {
+            ok?: boolean; text?: string; audioBase64?: string | null; mime?: string; voiceId?: string;
+          } | null;
+          if (turnError || !reply?.ok || !reply.text) return null;
+
+          historyRef.current = [
+            ...historyRef.current,
+            { role: 'user' as const, content: text },
+            { role: 'assistant' as const, content: reply.text },
+          ].slice(-12);
+
+          return {
+            text: reply.text,
+            audioBase64: reply.audioBase64 ?? null,
+            mime: reply.mime,
+            voiceId: reply.voiceId,
+          };
+        },
       },
     );
 
@@ -255,6 +302,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
             level={level}
             turns={turns}
             detectedLanguage={detectedLanguage}
+            failure={failure}
           />
         )}
       </div>
@@ -357,8 +405,11 @@ function RestingFace({
 }
 
 function LiveFace({
-  state, level, turns, detectedLanguage,
-}: { state: VoiceState; level: number; turns: TranscriptTurn[]; detectedLanguage: string | null }) {
+  state, level, turns, detectedLanguage, failure,
+}: {
+  state: VoiceState; level: number; turns: TranscriptTurn[];
+  detectedLanguage: string | null; failure: string | null;
+}) {
   const { t } = useLanguage();
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -382,23 +433,58 @@ function LiveFace({
         {turns.length === 0 ? (
           <p className="pt-4 text-center text-[13px] text-white/40">{t('talk_say_something')}</p>
         ) : turns.map((turn) => (
-          <p
-            key={turn.id}
-            className={cn(
-              'text-[13px] leading-relaxed',
-              turn.speaker === 'USER' ? 'text-white/85' : 'text-gold/90',
-              // A partial is visibly provisional, because it is about to be
-              // replaced by a better version of itself (§24).
-              !turn.final && 'text-white/45 italic',
-            )}
-          >
-            {turn.text}
-          </p>
+          /* Named, because a conversation with two voices and one colour is a
+             wall of text. The label is what makes it read as a dialogue. */
+          <div key={turn.id} className="min-w-0">
+            <p
+              className={cn(
+                'text-2xs font-semibold uppercase tracking-wide',
+                turn.speaker === 'USER' ? 'text-white/40' : 'text-gold/60',
+              )}
+            >
+              {turn.speaker === 'USER' ? t('talk_speaker_you') : t('ai_title')}
+            </p>
+            <p
+              className={cn(
+                'text-[13px] leading-relaxed [overflow-wrap:anywhere]',
+                turn.speaker === 'USER' ? 'text-white/85' : 'text-gold/90',
+                // A partial is visibly provisional, because it is about to be
+                // replaced by a better version of itself (§24).
+                !turn.final && 'text-white/45 italic',
+              )}
+            >
+              {turn.text}
+            </p>
+          </div>
         ))}
       </div>
+
+      {/* A turn that failed while the session is still alive. Shown under the
+          transcript rather than as a state, because the conversation has not
+          ended and telling somebody it has would be wrong. */}
+      {failure ? (
+        <p className="mt-1.5 px-1 text-start text-2xs leading-snug text-rose-300/90 [overflow-wrap:anywhere]">
+          {t(FAILURE_KEY[failure] ?? 'talk_err_assistant')}
+        </p>
+      ) : null}
     </div>
   );
 }
+
+/**
+ * A mid-conversation failure, as a sentence.
+ *
+ * Every one of these leaves the session listening, so none of them is a
+ * state — they are things that went wrong on one turn and are worth saying
+ * without ending anything.
+ */
+const FAILURE_KEY: Record<string, string> = {
+  ASSISTANT_FAILED: 'talk_err_assistant',
+  VOICE_UNAVAILABLE: 'talk_err_voice',
+  PLAYBACK_FAILED: 'talk_err_playback',
+  PLAYBACK_BLOCKED: 'talk_err_playback',
+  STT_UNAVAILABLE: 'talk_err_stt',
+};
 
 /**
  * THE ORB, WITH FOUR FACES INSTEAD OF TWO.

@@ -317,6 +317,24 @@ function fileToBase64(file: File): Promise<string | null> {
   });
 }
 
+/**
+ * One turn of an agent's live browser test.
+ *
+ * The agent's assembled prompt and its configured voice, both resolved on the
+ * server. The browser sends what was heard and receives what to say and the
+ * audio that says it.
+ */
+export function runAgentTestTurn(
+  agentId: string,
+  text: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+) {
+  return invoke<{
+    ok: boolean; text: string; audioBase64: string | null; mime?: string;
+    voiceId?: string; spoken: boolean;
+  }>('comm-agent', { action: 'turn', agentId, text, history });
+}
+
 export async function listVoices(): Promise<Array<{ id: string; name: string; description: string | null; language: string | null }>> {
   const { data, error } = await supabase.functions.invoke('cartesia-access-token', { method: 'GET' });
   if (error) return [];

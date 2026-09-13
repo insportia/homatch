@@ -44,7 +44,7 @@ import {
 } from '@/components/communications/primitives';
 import {
   getAgent, updateAgent, generateAgentCopy, publishAgent, previewAgent,
-  requestAgentTestGrant, listVoices, previewVoice, listMyVoices, deleteCustomVoice,
+  requestAgentTestGrant, runAgentTestTurn, listVoices, previewVoice, listMyVoices, deleteCustomVoice,
 } from '@/services/communications';
 import type { CommAgent } from '@/types/communications';
 import type { VoiceSession, VoiceState, VoiceMilestone } from '@/lib/comm/voiceClient';
@@ -929,13 +929,11 @@ function TestStep({
     if (!grant.ok) { setState('PROVIDER_ERROR'); toast.error(t('comm_voice_test_failed')); return; }
 
     const { VoiceSession: Session } = await import('@/lib/comm/voiceClient');
+    const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
     const session = new Session(
       {
         token: grant.data.token,
-        agentId: (grant.data as { agentId?: string }).agentId ?? '',
-        systemPrompt: grant.data.instructions,
-        firstMessage: grant.data.firstMessage,
-        voiceId: grant.data.voiceId,
         primaryLanguage: grant.data.primaryLanguage,
         maxDurationSec: grant.data.maxDurationSec,
         endpointing: grant.data.endpointing,
@@ -951,6 +949,20 @@ function TestStep({
         // apart "no microphone", "no socket", "socket open but silent" and
         // "heard me but never answered" — and those need different fixes.
         onMilestone: (m) => setTrace((prev) => [...prev, m]),
+        /* The agent's own prompt and the agent's own voice, assembled server
+         * side. Testing a stand-in in someone else's voice tests nothing. */
+        onUserTurn: async (text) => {
+          const reply = await runAgentTestTurn(agentId, text, history.slice(-8));
+          if (!reply.ok) return null;
+          history.push({ role: 'user', content: text });
+          history.push({ role: 'assistant', content: reply.data.text });
+          return {
+            text: reply.data.text,
+            audioBase64: reply.data.audioBase64 ?? null,
+            mime: reply.data.mime,
+            voiceId: reply.data.voiceId,
+          };
+        },
       },
     );
     sessionRef.current = session;

@@ -80,15 +80,20 @@ export type VoiceState =
   | 'MIC_DENIED' | 'MIC_UNAVAILABLE' | 'PROVIDER_ERROR';
 
 export interface VoiceGrant {
+  /** Scoped to `stt` only. Never carries the Cartesia API key. */
   token: string;
-  /** The Cartesia agent to stream against. One base agent, overridden per session. */
-  agentId: string;
-  systemPrompt: string;
-  firstMessage: string;
-  voiceId: string | null;
   primaryLanguage: string;
   maxDurationSec: number;
   endpointing?: Partial<EndpointConfig>;
+}
+
+/** What the server returns for one turn: the sentence, and the voice saying it. */
+export interface AssistantTurn {
+  text: string;
+  /** base64 audio, or null when synthesis failed but the text is still good. */
+  audioBase64: string | null;
+  mime?: string;
+  voiceId?: string;
 }
 
 export interface VoiceCallbacks {
@@ -111,35 +116,53 @@ export interface VoiceCallbacks {
    * a place to keep it.
    */
   onMilestone?: (milestone: VoiceMilestone) => void;
+  /**
+   * Send a finished utterance and get the reply back.
+   *
+   * Injected rather than called directly so this class stays about audio and
+   * turn-taking: the caller owns the endpoint, the session id and the
+   * history. It also means the loop can be driven in a test without a
+   * network.
+   */
+  onUserTurn: (text: string) => Promise<AssistantTurn | null>;
 }
 
 export interface VoiceMilestone {
   event:
-    | 'session_granted' | 'mic_open' | 'agent_socket_open' | 'stt_socket_open'
-    | 'first_input_audio' | 'first_transcript' | 'agent_responding'
-    | 'first_output_audio' | 'session_ended' | 'failed';
+    | 'session_granted' | 'mic_open' | 'audio_context_running' | 'stt_socket_open'
+    | 'first_input_audio' | 'first_transcript' | 'user_turn_sent'
+    | 'assistant_text' | 'tts_audio_received' | 'playback_started'
+    | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
   detail?: string | number | null;
 }
 
-const AGENTS_WS = 'wss://api.cartesia.ai/agents/stream';
 const STT_WS = 'wss://api.cartesia.ai/stt/websocket';
-/** Pinned. The agents and STT APIs are both on this date-versioned contract. */
+/** Pinned to the date-versioned STT contract. */
 const CARTESIA_WS_VERSION = '2026-08-14';
 
-/** 16 kHz mono PCM: what the STT models want and what the agents socket accepts. */
+/** 16 kHz mono PCM: what the STT models want. */
 const SAMPLE_RATE = 16_000;
 const FRAME_MS = 100;
 
 export class VoiceSession {
-  private agentSocket: WebSocket | null = null;
   private sttSocket: WebSocket | null = null;
   private audioContext: AudioContext | null = null;
   private micStream: MediaStream | null = null;
   private processor: ScriptProcessorNode | null = null;
   private playbackTime = 0;
+  /** True while the assistant is speaking: mic frames are dropped, not sent. */
+  private micGated = false;
+  /** Guards against two turns in flight if STT finalises twice quickly. */
+  private turnInFlight = false;
+  /** Sent to the server so each reply is in context. */
+  private history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  private assistantSeq = 0;
+  /** How much of the final user transcript has already been answered. */
+  private answeredChars = 0;
+  private currentAudio: HTMLAudioElement | null = null;
   private playingSources: AudioBufferSourceNode[] = [];
 
   private turns: TranscriptTurn[] = [];
@@ -217,22 +240,23 @@ export class VoiceSession {
 
     this.milestone('mic_open');
 
+    /*
+     * STT IS NO LONGER OPTIONAL, BECAUSE IT IS NOW THE CONVERSATION.
+     *
+     * It used to be a display convenience running beside an agents socket
+     * that held the actual dialogue, so a failure here only cost the visible
+     * words and was swallowed. Now it is the only thing that hears anybody:
+     * without it there is no user text, so there is no turn to answer and no
+     * reply to speak. A failure has to stop the session and say so.
+     */
     try {
-      await this.openAgentSocket();
-      this.milestone('agent_socket_open');
-      // The transcript stream is a convenience. If it fails, the conversation
-      // still works and the user simply does not see the words — far better
-      // than refusing to talk to them at all.
-      this.openSttSocket()
-        .then(() => this.milestone('stt_socket_open'))
-        .catch(() => { /* transcript display is optional */ });
+      await this.openSttSocket();
+      this.milestone('stt_socket_open');
     } catch {
-      // The microphone worked and the socket did not. Without this, both
-      // failures looked identical from outside.
-      this.milestone('failed', 'AGENT_SOCKET');
+      this.milestone('failed', 'STT_SOCKET');
       this.setState('PROVIDER_ERROR');
-      this.cb.onError?.('PROVIDER_ERROR');
-      await this.stop('provider_error');
+      this.cb.onError?.('STT_UNAVAILABLE');
+      await this.stop('stt_unavailable');
       return;
     }
 
@@ -259,10 +283,8 @@ export class VoiceSession {
     if (this.tickHandle !== null) { clearInterval(this.tickHandle); this.tickHandle = null; }
     this.stopPlayback();
 
-    try { this.sttSocket?.send(JSON.stringify({ type: 'close' })); } catch { /* already gone */ }
-    this.agentSocket?.close();
+    try { this.sttSocket?.send('close'); } catch { /* already gone */ }
     this.sttSocket?.close();
-    this.agentSocket = null;
     this.sttSocket = null;
 
     this.processor?.disconnect();
@@ -296,6 +318,25 @@ export class VoiceSession {
 
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     this.audioContext = new Ctx({ sampleRate: SAMPLE_RATE });
+
+    /*
+     * A CONSTRUCTED AudioContext IS NOT A RUNNING ONE.
+     *
+     * Chrome creates it suspended unless it can attribute the construction to
+     * a user gesture, and this one is built after an await on getUserMedia,
+     * by which point the transient activation may already have lapsed. A
+     * suspended context does not advance currentTime and does not emit a
+     * sound — which is exactly "the states change and I hear nothing".
+     *
+     * start() is reached from the Start Conversation click, so resuming here
+     * is permitted. It is awaited rather than fired and forgotten, so that
+     * anything scheduled afterwards is scheduled against a clock that moves.
+     */
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume().catch(() => { /* reported below */ });
+    }
+    if (this.audioContext.state === 'running') this.milestone('audio_context_running');
+
     const source = this.audioContext.createMediaStreamSource(this.micStream);
 
     // ScriptProcessor is deprecated and is used deliberately: an AudioWorklet
@@ -315,10 +356,16 @@ export class VoiceSession {
       this.cb.onLevel(level);
       this.trackVoiceActivity(level);
 
-      const pcm = floatToPcm16(input);
-      // The same frame to both sockets: one to talk to, one to read from.
-      this.sendAgentAudio(pcm);
-      this.sendSttAudio(pcm);
+      /*
+       * THE MICROPHONE IS MUTED WHILE THE ASSISTANT SPEAKS.
+       *
+       * Echo cancellation is not enough on a laptop speaker: the reply comes
+       * back in, STT transcribes it, and the assistant answers itself. Frames
+       * are dropped rather than the track being stopped, so resuming is
+       * instant and there is no second permission moment.
+       */
+      if (this.micGated) return;
+      this.sendSttAudio(floatToPcm16(input));
     };
 
     source.connect(this.processor);
@@ -328,105 +375,6 @@ export class VoiceSession {
     sink.gain.value = 0;
     this.processor.connect(sink);
     sink.connect(this.audioContext.destination);
-  }
-
-  // ── The agent conversation ────────────────────────────────────────────────
-
-  private openAgentSocket(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const url = `${AGENTS_WS}/${encodeURIComponent(this.grant.agentId)}`
-        + `?access_token=${encodeURIComponent(this.grant.token)}`
-        + `&cartesia_version=${CARTESIA_WS_VERSION}`;
-      const socket = new WebSocket(url);
-      this.agentSocket = socket;
-
-      const timeout = window.setTimeout(() => { socket.close(); reject(new Error('agent socket timeout')); }, 12_000);
-
-      socket.onopen = () => {
-        // The server closes the connection if `start` is not the first thing
-        // it receives. The overrides carry Homatch's own assembled prompt, so
-        // one Cartesia agent serves every Homatch agent without a per-agent
-        // object being created and left behind at the provider.
-        socket.send(JSON.stringify({
-          event: 'start',
-          config: {
-            input_format: 'pcm_16000',
-            // Lower latency, at the cost of the client having to pace its own
-            // playback — which it does, in playPcm below.
-            output_audio_delivery: 'as_available',
-            ...(this.grant.voiceId ? { voice_id: this.grant.voiceId } : {}),
-          },
-          agent: {
-            system_prompt: this.grant.systemPrompt,
-            introduction: this.grant.firstMessage,
-          },
-        }));
-      };
-
-      socket.onmessage = (event) => {
-        let msg: Record<string, unknown>;
-        try { msg = JSON.parse(String(event.data)); } catch { return; }
-
-        switch (msg.event ?? msg.type) {
-          case 'ack':
-            clearTimeout(timeout);
-            resolve();
-            break;
-
-          case 'media_output': {
-            if (this.state !== 'RESPONDING') {
-              this.milestone('agent_responding');
-              this.marks.ttsFirstAudioAtMs = Date.now();
-              this.cb.onLatency?.(latencyBreakdown(this.marks));
-              this.agentAudioStartedAt = Date.now();
-              this.setState('RESPONDING');
-            }
-            const payload = typeof msg.payload === 'string' ? msg.payload
-              : typeof (msg.media as Record<string, unknown>)?.payload === 'string'
-                ? String((msg.media as Record<string, unknown>).payload) : null;
-            if (payload) {
-              this.milestone('first_output_audio');
-              this.playPcm(base64ToBytes(payload));
-            }
-            break;
-          }
-
-          case 'clear':
-            // The agent is interrupting itself. Everything already buffered is
-            // stale and playing it would talk over whatever comes next.
-            this.stopPlayback();
-            this.setState('LISTENING');
-            break;
-
-          case 'transfer_call':
-            // §39/§113. Homatch's own handoff is a CRM action, not a live
-            // transfer, and the demo has nobody to transfer to.
-            this.setState('ENDED', 'transfer_requested');
-            void this.stop('transfer_requested');
-            break;
-
-          default:
-            break;
-        }
-      };
-
-      socket.onerror = () => { clearTimeout(timeout); reject(new Error('agent socket error')); };
-      socket.onclose = () => {
-        clearTimeout(timeout);
-        if (!this.closed) {
-          this.setState('ENDED', 'socket_closed');
-          void this.stop('socket_closed');
-        }
-      };
-    });
-  }
-
-  private sendAgentAudio(pcm: Int16Array): void {
-    if (this.agentSocket?.readyState !== WebSocket.OPEN) return;
-    this.agentSocket.send(JSON.stringify({
-      event: 'media_input',
-      payload: bytesToBase64(new Uint8Array(pcm.buffer)),
-    }));
   }
 
   // ── The visible transcript ────────────────────────────────────────────────
@@ -496,7 +444,154 @@ export class VoiceSession {
     if (isFinal) {
       this.marks.transcriptFinalAtMs = Date.now();
       this.currentUtteranceId = null;
+      // The whole conversation hangs off this line: a finished sentence is a
+      // turn, and a turn is what produces a reply.
+      void this.takeTurn();
     }
+  }
+
+  /**
+   * The conversational loop, one lap.
+   *
+   * Their finished sentence goes to the server, which writes the reply and
+   * speaks it. The text is shown the moment it arrives — before the audio
+   * starts, not after it finishes — because reading the answer while hearing
+   * it is what makes this feel like a conversation rather than a wait.
+   */
+  private async takeTurn(): Promise<void> {
+    if (this.closed || this.turnInFlight) return;
+
+    // Everything the person has actually finished saying and that has not yet
+    // been answered.
+    const said = this.turns
+      .filter((t) => t.speaker === 'USER' && t.final)
+      .map((t) => t.text)
+      .join(' ')
+      .slice(this.answeredChars)
+      .trim();
+    if (!said) return;
+
+    this.turnInFlight = true;
+    this.answeredChars += said.length;
+    this.history.push({ role: 'user', content: said });
+
+    // Gate the microphone BEFORE anything can come back, so the first audio
+    // frame of the reply cannot be transcribed as if the visitor said it.
+    this.micGated = true;
+    this.setState('UNDERSTANDING');
+    this.milestone('user_turn_sent', said.length);
+
+    let reply: AssistantTurn | null = null;
+    try {
+      reply = await this.cb.onUserTurn(said);
+    } catch {
+      reply = null;
+    }
+
+    if (this.closed) return;
+
+    if (!reply?.text) {
+      this.milestone('failed', 'ASSISTANT');
+      this.cb.onError?.('ASSISTANT_FAILED');
+      this.resumeListening();
+      this.turnInFlight = false;
+      return;
+    }
+
+    this.assistantSeq += 1;
+    this.turns = reduceTranscript(this.turns, {
+      id: `a${this.assistantSeq}`,
+      speaker: 'AGENT',
+      text: reply.text,
+      final: true,
+      language: this.language.current,
+      atMs: Date.now(),
+    });
+    this.milestone('assistant_text', reply.text.length);
+    this.cb.onTranscript(this.turns);
+    this.history.push({ role: 'assistant', content: reply.text });
+
+    if (!reply.audioBase64) {
+      // Synthesis failed but the sentence is real and already on screen. A
+      // silent turn is a degraded conversation; pretending it did not happen
+      // would be a broken one.
+      this.cb.onError?.('VOICE_UNAVAILABLE');
+      this.resumeListening();
+      this.turnInFlight = false;
+      return;
+    }
+
+    this.milestone('tts_audio_received', reply.audioBase64.length);
+    await this.speak(reply.audioBase64, reply.mime ?? 'audio/mpeg');
+    this.turnInFlight = false;
+  }
+
+  /**
+   * Play one reply and wait for it to finish.
+   *
+   * An <audio> element rather than the WebAudio graph: the server returns mp3,
+   * and decodeAudioData on every reply is work the element already does. The
+   * blob URL is revoked when playback settles, so a long conversation does not
+   * accumulate them.
+   */
+  private async speak(audioBase64: string, mime: string): Promise<void> {
+    let url: string | null = null;
+    try {
+      const binary = atob(audioBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+
+      const audio = new Audio(url);
+      this.currentAudio = audio;
+      audio.preload = 'auto';
+
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const done = () => { if (!settled) { settled = true; resolve(); } };
+
+        audio.onended = () => { this.milestone('playback_ended'); done(); };
+        audio.onerror = () => {
+          this.milestone('failed', 'PLAYBACK');
+          this.cb.onError?.('PLAYBACK_FAILED');
+          done();
+        };
+        // A reply that never fires either event must not strand the loop. The
+        // ceiling is generous because a slow network is not a failed one.
+        window.setTimeout(done, 60_000);
+
+        audio.play().then(
+          () => {
+            this.milestone('playback_started');
+            this.setState('RESPONDING');
+          },
+          () => {
+            // Autoplay refusal. The Start click is a gesture and this should
+            // not happen, but if it does it is reported rather than hung on.
+            this.milestone('failed', 'AUTOPLAY_BLOCKED');
+            this.cb.onError?.('PLAYBACK_BLOCKED');
+            done();
+          },
+        );
+      });
+    } catch {
+      this.milestone('failed', 'PLAYBACK');
+      this.cb.onError?.('PLAYBACK_FAILED');
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+      this.currentAudio = null;
+      this.resumeListening();
+    }
+  }
+
+  /** Hand the floor back. Only from here, so the mic cannot open mid-reply. */
+  private resumeListening(): void {
+    if (this.closed) return;
+    this.micGated = false;
+    this.lastVoiceAt = 0;
+    this.sustainedSpeechMs = 0;
+    this.setState('LISTENING');
+    this.milestone('listening_resumed');
   }
 
   private sendSttAudio(pcm: Int16Array): void {

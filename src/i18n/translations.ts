@@ -4832,6 +4832,11 @@ const en = {
   launch_item_unknown: "Not checked yet",
   voice_trace_title: "Session trace",
   voice_trace_hint: "Where the session got to. Timings and counts only — nothing that was said.",
+  talk_err_assistant: "Homatch could not answer that one. Keep talking and it will try again.",
+  talk_err_voice: "The reply is written below — the voice could not be generated this time.",
+  talk_err_playback: "Your browser would not play the reply. Check the volume and try again.",
+  talk_err_stt: "Speech recognition is unavailable right now. Please try again shortly.",
+  talk_speaker_you: "You",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -9582,6 +9587,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   launch_item_unknown: "ჯერ არ შემოწმებულა",
   voice_trace_title: "სესიის კვალი",
   voice_trace_hint: "სად მივიდა სესია. მხოლოდ დრო და რაოდენობა — არაფერი ნათქვამიდან.",
+  talk_err_assistant: "Homatch-მა ამაზე პასუხი ვერ გასცა. განაგრძეთ საუბარი და ხელახლა სცდის.",
+  talk_err_voice: "პასუხი ქვემოთ წერია — ხმის გენერირება ამჯერად ვერ მოხერხდა.",
+  talk_err_playback: "ბრაუზერმა პასუხი ვერ დაუკრა. შეამოწმეთ ხმა და სცადეთ ხელახლა.",
+  talk_err_stt: "მეტყველების ამოცნობა ამჟამად მიუწვდომელია. სცადეთ მალე ხელახლა.",
+  talk_speaker_you: "თქვენ",
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -14323,6 +14333,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   launch_item_unknown: "Ещё не проверено",
   voice_trace_title: "Трассировка сессии",
   voice_trace_hint: "До какого этапа дошла сессия. Только тайминги и счётчики — ничего из сказанного.",
+  talk_err_assistant: "Homatch не смог ответить. Продолжайте говорить — он попробует снова.",
+  talk_err_voice: "Ответ написан ниже — голос на этот раз сгенерировать не удалось.",
+  talk_err_playback: "Браузер не воспроизвёл ответ. Проверьте громкость и попробуйте снова.",
+  talk_err_stt: "Распознавание речи сейчас недоступно. Повторите попытку чуть позже.",
+  talk_speaker_you: "Вы",
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -19062,6 +19077,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   launch_item_unknown: "Henüz denetlenmedi",
   voice_trace_title: "Oturum izi",
   voice_trace_hint: "Oturumun nereye kadar geldiği. Yalnızca süreler ve sayılar — söylenenler değil.",
+  talk_err_assistant: "Homatch buna yanıt veremedi. Konuşmaya devam edin, tekrar deneyecek.",
+  talk_err_voice: "Yanıt aşağıda yazılı — ses bu sefer üretilemedi.",
+  talk_err_playback: "Tarayıcınız yanıtı oynatamadı. Sesi kontrol edip tekrar deneyin.",
+  talk_err_stt: "Konuşma tanıma şu anda kullanılamıyor. Lütfen birazdan tekrar deneyin.",
+  talk_speaker_you: "Siz",
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -23801,6 +23821,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   launch_item_unknown: "لم يُفحص بعد",
   voice_trace_title: "تتبّع الجلسة",
   voice_trace_hint: "إلى أين وصلت الجلسة. التوقيتات والأعداد فقط — لا شيء مما قيل.",
+  talk_err_assistant: "لم يتمكن Homatch من الإجابة على ذلك. تابع الحديث وسيحاول مرة أخرى.",
+  talk_err_voice: "الرد مكتوب أدناه — تعذّر توليد الصوت هذه المرة.",
+  talk_err_playback: "لم يشغّل متصفحك الرد. تحقق من مستوى الصوت وحاول مجددًا.",
+  talk_err_stt: "التعرّف على الكلام غير متاح حاليًا. يُرجى المحاولة بعد قليل.",
+  talk_speaker_you: "أنت",
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -28540,6 +28565,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   launch_item_unknown: "טרם נבדק",
   voice_trace_title: "מעקב הפעלה",
   voice_trace_hint: "עד היכן הגיעה ההפעלה. תזמונים וספירות בלבד — דבר ממה שנאמר.",
+  talk_err_assistant: "Homatch לא הצליח לענות על כך. המשיכו לדבר והוא ינסה שוב.",
+  talk_err_voice: "התשובה כתובה למטה — לא ניתן היה להפיק את הקול הפעם.",
+  talk_err_playback: "הדפדפן לא ניגן את התשובה. בדקו את עוצמת הקול ונסו שוב.",
+  talk_err_stt: "זיהוי הדיבור אינו זמין כרגע. נסו שוב בקרוב.",
+  talk_speaker_you: "אתם",
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

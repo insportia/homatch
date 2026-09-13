@@ -20,15 +20,21 @@ import { authenticate, serviceClient, json, preflight, checkRateLimit, logEvent 
 import { generateAgentDescription, llmAvailable } from '../_shared/comm/llm.ts';
 import { classifyDomain } from '../_shared/comm/generated/domainClassifier.ts';
 import { buildAgentRuntime } from '../_shared/comm/agentPrompt.ts';
-import { createCartesiaProvider, cartesiaCredentialsPresent, ensureBaseAgent } from '../_shared/comm/cartesia.ts';
+import {
+  createCartesiaProvider, cartesiaCredentialsPresent, synthesizeSpeech,
+} from '../_shared/comm/cartesia.ts';
+import { callLlm } from '../_shared/comm/llm.ts';
 
 interface AgentRequest {
-  action: 'generate' | 'publish' | 'preview' | 'test';
+  action: 'generate' | 'publish' | 'preview' | 'test' | 'turn';
   agentId?: string;
   rough?: string;
   template?: string;
   languages?: string[];
   locale?: string;
+  /** turn: what the tester just said, and the conversation so far. */
+  text?: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -48,6 +54,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'publish':  return await publish(sb, caller.userId, body);
     case 'preview':  return await preview(sb, caller.userId, body);
     case 'test':     return await test(sb, caller.userId, body);
+    case 'turn':     return await agentTurn(sb, caller.userId, body);
     default:         return json({ error: 'unknown_action' }, 400);
   }
 });
@@ -222,10 +229,16 @@ async function test(sb: Sb, userId: string, body: AgentRequest): Promise<Respons
   const runtime = await buildAgentRuntime(sb, { agentId: body.agentId, maxDurationSec: 180 });
   if (!runtime) return json({ error: 'not_found' }, 404);
 
-  const baseAgent = await ensureBaseAgent(sb as never, { language: runtime.config.primaryLanguage });
-  if (!baseAgent.ok || !baseAgent.data) return json({ error: 'voice_unavailable' }, 502);
-
-  const grant = await createCartesiaProvider().mintGrant({ ttlSeconds: 240, scopes: ['agent', 'stt'] });
+  /*
+   * The browser gets `stt` and nothing more.
+   *
+   * The provider's agents socket carried this conversation and returned audio
+   * with no text, so a test could never show what the agent said. The turn
+   * action below assembles the exchange server-side instead, which also means
+   * the test speaks in the agent's OWN configured voice rather than whatever
+   * the provider defaults to.
+   */
+  const grant = await createCartesiaProvider().mintGrant({ ttlSeconds: 240, scopes: ['stt'] });
   if (!grant.ok || !grant.data) return json({ error: 'voice_unavailable' }, 502);
 
   logEvent('comm-agent', 'test_granted', { agentId: body.agentId, userId });
@@ -234,7 +247,6 @@ async function test(sb: Sb, userId: string, body: AgentRequest): Promise<Respons
     ok: true,
     token: grant.data.token,
     expiresAt: grant.data.expiresAt,
-    agentId: baseAgent.data.agentId,
     provider: 'CARTESIA',
     instructions: runtime.config.systemPrompt,
     firstMessage: runtime.config.firstMessage,
@@ -244,5 +256,80 @@ async function test(sb: Sb, userId: string, body: AgentRequest): Promise<Respons
     // A test is capped harder than a real call: nobody needs ten minutes to
     // hear whether an agent sounds right.
     maxDurationSec: Math.min(180, runtime.config.maxDurationSec),
+  });
+}
+
+/**
+ * One turn of an agent's live browser test.
+ *
+ * The same shape as the public demo's turn, with the two differences that are
+ * the whole point of a test: it runs the AGENT's assembled prompt, and it
+ * speaks in the agent's OWN voice. Testing a simplified stand-in in somebody
+ * else's voice tests nothing anyone is going to ship.
+ */
+async function agentTurn(sb: Sb, userId: string, body: AgentRequest): Promise<Response> {
+  if (!body.agentId) return json({ error: 'agent_required' }, 400);
+  const said = String(body.text ?? '').trim();
+  if (!said) return json({ ok: false, reason: 'EMPTY' }, 400);
+
+  const { data: agent } = await sb.from('comm_agents')
+    .select('owner_id').eq('id', body.agentId).maybeSingle();
+  if (!agent || agent.owner_id !== userId) return json({ error: 'forbidden' }, 403);
+
+  const limit = await checkRateLimit(sb, 'agent_test_turn', 120, 3600, { userId });
+  if (!limit.allowed) return json({ error: 'rate_limited', retryAfter: limit.retryAfterSeconds }, 429);
+
+  const runtime = await buildAgentRuntime(sb, { agentId: body.agentId, maxDurationSec: 180 });
+  if (!runtime) return json({ error: 'not_found' }, 404);
+
+  const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+  const conversation = history
+    .map((h) => `${h.role === 'assistant' ? 'Agent' : 'Caller'}: ${String(h.content ?? '').slice(0, 500)}`)
+    .join('\n');
+
+  const reply = await callLlm({
+    system: runtime.config.systemPrompt,
+    user: [
+      conversation ? `Conversation so far:\n${conversation}\n` : '',
+      `Caller just said: "${said.slice(0, 1000)}"`,
+      '',
+      'Reply as the agent, out loud, in one or two short spoken sentences.',
+      'Plain words only: nothing that cannot be said aloud.',
+    ].filter(Boolean).join('\n'),
+    maxTokens: 220,
+    timeoutMs: 20_000,
+  });
+
+  if (!reply.ok || !reply.text?.trim()) {
+    logEvent('comm-agent', 'turn_llm_failed', { reason: reply.error ?? 'empty', status: reply.status ?? null });
+    return json({ ok: false, reason: 'ASSISTANT_FAILED' }, 502);
+  }
+  const text = reply.text.trim().slice(0, 800);
+
+  const voiceId = runtime.config.voiceId;
+  if (!voiceId) {
+    // The sentence is real even when no voice has been chosen yet.
+    return json({ ok: true, text, audioBase64: null, spoken: false });
+  }
+
+  const spoken = await synthesizeSpeech({
+    voiceId,
+    language: runtime.config.primaryLanguage || 'en',
+    text,
+  });
+
+  if (!spoken.ok || !spoken.data) {
+    logEvent('comm-agent', 'turn_tts_failed', {
+      code: spoken.error?.code ?? null, status: spoken.error?.providerCode ?? null,
+    });
+    return json({ ok: true, text, audioBase64: null, voiceId, spoken: false });
+  }
+
+  return json({
+    ok: true, text,
+    audioBase64: spoken.data.audioBase64,
+    mime: spoken.data.mime,
+    voiceId,
+    spoken: true,
   });
 }

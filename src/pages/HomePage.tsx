@@ -55,7 +55,7 @@ export default function HomePage() {
     { key: 'intelligence', label: t('mp_nav_capabilities'), target: 'intelligence' },
     { key: 'verify', label: t('nav_verify'), target: '/verify' },
     { key: 'mortgage', label: t('nav_mortgage'), target: '/mortgage' },
-    { key: 'developers', label: t('mp_nav_developers'), target: 'developers' },
+    { key: 'developers', label: t('mp_nav_developers'), target: '/developers' },
     { key: 'about', label: t('nav_about'), target: '/about' },
   ];
 

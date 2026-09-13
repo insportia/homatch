@@ -35,6 +35,7 @@ const ROUTES = {
   about: 'src/pages/AboutPage.tsx',
   pricing: 'src/pages/PricingPage.tsx',
   partners: 'src/pages/PartnersPage.tsx',
+  developers: 'src/pages/DevelopersPage.tsx',
   mortgage: 'src/pages/MortgagePage.tsx',
   privacy: 'src/pages/PrivacyPage.tsx',
   terms: 'src/pages/TermsPage.tsx',

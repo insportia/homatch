@@ -16,6 +16,7 @@ import { CallCenterSection } from '@/components/home/sections/CallCenterSection'
 import { EmailCampaignsSection } from '@/components/home/sections/EmailCampaignsSection';
 import { AISection } from '@/components/home/sections/AISection';
 import { DeveloperB2BSection } from '@/components/home/sections/DeveloperB2BSection';
+import { DevHeroSection, DevFlowSection, DevApiSection } from '@/components/home/sections/developers';
 import { ClosingCTASection } from '@/components/home/sections/ClosingCTASection';
 import {
   AboutHeroSection, AboutWhatSection, AboutMarketSection,
@@ -64,6 +65,9 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   email_campaign: EmailCampaignsSection,
   homatch_ai: AISection,
   developers: DeveloperB2BSection,
+  dev_hero: DevHeroSection,
+  dev_flow: DevFlowSection,
+  dev_api: DevApiSection,
   closing_cta: ClosingCTASection,
   about_hero: AboutHeroSection,
   about_what: AboutWhatSection,

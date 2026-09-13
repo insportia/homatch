@@ -37,6 +37,7 @@ const FIELD: Readonly<Record<string, TranslationKey>> = {
   link_email: 'mp_email_title',
   link_about: 'nav_about',
   link_partners: 'home_nav_partners',
+  link_developers: 'mp_nav_developers',
   link_privacy: 'home_footer_privacy',
   link_terms: 'home_footer_terms',
 };
@@ -74,6 +75,7 @@ function FooterBody() {
       links: [
         { key: 'link_about', path: '/about' },
         { key: 'link_partners', path: '/partners' },
+        { key: 'link_developers', path: '/developers' },
       ],
     },
     {

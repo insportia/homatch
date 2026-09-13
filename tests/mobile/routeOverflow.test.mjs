@@ -52,6 +52,7 @@ const ROUTES = [
   { path: '/verify', name: 'verify centre', auth: true },
   { path: '/mortgage', name: 'mortgage' },
   { path: '/pricing', name: 'pricing' },
+  { path: '/developers', name: 'developers' },
   { path: '/dashboard', name: 'dashboard', auth: true },
   { path: '/ai', name: 'AI chat', auth: true },
   { path: '/credits', name: 'credits', auth: true },

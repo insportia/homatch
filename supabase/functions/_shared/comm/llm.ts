@@ -110,9 +110,15 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
       store: false,
       // `temperature` is deliberately NOT sent: reasoning models reject any
       // non-default value, and a call that 400s is less deterministic than a
-      // call that varies slightly. Determinism here comes from json mode and
-      // from prompts that state the schema.
-      ...(opts.json ? { text: { format: { type: 'json_object' } } } : {}),
+      // call that varies slightly.
+      //
+      // Nor is a structured-output parameter sent. Every field in this request
+      // is one that homatch-ai has been sending to the same key and the same
+      // model in production for months; adding the one parameter it does NOT
+      // send is how "Generate with AI" stayed broken after the endpoint was
+      // corrected. JSON is obtained the way it already was — every prompt in
+      // this file ends by naming the exact object to reply with — and
+      // extractJson() below tolerates the wrappers a model adds anyway.
     }),
     timeoutMs: opts.timeoutMs ?? 20_000,
   });
@@ -138,9 +144,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
   }
 
   let parsed: unknown = null;
-  if (opts.json && text) {
-    try { parsed = JSON.parse(text); } catch { parsed = null; }
-  }
+  if (opts.json && text) parsed = extractJson(text);
 
   return {
     ok: true,
@@ -150,6 +154,49 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
     outputTokens: payload?.usage?.output_tokens ?? 0,
     model,
   };
+}
+
+/** A short, safe description of why a model call did not produce an answer. */
+function llmFailureReason(result: LlmResult): string {
+  const base = result.error ?? (result.ok ? 'unparseable_response' : 'no_response');
+  return result.status ? `${base}:${result.status}` : base;
+}
+
+/**
+ * The JSON object in a model's answer, however it chose to wrap it.
+ *
+ * No structured-output parameter is sent (see callLlm), so the model is
+ * following an instruction rather than a schema. It usually replies with a
+ * bare object; sometimes it fences the object in ```json; occasionally it
+ * writes a sentence first. All three contain the same object, and refusing
+ * the last two would fail a request whose answer is sitting right there.
+ *
+ * Returns null when there is no parseable object at all — the caller then
+ * falls back deliberately rather than saving something half-read.
+ */
+function extractJson(text: string): unknown {
+  const attempts: string[] = [text.trim()];
+
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) attempts.push(fenced[1].trim());
+
+  // The outermost braces, for a reply that opens with prose.
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first !== -1 && last > first) attempts.push(text.slice(first, last + 1));
+
+  for (const candidate of attempts) {
+    if (!candidate) continue;
+    try {
+      const value = JSON.parse(candidate);
+      // An ARRAY must be refused, not merely a non-object. `typeof []` is
+      // 'object', so a reply of "[1,2,3]" would be accepted and every field
+      // the caller reads off it would be undefined — a generation that
+      // silently produced nothing, reported as a success.
+      if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    } catch { /* try the next shape */ }
+  }
+  return null;
 }
 
 /** The Responses API returns either a flattened string or a content tree. */
@@ -276,7 +323,9 @@ export async function generateAgentDescription(params: {
     temperature: 0.5,
   });
 
-  if (!result.ok || !result.parsed) return { ok: false, error: result.error ?? 'no_response' };
+  // The reason carries the provider status when there was one, so a failure
+  // logs as e.g. "UNKNOWN:400" rather than as an unqualified "failed".
+  if (!result.ok || !result.parsed) return { ok: false, error: llmFailureReason(result) };
 
   const p = result.parsed as Record<string, unknown>;
   if (p.error === 'out_of_scope') return { ok: false, error: 'out_of_scope' };
@@ -371,7 +420,9 @@ export async function generateTemplateDraft(params: {
     temperature: 0.6,
   });
 
-  if (!result.ok || !result.parsed) return { ok: false, error: result.error ?? 'no_response' };
+  // The reason carries the provider status when there was one, so a failure
+  // logs as e.g. "UNKNOWN:400" rather than as an unqualified "failed".
+  if (!result.ok || !result.parsed) return { ok: false, error: llmFailureReason(result) };
   const p = result.parsed as Record<string, unknown>;
   return {
     ok: true,

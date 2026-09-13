@@ -85,6 +85,14 @@ async function generate(sb: Sb, userId: string, body: AgentRequest): Promise<Res
   });
 
   if (!result.ok) {
+    // The customer gets "generation failed"; an admin gets the reason.
+    //
+    // Without this line, a broken model call is indistinguishable from a
+    // refused one in the logs, and "Generate with AI does not work" had to be
+    // diagnosed by reasoning about the request rather than by reading what
+    // the provider said. The value is a code or an HTTP status, never a
+    // credential and never the customer's text.
+    logEvent('comm-agent', 'generate_failed', { reason: result.error ?? 'unknown' });
     return json({ ok: false, code: result.error === 'out_of_scope' ? 'OUT_OF_SCOPE' : 'GENERATION_FAILED' },
       result.error === 'out_of_scope' ? 422 : 502);
   }

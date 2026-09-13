@@ -298,7 +298,13 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
       logEvent('ai-talk', 'listen_unavailable', {
         status: res.status, detail: raw.slice(0, 200), model,
       });
-      return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
+      // The STATUS travels back, and nothing else.
+      //
+      // It is a number, it names nothing we sent, and it is the difference
+      // between "that model is not on this account" and "that parameter is
+      // wrong" — which is otherwise only visible in a log this project's
+      // tooling cannot currently read. The browser never shows it.
+      return json({ ok: false, reason: 'UNAVAILABLE', providerStatus: res.status }, 200);
     }
 
     const parsed = JSON.parse(raw) as { value?: string; expires_at?: number };

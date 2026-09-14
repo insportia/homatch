@@ -31,7 +31,8 @@ import {
   authenticate, requireAdmin, serviceClient, json, preflight, logEvent, checkRateLimit,
 } from '../_shared/comm/auth.ts';
 import {
-  checkElevenLabs, chooseTtsModel, elevenLabsCredentialsPresent, listElevenLabsVoices,
+  addSharedVoice, checkElevenLabs, chooseTtsModel, elevenLabsCredentialsPresent,
+  listElevenLabsVoices, listSharedVoices,
   listElevenLabsModels, synthesizeElevenLabs, createPronunciationDictionary,
   pronunciationMethodsFor, mintRealtimeToken, ELEVENLABS_DEFAULTS,
   KEYTERM_LIMITS_DEFAULT,
@@ -93,6 +94,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'personality-save':     return await personalitySave(sb, body);
     case 'routes':               return await routesGet(sb);
     case 'routes-save':          return await routesSave(sb, body);
+    case 'shared-voices':        return await sharedVoices(body);
+    case 'add-shared-voice':     return await addSharedVoiceAction(sb, body);
+    case 'audition':             return await audition(sb, caller.userId, body);
+    case 'audition-results':     return await auditionResults(sb, body);
     case 'usage':                return await usage(sb, body);
     default:                     return json({ error: 'unknown_action' }, 400);
   }
@@ -827,6 +832,237 @@ async function routesSave(sb: Sb, body: VoiceAiRequest): Promise<Response> {
   if (error) return json({ ok: false, reason: 'STORE_FAILED' }, 500);
   logEvent('voice-ai', 'route_saved', { id, role: existing.role });
   return json({ ok: true });
+}
+
+// ── The Georgian audition ───────────────────────────────────────────────────
+
+/**
+ * Which voices does the provider have whose SPEAKER actually speaks this
+ * language?
+ *
+ * Not which voices a multilingual model can render in it -- every stock voice
+ * on this account can be rendered in Georgian, and every one of them sounds
+ * like an American reading it, because every one of them is labelled
+ * `language: en`. The shared library is where speakers of other languages
+ * are, and `verified_languages` is the provider saying so rather than Homatch
+ * inferring it.
+ */
+async function sharedVoices(body: VoiceAiRequest): Promise<Response> {
+  if (!elevenLabsCredentialsPresent()) return json({ ok: false, reason: 'MISSING' }, 200);
+
+  const out = await listSharedVoices({
+    language: body.language ? String(body.language).slice(0, 5) : null,
+    search: body.search ? String(body.search).slice(0, 60) : null,
+    pageSize: Number(body.limit) || 40,
+  });
+  if (!out.ok || !out.data) {
+    return json({
+      ok: false, reason: 'PROVIDER_ERROR',
+      providerCode: out.error?.code ?? null,
+      providerStatus: Number(out.error?.providerCode) || null,
+    }, 200);
+  }
+  return json({ ok: true, voices: out.data.voices });
+}
+
+/**
+ * Put one shared voice into this account so it can be auditioned.
+ *
+ * A change to the owner's provider account, so it takes an explicit voice id
+ * rather than a search and never runs on its own. Reversible from the
+ * ElevenLabs dashboard; nothing here deletes voices.
+ */
+async function addSharedVoiceAction(sb: Sb, body: VoiceAiRequest): Promise<Response> {
+  const publicOwnerId = String(body.publicOwnerId ?? '');
+  const voiceId = String(body.voiceId ?? '');
+  const name = String(body.name ?? '').trim();
+  if (!publicOwnerId || !voiceId || !name) {
+    return json({ ok: false, reason: 'OWNER_VOICE_AND_NAME_REQUIRED' }, 400);
+  }
+
+  const out = await addSharedVoice({ publicOwnerId, voiceId, name });
+  if (!out.ok || !out.data) {
+    return json({
+      ok: false, reason: 'PROVIDER_ERROR',
+      providerCode: out.error?.code ?? null,
+      providerStatus: Number(out.error?.providerCode) || null,
+      detail: out.error?.message?.slice(0, 200) ?? null,
+    }, 200);
+  }
+
+  // Pull the account's catalogue again so the new voice exists in the library
+  // with the provider's own metadata rather than with what we just typed.
+  await syncVoiceLibrary(sb);
+  logEvent('voice-ai', 'shared_voice_added', { voiceId: out.data.voiceId });
+  return json({ ok: true, voiceId: out.data.voiceId });
+}
+
+/**
+ * Say the same sentences in every candidate voice, and keep the audio.
+ *
+ * THE POINT IS THAT NOBODY HERE CAN JUDGE THE RESULT.
+ *
+ * No test can tell whether Georgian sounds native. A transcript round-trip
+ * cannot: Scribe reads an American saying Georgian words perfectly well, and
+ * that is exactly how a foreign accent passed every automated check while
+ * being obviously wrong to the first person who listened. So this generates
+ * the comparison and stores it, and a human decides.
+ *
+ * Each sample records what produced it -- voice, model, whether the language
+ * was declared, the settings -- because "that one" is only a useful answer
+ * when it can be turned back into a configuration.
+ */
+async function audition(sb: Sb, userId: string, body: VoiceAiRequest): Promise<Response> {
+  if (!elevenLabsCredentialsPresent()) return json({ ok: false, reason: 'MISSING' }, 200);
+
+  const candidates = Array.isArray(body.candidates) ? body.candidates.slice(0, 24) : [];
+  const sentences = Array.isArray(body.sentences) ? body.sentences.slice(0, 12) : [];
+  if (!candidates.length || !sentences.length) {
+    return json({ ok: false, reason: 'CANDIDATES_AND_SENTENCES_REQUIRED' }, 400);
+  }
+
+  // Paid generation, and a batch of them. Bounded so a mistyped request cannot
+  // spend an afternoon's credit in one call.
+  const pairs = candidates.length * sentences.length;
+  if (pairs > 80) return json({ ok: false, reason: 'TOO_MANY', pairs }, 400);
+
+  const limit = await checkRateLimit(sb, 'voice_audition', 8, 3600, { userId });
+  if (!limit.allowed) {
+    return json({ ok: false, reason: 'RATE_LIMITED', retryAfter: limit.retryAfterSeconds }, 429);
+  }
+
+  const batchId = crypto.randomUUID();
+  const language = body.language ? String(body.language).slice(0, 5) : null;
+  const { data: known } = await sb.from('voice_library_voices')
+    .select('provider_voice_id, name').eq('provider', 'ELEVENLABS');
+  const nameOf = new Map((known ?? []).map((v) => [String(v.provider_voice_id), String(v.name)]));
+
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const raw of candidates) {
+    const c = raw as Record<string, unknown>;
+    const voiceId = String(c.voiceId ?? '');
+    if (!voiceId) continue;
+    const modelId = String(c.modelId ?? '') || ELEVENLABS_DEFAULTS.ttsModel;
+    const sendLanguage = c.sendLanguage === true;
+    const settings = (c.settings && typeof c.settings === 'object')
+      ? c.settings as Record<string, number | boolean>
+      : null;
+
+    for (const rawSentence of sentences) {
+      const item = rawSentence as Record<string, unknown>;
+      const key = String(item.key ?? '').slice(0, 40) || 'line';
+      const text = String(item.text ?? '').slice(0, 600);
+      if (!text) continue;
+
+      const at = Date.now();
+      const out = await synthesizeElevenLabs({
+        voiceId, text, modelId,
+        languageCode: language,
+        sendLanguage,
+        settings: settings as never,
+        format: 'mp3',
+      });
+      const ms = Date.now() - at;
+
+      const row: Record<string, unknown> = {
+        batch_id: batchId,
+        voice_id: voiceId,
+        voice_name: nameOf.get(voiceId) ?? (c.name ? String(c.name).slice(0, 80) : null),
+        model_id: modelId,
+        language,
+        sent_language: sendLanguage,
+        settings: settings ?? {},
+        sentence_key: key,
+        sentence: text,
+        latency_ms: ms,
+        ok: out.ok,
+        error_code: out.ok ? null : (out.error?.code ?? null),
+        provider_status: out.ok ? null : (Number(out.error?.providerCode) || null),
+        created_by: userId,
+      };
+
+      if (out.ok && out.data) {
+        const bytes = base64ToBytes(out.data.audioBase64);
+        const path = `${batchId}/${voiceId}__${modelId}__${sendLanguage ? 'lang' : 'nolang'}__${key}.mp3`;
+        const up = await sb.storage.from('voice-auditions')
+          .upload(path, bytes, { contentType: out.data.mime, upsert: true });
+        if (!up.error) {
+          row.storage_path = path;
+          row.mime = out.data.mime;
+          row.bytes = bytes.byteLength;
+        } else {
+          row.ok = false;
+          row.error_code = 'STORE_FAILED';
+        }
+      }
+
+      rows.push(row);
+    }
+  }
+
+  if (rows.length) await sb.from('voice_audition_samples').insert(rows);
+
+  logEvent('voice-ai', 'audition_generated', {
+    batchId, candidates: candidates.length, sentences: sentences.length,
+    made: rows.filter((r) => r.ok).length,
+  });
+
+  return json({
+    ok: true, batchId,
+    generated: rows.filter((r) => r.ok).length,
+    failed: rows.filter((r) => !r.ok).length,
+  });
+}
+
+/**
+ * One batch, with links a person can actually press.
+ *
+ * Signed and short-lived: the bucket is private, and an audition sample is
+ * operator material rather than something that should acquire a permanent
+ * public URL because it was convenient once.
+ */
+async function auditionResults(sb: Sb, body: VoiceAiRequest): Promise<Response> {
+  const batchId = String(body.batchId ?? '');
+  let query = sb.from('voice_audition_samples')
+    .select('*')
+    .order('created_at', { ascending: true })
+    .limit(400);
+  if (batchId) query = query.eq('batch_id', batchId);
+
+  const { data } = await query;
+  const rows = data ?? [];
+
+  const ttl = Math.min(86_400, Math.max(300, Number(body.expiresIn) || 3600));
+  const paths = rows.map((r) => r.storage_path).filter((p): p is string => Boolean(p));
+  const signed = new Map<string, string>();
+  if (paths.length) {
+    const { data: urls } = await sb.storage.from('voice-auditions').createSignedUrls(paths, ttl);
+    for (const u of urls ?? []) {
+      if (u.path && u.signedUrl) signed.set(u.path, u.signedUrl);
+    }
+  }
+
+  return json({
+    ok: true,
+    batches: [...new Set(rows.map((r) => String(r.batch_id)))],
+    samples: rows.map((r) => ({
+      id: r.id, batchId: r.batch_id,
+      voiceId: r.voice_id, voiceName: r.voice_name,
+      modelId: r.model_id, language: r.language, sentLanguage: r.sent_language,
+      settings: r.settings, sentenceKey: r.sentence_key, sentence: r.sentence,
+      latencyMs: r.latency_ms, bytes: r.bytes, ok: r.ok,
+      errorCode: r.error_code, providerStatus: r.provider_status,
+      url: r.storage_path ? signed.get(String(r.storage_path)) ?? null : null,
+    })),
+  });
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 // ── Usage ───────────────────────────────────────────────────────────────────

@@ -717,6 +717,107 @@ export function scribeRealtimeUrl(params: {
   return `${SCRIBE_REALTIME_WS}?${query}`;
 }
 
+/**
+ * Voices from the provider's SHARED library, filtered by the language their
+ * speaker actually speaks.
+ *
+ * WHY THIS EXISTS, AND IT IS THE WHOLE GEORGIAN PROBLEM
+ *
+ * Every stock voice on this account is labelled `language: en` with an
+ * american, british or australian accent. A multilingual MODEL renders those
+ * speakers saying Georgian words -- it does not give them a Georgian mouth.
+ * The result is English phonology mapped onto Georgian letters, which is
+ * exactly what a native listener hears and rejects.
+ *
+ * A voice list saying "this voice supports 24 languages" is a statement about
+ * the model's reach, not about the speaker's accent. The two were conflated
+ * here once already and it put an American voice in front of Georgian
+ * customers. The shared library is where speakers of other languages actually
+ * live, and this is how they are found rather than guessed at.
+ */
+export interface SharedVoice {
+  voiceId: string;
+  publicOwnerId: string;
+  name: string;
+  accent: string | null;
+  language: string | null;
+  /** Every language the speaker is tagged as speaking, not the model's reach. */
+  verifiedLanguages: Array<{ language: string; accent: string | null; locale: string | null }>;
+  description: string | null;
+  previewUrl: string | null;
+  category: string | null;
+  usageCount: number | null;
+}
+
+export async function listSharedVoices(params: {
+  language?: string | null;
+  search?: string | null;
+  pageSize?: number;
+}): Promise<ProviderResult<{ voices: SharedVoice[] }>> {
+  const query = new URLSearchParams({
+    page_size: String(Math.min(100, Math.max(1, params.pageSize ?? 40))),
+  });
+  if (params.language) query.set('language', params.language);
+  if (params.search) query.set('search', params.search);
+
+  const res = await call(`/v1/shared-voices?${query}`, { timeoutMs: 20_000 });
+  if (!res.ok) {
+    return { ok: false, sideEffect: 'NONE', error: classifyElevenLabs(res.status, res.text) };
+  }
+
+  const body = res.json as { voices?: Array<Record<string, unknown>> } | null;
+  const voices: SharedVoice[] = (body?.voices ?? []).map((v) => {
+    const verified = Array.isArray(v.verified_languages) ? v.verified_languages : [];
+    return {
+      voiceId: String(v.voice_id ?? ''),
+      publicOwnerId: String(v.public_owner_id ?? ''),
+      name: String(v.name ?? ''),
+      accent: v.accent ? String(v.accent) : null,
+      language: v.language ? String(v.language) : null,
+      verifiedLanguages: verified.map((l) => {
+        const row = l as Record<string, unknown>;
+        return {
+          language: String(row.language ?? ''),
+          accent: row.accent ? String(row.accent) : null,
+          locale: row.locale ? String(row.locale) : null,
+        };
+      }).filter((l) => l.language),
+      description: v.description ? String(v.description).slice(0, 400) : null,
+      previewUrl: v.preview_url ? String(v.preview_url) : null,
+      category: v.category ? String(v.category) : null,
+      usageCount: Number.isFinite(Number(v.cloned_by_count)) ? Number(v.cloned_by_count) : null,
+    };
+  }).filter((v) => v.voiceId);
+
+  return { ok: true, data: { voices } };
+}
+
+/**
+ * Add a shared voice to this account, which is the only way to speak with it.
+ *
+ * A change to the owner's provider account, so it is never done on a whim:
+ * the caller has to have decided to audition this specific voice. It is
+ * reversible from the ElevenLabs dashboard, and nothing here removes voices.
+ */
+export async function addSharedVoice(params: {
+  publicOwnerId: string; voiceId: string; name: string;
+}): Promise<ProviderResult<{ voiceId: string }>> {
+  const res = await call(
+    `/v1/voices/add/${encodeURIComponent(params.publicOwnerId)}/${encodeURIComponent(params.voiceId)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ new_name: params.name.slice(0, 60) }),
+      timeoutMs: 20_000,
+    },
+  );
+  if (!res.ok) {
+    return { ok: false, sideEffect: 'NONE', error: classifyElevenLabs(res.status, res.text) };
+  }
+  const body = res.json as { voice_id?: string } | null;
+  return { ok: true, data: { voiceId: String(body?.voice_id ?? params.voiceId) } };
+}
+
 // ── Pronunciation ───────────────────────────────────────────────────────────
 
 export interface PronunciationRuleInput {

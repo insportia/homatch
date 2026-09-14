@@ -101,9 +101,41 @@ export interface ElevenLabsHealth {
   providerStatus: number | null;
 }
 
+/** The provider's own reason, bounded, or nothing. Never anything we sent. */
+function providerReason(body: string): string {
+  let detail = '';
+  try {
+    const j = JSON.parse(body) as { detail?: { message?: string; status?: string } | string };
+    const d = j?.detail;
+    detail = typeof d === 'string' ? d : [d?.status, d?.message].filter(Boolean).join(': ');
+  } catch {
+    detail = body.slice(0, 200);
+  }
+  return detail ? ` — ${detail.slice(0, 200)}` : '';
+}
+
 export function classifyElevenLabs(status: number, body: string): ProviderResult<never>['error'] {
   if (status === 401 || status === 403) {
-    return { code: 'AUTH', message: 'the provider rejected our credentials', retryable: false, providerCode: status };
+    /*
+     * WHICH auth problem, because they need opposite actions.
+     *
+     * "the provider rejected our credentials" was all this said, and it is
+     * wrong often enough to be misleading: the same 401 is returned when the
+     * key is fine and the VOICE is not available to this subscription. Both
+     * Georgian-labelled cloned voices on this account answer 401 in the same
+     * batch where a stock voice on the same key succeeds -- which is not a
+     * credential problem at all, and somebody reading "rejected our
+     * credentials" would go and rotate a working key.
+     *
+     * The provider's own reason is appended. It is an error status string,
+     * never anything we sent, so nothing about the key travels with it.
+     */
+    return {
+      code: 'AUTH',
+      message: `the provider refused this call (${status})${providerReason(body)}`,
+      retryable: false,
+      providerCode: status,
+    };
   }
   // 402 is the one Cartesia taught us to name: the credential is valid and
   // the account cannot pay. "Unavailable" for that costs hours.

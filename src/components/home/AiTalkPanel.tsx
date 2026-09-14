@@ -272,16 +272,37 @@ export function AiTalkPanel({ className }: { className?: string }) {
     // and re-render every line for a change to the last one.
     pendingTurns.current = next.map((turn) => ({ ...turn }));
     if (transcriptFrame.current !== null) return;
-    transcriptFrame.current = window.requestAnimationFrame(() => {
+
+    const flush = () => {
       transcriptFrame.current = null;
       const value = pendingTurns.current;
       pendingTurns.current = null;
       if (value) setTurns(value);
-    });
+    };
+
+    /*
+     * A HIDDEN TAB HAS NO ANIMATION FRAMES.
+     *
+     * requestAnimationFrame is the right way to coalesce paints and the wrong
+     * way to coalesce DATA: a backgrounded tab never fires one, so the
+     * transcript stopped updating entirely. Caught on the deployed build,
+     * where a whole turn completed — audio played, the destination button
+     * appeared — and the transcript stayed empty behind them.
+     *
+     * Visible: one commit per frame, which is the point. Hidden: a timer, so
+     * the conversation is still there when somebody comes back to it.
+     */
+    transcriptFrame.current = document.visibilityState === 'visible'
+      ? window.requestAnimationFrame(flush)
+      : window.setTimeout(flush, 100);
   }, []);
 
   useEffect(() => () => {
-    if (transcriptFrame.current !== null) window.cancelAnimationFrame(transcriptFrame.current);
+    if (transcriptFrame.current === null) return;
+    // Either kind of handle; cancelling the wrong one is harmless and
+    // cancelling neither leaks a pending commit into an unmounted component.
+    window.cancelAnimationFrame(transcriptFrame.current);
+    window.clearTimeout(transcriptFrame.current);
   }, []);
   const liveState = useRef<VoiceState>('IDLE');
   liveState.current = state;

@@ -522,3 +522,18 @@ test('a turn that ends the call never offers somewhere to go', () => {
   const helping = parseAction('here it is <<ACT {"go":"verify","end":false}>>');
   assert.equal(helping.destination.path, '/verify');
 });
+
+test('the transcript still updates when the tab is in the background', () => {
+  /*
+   * requestAnimationFrame is the right way to coalesce paints and the wrong
+   * way to coalesce data: a hidden tab never fires one. Caught on the deployed
+   * build — a whole turn completed, audio played, the destination button
+   * appeared, and the transcript stayed empty behind them. On a phone that is
+   * switching apps and coming back to an empty conversation.
+   */
+  const panel = read('src/components/home/AiTalkPanel.tsx');
+  assert.ok(/visibilityState === 'visible'/.test(panel),
+    'coalescing must know whether the tab can paint at all');
+  assert.ok(/window\.setTimeout\(flush/.test(panel),
+    'a hidden tab needs a timer, since it will never get a frame');
+});

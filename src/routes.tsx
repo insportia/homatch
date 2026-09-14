@@ -85,6 +85,7 @@ import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import AdminHealthPage from './pages/admin/AdminHealthPage';
 import AdminRiskPage from './pages/admin/AdminRiskPage';
 import SiteStudioPage from './pages/admin/SiteStudioPage';
+import AppContentPage from './pages/admin/AppContentPage';
 import AdminEngagementPage from './pages/admin/AdminEngagementPage';
 import AdminLiveChatReportsPage from './pages/admin/AdminLiveChatReportsPage';
 
@@ -232,6 +233,9 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },
   { name: 'Admin Risk',        path: '/admin/risk',               element: adminWrap(<AdminRiskPage />),        adminOnly: true },
   { name: 'Site Studio',       path: '/admin/site-studio',        element: adminWrap(<SiteStudioPage />),       adminOnly: true },
+  /* The other 4,773 strings. Site Studio edits nine marketing pages;
+     everything a signed-in customer reads lived only in the bundle. */
+  { name: 'App Content',       path: '/admin/app-content',        element: adminWrap(<AppContentPage />),       adminOnly: true },
   /* The install and notification funnel. Reads pwa_events, which is
      write-only for visitors and readable only under is_admin(). */
   { name: 'Admin Engagement',  path: '/admin/engagement',         element: adminWrap(<AdminEngagementPage />),  adminOnly: true },

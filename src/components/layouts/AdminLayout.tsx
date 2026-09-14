@@ -6,7 +6,7 @@ import {
   Activity, Puzzle, CreditCard, Receipt, Server, Settings2,
   ShieldAlert, Wrench, ChevronLeft, Menu, X, AlertTriangle,
   SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send, Paintbrush, BadgeDollarSign,
-  AudioLines, Bell,
+  AudioLines, Bell, Type,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,7 +40,8 @@ const NAV = [
   { path: '/admin/sponsored',    labelKey: 'admin_nav_sponsored',  icon: Activity },
   { path: '/admin/settings',     labelKey: 'admin_nav_settings',   icon: SlidersHorizontal },
   { path: '/admin/health',       labelKey: 'admin_nav_health',     icon: HeartPulse },
-  { path: '/admin/site-studio',  labelKey: 'studio_title',         icon: Paintbrush },
+  { path: '/admin/site-studio',  labelKey: 'studio_title',         icon: Paintbrush },
+  { path: '/admin/app-content',  labelKey: 'admin_nav_content',    icon: Type },
   { path: '/admin/engagement',   labelKey: 'admin_nav_engagement', icon: Bell },
 ];
 

@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type { SupportedLanguage } from '@/types/types';
 import { RTL_LANGUAGES } from '@/types/types';
 import { translations } from '@/i18n/translations';
+import type { ContentLocale, OverrideMap } from '@/i18n/appContent';
+import { fetchOverrides } from '@/services/appContent';
 
 const LANG_STORAGE_KEY = 'homatch_lang';
 const SUPPORTED_LANGUAGES: SupportedLanguage[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
@@ -86,6 +88,28 @@ function hadExplicitStoredPreference(): boolean {
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<SupportedLanguage>(getInitialLanguage);
+
+  /*
+   * WHAT AN ADMIN WROTE INSTEAD.
+   *
+   * App Content lets an admin replace any bundled string, per locale, without
+   * a deploy. The map starts EMPTY and stays empty on any failure, and empty
+   * means "use what shipped" — so a slow query, an outage, a revoked grant
+   * and a table that does not exist yet are all the same answer, and none of
+   * them can change a word the customer reads.
+   *
+   * It is not awaited before the first paint. The application renders its own
+   * copy immediately and swaps in an override when one arrives, because the
+   * alternative is a blank screen while a CMS answers, and the copy that
+   * shipped is correct copy.
+   */
+  const [overrides, setOverrides] = useState<OverrideMap>({});
+
+  useEffect(() => {
+    let live = true;
+    void fetchOverrides().then((map) => { if (live) setOverrides(map); });
+    return () => { live = false; };
+  }, []);
   const isRTL = RTL_LANGUAGES.includes(lang);
   // Precedence guard: once true, a profile-stored preference must never
   // silently override what the user (or this device) already has set —
@@ -129,6 +153,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const t = useCallback((key: string, vars?: Record<string, string | number>): string => {
     const bundle = translations[lang] as Record<string, string> | undefined;
     const english = translations.en as Record<string, string>;
+    /*
+     * The override first, and only when it has words in it. A blank is not a
+     * choice somebody made: the write path deletes a cleared row rather than
+     * storing an empty one, so a blank here could only come from a direct
+     * database write, and rendering it would be a heading with nothing in it.
+     */
+    const written = overrides[lang as ContentLocale]?.[key];
+    if (typeof written === 'string' && written.trim()) return interpolate(written, vars);
     const value = bundle?.[key];
     if (value === undefined) {
       if (english[key] === undefined) {
@@ -139,7 +171,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     }
     const resolved = value ?? english[key] ?? key;
     return interpolate(resolved, vars);
-  }, [lang]);
+  }, [lang, overrides]);
 
   return (
     <LanguageContext.Provider value={{ lang, setLang, applyProfileLanguage, t, isRTL }}>
@@ -170,16 +202,21 @@ export function useLanguage() {
  * scoped to that element, so RTL can be inspected inside an LTR editor.
  */
 export function LanguageOverride({
-  lang, children,
-}: { lang: SupportedLanguage; children: React.ReactNode }) {
+  lang, children, overrides,
+}: { lang: SupportedLanguage; children: React.ReactNode; overrides?: OverrideMap }) {
   const outer = useLanguage();
 
   const t = useCallback((key: string, vars?: Record<string, string | number>): string => {
     const bundle = translations[lang] as Record<string, string> | undefined;
     const english = translations.en as Record<string, string>;
+    /* The same order as the real provider. A preview that ignored overrides
+       would show an admin the copy they have already replaced, which is the
+       one thing a preview must not do. */
+    const written = overrides?.[lang as ContentLocale]?.[key];
+    if (typeof written === 'string' && written.trim()) return interpolate(written, vars);
     const resolved = bundle?.[key] ?? english[key] ?? key;
     return interpolate(resolved, vars);
-  }, [lang]);
+  }, [lang, overrides]);
 
   const value: LanguageContextValue = {
     lang,

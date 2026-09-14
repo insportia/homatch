@@ -438,7 +438,7 @@ export default function CallsPage() {
               icon={Phone}
               titleKey="comm_calls_empty"
               bodyKey="comm_calls_empty_body"
-              action={{ labelKey: 'comm_new_campaign', onClick: () => navigate('/outreach/campaigns/new') }}
+              action={{ labelKey: 'comm_new_campaign_call', onClick: () => navigate('/outreach/campaigns/new') }}
             />
           ) : (
             <ScrollTable minWidth={900}>

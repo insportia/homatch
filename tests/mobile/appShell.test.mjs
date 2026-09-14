@@ -287,3 +287,86 @@ test('a signed-out visitor still gets the public header', opts, async (t) => {
   const rail = await page.evaluate(() => !!document.querySelector('aside nav[aria-label]'));
   assert.equal(rail, false, 'the app sidebar rendered for a signed-out visitor');
 });
+
+/*
+ * ── THREE PRODUCTS, NOT ONE PRODUCT THREE TIMES ─────────────────────────
+ *
+ * The owner's test, in their words: "if screenshots of the three pages look
+ * structurally almost identical, the information architecture is wrong."
+ *
+ * This measures that without a screenshot. Shared PRIMITIVES are fine and
+ * expected — a Kpi tile and a Section wrapper are the design system. Shared
+ * LABELS are the problem: they are the words a customer reads, and if two
+ * products say the same words they are, to that customer, the same product.
+ *
+ * What it caught when it was written: the WhatsApp page carried a WhatsApp
+ * CALLING module — a call concept on a messaging product, in NOT_ACTIVATED
+ * state, advertising a launch path the owner had ruled out of scope — and a
+ * second Templates card pointing at the page a Templates card above it
+ * already pointed at. Both are gone, and "New campaign" became "New WhatsApp
+ * campaign" and "New call campaign", because the model behind them is shared
+ * and the label must not be.
+ *
+ * The threshold is deliberately generous: chrome ("Back") and the group
+ * heading ("Communications") are shared on purpose, and the owner explicitly
+ * allows the heading. Anything past a quarter means product sections have
+ * started to converge.
+ */
+test('the three communication products do not look like one another', opts, async (t) => {
+  if (skipReason) assert.fail(`app shell gate could not run: ${skipReason}`);
+  const page = await boot(t, { width: 1440, height: 1000 });
+
+  const PRODUCTS = [
+    ['AI Call Center', '/outreach/calls'],
+    ['WhatsApp', '/outreach/whatsapp'],
+    ['Email', '/outreach/email'],
+  ];
+
+  const seen = new Map();
+  for (const [name, path] of PRODUCTS) {
+    await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3200);
+    const labels = await page.evaluate(() => {
+      const out = new Set();
+      /* Headings and short card/tile labels: what somebody reads when
+         deciding what this page is for. */
+      for (const el of document.querySelectorAll('main h1, main h2, main h3, main button, main dt')) {
+        const text = (el.textContent ?? '').trim();
+        if (text && text.length < 46) out.add(text);
+      }
+      return [...out];
+    });
+    seen.set(name, new Set(labels));
+  }
+
+  const failures = [];
+  const names = [...seen.keys()];
+  for (const name of names) {
+    if (seen.get(name).size < 3) failures.push(`${name}: rendered ${seen.get(name).size} labels — the page did not load`);
+  }
+
+  for (let i = 0; i < names.length; i += 1) {
+    for (let j = i + 1; j < names.length; j += 1) {
+      const a = seen.get(names[i]);
+      const b = seen.get(names[j]);
+      const shared = [...a].filter((x) => b.has(x));
+      const union = new Set([...a, ...b]).size;
+      const pct = union ? Math.round((shared.length / union) * 100) : 0;
+      if (pct > 25) {
+        failures.push(`${names[i]} and ${names[j]} share ${pct}% of their labels: ${shared.slice(0, 10).join(' | ')}`);
+      }
+    }
+  }
+
+  /* The scope decision, pinned where it will be noticed if it comes back:
+     WhatsApp calling is not part of the product. */
+  await page.goto(`${BASE}/outreach/whatsapp`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3000);
+  const callOnWhatsApp = await page.evaluate(() => {
+    const text = (document.querySelector('main')?.innerText ?? '').toLowerCase();
+    return /whatsapp call|call from whatsapp/.test(text);
+  });
+  if (callOnWhatsApp) failures.push('WhatsApp calling is being advertised on the WhatsApp product page');
+
+  assert.deepEqual(failures, [], failures.join('\n'));
+});

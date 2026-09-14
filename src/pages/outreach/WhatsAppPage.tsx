@@ -19,10 +19,9 @@ import { useNavigate } from 'react-router-dom';
 import { UnreadBadge } from '@/components/common/UnreadBadge';
 import {
   Inbox, MessageSquare, FileText, Plus, RefreshCw, ShieldAlert,
-  PhoneForwarded, Users, Send, CheckCheck, Eye, Reply,
+  Users, Send, CheckCheck, Eye, Reply,
 } from 'lucide-react';
 import { CommsWorkspace, Section } from '@/components/communications/CommsWorkspace';
-import { ChannelModule } from '@/components/communications/ChannelModule';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -189,8 +188,16 @@ export default function WhatsAppPage() {
 
           <div className="grid gap-2 sm:grid-cols-3">
             <QuickCard icon={Inbox} labelKey="comm_open_inbox" badge={unread ? String(unread) : null} onClick={() => navigate('/outreach/whatsapp/inbox')} />
-            <QuickCard icon={FileText} labelKey="comm_templates_title" onClick={() => navigate('/outreach/whatsapp/templates')} />
-            <QuickCard icon={Plus} labelKey="comm_new_campaign" onClick={() => navigate('/outreach/campaigns/new?channel=WHATSAPP')} />
+            <QuickCard
+              icon={FileText}
+              labelKey="comm_templates_title"
+              badge={templates.length ? `${approved}/${templates.length}` : null}
+              onClick={() => navigate('/outreach/whatsapp/templates')}
+            />
+            {/* "New WhatsApp campaign", not "New campaign". The model behind
+                it is shared with email and calls; the label a customer reads
+                must not be, or three products look like one. */}
+            <QuickCard icon={Plus} labelKey="comm_new_campaign_wa" onClick={() => navigate('/outreach/campaigns/new?channel=WHATSAPP')} />
           </div>
 
           <KpiRow cols={6}>
@@ -324,25 +331,34 @@ export default function WhatsAppPage() {
                 </ul>
               )}
 
+              {/* Templates moved up to the primary row with its approval
+                  count; a second card to the same place was the page telling
+                  somebody twice. */}
               <div className="mt-3 grid gap-2">
-                <QuickCard icon={FileText} labelKey="comm_templates" badge={templates.length ? `${approved}/${templates.length}` : null} onClick={() => navigate('/outreach/whatsapp/templates')} />
                 <QuickCard icon={Users} labelKey="comms_nav_contacts" onClick={() => navigate('/outreach/contacts')} />
               </div>
             </Section>
           </div>
 
-          {/* ── WhatsApp Calling, as its own direction ────────────────────
-              Shown here rather than hidden, and clearly not a phone campaign.
-              Its state is what the platform actually knows, never a guess. */}
-          <Section titleKey="comms_ch_wacall" sub={t('comms_ch_wacall_purpose')}>
-            <ChannelModule
-              icon={PhoneForwarded}
-              titleKey="comms_ch_wacall"
-              purposeKey="comms_ch_wacall_purpose"
-              state="NOT_ACTIVATED"
-              stateDetailKey="comms_ch_wacall_detail"
-            />
-          </Section>
+          {/*
+            * WHATSAPP CALLING USED TO BE A SECTION HERE. IT IS NOT A PRODUCT.
+            *
+            * It rendered a channel module in NOT_ACTIVATED state, which reads
+            * as "a thing you will be able to turn on" — and the owner's scope
+            * decision is that WhatsApp calling is not part of the launch at
+            * all. Its route row is already disabled with the kill switch on;
+            * leaving the card was advertising a launch path that does not
+            * exist.
+            *
+            * It is also the wrong SHAPE for this page. WhatsApp is messaging:
+            * conversations, campaigns, templates, automation. A call module
+            * here is the same generic communications card the AI Call Center
+            * owns, and two products that look structurally identical are two
+            * products a customer cannot tell apart.
+            *
+            * The backend rows (comm_provider_routes WHATSAPP_CALL, disabled)
+            * stay exactly where they are.
+            */}
     </CommsWorkspace>
   );
 }

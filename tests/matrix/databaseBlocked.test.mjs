@@ -36,6 +36,35 @@ const MIGRATIONS = [
   'supabase/migrations/20260912110500_communications_functions.sql',
 ];
 
+/*
+ * ARE THEY APPLIED?
+ *
+ * This file opens by warning that "database blocked" is the kind of sentence
+ * that survives long after it stops being true — and then it did exactly that
+ * for two days, because nothing here recorded whether the migration had been
+ * applied. Twelve rows said BLOCKED_ONLY_BY_SCHEMA, the document said the
+ * owner had twelve decisions to make, and the schema had been live since the
+ * twelfth.
+ *
+ * So the fact is written down, with the date and the evidence, in ONE place.
+ * A row may only claim to be blocked on a migration that is false here, which
+ * turns twelve stale claims into one stale line — and one line is a thing
+ * somebody notices.
+ *
+ * VERIFIED 2026-09-14 against project ptxajsjhobhvsfhmutjn:
+ *
+ *   select table_name from information_schema.tables
+ *   where table_schema = 'public' and table_name like 'comm\_%';
+ *     -> all 12 tables present
+ *   select proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ *   where n.nspname = 'public' and proname like 'comm\_%';
+ *     -> all 14 functions present
+ *   supabase_migrations.schema_migrations
+ *     -> 20260912110000 and 20260912110500 recorded, plus the six part-split
+ *        versions and the two least-privilege grant migrations.
+ */
+const SCHEMA_APPLIED = true;
+
 /** Tables the product already has. A feature resting on these is not blocked. */
 const PRE_EXISTING = new Set([
   'outreach_campaigns', 'outreach_sends', 'outreach_contacts', 'outreach_contact_lists',
@@ -58,52 +87,52 @@ const PRE_EXISTING = new Set([
 const MATRIX = [
   {
     feature: 'WhatsApp inbound webhook — signature check, dedupe, inbound record',
-    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE'],
     code: ['supabase/functions/whatsapp-webhook/index.ts', 'supabase/functions/_shared/comm/meta.ts'],
     tests: ['src/lib/comm/__tests__/costAndStatus.test.mjs'],
     tables: ['comm_webhook_events', 'comm_conversations', 'comm_messages'],
-    blocked: 'comm_claim_webhook_event() and comm_record_inbound() do not exist until the migration is applied, so an end-to-end delivery cannot be replayed against a database.',
+    note: 'comm_claim_webhook_event() and comm_record_inbound() are live and were exercised against production on 2026-09-14: a claimed event, a recorded inbound, and a replay of the same event that was refused.',
   },
   {
     feature: 'WhatsApp outbound send — template gate, 24-hour service window',
-    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE'],
     code: ['supabase/functions/whatsapp-send/index.ts', 'src/lib/comm/statusMap.ts'],
     tests: ['src/lib/comm/__tests__/costAndStatus.test.mjs'],
     tables: ['comm_conversations', 'comm_messages', 'comm_whatsapp_templates'],
-    blocked: 'The window and template state are read from comm_conversations and comm_whatsapp_templates.',
+    note: 'The window and template state are read from comm_conversations and comm_whatsapp_templates, both live. Sending needs a working Meta token, which is the row below.',
   },
   {
     feature: 'WhatsApp template sync from Meta',
-    status: ['IMPLEMENTED', 'BLOCKED_ONLY_BY_SCHEMA', 'EXTERNAL'],
+    status: ['IMPLEMENTED', 'SCHEMA_LIVE', 'EXTERNAL'],
     code: ['supabase/functions/whatsapp-sync/index.ts'],
     tests: [],
     tables: ['comm_whatsapp_templates', 'comm_channel_accounts'],
-    blocked: 'The synced rows land in comm_whatsapp_templates and the account they belong to in comm_channel_accounts; neither table exists until the migration is applied.',
+    note: 'The synced rows land in comm_whatsapp_templates and the account they belong to in comm_channel_accounts, both live.',
     external: 'The production Meta access token is currently rejected with HTTP 401, so a live sync cannot be run even once the schema exists.',
   },
   {
     feature: 'Campaign launch — audience summary, cost estimate, credit reservation',
-    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE'],
     code: ['supabase/functions/comm-campaign-launch/index.ts', 'src/lib/comm/cost.ts'],
     tests: ['src/lib/comm/__tests__/costAndStatus.test.mjs'],
     tables: ['comm_agents'],
-    blocked: 'comm_audience_summary() and comm_enqueue_campaign() ship in the unapplied migration. The reservation half runs on the EXISTING wallet (beginExecution in _shared/billing.ts) and needs nothing new.',
+    note: 'comm_audience_summary() and comm_enqueue_campaign() are live. The reservation half runs on the EXISTING wallet (beginExecution in _shared/billing.ts) and always did.',
   },
   {
     feature: 'Dispatch worker — claim, send, settle, reclaim stale',
-    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE'],
     code: ['supabase/functions/comm-dispatch-worker/index.ts'],
     tests: ['src/lib/comm/__tests__/costAndStatus.test.mjs'],
     tables: [],
-    blocked: 'comm_claim_sends() and comm_reclaim_stale_sends() ship in the unapplied migration. The rows themselves live in outreach_sends, which already exists.',
+    note: 'comm_claim_sends() and comm_reclaim_stale_sends() are live. The rows themselves are in outreach_sends, which always existed.',
   },
   {
     feature: 'Voice call lifecycle — provider webhook, transcript, cost settlement',
-    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE'],
     code: ['supabase/functions/voice-webhook/index.ts', 'supabase/functions/_shared/comm/vapi.ts'],
     tests: ['src/lib/comm/__tests__/voice.test.mjs', 'src/lib/comm/__tests__/costAndStatus.test.mjs'],
     tables: ['comm_extractions'],
-    blocked: 'The extraction is written to comm_extractions. The send row and the cost event both land in tables that already exist.',
+    note: 'The extraction is written to comm_extractions, which is live. The send row and the cost event land in tables that always existed.',
   },
   {
     feature: 'Realtime Georgian conversation — endpointing, barge-in, language lock',
@@ -115,35 +144,35 @@ const MATRIX = [
   },
   {
     feature: 'Agent builder — draft, version, publish',
-    status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'SCHEMA_LIVE'],
     code: ['src/pages/outreach/AgentBuilderPage.tsx', 'supabase/functions/comm-agent/index.ts'],
     tests: ['tests/browser/commSurfaces.test.mjs'],
     tables: ['comm_agents', 'comm_agent_versions'],
-    blocked: 'comm_publish_agent() writes the immutable version row into comm_agent_versions.',
+    note: 'comm_publish_agent() writes the immutable version row into comm_agent_versions. Both are live.',
   },
   {
     feature: 'AI TALK homepage demo — allowance, session, transcript',
-    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE'],
     code: ['src/components/home/AiTalkPanel.tsx', 'supabase/functions/ai-talk-session/index.ts', 'src/lib/comm/talkAllowance.ts'],
     tests: ['src/lib/comm/__tests__/voice.test.mjs'],
     tables: ['comm_talk_sessions'],
-    blocked: 'The per-visitor allowance is counted in comm_talk_sessions. The admin switch and the limits themselves live in admin_settings, which already exists — so the ADMIN side of this feature is live today.',
+    note: 'The per-visitor allowance is counted in comm_talk_sessions, which is live. The admin switch and the limits are in admin_settings, which always existed.',
   },
   {
     feature: 'Compliance and risk engine — scoring, auto-pause, admin review',
-    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE'],
     code: ['src/lib/comm/risk.ts', 'src/pages/admin/AdminRiskPage.tsx'],
     tests: ['src/lib/comm/__tests__/policy.test.mjs'],
     tables: ['comm_risk_assessments', 'comm_account_trust'],
-    blocked: 'comm_compliance_pause() and the two tables it reads and writes.',
+    note: 'comm_compliance_pause() and the two tables it reads and writes, comm_risk_assessments and comm_account_trust, are live.',
   },
   {
     feature: 'Provider routing and kill switches',
-    status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'SCHEMA_LIVE'],
     code: ['src/components/admin/CommunicationsRoutingPanel.tsx', 'supabase/functions/comm-provider-status/index.ts'],
     tests: ['tests/browser/commSurfaces.test.mjs'],
     tables: ['comm_provider_routes'],
-    blocked: 'comm_provider_routes, which holds the per-role priority, the enabled flag and the kill switch. The panel already degrades with a named reason rather than a blank card when that table is absent, which is the state a reader can see today.',
+    note: 'comm_provider_routes holds the per-role priority, the enabled flag and the kill switch, and is live. The panel still degrades with a named reason rather than a blank card if it ever goes away.',
   },
   {
     feature: 'Admin voice tuning and AI Talk allowance',
@@ -171,19 +200,19 @@ const MATRIX = [
   },
   {
     feature: 'Inbox — conversation list, thread, AI/human handoff',
-    status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'SCHEMA_LIVE'],
     code: ['src/pages/outreach/WhatsAppInboxPage.tsx', 'src/lib/comm/handoff.ts'],
     tests: ['src/lib/comm/__tests__/voice.test.mjs', 'tests/browser/commSurfaces.test.mjs'],
     tables: ['comm_conversations', 'comm_messages'],
-    blocked: 'comm_set_conversation_mode() and the two tables the thread is read from.',
+    note: 'comm_set_conversation_mode() and the two tables the thread is read from, comm_conversations and comm_messages, are live.',
   },
   {
     feature: 'Analytics — delivery, outcome and cost aggregates',
-    status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'BLOCKED_ONLY_BY_SCHEMA'],
+    status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'SCHEMA_LIVE'],
     code: ['src/pages/outreach/CommunicationsAnalyticsPage.tsx'],
     tests: ['tests/browser/commSurfaces.test.mjs'],
     tables: ['comm_conversations'],
-    blocked: 'The messaging half of every figure reads comm_conversations. The call half reads outreach_sends and works today.',
+    note: 'The messaging half of every figure reads comm_conversations, which is live. The call half reads outreach_sends and always worked.',
   },
 ];
 
@@ -199,6 +228,22 @@ test('the migration really does create every table the matrix leans on', () => {
   const named = new Set(MATRIX.flatMap((r) => r.tables ?? []));
   const missing = [...named].filter((t) => !migrationTables.has(t));
   assert.deepEqual(missing, [], 'the matrix names tables that no migration creates');
+});
+
+test('nothing claims to be blocked by a schema that is applied', () => {
+  /*
+   * The check that would have caught this two days ago. Once the migration is
+   * in, "waiting on the owner to apply the migration" is not a status, it is a
+   * sentence nobody has revisited — and a status report that tells an owner
+   * they have twelve decisions to make when they have none is worse than no
+   * report.
+   */
+  if (!SCHEMA_APPLIED) return;
+  const stale = MATRIX
+    .filter((r) => r.status.includes('BLOCKED_ONLY_BY_SCHEMA'))
+    .map((r) => r.feature);
+  assert.deepEqual(stale, [],
+    `the communications schema is applied; these still claim to be waiting on it:\n${stale.join('\n')}`);
 });
 
 test('nothing is called blocked that rests on a table the product already has', () => {
@@ -267,9 +312,13 @@ test('the status document is regenerated from this matrix', () => {
     '',
     '<!-- GENERATED by tests/matrix/databaseBlocked.test.mjs. Edit the matrix there, not this file. -->',
     '',
-    `${counts.total} features. ${counts.clear} are complete and unblocked today. ` +
-    `${counts.blocked} are finished in code and wait only on the owner applying the migration. ` +
-    `${counts.external} additionally need something outside this repository.`,
+    SCHEMA_APPLIED
+      ? `${counts.total} features. ${counts.clear} are complete and unblocked today. `
+        + `${counts.external} need something outside this repository — a working provider `
+        + `credential, or a real call to a real person — and nothing else is waiting on Homatch.`
+      : `${counts.total} features. ${counts.clear} are complete and unblocked today. `
+        + `${counts.blocked} are finished in code and wait only on the owner applying the migration. `
+        + `${counts.external} additionally need something outside this repository.`,
     '',
     'No row below is waiting on code that has not been written.',
     '',
@@ -282,13 +331,16 @@ test('the status document is regenerated from this matrix', () => {
       return `| ${r.feature} | ${r.status.join(', ')} | ${waits.replace(/\|/g, '\\|')} |`;
     }),
     '',
-    '## The two migrations, unapplied on purpose',
+    SCHEMA_APPLIED ? '## The two migrations, applied' : '## The two migrations, unapplied on purpose',
     '',
     ...MIGRATIONS.map((m) => `- \`${m}\``),
     '',
     `They create ${migrationTables.size} tables: ${[...migrationTables].sort().map((t) => `\`${t}\``).join(', ')}.`,
     '',
-    'Applying them is a production schema change and is the owner\'s decision, not this branch\'s.',
+    SCHEMA_APPLIED
+      ? 'Both are live in production, verified on 2026-09-14 against the tables, the functions '
+        + 'and the migration ledger. Nothing in this document is waiting on a schema decision.'
+      : 'Applying them is a production schema change and is the owner\'s decision, not this branch\'s.',
     '',
   ];
 
@@ -297,15 +349,18 @@ test('the status document is regenerated from this matrix', () => {
   writeFileSync(target, lines.join('\n'), 'utf8');
 
   /*
-   * Three features are complete and unblocked TODAY: admin voice tuning, the
-   * customer billing screen and contact import. All three were built
-   * deliberately on tables the product already has, which is why they work
-   * before the migration and why the reuse rule in the brief mattered.
+   * Three features were unblocked before the migration — admin voice tuning,
+   * the customer billing screen and contact import — because all three were
+   * built deliberately on tables the product already had. That was the number
+   * worth defending while the schema was a decision somebody had to make.
    *
-   * The floor is 3 because that is the honest number, not a target. If a
-   * future edit drops it, something that used to work on the existing schema
-   * has been moved onto the new one, and that is worth failing over.
+   * With the schema applied, the floor is every feature that is not waiting on
+   * something outside this repository. If a future edit drops below that,
+   * something has become blocked again and the reason had better be written
+   * in the row.
    */
-  assert.ok(counts.clear >= 3, `only ${counts.clear} features are unblocked; something regressed onto the new schema`);
+  const floor = SCHEMA_APPLIED ? counts.total - counts.external : 3;
+  assert.ok(counts.clear >= floor,
+    `only ${counts.clear} of ${counts.total} features are unblocked; expected at least ${floor}`);
   assert.ok(existsSync(target));
 });

@@ -341,3 +341,61 @@ test('the in-app list goes where the producer said, not where it guesses', () =>
   assert.ok(/startsWith\('\/'\)/.test(page) && /startsWith\('\/\/'\)/.test(page),
     'the list follows a deep link without checking it is a path on this site');
 });
+
+/*
+ * ── THE TWO IDENTITIES ────────────────────────────────────────────────────
+ *
+ * Homatch keys a person two ways, and which one a producer holds depends on
+ * which table it read. Most of the product uses public.users.id. The whole
+ * outreach and communications domain keys owner_id on auth.users.id, and
+ * authenticate() in _shared/comm/auth.ts returns the auth id too.
+ *
+ * notifications.user_id references public.users(id). So every communications
+ * producer handed notify_emit an id that table has never heard of, the insert
+ * failed on the foreign key, and the helper swallowed it — because a
+ * notification is a side effect of something that already happened.
+ *
+ * Eight of the sixteen places Homatch notifies somebody told nobody, for
+ * months, with every screen looking correct.
+ */
+test('the emit function resolves whichever identity the caller is holding', () => {
+  const sql = readFileSync('supabase/migrations/20260914220000_notify_emit_resolves_owner_identity.sql', 'utf8');
+  assert.match(sql, /WHERE id = p_user_id/, 'the public.users id is no longer tried first');
+  assert.match(sql, /WHERE auth_id = p_user_id/, 'an auth id no longer resolves, so communications notify nobody');
+  /* And the insert uses the RESOLVED id, not the one that arrived. Getting
+     this half right is the shape of bug that looks fixed and is not. */
+  assert.match(sql, /VALUES \(\s*\n\s*v_user,/, 'the insert still uses the id the caller passed');
+  assert.match(sql, /WHERE user_id = v_user/, 'the aggregation still groups on the id the caller passed');
+});
+
+test('an unresolvable recipient returns nothing rather than raising', () => {
+  /*
+   * It used to raise, through the foreign key, and that is precisely what
+   * produced the silence: the helper caught it. NULL is the same outcome the
+   * caller already handles, stated in the return value instead of thrown.
+   */
+  const sql = readFileSync('supabase/migrations/20260914220000_notify_emit_resolves_owner_identity.sql', 'utf8');
+  const resolve = sql.slice(sql.indexOf('SELECT id INTO v_user'), sql.indexOf('Aggregation'));
+  assert.match(resolve, /IF v_user IS NULL THEN[\s\S]*RETURN NULL;/,
+    'an unresolvable recipient raises again, which is how this failed silently the first time');
+});
+
+test('every communications producer notifies with an id from its own tables', () => {
+  /*
+   * The reason the fix belongs in the function and not in eight callers: each
+   * of these reads its owner from a comm_ or outreach_ table, where the id IS
+   * the auth id. Asking them to translate would be asking eight files to
+   * remember something only one of them has to know.
+   */
+  const communications = [
+    'whatsapp-webhook', 'whatsapp-sync', 'voice-webhook',
+    'comm-dispatch-worker', 'comm-campaign-launch',
+  ];
+  for (const dir of communications) {
+    const calls = CALLS.filter(c => c.file.includes(`/${dir}/`));
+    assert.ok(calls.length > 0, `${dir} no longer notifies at all`);
+    for (const { file, fields } of calls) {
+      assert.ok(fields.userId, `${file} notifies with no recipient`);
+    }
+  }
+});

@@ -86,7 +86,32 @@ export interface BuildingCopy {
 /** phase 0 idle · 1 scan · 2 floors · 3 floor · 4 unit · 5 settled */
 const LAST = 5;
 
-export function BuildingScene({ copy }: { copy: BuildingCopy }) {
+export function BuildingScene({
+  copy, focus, compact = false,
+}: {
+  copy: BuildingCopy;
+  /*
+   * THE FLOOR SOMEBODY ELSE HAS DECIDED ON.
+   *
+   * This scene used to own its focus completely: an internal sequence, a
+   * pointer, and a timer that walked the floors on a phone. Beside it, the
+   * section ran its OWN timer walking the seven intelligence layers and the
+   * sentence that explains them. Two clocks, never started together, drifting
+   * apart within seconds — which is exactly the "the animation and the text
+   * are not synchronised" the owner kept reporting. The building was talking
+   * about floor 5 while the paragraph talked about Contract.
+   *
+   * When `focus` is supplied the building stops keeping time and follows: the
+   * lit floor IS the active layer, changing on the same tick as the words,
+   * because it is the same number.
+   *
+   * Left undefined — the desktop, where the pointer is the input — nothing
+   * changes and the scene behaves exactly as before.
+   */
+  focus?: number;
+  /** Sized to sit beside the text rather than above it. */
+  compact?: boolean;
+}) {
   const level = useMotion();
   const still = level === 'none';
   const ref = useRef<HTMLDivElement | null>(null);
@@ -141,10 +166,21 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
   const done = phase >= LAST;
 
   /* The pointer wins once the story has finished telling itself. */
-  const activeFloor = done && hover ? hover.floor : PICKED;
+  /*
+   * Precedence: an explicit focus, then the pointer, then the sequence.
+   *
+   * `focus` wins over `hover` deliberately. A phone has no hover, and on a
+   * desktop a controlled focus only exists where the caller has decided the
+   * story leads — in both cases the thing that must never happen is the
+   * drawing and the sentence pointing at different floors.
+   */
+  const controlled = typeof focus === 'number';
+  const activeFloor = controlled
+    ? Math.min(FLOORS - 1, Math.max(0, focus))
+    : (done && hover ? hover.floor : PICKED);
   const pickedY = floorTop(activeFloor);
   const ALL_MODULES = [...LEFT_MODULES, ...RIGHT_MODULES];
-  const unit = done && hover
+  const unit = !controlled && done && hover
     ? ALL_MODULES[hover.unit]
     : RIGHT_MODULES[PICKED_UNIT];
 
@@ -197,16 +233,18 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
    * be worse than one that stayed still.
    */
   useEffect(() => {
+    // Somebody else is driving. Two timers on one drawing is the bug.
+    if (controlled) return;
     if (!done || still) return;
     if (typeof window.matchMedia !== 'function') return;
     if (!window.matchMedia('(hover: none)').matches) return;
     const id = window.setTimeout(() => setHover(nextFloor), 2200);
     return () => clearTimeout(id);
-  }, [done, still, hover]);
+  }, [controlled, done, still, hover]);
 
   return (
     <div ref={ref} className="min-w-0">
-      <div className="relative mx-auto w-full max-w-[22rem] lg:max-w-none">
+      <div className={`relative mx-auto w-full lg:max-w-none ${compact ? '' : 'max-w-[22rem]'}`}>
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className={`h-auto w-full touch-manipulation ${done ? 'cursor-crosshair' : ''}`}
@@ -402,7 +440,11 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
           </g>
         </svg>
 
-        {/* ── What the analysis is doing, in words ───────────────────── */}
+        {/* ── What the analysis is doing, in words ─────────────────────
+            Hidden in compact mode: beside the drawing there is no room for a
+            letter-spaced caption under it, and the column to its right is
+            already saying what is being read. */}
+        {!compact && (
         <p className="mt-4 flex items-center justify-center gap-2 text-[14px] font-semibold uppercase tracking-[0.18em] text-gold lg:justify-start">
           <span
             className={`inline-block h-1.5 w-1.5 rounded-full ${done ? 'bg-gold' : 'bg-gold/70'}`}
@@ -411,6 +453,7 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
           />
           {copy.stages[Math.min(phase, copy.stages.length - 1)]}
         </p>
+        )}
       </div>
 
       {/*
@@ -436,6 +479,7 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
         *   Georgian and Russian, where these words are longer. A finding
         *   that has to be guessed at is not a finding.
         */}
+      {!compact && (
       <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
         {copy.callouts.map((rawCallout, i) => {
           /* The first callout is the storey. While the pointer (or a tap) is
@@ -461,9 +505,12 @@ export function BuildingScene({ copy }: { copy: BuildingCopy }) {
           );
         })}
       </dl>
-      <p className="mt-3 text-[13px] leading-relaxed text-white/40">{copy.note}</p>
+      )}
+      {!compact && (
+        <p className="mt-3 text-[13px] leading-relaxed text-white/40">{copy.note}</p>
+      )}
     </div>
   );
 }
 
-export { FLOORS, PICKED };
+export { FLOORS, PICKED, storeyOf };

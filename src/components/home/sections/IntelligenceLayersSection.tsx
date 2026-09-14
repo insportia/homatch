@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PAGE, SECTION_Y } from './primitives';
-import { BuildingScene } from './BuildingScene';
+import { BuildingScene, FLOORS, storeyOf } from './BuildingScene';
 import { useSectionField, useFieldProps } from '@/site/content';
 
 /**
@@ -100,6 +100,45 @@ export function IntelligenceLayersSection() {
     return () => window.clearInterval(id);
   }, [autoplay, held]);
 
+  /*
+   * ONE NUMBER DRIVES BOTH.
+   *
+   * Seven layers, eight floors. The property is the ground the rest stands
+   * on, so layer 0 is the bottom of the stack and financing is near the top —
+   * the same order the desktop tower is drawn in. The building is handed this
+   * floor as a prop rather than keeping its own clock, which is what makes
+   * the highlight and the sentence change on the same tick instead of
+   * drifting apart within seconds.
+   */
+  const focusFloor = FLOORS - 1 - active;
+
+  /*
+   * THE FINDINGS ARRIVE, THEY DO NOT APPEAR.
+   *
+   * These four used to live inside the drawing, where they carried a 20px
+   * staggered reveal. Moving them out to sit under the pair — the only place
+   * on a 320px screen with width for them — left them arriving instantly,
+   * which reads as four boxes that were always there rather than as four
+   * things the analysis just worked out. Same 20px, same stagger, started
+   * when the block is genuinely on screen.
+   */
+  const phone = useRef<HTMLDivElement | null>(null);
+  const [found, setFound] = useState(false);
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') { setFound(true); return; }
+    const el = phone.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        setFound(true);
+        io.disconnect();
+      }
+    }, { threshold: 0.25 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   return (
     <section id="intelligence" className="scroll-mt-20 bg-[#0D0D0D] text-white">
       <div className={`${PAGE} ${SECTION_Y}`}>
@@ -137,11 +176,78 @@ export function IntelligenceLayersSection() {
           * caption for what just moved.
           */}
         <div
+          ref={phone}
           className="mt-8 lg:hidden"
           onPointerDown={() => setHeld(true)}
           onPointerUp={() => setHeld(false)}
         >
-          <BuildingScene copy={buildingCopy} />
+          {/*
+            * THE BUILDING STANDS BESIDE WHAT IT FOUND.
+            *
+            * It used to be full width with the sentence underneath, which on
+            * a 390px phone puts about 380px of drawing between the thing
+            * moving and the words explaining it — far enough that they read
+            * as two unrelated blocks, and on a 320px screen the sentence is
+            * off the bottom of the fold entirely while the highlight moves
+            * where nobody is looking.
+            *
+            * 42/58. Measured rather than chosen: at 320px that leaves the
+            * drawing 118px, which is still legibly a tower with distinct
+            * floors, and the text 163px, which fits "ხელშეკრულების
+            * ანალიზი" on two lines without hyphenating. Anything narrower
+            * for the text and Georgian starts breaking mid-word; anything
+            * narrower for the building and the floors stop resolving.
+            *
+            * `items-center` rather than `items-start`: the lit floor moves
+            * up and down the façade, and a centred pairing keeps it near the
+            * words at every step instead of only at the top of the stack.
+            */}
+          <div className="grid grid-cols-[42fr_58fr] items-center gap-3 sm:gap-4">
+            <div className="min-w-0">
+              <BuildingScene copy={buildingCopy} focus={focusFloor} compact />
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-gold">
+                {String(active + 1).padStart(2, '0')} / {String(LAYERS.length).padStart(2, '0')}
+              </p>
+              <p className="mt-1.5 text-pretty text-[19px] font-semibold leading-[1.15] text-white">
+                {t(LAYERS[active].label)}
+              </p>
+              {/* The finding, clamped so a long Georgian sentence cannot push
+                  the row taller than the drawing beside it and make the page
+                  jump on every tick. The whole sentence is directly below. */}
+              <p className="mt-2 line-clamp-4 text-pretty text-[14px] leading-[1.5] text-white/65">
+                {t(LAYERS[active].desc)}
+              </p>
+            </div>
+          </div>
+
+          {/* The four things the analysis actually read off the building.
+              Out of the drawing column, where there is no width for them,
+              and under the pair, where there is. The floor is the LIT floor,
+              so it cannot disagree with the highlight. */}
+          <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {buildingCopy.callouts.map((callout, i) => (
+              <div
+                key={callout.label}
+                className="min-w-0 rounded-[0.7rem] border border-white/15 bg-white/[0.04] px-3 py-2.5"
+                style={{
+                  opacity: found ? 1 : 0,
+                  transform: found ? 'none' : 'translateY(20px)',
+                  transition: `opacity 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms, transform 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms`,
+                }}
+              >
+                <dt className="text-[13px] uppercase tracking-[0.14em] text-white/45">{callout.label}</dt>
+                <dd className="mt-0.5 text-pretty text-[17px] font-semibold leading-tight text-white">
+                  {i === 0 ? String(storeyOf(focusFloor)) : callout.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          <p className="mt-3 text-[13px] leading-relaxed text-white/40">{buildingCopy.note}</p>
+
           <div className="mt-6">
             <LayerPanel active={active} />
           </div>

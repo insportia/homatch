@@ -25,16 +25,15 @@ import {
   Bell,
   ChevronDown,
   MessageSquare,
-  CalendarDays,
   Search,
   Bot,
   Shield,
   Building2,
-  Megaphone,
   Radio,
   Landmark,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
+import { UnreadBadge } from '@/components/common/UnreadBadge';
 
 const navItems = [
   { key: 'nav_dashboard',     path: '/dashboard',      icon: LayoutDashboard },
@@ -42,9 +41,7 @@ const navItems = [
   { key: 'nav_ai',            path: '/ai',             icon: Bot,         highlight: true },
   { key: 'nav_chat',          path: '/chat',           icon: MessageSquare },
   { key: 'nav_live_chat',     path: '/live-chat',      icon: Radio },
-  { key: 'nav_viewings',      path: '/viewings',       icon: CalendarDays },
   { key: 'nav_active_search', path: '/active-search',  icon: Search },
-  { key: 'nav_outreach',      path: '/outreach',       icon: Megaphone },
   { key: 'nav_verify',        path: '/verify',         icon: Shield },
   // nav_cases ('ჩემი გარიგებები' / My Deals) removed from product navigation
   // per the "REMOVE MY DEALS / CASES FROM VERIFY AND FROM PRODUCT
@@ -132,11 +129,11 @@ export function AppHeader() {
                 aria-label={t('notif_title')}
               >
                 <Bell className="h-4 w-4 text-muted-foreground" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-primary text-primary-foreground text-[12px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
+                <UnreadBadge
+                  count={unreadCount}
+                  className="absolute -end-0.5 -top-0.5"
+                  label={t('notif_unread_count', { n: unreadCount })}
+                />
               </Button>
 
               {/* Ask AI shortcut */}

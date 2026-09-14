@@ -1,14 +1,29 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { LayoutDashboard, MessageSquare, Shield, Search, Bot } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Shield, Sparkles, Bot } from 'lucide-react';
 
+/*
+ * FIVE SLOTS, ORDERED BY WHAT A PHONE IS ACTUALLY FOR.
+ *
+ * The bar used to end with Alerts (/active-search) — a saved-search digest,
+ * which is a thing you check occasionally, sitting in the most valuable
+ * navigation real estate the product has. Conversation is what a phone is
+ * held for, so Live Chat takes that slot and Verify moves to the end, where
+ * a deliberate, considered action belongs.
+ *
+ * Alerts is not gone: it is in the rail, under Workspace, one tap away
+ * through the drawer. Nothing here is a route that exists only for this bar.
+ *
+ * Five and no more. A sixth at 320px gives each item 53px, which is under a
+ * thumb and under any label in Georgian.
+ */
 const items = [
-  { key: 'nav_dashboard',     path: '/dashboard',     icon: LayoutDashboard },
-  { key: 'nav_chat',          path: '/chat',          icon: MessageSquare },
-  { key: 'nav_ai',            path: '/ai',            icon: Bot,    highlight: true },
-  { key: 'nav_verify',        path: '/verify',        icon: Shield },
-  { key: 'nav_active_search', path: '/active-search', icon: Search },
+  { key: 'nav_dashboard',  path: '/dashboard',  icon: LayoutDashboard },
+  { key: 'nav_chat',       path: '/chat',       icon: MessageSquare },
+  { key: 'nav_ai',         path: '/ai',         icon: Bot, highlight: true },
+  { key: 'nav_live_chat',  path: '/live-chat',  icon: Sparkles },
+  { key: 'nav_verify',     path: '/verify',     icon: Shield },
 ];
 
 export function MobileBottomNav() {

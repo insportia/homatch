@@ -573,3 +573,184 @@ test('the motion on a phone is big enough for a person to see', opts, async (t) 
 
   assert.deepEqual(failures, [], failures.join('\n'));
 });
+
+/*
+ * ── THE BUILDING AND THE WORDS ARE ONE THING ────────────────────────────
+ *
+ * The owner's report was "the visual animation and explanatory text are not
+ * synchronized", and the cause was structural rather than cosmetic: the
+ * building kept its own clock (a phase sequence, a pointer, and a timer that
+ * walked the floors on a phone) while the section beside it ran a SECOND
+ * timer walking the seven intelligence layers and the sentence explaining
+ * them. Two clocks, never started together. Within a few seconds the drawing
+ * was lighting floor 5 while the paragraph talked about Contract.
+ *
+ * The building now takes the floor as a prop. This asserts the consequence:
+ * the layer number, the layer's name and the lit storey advance on the same
+ * tick, because they are the same number.
+ *
+ * It also pins the composition the owner asked for — drawing and finding
+ * SIDE BY SIDE on a phone, not a full-width tower with the text below the
+ * fold — at the widths where it is hardest.
+ */
+test('on a phone the building stands beside its finding, and they move together', opts, async (t) => {
+  if (skipReason) assert.fail(`shell gate could not run: ${skipReason}`);
+  const { chromium } = resolvePlaywright();
+  const browser = await serve(t, chromium);
+  const failures = [];
+
+  for (const [width, lang] of [[390, 'ka'], [320, 'ka'], [375, 'en']]) {
+    const ctx = await browser.newContext({
+      viewport: { width, height: 840 }, isMobile: true, hasTouch: true,
+      reducedMotion: 'no-preference',
+    });
+    await ctx.addInitScript((l) => window.localStorage.setItem('homatch_lang', l), lang);
+    const page = await ctx.newPage();
+    await stub(page);
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1600);
+    await page.evaluate(() => document.querySelector('#intelligence')
+      ?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.waitForTimeout(1200);
+
+    const read = () => page.evaluate(() => {
+      const svg = [...document.querySelectorAll('#intelligence svg[role="img"]')]
+        .find((e) => e.getBoundingClientRect().width > 0);
+      /* The pair is the nearest ancestor laid out as two grid tracks. */
+      let row = svg;
+      while (row && row !== document.body) {
+        if (getComputedStyle(row).gridTemplateColumns.split(' ').filter(Boolean).length === 2) break;
+        row = row.parentElement;
+      }
+      if (!row || row === document.body) return null;
+      const cols = [...row.children].map((e) => Math.round(e.getBoundingClientRect().width));
+      const ps = [...row.children[1].querySelectorAll('p')].map((e) => e.textContent.trim());
+      return {
+        cols,
+        counter: ps[0] ?? null,
+        title: ps[1] ?? null,
+        /* The first callout is the storey, read off the LIT floor. If the
+           drawing and the words disagree, this disagrees with the counter. */
+        storey: [...document.querySelectorAll('#intelligence dl dd')]
+          .filter((e) => e.getBoundingClientRect().width > 0)[0]?.textContent?.trim() ?? null,
+        clipped: [...document.querySelectorAll('#intelligence *')]
+          .filter((e) => e.children.length === 0 && e.scrollWidth > e.clientWidth + 1).length,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+
+    const first = await read();
+    if (!first) {
+      failures.push(`${width}/${lang}: the building and its finding are not side by side`);
+      await ctx.close();
+      continue;
+    }
+
+    /* Both columns have to be usable: a drawing under ~100px stops resolving
+       into floors, and Georgian under ~140px starts breaking mid-word. */
+    const [drawing, words] = first.cols;
+    if (drawing < 100) failures.push(`${width}/${lang}: the building is ${drawing}px — too narrow to read as a building`);
+    if (words < 140) failures.push(`${width}/${lang}: the finding has ${words}px — Georgian will break mid-word`);
+    if (words <= drawing) failures.push(`${width}/${lang}: the text column (${words}px) is not wider than the drawing (${drawing}px)`);
+    if (first.clipped) failures.push(`${width}/${lang}: ${first.clipped} clipped elements`);
+    if (first.overflow) failures.push(`${width}/${lang}: ${first.overflow}px of horizontal overflow`);
+
+    /* The counter says which layer; the storey says which floor is lit. One
+       number produces both, so they must agree — before and after it moves. */
+    const agree = (s) => s && s.counter && s.storey
+      && s.counter.startsWith(String(Number(s.storey)).padStart(2, '0'));
+    if (!agree(first)) {
+      failures.push(`${width}/${lang}: layer ${first.counter} is lit on floor ${first.storey}`);
+    }
+
+    await page.waitForTimeout(3600);
+    const later = await read();
+    if (!later || later.title === first.title) {
+      failures.push(`${width}/${lang}: the story did not advance on its own`);
+    } else if (!agree(later)) {
+      failures.push(`${width}/${lang}: after advancing, layer ${later.counter} is lit on floor ${later.storey}`);
+    }
+    await ctx.close();
+  }
+
+  assert.deepEqual(failures, [], failures.join('\n'));
+});
+
+/*
+ * ── THE APP AFFORDANCE DOES NOT COME AND GO ─────────────────────────────
+ *
+ * Reported repeatedly: the install control disappears. It did, in two states
+ * that are completely ordinary — press "not now" once, or open Homatch as the
+ * installed app — because both resolved to one mode that rendered null into a
+ * row which had reserved space for it.
+ *
+ * This asserts the property rather than the pixels: the row is the same
+ * height and carries an affordance in every state a person can be in, at
+ * every width the product supports.
+ */
+test('the app affordance is present and the same size in every state', opts, async (t) => {
+  if (skipReason) assert.fail(`shell gate could not run: ${skipReason}`);
+  const { chromium } = resolvePlaywright();
+  const browser = await serve(t, chromium);
+  const failures = [];
+  const seen = new Map();
+
+  for (const state of ['normal', 'dismissed', 'standalone']) {
+    for (const width of WIDTHS) {
+      const ctx = await browser.newContext({
+        viewport: { width, height: 820 }, isMobile: true, hasTouch: true,
+      });
+      await ctx.addInitScript((s) => {
+        window.localStorage.setItem('homatch_lang', 'ka');
+        if (s === 'dismissed') {
+          window.localStorage.setItem('homatch_install_dismissed_at', String(Date.now()));
+        }
+        if (s === 'standalone') {
+          // What the product reads to decide it is the installed app.
+          const real = window.matchMedia.bind(window);
+          window.matchMedia = (q) => (q.includes('display-mode: standalone')
+            ? {
+              matches: true, media: q, onchange: null,
+              addEventListener() {}, removeEventListener() {},
+              addListener() {}, removeListener() {}, dispatchEvent() { return false; },
+            }
+            : real(q));
+        }
+      }, state);
+      const page = await ctx.newPage();
+      await stub(page);
+      await page.goto(`${BASE}/pricing`, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2200);
+
+      const found = await page.evaluate(() => {
+        const app = [...document.querySelectorAll('header [aria-label]')]
+          .filter((e) => e.getBoundingClientRect().height > 0)
+          .find((e) => /Homatch/i.test(e.getAttribute('aria-label') || '')
+            && !/home page/i.test(e.getAttribute('aria-label') || '')
+            && !(e.getAttribute('aria-label') || '').includes('მთავარი'));
+        if (!app) return null;
+        return {
+          h: Math.round(app.getBoundingClientRect().height),
+          rowH: Math.round(app.parentElement.getBoundingClientRect().height),
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+
+      if (!found) {
+        failures.push(`${state} @${width}: no app affordance at all`);
+      } else {
+        if (found.overflow) failures.push(`${state} @${width}: ${found.overflow}px overflow`);
+        if (found.h < 36) failures.push(`${state} @${width}: the control is ${found.h}px tall`);
+        const key = `@${width}`;
+        const before = seen.get(key);
+        if (before === undefined) seen.set(key, found.rowH);
+        else if (before !== found.rowH) {
+          failures.push(`${state} @${width}: the row is ${found.rowH}px here and ${before}px in another state — it jumps`);
+        }
+      }
+      await ctx.close();
+    }
+  }
+
+  assert.deepEqual(failures, [], failures.join('\n'));
+});

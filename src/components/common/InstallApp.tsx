@@ -80,9 +80,22 @@ export function useInstallMode(): InstallMode {
   });
 }
 
-/** Is there an app action worth giving room to? */
+/**
+ * Is there an app affordance worth giving room to?
+ *
+ * True for every state except the one browser that genuinely cannot install
+ * a web app. That is a deliberate widening: it used to exclude `standalone`
+ * and the dismissed state too, and those are the two cases the owner kept
+ * finding — open Homatch as an installed app, or press "not now" once, and
+ * the application row simply stopped existing.
+ *
+ * Standalone and dismissed now render a compact app chip instead of nothing,
+ * so the strip has the same shape in every state a person will actually be
+ * in. `unsupported` still renders nothing, because a control that cannot do
+ * its job is worse than an absence.
+ */
 export function hasInstallAction(mode: InstallMode): boolean {
-  return mode !== 'unavailable' && mode !== 'standalone';
+  return mode !== 'unsupported';
 }
 
 export function InstallApp({
@@ -154,9 +167,65 @@ export function InstallApp({
     await showInstallPrompt();
   }, [mode, prompt]);
 
-  /* Already running as the installed app: there is nothing to offer. */
-  if (mode === 'standalone') return null;
-  if (mode === 'unavailable') return null;
+  /*
+   * ── THE STATES THAT USED TO RENDER NOTHING ──────────────────────────
+   *
+   * `standalone` — Homatch is ALREADY the app you are looking at. Offering
+   * to install it would be absurd, and rendering nothing left a hole where
+   * the application row was. So: a compact, non-interactive identity chip.
+   * It does not claim the browser can launch anything, because in standalone
+   * there is nothing to launch: you are there.
+   *
+   * `dismissed` — somebody pressed "not now". That is not "never", and it is
+   * not a reason to delete the entry point: the same quiet chip, pressable,
+   * opening the explanation sheet rather than the browser's own prompt. It
+   * cannot nag, because it never raises a native dialog by itself.
+   *
+   * `unsupported` — the browser cannot install web apps at all. This is the
+   * one case where nothing is the honest answer.
+   */
+  if (mode === 'unsupported') return null;
+
+  if (mode === 'standalone' || mode === 'dismissed') {
+    const quiet = tone === 'dark'
+      ? 'bg-white/[0.08] text-white/85 ring-1 ring-inset ring-white/20'
+      : 'bg-secondary text-muted-foreground ring-1 ring-inset ring-border';
+    const chip = 'inline-flex items-center justify-center gap-2 font-medium transition-colors '
+      + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring '
+      + `motion-reduce:transition-none ${variant === 'block'
+        ? 'w-full min-h-[3rem] rounded-[0.9rem] px-4 text-[17px]'
+        : `min-h-[2.5rem] rounded-full text-sm ${compact ? 'w-10 px-0' : 'px-3.5'}`}`;
+
+    if (mode === 'standalone') {
+      return (
+        <span className={`${chip} ${quiet} ${className}`} aria-label={t('pwa_ready')}>
+          <Check className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+          {!compact && <span className="min-w-0 truncate">{t('pwa_installed')}</span>}
+        </span>
+      );
+    }
+
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setSheet(isIOSSafari() ? 'ios' : 'pending')}
+          aria-label={t('pwa_install_aria')}
+          className={`${chip} ${quiet} ${className}`}
+        >
+          <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+          {!compact && <span className="min-w-0 truncate">{t('pwa_install')}</span>}
+        </button>
+        {sheet && (
+          <Sheet
+            kind={sheet}
+            onClose={() => setSheet(null)}
+            onMute={() => { rememberMuted(); setSheet(null); setMuted(true); }}
+          />
+        )}
+      </>
+    );
+  }
 
   /*
    * A FILLED CONTROL, NOT AN OUTLINE THAT APPEARS ON HOVER.

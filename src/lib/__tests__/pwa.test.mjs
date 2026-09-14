@@ -127,16 +127,41 @@ test('iOS Safari gets instructions, never a native prompt', () => {
 test('a browser that can do neither is offered nothing', () => {
   assert.equal(resolveInstallMode({
     standalone: false, hasNativePrompt: false, iosSafari: false, muted: false,
-   installable: false,}), 'unavailable');
+   installable: false,}), 'unsupported');
 });
 
-test('a dismissal suppresses both affordances but not standalone', () => {
+/*
+ * "NOT NOW" IS NOT "NEVER", AND THE DIFFERENCE IS A STATE.
+ *
+ * Both used to resolve to one value that rendered nothing, and the owner kept
+ * finding the same two holes: press "not now" once, or open Homatch as the
+ * installed app, and the application row stopped existing. A row that is
+ * sometimes there and sometimes not is worse than either.
+ *
+ * So a dismissal on a browser that COULD install keeps a quiet, pressable
+ * chip — a door, not an offer; it never raises the browser's own prompt by
+ * itself. A dismissal on a browser that could never have installed it is
+ * `unsupported`, because there is nothing to come back to.
+ */
+test('a dismissal leaves the door where it was, on a browser that has one', () => {
   assert.equal(resolveInstallMode({
     standalone: false, hasNativePrompt: true, iosSafari: false, muted: true,
-   installable: false,}), 'unavailable');
+    installable: true,
+  }), 'dismissed');
   assert.equal(resolveInstallMode({
     standalone: false, hasNativePrompt: false, iosSafari: true, muted: true,
-   installable: false,}), 'unavailable');
+    installable: false,
+  }), 'dismissed', 'iOS can always add to the home screen, prompt or not');
+});
+
+test('a dismissal on a browser that cannot install is simply unsupported', () => {
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: false, muted: true,
+    installable: false,
+  }), 'unsupported');
+});
+
+test('standalone beats every kind of dismissal', () => {
   assert.equal(resolveInstallMode({
     standalone: true, hasNativePrompt: false, iosSafari: false, muted: true,
    installable: false,}), 'standalone');
@@ -212,13 +237,13 @@ test('a snoozed prompt leaves the control on the page', () => {
   );
 });
 
-test('only an explicit mute hides the control', () => {
+test('only an explicit mute quiets the control', () => {
   assert.equal(
     resolveInstallMode({
       standalone: false, hasNativePrompt: true, iosSafari: false,
       installable: true, muted: true,
     }),
-    'unavailable',
+    'dismissed',
   );
 });
 
@@ -229,7 +254,7 @@ test('a browser that cannot install is offered nothing', () => {
       standalone: false, hasNativePrompt: false, iosSafari: false,
       installable: false, muted: false,
     }),
-    'unavailable',
+    'unsupported',
   );
 });
 

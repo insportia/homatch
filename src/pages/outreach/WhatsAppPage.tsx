@@ -16,6 +16,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { UnreadBadge } from '@/components/common/UnreadBadge';
 import {
   Inbox, MessageSquare, FileText, Plus, RefreshCw, ShieldAlert,
   PhoneForwarded, Users, Send, CheckCheck, Eye, Reply,
@@ -112,9 +113,9 @@ export default function WhatsAppPage() {
             </Button>
             <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/whatsapp/inbox')}>
               {t('comm_open_inbox')}
-              {unread > 0 ? (
-                <Badge className="h-4 min-w-4 justify-center px-1 text-2xs tabular-nums">{unread}</Badge>
-              ) : null}
+              {/* 99+, not 9+: a shared inbox genuinely reaches three digits,
+                  and "9+" on 240 waiting conversations is not information. */}
+              <UnreadBadge count={unread} cap={99} />
             </Button>
             <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={() => navigate('/outreach/whatsapp/templates')}>
               {t('comm_templates')}

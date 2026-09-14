@@ -246,15 +246,34 @@ test('the account block is separated from the product navigation', opts, async (
       `${personal} is still a product-navigation item; it belongs in the account block`,
     );
   }
-  /* And the product ones must still be there. */
-  for (const product of ['/verify', '/mortgage', '/outreach']) {
-    assert.ok(shape.navLinks.includes(product), `${product} vanished from the rail`);
+  /*
+   * ONE DESTINATION PER PRODUCT.
+   *
+   * The Communications group used to lead with /outreach — a hub containing
+   * calls, WhatsApp, email, contacts, campaigns and analytics, every one of
+   * which is also a destination. A customer looking for WhatsApp had to guess
+   * whether it lived under "AI Communications" or under "AI Call Center", and
+   * the honest answer was "both, differently".
+   *
+   * The three channels are now themselves the destinations. The hub route
+   * still resolves — it has been bookmarked — it is simply not somewhere the
+   * navigation sends anybody.
+   */
+  for (const product of ['/verify', '/mortgage', '/outreach/calls', '/outreach/whatsapp', '/outreach/email']) {
+    assert.ok(shape.navLinks.includes(product), `${product} is missing from the rail`);
   }
 
-  /* The redundant second door to Communications is gone. */
   assert.ok(
-    !shape.navLinks.includes('/outreach/email'),
-    'Email campaigns is still a separate rail entry beside Communications',
+    !shape.navLinks.includes('/outreach'),
+    'the AI Communications hub is still a product destination beside the channels it contains',
+  );
+
+  /* Viewings, removed from customer-facing navigation at the owner's request
+     — in every language, rather than by deleting the Georgian string and
+     leaving "Viewings" in English. The route and its data are untouched. */
+  assert.ok(
+    !shape.navLinks.includes('/viewings'),
+    'Viewings is still in the product navigation',
   );
 });
 

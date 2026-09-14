@@ -41,7 +41,17 @@ export type InstallMode =
   /** iOS Safari: real, but manual, and it needs instructions. */
   | 'ios-manual'
   /** Nothing to offer: unsupported browser, or the customer muted it. */
-  | 'unavailable';
+  /**
+    * The customer said "not now", and meant it.
+    *
+    * Distinct from `unsupported`, and the distinction is the whole point:
+    * this browser CAN install Homatch, so the door still exists and the
+    * control still renders — quietly, as a way back in rather than as an
+    * offer. Nothing here ever raises the browser's own prompt by itself.
+    */
+  | 'dismissed'
+  /** The browser cannot install web apps. There is nothing to render. */
+  | 'unsupported';
 
 /** The event Chromium fires. Not in lib.dom yet. */
 export interface BeforeInstallPromptEvent extends Event {
@@ -141,7 +151,11 @@ export function resolveInstallMode(opts: {
   /* Installed beats muted: somebody who has just installed it wants the door,
      not silence, and "don't offer me this again" was about the offer. */
   if (opts.installed) return 'installed';
-  if (opts.muted) return 'unavailable';
+  /* "Not now" from somebody whose browser could install it: the control
+     stays, in its quiet state. "Not now" on a browser that could never have
+     installed it resolves to `unsupported` below, because there is nothing
+     to come back to. */
+  if (opts.muted) return opts.installable || opts.iosSafari ? 'dismissed' : 'unsupported';
   if (opts.hasNativePrompt) return 'native';
   if (opts.iosSafari) return 'ios-manual';
   /*
@@ -149,14 +163,14 @@ export function resolveInstallMode(opts: {
    *
    * beforeinstallprompt fires late, and on a browser that supports
    * installing but has not decided the site is engaging enough it may
-   * never fire at all. Returning 'unavailable' here is what made the
-   * button appear a second or two after load, which reads as a glitch.
+   * never fire at all. Returning a nothing-to-show state here is what made
+   * the button appear a second or two after load, which reads as a glitch.
    * 'pending' keeps the control on the page in a state that says what it
    * is: installing is possible, the browser has not offered it yet, and
    * pressing it explains how.
    */
   if (opts.installable) return 'pending';
-  return 'unavailable';
+  return 'unsupported';
 }
 
 /* ------------------------------------------------------------------ *

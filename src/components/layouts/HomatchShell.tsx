@@ -25,10 +25,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, Bell, CalendarDays, CreditCard, LayoutDashboard,
-  LogOut, Menu, MessageSquare, PhoneCall, Radio, Search, Settings,
-  ShieldCheck, Sparkles, User as UserIcon, UserSearch, X, Activity,
-  CircleDollarSign, Megaphone, Coins as CoinsIcon,
+  ArrowRight, Bell, CreditCard, LayoutDashboard,
+  LogOut, Mail, Menu, MessageCircle, MessageSquare, PhoneCall, Radio, Search,
+  Settings, ShieldCheck, Sparkles, User as UserIcon, UserSearch, X, Activity,
+  CircleDollarSign, Coins as CoinsIcon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -38,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { InstallApp } from '@/components/common/InstallApp';
+import { UnreadBadge } from '@/components/common/UnreadBadge';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -58,18 +59,34 @@ interface NavGroup {
 /*
  * THE PRODUCT NAVIGATION, IN THREE NAMED GROUPS.
  *
- * The rail was fifteen flat links separated only by extra whitespace, which
- * is a list, not a structure: "Alerts" sat between "Find a property" and
- * "Verify" with nothing saying why, and Credits and Activity sat as equal
- * siblings of Verify and Mortgage even though one pair is the product and the
- * other is the customer's own account.
+ * ONE DESTINATION PER PRODUCT
  *
- * Two entries are deliberately gone:
+ * The Communications group used to lead with "AI Communications" (/outreach),
+ * a hub page that contained calls, WhatsApp, email, contacts, campaigns and
+ * analytics — every one of which is also a destination in its own right. A
+ * customer looking for WhatsApp had to decide whether WhatsApp lived under
+ * "AI Communications" or under "AI Call Center", and the honest answer was
+ * "both, differently". That hub is no longer a menu entry.
  *
- *   Email campaigns (/outreach/email). Communications already contains
- *   campaigns, contacts, WhatsApp, calls, inbox and analytics. Two doors to
- *   the same room, differently named, is a decision the customer should never
- *   have been asked to make.
+ * What the group exposes instead is the three products themselves:
+ *
+ *   AI Call Center   telephony. Calls, and only calls.
+ *   WhatsApp         two-way WhatsApp messaging, campaigns and automation.
+ *   Email Campaigns  two-way email, campaigns and automation.
+ *
+ * plus the two conversation surfaces, Live Chat and Messages. "Communications"
+ * survives as the group HEADING — an organising word, not a page.
+ *
+ * The /outreach route still resolves, because it has been linked and
+ * bookmarked; it is simply no longer something the navigation sends anybody
+ * to.
+ *
+ * ALSO GONE
+ *
+ *   Viewings (/viewings). Removed from customer-facing navigation at the
+ *   owner's request — in every language, not by deleting the Georgian string
+ *   and leaving "Viewings" in English. The route, the data and the viewing
+ *   requests themselves are untouched.
  *
  *   Brokers & developers (/partners). A public marketing page, not a tool;
  *   it belongs in the public site's navigation, which still carries it.
@@ -91,16 +108,16 @@ export const NAV: NavGroup[] = [
     items: [
       { key: 'nav_verify', path: '/verify', icon: ShieldCheck },
       { key: 'nav_mortgage', path: '/mortgage', icon: CircleDollarSign },
-      { key: 'nav_viewings', path: '/viewings', icon: CalendarDays },
     ],
   },
   {
     key: 'nav_group_comms',
     items: [
-      { key: 'nav_ai_comms', path: '/outreach', icon: Megaphone },
       { key: 'call_center_title', path: '/outreach/calls', icon: PhoneCall },
-      { key: 'nav_chat', path: '/chat', icon: MessageSquare },
+      { key: 'comm_channel_whatsapp', path: '/outreach/whatsapp', icon: MessageCircle },
+      { key: 'dnav_email', path: '/outreach/email', icon: Mail },
       { key: 'nav_live_chat', path: '/live-chat', icon: Sparkles },
+      { key: 'nav_chat', path: '/chat', icon: MessageSquare },
     ],
   },
 ];
@@ -420,11 +437,11 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                 className="relative grid h-10 w-10 place-items-center rounded-full border border-foreground/20 text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Bell className="h-4 w-4" aria-hidden="true" />
-                {unread > 0 && (
-                  <span className="absolute -end-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-destructive px-1 text-[13px] font-bold text-destructive-foreground">
-                    {unread > 9 ? '9+' : unread}
-                  </span>
-                )}
+                <UnreadBadge
+                  count={unread}
+                  className="absolute -end-0.5 -top-0.5"
+                  label={t('notif_unread_count', { n: unread })}
+                />
               </button>
 
               <Button className="hidden h-10 gap-2 rounded-full px-4 text-sm sm:inline-flex" onClick={() => navigate('/property/add')}>

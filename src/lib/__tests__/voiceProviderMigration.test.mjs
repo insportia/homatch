@@ -19,6 +19,7 @@ const VAPI = read('supabase/functions/_shared/comm/vapi.ts');
 const TALK = read('supabase/functions/ai-talk-session/index.ts');
 const EL = read('supabase/functions/_shared/comm/elevenlabs.ts');
 const VOICE_AI = read('supabase/functions/voice-ai/index.ts');
+const LIB = read('supabase/functions/_shared/comm/voiceLibrary.ts');
 
 /* The provider resolver is small and pure, so it is read out of the shipped
  * source and evaluated rather than copied — a copy can drift, and this is the
@@ -144,14 +145,35 @@ test('a voice nobody enabled cannot be previewed', () => {
   assert.ok(/checkRateLimit/.test(body), 'a paid generation behind a button needs a rate limit');
 });
 
-test('syncing voices refreshes provider facts and keeps Homatch\'s decisions', () => {
-  const at = VOICE_AI.indexOf('async function syncVoices(');
-  const body = VOICE_AI.slice(at, VOICE_AI.indexOf('\n}\n', at));
+test('syncing voices refreshes provider facts and keeps Homatch decisions', () => {
+  // The sync lives in the shared module so the control surface and the live
+  // session cannot disagree about what a library refresh does.
+  const at = LIB.indexOf('export async function syncVoiceLibrary(');
+  assert.ok(at > 0, 'the shared sync is gone');
+  const body = LIB.slice(at, LIB.indexOf('\n}\n', at));
+
   assert.ok(/upsert\(/.test(body), 'a sync must not delete and reinsert');
-  for (const owned of ['enabled', 'recommended', 'is_default', 'sort_order']) {
-    assert.ok(!new RegExp(`${owned}:`).test(body),
-      `a sync must not overwrite ${owned} — a customer already chose with it`);
+  for (const owned of ['enabled:', 'recommended:', 'is_default:', 'sort_order:']) {
+    assert.ok(!body.includes(owned),
+      `a sync must not overwrite ${owned} a customer already chose with it`);
   }
+  // And the control surface delegates rather than keeping a second copy.
+  const surface = VOICE_AI.slice(VOICE_AI.indexOf('async function syncVoices('));
+  assert.ok(/syncVoiceLibrary\(sb\)/.test(surface.slice(0, 300)));
+});
+
+test('an empty library is bootstrapped once, and a curated one is left alone', () => {
+  const at = LIB.indexOf('export async function ensureDefaultVoice(');
+  assert.ok(at > 0, 'the bootstrap is gone');
+  const body = LIB.slice(at, LIB.indexOf('\n}\n', at));
+
+  // Rows present and no default is an admin's deliberate state.
+  assert.ok(/NO_DEFAULT_CHOSEN/.test(body),
+    'a library with rows must not have a default chosen for it');
+  // Exactly one voice is turned on, and the choice is deterministic.
+  assert.ok(/enabled: true, is_default: true/.test(body));
+  assert.ok(/\.order\('name'\)/.test(body),
+    'the bootstrap choice must be stable across deployments');
 });
 
 test('a pronunciation rule cannot go live until somebody has heard it', () => {

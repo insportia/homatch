@@ -44,14 +44,32 @@ import { spawnSync } from 'node:child_process';
  *                   added, which is exactly as useless as not writing it.
  *                   Edge code that can be tested without Deno should be.
  *
- * The browser SWEEP itself (tests/browser/commSurfaces.test.mjs) is excluded:
- * it needs a harness build and a real Chrome, takes minutes, and skips without
- * them, so including it would make `npm test` either slow or quietly skipping.
- * It has its own command, `npm run test:surfaces`, exactly as tests/mobile/
- * has `npm run test:mobile`.
+ * THE ONES THAT DRIVE A REAL CHROME ARE EXCLUDED, AND THIS IS WHY
+ *
+ * commSurfaces, pushHandlers and accessibilityAudit all need a real browser:
+ * a harness build, a live service worker, a push subscription. They take
+ * minutes, and where the browser is absent or the platform withholds
+ * something (headless Chrome keeps no notifications) they fail for reasons
+ * that have nothing to do with the change under test.
+ *
+ * That is not a theoretical cost. pushHandlers and accessibilityAudit were
+ * added to this walk on 2026-09-14 and every CI run from that commit onward
+ * failed at the Lint step, which gates `validate`, which every deploy job
+ * depends on. So NOTHING deployed — not the frontend, not the edge functions,
+ * not the migrations — for hours, across two unrelated workstreams, and the
+ * only symptom was a red tick nobody was watching.
+ *
+ * Each has its own command and all of them are in `npm run test:browser`,
+ * exactly as tests/mobile/ has `npm run test:mobile`. A gate you have to
+ * remember to run is weaker than an enforced one; a gate that blocks every
+ * release on an environment difference is worse than either.
  */
 const ROOTS = ['src', 'tests/matrix', 'tests/browser', 'supabase/functions'];
-const EXCLUDE = [/commSurfaces\.test\.mjs$/];
+const EXCLUDE = [
+  /commSurfaces\.test\.mjs$/,
+  /pushHandlers\.test\.mjs$/,
+  /accessibilityAudit\.test\.mjs$/,
+];
 const files = [];
 
 function walk(dir) {

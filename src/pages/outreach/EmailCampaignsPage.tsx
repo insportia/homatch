@@ -388,12 +388,12 @@ export default function EmailCampaignsPage() {
         </div>
         <div className="space-y-1.5">
           <Label>{t('email_sender_email')}</Label>
-          <Input type="email" value={f.sender_email} onChange={(e) => set({ ...f, sender_email: e.target.value })} placeholder="noreply@homatch.live" />
+          <Input type="email" value={f.sender_email} onChange={(e) => set({ ...f, sender_email: e.target.value })} />
         </div>
       </div>
       <div className="space-y-1.5">
         <Label>{t('email_reply_to')}</Label>
-        <Input type="email" value={f.reply_to} onChange={(e) => set({ ...f, reply_to: e.target.value })} placeholder="replies@reply.homatch.live" />
+        <Input type="email" value={f.reply_to} onChange={(e) => set({ ...f, reply_to: e.target.value })} />
         <p className="text-[13px] text-muted-foreground">{t('email_sender_note')}</p>
       </div>
       <div className="space-y-1.5">

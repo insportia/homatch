@@ -131,7 +131,15 @@ async function probeOne(
       return;
     }
 
-    const stream = client.streamingRecognize();
+    // Same routing header as the real recogniser; without it every region
+    // fails identically and the sweep measures nothing.
+    const stream = client.streamingRecognize({
+      otherArgs: {
+        headers: {
+          'x-goog-request-params': `recognizer=${encodeURIComponent(`projects/${opts.projectId}/locations/${region}/recognizers/_`)}`,
+        },
+      },
+    } as never);
 
     stream.on('error', (err: { code?: number; details?: string; message?: string }) => {
       const code = Number.isFinite(Number(err?.code)) ? Number(err.code) : null;

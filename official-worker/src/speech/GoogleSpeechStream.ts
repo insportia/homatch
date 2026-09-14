@@ -254,9 +254,34 @@ export class GoogleSpeechStream {
 
   private open(): void {
     const cfg = this.cfg;
+    const recognizer = `projects/${cfg.projectId}/locations/${cfg.region}/recognizers/_`;
     let s: ReturnType<SpeechClient['streamingRecognize']>;
     try {
-      s = client(cfg).streamingRecognize();
+      /*
+       * THE ROUTING HEADER, WHICH A BIDIRECTIONAL STREAM CANNOT INFER.
+       *
+       * gax builds `x-goog-request-params` from the request object so the API
+       * front end knows which project and location a call belongs to. For a
+       * unary call it has the request at call time and does this silently. For
+       * streamingRecognize it does not: the call is opened first and the
+       * request is written afterwards, so the header is never built and the
+       * front end is asked to resolve a resource it was told nothing about.
+       *
+       * It answers 3, "Invalid resource field value in the request", which
+       * reads like the recognizer path is malformed. It is not. The proof is
+       * that a recognizer name which certainly does not exist produced exactly
+       * the same error rather than NOT_FOUND -- the path was never looked up
+       * at all -- while the identical path through the unary API returned
+       * Georgian text on the first try.
+       *
+       * So the header is supplied by hand. This is the difference between
+       * every streaming request failing and the feature working.
+       */
+      s = client(cfg).streamingRecognize({
+        otherArgs: {
+          headers: { 'x-goog-request-params': `recognizer=${encodeURIComponent(recognizer)}` },
+        },
+      } as never);
     } catch (e) {
       this.events.onUnavailable('CLIENT_FAILED');
       return;
@@ -329,7 +354,7 @@ export class GoogleSpeechStream {
     // The v2 config goes in the first message and nothing else may be sent
     // with it.
     s.write({
-      recognizer: `projects/${cfg.projectId}/locations/${cfg.region}/recognizers/_`,
+      recognizer,
       streamingConfig: {
         config: {
           explicitDecodingConfig: {

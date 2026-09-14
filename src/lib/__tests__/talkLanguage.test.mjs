@@ -30,6 +30,9 @@ globalThis.Deno = globalThis.Deno ?? { env: { get: () => undefined } };
 const { scriptLanguage, normaliseLanguage } =
   await import('../../../supabase/functions/_shared/comm/transcribe.ts');
 
+// The stabiliser is pure browser-side domain code, imported directly.
+const { stabiliseLanguage } = await import('../comm/transcript.ts');
+
 /*
  * Line endings are normalised on the way in.
  *
@@ -364,4 +367,63 @@ test('the live path is an optimisation, and the server says so', () => {
   assert.ok(!/reason: 'UNAVAILABLE' }, 5\d\d/.test(body), 'a refused grant must not be an error status');
   assert.ok(/reason: 'UNAVAILABLE' }, 200/.test(body), 'a refused grant is a normal answer');
   assert.ok(/models = \[/.test(body), 'model availability is per-account, so more than one is tried');
+});
+
+// ── The voice must not change because somebody said "WhatsApp" ─────────────
+
+test('a Georgian sentence does not flap around a brand name', () => {
+  /*
+   * THIS IS WHAT DECIDES WHICH VOICE SPEAKS.
+   *
+   * The TTS profile is resolved per turn from the language of that turn, so a
+   * language decision that wobbles is a voice that wobbles: Georgian, then an
+   * English speaker for one sentence, then Georgian again. Georgian
+   * real-estate conversations are full of Latin -- Homatch, WhatsApp, ROI,
+   * USD, developer and project names -- and none of them is a language
+   * change.
+   */
+  const sentences = [
+    'მინდა WhatsApp-ზე დამიკავშირდეთ.',
+    'Homatch-ის Buyer Intelligence აჩვენებს ფასს კვადრატულ მეტრზე.',
+    'რამდენია ROI ამ პროექტში, USD-ში?',
+    'დეველოპერი არის Archi და პროექტი Archi Kavtaradze.',
+    'CRM-ში შემიყვანეთ და AI ასისტენტმა დამირეკოს.',
+  ];
+  for (const text of sentences) {
+    assert.equal(scriptLanguage(text), 'ka',
+      `a Georgian sentence containing Latin is still Georgian: ${text}`);
+  }
+});
+
+test('a bare Latin brand name is not a language, so nothing switches on it', () => {
+  /*
+   * scriptLanguage answers null rather than guessing English: there is no
+   * Latin-script test in it at all, deliberately. Null means "this tells you
+   * nothing", and the caller falls back to the language the conversation had
+   * already settled into instead of switching voice for one word.
+   */
+  for (const text of ['WhatsApp', 'Homatch', 'ROI', 'USD', 'AI']) {
+    assert.equal(scriptLanguage(text), null,
+      `a bare brand name must not be read as a language: ${text}`);
+  }
+});
+
+test('a settled Georgian session survives an English brand turn', () => {
+  let state = { current: 'ka', locked: false, votes: [] };
+  // Enough Georgian to settle.
+  for (const text of [
+    'გამარჯობა, ვეძებ ბინას ვაკეში.',
+    'ბიუჯეტი ორასი ათასი დოლარია.',
+    'მაინტერესებს ახალაშენებული კორპუსი.',
+  ]) {
+    state = stabiliseLanguage(state, { text, detected: null, confidence: 0.8 });
+  }
+  assert.equal(state.current, 'ka');
+  assert.ok(state.locked, 'sustained Georgian should settle the session');
+
+  // One brand-name turn, with the detector confidently wrong about it.
+  const after = stabiliseLanguage(state, { text: 'WhatsApp', detected: 'en', confidence: 0.9 });
+  assert.equal(after.current, 'ka',
+    'one English word must not move a settled Georgian session, because the voice moves with it');
+  assert.ok(after.locked);
 });

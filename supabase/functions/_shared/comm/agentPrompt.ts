@@ -204,20 +204,37 @@ export function buildSystemPrompt(
   return lines.join('\n');
 }
 
+/**
+ * What the assistant opens with.
+ *
+ * SHORT, BECAUSE THE FIRST FEW SECONDS DECIDE EVERYTHING.
+ *
+ * A caller forms their opinion of whether this is worth talking to before
+ * the second sentence. An opening that explains the product is a monologue
+ * they did not ask for, and it is the part most likely to be interrupted --
+ * so it names who is speaking and asks one question, and that is all.
+ *
+ * WRITTEN PER LANGUAGE, NOT TRANSLATED.
+ *
+ * Each line below was written in its own language rather than rendered out of
+ * the English one. A greeting translated word by word is grammatical and
+ * instantly recognisable as translated, which is exactly the impression the
+ * first sentence must not make.
+ *
+ * An agent's own `introduction` still wins: this is what a misconfigured
+ * agent says to a real person, and that is the only reason it has to be good.
+ */
 export function buildFirstMessage(snapshot: Record<string, unknown>, primary: string): string {
   const written = String(snapshot.introduction ?? '').trim();
   if (written) return written;
 
-  // A fallback in the person's own language rather than an English default,
-  // because the default is what a misconfigured agent actually says to a real
-  // person.
   const fallbacks: Record<string, string> = {
-    ka: 'გამარჯობა, მე ვარ ციფრული ასისტენტი უძრავი ქონების კომპანიიდან. მოკლედ შემიძლია დაგელაპარაკოთ?',
-    en: 'Hello, I am a digital assistant calling from a property company. Is now an alright time?',
-    ru: 'Здравствуйте, я цифровой ассистент компании по недвижимости. Вам удобно сейчас говорить?',
-    tr: 'Merhaba, bir emlak şirketinden dijital asistanım. Şu an konuşmak için uygun mu?',
-    ar: 'مرحبا، أنا مساعد رقمي من شركة عقارية. هل الوقت مناسب للتحدث؟',
-    he: 'שלום, אני עוזר דיגיטלי מחברת נדל"ן. זה זמן טוב לדבר?',
+    ka: 'გამარჯობა, მე მარიამი ვარ, Homatch-ის AI ასისტენტი. რით შემიძლია დაგეხმაროთ?',
+    en: 'Hello, I am Mariam, the Homatch AI assistant. How can I help?',
+    ru: 'Здравствуйте, я Мариам, AI-ассистент Homatch. Чем могу помочь?',
+    tr: 'Merhaba, ben Mariam, Homatch yapay zekâ asistanı. Nasıl yardımcı olabilirim?',
+    ar: 'مرحبًا، أنا مريم، مساعدة Homatch الذكية. كيف أساعدك؟',
+    he: 'שלום, אני מרים, עוזרת ה-AI של Homatch. איך אפשר לעזור?',
   };
   return fallbacks[primary] ?? fallbacks.en;
 }

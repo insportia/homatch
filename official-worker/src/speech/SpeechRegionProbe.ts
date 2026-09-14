@@ -92,8 +92,27 @@ async function probeOne(
     const stream = client.streamingRecognize();
 
     stream.on('error', (err: { code?: number; details?: string; message?: string }) => {
-      done(false, Number.isFinite(Number(err?.code)) ? Number(err.code) : null,
-        String(err?.details ?? err?.message ?? 'unknown'));
+      const code = Number.isFinite(Number(err?.code)) ? Number(err.code) : null;
+      const detail = String(err?.details ?? err?.message ?? 'unknown');
+
+      /*
+       * A COMPLAINT ABOUT THE MISSING AUDIO IS A PASS.
+       *
+       * Sending a config and immediately half-closing gets INVALID_ARGUMENT
+       * and "Malordered Data Received. Expected audio_content none was set."
+       * from a region that is perfectly happy: Google parsed the recognizer,
+       * the model and the language, found them all implemented, and then
+       * objected to the one thing this probe deliberately does not send.
+       *
+       * Reading that as a failure would have thrown away the right answer.
+       * The first sweep rejected `us` and `eu` on exactly this and reported
+       * firstWorking: null while both were working.
+       *
+       * A region that does NOT implement the configuration never gets that
+       * far: it answers 12, UNIMPLEMENTED, before looking at the audio at all.
+       */
+      const wantedAudio = code === 3 && /audio_content|Malordered/i.test(detail);
+      done(wantedAudio, code, wantedAudio ? `config accepted (${detail})` : detail);
     });
 
     /*

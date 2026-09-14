@@ -92,7 +92,16 @@ import { createHash } from 'node:crypto';
  * hashing failure returns null rather than a fabricated value. */
 export function sha256(buf: Buffer | string): string | null {
   try {
-    return createHash('sha256').update(typeof buf === 'string' ? buf : Uint8Array.from(buf)).digest('hex');
+    /*
+     * Passed straight through rather than copied into a Uint8Array.
+     *
+     * The copy was `Uint8Array.from(buf)`, and under TypeScript 5.9 its
+     * ArrayBuffer parameter no longer satisfies createHash's `string | Buffer`
+     * — which failed the type-check of the whole worker, so `npm test` could
+     * not build and NO worker test ran at all. The bytes hashed are identical
+     * either way; the copy was never doing anything.
+     */
+    return createHash('sha256').update(buf).digest('hex');
   } catch {
     return null;
   }

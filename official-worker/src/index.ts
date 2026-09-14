@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { ResearchOrchestrator } from './orchestrator/ResearchOrchestrator.js';
 import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrowserLifecycle, redactSecrets } from './browser/LocalBrowserRuntime.js';
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
+import { attachSpeechGateway } from './speech/SpeechGateway.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -32,6 +33,16 @@ const TOKEN = process.env.WORKER_TOKEN || '';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 
 const orchestrator = new ResearchOrchestrator();
+
+/*
+ * Filled in once the gateway is attached, below. A function rather than a
+ * value because /health is registered before app.listen runs, and a health
+ * endpoint that reported a stale snapshot of its own capabilities would be
+ * worse than one that reported none.
+ */
+let speechStatus: { available: boolean; reason: string | null; model: string | null; language: string | null } =
+  { available: false, reason: 'NOT_STARTED', model: null, language: null };
+const speechHealth = () => speechStatus;
 const debugJobs = new Map<string, any>();
 
 async function auth(req: any, res: any, next: any) {
@@ -53,6 +64,9 @@ app.get('/health', (_q: any, r: any) =>
   r.json({
     ok: true,
     service: 'homatch-official-worker',
+    // Deployed is not the same as able. Two Railway services run this image
+    // and only one of them holds the Google credential.
+    speech: speechHealth(),
     version: '2.1.0',
     playwright: true,
     architecture: 'deterministic-fsm-orchestrator-2026-09-05',
@@ -387,4 +401,26 @@ process.on('uncaughtException', (error: unknown) => {
     .finally(() => process.exit(1));
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`homatch-official-worker 2.0.0 (deterministic FSM architecture) listening on ${PORT}`));
+/*
+ * GEORGIAN RECOGNITION RIDES ON THIS SERVER, NOT A SECOND ONE.
+ *
+ * app.listen returns the http.Server, which is what a WebSocket upgrade
+ * needs. Standing up another service for one socket would mean a second
+ * deployment, a second health check and a second place for the Google
+ * credential to live, for no gain — the worker is already here, already
+ * deployed from this repository, and already holds the credential.
+ *
+ * The gateway reports whether it can actually serve rather than whether it
+ * was deployed: this image runs as two Railway services and only one of them
+ * has Google credentials. /health says which.
+ */
+const server = app.listen(PORT, '0.0.0.0', () =>
+  console.log(`homatch-official-worker 2.0.0 (deterministic FSM architecture) listening on ${PORT}`));
+
+speechStatus = attachSpeechGateway(server, { token: TOKEN });
+export const speech = speechStatus;
+console.log(JSON.stringify({
+  at: new Date().toISOString(), service: 'speech', event: 'gateway',
+  available: speech.available, reason: speech.reason,
+  model: speech.model, language: speech.language,
+}));

@@ -351,14 +351,21 @@ export function AiTalkPanel({ className }: { className?: string }) {
             },
           });
           const grant = ear as {
-            ok?: boolean; token?: string; model?: string; sampleRate?: number;
-            provider?: 'ELEVENLABS' | 'OPENAI'; keyterms?: string[];
+            ok?: boolean; token?: string; grant?: string; model?: string; sampleRate?: number;
+            provider?: 'GOOGLE' | 'ELEVENLABS' | 'OPENAI'; keyterms?: string[];
+            wsUrl?: string;
           } | null;
-          if (earError || !grant?.ok || !grant.token) return null;
+          // Google's answer carries its proof under `grant` rather than
+          // `token`: it is a signature over the session, not a provider
+          // credential, and calling it a token would invite treating it as
+          // one.
+          const credential = grant?.token ?? grant?.grant ?? null;
+          if (earError || !grant?.ok || !credential) return null;
           return {
-            token: grant.token,
+            token: credential,
             model: grant.model,
             sampleRate: grant.sampleRate,
+            wsUrl: grant.wsUrl,
             // Which protocol the socket speaks, decided by which provider
             // actually answered rather than by anything the browser assumes.
             provider: grant.provider,

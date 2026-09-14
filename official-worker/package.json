@@ -12,10 +12,13 @@
     "express": "^5.1.0",
     "pdf-parse": "^1.1.1",
     "playwright": "1.55.0",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "@google-cloud/speech": "^7.2.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "20.19.43",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "@types/ws": "^8.5.13"
   }
 }

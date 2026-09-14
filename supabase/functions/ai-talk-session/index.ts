@@ -660,6 +660,39 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
   const preferred = await preferredSttRoute(sb);
 
   /*
+   * GOOGLE FIRST, WHEN AN OPERATOR HAS ENABLED IT AND IT IS ACTUALLY UP.
+   *
+   * Both halves matter. The route being enabled is a decision; the worker's
+   * own health is a fact, and only one of the two instances running that
+   * image holds the Google credential. When either is missing this falls
+   * through to Scribe and SAYS which — a silent second choice is how an
+   * afternoon disappears.
+   */
+  if (preferred?.provider === 'GOOGLE' && !preferred.reason.startsWith('missing')) {
+    const ready = await googleSpeechReady();
+    const grant = ready ? await mintSpeechGrant(body.sessionId) : null;
+    if (ready && grant) {
+      logEvent('ai-talk', 'listen_granted', {
+        provider: 'GOOGLE', model: ready.model, language: ready.language,
+      });
+      return json({
+        ok: true,
+        provider: 'GOOGLE',
+        model: ready.model,
+        // The socket, and the proof. Never the credential: that stays in the
+        // worker and is the whole reason this is a grant and not a key.
+        wsUrl: `${speechWorkerOrigin().replace(/^http/, 'ws')}/speech/stream`,
+        grant,
+        language: ready.language,
+        sampleRate: 16_000,
+      });
+    }
+    // Enabled, reachable or not, but not serving. Fall through to Scribe and
+    // carry the reason so the fallback is observable rather than invisible.
+    logEvent('ai-talk', 'google_stt_unavailable', { ready: Boolean(ready) });
+  }
+
+  /*
    * ELEVENLABS FIRST, BECAUSE IT IS THE ONE THAT CAN WRITE GEORGIAN.
    *
    * The ladder below is the whole migration in one place. Each rung is tried
@@ -688,7 +721,11 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
         provider: 'ELEVENLABS',
         // Named when something was meant to lead and could not, so the
         // admin screen can show the gap rather than implying a choice.
-        passedOver: preferred,
+        passedOver: preferred?.provider === 'GOOGLE'
+          ? { provider: 'GOOGLE', reason: preferred.reason === 'no client is implemented for this provider yet'
+              ? 'the speech worker is not reporting Google as available'
+              : preferred.reason }
+          : preferred,
         token: grant.data.token,
         expiresAt: grant.data.expiresAt,
         model: ELEVENLABS_DEFAULTS.sttModel,
@@ -847,6 +884,72 @@ async function selectSessionKeyterms(sb: Sb, ctx: {
   });
 
   return selection;
+}
+
+/**
+ * Where Georgian recognition actually runs.
+ *
+ * The worker is deployed twice from one image and only one instance holds the
+ * Google credential, so this is not derivable from anything — it is named,
+ * with an override for the day that changes.
+ */
+function speechWorkerOrigin(): string {
+  return Deno.env.get('SPEECH_WORKER_URL')
+    || 'https://homatch-official-worker-production.up.railway.app';
+}
+
+/**
+ * A short-lived proof that Homatch sent this browser to the worker.
+ *
+ * WHY AN HMAC AND NOT A LOOKUP
+ *
+ * AI TALK's visitors are anonymous, so there is no user token to check. The
+ * worker and this function already share WORKER_TOKEN and neither gives it to
+ * a browser. Signing `sessionId.expiry` with it lets the worker verify the
+ * grant with no database round trip in the path of somebody's first word, and
+ * lets a stolen grant be worth nothing within minutes.
+ *
+ * The payload is readable on purpose: it is a session id the holder already
+ * has. What it cannot be is edited.
+ */
+async function mintSpeechGrant(sessionId: string): Promise<string | null> {
+  const secret = Deno.env.get('WORKER_TOKEN');
+  if (!secret) return null;
+
+  const expiresAt = Date.now() + 5 * 60_000;
+  const payload = `${sessionId}.${expiresAt}`;
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  const hex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${payload}.${hex}`;
+}
+
+/**
+ * Is Google recognition actually usable right now?
+ *
+ * Asks the worker rather than assuming: the route being enabled says an
+ * operator wants it, and /health says whether the instance holding the
+ * credential is alive and configured. Bounded and swallowed — a health check
+ * that delays somebody's first word is worse than the fallback it protects.
+ */
+async function googleSpeechReady(): Promise<{ model: string; language: string } | null> {
+  try {
+    const res = await fetch(`${speechWorkerOrigin()}/health`, {
+      signal: AbortSignal.timeout(2500),
+    });
+    if (!res.ok) return null;
+    const body = await res.json() as { speech?: { available?: boolean; model?: string; language?: string } };
+    if (!body?.speech?.available) return null;
+    return {
+      model: String(body.speech.model ?? 'chirp_3'),
+      language: String(body.speech.language ?? 'ka-GE'),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

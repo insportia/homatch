@@ -26,6 +26,7 @@
 // transcription alone: it cannot generate text, cannot generate speech, and
 // expires in minutes.
 
+import { GoogleTranscriber } from './googleTranscribe.ts';
 import { ScribeTranscriber } from './scribeTranscribe.ts';
 
 const REALTIME_URL = 'wss://api.openai.com/v1/realtime?intent=transcription';
@@ -41,10 +42,21 @@ export interface LiveGrant {
    * Which protocol this token speaks.
    *
    * Decided server-side by which provider actually answered, not by the
-   * browser. ELEVENLABS leads because it is the one that can write Georgian;
-   * OPENAI is what carried this before and stays as the fallback.
+   * browser. GOOGLE leads for Georgian when an operator has enabled it and
+   * the worker holding the credential is actually up; ELEVENLABS is the
+   * fallback that can still write Georgian; OPENAI carried this before both
+   * and stays behind them.
    */
-  provider?: 'ELEVENLABS' | 'OPENAI';
+  provider?: 'GOOGLE' | 'ELEVENLABS' | 'OPENAI';
+  /**
+   * Where to connect, for a provider the browser cannot reach directly.
+   *
+   * Google's realtime recognition is gRPC, which no browser speaks, so that
+   * stream terminates on Homatch's own worker and this is its address. The
+   * other two providers take a socket at their own hostname and leave this
+   * empty.
+   */
+  wsUrl?: string;
   /**
    * The terms the transcriber should be primed with, already chosen.
    *
@@ -261,7 +273,7 @@ function toBase64(pcm: Int16Array): string {
  * about the other.
  */
 export function createTranscriber(grant: LiveGrant, cb: LiveCallbacks): LiveSocket {
-  return grant.provider === 'ELEVENLABS'
-    ? new ScribeTranscriber(grant, cb)
-    : new LiveTranscriber(grant, cb);
+  if (grant.provider === 'GOOGLE') return new GoogleTranscriber(grant, cb);
+  if (grant.provider === 'ELEVENLABS') return new ScribeTranscriber(grant, cb);
+  return new LiveTranscriber(grant, cb);
 }

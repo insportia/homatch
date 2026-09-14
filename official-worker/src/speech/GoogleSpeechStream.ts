@@ -491,13 +491,23 @@ export class GoogleSpeechStream {
            * multi-language is opt-in and the default is the single language
            * this session settled on.
            *
-           * GOOGLE_SPEECH_MULTILANG=1 turns it on for a model that accepts
-           * it. /health/speech-languages is how you find out which those are
-           * without guessing.
+           * What chirp_3 DOES accept is the single code `auto`, which is the
+           * provider's own automatic detection and which reports the language
+           * it chose on every result -- the thing that makes a "just start
+           * talking" product possible, and the thing an explicit list was
+           * only ever a guess at. Measured, not assumed:
+           *
+           *   chirp_3  ['ka-GE']                   accepted
+           *   chirp_3  ['auto']                    accepted
+           *   chirp_3  ['ka-GE','en-US',...]       INVALID_ARGUMENT
+           *   chirp_2  anything                    not served in this region
+           *
+           * GOOGLE_SPEECH_MULTILANG=1 selects `auto`. The candidate list is
+           * still carried and still bounds what the SESSION will act on;
+           * it is simply not what the recogniser is configured with.
+           * /health/speech-languages re-runs the measurement above.
            */
-          languageCodes: multiLanguageEnabled() && cfg.languageCodes?.length
-            ? cfg.languageCodes
-            : [cfg.languageCode],
+          languageCodes: multiLanguageEnabled() ? ['auto'] : [cfg.languageCode],
           model: cfg.model,
           features: {
             enableAutomaticPunctuation: true,

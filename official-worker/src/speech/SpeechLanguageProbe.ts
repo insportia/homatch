@@ -64,8 +64,25 @@ async function attempt(
     });
 
     stream.on('error', (err: { code?: number; details?: string; message?: string }) => {
-      done(false, Number.isFinite(Number(err?.code)) ? Number(err.code) : null,
-        String(err?.details ?? err?.message ?? 'unknown'));
+      const code = Number.isFinite(Number(err?.code)) ? Number(err.code) : null;
+      const detail = String(err?.details ?? err?.message ?? 'unknown');
+
+      /*
+       * RUNNING OUT OF AUDIO IS A PASS.
+       *
+       * This probe sends one second and stops, so a configuration Google is
+       * perfectly happy with ends as ABORTED, "Stream timed out after
+       * receiving no more client requests" -- it consumed the config, took
+       * the audio, and waited for more that never came.
+       *
+       * Reading that as a failure is how the first run reported that even the
+       * single-language control was rejected, which was plainly untrue since
+       * that is what production has been running on. A configuration the
+       * service will not accept never gets that far: it answers 3,
+       * INVALID_ARGUMENT, at the config frame.
+       */
+      const ranOutOfAudio = code === 10 && /no more client requests|timed out/i.test(detail);
+      done(ranOutOfAudio, code, ranOutOfAudio ? `accepted (${detail})` : detail);
     });
     // Any response at all means the configuration was legal.
     stream.on('data', () => done(true, null, 'accepted'));

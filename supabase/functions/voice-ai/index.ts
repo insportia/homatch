@@ -37,6 +37,7 @@ import {
   KEYTERM_LIMITS_DEFAULT,
 } from '../_shared/comm/elevenlabs.ts';
 import { selectKeyterms, type VocabularyTerm } from '../_shared/comm/generated/keyterms.ts';
+import { syncVoiceLibrary } from '../_shared/comm/voiceLibrary.ts';
 
 type Sb = SupabaseClient;
 
@@ -271,38 +272,12 @@ async function models(): Promise<Response> {
  * and Homatch's own decisions about it are left exactly as they were.
  */
 async function syncVoices(sb: Sb): Promise<Response> {
-  if (!elevenLabsCredentialsPresent()) return json({ ok: false, reason: 'MISSING' }, 200);
-
-  const out = await listElevenLabsVoices();
-  if (!out.ok || !out.data) {
-    return json({
-      ok: false, reason: 'PROVIDER_ERROR',
-      providerCode: out.error?.code ?? null,
-      providerStatus: Number(out.error?.providerCode) || null,
-    }, 200);
+  const out = await syncVoiceLibrary(sb);
+  if (out.error) {
+    return json({ ok: false, reason: out.error }, 200);
   }
-
-  const rows = out.data.voices.filter((v) => v.voiceId).map((v) => ({
-    provider: 'ELEVENLABS',
-    provider_voice_id: v.voiceId,
-    name: v.name || v.voiceId,
-    category: v.category,
-    description: v.description,
-    preview_url: v.previewUrl,
-    labels: v.labels,
-    languages: v.languages,
-    last_synced_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }));
-
-  if (rows.length) {
-    const { error } = await sb.from('voice_library_voices')
-      .upsert(rows, { onConflict: 'provider,provider_voice_id', ignoreDuplicates: false });
-    if (error) return json({ ok: false, reason: 'STORE_FAILED' }, 500);
-  }
-
-  logEvent('voice-ai', 'voices_synced', { count: rows.length });
-  return json({ ok: true, synced: rows.length });
+  logEvent('voice-ai', 'voices_synced', { count: out.synced });
+  return json({ ok: true, synced: out.synced });
 }
 
 async function setVoice(sb: Sb, body: VoiceAiRequest): Promise<Response> {

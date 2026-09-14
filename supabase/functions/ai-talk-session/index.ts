@@ -34,6 +34,7 @@ import {
   elevenLabsCredentialsPresent, mintRealtimeToken, synthesizeElevenLabs,
   ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
 } from '../_shared/comm/elevenlabs.ts';
+import { ensureDefaultVoice } from '../_shared/comm/voiceLibrary.ts';
 import {
   selectKeyterms, keytermStrings, detectEntities,
   type VocabularyTerm,
@@ -96,7 +97,7 @@ async function speakPhrase(sb: Sb, params: {
   const failures: Array<{ provider: string; code: string | null; status: number | null }> = [];
 
   if (elevenLabsCredentialsPresent()) {
-    const voice = await defaultElevenLabsVoice(sb);
+    const voice = await defaultElevenLabsVoice(sb, params.language || null);
     if (voice) {
       const at = Date.now();
       const out = await synthesizeElevenLabs({
@@ -186,23 +187,30 @@ async function speakPhrase(sb: Sb, params: {
   return { ok: false, failures };
 }
 
-/** The voice an admin made default, and the model to say it with. */
+/**
+ * The voice an admin made default, and the model to say it with.
+ *
+ * On a completely empty library this pulls the catalogue and turns exactly one
+ * voice on, because "the product is silent until an admin visits a settings
+ * page" is not a state worth shipping. A library that already has rows is left
+ * alone: an admin who disabled everything meant it.
+ */
 async function defaultElevenLabsVoice(
-  sb: Sb,
+  sb: Sb, language: string | null,
 ): Promise<{ voiceId: string; model: string } | null> {
-  const [{ data: voice }, { data: route }] = await Promise.all([
-    sb.from('voice_library_voices')
-      .select('provider_voice_id')
-      .eq('provider', 'ELEVENLABS').eq('is_default', true).eq('enabled', true)
-      .maybeSingle(),
+  const [voice, { data: route }] = await Promise.all([
+    ensureDefaultVoice(sb, language),
     sb.from('comm_provider_routes')
       .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle(),
   ]);
 
-  if (!voice?.provider_voice_id) return null;
+  if (!voice.voiceId) return null;
+  if (voice.bootstrapped) {
+    logEvent('ai-talk', 'voice_library_bootstrapped', { voiceId: voice.voiceId });
+  }
   const cfg = (route?.config ?? {}) as Record<string, unknown>;
   return {
-    voiceId: String(voice.provider_voice_id),
+    voiceId: voice.voiceId,
     model: typeof cfg.model === 'string' && cfg.model ? cfg.model : ELEVENLABS_DEFAULTS.ttsModel,
   };
 }

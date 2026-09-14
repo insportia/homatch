@@ -15,6 +15,7 @@ import { attachSpeechGateway } from './speech/SpeechGateway.js';
 import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
 import { lastRecogniserError, speechConfigFromEnv } from './speech/GoogleSpeechStream.js';
 import { probeRegions } from './speech/SpeechRegionProbe.js';
+import { probeRecognizers } from './speech/SpeechRecognizerProbe.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -491,6 +492,53 @@ app.get('/health/speech-config', (_q: any, r: any) => {
     language: process.env.GOOGLE_SPEECH_LANGUAGE || 'ka-GE',
     recognizerPathShape: `projects/<${declared.length} chars>/locations/${(process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase()}/recognizers/_`,
   });
+});
+
+/**
+ * Which recognizer path StreamingRecognize will take, asked three ways.
+ *
+ * Same ceiling and same reasoning as the other two probes: no input, a fixed
+ * one-second slice of the checked-in fixture for the unary attempt, and
+ * nothing created in anybody's cloud project. What to create, if anything, is
+ * a decision for whoever reads the answer.
+ */
+let recognizerProbeLastAt = 0;
+
+app.get('/health/speech-recognizer', async (_q: any, r: any) => {
+  const since = Date.now() - recognizerProbeLastAt;
+  if (since < SELFTEST_MIN_GAP_MS) {
+    return r.status(429).json({ ok: false, reason: 'RATE_LIMITED', retryAfterMs: SELFTEST_MIN_GAP_MS - since });
+  }
+  recognizerProbeLastAt = Date.now();
+
+  const projectId = (process.env.GOOGLE_SPEECH_PROJECT_ID || '').trim();
+  const credsRaw = process.env.GOOGLE_SPEECH_CREDENTIALS_JSON || '';
+  if (!projectId || !credsRaw) return r.status(503).json({ ok: false, reason: 'GOOGLE_SPEECH_NOT_CONFIGURED' });
+
+  let credentials: Record<string, unknown>;
+  try { credentials = JSON.parse(credsRaw); } catch { return r.status(503).json({ ok: false, reason: 'CREDENTIALS_UNPARSEABLE' }); }
+
+  const sampleRate = Number(process.env.GOOGLE_SPEECH_SAMPLE_RATE || 16000);
+  let audio: Buffer;
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = fileURLToPath(new URL('./speech/fixtures/ka-selftest.pcm', import.meta.url));
+    // One second is plenty to find out whether the request is accepted.
+    audio = readFileSync(path).subarray(0, sampleRate * 2);
+  } catch {
+    return r.status(503).json({ ok: false, reason: 'FIXTURE_MISSING' });
+  }
+
+  const out = await probeRecognizers({
+    projectId, credentials,
+    region: (process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase(),
+    model: process.env.GOOGLE_SPEECH_MODEL || 'chirp_3',
+    language: process.env.GOOGLE_SPEECH_LANGUAGE || 'ka-GE',
+    sampleRate, audio,
+  });
+  console.log(JSON.stringify({ at: new Date().toISOString(), service: 'speech', event: 'recognizer_probe', attempts: out.attempts.map((a) => ({ name: a.name, ok: a.ok, code: a.code })) }));
+  return r.json(out);
 });
 
 let regionProbeLastAt = 0;

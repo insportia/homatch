@@ -462,9 +462,20 @@ async function start(
     sessionId: session.id,
     grantedSeconds: session.granted_seconds,
     expiresAt: session.expires_at,
-    // Returned so the client can assert it, and so a support question about
-    // which voice was used has an answer that is not a guess.
-    voiceId: CARTESIA_FALLBACK_VOICE_ID,
+    /*
+     * The voice this session will ACTUALLY be spoken in.
+     *
+     * It used to be the Cartesia fallback constant, unconditionally, and the
+     * comment beside it said the point was that a support question about
+     * which voice was used should have an answer that is not a guess. It was
+     * a guess, and after the move to ElevenLabs it was the wrong one -- the
+     * session speaks with the library's default and this said otherwise.
+     *
+     * Null rather than a stand-in when neither provider has a voice to offer.
+     * The client does not read it; a person reading a support log does.
+     */
+    voiceId: (await defaultElevenLabsVoice(sb, String(body.locale ?? 'ka')))?.voiceId
+      ?? (hasSecret('CARTESIA_API_KEY') ? CARTESIA_FALLBACK_VOICE_ID : null),
     // §29: the public demo gets general Homatch capability and no private
     // context whatsoever. This instruction is assembled here, server-side, so
     // the browser cannot widen it.

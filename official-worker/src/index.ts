@@ -16,6 +16,7 @@ import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
 import { lastRecogniserError, speechConfigFromEnv } from './speech/GoogleSpeechStream.js';
 import { probeRegions } from './speech/SpeechRegionProbe.js';
 import { probeRecognizers } from './speech/SpeechRecognizerProbe.js';
+import { probeLanguageConfigs } from './speech/SpeechLanguageProbe.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -538,6 +539,53 @@ app.get('/health/speech-recognizer', async (_q: any, r: any) => {
     sampleRate, audio,
   });
   console.log(JSON.stringify({ at: new Date().toISOString(), service: 'speech', event: 'recognizer_probe', attempts: out.attempts.map((a) => ({ name: a.name, ok: a.ok, code: a.code })) }));
+  return r.json(out);
+});
+
+/**
+ * Which language configurations this project can actually stream with.
+ *
+ * Same ceiling and same reasoning as the other probes: no caller input, a
+ * fixed second of the checked-in clip, and nothing created anywhere. It
+ * answers the one question that has been answered wrong four times on this
+ * integration by reasoning instead of asking.
+ */
+let languageProbeLastAt = 0;
+
+app.get('/health/speech-languages', async (_q: any, r: any) => {
+  const since = Date.now() - languageProbeLastAt;
+  if (since < SELFTEST_MIN_GAP_MS) {
+    return r.status(429).json({ ok: false, reason: 'RATE_LIMITED', retryAfterMs: SELFTEST_MIN_GAP_MS - since });
+  }
+  languageProbeLastAt = Date.now();
+
+  const cfg = speechConfigFromEnv();
+  const credsRaw = process.env.GOOGLE_SPEECH_CREDENTIALS_JSON || '';
+  if (!cfg || !credsRaw) return r.status(503).json({ ok: false, reason: 'GOOGLE_SPEECH_NOT_CONFIGURED' });
+
+  let credentials: Record<string, unknown>;
+  try { credentials = JSON.parse(credsRaw); } catch { return r.status(503).json({ ok: false, reason: 'CREDENTIALS_UNPARSEABLE' }); }
+
+  let audio: Buffer;
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    audio = readFileSync(fileURLToPath(new URL('./speech/fixtures/ka-selftest.pcm', import.meta.url)))
+      .subarray(0, cfg.sampleRate * 2);
+  } catch {
+    return r.status(503).json({ ok: false, reason: 'FIXTURE_MISSING' });
+  }
+
+  const out = await probeLanguageConfigs({
+    projectId: cfg.projectId, credentials, region: cfg.region,
+    sampleRate: cfg.sampleRate, audio,
+    primary: cfg.languageCode, candidates: cfg.languageCodes,
+  });
+  console.log(JSON.stringify({
+    at: new Date().toISOString(), service: 'speech', event: 'language_probe',
+    multiLanguageModel: out.multiLanguageModel,
+    accepted: out.attempts.filter((a) => a.accepted).map((a) => a.name),
+  }));
   return r.json(out);
 });
 

@@ -156,6 +156,17 @@ function buildConfig(): SpeechConfig {
  */
 export const MAX_STREAM_LANGUAGES = 4;
 
+/**
+ * Whether this deployment may send more than one language code.
+ *
+ * Off by default. chirp_3 rejects a multi-language config outright, and the
+ * failure mode is total: every stream fails, not just the unusual ones.
+ */
+export function multiLanguageEnabled(): boolean {
+  const v = (process.env.GOOGLE_SPEECH_MULTILANG || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 const DEFAULT_LANGUAGES = ['ka-GE', 'en-US', 'ru-RU', 'tr-TR'];
 
 export function primaryLanguage(): string {
@@ -465,11 +476,28 @@ export class GoogleSpeechStream {
             audioChannelCount: 1,
           },
           /*
-           * Every candidate, not just the primary. Chirp 3 picks one per
-           * utterance and names it in the response, which is what lets a
-           * visitor simply start talking.
+           * ONE LANGUAGE, UNLESS THE PROVIDER IS KNOWN TO TAKE MORE.
+           *
+           * Sending the whole candidate set looked obviously right -- Chirp
+           * picks one per utterance and names it back, which is exactly what
+           * a "just start talking" product needs. chirp_3 refuses it:
+           * INVALID_ARGUMENT, "Invalid arguments were provided.", before a
+           * byte of audio.
+           *
+           * That is a provider constraint, not a configuration mistake, and
+           * the important part is what it costs if this is got wrong. A
+           * rejected config is not a degraded experience; it is EVERY stream
+           * failing, in every language, including the one that worked. So
+           * multi-language is opt-in and the default is the single language
+           * this session settled on.
+           *
+           * GOOGLE_SPEECH_MULTILANG=1 turns it on for a model that accepts
+           * it. /health/speech-languages is how you find out which those are
+           * without guessing.
            */
-          languageCodes: cfg.languageCodes?.length ? cfg.languageCodes : [cfg.languageCode],
+          languageCodes: multiLanguageEnabled() && cfg.languageCodes?.length
+            ? cfg.languageCodes
+            : [cfg.languageCode],
           model: cfg.model,
           features: {
             enableAutomaticPunctuation: true,

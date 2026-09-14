@@ -73,6 +73,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (wanted('CARTESIA')) reports.push(await checkCartesia(probe, routes ?? []));
   if (wanted('VAPI'))     reports.push(await checkVapi(probe, routes ?? []));
   if (wanted('META'))     reports.push(await checkMeta(probe, routes ?? [], sb));
+  if (wanted('RESEND'))   reports.push(await checkResend(probe, routes ?? [], sb));
 
   if (probe) {
     for (const r of reports) {
@@ -390,6 +391,80 @@ async function checkVapi(probe: boolean, routes: Route[]): Promise<ProviderRepor
       // this account actually holds.
       outboundNumbers: numbers?.ok ? (numbers.data ?? []).length : null,
     } : null,
+  };
+}
+
+/**
+ * EMAIL, IN BOTH DIRECTIONS.
+ *
+ * Sending has worked for months and was the only half this panel knew about —
+ * which meant the half that was missing entirely was also the half nobody
+ * could see was missing.
+ *
+ * Receiving needs three things, and each fails differently:
+ *
+ *   RESEND_API_KEY        sending. Absent, nothing goes out.
+ *   RESEND_WEBHOOK_SECRET receiving. Absent, email-webhook answers 503 to
+ *                         every delivery and writes nothing — correct, and
+ *                         completely silent from the outside.
+ *   a channel account     whose tenant a reply belongs to. With none, a
+ *                         verified delivery is recorded as unroutable and
+ *                         attached to nobody, which is also correct and also
+ *                         invisible.
+ *
+ * Two of those are a working system with no inbound mail and no error
+ * anywhere. So they are reported as separate facts rather than one boolean.
+ */
+async function checkResend(probe: boolean, routes: Route[], sb: SupabaseClient): Promise<ProviderReport> {
+  const outbound = hasSecret('RESEND_API_KEY');
+  const inboundSecret = hasSecret('RESEND_WEBHOOK_SECRET');
+
+  const { data: addresses } = await sb.from('comm_channel_accounts')
+    .select('provider_account_id, owner_id, status')
+    .eq('channel', 'EMAIL')
+    .eq('provider', 'RESEND');
+
+  const claimed = (addresses ?? []).filter((a) => a.owner_id);
+
+  const health = !outbound ? 'NOT_CONFIGURED'
+    : disabledByAdmin(routes, 'RESEND') ? 'DISABLED'
+      : (inboundSecret && claimed.length > 0) ? 'HEALTHY' : 'DEGRADED';
+
+  /* Named in the order somebody has to fix them. "Not configured" without
+     saying which of the three is not configured sends an admin to the wrong
+     dashboard. */
+  const detail = !outbound
+    ? 'RESEND_API_KEY is unset: no email can be sent.'
+    : !inboundSecret
+      ? 'RESEND_WEBHOOK_SECRET is unset: email-webhook refuses every delivery, so replies never reach the inbox.'
+      : claimed.length === 0
+        ? 'No inbound address has an owner, so a verified reply is recorded as unroutable and attached to nobody.'
+        : null;
+
+  return {
+    provider: 'RESEND',
+    roles: rolesFor(routes, 'RESEND'),
+    health,
+    credentials: [
+      /* hasSecret() inline, not the locals above. The gate in
+         tests/matrix/metaTokenSurfacing.test.mjs requires it, and it is right
+         to: `present` must be a presence TEST, so that no refactor can ever
+         put a value where a boolean goes. */
+      { name: 'RESEND_API_KEY', present: hasSecret('RESEND_API_KEY') },
+      { name: 'RESEND_WEBHOOK_SECRET', present: hasSecret('RESEND_WEBHOOK_SECRET') },
+    ],
+    latencyMs: null,
+    lastTestedAt: new Date().toISOString(),
+    detail,
+    errorCode: null,
+    facts: {
+      outboundReady: outbound,
+      inboundReady: inboundSecret && claimed.length > 0,
+      inboundAddresses: (addresses ?? []).length,
+      /* How many are actually somebody's. An address with no owner is a
+         configuration step that was started and not finished. */
+      ownedAddresses: claimed.length,
+    },
   };
 }
 

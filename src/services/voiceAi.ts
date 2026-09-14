@@ -292,3 +292,107 @@ export function audioUrlFromBase64(base64: string, mime: string): string | null 
     return null;
   }
 }
+
+// ── The Georgian audition ───────────────────────────────────────────────────
+//
+// No test can tell whether Georgian sounds native. A transcript round-trip
+// cannot: the provider's own transcriber reads an American saying Georgian
+// words perfectly well, which is how a foreign accent passed every automated
+// check and failed the first person who listened. So these call the provider
+// for real, keep the audio, and put it in front of somebody who speaks the
+// language.
+
+export interface SharedVoice {
+  voiceId: string;
+  publicOwnerId: string;
+  name: string;
+  accent: string | null;
+  language: string | null;
+  /** What the PROVIDER says the speaker speaks, not what a model can render. */
+  verifiedLanguages: Array<{ language: string; accent: string | null; locale: string | null }>;
+  description: string | null;
+  previewUrl: string | null;
+  category: string | null;
+  usageCount: number | null;
+}
+
+export const searchSharedVoices = (params: { language?: string; search?: string; limit?: number }) =>
+  call<{ ok: boolean; voices?: SharedVoice[]; reason?: string; providerStatus?: number | null }>(
+    'shared-voices', params,
+  );
+
+export const addSharedVoiceToAccount = (input: {
+  publicOwnerId: string; voiceId: string; name: string;
+}) => call<{ ok: boolean; voiceId?: string; reason?: string; detail?: string }>('add-shared-voice', input);
+
+export interface AuditionCandidate {
+  voiceId: string;
+  name?: string;
+  modelId: string;
+  sendLanguage: boolean;
+  settings?: Record<string, number | boolean> | null;
+}
+
+export const runAudition = (input: {
+  language: string;
+  sentences: Array<{ key: string; text: string }>;
+  candidates: AuditionCandidate[];
+}) => call<{ ok: boolean; batchId?: string; generated?: number; failed?: number; reason?: string }>(
+  'audition', input,
+);
+
+export interface AuditionSample {
+  id: string;
+  batchId: string;
+  voiceId: string;
+  voiceName: string | null;
+  modelId: string;
+  language: string | null;
+  sentLanguage: boolean;
+  settings: Record<string, unknown>;
+  sentenceKey: string;
+  sentence: string;
+  latencyMs: number | null;
+  bytes: number | null;
+  ok: boolean;
+  errorCode: string | null;
+  providerStatus: number | null;
+  errorDetail: string | null;
+  /** Signed and short-lived: the bucket is private and stays that way. */
+  url: string | null;
+}
+
+export const getAuditionResults = (batchId?: string) =>
+  call<{ ok: boolean; batches: string[]; samples: AuditionSample[] }>(
+    'audition-results', { batchId, expiresIn: 21600 },
+  );
+
+export interface LanguageVoice {
+  language: string;
+  voice_id: string;
+  voice_name: string | null;
+  model_id: string | null;
+  send_language: boolean;
+  settings: Record<string, unknown>;
+  notes: string | null;
+  approved_at: string;
+}
+
+export const getLanguageVoices = () =>
+  call<{
+    ok: boolean;
+    approved: LanguageVoice[];
+    fallback: {
+      voiceId: string; name: string;
+      speakerLanguage: string | null; speakerAccent: string | null;
+    } | null;
+  }>('language-voices');
+
+export const approveLanguageVoice = (input: {
+  language: string; voiceId: string; modelId?: string | null;
+  sendLanguage?: boolean; settings?: Record<string, unknown>;
+  auditionSampleId?: string | null; notes?: string | null;
+}) => call<{ ok: boolean; reason?: string }>('approve-language-voice', input);
+
+export const revokeLanguageVoice = (language: string) =>
+  call<{ ok: boolean; reason?: string }>('revoke-language-voice', { language });

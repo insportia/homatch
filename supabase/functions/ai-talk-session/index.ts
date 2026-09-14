@@ -107,9 +107,12 @@ async function speakPhrase(sb: Sb, params: {
       // What to do when nothing fast lists the language is an operator's
       // call between latency and the provider's own declaration, so it is
       // read from the route rather than decided here.
-      const choice = await chooseTtsModel(
-        voice.model, params.language || null, await languageStrategy(sb),
-      );
+      const choice = voice.approvedForLanguage
+        // Approved means a person listened to THIS voice on THIS model. A
+        // capability rule that substituted another model would be replacing
+        // the thing that was approved with something nobody has heard.
+        ? { modelId: voice.model, sendLanguage: true, substituted: false, capable: [] }
+        : await chooseTtsModel(voice.model, params.language || null, await languageStrategy(sb));
       const at = Date.now();
       const out = await synthesizeElevenLabs({
         voiceId: voice.voiceId,
@@ -217,7 +220,41 @@ async function speakPhrase(sb: Sb, params: {
  */
 async function defaultElevenLabsVoice(
   sb: Sb, language: string | null,
-): Promise<{ voiceId: string; model: string } | null> {
+): Promise<{ voiceId: string; model: string; approvedForLanguage: boolean } | null> {
+  const code = String(language ?? '').toLowerCase().split('-')[0];
+
+  /*
+   * THE VOICE SOMEBODY APPROVED FOR THIS LANGUAGE, IF ANYBODY HAS.
+   *
+   * A voice is a recording of a particular human being. A multilingual model
+   * can make that person say words in another language; it cannot give them
+   * another language's mouth. One global default was therefore always going
+   * to be an English speaker reading Georgian letters to a Georgian
+   * customer -- which is what happened, and what a person heard immediately
+   * and no automated check ever could.
+   *
+   * So a language with an approved voice uses it, approved model and
+   * settings included, because approval is of a COMBINATION: the same voice
+   * on a different model is a different sound and has not been listened to.
+   *
+   * A language with no approved voice falls back to the global default and
+   * says so. That is a worse product than a good Georgian voice and a better
+   * one than a confident wrong answer.
+   */
+  if (code) {
+    const { data: approved } = await sb.from('voice_language_defaults')
+      .select('voice_id, model_id')
+      .eq('provider', 'ELEVENLABS').eq('language', code)
+      .maybeSingle();
+    if (approved?.voice_id) {
+      return {
+        voiceId: String(approved.voice_id),
+        model: String(approved.model_id ?? '') || ELEVENLABS_DEFAULTS.ttsModel,
+        approvedForLanguage: true,
+      };
+    }
+  }
+
   const [voice, { data: route }] = await Promise.all([
     ensureDefaultVoice(sb, language),
     sb.from('comm_provider_routes')
@@ -232,6 +269,7 @@ async function defaultElevenLabsVoice(
   return {
     voiceId: voice.voiceId,
     model: typeof cfg.model === 'string' && cfg.model ? cfg.model : ELEVENLABS_DEFAULTS.ttsModel,
+    approvedForLanguage: false,
   };
 }
 

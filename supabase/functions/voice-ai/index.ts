@@ -98,6 +98,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'add-shared-voice':     return await addSharedVoiceAction(sb, body);
     case 'audition':             return await audition(sb, caller.userId, body);
     case 'audition-results':     return await auditionResults(sb, body);
+    case 'language-voices':      return await languageVoices(sb);
+    case 'approve-language-voice': return await approveLanguageVoice(sb, caller.userId, body);
+    case 'revoke-language-voice': return await revokeLanguageVoice(sb, body);
     case 'usage':                return await usage(sb, body);
     default:                     return json({ error: 'unknown_action' }, 400);
   }
@@ -1061,6 +1064,101 @@ async function auditionResults(sb: Sb, body: VoiceAiRequest): Promise<Response> 
       url: r.storage_path ? signed.get(String(r.storage_path)) ?? null : null,
     })),
   });
+}
+
+/**
+ * Which languages have a voice somebody has actually listened to.
+ *
+ * Reported with the gap included: a language with no row is a language the
+ * product speaks in whatever the global default is, and an operator should be
+ * able to see that rather than discover it from a customer.
+ */
+async function languageVoices(sb: Sb): Promise<Response> {
+  const [{ data: approved }, { data: fallback }] = await Promise.all([
+    sb.from('voice_language_defaults')
+      .select('language, voice_id, voice_name, model_id, send_language, settings, notes, approved_at')
+      .eq('provider', 'ELEVENLABS')
+      .order('language'),
+    sb.from('voice_library_voices')
+      .select('provider_voice_id, name, labels')
+      .eq('provider', 'ELEVENLABS').eq('is_default', true).maybeSingle(),
+  ]);
+
+  const labels = (fallback?.labels ?? {}) as Record<string, string>;
+  return json({
+    ok: true,
+    approved: approved ?? [],
+    /*
+     * The global fallback, WITH what the provider says about its speaker.
+     *
+     * The accent label is the whole point. A voice labelled `language: en,
+     * accent: american` speaking Georgian is an American reading Georgian
+     * letters, and that fact belongs on the screen next to the word
+     * "fallback" rather than in a support conversation later.
+     */
+    fallback: fallback ? {
+      voiceId: fallback.provider_voice_id,
+      name: fallback.name,
+      speakerLanguage: labels.language ?? null,
+      speakerAccent: labels.accent ?? null,
+    } : null,
+  });
+}
+
+/**
+ * A person listened, and this is the one.
+ *
+ * Approval is of a COMBINATION -- voice, model, whether the language is
+ * declared, the settings -- because the same voice on a different model is a
+ * different sound. Recording only the voice id would let a later change swap
+ * the thing that was approved for something nobody has heard.
+ */
+async function approveLanguageVoice(sb: Sb, userId: string, body: VoiceAiRequest): Promise<Response> {
+  const language = String(body.language ?? '').toLowerCase().slice(0, 5);
+  const voiceId = String(body.voiceId ?? '');
+  if (!language || !voiceId) return json({ ok: false, reason: 'LANGUAGE_AND_VOICE_REQUIRED' }, 400);
+
+  // Only a voice this account actually has. An id typed by hand that the
+  // provider refuses would make the product silent in that language.
+  const { data: known } = await sb.from('voice_library_voices')
+    .select('name').eq('provider', 'ELEVENLABS').eq('provider_voice_id', voiceId).maybeSingle();
+  if (!known) return json({ ok: false, reason: 'VOICE_NOT_IN_LIBRARY' }, 404);
+
+  const { error } = await sb.from('voice_language_defaults').upsert({
+    provider: 'ELEVENLABS',
+    language,
+    voice_id: voiceId,
+    voice_name: known.name,
+    model_id: body.modelId ? String(body.modelId).slice(0, 60) : null,
+    send_language: body.sendLanguage !== false,
+    settings: (body.settings && typeof body.settings === 'object') ? body.settings : {},
+    audition_sample_id: body.auditionSampleId ? String(body.auditionSampleId) : null,
+    notes: body.notes ? String(body.notes).slice(0, 400) : null,
+    approved_by: userId,
+    approved_at: new Date().toISOString(),
+  }, { onConflict: 'provider,language' });
+
+  if (error) return json({ ok: false, reason: 'STORE_FAILED', detail: error.message.slice(0, 160) }, 500);
+
+  // A voice the product speaks with must be a voice customers can see and
+  // pick. Approving it for a language turns it on if it was off.
+  await sb.from('voice_library_voices')
+    .update({ enabled: true, updated_at: new Date().toISOString() })
+    .eq('provider', 'ELEVENLABS').eq('provider_voice_id', voiceId);
+
+  logEvent('voice-ai', 'language_voice_approved', { language, voiceId });
+  return json({ ok: true });
+}
+
+/** Withdraw an approval. The language falls back and the screen says so. */
+async function revokeLanguageVoice(sb: Sb, body: VoiceAiRequest): Promise<Response> {
+  const language = String(body.language ?? '').toLowerCase().slice(0, 5);
+  if (!language) return json({ ok: false, reason: 'LANGUAGE_REQUIRED' }, 400);
+  const { error } = await sb.from('voice_language_defaults')
+    .delete().eq('provider', 'ELEVENLABS').eq('language', language);
+  if (error) return json({ ok: false, reason: 'STORE_FAILED' }, 500);
+  logEvent('voice-ai', 'language_voice_revoked', { language });
+  return json({ ok: true });
 }
 
 function base64ToBytes(b64: string): Uint8Array {

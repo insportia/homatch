@@ -39,6 +39,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { VoiceAudition } from '@/components/admin/VoiceAudition';
 import {
   approvePronunciation, audioUrlFromBase64, deletePronunciation, deleteVocabularyTerm,
   exportVocabulary, getPersonality, getVoiceModels, getVoiceOverview, getVoiceUsage,
@@ -75,6 +76,7 @@ export default function AdminVoiceAiPage() {
             <TabsTrigger value="stt" className="text-xs">{t(k('voice_ai_tab_stt'))}</TabsTrigger>
             <TabsTrigger value="brain" className="text-xs">{t(k('voice_ai_tab_brain'))}</TabsTrigger>
             <TabsTrigger value="voices" className="text-xs">{t(k('voice_ai_tab_voices'))}</TabsTrigger>
+            <TabsTrigger value="audition" className="text-xs">{t(k('voice_ai_tab_audition'))}</TabsTrigger>
             <TabsTrigger value="vocabulary" className="text-xs">{t(k('voice_ai_tab_vocabulary'))}</TabsTrigger>
             <TabsTrigger value="pronunciation" className="text-xs">{t(k('voice_ai_tab_pronunciation'))}</TabsTrigger>
             <TabsTrigger value="personality" className="text-xs">{t(k('voice_ai_tab_personality'))}</TabsTrigger>
@@ -87,6 +89,7 @@ export default function AdminVoiceAiPage() {
         <TabsContent value="stt" className="mt-3"><SpeechTab /></TabsContent>
         <TabsContent value="brain" className="mt-3"><BrainTab /></TabsContent>
         <TabsContent value="voices" className="mt-3"><VoicesTab /></TabsContent>
+        <TabsContent value="audition" className="mt-3"><VoiceAudition /></TabsContent>
         <TabsContent value="vocabulary" className="mt-3"><VocabularyTab /></TabsContent>
         <TabsContent value="pronunciation" className="mt-3"><PronunciationTab /></TabsContent>
         <TabsContent value="personality" className="mt-3"><PersonalityTab /></TabsContent>

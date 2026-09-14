@@ -503,3 +503,88 @@ the 2026-08-27/29 baseline, not these.
 That ledger drift is pre-existing and is not this workstream's to resolve. The
 Communications migrations must therefore be applied **selectively**, not by
 `db push`.
+
+---
+
+## CLOSEOUT UPDATE — 2026-09-14
+
+Re-verified against LIVE production, not against the tree. Three of the four
+things this document asks an owner to do have since been done, and the
+document said otherwise for two days.
+
+**A1 and A2 are done. The migration is applied.** `information_schema` shows
+all 12 `comm_` tables; `pg_proc` shows all 14 `comm_` functions;
+`supabase_migrations.schema_migrations` records `20260912110000` and
+`20260912110500` plus the six part-split versions and the two least-privilege
+grant migrations. The 2026-09-13 update above says "0 comm_ tables, 0 comm_
+functions" — that was true when it was written and has not been true since the
+twelfth. Section A1 must not be run again.
+
+**D1 is closed. The Meta token is accepted.** The smoke test returns 200 for
+both the phone number and the WABA, with all three credentials present. The
+401 recorded on the twelfth and repeated on the thirteenth is stale.
+
+**A4 was never possible, for a reason nobody had recorded.**
+`META_WHATSAPP_VERIFY_TOKEN` and `META_WHATSAPP_APP_SECRET` were both unset, so
+the deployed webhook answered **503 to everything** — including Meta's GET
+handshake, which is the step that subscribes the webhook at all. The
+subscription could not have been created no matter how many times somebody
+pressed the button.
+
+The verify token is a value we choose, so it is now set and the handshake is
+verified in production: the correct token returns 200 with the challenge
+echoed, a wrong one returns 403. The app secret is Meta's and remains the one
+genuine external blocker — see FINAL BLOCKERS below.
+
+**The connected test number belonged to nobody.** `comm_channel_accounts` held
+one CONNECTED Meta account with real identifiers and `owner_id` NULL, and
+`whatsapp-webhook` returns early on an account with no owner. Even with the
+signature working, every inbound message would have been dropped before
+anything happened. Assigned to the admin; one update reassigns it.
+
+**Every communications notification was failing on a foreign key.** The
+comm_ and outreach_ tables key `owner_id` on `auth.users.id`; `notifications`
+references `public.users.id`. Eight of the sixteen producers handed the first
+to the second, the insert failed, and the helper swallowed it — an inbound
+message, a rejected template, a qualified lead, a requested callback, a
+compliance pause and a finished campaign told nobody, and never had.
+`notify_emit` now resolves either identity. Verified before and after against
+production.
+
+**Email is two-way.** There was no inbound path at all. `email-webhook` is
+deployed with Svix signature verification, replay protection through
+`comm_claim_webhook_event`, tenant resolution from the address the mail
+arrived at, and recording through `comm_record_inbound` into the same inbox.
+Proven live: a signed delivery opened a conversation and notified the owner, a
+retry of it changed nothing, a delivery to an unclaimed address was recorded
+as unroutable and attached to nobody, and a second tenant's mail landed in the
+second tenant's inbox and nowhere else.
+
+### FINAL BLOCKERS — 2026-09-14
+
+Two, both outside this repository, both one screen each.
+
+**B1 — The Meta app secret.** Meta App Dashboard → your WhatsApp app →
+**App settings → Basic** → **App secret → Show** → copy. Then set it as a
+Supabase Edge Function secret named `META_WHATSAPP_APP_SECRET`. Until it is
+set, `whatsapp-webhook` answers 503 to every delivery and writes nothing —
+which is correct, fail-closed behaviour, and completely silent from outside.
+Everything else on the Homatch side is done and verified.
+
+With that set, the subscription is one screen: Meta App Dashboard → **WhatsApp
+→ Configuration** → **Edit** →
+Callback URL `https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/whatsapp-webhook`,
+Verify token = the value in `META_WHATSAPP_VERIFY_TOKEN`, **Verify and save**,
+then **Manage** → subscribe the **messages** field.
+
+**B2 — The Resend inbound endpoint.** Resend dashboard → **Webhooks** → **Add
+Webhook** → endpoint
+`https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/email-webhook`, event
+**email.received**. Resend then shows a signing secret beginning `whsec_`;
+that value must replace `RESEND_WEBHOOK_SECRET`, which currently holds a
+placeholder set so the path could be proven end to end. Inbound mail also
+needs the MX record Resend gives for the receiving domain, and the address it
+receives on must match a row in `comm_channel_accounts`
+(`replies@homatch.live` is configured and owned).
+
+Neither is a code change, and neither can be done from this repository.

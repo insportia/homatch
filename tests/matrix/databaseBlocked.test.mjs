@@ -87,11 +87,12 @@ const PRE_EXISTING = new Set([
 const MATRIX = [
   {
     feature: 'WhatsApp inbound webhook — signature check, dedupe, inbound record',
-    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE'],
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE', 'EXTERNAL'],
     code: ['supabase/functions/whatsapp-webhook/index.ts', 'supabase/functions/_shared/comm/meta.ts'],
     tests: ['src/lib/comm/__tests__/costAndStatus.test.mjs'],
     tables: ['comm_webhook_events', 'comm_conversations', 'comm_messages'],
-    note: 'comm_claim_webhook_event() and comm_record_inbound() are live and were exercised against production on 2026-09-14: a claimed event, a recorded inbound, and a replay of the same event that was refused.',
+    note: 'comm_claim_webhook_event() and comm_record_inbound() are live and were exercised against production on 2026-09-14: a claimed event, a recorded inbound, a replay that was refused, and the owner notification landing on the right account. The connected test number had no owner and now has one.',
+    external: 'META_WHATSAPP_APP_SECRET is unset, so the deployed webhook answers 503 to every POST and writes nothing — correct, fail-closed, and silent. META_WHATSAPP_VERIFY_TOKEN is now set and the GET handshake is verified in production (correct token 200 with the challenge echoed, wrong token 403), so Meta can subscribe as soon as the app secret is in place. See docs/GO_LIVE_CHECKLIST.md, FINAL BLOCKERS B1.',
   },
   {
     feature: 'WhatsApp outbound send — template gate, 24-hour service window',
@@ -207,6 +208,23 @@ const MATRIX = [
     note: 'comm_set_conversation_mode() and the two tables the thread is read from, comm_conversations and comm_messages, are live.',
   },
   {
+    feature: 'Inbound email — signature check, dedupe, tenant resolution, inbox',
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED', 'SCHEMA_LIVE', 'EXTERNAL'],
+    code: ['supabase/functions/email-webhook/index.ts', 'src/lib/comm/inboundEmail.ts'],
+    tests: ['src/lib/comm/__tests__/inboundEmail.test.mjs'],
+    tables: ['comm_webhook_events', 'comm_conversations', 'comm_messages'],
+    note: 'Proven against production on 2026-09-14: a signed delivery opened a conversation and notified the owner, a retry of it changed nothing, an unclaimed address was recorded as unroutable and attached to nobody, and a second tenant\'s mail landed only in the second tenant\'s inbox — confirmed under RLS as a non-admin. comm_record_inbound now matches an email contact by address rather than by phone.',
+    external: 'Resend has no inbound endpoint configured, so no real reply reaches the webhook yet. It needs the endpoint, the MX record for the receiving domain, and its signing secret in RESEND_WEBHOOK_SECRET, which currently holds a placeholder set so the path could be proven. See docs/GO_LIVE_CHECKLIST.md, FINAL BLOCKERS B2.',
+  },
+  {
+    feature: 'Outbound email — Resend adapter, suppression, campaign send',
+    status: ['IMPLEMENTED', 'LOCAL_UNIT_VERIFIED'],
+    code: ['supabase/functions/_shared/outreach_providers.ts', 'supabase/functions/outreach-send/index.ts'],
+    tests: ['src/lib/comm/__tests__/costAndStatus.test.mjs'],
+    tables: [],
+    note: 'RESEND_API_KEY is configured and the adapter is reached only when sending is enabled. Nothing is blocked; whether a campaign may actually send is the pricing and kill-switch decision, not a missing piece.',
+  },
+  {
     feature: 'Analytics — delivery, outcome and cost aggregates',
     status: ['IMPLEMENTED', 'BROWSER_VERIFIED', 'SCHEMA_LIVE'],
     code: ['src/pages/outreach/CommunicationsAnalyticsPage.tsx'],
@@ -314,9 +332,9 @@ test('the status document is regenerated from this matrix', () => {
     '',
     SCHEMA_APPLIED
       ? `${counts.total} features. ${counts.clear} are complete and unblocked today. `
-        + `${counts.external} need something outside this repository — Meta subscribing its `
-        + `webhook and a real message from a real handset, and a real call to a real Georgian `
-        + `speaker — and nothing else is waiting on Homatch.`
+        + `${counts.external} need something outside this repository, named in their own row `
+        + `rather than summarised here — a provider credential only the owner can read, a `
+        + `provider-side endpoint, or a real call to a real person. Nothing is waiting on code.`
       : `${counts.total} features. ${counts.clear} are complete and unblocked today. `
         + `${counts.blocked} are finished in code and wait only on the owner applying the migration. `
         + `${counts.external} additionally need something outside this repository.`,

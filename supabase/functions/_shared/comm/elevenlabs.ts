@@ -366,21 +366,30 @@ export async function ttsModelsCached(): Promise<ElevenLabsModel[]> {
  * There is a real trade here and it is not obvious which way it goes, so it
  * is a setting rather than a decision baked into the code:
  *
+ *   'configured_model'   keep the configured model and send no language_code
+ *                        at all. The 400 came from the PARAMETER, not from an
+ *                        inability to speak.
+ *
  *   'capable_model'      substitute a model that lists the language. Correct
- *                        by the provider's own declaration, and on this
- *                        account that means eleven_v3 for Georgian -- measured
- *                        at 2.9s for a 42-character phrase, which is a long
- *                        time to sit in silence during a conversation.
+ *                        by the provider's own declaration.
  *
- *   'configured_model'   keep the fast model and send no language_code at all.
- *                        The 400 came from the PARAMETER, not from an
- *                        inability to speak; the multilingual models do detect
- *                        language from the text. Faster, and whether it is
- *                        good enough is a question about audio that has to be
- *                        answered by listening rather than by reasoning.
+ * IT WAS MEASURED RATHER THAN ARGUED, AND THE ANSWER WAS NOT THE OBVIOUS ONE.
  *
- * Default is 'capable_model': slower and declared-correct beats faster and
- * assumed-correct until somebody has actually heard both.
+ * The same Georgian sentence was spoken on production under each strategy and
+ * the audio sent straight back through transcription:
+ *
+ *   capable_model     eleven_v3           4.7s, 9.5s
+ *                     "...მე ხომაჩის AI ასისტენტი ვარ. რაგუშიemislia..."
+ *   configured_model  eleven_flash_v2_5   2.0s, 4.9s, 1.2s
+ *                     "...მე ჰომაჩეს AI ასისტენტი ვარ. როგორ შემიძლია დაგეხმაროთ?"
+ *
+ * Faster by roughly three times, and the round trip came back as the sentence
+ * that was said rather than a mangled one. The declared-capable model was
+ * worse on both counts, which is why the default is the other one now: a
+ * language list is a declaration, and this is a measurement.
+ *
+ * What a measurement cannot settle is whether the brand name SOUNDS right --
+ * that needs an ear, and the pronunciation screen is where somebody uses one.
  */
 export type LanguageStrategy = 'capable_model' | 'configured_model';
 
@@ -415,7 +424,7 @@ export interface ModelChoice {
  */
 export async function chooseTtsModel(
   preferred: string, language: string | null,
-  strategy: LanguageStrategy = 'capable_model',
+  strategy: LanguageStrategy = 'configured_model',
 ): Promise<ModelChoice> {
   const code = String(language ?? '').toLowerCase().split('-')[0];
   if (!code) return { modelId: preferred, sendLanguage: false, substituted: false, capable: [] };

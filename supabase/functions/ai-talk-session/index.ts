@@ -704,7 +704,7 @@ async function languageStrategy(sb: Sb): Promise<LanguageStrategy> {
   const { data } = await sb.from('comm_provider_routes')
     .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle();
   const value = (data?.config as Record<string, unknown> | null)?.language_strategy;
-  return value === 'configured_model' ? 'configured_model' : 'capable_model';
+  return value === 'capable_model' ? 'capable_model' : 'configured_model';
 }
 
 /**

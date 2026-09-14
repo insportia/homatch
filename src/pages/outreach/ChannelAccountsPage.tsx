@@ -24,6 +24,9 @@ import {
   ScrollTable, relativeTime, formatPhone,
 } from '@/components/communications/primitives';
 import { listChannelAccounts } from '@/services/communications';
+import {
+  CHANNEL_TITLE_KEY, useCommsChannel, useCommsProduct,
+} from '@/components/communications/channel';
 import type { CommChannelAccount } from '@/types/communications';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -36,21 +39,32 @@ export default function ChannelAccountsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * A WhatsApp Business account and a call number are different objects with
+   * different providers and different configuration, and putting them in one
+   * table means the row somebody clicks to change a call number might be the
+   * row that disconnects WhatsApp. The channel comes from the path, so
+   * /outreach/calls/numbers can only ever show call numbers.
+   */
+  const channel = useCommsChannel();
+  const product = useCommsProduct();
+
   const load = useCallback(async () => {
     setError(null);
-    try { setAccounts(await listChannelAccounts()); }
+    try { setAccounts(await listChannelAccounts(channel ?? undefined)); }
     catch { setError('comm_numbers_load_failed'); }
     finally { setLoading(false); }
-  }, []);
+  }, [channel]);
 
   useEffect(() => { void load(); }, [load]);
 
   const anyTest = accounts.some((a) => a.environment === 'TEST');
 
   return (
-    <CommsWorkspace product="hub">
+    <CommsWorkspace product={product}>
         <div className="space-y-4">
           <PageHeader
+            eyebrow={channel ? t(CHANNEL_TITLE_KEY[channel] as TKey) : undefined}
             title={t('comm_numbers_title')}
             subtitle={t('comm_numbers_subtitle')}
             secondary={{ label: t('comm_refresh'), onClick: () => { setLoading(true); void load(); } }}

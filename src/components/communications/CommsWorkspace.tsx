@@ -99,10 +99,10 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
      being called. No WhatsApp anywhere. */
   calls: [
     { to: '/outreach/calls', labelKey: 'comms_nav_overview', icon: PhoneCall, exact: true },
-    { to: '/outreach/campaigns', labelKey: 'comms_nav_campaigns', icon: Megaphone },
-    { to: '/outreach/agents', labelKey: 'comms_nav_agents', icon: Bot },
-    { to: '/outreach/numbers', labelKey: 'comm_numbers_title', icon: Hash },
-    { to: '/outreach/contacts', labelKey: 'comms_nav_contacts', icon: Users },
+    { to: '/outreach/calls/campaigns', labelKey: 'comms_nav_campaigns', icon: Megaphone },
+    { to: '/outreach/calls/agents', labelKey: 'comms_nav_agents', icon: Bot },
+    { to: '/outreach/calls/numbers', labelKey: 'comm_numbers_title', icon: Hash },
+    { to: '/outreach/calls/contacts', labelKey: 'comms_nav_contacts', icon: Users },
   ],
   /* Messaging. The conversation list is the product, so the rail is short on
      purpose -- and on the conversations screen itself it is not rendered at
@@ -111,15 +111,15 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
     { to: '/outreach/whatsapp', labelKey: 'comms_nav_overview', icon: MessageCircle, exact: true },
     { to: '/outreach/whatsapp/inbox', labelKey: 'comms_nav_inbox', icon: InboxIcon },
     { to: '/outreach/whatsapp/templates', labelKey: 'comm_templates_title', icon: FileText },
-    { to: '/outreach/numbers', labelKey: 'comm_numbers_title', icon: Hash },
-    { to: '/outreach/contacts', labelKey: 'comms_nav_contacts', icon: Users },
+    { to: '/outreach/whatsapp/numbers', labelKey: 'comm_numbers_title', icon: Hash },
+    { to: '/outreach/whatsapp/contacts', labelKey: 'comms_nav_contacts', icon: Users },
   ],
   /* Email. Campaigns, what came back, and who it goes to. */
   email: [
     { to: '/outreach/email', labelKey: 'comms_nav_overview', icon: Mail, exact: true },
-    { to: '/outreach/contact-lists', labelKey: 'comm_contact_lists', icon: ListChecks },
-    { to: '/outreach/contacts', labelKey: 'comms_nav_contacts', icon: Users },
-    { to: '/outreach/analytics', labelKey: 'comms_nav_analytics', icon: BarChart3 },
+    { to: '/outreach/email/lists', labelKey: 'comm_contact_lists', icon: ListChecks },
+    { to: '/outreach/email/contacts', labelKey: 'comms_nav_contacts', icon: Users },
+    { to: '/outreach/email/analytics', labelKey: 'comms_nav_analytics', icon: BarChart3 },
   ],
   /* The audience surfaces are shared by all three channels and belong to
      none, so they carry the neutral rail rather than pretending to be part
@@ -139,8 +139,9 @@ function isActive(pathname: string, item: NavEntry): boolean {
   // entry must not claim them.
   if (item.to === '/outreach/whatsapp') {
     return pathname === '/outreach/whatsapp'
-      || (pathname.startsWith('/outreach/whatsapp/') && !pathname.startsWith('/outreach/whatsapp/inbox')
-          && !pathname.startsWith('/outreach/whatsapp/templates'));
+      || (pathname.startsWith('/outreach/whatsapp/')
+          && !['inbox', 'templates', 'numbers', 'contacts']
+            .some((child) => pathname.startsWith(`/outreach/whatsapp/${child}`)));
   }
   return pathname === item.to || pathname.startsWith(item.to + '/');
 }

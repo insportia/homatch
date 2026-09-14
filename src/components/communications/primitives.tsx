@@ -276,8 +276,19 @@ export function LiveDot({ label }: { label: string }) {
 // ── Layout ──────────────────────────────────────────────────────────────────
 
 export function PageHeader({
-  title, subtitle, primary, secondary, children,
+  eyebrow, title, subtitle, primary, secondary, children,
 }: {
+  /**
+   * WHICH PRODUCT THIS SCREEN BELONGS TO.
+   *
+   * Contacts, Numbers and Analytics are one component serving three products,
+   * so the title alone ("Numbers") is ambiguous in the one way that matters:
+   * it does not say whose. The eyebrow is the breadcrumb -- "AI Calls" above
+   * "Numbers" -- and it is omitted on the genuinely cross-channel screens,
+   * where there is no single product to name and inventing one would be worse
+   * than saying nothing.
+   */
+  eyebrow?: string;
   title: string;
   subtitle?: string;
   primary?: { label: string; onClick: () => void; busy?: boolean };
@@ -287,6 +298,9 @@ export function PageHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
+        {eyebrow ? (
+          <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-gold-ink">{eyebrow}</p>
+        ) : null}
         <h1 className="truncate text-xl font-semibold">{title}</h1>
         {subtitle ? <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p> : null}
       </div>

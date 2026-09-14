@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertCircle, Users, Download, Trash2, Plus, Loader2 } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import {
+  CHANNEL_TITLE_KEY, useCommsChannel, useCommsProduct,
+} from '@/components/communications/channel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -36,9 +39,13 @@ const STATUS_BADGE: Record<ContactListStatus, { label: string; class: string }> 
   ARCHIVED:  { label: 'Archived',  class: 'bg-muted text-muted-foreground' },
 };
 
+type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
+
 export default function ContactListsPage() {
   const { t } = useLanguage();
   const { homatchUser } = useAuth();
+  const channel = useCommsChannel();
+  const product = useCommsProduct();
   const [lists, setLists] = useState<ContactList[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -231,12 +238,16 @@ export default function ContactListsPage() {
   };
 
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="max-w-4xl mx-auto space-y-6">
+    <CommsWorkspace product={product}>
+        <div className="space-y-6">
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
+              {channel ? (
+                <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-gold-ink">
+                  {t(CHANNEL_TITLE_KEY[channel] as TKey)}
+                </p>
+              ) : null}
               <h1 className="text-xl font-semibold flex items-center gap-2">
                 <Users className="h-5 w-5 text-primary" />
                 {t('contacts_title')}
@@ -435,7 +446,6 @@ export default function ContactListsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }

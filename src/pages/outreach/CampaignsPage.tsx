@@ -25,6 +25,9 @@ import {
   ScrollTable, formatUsd, relativeTime,
 } from '@/components/communications/primitives';
 import { listCampaigns, pauseCampaign, resumeCampaign } from '@/services/communications';
+import {
+  CHANNEL_TITLE_KEY, useCommsChannel, useCommsProduct,
+} from '@/components/communications/channel';
 import type { CommCampaign } from '@/types/communications';
 import { isUserResumable } from '@/lib/comm/vocabulary';
 
@@ -37,17 +40,30 @@ export default function CampaignsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
+  const routeChannel = useCommsChannel();
+  const product = useCommsProduct();
   const [campaigns, setCampaigns] = useState<CommCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const channel = (params.get('channel') ?? 'ALL') as typeof CHANNEL_TABS[number];
+  /*
+   * Inside a product the channel is NOT a tab. /outreach/calls/campaigns is
+   * the call campaigns, and a tab strip offering WhatsApp there is a door out
+   * of the product wearing the clothes of a filter. The ?channel= selector
+   * survives only on the cross-channel screen, which is the one place where
+   * choosing between them is the actual job.
+   */
+  const channel = (routeChannel ?? params.get('channel') ?? 'ALL') as typeof CHANNEL_TABS[number];
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      setCampaigns(await listCampaigns({ limit: 200 }));
+      /* The product's own campaigns. An AI Call campaign and an email
+         campaign are the same row shape and completely different work;
+         listing them together means Pause sits beside a campaign the
+         operator did not come here to touch. */
+      setCampaigns(await listCampaigns({ limit: 200, channel }));
     } catch {
       setError('comm_campaigns_load_failed');
     } finally {
@@ -92,25 +108,43 @@ export default function CampaignsPage() {
   }, [load, t]);
 
   return (
-    <CommsWorkspace product="calls">
+    <CommsWorkspace product={product}>
         <div className="space-y-4">
           <PageHeader
+            eyebrow={routeChannel ? t(CHANNEL_TITLE_KEY[routeChannel] as TKey) : undefined}
             title={t('comm_campaigns_title')}
             subtitle={t('comm_campaigns_subtitle')}
-            primary={{ label: t('comm_new_campaign'), onClick: () => navigate('/outreach/campaigns/new') }}
+            primary={{
+              label: t('comm_new_campaign'),
+              /* The channel travels with the action. "Create campaign" inside
+                 AI Calls must open the builder ON AI Calls -- an unscoped CTA
+                 is the same leak as an unscoped menu, reached by the button
+                 somebody is most likely to press. */
+              onClick: () => navigate(
+                routeChannel
+                  ? `/outreach/campaigns/new?channel=${routeChannel}`
+                  : '/outreach/campaigns/new',
+              ),
+            }}
           />
 
           {error ? <ErrorState messageKey={error} onRetry={() => { setLoading(true); void load(); }} /> : null}
 
-          <Tabs value={channel} onValueChange={(v) => setParams({ channel: v }, { replace: true })}>
-            <TabsList className="h-8">
-              {CHANNEL_TABS.map((c) => (
-                <TabsTrigger key={c} value={c} className="h-7 px-2.5 text-xs">
-                  {t(c === 'ALL' ? 'comm_filter_all' : `comm_channel_${c.toLowerCase()}` as TKey)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          {/* The channel chooser exists only where choosing is the job. Inside
+              a product the answer is already decided by the route, and
+              offering the other two here would be the leak this whole
+              separation exists to close. */}
+          {routeChannel ? null : (
+            <Tabs value={channel} onValueChange={(v) => setParams({ channel: v }, { replace: true })}>
+              <TabsList className="h-8">
+                {CHANNEL_TABS.map((c) => (
+                  <TabsTrigger key={c} value={c} className="h-7 px-2.5 text-xs">
+                    {t(c === 'ALL' ? 'comm_filter_all' : `comm_channel_${c.toLowerCase()}` as TKey)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
 
           <KpiRow cols={6}>
             <Kpi labelKey="comm_kpi_active" value={totals.active} loading={loading} />

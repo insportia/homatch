@@ -122,6 +122,7 @@ export default function AgentsPage() {
     <CommsWorkspace product="calls">
         <div className="space-y-4">
           <PageHeader
+            eyebrow={t('comms_nav_calls')}
             title={t('comm_agents_title')}
             subtitle={t('comm_agents_subtitle')}
             primary={{ label: t('comm_create_agent'), onClick: () => setCreating(true) }}

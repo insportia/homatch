@@ -21,6 +21,9 @@ import {
   ScrollTable, formatUsd, formatRate, formatDuration,
 } from '@/components/communications/primitives';
 import { getAnalytics, listCampaigns } from '@/services/communications';
+import {
+  CHANNEL_TITLE_KEY, useCommsChannel, useCommsProduct,
+} from '@/components/communications/channel';
 import type { AnalyticsResult, CommCampaign } from '@/types/communications';
 import { FUNNEL_STAGES } from '@/lib/comm/vocabulary';
 import { cn } from '@/lib/utils';
@@ -33,6 +36,11 @@ export default function CommunicationsAnalyticsPage() {
   const { t, lang: language } = useLanguage();
 
   const [range, setRange] = useState<Range>('30d');
+  /* The route's channel, when there is one, and the dropdown otherwise.
+     On /outreach/email/analytics this IS the email product's analytics, so
+     a cross-channel selector there would be a way back out of the product. */
+  const routeChannel = useCommsChannel();
+  const product = useCommsProduct();
   const [channel, setChannel] = useState('ALL');
   const [campaignId, setCampaignId] = useState('ALL');
   const [data, setData] = useState<AnalyticsResult | null>(null);
@@ -49,8 +57,12 @@ export default function CommunicationsAnalyticsPage() {
     setError(null);
     try {
       const [result, campaignRows] = await Promise.all([
-        getAnalytics({ since, channel, campaignId: campaignId === 'ALL' ? undefined : campaignId }),
-        listCampaigns({ limit: 200 }),
+        getAnalytics({
+          since,
+          channel: routeChannel ?? channel,
+          campaignId: campaignId === 'ALL' ? undefined : campaignId,
+        }),
+        listCampaigns({ limit: 200, channel: routeChannel ?? undefined }),
       ]);
       setData(result);
       setCampaigns(campaignRows);
@@ -67,9 +79,13 @@ export default function CommunicationsAnalyticsPage() {
   const maxSeries = Math.max(1, ...(data?.series ?? []).map((d) => d.calls + d.messages));
 
   return (
-    <CommsWorkspace product="hub">
+    <CommsWorkspace product={product}>
         <div className="space-y-4">
-          <PageHeader title={t('comm_analytics_title')} subtitle={t('comm_analytics_subtitle')}>
+          <PageHeader
+            eyebrow={routeChannel ? t(CHANNEL_TITLE_KEY[routeChannel] as TKey) : undefined}
+            title={t('comm_analytics_title')}
+            subtitle={t('comm_analytics_subtitle')}
+          >
             <Select value={range} onValueChange={(v) => setRange(v as Range)}>
               <SelectTrigger className="h-8 w-[110px] text-xs" aria-label={t('comm_date_range')}><SelectValue /></SelectTrigger>
               <SelectContent>

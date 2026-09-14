@@ -30,6 +30,9 @@ import {
   formatPhone, relativeTime,
 } from '@/components/communications/primitives';
 import { listContacts } from '@/services/communications';
+import {
+  CHANNEL_TITLE_KEY, channelPath, useCommsChannel, useCommsProduct,
+} from '@/components/communications/channel';
 import { AddContactDialog } from '@/components/communications/AddContactDialog';
 import type { CommContact } from '@/types/communications';
 
@@ -46,10 +49,21 @@ export default function ContactsPage() {
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
+  /*
+   * From the PATH, so a refresh of /outreach/calls/contacts is still AI Calls.
+   * null means the neutral audience screen, reached from neither product.
+   */
+  const channel = useCommsChannel();
+  const product = useCommsProduct();
+
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await listContacts({ search: search.trim() || undefined, pageSize: 100 });
+      /* Scoped, so Email Campaigns never lists somebody with no address and
+         the call products never list somebody with no number. */
+      const res = await listContacts({
+        search: search.trim() || undefined, pageSize: 100, channel: channel ?? undefined,
+      });
       setRows(res.rows);
       setTotal(res.total);
     } catch {
@@ -73,12 +87,15 @@ export default function ContactsPage() {
   }, [rows]);
 
   return (
-    <CommsWorkspace product="contacts"
+    <CommsWorkspace product={product}
       header={
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
+            {/* "AI Calls > Contacts", not "Communications > Contacts". The
+                category is what somebody already knows; the product is the
+                thing they need to be sure of before they act on a row. */}
             <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-gold-ink">
-              {t('comms_workspace')}
+              {t(channel ? CHANNEL_TITLE_KEY[channel] : 'comms_workspace')}
             </p>
             <h1 className="mt-0.5 text-xl font-semibold leading-tight sm:text-2xl">{t('comms_nav_contacts')}</h1>
             <p className="mt-1 max-w-[46rem] text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]">
@@ -94,7 +111,12 @@ export default function ContactsPage() {
               <Upload className="h-3.5 w-3.5" aria-hidden="true" />
               {t('comms_import_contacts')}
             </Button>
-            <Button variant="outline" size="sm" className="h-8" onClick={() => navigate('/outreach/contact-lists')}>
+            {/* Back into THIS product's lists, not the shared page. An action
+                that leaves the product is the same leak as a menu that does. */}
+            <Button
+              variant="outline" size="sm" className="h-8"
+              onClick={() => navigate(channel === 'EMAIL' ? channelPath(channel, '/lists') : '/outreach/contact-lists')}
+            >
               {t('comms_contacts_lists')}
             </Button>
           </div>

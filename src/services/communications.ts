@@ -29,6 +29,23 @@ import { parsePhone } from '@/lib/comm/phone';
 
 export type { AnalyticsFilter, AnalyticsResult } from '@/types/communications';
 
+/**
+ * THE THREE PRODUCTS, AS THE DATABASE SPELLS THEM.
+ *
+ * Communications shares its tables across three products a customer
+ * experiences separately, so nearly every table here has a channel column and
+ * nearly every product-facing read must use it. A query that forgets is not a
+ * styling problem: it shows one product another product's data.
+ *
+ * That is not hypothetical. listConversations had no channel filter, and the
+ * WhatsApp inbox would have begun listing EMAIL replies the day inbound email
+ * went live -- same table, same comm_record_inbound, no error anywhere.
+ *
+ * Naming the type rather than passing bare strings means a new caller has to
+ * choose one of three rather than invent a fourth.
+ */
+export type CommsChannel = 'AI_CALL' | 'WHATSAPP' | 'EMAIL';
+
 /** Every list in this module is bounded. This is the ceiling when none is given. */
 const DEFAULT_LIMIT = 100;
 
@@ -651,6 +668,11 @@ export async function listLiveCalls(): Promise<CommSend[]> {
   const { data } = await supabase.from('outreach_sends')
     .select('*')
     .eq('owner_id', uid)
+    /* Named rather than inferred from the status. DIALING and ANSWERED happen
+       to be call-only vocabulary today; relying on that makes this query
+       correct by coincidence, and the coincidence ends the first time another
+       channel borrows a word. */
+    .eq('channel', 'AI_CALL')
     .in('status', ['DIALING', 'RINGING', 'ANSWERED'])
     .order('call_started_at', { ascending: false })
     .limit(50);
@@ -785,9 +807,29 @@ export async function saveTemplate(input: Partial<CommTemplate>): Promise<CommTe
 
 // ── Channel accounts ────────────────────────────────────────────────────────
 
-export async function listChannelAccounts(): Promise<CommChannelAccount[]> {
-  const { data } = await supabase.from('comm_channel_accounts')
-    .select('*').order('created_at', { ascending: true }).limit(50);
+/**
+ * The identities this product speaks through, for ONE channel.
+ *
+ * Two things were missing and both mattered. There was no channel filter, so
+ * the AI Call Center's Numbers screen listed the WhatsApp Business number
+ * beside its phone numbers -- two products' configuration on one page, where
+ * pressing the wrong row configures the wrong channel.
+ *
+ * And there was no owner filter. RLS is what actually kept one tenant's
+ * numbers away from another's, which means the policy was carrying a
+ * correctness requirement the query should state for itself. Defence in depth
+ * is the point: a query that relies on a policy is one policy edit away from
+ * being a leak, and `limit(50)` over every tenant's rows is a strange thing
+ * for a per-tenant screen to ask for even when the answer comes back filtered.
+ */
+export async function listChannelAccounts(channel?: CommsChannel): Promise<CommChannelAccount[]> {
+  const uid = await currentUserId();
+  if (!uid) return [];
+  let q = supabase.from('comm_channel_accounts')
+    .select('*').eq('owner_id', uid)
+    .order('created_at', { ascending: true }).limit(50);
+  if (channel) q = q.eq('channel', channel);
+  const { data } = await q;
   return (data ?? []) as CommChannelAccount[];
 }
 
@@ -925,6 +967,19 @@ async function refreshListCounts(listId: string, ownerId: string): Promise<void>
 
 export async function listContacts(params: {
   listId?: string; search?: string; stage?: string; page?: number; pageSize?: number;
+  /**
+   * Who is REACHABLE on this channel.
+   *
+   * The contact is deliberately one shared identity -- the same person
+   * answers a call and reads an email, and duplicating them per channel to
+   * get three screens would be a data model bent to fit a layout.
+   *
+   * What is channel-specific is whether this product can reach them at all.
+   * A contact with no email address is not an email audience however complete
+   * their record is, and listing them under Email Campaigns invites somebody
+   * to select a row that can never be sent to.
+   */
+  channel?: CommsChannel;
 }): Promise<{ rows: CommContact[]; total: number }> {
   const uid = await currentUserId();
   if (!uid) return { rows: [], total: 0 };
@@ -940,6 +995,18 @@ export async function listContacts(params: {
 
   if (params.listId) q = q.eq('list_id', params.listId);
   if (params.stage && params.stage !== 'ALL') q = q.eq('lead_stage', params.stage);
+  /*
+   * Reachability, not a channel column: outreach_contacts has none, because a
+   * person is not per-channel. Email needs an address; the two phone channels
+   * need a number. Validity is checked too -- a malformed address is a row the
+   * sender will reject, so showing it as audience is a promise the send cannot
+   * keep.
+   */
+  if (params.channel === 'EMAIL') {
+    q = q.not('email', 'is', null).neq('email', '').neq('email_valid', false);
+  } else if (params.channel === 'AI_CALL' || params.channel === 'WHATSAPP') {
+    q = q.not('phone', 'is', null).neq('phone', '').neq('phone_valid', false);
+  }
   if (params.search) {
     q = q.or(`full_name.ilike.%${params.search}%,phone.ilike.%${params.search}%,email.ilike.%${params.search}%`);
   }
@@ -1223,8 +1290,16 @@ export async function getAnalytics(filter: AnalyticsFilter): Promise<AnalyticsRe
   const { data: sends } = await q;
   const rows = sends ?? [];
 
-  const { data: conversations } = await supabase.from('comm_conversations')
+  /*
+   * The sends half of this function honours filter.channel and this half did
+   * not, so asking for AI_CALL analytics returned call sends measured against
+   * a lead funnel built from WhatsApp and email conversations. The totals
+   * looked plausible, which is the worst way for a number to be wrong.
+   */
+  let convQuery = supabase.from('comm_conversations')
     .select('lead_stage, last_message_at').eq('owner_id', uid).gte('last_message_at', since).limit(20_000);
+  if (filter.channel && filter.channel !== 'ALL') convQuery = convQuery.eq('channel', filter.channel);
+  const { data: conversations } = await convQuery;
 
   const byDate = new Map<string, { calls: number; messages: number; qualified: number; spend: number }>();
   for (const r of rows) {

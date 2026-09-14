@@ -109,8 +109,19 @@ test('every communications screen declares which product it is', () => {
   ];
   for (const name of channelScreens) {
     const src = readFileSync(`src/pages/outreach/${name}.tsx`, 'utf8');
+    /*
+     * Two legitimate ways to say it, and the second is the stronger one.
+     *
+     * A screen that belongs to exactly one product names it literally. A
+     * screen SHARED by all three -- Contacts, Numbers, Campaigns -- takes it
+     * from the route, because the route is the only thing that knows which
+     * product the reader came from and is the only thing a refresh restores.
+     *
+     * What is not acceptable is neither: that silently falls back to the
+     * cross-channel rail, which is the leak.
+     */
     assert.match(
-      src, /<CommsWorkspace[^>]*product="(calls|whatsapp|email|contacts)"/s,
+      src, /<CommsWorkspace[^>]*product=(?:"(?:calls|whatsapp|email|contacts)"|\{product\})/s,
       `${name} does not say which product it belongs to, so it falls back to the cross-channel rail`,
     );
   }

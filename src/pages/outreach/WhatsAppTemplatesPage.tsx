@@ -84,6 +84,7 @@ export default function WhatsAppTemplatesPage() {
           </Button>
 
           <PageHeader
+            eyebrow={t('comms_nav_whatsapp')}
             title={t('comm_templates_title')}
             subtitle={t('comm_templates_subtitle')}
             primary={{ label: t('comm_template_new'), onClick: () => setEditing({ language: 'ka', category: 'MARKETING' }) }}

@@ -206,6 +206,34 @@ export const routes: RouteConfig[] = [
   { name: 'WhatsApp Inbox',    path: '/outreach/whatsapp/inbox',  element: <WhatsAppInboxPage /> },
   { name: 'WhatsApp Templates', path: '/outreach/whatsapp/templates', element: <WhatsAppTemplatesPage />, visible: false },
   { name: 'Phone Numbers',     path: '/outreach/numbers',         element: <ChannelAccountsPage />, visible: true },
+  /*
+   * ── ONE COPY OF EACH SHARED SCREEN PER PRODUCT ────────────────────
+   *
+   * Contacts, Numbers, Campaigns, Lists and Analytics are one component each.
+   * They are NOT one destination each: a person inside AI Calls who opens
+   * Contacts must stay inside AI Calls, and the old shared /outreach/contacts
+   * dropped them into a page that showed every channel at once.
+   *
+   * The component is shared; the ROUTE is what carries the product, because
+   * the URL is the only piece of state a refresh restores. See
+   * components/communications/channel.ts -- each screen reads its channel from
+   * the path, so a bookmark to /outreach/calls/contacts cannot open as
+   * anything else.
+   *
+   * The unscoped paths are kept and redirect, because they have been linked.
+   */
+  { name: 'Calls Campaigns',   path: '/outreach/calls/campaigns',    element: <CampaignsPage />,        visible: false },
+  { name: 'Calls Agents',      path: '/outreach/calls/agents',       element: <AgentsPage />,           visible: false },
+  { name: 'Calls Numbers',     path: '/outreach/calls/numbers',      element: <ChannelAccountsPage />,  visible: false },
+  { name: 'Calls Contacts',    path: '/outreach/calls/contacts',     element: <ContactsPage />,         visible: false },
+
+  { name: 'WhatsApp Numbers',  path: '/outreach/whatsapp/numbers',   element: <ChannelAccountsPage />,  visible: false },
+  { name: 'WhatsApp Contacts', path: '/outreach/whatsapp/contacts',  element: <ContactsPage />,         visible: false },
+
+  { name: 'Email Contacts',    path: '/outreach/email/contacts',     element: <ContactsPage />,         visible: false },
+  { name: 'Email Lists',       path: '/outreach/email/lists',        element: <ContactListsPage />,     visible: false },
+  { name: 'Email Analytics',   path: '/outreach/email/analytics',    element: <CommunicationsAnalyticsPage />, visible: false },
+
   { name: 'Communications Analytics', path: '/outreach/analytics', element: <CommunicationsAnalyticsPage /> },
   { name: 'Communications Billing', path: '/outreach/billing',    element: <CommunicationsBillingPage /> },
   // Admin (wrapped in AdminLayout which enforces is_admin server-side)

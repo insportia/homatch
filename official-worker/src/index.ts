@@ -12,6 +12,7 @@ import { ResearchOrchestrator } from './orchestrator/ResearchOrchestrator.js';
 import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrowserLifecycle, redactSecrets } from './browser/LocalBrowserRuntime.js';
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 import { attachSpeechGateway } from './speech/SpeechGateway.js';
+import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -414,6 +415,63 @@ process.on('uncaughtException', (error: unknown) => {
  * was deployed: this image runs as two Railway services and only one of them
  * has Google credentials. /health says which.
  */
+/**
+ * Prove the whole speech chain, against the deployed thing, on demand.
+ *
+ * WHY THIS IS NOT BEHIND THE WORKER SECRET
+ *
+ * Everything that authorises this already lives inside the process. The
+ * request carries no input: no audio, no language, no configuration. It plays
+ * a fixed six-second clip that is checked into the repository and returns a
+ * transcript of a sentence whose text is also checked into the repository.
+ * There is nothing here an anonymous caller learns that they could not learn
+ * by reading the source.
+ *
+ * What an anonymous caller could do is spend money, so that is what is
+ * bounded: one run at a time, and not more than one a minute, process-wide.
+ * At Google's streaming rate a minute's worth of six-second clips is a
+ * rounding error, and the ceiling does not move if somebody holds the button
+ * down.
+ *
+ * It is a GET because it is a diagnostic an operator should be able to reach
+ * from a browser address bar at three in the morning.
+ */
+const SELFTEST_MIN_GAP_MS = 60_000;
+let selfTestLastAt = 0;
+let selfTestRunning = false;
+
+app.get('/health/speech-selftest', async (_q: any, r: any) => {
+  if (selfTestRunning) {
+    return r.status(429).json({ ok: false, reason: 'ALREADY_RUNNING' });
+  }
+  const since = Date.now() - selfTestLastAt;
+  if (since < SELFTEST_MIN_GAP_MS) {
+    return r.status(429).json({
+      ok: false, reason: 'RATE_LIMITED',
+      retryAfterMs: SELFTEST_MIN_GAP_MS - since,
+    });
+  }
+
+  selfTestRunning = true;
+  selfTestLastAt = Date.now();
+  try {
+    const report = await runSpeechSelfTest(PORT, { token: TOKEN });
+    console.log(JSON.stringify({
+      at: new Date().toISOString(), service: 'speech', event: 'selftest',
+      ok: report.ok, reason: report.reason,
+      interims: report.interimCount, timings: report.timings,
+      // The transcript is the assistant's own scripted line, not a visitor's
+      // speech, so it is safe to log and is the only thing worth reading here.
+      final: report.finalText,
+    }));
+    return r.json(report);
+  } catch (e: any) {
+    return r.status(500).json({ ok: false, reason: 'SELFTEST_THREW', detail: String(e?.message ?? e).slice(0, 200) });
+  } finally {
+    selfTestRunning = false;
+  }
+});
+
 const server = app.listen(PORT, '0.0.0.0', () =>
   console.log(`homatch-official-worker 2.0.0 (deterministic FSM architecture) listening on ${PORT}`));
 

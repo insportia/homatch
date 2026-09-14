@@ -39,6 +39,9 @@ import {
 } from '../_shared/comm/elevenlabs.ts';
 import { selectKeyterms, type VocabularyTerm } from '../_shared/comm/generated/keyterms.ts';
 import { syncVoiceLibrary } from '../_shared/comm/voiceLibrary.ts';
+import {
+  speechSocketUrl, mintSpeechGrant, googleSpeechDiagnosis, GRANT_TTL_MS,
+} from '../_shared/comm/speechGrant.ts';
 
 type Sb = SupabaseClient;
 
@@ -104,6 +107,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'fallback-policy':      return await fallbackPolicyGet(sb);
     case 'fallback-policy-save': return await fallbackPolicySave(sb, body);
     case 'usage':                return await usage(sb, body);
+    case 'speech-probe':         return await speechProbe(body);
     default:                     return json({ error: 'unknown_action' }, 400);
   }
 });
@@ -1313,4 +1317,65 @@ async function recordUsage(sb: Sb, event: {
   } catch {
     // Telemetry must never take the thing it measures down with it.
   }
+}
+
+/**
+ * A grant for proving the Google speech socket works, WITHOUT switching the
+ * production route on.
+ *
+ * WHY THIS EXISTS AT ALL
+ *
+ * The live path mints a grant only when comm_provider_routes says GOOGLE is
+ * enabled. That is correct: the route is the operator's decision and nothing
+ * should be able to route a visitor around it. But it creates a trap — the
+ * only way to find out whether realtime Georgian recognition actually works
+ * is to turn it on for real visitors and watch, which is precisely the order
+ * of operations this workstream got wrong once already.
+ *
+ * So verification gets its own door. An admin asks for a grant, opens the
+ * socket themselves, streams a known recording and reads the transcript back.
+ * If it fails, no visitor was ever routed to it. If it succeeds, THEN the
+ * route is enabled, with evidence instead of optimism.
+ *
+ * WHAT THIS DOES NOT WEAKEN
+ *
+ * The grant is the same short-lived HMAC over the same payload with the same
+ * secret, minted by the same function the live path uses — a diagnostic that
+ * takes a different route to the thing it is diagnosing proves nothing about
+ * the thing. It expires on the same clock. It carries no credential: the
+ * Google service account stays on the worker, which is the entire reason the
+ * browser is handed a signature rather than a key.
+ *
+ * The door itself is requireAdmin, the same gate as every other action here,
+ * reached only after authenticate(). An anonymous AI TALK visitor cannot call
+ * this, and a signed-in customer cannot either.
+ */
+async function speechProbe(body: VoiceAiRequest): Promise<Response> {
+  const health = await googleSpeechDiagnosis();
+
+  // A session id that is obviously a probe, so anything the worker logs about
+  // this stream is distinguishable from a real conversation.
+  const sessionId = `probe-${crypto.randomUUID()}`;
+  const grant = await mintSpeechGrant(sessionId);
+
+  await logEvent('voice-ai', 'speech_probe_granted', {
+    reachable: health.reachable,
+    available: health.available,
+    reason: health.reason,
+    granted: Boolean(grant),
+  });
+
+  return json({
+    ok: true,
+    sessionId,
+    // Null when WORKER_TOKEN is absent from THIS runtime, which is a real
+    // answer: without it there is no way to authorise the socket and the live
+    // path would be just as stuck.
+    grant,
+    grantExpiresInMs: grant ? GRANT_TTL_MS : null,
+    wsUrl: speechSocketUrl(),
+    language: String(body.language ?? 'ka-GE'),
+    sampleRate: 16_000,
+    worker: health,
+  });
 }

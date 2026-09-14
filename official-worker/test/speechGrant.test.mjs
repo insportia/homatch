@@ -78,11 +78,11 @@ test('the edge function still mints the shape this worker verifies', () => {
    * payload on one side, this fails here instead of in production.
    */
   const src = readFileSync(
-    new URL('../../supabase/functions/ai-talk-session/index.ts', import.meta.url),
+    new URL('../../supabase/functions/_shared/comm/speechGrant.ts', import.meta.url),
     'utf8',
   );
-  const at = src.indexOf('async function mintSpeechGrant(');
-  assert.ok(at > 0, 'the edge function no longer mints a speech grant');
+  const at = src.indexOf('export async function mintSpeechGrant(');
+  assert.ok(at > 0, 'the shared module no longer mints a speech grant');
   const body = src.slice(at, src.indexOf('\n}\n', at));
 
   assert.ok(/\$\{sessionId\}\.\$\{expiresAt\}/.test(body),
@@ -93,4 +93,29 @@ test('the edge function still mints the shape this worker verifies', () => {
     'the grant must still be payload.signature');
   assert.ok(/WORKER_TOKEN/.test(body),
     'it must still be signed with the secret the worker has');
+});
+
+test('there is exactly one implementation of the grant, and both callers use it', () => {
+  /*
+   * The helpers used to live inside ai-talk-session. A second caller appeared
+   * -- the admin probe, which mints a grant to PROVE the socket works without
+   * switching the production route on -- and the obvious move would have been
+   * to copy thirty lines of HMAC into it.
+   *
+   * Two implementations of this would be the same failure as the edge/worker
+   * mismatch above, with the added charm that the diagnostic would be testing
+   * its own copy rather than the one visitors get. So the helpers are shared,
+   * and this asserts they stayed that way.
+   */
+  const callers = ['ai-talk-session', 'voice-ai'];
+  for (const fn of callers) {
+    const src = readFileSync(
+      new URL(`../../supabase/functions/${fn}/index.ts`, import.meta.url),
+      'utf8',
+    );
+    assert.ok(/_shared\/comm\/speechGrant\.ts/.test(src),
+      `${fn} must take the grant from the shared module`);
+    assert.ok(!/crypto\.subtle\.importKey/.test(src),
+      `${fn} must not mint a grant of its own`);
+  }
 });

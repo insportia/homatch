@@ -196,6 +196,31 @@ export class GoogleSpeechStream {
        */
       const code = Number(err?.code);
       const retryable = code === 11 /* OUT_OF_RANGE */ || code === 4 /* DEADLINE_EXCEEDED */ || code === 14 /* UNAVAILABLE */;
+
+      /*
+       * THE CODE AND THE PROVIDER'S OWN SENTENCE, IN THE LOG.
+       *
+       * This used to report a bucketed word to the browser and keep nothing.
+       * The first time it actually fired in production the answer was
+       * "PROVIDER_ERROR", which is the default arm of a switch and says only
+       * that the code was none of the five that were anticipated -- so the one
+       * moment the diagnostic existed for was the one moment it was useless.
+       *
+       * Google's gRPC message describes a misconfigured request, never a
+       * credential: the service account is loaded from the environment and
+       * never appears in an error string. Bounded anyway, because a provider
+       * message is somebody else's text and does not get to be unbounded in
+       * Homatch's logs.
+       */
+      console.log(JSON.stringify({
+        at: new Date().toISOString(),
+        service: 'speech',
+        event: 'recogniser_error',
+        code: Number.isFinite(code) ? code : null,
+        retryable,
+        detail: String(err?.details ?? err?.message ?? '').slice(0, 300),
+      }));
+
       if (retryable) { this.restart(`grpc_${code}`); return; }
       this.events.onUnavailable(recogniserReason(code));
     });
@@ -301,6 +326,7 @@ function recogniserReason(code: number): string {
     case 8: return 'QUOTA_EXCEEDED';
     case 3: return 'BAD_CONFIG';
     case 5: return 'RECOGNISER_NOT_FOUND';
-    default: return 'PROVIDER_ERROR';
+    // The number matters. A bare 'PROVIDER_ERROR' cost a deploy cycle once.
+    default: return Number.isFinite(code) ? `PROVIDER_ERROR_${code}` : 'PROVIDER_ERROR';
   }
 }

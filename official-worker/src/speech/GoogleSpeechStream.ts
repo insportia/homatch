@@ -74,17 +74,67 @@ export function lastRecogniserError(): { code: number | null; detail: string; at
 }
 
 export function speechConfigFromEnv(): SpeechConfig | null {
-  const projectId = process.env.GOOGLE_SPEECH_PROJECT_ID || '';
-  const region = process.env.GOOGLE_SPEECH_REGION || '';
-  const creds = process.env.GOOGLE_SPEECH_CREDENTIALS_JSON || '';
-  if (!projectId || !region || !creds) return null;
+  return speechConfigProblem() === null ? buildConfig() : null;
+}
+
+function buildConfig(): SpeechConfig {
   return {
-    projectId,
-    region,
+    projectId: process.env.GOOGLE_SPEECH_PROJECT_ID || '',
+    region: (process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase(),
     languageCode: process.env.GOOGLE_SPEECH_LANGUAGE || 'ka-GE',
     model: process.env.GOOGLE_SPEECH_MODEL || 'chirp_3',
     sampleRate: Number(process.env.GOOGLE_SPEECH_SAMPLE_RATE || 16000),
   };
+}
+
+/**
+ * Why this worker cannot recognise speech, or null when it can.
+ *
+ * WHY REGION IS CHECKED HERE AND NOT LEFT TO GOOGLE
+ *
+ * It was left to Google, and the result was the most expensive kind of green
+ * light: /health answered `available: true` for a configuration that could
+ * never work, because "available" only ever meant that a credential had
+ * parsed. GOOGLE_SPEECH_REGION was set to `global`, the client built
+ * `global-speech.googleapis.com`, and that hostname does not exist -- so every
+ * stream died on an HTTP 404 wearing a gRPC UNIMPLEMENTED, 167ms after the
+ * socket said it was ready and before a byte of audio was sent.
+ *
+ * Two separate things were wrong and each one alone is fatal:
+ *
+ *   * `global` is not spelled that way in an endpoint. The global endpoint is
+ *     `speech.googleapis.com`, with no prefix at all.
+ *   * And it would not help, because the Chirp models are served only from
+ *     regional endpoints. `global` cannot run chirp_3 however it is spelled.
+ *
+ * So a region that cannot serve the configured model is a configuration
+ * error, reported by name, at startup, in the health check an operator reads
+ * -- not a runtime surprise discovered by the first person to speak Georgian.
+ */
+export function speechConfigProblem(): string | null {
+  if (!process.env.GOOGLE_SPEECH_CREDENTIALS_JSON) return 'GOOGLE_SPEECH_NOT_CONFIGURED';
+  if (!process.env.GOOGLE_SPEECH_PROJECT_ID) return 'NO_PROJECT_ID';
+
+  const region = (process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase();
+  if (!region) return 'NO_REGION';
+
+  const model = process.env.GOOGLE_SPEECH_MODEL || 'chirp_3';
+  if (region === 'global' && model.startsWith('chirp')) {
+    return 'REGION_GLOBAL_CANNOT_SERVE_CHIRP';
+  }
+  return null;
+}
+
+/**
+ * The endpoint for a region.
+ *
+ * `global` is the one that is not `<region>-speech.googleapis.com`. Kept
+ * correct even though the check above refuses global for Chirp, because the
+ * day somebody configures a non-Chirp model on global this should work rather
+ * than 404 in a new and confusing way.
+ */
+export function speechEndpoint(region: string): string {
+  return region === 'global' ? 'speech.googleapis.com' : `${region}-speech.googleapis.com`;
 }
 
 let sharedClient: SpeechClient | null = null;
@@ -104,8 +154,9 @@ function client(cfg: SpeechConfig): SpeechClient {
   sharedClient = new SpeechClient({
     projectId: cfg.projectId,
     credentials,
-    // Regional endpoint. The global endpoint does not serve chirp_3.
-    apiEndpoint: `${cfg.region}-speech.googleapis.com`,
+    // Regional endpoint. The global endpoint does not serve chirp_3, and is
+    // not spelled with a prefix either -- see speechConfigProblem().
+    apiEndpoint: speechEndpoint(cfg.region),
   });
   sharedClientRegion = cfg.region;
   return sharedClient;

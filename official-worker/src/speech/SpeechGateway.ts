@@ -26,7 +26,7 @@ import type { Server } from 'node:http';
 // DOM lib, where the ambient URL is a different and much smaller type.
 import { URL } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { GoogleSpeechStream, speechConfigFromEnv } from './GoogleSpeechStream.js';
+import { GoogleSpeechStream, speechConfigFromEnv, speechConfigProblem } from './GoogleSpeechStream.js';
 
 export const SPEECH_PATH = '/speech/stream';
 
@@ -108,11 +108,14 @@ export function attachSpeechGateway(server: Server, opts: { token: string }): {
   model: string | null;
   language: string | null;
 } {
+  const problem = speechConfigProblem();
   const cfg = speechConfigFromEnv();
-  if (!cfg) {
+  if (problem || !cfg) {
     // Deployed without credentials is a normal state for the second instance
-    // of this image, and it must not pretend otherwise.
-    return { available: false, reason: 'GOOGLE_SPEECH_NOT_CONFIGURED', model: null, language: null };
+    // of this image, and it must not pretend otherwise. Neither must a region
+    // that cannot serve the configured model: that one reported `available`
+    // for hours while every stream died on a hostname that does not exist.
+    return { available: false, reason: problem ?? 'GOOGLE_SPEECH_NOT_CONFIGURED', model: null, language: null };
   }
   if (!opts.token) {
     return { available: false, reason: 'WORKER_TOKEN_NOT_SET', model: null, language: null };

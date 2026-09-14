@@ -14,6 +14,7 @@ import { challenge, scanCandidateInputs, visible } from './browser/BrowserSessio
 import { attachSpeechGateway } from './speech/SpeechGateway.js';
 import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
 import { lastRecogniserError, speechConfigFromEnv } from './speech/GoogleSpeechStream.js';
+import { probeRegions } from './speech/SpeechRegionProbe.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -437,6 +438,49 @@ process.on('uncaughtException', (error: unknown) => {
  * It is a GET because it is a diagnostic an operator should be able to reach
  * from a browser address bar at three in the morning.
  */
+/**
+ * Which regions will serve the configured model, asked rather than assumed.
+ *
+ * Separate from the self-test above and deliberately weaker: this proves a
+ * configuration is IMPLEMENTED somewhere, not that recognition works. The
+ * difference is the whole reason the previous green light was wrong.
+ *
+ * Same rate limit and same reasoning: no input is accepted beyond an optional
+ * model name, the region list is an allow-list in source, and each entry costs
+ * one short connection with no audio.
+ */
+let regionProbeLastAt = 0;
+
+app.get('/health/speech-regions', async (q: any, r: any) => {
+  const since = Date.now() - regionProbeLastAt;
+  if (since < SELFTEST_MIN_GAP_MS) {
+    return r.status(429).json({ ok: false, reason: 'RATE_LIMITED', retryAfterMs: SELFTEST_MIN_GAP_MS - since });
+  }
+  regionProbeLastAt = Date.now();
+
+  const projectId = process.env.GOOGLE_SPEECH_PROJECT_ID || '';
+  const credentialsJson = process.env.GOOGLE_SPEECH_CREDENTIALS_JSON || '';
+  if (!projectId || !credentialsJson) {
+    return r.status(503).json({ ok: false, reason: 'GOOGLE_SPEECH_NOT_CONFIGURED' });
+  }
+
+  // A model name only, bounded and pattern-checked. Everything else about the
+  // request is fixed in source.
+  const asked = String(q.query?.model ?? '').slice(0, 40);
+  const model = /^[a-z0-9_]+$/.test(asked) ? asked : (process.env.GOOGLE_SPEECH_MODEL || 'chirp_3');
+
+  const out = await probeRegions({
+    projectId, credentialsJson, model,
+    language: process.env.GOOGLE_SPEECH_LANGUAGE || 'ka-GE',
+    sampleRate: Number(process.env.GOOGLE_SPEECH_SAMPLE_RATE || 16000),
+  });
+  console.log(JSON.stringify({
+    at: new Date().toISOString(), service: 'speech', event: 'region_probe',
+    model: out.model, firstWorking: out.firstWorking,
+  }));
+  return r.json(out);
+});
+
 const SELFTEST_MIN_GAP_MS = 60_000;
 let selfTestLastAt = 0;
 let selfTestRunning = false;

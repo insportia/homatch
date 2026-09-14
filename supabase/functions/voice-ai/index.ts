@@ -979,6 +979,10 @@ async function audition(sb: Sb, userId: string, body: VoiceAiRequest): Promise<R
         ok: out.ok,
         error_code: out.ok ? null : (out.error?.code ?? null),
         provider_status: out.ok ? null : (Number(out.error?.providerCode) || null),
+        // The provider's own sentence, bounded. "401" alone cannot tell a
+        // revoked key from a voice this plan may not use, and those are
+        // completely different things for somebody to act on.
+        error_detail: out.ok ? null : (out.error?.message?.slice(0, 300) ?? null),
         created_by: userId,
       };
 
@@ -1053,6 +1057,7 @@ async function auditionResults(sb: Sb, body: VoiceAiRequest): Promise<Response> 
       settings: r.settings, sentenceKey: r.sentence_key, sentence: r.sentence,
       latencyMs: r.latency_ms, bytes: r.bytes, ok: r.ok,
       errorCode: r.error_code, providerStatus: r.provider_status,
+      errorDetail: r.error_detail,
       url: r.storage_path ? signed.get(String(r.storage_path)) ?? null : null,
     })),
   });

@@ -48,6 +48,9 @@ create table if not exists public.voice_audition_samples (
   ok boolean not null default true,
   error_code text,
   provider_status integer,
+  -- The provider's own message, bounded. A bare 401 cannot tell a revoked key
+  -- from a voice this plan may not use, and those need different actions.
+  error_detail text,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );

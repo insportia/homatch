@@ -88,12 +88,12 @@ async function streamAttempt(name: string, recognizer: string, o: Opts): Promise
     };
     const timer = setTimeout(() => done(false, null, 'TIMEOUT'), 12_000);
 
-    // The routing header gax cannot infer for a bidirectional stream. See
-    // GoogleSpeechStream.open(). Probing without it only re-measures its
-    // absence, which is now a known quantity.
-    const stream = client.streamingRecognize({
+    // `_streamingRecognize`, not `streamingRecognize`: the latter is a v1
+    // wrapper patched onto the v2 prototype that eats this argument and sends
+    // a config with no recognizer. See GoogleSpeechStream.open().
+    const stream = client._streamingRecognize({
       otherArgs: { headers: { 'x-goog-request-params': `recognizer=${encodeURIComponent(recognizer)}` } },
-    } as never);
+    });
     stream.on('error', (err: { code?: number; details?: string; message?: string }) => {
       const code = Number.isFinite(Number(err?.code)) ? Number(err.code) : null;
       const detail = String(err?.details ?? err?.message ?? 'unknown');

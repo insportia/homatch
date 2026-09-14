@@ -157,3 +157,49 @@ test('the v2 client is the one that actually carries a recognizer path', async (
   assert.notEqual(pkg.SpeechClient, pkg.v2.SpeechClient,
     'if these ever become the same, this whole class of bug is gone and this test should be deleted');
 });
+
+test('the recogniser streams through the generated v2 method, not the v1 wrapper', () => {
+  /*
+   * @google-cloud/speech patches a convenience wrapper written for v1 onto the
+   * v2 client's prototype:
+   *
+   *   Object.defineProperty(v2.SpeechClient.prototype, 'streamingRecognize',
+   *     Object.getOwnPropertyDescriptor(ImprovedStreamingClient.prototype, ...))
+   *
+   * It takes a streaming config as its first argument, sends the opening
+   * message itself as `{ streamingConfig }` with no recognizer field, and
+   * wraps everything written afterwards as `{ audioContent }`. All three are
+   * v1 semantics on a v2 client, and they are silent: a v2 request handed to
+   * it is accepted, treated as audio, and never reaches Google.
+   *
+   * The result is INVALID_ARGUMENT "Invalid resource field value in the
+   * request" from every region, which reads as a bad recognizer path and is
+   * not one. Only the underscore-prefixed generated method gives the caller
+   * control of its own messages.
+   */
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const files = [
+    '../src/speech/GoogleSpeechStream.ts',
+    '../src/speech/SpeechRegionProbe.ts',
+    '../src/speech/SpeechRecognizerProbe.ts',
+  ];
+  for (const rel of files) {
+    const src = strip(readFileSync(new URL(rel, import.meta.url), 'utf8'));
+    assert.ok(/\._streamingRecognize\(/.test(src), `${rel} must call _streamingRecognize`);
+    assert.ok(!/(?<!_)\bclient[^.]*\.streamingRecognize\(/.test(src),
+      `${rel} must not call the patched v1 streamingRecognize wrapper`);
+  }
+});
+
+test('the v1 wrapper really is patched onto the v2 prototype', async () => {
+  // The assertion above is only worth having while this is true. If the
+  // package ever stops doing it, that test becomes noise and should go.
+  const pkg = await import('@google-cloud/speech');
+  const proto = pkg.v2.SpeechClient.prototype;
+  assert.equal(typeof proto._streamingRecognize, 'function',
+    'the generated v2 streaming method must exist');
+  assert.equal(typeof proto.streamingRecognize, 'function',
+    'if this is gone, the wrapper is gone and the guard above can be deleted');
+  assert.notEqual(proto.streamingRecognize, proto._streamingRecognize,
+    'these being the same would mean the v1 wrapper is no longer in the way');
+});

@@ -131,15 +131,15 @@ async function probeOne(
       return;
     }
 
-    // Same routing header as the real recogniser; without it every region
-    // fails identically and the sweep measures nothing.
-    const stream = client.streamingRecognize({
+    // `_streamingRecognize` and the routing header, exactly as the real
+    // recogniser does it. See GoogleSpeechStream.open().
+    const stream = client._streamingRecognize({
       otherArgs: {
         headers: {
           'x-goog-request-params': `recognizer=${encodeURIComponent(`projects/${opts.projectId}/locations/${region}/recognizers/_`)}`,
         },
       },
-    } as never);
+    });
 
     stream.on('error', (err: { code?: number; details?: string; message?: string }) => {
       const code = Number.isFinite(Number(err?.code)) ? Number(err.code) : null;

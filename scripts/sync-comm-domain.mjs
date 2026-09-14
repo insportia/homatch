@@ -64,6 +64,11 @@ const FILES = [
   // transcriber about. The edge function builds the socket URL, so the edge
   // copy is the one that decides.
   'keyterms.ts',
+  // An email reply, verified and parsed. The signature check and the payload
+  // shape run only on the server — but they are pure, and a webhook verifier
+  // that can only be exercised by sending it a real webhook is a webhook
+  // verifier nobody exercises.
+  'inboundEmail.ts',
 ];
 
 /* Pinned, matching package.json. A floating version here would be a second,

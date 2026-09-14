@@ -392,6 +392,14 @@ jobs:
             "whatsapp-webhook"
             "voice-webhook"
             "comm-dispatch-worker"
+            # Inbound email. The provider sends no Authorization header at
+            # all — it signs the raw body with RESEND_WEBHOOK_SECRET under the
+            # Svix scheme — so the gateway check would reject every genuine
+            # delivery before the function ran, and the failure would be
+            # total and silent: no reply ever reaching the inbox, with every
+            # screen looking correct. The function verifies the signature
+            # itself and answers 503 when the secret is unset.
+            "email-webhook"
             # Saved searches. The fourth notification producer, and the only
             # one of the four that has NEVER been deployed at all — the
             # function exists in the repository, is called by the background

@@ -645,6 +645,21 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
   let elevenLabsRefusal: { code: string | null; status: number | null } | null = null;
 
   /*
+   * A ROUTE THAT LEADS BUT CANNOT RUN MUST SAY SO, NOT BE SKIPPED IN SILENCE.
+   *
+   * The owner has chosen Google for Georgian recognition, and the route now
+   * exists at a higher priority than Scribe. Two things it does not have are
+   * a credential and a transport -- StreamingRecognize is gRPC, and the
+   * browser talks to this function over HTTP.
+   *
+   * So when a higher-priority STT route is enabled, this reports that it was
+   * passed over and why, instead of quietly using the second choice and
+   * leaving somebody to wonder for an afternoon why Georgian still sounds
+   * like Scribe. Disabled is the normal state and says nothing.
+   */
+  const preferred = await preferredSttRoute(sb);
+
+  /*
    * ELEVENLABS FIRST, BECAUSE IT IS THE ONE THAT CAN WRITE GEORGIAN.
    *
    * The ladder below is the whole migration in one place. Each rung is tried
@@ -671,6 +686,9 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
       return json({
         ok: true,
         provider: 'ELEVENLABS',
+        // Named when something was meant to lead and could not, so the
+        // admin screen can show the gap rather than implying a choice.
+        passedOver: preferred,
         token: grant.data.token,
         expiresAt: grant.data.expiresAt,
         model: ELEVENLABS_DEFAULTS.sttModel,
@@ -829,6 +847,40 @@ async function selectSessionKeyterms(sb: Sb, ctx: {
   });
 
   return selection;
+}
+
+/**
+ * A speech-recognition route that outranks the one actually in use.
+ *
+ * Returns null in the ordinary case -- nothing enabled above Scribe -- so the
+ * answer is only ever non-null when there is something worth explaining.
+ * Never throws and never blocks: an unreachable preference must not stop a
+ * visitor being heard.
+ */
+async function preferredSttRoute(
+  sb: Sb,
+): Promise<{ provider: string; reason: string } | null> {
+  const { data } = await sb.from('comm_provider_routes')
+    .select('provider, priority, enabled, kill_switch, credential_env_names, config')
+    .eq('role', 'STT')
+    .order('priority');
+
+  for (const row of data ?? []) {
+    if (row.provider === 'ELEVENLABS') return null; // we reached the one in use
+    if (!row.enabled || row.kill_switch) continue;
+
+    const missing = (row.credential_env_names ?? []).filter((n: string) => !hasSecret(n));
+    if (missing.length) {
+      // The names, never the values. Which credential is absent is exactly
+      // what an operator needs and is not itself a secret.
+      return { provider: String(row.provider), reason: `missing ${missing.join(', ')}` };
+    }
+    return {
+      provider: String(row.provider),
+      reason: 'no client is implemented for this provider yet',
+    };
+  }
+  return null;
 }
 
 /**

@@ -104,9 +104,32 @@ test('nothing anywhere returns the ElevenLabs key', () => {
   assert.equal(uses(VOICE_AI), 0, 'the control surface must never read the key itself');
   assert.equal(uses(TALK), 0, 'the session broker must never read the key itself');
 
-  const headerFn = EL.slice(EL.indexOf('function headers('), EL.indexOf('function headers(') + 240);
-  assert.ok(/'xi-api-key': requireSecret\('ELEVENLABS_API_KEY'\)/.test(headerFn),
-    'the only use of the key is as a request header');
+  /*
+   * ONE READ, AND THE CALLERS ARE COUNTED.
+   *
+   * The read lives in apiKey(). It used to be inline in headers(), which was
+   * the same rule with one caller; there are two now because the Text to
+   * Dialogue socket is the only way the v3 models stream, a WebSocket cannot
+   * carry a header at all, and the provider's documented route is the opening
+   * frame. That is a real second consumer, not a convenience.
+   *
+   * So the guarantee is stated as it actually is: read once, used by exactly
+   * the two places that cannot avoid it. A third caller fails here.
+   */
+  const keyFn = EL.slice(EL.indexOf('function apiKey('), EL.indexOf('function apiKey(') + 160);
+  assert.ok(/return requireSecret\('ELEVENLABS_API_KEY'\);/.test(keyFn),
+    'the single read must live in apiKey()');
+
+  const headerFn = EL.slice(EL.indexOf('function headers('), EL.indexOf('function headers(') + 200);
+  assert.ok(/'xi-api-key': apiKey\(\)/.test(headerFn),
+    'every HTTP call must take the key through the header builder');
+
+  // Definition plus exactly two call sites.
+  const callers = (EL.match(/\bapiKey\(\)/g) ?? []).length;
+  assert.equal(callers, 3,
+    'apiKey() may be called from the header builder and the dialogue socket, and nowhere else');
+  assert.ok(/xi_api_key: apiKey\(\)/.test(EL),
+    'the dialogue socket must take the key the same way, not read it again');
 
   for (const [name, src] of [['elevenlabs.ts', EL], ['voice-ai', VOICE_AI], ['ai-talk-session', TALK]]) {
     assert.ok(!/console\.log\([^)]*requireSecret/.test(src), `${name} logs a secret`);

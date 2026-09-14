@@ -27,6 +27,7 @@
 import { hasSecret, requireSecret, type ProviderResult } from './contracts.ts';
 
 const API = 'https://api.elevenlabs.io';
+const WS_API = 'wss://api.elevenlabs.io';
 
 /**
  * Defaults, not constants.
@@ -64,8 +65,21 @@ export function elevenLabsCredentialsPresent(): boolean {
   return hasSecret('ELEVENLABS_API_KEY');
 }
 
+/**
+ * The one place the key is read.
+ *
+ * Every HTTP call goes through headers() below; the dialogue socket cannot
+ * carry a header at all and must put the key in its opening frame, so it
+ * calls this directly. Two callers, one read -- which is the invariant a test
+ * enforces, because the failure it prevents is a key appearing in a log, a
+ * response or a third place nobody audits.
+ */
+function apiKey(): string {
+  return requireSecret('ELEVENLABS_API_KEY');
+}
+
 function headers(extra: Record<string, string> = {}): Record<string, string> {
-  return { 'xi-api-key': requireSecret('ELEVENLABS_API_KEY'), ...extra };
+  return { 'xi-api-key': apiKey(), ...extra };
 }
 
 /**
@@ -880,6 +894,185 @@ export interface StreamResult {
   sampleRate: number;
   model: string;
   characters: number;
+}
+
+/**
+ * Streaming for the v3 models, which the streaming endpoint refuses.
+ *
+ * WHY THERE ARE TWO STREAMING PATHS
+ *
+ * `/v1/text-to-speech/{id}/stream` answers 400 for eleven_v3 and
+ * eleven_v3_conversational — measured here, 28 times, in about 60ms each, and
+ * confirmed by the provider's own documentation: the realtime TTS endpoints
+ * are for Flash, Turbo and Multilingual, and v3 streams only over the Text to
+ * Dialogue socket.
+ *
+ * That matters because on this account the v3 family is the ONLY family that
+ * lists Georgian. Without this, Georgian is the one language that cannot
+ * stream, which is the one language this whole workstream is about.
+ *
+ * ONE VOICE, WHICH IS EXACTLY WHAT HOMATCH WANTS
+ *
+ * eleven_v3_conversational registers exactly one voice per connection. That
+ * reads like a limitation of a dialogue API and is precisely the shape of an
+ * assistant speaking: Mariam, and nobody else.
+ *
+ * The key travels in the opening frame rather than a header because a
+ * WebSocket cannot carry one, which is the provider's documented route and is
+ * why this runs server-side and never in a browser.
+ */
+export async function streamElevenLabsDialogue(
+  opts: SynthesiseOptions,
+  onChunk: (chunk: Uint8Array, index: number) => void,
+): Promise<ProviderResult<StreamResult>> {
+  const text = String(opts.text ?? '').slice(0, 2500);
+  if (!text.trim()) {
+    return { ok: false, sideEffect: 'NONE', error: { code: 'UNKNOWN', message: 'nothing to speak', retryable: false } };
+  }
+  if (!opts.voiceId) {
+    return { ok: false, sideEffect: 'NONE', error: { code: 'UNKNOWN', message: 'no voice selected', retryable: false } };
+  }
+
+  const model = opts.modelId || ELEVENLABS_DEFAULTS.ttsModel;
+  const rate = opts.sampleRate ?? ELEVENLABS_DEFAULTS.pcmSampleRate;
+  const query = new URLSearchParams({
+    model_id: model,
+    // Raw PCM so pieces abut without a click, the same reason the other
+    // streaming path asks for it.
+    output_format: `pcm_${rate}`,
+  });
+  if (opts.languageCode && opts.sendLanguage !== false) {
+    query.set('language_code', opts.languageCode);
+  }
+
+  const started = Date.now();
+  let firstByteMs = 0;
+  let bytes = 0;
+  let index = 0;
+
+  let socket: WebSocket;
+  try {
+    socket = new WebSocket(`${WS_API}/v1/text-to-dialogue/stream-input?${query}`);
+  } catch {
+    return {
+      ok: false, sideEffect: 'NONE',
+      error: { code: 'TRANSIENT', message: 'the dialogue socket would not open', retryable: true },
+    };
+  }
+
+  return await new Promise<ProviderResult<StreamResult>>((resolve) => {
+    let settled = false;
+    const finish = (result: ProviderResult<StreamResult>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { socket.close(); } catch { /* already */ }
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish({
+      ok: false, sideEffect: 'MAYBE',
+      error: { code: 'TIMEOUT', message: 'the provider did not finish speaking in time', retryable: true },
+    }), opts.timeoutMs ?? 25_000);
+
+    socket.onopen = () => {
+      // The opening frame registers the voice and authenticates. Everything
+      // after it is text.
+      socket.send(JSON.stringify({
+        voices: [{ voice_id: opts.voiceId }],
+        // A WebSocket cannot carry a header, so the provider's documented
+        // route is the opening frame. Same single read as every HTTP call.
+        xi_api_key: apiKey(),
+        ...(opts.settings ? { voice_settings: providerSettings(opts.settings) } : {}),
+      }));
+      socket.send(JSON.stringify({ inputs: [{ text, voice_id: opts.voiceId }] }));
+      // Nothing more is coming, so flush and let it close itself rather than
+      // holding a paid connection open waiting for text that will not arrive.
+      socket.send(JSON.stringify({ close_socket: true }));
+    };
+
+    socket.onmessage = (event) => {
+      let message: { audio?: string; is_final?: boolean; error?: string; message?: string };
+      try { message = JSON.parse(String(event.data)); } catch { return; }
+
+      if (message.error || (message.message && !message.audio)) {
+        finish({
+          ok: false, sideEffect: 'NONE',
+          error: {
+            code: 'UNKNOWN',
+            message: String(message.error ?? message.message ?? 'the provider refused').slice(0, 200),
+            retryable: false,
+          },
+        });
+        return;
+      }
+
+      if (message.audio) {
+        const chunk = base64ToBytes(message.audio);
+        if (chunk.byteLength) {
+          if (!firstByteMs) firstByteMs = Date.now() - started;
+          bytes += chunk.byteLength;
+          onChunk(chunk, index);
+          index += 1;
+        }
+      }
+
+      if (message.is_final) {
+        finish(bytes
+          ? {
+            ok: true,
+            data: {
+              firstByteMs, totalMs: Date.now() - started, bytes,
+              sampleRate: rate, model, characters: text.length,
+            },
+          }
+          : {
+            ok: false, sideEffect: 'NONE',
+            error: { code: 'UNKNOWN', message: 'provider returned no audio', retryable: false },
+          });
+      }
+    };
+
+    socket.onerror = () => finish({
+      ok: false, sideEffect: 'MAYBE',
+      error: { code: 'TRANSIENT', message: 'the dialogue socket broke', retryable: true },
+    });
+
+    socket.onclose = () => {
+      // A close without is_final still counts if audio arrived: the sentence
+      // is on its way to somebody's ears either way.
+      finish(bytes
+        ? {
+          ok: true,
+          data: {
+            firstByteMs, totalMs: Date.now() - started, bytes,
+            sampleRate: rate, model, characters: text.length,
+          },
+        }
+        : {
+          ok: false, sideEffect: 'NONE',
+          error: { code: 'TRANSIENT', message: 'the dialogue socket closed before speaking', retryable: true },
+        });
+    };
+  });
+}
+
+/** The provider's own spelling of the settings Homatch stores in its own. */
+function providerSettings(v: NonNullable<SynthesiseOptions['settings']>): Record<string, unknown> {
+  return {
+    ...(v.stability !== undefined ? { stability: v.stability } : {}),
+    ...(v.similarityBoost !== undefined ? { similarity_boost: v.similarityBoost } : {}),
+    ...(v.style !== undefined ? { style: v.style } : {}),
+    ...(v.useSpeakerBoost !== undefined ? { use_speaker_boost: v.useSpeakerBoost } : {}),
+    ...(v.speed !== undefined ? { speed: v.speed } : {}),
+  };
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
 }
 
 export async function streamElevenLabs(

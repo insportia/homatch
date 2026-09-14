@@ -32,7 +32,8 @@ import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
 import {
   elevenLabsCredentialsPresent, mintRealtimeToken, synthesizeElevenLabs,
-  chooseTtsModel, streamElevenLabs, ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
+  chooseTtsModel, streamElevenLabs, streamElevenLabsDialogue,
+  ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
   type LanguageStrategy,
 } from '../_shared/comm/elevenlabs.ts';
 import { ensureDefaultVoice } from '../_shared/comm/voiceLibrary.ts';
@@ -1046,7 +1047,21 @@ async function speakPhraseStreaming(sb: Sb, params: {
         : await chooseTtsModel(voice.model, params.language || null, await languageStrategy(sb));
 
       const at = Date.now();
-      const out = await streamElevenLabs({
+      /*
+       * TWO STREAMING PATHS, BECAUSE THE PROVIDER HAS TWO.
+       *
+       * The realtime TTS endpoint answers 400 for the v3 family -- measured
+       * here 28 times, and confirmed by the provider's own documentation: v3
+       * streams only over the Text to Dialogue socket. On this account the v3
+       * family is the only one that lists Georgian, so without the second path
+       * Georgian is the single language that cannot stream, which is the one
+       * language this work is about.
+       */
+      const speakStream = choice.modelId.startsWith('eleven_v3')
+        ? streamElevenLabsDialogue
+        : streamElevenLabs;
+
+      const out = await speakStream({
         voiceId: voice.voiceId,
         text: params.text,
         modelId: choice.modelId,
@@ -1060,6 +1075,8 @@ async function speakPhraseStreaming(sb: Sb, params: {
          * hear. Default 0 -- correct numbers over a faster start -- and an
          * operator who has listened to both can move it.
          */
+        // Only the HTTP path takes this; the dialogue socket has no such
+        // knob and ignores an extra property.
         optimizeLatency: await streamingLatencyHint(sb),
       }, (chunk) => params.onChunk(chunk));
 

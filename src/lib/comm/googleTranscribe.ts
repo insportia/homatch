@@ -125,7 +125,19 @@ export class GoogleTranscriber implements LiveSocket {
     this.framesSent += 1;
     this.bytesSent += pcm.byteLength;
     try {
-      this.socket!.send(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
+      /*
+       * Copied into a plain byte view before sending.
+       *
+       * The capture pipeline hands out Int16Array windows onto a reused
+       * buffer, which the DOM types describe as possibly SharedArrayBuffer
+       * backed — and send() does not take one of those. The copy is about a
+       * kilobyte per frame, it makes the bytes unambiguously this frame's,
+       * and it removes any chance of the window being reused underneath a
+       * send that has not gone out yet.
+       */
+      const bytes = new Uint8Array(pcm.byteLength);
+      bytes.set(new Uint8Array(pcm.buffer as ArrayBuffer, pcm.byteOffset, pcm.byteLength));
+      this.socket!.send(bytes);
     } catch { /* the close handler reports it */ }
   }
 

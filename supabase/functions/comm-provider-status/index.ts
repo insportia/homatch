@@ -420,18 +420,32 @@ async function checkResend(probe: boolean, routes: Route[], sb: SupabaseClient):
   const inboundSecret = hasSecret('RESEND_WEBHOOK_SECRET');
 
   const { data: addresses } = await sb.from('comm_channel_accounts')
-    .select('provider_account_id, owner_id, status')
+    .select('provider_account_id, owner_id, status, last_inbound_at')
     .eq('channel', 'EMAIL')
     .eq('provider', 'RESEND');
 
   const claimed = (addresses ?? []).filter((a) => a.owner_id);
+  /*
+   * HAS ANY MAIL ACTUALLY ARRIVED.
+   *
+   * A secret being set and an address being owned mean the webhook WOULD work.
+   * They say nothing about whether the provider has been pointed at it — the
+   * endpoint and the MX record are configured in the provider's dashboard and
+   * there is no way to read them from here.
+   *
+   * So the two are reported apart. Calling this HEALTHY on the strength of a
+   * configured secret is exactly the stale success claim this panel exists to
+   * prevent: it would read green while every reply a customer sent went
+   * nowhere.
+   */
+  const everReceived = claimed.some((a) => a.last_inbound_at);
 
   const health = !outbound ? 'NOT_CONFIGURED'
     : disabledByAdmin(routes, 'RESEND') ? 'DISABLED'
-      : (inboundSecret && claimed.length > 0) ? 'HEALTHY' : 'DEGRADED';
+      : (inboundSecret && claimed.length > 0 && everReceived) ? 'HEALTHY' : 'DEGRADED';
 
   /* Named in the order somebody has to fix them. "Not configured" without
-     saying which of the three is not configured sends an admin to the wrong
+     saying which of the four is not configured sends an admin to the wrong
      dashboard. */
   const detail = !outbound
     ? 'RESEND_API_KEY is unset: no email can be sent.'
@@ -439,7 +453,9 @@ async function checkResend(probe: boolean, routes: Route[], sb: SupabaseClient):
       ? 'RESEND_WEBHOOK_SECRET is unset: email-webhook refuses every delivery, so replies never reach the inbox.'
       : claimed.length === 0
         ? 'No inbound address has an owner, so a verified reply is recorded as unroutable and attached to nobody.'
-        : null;
+        : !everReceived
+          ? 'Configured, and no inbound mail has ever arrived. Point the provider at the email-webhook endpoint and add the MX record for the receiving domain; until then a reply goes nowhere and nothing here can tell.'
+          : null;
 
   return {
     provider: 'RESEND',
@@ -459,7 +475,9 @@ async function checkResend(probe: boolean, routes: Route[], sb: SupabaseClient):
     errorCode: null,
     facts: {
       outboundReady: outbound,
-      inboundReady: inboundSecret && claimed.length > 0,
+      /* Configured to receive. NOT the same as receiving — see everReceived. */
+      inboundConfigured: inboundSecret && claimed.length > 0,
+      inboundProven: everReceived,
       inboundAddresses: (addresses ?? []).length,
       /* How many are actually somebody's. An address with no owner is a
          configuration step that was started and not finished. */

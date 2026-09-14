@@ -33,6 +33,7 @@ import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
 import {
   elevenLabsCredentialsPresent, mintRealtimeToken, synthesizeElevenLabs,
   chooseTtsModel, ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
+  type LanguageStrategy,
 } from '../_shared/comm/elevenlabs.ts';
 import { ensureDefaultVoice } from '../_shared/comm/voiceLibrary.ts';
 import {
@@ -102,7 +103,13 @@ async function speakPhrase(sb: Sb, params: {
       // Which model can actually say this, from the account's own catalogue
       // rather than from a guess. Georgian is exactly why: eleven_flash_v2_5
       // answered 400 for ka, measured on production.
-      const choice = await chooseTtsModel(voice.model, params.language || null);
+      //
+      // What to do when nothing fast lists the language is an operator's
+      // call between latency and the provider's own declaration, so it is
+      // read from the route rather than decided here.
+      const choice = await chooseTtsModel(
+        voice.model, params.language || null, await languageStrategy(sb),
+      );
       const at = Date.now();
       const out = await synthesizeElevenLabs({
         voiceId: voice.voiceId,
@@ -684,6 +691,20 @@ async function selectSessionKeyterms(sb: Sb, ctx: {
   });
 
   return selection;
+}
+
+/**
+ * Correct-and-slow, or fast-and-undeclared, when the model cannot say it.
+ *
+ * A setting rather than a constant because the answer depends on audio
+ * somebody has listened to, and because it must be changeable without a
+ * deploy on the day a provider adds a language.
+ */
+async function languageStrategy(sb: Sb): Promise<LanguageStrategy> {
+  const { data } = await sb.from('comm_provider_routes')
+    .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle();
+  const value = (data?.config as Record<string, unknown> | null)?.language_strategy;
+  return value === 'configured_model' ? 'configured_model' : 'capable_model';
 }
 
 /**

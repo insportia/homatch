@@ -360,6 +360,30 @@ export async function ttsModelsCached(): Promise<ElevenLabsModel[]> {
   return models;
 }
 
+/**
+ * What to do when the configured model does not list the language.
+ *
+ * There is a real trade here and it is not obvious which way it goes, so it
+ * is a setting rather than a decision baked into the code:
+ *
+ *   'capable_model'      substitute a model that lists the language. Correct
+ *                        by the provider's own declaration, and on this
+ *                        account that means eleven_v3 for Georgian -- measured
+ *                        at 2.9s for a 42-character phrase, which is a long
+ *                        time to sit in silence during a conversation.
+ *
+ *   'configured_model'   keep the fast model and send no language_code at all.
+ *                        The 400 came from the PARAMETER, not from an
+ *                        inability to speak; the multilingual models do detect
+ *                        language from the text. Faster, and whether it is
+ *                        good enough is a question about audio that has to be
+ *                        answered by listening rather than by reasoning.
+ *
+ * Default is 'capable_model': slower and declared-correct beats faster and
+ * assumed-correct until somebody has actually heard both.
+ */
+export type LanguageStrategy = 'capable_model' | 'configured_model';
+
 export interface ModelChoice {
   modelId: string;
   /** Whether to send language_code at all. */
@@ -391,6 +415,7 @@ export interface ModelChoice {
  */
 export async function chooseTtsModel(
   preferred: string, language: string | null,
+  strategy: LanguageStrategy = 'capable_model',
 ): Promise<ModelChoice> {
   const code = String(language ?? '').toLowerCase().split('-')[0];
   if (!code) return { modelId: preferred, sendLanguage: false, substituted: false, capable: [] };
@@ -407,6 +432,13 @@ export async function chooseTtsModel(
   const chosen = models.find((m) => m.modelId === preferred);
   if (chosen && speaks(chosen)) {
     return { modelId: preferred, sendLanguage: true, substituted: false, capable };
+  }
+
+  // The configured model, silent about the language. Chosen deliberately by
+  // an operator who has listened to both and decided the seconds matter more
+  // than the declaration.
+  if (strategy === 'configured_model') {
+    return { modelId: preferred, sendLanguage: false, substituted: false, capable };
   }
 
   // Prefer the quick ones, because this is a spoken turn somebody is waiting

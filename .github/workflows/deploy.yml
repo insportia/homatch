@@ -95,6 +95,14 @@ jobs:
       - name: Site Studio regression (real browser)
         run: pnpm run test:studio
 
+      # The service worker, in the same real Chrome. What a push BECOMES and
+      # where a tap goes were the only parts of web push that had never run
+      # anywhere: the server half is verified against production, and this is
+      # the half that decides whether a notification is blank, stacks twelve
+      # deep, or opens somebody else's site.
+      - name: Web push handlers (real service worker)
+        run: pnpm run test:push
+
       # The edge functions are Deno TypeScript with URL and jsr: imports, so
       # they sit outside the tsconfig and nothing else parses them. A
       # research-agent/index.ts that could not be parsed AT ALL once passed

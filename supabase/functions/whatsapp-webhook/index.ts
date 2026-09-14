@@ -25,6 +25,7 @@
 // signature verified in the body.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { notify } from '../_shared/notify.ts';
 import { serviceClient, logEvent, redact } from '../_shared/comm/auth.ts';
 import {
   verifyMetaSignature, verifyHandshake, parseMetaWebhook, createMetaProvider,
@@ -245,7 +246,7 @@ async function handleInboundMessage(sb: Sb, event: NormalisedInbound): Promise<v
       p_actor: null,
       p_reason: 'the contact asked to speak to a person',
     });
-    await notify(sb, account.owner_id, 'CALLBACK_REQUESTED',
+    await notifyOwner(sb, account.owner_id, 'CALLBACK_REQUESTED',
       'Someone asked for a person',
       'A WhatsApp conversation is waiting for a human reply.');
     logEvent('whatsapp-webhook', 'handoff_requested', { conversationId });
@@ -357,7 +358,7 @@ async function handleTemplateUpdate(sb: Sb, event: NormalisedInbound): Promise<v
     .maybeSingle();
 
   if (updated && status === 'REJECTED') {
-    await notify(sb, updated.owner_id, 'WHATSAPP_TEMPLATE_REJECTED',
+    await notifyOwner(sb, updated.owner_id, 'WHATSAPP_TEMPLATE_REJECTED',
       'A WhatsApp template was rejected',
       `Meta rejected "${updated.name}"${event.templateReason ? `: ${event.templateReason}` : '.'}`);
   }
@@ -396,11 +397,26 @@ async function applyOptOut(sb: Sb, ownerId: string, peer: string, conversationId
   }, { onConflict: 'owner_id' });
 }
 
-async function notify(sb: Sb, userId: string, type: string, title: string, body: string): Promise<void> {
+/*
+ * This file had its own `notify`, which inserted a row and nothing else. It
+ * now delegates to the canonical path so inbound WhatsApp gets the same
+ * dedupe, aggregation, preferences and quiet hours as everything else. The
+ * name stays local so the four call sites below read unchanged.
+ *
+ * Grouped per owner: a burst of messages from a conversation is one
+ * interruption, and the link goes to the inbox where the thread is.
+ */
+async function notifyOwner(sb: Sb, userId: string, type: string, title: string, body: string): Promise<void> {
   // Best effort. A notification that cannot be written must not roll back a
   // message that was genuinely received.
-  const { error } = await sb.from('notifications').insert({ user_id: userId, type, title, body });
-  if (error) logEvent('whatsapp-webhook', 'notify_failed', { type, error: error.message });
+  const id = await notify(sb as never, {
+    userId, type, title, body,
+    priority: 'HIGH',
+    deepLink: '/outreach/whatsapp/inbox',
+    groupKey: `whatsapp:${userId}`,
+    groupTitle: '{n} new WhatsApp messages',
+  });
+  if (!id) logEvent('whatsapp-webhook', 'notify_failed', { type });
 }
 
 /**

@@ -85,10 +85,22 @@ test('the low-credit warning does not repeat while one is unread', () => {
 });
 
 test('the low-credit warning carries the routing kind and the numbers', () => {
-  const block = unlock.slice(unlock.indexOf("type: 'LOW_CREDITS'"));
-  assert.match(block.slice(0, 400), /kind: 'LOW_CREDITS'/);
-  assert.match(block.slice(0, 400), /balance: newBalance/);
-  assert.match(block.slice(0, 400), /last_unlock_price: price/);
+  /* The window was 400 characters, which fitted when the call was a bare
+     insert. The warning now goes through notify_emit and carries a priority,
+     a deep link and a dedupe key first, so the metadata sits further down.
+     The three facts asserted are unchanged; only the reach is. */
+  const block = unlock.slice(unlock.indexOf("type: 'LOW_CREDITS'"), unlock.indexOf("type: 'LOW_CREDITS'") + 900);
+  assert.match(block, /kind: 'LOW_CREDITS'/);
+  assert.match(block, /balance: newBalance/);
+  assert.match(block, /last_unlock_price: price/);
+});
+
+test('the low-credit warning cannot repeat on every blocked unlock', () => {
+  /* Somebody out of credits clicks again. Without a per-day dedupe key that
+     is one notification per click, on the exact screen where they are already
+     being told no. */
+  const block = unlock.slice(unlock.indexOf("type: 'LOW_CREDITS'") - 400, unlock.indexOf("type: 'LOW_CREDITS'") + 900);
+  assert.match(block, /dedupeKey: `low-credits:\$\{userId\}:/);
 });
 
 test('every alert with a producer renders in the viewer language', () => {

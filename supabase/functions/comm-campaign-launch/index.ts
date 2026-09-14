@@ -21,6 +21,7 @@
 // step 7, so "it said it was fine and then refused" cannot happen.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { notify } from '../_shared/notify.ts';
 import { authenticate, serviceClient, json, preflight, logEvent } from '../_shared/comm/auth.ts';
 import { decideLaunch } from '../_shared/comm/policy.ts';
 import { classifyDomainWithLlm } from '../_shared/comm/llm.ts';
@@ -95,11 +96,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
         updated_at: new Date().toISOString(),
       }).eq('id', body.campaignId).eq('owner_id', caller.userId);
 
-      await sb.from('notifications').insert({
-        user_id: caller.userId,
+      await notify(sb, {
+        userId: caller.userId,
         type: 'CAMPAIGN_NEEDS_REVIEW',
         title: 'A campaign needs review',
         body: 'One of your campaigns is waiting for a safety review before it can start.',
+        priority: 'HIGH',
+        deepLink: '/outreach/campaigns',
+        entityType: 'campaign',
+        entityId: body.campaignId,
+        dedupeKey: `campaign-review:${body.campaignId}`,
       });
     }
     logEvent('campaign-launch', 'refused', { campaignId: body.campaignId, code: decision.code });

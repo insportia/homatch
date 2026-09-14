@@ -5,6 +5,7 @@
 // ============================================================
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { notify } from '../_shared/notify.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -161,17 +162,22 @@ serve(async (req) => {
         .eq('read', false);
 
       if (!pendingWarnings) {
-        const { error: warnErr } = await supabaseAdmin.from('notifications').insert({
-          user_id: userId,
+        /* One warning a day. Without the dedupe key this fires on every
+           blocked unlock, which is exactly when somebody is clicking
+           repeatedly. */
+        const warnId = await notify(supabaseAdmin, {
+          userId,
           type: 'LOW_CREDITS',
+          priority: 'HIGH',
+          deepLink: '/credits',
+          dedupeKey: `low-credits:${userId}:${new Date().toISOString().slice(0, 10)}`,
           // Stored copy is a write-time fallback; NotificationsPage renders a
           // translated string in the viewer's own language.
           title: 'Your credits are running low',
           body: 'You no longer have enough credits to unlock another match.',
-          read: false,
           metadata: { kind: 'LOW_CREDITS', balance: newBalance, last_unlock_price: price },
         });
-        if (warnErr) console.error('atomic-unlock: low-credit warning failed:', warnErr.message);
+        if (!warnId) console.error('atomic-unlock: low-credit warning was not written');
       }
     }
 

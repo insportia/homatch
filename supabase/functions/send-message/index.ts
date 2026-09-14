@@ -1,6 +1,7 @@
 // send-message Edge Function
 // POST { conversation_id?, property_id?, recipient_id, body }
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { notify } from '../_shared/notify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -76,9 +77,21 @@ Deno.serve(async (req) => {
     await supabase.from('messages').update({ status: 'DELIVERED', delivered_at: now }).eq('id', message.id);
 
     if (isFirstContact) {
-      await supabase.from('notifications').insert({
-        user_id: recipient_id, type: 'MATCH_FOUND', title: 'New message', body: 'You have a new message from a Homatch user.', read: false,
-        property_id: property_id || null, metadata: { conversation_id: convId, sender_id: sender.id, kind: 'NEW_MESSAGE' },
+      /* No group key. Collapsing human messages into "4 new messages"
+         hides the four people who wrote. The dedupe key is the MESSAGE, so a
+         retried request cannot tell somebody twice. The deep link is the
+         conversation itself rather than a list to search. */
+      await notify(supabase, {
+        userId: recipient_id,
+        type: 'MATCH_FOUND',
+        title: 'New message',
+        body: 'You have a new message from a Homatch user.',
+        priority: 'HIGH',
+        deepLink: `/chat?c=${convId}`,
+        entityType: 'conversation',
+        entityId: convId,
+        dedupeKey: `message:${message.id}`,
+        metadata: { conversation_id: convId, sender_id: sender.id, kind: 'NEW_MESSAGE' },
       });
     }
 

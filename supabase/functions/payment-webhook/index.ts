@@ -35,6 +35,7 @@
 // ============================================================
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { notify as emitNotification } from '../_shared/notify.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getPaymentProvider } from '../_shared/payment_provider.ts';
 
@@ -377,8 +378,24 @@ async function handleSubscriptionStatus(
 
 // ── helpers ──────────────────────────────────────────────────
 
+/*
+ * Billing events. This wrapper kept its shape so the six call sites below
+ * read unchanged; what changed is where the row comes from.
+ *
+ * Ungrouped and HIGH: money leaving or arriving is one fact per event and
+ * the kind of thing somebody checks for. The provider's own event id is the
+ * dedupe key, because a payment webhook redelivered is the single most
+ * likely duplicate in this system.
+ */
 async function notify(sb: any, userId: string, type: string, title: string, body: string, metadata: unknown) {
-  await sb.from('notifications').insert({ user_id: userId, type, title, body, metadata });
+  const meta = (metadata ?? {}) as Record<string, unknown>;
+  await emitNotification(sb, {
+    userId, type, title, body,
+    priority: 'HIGH',
+    deepLink: '/credits',
+    dedupeKey: typeof meta.eventId === 'string' ? `payment:${meta.eventId}` : null,
+    metadata: meta,
+  });
   await sb.from('activity_events').insert({ user_id: userId, event_type: type, metadata });
 }
 

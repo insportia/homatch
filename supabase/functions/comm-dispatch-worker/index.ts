@@ -21,6 +21,7 @@
 // reason is behavioural.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { notify as emitNotification } from '../_shared/notify.ts';
 import { serviceClient, json, preflight, isInternalWorker, logEvent, redact } from '../_shared/comm/auth.ts';
 import { createMetaProvider, metaConfigFromEnv, metaCredentialsPresent } from '../_shared/comm/meta.ts';
 import { createVapiProvider, vapiCredentialsPresent } from '../_shared/comm/vapi.ts';
@@ -89,11 +90,19 @@ async function runCampaign(sb: Sb, campaign: Campaign): Promise<Record<string, u
         .update({ status: 'PAUSED', paused_reason: verdict.reason ?? null, compliance_state: verdict.code ?? null })
         .eq('id', campaign.id);
     }
-    await sb.from('notifications').insert({
-      user_id: campaign.owner_id,
+    /* A campaign stopping itself is something to act on, and it happens
+       once per campaign. Deduped on the campaign so a worker that re-reads
+       the same verdict cannot say it twice. */
+    await emitNotification(sb, {
+      userId: campaign.owner_id,
       type: 'CAMPAIGN_PAUSED',
       title: 'A campaign was paused',
       body: verdict.reason ?? 'A campaign was paused automatically.',
+      priority: 'HIGH',
+      deepLink: '/outreach/campaigns',
+      entityType: 'campaign',
+      entityId: campaign.id,
+      dedupeKey: `campaign-paused:${campaign.id}:${verdict.code}`,
     });
     logEvent('dispatch', 'campaign_paused', { campaignId: campaign.id, code: verdict.code });
     return { campaignId: campaign.id, paused: verdict.code };
@@ -629,11 +638,21 @@ async function completeCampaign(sb: Sb, campaign: Campaign): Promise<void> {
     updated_at: now,
   }).eq('id', campaign.id);
 
-  await sb.from('notifications').insert({
-    user_id: campaign.owner_id,
+  /* Finishing is information, not an interruption: grouped, so an account
+     running six campaigns overnight wakes to one line. */
+  await emitNotification(sb, {
+    userId: campaign.owner_id,
     type: 'CAMPAIGN_COMPLETED',
     title: 'A campaign finished',
     body: `${rows.length} recipients were processed.`,
+    priority: 'NORMAL',
+    deepLink: '/outreach/campaigns',
+    entityType: 'campaign',
+    entityId: campaign.id,
+    dedupeKey: `campaign-done:${campaign.id}`,
+    groupKey: `campaigns-done:${campaign.owner_id}`,
+    groupWindow: '2 hours',
+    groupTitle: '{n} campaigns finished',
   });
 
   await sb.from('background_jobs')

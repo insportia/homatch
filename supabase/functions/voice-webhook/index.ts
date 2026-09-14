@@ -22,6 +22,7 @@
 // meet here, because this is where a call turns into a record and a charge.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { notify } from '../_shared/notify.ts';
 import { serviceClient, json, logEvent, redact, timingSafeEqual } from '../_shared/comm/auth.ts';
 import { parseVapiWebhook, vapiCostComponents, type VapiEvent } from '../_shared/comm/vapi.ts';
 import { mapVapiCallStatus, deriveCallOutcome, isForwardCallTransition } from '../_shared/comm/generated/statusMap.ts';
@@ -253,16 +254,38 @@ async function handle(sb: Sb, event: VapiEvent): Promise<void> {
   }
 
   if (merged.callbackRequested) {
-    await sb.from('notifications').insert({
-      user_id: send.owner_id, type: 'CALLBACK_REQUESTED',
+    /* Somebody asked to be phoned back. That is a person waiting, so HIGH,
+       ungrouped, and deep-linked to the call it came from. Deduped on the
+       send: a provider that delivers the same completion webhook twice must
+       not ask for the same callback twice. */
+    await notify(sb, {
+      userId: send.owner_id,
+      type: 'CALLBACK_REQUESTED',
       title: 'Someone asked for a call back',
       body: merged.nextAction ?? 'A contact asked to be called back.',
+      priority: 'HIGH',
+      deepLink: '/outreach/calls',
+      entityType: 'call',
+      entityId: send.id,
+      dedupeKey: `callback:${send.id}`,
     });
   } else if (score >= 70) {
-    await sb.from('notifications').insert({
-      user_id: send.owner_id, type: 'QUALIFIED_LEAD',
+    /* A strong lead is worth knowing about but nobody is holding a phone.
+       Grouped, so a campaign that produces nine of them in an hour is one
+       notification rather than nine. */
+    await notify(sb, {
+      userId: send.owner_id,
+      type: 'QUALIFIED_LEAD',
       title: 'A qualified lead',
       body: merged.summary?.slice(0, 300) ?? 'A call produced a strong lead.',
+      priority: 'NORMAL',
+      deepLink: '/outreach/calls',
+      entityType: 'call',
+      entityId: send.id,
+      dedupeKey: `lead:${send.id}`,
+      groupKey: `leads:${send.owner_id}`,
+      groupWindow: '30 minutes',
+      groupTitle: '{n} qualified leads from your calls',
     });
   }
 

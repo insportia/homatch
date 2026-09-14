@@ -2,6 +2,7 @@
 // POST { trigger: 'new_property' | 'new_signal', property_id?, signal_id? }
 // Finds matching active search subscriptions and creates notifications
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { notify } from '../_shared/notify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,14 +26,20 @@ Deno.serve(async (req) => {
         .select('user_id, id').eq('side', 'DEMAND').eq('is_active', true);
 
       for (const sub of subs ?? []) {
-        await supabase.from('notifications').insert({
-          user_id: sub.user_id,
+        /* A saved search that matches six listings at once is one thing to
+           tell somebody. Grouped per subscription so two different searches
+           stay two notifications. */
+        await notify(supabase, {
+          userId: sub.user_id,
           type: 'MATCH_AVAILABLE',
+          priority: 'NORMAL',
+          deepLink: '/active-search',
+          groupKey: `saved-search:${sub.id}`,
+          groupTitle: '{n} new properties match your search',
           // title/body are an English fallback only — the frontend renders a
           // localized string from type + metadata.kind at display time.
           title: 'New property match',
           body: 'A new property matching your search has been added.',
-          read: false,
           metadata: { property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_PROPERTY_MATCH' },
         }).then(({ error }) => {
           // Swallowing this is what hid a broken notification pipeline: the
@@ -53,14 +60,17 @@ Deno.serve(async (req) => {
         .select('user_id, id, property_id').eq('side', 'SUPPLY').eq('is_active', true);
 
       for (const sub of subs ?? []) {
-        await supabase.from('notifications').insert({
-          user_id: sub.user_id,
+        await notify(supabase, {
+          userId: sub.user_id,
           type: 'MATCH_AVAILABLE',
+          priority: 'NORMAL',
+          deepLink: '/active-search',
+          groupKey: `saved-search-buyers:${sub.id}`,
+          groupTitle: '{n} new buyers match your property',
           // title/body are an English fallback only — the frontend renders a
           // localized string from type + metadata.kind at display time.
           title: 'New buyer/renter found',
           body: 'A new potential buyer or renter has been found for your property.',
-          read: false,
           metadata: { signal_id, match_id: match_id || null, property_id: sub.property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_SIGNAL_MATCH' },
         }).then(({ error }) => {
           // Swallowing this is what hid a broken notification pipeline: the

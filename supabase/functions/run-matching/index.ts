@@ -6,6 +6,7 @@
 // ============================================================
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { notify } from '../_shared/notify.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // ── MATCHING ENGINE (inlined — shared imports not supported in bundler) ──
@@ -407,12 +408,21 @@ async function notifyNewMatches(
     const userId = (m.properties as { user_id?: string })?.user_id;
     if (!userId) continue;
 
-    await supabase.from('notifications').insert({
-      user_id: userId,
+    /* A run that produces twelve matches for one property is one
+       notification saying twelve — the same grouping the scheduled job uses,
+       so the two paths cannot disagree about what a burst looks like. */
+    await notify(supabase, {
+      userId,
       type: 'MATCH_AVAILABLE',
       title: `New ${m.signal_strength} match found`,
-      body: `A strong buyer intent matched your property.`,
-      property_id: m.property_id,
+      body: 'A strong buyer intent matched your property.',
+      priority: 'NORMAL',
+      deepLink: `/property/${m.property_id}/matches`,
+      entityType: 'match',
+      entityId: m.id,
+      dedupeKey: `match:${m.id}`,
+      groupKey: `matches:${m.property_id}`,
+      groupTitle: '{n} new matches are ready',
       metadata: { match_id: m.id, signal_strength: m.signal_strength },
     });
 

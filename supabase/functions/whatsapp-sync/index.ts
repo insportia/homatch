@@ -14,6 +14,7 @@
 // it sends nothing and creates nothing there.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { notify } from '../_shared/notify.ts';
 import { requireAdmin, isInternalWorker, serviceClient, json, preflight, logEvent } from '../_shared/comm/auth.ts';
 import {
   createMetaProvider, metaConfigFromEnv, metaCredentialsPresent, type RemoteTemplate,
@@ -126,11 +127,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const { data: row } = await sb.from('comm_whatsapp_templates')
       .select('owner_id, name').eq('name', t.name).eq('language', t.language).maybeSingle();
     if (row?.owner_id) {
-      await sb.from('notifications').insert({
-        user_id: row.owner_id,
+      await notify(sb, {
+        userId: row.owner_id,
         type: 'WHATSAPP_TEMPLATE_REJECTED',
         title: 'A WhatsApp template was rejected',
         body: `Meta rejected "${row.name}"${t.rejectionReason ? `: ${t.rejectionReason}` : '.'}`,
+        priority: 'HIGH',
+        deepLink: '/outreach/whatsapp/templates',
+        entityType: 'template',
+        dedupeKey: `template-rejected:${row.id}`,
       });
     }
   }

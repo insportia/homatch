@@ -18,6 +18,7 @@
 // ============================================================
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { notify } from '../_shared/notify.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -85,11 +86,17 @@ serve(async (req) => {
     });
     if (captureErr) throw new Error(`capture_credit_reservation failed: ${captureErr.message}`);
 
-    await supabaseAdmin.from('notifications').insert({
-      user_id: hmUser.id,
+    /* A purchase is a receipt, not an interruption: it is confirmed on the
+       screen the customer is already looking at. NORMAL, deduped on the
+       purchase so a retried capture cannot bill them twice in the feed. */
+    await notify(supabaseAdmin, {
+      userId: hmUser.id,
       type: 'RESEARCH_PRODUCT_PURCHASED',
       title: `${product.name} purchased`,
       body: `${product.unit_count.toLocaleString()} units are ready to use.`,
+      priority: 'NORMAL',
+      deepLink: '/credits',
+      dedupeKey: `purchase:${captureResult?.[0]?.purchase_id ?? productCode}`,
       metadata: { product_code: productCode, purchase_id: captureResult?.[0]?.purchase_id },
     });
 

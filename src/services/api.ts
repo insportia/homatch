@@ -730,16 +730,23 @@ export async function pauseMatchingCampaign(
 
   await logActivity(userId, 'MATCHING_PAUSED', propertyId);
 
-  const { error: notifyErr } = await supabase.from('notifications').insert({
-    user_id: userId,
-    type: 'MATCHING_PAUSED',
-    title: 'Matching paused',
-    body: 'Your matching campaign has been paused.',
-    property_id: propertyId,
-  });
-  // The pause itself succeeded; failing to announce it is worth a log, not an
-  // exception that would make the caller believe nothing was paused.
-  if (notifyErr) console.error('[pauseMatchingCampaign] notification failed:', notifyErr.message);
+  /*
+   * THERE USED TO BE A NOTIFICATION HERE, AND IT NEVER WORKED.
+   *
+   * `authenticated` holds SELECT on notifications and a column-scoped UPDATE
+   * for marking things read — it has never held INSERT. So this call has
+   * always been refused by the grant, logged to a console nobody reads, and
+   * swallowed. "Matching paused" has never reached anybody.
+   *
+   * It is not being fixed server-side, because the event does not deserve a
+   * notification: the person reading it is the person who just pressed pause,
+   * on the screen that now says paused. Telling somebody what they just did
+   * is the kind of noise the preference switches exist to stop.
+   *
+   * Anything that genuinely needs to notify from the browser has to go
+   * through an edge function and notify_emit — the client cannot, and should
+   * not, write this table.
+   */
 }
 
 // ============================================================

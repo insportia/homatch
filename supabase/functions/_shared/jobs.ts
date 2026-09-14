@@ -14,6 +14,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { notify } from './notify.ts';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -458,13 +459,23 @@ export async function sendNotifications(ctx: JobContext): Promise<JobResult> {
     const userId = match.properties?.user_id;
     if (!userId) continue;
     try {
-      // In-app notification
-      await ctx.supabase.from('notifications').insert({
-        user_id: userId, type: 'MATCH_AVAILABLE',
+      /* Grouped per property. A matching run that finds ten buyers for one
+         listing is one thing to tell somebody, and the group title carries
+         the count. Dedupe on the match so a re-run of the same window cannot
+         double-count into the aggregate. */
+      await notify(ctx.supabase, {
+        userId,
+        type: 'MATCH_AVAILABLE',
         title: 'New match found',
         body: `A new ${match.signal_strength} match is available for ${match.properties?.title ?? 'your property'}.`,
+        priority: 'NORMAL',
+        deepLink: `/property/${match.property_id}/matches`,
+        entityType: 'match',
+        entityId: match.id,
+        dedupeKey: `match:${match.id}`,
+        groupKey: `matches:${match.property_id}`,
+        groupTitle: '{n} new matches are ready',
         metadata: { match_id: match.id, property_id: match.property_id, strength: match.signal_strength },
-        read: false, created_at: new Date().toISOString(),
       });
       processed++;
     } catch (e: any) { errors.push(`match ${match.id}: ${e.message}`); }

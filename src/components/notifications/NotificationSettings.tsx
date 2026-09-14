@@ -14,7 +14,7 @@ import {
 } from '@/services/notificationPreferences';
 import {
   pushPermission, pushSupported, subscribeToPush, unsubscribeFromPush,
-  hasPushSubscription, vapidPublicKey, markSoftPromptShown, dismissSoftPrompt,
+  hasPushSubscription, loadVapidPublicKey, markSoftPromptShown, dismissSoftPrompt,
   type PushPermission,
 } from '@/lib/push';
 
@@ -53,9 +53,14 @@ export function NotificationSettings() {
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  const [configured, setConfigured] = useState<boolean | null>(null);
+
   useEffect(() => {
     setPermission(pushPermission());
     void hasPushSubscription().then(setSubscribed);
+    /* Asked once, from the function that holds the private key, so the panel
+       says "not configured here" only when that is actually true. */
+    void loadVapidPublicKey().then((k) => setConfigured(k !== null));
   }, []);
 
   useEffect(() => {
@@ -72,8 +77,6 @@ export function NotificationSettings() {
     const ok = await saveNotificationPreferences(homatchUser.id, next);
     if (!ok) toast.error(t('notif_prefs_failed'));
   }, [homatchUser, t]);
-
-  const configured = vapidPublicKey() !== null;
 
   const enablePush = async () => {
     setBusy(true);
@@ -114,7 +117,7 @@ export function NotificationSettings() {
       <div className="border-b border-border p-5">
         {!pushSupported() ? (
           <p className="text-sm text-muted-foreground">{t('notif_push_unsupported')}</p>
-        ) : !configured ? (
+        ) : configured === false ? (
           <p className="text-sm text-muted-foreground">{t('notif_push_unavailable')}</p>
         ) : permission === 'DENIED' ? (
           <p className="flex items-start gap-2.5 text-sm text-muted-foreground">

@@ -117,14 +117,39 @@ function inQuietHours(prefs: Prefs): boolean {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
+  /* Read before the VAPID guard: one action is answerable without the
+     private key, and a Request body can only be read once. */
+  let rawBody: { action?: string; notificationId?: string } = {};
+  let action0 = 'deliver';
+  try { rawBody = await req.json(); action0 = rawBody.action ?? 'deliver'; } catch { /* probe */ }
+
   const publicKey = Deno.env.get('VAPID_PUBLIC_KEY');
   const privateKey = Deno.env.get('VAPID_PRIVATE_KEY');
   const subject = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:support@homatch.live';
 
+  /*
+   * THE PUBLIC KEY IS SERVED, NOT SHIPPED.
+   *
+   * `applicationServerKey` needs the VAPID public key in the browser, and the
+   * obvious way to get it there is a build-time env var on the frontend host.
+   * That means one key configured in two places by two hands, and the failure
+   * it produces is the worst kind: browsers subscribe against key A, the
+   * sender signs with key B, and every push is rejected with a 403 that looks
+   * like a delivery problem rather than a configuration one.
+   *
+   * One source instead. The function holding the private half serves the
+   * public half, so they cannot disagree and rotating the pair is one action
+   * rather than two. A public key is public: no auth, nothing secret.
+   */
+  if (action0 === 'public-key') {
+    return publicKey
+      ? json({ ok: true, key: publicKey })
+      : json({ ok: false, error: 'VAPID_NOT_CONFIGURED' }, 503);
+  }
+
   if (!publicKey || !privateKey) {
     /* A named, honest state. The product renders "notifications are not
-       available here" rather than a broken switch, and the owner sees exactly
-       which secret is missing. */
+       configured here" rather than a switch that fails when pressed. */
     return json({ ok: false, error: 'VAPID_NOT_CONFIGURED' }, 503);
   }
   webpush.setVapidDetails(subject, publicKey, privateKey);
@@ -134,9 +159,9 @@ serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   );
 
-  let body: { action?: string; notificationId?: string; userId?: string } = {};
-  try { body = await req.json(); } catch { /* defaults below */ }
-  const action = body.action ?? 'deliver';
+  /* Already parsed above: a Request body can only be read once. */
+  const body = rawBody;
+  const action = action0;
 
   /* ── A test send, to the caller's own devices ─────────────────────────
      The only way to prove the whole path end to end without sending anything

@@ -103,16 +103,44 @@ function urlBase64ToBytes(base64: string): ArrayBuffer {
   return out.buffer as ArrayBuffer;
 }
 
-/**
- * The public half of the VAPID pair.
+/*
+ * THE PUBLIC HALF OF THE VAPID PAIR, FROM THE PLACE THAT HOLDS THE OTHER.
  *
- * Absent on an environment that has not been configured, and that is a
- * FIRST-CLASS state rather than a crash: the subscribe call returns a reason
- * and the UI says notifications are not available here, which is true.
+ * The obvious implementation is a build-time env var on the frontend host.
+ * That puts one key in two places, configured by two hands, and the failure
+ * it produces is the worst kind to diagnose: browsers subscribe against key
+ * A, the sender signs with key B, and every push comes back 403 looking like
+ * a delivery fault rather than a configuration one.
+ *
+ * So the function that holds the private key serves the public key, and they
+ * cannot disagree. A build-time value is still honoured if one is set —
+ * some environments prefer it — but nothing requires it.
+ *
+ * Cached for the page's life: it is a constant, and asking again on every
+ * render would be a network call per switch.
  */
+let cachedKey: string | null | undefined;
+
 export function vapidPublicKey(): string | null {
-  const key = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-  return typeof key === 'string' && key.length > 20 ? key : null;
+  const built = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+  if (typeof built === 'string' && built.length > 20) return built;
+  return cachedKey ?? null;
+}
+
+/** Fetch it once. Returns null where notifications are not configured. */
+export async function loadVapidPublicKey(): Promise<string | null> {
+  if (cachedKey !== undefined) return cachedKey;
+  const built = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+  if (typeof built === 'string' && built.length > 20) { cachedKey = built; return cachedKey; }
+  try {
+    const { data } = await supabase.functions.invoke('push-send', { body: { action: 'public-key' } });
+    const key = (data as { key?: string } | null)?.key;
+    cachedKey = typeof key === 'string' && key.length > 20 ? key : null;
+  } catch {
+    /* Not configured, or unreachable. Both render the same honest state. */
+    cachedKey = null;
+  }
+  return cachedKey;
 }
 
 export type SubscribeResult =
@@ -127,7 +155,7 @@ export type SubscribeResult =
  */
 export async function subscribeToPush(): Promise<SubscribeResult> {
   if (!pushSupported()) return { ok: false, reason: 'unsupported' };
-  const key = vapidPublicKey();
+  const key = await loadVapidPublicKey();
   if (!key) return { ok: false, reason: 'no-key' };
 
   void recordPwaEvent('PUSH_PERMISSION_REQUESTED', 'CONFIRMED', { source: 'opt-in' });

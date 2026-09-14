@@ -83,6 +83,39 @@ export function browserBucket(): 'SAFARI' | 'CHROMIUM' | 'FIREFOX' | 'OTHER' {
 /** Events already sent this page view, so a re-render is not a second view. */
 const sentThisView = new Set<string>();
 
+const TELEMETRY_ID = 'homatch_telemetry_id';
+
+/*
+ * SOMETHING TO BUDGET AGAINST.
+ *
+ * The server drops any telemetry row with no identity, because a write path
+ * nobody can rate-limit is a write path somebody will abuse. The product's
+ * anonymous session token would be the natural key — except it is created
+ * lazily, when a signed-out visitor starts a verification, so most public
+ * page views have none. Measured on production: every anonymous row arriving
+ * before this existed had a null identity, which the new guard would have
+ * silently dropped. The funnel would have gone quiet and looked fine.
+ *
+ * So: a random value this browser generates for itself and keeps. It is not a
+ * fingerprint — nothing is derived from the device, it is not joined to
+ * anything, and clearing site data discards it — it is a bucket label so that
+ * sixty events an hour means sixty events an hour from SOMEBODY rather than
+ * sixty in total.
+ */
+function telemetryId(): string | null {
+  try {
+    const existing = localStorage.getItem(TELEMETRY_ID);
+    if (existing) return existing;
+    const fresh = crypto.randomUUID();
+    localStorage.setItem(TELEMETRY_ID, fresh);
+    return fresh;
+  } catch {
+    /* Storage disabled. The row will be dropped server-side, which is the
+       correct outcome: it cannot be budgeted. */
+    return null;
+  }
+}
+
 export async function recordPwaEvent(
   event: PwaEvent,
   confidence: Confidence,
@@ -112,7 +145,10 @@ export async function recordPwaEvent(
       event,
       confidence,
       user_id: userId,
-      anon_id: userId ? null : (currentAnonymousToken() ?? null),
+      /* The product's own anonymous token when one exists, so telemetry and
+         the rest of the anonymous session agree; otherwise the local bucket
+         label above. Never both, and never for a signed-in account. */
+      anon_id: userId ? null : (currentAnonymousToken() ?? telemetryId()),
       platform: platformBucket(),
       browser: browserBucket(),
       locale: (localStorage.getItem('homatch_lang') ?? '').slice(0, 8) || null,

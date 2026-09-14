@@ -45,6 +45,7 @@ import {
 import {
   getAgent, updateAgent, generateAgentCopy, publishAgent, previewAgent,
   requestAgentTestGrant, runAgentTestTurn, listVoices, previewVoice, listMyVoices, deleteCustomVoice,
+  type PickableVoice,
   runAgentTranscribe,
 } from '@/services/communications';
 import type { CommAgent } from '@/types/communications';
@@ -741,10 +742,11 @@ function VoicePreviewButton({ voiceId, language }: { voiceId: string; language: 
 
 function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: Partial<CommAgent>) => void }) {
   const { t } = useLanguage();
-  const [voices, setVoices] = useState<Array<{ id: string; name: string; description: string | null; language: string | null }>>([]);
+  const [voices, setVoices] = useState<PickableVoice[]>([]);
   const [mine, setMine] = useState<Array<{ voiceId: string; name: string; status: string; confirmedAt: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
   const [adding, setAdding] = useState(false);
 
   const reload = useCallback(async () => {
@@ -766,8 +768,23 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
     await reload();
   }, [draft.voice_id, patch, reload, t]);
 
-  const shown = voices.filter((v) => filter === 'ALL' || v.language === filter);
-  const languagesAvailable = [...new Set(voices.map((v) => v.language).filter(Boolean))] as string[];
+  /*
+   * Filtering by a language a voice ACTUALLY lists.
+   *
+   * The old filter compared against a single language field, so a
+   * multilingual voice that covers nine languages was filed under whichever
+   * one happened to be first and vanished from the other eight. The provider
+   * reports the whole list; this uses it.
+   */
+  const needle = search.trim().toLowerCase();
+  const shown = voices
+    .filter((v) => filter === 'ALL' || v.languages.includes(filter))
+    .filter((v) => !needle
+      || v.name.toLowerCase().includes(needle)
+      || (v.description ?? '').toLowerCase().includes(needle)
+      || Object.values(v.labels).some((l) => l.toLowerCase().includes(needle)));
+
+  const languagesAvailable = [...new Set(voices.flatMap((v) => v.languages))].sort();
 
   return (
     <Card><CardContent className="space-y-3 p-4">
@@ -777,6 +794,13 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
           <p className="text-[13px] text-muted-foreground">{t('comm_voice_subtitle')}</p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('comm_voice_search')}
+            aria-label={t('comm_voice_search')}
+            className="h-8 w-[160px] text-xs"
+          />
           {languagesAvailable.length ? (
             <Select value={filter} onValueChange={setFilter}>
               <SelectTrigger className="h-8 w-[130px] text-xs" aria-label={t('comm_agent_languages')}>
@@ -854,6 +878,8 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
         // §92: the catalogue being unavailable is not a broken page. The agent
         // simply uses the platform default voice.
         <Alert><AlertDescription className="text-xs">{t('comm_voice_unavailable')}</AlertDescription></Alert>
+      ) : !shown.length ? (
+        <Alert><AlertDescription className="text-xs">{t('comm_voice_no_match')}</AlertDescription></Alert>
       ) : (
         <ul className="grid gap-1.5 sm:grid-cols-2">
           {shown.map((v) => {
@@ -879,7 +905,21 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
                     ) : null}
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5">
-                    {v.language ? <Badge variant="outline" className="text-[13px] uppercase">{v.language}</Badge> : null}
+                    {v.recommended ? (
+                      <Badge className="bg-gold/15 text-[13px] text-gold hover:bg-gold/15">
+                        {t('comm_voice_recommended')}
+                      </Badge>
+                    ) : null}
+                    {/* The languages the PROVIDER says this voice covers, and
+                        a count rather than a wall of codes once it is more
+                        than a couple. Never a number Homatch decided. */}
+                    {v.languages.length > 2 ? (
+                      <Badge variant="outline" className="text-[13px]">
+                        {t('comm_voice_language_count').replace('{n}', String(v.languages.length))}
+                      </Badge>
+                    ) : v.languages.map((l) => (
+                      <Badge key={l} variant="outline" className="text-[13px] uppercase">{l}</Badge>
+                    ))}
                     {selected ? <Check className="h-3.5 w-3.5 text-gold" aria-hidden="true" /> : null}
                   </span>
                 </button>

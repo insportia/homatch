@@ -36,6 +36,15 @@ export const AUDIT_ALLOWED_STRINGS = [
 export const AUDIT_ALLOWED_EXACT = new Set([
   'Homatch',
   'Homatch AI',
+  // The voice provider's own name, on the admin Voice AI screen. A company
+  // name, written the same way in every language — exactly like 'Homatch'.
+  'ElevenLabs',
+  // Placeholders in the pronunciation editor showing how to WRITE a rule for
+  // the Homatch brand: an IPA transcription and a syllable hint. IPA is a
+  // universal notation and both are examples of the brand name itself, so
+  // translating them would make the field harder to fill in, not easier.
+  'ˈhoʊmætʃ',
+  'Ho-match',
   // Demo/sample data — a person's name in a static UI mockup, not real
   // content, and names are not translated across languages.
   'Giorgi M.',

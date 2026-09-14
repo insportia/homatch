@@ -24,6 +24,12 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // fin_col_plan above. ka/ru/ar/he all carry distinct real translations of the
   // same key, so this cannot be masking a gap elsewhere.
   'fin_col_model',
+  // "Model" again, this time the Voice AI usage table. Same word, same
+  // Turkish spelling, same four other locales carrying real translations.
+  'voice_ai_col_model',
+  // "ms" — the SI symbol for a millisecond. A unit, not prose: Turkish writes
+  // it exactly as English does, while ka/ru/ar/he use their own scripts.
+  'voice_ai_col_latency',
   // Product/brand names — never translated in any language.
   'ai_title', // "Homatch AI"
   // "WhatsApp" — Meta's product name on the admin go-live checklist, the

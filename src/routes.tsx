@@ -76,6 +76,7 @@ import AdminCreditsPage from './pages/admin/AdminCreditsPage';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import AdminFinancePage from './pages/admin/AdminFinancePage';
 import AdminProvidersPage from './pages/admin/AdminProvidersPage';
+import AdminVoiceAiPage from './pages/admin/AdminVoiceAiPage';
 import AdminPricingPage from './pages/admin/AdminPricingPage';
 import AdminSpendCapsPage from './pages/admin/AdminSpendCapsPage';
 import AdminDiagnosticsPage from './pages/admin/AdminDiagnosticsPage';
@@ -221,6 +222,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Finance',     path: '/admin/finance',            element: adminWrap(<AdminFinancePage />),     adminOnly: true },
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
+  { name: 'Admin Voice AI',    path: '/admin/voice-ai',           element: adminWrap(<AdminVoiceAiPage />),     adminOnly: true },
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },

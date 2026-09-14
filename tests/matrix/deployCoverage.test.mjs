@@ -77,6 +77,7 @@ const COMMUNICATIONS = {
   'whatsapp-sync': 'browser',
   'cartesia-access-token': 'browser',
   'ai-talk-session': 'browser',
+  'voice-ai': 'browser',
   'whatsapp-webhook': 'service',
   'voice-webhook': 'service',
   'comm-dispatch-worker': 'service',
@@ -204,4 +205,65 @@ test('no edge function in the repository is silently undeployable', () => {
   }
   const comms = undeployed.filter((fn) => fn in COMMUNICATIONS);
   assert.deepEqual(comms, [], 'a Communications function slipped out of the deploy arrays');
+});
+
+test('every function the frontend calls by name is deployed', () => {
+  /*
+   * THE HAND-MAINTAINED LIST ABOVE IS NOT ENOUGH, AND THIS IS THE PROOF.
+   *
+   * voice-ai was written, tested, committed and merged while COMMUNICATIONS
+   * said nothing about it. Every assertion in this file passed, the deploy was
+   * green, and the whole Voice AI control centre 404'd against production.
+   * The list only catches what somebody remembered to add to it, which is the
+   * same weakness as the workflow arrays it was written to guard.
+   *
+   * This does not depend on anybody remembering: it reads the frontend for the
+   * function names it actually invokes. If a page calls it, production needs
+   * it.
+   */
+  const SRC = join(ROOT, 'src');
+  const names = new Set();
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(ts|tsx)$/.test(entry.name)) continue;
+      const source = readFileSync(full, 'utf8');
+      const calls = /functions\s*\.\s*invoke\s*\(\s*['"`]([a-z0-9-]+)['"`]/g;
+      for (const m of source.matchAll(calls)) names.add(m[1]);
+    }
+  };
+  walk(SRC);
+
+  assert.ok(names.size > 5, 'no invoke() call was found at all — the scan is broken, not the deploy');
+
+  const undeployed = [...names]
+    .filter((fn) => existsSync(join(FUNCTIONS_DIR, fn, 'index.ts')))
+    .filter((fn) => !withJwt.has(fn) && !withoutJwt.has(fn))
+    .sort();
+
+  /*
+   * Seven older functions are called from the frontend and deployed by hand.
+   * They ARE live — they answer in production today — so failing on them would
+   * block every release for a debt this branch did not create. They are
+   * printed instead, because the alternative is that nobody ever finds out
+   * that a repository change to any of them cannot reach a customer.
+   */
+  const PRE_EXISTING_HAND_DEPLOYED = new Set([
+    'admin-user360', 'classify-signals-v2', 'impersonate-user',
+    'outreach-campaign-preview', 'outreach-provider-status',
+    'seed-demo-matches', 'system-health',
+  ]);
+
+  const known = undeployed.filter((fn) => PRE_EXISTING_HAND_DEPLOYED.has(fn));
+  if (known.length) {
+    console.log(`\n  ${known.length} function(s) the frontend calls are deployed by hand, not by CI.`
+      + ` They answer in production, but a repository change to them does not reach it:\n    `
+      + known.join('\n    ') + '\n');
+  }
+
+  const introduced = undeployed.filter((fn) => !PRE_EXISTING_HAND_DEPLOYED.has(fn));
+  assert.deepEqual(introduced, [],
+    'the frontend calls these and the workflow never deploys them, so every call 404s:\n  - '
+    + introduced.join('\n  - '));
 });

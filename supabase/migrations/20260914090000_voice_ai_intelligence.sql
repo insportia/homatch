@@ -1501,7 +1501,6 @@ values
 ('რამდენად ღირს სასტუმრო ბათუმი-ში', 'intent_phrase', 'ka', false, 10, 'semantic/test phrase; do not send as realtime keyterm'),
 ('რამდენად ღირს სასტუმრო გონიო-ში', 'intent_phrase', 'ka', false, 10, 'semantic/test phrase; do not send as realtime keyterm'),
 ('რამდენად ღირს სასტუმრო ქუთაისი-ში', 'intent_phrase', 'ka', false, 10, 'semantic/test phrase; do not send as realtime keyterm'),
-('რა ღირს კვადრატული მეტრი {location}-ში', 'intent_phrase', 'ka', false, 10, 'semantic/test phrase; do not send as realtime keyterm'),
 ('შეგიძლიათ გადაამოწმოთ საკადასტრო კოდი', 'intent_phrase', 'ka', false, 10, 'semantic/test phrase; do not send as realtime keyterm'),
 ('შეგიძლიათ გადაამოწმოთ რეესტრის ამონაწერი', 'intent_phrase', 'ka', false, 10, 'semantic/test phrase; do not send as realtime keyterm'),
 ('შეგიძლიათ გადაამოწმოთ საკუთრების უფლება', 'intent_phrase', 'ka', false, 10, 'semantic/test phrase; do not send as realtime keyterm'),

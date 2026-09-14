@@ -180,25 +180,42 @@ export function requestAgentTestGrant(agentId: string) {
  * what a customer hears here is what the agent will actually sound like. The
  * key never reaches the browser; the audio does.
  *
+ * WHICH PROVIDER RENDERS IT
+ *
+ * A Cartesia voice id is a UUID and an ElevenLabs one is not, which is the
+ * same test the call path applies when it builds the assistant. So a voice a
+ * customer cloned last year still previews through Cartesia and everything in
+ * the ElevenLabs library previews through ElevenLabs — without a migration
+ * that rewrites anybody's stored voice id.
+ *
  * Previews cost money to generate, so the result is cached for the lifetime of
  * the page: clicking the same voice twice replays it rather than paying twice.
  */
 const previewCache = new Map<string, string>();
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function previewVoice(
   voiceId: string, language: string,
-): Promise<{ ok: true; url: string } | { ok: false }> {
+): Promise<{ ok: true; url: string } | { ok: false; reason?: string }> {
   const key = `${voiceId}:${language}`;
   const cached = previewCache.get(key);
   if (cached) return { ok: true, url: cached };
 
-  const { data, error } = await supabase.functions.invoke('cartesia-access-token', {
-    body: { action: 'preview', voiceId, language },
-  });
-  if (error) return { ok: false };
+  const legacy = UUID.test(voiceId);
+  const { data, error } = legacy
+    ? await supabase.functions.invoke('cartesia-access-token', {
+      body: { action: 'preview', voiceId, language },
+    })
+    : await supabase.functions.invoke('voice-ai', {
+      body: { action: 'preview', voiceId, language },
+    });
+  if (error) return { ok: false, reason: 'UNAVAILABLE' };
 
-  const payload = data as { ok?: boolean; audioBase64?: string; mime?: string };
-  if (!payload?.ok || !payload.audioBase64) return { ok: false };
+  const payload = data as { ok?: boolean; audioBase64?: string; mime?: string; reason?: string };
+  // RATE_LIMITED and VOICE_NOT_AVAILABLE are different from "it broke", and a
+  // customer pressing play twenty times deserves to be told which.
+  if (!payload?.ok || !payload.audioBase64) return { ok: false, reason: payload?.reason ?? 'UNAVAILABLE' };
 
   /*
    * A blob URL, not a data: URL.
@@ -350,10 +367,61 @@ export function runAgentTestTurn(
   }>('comm-agent', { action: 'turn', agentId, text, history });
 }
 
-export async function listVoices(): Promise<Array<{ id: string; name: string; description: string | null; language: string | null }>> {
-  const { data, error } = await supabase.functions.invoke('cartesia-access-token', { method: 'GET' });
+/**
+ * The voices a customer may choose from.
+ *
+ * Curated: only what an admin turned on, in the order an admin put them in,
+ * with the recommended ones first. Everything here came from the provider —
+ * the description, the languages, the labels — because §12 forbids Homatch
+ * inventing what a speaker sounds like, and a voice list is exactly where
+ * that temptation lives.
+ *
+ * `language` is kept as a single code for the callers that filter by one, and
+ * `languages` carries the provider's full list so a picker can say that a
+ * voice covers Georgian without Homatch having guessed it.
+ */
+export interface PickableVoice {
+  id: string;
+  name: string;
+  description: string | null;
+  language: string | null;
+  languages: string[];
+  labels: Record<string, string>;
+  recommended: boolean;
+  isDefault: boolean;
+}
+
+export async function listVoices(): Promise<PickableVoice[]> {
+  const { data, error } = await supabase.functions.invoke('voice-ai', {
+    body: { action: 'voices' },
+  });
   if (error) return [];
-  return (data as { voices?: Array<{ id: string; name: string; description: string | null; language: string | null }> })?.voices ?? [];
+
+  const rows = (data as {
+    voices?: Array<{
+      voiceId: string; name: string; description: string | null;
+      languages: unknown; labels: unknown; recommended: boolean; isDefault: boolean;
+    }>;
+  })?.voices ?? [];
+
+  return rows.map((v) => {
+    const languages = Array.isArray(v.languages)
+      ? v.languages.map((l) => String(l).toLowerCase()).filter(Boolean)
+      : [];
+    return {
+      id: v.voiceId,
+      name: v.name,
+      description: v.description,
+      language: languages[0] ?? null,
+      languages,
+      labels: (v.labels && typeof v.labels === 'object' && !Array.isArray(v.labels))
+        ? Object.fromEntries(Object.entries(v.labels as Record<string, unknown>)
+          .map(([k, val]) => [k, String(val)]))
+        : {},
+      recommended: v.recommended === true,
+      isDefault: v.isDefault === true,
+    };
+  });
 }
 
 // ── Campaigns ───────────────────────────────────────────────────────────────

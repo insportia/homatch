@@ -31,7 +31,7 @@ import {
   authenticate, requireAdmin, serviceClient, json, preflight, logEvent, checkRateLimit,
 } from '../_shared/comm/auth.ts';
 import {
-  checkElevenLabs, elevenLabsCredentialsPresent, listElevenLabsVoices,
+  checkElevenLabs, chooseTtsModel, elevenLabsCredentialsPresent, listElevenLabsVoices,
   listElevenLabsModels, synthesizeElevenLabs, createPronunciationDictionary,
   pronunciationMethodsFor, mintRealtimeToken, ELEVENLABS_DEFAULTS,
   KEYTERM_LIMITS_DEFAULT,
@@ -157,10 +157,15 @@ async function voicePreview(sb: Sb, userId: string, body: VoiceAiRequest): Promi
   const language = String(body.language ?? 'en').toLowerCase().slice(0, 5);
   const text = previewSentence(language);
 
-  const model = await ttsModel(sb);
+  // The preview says a Georgian sentence in Georgian, so the model has to be
+  // one that lists the language. eleven_flash_v2_5 does not, and answers 400
+  // rather than ignoring the parameter.
+  const choice = await chooseTtsModel(await ttsModel(sb), language);
+  const model = choice.modelId;
   const started = Date.now();
   const out = await synthesizeElevenLabs({
-    voiceId, text, modelId: model, languageCode: language, format: 'mp3',
+    voiceId, text, modelId: model, languageCode: language,
+    sendLanguage: choice.sendLanguage, format: 'mp3',
   });
 
   await recordUsage(sb, {
@@ -634,11 +639,15 @@ async function pronunciationPreview(sb: Sb, body: VoiceAiRequest): Promise<Respo
   const voiceId = voiceRow?.provider_voice_id ?? fallback?.provider_voice_id ?? null;
   if (!voiceId) return json({ ok: false, reason: 'NO_VOICE' }, 400);
 
-  const model = String(body.model ?? '') || await ttsModel(sb);
   const language = body.language ? String(body.language).slice(0, 5) : null;
+  // An admin may pin a model; otherwise the one that can speak the language
+  // the rule is written for.
+  const choice = await chooseTtsModel(String(body.model ?? '') || await ttsModel(sb), language);
+  const model = choice.modelId;
 
   const before = await synthesizeElevenLabs({
-    voiceId, text, modelId: model, languageCode: language, format: 'mp3',
+    voiceId, text, modelId: model, languageCode: language,
+    sendLanguage: choice.sendLanguage, format: 'mp3',
   });
 
   // The candidate rule is published as its own dictionary version rather than
@@ -662,7 +671,8 @@ async function pronunciationPreview(sb: Sb, body: VoiceAiRequest): Promise<Respo
     if (made.ok && made.data) {
       dictionary = { id: made.data.id, versionId: made.data.versionId };
       after = await synthesizeElevenLabs({
-        voiceId, text, modelId: model, languageCode: language, format: 'mp3',
+        voiceId, text, modelId: model, languageCode: language,
+        sendLanguage: choice.sendLanguage, format: 'mp3',
         dictionaries: [dictionary],
       });
     } else {

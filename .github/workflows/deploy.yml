@@ -298,6 +298,7 @@ jobs:
             "whatsapp-sync"
             "cartesia-access-token"
             "ai-talk-session"
+            "voice-ai"
           )
           FAILED=()
           for fn in "${JWT_FUNCTIONS[@]}"; do

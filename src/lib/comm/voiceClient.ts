@@ -207,6 +207,24 @@ export interface VoiceDiagnostics {
   liveKeyterms: number | null;
   /** Whether the reply arrived in pieces or as one finished clip. */
   streamedTts: boolean | null;
+  /*
+   * The whole turn, stage by stage, in milliseconds.
+   *
+   * It existed and went nowhere: the breakdown was computed and handed to an
+   * optional callback the homepage never passed, so the one screen anybody
+   * actually reads on a real phone showed two of the seven stages. A latency
+   * problem you cannot attribute is a latency problem you argue about.
+   */
+  stages: {
+    endpointingMs: number | null;
+    transcriptionMs: number | null;
+    dispatchMs: number | null;
+    llmTtftMs: number | null;
+    handoffMs: number | null;
+    ttsFirstAudioMs: number | null;
+    playbackMs: number | null;
+    perceivedMs: number | null;
+  } | null;
   /** Why the live path was given up on, when it was. */
   liveFellBack: string | null;
   /** What the speech provider said when it refused. A code and a status. */
@@ -409,6 +427,11 @@ export class VoiceSession {
     liveProvider: null as string | null,
     liveKeyterms: null as number | null,
     streamedTts: null as boolean | null,
+    stages: null as {
+      endpointingMs: number | null; transcriptionMs: number | null;
+      dispatchMs: number | null; llmTtftMs: number | null; handoffMs: number | null;
+      ttsFirstAudioMs: number | null; playbackMs: number | null; perceivedMs: number | null;
+    } | null,
     liveFellBack: null as string | null,
     voiceFailure: null as string | null,
   };
@@ -571,6 +594,7 @@ export class VoiceSession {
       liveProvider: this.diag.liveProvider,
       liveKeyterms: this.diag.liveKeyterms,
       streamedTts: this.diag.streamedTts,
+      stages: this.diag.stages,
       liveFellBack: this.diag.liveFellBack,
       voiceFailure: this.diag.voiceFailure,
       state: this.state,
@@ -855,6 +879,26 @@ export class VoiceSession {
     this.diag.liveKeyterms = grant.keyterms?.length ?? null;
   }
 
+  /**
+   * One place that turns marks into stages, so the callback and the on-screen
+   * readout can never disagree about what a turn cost.
+   */
+  private publishLatency(): void {
+    const b = latencyBreakdown(this.marks);
+    this.diag.stages = {
+      endpointingMs: b.endpointingMs,
+      transcriptionMs: b.transcriptionMs,
+      dispatchMs: b.dispatchMs,
+      llmTtftMs: b.llmTtftMs,
+      handoffMs: b.handoffMs,
+      ttsFirstAudioMs: b.ttsFirstAudioMs,
+      playbackMs: b.playbackMs,
+      perceivedMs: b.perceivedMs,
+    };
+    this.cb.onLatency?.(b);
+    this.publishDiagnostics();
+  }
+
   /** Words that are still arriving. Shown, never committed. */
   private showPartial(text: string): void {
     if (!text.trim() || this.closed) return;
@@ -1131,7 +1175,7 @@ export class VoiceSession {
               this.milestone('tts_audio_received', event.pcmBase64.length);
               this.milestone('playback_started');
               this.setState('RESPONDING');
-              this.cb.onLatency?.(latencyBreakdown(this.marks));
+              this.publishLatency();
             }
             break;
           }
@@ -1175,7 +1219,7 @@ export class VoiceSession {
               this.marks.streamed = timing.streamed ?? null;
               this.diag.streamedTts = timing.streamed ?? null;
             }
-            this.cb.onLatency?.(latencyBreakdown(this.marks));
+            this.publishLatency();
             break;
           }
           case 'failed':
@@ -1265,7 +1309,7 @@ export class VoiceSession {
 
     this.milestone('tts_audio_received', audioBase64.length);
     this.marks.ttsFirstAudioAtMs = Date.now();
-    this.cb.onLatency?.(latencyBreakdown(this.marks));
+    this.publishLatency();
     await this.speak(audioBase64, mime ?? 'audio/mpeg');
   }
 

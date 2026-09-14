@@ -133,6 +133,28 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
         value={d.voiceFailure ?? '—'}
         tone={d.voiceFailure ? 'bad' : 'idle'}
       />
+      {/*
+        * THE TURN, STAGE BY STAGE.
+        *
+        * T0 the caller stops, T1 the endpointer commits, T2 words exist, T3
+        * we ask, T4 first token, T5 synthesis starts, T6 first audio byte,
+        * T7 a sound comes out. The server's stages arrive as offsets from T3
+        * because the two machines do not share a clock.
+        */}
+      <Row label="— endpoint (T1-T0)" value={ms(d.stages?.endpointingMs ?? null)} />
+      <Row label="— transcript (T2-T1)" value={ms(d.stages?.transcriptionMs ?? null)} />
+      <Row label="— dispatch (T3-T2)" value={ms(d.stages?.dispatchMs ?? null)} />
+      <Row label="— LLM first token (T4-T3)" value={ms(d.stages?.llmTtftMs ?? null)} />
+      <Row label="— handoff (T5-T4)" value={ms(d.stages?.handoffMs ?? null)} />
+      <Row label="— TTS first audio (T6-T5)" value={ms(d.stages?.ttsFirstAudioMs ?? null)} />
+      <Row label="— playback (T7-T6)" value={ms(d.stages?.playbackMs ?? null)} />
+      <Row
+        label="SPEECH TO SPEECH (T7-T0)"
+        value={ms(d.stages?.perceivedMs ?? null)}
+        tone={d.stages?.perceivedMs == null ? 'idle'
+          : d.stages.perceivedMs < 2000 ? 'good'
+          : d.stages.perceivedMs < 2500 ? 'idle' : 'bad'}
+      />
       <Row label="Last error" value={d.lastError ?? 'none'} tone={d.lastError ? 'bad' : 'good'} />
 
       {d.lastTranscript ? (

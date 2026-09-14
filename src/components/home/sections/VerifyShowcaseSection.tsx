@@ -4,7 +4,7 @@ import { AlertCircle, ArrowRight, Check, FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
-import { PAGE, SECTION_Y } from './primitives';
+import { PAGE, SECTION_Y } from './primitives';
 import { useMotion } from '@/hooks/useMotion';
 import { useSectionField, useSectionMedia, useFieldProps, useMediaProps, useSectionIconName } from '@/site/content';
 import { iconFor } from '@/site/icons';
@@ -163,7 +163,13 @@ export function VerifyShowcaseSection() {
             * read it as a specific property, and it was covering the
             * photograph it was supposed to be labelling.
             */}
-          <div className="relative aspect-[16/10] saturate-[0.72] sm:aspect-[16/9]" {...mp('plate')}>
+          {/* The ratio is a custom property with the plate's own shape as
+              its fallback, so a Site Studio preset can make this square or
+              panoramic and an unstyled section is unchanged. */}
+          <div
+            className="relative saturate-[0.72] aspect-[var(--hm-media-ratio,16/10)] sm:aspect-[var(--hm-media-ratio,16/9)]"
+            {...mp('plate')}
+          >
             <SceneMedia
               scene="verification"
               alt={plate?.alt ?? ''}

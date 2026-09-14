@@ -128,8 +128,12 @@ test('the official-record image carries no cadastral number', () => {
   // honest, so the plate carries no code at all.
   assert.equal(/\d{2}\.\d{2}\.\d{2}\.\d{3}/.test(src), false,
     'a cadastral code is being printed over the record image again');
-  // And the image is given room rather than being cropped to a letterbox.
-  assert.match(src, /aspect-\[16\/10\]/,
+  /* And the image is given room rather than being cropped to a letterbox.
+     16/10 is now the FALLBACK of a custom property, because a Site Studio
+     style preset may set the plate square or panoramic. What this guards is
+     unchanged: the plate has a ratio, so it grows with its column, rather
+     than a fixed height that crops most of the building away. */
+  assert.match(src, /aspect-\[var\(--hm-media-ratio,16\/10\)\]/,
     'the record image is back to a fixed height that crops most of it away');
 });
 

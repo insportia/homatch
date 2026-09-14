@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { readLocalized } from '@/site/model';
+import { STYLE_AXES, readLocalized, type StyleAxis } from '@/site/model';
 import { sectionDef } from '@/site/registry';
 import { uploadAsset } from '@/services/siteContent';
 import type { StudioState } from './useStudioState';
@@ -116,7 +116,7 @@ function MediaEditor({ studio, slot, labelKey }: { studio: StudioState; slot: st
 
 export function Inspector({ studio }: { studio: StudioState }) {
   const { t } = useLanguage();
-  const { selected, setVariant, setTheme, setSpacing, setEnabled, setIcon } = studio;
+  const { selected, setVariant, setTheme, setSpacing, setStyle, setEnabled, setIcon } = studio;
 
   if (!selected) {
     return (
@@ -194,6 +194,39 @@ export function Inspector({ studio }: { studio: StudioState }) {
               <SelectItem value="spacious" className="text-[15px]">{t('studio_spacing_spacious')}</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        {/* ── Style presets ───────────────────────────────────────────
+            Built from STYLE_AXES rather than written out, so an axis added
+            to the vocabulary appears here with nothing to remember, and an
+            axis removed from it cannot leave a control behind that writes a
+            value normalizePage will throw away.
+
+            A section with no style object at all — everything saved before
+            presets existed — reads as 'default' on every axis, which is the
+            section exactly as it was designed. */}
+        <div className="space-y-3 border-b py-4">
+          <Label className="text-[15px] font-medium">{t('studio_style')}</Label>
+          {(Object.keys(STYLE_AXES) as StyleAxis[]).map(axis => (
+            <div key={axis} className="space-y-1">
+              <Label className="text-[14px] text-muted-foreground">
+                {t(`studio_style_${axis.toLowerCase()}` as Parameters<typeof t>[0])}
+              </Label>
+              <Select
+                value={selected.style?.[axis] ?? 'default'}
+                onValueChange={v => setStyle(axis, v as never)}
+              >
+                <SelectTrigger className="h-8 text-[15px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STYLE_AXES[axis].map(step => (
+                    <SelectItem key={step} value={step} className="text-[15px]">
+                      {t(`studio_step_${step.toLowerCase()}` as Parameters<typeof t>[0])}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
         </div>
 
         {def.fields.map(field => (

@@ -29,7 +29,7 @@ import { EASING, revealShape } from '@/lib/motion';
  * arrives late enough to read as a bug.
  */
 export function Reveal({
-  children, delayIndex = 0, className, as: Tag = 'div', ...rest
+  children, delayIndex = 0, className, style, as: Tag = 'div', ...rest
 }: {
   children: React.ReactNode;
   /** Position within a group, for staggering. No effect where stagger is 0. */
@@ -97,7 +97,7 @@ export function Reveal({
     return () => io.disconnect();
   }, [animated]);
 
-  if (!animated) return createElement(Tag, { className, ...rest }, children);
+  if (!animated) return createElement(Tag, { className, style, ...rest }, children);
 
   /*
    * createElement rather than <Tag …>: with a polymorphic tag, JSX resolves
@@ -111,6 +111,17 @@ export function Reveal({
       ref,
       className,
       style: {
+        /*
+         * The caller's own properties first, the motion's on top.
+         *
+         * Reveal used to replace `style` outright, which was invisible until
+         * something needed to pass one: a Site Studio style preset sets
+         * --hm-measure on the same element, and dropping it silently made
+         * the width control do nothing on the public site while working in
+         * the editor. Opacity, transform and transition stay Reveal's —
+         * those ARE the reveal, and nothing else may set them.
+         */
+        ...style,
         opacity: shown ? 1 : 0,
         transform: shown ? 'none' : `translateY(${shape.distance}px)`,
         transition: `opacity ${shape.duration}ms ${EASING.enter} ${delayIndex * shape.stagger}ms, `

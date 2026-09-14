@@ -13,8 +13,14 @@ import { ArrowRight } from 'lucide-react';
  */
 
 /** The page grid. One measure, used by every section, so the left edge of the
-    logo, the headline and every section title sit on the same line. */
-export const PAGE = 'mx-auto w-full max-w-[90rem] px-5 sm:px-8 lg:px-10';
+    logo, the headline and every section title sit on the same line.
+
+    The measure is a custom property with 90rem as its fallback, so it is
+    exactly what it always was unless a Site Studio style preset narrows or
+    widens it for one section. `hm-measure` is the hook the alignment rules
+    in index.css use to move that measure once it is narrower than the page;
+    it carries no styles of its own. */
+export const PAGE = 'hm-measure mx-auto w-full max-w-[var(--hm-measure,90rem)] px-5 sm:px-8 lg:px-10';
 
 /** Start-padding that lands exactly on the page grid's content edge, for
     full-bleed sections that align to it without nesting another container.

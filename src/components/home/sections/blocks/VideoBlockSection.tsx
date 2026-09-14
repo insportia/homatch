@@ -43,7 +43,9 @@ export function VideoBlockSection() {
 
   if (!intro.written && !video && !editing) return null;
 
-  const frame = `relative isolate aspect-video w-full overflow-hidden rounded-[0.9rem] ${
+  /* 16/9 unless a Site Studio preset says otherwise. A video is the one
+     picture on a page whose shape an admin has a real reason to change. */
+  const frame = `relative isolate aspect-[var(--hm-media-ratio,16/9)] w-full overflow-hidden rounded-[0.9rem] ${
     dark ? 'bg-white/[0.06] ring-1 ring-inset ring-white/15' : 'bg-secondary ring-1 ring-inset ring-foreground/10'
   }`;
 

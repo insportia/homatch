@@ -9,6 +9,8 @@ import {
   DEFAULT_TRANSLATION_MODE, type Locale, type SitePageContent, type SiteSection,
   type SiteVersion, type TranslationMode,
   type FieldHost,
+  type SectionStyle, type StyleAxis,
+  defaultStyle,
   applyAutoTranslation, applySuggestion, dismissSuggestion, duplicateSection as duplicate,
   editLocale, insertSectionAfter,
   emptyPage, makeSection, markReviewed, moveSection, onItem, setSectionEnabled,
@@ -98,6 +100,14 @@ export interface StudioState {
   setVariant: (variant: string) => void;
   setTheme: (theme: 'light' | 'dark' | null) => void;
   setSpacing: (spacing: SiteSection['spacing']) => void;
+  /**
+   * One axis of the selected section's style preset.
+   *
+   * Typed against STYLE_AXES rather than against `string`, so a control that
+   * offers a step the vocabulary does not have is a compile error instead of
+   * a stored value that normalizePage silently throws away on the next load.
+   */
+  setStyle: <K extends StyleAxis>(axis: K, value: SectionStyle[K]) => void;
   setEnabled: (enabled: boolean, id?: string) => void;
   setMedia: (slot: string, url: string | null, alt?: string, atSection?: string) => void;
 
@@ -319,6 +329,17 @@ export function useStudioState(): StudioState {
   const setSpacing = useCallback((spacing: SiteSection['spacing']) => {
     if (!selectedId) return;
     patch(selectedId, s => ({ ...s, spacing }));
+  }, [selectedId, patch]);
+
+  const setStyle = useCallback(<K extends StyleAxis>(axis: K, value: SectionStyle[K]) => {
+    if (!selectedId) return;
+    /* Merged onto defaultStyle rather than onto whatever is stored: a section
+       saved before presets existed has no style object at all, and spreading
+       undefined would produce a style with one axis in it. */
+    patch(selectedId, s => ({
+      ...s,
+      style: { ...defaultStyle(), ...(s.style ?? {}), [axis]: value },
+    }));
   }, [selectedId, patch]);
 
   /**
@@ -716,7 +737,7 @@ export function useStudioState(): StudioState {
     undo, redo, canUndo: canUndo(history), canRedo: canRedo(history), discard, selectedId, select: setSelectedId, selected,
     locale, setLocale, mode, setMode,
     editField,
-    editSectionField, setVariant, setTheme, setSpacing, setEnabled, setMedia,
+    editSectionField, setVariant, setTheme, setSpacing, setStyle, setEnabled, setMedia,
     editItemText, addItem, removeItem, moveItem, orderChildren, duplicateItem, setIcon,
     move, orderSectionIds, addSection, duplicateSection, removeSection, setSeo,
     acceptSuggestion, rejectSuggestion, approveLocale,

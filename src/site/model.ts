@@ -46,6 +46,79 @@ export type SectionTheme = 'light' | 'dark';
 export type SectionSpacing = 'compact' | 'normal' | 'spacious';
 
 /**
+ * STYLE PRESETS — how a section is set, as opposed to what it says.
+ *
+ * Ten axes, counting `theme` and `spacing` which already existed. Every one
+ * of them is a CLOSED list of named steps rather than a value an admin types,
+ * and that is the whole design:
+ *
+ *   A named step cannot produce a colour that fails contrast, a measure that
+ *   breaks the grid, or a radius that belongs to no other card on the page.
+ *   A free field can do all three, and the person doing it has no way to know
+ *   until somebody else notices.
+ *
+ *   Every step resolves to a class or a custom property the stylesheet
+ *   already defines. Nothing here is inline style, so nothing here can put a
+ *   raw value into the DOM — which is also why a stored value the code no
+ *   longer recognises renders the default instead of an unstyled section.
+ *
+ * 'default' is not a value. It means "whatever this section was designed to
+ * do", and it is what every axis starts at, so a section nobody has styled
+ * renders byte for byte as it does today.
+ */
+export const STYLE_AXES = {
+  /** The ground the section sits on. */
+  surface: ['default', 'muted', 'contrast', 'plain'],
+  /** The measure its content is held to. */
+  width: ['default', 'narrow', 'wide', 'full'],
+  /** Where that measure sits, when it is narrower than the page. */
+  align: ['default', 'start', 'center'],
+  /** Which way the words run. Distinct from `align`: a centred column of
+      left-aligned text is a real and common composition. */
+  textAlign: ['default', 'start', 'center'],
+  /** Vertical air INSIDE the section, as opposed to around it. */
+  density: ['default', 'compact'],
+  /** Whether the section's highlights are gold or stay quiet. */
+  accent: ['default', 'neutral'],
+  /** How a card inside the section is drawn. */
+  cardStyle: ['default', 'flat', 'outlined', 'elevated'],
+  /** The shape of a picture inside it. */
+  mediaRatio: ['default', 'square', 'wide', 'tall'],
+} as const;
+
+export type StyleAxis = keyof typeof STYLE_AXES;
+export type SectionStyle = { [K in StyleAxis]: (typeof STYLE_AXES)[K][number] };
+
+/** Every axis at 'default': the section as the code drew it. */
+export function defaultStyle(): SectionStyle {
+  return Object.fromEntries(
+    (Object.keys(STYLE_AXES) as StyleAxis[]).map(axis => [axis, 'default']),
+  ) as SectionStyle;
+}
+
+/**
+ * A stored style, reduced to steps the code knows.
+ *
+ * Anything else — a typo, a value from a newer build, a direct database
+ * write — becomes 'default'. The section then renders as designed, which is
+ * the only safe answer: the alternative is a class name that resolves to no
+ * rule and a section with no background.
+ */
+export function cleanStyle(raw: unknown): SectionStyle {
+  const out = defaultStyle();
+  if (!raw || typeof raw !== 'object') return out;
+  const r = raw as Record<string, unknown>;
+  for (const axis of Object.keys(STYLE_AXES) as StyleAxis[]) {
+    const value = r[axis];
+    const allowed: readonly string[] = STYLE_AXES[axis];
+    if (typeof value === 'string' && allowed.includes(value)) {
+      (out as Record<string, string>)[axis] = value;
+    }
+  }
+  return out;
+}
+
+/**
  * One repeated child of a section: a card, a step, a question.
  *
  * It carries its own id, and that id is the point. Inline editing
@@ -80,6 +153,16 @@ export interface SiteSection {
   variant: string;
   theme: SectionTheme | null;
   spacing: SectionSpacing;
+  /**
+   * How the section is set. See STYLE_AXES.
+   *
+   * Beside `variant` rather than inside it, because they answer different
+   * questions. A variant is a LAYOUT the component implements and the
+   * registry declares — 'console_focus' exists only where somebody wrote it.
+   * A style is a presentation step that every section understands, because it
+   * is applied by the renderer rather than by the component.
+   */
+  style: SectionStyle;
   content: Record<string, LocalizedText>;
   /** Translation state and pending suggestions, per field. Kept BESIDE
    *  `content` rather than inside it, so the approved value and the machine's
@@ -132,6 +215,7 @@ export function emptySeo(): SitePageSeo {
 export function makeSection(type: string, id: string, variant = 'default'): SiteSection {
   return {
     id, type, enabled: true, variant, theme: null, spacing: 'normal',
+    style: defaultStyle(),
     content: {}, i18n: {}, media: {}, links: {}, icons: {}, items: [],
   };
 }
@@ -766,6 +850,7 @@ export function normalizeSection(raw: unknown, rules: NormalizeRules): SiteSecti
   const theme = r.theme === 'light' || r.theme === 'dark' ? r.theme : null;
   const spacing: SectionSpacing =
     r.spacing === 'compact' || r.spacing === 'spacious' ? r.spacing : 'normal';
+  const style = cleanStyle(r.style);
 
   const content = cleanContent(r.content);
   const i18n = cleanI18n(r.i18n);
@@ -794,7 +879,7 @@ export function normalizeSection(raw: unknown, rules: NormalizeRules): SiteSecti
   }
 
   return {
-    id, type, enabled: r.enabled !== false, variant, theme, spacing,
+    id, type, enabled: r.enabled !== false, variant, theme, spacing, style,
     content, i18n, media, links, icons, items,
   };
 }

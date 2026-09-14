@@ -171,10 +171,14 @@ const sitePage = readFileSync('src/site/render/SitePage.tsx', 'utf8');
 const reveal = readFileSync('src/components/common/Reveal.tsx', 'utf8');
 
 test('the public site reveals its sections', () => {
-  assert.ok(
-    sitePage.includes('if (!onSelect) return <Reveal key={key}>{body}</Reveal>;'),
-    'the public render path no longer reveals sections',
-  );
+  /* Matched on the branch rather than on one exact line: the Reveal now also
+     carries the section's Site Studio style preset, so it is a multi-line
+     element. What this guards is unchanged — the public path, and only the
+     public path, wraps a section in Reveal. */
+  const publicPart = sitePage.slice(0, sitePage.indexOf('data-studio-section'));
+  assert.ok(/if \(!onSelect\)/.test(publicPart), 'the two render paths are no longer separated');
+  assert.ok(/<Reveal key=\{key\}/.test(publicPart),
+    'the public render path no longer reveals sections');
 });
 
 test('the editor never animates a section in', () => {
@@ -187,8 +191,19 @@ test('a reveal can never leave content invisible', () => {
   // Four separate ways of failing VISIBLE rather than hidden. The usual
   // scroll-reveal bug is a blank space where a paragraph should be, and
   // nobody notices in development because development scrolls.
-  assert.ok(reveal.includes('if (!animated) return createElement(Tag, { className, ...rest }, children);'),
+  /* The still branch now also passes the caller's own style through — a Site
+     Studio measure or picture ratio, which is not motion and must survive
+     reduced motion. What matters is unchanged and is what this reads: no
+     observer, and no opacity or transform of Reveal's own. */
+  /* Anchored on the RETURN, not on `if (!animated)` — that phrase appears
+     first inside the observer effect, where IntersectionObserver belongs. */
+  const at = reveal.indexOf('if (!animated) return createElement');
+  assert.ok(at > 0, 'Reveal no longer has a branch for motion being off');
+  const still = reveal.slice(at, at + 140);
+  assert.ok(/createElement\(Tag, \{[^}]*\}, children\)/.test(still),
     'with motion off there must be no observer and no opacity at all');
+  assert.ok(!/opacity|transform|IntersectionObserver/.test(still),
+    'the reduced-motion branch has grown motion of its own');
   assert.ok(reveal.includes("typeof IntersectionObserver === 'undefined'"),
     'a browser without the API must show the content immediately');
   assert.ok(reveal.includes('getBoundingClientRect().top < window.innerHeight'),

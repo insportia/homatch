@@ -897,3 +897,94 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   SITE STUDIO — STYLE PRESETS
+
+   An admin sets a section's surface, measure, alignment, density, accent,
+   card style or picture shape from a closed list of named steps; each step
+   arrives here as a data attribute on the wrapper the renderer puts around
+   the section, and matches one of the rules below.
+
+   WHY THIS IS A STYLESHEET AND NOT INLINE STYLE
+
+   Every value in this file was chosen once, against the palette and the
+   grid. A step an admin picks can only ever resolve to one of them, so
+   there is no path from the editor to a colour that fails contrast, a
+   radius that matches nothing else on the page, or a measure that breaks
+   the rhythm. A stored step the code no longer knows matches no rule at
+   all, and the section renders exactly as it was designed — which is the
+   right way for this to fail.
+
+   WHY THE RULES REACH INTO THE SECTION
+
+   `> section` and the descendant selectors are deliberate. The sections
+   paint their own grounds and set their own padding, and a wrapper cannot
+   change either from the outside. Specificity is enough on its own — a
+   two-part selector beats Tailwind's single class — so none of this needs
+   !important, and a section can still override it by being more specific,
+   which is what a bespoke region should be able to do.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Surface ─────────────────────────────────────────────────────────── */
+[data-hm-surface='muted'] > section,
+[data-hm-surface='muted'] > div > section {
+  background-color: hsl(var(--secondary));
+}
+[data-hm-surface='contrast'] > section,
+[data-hm-surface='contrast'] > div > section {
+  background-color: #0d0d0d;
+  color: #fff;
+}
+[data-hm-surface='plain'] > section,
+[data-hm-surface='plain'] > div > section {
+  background-color: transparent;
+}
+
+/* ── Alignment of the measure ────────────────────────────────────────── */
+/* Only visible once `width` has made the measure narrower than the page;
+   at the default measure there is nothing to move. */
+[data-hm-align='start'] .hm-measure { margin-inline: 0 auto; }
+[data-hm-align='center'] .hm-measure { margin-inline: auto; }
+
+/* ── Which way the words run ─────────────────────────────────────────── */
+[data-hm-text='start'] { text-align: start; }
+[data-hm-text='center'] { text-align: center; }
+
+/* ── Density: the section's own vertical air ─────────────────────────── */
+[data-hm-density='compact'] > section,
+[data-hm-density='compact'] > div > section {
+  padding-block: 2.25rem;
+}
+@media (min-width: 1024px) {
+  [data-hm-density='compact'] > section,
+  [data-hm-density='compact'] > div > section {
+    padding-block: 3.5rem;
+  }
+}
+
+/* ── Accent ──────────────────────────────────────────────────────────────
+   One remap, and every gold rule, icon, edge and control inside the section
+   goes quiet together. Doing it per element would mean finding all of them,
+   and missing one is a section that is half gold. */
+[data-hm-accent='neutral'] {
+  --gold: var(--muted-foreground);
+  --gold-ink: var(--foreground);
+  --gold-soft: var(--secondary);
+  --gold-hover: var(--foreground);
+  --gold-border: var(--border);
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────── */
+[data-hm-cards='flat'] .bg-card {
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-hm-cards='outlined'] .bg-card {
+  border-color: hsl(var(--foreground) / 0.35);
+  box-shadow: none;
+}
+[data-hm-cards='elevated'] .bg-card {
+  border-color: transparent;
+  box-shadow: 0 18px 40px -24px rgb(0 0 0 / 0.35);
+}

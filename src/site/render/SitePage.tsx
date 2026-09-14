@@ -4,6 +4,7 @@ import { Reveal } from '@/components/common/Reveal';
 import { KNOWN_SECTION_TYPES } from '../registry';
 import type { SitePageContent } from '../model';
 import { resolveSections } from './order';
+import { styleMark } from '../style';
 
 import { HeroSection } from '@/components/home/sections/HeroSection';
 import { ActionLauncherSection } from '@/components/home/sections/ActionLauncherSection';
@@ -152,6 +153,23 @@ export function SitePage({
         // this is the second gate, so a bug in one cannot render anything.
         if (!Component || !KNOWN_SECTION_TYPES.includes(type)) return null;
 
+        /*
+         * THE STYLE PRESET, APPLIED HERE AND NOWHERE ELSE.
+         *
+         * It rides the wrapper the page ALREADY put around every section —
+         * Reveal on the public site, the click target in the editor — rather
+         * than adding one. That matters more than it sounds: a new element
+         * between the wrapper and the section changes the DOM depth of every
+         * region on the site, and the first thing it broke was the phone
+         * motion probe, which finds a section and reads the transform off its
+         * parent. Anything else measuring the same relationship — a test, a
+         * selector, a layout that assumed a direct child — would have broken
+         * the same way, silently.
+         *
+         * So: no new level, and one place that decides the attributes for all
+         * twenty-eight section types without a line of change in any of them.
+         */
+        const mark = styleMark(section?.style);
         const body = (
           <SectionScope
             section={section}
@@ -185,7 +203,13 @@ export function SitePage({
          * transform while it moves would fight the floating controls
          * positioned over it.
          */
-        if (!onSelect) return <Reveal key={key}>{body}</Reveal>;
+        if (!onSelect) {
+          return (
+            <Reveal key={key} className={mark.className} style={mark.style} {...mark.attrs}>
+              {body}
+            </Reveal>
+          );
+        }
 
         // In the editor, but a code-only region with no stored section:
         // nothing to select, so nothing to wrap.
@@ -216,7 +240,9 @@ export function SitePage({
         return (
           <div
             key={key}
-            className="relative"
+            className={`relative ${mark.className}`}
+            style={mark.style}
+            {...mark.attrs}
             data-studio-section={section.id}
             onClick={(e) => {
               onSelect(section.id);

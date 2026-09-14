@@ -275,6 +275,21 @@ jobs:
             "contact-import"
             "social-post-generate"
             "community-recommend"
+            # The fifth, found the same way and worse.
+            #
+            # outreach-campaign-preview writes owner_id, and the version live
+            # in production writes public.users.id into a column whose foreign
+            # key points at auth.users(id). Zero of the ten profile ids in this
+            # database satisfy that key, so creating a campaign fails with
+            # 23503 for EVERY user and always has -- which is why there is not
+            # one outreach campaign in production.
+            #
+            # The repository has written `user.id` for some time. It could
+            # never reach production, because this list is how anything gets
+            # there and this function was not on it. deployCoverage printed it
+            # as hand-deployed on every run, in a warning whose own text says a
+            # repository change to it does not reach production.
+            "outreach-campaign-preview"
             # The assistant, and the anonymous session it needs.
             #
             # homatch-ai has been production since day one and was NEVER listed

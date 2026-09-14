@@ -243,16 +243,22 @@ test('every function the frontend calls by name is deployed', () => {
     .sort();
 
   /*
-   * Seven older functions are called from the frontend and deployed by hand.
+   * Six older functions are called from the frontend and deployed by hand.
    * They ARE live — they answer in production today — so failing on them would
    * block every release for a debt this branch did not create. They are
    * printed instead, because the alternative is that nobody ever finds out
    * that a repository change to any of them cannot reach a customer.
+   *
+   * outreach-campaign-preview was the seventh, and is the reason this list
+   * should be read rather than tolerated. The live copy wrote a profile id
+   * into owner_id, whose foreign key points at auth.users — so every attempt
+   * to create a campaign failed with 23503, for every user, while the fix sat
+   * in the repository unable to reach production. It is now deployed by CI
+   * and removed from this allowance.
    */
   const PRE_EXISTING_HAND_DEPLOYED = new Set([
     'admin-user360', 'classify-signals-v2', 'impersonate-user',
-    'outreach-campaign-preview', 'outreach-provider-status',
-    'seed-demo-matches', 'system-health',
+    'outreach-provider-status', 'seed-demo-matches', 'system-health',
   ]);
 
   const known = undeployed.filter((fn) => PRE_EXISTING_HAND_DEPLOYED.has(fn));

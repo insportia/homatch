@@ -111,7 +111,11 @@ serve(async (req) => {
       sms_template: sms_template ?? null,
       audience_count: eligibleCount,
       cost_estimate_usd: costPreview?.total_estimate_usd ?? 0,
-      provider: 'MOCK',
+      /* A campaign that has sent nothing has no provider. Stamping MOCK
+         at creation is a claim about a delivery that has not happened;
+         the provider is whatever actually carried the message, and the
+         send records it per recipient. */
+      provider: null,
     }).select('id,status,created_at').maybeSingle();
 
     if (insertErr) {

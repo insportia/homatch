@@ -73,7 +73,6 @@ const UNSHIPPED = {
   'browserbase-handoff': 'hand-deployed; CI route unreviewed',
   'classify-signals-v2': 'hand-deployed; CI route unreviewed',
   'generate-search-profile': 'hand-deployed; CI route unreviewed',
-  'outreach-campaign-preview': 'hand-deployed; CI route unreviewed',
   'outreach-provider-status': 'hand-deployed; CI route unreviewed',
   'outreach-sms-webhook': 'hand-deployed; CI route unreviewed',
   'outreach-unsubscribe': 'hand-deployed; CI route unreviewed',

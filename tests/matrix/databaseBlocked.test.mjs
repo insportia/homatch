@@ -107,8 +107,8 @@ const MATRIX = [
     code: ['supabase/functions/whatsapp-sync/index.ts'],
     tests: [],
     tables: ['comm_whatsapp_templates', 'comm_channel_accounts'],
-    note: 'The synced rows land in comm_whatsapp_templates and the account they belong to in comm_channel_accounts, both live.',
-    external: 'The production Meta access token is currently rejected with HTTP 401, so a live sync cannot be run even once the schema exists.',
+    note: 'The synced rows land in comm_whatsapp_templates and the account they belong to in comm_channel_accounts, both live. The TEST number is CONNECTED with real Meta identifiers and now has an owner — it had none, and whatsapp-webhook drops an inbound message whose account belongs to nobody.',
+    external: 'The token is accepted now: the smoke test returns 200 for both the phone number and the WABA (checked 2026-09-14; the 401 in this row was stale). What is still outside this repository is Meta subscribing its webhook to the deployed URL and a real message being sent from a real handset.',
   },
   {
     feature: 'Campaign launch — audience summary, cost estimate, credit reservation',
@@ -314,8 +314,9 @@ test('the status document is regenerated from this matrix', () => {
     '',
     SCHEMA_APPLIED
       ? `${counts.total} features. ${counts.clear} are complete and unblocked today. `
-        + `${counts.external} need something outside this repository — a working provider `
-        + `credential, or a real call to a real person — and nothing else is waiting on Homatch.`
+        + `${counts.external} need something outside this repository — Meta subscribing its `
+        + `webhook and a real message from a real handset, and a real call to a real Georgian `
+        + `speaker — and nothing else is waiting on Homatch.`
       : `${counts.total} features. ${counts.clear} are complete and unblocked today. `
         + `${counts.blocked} are finished in code and wait only on the owner applying the migration. `
         + `${counts.external} additionally need something outside this repository.`,

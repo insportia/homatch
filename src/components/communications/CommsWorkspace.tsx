@@ -115,9 +115,19 @@ const PRODUCT_NAV: Record<CommsProduct, NavEntry[]> = {
     { to: '/outreach/whatsapp/contacts', labelKey: 'comms_nav_contacts', icon: Users },
   ],
   /* Email. Campaigns, what came back, and who it goes to. */
+  /*
+   * Contacts, not Contacts AND Lists.
+   *
+   * Both answered "who am I sending to", so a person had to know which of two
+   * screens held the answer and the honest answer was "both, differently". A
+   * list is a way of looking at contacts, so it is a filter inside the
+   * contacts workspace now. The lists themselves, their import pipeline and
+   * the management screen are untouched -- /outreach/email/lists still
+   * resolves for anything that links to it. It is simply no longer presented
+   * as a second, rival destination.
+   */
   email: [
     { to: '/outreach/email', labelKey: 'comms_nav_overview', icon: Mail, exact: true },
-    { to: '/outreach/email/lists', labelKey: 'comm_contact_lists', icon: ListChecks },
     { to: '/outreach/email/contacts', labelKey: 'comms_nav_contacts', icon: Users },
     { to: '/outreach/email/analytics', labelKey: 'comms_nav_analytics', icon: BarChart3 },
   ],
@@ -160,12 +170,19 @@ function NavItems({ product, onNavigate }: { product: CommsProduct; onNavigate?:
             onClick={onNavigate}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
+              'group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
               // Motion is a fade of colour only. A dashboard rail that slides
               // or scales on every hover is noise on a screen people keep open.
+              //
+              // The active mark is a two-pixel gold rule at the leading edge
+              // rather than a heavier fill. On a rail somebody keeps open all
+              // day the question is "which one am I on", and a hairline
+              // answers it without turning the menu into the loudest thing on
+              // the screen. It is the one gold accent in the whole shell.
+              'before:absolute before:inset-y-1.5 before:start-0 before:w-[2px] before:rounded-full before:transition-colors',
               active
-                ? 'bg-foreground/[0.06] font-medium text-foreground'
-                : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground',
+                ? 'bg-foreground/[0.05] font-medium text-foreground before:bg-gold'
+                : 'text-muted-foreground before:bg-transparent hover:bg-foreground/[0.04] hover:text-foreground',
             )}
           >
             <item.icon className={cn('h-4 w-4 shrink-0', active ? 'text-gold-ink' : 'opacity-70')} aria-hidden="true" />

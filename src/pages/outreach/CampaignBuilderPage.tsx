@@ -17,6 +17,7 @@ import {
   ShieldCheck, CalendarClock, Eye, Check, X, Minus,
 } from 'lucide-react';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import { useCommsChannel, useCommsProduct } from '@/components/communications/channel';
 import { buildLaunchChecklist } from '@/lib/comm/launchChecklist';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -74,8 +75,8 @@ const CHANNEL_CHOICES: Array<{
   { code: 'SMS',      icon: MessageSquare,  titleKey: 'comms_cb_sms',    bodyKey: 'comms_cb_sms_body', secondary: true },
 ];
 
-const STEPS = ['channel', 'audience', 'content', 'schedule', 'review', 'launch'] as const;
-type Step = typeof STEPS[number];
+const ALL_STEPS = ['channel', 'audience', 'content', 'schedule', 'review', 'launch'] as const;
+type Step = typeof ALL_STEPS[number];
 
 interface ContactListRow { id: string; name: string; total_rows: number; valid_rows: number }
 
@@ -85,7 +86,29 @@ export default function CampaignBuilderPage() {
   const [params, setParams] = useSearchParams();
 
   const campaignId = params.get('id');
-  const step = (params.get('step') ?? 'channel') as Step;
+
+  /*
+   * ── THE CHANNEL IS NOT A QUESTION WHEN THE PRODUCT ALREADY ANSWERED IT ──
+   *
+   * This builder is reached from inside AI Calls and from inside WhatsApp,
+   * and it was asking, every time, which of AI_CALL / WHATSAPP / SMS the
+   * person meant -- offering two other products as equal chips to somebody
+   * who had just clicked "New campaign" in the one they were standing in.
+   *
+   * The route says which product this is. When it does, the channel step is
+   * removed from the wizard entirely rather than pre-selected: a step whose
+   * answer is fixed is not a step, and leaving it visible-but-decided invites
+   * the exact change of channel this exists to prevent.
+   *
+   * The unscoped /outreach/campaigns/new remains, because it is linked from
+   * the cross-channel hub where choosing IS the job. There the step stays.
+   */
+  const lockedChannel = useCommsChannel();
+  const STEPS = lockedChannel
+    ? (ALL_STEPS.filter((x) => x !== 'channel') as unknown as typeof ALL_STEPS)
+    : ALL_STEPS;
+
+  const step = (params.get('step') ?? STEPS[0]) as Step;
   const stepIndex = Math.max(0, STEPS.indexOf(step));
 
   const [campaign, setCampaign] = useState<CommCampaign | null>(null);
@@ -96,6 +119,9 @@ export default function CampaignBuilderPage() {
    * falls back to AI_CALL, which is what the builder defaulted to before.
    */
   const initialChannel = (() => {
+    /* The route wins over the query string, and the query string over the
+       default. A path cannot be edited by a stale link the way a param can. */
+    if (lockedChannel) return lockedChannel;
     const c = (params.get('channel') ?? '').toUpperCase();
     return CHANNEL_CHOICES.some((x) => x.code === c) ? c : 'AI_CALL';
   })();
@@ -177,7 +203,7 @@ export default function CampaignBuilderPage() {
       await updateCampaign(campaignId, draft);
       return campaignId;
     }
-    const created = await createCampaign(draft);
+    const created = await createCampaign(draft, lockedChannel ?? undefined);
     if (!created.ok) {
       toast.error(t(SAVE_FAILURE_MESSAGE[created.reason] ?? 'comm_save_failed'));
       return null;
@@ -276,7 +302,7 @@ export default function CampaignBuilderPage() {
             ))}
           </ol>
 
-          {step === 'channel' ? (
+          {step === 'channel' && !lockedChannel ? (
             <Card><CardContent className="space-y-4 p-4">
               <div className="space-y-1.5">
                 <Label className="text-xs">{t('comm_campaign_name')}</Label>
@@ -339,6 +365,21 @@ export default function CampaignBuilderPage() {
 
           {step === 'audience' ? (
             <Card><CardContent className="space-y-3 p-4">
+              {/*
+               * The name follows the channel step when there is one. When the
+               * product has already decided the channel that step is gone, so
+               * the name moves here rather than being lost with it -- dropping
+               * a step must not drop the field it happened to contain.
+               */}
+              {lockedChannel ? (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('comm_campaign_name')}</Label>
+                  <Input
+                    value={draft.name ?? ''} onChange={(e) => patch({ name: e.target.value })}
+                    className="h-9 text-sm" maxLength={120}
+                  />
+                </div>
+              ) : null}
               <Label className="text-xs">{t('comm_campaign_audience')}</Label>
               {!lists.length ? (
                 <Alert>

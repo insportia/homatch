@@ -92,8 +92,11 @@ export class ResendEmailAdapter {
   async send(params: SendEmailParams): Promise<EmailSendResult> {
     try {
       const from = params.from_name
-        ? `${params.from_name} <${params.from_email || 'noreply@homatch.live'}>`
-        : (params.from_email || 'Homatch <noreply@homatch.live>');
+        /* The verified sending domain. auth.homatch.live carries the DKIM key
+           and the send. subdomain with the provider's SPF and return-path, and
+           it is the sender this account has actually tested. */
+        ? `${params.from_name} <${params.from_email || 'no-reply@auth.homatch.live'}>`
+        : (params.from_email || 'Homatch <no-reply@auth.homatch.live>');
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },

@@ -362,7 +362,7 @@ export default function AgentBuilderPage() {
                 </Button>
                 <Button
                   variant="outline" className="w-full justify-start gap-2"
-                  onClick={() => navigate(`/outreach/campaigns/new?agent=${id}&channel=AI_CALL`)}
+                  onClick={() => navigate(`/outreach/calls/campaigns/new?agent=${id}`)}
                 >
                   <MessageSquareText className="h-4 w-4 shrink-0" aria-hidden="true" />
                   {t('comms_next_campaign')}

@@ -568,7 +568,7 @@ export default function EmailCampaignsPage() {
                 onClick={() => setTab(x.key)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-t-md border-b-2 -mb-px transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   tab === x.key
-                    ? 'border-primary text-foreground'
+                    ? 'border-gold text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
                 aria-current={tab === x.key ? 'page' : undefined}

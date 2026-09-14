@@ -223,9 +223,19 @@ export const routes: RouteConfig[] = [
    * The unscoped paths are kept and redirect, because they have been linked.
    */
   { name: 'Calls Campaigns',   path: '/outreach/calls/campaigns',    element: <CampaignsPage />,        visible: false },
+  /* The builder, per product. A wizard whose first step asks which channel
+     you meant is a wizard that did not know -- and it is reached from a
+     button inside a product that already does. */
+  { name: 'Calls Campaign Builder', path: '/outreach/calls/campaigns/new', element: <CampaignBuilderPage />, visible: false },
+  { name: 'WhatsApp Campaign Builder', path: '/outreach/whatsapp/campaigns/new', element: <CampaignBuilderPage />, visible: false },
   { name: 'Calls Agents',      path: '/outreach/calls/agents',       element: <AgentsPage />,           visible: false },
   { name: 'Calls Numbers',     path: '/outreach/calls/numbers',      element: <ChannelAccountsPage />,  visible: false },
   { name: 'Calls Contacts',    path: '/outreach/calls/contacts',     element: <ContactsPage />,         visible: false },
+  /* Import, per product. "Import contacts" pressed inside Email is an EMAIL
+     audience import; the same wizard with the channel it was opened from. */
+  { name: 'Calls Import',      path: '/outreach/calls/contacts/import',    element: <ContactImportPage />, visible: false },
+  { name: 'WhatsApp Import',   path: '/outreach/whatsapp/contacts/import', element: <ContactImportPage />, visible: false },
+  { name: 'Email Import',      path: '/outreach/email/contacts/import',    element: <ContactImportPage />, visible: false },
 
   { name: 'WhatsApp Numbers',  path: '/outreach/whatsapp/numbers',   element: <ChannelAccountsPage />,  visible: false },
   { name: 'WhatsApp Contacts', path: '/outreach/whatsapp/contacts',  element: <ContactsPage />,         visible: false },

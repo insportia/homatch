@@ -162,7 +162,7 @@ export default function CallsPage() {
             </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/campaigns/new?channel=AI_CALL')}>
+            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/calls/campaigns/new')}>
               {t('comms_calls_new_campaign')}
             </Button>
             <Button variant="outline" size="sm" className="h-8" onClick={() => navigate('/outreach/campaigns?channel=AI_CALL')}>
@@ -212,7 +212,7 @@ export default function CallsPage() {
                   <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/contacts/import')}>
                     <Users className="h-3.5 w-3.5" aria-hidden="true" />{t('comms_import_contacts')}
                   </Button>
-                  <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/campaigns/new?channel=AI_CALL')}>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/calls/campaigns/new')}>
                     <Megaphone className="h-3.5 w-3.5" aria-hidden="true" />{t('comms_calls_new_campaign')}
                   </Button>
                 </div>
@@ -295,7 +295,7 @@ export default function CallsPage() {
                   icon={Megaphone}
                   titleKey="comms_calls_no_campaigns"
                   bodyKey="comms_calls_no_campaigns_body"
-                  action={{ labelKey: 'comms_calls_new_campaign', onClick: () => navigate('/outreach/campaigns/new?channel=AI_CALL') }}
+                  action={{ labelKey: 'comms_calls_new_campaign', onClick: () => navigate('/outreach/calls/campaigns/new') }}
                 />
               ) : (
                 <ul className="grid gap-2">
@@ -451,7 +451,7 @@ export default function CallsPage() {
               icon={Phone}
               titleKey="comm_calls_empty"
               bodyKey="comm_calls_empty_body"
-              action={{ labelKey: 'comm_new_campaign_call', onClick: () => navigate('/outreach/campaigns/new') }}
+              action={{ labelKey: 'comm_new_campaign_call', onClick: () => navigate('/outreach/calls/campaigns/new') }}
             />
           ) : (
             <ScrollTable minWidth={900}>

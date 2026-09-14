@@ -487,14 +487,35 @@ export async function getCampaign(id: string): Promise<CommCampaign | null> {
  * caller maps the code to a sentence; the technical detail goes to the console
  * for support.
  */
+/** CHANNEL_MISMATCH: the action was scoped to one product and given another. */
 export type SaveFailure =
-  | 'NOT_SIGNED_IN' | 'DENIED' | 'INVALID' | 'DUPLICATE' | 'UNAVAILABLE';
+  | 'NOT_SIGNED_IN' | 'DENIED' | 'INVALID' | 'DUPLICATE' | 'UNAVAILABLE' | 'CHANNEL_MISMATCH';
 
 export async function createCampaign(
   input: Partial<CommCampaign>,
+  /**
+   * The product this was created from, when it was created from one.
+   *
+   * ENFORCEMENT, NOT DECORATION.
+   *
+   * The builder hides the channel chooser inside a product. Hiding a control
+   * is a statement about the screen, not about the action: the function
+   * underneath still accepted whatever campaign_type it was handed, so a
+   * stale tab, a replayed request or a future caller could create a WhatsApp
+   * campaign from the AI Calls builder and nothing would object.
+   *
+   * So the lock is checked HERE, where the write happens. A mismatch is a
+   * refusal rather than a silent correction: quietly rewriting the channel
+   * would hide the bug that produced the mismatch.
+   */
+  expectChannel?: CommsChannel,
 ): Promise<{ ok: true; campaign: CommCampaign } | { ok: false; reason: SaveFailure }> {
   const uid = await currentUserId();
   if (!uid) return { ok: false, reason: 'NOT_SIGNED_IN' };
+
+  if (expectChannel && input.campaign_type && input.campaign_type !== expectChannel) {
+    return { ok: false, reason: 'CHANNEL_MISMATCH' };
+  }
 
   const { data, error } = await supabase.from('outreach_campaigns').insert({
     owner_id: uid,
@@ -963,6 +984,30 @@ async function refreshListCounts(listId: string, ownerId: string): Promise<void>
   await supabase.from('outreach_contact_lists')
     .update({ total_rows: total ?? 0, valid_rows: valid ?? 0 })
     .eq('id', listId);
+}
+
+/**
+ * The audience segments this owner has, with their sizes.
+ *
+ * Lists and Contacts were two top-level destinations doing one job: "who am I
+ * sending to". A list is not a different KIND of thing from a contact, it is
+ * a way of looking at contacts -- so it belongs inside the contacts workspace
+ * as a filter rather than beside it as a rival page.
+ *
+ * The rows, the import pipeline and the management screen are untouched.
+ * Only the navigation stopped presenting them as separate work.
+ */
+export async function listAudienceSegments(): Promise<Array<{
+  id: string; name: string; total_rows: number; valid_rows: number;
+}>> {
+  const uid = await currentUserId();
+  if (!uid) return [];
+  const { data } = await supabase.from('outreach_contact_lists')
+    .select('id,name,total_rows,valid_rows')
+    .eq('owner_id', uid)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return (data ?? []) as Array<{ id: string; name: string; total_rows: number; valid_rows: number }>;
 }
 
 export async function listContacts(params: {

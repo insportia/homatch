@@ -245,6 +245,37 @@ serve(async (req) => {
     const smsAdapter = channel === 'SMS' ? getSmsAdapter(smsEnabled, fm['outreach_sms_provider'] as string) : null;
     const voiceAdapter = channel === 'AI_CALL' ? getVoiceAdapter(callingEnabled, fm['outreach_calling_provider'] as string) : null;
 
+    /*
+     * ── WHERE A REPLY GOES ────────────────────────────────────────────
+     *
+     * Outbound and inbound are different domains on purpose. Mail is sent
+     * from the verified sending domain; replies must land on the RECEIVING
+     * one, which is a separate domain with its own MX pointed at the
+     * provider's inbound service.
+     *
+     * The sending domain has no MX at all -- correctly, it only sends. So a
+     * campaign with no Reply-To sends every reply to an address that cannot
+     * receive: the recipient's mail server gets a permanent failure and the
+     * reply is destroyed, silently, on their side where nothing here can see
+     * it. That is the exact failure this whole workstream exists to end, and
+     * the campaign form not filling one field is enough to cause it.
+     *
+     * So the connected inbound account is the default. A campaign that names
+     * its own Reply-To still wins -- this fills a gap, it does not override a
+     * decision.
+     */
+    let defaultReplyTo: string | null = null;
+    if (channel === 'EMAIL') {
+      const { data: inbound } = await supabase.from('comm_channel_accounts')
+        .select('provider_account_id')
+        .eq('owner_id', ownerId)
+        .eq('channel', 'EMAIL')
+        .eq('status', 'CONNECTED')
+        .limit(1)
+        .maybeSingle();
+      defaultReplyTo = (inbound as { provider_account_id?: string } | null)?.provider_account_id ?? null;
+    }
+
     const emailUnitPrice = Number(fm['outreach_email_price_per_1k'] ?? 0.5) / 1000;
     const smsUnitPrice = Number(fm['outreach_sms_unit_price'] ?? 0.05);
 
@@ -298,7 +329,7 @@ serve(async (req) => {
           html: htmlWithFooter,
           text: textWithFooter,
           from_name: campaign.sender_name || 'Homatch', from_email: campaign.sender_email || undefined,
-          reply_to: campaign.reply_to || undefined, campaign_id,
+          reply_to: campaign.reply_to || defaultReplyTo || undefined, campaign_id,
         });
         anyMock = anyMock || result.is_mock;
         const cost = result.success && !result.is_mock ? emailUnitPrice : 0;

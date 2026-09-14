@@ -41,6 +41,17 @@ export default function CampaignsPage() {
   const [params, setParams] = useSearchParams();
 
   const routeChannel = useCommsChannel();
+  /*
+   * The builder, inside this product. Editing an existing campaign goes to
+   * the same scoped path: a draft opened from AI Calls must not present its
+   * channel as an open question either.
+   */
+  const builderPath = (suffix = '') => (
+    routeChannel === 'AI_CALL' ? `/outreach/calls/campaigns/new${suffix}`
+      : routeChannel === 'WHATSAPP' ? `/outreach/whatsapp/campaigns/new${suffix}`
+        : `/outreach/campaigns/new${suffix}`
+  );
+
   const product = useCommsProduct();
   const [campaigns, setCampaigns] = useState<CommCampaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,11 +131,7 @@ export default function CampaignsPage() {
                  AI Calls must open the builder ON AI Calls -- an unscoped CTA
                  is the same leak as an unscoped menu, reached by the button
                  somebody is most likely to press. */
-              onClick: () => navigate(
-                routeChannel
-                  ? `/outreach/campaigns/new?channel=${routeChannel}`
-                  : '/outreach/campaigns/new',
-              ),
+              onClick: () => navigate(builderPath()),
             }}
           />
 
@@ -160,7 +167,7 @@ export default function CampaignsPage() {
               icon={Megaphone}
               titleKey="comm_campaigns_empty"
               bodyKey="comm_campaigns_empty_body"
-              action={{ labelKey: 'comm_new_campaign', onClick: () => navigate('/outreach/campaigns/new') }}
+              action={{ labelKey: 'comm_new_campaign', onClick: () => navigate(builderPath()) }}
             />
           ) : (
             <ScrollTable minWidth={980}>
@@ -188,7 +195,7 @@ export default function CampaignsPage() {
                           <button
                             type="button"
                             className="block max-w-full truncate text-start font-medium hover:underline"
-                            onClick={() => navigate(`/outreach/campaigns/new?id=${c.id}`)}
+                            onClick={() => navigate(builderPath(`?id=${c.id}`))}
                           >
                             {c.name}
                           </button>
@@ -217,7 +224,7 @@ export default function CampaignsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => navigate(`/outreach/campaigns/new?id=${c.id}`)}>
+                              <DropdownMenuItem onClick={() => navigate(builderPath(`?id=${c.id}`))}>
                                 {t('comm_open')}
                               </DropdownMenuItem>
                               {c.status === 'RUNNING' ? (

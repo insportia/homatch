@@ -29,7 +29,7 @@ import {
   Kpi, KpiRow, LoadingBlock, EmptyState, ErrorState, ScrollTable,
   formatPhone, relativeTime,
 } from '@/components/communications/primitives';
-import { listContacts } from '@/services/communications';
+import { listContacts, listAudienceSegments } from '@/services/communications';
 import {
   CHANNEL_TITLE_KEY, channelPath, useCommsChannel, useCommsProduct,
 } from '@/components/communications/channel';
@@ -56,6 +56,24 @@ export default function ContactsPage() {
   const channel = useCommsChannel();
   const product = useCommsProduct();
 
+  /*
+   * SEGMENTS, IN THE WORKSPACE THEY DESCRIBE.
+   *
+   * Contacts and Contact Lists were two top-level pages answering one
+   * question -- who am I sending to -- so a person had to know which of two
+   * screens held the answer, and the answer was "both, differently". A list
+   * is a way of LOOKING at contacts, so it is a filter here rather than a
+   * destination of its own.
+   *
+   * Nothing was deleted: the lists, their import pipeline and the management
+   * screen all still exist. Only the navigation stopped presenting one job as
+   * two.
+   */
+  const [segments, setSegments] = useState<Array<{
+    id: string; name: string; total_rows: number; valid_rows: number;
+  }>>([]);
+  const [segmentId, setSegmentId] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setError(null);
     try {
@@ -63,6 +81,7 @@ export default function ContactsPage() {
          the call products never list somebody with no number. */
       const res = await listContacts({
         search: search.trim() || undefined, pageSize: 100, channel: channel ?? undefined,
+        listId: segmentId ?? undefined,
       });
       setRows(res.rows);
       setTotal(res.total);
@@ -71,9 +90,10 @@ export default function ContactsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, channel, segmentId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void listAudienceSegments().then(setSegments).catch(() => setSegments([])); }, []);
 
   /* Counted from the rows in hand. Never extrapolated to the full table. */
   const stats = useMemo(() => {
@@ -107,7 +127,7 @@ export default function ContactsPage() {
               <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
               {t('comms_contact_add')}
             </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/contacts/import')}>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate(channelPath(channel, '/contacts/import'))}>
               <Upload className="h-3.5 w-3.5" aria-hidden="true" />
               {t('comms_import_contacts')}
             </Button>
@@ -153,6 +173,45 @@ export default function ContactsPage() {
             />
           </div>
         </div>
+
+        {/*
+         * Segments, as a filter over the people below rather than a separate
+         * page. A thin gold underline marks the active one: the selection has
+         * to be unmistakable because it silently changes what every row and
+         * every bulk action applies to.
+         */}
+        {segments.length > 0 ? (
+          <div className="mb-3 flex flex-wrap items-center gap-1 border-b border-border/70 pb-px">
+            <button
+              type="button"
+              onClick={() => setSegmentId(null)}
+              aria-pressed={segmentId === null}
+              className={`-mb-px border-b-2 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                segmentId === null
+                  ? 'border-gold text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t('comm_filter_all')}
+            </button>
+            {segments.map((seg) => (
+              <button
+                key={seg.id}
+                type="button"
+                onClick={() => setSegmentId(seg.id)}
+                aria-pressed={segmentId === seg.id}
+                className={`-mb-px flex items-center gap-1.5 border-b-2 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  segmentId === seg.id
+                    ? 'border-gold text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <span className="min-w-0 max-w-[12rem] truncate">{seg.name}</span>
+                <span className="tabular-nums text-[13px] text-muted-foreground">{seg.valid_rows ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {loading ? <LoadingBlock rows={5} /> : rows.length === 0 ? (
           <EmptyState

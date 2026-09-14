@@ -121,7 +121,7 @@ export default function WhatsAppPage() {
             </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/campaigns/new?channel=WHATSAPP')}>
+            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/whatsapp/campaigns/new')}>
               {t('comms_wa_new_campaign')}
             </Button>
             <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/whatsapp/inbox')}>
@@ -211,7 +211,7 @@ export default function WhatsAppPage() {
             {/* "New WhatsApp campaign", not "New campaign". The model behind
                 it is shared with email and calls; the label a customer reads
                 must not be, or three products look like one. */}
-            <QuickCard icon={Plus} labelKey="comm_new_campaign_wa" onClick={() => navigate('/outreach/campaigns/new?channel=WHATSAPP')} />
+            <QuickCard icon={Plus} labelKey="comm_new_campaign_wa" onClick={() => navigate('/outreach/whatsapp/campaigns/new')} />
           </div>
 
           {noTraffic ? null : (<>
@@ -274,7 +274,7 @@ export default function WhatsAppPage() {
                   icon={MessageSquare}
                   titleKey="comms_wa_no_campaigns"
                   bodyKey="comms_wa_no_campaigns_body"
-                  action={{ labelKey: 'comms_wa_new_campaign', onClick: () => navigate('/outreach/campaigns/new?channel=WHATSAPP') }}
+                  action={{ labelKey: 'comms_wa_new_campaign', onClick: () => navigate('/outreach/whatsapp/campaigns/new') }}
                 />
               ) : (
                 <ul className="grid gap-2">

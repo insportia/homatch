@@ -162,3 +162,90 @@ test('shared screens announce which product they are in', () => {
       `${name} does not take its rail from the route, so it can render another product's menu`);
   }
 });
+
+/*
+ * ── THE WORKFLOWS, NOT ONLY THE ROUTES ────────────────────────────────────
+ *
+ * The first isolation pass fixed every rail and every route and shipped with
+ * the bug still in it: AI Calls > Create Campaign opened a wizard whose FIRST
+ * STEP asked whether you meant AI_CALL, WhatsApp or SMS -- offering two other
+ * products as equal chips to somebody who had just pressed "New campaign"
+ * inside the one they were standing in.
+ *
+ * Routes were the easy half. These cover the half that was missed: the forms,
+ * the actions and the writes underneath them.
+ */
+
+const BUILDER = readFileSync('src/pages/outreach/CampaignBuilderPage.tsx', 'utf8');
+const CONTACTS = readFileSync('src/pages/outreach/ContactsPage.tsx', 'utf8');
+
+test('a campaign builder opened inside a product does not ask which product', () => {
+  /* The step is REMOVED, not pre-selected. A step whose answer is already
+     fixed is not a step, and leaving it visible-but-decided is exactly the
+     invitation to change channel that this closes. */
+  assert.match(BUILDER, /const lockedChannel = useCommsChannel\(\)/,
+    'the builder does not know which product it was opened from');
+  assert.match(BUILDER, /ALL_STEPS\.filter\(\(x\) => x !== 'channel'\)/,
+    'the channel step survives inside a product, so the wizard still asks');
+  assert.match(BUILDER, /step === 'channel' && !lockedChannel/,
+    'a stale ?step=channel link can still resurrect the channel chooser');
+});
+
+test('the channel lock is enforced by the write, not only by the form', () => {
+  /*
+   * Hiding a control is a statement about a screen. The function underneath
+   * accepted whatever campaign_type it was handed, so a stale tab or a
+   * replayed request could still create a WhatsApp campaign from the AI Calls
+   * builder. A mismatch is refused rather than silently corrected: rewriting
+   * it would hide the defect that produced it.
+   */
+  const body = fnBody('createCampaign');
+  assert.match(body, /expectChannel/, 'createCampaign cannot be scoped to a product');
+  assert.match(body, /input\.campaign_type !== expectChannel/,
+    'createCampaign does not compare the submitted channel against the lock');
+  assert.match(body, /CHANNEL_MISMATCH/, 'a mismatched channel is not refused');
+  assert.match(BUILDER, /createCampaign\(draft, lockedChannel \?\? undefined\)/,
+    'the builder does not pass its lock to the write');
+});
+
+test('no button inside a product opens the cross-channel builder', () => {
+  /* An unscoped CTA is the same leak as an unscoped menu, reached by the
+     control somebody is most likely to press. */
+  for (const name of ['CallsPage', 'WhatsAppPage', 'AgentBuilderPage']) {
+    const src = readFileSync(`src/pages/outreach/${name}.tsx`, 'utf8');
+    const offenders = [...src.matchAll(/'(\/outreach\/campaigns\/new[^']*)'/g)].map((m) => m[1]);
+    assert.deepEqual(offenders, [],
+      `${name} opens the cross-channel builder at ${offenders.join(', ')}`);
+  }
+});
+
+test('Contact Lists is no longer a second destination for the same job', () => {
+  const email = railFor('email');
+  assert.equal(email.includes('/outreach/email/lists'), false,
+    'Email still offers Lists beside Contacts, which is one job presented as two');
+  /* But the capability is not deleted -- the route still resolves for
+     anything that links to it, and the data is untouched. */
+  assert.ok(ROUTES.includes("path: '/outreach/email/lists'"),
+    'the lists screen was removed rather than folded in; its data and import pipeline must stay reachable');
+});
+
+test('segments live inside the contacts workspace', () => {
+  assert.match(CONTACTS, /listAudienceSegments/,
+    'contacts cannot show segments, so the lists page is still the only way to see them');
+  assert.match(CONTACTS, /listId: segmentId \?\? undefined/,
+    'choosing a segment does not actually filter the contacts');
+  assert.match(SERVICE, /export async function listAudienceSegments/,
+    'there is no owner-scoped way to read segments');
+});
+
+test('import is opened inside the product that asked for it', () => {
+  assert.match(CONTACTS, /channelPath\(channel, '\/contacts\/import'\)/,
+    'Import inside Email opens the generic importer, which belongs to no channel');
+  for (const path of [
+    '/outreach/calls/contacts/import',
+    '/outreach/whatsapp/contacts/import',
+    '/outreach/email/contacts/import',
+  ]) {
+    assert.ok(ROUTES.includes(`path: '${path}'`), `${path} is not routed`);
+  }
+});

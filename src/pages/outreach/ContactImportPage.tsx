@@ -18,6 +18,9 @@ import {
   CheckCircle2, AlertTriangle, ShieldCheck,
 } from 'lucide-react';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import {
+  CHANNEL_TITLE_KEY, useCommsChannel, useCommsProduct,
+} from '@/components/communications/channel';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,6 +58,8 @@ const CONSENT_TERMS_VERSION = '2026-09-v1';
 export default function ContactImportPage() {
   const { t, lang: language } = useLanguage();
   const { supaUser: user } = useAuth();
+  const channel = useCommsChannel();
+  const product = useCommsProduct();
   const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -228,13 +233,18 @@ export default function ContactImportPage() {
   }, []);
 
   return (
-    <CommsWorkspace product="contacts">
+    <CommsWorkspace product={product}>
         <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/contact-lists')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_contact_lists')}
           </Button>
 
           <div>
+            {channel ? (
+              <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-gold-ink">
+                {t(CHANNEL_TITLE_KEY[channel] as TKey)}
+              </p>
+            ) : null}
             <h1 className="text-xl font-semibold">{t('comm_import_title')}</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">{t('comm_import_subtitle')}</p>
           </div>

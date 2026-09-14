@@ -323,3 +323,21 @@ test('a direct message is not filed under matches', () => {
   assert.ok(/NEW_MESSAGE/.test(message.fields.metadata ?? ''),
     'send-message stopped saying what kind of event it is, so its category falls back to matches');
 });
+
+test('the in-app list goes where the producer said, not where it guesses', () => {
+  /*
+   * The deep link was being set carefully by every producer and read by
+   * nobody except push. In the app, the list re-derived a destination from
+   * the type and property_id — and notify_emit does not write property_id, so
+   * every match that went through the canonical path became a notification
+   * that opened, was tapped, and did nothing.
+   */
+  const page = readFileSync('src/pages/NotificationsPage.tsx', 'utf8');
+  assert.ok(/notif\.deep_link/.test(page),
+    'the notifications list ignores deep_link again and guesses from the type');
+  /* And only a path. An absolute URL cannot reach the column, but a restored
+     row could carry one, and navigate() with an off-site address is an open
+     redirect out of a list of things the platform told you. */
+  assert.ok(/startsWith\('\/'\)/.test(page) && /startsWith\('\/\/'\)/.test(page),
+    'the list follows a deep link without checking it is a path on this site');
+});

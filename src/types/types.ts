@@ -800,6 +800,16 @@ export interface Notification {
   body?: string;
   read: boolean;
   property_id?: string;
+  /**
+   * Where this notification goes when it is opened.
+   *
+   * Set by the producer through notify_emit, always an app path and never an
+   * absolute URL — the column refuses one. It is what the push notification
+   * already used; the in-app list ignored it and re-derived a destination
+   * from the type and property_id instead, which is how a match stopped
+   * being clickable when property_id stopped being written.
+   */
+  deep_link?: string | null;
   metadata?: Record<string, unknown>;
   created_at: string;
 }

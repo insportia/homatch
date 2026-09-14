@@ -20,7 +20,18 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
-    const { data: sender } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
+    /*
+     * BOTH COLUMNS, BECAUSE PRODUCTION HAS ALWAYS CHECKED BOTH.
+     *
+     * The version running in production since August resolves the sender on
+     * `id` OR `auth_id`; this file checks only auth_id. Every account today
+     * has auth_id set and distinct from id, so the two agree — but this file
+     * is about to replace that one, and narrowing a lookup on the way past is
+     * how a deploy that was meant to fix notifications turns into "I cannot
+     * send messages any more" for whoever the narrower query misses.
+     */
+    const { data: sender } = await supabase.from('users').select('id')
+      .or(`id.eq.${user.id},auth_id.eq.${user.id}`).maybeSingle();
     if (!sender) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: corsHeaders });
 
     const { conversation_id, property_id, recipient_id, body } = await req.json();

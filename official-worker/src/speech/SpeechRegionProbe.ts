@@ -38,6 +38,7 @@ import { speechEndpoint } from './GoogleSpeechStream.js';
  * commit, which is the correct amount of friction.
  */
 export const CANDIDATE_REGIONS = [
+  'global',
   'us-central1',
   'europe-west4',
   'us',
@@ -50,6 +51,9 @@ export const CANDIDATE_REGIONS = [
 export interface RegionResult {
   region: string;
   endpoint: string;
+  /** Does this location exist for this project at all? */
+  locationOk: boolean;
+  locationDetail: string;
   accepted: boolean;
   code: number | null;
   detail: string;
@@ -70,13 +74,46 @@ async function probeOne(
   const endpoint = speechEndpoint(region);
   const holder: { client: SpeechClient | null } = { client: null };
 
+  /*
+   * IS THE LOCATION REAL, ASKED SEPARATELY FROM WHETHER THE STREAM IS VALID.
+   *
+   * Every region came back with the same "Invalid resource field value in the
+   * request", which is one message for at least three different mistakes: a
+   * location that does not exist, a project that does not own it, or a
+   * recognizer path the service will not accept. Guessing between them is what
+   * the last several deploys were.
+   *
+   * ListRecognizers is a unary call against the parent location and nothing
+   * else. It answers the first question on its own, cheaply, and leaves the
+   * streaming attempt to answer only what is left.
+   */
+  const location = await (async (): Promise<{ ok: boolean; detail: string }> => {
+    try {
+      const c = new SpeechClient({
+        projectId: opts.projectId,
+        credentials: opts.credentials as Record<string, unknown>,
+        apiEndpoint: endpoint,
+      });
+      await c.listRecognizers({ parent: `projects/${opts.projectId}/locations/${region}`, pageSize: 1 });
+      await c.close();
+      return { ok: true, detail: 'location exists' };
+    } catch (e: unknown) {
+      const err = e as { code?: number; details?: string; message?: string };
+      return { ok: false, detail: `${err?.code ?? '?'}: ${String(err?.details ?? err?.message ?? e).slice(0, 140)}` };
+    }
+  })();
+
   const result = await new Promise<RegionResult>((resolve) => {
     let settled = false;
     const done = (accepted: boolean, code: number | null, detail: string) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({ region, endpoint, accepted, code, detail: detail.slice(0, 200), ms: Date.now() - started });
+      resolve({
+        region, endpoint,
+        locationOk: location.ok, locationDetail: location.detail,
+        accepted, code, detail: detail.slice(0, 200), ms: Date.now() - started,
+      });
     };
 
     const timer = setTimeout(() => done(false, null, 'TIMEOUT'), 12_000);

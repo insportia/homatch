@@ -234,11 +234,30 @@ test('the corpus is queried narrowly, and the selection is what gets logged', ()
   assert.ok(!/transcript/.test(body), 'a diagnostics row must not carry what was said');
 });
 
-test('AI TALK no longer refuses to start without one particular provider', () => {
+test('AI TALK refuses to start only when nothing can speak', () => {
+  /*
+   * THIS TEST USED TO ASSERT THE OPPOSITE, AND WAS RIGHT AT THE TIME.
+   *
+   * It required that either provider's credentials be enough to start a call,
+   * because ElevenLabs was primary and Cartesia was the fallback beneath it,
+   * and refusing an ElevenLabs-only deployment would have been a self-inflicted
+   * outage.
+   *
+   * AI TALK now speaks through Cartesia and has no path to ElevenLabs
+   * synthesis at all — the owner's decision after hearing the ElevenLabs
+   * output on a real phone. So accepting an ElevenLabs key as sufficient
+   * would start conversations that can never be answered out loud, which is a
+   * worse failure than refusing to start.
+   *
+   * The invariant is unchanged in spirit and inverted in fact: the gate names
+   * the provider that actually has to be there.
+   */
   const at = TALK.indexOf('async function start(');
-  const body = TALK.slice(at, at + 1200);
-  assert.ok(/!elevenLabsCredentialsPresent\(\) && !cartesiaCredentialsPresent\(\)\.ok/.test(body),
-    'an ElevenLabs-only deployment must be able to start a conversation');
+  const body = TALK.slice(at, at + 1600);
+  assert.ok(/!cartesiaCredentialsPresent\(\)\.ok/.test(body),
+    'a call must not start when nothing can speak');
+  assert.ok(!/elevenLabsCredentialsPresent\(\)/.test(body),
+    'an ElevenLabs key must no longer be treated as enough to hold a conversation');
 });
 
 test('whether a conversation contained abuse is the server finding, not the caller claim', () => {

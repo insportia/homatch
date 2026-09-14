@@ -59,13 +59,22 @@ export interface SpeechConfig {
   projectId: string;
   region: string;
   languageCode: string;
+  /**
+   * Every language this stream will accept, primary first.
+   *
+   * Chirp 3 decides per utterance which of these it heard and reports it back,
+   * which is the only reliable way to tell English from Turkish: both are
+   * Latin script, so nothing downstream can separate them by looking at the
+   * transcript. The visitor never picks a language.
+   */
+  languageCodes: string[];
   model: string;
   sampleRate: number;
 }
 
 export interface SpeechEvents {
-  onInterim: (text: string) => void;
-  onFinal: (text: string, confidence: number | null) => void;
+  onInterim: (text: string, language: string | null) => void;
+  onFinal: (text: string, confidence: number | null, language: string | null) => void;
   /** The stream will not carry this session. The caller tells the browser. */
   onUnavailable: (reason: string) => void;
   /** A restart happened and nothing was lost; for diagnostics only. */
@@ -102,7 +111,8 @@ function buildConfig(): SpeechConfig {
   return {
     projectId: process.env.GOOGLE_SPEECH_PROJECT_ID || '',
     region: (process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase(),
-    languageCode: process.env.GOOGLE_SPEECH_LANGUAGE || 'ka-GE',
+    languageCode: primaryLanguage(),
+    languageCodes: configuredLanguages(),
     model: process.env.GOOGLE_SPEECH_MODEL || 'chirp_3',
     sampleRate: Number(process.env.GOOGLE_SPEECH_SAMPLE_RATE || 16000),
   };
@@ -132,6 +142,46 @@ function buildConfig(): SpeechConfig {
  * error, reported by name, at startup, in the health check an operator reads
  * -- not a runtime surprise discovered by the first person to speak Georgian.
  */
+/**
+ * The languages this worker will recognise, primary first.
+ *
+ * GOOGLE_SPEECH_LANGUAGES is a comma-separated list; GOOGLE_SPEECH_LANGUAGE
+ * remains the primary and is honoured on its own for an older deployment that
+ * only sets that one. Homatch's six are the default because they are the six
+ * the product already speaks.
+ *
+ * Capped at four: Google's per-stream limit for multi-language recognition,
+ * and a list that silently exceeds it is a stream that fails at the config
+ * frame rather than a stream that ignores the extras.
+ */
+export const MAX_STREAM_LANGUAGES = 4;
+
+const DEFAULT_LANGUAGES = ['ka-GE', 'en-US', 'ru-RU', 'tr-TR'];
+
+export function primaryLanguage(): string {
+  const declared = (process.env.GOOGLE_SPEECH_LANGUAGE || '').trim();
+  return declared || configuredLanguages()[0] || 'ka-GE';
+}
+
+export function configuredLanguages(): string[] {
+  const raw = (process.env.GOOGLE_SPEECH_LANGUAGES || '').trim();
+  const listed = raw
+    ? raw.split(',').map((x) => x.trim()).filter((x) => /^[a-z]{2,3}-[A-Z]{2}$/.test(x))
+    : [];
+  const primary = (process.env.GOOGLE_SPEECH_LANGUAGE || '').trim();
+
+  const ordered = [primary, ...(listed.length ? listed : DEFAULT_LANGUAGES)].filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tag of ordered) {
+    if (seen.has(tag)) continue;
+    seen.add(tag);
+    out.push(tag);
+    if (out.length === MAX_STREAM_LANGUAGES) break;
+  }
+  return out.length ? out : DEFAULT_LANGUAGES.slice(0, MAX_STREAM_LANGUAGES);
+}
+
 export function speechConfigProblem(): string | null {
   if (!process.env.GOOGLE_SPEECH_CREDENTIALS_JSON) return 'GOOGLE_SPEECH_NOT_CONFIGURED';
   if (!process.env.GOOGLE_SPEECH_PROJECT_ID) return 'NO_PROJECT_ID';
@@ -338,11 +388,17 @@ export class GoogleSpeechStream {
         const alt = result?.alternatives?.[0];
         const text = String(alt?.transcript ?? '').trim();
         if (!text) continue;
+        // Which of the configured languages Google decided it heard. Absent
+        // on some interim results, which is why it is optional downstream.
+        const heard = typeof result?.languageCode === 'string' && result.languageCode
+          ? String(result.languageCode)
+          : null;
+
         if (result.isFinal) {
           const c = typeof alt?.confidence === 'number' ? alt.confidence : null;
-          this.events.onFinal(text, c);
+          this.events.onFinal(text, c, heard);
         } else {
-          this.events.onInterim(text);
+          this.events.onInterim(text, heard);
         }
       }
     });
@@ -408,7 +464,12 @@ export class GoogleSpeechStream {
             sampleRateHertz: cfg.sampleRate,
             audioChannelCount: 1,
           },
-          languageCodes: [cfg.languageCode],
+          /*
+           * Every candidate, not just the primary. Chirp 3 picks one per
+           * utterance and names it in the response, which is what lets a
+           * visitor simply start talking.
+           */
+          languageCodes: cfg.languageCodes?.length ? cfg.languageCodes : [cfg.languageCode],
           model: cfg.model,
           features: {
             enableAutomaticPunctuation: true,

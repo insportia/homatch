@@ -26,7 +26,10 @@ import type { Server } from 'node:http';
 // DOM lib, where the ambient URL is a different and much smaller type.
 import { URL } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { GoogleSpeechStream, speechConfigFromEnv, speechConfigProblem } from './GoogleSpeechStream.js';
+import {
+  GoogleSpeechStream, speechConfigFromEnv, speechConfigProblem,
+  configuredLanguages, MAX_STREAM_LANGUAGES,
+} from './GoogleSpeechStream.js';
 
 export const SPEECH_PATH = '/speech/stream';
 
@@ -148,7 +151,7 @@ export function attachSpeechGateway(server: Server, opts: { token: string }): {
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      serve(ws, cfg, grant, url.searchParams.get('language'));
+      serve(ws, cfg, grant, url.searchParams.get('language'), url.searchParams.get('languages'));
     });
   });
 
@@ -160,6 +163,8 @@ function serve(
   cfg: ReturnType<typeof speechConfigFromEnv> & object,
   grant: Grant,
   languageOverride: string | null,
+  /** Every language the caller expects, comma-separated, or null for the default set. */
+  languagesOverride: string | null,
 ): void {
   const send: Send = (payload) => {
     if (ws.readyState !== ws.OPEN) return;
@@ -179,13 +184,39 @@ function serve(
     ? String(languageOverride)
     : cfg.languageCode;
 
+  /*
+   * EVERY LANGUAGE THIS SOCKET WILL ACCEPT.
+   *
+   * The caller sends the set the conversation could plausibly be in, and the
+   * recogniser decides per utterance which one it heard. A visitor never
+   * picks: they start talking.
+   *
+   * Validated the same way the single tag is, and capped at the provider's
+   * per-stream limit, because everything here arrives in a query string a
+   * browser controls. `language` is put first so an established conversation
+   * keeps its language as the primary candidate rather than being re-decided
+   * from scratch every turn.
+   */
+  const requested = String(languagesOverride ?? '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => /^[a-z]{2,3}-[A-Z]{2}$/.test(x));
+
+  const languages: string[] = [];
+  for (const tag of [language, ...requested, ...configuredLanguages()]) {
+    if (!languages.includes(tag)) languages.push(tag);
+    if (languages.length === MAX_STREAM_LANGUAGES) break;
+  }
+
   const started = Date.now();
   let ended = false;
 
-  const stream = new GoogleSpeechStream({ ...cfg, languageCode: language }, {
-    onInterim: (text) => send({ type: 'interim', text }),
-    onFinal: (text, confidence) => {
-      send({ type: 'final', text, confidence });
+  const stream = new GoogleSpeechStream({ ...cfg, languageCode: language, languageCodes: languages }, {
+    onInterim: (text, heard) => send({ type: 'interim', text, language: heard ?? language }),
+    onFinal: (text, confidence, heard) => {
+      // The language the PROVIDER decided it heard, not the one we guessed.
+      // It is the only thing that separates English from Turkish here.
+      send({ type: 'final', text, confidence, language: heard ?? language });
       // The sentence the half-close was waiting for. Ordinary mid-conversation
       // finals leave awaitingFinal null and change nothing here.
       if (awaitingFinal) {
@@ -267,6 +298,9 @@ function serve(
     provider: 'GOOGLE',
     model: cfg.model,
     language,
+    // Every candidate this stream will accept, so a client can show what it
+    // is prepared to hear rather than assuming one.
+    languages,
     sampleRate: cfg.sampleRate,
     // Echoed so a browser can prove the socket it is on belongs to the
     // session it thinks it is in.

@@ -133,6 +133,26 @@ export function cyrillicCharRatio(text: string): number {
   return ru / chars.length;
 }
 
+/**
+ * Arabic and Hebrew, for the same reason Georgian and Cyrillic are here.
+ *
+ * Script is decisive where a confidence score is not: text in Hebrew letters
+ * is Hebrew whatever a detector guessed from 300ms of audio. These two were
+ * missing, so an Arabic or Hebrew caller depended entirely on the detector
+ * agreeing with itself.
+ */
+export function arabicCharRatio(text: string): number {
+  const chars = [...String(text ?? '')].filter((c) => /\S/.test(c));
+  if (!chars.length) return 0;
+  return chars.filter((c) => /\p{Script=Arabic}/u.test(c)).length / chars.length;
+}
+
+export function hebrewCharRatio(text: string): number {
+  const chars = [...String(text ?? '')].filter((c) => /\S/.test(c));
+  if (!chars.length) return 0;
+  return chars.filter((c) => /\p{Script=Hebrew}/u.test(c)).length / chars.length;
+}
+
 export const LANGUAGE_LOCK_MIN_CHARS = 24;
 export const LANGUAGE_LOCK_MIN_CONFIDENCE = 0.72;
 
@@ -164,12 +184,23 @@ export function stabiliseLanguage(
 
   const kaRatio = georgianCharRatio(text);
   const ruRatio = cyrillicCharRatio(text);
+  const arRatio = arabicCharRatio(text);
+  const heRatio = hebrewCharRatio(text);
 
-  // Script evidence outranks the detector's own label.
+  /*
+   * Script evidence outranks the detector's own label -- where there IS script
+   * evidence. English and Turkish share an alphabet, so for those two the
+   * detector's label is the only evidence that exists, and it is used as-is.
+   * That is why `detected` must actually be supplied: it used to be passed as
+   * null, which left a Latin-script conversation permanently on whatever the
+   * page locale happened to be.
+   */
   let language = sample.detected ?? state.current;
   let confidence = sample.confidence ?? 0.4;
   if (kaRatio >= 0.5) { language = 'ka'; confidence = Math.max(confidence, 0.5 + kaRatio / 2); }
   else if (ruRatio >= 0.5) { language = 'ru'; confidence = Math.max(confidence, 0.5 + ruRatio / 2); }
+  else if (arRatio >= 0.5) { language = 'ar'; confidence = Math.max(confidence, 0.5 + arRatio / 2); }
+  else if (heRatio >= 0.5) { language = 'he'; confidence = Math.max(confidence, 0.5 + heRatio / 2); }
 
   const votes = [...state.votes, { language, confidence, chars }].slice(-12);
 

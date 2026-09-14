@@ -27,12 +27,21 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serviceClient, json, preflight, logEvent, authenticate, corsHeaders } from '../_shared/comm/auth.ts';
 import {
   cartesiaCredentialsPresent, synthesizeSpeech, synthesizePcm, PCM_SAMPLE_RATE,
+  streamCartesiaPcm, nearestCartesiaRate,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
 import {
-  elevenLabsCredentialsPresent, mintRealtimeToken, synthesizeElevenLabs,
-  chooseTtsModel, streamElevenLabs, streamElevenLabsDialogue,
+  /*
+   * STT ONLY.
+   *
+   * Scribe is still the speech-recognition fallback behind Google and has
+   * nothing to do with which voice speaks. Everything ElevenLabs offered for
+   * SYNTHESIS -- synthesizeElevenLabs, chooseTtsModel, streamElevenLabs,
+   * streamElevenLabsDialogue -- is deliberately not imported here any more,
+   * so AI TALK has no reachable path to it however the route table is set.
+   */
+  elevenLabsCredentialsPresent, mintRealtimeToken,
   ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
   type LanguageStrategy,
 } from '../_shared/comm/elevenlabs.ts';
@@ -40,6 +49,9 @@ import { ensureDefaultVoice } from '../_shared/comm/voiceLibrary.ts';
 import {
   speechSocketUrl, mintSpeechGrant, googleSpeechReady,
 } from '../_shared/comm/speechGrant.ts';
+import {
+  ACTION_MARKER, destinationMenu, parseAction, spokenPart, endsWithPartialMarker,
+} from '../_shared/comm/generated/talkActions.ts';
 import {
   selectKeyterms, keytermStrings, detectEntities,
   type VocabularyTerm,
@@ -93,136 +105,88 @@ interface SpokenPhrase {
  * one is tried. A refusal from all of them returns the codes, so that "the
  * voice is unavailable" can be explained rather than merely displayed.
  */
+/**
+ * One phrase, whole, for the callers that cannot stream.
+ *
+ * The conversation does not use this — `converse` streams — but the `speak`
+ * action does, and it used to walk the same ElevenLabs-then-Cartesia ladder
+ * the streaming path did. Leaving it would mean AI TALK still had a reachable
+ * ElevenLabs code path and a way to speak in a voice nobody selected, which is
+ * exactly what this migration removes.
+ *
+ * Same provider, same voice, same approval rules as the streaming path. The
+ * only difference is that the bytes arrive together.
+ */
 async function speakPhrase(sb: Sb, params: {
   text: string;
   language: string;
   sessionId?: string | null;
   surface?: string;
-}): Promise<{ ok: true; data: SpokenPhrase } | { ok: false; failures: Array<{ provider: string; code: string | null; status: number | null }> }> {
-  const failures: Array<{ provider: string; code: string | null; status: number | null; detail?: string | null }> = [];
-
-  if (elevenLabsCredentialsPresent()) {
-    const voice = await defaultElevenLabsVoice(sb, params.language || null);
-    if (voice) {
-      // Which model can actually say this, from the account's own catalogue
-      // rather than from a guess. Georgian is exactly why: eleven_flash_v2_5
-      // answered 400 for ka, measured on production.
-      //
-      // What to do when nothing fast lists the language is an operator's
-      // call between latency and the provider's own declaration, so it is
-      // read from the route rather than decided here.
-      const choice = voice.approvedForLanguage
-        // Approved means a person listened to THIS voice on THIS model. A
-        // capability rule that substituted another model would be replacing
-        // the thing that was approved with something nobody has heard.
-        ? { modelId: voice.model, sendLanguage: true, substituted: false, capable: [] }
-        : await chooseTtsModel(voice.model, params.language || null, await languageStrategy(sb));
-      const at = Date.now();
-      const out = await synthesizeElevenLabs({
-        voiceId: voice.voiceId,
-        text: params.text,
-        modelId: choice.modelId,
-        languageCode: params.language || null,
-        sendLanguage: choice.sendLanguage,
-        format: 'pcm',
-        sampleRate: ELEVENLABS_DEFAULTS.pcmSampleRate,
-      });
-      const ms = Date.now() - at;
-      if (choice.substituted) {
-        logEvent('ai-talk', 'tts_model_substituted', {
-          from: voice.model, to: choice.modelId, language: params.language,
-        });
-      }
-
-      await recordVoiceUsage(sb, {
-        sessionId: params.sessionId ?? null,
-        surface: params.surface ?? 'AI_TALK',
-        provider: 'ELEVENLABS', role: 'TTS', model: choice.modelId,
-        characters: params.text.length, latencyMs: ms,
-        ok: out.ok,
-        errorCode: out.ok ? null : (out.error?.code ?? null),
-        providerStatus: out.ok ? null : (Number(out.error?.providerCode) || null),
-      });
-
-      if (out.ok && out.data) {
-        return {
-          ok: true,
-          data: {
-            pcmBase64: out.data.audioBase64,
-            sampleRate: out.data.sampleRate ?? ELEVENLABS_DEFAULTS.pcmSampleRate,
-            provider: 'ELEVENLABS',
-            voiceId: voice.voiceId,
-            model: out.data.model,
-            ms,
-            characters: out.data.characters,
-          },
-        };
-      }
-      failures.push({
-        provider: 'ELEVENLABS',
-        code: out.error?.code ?? null,
-        status: Number(out.error?.providerCode) || null,
-        // The provider's own sentence, bounded. It names a model and a
-        // parameter, never anything Homatch sent it about a person.
-        detail: out.error?.message?.slice(0, 200) ?? null,
-      });
-    } else {
-      /*
-       * Not "no voice configured". There are twenty-three enabled voices;
-       * none of them is a voice a person approved for THIS language, and the
-       * difference is the whole reason the product is silent rather than
-       * speaking with the wrong accent.
-       */
-      failures.push({
-        provider: 'ELEVENLABS',
-        code: 'VOICE_NOT_APPROVED_FOR_LANGUAGE',
-        status: null,
-        detail: `no voice is approved for ${params.language || 'this language'}`,
-      });
-    }
+}): Promise<{ ok: true; data: SpokenPhrase } | { ok: false; failures: Array<{ provider: string; code: string | null; status: number | null; detail?: string | null }> }> {
+  const voice = await aiTalkVoice(sb, params.language || null);
+  if (!voice) {
+    return { ok: false, failures: [{ provider: 'NONE', code: 'VOICE_NOT_APPROVED_FOR_LANGUAGE', status: null }] };
+  }
+  if (voice.provider !== 'CARTESIA') {
+    return { ok: false, failures: [{ provider: voice.provider, code: 'PROVIDER_NOT_SUPPORTED_ON_AI_TALK', status: null }] };
+  }
+  if (!cartesiaCredentialsPresent().ok) {
+    return { ok: false, failures: [{ provider: 'CARTESIA', code: 'MISSING_CREDENTIALS', status: null }] };
   }
 
-  if (cartesiaCredentialsPresent().ok) {
-    const at = Date.now();
-    const out = await synthesizePcm({
-      voiceId: CARTESIA_FALLBACK_VOICE_ID,
-      language: params.language,
-      text: params.text,
-    });
-    const ms = Date.now() - at;
+  const started = Date.now();
+  const out = await synthesizePcm({
+    voiceId: voice.voiceId,
+    language: params.language || 'ka',
+    text: params.text,
+  });
+  const ms = Date.now() - started;
 
+  if (out.ok && out.data) {
     await recordVoiceUsage(sb, {
       sessionId: params.sessionId ?? null,
       surface: params.surface ?? 'AI_TALK',
-      provider: 'CARTESIA', role: 'TTS', model: 'sonic',
+      provider: 'CARTESIA', role: 'TTS', model: out.data.model,
       characters: params.text.length, latencyMs: ms,
-      ok: out.ok,
-      errorCode: out.ok ? null : (out.error?.code ?? null),
-      providerStatus: out.ok ? null : (Number(out.error?.providerCode) || null),
+      ok: true, errorCode: null, providerStatus: null,
     });
+    return {
+      ok: true,
+      data: {
+        provider: 'CARTESIA',
+        voiceId: voice.voiceId,
+        pcmBase64: out.data.pcmBase64,
+        sampleRate: out.data.sampleRate,
+        model: out.data.model,
+        ms,
+        characters: params.text.length,
+      },
+    };
+  }
 
-    if (out.ok && out.data) {
-      return {
-        ok: true,
-        data: {
-          pcmBase64: out.data.pcmBase64,
-          sampleRate: out.data.sampleRate,
-          provider: 'CARTESIA',
-          voiceId: CARTESIA_FALLBACK_VOICE_ID,
-          model: out.data.model,
-          ms,
-          characters: params.text.length,
-        },
-      };
-    }
-    failures.push({
+  await recordVoiceUsage(sb, {
+    sessionId: params.sessionId ?? null,
+    surface: params.surface ?? 'AI_TALK',
+    provider: 'CARTESIA', role: 'TTS', model: 'sonic-3',
+    characters: params.text.length, latencyMs: ms,
+    ok: false, errorCode: out.error?.code ?? null,
+    providerStatus: Number(out.error?.providerCode) || null,
+  });
+  logEvent('ai-talk', 'tts_failed', {
+    provider: 'CARTESIA', path: 'whole',
+    code: out.error?.code ?? null,
+    detail: String(out.error?.message ?? '').slice(0, 300),
+  });
+
+  return {
+    ok: false,
+    failures: [{
       provider: 'CARTESIA',
       code: out.error?.code ?? null,
       status: Number(out.error?.providerCode) || null,
-    });
-  }
-
-  return { ok: false, failures };
+      detail: String(out.error?.message ?? '').slice(0, 200),
+    }],
+  };
 }
 
 /**
@@ -272,99 +236,6 @@ async function fallbackPolicy(sb: Sb): Promise<FallbackPolicy> {
     : 'SAME_LANGUAGE_APPROVED_ONLY';
 }
 
-/**
- * Which languages are allowed to fall back to a voice nobody approved.
- *
- * English is on it because every stock voice on this account IS a native
- * English speaker, so the global default is already the right accent for
- * English and refusing to speak it would be pedantry. Georgian is not, and
- * that is the entire point.
- */
-async function foreignFallbackAllowed(sb: Sb, code: string): Promise<boolean> {
-  if (!code) return true;
-  const { data } = await sb.from('voice_library_voices')
-    .select('labels').eq('provider', 'ELEVENLABS').eq('is_default', true).maybeSingle();
-  const labels = (data?.labels ?? {}) as Record<string, string>;
-  const speaker = String(labels.language ?? '').toLowerCase().split('-')[0];
-  // The fallback voice's own speaker matches: not a foreign accent at all.
-  return Boolean(speaker) && speaker === code;
-}
-
-async function defaultElevenLabsVoice(
-  sb: Sb, language: string | null,
-): Promise<{ voiceId: string; model: string; approvedForLanguage: boolean } | null> {
-  const code = String(language ?? '').toLowerCase().split('-')[0];
-
-  /*
-   * THE VOICE SOMEBODY APPROVED FOR THIS LANGUAGE, IF ANYBODY HAS.
-   *
-   * A voice is a recording of a particular human being. A multilingual model
-   * can make that person say words in another language; it cannot give them
-   * another language's mouth. One global default was therefore always going
-   * to be an English speaker reading Georgian letters to a Georgian
-   * customer -- which is what happened, and what a person heard immediately
-   * and no automated check ever could.
-   *
-   * So a language with an approved voice uses it, approved model and
-   * settings included, because approval is of a COMBINATION: the same voice
-   * on a different model is a different sound and has not been listened to.
-   *
-   * A language with no approved voice falls back to the global default and
-   * says so. That is a worse product than a good Georgian voice and a better
-   * one than a confident wrong answer.
-   */
-  if (code) {
-    const { data: approved } = await sb.from('voice_language_defaults')
-      .select('voice_id, model_id')
-      .eq('provider', 'ELEVENLABS').eq('language', code)
-      .maybeSingle();
-    if (approved?.voice_id) {
-      return {
-        voiceId: String(approved.voice_id),
-        model: String(approved.model_id ?? '') || ELEVENLABS_DEFAULTS.ttsModel,
-        approvedForLanguage: true,
-      };
-    }
-  }
-
-  /*
-   * NOTHING APPROVED FOR THIS LANGUAGE. FAIL CLOSED.
-   *
-   * The global default is a particular human being, and on this account
-   * every one of them is a native English speaker. Handing Georgian to one
-   * of them produces an English speaker reading Georgian letters -- which is
-   * what a listener heard, immediately, and what no automated check noticed.
-   *
-   * So unless an operator has deliberately said otherwise, or the fallback
-   * voice's own speaker actually speaks this language, this refuses. The
-   * caller reports GEORGIAN_VOICE_NOT_APPROVED rather than inventing a
-   * sound nobody signed off.
-   */
-  if (code) {
-    const policy = await fallbackPolicy(sb);
-    if (policy === 'SAME_LANGUAGE_APPROVED_ONLY' && !(await foreignFallbackAllowed(sb, code))) {
-      logEvent('ai-talk', 'voice_not_approved_for_language', { language: code });
-      return null;
-    }
-  }
-
-  const [voice, { data: route }] = await Promise.all([
-    ensureDefaultVoice(sb, language),
-    sb.from('comm_provider_routes')
-      .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle(),
-  ]);
-
-  if (!voice.voiceId) return null;
-  if (voice.bootstrapped) {
-    logEvent('ai-talk', 'voice_library_bootstrapped', { voiceId: voice.voiceId });
-  }
-  const cfg = (route?.config ?? {}) as Record<string, unknown>;
-  return {
-    voiceId: voice.voiceId,
-    model: typeof cfg.model === 'string' && cfg.model ? cfg.model : ELEVENLABS_DEFAULTS.ttsModel,
-    approvedForLanguage: false,
-  };
-}
 
 /**
  * What a provider call cost, in the units the provider bills in.
@@ -421,6 +292,15 @@ interface TalkRequest {
   text?: string;
   /** turn: prior turns, oldest first, so the reply is in context. */
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /**
+   * converse: the sample rate the browser's AudioContext actually runs at.
+   *
+   * Synthesising at it means the samples are PLAYED rather than resampled.
+   * Resampling each piece independently is what put a whine on the joins, so
+   * the cheapest fix is the resample that never happens. Advisory: an
+   * unsupported value is snapped to the nearest the provider offers.
+   */
+  outputSampleRate?: number;
   /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
   audioBase64?: string;
   /**
@@ -491,12 +371,14 @@ type Sb = ReturnType<typeof serviceClient>;
 async function start(
   sb: Sb, req: Request, body: TalkRequest, limits: TalkLimits, enabled: boolean, userId: string | null,
 ): Promise<Response> {
-  // A voice provider, not one PARTICULAR voice provider.
-  //
-  // This refused the whole demo whenever CARTESIA_API_KEY was absent, which
-  // after the migration would have meant a correctly configured
-  // ElevenLabs-only deployment could not start a conversation at all.
-  if (!elevenLabsCredentialsPresent() && !cartesiaCredentialsPresent().ok) {
+  /*
+   * A conversation needs something that can SPEAK, and that is Cartesia.
+   *
+   * This used to accept either provider, from when ElevenLabs was primary.
+   * Left as it was, a deployment with only an ElevenLabs key would start
+   * calls it could never answer out loud.
+   */
+  if (!cartesiaCredentialsPresent().ok) {
     // §134: the hero shows a graceful fallback. It is not told which secret is
     // missing, and the page must not break.
     logEvent('ai-talk', 'provider_not_configured');
@@ -605,7 +487,7 @@ async function start(
      * Null rather than a stand-in when neither provider has a voice to offer.
      * The client does not read it; a person reading a support log does.
      */
-    voiceId: (await defaultElevenLabsVoice(sb, String(body.locale ?? 'ka')))?.voiceId
+    voiceId: (await aiTalkVoice(sb, String(body.locale ?? 'ka')))?.voiceId
       ?? (hasSecret('CARTESIA_API_KEY') ? CARTESIA_FALLBACK_VOICE_ID : null),
     // §29: the public demo gets general Homatch capability and no private
     // context whatsoever. This instruction is assembled here, server-side, so
@@ -687,6 +569,18 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
         // worker and is the whole reason this is a grant and not a key.
         wsUrl: speechSocketUrl(),
         grant,
+        /*
+         * Every language this socket should be prepared to hear.
+         *
+         * Sent so the visitor can simply start talking. `language` below
+         * stays the primary candidate — a settled conversation keeps its
+         * language rather than being re-decided at every pause — and the
+         * recogniser picks between these per utterance.
+         */
+        languages: speechCandidates(
+          body.languageHint ?? null,
+          body.locale ?? null,
+        ),
         language: ready.language,
         sampleRate: 16_000,
       });
@@ -972,117 +866,204 @@ function bytesToBase64(bytes: Uint8Array): string {
  *
  * Raw PCM only. mp3 frames cannot be cut and rejoined without a click.
  */
+/**
+ * The voice AI TALK speaks with, and the provider that makes it.
+ *
+ * Read from the route table and the language profile rather than named here,
+ * because which provider speaks Georgian is an operator's decision that has
+ * now changed twice. What is NOT configurable is the surface: AI TALK asks
+ * for the highest-priority enabled TTS route and uses that one. There is no
+ * second provider tried underneath it.
+ */
+async function aiTalkVoice(
+  sb: Sb, language: string | null,
+): Promise<{ provider: string; voiceId: string } | null> {
+  const { data: routes } = await sb.from('comm_provider_routes')
+    .select('provider, enabled, kill_switch')
+    .eq('role', 'TTS')
+    .order('priority');
+
+  const route = (routes ?? []).find((r) => r.enabled && !r.kill_switch);
+  if (!route) return null;
+  const provider = String(route.provider);
+
+  const code = String(language ?? '').toLowerCase().split('-')[0];
+  if (!code) return null;
+
+  /*
+   * The voice somebody approved for THIS language on THIS provider.
+   *
+   * Still fail-closed, and for the reason it always was: a voice is a
+   * recording of a particular human being, a multilingual model can make that
+   * person say Georgian words but cannot give them a Georgian mouth, and a
+   * confident wrong accent is worse than silence. No approved row, no voice.
+   */
+  const { data: approved } = await sb.from('voice_language_defaults')
+    .select('voice_id')
+    .eq('provider', provider).eq('language', code)
+    .maybeSingle();
+
+  if (!approved?.voice_id) return null;
+  return { provider, voiceId: String(approved.voice_id) };
+}
+
+/**
+ * One phrase of the reply, streamed, from the one provider AI TALK uses.
+ *
+ * WHY THERE IS NO LADDER HERE ANY MORE
+ *
+ * There used to be: ElevenLabs streaming, then ElevenLabs whole-clip, then
+ * Cartesia. Every rung was reachable without anybody noticing which one had
+ * answered, and that is precisely how five production Georgian turns ran on
+ * the whole-clip path for half an hour while the logs said UNKNOWN.
+ *
+ * A fallback between PROVIDERS is also a fallback between voices, and the
+ * assistant changing voice mid-conversation is worse than the assistant
+ * pausing. So there is one provider, one voice, and a failure that says so.
+ * The model ladder inside the provider stays -- that is the same voice.
+ *
+ * `outputSampleRate` is the browser's own AudioContext rate. Asking the
+ * provider to synthesise at it means the samples are played rather than
+ * resampled, and a resample that never happens cannot add artefacts to the
+ * joins.
+ */
+/**
+ * The languages AI TALK can hold a conversation in.
+ *
+ * Every one of these has to work end to end — the recogniser accepts it, the
+ * model answers in it, and the voice can say it — so this is a deliberately
+ * short list of what Homatch actually serves rather than everything a
+ * provider claims. Georgian is first because it is the hardest and the one
+ * the product is judged on.
+ *
+ * The visitor never chooses from this list. It is the set of candidates the
+ * recogniser decides between, per utterance, on its own.
+ */
+export const TALK_LANGUAGES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'] as const;
+
+/** The BCP-47 tags the recogniser wants, for the languages above. */
+const SPEECH_TAGS: Record<string, string> = {
+  ka: 'ka-GE', en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', ar: 'ar-XA', he: 'iw-IL',
+};
+
+/**
+ * The candidates for this conversation, most likely first.
+ *
+ * Capped at four because that is the recogniser's per-stream limit, so the
+ * order is a real decision rather than a formality: whatever the conversation
+ * has already settled on leads, then the page's own locale, then the rest.
+ * A caller who has been speaking Georgian for four turns should not have
+ * Georgian pushed off the end of the list by a locale nobody is using.
+ */
+function speechCandidates(settled: string | null, locale: string | null): string[] {
+  const order: string[] = [];
+  for (const code of [settled, locale, ...TALK_LANGUAGES]) {
+    const base = String(code ?? '').toLowerCase().split('-')[0];
+    const tag = SPEECH_TAGS[base];
+    if (tag && !order.includes(tag)) order.push(tag);
+    if (order.length === 4) break;
+  }
+  return order;
+}
+
 async function speakPhraseStreaming(sb: Sb, params: {
   text: string;
   language: string;
   sessionId?: string | null;
   surface?: string;
+  outputSampleRate?: number | null;
+  signal?: AbortSignal;
   onChunk: (chunk: Uint8Array) => void;
 }): Promise<
   | { ok: true; firstByteMs: number; totalMs: number; sampleRate: number; provider: string; voiceId: string; model: string; streamed: true }
-  | { ok: true; data: SpokenPhrase; streamed: false; totalMs: number }
   | { ok: false; failures: Array<{ provider: string; code: string | null; status: number | null; detail?: string | null }> }
 > {
-  if (elevenLabsCredentialsPresent()) {
-    const voice = await defaultElevenLabsVoice(sb, params.language || null);
-    if (voice) {
-      const choice = voice.approvedForLanguage
-        ? { modelId: voice.model, sendLanguage: true }
-        : await chooseTtsModel(voice.model, params.language || null, await languageStrategy(sb));
-
-      const at = Date.now();
-      /*
-       * TWO STREAMING PATHS, BECAUSE THE PROVIDER HAS TWO.
-       *
-       * The realtime TTS endpoint answers 400 for the v3 family -- measured
-       * here 28 times, and confirmed by the provider's own documentation: v3
-       * streams only over the Text to Dialogue socket. On this account the v3
-       * family is the only one that lists Georgian, so without the second path
-       * Georgian is the single language that cannot stream, which is the one
-       * language this work is about.
-       */
-      const speakStream = choice.modelId.startsWith('eleven_v3')
-        ? streamElevenLabsDialogue
-        : streamElevenLabs;
-
-      const out = await speakStream({
-        voiceId: voice.voiceId,
-        text: params.text,
-        modelId: choice.modelId,
-        languageCode: params.language || null,
-        sendLanguage: choice.sendLanguage,
-        format: 'pcm',
-        sampleRate: ELEVENLABS_DEFAULTS.pcmSampleRate,
-        /*
-         * The provider trades TEXT NORMALISATION for latency as this rises,
-         * and normalisation is how "200,000 USD" becomes words somebody can
-         * hear. Default 0 -- correct numbers over a faster start -- and an
-         * operator who has listened to both can move it.
-         */
-        // Only the HTTP path takes this; the dialogue socket has no such
-        // knob and ignores an extra property.
-        optimizeLatency: await streamingLatencyHint(sb),
-      }, (chunk) => params.onChunk(chunk));
-
-      if (out.ok && out.data) {
-        await recordVoiceUsage(sb, {
-          sessionId: params.sessionId ?? null,
-          surface: params.surface ?? 'AI_TALK',
-          provider: 'ELEVENLABS', role: 'TTS', model: choice.modelId,
-          characters: params.text.length,
-          // What a person waited through, not what the whole clip cost.
-          latencyMs: out.data.firstByteMs,
-          ok: true, errorCode: null, providerStatus: null,
-        });
-        return {
-          ok: true, streamed: true,
-          firstByteMs: out.data.firstByteMs,
-          totalMs: out.data.totalMs,
-          sampleRate: out.data.sampleRate,
-          provider: 'ELEVENLABS',
-          voiceId: voice.voiceId,
-          model: choice.modelId,
-        };
-      }
-
-      await recordVoiceUsage(sb, {
-        sessionId: params.sessionId ?? null,
-        surface: params.surface ?? 'AI_TALK',
-        provider: 'ELEVENLABS', role: 'TTS', model: choice.modelId,
-        characters: params.text.length, latencyMs: Date.now() - at,
-        ok: false, errorCode: out.error?.code ?? null,
-        providerStatus: Number(out.error?.providerCode) || null,
-      });
-      /*
-       * THE PROVIDER'S OWN SENTENCE, NOT JUST THE BUCKET IT FELL INTO.
-       *
-       * This logged `code` alone, and `code` for a refused dialogue socket is
-       * UNKNOWN -- which is the value the classifier uses for "the provider
-       * said something we do not have a name for". So the one line written at
-       * the exact moment Georgian silently stopped streaming recorded the fact
-       * that something went wrong and threw away what it was.
-       *
-       * Five turns of production Georgian fell back to whole-clip synthesis on
-       * this path, in 60 to 90 milliseconds each, and nothing anywhere said
-       * why. redact() still passes over it, so a message that happens to carry
-       * an address or a token is masked rather than logged.
-       */
-      logEvent('ai-talk', 'tts_stream_fell_back', {
-        code: out.error?.code ?? null,
-        providerStatus: Number(out.error?.providerCode) || null,
-        detail: String(out.error?.message ?? '').slice(0, 300),
-      });
-    }
+  const voice = await aiTalkVoice(sb, params.language || null);
+  if (!voice) {
+    return {
+      ok: false,
+      failures: [{ provider: 'NONE', code: 'VOICE_NOT_APPROVED_FOR_LANGUAGE', status: null }],
+    };
   }
 
-  // The whole-clip ladder, which still has Cartesia behind it.
+  if (voice.provider !== 'CARTESIA') {
+    /*
+     * A route pointing somewhere AI TALK cannot speak is a configuration
+     * mistake, and it says so instead of quietly finding another provider.
+     * Silently speaking in a voice nobody selected is the failure this whole
+     * migration is about.
+     */
+    logEvent('ai-talk', 'tts_route_unsupported', { provider: voice.provider });
+    return {
+      ok: false,
+      failures: [{ provider: voice.provider, code: 'PROVIDER_NOT_SUPPORTED_ON_AI_TALK', status: null }],
+    };
+  }
+
+  if (!cartesiaCredentialsPresent().ok) {
+    return { ok: false, failures: [{ provider: 'CARTESIA', code: 'MISSING_CREDENTIALS', status: null }] };
+  }
+
   const at = Date.now();
-  const whole = await speakPhrase(sb, {
-    text: params.text, language: params.language,
-    sessionId: params.sessionId, surface: params.surface,
+  const out = await streamCartesiaPcm({
+    voiceId: voice.voiceId,
+    text: params.text,
+    language: params.language || 'ka',
+    sampleRate: params.outputSampleRate ?? undefined,
+    signal: params.signal,
+  }, (chunk) => params.onChunk(chunk));
+
+  if (out.ok && out.data) {
+    await recordVoiceUsage(sb, {
+      sessionId: params.sessionId ?? null,
+      surface: params.surface ?? 'AI_TALK',
+      provider: 'CARTESIA', role: 'TTS', model: out.data.model,
+      characters: out.data.characters,
+      // What a person waited through, not what the whole clip cost.
+      latencyMs: out.data.firstByteMs,
+      ok: true, errorCode: null, providerStatus: null,
+    });
+    return {
+      ok: true, streamed: true,
+      firstByteMs: out.data.firstByteMs,
+      totalMs: out.data.totalMs,
+      sampleRate: out.data.sampleRate,
+      provider: 'CARTESIA',
+      voiceId: voice.voiceId,
+      model: out.data.model,
+    };
+  }
+
+  await recordVoiceUsage(sb, {
+    sessionId: params.sessionId ?? null,
+    surface: params.surface ?? 'AI_TALK',
+    provider: 'CARTESIA', role: 'TTS', model: 'sonic-3',
+    characters: params.text.length, latencyMs: Date.now() - at,
+    ok: false, errorCode: out.error?.code ?? null,
+    providerStatus: Number(out.error?.providerCode) || null,
   });
-  if (whole.ok) return { ok: true, streamed: false, data: whole.data, totalMs: Date.now() - at };
-  return whole;
+
+  /*
+   * The provider's own sentence, kept. Twice now a bucketed code has cost a
+   * day: PROVIDER_ERROR for a gRPC 12 that was a 404, and UNKNOWN for a
+   * websocket frame that said exactly which field was wrong.
+   */
+  logEvent('ai-talk', 'tts_failed', {
+    provider: 'CARTESIA',
+    code: out.error?.code ?? null,
+    providerStatus: Number(out.error?.providerCode) || null,
+    detail: String(out.error?.message ?? '').slice(0, 300),
+  });
+
+  return {
+    ok: false,
+    failures: [{
+      provider: 'CARTESIA',
+      code: out.error?.code ?? null,
+      status: Number(out.error?.providerCode) || null,
+      detail: String(out.error?.message ?? '').slice(0, 200),
+    }],
+  };
 }
 
 /**
@@ -1291,8 +1272,24 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
   const session = guard.row;
 
   const locale = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
+  /*
+   * WHICH LANGUAGE TO ANSWER IN.
+   *
+   * In order of how much each source actually knows:
+   *
+   *   1. the script of what they just said — decisive where it exists, since
+   *      Georgian letters are Georgian whatever anything else believes;
+   *   2. the language the session has settled on, which the browser sends and
+   *      which already carries the recogniser's own per-utterance answer
+   *      through a stabiliser that will not move on one short sample;
+   *   3. the page locale, which is where the visitor arrived, not necessarily
+   *      the language they are speaking.
+   *
+   * The page locale being LAST is the point. It used to be reachable whenever
+   * script evidence was absent, which is every English and Turkish turn.
+   */
   const heard = scriptLanguage(said)
-    ?? (body.languageHint ? String(body.languageHint).toLowerCase().slice(0, 5) : null);
+    ?? (body.languageHint ? String(body.languageHint).toLowerCase().split('-')[0].slice(0, 3) : null);
   const replyLanguage = heard ?? locale;
 
   // What the conversation already knows, plus whatever this sentence added.
@@ -1341,6 +1338,23 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
     })
     .eq('id', session.id);
 
+  /*
+   * What the browser will play at, snapped to something the provider offers.
+   * Absent on an older client, which simply gets the provider default and one
+   * resample, exactly as before.
+   */
+  const outputSampleRate = nearestCartesiaRate(body.outputSampleRate ?? null);
+
+  /*
+   * A DROPPED LISTENER MUST STOP THE SYNTHESIS IT WAS PAYING FOR.
+   *
+   * A visitor who interrupts, navigates away or closes the panel cancels the
+   * request; without this the phrases already queued carried on being
+   * synthesised and billed, and the audio for a turn nobody was listening to
+   * arrived at a socket nobody was reading.
+   */
+  const turnAbort = new AbortController();
+
   const startedAt = Date.now();
   const encoder = new TextEncoder();
 
@@ -1387,6 +1401,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         totalMs: number;
         code: string | null;
         status: number | null;
+        detail?: string | null;
+        model?: string | null;
       }
       const spoken: Phrase[] = [];
       let voiceFailure: { code: string | null; status: number | null } | null = null;
@@ -1408,8 +1424,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         const index = spoken.length;
         const slot: Phrase = {
           index, chunks: [], done: false,
-          sampleRate: PCM_SAMPLE_RATE, provider: null, voiceId: null,
-          firstByteMs: null, totalMs: 0, code: null, status: null,
+          sampleRate: outputSampleRate, provider: null, voiceId: null,
+          firstByteMs: null, totalMs: 0, code: null, status: null, detail: null, model: null,
         };
         spoken.push(slot);
 
@@ -1418,6 +1434,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           const out = await speakPhraseStreaming(sb, {
             text: phrase, language: replyLanguage,
             sessionId: session.id, surface: 'AI_TALK',
+            outputSampleRate,
+            signal: turnAbort.signal,
             onChunk: (chunk) => {
               if (slot.firstByteMs === null) slot.firstByteMs = Date.now() - at;
               slot.chunks.push(bytesToBase64(chunk));
@@ -1432,22 +1450,16 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             ttsFirstByteAt = slot.firstByteMs === null ? null : (at - startedAt) + slot.firstByteMs;
           }
 
-          if (out.ok && out.streamed) {
+          if (out.ok) {
             slot.sampleRate = out.sampleRate;
             slot.provider = out.provider;
             slot.voiceId = out.voiceId;
+            slot.model = out.model;
             slot.totalMs = out.totalMs;
-          } else if (out.ok) {
-            // The whole-clip fallback produced one piece rather than many.
-            slot.chunks.push(out.data.pcmBase64);
-            slot.sampleRate = out.data.sampleRate;
-            slot.provider = out.data.provider;
-            slot.voiceId = out.data.voiceId;
-            slot.totalMs = out.totalMs;
-            if (slot.firstByteMs === null) slot.firstByteMs = out.totalMs;
           } else {
             slot.code = out.failures[0]?.code ?? null;
             slot.status = out.failures[0]?.status ?? null;
+            slot.detail = out.failures[0]?.detail ?? null;
             slot.totalMs = Date.now() - at;
           }
           slot.done = true;
@@ -1529,6 +1541,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       })();
 
       let full = '';
+      /** What has actually been shown and queued: `full` minus the marker. */
+      let shown = '';
       let pending = '';
       let firstTextAt = 0;
       let failed: string | null = null;
@@ -1558,8 +1572,27 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             send('open', { ms: firstTextAt, language: replyLanguage });
           }
           full += event.text;
-          pending += event.text;
-          send('text', { delta: event.text });
+
+          /*
+           * NOTHING PAST THE MARKER IS EVER SPOKEN OR SHOWN.
+           *
+           * The model appends its action as text, so the text stream is also
+           * where it can go wrong -- and the way it goes wrong is the voice
+           * reading JSON aloud to somebody. `full` keeps everything for
+           * parsing; only the part before the marker is displayed, queued for
+           * synthesis, or stored as the reply.
+           *
+           * A trailing partial marker is held too: "<<A" is a prefix of the
+           * marker, and speaking it because the next token has not arrived
+           * yet would be the same bug with better timing.
+           */
+          const visible = spokenPart(full);
+          const grown = visible.slice(shown.length);
+          if (grown && !endsWithPartialMarker(visible)) {
+            shown = visible;
+            pending += grown;
+            send('text', { delta: grown });
+          }
 
           // The FIRST phrase is allowed to be short, because it is the one
           // the visitor is waiting on. Later ones are longer, because by then
@@ -1573,6 +1606,18 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           }
         }
 
+        /*
+         * The marker may only have completed on the final token, so the
+         * visible text is recomputed once at the end rather than trusted from
+         * the loop. Whatever is left unspoken is the last phrase.
+         */
+        const finalVisible = spokenPart(full);
+        if (finalVisible.length > shown.length) {
+          const tail = finalVisible.slice(shown.length);
+          shown = finalVisible;
+          pending += tail;
+          send('text', { delta: tail });
+        }
         if (!failed && pending.trim()) queuePhrase(pending.trim());
         llmFinished = true;
         nudge();
@@ -1584,7 +1629,34 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           return;
         }
 
-        send('reply', { text: full.trim(), language: replyLanguage });
+        send('reply', { text: shown.trim(), language: replyLanguage });
+
+        /*
+         * WHERE TO SEND THEM, AND WHETHER THIS CALL IS FINISHED.
+         *
+         * Sent before the audio has drained on purpose: the button should be
+         * on screen while the assistant is still saying "open it here", not
+         * after. The client does not act on `end` until the voice has
+         * finished the sentence.
+         *
+         * The destination is whatever the KEY resolved to in this
+         * application's own route list. A key nobody recognises produces no
+         * event at all, which is why the model cannot invent a URL: it never
+         * supplies one.
+         */
+        const action = parseAction(full);
+        if (action.destination) {
+          logEvent('ai-talk', 'nav_offered', { key: action.destination.key });
+          send('action', {
+            kind: 'NAVIGATE',
+            key: action.destination.key,
+            path: action.destination.path,
+          });
+        }
+        if (action.end) {
+          logEvent('ai-talk', 'auto_end', { reason: action.endReason });
+          send('end', { reason: action.endReason ?? 'OBJECTIVE_MET' });
+        }
 
         await drain;
         if (!firstAudioAt) {
@@ -1614,7 +1686,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           firstAudioMs: firstAudioAt || null,
           totalMs: Date.now() - startedAt,
           ttsMs,
-          chars: full.length,
+          chars: shown.length,
           phrases: spoken.length,
           /*
            * Every stage this function is responsible for, as offsets from the
@@ -2084,6 +2156,14 @@ async function resolveAnonSession(sb: Sb, candidate: string | undefined): Promis
  * written by a Georgian, so the instructions say so explicitly — a model told
  * only "reply in Georgian" produces exactly that.
  */
+/**
+ * What the assistant is, how short it must be, and the two decisions it is
+ * allowed to make about the call itself.
+ *
+ * The destination catalogue is injected rather than written here, so a route
+ * renamed in the router is renamed in the prompt, and a key the model invents
+ * resolves to nothing instead of to a 404 in front of a customer.
+ */
 function publicDemoInstructions(language: string): string {
   const names: Record<string, string> = {
     ka: 'Georgian', en: 'English', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew',
@@ -2093,8 +2173,19 @@ function publicDemoInstructions(language: string): string {
   const lines = [
     'You are Homatch, a real-estate intelligence assistant for the Georgian market, talking to a visitor by voice.',
     '',
-    'THE ONE RULE THAT MATTERS MOST: at most two sentences and at most 35 words, in total, every time.',
+    'THE ONE RULE THAT MATTERS MOST: at most two sentences and at most 30 words, in total, every time.',
     'A third sentence is a mistake, not a bonus. Everything below assumes you are keeping to it.',
+    'One useful sentence is better than two. Answer first; only expand if they ask for detail, or the',
+    'task genuinely cannot be said shorter.',
+    '',
+    'NEVER DO ANY OF THESE. They are what makes a voice assistant exhausting:',
+    '- repeat or rephrase what they just said back to them',
+    '- open with pleasantries, praise, or "great question"',
+    '- explain what you are about to do before doing it',
+    '- add a disclaimer nobody asked for',
+    '- summarise what you just said',
+    '- repeat something you already told them earlier in this call',
+    '- fill space while you think',
     '',
     'LANGUAGE',
     `Reply in ${name}. Follow the visitor turn by turn: if they change language mid-conversation, change with`,
@@ -2134,6 +2225,32 @@ function publicDemoInstructions(language: string): string {
     '  and if it does not come back, say this demo is only about property and wrap up.',
     '- Write the name Homatch in Latin letters, always, in every language. Never transliterate it',
     '  into Georgian, Cyrillic, Arabic or Hebrew script.',
+    '',
+    'SENDING THEM SOMEWHERE, AND ENDING THE CALL',
+    '',
+    'You cannot look anything up in this conversation, but Homatch can. When what they want is a thing',
+    'the site does, say so in your normal short sentence and add the marker below. The app turns it into',
+    'a button they can tap; you never write a link, a URL or a path, and you never read the marker aloud.',
+    '',
+    'After your sentence, on the same line, you may append EXACTLY:',
+    `${ACTION_MARKER} {"go":"<key>","end":<true|false>,"why":"<reason>"}>>`,
+    '',
+    'Destinations. Use the KEY on the left, never anything else:',
+    destinationMenu(),
+    '',
+    'Only offer one when it genuinely helps: they asked for something that page does, or you have taken',
+    'them as far as talking can. Do not attach one to every reply.',
+    '',
+    'END THE CALL when there is nothing useful left to do, with "end":true and one of:',
+    '  OBJECTIVE_MET       you answered what they came for and they have no follow-up',
+    '  FAREWELL            they said goodbye, thanks, that is all, or similar',
+    '  HANDED_OFF          you have sent them to the page that does the rest',
+    '  NOTHING_ACTIONABLE  repeated turns with no real request and nothing to act on',
+    '  ABUSE               they keep being abusive with no real question underneath',
+    '',
+    'Before ending, your sentence should be a short, warm sign-off — not an explanation that you are',
+    'ending. Do NOT end because a turn was brief, quiet, or off-topic once: people pause and wander.',
+    'End when there is genuinely nothing left, not to get rid of them.',
   ];
 
   if (name === 'Georgian') {

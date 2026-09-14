@@ -66,6 +66,21 @@ export class GoogleTranscriber implements LiveSocket {
       const tag = TAGS[this.grant.languageCode.toLowerCase().split('-')[0]];
       if (tag) query.set('language', tag);
     }
+
+    /*
+     * EVERY LANGUAGE THIS CONVERSATION COULD BE IN.
+     *
+     * The recogniser decides per utterance which one it heard, so the visitor
+     * simply starts talking instead of choosing from a menu first. The
+     * established language is sent separately above and stays the primary
+     * candidate, which is what keeps a settled conversation from being
+     * re-decided on every pause.
+     */
+    const candidates = (this.grant.languages ?? [])
+      .map((code) => TAGS[String(code).toLowerCase().split('-')[0]] ?? null)
+      .filter((tag): tag is string => Boolean(tag));
+    if (candidates.length) query.set('languages', [...new Set(candidates)].join(','));
+
     return `${base}?${query}`;
   }
 
@@ -185,7 +200,7 @@ export class GoogleTranscriber implements LiveSocket {
   }
 
   private onEvent(event: MessageEvent): void {
-    let message: { type?: string; text?: string; reason?: string };
+    let message: { type?: string; text?: string; reason?: string; language?: string };
     try { message = JSON.parse(String(event.data)); } catch { return; }
 
     switch (message.type) {
@@ -211,12 +226,14 @@ export class GoogleTranscriber implements LiveSocket {
 
       case 'final': {
         const text = String(message.text ?? '').trim();
+        // What the recogniser decided it heard, forwarded verbatim.
+        const heard = typeof message.language === 'string' ? message.language : null;
         // Google's own endpointer deciding the utterance ended. Both
         // callbacks fire from it, in order, because this is the moment the
         // wait a person feels begins.
         if (this.speaking) this.cb.onSpeechEnd();
         this.speaking = false;
-        if (text) this.cb.onFinal(text);
+        if (text) this.cb.onFinal(text, heard);
         break;
       }
 

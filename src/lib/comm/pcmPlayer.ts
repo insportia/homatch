@@ -1,0 +1,279 @@
+// HOMATCH AI TALK — playing a voice that arrives in pieces.
+//
+// WHAT WAS WRONG BEFORE
+//
+// Every chunk became its own AudioBuffer declared at the PROVIDER's sample
+// rate — `ctx.createBuffer(1, n, 24000)` on a context running at 48000. That
+// is legal, and the browser resamples it on playback, which sounds like the
+// right thing until you notice it resamples EACH BUFFER INDEPENDENTLY.
+//
+// An independent resample has no idea what came before it or what follows. At
+// every join the interpolator restarts from nothing, so the waveform takes a
+// step, and a step in a waveform is a click. Dozens of them a second, at
+// phrase boundaries, is the high-frequency whine and the harshness a listener
+// hears. It was never the voice; it was the arithmetic between the pieces.
+//
+// WHAT THIS DOES INSTEAD
+//
+// One conversion, continuous across the whole reply. Samples are converted to
+// the context's own rate ONCE, carrying the interpolation phase and the last
+// sample from chunk to chunk, so a join is arithmetically identical to the
+// middle of a chunk. Then they are batched and scheduled on an integer sample
+// cursor, so consecutive buffers abut exactly rather than nearly.
+//
+// Usually there is no conversion at all: the server asks the provider to
+// synthesise at the rate this context runs at, so the samples are simply
+// played. The resampler is here for the devices where that is not possible.
+//
+// WHY BATCHING
+//
+// A provider chunk can be 20ms. Scheduling hundreds of tiny AudioBufferSources
+// is exactly the pattern that stutters on a mid-range Android under load: each
+// one is a separate object, a separate callback, and a separate chance for the
+// audio thread to miss a deadline. They are accumulated into pieces of about
+// an eighth of a second, which is long enough to be cheap and short enough
+// that nobody hears the delay.
+
+/** How much audio to gather before scheduling a piece of it. */
+const BATCH_SECONDS = 0.12;
+
+/**
+ * How far ahead of the clock the first piece starts.
+ *
+ * Starting at exactly `currentTime` races the audio thread: the buffer is
+ * handed over after the deadline it was meant for and the first milliseconds
+ * are dropped, which is heard as the voice beginning mid-word. Small enough
+ * that nobody perceives it as delay.
+ */
+const LEAD_SECONDS = 0.05;
+
+/**
+ * If the cursor falls behind the clock by more than this, the stream starved
+ * and the schedule is rebuilt rather than trying to catch up. Catching up means
+ * playing pieces late and overlapping, which sounds far worse than a gap.
+ */
+const RESYNC_SECONDS = 0.25;
+
+export interface PcmPlayerStats {
+  /** Pieces scheduled. */
+  batches: number;
+  /** Times the incoming audio arrived too slowly to keep the cursor ahead. */
+  underruns: number;
+  /** Chunks dropped because they belonged to a turn that is over. */
+  stale: number;
+  /** Whether any resampling happened at all. */
+  resampled: boolean;
+  providerRate: number | null;
+  contextRate: number;
+}
+
+export class PcmStreamPlayer {
+  private readonly ctx: AudioContext;
+  private readonly destination: AudioNode;
+
+  /** Converted samples not yet long enough to be worth scheduling. */
+  private pendingSamples: Float32Array[] = [];
+  private pendingLength = 0;
+
+  /** Where the next piece starts on the audio clock. */
+  private cursor = 0;
+  private sources: AudioBufferSourceNode[] = [];
+
+  /** Only chunks from this turn are accepted. */
+  private generation = 0;
+
+  // Resampler state, carried across chunks so joins are not special.
+  private ratio = 1;
+  private phase = 0;
+  private tail = 0;
+  private hasTail = false;
+  private providerRate: number | null = null;
+
+  private stats: PcmPlayerStats;
+
+  constructor(ctx: AudioContext, destination: AudioNode) {
+    this.ctx = ctx;
+    this.destination = destination;
+    this.stats = {
+      batches: 0, underruns: 0, stale: 0,
+      resampled: false, providerRate: null, contextRate: ctx.sampleRate,
+    };
+  }
+
+  /** Begin a new turn. Anything still arriving from the previous one is dropped. */
+  startTurn(generation: number): void {
+    this.generation = generation;
+    this.pendingSamples = [];
+    this.pendingLength = 0;
+    this.phase = 0;
+    this.hasTail = false;
+    this.tail = 0;
+  }
+
+  get currentGeneration(): number { return this.generation; }
+
+  /** Seconds of audio scheduled but not yet heard. */
+  get pendingSeconds(): number {
+    return Math.max(0, this.cursor - this.ctx.currentTime);
+  }
+
+  get playing(): boolean {
+    return this.sources.length > 0 || this.pendingSeconds > 0.01;
+  }
+
+  snapshot(): PcmPlayerStats {
+    return { ...this.stats };
+  }
+
+  /**
+   * One chunk of signed 16-bit little-endian mono PCM, base64 as it arrived.
+   *
+   * `generation` is the turn it belongs to. A chunk from a turn the visitor
+   * has already interrupted is counted and thrown away — the alternative is
+   * the assistant answering a question that was cancelled, over the top of the
+   * one that replaced it.
+   */
+  push(pcmBase64: string, sampleRate: number, generation: number): void {
+    if (generation !== this.generation) { this.stats.stale += 1; return; }
+
+    const bytes = decodeBase64(pcmBase64);
+    // Two bytes to a sample. An odd length means the stream was cut through
+    // the middle of one; the server holds those back, and if one still arrives
+    // the odd byte is dropped rather than shifting every sample after it.
+    const count = bytes.byteLength >> 1;
+    if (!count) return;
+
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const input = new Float32Array(count);
+    for (let i = 0; i < count; i++) input[i] = view.getInt16(i * 2, true) / 0x8000;
+
+    if (this.providerRate !== sampleRate) {
+      // A rate change mid-reply would be a provider or route change mid
+      // sentence. Reset the phase rather than interpolating across it.
+      this.providerRate = sampleRate;
+      this.stats.providerRate = sampleRate;
+      this.ratio = sampleRate / this.ctx.sampleRate;
+      this.phase = 0;
+      this.hasTail = false;
+      if (sampleRate !== this.ctx.sampleRate) this.stats.resampled = true;
+    }
+
+    const converted = this.ratio === 1 ? input : this.resample(input);
+    if (converted.length) {
+      this.pendingSamples.push(converted);
+      this.pendingLength += converted.length;
+    }
+
+    if (this.pendingLength >= BATCH_SECONDS * this.ctx.sampleRate) this.flushPending();
+  }
+
+  /**
+   * Continuous linear resampling.
+   *
+   * `phase` is where in the input the next output sample falls, and it is kept
+   * between calls; `tail` is the final input sample of the previous chunk, so
+   * an output sample landing across the boundary interpolates between the two
+   * real samples either side of it rather than between silence and the first
+   * one. Those two pieces of carried state are the entire difference between
+   * this and what was there before.
+   */
+  private resample(input: Float32Array): Float32Array {
+    const ratio = this.ratio;
+    const available = input.length + (this.hasTail ? 1 : 0);
+    const out = new Float32Array(Math.max(0, Math.ceil((available - this.phase) / ratio)));
+
+    const at = (i: number): number => {
+      if (!this.hasTail) return input[i];
+      return i === 0 ? this.tail : input[i - 1];
+    };
+
+    let n = 0;
+    let pos = this.phase;
+    while (pos < available - 1) {
+      const i = Math.floor(pos);
+      const f = pos - i;
+      out[n++] = at(i) * (1 - f) + at(i + 1) * f;
+      pos += ratio;
+    }
+
+    // What is left over becomes the next call's starting phase, measured from
+    // the last input sample, which becomes the next call's tail.
+    this.phase = Math.max(0, pos - (available - 1));
+    this.tail = input[input.length - 1];
+    this.hasTail = true;
+    return n === out.length ? out : out.subarray(0, n);
+  }
+
+  /** Schedule whatever has accumulated, however short. */
+  private flushPending(): void {
+    if (!this.pendingLength) return;
+
+    const merged = new Float32Array(this.pendingLength);
+    let at = 0;
+    for (const part of this.pendingSamples) { merged.set(part, at); at += part.length; }
+    this.pendingSamples = [];
+    this.pendingLength = 0;
+
+    const buffer = this.ctx.createBuffer(1, merged.length, this.ctx.sampleRate);
+    buffer.copyToChannel(merged, 0);
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.destination);
+
+    const now = this.ctx.currentTime;
+    if (this.cursor < now + 0.001) {
+      // Either the first piece of a reply, or the stream starved. Both want a
+      // fresh cursor slightly ahead of the clock.
+      if (this.cursor !== 0 && now - this.cursor > RESYNC_SECONDS) this.stats.underruns += 1;
+      this.cursor = now + LEAD_SECONDS;
+    }
+
+    source.start(this.cursor);
+    this.cursor += buffer.duration;
+    this.stats.batches += 1;
+
+    this.sources.push(source);
+    source.onended = () => {
+      const i = this.sources.indexOf(source);
+      if (i !== -1) this.sources.splice(i, 1);
+    };
+  }
+
+  /** The reply is complete: play the remainder, however short it is. */
+  endOfTurn(): void {
+    this.flushPending();
+  }
+
+  /**
+   * Stop immediately and forget everything.
+   *
+   * Used for barge-in and for navigating away. Every scheduled source is
+   * stopped rather than left to finish, the accumulator is dropped, and the
+   * cursor is reset — a cursor left in the future would make the NEXT reply
+   * wait for audio that will never play.
+   */
+  stop(): void {
+    for (const source of this.sources) {
+      try { source.onended = null; source.stop(); } catch { /* already finished */ }
+      try { source.disconnect(); } catch { /* already detached */ }
+    }
+    this.sources = [];
+    this.pendingSamples = [];
+    this.pendingLength = 0;
+    this.cursor = 0;
+    this.phase = 0;
+    this.hasTail = false;
+    // A new turn must not be able to accept chunks still in flight from this
+    // one. Advancing the generation is what makes cancellation immediate
+    // rather than eventual.
+    this.generation += 1;
+  }
+}
+
+function decodeBase64(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}

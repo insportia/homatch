@@ -41,6 +41,7 @@ import {
   Resampler, floatToPcm16, rms, encodeWav, joinBlocks, bytesToBase64,
   TARGET_SAMPLE_RATE,
 } from './audio.ts';
+import { PcmStreamPlayer } from './pcmPlayer.ts';
 import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
 
 
@@ -113,6 +114,17 @@ export type ConverseEvent =
   | { type: 'text'; delta: string }
   | { type: 'reply'; text: string; language?: string }
   | { type: 'audio'; pcmBase64: string; sampleRate: number; index?: number }
+  /**
+   * Somewhere in Homatch that actually does what they asked for.
+   *
+   * `path` is resolved server-side from this application's own route list, so
+   * it is a route that exists. The model chooses a key and never a URL, which
+   * is what stops a plausible-looking invented path reaching a customer as a
+   * button.
+   */
+  | { type: 'action'; kind: 'NAVIGATE'; key: string; path: string }
+  /** The assistant has decided the call is over once this reply is spoken. */
+  | { type: 'end'; reason: string }
   | { type: 'voiceless'; reason?: string; providerCode?: string; providerStatus?: number; language?: string }
   | { type: 'state'; state: unknown }
   | {
@@ -305,8 +317,18 @@ export interface VoiceCallbacks {
    * When present this replaces onUserTurn entirely. Voice Studio still uses
    * the older request-and-reply path, which is why both exist.
    */
-  onConverse?: (text: string) => AsyncIterable<ConverseEvent>;
+onConverse?: (text: string, signal: AbortSignal) => AsyncIterable<ConverseEvent>;
   /** The conversation state the server sent back, to carry into the next turn. */
+  /**
+   * The assistant is offering a real Homatch destination.
+   *
+   * The session does not navigate: it hands this to the UI, which renders a
+   * button. Being sent somewhere mid-sentence by a voice is not a thing
+   * anybody wants done to them without a tap.
+   */
+  onAction?: (action: { kind: 'NAVIGATE'; key: string; path: string }) => void;
+  /** The assistant has decided the call is over, once this reply is spoken. */
+  onEnded?: (reason: string) => void;
   onConversationState?: (state: unknown) => void;
   /** Live counters, about once a second. Counts and codes, never a key. */
   onDiagnostics?: (d: VoiceDiagnostics) => void;
@@ -391,6 +413,26 @@ export class VoiceSession {
   private assistantSeq = 0;
   private currentAudio: HTMLAudioElement | null = null;
   private playingSources: AudioBufferSourceNode[] = [];
+  /**
+   * The reply's voice, converted once and scheduled continuously.
+   *
+   * Replaces a scheduler that made one AudioBuffer per provider chunk at the
+   * PROVIDER's sample rate, which made the browser resample every chunk
+   * independently and put a step in the waveform at every join. That was the
+   * whine.
+   */
+  private player: PcmStreamPlayer | null = null;
+  /**
+   * Which turn is currently allowed to make a sound.
+   *
+   * Every async result carries the generation it was started for. A late STT
+   * final, a model token from an abandoned request, or an audio chunk that
+   * crossed an interruption on the wire all arrive after the turn they belong
+   * to is over, and all of them used to be acted on.
+   */
+  private turnGeneration = 0;
+  /** Cancels the in-flight turn's request when the visitor interrupts. */
+  private turnAbort: AbortController | null = null;
   /** Where the next streamed phrase should start, on the audio clock. */
   private queueTime = 0;
   /** Reads the level of what the assistant is saying, for the visualiser. */
@@ -678,6 +720,7 @@ export class VoiceSession {
     if (this.audioContext.state === 'running') this.milestone('audio_context_running');
 
     this.resampler = new Resampler(this.audioContext.sampleRate, TARGET_SAMPLE_RATE);
+    if (this.outputGain) this.player = new PcmStreamPlayer(this.audioContext, this.outputGain);
 
     /*
      * Everything the assistant says goes through one gain node with an
@@ -855,7 +898,7 @@ export class VoiceSession {
         if (!this.turnInFlight) this.setState('UNDERSTANDING');
       },
       onPartial: (text) => this.showPartial(text),
-      onFinal: (text) => { void this.onLiveFinal(text); },
+      onFinal: (text, heard) => { void this.onLiveFinal(text, heard ?? null); },
       onUnavailable: (reason) => {
         // Back to the batch path for the rest of the session, rather than a
         // conversation that quietly stops hearing anybody.
@@ -919,7 +962,7 @@ export class VoiceSession {
   }
 
   /** The finished sentence, from the live socket. */
-  private async onLiveFinal(text: string): Promise<void> {
+  private async onLiveFinal(text: string, detected: string | null = null): Promise<void> {
     if (this.closed || this.turnInFlight) return;
 
     const said = text.trim();
@@ -945,7 +988,23 @@ export class VoiceSession {
     this.cb.onTranscript(this.turns);
 
     const before = this.language.current;
-    this.language = stabiliseLanguage(this.language, { text: said, detected: null, confidence: 0.8 });
+    /*
+     * The recogniser's own answer, which used to be discarded here.
+     *
+     * `detected: null` meant the state machine only ever had script evidence
+     * to work with, so Georgian, Russian, Arabic and Hebrew were decided
+     * correctly and English and Turkish -- identical alphabets -- were never
+     * decided at all. They stayed on whatever the page locale was, which is
+     * how a voice assistant answers an English speaker in Georgian.
+     *
+     * stabiliseLanguage still outranks it with script evidence where there is
+     * any, and still refuses to move on one short low-confidence sample.
+     */
+    this.language = stabiliseLanguage(this.language, {
+      text: said,
+      detected: detected ? detected.toLowerCase().split('-')[0] : null,
+      confidence: detected ? 0.8 : 0.5,
+    });
     if (this.language.current !== before || this.language.locked) {
       this.cb.onLanguage(this.language.current, this.language.locked);
     }
@@ -1119,8 +1178,25 @@ export class VoiceSession {
     let text = '';
     let failure: string | null = null;
     let spoke = false;
+    /** Set if the assistant decided this is the last turn. Acted on after it has spoken. */
+    let endReason: string | null = null;
 
     this.queueTime = 0;
+
+    /*
+     * THIS TURN'S GENERATION.
+     *
+     * Claimed before anything is awaited. Everything that comes back —
+     * tokens, audio chunks, the final transcript that was already in flight —
+     * is checked against it, so an interrupted turn cannot speak over the one
+     * that replaced it. stopPlayback() advances the generation, which is what
+     * makes an interruption take effect immediately rather than after the
+     * next chunk happens to arrive.
+     */
+    this.turnGeneration += 1;
+    const generation = this.turnGeneration;
+    this.player?.startTurn(generation);
+
     /*
      * T3. Everything the SERVER reports is an offset from here, because the
      * two machines do not share a clock and subtracting one's now() from the
@@ -1129,8 +1205,18 @@ export class VoiceSession {
     this.marks.turnRequestedAtMs = Date.now();
 
     try {
-      for await (const event of this.cb.onConverse!(said)) {
+      /*
+       * The turn's own controller. Aborting it stops the request rather than
+       * merely ignoring what comes back: a visitor who interrupted is not
+       * waiting for the rest of that answer, and neither is the bill for
+       * synthesising it.
+       */
+      this.turnAbort = new AbortController();
+      for await (const event of this.cb.onConverse!(said, this.turnAbort.signal)) {
         if (this.closed) return;
+        // The visitor interrupted, or a newer turn started. Whatever is still
+        // arriving belongs to a conversation that has moved on.
+        if (generation !== this.turnGeneration) return;
 
         switch (event.type) {
           case 'text': {
@@ -1179,6 +1265,20 @@ export class VoiceSession {
             }
             break;
           }
+          case 'action':
+            // Handed straight to the UI. Nothing here navigates on its own.
+            this.cb.onAction?.({ kind: event.kind, key: event.key, path: event.path });
+            break;
+
+          case 'end':
+            /*
+             * Remembered, not obeyed yet. The reply is still being spoken,
+             * and cutting the voice off to close the panel would end the call
+             * mid-sentence — which reads as a crash, not as a goodbye.
+             */
+            endReason = event.reason;
+            break;
+
           case 'state':
             this.cb.onConversationState?.(event.state);
             break;
@@ -1244,8 +1344,29 @@ export class VoiceSession {
     }
 
     this.history.push({ role: 'assistant', content: text });
+
+    /*
+     * The reply is complete, so whatever is still accumulating below the
+     * batch threshold is the end of the sentence and has to be played. Without
+     * this the last fraction of a second is held forever waiting for a chunk
+     * that is never coming, and the assistant appears to be cut off.
+     */
+    this.player?.endOfTurn();
+
     // Wait for the audio that is already scheduled, then hand the floor back.
     await this.awaitPlayback();
+    if (this.closed || generation !== this.turnGeneration) return;
+
+    /*
+     * THE ASSISTANT DECIDED THIS WAS THE LAST TURN.
+     *
+     * Acted on here and not when the event arrived, because the sentence was
+     * still being spoken then. Ending a call mid-goodbye reads as a crash.
+     */
+    if (endReason) {
+      this.cb.onEnded?.(endReason);
+      return;
+    }
     this.resumeListening();
   }
 
@@ -1321,37 +1442,18 @@ export class VoiceSession {
    * rhythm with each other; played on arrival they talk over themselves, and
    * played with any rounding between them they click.
    */
+  /**
+   * One piece of the reply's audio.
+   *
+   * All the scheduling now lives in PcmStreamPlayer, which converts the whole
+   * reply at one continuous phase instead of resampling each piece on its own.
+   * The generation is carried through so that audio belonging to an
+   * interrupted turn is dropped here rather than played over its replacement.
+   */
   private enqueuePcm(pcmBase64: string, sampleRate: number): void {
-    const ctx = this.audioContext;
-    if (!ctx || !this.outputGain) return;
-
-    const binary = atob(pcmBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const samples = Math.floor(bytes.byteLength / 2);
-    if (!samples) return;
-
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const buffer = ctx.createBuffer(1, samples, sampleRate);
-    const channel = buffer.getChannelData(0);
-    for (let i = 0; i < samples; i++) channel[i] = view.getInt16(i * 2, true) / 0x8000;
-
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.outputGain);
-
-    // A small lead-in on the first piece only: starting at exactly
-    // currentTime races the audio thread and drops the first milliseconds.
-    const now = ctx.currentTime;
-    if (this.queueTime < now) this.queueTime = now + 0.06;
-    source.start(this.queueTime);
-    this.queueTime += buffer.duration;
-
-    this.playingSources.push(source);
-    source.onended = () => {
-      this.playingSources = this.playingSources.filter((s) => s !== source);
-    };
+    this.player?.push(pcmBase64, sampleRate, this.turnGeneration);
   }
+
 
   /** Resolve once everything scheduled has finished sounding. */
   private async awaitPlayback(): Promise<void> {
@@ -1359,11 +1461,22 @@ export class VoiceSession {
     if (!ctx) return;
     const deadline = Date.now() + 60_000;
     while (!this.closed && Date.now() < deadline) {
-      const remaining = this.queueTime - ctx.currentTime;
-      if (remaining <= 0.02 && !this.playingSources.length) break;
+      const remaining = this.player ? this.player.pendingSeconds : (this.queueTime - ctx.currentTime);
+      if (remaining <= 0.02 && !this.player?.playing && !this.playingSources.length) break;
       await new Promise((r) => setTimeout(r, Math.min(250, Math.max(40, remaining * 1000))));
     }
     if (!this.closed) this.milestone('playback_ended');
+  }
+
+  /**
+   * The rate this browser's audio hardware actually runs at.
+   *
+   * Sent with every turn so the provider synthesises at it and the samples
+   * are played rather than resampled. Null before the context exists, in
+   * which case the server uses its own default and accepts one conversion.
+   */
+  get outputSampleRate(): number | null {
+    return this.audioContext?.sampleRate ?? null;
   }
 
   /** How loud the assistant is right now, 0-1, for the visualiser. */
@@ -1503,12 +1616,26 @@ export class VoiceSession {
     this.playbackTime = Math.min(this.playbackTime, (this.audioContext?.currentTime ?? 0) + 0.08);
   }
 
+  /**
+   * Silence, now, and nothing from this turn may make a sound again.
+   *
+   * The player advances its own generation when it stops, so chunks still on
+   * the wire for the interrupted turn are counted and discarded instead of
+   * arriving to an empty queue and starting to play. The request is aborted
+   * too: a visitor who interrupted is not waiting for the rest of the answer,
+   * and neither is the bill.
+   */
   private stopPlayback(): void {
     for (const source of this.playingSources) {
       try { source.stop(); } catch { /* already stopped */ }
     }
     this.playingSources = [];
+    this.player?.stop();
+    this.turnGeneration = this.player?.currentGeneration ?? this.turnGeneration + 1;
+    this.queueTime = 0;
     this.playbackTime = this.audioContext?.currentTime ?? 0;
+    try { this.turnAbort?.abort(); } catch { /* already done */ }
+    this.turnAbort = null;
   }
 
   private setState(state: VoiceState, detail?: string): void {

@@ -42,6 +42,9 @@ import { syncVoiceLibrary } from '../_shared/comm/voiceLibrary.ts';
 import {
   speechSocketUrl, mintSpeechGrant, googleSpeechDiagnosis, GRANT_TTL_MS,
 } from '../_shared/comm/speechGrant.ts';
+import {
+  streamCartesiaPcm, listCartesiaVoices, cartesiaCredentialsPresent,
+} from '../_shared/comm/cartesia.ts';
 
 type Sb = SupabaseClient;
 
@@ -108,6 +111,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'fallback-policy-save': return await fallbackPolicySave(sb, body);
     case 'usage':                return await usage(sb, body);
     case 'speech-probe':         return await speechProbe(body);
+    case 'voice-languages':      return await voiceLanguageProbe(body);
+    case 'cartesia-voices':      return await cartesiaVoiceCatalogue();
     default:                     return json({ error: 'unknown_action' }, 400);
   }
 });
@@ -1378,4 +1383,104 @@ async function speechProbe(body: VoiceAiRequest): Promise<Response> {
     sampleRate: 16_000,
     worker: health,
   });
+}
+
+
+/**
+ * Does this voice actually speak these languages?
+ *
+ * WHY A PROBE AND NOT A DOCUMENTATION LOOKUP
+ *
+ * A TTS API accepts almost any text in almost any language and returns 200.
+ * What comes back may be the right words in the right script, or it may be a
+ * speaker reading unfamiliar letters phonetically, which is exactly the
+ * failure that made the previous provider unusable for Georgian — and the API
+ * response looked identical in both cases.
+ *
+ * So this synthesises a REAL sentence in each language, through the same
+ * streaming path a conversation uses, and reports what happened: whether the
+ * provider accepted it, which model answered, how long the first audio byte
+ * took, and how much audio came back. Bytes-per-character is included because
+ * a provider that silently gives up mid-sentence returns success and very
+ * little audio.
+ *
+ * It cannot tell you whether the result SOUNDS native. Nothing automated can;
+ * that is why the audition harness exists and why a person listens. What it
+ * can do is stop a language being declared supported on the strength of an
+ * HTTP status.
+ */
+const PROBE_LINES: Array<{ language: string; text: string }> = [
+  // Each carries a price and a Tbilisi district, because numbers, currency
+  // and place names are where a mismatched voice falls apart first.
+  { language: 'ka', text: 'გამარჯობა, ვაკეში ორსაძინებლიანი ბინა ას ორმოცდაათი ათასი დოლარი ღირს.' },
+  { language: 'en', text: 'Hello, a two bedroom flat in Vake costs one hundred and fifty thousand dollars.' },
+  { language: 'ru', text: 'Здравствуйте, двухкомнатная квартира в Ваке стоит сто пятьдесят тысяч долларов.' },
+  { language: 'tr', text: 'Merhaba, Vake semtinde iki odalı bir daire yüz elli bin dolar.' },
+  { language: 'ar', text: 'مرحبا، شقة بغرفتي نوم في فاكي تكلف مئة وخمسين ألف دولار.' },
+  { language: 'he', text: 'שלום, דירת שני חדרים בוואקה עולה מאה וחמישים אלף דולר.' },
+];
+
+async function voiceLanguageProbe(body: VoiceAiRequest): Promise<Response> {
+  if (!cartesiaCredentialsPresent().ok) {
+    return json({ ok: false, reason: 'CARTESIA_NOT_CONFIGURED' }, 503);
+  }
+
+  const voiceId = /^[0-9a-f-]{16,64}$/i.test(String(body.voiceId ?? ''))
+    ? String(body.voiceId)
+    : null;
+  if (!voiceId) return json({ ok: false, reason: 'VOICE_ID_REQUIRED' }, 400);
+
+  const sampleRate = Number(body.sampleRate) || 24_000;
+  const wanted = Array.isArray(body.languages) && body.languages.length
+    ? PROBE_LINES.filter((l) => (body.languages as string[]).includes(l.language))
+    : PROBE_LINES;
+
+  const results: Array<Record<string, unknown>> = [];
+  for (const line of wanted) {
+    let chunks = 0;
+    let bytes = 0;
+    const started = Date.now();
+    const out = await streamCartesiaPcm({
+      voiceId, language: line.language, text: line.text, sampleRate,
+    }, (chunk) => { chunks += 1; bytes += chunk.byteLength; });
+
+    results.push({
+      language: line.language,
+      ok: out.ok,
+      model: out.ok ? out.data.model : null,
+      firstByteMs: out.ok ? out.data.firstByteMs : null,
+      totalMs: out.ok ? out.data.totalMs : Date.now() - started,
+      sampleRate: out.ok ? out.data.sampleRate : null,
+      chunks,
+      bytes,
+      // Seconds of speech per character. A provider that stops early answers
+      // success with almost no audio, and this is where that shows.
+      secondsPerChar: bytes
+        ? Math.round((bytes / 2 / sampleRate / line.text.length) * 1000) / 1000
+        : 0,
+      characters: line.text.length,
+      // The provider's own sentence when it refused. Never a credential.
+      error: out.ok ? null : String(out.error?.message ?? '').slice(0, 300),
+      errorCode: out.ok ? null : (out.error?.code ?? null),
+    });
+  }
+
+  await logEvent('voice-ai', 'voice_language_probe', {
+    voiceId, languages: results.length,
+    failed: results.filter((r) => !r.ok).length,
+  });
+
+  return json({ ok: true, voiceId, sampleRate, results });
+}
+
+/** The provider's own catalogue, so a voice's languages are read and not assumed. */
+async function cartesiaVoiceCatalogue(): Promise<Response> {
+  if (!cartesiaCredentialsPresent().ok) {
+    return json({ ok: false, reason: 'CARTESIA_NOT_CONFIGURED' }, 503);
+  }
+  const out = await listCartesiaVoices(200);
+  if (!out.ok) {
+    return json({ ok: false, reason: out.error?.code ?? 'UNKNOWN', detail: String(out.error?.message ?? '').slice(0, 300) }, 502);
+  }
+  return json({ ok: true, voices: out.data });
 }

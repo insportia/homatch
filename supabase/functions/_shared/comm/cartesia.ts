@@ -536,6 +536,230 @@ export async function synthesizePcm(params: {
 }
 
 /**
+ * The sample rates Cartesia will synthesise at.
+ *
+ * The browser asks for its OWN AudioContext rate and gets it whenever that
+ * rate is on this list, which is the difference between playing the samples
+ * and resampling them. Every resample is a chance to introduce exactly the
+ * artefacts this migration exists to remove, and the cheapest resampler is
+ * the one that never runs.
+ */
+export const CARTESIA_OUTPUT_RATES = [8000, 16000, 22050, 24000, 44100, 48000] as const;
+
+/**
+ * The nearest rate Cartesia will actually produce.
+ *
+ * Nearest rather than "must match": AudioContext on some Android devices
+ * reports a rate that is on nobody's list, and a request refused outright is
+ * worse than one resample.
+ */
+export function nearestCartesiaRate(wanted: number | null | undefined): number {
+  const n = Number(wanted);
+  if (!Number.isFinite(n) || n <= 0) return PCM_SAMPLE_RATE;
+  let best: number = PCM_SAMPLE_RATE;
+  let bestGap = Infinity;
+  for (const rate of CARTESIA_OUTPUT_RATES) {
+    const gap = Math.abs(rate - n);
+    if (gap < bestGap) { bestGap = gap; best = rate; }
+  }
+  return best;
+}
+
+export interface CartesiaStreamResult {
+  firstByteMs: number;
+  totalMs: number;
+  bytes: number;
+  sampleRate: number;
+  model: string;
+  characters: number;
+}
+
+/**
+ * One phrase, streamed, as raw samples.
+ *
+ * WHY SSE AND NOT THE WEBSOCKET
+ *
+ * Cartesia offers both. This is one request with one ordered answer and no
+ * second utterance to multiplex, which is what SSE is for; the websocket
+ * would add a connection to hold open, a reconnect path, a keepalive and a
+ * second lifecycle to get wrong, inside an edge function that is already
+ * streaming SSE to the browser. The realtime win -- audio while the sentence
+ * is still being written -- is identical either way.
+ *
+ * WHY RAW PCM AND NOT MP3
+ *
+ * Because these pieces get joined. Every mp3 frame boundary carries encoder
+ * padding, so consecutive clips click; raw samples abut exactly.
+ *
+ * WHAT THE CALLER GETS
+ *
+ * onChunk with byte-aligned PCM, in order, as it arrives. A chunk is never
+ * split through the middle of a sample: an odd trailing byte is held back and
+ * prepended to the next one. Half a sample handed to the browser is a click
+ * at best and, once it shifts every following sample by one byte, a screech.
+ */
+export async function streamCartesiaPcm(
+  params: {
+    voiceId: string;
+    language: string;
+    text: string;
+    sampleRate?: number;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+  },
+  onChunk: (chunk: Uint8Array, index: number) => void,
+): Promise<ProviderResult<CartesiaStreamResult>> {
+  const transcript = String(params.text ?? '').slice(0, 1200);
+  if (!transcript.trim()) {
+    return { ok: false, sideEffect: 'NONE', error: { code: 'UNKNOWN', message: 'nothing to speak', retryable: false } };
+  }
+  if (!params.voiceId) {
+    return { ok: false, sideEffect: 'NONE', error: { code: 'UNKNOWN', message: 'no voice selected', retryable: false } };
+  }
+
+  const sampleRate = nearestCartesiaRate(params.sampleRate ?? PCM_SAMPLE_RATE);
+  let last: ProviderResult<never>['error'] | undefined;
+
+  for (const model of TTS_MODELS) {
+    const started = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 20_000);
+    // A cancelled turn must stop paying for audio nobody will ever hear.
+    const onAbort = () => controller.abort();
+    params.signal?.addEventListener('abort', onAbort, { once: true });
+
+    let firstByteMs = 0;
+    let bytes = 0;
+    let index = 0;
+
+    try {
+      const res = await fetch(`${CARTESIA_API}/tts/sse`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({
+          model_id: model,
+          transcript,
+          voice: { mode: 'id', id: params.voiceId },
+          language: String(params.language ?? 'en').toLowerCase().slice(0, 2),
+          output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: sampleRate },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok || !res.body) {
+        const body = await res.text().catch(() => '');
+        last = classifyCartesia(res.status, body);
+        // A rejected key or an exhausted quota refuses the next model too.
+        if (last?.code === 'AUTH' || last?.code === 'RATE_LIMIT' || last?.code === 'POLICY') break;
+        continue;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      /** An odd trailing byte: half a sample, held until its other half. */
+      let carry: Uint8Array | null = null;
+      let failure: ProviderResult<never>['error'] | null = null;
+      let finished = false;
+
+      while (!finished) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let cut = buffer.indexOf('\n\n');
+        while (cut !== -1) {
+          const frame = buffer.slice(0, cut);
+          buffer = buffer.slice(cut + 2);
+          cut = buffer.indexOf('\n\n');
+
+          let payload = '';
+          for (const line of frame.split('\n')) {
+            if (line.startsWith('data:')) payload += line.slice(5).trim();
+          }
+          if (!payload) continue;
+
+          let msg: { type?: string; data?: string; done?: boolean; error?: string; message?: string };
+          try { msg = JSON.parse(payload); } catch { continue; }
+
+          if (msg.type === 'error' || msg.error) {
+            failure = {
+              code: 'UNKNOWN',
+              message: String(msg.error ?? msg.message ?? 'the provider refused').slice(0, 300),
+              retryable: false,
+            };
+            finished = true;
+            break;
+          }
+
+          if (msg.data) {
+            let chunk = base64ToPcmBytes(msg.data);
+            if (carry && carry.byteLength) {
+              const joined = new Uint8Array(carry.byteLength + chunk.byteLength);
+              joined.set(carry, 0);
+              joined.set(chunk, carry.byteLength);
+              chunk = joined;
+              carry = null;
+            }
+            if (chunk.byteLength % 2 === 1) {
+              carry = chunk.slice(chunk.byteLength - 1);
+              chunk = chunk.subarray(0, chunk.byteLength - 1);
+            }
+            if (chunk.byteLength) {
+              if (!firstByteMs) firstByteMs = Date.now() - started;
+              bytes += chunk.byteLength;
+              onChunk(chunk, index);
+              index += 1;
+            }
+          }
+
+          if (msg.type === 'done' || msg.done === true) { finished = true; break; }
+        }
+      }
+      try { await reader.cancel(); } catch { /* the stream is over either way */ }
+
+      if (failure && !bytes) { last = failure; continue; }
+      if (!bytes) {
+        last = { code: 'UNKNOWN', message: 'provider returned no audio', retryable: false };
+        continue;
+      }
+
+      return {
+        ok: true, sideEffect: 'COMMITTED', latencyMs: Date.now() - started,
+        data: {
+          firstByteMs, totalMs: Date.now() - started, bytes,
+          sampleRate, model, characters: transcript.length,
+        },
+      };
+    } catch (e) {
+      const aborted = (e as Error)?.name === 'AbortError';
+      last = {
+        code: aborted ? 'TIMEOUT' : 'TRANSIENT',
+        message: String((e as Error)?.message ?? e).slice(0, 200),
+        retryable: true,
+      };
+      // A caller who cancelled does not want the next model tried.
+      if (aborted) break;
+    } finally {
+      clearTimeout(timer);
+      params.signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
+  return {
+    ok: false, sideEffect: 'NONE',
+    error: last ?? { code: 'UNKNOWN', message: 'synthesis failed', retryable: true },
+  };
+}
+
+function base64ToPcmBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+/**
  * Speak arbitrary text in one voice.
  *
  * The same /tts/bytes path the preview uses, which is the one production has

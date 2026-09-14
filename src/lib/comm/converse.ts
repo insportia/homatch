@@ -132,6 +132,17 @@ function toConverseEvent(name: string, data: Record<string, unknown>): ConverseE
           index: num(data.index),
         }
         : null;
+    case 'action':
+      /*
+       * Only NAVIGATE exists today, and an unknown kind is dropped rather
+       * than rendered. A browser that has not been redeployed must ignore a
+       * future action type, not turn it into a button that does nothing.
+       */
+      return data.kind === 'NAVIGATE' && typeof data.path === 'string' && data.path.startsWith('/')
+        ? { type: 'action', kind: 'NAVIGATE', key: str(data.key) ?? '', path: data.path }
+        : null;
+    case 'end':
+      return { type: 'end', reason: str(data.reason) ?? 'OBJECTIVE_MET' };
     case 'voiceless':
       return {
         type: 'voiceless',

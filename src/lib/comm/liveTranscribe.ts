@@ -67,6 +67,8 @@ export interface LiveGrant {
   keyterms?: string[];
   /** Sent only once the conversation has settled into a language. */
   languageCode?: string | null;
+  /** Every language this conversation could plausibly be in, primary first. */
+  languages?: string[];
 }
 
 /**
@@ -93,8 +95,15 @@ export interface LiveCallbacks {
   onSpeechEnd: () => void;
   /** Words while they are still arriving. Never committed to history. */
   onPartial: (text: string) => void;
-  /** The finished sentence. */
-  onFinal: (text: string) => void;
+  /**
+   * The finished sentence, and the language the provider decided it was in.
+   *
+   * The language matters because nothing downstream can work it out: Georgian,
+   * Hebrew, Arabic and Russian are separable by script, but English and
+   * Turkish are the same alphabet and would be guessed wrong forever. The
+   * recogniser is the only component that actually knows.
+   */
+  onFinal: (text: string, language?: string | null) => void;
   /** The socket will not carry this session. The caller falls back. */
   onUnavailable: (reason: string) => void;
 }

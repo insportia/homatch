@@ -28,7 +28,7 @@
 // pulls in audio plumbing that a visitor who never presses the button should
 // not download. It is imported on the first press, not at module scope.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mic, MicOff, PhoneOff, ArrowRight, RotateCcw } from 'lucide-react';
 import { useSectionField, useFieldProps, useNotEditable } from '@/site/content';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -193,6 +193,15 @@ export function AiTalkPanel({ className }: { className?: string }) {
    */
   const [failure, setFailure] = useState<string | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
+  /**
+   * Where the assistant has offered to take them.
+   *
+   * One at a time: a voice conversation that accumulates buttons is a menu,
+   * and the whole point is that the assistant already decided which one
+   * matters. The path is resolved server-side from this app's own route
+   * table, so it is never a string the model wrote.
+   */
+  const [destination, setDestination] = useState<{ key: string; path: string } | null>(null);
   const [intelligence, setIntelligence] = useState<Intelligence | null>(null);
   const [muted, setMuted] = useState(false);
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics | null>(null);
@@ -226,6 +235,41 @@ export function AiTalkPanel({ className }: { className?: string }) {
    * the transcript inside it — on every audio block.
    */
   const inputLevel = useRef(0);
+
+  /*
+   * THE TRANSCRIPT IS PAINTED ONCE A FRAME, NOT ONCE A TOKEN.
+   *
+   * onTranscript fires for every delta the model produces — dozens a second —
+   * and each one replaced the array, re-rendered every turn in the list and
+   * ran a scrollTo. On a desktop that is invisible. On a mid-range phone it
+   * is the stutter: React reconciliation and layout competing with the audio
+   * callbacks for the same main thread, exactly while the voice is playing.
+   *
+   * Tokens now land in a ref and the newest value is published on the next
+   * frame. Nothing is dropped — the last write before the frame wins, and the
+   * last write always carries the whole transcript — and the work per frame
+   * is one render instead of thirty.
+   */
+  const pendingTurns = useRef<TranscriptTurn[] | null>(null);
+  const transcriptFrame = useRef<number | null>(null);
+
+  const publishTurns = useCallback((next: TranscriptTurn[]) => {
+    // Copied per turn, not just per array: the session mutates these objects
+    // in place as text grows, so sharing them would defeat the row memo below
+    // and re-render every line for a change to the last one.
+    pendingTurns.current = next.map((turn) => ({ ...turn }));
+    if (transcriptFrame.current !== null) return;
+    transcriptFrame.current = window.requestAnimationFrame(() => {
+      transcriptFrame.current = null;
+      const value = pendingTurns.current;
+      pendingTurns.current = null;
+      if (value) setTurns(value);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (transcriptFrame.current !== null) window.cancelAnimationFrame(transcriptFrame.current);
+  }, []);
   const liveState = useRef<VoiceState>('IDLE');
   liveState.current = state;
 
@@ -254,6 +298,20 @@ export function AiTalkPanel({ className }: { className?: string }) {
     }
   }, []);
 
+  /**
+   * Take the assistant up on where it offered to send them.
+   *
+   * ORDER MATTERS. The session is stopped and awaited BEFORE navigating: a
+   * React route change unmounts this panel, and an unmount that races a live
+   * microphone, a websocket and a scheduled audio queue is how a voice
+   * carries on talking over the next page. Everything is torn down first,
+   * then we move.
+   */
+  const followDestination = useCallback(async (path: string) => {
+    await endSession('navigated');
+    navigate(path);
+  }, [endSession, navigate]);
+
   const start = useCallback(async () => {
     setState('CONNECTING');
     setTurns([]);
@@ -261,6 +319,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
     setFailure(null);
     setDiagnostics(null);
     setMuted(false);
+    setDestination(null);
     detectedRef.current = null;
     knownRef.current = null;
     historyRef.current = [];
@@ -296,7 +355,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
       },
       {
         onState: (s) => setState(s),
-        onTranscript: (next) => setTurns([...next]),
+        onTranscript: publishTurns,
         onLanguage: (lang, locked) => {
           detectedRef.current = lang;
           languageRef.current = lang;
@@ -353,7 +412,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
           const grant = ear as {
             ok?: boolean; token?: string; grant?: string; model?: string; sampleRate?: number;
             provider?: 'GOOGLE' | 'ELEVENLABS' | 'OPENAI'; keyterms?: string[];
-            wsUrl?: string;
+            wsUrl?: string; languages?: string[];
           } | null;
           // Google's answer carries its proof under `grant` rather than
           // `token`: it is a signature over the session, not a provider
@@ -371,6 +430,15 @@ export function AiTalkPanel({ className }: { className?: string }) {
             provider: grant.provider,
             keyterms: grant.keyterms,
             languageCode: languageLockedRef.current ? languageRef.current : null,
+            /*
+             * Every language the socket should be prepared to hear.
+             *
+             * The visitor does not choose one first; the recogniser decides
+             * per utterance. `languageCode` above is still sent once the
+             * conversation has settled, and stays the primary candidate so a
+             * settled call is not re-decided at every pause.
+             */
+            languages: grant.languages,
           };
         },
 
@@ -381,7 +449,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
          * phrase by phrase while it is still being spoken, so nothing waits
          * for a stage that has already produced something usable.
          */
-        onConverse: (text) => converseStream({
+        onConverse: (text, signal) => converseStream({
           url: FUNCTIONS_URL,
           anonKey: ANON_KEY,
           body: {
@@ -392,8 +460,31 @@ export function AiTalkPanel({ className }: { className?: string }) {
             ...(detectedRef.current ? { languageHint: detectedRef.current } : {}),
             state: knownRef.current,
             history: historyRef.current.slice(-6),
+            /*
+             * The rate this device's audio hardware actually runs at, so the
+             * provider synthesises at it and nothing has to be resampled.
+             * Resampling each arriving piece on its own is what put a whine
+             * on the joins; the fastest resampler is the absent one.
+             */
+            ...(sessionRef.current?.outputSampleRate
+              ? { outputSampleRate: sessionRef.current.outputSampleRate }
+              : {}),
           },
+          signal,
         }),
+
+        /*
+         * A destination the assistant chose. Offered, never taken: being
+         * navigated away from a page by a voice, without touching anything,
+         * is not something to do to somebody.
+         */
+        onAction: (action) => setDestination({ key: action.key, path: action.path }),
+
+        /*
+         * The assistant decided the call is finished. It has already spoken
+         * its last sentence by the time this runs.
+         */
+        onEnded: (reason) => { void endSession(`assistant:${reason}`); },
 
         // The older request-and-reply path is not used on this surface.
         onUserTurn: async () => null,
@@ -571,6 +662,27 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
         {intelligence && live ? <IntelligenceStrip data={intelligence} /> : null}
 
+        {/*
+          * Where the assistant offered to take them.
+          *
+          * A real route, resolved on the server from this app's own route
+          * table, rendered as something to tap rather than as a URL read
+          * aloud. Shown only while the call is live: an offer that outlives
+          * the conversation it came from is just a stray button.
+          */}
+        {destination && live ? (
+          <div className="shrink-0 px-4 pb-1">
+            <button
+              type="button"
+              onClick={() => void followDestination(destination.path)}
+              className="inline-flex w-full items-center justify-between gap-2 rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-left text-[13px] font-medium text-white transition-transform will-change-transform active:scale-[0.99]"
+            >
+              <span>{t(`talk_go_${destination.key}`)}</span>
+              <ArrowRight className="h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
+
         {/* Controls. Three at most, ever. */}
         <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-4 pb-[max(0.875rem,env(safe-area-inset-bottom))] pt-3">
           {live ? (
@@ -645,7 +757,23 @@ export function AiTalkPanel({ className }: { className?: string }) {
  * contrast, full size. Everything above it fades, which is what makes the
  * latest exchange findable on a phone without any scrolling at all.
  */
-function Transcript({ turns }: { turns: TranscriptTurn[] }) {
+/**
+ * Re-rendered only when the conversation actually looks different.
+ *
+ * The signature is what a reader can see: how many turns there are, and the
+ * text and finality of the last two (the only ones whose styling depends on
+ * being recent). A model writing the same word twice cannot cause a repaint.
+ */
+function sameTranscript(a: { turns: TranscriptTurn[] }, b: { turns: TranscriptTurn[] }): boolean {
+  if (a.turns.length !== b.turns.length) return false;
+  for (let i = Math.max(0, a.turns.length - 2); i < a.turns.length; i++) {
+    if (a.turns[i].text !== b.turns[i].text) return false;
+    if (a.turns[i].final !== b.turns[i].final) return false;
+  }
+  return true;
+}
+
+function TranscriptView({ turns }: { turns: TranscriptTurn[] }) {
   const { t } = useLanguage();
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -784,6 +912,8 @@ function Invitation({ state, failure }: { state: VoiceState; failure: string | n
  * §27: live intelligence, visible. Facts only — no scores, no confidence, no
  * internal field names.
  */
+const Transcript = memo(TranscriptView, sameTranscript);
+
 function IntelligenceStrip({ data }: { data: Intelligence }) {
   const { t, lang: language } = useLanguage();
 

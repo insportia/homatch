@@ -449,6 +449,50 @@ process.on('uncaughtException', (error: unknown) => {
  * model name, the region list is an allow-list in source, and each entry costs
  * one short connection with no audio.
  */
+/**
+ * The shape of the speech configuration, without any of its values.
+ *
+ * Every region answered "Invalid resource field value in the request" for a
+ * recognizer path built as projects/<id>/locations/<region>/recognizers/_.
+ * Three things go into that path and only one of them was ever visible
+ * anywhere, so this reports the other two the way a diagnostic should: by
+ * shape and by agreement, never by value.
+ *
+ * The commonest cause of this error is the oldest one -- the project the
+ * service account belongs to is not the project the request names -- and that
+ * is answerable without printing either, by comparing them.
+ */
+app.get('/health/speech-config', (_q: any, r: any) => {
+  const declared = (process.env.GOOGLE_SPEECH_PROJECT_ID || '').trim();
+  let credentialProject = '';
+  let credentialEmailDomain = '';
+  let parsed = false;
+  try {
+    const c = JSON.parse(process.env.GOOGLE_SPEECH_CREDENTIALS_JSON || '{}');
+    parsed = true;
+    credentialProject = String(c.project_id ?? '');
+    // The domain only: it names the project, which is the thing in question.
+    // The local part identifies the account and is not needed to answer this.
+    credentialEmailDomain = String(c.client_email ?? '').split('@')[1] ?? '';
+  } catch { /* reported as parsed:false */ }
+
+  return r.json({
+    credentialsParse: parsed,
+    // Shapes, not values.
+    declaredProjectIdLength: declared.length,
+    declaredLooksLikeProjectId: /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(declared),
+    declaredLooksLikeProjectNumber: /^[0-9]{6,20}$/.test(declared),
+    credentialProjectIdLength: credentialProject.length,
+    // The one comparison that matters, as a yes or a no.
+    declaredMatchesCredential: Boolean(declared) && declared === credentialProject,
+    credentialEmailDomain,
+    region: (process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase(),
+    model: process.env.GOOGLE_SPEECH_MODEL || 'chirp_3',
+    language: process.env.GOOGLE_SPEECH_LANGUAGE || 'ka-GE',
+    recognizerPathShape: `projects/<${declared.length} chars>/locations/${(process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase()}/recognizers/_`,
+  });
+});
+
 let regionProbeLastAt = 0;
 
 app.get('/health/speech-regions', async (q: any, r: any) => {

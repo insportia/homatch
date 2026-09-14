@@ -24,6 +24,9 @@ import { requireAdmin, json, preflight, logEvent } from '../_shared/comm/auth.ts
 import { createCartesiaProvider, cartesiaCredentialsPresent, CARTESIA_VERSION } from '../_shared/comm/cartesia.ts';
 import { vapiPing, vapiCredentialsPresent, listVapiPhoneNumbers } from '../_shared/comm/vapi.ts';
 import {
+  checkElevenLabs, elevenLabsCredentialsPresent, mintRealtimeToken,
+} from '../_shared/comm/elevenlabs.ts';
+import {
   createMetaProvider, metaConfigFromEnv, metaCredentialsPresent,
   metaWebhookSecretsPresent, META_API_VERSION,
 } from '../_shared/comm/meta.ts';
@@ -66,6 +69,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const reports: ProviderReport[] = [];
   const wanted = (name: string) => !only || only.toUpperCase() === name;
 
+  if (wanted('ELEVENLABS')) reports.push(await checkElevenLabsProvider(probe, routes ?? []));
   if (wanted('CARTESIA')) reports.push(await checkCartesia(probe, routes ?? []));
   if (wanted('VAPI'))     reports.push(await checkVapi(probe, routes ?? []));
   if (wanted('META'))     reports.push(await checkMeta(probe, routes ?? [], sb));
@@ -262,6 +266,63 @@ function rolesFor(routes: Route[], provider: string): string[] {
 function disabledByAdmin(routes: Route[], provider: string): boolean {
   const mine = routes.filter((r) => r.provider === provider);
   return mine.length > 0 && mine.every((r) => r.kill_switch === true || r.enabled === false);
+}
+
+/**
+ * ElevenLabs, in the vocabulary the Admin page already speaks.
+ *
+ * Every probe is a GET that generates nothing and costs nothing. There is
+ * deliberately no "say something" button here — a synthesis test belongs in
+ * the pronunciation preview, where a person asked for audio and is going to
+ * listen to it.
+ *
+ * The realtime token probe is the exception worth making: minting one is free
+ * and it is the only way to know whether the browser leg of AI TALK will
+ * work, which no amount of voice-listing can tell you.
+ */
+async function checkElevenLabsProvider(probe: boolean, routes: Route[]): Promise<ProviderReport> {
+  const present = elevenLabsCredentialsPresent();
+  const base: ProviderReport = {
+    provider: 'ELEVENLABS',
+    roles: rolesFor(routes, 'ELEVENLABS'),
+    health: !present ? 'NOT_CONFIGURED' : disabledByAdmin(routes, 'ELEVENLABS') ? 'DISABLED' : 'HEALTHY',
+    credentials: [{ name: 'ELEVENLABS_API_KEY', present }],
+    latencyMs: null,
+    lastTestedAt: new Date().toISOString(),
+    detail: null,
+    errorCode: null,
+    facts: null,
+  };
+  if (!probe || !present) return base;
+
+  const health = await checkElevenLabs();
+  const token = health.status === 'HEALTHY' ? await mintRealtimeToken() : null;
+
+  return {
+    ...base,
+    health: health.status === 'HEALTHY'
+      ? (base.health === 'DISABLED' ? 'DISABLED' : 'HEALTHY')
+      : health.status === 'QUOTA_EXHAUSTED' || health.status === 'RATE_LIMITED' ? 'DEGRADED'
+        : 'DOWN',
+    latencyMs: health.latencyMs,
+    detail: health.detail,
+    errorCode: health.status === 'HEALTHY' ? null : health.status,
+    facts: {
+      voiceCount: health.voiceCount,
+      modelCount: health.modelCount,
+      tier: health.tier,
+      charactersRemaining: health.charactersRemaining,
+      charactersLimit: health.charactersLimit,
+      canListVoices: health.canListVoices,
+      canListModels: health.canListModels,
+      canUsePronunciationDictionaries: health.canUsePronunciationDictionaries,
+      // The one capability that cannot be inferred from any other call.
+      canMintRealtimeToken: token?.ok === true,
+      realtimeTokenPath: token?.ok ? token.data?.path ?? null : null,
+      realtimeTokenError: token && !token.ok ? token.error?.code ?? null : null,
+      providerStatus: health.providerStatus,
+    },
+  };
 }
 
 async function checkCartesia(probe: boolean, routes: Route[]): Promise<ProviderReport> {

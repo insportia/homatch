@@ -30,6 +30,14 @@ import {
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
+import {
+  elevenLabsCredentialsPresent, mintRealtimeToken, synthesizeElevenLabs,
+  ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
+} from '../_shared/comm/elevenlabs.ts';
+import {
+  selectKeyterms, keytermStrings, detectEntities,
+  type VocabularyTerm,
+} from '../_shared/comm/generated/keyterms.ts';
 import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
 import {
   decideGrant, grantExpiry, shouldEndSession, hashVisitor,
@@ -42,14 +50,204 @@ import {
 } from '../_shared/comm/generated/conversationState.ts';
 
 /**
- * THE VOICE THIS ASSISTANT SPEAKS IN.
+ * THE VOICE THIS ASSISTANT SPEAKS IN, WHEN NOTHING ELSE HAS BEEN CHOSEN.
  *
- * Fixed, server-side, and not overridable from the browser. The main page
- * used to send voiceId: null, which left the choice to whatever default the
- * provider felt like — so the one thing a brand voice has to be, consistent,
- * was the one thing it was not.
+ * Server-side and not overridable from the browser: the main page once sent
+ * voiceId: null, which left the choice to whatever default the provider felt
+ * like, so the one thing a brand voice has to be — consistent — was the one
+ * thing it was not.
+ *
+ * This is the Cartesia id, kept because it is what every existing agent and
+ * every recorded session refers to. The primary voice now comes from the
+ * library an admin curates; this is what answers when that library is empty.
  */
-const HOMATCH_TALK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
+const CARTESIA_FALLBACK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
+
+/** One piece of speech and who made it. */
+interface SpokenPhrase {
+  pcmBase64: string;
+  sampleRate: number;
+  provider: 'ELEVENLABS' | 'CARTESIA';
+  voiceId: string;
+  model: string;
+  ms: number;
+  characters: number;
+}
+
+/**
+ * Say one phrase, with whichever provider is actually able to.
+ *
+ * ELEVENLABS LEADS AND CARTESIA CATCHES, and the order is not a preference,
+ * it is what the evidence says. Cartesia's synthesis answered HTTP 402 —
+ * account out of credit — for every language on 13 September, and its
+ * transcription cannot write Georgian at all. Neither is a reason to delete a
+ * working integration: it is a reason to put it second.
+ *
+ * A refusal from the leader is recorded with its provider code and the next
+ * one is tried. A refusal from all of them returns the codes, so that "the
+ * voice is unavailable" can be explained rather than merely displayed.
+ */
+async function speakPhrase(sb: Sb, params: {
+  text: string;
+  language: string;
+  sessionId?: string | null;
+  surface?: string;
+}): Promise<{ ok: true; data: SpokenPhrase } | { ok: false; failures: Array<{ provider: string; code: string | null; status: number | null }> }> {
+  const failures: Array<{ provider: string; code: string | null; status: number | null }> = [];
+
+  if (elevenLabsCredentialsPresent()) {
+    const voice = await defaultElevenLabsVoice(sb);
+    if (voice) {
+      const at = Date.now();
+      const out = await synthesizeElevenLabs({
+        voiceId: voice.voiceId,
+        text: params.text,
+        modelId: voice.model,
+        languageCode: params.language || null,
+        format: 'pcm',
+        sampleRate: ELEVENLABS_DEFAULTS.pcmSampleRate,
+      });
+      const ms = Date.now() - at;
+
+      await recordVoiceUsage(sb, {
+        sessionId: params.sessionId ?? null,
+        surface: params.surface ?? 'AI_TALK',
+        provider: 'ELEVENLABS', role: 'TTS', model: voice.model,
+        characters: params.text.length, latencyMs: ms,
+        ok: out.ok,
+        errorCode: out.ok ? null : (out.error?.code ?? null),
+        providerStatus: out.ok ? null : (Number(out.error?.providerCode) || null),
+      });
+
+      if (out.ok && out.data) {
+        return {
+          ok: true,
+          data: {
+            pcmBase64: out.data.audioBase64,
+            sampleRate: out.data.sampleRate ?? ELEVENLABS_DEFAULTS.pcmSampleRate,
+            provider: 'ELEVENLABS',
+            voiceId: voice.voiceId,
+            model: out.data.model,
+            ms,
+            characters: out.data.characters,
+          },
+        };
+      }
+      failures.push({
+        provider: 'ELEVENLABS',
+        code: out.error?.code ?? null,
+        status: Number(out.error?.providerCode) || null,
+      });
+    } else {
+      failures.push({ provider: 'ELEVENLABS', code: 'NO_DEFAULT_VOICE', status: null });
+    }
+  }
+
+  if (cartesiaCredentialsPresent().ok) {
+    const at = Date.now();
+    const out = await synthesizePcm({
+      voiceId: CARTESIA_FALLBACK_VOICE_ID,
+      language: params.language,
+      text: params.text,
+    });
+    const ms = Date.now() - at;
+
+    await recordVoiceUsage(sb, {
+      sessionId: params.sessionId ?? null,
+      surface: params.surface ?? 'AI_TALK',
+      provider: 'CARTESIA', role: 'TTS', model: 'sonic',
+      characters: params.text.length, latencyMs: ms,
+      ok: out.ok,
+      errorCode: out.ok ? null : (out.error?.code ?? null),
+      providerStatus: out.ok ? null : (Number(out.error?.providerCode) || null),
+    });
+
+    if (out.ok && out.data) {
+      return {
+        ok: true,
+        data: {
+          pcmBase64: out.data.pcmBase64,
+          sampleRate: out.data.sampleRate,
+          provider: 'CARTESIA',
+          voiceId: CARTESIA_FALLBACK_VOICE_ID,
+          model: out.data.model,
+          ms,
+          characters: params.text.length,
+        },
+      };
+    }
+    failures.push({
+      provider: 'CARTESIA',
+      code: out.error?.code ?? null,
+      status: Number(out.error?.providerCode) || null,
+    });
+  }
+
+  return { ok: false, failures };
+}
+
+/** The voice an admin made default, and the model to say it with. */
+async function defaultElevenLabsVoice(
+  sb: Sb,
+): Promise<{ voiceId: string; model: string } | null> {
+  const [{ data: voice }, { data: route }] = await Promise.all([
+    sb.from('voice_library_voices')
+      .select('provider_voice_id')
+      .eq('provider', 'ELEVENLABS').eq('is_default', true).eq('enabled', true)
+      .maybeSingle(),
+    sb.from('comm_provider_routes')
+      .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle(),
+  ]);
+
+  if (!voice?.provider_voice_id) return null;
+  const cfg = (route?.config ?? {}) as Record<string, unknown>;
+  return {
+    voiceId: String(voice.provider_voice_id),
+    model: typeof cfg.model === 'string' && cfg.model ? cfg.model : ELEVENLABS_DEFAULTS.ttsModel,
+  };
+}
+
+/**
+ * What a provider call cost, in the units the provider bills in.
+ *
+ * COGS only. §R is explicit that this must never become customer pricing, and
+ * nothing reads this table to decide what anybody is charged.
+ */
+async function recordVoiceUsage(sb: Sb, event: {
+  sessionId: string | null;
+  surface: string;
+  provider: string;
+  role: 'STT' | 'TTS' | 'LLM' | 'ORCHESTRATOR' | 'TELEPHONY';
+  model: string | null;
+  characters?: number | null;
+  audioSeconds?: number | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  latencyMs: number | null;
+  ok: boolean;
+  errorCode: string | null;
+  providerStatus: number | null;
+}): Promise<void> {
+  try {
+    await sb.from('voice_usage_events').insert({
+      session_id: event.sessionId,
+      surface: event.surface,
+      provider: event.provider,
+      role: event.role,
+      model: event.model,
+      characters: event.characters ?? null,
+      audio_seconds: event.audioSeconds ?? null,
+      input_tokens: event.inputTokens ?? null,
+      output_tokens: event.outputTokens ?? null,
+      latency_ms: event.latencyMs,
+      ok: event.ok,
+      error_code: event.errorCode,
+      provider_status: event.providerStatus,
+    });
+  } catch {
+    // Telemetry must never take a conversation down with it.
+  }
+}
 
 interface TalkRequest {
   action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak' | 'converse' | 'listen';
@@ -79,6 +277,10 @@ interface TalkRequest {
   speakText?: string;
   /** converse: what the conversation already knows, carried by the client. */
   state?: unknown;
+  /** listen: proper nouns already in play, so the next socket knows them. */
+  entities?: string[];
+  /** listen: whether this session has already contained abusive language. */
+  abusiveContext?: boolean;
   /**
    * transcribe: a language to prefer, or absent to let the provider decide.
    *
@@ -124,7 +326,12 @@ type Sb = ReturnType<typeof serviceClient>;
 async function start(
   sb: Sb, req: Request, body: TalkRequest, limits: TalkLimits, enabled: boolean, userId: string | null,
 ): Promise<Response> {
-  if (!cartesiaCredentialsPresent().ok) {
+  // A voice provider, not one PARTICULAR voice provider.
+  //
+  // This refused the whole demo whenever CARTESIA_API_KEY was absent, which
+  // after the migration would have meant a correctly configured
+  // ElevenLabs-only deployment could not start a conversation at all.
+  if (!elevenLabsCredentialsPresent() && !cartesiaCredentialsPresent().ok) {
     // §134: the hero shows a graceful fallback. It is not told which secret is
     // missing, and the page must not break.
     logEvent('ai-talk', 'provider_not_configured');
@@ -223,7 +430,7 @@ async function start(
     expiresAt: session.expires_at,
     // Returned so the client can assert it, and so a support question about
     // which voice was used has an answer that is not a guess.
-    voiceId: HOMATCH_TALK_VOICE_ID,
+    voiceId: CARTESIA_FALLBACK_VOICE_ID,
     // §29: the public demo gets general Homatch capability and no private
     // context whatsoever. This instruction is assembled here, server-side, so
     // the browser cannot widen it.
@@ -262,21 +469,53 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
   const guard = await activeSession(sb, body.sessionId);
   if ('refusal' in guard) return guard.refusal;
 
-  if (!hasSecret('OPENAI_API_KEY')) return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
+  const language = body.languageHint ? String(body.languageHint).toLowerCase().slice(0, 5) : null;
 
   /*
-   * A LADDER, BECAUSE MODEL AVAILABILITY IS PER-ACCOUNT.
+   * ELEVENLABS FIRST, BECAUSE IT IS THE ONE THAT CAN WRITE GEORGIAN.
    *
-   * The realtime transcription models are not all enabled everywhere, and a
-   * model this account cannot use comes back as a flat 400 with no hint that
-   * the model was the problem. Rather than pin one and have the feature go
-   * dark on a different account, the newest is tried first and each refusal
-   * falls through to the next. The same pattern the speech ladder already
-   * uses.
-   *
-   * If none of them work the batch path continues to serve, which is why
-   * this cannot fail the request.
+   * The ladder below is the whole migration in one place. Each rung is tried
+   * and the one that answers is used; a rung that refuses is recorded and
+   * walked past. Nothing is deleted, so the day ElevenLabs has an outage the
+   * session still gets transcribed, a little differently.
    */
+  if (elevenLabsCredentialsPresent()) {
+    const keyterms = await selectSessionKeyterms(sb, {
+      sessionId: body.sessionId, language, surface: 'AI_TALK',
+      entities: body.entities ?? [],
+      abusiveContext: body.abusiveContext === true,
+    });
+
+    const grant = await mintRealtimeToken();
+    if (grant.ok && grant.data) {
+      logEvent('ai-talk', 'listen_granted', {
+        provider: 'ELEVENLABS', path: grant.data.path,
+        keyterms: keyterms.selected.length, considered: keyterms.considered,
+      });
+      return json({
+        ok: true,
+        provider: 'ELEVENLABS',
+        token: grant.data.token,
+        expiresAt: grant.data.expiresAt,
+        model: ELEVENLABS_DEFAULTS.sttModel,
+        sampleRate: ELEVENLABS_DEFAULTS.sttSampleRate,
+        // The terms themselves, because the browser builds the socket URL.
+        // They are Homatch's own vocabulary, not a secret.
+        keyterms: keytermStrings(keyterms),
+        keytermLimits: keyterms.limits,
+      });
+    }
+    logEvent('ai-talk', 'listen_provider_refused', {
+      provider: 'ELEVENLABS',
+      code: grant.error?.code ?? null,
+      status: grant.error?.providerCode ?? null,
+    });
+  }
+
+  // The OpenAI realtime path, which carried this before ElevenLabs and stays
+  // as the fallback rather than being deleted.
+  if (!hasSecret('OPENAI_API_KEY')) return json({ ok: false, reason: 'UNAVAILABLE' }, 200);
+
   const configured = Deno.env.get('OPENAI_REALTIME_TRANSCRIBE_MODEL');
   const models = [configured, 'gpt-live-transcribe', 'gpt-transcribe', 'gpt-4o-transcribe']
     .filter((m): m is string => Boolean(m));
@@ -321,9 +560,10 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
       const parsed = JSON.parse(raw) as { value?: string; expires_at?: number };
       if (!parsed.value) { lastStatus = 200; continue; }
 
-      logEvent('ai-talk', 'listen_granted', { model });
+      logEvent('ai-talk', 'listen_granted', { provider: 'OPENAI', model });
       return json({
         ok: true,
+        provider: 'OPENAI',
         token: parsed.value,
         expiresAt: parsed.expires_at ?? null,
         model,
@@ -338,11 +578,89 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
     }
   }
 
-  // The STATUS travels back, and nothing else. It is a number, it names
-  // nothing we sent, and it is the difference between "no model here" and
-  // "wrong parameter" — which is otherwise only visible in a log this
-  // project's tooling cannot currently read. The browser never shows it.
   return json({ ok: false, reason: 'UNAVAILABLE', providerStatus: lastStatus }, 200);
+}
+
+/**
+ * The handful of terms this session is worth telling the transcriber about.
+ *
+ * The corpus is over a thousand rows and the provider takes a few dozen, so
+ * the database query is deliberately narrow — enabled, provider-eligible,
+ * short enough to be a keyterm, ordered by priority — and the ranking then
+ * picks from that on the language and the entities actually in play.
+ *
+ * Diagnostics record term IDS and CATEGORIES. Never the conversation.
+ */
+async function selectSessionKeyterms(sb: Sb, ctx: {
+  sessionId: string;
+  language: string | null;
+  surface: string;
+  entities: string[];
+  abusiveContext: boolean;
+}) {
+  const limits = await keytermLimits(sb);
+
+  const { data } = await sb.from('voice_vocabulary_terms')
+    .select('id, term, category, language_hint, scope, priority, provider_eligible, enabled, owner_id, agent_id')
+    .eq('enabled', true)
+    .eq('scope', 'GLOBAL')
+    .order('priority', { ascending: false })
+    .limit(1200);
+
+  const terms: VocabularyTerm[] = (data ?? []).map((row) => ({
+    id: String(row.id),
+    term: String(row.term),
+    category: String(row.category),
+    languageHint: row.language_hint as string | null,
+    scope: 'GLOBAL' as const,
+    priority: Number(row.priority ?? 50),
+    providerEligible: row.provider_eligible !== false,
+    enabled: true,
+  }));
+
+  const selection = selectKeyterms(terms, {
+    language: ctx.language,
+    feature: ctx.surface,
+    entities: ctx.entities.slice(0, 12),
+    abusiveContext: ctx.abusiveContext,
+  }, limits);
+
+  await sb.from('voice_keyterm_selections').insert({
+    session_id: ctx.sessionId,
+    surface: ctx.surface,
+    language: ctx.language,
+    term_ids: selection.selected.map((t) => t.id),
+    categories: [...new Set(selection.selected.map((t) => t.category))],
+    selected_count: selection.selected.length,
+    considered_count: selection.considered,
+    max_terms: selection.limits.maxTerms,
+    max_chars: selection.limits.maxCharsPerTerm,
+  });
+
+  return selection;
+}
+
+/**
+ * The provider's limits, from the route row rather than from a constant.
+ *
+ * The handoff pack said fifty terms at twenty characters; the provider has
+ * since raised keyterm capacity once already. An admin changing this must not
+ * need a deploy.
+ */
+async function keytermLimits(sb: Sb): Promise<{ maxTerms: number; maxCharsPerTerm: number }> {
+  const { data } = await sb.from('comm_provider_routes')
+    .select('config')
+    .eq('role', 'STT').eq('provider', 'ELEVENLABS')
+    .maybeSingle();
+  const cfg = (data?.config ?? {}) as Record<string, unknown>;
+  const num = (v: unknown, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+  };
+  return {
+    maxTerms: num(cfg.max_keyterms, KEYTERM_LIMITS_DEFAULT.maxTerms),
+    maxCharsPerTerm: num(cfg.max_keyterm_chars, KEYTERM_LIMITS_DEFAULT.maxCharsPerTerm),
+  };
 }
 
 /**
@@ -537,7 +855,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
        * that piece is ready, in order, while the model is still writing.
        */
       const spoken: Array<Promise<{
-        index: number; pcmBase64: string | null; ms: number;
+        index: number; pcmBase64: string | null; sampleRate: number;
+        provider: string | null; voiceId: string | null; ms: number;
         code: string | null; status: number | null;
       }>> = [];
       let voiceFailure: { code: string | null; status: number | null } | null = null;
@@ -549,15 +868,19 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         const index = spoken.length;
         spoken.push((async () => {
           const at = Date.now();
-          const out = await synthesizePcm({
-            voiceId: HOMATCH_TALK_VOICE_ID, language: replyLanguage, text: phrase,
+          const out = await speakPhrase(sb, {
+            text: phrase, language: replyLanguage,
+            sessionId: session.id, surface: 'AI_TALK',
           });
           return {
             index,
-            pcmBase64: out.ok && out.data ? out.data.pcmBase64 : null,
+            pcmBase64: out.ok ? out.data.pcmBase64 : null,
+            sampleRate: out.ok ? out.data.sampleRate : PCM_SAMPLE_RATE,
+            provider: out.ok ? out.data.provider : null,
+            voiceId: out.ok ? out.data.voiceId : null,
             ms: Date.now() - at,
-            code: out.ok ? null : (out.error?.code ?? null),
-            status: out.ok ? null : (out.error?.providerCode ?? null),
+            code: out.ok ? null : (out.failures[0]?.code ?? null),
+            status: out.ok ? null : (out.failures[0]?.status ?? null),
           };
         })());
         nudge();
@@ -587,7 +910,12 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           send('audio', {
             index: piece.index,
             pcmBase64: piece.pcmBase64,
-            sampleRate: PCM_SAMPLE_RATE,
+            // The rate the provider that actually answered synthesised at.
+            // ElevenLabs and Cartesia do not have to agree for this to work,
+            // but the browser has to be told which it got.
+            sampleRate: piece.sampleRate,
+            provider: piece.provider,
+            voiceId: piece.voiceId,
           });
         }
       })();
@@ -834,13 +1162,13 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     // The caller will ask for the voice next. Counted as a turn here, so a
     // caller that never asks cannot get free turns by omitting the second half.
     logEvent('ai-talk', 'turn_text_ok', { sessionId: session.id, llmMs });
-    return json({ ok: true, text, audioBase64: null, voiceId: HOMATCH_TALK_VOICE_ID, spoken: false, llmMs });
+    return json({ ok: true, text, audioBase64: null, voiceId: CARTESIA_FALLBACK_VOICE_ID, spoken: false, llmMs });
   }
 
   const spokeAt = Date.now();
 
   const spoken = await synthesizeSpeech({
-    voiceId: HOMATCH_TALK_VOICE_ID,
+    voiceId: CARTESIA_FALLBACK_VOICE_ID,
     // The language the reply was WRITTEN in, not the page it will be read on.
     // Georgian text announced as English is how a voice ends up spelling its
     // way through a Georgian sentence.
@@ -857,7 +1185,7 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     // The sentence still exists and is still worth showing. A silent reply is
     // a degraded conversation; a blank one is a broken product.
     return json({
-      ok: true, text, audioBase64: null, voiceId: HOMATCH_TALK_VOICE_ID, spoken: false,
+      ok: true, text, audioBase64: null, voiceId: CARTESIA_FALLBACK_VOICE_ID, spoken: false,
       llmMs, ttsMs: Date.now() - spokeAt,
     });
   }
@@ -869,7 +1197,7 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     text,
     audioBase64: spoken.data.audioBase64,
     mime: spoken.data.mime,
-    voiceId: HOMATCH_TALK_VOICE_ID,
+    voiceId: CARTESIA_FALLBACK_VOICE_ID,
     spoken: true,
     // Where the time actually went, so a slow turn can be attributed to the
     // half that was slow instead of guessed at.
@@ -898,7 +1226,43 @@ async function speak(sb: Sb, body: TalkRequest): Promise<Response> {
 
   const language = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
   const spokeAt = Date.now();
-  const spoken = await synthesizeSpeech({ voiceId: HOMATCH_TALK_VOICE_ID, language, text });
+  const phrase = await speakPhrase(sb, {
+    text, language, sessionId: guard.row.id, surface: 'AI_TALK',
+  });
+
+  if (!phrase.ok) {
+    logEvent('ai-talk', 'speak_failed', {
+      failures: phrase.failures.map((f) => `${f.provider}:${f.code ?? '?'}:${f.status ?? '?'}`).join(','),
+    });
+    return json({
+      ok: false, reason: 'VOICE_UNAVAILABLE',
+      providerCode: phrase.failures[0]?.code ?? null,
+      providerStatus: phrase.failures[0]?.status ?? null,
+    }, 502);
+  }
+
+  return json({
+    ok: true,
+    pcmBase64: phrase.data.pcmBase64,
+    sampleRate: phrase.data.sampleRate,
+    provider: phrase.data.provider,
+    voiceId: phrase.data.voiceId,
+    mime: 'audio/pcm',
+    ttsMs: Date.now() - spokeAt,
+  });
+}
+
+/** The old mp3 path, kept for any caller that still wants one file. */
+async function speakLegacy(sb: Sb, body: TalkRequest): Promise<Response> {
+  if (!body.sessionId) return json({ error: 'session_required' }, 400);
+  const guard = await activeSession(sb, body.sessionId);
+  if ('refusal' in guard) return guard.refusal;
+
+  const text = String(body.speakText ?? '').trim().slice(0, 800);
+  if (!text) return json({ ok: false, reason: 'EMPTY' }, 400);
+  const language = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
+  const spokeAt = Date.now();
+  const spoken = await synthesizeSpeech({ voiceId: CARTESIA_FALLBACK_VOICE_ID, language, text });
 
   if (!spoken.ok || !spoken.data) {
     logEvent('ai-talk', 'speak_failed', {
@@ -923,7 +1287,7 @@ async function speak(sb: Sb, body: TalkRequest): Promise<Response> {
     ok: true,
     audioBase64: spoken.data.audioBase64,
     mime: spoken.data.mime,
-    voiceId: HOMATCH_TALK_VOICE_ID,
+    voiceId: CARTESIA_FALLBACK_VOICE_ID,
     ttsMs: Date.now() - spokeAt,
   });
 }

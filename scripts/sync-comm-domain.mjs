@@ -60,6 +60,10 @@ const FILES = [
   // asking for facts it has been given. The edge function builds the prompt,
   // so the edge copy is the one that decides what gets re-asked.
   'conversationState.ts',
+  // Which of the thousand-term corpus a live session actually tells the
+  // transcriber about. The edge function builds the socket URL, so the edge
+  // copy is the one that decides.
+  'keyterms.ts',
 ];
 
 /* Pinned, matching package.json. A floating version here would be a second,

@@ -18,6 +18,19 @@ Deno.serve(async (req) => {
     const { trigger, property_id, signal_id, match_id } = await req.json();
     const notified: string[] = [];
 
+    /*
+     * notify() ALREADY SWALLOWS ITS OWN FAILURE, AND LOGS IT.
+     *
+     * This used to be a bare insert with `.then(({ error }) => ...)` hung off
+     * it, which read as diligence and became a defect the moment the insert
+     * became a call to the helper: the helper resolves to an id or to null,
+     * and destructuring `{ error }` from null throws. The throw landed in the
+     * outer catch, so a saved search with no match to report answered 500.
+     *
+     * There is nothing to check here. A notification is a side effect of
+     * something that already happened, and the helper says so in one place
+     * rather than at each of the twelve producers.
+     */
     if (trigger === 'new_property' && property_id) {
       // Find DEMAND side subscriptions that may match this new property
       // In a full implementation, compare property attributes against search_criteria
@@ -41,10 +54,6 @@ Deno.serve(async (req) => {
           title: 'New property match',
           body: 'A new property matching your search has been added.',
           metadata: { property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_PROPERTY_MATCH' },
-        }).then(({ error }) => {
-          // Swallowing this is what hid a broken notification pipeline: the
-          // insert failed on every call and nothing anywhere said so.
-          if (error) console.error('notification insert failed', error.message?.slice(0, 200));
         });
 
         await supabase.from('active_search_subscriptions')
@@ -72,10 +81,6 @@ Deno.serve(async (req) => {
           title: 'New buyer/renter found',
           body: 'A new potential buyer or renter has been found for your property.',
           metadata: { signal_id, match_id: match_id || null, property_id: sub.property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_SIGNAL_MATCH' },
-        }).then(({ error }) => {
-          // Swallowing this is what hid a broken notification pipeline: the
-          // insert failed on every call and nothing anywhere said so.
-          if (error) console.error('notification insert failed', error.message?.slice(0, 200));
         });
 
         await supabase.from('active_search_subscriptions')

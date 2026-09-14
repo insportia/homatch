@@ -11,6 +11,17 @@
  * No platform lock-in: all logic is here, not in proprietary scheduler configs.
  * Spend cap enforcement is checked BEFORE every paid provider call.
  * All provider calls log a CostEvent. All retries are bounded with exponential backoff.
+ *
+ * WHAT IS NOT TRUE OF IT TODAY
+ *
+ * Nothing imports this file. Not one edge function, not the workers, not the
+ * frontend -- it is the portable implementation, kept so the jobs can leave
+ * this platform, and it is currently running nowhere. So the match
+ * notification below is a description of how a match SHOULD be told, and the
+ * one customers actually receive comes from run-matching, which is deployed.
+ *
+ * Said here because a reader who finds a notify() call in a file called
+ * jobs.ts will reasonably assume it is the one that fires.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';

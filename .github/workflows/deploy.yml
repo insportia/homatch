@@ -285,7 +285,6 @@ jobs:
             "push-send"
             "billing"
             "homatch-research"
-            "homatch-ai"
             # Communications. Each of these calls authenticate(req) or
             # requireAdmin(req) and then acts under the service role, so the
             # gateway's JWT check is the correct outer gate.
@@ -303,6 +302,27 @@ jobs:
             "cartesia-access-token"
             "ai-talk-session"
             "voice-ai"
+            # ── The notification producers CI could not ship ──────────────
+            #
+            # All three were deployed by hand in August and never registered,
+            # so every repository change to them since has stayed in the
+            # repository. That stopped mattering quietly and then stopped
+            # being quiet: notify_emit — dedupe, aggregation, preferences,
+            # quiet hours and push — went live with twelve producers wired to
+            # it, and these three kept writing rows directly in production
+            # because production was still running August's code.
+            #
+            # A direct message, a viewing request and a finished research
+            # purchase are three of the four things Homatch most needs to
+            # tell somebody about.
+            #
+            # All three authenticate the caller themselves and then act under
+            # the service role, and all three are verify_jwt=true in
+            # production today, so this changes how they are deployed and not
+            # how they are protected.
+            "send-message"
+            "viewing-request"
+            "research-purchase"
           )
           FAILED=()
           for fn in "${JWT_FUNCTIONS[@]}"; do
@@ -372,6 +392,14 @@ jobs:
             "whatsapp-webhook"
             "voice-webhook"
             "comm-dispatch-worker"
+            # Saved searches. The fourth notification producer, and the only
+            # one of the four that has NEVER been deployed at all — the
+            # function exists in the repository, is called by the background
+            # workers, and has answered nothing in production since it was
+            # written. It belongs here rather than in the JWT list for the
+            # same reason as the two workers above it: its callers are
+            # background workers holding the service role, not browsers.
+            "active-search-notify"
           )
           FAILED=()
           for fn in "${NO_JWT_FUNCTIONS[@]}"; do

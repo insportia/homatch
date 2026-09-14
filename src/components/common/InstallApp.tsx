@@ -5,7 +5,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { recordPwaEvent } from '@/lib/engagement';
 import {
   type InstallMode,
-  canInstall, heldInstallPrompt, installedInThisTab, isIOSSafari, isStandalone,
+  canInstall, heldInstallPrompt, installedInThisTab, isIOSSafari, isIOSOtherBrowser,
+  isIPad, isStandalone,
   rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted, watchInstall,
 } from '@/lib/pwa';
 
@@ -76,6 +77,7 @@ export function useInstallMode(): InstallMode {
     standalone: isStandalone(),
     hasNativePrompt: heldInstallPrompt() !== null,
     iosSafari: isIOSSafari(),
+    iosOther: isIOSOtherBrowser(),
     installable: canInstall(),
     muted: muted || wasMuted(),
     installed: installedInThisTab(),
@@ -118,7 +120,7 @@ export function InstallApp({
   className?: string;
 }) {
   const { t } = useLanguage();
-  const [sheet, setSheet] = useState<null | 'ios' | 'pending'>(null);
+  const [sheet, setSheet] = useState<null | 'ios' | 'pending' | 'ios-browser'>(null);
   const [muted, setMuted] = useState(false);
 
   /*
@@ -142,6 +144,7 @@ export function InstallApp({
     standalone: isStandalone(),
     hasNativePrompt: prompt !== null,
     iosSafari: isIOSSafari(),
+    iosOther: isIOSOtherBrowser(),
     installable: canInstall(),
     muted: muted || wasMuted(),
     installed: justInstalled,
@@ -180,6 +183,13 @@ export function InstallApp({
      */
     if (mode === 'installed') {
       window.open(window.location.origin, '_blank', 'noopener');
+      return;
+    }
+    if (mode === 'ios-browser') {
+      /* Not an install, and not pretending to be. The only thing this browser
+         can contribute is getting the person to the one that can. */
+      void recordPwaEvent('PWA_IOS_INSTRUCTIONS_SHOWN', 'CONFIRMED', { source: `${source}:browser` });
+      setSheet('ios-browser');
       return;
     }
     if (mode === 'ios-manual') {
@@ -249,7 +259,11 @@ export function InstallApp({
       <>
         <button
           type="button"
-          onClick={() => setSheet(isIOSSafari() ? 'ios' : 'pending')}
+          /* Three cases, not two. The pending sheet explains a browser menu
+             that on iOS Chrome does not contain the item. */
+          onClick={() => setSheet(
+            isIOSSafari() ? 'ios' : isIOSOtherBrowser() ? 'ios-browser' : 'pending',
+          )}
           aria-label={t('pwa_install_aria')}
           className={`${chip} ${quiet} ${className}`}
         >
@@ -330,7 +344,7 @@ export function InstallApp({
  */
 function Sheet({
   kind, onClose, onMute,
-}: { kind: 'ios' | 'pending'; onClose: () => void; onMute: () => void }) {
+}: { kind: 'ios' | 'pending' | 'ios-browser'; onClose: () => void; onMute: () => void }) {
   const { t } = useLanguage();
 
   /*
@@ -367,14 +381,35 @@ function Sheet({
 
   const steps = kind === 'ios'
     ? [
-      { icon: Share, text: t('pwa_ios_step1') },
+      /*
+       * Safari puts Share in the BOTTOM toolbar on iPhone and the TOP RIGHT
+       * on iPad. One sentence, and getting it wrong sends an iPad owner to a
+       * toolbar that does not contain the control -- from which the only
+       * available conclusion is that the feature does not exist.
+       *
+       * This is the whole of the difference: the modal, its wording and its
+       * three steps are otherwise exactly as they were.
+       */
+      { icon: Share, text: isIPad() ? t('pwa_ios_step1_ipad') : t('pwa_ios_step1') },
       { icon: Plus, text: t('pwa_ios_step2') },
       { icon: Download, text: t('pwa_ios_step3') },
     ]
-    : [
-      { icon: Download, text: t('pwa_pending_step1') },
-      { icon: Plus, text: t('pwa_pending_step2') },
-    ];
+    : kind === 'ios-browser'
+      ? [
+        { icon: Share, text: t('pwa_iosbrowser_step1') },
+        { icon: Download, text: t('pwa_iosbrowser_step2') },
+      ]
+      : [
+        { icon: Download, text: t('pwa_pending_step1') },
+        { icon: Plus, text: t('pwa_pending_step2') },
+      ];
+
+  const title = kind === 'ios' ? t('pwa_ios_title')
+    : kind === 'ios-browser' ? t('pwa_iosbrowser_title')
+      : t('pwa_pending_title');
+  const lead = kind === 'ios' ? t('pwa_ios_lead')
+    : kind === 'ios-browser' ? t('pwa_iosbrowser_lead')
+      : t('pwa_pending_lead');
 
   /*
    * ── RENDERED AT THE BODY, NOT WHERE IT WAS DECLARED ───────────────────
@@ -414,7 +449,7 @@ function Sheet({
       className="viewport-sheet fixed left-0 right-0 top-0 z-[60] flex items-end justify-center overflow-hidden bg-[hsl(0_0%_0%/0.45)] p-0 sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-label={kind === 'ios' ? t('pwa_ios_title') : t('pwa_pending_title')}
+      aria-label={title}
       onClick={onClose}
     >
       <div
@@ -429,7 +464,7 @@ function Sheet({
       >
         <div className="flex items-start justify-between gap-3">
           <h2 className="font-display text-xl font-bold tracking-[-0.015em]">
-            {kind === 'ios' ? t('pwa_ios_title') : t('pwa_pending_title')}
+            {title}
           </h2>
           <button
             type="button"
@@ -442,7 +477,7 @@ function Sheet({
         </div>
 
         <p className="mt-2 text-base leading-relaxed text-ink-soft">
-          {kind === 'ios' ? t('pwa_ios_lead') : t('pwa_pending_lead')}
+          {lead}
         </p>
 
         <ol className="mt-5 space-y-3">

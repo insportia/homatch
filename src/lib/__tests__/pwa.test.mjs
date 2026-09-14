@@ -4,7 +4,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   DISMISS_DAYS, heldInstallPrompt, installedInThisTab, isIOS, isIOSSafari,
-  isStandalone, rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted,
+  isStandalone, isIPad, isIOSOtherBrowser,
+  rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted,
   watchInstall,
 } from '../pwa.ts';
 
@@ -389,4 +390,78 @@ test('the store is safe where there is no window at all', () => {
 
 test('spending a prompt that was never offered says so, rather than throwing', async () => {
   assert.equal(await showInstallPrompt(), 'unavailable');
+});
+
+/*
+ * ── THE SHORTEST PATH EACH PLATFORM ACTUALLY ALLOWS ───────────────────────
+ *
+ * The goal is the fewest taps the OS permits, which is a different number on
+ * each platform and is not ours to choose:
+ *
+ *   Chromium   ONE. beforeinstallprompt is held and replayed on the click, so
+ *              our control raises the real native dialog. No modal first --
+ *              a Homatch confirmation before the browser's own confirmation
+ *              is a tap we invented.
+ *
+ *   iOS Safari THREE, and all three belong to Safari: Share, Add to Home
+ *              Screen, Add. There is no beforeinstallprompt, no navigator
+ *              install API, and "Add to Home Screen" is a Safari chrome
+ *              action that the Web Share API does not expose as a target --
+ *              so navigator.share() would open a sheet WITHOUT it. Verified
+ *              against current documentation, not assumed.
+ *
+ *   iOS other  ZERO, in that browser. Chrome, Firefox and Edge on iOS have no
+ *              such menu item at all. The shortest real path is Safari.
+ */
+
+test('a held prompt means one tap, and never an explanatory modal first', () => {
+  const mode = resolveInstallMode({
+    standalone: false, hasNativePrompt: true, iosSafari: false,
+    installable: true, muted: false,
+  });
+  assert.equal(mode, 'native',
+    'a browser holding a real prompt must go straight to it; anything else adds a tap we invented');
+});
+
+test('iOS browsers that cannot install are told where it can be done', () => {
+  /* This resolved to `unsupported` and therefore rendered NOTHING: no button,
+     no explanation, and no way to discover that the same page in Safari
+     installs in three taps. */
+  const mode = resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: false,
+    installable: false, muted: false, iosOther: true,
+  });
+  assert.equal(mode, 'ios-browser');
+});
+
+test('iOS Safari still gets the instructions, unchanged', () => {
+  const mode = resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: true,
+    installable: false, muted: false, iosOther: false,
+  });
+  assert.equal(mode, 'ios-manual');
+});
+
+test('an installed app offers no install anything', () => {
+  assert.equal(resolveInstallMode({
+    standalone: true, hasNativePrompt: false, iosSafari: true,
+    installable: false, muted: false, iosOther: true,
+  }), 'standalone', 'the CTA must disappear once Homatch is running as the app');
+});
+
+test('iPad is distinguished, because Safari puts Share somewhere else on it', () => {
+  const iPad = { userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Safari/604.1', maxTouchPoints: 5 };
+  const iPhone = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1', maxTouchPoints: 5 };
+  const desktop = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.5 Safari/605.1.15', maxTouchPoints: 0 };
+  assert.equal(isIPad(iPad), true);
+  assert.equal(isIPad(iPhone), false, 'an iPhone would be sent to the wrong toolbar');
+  assert.equal(isIPad(desktop), false);
+});
+
+test('iOS Chrome is iOS, and is not Safari', () => {
+  const criOS = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 CriOS/126.0 Mobile/15E148 Safari/604.1', maxTouchPoints: 5 };
+  assert.equal(isIOSOtherBrowser(criOS), true);
+  assert.equal(isIOSSafari(criOS), false);
+  const safari = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1', maxTouchPoints: 5 };
+  assert.equal(isIOSOtherBrowser(safari), false, 'Safari would be denied the instructions it is the only browser able to follow');
 });

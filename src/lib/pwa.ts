@@ -40,6 +40,17 @@ export type InstallMode =
   | 'pending'
   /** iOS Safari: real, but manual, and it needs instructions. */
   | 'ios-manual'
+  /**
+   * iOS, but not Safari.
+   *
+   * Chrome, Firefox and Edge on iOS are Safari's engine in someone else's
+   * chrome, and none of them can add to the home screen -- the menu item
+   * simply is not there. This used to resolve to `unsupported`, which renders
+   * nothing at all: a person on iOS Chrome saw no button, got no explanation,
+   * and had no way to learn that the same page in Safari installs in three
+   * taps. The install was one hop away and the product never said so.
+   */
+  | 'ios-browser'
   /** Nothing to offer: unsupported browser, or the customer muted it. */
   /**
     * The customer said "not now", and meant it.
@@ -91,12 +102,30 @@ export function isIOS(nav: Navigator = navigator): boolean {
   return /iPad|iPhone|iPod/.test(ua) || iPadOS;
 }
 
+/**
+ * An iPad, which matters for one sentence.
+ *
+ * Safari puts the Share control in the BOTTOM toolbar on iPhone and in the
+ * TOP RIGHT on iPad. Telling an iPad owner to look at the bottom of the
+ * screen sends them to a toolbar that does not contain it, which is a worse
+ * failure than saying nothing: they conclude the feature is missing.
+ */
+export function isIPad(nav: Navigator = navigator): boolean {
+  const ua = nav.userAgent || '';
+  return /iPad/.test(ua) || (/Macintosh/.test(ua) && (nav.maxTouchPoints ?? 0) > 1);
+}
+
 /** Only Safari can add to the home screen on iOS; other iOS browsers cannot. */
 export function isIOSSafari(nav: Navigator = navigator): boolean {
   if (!isIOS(nav)) return false;
   const ua = nav.userAgent || '';
   // Chrome (CriOS), Firefox (FxiOS) and Edge (EdgiOS) on iOS cannot install.
   return !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+}
+
+/** On iOS, in a browser that cannot install. Reachable in one hop: Safari. */
+export function isIOSOtherBrowser(nav: Navigator = navigator): boolean {
+  return isIOS(nav) && !isIOSSafari(nav);
 }
 
 export function wasMuted(now: number = Date.now(), storage?: Storage): boolean {
@@ -146,6 +175,8 @@ export function resolveInstallMode(opts: {
   muted: boolean;
   /** An install completed in this tab. */
   installed?: boolean;
+  /** iOS, in a browser that cannot install. Safari can, one hop away. */
+  iosOther?: boolean;
 }): InstallMode {
   if (opts.standalone) return 'standalone';
   /* Installed beats muted: somebody who has just installed it wants the door,
@@ -158,6 +189,9 @@ export function resolveInstallMode(opts: {
   if (opts.muted) return opts.installable || opts.iosSafari ? 'dismissed' : 'unsupported';
   if (opts.hasNativePrompt) return 'native';
   if (opts.iosSafari) return 'ios-manual';
+  /* Before the `installable` test below, which is false on every iOS browser
+     and would otherwise send these to `unsupported`. */
+  if (opts.iosOther) return 'ios-browser';
   /*
    * No native prompt yet, and not iOS.
    *

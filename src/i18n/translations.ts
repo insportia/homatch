@@ -5193,6 +5193,13 @@ const en = {
   email_ws_templates_none: 'Email templates are not available yet',
   email_ws_templates_body: 'The only template store in this product is the WhatsApp one, which is shaped around Meta’s approval process and cannot hold an email subject and body. Reusable email templates need a store of their own, so the composer is the way to write a campaign today.',
   comm_status: 'Status',
+
+  // ── PWA install: iPad, and iOS browsers that cannot ──
+  pwa_ios_step1_ipad: 'Tap Share at the top right of Safari',
+  pwa_iosbrowser_title: 'Open Homatch in Safari to install it',
+  pwa_iosbrowser_lead: 'On iPhone and iPad only Safari can add an app to the Home Screen. This browser cannot — the option is not in its menu.',
+  pwa_iosbrowser_step1: 'Copy this page’s address, or tap Share then Open in Safari',
+  pwa_iosbrowser_step2: 'In Safari, tap Install App again — it takes three taps from there',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -10304,6 +10311,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   email_ws_templates_none: 'ელ-ფოსტის შაბლონები ჯერ მიუწვდომელია',
   email_ws_templates_body: 'ამ პროდუქტში ერთადერთი შაბლონების საცავი WhatsApp-ისაა, რომელიც Meta-ს დამტკიცების პროცესზეა მორგებული და ელ-ფოსტის თემასა და ტექსტს ვერ დაიტევს. მრავალჯერადი ელ-ფოსტის შაბლონები ცალკე საცავს საჭიროებს, ამიტომ დღეს კამპანია კომპოზიტორით იწერება.',
   comm_status: 'სტატუსი',
+
+  // ── PWA install: iPad, and iOS browsers that cannot ──
+  pwa_ios_step1_ipad: 'შეეხეთ Share-ს Safari-ს ზედა მარჯვენა კუთხეში',
+  pwa_iosbrowser_title: 'დასაყენებლად გახსენით Homatch Safari-ში',
+  pwa_iosbrowser_lead: 'iPhone-სა და iPad-ზე მხოლოდ Safari-ს შეუძლია აპის მთავარ ეკრანზე დამატება. ამ ბრაუზერს არ შეუძლია — ეს პარამეტრი მის მენიუში არ არის.',
+  pwa_iosbrowser_step1: 'დააკოპირეთ ამ გვერდის მისამართი, ან შეეხეთ Share → Safari-ში გახსნა',
+  pwa_iosbrowser_step2: 'Safari-ში კვლავ შეეხეთ „აპლიკაციის დაყენება“ — იქიდან სამი შეხებაა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -15406,6 +15420,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   email_ws_templates_none: 'Шаблоны писем пока недоступны',
   email_ws_templates_body: 'Единственное хранилище шаблонов здесь — для WhatsApp; оно построено вокруг процесса одобрения Meta и не может хранить тему и текст письма. Многоразовые почтовые шаблоны требуют собственного хранилища, поэтому сегодня кампания пишется в редакторе.',
   comm_status: 'Статус',
+
+  // ── PWA install: iPad, and iOS browsers that cannot ──
+  pwa_ios_step1_ipad: 'Нажмите «Поделиться» в правом верхнем углу Safari',
+  pwa_iosbrowser_title: 'Откройте Homatch в Safari, чтобы установить',
+  pwa_iosbrowser_lead: 'На iPhone и iPad добавить приложение на экран «Домой» может только Safari. Этот браузер не может — такого пункта в его меню нет.',
+  pwa_iosbrowser_step1: 'Скопируйте адрес этой страницы или нажмите «Поделиться» → «Открыть в Safari»',
+  pwa_iosbrowser_step2: 'В Safari снова нажмите «Установить приложение» — оттуда три нажатия',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -20506,6 +20527,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   email_ws_templates_none: 'E-posta şablonları henüz kullanılamıyor',
   email_ws_templates_body: 'Bu üründeki tek şablon deposu, Meta’nın onay sürecine göre biçimlenmiş olan WhatsApp deposudur ve bir e-posta konusu ile gövdesini tutamaz. Yeniden kullanılabilir e-posta şablonları kendi deposunu gerektirir; bu nedenle kampanya bugün besteciyle yazılır.',
   comm_status: 'Durum',
+
+  // ── PWA install: iPad, and iOS browsers that cannot ──
+  pwa_ios_step1_ipad: 'Safari\'nin sağ üstündeki Paylaş simgesine dokunun',
+  pwa_iosbrowser_title: 'Yüklemek için Homatch\'i Safari\'de açın',
+  pwa_iosbrowser_lead: 'iPhone ve iPad\'de bir uygulamayı Ana Ekrana yalnızca Safari ekleyebilir. Bu tarayıcı ekleyemez — bu seçenek menüsünde yok.',
+  pwa_iosbrowser_step1: 'Bu sayfanın adresini kopyalayın veya Paylaş → Safari’de Aç seçin',
+  pwa_iosbrowser_step2: 'Safari\'de yeniden Uygulamayı Yükle\'ye dokunun — oradan üç dokunuş sürer',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -25606,6 +25634,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   email_ws_templates_none: 'قوالب البريد غير متاحة بعد',
   email_ws_templates_body: 'مخزن القوالب الوحيد في هذا المنتج هو مخزن واتساب، المبني حول عملية موافقة Meta ولا يمكنه حفظ موضوع البريد ونصه. تحتاج قوالب البريد القابلة لإعادة الاستخدام إلى مخزن خاص بها، لذا تُكتب الحملة اليوم عبر المحرّر.',
   comm_status: 'الحالة',
+
+  // ── PWA install: iPad, and iOS browsers that cannot ──
+  pwa_ios_step1_ipad: 'اضغط على "مشاركة" أعلى يمين Safari',
+  pwa_iosbrowser_title: 'افتح Homatch في Safari لتثبيته',
+  pwa_iosbrowser_lead: 'على iPhone وiPad، يستطيع Safari وحده إضافة تطبيق إلى الشاشة الرئيسية. هذا المتصفح لا يستطيع — الخيار غير موجود في قائمته.',
+  pwa_iosbrowser_step1: 'انسخ عنوان هذه الصفحة، أو اضغط مشاركة ثم "فتح في Safari"',
+  pwa_iosbrowser_step2: 'في Safari اضغط "تثبيت التطبيق" مرة أخرى — ثلاث ضغطات من هناك',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -30706,6 +30741,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   email_ws_templates_none: 'תבניות דוא״ל אינן זמינות עדיין',
   email_ws_templates_body: 'מאגר התבניות היחיד במוצר הוא זה של וואטסאפ, שבנוי סביב תהליך האישור של Meta ואינו יכול להחזיק נושא וגוף של דוא״ל. תבניות דוא״ל לשימוש חוזר דורשות מאגר משלהן, ולכן קמפיין נכתב היום בעורך.',
   comm_status: 'סטטוס',
+
+  // ── PWA install: iPad, and iOS browsers that cannot ──
+  pwa_ios_step1_ipad: 'הקישו על שיתוף בפינה הימנית העליונה של Safari',
+  pwa_iosbrowser_title: 'פתחו את Homatch ב־Safari כדי להתקין',
+  pwa_iosbrowser_lead: 'ב־iPhone וב־iPad רק Safari יכול להוסיף אפליקציה למסך הבית. הדפדפן הזה לא — האפשרות אינה בתפריט שלו.',
+  pwa_iosbrowser_step1: 'העתיקו את כתובת הדף, או הקישו שיתוף ואז "פתח ב־Safari"',
+  pwa_iosbrowser_step2: 'ב־Safari הקישו שוב על "התקנת אפליקציה" — משם זה שלוש הקשות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

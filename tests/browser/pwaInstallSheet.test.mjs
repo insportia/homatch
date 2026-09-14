@@ -290,3 +290,132 @@ test('the install instructions are fully on screen, at every iPhone size', opts,
   assert.ok(measured > 0, 'the install sheet was never opened, so nothing was measured');
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
 });
+
+/*
+ * ── THE FOUR PATHS, EACH TAKING THE FEWEST TAPS ITS PLATFORM ALLOWS ───────
+ *
+ * The number of taps is set by the operating system, not by us. What IS ours
+ * is whether we add one on top:
+ *
+ *   Chromium with a held prompt   must raise the browser's own dialog on the
+ *                                 first click. A Homatch modal before the
+ *                                 browser's modal is a tap we invented.
+ *   iOS Safari                    must open the instructions immediately.
+ *   iOS Chrome/Firefox            must say where it CAN be done. This used to
+ *                                 render nothing at all.
+ *   already installed             must offer no install control and no modal.
+ */
+test('each platform takes the shortest path it actually permits', opts, async (t) => {
+  if (skipReason) assert.fail(`PWA path gate could not run: ${skipReason}`);
+
+  const { chromium } = resolvePlaywright();
+  const server = spawn(
+    process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    ['vite', 'preview', '--port', String(PORT + 1), '--strictPort', '--host', '127.0.0.1'],
+    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
+  );
+  const base = `http://127.0.0.1:${PORT + 1}`;
+  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+  t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
+  for (let i = 0; i < 80; i += 1) {
+    try { await fetch(base); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
+  }
+
+  const IOS_CHROME_UA = IOS_SAFARI_UA.replace('Version/17.5', 'CriOS/126.0');
+  const failures = [];
+
+  /** Open the page as a given platform, click the install control, report. */
+  async function run({ name, ua, standalone, fireBip }) {
+    const ctx = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      userAgent: ua, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
+    });
+    await ctx.addInitScript(([isStandalone, wantBip]) => {
+      window.localStorage.setItem('homatch_lang', 'en');
+      window.localStorage.removeItem('homatch_pwa_dismissed_at');
+      window.__promptCalls = 0;
+      if (isStandalone) {
+        // What isStandalone() reads on iOS, and on Chromium.
+        Object.defineProperty(window.navigator, 'standalone', { value: true, configurable: true });
+        const mm = window.matchMedia.bind(window);
+        window.matchMedia = (q) => (/display-mode:\s*standalone/.test(q)
+          ? { matches: true, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }
+          : mm(q));
+      }
+      if (wantBip) {
+        /* A real BeforeInstallPromptEvent cannot be constructed in a page, so
+           this is a stand-in carrying the two members the code uses. It proves
+           our WIRING calls prompt() on the first click -- not that Chromium
+           would have offered one, which is Chromium's business. */
+        window.addEventListener('load', () => {
+          const e = new Event('beforeinstallprompt');
+          e.prompt = () => { window.__promptCalls += 1; return Promise.resolve(); };
+          e.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'web' });
+          window.dispatchEvent(e);
+        });
+      }
+    }, [Boolean(standalone), Boolean(fireBip)]);
+
+    const page = await ctx.newPage();
+    await page.route('**', async (r) => {
+      const url = r.request().url();
+      if (url.startsWith(base)) return r.continue();
+      return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' });
+    });
+    await page.goto(base, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1400);
+
+    const clicked = await page.evaluate(() => {
+      const target = [...document.querySelectorAll('button')].find((b) => {
+        const l = (b.getAttribute('aria-label') || '').toLowerCase();
+        return l.includes('install') || l.includes('add to home');
+      });
+      if (!target) return false;
+      target.click();
+      return true;
+    });
+    await page.waitForTimeout(600);
+
+    const out = await page.evaluate(() => ({
+      dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
+      promptCalls: window.__promptCalls ?? 0,
+      title: document.querySelector('[role="dialog"] h2')?.textContent?.trim() ?? null,
+      steps: [...document.querySelectorAll('[role="dialog"] ol li')].length,
+    }));
+    await ctx.close();
+    return { clicked, ...out };
+  }
+
+  // 1. Chromium holding a prompt: straight to the browser's own dialog.
+  const chromiumUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+  const native = await run({ name: 'android', ua: chromiumUA, fireBip: true });
+  if (!native.clicked) failures.push('android: no install control was rendered');
+  else {
+    if (native.promptCalls !== 1) {
+      failures.push(`android: the native prompt was raised ${native.promptCalls} times, expected exactly 1 on the first click`);
+    }
+    if (native.dialog) failures.push('android: a Homatch modal opened before the browser dialog — that is a tap we invented');
+  }
+
+  // 2. iOS Safari: instructions, immediately, three steps.
+  const ios = await run({ name: 'ios', ua: IOS_SAFARI_UA });
+  if (!ios.clicked) failures.push('ios: no install control was rendered');
+  else {
+    if (!ios.dialog) failures.push('ios: the instructions did not open');
+    if (ios.steps !== 3) failures.push(`ios: expected the three Safari steps, found ${ios.steps}`);
+  }
+
+  // 3. iOS Chrome: told where it can be done, rather than nothing at all.
+  const iosChrome = await run({ name: 'ios-chrome', ua: IOS_CHROME_UA });
+  if (!iosChrome.clicked) {
+    failures.push('ios-chrome: still renders no control, so the user cannot learn that Safari installs it');
+  } else if (!iosChrome.dialog) {
+    failures.push('ios-chrome: the control does nothing');
+  }
+
+  // 4. Installed: nothing to offer, and nothing that opens.
+  const installed = await run({ name: 'standalone', ua: IOS_SAFARI_UA, standalone: true });
+  if (installed.dialog) failures.push('standalone: an install modal opened inside the installed app');
+
+  assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
+});

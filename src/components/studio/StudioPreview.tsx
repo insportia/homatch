@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LanguageOverride, useLanguage } from '@/contexts/LanguageContext';
+import type { OverrideMap } from '@/i18n/appContent';
+import { fetchOverrides } from '@/services/appContent';
 import { SitePage } from '@/site/render/SitePage';
 import { InlineEditLayer, type FieldTarget } from './InlineEdit';
 import { SectionControls, type SectionControlsApi } from './SectionControls';
@@ -378,6 +380,16 @@ export function StudioPreview({
     [device],
   );
 
+  /* Loaded once for the life of the editor. Empty until it arrives, and empty
+     on failure, which renders the shipped copy — the same answer the running
+     application gives. */
+  const [appContent, setAppContent] = useState<OverrideMap>({});
+  useEffect(() => {
+    let live = true;
+    void fetchOverrides().then(map => { if (live) setAppContent(map); });
+    return () => { live = false; };
+  }, []);
+
   const rtl = forceRTL || RTL_LANGUAGES.includes(locale as SupportedLanguage);
 
   /* `justify-start` until there is room to centre: a 1280px frame centred in
@@ -386,7 +398,15 @@ export function StudioPreview({
   return (
     <div className="flex h-full justify-start overflow-auto bg-muted/40 p-4 xl:justify-center">
       <PreviewFrame width={width} rtl={rtl} locale={locale} onBody={setPreviewBody} editing={Boolean(editing && onInlineEdit)}>
-        <LanguageOverride lang={locale as SupportedLanguage}>
+        {/*
+          * App Content overrides, carried into the preview.
+          *
+          * A section field with no stored value falls back to t(key), and
+          * t(key) is exactly what App Content replaces. Without this the
+          * preview would show an admin the copy they have already rewritten
+          * somewhere else — the one thing a preview must never do.
+          */}
+        <LanguageOverride lang={locale as SupportedLanguage} overrides={appContent}>
           <SitePage
             slug={slug}
             content={content}

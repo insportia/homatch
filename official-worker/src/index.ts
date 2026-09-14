@@ -561,10 +561,22 @@ app.get('/health/speech-regions', async (q: any, r: any) => {
   const asked = String(q.query?.model ?? '').slice(0, 40);
   const model = /^[a-z0-9_]+$/.test(asked) ? asked : (process.env.GOOGLE_SPEECH_MODEL || 'chirp_3');
 
+  const sampleRate = Number(process.env.GOOGLE_SPEECH_SAMPLE_RATE || 16000);
+  let audio: Buffer;
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    // A second of the checked-in Georgian, enough for a region to answer.
+    audio = readFileSync(fileURLToPath(new URL('./speech/fixtures/ka-selftest.pcm', import.meta.url)))
+      .subarray(0, sampleRate * 2);
+  } catch {
+    return r.status(503).json({ ok: false, reason: 'FIXTURE_MISSING' });
+  }
+
   const out = await probeRegions({
     projectId, credentialsJson, model,
     language: process.env.GOOGLE_SPEECH_LANGUAGE || 'ka-GE',
-    sampleRate: Number(process.env.GOOGLE_SPEECH_SAMPLE_RATE || 16000),
+    sampleRate, audio,
   });
   console.log(JSON.stringify({
     at: new Date().toISOString(), service: 'speech', event: 'region_probe',

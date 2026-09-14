@@ -68,7 +68,7 @@ export interface RegionResult {
  */
 async function probeOne(
   region: string,
-  opts: { projectId: string; credentials: unknown; model: string; language: string; sampleRate: number },
+  opts: { projectId: string; credentials: unknown; model: string; language: string; sampleRate: number; audio: Buffer },
 ): Promise<RegionResult> {
   const started = Date.now();
   const endpoint = speechEndpoint(region);
@@ -170,8 +170,11 @@ async function probeOne(
      * rather than silence, so anything arriving at all means the request was
      * implemented and understood here. `end` without an error means the same.
      */
-    stream.on('data', () => done(true, null, 'config accepted'));
-    stream.on('end', () => done(true, null, 'config accepted, stream ended'));
+    stream.on('data', (res: { results?: Array<{ alternatives?: Array<{ transcript?: string }> }> }) => {
+      const text = (res?.results ?? []).map((x) => x.alternatives?.[0]?.transcript ?? '').join(' ').trim();
+      done(true, null, text ? `streamed: ${text.slice(0, 100)}` : 'stream accepted, awaiting text');
+    });
+    stream.on('end', () => done(true, null, 'stream accepted, ended'));
 
     try {
       stream.write({
@@ -189,9 +192,20 @@ async function probeOne(
           streamingFeatures: { interimResults: true },
         },
       });
-      // Nothing else is coming. Half-closing asks Google to respond to the
-      // config rather than wait for audio that will never arrive.
-      stream.end();
+
+      /*
+       * REAL AUDIO, NOT A HALF-CLOSE.
+       *
+       * The first version of this wrote the config and immediately called
+       * end(), on the theory that Google's complaint about the missing audio
+       * would prove the config had been read. That made the probe answer a
+       * question nobody asked, and its answers could not be compared with the
+       * real recogniser, which never half-closes. Send what the recogniser
+       * sends.
+       */
+      for (let off = 0; off < opts.audio.length; off += 3200) {
+        stream.write({ audio: opts.audio.subarray(off, Math.min(off + 3200, opts.audio.length)) });
+      }
     } catch (e: unknown) {
       done(false, null, `WRITE: ${String((e as Error)?.message ?? e)}`);
     }
@@ -214,6 +228,7 @@ export async function probeRegions(opts: {
   model: string;
   language: string;
   sampleRate: number;
+  audio: Buffer;
   regions?: string[];
 }): Promise<{ model: string; language: string; results: RegionResult[]; firstWorking: string | null }> {
   let credentials: unknown;
@@ -229,6 +244,7 @@ export async function probeRegions(opts: {
     results.push(await probeOne(region, {
       projectId: opts.projectId, credentials,
       model: opts.model, language: opts.language, sampleRate: opts.sampleRate,
+      audio: opts.audio,
     }));
   }
 

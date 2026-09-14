@@ -48,30 +48,88 @@ function headers(): Record<string, string> {
  * transcript can no longer be explained. Sending the whole configuration with
  * every call keeps comm_agent_versions the single source of truth (§11).
  */
-export function agentToVapiAssistant(agent: AgentRuntimeConfig, webhookUrl: string, recordingEnabled: boolean) {
+export interface VapiVoiceConfig {
+  /** '11labs' or 'cartesia'. Decided by what the agent's voice id belongs to. */
+  provider: string;
+  voiceId: string | null;
+  model: string;
+}
+
+export interface VapiSttConfig {
+  provider: string;
+  model: string;
+  language: string | null;
+  keyterms: string[];
+}
+
+export interface VapiBrainConfig {
+  provider: string;
+  model: string;
+  temperature: number;
+}
+
+/**
+ * Which voice provider an id belongs to.
+ *
+ * THE LEGACY AGENTS ARE THE POINT OF THIS FUNCTION.
+ *
+ * Every agent created before this migration holds a Cartesia voice id, and
+ * rewriting those in the database would be a destructive migration of live
+ * customer configuration — the exact thing §R forbids. So the id is read
+ * instead: ElevenLabs ids are 20-character alphanumeric strings, Cartesia's
+ * are UUIDs. An agent keeps working with the voice it was built with until
+ * somebody deliberately picks a new one.
+ */
+export function voiceProviderForId(voiceId: string | null | undefined): 'cartesia' | '11labs' {
+  const id = String(voiceId ?? '');
+  // A UUID is Cartesia's shape. Anything else that looks like an id is
+  // ElevenLabs', which is what new selections produce.
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    ? 'cartesia'
+    : '11labs';
+}
+
+export function agentToVapiAssistant(
+  agent: AgentRuntimeConfig,
+  webhookUrl: string,
+  recordingEnabled: boolean,
+  /**
+   * The configuration an admin actually chose, when the caller has loaded it.
+   *
+   * Optional so that nothing that calls this today breaks; absent, it falls
+   * back to exactly the behaviour that shipped before, which is what keeps a
+   * legacy agent placing the same call it placed yesterday.
+   */
+  overrides?: {
+    voice?: VapiVoiceConfig | null;
+    stt?: VapiSttConfig | null;
+    brain?: VapiBrainConfig | null;
+  },
+) {
   return {
     name: agent.name.slice(0, 64),
     firstMessage: agent.firstMessage,
     // §114. The disclosure is part of the opening, not a footnote, and it is
     // in the prompt as well so the model cannot be talked out of it.
+    // The brain is a configured provider and model, not a constant. §I is
+    // explicit that the LLM must not be coupled to the voice provider.
     model: {
-      provider: 'openai',
-      model: 'gpt-4o',
-      temperature: 0.4,
+      provider: overrides?.brain?.provider ?? 'openai',
+      model: overrides?.brain?.model ?? 'gpt-4o',
+      temperature: overrides?.brain?.temperature ?? 0.4,
       messages: [{ role: 'system', content: agent.systemPrompt }],
     },
-    voice: agent.voiceId
-      ? { provider: 'cartesia', voiceId: agent.voiceId, model: 'sonic-2' }
-      : { provider: 'cartesia', model: 'sonic-2' },
-    transcriber: {
-      provider: 'deepgram',
-      // The primary language leads, and the alternates keep a code-switching
-      // caller intelligible instead of forcing their Russian sentence through
-      // a Georgian model (§135).
-      language: mapToTranscriberLanguage(agent.primaryLanguage),
-      model: 'nova-2',
-      smartFormat: true,
-    },
+    /*
+     * THE SELECTED VOICE, AND WHOEVER IT BELONGS TO.
+     *
+     * This is the propagation path the whole voice picker exists for: a
+     * customer chooses, the agent stores the id, and the id arrives here on
+     * the call payload. The assistant is transient — sent whole with every
+     * call — so there is no stored assistant to drift out of sync and no
+     * second place for the choice to be wrong.
+     */
+    voice: buildVoice(agent.voiceId, overrides?.voice),
+    transcriber: buildTranscriber(agent, overrides?.stt),
     // Endpointing, from admin voice tuning (§55). These are the numbers
     // transcript.ts reasons about, handed to the provider that will actually
     // enforce them.
@@ -94,6 +152,70 @@ export function agentToVapiAssistant(agent: AgentRuntimeConfig, webhookUrl: stri
     serverUrl: webhookUrl,
     serverMessages: ['status-update', 'end-of-call-report', 'hang', 'transfer-destination-request'],
   };
+}
+
+/**
+ * The voice block, for whichever provider owns the selected id.
+ *
+ * A null id is not an error: Vapi picks the provider's own default, which is
+ * better than refusing to place a call because nobody has chosen a voice yet.
+ */
+function buildVoice(agentVoiceId: string | null, override: VapiVoiceConfig | null | undefined) {
+  if (override?.voiceId) {
+    return { provider: override.provider, voiceId: override.voiceId, model: override.model };
+  }
+  const provider = voiceProviderForId(agentVoiceId);
+  if (!agentVoiceId) {
+    return provider === '11labs'
+      ? { provider: '11labs', model: 'eleven_flash_v2_5' }
+      : { provider: 'cartesia', model: 'sonic-2' };
+  }
+  return provider === '11labs'
+    ? { provider: '11labs', voiceId: agentVoiceId, model: 'eleven_flash_v2_5' }
+    : { provider: 'cartesia', voiceId: agentVoiceId, model: 'sonic-2' };
+}
+
+/**
+ * The transcriber block.
+ *
+ * ELEVENLABS BY DEFAULT, AND THE REASON IS GEORGIAN.
+ *
+ * Deepgram's nova-2 does not list ka at all, so a Georgian call was being
+ * transcribed as `multi` and quietly coming back as something else. Scribe
+ * handles it, and — the part Deepgram could never do — takes keyterms, so the
+ * district and registry vocabulary this market speaks arrives with the call
+ * instead of being guessed at.
+ */
+function buildTranscriber(agent: AgentRuntimeConfig, override: VapiSttConfig | null | undefined) {
+  if (override?.provider && override.provider !== '11labs') {
+    return {
+      provider: override.provider,
+      model: override.model,
+      language: override.language ?? mapToTranscriberLanguage(agent.primaryLanguage),
+      smartFormat: true,
+    };
+  }
+
+  const language = override?.language ?? scribeLanguage(agent.primaryLanguage);
+  return {
+    provider: '11labs',
+    model: override?.model ?? 'scribe_v2_realtime',
+    ...(language ? { language } : {}),
+    // Only what the selector chose for this agent. Never the whole corpus:
+    // the provider caps it, and a thousand biases is not a bias.
+    ...(override?.keyterms?.length ? { keyterms: override.keyterms } : {}),
+  };
+}
+
+/**
+ * Scribe takes ISO-639 and handles Georgian, so Homatch's own locale is the
+ * answer — with one exception. A language that has NOT settled is better sent
+ * as nothing at all, because naming one turns a code-switching caller into a
+ * mistranscribed one.
+ */
+function scribeLanguage(locale: string | null | undefined): string | null {
+  const code = String(locale ?? '').toLowerCase().split('-')[0];
+  return /^[a-z]{2,3}$/.test(code) ? code : null;
 }
 
 /**

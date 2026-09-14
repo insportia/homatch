@@ -495,10 +495,11 @@ export const SCRIBE_REALTIME_WS = 'wss://api.elevenlabs.io/v1/speech-to-text/rea
  * candidate is tried once and the one that works is reported.
  */
 const TOKEN_PATHS: Array<{ method: 'GET' | 'POST'; path: string }> = [
+  // The documented one: POST /v1/single-use-token/:token_type, where the type
+  // for this socket is realtime_scribe. Fifteen minutes, one use.
+  { method: 'POST', path: '/v1/single-use-token/realtime_scribe' },
   { method: 'GET', path: '/v1/speech-to-text/realtime/token' },
   { method: 'POST', path: '/v1/speech-to-text/realtime/token' },
-  { method: 'GET', path: '/v1/speech-to-text/token' },
-  { method: 'POST', path: '/v1/token' },
 ];
 
 export interface RealtimeGrant {

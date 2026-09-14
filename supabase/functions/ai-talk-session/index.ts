@@ -470,6 +470,7 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
   if ('refusal' in guard) return guard.refusal;
 
   const language = body.languageHint ? String(body.languageHint).toLowerCase().slice(0, 5) : null;
+  let elevenLabsRefusal: { code: string | null; status: number | null } | null = null;
 
   /*
    * ELEVENLABS FIRST, BECAUSE IT IS THE ONE THAT CAN WRITE GEORGIAN.
@@ -510,6 +511,13 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
       code: grant.error?.code ?? null,
       status: grant.error?.providerCode ?? null,
     });
+    // Carried in the fallback answer below, so that "it used the other
+    // provider" can be explained without an admin session and without a log
+    // this project's tooling cannot read. A code and a status, never a key.
+    elevenLabsRefusal = {
+      code: grant.error?.code ?? null,
+      status: Number(grant.error?.providerCode) || null,
+    };
   }
 
   // The OpenAI realtime path, which carried this before ElevenLabs and stays
@@ -568,6 +576,9 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
         expiresAt: parsed.expires_at ?? null,
         model,
         sampleRate: 24_000,
+        fellBackFrom: elevenLabsRefusal ? 'ELEVENLABS' : null,
+        fellBackCode: elevenLabsRefusal?.code ?? null,
+        fellBackStatus: elevenLabsRefusal?.status ?? null,
       });
     } catch (e) {
       logEvent('ai-talk', 'listen_failed', {
@@ -578,7 +589,12 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
     }
   }
 
-  return json({ ok: false, reason: 'UNAVAILABLE', providerStatus: lastStatus }, 200);
+  return json({
+    ok: false, reason: 'UNAVAILABLE', providerStatus: lastStatus,
+    fellBackFrom: elevenLabsRefusal ? 'ELEVENLABS' : null,
+    fellBackCode: elevenLabsRefusal?.code ?? null,
+    fellBackStatus: elevenLabsRefusal?.status ?? null,
+  }, 200);
 }
 
 /**

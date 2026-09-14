@@ -300,8 +300,14 @@ interface TalkRequest {
   state?: unknown;
   /** listen: proper nouns already in play, so the next socket knows them. */
   entities?: string[];
-  /** listen: whether this session has already contained abusive language. */
-  abusiveContext?: boolean;
+  /*
+   * Deliberately absent: whether a session has contained abuse.
+   *
+   * It used to arrive here, and a browser setting it to true would have the
+   * abuse lexicon sent to its own transcriber -- the exact bias withholding
+   * the lexicon exists to avoid. It is now read from comm_talk_sessions,
+   * where only the server writes it.
+   */
   /**
    * transcribe: a language to prefer, or absent to let the provider decide.
    *
@@ -505,7 +511,10 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
     const keyterms = await selectSessionKeyterms(sb, {
       sessionId: body.sessionId, language, surface: 'AI_TALK',
       entities: body.entities ?? [],
-      abusiveContext: body.abusiveContext === true,
+      // From the SESSION, never from the caller. A browser that could set
+      // this could have the profanity lexicon sent to its own transcriber,
+      // which is precisely what withholding it prevents.
+      abusiveContext: guard.row.abuse_seen === true,
     });
 
     const grant = await mintRealtimeToken();
@@ -675,6 +684,54 @@ async function selectSessionKeyterms(sb: Sb, ctx: {
   });
 
   return selection;
+}
+
+/**
+ * Did this turn contain abuse?
+ *
+ * WHY IT READS THE CORPUS AND NOT A CONSTANT
+ *
+ * The lexicon is already in the database, in two categories, maintained by
+ * whoever knows the language. A copy compiled into this function would drift
+ * from it the first time somebody added a word, and the copy is the one that
+ * would be wrong.
+ *
+ * WHY IT IS A WHOLE-WORD MATCH
+ *
+ * Substring matching on a profanity list is how ordinary words become
+ * offences -- the Georgian and Russian lists both contain short forms that sit
+ * inside perfectly normal words. A miss here costs nothing: the model answers
+ * the turn the way it answers any other. A false positive tells the model
+ * somebody was abusive when they asked about a mortgage.
+ *
+ * NOTHING IS STORED. The sentence is not written anywhere, the matching term
+ * is not written anywhere, and the answer is one boolean on the session.
+ */
+async function turnContainsAbuse(sb: Sb, said: string): Promise<boolean> {
+  const text = said.toLowerCase();
+  if (!text.trim()) return false;
+
+  const { data } = await sb.from('voice_vocabulary_terms')
+    .select('term')
+    .in('category', ['abuse_georgian', 'abuse_ru_en'])
+    .eq('enabled', true)
+    .limit(400);
+
+  // Letters and digits in any script; everything else is a boundary. A
+  // Unicode-aware split, because the lexicon is mostly not Latin.
+  const words = new Set(text.split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+
+  for (const row of data ?? []) {
+    const term = String(row.term ?? '').toLowerCase().trim();
+    if (!term) continue;
+    if (term.includes(' ')) {
+      // A phrase is matched as a phrase, still on boundaries.
+      if (text.includes(term)) return true;
+      continue;
+    }
+    if (words.has(term)) return true;
+  }
+  return false;
 }
 
 /**
@@ -850,6 +907,16 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
   const known = describeState(state);
   const gaps = stateGaps(state);
 
+  /*
+   * Did this turn contain abuse, and does the session already know?
+   *
+   * Matched against the lexicon Homatch already keeps rather than a list
+   * written here, so adding a word is an admin's edit and not a deploy. What
+   * is recorded is one boolean -- not the sentence, not the word, not a
+   * count. The conversation stays theirs.
+   */
+  const abusive = session.abuse_seen === true || await turnContainsAbuse(sb, said);
+
   const user = [
     conversation ? `Recent turns:\n${conversation}\n` : '',
     known ? `ALREADY KNOWN — never ask for any of this again:\n${known}\n` : '',
@@ -858,11 +925,21 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       : 'Enough is known to stop interrogating. Be useful about what they already told you.\n',
     `Visitor just said: "${said}"`,
     '',
+    // Said only when it is true, so an ordinary turn carries no instruction
+    // about insults at all.
+    abusive
+      ? 'They have been abusive. Do not react to it, do not name it, do not lecture and do not '
+        + 'apologise. Answer the real question underneath it, calmly, in the same short form. If '
+        + 'there is no question underneath, ask what they are looking for.\n'
+      : '',
     'Answer out loud, in one or two short sentences, then at most one question.',
   ].filter(Boolean).join('\n');
 
   await sb.from('comm_talk_sessions')
-    .update({ turns: Number(session.turns ?? 0) + 1 })
+    .update({
+      turns: Number(session.turns ?? 0) + 1,
+      ...(abusive && session.abuse_seen !== true ? { abuse_seen: true } : {}),
+    })
     .eq('id', session.id);
 
   const startedAt = Date.now();

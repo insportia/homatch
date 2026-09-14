@@ -217,3 +217,58 @@ test('AI TALK no longer refuses to start without one particular provider', () =>
   assert.ok(/!elevenLabsCredentialsPresent\(\) && !cartesiaCredentialsPresent\(\)\.ok/.test(body),
     'an ElevenLabs-only deployment must be able to start a conversation');
 });
+
+test('whether a conversation contained abuse is the server finding, not the caller claim', () => {
+  /*
+   * The keyterm selector withholds the abuse lexicon unless abuse has already
+   * happened, because sending a profanity list to a realtime transcriber
+   * teaches it to hear profanity. That switch used to be read from the
+   * request body -- so anybody who could open developer tools could ask for
+   * the lexicon and get it, which is the exact outcome the withholding
+   * exists to prevent.
+   */
+  const at = TALK.indexOf('async function listen(');
+  assert.ok(at > 0, 'the listen action is gone');
+  const body = TALK.slice(at, TALK.indexOf('\n}\n', at));
+
+  assert.ok(/abusiveContext: guard\.row\.abuse_seen === true/.test(body),
+    'the abuse flag must come from the session row');
+  assert.ok(!/body\.abusiveContext/.test(TALK),
+    'nothing in the session may read an abuse flag out of the request body');
+});
+
+test('the abuse lexicon is read from the corpus, matched on whole words, and never stored', () => {
+  const at = TALK.indexOf('async function turnContainsAbuse(');
+  assert.ok(at > 0, 'the abuse matcher is gone');
+  const body = TALK.slice(at, TALK.indexOf('\n}\n', at));
+
+  // The corpus, not a constant list compiled in here.
+  assert.ok(/voice_vocabulary_terms/.test(body),
+    'the lexicon must come from the database an admin maintains');
+  assert.ok(/abuse_georgian/.test(body) && /abuse_ru_en/.test(body));
+
+  // Whole words. Substring matching on a profanity list turns ordinary words
+  // into offences, and a false positive is far worse here than a miss.
+  assert.ok(/words\.has\(term\)/.test(body),
+    'a single-word term must match on a word boundary, not as a substring');
+
+  // And nothing about the sentence is written down.
+  assert.ok(!/insert\(/.test(body), 'the matcher must not store anything');
+});
+
+test('an abusive turn is answered, not scolded', () => {
+  const at = TALK.indexOf('async function converse(');
+  assert.ok(at > 0, 'converse is gone');
+  const body = TALK.slice(at, at + 4000);
+
+  assert.ok(/They have been abusive/.test(body), 'the instruction is gone');
+  assert.ok(/Answer the real question underneath it/.test(body),
+    'the instruction must be to answer, not to refuse');
+  assert.ok(/do not lecture/.test(body), 'the instruction must forbid moralising');
+
+  // And it is only ever sent when it is true: an ordinary turn must carry no
+  // instruction about insults at all.
+  assert.ok(/\n\s*abusive\s*\n?\s*\?/.test(body),
+    'the instruction must be conditional on abuse having happened');
+});
+

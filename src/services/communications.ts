@@ -385,10 +385,22 @@ export interface PickableVoice {
   name: string;
   description: string | null;
   language: string | null;
+  /** What the MODEL can render this voice in. Not an accent claim. */
   languages: string[];
   labels: Record<string, string>;
   recommended: boolean;
   isDefault: boolean;
+  /**
+   * The language and accent of the PERSON this voice is a recording of.
+   *
+   * Kept apart from `languages` on purpose, because conflating the two is how
+   * an American voice became the Georgian default. A model rendering a voice
+   * in Georgian does not give that speaker a Georgian mouth, and a picker
+   * that shows "24 languages" without showing "american · en" is telling the
+   * customer the wrong one of those two facts.
+   */
+  speakerLanguage: string | null;
+  speakerAccent: string | null;
 }
 
 export async function listVoices(): Promise<PickableVoice[]> {
@@ -408,18 +420,21 @@ export async function listVoices(): Promise<PickableVoice[]> {
     const languages = Array.isArray(v.languages)
       ? v.languages.map((l) => String(l).toLowerCase()).filter(Boolean)
       : [];
+    const labels = (v.labels && typeof v.labels === 'object' && !Array.isArray(v.labels))
+      ? Object.fromEntries(Object.entries(v.labels as Record<string, unknown>)
+        .map(([key, val]) => [key, String(val)]))
+      : {};
     return {
       id: v.voiceId,
       name: v.name,
       description: v.description,
       language: languages[0] ?? null,
       languages,
-      labels: (v.labels && typeof v.labels === 'object' && !Array.isArray(v.labels))
-        ? Object.fromEntries(Object.entries(v.labels as Record<string, unknown>)
-          .map(([k, val]) => [k, String(val)]))
-        : {},
+      labels,
       recommended: v.recommended === true,
       isDefault: v.isDefault === true,
+      speakerLanguage: labels.language ? String(labels.language).toLowerCase() : null,
+      speakerAccent: labels.accent ? String(labels.accent) : null,
     };
   });
 }

@@ -244,6 +244,21 @@ async function speakPhrase(sb: Sb, params: {
  */
 type FallbackPolicy = 'SAME_LANGUAGE_APPROVED_ONLY' | 'OWNER_APPROVED_FOREIGN_FALLBACK';
 
+/**
+ * How hard to push the provider for an early first byte.
+ *
+ * 0 keeps its text normaliser on, which is what turns 200,000 and USD and m²
+ * into words. Higher values start it sooner and normalise less. Georgian
+ * numbers and currency are exactly the case that suffers, so the default is
+ * the careful one and moving it is a decision somebody makes after listening.
+ */
+async function streamingLatencyHint(sb: Sb): Promise<number> {
+  const { data } = await sb.from('comm_provider_routes')
+    .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle();
+  const raw = Number((data?.config as Record<string, unknown> | null)?.optimize_streaming_latency);
+  return Number.isFinite(raw) ? Math.max(0, Math.min(4, Math.floor(raw))) : 0;
+}
+
 async function fallbackPolicy(sb: Sb): Promise<FallbackPolicy> {
   const { data } = await sb.from('comm_provider_routes')
     .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle();
@@ -884,6 +899,13 @@ async function speakPhraseStreaming(sb: Sb, params: {
         sendLanguage: choice.sendLanguage,
         format: 'pcm',
         sampleRate: ELEVENLABS_DEFAULTS.pcmSampleRate,
+        /*
+         * The provider trades TEXT NORMALISATION for latency as this rises,
+         * and normalisation is how "200,000 USD" becomes words somebody can
+         * hear. Default 0 -- correct numbers over a faster start -- and an
+         * operator who has listened to both can move it.
+         */
+        optimizeLatency: await streamingLatencyHint(sb),
       }, (chunk) => params.onChunk(chunk));
 
       if (out.ok && out.data) {

@@ -17,7 +17,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, Check, Loader2, Mic, Mic2, MicOff, Sparkles, Play, Square,
-  Bot, MessageSquareText, BookOpen, AudioLines, ClipboardCheck,
+  Bot, MessageSquareText, BookOpen, AudioLines, ClipboardCheck, AlertTriangle,
 } from 'lucide-react';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
 import { AddVoiceDialog } from '@/components/communications/AddVoiceDialog';
@@ -776,6 +776,10 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
    * one happened to be first and vanished from the other eight. The provider
    * reports the whole list; this uses it.
    */
+  // The language this agent actually speaks, which is what a voice has to
+  // match. Not the browser's locale: the agent's own primary language.
+  const agentLanguage = (draft.languages?.[0] ?? '').toLowerCase().split('-')[0] || null;
+
   const needle = search.trim().toLowerCase();
   const shown = voices
     .filter((v) => filter === 'ALL' || v.languages.includes(filter))
@@ -941,6 +945,28 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
                     ) : null}
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5">
+                    {/*
+                      * WHOSE VOICE THIS IS, NEXT TO WHAT THE MODEL CAN DO WITH IT.
+                      *
+                      * "24 languages" is a fact about the model's reach. The
+                      * accent belongs to the person the voice is a recording
+                      * of, and a model cannot give them another language's
+                      * mouth. Showing only the first of those is how an
+                      * American voice became the Georgian default, so when
+                      * the speaker does not match the agent's own language
+                      * the picker says so rather than implying otherwise.
+                      */}
+                    {v.speakerLanguage && agentLanguage
+                      && !v.speakerLanguage.startsWith(agentLanguage) ? (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-amber-400/60 text-[13px] text-amber-700 dark:text-amber-400"
+                        title={t('comm_voice_foreign_accent_hint')}
+                      >
+                        <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                        {[v.speakerAccent, v.speakerLanguage].filter(Boolean).join(' · ')}
+                      </Badge>
+                    ) : null}
                     {v.recommended ? (
                       <Badge className="bg-gold/15 text-[13px] text-gold hover:bg-gold/15">
                         {t('comm_voice_recommended')}

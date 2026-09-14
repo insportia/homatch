@@ -850,6 +850,149 @@ export async function addSharedVoice(params: {
   return { ok: true, data: { voiceId: String(body?.voice_id ?? params.voiceId) } };
 }
 
+/**
+ * The same speech, but sent while it is still being made.
+ *
+ * WHY THIS EXISTS BESIDE THE ONE ABOVE
+ *
+ * synthesizeElevenLabs waits for arrayBuffer(): the whole clip has to exist
+ * before a single byte leaves for the browser. For a preview that is right --
+ * one file, played whole. For a conversation it is the difference between
+ * hearing the reply and waiting for it. The provider documents ~280ms for
+ * v3 Conversational; measured against the non-streaming endpoint the same
+ * model took 1.0 to 2.0 seconds, because that number is time-to-FIRST-audio
+ * and we were asking for the last.
+ *
+ * Raw PCM, so chunks abut without a click and the browser can schedule each
+ * one the moment it arrives. mp3 cannot be cut this way -- every frame
+ * boundary carries encoder padding -- which is why the preview path keeps the
+ * whole-file endpoint and this one does not offer mp3.
+ *
+ * onChunk is called with each piece as it lands, and with the elapsed
+ * milliseconds to the FIRST piece, which is the only latency number that
+ * describes what a person experiences.
+ */
+export interface StreamResult {
+  /** Time from request to the first audio byte. The number that matters. */
+  firstByteMs: number;
+  totalMs: number;
+  bytes: number;
+  sampleRate: number;
+  model: string;
+  characters: number;
+}
+
+export async function streamElevenLabs(
+  opts: SynthesiseOptions & {
+    /**
+     * 0-4. The provider trades text normalisation for latency as this rises;
+     * 3 disables the normaliser, which is wrong for a language whose numbers
+     * and currency have to be spoken properly, so the default stays low and
+     * the caller decides.
+     */
+    optimizeLatency?: number;
+  },
+  onChunk: (chunk: Uint8Array, index: number) => void,
+): Promise<ProviderResult<StreamResult>> {
+  const text = String(opts.text ?? '').slice(0, 2500);
+  if (!text.trim()) {
+    return { ok: false, sideEffect: 'NONE', error: { code: 'UNKNOWN', message: 'nothing to speak', retryable: false } };
+  }
+  if (!opts.voiceId) {
+    return { ok: false, sideEffect: 'NONE', error: { code: 'UNKNOWN', message: 'no voice selected', retryable: false } };
+  }
+
+  const model = opts.modelId || ELEVENLABS_DEFAULTS.ttsModel;
+  const rate = opts.sampleRate ?? ELEVENLABS_DEFAULTS.pcmSampleRate;
+
+  const body: Record<string, unknown> = { text, model_id: model };
+  if (opts.languageCode && opts.sendLanguage !== false) body.language_code = opts.languageCode;
+  if (opts.settings) {
+    const v = opts.settings;
+    body.voice_settings = {
+      ...(v.stability !== undefined ? { stability: v.stability } : {}),
+      ...(v.similarityBoost !== undefined ? { similarity_boost: v.similarityBoost } : {}),
+      ...(v.style !== undefined ? { style: v.style } : {}),
+      ...(v.useSpeakerBoost !== undefined ? { use_speaker_boost: v.useSpeakerBoost } : {}),
+      ...(v.speed !== undefined ? { speed: v.speed } : {}),
+    };
+  }
+  if (opts.dictionaries?.length) {
+    body.pronunciation_dictionary_locators = opts.dictionaries.slice(0, 3).map((d) => ({
+      pronunciation_dictionary_id: d.id,
+      version_id: d.versionId,
+    }));
+  }
+
+  const query = new URLSearchParams({ output_format: `pcm_${rate}` });
+  if (opts.optimizeLatency !== undefined) {
+    query.set('optimize_streaming_latency', String(Math.max(0, Math.min(4, opts.optimizeLatency))));
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
+  const started = Date.now();
+
+  try {
+    const res = await fetch(
+      `${API}/v1/text-to-speech/${encodeURIComponent(opts.voiceId)}/stream?${query}`,
+      {
+        method: 'POST',
+        headers: headers({ 'content-type': 'application/json', accept: 'audio/*' }),
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      },
+    );
+
+    if (!res.ok || !res.body) {
+      const detail = res.ok ? 'provider returned no stream' : await res.text();
+      return { ok: false, sideEffect: 'NONE', error: classifyElevenLabs(res.status, detail) };
+    }
+
+    const reader = res.body.getReader();
+    let firstByteMs = 0;
+    let bytes = 0;
+    let index = 0;
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.length) continue;
+      if (!firstByteMs) firstByteMs = Date.now() - started;
+      bytes += value.byteLength;
+      onChunk(value, index);
+      index += 1;
+    }
+
+    if (!bytes) {
+      return {
+        ok: false, sideEffect: 'NONE',
+        error: { code: 'UNKNOWN', message: 'provider returned no audio', retryable: false },
+      };
+    }
+
+    return {
+      ok: true,
+      data: {
+        firstByteMs, totalMs: Date.now() - started, bytes,
+        sampleRate: rate, model, characters: text.length,
+      },
+    };
+  } catch (e) {
+    const aborted = (e as Error)?.name === 'AbortError';
+    return {
+      ok: false, sideEffect: 'MAYBE',
+      error: {
+        code: aborted ? 'TIMEOUT' : 'TRANSIENT',
+        message: aborted ? 'the provider did not start speaking in time' : 'the provider stream broke',
+        retryable: true,
+      },
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Pronunciation ───────────────────────────────────────────────────────────
 
 export interface PronunciationRuleInput {

@@ -141,14 +141,26 @@ function toConverseEvent(name: string, data: Record<string, unknown>): ConverseE
       };
     case 'state':
       return 'state' in data ? { type: 'state', state: data.state } : null;
-    case 'done':
+    case 'done': {
+      // The server's own stages, forwarded as they came: offsets from the
+      // moment it began, never timestamps from a clock this machine shares.
+      const t = (data.timing && typeof data.timing === 'object')
+        ? data.timing as Record<string, unknown> : null;
       return {
         type: 'done',
         firstTextMs: num(data.firstTextMs),
         firstAudioMs: num(data.firstAudioMs),
         totalMs: num(data.totalMs),
         ttsMs: num(data.ttsMs),
+        timing: t ? {
+          llmFirstTokenMs: num(t.llmFirstTokenMs),
+          ttsRequestMs: num(t.ttsRequestMs),
+          ttsFirstByteMs: num(t.ttsFirstByteMs),
+          firstAudioSentMs: num(t.firstAudioSentMs),
+          streamed: typeof t.streamed === 'boolean' ? t.streamed : null,
+        } : undefined,
       };
+    }
     case 'failed':
       return { type: 'failed', reason: str(data.reason) ?? 'ASSISTANT_FAILED' };
     default:

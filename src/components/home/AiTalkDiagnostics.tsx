@@ -115,6 +115,11 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
       <Row label="Reply" value={d.lastReplyChars === null ? '—' : `${d.lastReplyChars} chars, ${kb(d.lastAudioBytes)} audio`} />
       <Row label="Playbacks" value={n(d.playbacks)} tone={d.playbacks > 0 ? 'good' : 'idle'} />
       <Row
+        label="TTS transport"
+        value={d.streamedTts === null ? '—' : d.streamedTts ? 'streamed' : 'whole clip'}
+        tone={d.streamedTts ? 'good' : d.streamedTts === false ? 'bad' : 'idle'}
+      />
+      <Row
         label="Transcription"
         value={d.liveMode === 'live'
           ? `live${d.liveProvider ? ` · ${d.liveProvider}` : ''}`

@@ -32,13 +32,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { AlertTriangle, Check, Loader2, Play, Search, Sparkles, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
-  approveLanguageVoice, getAuditionResults, getLanguageVoices, listLibraryVoices,
-  revokeLanguageVoice, runAudition, searchSharedVoices, addSharedVoiceToAccount,
+  approveLanguageVoice, getAuditionResults, getFallbackPolicy, getLanguageVoices,
+  listLibraryVoices, revokeLanguageVoice, runAudition, searchSharedVoices,
+  addSharedVoiceToAccount, setFallbackPolicy,
 } from '@/services/voiceAi';
 import type {
   AuditionCandidate, AuditionSample, LanguageVoice, LibraryVoice, SharedVoice,
@@ -122,13 +124,16 @@ export function VoiceAudition() {
   const [speakerLanguage, setSpeakerLanguage] = useState('ka');
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
+  const [allowsForeign, setAllowsForeign] = useState(false);
+  const [savingPolicy, setSavingPolicy] = useState(false);
   const wanted = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [lib, langs, res] = await Promise.all([
-      listLibraryVoices(), getLanguageVoices(), getAuditionResults(),
+    const [lib, langs, res, policy] = await Promise.all([
+      listLibraryVoices(), getLanguageVoices(), getAuditionResults(), getFallbackPolicy(),
     ]);
+    setAllowsForeign(policy?.allowsForeign === true);
     setVoices(lib?.voices ?? []);
     setApproved(langs?.approved ?? []);
     setFallback(langs?.fallback ?? null);
@@ -211,6 +216,14 @@ export function VoiceAudition() {
     if (!out?.ok) { toast.error(t(k('voice_ai_save_failed'))); return; }
     await load();
   }, [load, t]);
+
+  const savePolicy = useCallback(async (allow: boolean) => {
+    setSavingPolicy(true);
+    const out = await setFallbackPolicy(allow);
+    setSavingPolicy(false);
+    if (!out?.ok) { toast.error(t(k('voice_ai_save_failed'))); return; }
+    setAllowsForeign(allow);
+  }, [t]);
 
   const findShared = useCallback(async () => {
     setSearching(true);
@@ -308,17 +321,46 @@ export function VoiceAudition() {
             )}
           </div>
 
-          {!approvedHere && fallback ? (
+          {!approvedHere ? (
             <p className="text-[13px] text-muted-foreground">
-              {t(k('voice_ai_falling_back_to'))}{' '}
-              <span className="font-medium">{fallback.name}</span>
-              {fallback.speakerLanguage || fallback.speakerAccent ? (
-                <> — <span className="text-destructive">
-                  {[fallback.speakerAccent, fallback.speakerLanguage].filter(Boolean).join(' · ')}
-                </span></>
-              ) : null}
+              {allowsForeign && fallback ? (
+                <>
+                  {t(k('voice_ai_falling_back_to'))}{' '}
+                  <span className="font-medium">{fallback.name}</span>
+                  {fallback.speakerLanguage || fallback.speakerAccent ? (
+                    <> — <span className="text-destructive">
+                      {[fallback.speakerAccent, fallback.speakerLanguage].filter(Boolean).join(' · ')}
+                    </span></>
+                  ) : null}
+                </>
+              ) : t(k('voice_ai_silent_until_approved'))}
             </p>
           ) : null}
+
+          {/*
+            * THE SWITCH THAT DECIDES WHETHER A CUSTOMER CAN HEAR THE WRONG
+            * ACCENT.
+            *
+            * Off in production. A customer hearing an American read Georgian
+            * does not think "unapproved configuration" -- they think Homatch
+            * sounds foreign, and that impression is not recoverable the way
+            * a stated silence is. It is here, and labelled, because turning
+            * it on for a demo is legitimate and doing so by accident is not.
+            */}
+          <label className="flex items-start gap-2 rounded-lg border p-2.5">
+            <Switch
+              checked={allowsForeign}
+              disabled={savingPolicy}
+              onCheckedChange={(on) => void savePolicy(on)}
+              className="mt-0.5"
+            />
+            <span className="text-xs">
+              <span className="block font-medium">{t(k('voice_ai_allow_foreign'))}</span>
+              <span className="block text-[13px] text-muted-foreground">
+                {t(k('voice_ai_allow_foreign_hint'))}
+              </span>
+            </span>
+          </label>
         </CardContent>
       </Card>
 

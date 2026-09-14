@@ -101,6 +101,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'language-voices':      return await languageVoices(sb);
     case 'approve-language-voice': return await approveLanguageVoice(sb, caller.userId, body);
     case 'revoke-language-voice': return await revokeLanguageVoice(sb, body);
+    case 'fallback-policy':      return await fallbackPolicyGet(sb);
+    case 'fallback-policy-save': return await fallbackPolicySave(sb, body);
     case 'usage':                return await usage(sb, body);
     default:                     return json({ error: 'unknown_action' }, 400);
   }
@@ -1148,6 +1150,44 @@ async function approveLanguageVoice(sb: Sb, userId: string, body: VoiceAiRequest
 
   logEvent('voice-ai', 'language_voice_approved', { language, voiceId });
   return json({ ok: true });
+}
+
+/**
+ * May a language with no approved voice speak with a foreign one?
+ *
+ * Stored on the TTS route beside the model, because it is a property of how
+ * this provider is allowed to be used rather than a global preference.
+ */
+async function fallbackPolicyGet(sb: Sb): Promise<Response> {
+  const { data } = await sb.from('comm_provider_routes')
+    .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle();
+  const policy = (data?.config as Record<string, unknown> | null)?.fallback_policy;
+  const allowsForeign = policy === 'OWNER_APPROVED_FOREIGN_FALLBACK';
+  return json({
+    ok: true,
+    policy: allowsForeign ? 'OWNER_APPROVED_FOREIGN_FALLBACK' : 'SAME_LANGUAGE_APPROVED_ONLY',
+    allowsForeign,
+  });
+}
+
+async function fallbackPolicySave(sb: Sb, body: VoiceAiRequest): Promise<Response> {
+  const allow = body.allowForeign === true;
+  const { data: existing } = await sb.from('comm_provider_routes')
+    .select('id, config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle();
+  if (!existing) return json({ ok: false, reason: 'NO_ROUTE' }, 404);
+
+  const config = {
+    ...(existing.config as Record<string, unknown> ?? {}),
+    fallback_policy: allow ? 'OWNER_APPROVED_FOREIGN_FALLBACK' : 'SAME_LANGUAGE_APPROVED_ONLY',
+  };
+  const { error } = await sb.from('comm_provider_routes')
+    .update({ config, updated_at: new Date().toISOString() }).eq('id', existing.id);
+  if (error) return json({ ok: false, reason: 'STORE_FAILED' }, 500);
+
+  // Worth a log line: this is the switch that decides whether a customer can
+  // hear the wrong accent, and somebody should be able to see when it moved.
+  logEvent('voice-ai', 'fallback_policy_changed', { allowForeign: allow });
+  return json({ ok: true, policy: config.fallback_policy });
 }
 
 /** Withdraw an approval. The language falls back and the screen says so. */

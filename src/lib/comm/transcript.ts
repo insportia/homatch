@@ -433,12 +433,43 @@ export function decideBargeIn(input: BargeInInput): BargeInAction {
 
 // ── Latency accounting ──────────────────────────────────────────────────────
 
+/**
+ * Every stage of one spoken turn, so a slow one can be blamed correctly.
+ *
+ * WHY THE SERVER'S HALF ARRIVES AS OFFSETS
+ *
+ * The browser and the edge function do not share a clock. Subtracting one
+ * machine's now() from another's produces a number about clock skew, not
+ * about latency, and it can be negative. So the browser records real times
+ * for what it can see, the server reports offsets from the moment it began,
+ * and the two compose without either trusting the other's clock.
+ */
 export interface LatencyMarks {
+  /** T0 — the last moment the microphone heard energy. */
   speechEndedAtMs?: number;
-  transcriptFinalAtMs?: number;
+  /** T1 — the provider's endpointer committed the turn. */
   endpointConfirmedAtMs?: number;
+  /** T2 — a usable final transcript existed. */
+  transcriptFinalAtMs?: number;
+  /** T3 — the turn request left the browser. */
+  turnRequestedAtMs?: number;
+  /** T4 — the first token reached the browser. Transport included. */
   llmFirstTokenAtMs?: number;
+  /*
+   * The server's own stages, as OFFSETS from T3.
+   *
+   * Separate fields rather than redefining the ...AtMs ones: a name ending
+   * AtMs is a timestamp on this machine's clock, and quietly turning one into
+   * an offset is how a dashboard starts reporting negative latency without
+   * anybody noticing which field changed meaning.
+   */
+  serverLlmFirstTokenMs?: number;
+  serverTtsRequestMs?: number;
+  serverTtsFirstByteMs?: number;
+  /** T7 — the browser actually started making a sound. */
   ttsFirstAudioAtMs?: number;
+  /** Whether the first phrase arrived in pieces or as one finished clip. */
+  streamed?: boolean | null;
 }
 
 export interface LatencyBreakdown {
@@ -446,6 +477,16 @@ export interface LatencyBreakdown {
   endpointingMs: number | null;
   thinkingMs: number | null;
   synthesisMs: number | null;
+  /** T3-T2: how long the browser took to ask, once it had the words. */
+  dispatchMs: number | null;
+  /** T4-T3: the model's time to first token. */
+  llmTtftMs: number | null;
+  /** T5-T4: first clause written to synthesis asked for. */
+  handoffMs: number | null;
+  /** T6-T5: the provider's time to its first audio byte. */
+  ttsFirstAudioMs: number | null;
+  /** T7-T6: transport and scheduling, once audio existed. */
+  playbackMs: number | null;
   /**
    * What the caller actually experiences: their last word to the first sound
    * back. §24 says to optimise real behaviour rather than laboratory metrics,
@@ -456,11 +497,50 @@ export interface LatencyBreakdown {
 
 export function latencyBreakdown(m: LatencyMarks): LatencyBreakdown {
   const d = (a?: number, b?: number) => (a != null && b != null && b >= a ? b - a : null);
+
+  /*
+   * The server's stages are offsets from T3, so they are compared with each
+   * other and added to T3 -- never subtracted from a browser timestamp.
+   * llmFirstTokenAtMs, ttsRequestedOffsetMs and ttsFirstByteOffsetMs all
+   * share that origin, which is what makes the arithmetic below legitimate.
+   */
+  const off = (a?: number, b?: number) => (a != null && b != null && b >= a ? b - a : null);
+
   return {
+    /*
+     * The four original stages, unchanged. They describe the turn the way
+     * this product has always described it, and the stages added below sit
+     * beside them rather than quietly redefining them.
+     */
     transcriptionMs: d(m.speechEndedAtMs, m.transcriptFinalAtMs),
     endpointingMs: d(m.transcriptFinalAtMs, m.endpointConfirmedAtMs),
     thinkingMs: d(m.endpointConfirmedAtMs, m.llmFirstTokenAtMs),
     synthesisMs: d(m.llmFirstTokenAtMs, m.ttsFirstAudioAtMs),
+
+    /** T3-T2: the browser's own overhead between having words and asking. */
+    dispatchMs: d(m.transcriptFinalAtMs, m.turnRequestedAtMs),
+
+    /*
+     * T4-T3, T5-T4, T6-T5 — all from the SERVER's offsets, so they are
+     * compared only with each other and never with a browser timestamp.
+     */
+    llmTtftMs: m.serverLlmFirstTokenMs ?? null,
+    handoffMs: off(m.serverLlmFirstTokenMs, m.serverTtsRequestMs),
+    ttsFirstAudioMs: off(m.serverTtsRequestMs, m.serverTtsFirstByteMs),
+
+    /*
+     * T7-T6. The server offset is added to the moment the request left, which
+     * puts it on this machine's clock legitimately: both ends of the
+     * subtraction are then browser time.
+     */
+    playbackMs: (m.turnRequestedAtMs != null && m.serverTtsFirstByteMs != null)
+      ? d(m.turnRequestedAtMs + m.serverTtsFirstByteMs, m.ttsFirstAudioAtMs)
+      : null,
+
+    /*
+     * T7-T0. The only number that describes what a person experienced, and
+     * the one every target in the spec is written against.
+     */
     perceivedMs: d(m.speechEndedAtMs, m.ttsFirstAudioAtMs),
   };
 }

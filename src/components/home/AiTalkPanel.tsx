@@ -122,6 +122,12 @@ const ORB_MODE: Record<VoiceState, OrbMode> = {
 const FAILURE_KEY: Record<string, string> = {
   ASSISTANT_FAILED: 'talk_err_assistant',
   VOICE_UNAVAILABLE: 'talk_err_voice',
+  /*
+   * Deliberately not the same sentence. "Could not be generated this time"
+   * invites a retry that will fail identically, because no voice has been
+   * approved for this language and none will be until a person approves one.
+   */
+  VOICE_NOT_APPROVED_FOR_LANGUAGE: 'talk_err_voice_not_approved',
   PLAYBACK_FAILED: 'talk_err_playback',
   PLAYBACK_BLOCKED: 'talk_err_playback',
   STT_UNAVAILABLE: 'talk_err_stt',

@@ -113,9 +113,24 @@ export type ConverseEvent =
   | { type: 'text'; delta: string }
   | { type: 'reply'; text: string; language?: string }
   | { type: 'audio'; pcmBase64: string; sampleRate: number; index?: number }
-  | { type: 'voiceless'; reason?: string; providerCode?: string; providerStatus?: number }
+  | { type: 'voiceless'; reason?: string; providerCode?: string; providerStatus?: number; language?: string }
   | { type: 'state'; state: unknown }
-  | { type: 'done'; firstTextMs?: number; firstAudioMs?: number | null; totalMs?: number; ttsMs?: number }
+  | {
+      type: 'done'; firstTextMs?: number; firstAudioMs?: number | null;
+      totalMs?: number; ttsMs?: number;
+      /**
+       * The server's own stages, as offsets from the moment it began work.
+       * Offsets rather than timestamps because the two machines do not share
+       * a clock -- see LatencyMarks for why that matters.
+       */
+      timing?: {
+        llmFirstTokenMs?: number | null;
+        ttsRequestMs?: number | null;
+        ttsFirstByteMs?: number | null;
+        firstAudioSentMs?: number | null;
+        streamed?: boolean | null;
+      };
+    }
   | { type: 'failed'; reason?: string };
 
 /** What came back from one utterance sent for transcription. */
@@ -190,6 +205,8 @@ export interface VoiceDiagnostics {
   /** Which provider granted the socket, and how many terms it was primed with. */
   liveProvider: string | null;
   liveKeyterms: number | null;
+  /** Whether the reply arrived in pieces or as one finished clip. */
+  streamedTts: boolean | null;
   /** Why the live path was given up on, when it was. */
   liveFellBack: string | null;
   /** What the speech provider said when it refused. A code and a status. */
@@ -391,6 +408,7 @@ export class VoiceSession {
     liveModel: null as string | null,
     liveProvider: null as string | null,
     liveKeyterms: null as number | null,
+    streamedTts: null as boolean | null,
     liveFellBack: null as string | null,
     voiceFailure: null as string | null,
   };
@@ -552,6 +570,7 @@ export class VoiceSession {
       liveModel: this.diag.liveModel,
       liveProvider: this.diag.liveProvider,
       liveKeyterms: this.diag.liveKeyterms,
+      streamedTts: this.diag.streamedTts,
       liveFellBack: this.diag.liveFellBack,
       voiceFailure: this.diag.voiceFailure,
       state: this.state,
@@ -1058,6 +1077,12 @@ export class VoiceSession {
     let spoke = false;
 
     this.queueTime = 0;
+    /*
+     * T3. Everything the SERVER reports is an offset from here, because the
+     * two machines do not share a clock and subtracting one's now() from the
+     * other's measures skew rather than latency.
+     */
+    this.marks.turnRequestedAtMs = Date.now();
 
     try {
       for await (const event of this.cb.onConverse!(said)) {
@@ -1067,6 +1092,9 @@ export class VoiceSession {
           case 'text': {
             text += event.delta;
             if (!this.marks.llmFirstTokenAtMs) {
+              // When the first token reached the BROWSER. The server reports
+              // its own figure at 'done'; this one includes transport, which
+              // is exactly what the caller waited through.
               this.marks.llmFirstTokenAtMs = Date.now();
               this.milestone('assistant_text', 0);
             }
@@ -1110,17 +1138,46 @@ export class VoiceSession {
           case 'state':
             this.cb.onConversationState?.(event.state);
             break;
-          case 'voiceless':
-            this.diag.lastError = 'VOICE_UNAVAILABLE';
+          case 'voiceless': {
+            // Carried through rather than flattened: a language with no
+            // approved voice is a configuration, not an outage, and the
+            // visitor should not be invited to retry it.
+            const code = event.reason === 'VOICE_NOT_APPROVED_FOR_LANGUAGE'
+              ? 'VOICE_NOT_APPROVED_FOR_LANGUAGE'
+              : 'VOICE_UNAVAILABLE';
+            this.diag.lastError = code;
             this.diag.voiceFailure = [event.providerCode, event.providerStatus]
               .filter((v) => v !== undefined && v !== null).join(' ') || null;
-            this.cb.onError?.('VOICE_UNAVAILABLE');
+            this.cb.onError?.(code);
             break;
-          case 'done':
+          }
+          case 'done': {
             this.diag.lastTurnMs = Date.now() - askedAt;
             this.diag.lastLlmMs = event.firstTextMs ?? null;
             this.diag.lastTtsMs = event.ttsMs ?? null;
+            /*
+             * The server's half of the turn, replacing the browser's
+             * provisional estimate with what actually happened inside it.
+             * These are offsets from T3 and are never subtracted from a
+             * browser timestamp -- see LatencyMarks.
+             */
+            const timing = event.timing;
+            if (timing) {
+              if (typeof timing.llmFirstTokenMs === 'number') {
+                this.marks.serverLlmFirstTokenMs = timing.llmFirstTokenMs;
+              }
+              if (typeof timing.ttsRequestMs === 'number') {
+                this.marks.serverTtsRequestMs = timing.ttsRequestMs;
+              }
+              if (typeof timing.ttsFirstByteMs === 'number') {
+                this.marks.serverTtsFirstByteMs = timing.ttsFirstByteMs;
+              }
+              this.marks.streamed = timing.streamed ?? null;
+              this.diag.streamedTts = timing.streamed ?? null;
+            }
+            this.cb.onLatency?.(latencyBreakdown(this.marks));
             break;
+          }
           case 'failed':
             failure = event.reason ?? 'ASSISTANT_FAILED';
             break;

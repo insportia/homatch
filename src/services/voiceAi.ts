@@ -396,3 +396,17 @@ export const approveLanguageVoice = (input: {
 
 export const revokeLanguageVoice = (language: string) =>
   call<{ ok: boolean; reason?: string }>('revoke-language-voice', { language });
+
+/**
+ * Whether a language with no approved voice may speak with a foreign one.
+ *
+ * Off in production, deliberately: a customer hearing an American read
+ * Georgian does not think "unapproved configuration", they think Homatch
+ * sounds foreign, and silence with a stated reason is recoverable where that
+ * impression is not. Turning it on is an explicit act and reads like one.
+ */
+export const getFallbackPolicy = () =>
+  call<{ ok: boolean; policy: string; allowsForeign: boolean }>('fallback-policy');
+
+export const setFallbackPolicy = (allowForeign: boolean) =>
+  call<{ ok: boolean; policy?: string; reason?: string }>('fallback-policy-save', { allowForeign });

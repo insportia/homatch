@@ -32,7 +32,7 @@ import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
 import {
   elevenLabsCredentialsPresent, mintRealtimeToken, synthesizeElevenLabs,
-  chooseTtsModel, ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
+  chooseTtsModel, streamElevenLabs, ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
   type LanguageStrategy,
 } from '../_shared/comm/elevenlabs.ts';
 import { ensureDefaultVoice } from '../_shared/comm/voiceLibrary.ts';
@@ -163,7 +163,18 @@ async function speakPhrase(sb: Sb, params: {
         detail: out.error?.message?.slice(0, 200) ?? null,
       });
     } else {
-      failures.push({ provider: 'ELEVENLABS', code: 'NO_DEFAULT_VOICE', status: null });
+      /*
+       * Not "no voice configured". There are twenty-three enabled voices;
+       * none of them is a voice a person approved for THIS language, and the
+       * difference is the whole reason the product is silent rather than
+       * speaking with the wrong accent.
+       */
+      failures.push({
+        provider: 'ELEVENLABS',
+        code: 'VOICE_NOT_APPROVED_FOR_LANGUAGE',
+        status: null,
+        detail: `no voice is approved for ${params.language || 'this language'}`,
+      });
     }
   }
 
@@ -218,6 +229,48 @@ async function speakPhrase(sb: Sb, params: {
  * page" is not a state worth shipping. A library that already has rows is left
  * alone: an admin who disabled everything meant it.
  */
+/**
+ * What to do when the language being spoken has no approved voice.
+ *
+ * SAME_LANGUAGE_APPROVED_ONLY   speak only with a voice somebody approved for
+ *                               this language. If there is none, do not speak.
+ * OWNER_APPROVED_FOREIGN_FALLBACK  a voice approved for another language may
+ *                               be used, knowingly, with a foreign accent.
+ *
+ * The default is the strict one, and it is the default for a reason: a
+ * customer hearing an American read Georgian does not think "unapproved
+ * configuration", they think Homatch sounds foreign. Silence with a visible
+ * reason is recoverable; that impression is not.
+ */
+type FallbackPolicy = 'SAME_LANGUAGE_APPROVED_ONLY' | 'OWNER_APPROVED_FOREIGN_FALLBACK';
+
+async function fallbackPolicy(sb: Sb): Promise<FallbackPolicy> {
+  const { data } = await sb.from('comm_provider_routes')
+    .select('config').eq('role', 'TTS').eq('provider', 'ELEVENLABS').maybeSingle();
+  const value = (data?.config as Record<string, unknown> | null)?.fallback_policy;
+  return value === 'OWNER_APPROVED_FOREIGN_FALLBACK'
+    ? 'OWNER_APPROVED_FOREIGN_FALLBACK'
+    : 'SAME_LANGUAGE_APPROVED_ONLY';
+}
+
+/**
+ * Which languages are allowed to fall back to a voice nobody approved.
+ *
+ * English is on it because every stock voice on this account IS a native
+ * English speaker, so the global default is already the right accent for
+ * English and refusing to speak it would be pedantry. Georgian is not, and
+ * that is the entire point.
+ */
+async function foreignFallbackAllowed(sb: Sb, code: string): Promise<boolean> {
+  if (!code) return true;
+  const { data } = await sb.from('voice_library_voices')
+    .select('labels').eq('provider', 'ELEVENLABS').eq('is_default', true).maybeSingle();
+  const labels = (data?.labels ?? {}) as Record<string, string>;
+  const speaker = String(labels.language ?? '').toLowerCase().split('-')[0];
+  // The fallback voice's own speaker matches: not a foreign accent at all.
+  return Boolean(speaker) && speaker === code;
+}
+
 async function defaultElevenLabsVoice(
   sb: Sb, language: string | null,
 ): Promise<{ voiceId: string; model: string; approvedForLanguage: boolean } | null> {
@@ -252,6 +305,27 @@ async function defaultElevenLabsVoice(
         model: String(approved.model_id ?? '') || ELEVENLABS_DEFAULTS.ttsModel,
         approvedForLanguage: true,
       };
+    }
+  }
+
+  /*
+   * NOTHING APPROVED FOR THIS LANGUAGE. FAIL CLOSED.
+   *
+   * The global default is a particular human being, and on this account
+   * every one of them is a native English speaker. Handing Georgian to one
+   * of them produces an English speaker reading Georgian letters -- which is
+   * what a listener heard, immediately, and what no automated check noticed.
+   *
+   * So unless an operator has deliberately said otherwise, or the fallback
+   * voice's own speaker actually speaks this language, this refuses. The
+   * caller reports GEORGIAN_VOICE_NOT_APPROVED rather than inventing a
+   * sound nobody signed off.
+   */
+  if (code) {
+    const policy = await fallbackPolicy(sb);
+    if (policy === 'SAME_LANGUAGE_APPROVED_ONLY' && !(await foreignFallbackAllowed(sb, code))) {
+      logEvent('ai-talk', 'voice_not_approved_for_language', { language: code });
+      return null;
     }
   }
 
@@ -756,6 +830,105 @@ async function languageStrategy(sb: Sb): Promise<LanguageStrategy> {
   return value === 'capable_model' ? 'capable_model' : 'configured_model';
 }
 
+/** Raw bytes to base64, chunked so a long piece cannot blow the stack. */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const STEP = 0x8000;
+  for (let i = 0; i < bytes.length; i += STEP) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + STEP));
+  }
+  return btoa(binary);
+}
+
+/**
+ * One phrase, sent while it is still being spoken.
+ *
+ * WHY THIS IS NOT JUST speakPhrase WITH A CALLBACK
+ *
+ * speakPhrase waits for the whole clip, records what it cost, and can fall
+ * back to Cartesia. That is the right shape for a preview and the wrong one
+ * for a conversation: the caller hears nothing until the last byte exists.
+ *
+ * This asks the provider to stream and forwards each piece as it lands, so
+ * the number that gets recorded is time-to-FIRST-audio -- the only one a
+ * person experiences. When the stream will not start it falls back to the
+ * whole-clip path, which still has Cartesia behind it, so nothing about the
+ * existing ladder is lost.
+ *
+ * Raw PCM only. mp3 frames cannot be cut and rejoined without a click.
+ */
+async function speakPhraseStreaming(sb: Sb, params: {
+  text: string;
+  language: string;
+  sessionId?: string | null;
+  surface?: string;
+  onChunk: (chunk: Uint8Array) => void;
+}): Promise<
+  | { ok: true; firstByteMs: number; totalMs: number; sampleRate: number; provider: string; voiceId: string; model: string; streamed: true }
+  | { ok: true; data: SpokenPhrase; streamed: false; totalMs: number }
+  | { ok: false; failures: Array<{ provider: string; code: string | null; status: number | null; detail?: string | null }> }
+> {
+  if (elevenLabsCredentialsPresent()) {
+    const voice = await defaultElevenLabsVoice(sb, params.language || null);
+    if (voice) {
+      const choice = voice.approvedForLanguage
+        ? { modelId: voice.model, sendLanguage: true }
+        : await chooseTtsModel(voice.model, params.language || null, await languageStrategy(sb));
+
+      const at = Date.now();
+      const out = await streamElevenLabs({
+        voiceId: voice.voiceId,
+        text: params.text,
+        modelId: choice.modelId,
+        languageCode: params.language || null,
+        sendLanguage: choice.sendLanguage,
+        format: 'pcm',
+        sampleRate: ELEVENLABS_DEFAULTS.pcmSampleRate,
+      }, (chunk) => params.onChunk(chunk));
+
+      if (out.ok && out.data) {
+        await recordVoiceUsage(sb, {
+          sessionId: params.sessionId ?? null,
+          surface: params.surface ?? 'AI_TALK',
+          provider: 'ELEVENLABS', role: 'TTS', model: choice.modelId,
+          characters: params.text.length,
+          // What a person waited through, not what the whole clip cost.
+          latencyMs: out.data.firstByteMs,
+          ok: true, errorCode: null, providerStatus: null,
+        });
+        return {
+          ok: true, streamed: true,
+          firstByteMs: out.data.firstByteMs,
+          totalMs: out.data.totalMs,
+          sampleRate: out.data.sampleRate,
+          provider: 'ELEVENLABS',
+          voiceId: voice.voiceId,
+          model: choice.modelId,
+        };
+      }
+
+      await recordVoiceUsage(sb, {
+        sessionId: params.sessionId ?? null,
+        surface: params.surface ?? 'AI_TALK',
+        provider: 'ELEVENLABS', role: 'TTS', model: choice.modelId,
+        characters: params.text.length, latencyMs: Date.now() - at,
+        ok: false, errorCode: out.error?.code ?? null,
+        providerStatus: Number(out.error?.providerCode) || null,
+      });
+      logEvent('ai-talk', 'tts_stream_fell_back', { code: out.error?.code ?? null });
+    }
+  }
+
+  // The whole-clip ladder, which still has Cartesia behind it.
+  const at = Date.now();
+  const whole = await speakPhrase(sb, {
+    text: params.text, language: params.language,
+    sessionId: params.sessionId, surface: params.surface,
+  });
+  if (whole.ok) return { ok: true, streamed: false, data: whole.data, totalMs: Date.now() - at };
+  return whole;
+}
+
 /**
  * Did this turn contain abuse?
  *
@@ -1038,11 +1211,28 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
        * The drain below runs as its own task. It sends each piece the moment
        * that piece is ready, in order, while the model is still writing.
        */
-      const spoken: Array<Promise<{
-        index: number; pcmBase64: string | null; sampleRate: number;
-        provider: string | null; voiceId: string | null; ms: number;
-        code: string | null; status: number | null;
-      }>> = [];
+      /*
+       * A PHRASE IS NOW A GROWING LIST OF PIECES, NOT ONE FINISHED CLIP.
+       *
+       * It used to be a promise of the whole clip, so the caller heard
+       * nothing until the last byte of the first phrase existed. The provider
+       * streams; this keeps each piece as it lands and lets the drain forward
+       * it, still strictly in order, while the rest is still being made.
+       */
+      interface Phrase {
+        index: number;
+        chunks: string[];
+        done: boolean;
+        sampleRate: number;
+        provider: string | null;
+        voiceId: string | null;
+        /** Time to the FIRST piece: what a person actually waits through. */
+        firstByteMs: number | null;
+        totalMs: number;
+        code: string | null;
+        status: number | null;
+      }
+      const spoken: Phrase[] = [];
       let voiceFailure: { code: string | null; status: number | null } | null = null;
       let llmFinished = false;
       let wake: (() => void) | null = null;
@@ -1060,56 +1250,124 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
        */
       const queuePhrase = (phrase: string) => {
         const index = spoken.length;
-        spoken.push((async () => {
+        const slot: Phrase = {
+          index, chunks: [], done: false,
+          sampleRate: PCM_SAMPLE_RATE, provider: null, voiceId: null,
+          firstByteMs: null, totalMs: 0, code: null, status: null,
+        };
+        spoken.push(slot);
+
+        void (async () => {
           const at = Date.now();
-          const out = await speakPhrase(sb, {
+          const out = await speakPhraseStreaming(sb, {
             text: phrase, language: replyLanguage,
             sessionId: session.id, surface: 'AI_TALK',
+            onChunk: (chunk) => {
+              if (slot.firstByteMs === null) slot.firstByteMs = Date.now() - at;
+              slot.chunks.push(bytesToBase64(chunk));
+              nudge();
+            },
           });
-          return {
-            index,
-            pcmBase64: out.ok ? out.data.pcmBase64 : null,
-            sampleRate: out.ok ? out.data.sampleRate : PCM_SAMPLE_RATE,
-            provider: out.ok ? out.data.provider : null,
-            voiceId: out.ok ? out.data.voiceId : null,
-            ms: Date.now() - at,
-            code: out.ok ? null : (out.failures[0]?.code ?? null),
-            status: out.ok ? null : (out.failures[0]?.status ?? null),
-          };
-        })());
+
+          if (slot.index === 0) {
+            // The first phrase is the one the caller is waiting through, and
+            // the only one whose timing describes the experience.
+            ttsRequestAt = at - startedAt;
+            ttsFirstByteAt = slot.firstByteMs === null ? null : (at - startedAt) + slot.firstByteMs;
+          }
+
+          if (out.ok && out.streamed) {
+            slot.sampleRate = out.sampleRate;
+            slot.provider = out.provider;
+            slot.voiceId = out.voiceId;
+            slot.totalMs = out.totalMs;
+          } else if (out.ok) {
+            // The whole-clip fallback produced one piece rather than many.
+            slot.chunks.push(out.data.pcmBase64);
+            slot.sampleRate = out.data.sampleRate;
+            slot.provider = out.data.provider;
+            slot.voiceId = out.data.voiceId;
+            slot.totalMs = out.totalMs;
+            if (slot.firstByteMs === null) slot.firstByteMs = out.totalMs;
+          } else {
+            slot.code = out.failures[0]?.code ?? null;
+            slot.status = out.failures[0]?.status ?? null;
+            slot.totalMs = Date.now() - at;
+          }
+          slot.done = true;
+          nudge();
+        })();
         nudge();
       };
 
       let firstAudioAt = 0;
       let ttsMs = 0;
       let audioBytes = 0;
+      /*
+       * THE SERVER HALF OF THE TURN, AS OFFSETS FROM THIS REQUEST.
+       *
+       * Offsets rather than clock times on purpose: the browser and this
+       * function do not share a clock, and a latency report built by
+       * subtracting one machine's now() from another's is a number about
+       * clock skew. The browser knows when it sent the request; these say
+       * what happened after that, and the two compose without either of them
+       * having to trust the other's clock.
+       */
+      let llmFirstTokenAt: number | null = null;
+      let ttsRequestAt: number | null = null;
+      let ttsFirstByteAt: number | null = null;
 
+      /*
+       * STRICTLY IN ORDER, BUT NEVER WAITING FOR A WHOLE PHRASE.
+       *
+       * `sent` is the phrase being drained and `offset` the piece within it.
+       * A piece is forwarded the instant it exists; the drain only moves to
+       * the next phrase once this one says it is done. Order is preserved
+       * because a later phrase is never touched before an earlier one
+       * finishes, which is what keeps the sentence in one piece.
+       */
+      let seq = 0;
       const drain = (async () => {
         let sent = 0;
+        let offset = 0;
         for (;;) {
           if (sent >= spoken.length) {
             if (llmFinished) return;
             await new Promise<void>((resolve) => { wake = resolve; });
             continue;
           }
-          const piece = await spoken[sent];
-          sent += 1;
-          ttsMs += piece.ms;
-          if (!piece.pcmBase64) {
-            if (!voiceFailure) voiceFailure = { code: piece.code, status: piece.status };
+          const phrase = spoken[sent];
+
+          if (offset >= phrase.chunks.length) {
+            if (!phrase.done) {
+              await new Promise<void>((resolve) => { wake = resolve; });
+              continue;
+            }
+            // Finished. Attribute it and move on.
+            ttsMs += phrase.totalMs;
+            if (!phrase.chunks.length && !voiceFailure) {
+              voiceFailure = { code: phrase.code, status: phrase.status };
+            }
+            sent += 1;
+            offset = 0;
             continue;
           }
+
+          const piece = phrase.chunks[offset];
+          offset += 1;
           if (!firstAudioAt) firstAudioAt = Date.now() - startedAt;
-          audioBytes += Math.round(piece.pcmBase64.length * 0.75);
+          audioBytes += Math.round(piece.length * 0.75);
           send('audio', {
-            index: piece.index,
-            pcmBase64: piece.pcmBase64,
+            // Monotonic across phrases, because the browser schedules by
+            // arrival order and a per-phrase index would repeat.
+            index: seq++,
+            pcmBase64: piece,
             // The rate the provider that actually answered synthesised at.
             // ElevenLabs and Cartesia do not have to agree for this to work,
             // but the browser has to be told which it got.
-            sampleRate: piece.sampleRate,
-            provider: piece.provider,
-            voiceId: piece.voiceId,
+            sampleRate: phrase.sampleRate,
+            provider: phrase.provider,
+            voiceId: phrase.voiceId,
           });
         }
       })();
@@ -1139,6 +1397,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
 
           if (!firstTextAt) {
             firstTextAt = Date.now() - startedAt;
+            // The model's time-to-first-token, measured rather than assumed.
+            llmFirstTokenAt = firstTextAt;
             send('open', { ms: firstTextAt, language: replyLanguage });
           }
           full += event.text;
@@ -1176,9 +1436,19 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             code: voiceFailure?.code ?? null, status: voiceFailure?.status ?? null,
           });
           send('voiceless', {
-            reason: 'VOICE_UNAVAILABLE',
+            /*
+             * "Unavailable" and "nobody approved a voice for this language"
+             * are different things and deserve different sentences. The
+             * first sounds like a glitch worth retrying; the second is a
+             * deliberate configuration and will be true on every turn until
+             * somebody approves a voice.
+             */
+            reason: voiceFailure?.code === 'VOICE_NOT_APPROVED_FOR_LANGUAGE'
+              ? 'VOICE_NOT_APPROVED_FOR_LANGUAGE'
+              : 'VOICE_UNAVAILABLE',
             providerCode: voiceFailure?.code ?? null,
             providerStatus: voiceFailure?.status ?? null,
+            language: replyLanguage,
           });
         }
 
@@ -1190,6 +1460,17 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           ttsMs,
           chars: full.length,
           phrases: spoken.length,
+          /*
+           * Every stage this function is responsible for, as offsets from the
+           * moment it started work. The browser adds its own half.
+           */
+          timing: {
+            llmFirstTokenMs: llmFirstTokenAt,
+            ttsRequestMs: ttsRequestAt,
+            ttsFirstByteMs: ttsFirstByteAt,
+            firstAudioSentMs: firstAudioAt || null,
+            streamed: spoken[0] ? spoken[0].chunks.length > 1 : null,
+          },
         });
         logEvent('ai-talk', 'converse_ok', {
           sessionId: session.id, firstTextMs: firstTextAt, firstAudioMs: firstAudioAt || null,

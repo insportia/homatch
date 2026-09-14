@@ -8,7 +8,7 @@ import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { InstallApp, useInstallMode, hasInstallAction } from '@/components/common/InstallApp';
 import { PAGE } from '@/components/home/sections/primitives';
-import { useFieldProps, useSectionField } from '@/site/content';
+import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
 import type { TranslationKey } from '@/i18n/translations';
 
@@ -116,6 +116,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
    */
   const sf = useSectionField();
   const fp = useFieldProps();
+  const notEditable = useNotEditable();
   const labelFor = (link: HeaderLink) => {
     const field = NAV_FIELDS[link.key];
     return field ? sf(field, field) : link.label;
@@ -181,7 +182,18 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
           * spacing alone could not.
           */}
         <div className="ms-auto flex items-center gap-2.5 lg:ms-0">
-          <div className="hidden items-center gap-1.5 sm:flex">
+          {/*
+            * Neither of these is copy.
+            *
+            * Install names what the BROWSER is offering — install it, or open
+            * the copy already installed, or nothing at all — and the language
+            * control shows the locale the reader is currently in. An admin
+            * rewriting either would be writing over a fact.
+            */}
+          <div
+            className="hidden items-center gap-1.5 sm:flex"
+            {...notEditable('SYSTEM_GENERATED')}
+          >
             <InstallApp tone={onDark ? 'dark' : 'auto'} />
             <LanguageSwitcher showGlobe triggerClassName={`h-10 px-2.5 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
           </div>
@@ -208,7 +220,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
               }`}
               onClick={() => navigate('/dashboard')}
             >
-              {t('nav_dashboard')}
+              <span {...fp('cta_dashboard')}>{sf('cta_dashboard', 'nav_dashboard')}</span>
             </Button>
           ) : (
             <>
@@ -291,7 +303,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
               * bar too, but somebody who has opened the menu is looking for
               * settings, and this is where they will look.
               */}
-            <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="mt-4 space-y-3 border-t border-border pt-4" {...notEditable('SYSTEM_GENERATED')}>
               <InstallApp variant="block" />
               <div className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-border px-4 py-2.5">
                 <span className="text-[15px] font-medium text-ink-soft">{t('nav_language')}</span>
@@ -328,6 +340,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
             * when that is all there is.
             */}
           <div
+            {...notEditable('SYSTEM_GENERATED')}
             className={`mb-2 inline-flex max-w-full items-center gap-2 rounded-[0.9rem] border p-1.5 ${
               canOfferApp ? 'flex w-full' : ''
             } ${

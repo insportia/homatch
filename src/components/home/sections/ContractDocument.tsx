@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FileText, Check, AlertTriangle, Sparkles } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useMotion } from '@/hooks/useMotion';
+import type { FieldMark } from '@/site/content';
 
 /**
  * A PROPERTY PURCHASE CONTRACT, BEING READ.
@@ -60,7 +61,25 @@ export interface DocumentCopy {
 /** phase 0 = idle · 1..4 = reading a region · 5 = settled. */
 const LAST = REGIONS.length + 1;
 
-export function ContractDocument({ copy }: { copy: DocumentCopy }) {
+/**
+ * The editor's marks, supplied by the section that owns the fields.
+ *
+ * `status` and `state` take an argument because one element shows different
+ * fields at different moments — the badge says "Reading" and then "Complete",
+ * and a findings row says "Verified" or "Detected" or "Review". The mark has
+ * to name whichever field is on screen now, or clicking the word would open
+ * the wrong one.
+ */
+export interface DocumentFields {
+  heading?: FieldMark;
+  fileName?: FieldMark;
+  status?: (done: boolean) => FieldMark;
+  note?: FieldMark;
+  label?: (region: Region) => FieldMark;
+  state?: (region: Region) => FieldMark;
+}
+
+export function ContractDocument({ copy, fields }: { copy: DocumentCopy; fields?: DocumentFields }) {
   const level = useMotion();
   const still = level === 'none';
   const ref = useRef<HTMLDivElement | null>(null);
@@ -116,7 +135,7 @@ export function ContractDocument({ copy }: { copy: DocumentCopy }) {
         <div className="flex items-center justify-between gap-3 border-b border-foreground/[0.12] px-4 py-3 sm:px-6 sm:py-3.5">
           <span className="inline-flex min-w-0 items-center gap-2.5">
             <FileText className="h-4 w-4 shrink-0 text-gold-ink" strokeWidth={2} aria-hidden="true" />
-            <span className="min-w-0 truncate text-[15px] font-medium text-foreground">{copy.fileName}</span>
+            <span className="min-w-0 truncate text-[15px] font-medium text-foreground" {...(fields?.fileName ?? {})}>{copy.fileName}</span>
           </span>
           <span
             className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold transition-colors duration-500 motion-reduce:transition-none ${
@@ -126,7 +145,7 @@ export function ContractDocument({ copy }: { copy: DocumentCopy }) {
             {done
               ? <Check className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
               : <Sparkles className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />}
-            <span className="truncate">{done ? copy.complete : copy.scanning}</span>
+            <span className="truncate" {...(fields?.status?.(done) ?? {})}>{done ? copy.complete : copy.scanning}</span>
           </span>
         </div>
 
@@ -162,7 +181,7 @@ export function ContractDocument({ copy }: { copy: DocumentCopy }) {
             />
           )}
 
-          <DocTitle text={copy.heading} />
+          <DocTitle text={copy.heading} mark={fields?.heading} />
           <Block region="parties" reading={reading('parties')} reached={reached('parties')}>
             <Rules widths={[46, 62]} />
             <Rules widths={[42, 58]} className="mt-2" />
@@ -221,10 +240,10 @@ export function ContractDocument({ copy }: { copy: DocumentCopy }) {
                       : <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden="true" />}
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[15px] font-medium leading-tight text-foreground">
+                    <span className="block truncate text-[15px] font-medium leading-tight text-foreground" {...(fields?.label?.(r) ?? {})}>
                       {copy.labels[r]}
                     </span>
-                    <span className="block truncate text-[13px] leading-tight text-muted-foreground">
+                    <span className="block truncate text-[13px] leading-tight text-muted-foreground" {...(fields?.state?.(r) ?? {})}>
                       {isClause ? copy.states.review : r === 'parties' ? copy.states.verified : copy.states.detected}
                     </span>
                   </span>
@@ -232,7 +251,7 @@ export function ContractDocument({ copy }: { copy: DocumentCopy }) {
               );
             })}
           </ul>
-          <p className="mt-4 text-pretty text-xs leading-relaxed text-muted-foreground">{copy.note}</p>
+          <p className="mt-4 text-pretty text-xs leading-relaxed text-muted-foreground" {...(fields?.note ?? {})}>{copy.note}</p>
         </div>
       </div>
     </div>
@@ -240,10 +259,10 @@ export function ContractDocument({ copy }: { copy: DocumentCopy }) {
 }
 
 /** The contract's own heading: centred, ruled under, like a real one. */
-function DocTitle({ text }: { text: string }) {
+function DocTitle({ text, mark }: { text: string; mark?: FieldMark }) {
   return (
     <div className="mb-4 text-center">
-      <p className="truncate text-[13px] font-semibold uppercase tracking-[0.18em] text-[#0D0D0D]">{text}</p>
+      <p className="truncate text-[13px] font-semibold uppercase tracking-[0.18em] text-[#0D0D0D]" {...(mark ?? {})}>{text}</p>
       <span className="mx-auto mt-2 block h-px w-16 bg-foreground/30" />
     </div>
   );

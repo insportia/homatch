@@ -32,10 +32,10 @@ import { useSectionField, useFieldProps } from '@/site/content';
  */
 
 const STEPS = [
-  { key: 'upload', label: 'mp_ci_step_1', note: 'mp_ci_step_1_d' },
-  { key: 'read', label: 'mp_ci_step_2', note: 'mp_ci_step_2_d' },
-  { key: 'clause', label: 'mp_ci_step_3', note: 'mp_ci_step_3_d' },
-  { key: 'explain', label: 'mp_ci_step_4', note: 'mp_ci_step_4_d' },
+  { key: 'upload', field: 'step1', label: 'mp_ci_step_1', note: 'mp_ci_step_1_d' },
+  { key: 'read', field: 'step2', label: 'mp_ci_step_2', note: 'mp_ci_step_2_d' },
+  { key: 'clause', field: 'step3', label: 'mp_ci_step_3', note: 'mp_ci_step_3_d' },
+  { key: 'explain', field: 'step4', label: 'mp_ci_step_4', note: 'mp_ci_step_4_d' },
 ] as const;
 
 export function ContractIntelligenceSection() {
@@ -107,12 +107,16 @@ export function ContractIntelligenceSection() {
                         className={`block text-[16px] leading-snug transition-colors duration-200 motion-reduce:transition-none ${
                           on ? 'font-semibold text-foreground' : 'font-medium text-ink-soft'
                         }`}
+                        {...fp(`${s.field}_t`)}
                       >
-                        {t(s.label)}
+                        {sf(`${s.field}_t`, s.label)}
                       </span>
                       {on && (
-                        <span className="mt-1 block text-pretty text-[16px] leading-relaxed text-muted-foreground">
-                          {t(s.note)}
+                        <span
+                          className="mt-1 block text-pretty text-[16px] leading-relaxed text-muted-foreground"
+                          {...fp(`${s.field}_d`)}
+                        >
+                          {sf(`${s.field}_d`, s.note)}
                         </span>
                       )}
                     </span>
@@ -135,13 +139,25 @@ export function ContractIntelligenceSection() {
               aria-hidden="true"
             />
           </button>
-          <p className="mt-3 max-w-[30rem] text-xs leading-relaxed text-muted-foreground">
-            {t('mp_contract_formats')}
+          <p className="mt-3 max-w-[30rem] text-xs leading-relaxed text-muted-foreground" {...fp('formats')}>
+            {sf('formats', 'mp_contract_formats')}
           </p>
         </div>
 
         {/* ── The document, being read ─────────────────────────── */}
         <ContractDocument
+          /* The scene draws copy it does not own, so the identity of each
+             string has to travel beside it. Without this the document's
+             labels were registry fields that nothing on screen admitted to
+             being, and the editor could not find one of them. */
+          fields={{
+            heading: fp('doc_heading'),
+            fileName: fp('doc_file'),
+            status: done => (done ? fp('doc_complete') : fp('doc_scanning')),
+            note: fp('doc_note'),
+            label: region => fp(`f_${region}`),
+            state: region => fp(region === 'clause' ? 'st_review' : region === 'parties' ? 'st_verified' : 'st_detected'),
+          }}
           copy={{
             heading: sf('doc_heading', 'mp_ci_doc_heading'),
             fileName: sf('doc_file', 'mp_ci_doc_label'),

@@ -128,7 +128,7 @@ export function ActionLauncherSection() {
               type="submit"
               className="group/go inline-flex h-11 w-full items-center justify-center gap-2 rounded-[0.6rem] bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
             >
-              {t('mp_launch_verify_go')}
+              <span {...fp('tile_verify_a')}>{sf('tile_verify_a', 'mp_launch_verify_go')}</span>
               <ArrowRight
                 className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover/go:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover/go:-translate-x-0.5' : ''}`}
                 strokeWidth={2}

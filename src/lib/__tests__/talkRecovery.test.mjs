@@ -45,11 +45,22 @@ test('every resting state offers a way back', () => {
     'the restart button is hidden for unavailable states again — a mic problem is theirs to clear',
   );
 
-  // And it must say "again", not "start", once they have already tried.
-  assert.ok(
-    /state === 'IDLE' \? 'talk_start' : 'talk_again'/.test(src),
-    'a retry after a failure should read as trying again, not as starting fresh',
-  );
+  /*
+   * And it must say "again", not "start", once they have already tried.
+   *
+   * Matched loosely across the branch rather than against one exact
+   * expression. The two labels are no longer a pair of keys handed to t():
+   * the invitation to start is Site Studio copy and the retry is the panel
+   * offering a retry, so they are two elements with different marks on them.
+   * What matters here is unchanged and is what this asserts — IDLE gets the
+   * opening label, and every other resting state gets the retry.
+   */
+  const label = src.slice(at, at + 900);
+  assert.ok(/state === 'IDLE'/.test(label), 'the label no longer distinguishes a first go from a retry');
+  const start = label.indexOf('talk_start');
+  const again = label.indexOf('talk_again');
+  assert.ok(start > 0 && again > start,
+    'a retry after a failure should read as trying again, not as starting fresh');
 });
 
 test('a visitor is never shown a counter, a byte total or a provider name', () => {

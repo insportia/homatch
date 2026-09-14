@@ -127,6 +127,15 @@ export function IntelligenceLayersSection() {
    */
   const focusFloor = FLOORS - 1 - active;
 
+  /* What the editor needs to find each string the scene draws. The scene
+     receives resolved copy, so the identity has to travel separately. */
+  const sceneFields = {
+    stage: fp('bi_stage_done'),
+    callout: (i: number) => fp(CALLOUT_FIELDS[i]?.[0] ?? 'bi_cal_floor'),
+    value: (i: number) => fp(CALLOUT_FIELDS[i]?.[1] ?? 'bi_val_floor'),
+    note: fp('bi_note'),
+  };
+
   /*
    * THE FINDINGS ARRIVE, THEY DO NOT APPEAR.
    *
@@ -296,7 +305,7 @@ export function IntelligenceLayersSection() {
           onFocusCapture={() => setHeld(true)}
           onBlurCapture={() => setHeld(false)}
         >
-          <BuildingScene copy={buildingCopy} />
+          <BuildingScene copy={buildingCopy} fields={sceneFields} />
 
           <div className="order-3 min-w-0 lg:order-none">
             <LayerList active={active} onPick={setActive} />

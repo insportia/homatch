@@ -196,10 +196,20 @@ export function DevFlowSection() {
           {/* What the lit stage does. A fixed minimum height, so the page
               does not jump every 2.6 seconds while somebody is reading it. */}
           <div className="mt-5 rounded-[0.9rem] border border-border bg-card p-5 sm:p-6">
-            <p className="text-[14px] font-semibold uppercase tracking-[0.18em] text-gold-ink">
+            {/* The lit stage, repeated. Same two fields as the chain above
+                -- the panel is a second view of one stage, not a second copy
+                of it -- so both places have to be clickable or an admin
+                learns that editing works in one of them and not the other. */}
+            <p
+              className="text-[14px] font-semibold uppercase tracking-[0.18em] text-gold-ink"
+              {...fp(`step_${STEPS[active].key}`)}
+            >
               {sf(`step_${STEPS[active].key}`, STEPS[active].label)}
             </p>
-            <p className="mt-2 min-h-[3.5rem] text-pretty text-[16px] leading-relaxed text-foreground">
+            <p
+              className="mt-2 min-h-[3.5rem] text-pretty text-[16px] leading-relaxed text-foreground"
+              {...fp(`desc_${STEPS[active].key}`)}
+            >
               {sf(`desc_${STEPS[active].key}`, STEPS[active].desc)}
             </p>
             <p className="mt-4 border-t border-border pt-3 text-[13px] leading-relaxed text-muted-foreground" {...fp('note')}>

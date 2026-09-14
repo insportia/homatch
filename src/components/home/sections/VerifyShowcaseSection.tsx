@@ -26,7 +26,7 @@ export function VerifyShowcaseSection() {
   const sf = useSectionField();
   const fp = useFieldProps();
   const mp = useMediaProps();
-  const { t, isRTL } = useLanguage();
+  const { isRTL } = useLanguage();
   const navigate = useNavigate();
 
   /*
@@ -112,19 +112,23 @@ export function VerifyShowcaseSection() {
             {sf('body', 'mp_verify_capability_desc')}
           </p>
 
+          {/* The section's actual promise, in three lines. They were the
+              only part of this region that still needed a deploy to reword,
+              which is backwards: the report beside them is fixed, and what
+              Homatch covers is what keeps changing. */}
           <ul className="mt-7 space-y-3.5 sm:mt-9 sm:space-y-4">
             {[
-              { key: 'record', title: t('mp_market_2_title'), desc: t('mp_market_2_desc') },
-              { key: 'project', title: t('mp_market_3_title'), desc: t('mp_market_3_desc') },
-              { key: 'contract', title: t('mp_contract_title'), desc: t('mp_verify_show_contract_d') },
+              { key: 'record', field: 'cap1', title: sf('cap1_t', 'mp_market_2_title'), desc: sf('cap1_d', 'mp_market_2_desc') },
+              { key: 'project', field: 'cap2', title: sf('cap2_t', 'mp_market_3_title'), desc: sf('cap2_d', 'mp_market_3_desc') },
+              { key: 'contract', field: 'cap3', title: sf('cap3_t', 'mp_contract_title'), desc: sf('cap3_d', 'mp_verify_show_contract_d') },
             ].map(row => (
               <li key={row.key} className="flex gap-3.5">
                 <span className="mt-[3px] grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground" aria-hidden="true">
                   <Check className="h-3 w-3" strokeWidth={3} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[17px] font-semibold leading-snug text-foreground">{row.title}</span>
-                  <span className="mt-1 block text-pretty text-[16px] leading-relaxed text-ink-soft sm:text-sm">{row.desc}</span>
+                  <span className="block text-[17px] font-semibold leading-snug text-foreground" {...fp(`${row.field}_t`)}>{row.title}</span>
+                  <span className="mt-1 block text-pretty text-[16px] leading-relaxed text-ink-soft sm:text-sm" {...fp(`${row.field}_d`)}>{row.desc}</span>
                 </span>
               </li>
             ))}

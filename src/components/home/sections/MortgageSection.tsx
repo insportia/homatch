@@ -33,12 +33,17 @@ import { useSectionField, useFieldProps } from '@/site/content';
  */
 
 const POINTS = [
-  { key: 'payment', title: 'mp_mortgage_point_1', desc: 'mp_mortgage_point_1_d' },
-  { key: 'structure', title: 'mp_mortgage_point_2', desc: 'mp_mortgage_point_2_d' },
-  { key: 'compare', title: 'mp_mortgage_point_3', desc: 'mp_mortgage_point_3_d' },
+  { key: 'payment', field: 'p1', title: 'mp_mortgage_point_1', desc: 'mp_mortgage_point_1_d' },
+  { key: 'structure', field: 'p2', title: 'mp_mortgage_point_2', desc: 'mp_mortgage_point_2_d' },
+  { key: 'compare', field: 'p3', title: 'mp_mortgage_point_3', desc: 'mp_mortgage_point_3_d' },
 ] as const;
 
-const ROWS = ['mp_mortgage_row_price', 'mp_mortgage_row_down', 'mp_mortgage_row_term', 'mp_mortgage_row_rate'] as const;
+const ROWS = [
+  { field: 'row_price', key: 'mp_mortgage_row_price' },
+  { field: 'row_down', key: 'mp_mortgage_row_down' },
+  { field: 'row_term', key: 'mp_mortgage_row_term' },
+  { field: 'row_rate', key: 'mp_mortgage_row_rate' },
+] as const;
 
 export function MortgageSection() {
   const sf = useSectionField();
@@ -74,9 +79,11 @@ export function MortgageSection() {
                   <Check className="h-3 w-3" strokeWidth={3} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[17px] font-semibold leading-snug text-foreground">{t(point.title)}</span>
-                  <span className="mt-1 block text-pretty text-[16px] leading-relaxed text-ink-soft sm:text-sm">
-                    {t(point.desc)}
+                  <span className="block text-[17px] font-semibold leading-snug text-foreground" {...fp(`${point.field}_t`)}>
+                    {sf(`${point.field}_t`, point.title)}
+                  </span>
+                  <span className="mt-1 block text-pretty text-[16px] leading-relaxed text-ink-soft sm:text-sm" {...fp(`${point.field}_d`)}>
+                    {sf(`${point.field}_d`, point.desc)}
                   </span>
                 </span>
               </li>
@@ -100,8 +107,8 @@ export function MortgageSection() {
         {/* ── The scenario ─────────────────────────────────────── */}
         <div className="min-w-0 overflow-hidden rounded-[1.1rem] border border-foreground/15 bg-card shadow-hover" role="img" aria-label={t('mp_mortgage_title')}>
           <div className="flex items-center justify-between gap-3 border-b border-foreground/[0.12] px-5 py-4 sm:px-6">
-            <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {t('mp_mortgage_scenario')}
+            <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('scenario')}>
+              {sf('scenario', 'mp_mortgage_scenario')}
             </p>
             {/* Two columns of the same shape: the point is that a second set
                 of terms sits beside the first, not what is in them. */}
@@ -113,8 +120,8 @@ export function MortgageSection() {
 
           <dl className="divide-y divide-foreground/10">
             {ROWS.map(row => (
-              <div key={row} className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
-                <dt className="min-w-0 flex-1 text-[16px] text-ink-soft sm:text-sm">{t(row)}</dt>
+              <div key={row.field} className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
+                <dt className="min-w-0 flex-1 text-[16px] text-ink-soft sm:text-sm" {...fp(row.field)}>{sf(row.field, row.key)}</dt>
                 <dd className="flex shrink-0 items-center gap-2" aria-hidden="true">
                   <span className="h-2 w-14 rounded-full bg-foreground/20 sm:w-20" />
                   <span className="h-2 w-10 rounded-full bg-foreground/10 sm:w-14" />
@@ -124,8 +131,8 @@ export function MortgageSection() {
           </dl>
 
           <div className="flex items-center justify-between gap-4 bg-primary px-5 py-5 text-primary-foreground sm:px-6">
-            <p className="min-w-0 text-[16px] font-semibold uppercase tracking-[0.14em] text-gold sm:text-sm">
-              {t('mp_mortgage_row_result')}
+            <p className="min-w-0 text-[16px] font-semibold uppercase tracking-[0.14em] text-gold sm:text-sm" {...fp('row_result')}>
+              {sf('row_result', 'mp_mortgage_row_result')}
             </p>
             <span className="flex shrink-0 items-center gap-2" aria-hidden="true">
               <span className="h-3 w-16 rounded-full bg-gold sm:w-24" />
@@ -133,8 +140,8 @@ export function MortgageSection() {
             </span>
           </div>
 
-          <p className="px-5 py-4 text-pretty text-xs leading-relaxed text-muted-foreground sm:px-6">
-            {t('mp_mortgage_note')}
+          <p className="px-5 py-4 text-pretty text-xs leading-relaxed text-muted-foreground sm:px-6" {...fp('note')}>
+            {sf('note', 'mp_mortgage_note')}
           </p>
         </div>
       </div>

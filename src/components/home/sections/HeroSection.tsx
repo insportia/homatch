@@ -1,5 +1,4 @@
 import React from 'react';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
 import { HomatchAsk } from '@/components/home/HomatchAsk';
 import { IntentChips } from '@/components/home/IntentCards';
@@ -33,12 +32,14 @@ import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '
  * Below lg the photograph is not rendered at all — removed from the DOM, not
  * hidden — so a phone never downloads it.
  */
+/** Which hero field each of the three chips is drawn from. */
+const HERO_Q: Record<string, string> = { buy: 'ask_q1', price: 'ask_q2', contract: 'ask_q3' };
+
 export function HeroSection() {
   const photo = useSectionMedia()('photo');
   const sf = useSectionField();
   const fp = useFieldProps();
   const mp = useMediaProps();
-  const { t } = useLanguage();
 
   return (
     <section className="relative isolate overflow-hidden bg-[#0D0D0D] text-white">
@@ -144,12 +145,23 @@ export function HeroSection() {
             className="mt-7 max-w-[34rem] sm:mt-9"
             variant="card"
             tone="dark"
-            heading={t('ai_title')}
+            heading={sf('ask_heading', 'ai_title')}
+            headingMark={fp('ask_heading')}
             placeholder={sf('placeholder', 'mp_hero_ai_placeholder')}
             actions={[]}
           />
 
-          <IntentChips keys={['buy', 'price', 'contract']} className="mt-4 max-w-[36rem]" />
+          {/* The three starter questions. Numbered fields rather than keys
+              named after the intents, because which three the hero offers is
+              itself a decision — swapping "contract" for "district" must not
+              mean an admin's rewrite lands on a chip that is no longer
+              shown. */}
+          <IntentChips
+            keys={['buy', 'price', 'contract']}
+            className="mt-4 max-w-[36rem]"
+            text={intent => sf(HERO_Q[intent.key] ?? 'ask_q1', intent.prompt)}
+            mark={intent => fp(HERO_Q[intent.key] ?? 'ask_q1')}
+          />
           </div>
 
           {/* AI TALK. A marketing demonstration of what Homatch understands,

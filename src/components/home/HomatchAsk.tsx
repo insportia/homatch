@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { FieldMark } from '@/site/content';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,6 +39,8 @@ interface HomatchAskProps {
   variant?: 'console' | 'card';
   /** Renders the ✦ HOMATCH AI label above the field. */
   heading?: string;
+  /** The editor's mark for the heading, when a section owns that copy. */
+  headingMark?: FieldMark;
   /** Which ground this is sitting on. 'dark' is the black hero and the black
       assistant region; 'light' is white cards. */
   tone?: 'light' | 'dark';
@@ -45,7 +48,7 @@ interface HomatchAskProps {
 }
 
 export function HomatchAsk({
-  placeholder, actions, variant = 'card', heading, tone = 'light', className = '',
+  placeholder, actions, variant = 'card', heading, headingMark, tone = 'light', className = '',
 }: HomatchAskProps) {
   const [value, setValue] = useState('');
   const { session } = useAuth();
@@ -76,7 +79,10 @@ export function HomatchAsk({
   return (
     <div className={className}>
       {heading && (
-        <p className={`mb-3.5 flex items-center gap-2 text-[14px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}>
+        <p
+          className={`mb-3.5 flex items-center gap-2 text-[14px] font-semibold uppercase tracking-[0.22em] ${dark ? 'text-gold' : 'text-gold-ink'}`}
+          {...(headingMark ?? {})}
+        >
           <Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
           {heading}
         </p>

@@ -27,26 +27,26 @@ import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '
  * diagram respects prefers-reduced-motion by simply not moving.
  */
 const STAGES = [
-  { key: 'project', icon: Building2, labelKey: 'mp_dev_stage_project' },
-  { key: 'demand', icon: Radar, labelKey: 'mp_dev_stage_demand' },
-  { key: 'people', icon: Users, labelKey: 'mp_dev_stage_people' },
-  { key: 'calls', icon: PhoneCall, labelKey: 'mp_dev_stage_calls' },
-  { key: 'email', icon: Mail, labelKey: 'mp_dev_stage_email' },
-  { key: 'followup', icon: MessagesSquare, labelKey: 'mp_dev_stage_followup' },
-];
+  { key: 'project', field: 'stage1', icon: Building2, labelKey: 'mp_dev_stage_project' },
+  { key: 'demand', field: 'stage2', icon: Radar, labelKey: 'mp_dev_stage_demand' },
+  { key: 'people', field: 'stage3', icon: Users, labelKey: 'mp_dev_stage_people' },
+  { key: 'calls', field: 'stage4', icon: PhoneCall, labelKey: 'mp_dev_stage_calls' },
+  { key: 'email', field: 'stage5', icon: Mail, labelKey: 'mp_dev_stage_email' },
+  { key: 'followup', field: 'stage6', icon: MessagesSquare, labelKey: 'mp_dev_stage_followup' },
+] as const;
 
 export function DeveloperB2BSection() {
   const backdrop = useSectionMedia()('backdrop');
   const sf = useSectionField();
   const fp = useFieldProps();
   const mp = useMediaProps();
-  const { t, isRTL } = useLanguage();
+  const { isRTL } = useLanguage();
   const navigate = useNavigate();
 
   const points = [
-    { key: '1', title: t('mp_dev_point_1_title'), desc: t('mp_dev_point_1_desc') },
-    { key: '2', title: t('mp_dev_point_2_title'), desc: t('mp_dev_point_2_desc') },
-    { key: '3', title: t('mp_dev_point_3_title'), desc: t('mp_dev_point_3_desc') },
+    { key: 'p1', title: sf('p1_t', 'mp_dev_point_1_title'), desc: sf('p1_d', 'mp_dev_point_1_desc') },
+    { key: 'p2', title: sf('p2_t', 'mp_dev_point_2_title'), desc: sf('p2_d', 'mp_dev_point_2_desc') },
+    { key: 'p3', title: sf('p3_t', 'mp_dev_point_3_title'), desc: sf('p3_d', 'mp_dev_point_3_desc') },
   ];
 
   return (
@@ -85,8 +85,8 @@ export function DeveloperB2BSection() {
             <ul className="mt-10 border-t border-white/15">
               {points.map(point => (
                 <li key={point.key} className="border-b border-white/15 py-4 sm:py-6">
-                  <h3 className="text-base font-semibold text-white">{point.title}</h3>
-                  <p className="mt-2 max-w-[34rem] text-pretty text-sm leading-relaxed text-white/65">{point.desc}</p>
+                  <h3 className="text-base font-semibold text-white" {...fp(`${point.key}_t`)}>{point.title}</h3>
+                  <p className="mt-2 max-w-[34rem] text-pretty text-sm leading-relaxed text-white/65" {...fp(`${point.key}_d`)}>{point.desc}</p>
                 </li>
               ))}
             </ul>
@@ -119,7 +119,7 @@ export function DeveloperB2BSection() {
                     <stage.icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-white">{t(stage.labelKey)}</p>
+                    <p className="text-sm font-medium text-white" {...fp(stage.field)}>{sf(stage.field, stage.labelKey)}</p>
                   </div>
                   <span className="shrink-0 text-[14px] font-semibold tabular-nums tracking-[0.16em] text-white/35" aria-hidden="true">
                     {`0${i + 1}`}
@@ -133,7 +133,7 @@ export function DeveloperB2BSection() {
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[0.6rem] bg-gold text-primary" aria-hidden="true">
                 <Building2 className="h-[18px] w-[18px]" strokeWidth={1.75} />
               </span>
-              <p className="min-w-0 flex-1 text-sm font-semibold text-white">{t('mp_dev_stage_outcome')}</p>
+              <p className="min-w-0 flex-1 text-sm font-semibold text-white" {...fp('outcome')}>{sf('outcome', 'mp_dev_stage_outcome')}</p>
             </div>
           </div>
         </div>

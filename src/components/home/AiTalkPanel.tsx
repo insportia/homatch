@@ -30,7 +30,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mic, MicOff, PhoneOff, ArrowRight, RotateCcw } from 'lucide-react';
-import { useSectionField, useFieldProps } from '@/site/content';
+import { useSectionField, useFieldProps, useNotEditable } from '@/site/content';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
@@ -468,6 +468,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
   const tone = toneOf(state);
   const sf = useSectionField();
   const fp = useFieldProps();
+  const notEditable = useNotEditable();
 
   const toggleMute = useCallback(() => {
     setMuted((was) => {
@@ -516,7 +517,13 @@ export function AiTalkPanel({ className }: { className?: string }) {
               )}
               aria-hidden="true"
             />
-            <span className="truncate text-[13px] font-medium tracking-wide text-white/55">
+            {/* "Listening", "Reconnecting", "Microphone blocked": the
+                product reporting a fact about itself. Rewriting one would
+                let the panel claim a state it is not in. */}
+            <span
+              className="truncate text-[13px] font-medium tracking-wide text-white/55"
+              {...notEditable('SYSTEM_GENERATED')}
+            >
               {t(STATE_KEY[state] as TKey)}
             </span>
           </span>
@@ -593,7 +600,11 @@ export function AiTalkPanel({ className }: { className?: string }) {
                 {state === 'IDLE'
                   ? <Mic className="h-4 w-4" aria-hidden="true" />
                   : <RotateCcw className="h-4 w-4" aria-hidden="true" />}
-                {t(state === 'IDLE' ? 'talk_start' : 'talk_again')}
+                {/* The invitation to start is copy; "Try again", offered
+                    after a call has ended, is the panel offering a retry. */}
+                {state === 'IDLE'
+                  ? <span {...fp('talk_start')}>{sf('talk_start', 'talk_start')}</span>
+                  : <span {...notEditable('SYSTEM_GENERATED')}>{t('talk_again')}</span>}
               </button>
               {state !== 'IDLE' ? (
                 <button
@@ -711,6 +722,7 @@ function Invitation({ state, failure }: { state: VoiceState; failure: string | n
   const { t } = useLanguage();
   const sf = useSectionField();
   const fp = useFieldProps();
+  const notEditable = useNotEditable();
 
   const messageKey: Record<string, string> = {
     IDLE: 'talk_idle_body',
@@ -729,13 +741,28 @@ function Invitation({ state, failure }: { state: VoiceState; failure: string | n
 
   const key = failure && FAILURE_KEY[failure] ? FAILURE_KEY[failure] : messageKey[state];
 
+  /*
+   * ONE ELEMENT, TWO KINDS OF SENTENCE.
+   *
+   * At rest this line is the pitch — "say what you are looking for" — and it
+   * is the panel's most-read sentence, so it is a field. Every other state
+   * puts a REPORT in the same place: the microphone was refused, the minute
+   * limit was reached, the provider is unreachable. Those are facts about a
+   * session, and an admin who could edit them could make the panel apologise
+   * for something that did not happen.
+   */
+  const invitationIsCopy = key === 'talk_idle_body';
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
       <p className="text-[17px] font-semibold text-white sm:text-lg" {...fp('talk_title')}>
         {sf('talk_title', 'talk_title')}
       </p>
-      <p className="mt-2 max-w-[24rem] text-pretty text-[13px] leading-relaxed text-white/55">
-        {t(key as TKey)}
+      <p
+        className="mt-2 max-w-[24rem] text-pretty text-[13px] leading-relaxed text-white/55"
+        {...(invitationIsCopy ? fp('talk_idle_body') : notEditable('SYSTEM_GENERATED'))}
+      >
+        {invitationIsCopy ? sf('talk_idle_body', 'talk_idle_body') : t(key as TKey)}
       </p>
       <p className="mt-2 text-[13px] text-white/30" {...fp('talk_languages')}>
         {sf('talk_languages', 'talk_languages')}

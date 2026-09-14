@@ -19,27 +19,27 @@ import { PAGE, SECTION_Y } from './primitives';
 
 /** The property kinds the platform is built to work across. */
 const MARKET = [
-  { key: 'apartments', icon: Building2, label: 'about_market_apartments' },
-  { key: 'resale', icon: Landmark, label: 'about_market_resale' },
-  { key: 'new', icon: Building2, label: 'about_market_new' },
-  { key: 'houses', icon: Landmark, label: 'about_market_houses' },
-  { key: 'land', icon: MapPinned, label: 'about_market_land' },
-  { key: 'commercial', icon: Building2, label: 'about_market_commercial' },
-  { key: 'rentals', icon: UserSearch, label: 'about_market_rentals' },
-  { key: 'projects', icon: LineChart, label: 'about_market_projects' },
-  { key: 'developers', icon: Landmark, label: 'about_market_developers' },
+  { key: 'apartments', field: 'kind_apartments', icon: Building2, label: 'about_market_apartments' },
+  { key: 'resale', field: 'kind_resale', icon: Landmark, label: 'about_market_resale' },
+  { key: 'new', field: 'kind_new', icon: Building2, label: 'about_market_new' },
+  { key: 'houses', field: 'kind_houses', icon: Landmark, label: 'about_market_houses' },
+  { key: 'land', field: 'kind_land', icon: MapPinned, label: 'about_market_land' },
+  { key: 'commercial', field: 'kind_commercial', icon: Building2, label: 'about_market_commercial' },
+  { key: 'rentals', field: 'kind_rentals', icon: UserSearch, label: 'about_market_rentals' },
+  { key: 'projects', field: 'kind_projects', icon: LineChart, label: 'about_market_projects' },
+  { key: 'developers', field: 'kind_developers', icon: Landmark, label: 'about_market_developers' },
 ] as const;
 
 /** The kinds of evidence a Homatch answer can be built from. */
 const SOURCES = [
-  { key: 'official', label: 'about_src_official', desc: 'about_src_official_d' },
-  { key: 'listings', label: 'about_src_listings', desc: 'about_src_listings_d' },
-  { key: 'projects', label: 'about_src_projects', desc: 'about_src_projects_d' },
-  { key: 'web', label: 'about_src_web', desc: 'about_src_web_d' },
-  { key: 'market', label: 'about_src_market', desc: 'about_src_market_d' },
-  { key: 'documents', label: 'about_src_documents', desc: 'about_src_documents_d' },
-  { key: 'yours', label: 'about_src_yours', desc: 'about_src_yours_d' },
-  { key: 'intent', label: 'about_src_intent', desc: 'about_src_intent_d' },
+  { key: 'official', field: 'src_official', label: 'about_src_official', desc: 'about_src_official_d' },
+  { key: 'listings', field: 'src_listings', label: 'about_src_listings', desc: 'about_src_listings_d' },
+  { key: 'projects', field: 'src_projects', label: 'about_src_projects', desc: 'about_src_projects_d' },
+  { key: 'web', field: 'src_web', label: 'about_src_web', desc: 'about_src_web_d' },
+  { key: 'market', field: 'src_market', label: 'about_src_market', desc: 'about_src_market_d' },
+  { key: 'documents', field: 'src_documents', label: 'about_src_documents', desc: 'about_src_documents_d' },
+  { key: 'yours', field: 'src_yours', label: 'about_src_yours', desc: 'about_src_yours_d' },
+  { key: 'intent', field: 'src_intent', label: 'about_src_intent', desc: 'about_src_intent_d' },
 ] as const;
 
 const DARK_H2 = 'mt-4 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-white';
@@ -85,21 +85,21 @@ export function AboutHeroSection() {
 /* ── What it is, against what it is not ────────────────────────── */
 
 export function AboutWhatSection() {
-  const { t, isRTL } = useLanguage();
+  const { isRTL } = useLanguage();
   const sf = useSectionField();
   const fp = useFieldProps();
   const navigate = useNavigate();
 
   /* The eight capabilities, each pointing at the real route behind it. */
   const CAPABILITIES = [
-    { key: 'verify', glyph: 'verify' as const, icon: ShieldCheck, title: 'mp_verify_capability_title', desc: 'about_cap_verify', to: '/verify' },
-    { key: 'contract', glyph: 'contract' as const, icon: FileText, title: 'mp_contract_title', desc: 'about_cap_contract', to: '/verify' },
-    { key: 'match', glyph: 'matching' as const, icon: UserSearch, title: 'mp_tile_match_t', desc: 'about_cap_match', to: '/property/add' },
-    { key: 'mortgage', glyph: 'mortgage' as const, icon: Calculator, title: 'mp_mortgage_title', desc: 'about_cap_mortgage', to: '/mortgage' },
-    { key: 'calls', glyph: 'calls' as const, icon: PhoneCall, title: 'call_center_title', desc: 'about_cap_calls', to: '/outreach/calls' },
-    { key: 'email', glyph: 'email' as const, icon: Mail, title: 'mp_email_title', desc: 'about_cap_email', to: '/outreach/email' },
-    { key: 'find', glyph: 'property' as const, icon: Search, title: 'mp_find_title', desc: 'about_cap_find', to: '/ai' },
-    { key: 'ai', glyph: 'ai' as const, icon: Sparkles, title: 'ai_title', desc: 'about_cap_ai', to: '/ai' },
+    { key: 'verify', field: 'cap_verify', glyph: 'verify' as const, icon: ShieldCheck, title: 'mp_verify_capability_title', desc: 'about_cap_verify', to: '/verify' },
+    { key: 'contract', field: 'cap_contract', glyph: 'contract' as const, icon: FileText, title: 'mp_contract_title', desc: 'about_cap_contract', to: '/verify' },
+    { key: 'match', field: 'cap_match', glyph: 'matching' as const, icon: UserSearch, title: 'mp_tile_match_t', desc: 'about_cap_match', to: '/property/add' },
+    { key: 'mortgage', field: 'cap_mortgage', glyph: 'mortgage' as const, icon: Calculator, title: 'mp_mortgage_title', desc: 'about_cap_mortgage', to: '/mortgage' },
+    { key: 'calls', field: 'cap_calls', glyph: 'calls' as const, icon: PhoneCall, title: 'call_center_title', desc: 'about_cap_calls', to: '/outreach/calls' },
+    { key: 'email', field: 'cap_email', glyph: 'email' as const, icon: Mail, title: 'mp_email_title', desc: 'about_cap_email', to: '/outreach/email' },
+    { key: 'find', field: 'cap_find', glyph: 'property' as const, icon: Search, title: 'mp_find_title', desc: 'about_cap_find', to: '/ai' },
+    { key: 'ai', field: 'cap_ai', glyph: 'ai' as const, icon: Sparkles, title: 'ai_title', desc: 'about_cap_ai', to: '/ai' },
   ] as const;
 
   return (
@@ -128,10 +128,12 @@ export function AboutWhatSection() {
                 size={40}
                 className="transition-transform duration-300 group-hover:scale-[1.06] motion-reduce:transform-none"
               />
-              <h3 className="mt-4 text-balance text-[17px] font-semibold leading-snug text-foreground">
-                {t(cap.title)}
+              <h3 className="mt-4 text-balance text-[17px] font-semibold leading-snug text-foreground" {...fp(`${cap.field}_t`)}>
+                {sf(`${cap.field}_t`, cap.title)}
               </h3>
-              <p className="mt-2 flex-1 text-pretty text-[16px] leading-relaxed text-ink-soft">{t(cap.desc)}</p>
+              <p className="mt-2 flex-1 text-pretty text-[16px] leading-relaxed text-ink-soft" {...fp(`${cap.field}_d`)}>
+                {sf(`${cap.field}_d`, cap.desc)}
+              </p>
               <ArrowRight
                 className={`mt-4 h-4 w-4 shrink-0 text-muted-foreground transition-[transform,color] duration-300 group-hover:text-gold-ink motion-reduce:transform-none ${
                   isRTL ? 'rotate-180 group-hover:-translate-x-1' : 'group-hover:translate-x-1'
@@ -150,7 +152,6 @@ export function AboutWhatSection() {
 /* ── The market it is built around ─────────────────────────────── */
 
 export function AboutMarketSection() {
-  const { t } = useLanguage();
   const sf = useSectionField();
   const fp = useFieldProps();
 
@@ -171,8 +172,8 @@ export function AboutMarketSection() {
           {MARKET.map(item => (
             <li key={item.key} className="flex items-center gap-3 bg-[#171717] px-4 py-4">
               <item.icon className="h-[18px] w-[18px] shrink-0 text-gold" strokeWidth={1.75} aria-hidden="true" />
-              <span className="min-w-0 text-[16px] font-medium leading-tight text-white/85 sm:text-sm">
-                {t(item.label)}
+              <span className="min-w-0 text-[16px] font-medium leading-tight text-white/85 sm:text-sm" {...fp(item.field)}>
+                {sf(item.field, item.label)}
               </span>
             </li>
           ))}
@@ -189,7 +190,6 @@ export function AboutMarketSection() {
 /* ── What the answers are built from ───────────────────────────── */
 
 export function AboutSourcesSection() {
-  const { t } = useLanguage();
   const sf = useSectionField();
   const fp = useFieldProps();
 
@@ -212,8 +212,8 @@ export function AboutSourcesSection() {
         <ul className="grid gap-px overflow-hidden rounded-[0.9rem] border border-foreground/[0.14] bg-foreground/10 sm:grid-cols-2">
           {SOURCES.map(src => (
             <li key={src.key} className="bg-card p-4 sm:p-5">
-              <h3 className="text-[16px] font-semibold leading-snug text-foreground">{t(src.label)}</h3>
-              <p className="mt-1.5 text-pretty text-[16px] leading-relaxed text-ink-soft">{t(src.desc)}</p>
+              <h3 className="text-[16px] font-semibold leading-snug text-foreground" {...fp(`${src.field}_t`)}>{sf(`${src.field}_t`, src.label)}</h3>
+              <p className="mt-1.5 text-pretty text-[16px] leading-relaxed text-ink-soft" {...fp(`${src.field}_d`)}>{sf(`${src.field}_d`, src.desc)}</p>
             </li>
           ))}
         </ul>
@@ -225,7 +225,6 @@ export function AboutSourcesSection() {
 /* ── Who it is for ─────────────────────────────────────────────── */
 
 export function AboutIntlSection() {
-  const { t } = useLanguage();
   const sf = useSectionField();
   const fp = useFieldProps();
 
@@ -254,9 +253,9 @@ export function AboutIntlSection() {
           </div>
 
           <ul className="grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:grid-cols-2 lg:grid-cols-1">
-            {(['about_intl_1', 'about_intl_2', 'about_intl_3'] as const).map(key => (
-              <li key={key} className="bg-[#171717] p-4 sm:p-5">
-                <p className="text-pretty text-[16px] leading-relaxed text-white/85">{t(key)}</p>
+            {([['point1', 'about_intl_1'], ['point2', 'about_intl_2'], ['point3', 'about_intl_3']] as const).map(([field, key]) => (
+              <li key={field} className="bg-[#171717] p-4 sm:p-5">
+                <p className="text-pretty text-[16px] leading-relaxed text-white/85" {...fp(field)}>{sf(field, key)}</p>
               </li>
             ))}
           </ul>
@@ -283,7 +282,11 @@ export function AboutAskSection() {
           {sf('body', 'about_ask_body')}
         </p>
       </div>
-      <IntentCards className="mt-8 sm:mt-10 lg:grid-cols-4" />
+      <IntentCards
+        className="mt-8 sm:mt-10 lg:grid-cols-4"
+        text={intent => sf(`q_${intent.key}`, intent.prompt)}
+        mark={intent => fp(`q_${intent.key}`)}
+      />
       <p className="mt-6 max-w-[44rem] text-pretty text-[16px] leading-relaxed text-muted-foreground" {...fp('note')}>
         {sf('note', 'about_limits')}
       </p>

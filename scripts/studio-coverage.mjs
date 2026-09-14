@@ -33,6 +33,21 @@
  *     a bad save misstate what a customer is charged. Reported separately,
  *     not as a miss, because a miss should mean "go and register this".
  *
+ * DECLARED EXCLUSIONS, AND WHY THEY ARE NOT A LOOPHOLE
+ *
+ * Some visible strings genuinely must not be editable: a connection state, a
+ * generated year, a logotype. Those carry `data-hm-exclude="REASON"`, set by
+ * useNotEditable() in src/site/content.tsx, and are counted apart from both
+ * the editable total and the misses.
+ *
+ * Three things stop that becoming a way to buy a number. The vocabulary is
+ * closed — six reasons, checked against the list below, and anything else is
+ * a MISS, so a typo or an invented reason costs coverage rather than earning
+ * it. Every excluded string is PRINTED, grouped under its reason, so an
+ * exclusion is a claim a reader can argue with. And the report states the
+ * count next to the score, so a page that reached 100% by excluding half of
+ * itself says so on the same line.
+ *
  * The useful output is not the percentage. It is the list of exact sentences
  * nobody can change yet, which is printed verbatim.
  */
@@ -85,13 +100,21 @@ const ADMIN = {
   created_at: new Date().toISOString(),
 };
 
+/* The only reasons a visible string may be declared un-editable. Must match
+   EXCLUSION_REASONS in src/site/content.tsx; the test beside this script
+   checks that it does. */
+const REASONS = [
+  'DYNAMIC_DATA', 'SYSTEM_GENERATED', 'ACCESSIBILITY_ONLY',
+  'STRUCTURAL_SYMBOL', 'SECURITY_SENSITIVE', 'NOT_CUSTOMER_VISIBLE',
+];
+
 /* Runs inside the preview frame. One function, so what is counted is plain. */
-const MEASURE = () => {
+const MEASURE = (reasons) => {
   const root = document.body;
   /* Digits, punctuation and separators are not sentences. */
   const SYMBOLIC = /^[\s\p{P}\p{S}\d]*$/u;
 
-  const seen = { editable: [], data: [], missing: [] };
+  const seen = { editable: [], data: [], missing: [], excluded: [] };
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -104,8 +127,18 @@ const MEASURE = () => {
     if (!el.getClientRects().length) continue;
 
     if (SYMBOLIC.test(text)) { seen.data.push(text.slice(0, 40)); continue; }
-    if (el.closest('[data-hm-field]')) seen.editable.push(text.slice(0, 60));
-    else seen.missing.push(text.slice(0, 90));
+    if (el.closest('[data-hm-field]')) { seen.editable.push(text.slice(0, 60)); continue; }
+
+    /* A declared exclusion, but only if it names a reason from the closed
+       list. An unrecognised value falls through to the miss branch, which is
+       the point: inventing a reason must not pay. */
+    const declared = el.closest('[data-hm-exclude]');
+    const reason = declared ? declared.getAttribute('data-hm-exclude') : null;
+    if (reason && reasons.includes(reason)) {
+      seen.excluded.push(reason + '  ·  ' + text.slice(0, 90));
+      continue;
+    }
+    seen.missing.push(text.slice(0, 90));
   }
   return seen;
 };
@@ -192,7 +225,7 @@ for (const name of names) {
      than anything on this origin — filtering by URL found nothing and made
      every page report zero. It is simply the one frame that is not the page. */
   const frame = page.frames().find((f) => f !== page.mainFrame());
-  if (!frame) { report.push({ name, editable: 0, missing: 0, data: 0, pct: 0, unregistered: ['(preview did not render)'] }); continue; }
+  if (!frame) { report.push({ name, editable: 0, missing: 0, data: 0, pct: 0, unregistered: ['(preview did not render)'], excluded: [] }); continue; }
 
   /* Everything below the fold has to render before it can be counted. */
   await frame.evaluate(async () => {
@@ -204,7 +237,7 @@ for (const name of names) {
   });
   await page.waitForTimeout(900);
 
-  const seen = await frame.evaluate(MEASURE);
+  const seen = await frame.evaluate(MEASURE, REASONS);
   const editable = seen.editable.length;
   const missing = seen.missing.length;
   /*
@@ -219,7 +252,10 @@ for (const name of names) {
   const pct = editable + missing === 0 ? null : Math.round((editable / (editable + missing)) * 100);
   totalEditable += editable;
   totalMissing += missing;
-  report.push({ name, editable, missing, data: seen.data.length, pct, unregistered: seen.missing });
+  report.push({
+    name, editable, missing, data: seen.data.length, pct,
+    unregistered: seen.missing, excluded: seen.excluded,
+  });
 }
 
 await browser.close();
@@ -229,7 +265,7 @@ console.log('\n=== SITE STUDIO COVERAGE ===\n');
 for (const r of report) {
   const score = r.pct === null ? '  —' : String(r.pct).padStart(3);
   const note = r.pct === null ? '   (coded page; only admin-added blocks are measurable here)' : '';
-  console.log(`${r.name.padEnd(18)} ${score}%   editable ${String(r.editable).padStart(3)}   unregistered ${String(r.missing).padStart(3)}   symbolic ${r.data}${note}`);
+  console.log(`${r.name.padEnd(18)} ${score}%   editable ${String(r.editable).padStart(3)}   unregistered ${String(r.missing).padStart(3)}   excluded ${String(r.excluded.length).padStart(3)}   symbolic ${r.data}${note}`);
 }
 const overall = totalEditable + totalMissing === 0
   ? 100 : Math.round((totalEditable / (totalEditable + totalMissing)) * 100);
@@ -240,4 +276,24 @@ for (const r of report) {
   console.log(`--- ${r.name}: ${r.unregistered.length} unregistered ---`);
   for (const line of [...new Set(r.unregistered)].slice(0, 30)) console.log(`    ${line}`);
   console.log('');
+}
+
+/*
+ * And every exclusion, verbatim, under the reason claimed for it.
+ *
+ * This half of the report is the one worth reading twice. A miss is an
+ * admission; an exclusion is an argument, and it can only be judged by
+ * somebody who can see both the sentence and the reason given for it.
+ */
+const allExcluded = report.flatMap(r => r.excluded);
+if (allExcluded.length) {
+  console.log(`=== DECLARED EXCLUSIONS (${allExcluded.length}) ===
+`);
+  for (const reason of REASONS) {
+    const lines = [...new Set(allExcluded.filter(l => l.startsWith(`${reason}  ·  `)))];
+    if (!lines.length) continue;
+    console.log(`--- ${reason}: ${lines.length} ---`);
+    for (const line of lines) console.log(`    ${line.slice(reason.length + 5)}`);
+    console.log('');
+  }
 }

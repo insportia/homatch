@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
-import { useFieldProps, useSectionField } from '@/site/content';
+import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
 import type { TranslationKey } from '@/i18n/translations';
 import { PAGE } from './primitives';
@@ -52,6 +52,7 @@ function FooterBody() {
   const navigate = useNavigate();
   const sf = useSectionField();
   const fp = useFieldProps();
+  const notEditable = useNotEditable();
 
   /** The stored override for a field, else the copy the site ships. */
   const label = (key: string) => sf(key, FIELD[key]);
@@ -130,7 +131,10 @@ function FooterBody() {
       <div className="border-t border-border">
         {/* Not editable: a copyright line with a year in it is generated, and
             an admin editing it would freeze the year. */}
-        <p className={`${PAGE} py-6 text-xs text-muted-foreground`}>
+        <p
+          className={`${PAGE} py-6 text-xs text-muted-foreground`}
+          {...notEditable('SYSTEM_GENERATED')}
+        >
           {t('home_footer_copyright', { year: new Date().getFullYear() })}
         </p>
       </div>

@@ -123,6 +123,64 @@ export function useItemProps(): (itemId: string) => ItemMark {
   };
 }
 
+/**
+ * THE SIX REASONS A VISIBLE STRING MAY NOT BE EDITABLE.
+ *
+ * Site Studio's coverage is measured against the rendered page rather than
+ * against a list of registry entries, so "100% editable" has to mean one of
+ * two things for every run of words on screen: an admin can change it, or
+ * somebody wrote down WHY they cannot. Anything else is a number nobody
+ * checked.
+ *
+ * This is the whole vocabulary. It is closed on purpose — an open one turns
+ * into "misc", and "misc" is where a heading nobody can rewrite goes to be
+ * forgotten. Adding a seventh reason is a code change with a review, and the
+ * coverage script refuses any value that is not in this list, counting it as
+ * a MISS rather than an exclusion: a typo cannot buy coverage.
+ *
+ *   DYNAMIC_DATA          Read from the database or the request at render
+ *                         time. A price, a count, a locale code. Editing it
+ *                         as copy would let a save misstate a fact.
+ *   SYSTEM_GENERATED      The product reporting on itself: a connection
+ *                         state, a generated year, a control whose label is
+ *                         chosen by the platform rather than by an author.
+ *   ACCESSIBILITY_ONLY    Present for assistive technology and carrying no
+ *                         editorial decision.
+ *   STRUCTURAL_SYMBOL     A mark rather than a sentence: a logotype, a step
+ *                         number, a letter standing in for a column.
+ *   SECURITY_SENSITIVE    Wording a change to which would weaken a promise
+ *                         or a warning the platform is accountable for.
+ *   NOT_CUSTOMER_VISIBLE  Rendered only inside the editor or a diagnostic.
+ */
+export const EXCLUSION_REASONS = [
+  'DYNAMIC_DATA',
+  'SYSTEM_GENERATED',
+  'ACCESSIBILITY_ONLY',
+  'STRUCTURAL_SYMBOL',
+  'SECURITY_SENSITIVE',
+  'NOT_CUSTOMER_VISIBLE',
+] as const;
+
+export type ExclusionReason = (typeof EXCLUSION_REASONS)[number];
+
+export interface ExcludeMark {
+  'data-hm-exclude'?: ExclusionReason;
+}
+
+/**
+ * Say, on the element itself, why this copy is not an admin's to change.
+ *
+ * Spread exactly like useFieldProps, and like it returns nothing outside the
+ * editor — the public site's HTML is unchanged. It is not a suppression: the
+ * coverage report prints every excluded string under its reason, so an
+ * exclusion is something a reader can disagree with rather than something
+ * that disappears.
+ */
+export function useNotEditable(): (reason: ExclusionReason) => ExcludeMark {
+  const { editing } = useContext(SectionScopeCtx);
+  return reason => (editing ? { 'data-hm-exclude': reason } : {});
+}
+
 export interface FieldMark {
   'data-hm-section'?: string;
   'data-hm-field'?: string;

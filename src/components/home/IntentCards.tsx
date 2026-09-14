@@ -5,6 +5,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { rememberPendingAsk } from '@/lib/pendingAsk';
 import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
+import type { FieldMark } from '@/site/content';
+import type { TranslationKey } from '@/i18n/translations';
 
 /**
  * THE STARTER QUESTIONS
@@ -37,7 +39,26 @@ export interface Intent {
   key: string;
   glyph: GlyphName;
   /** Translation key for the question, which is also what gets sent. */
-  prompt: string;
+  prompt: TranslationKey;
+}
+
+/**
+ * How the SECTION renders one of these questions.
+ *
+ * `text` resolves it -- an admin's override for the current locale, else the
+ * reviewed copy -- and `mark` says which field of which section it came from,
+ * so Site Studio can find it in the preview. Both are optional and both
+ * default to the behaviour this component always had, because these cards
+ * also appear outside any section scope.
+ *
+ * They are passed rather than hooked because the question is not this
+ * component's content. The home page and the About page each offer the same
+ * eight, from their own fields, and an admin rewriting one page must not
+ * silently rewrite the other.
+ */
+export interface IntentCopy {
+  text?: (intent: Intent) => string;
+  mark?: (intent: Intent) => FieldMark;
 }
 
 export const INTENTS: Intent[] = [
@@ -65,9 +86,12 @@ export function useAskHomatch() {
 }
 
 /** The full grid: eight questions, two columns from sm. */
-export function IntentCards({ intents = INTENTS, className = '' }: { intents?: Intent[]; className?: string }) {
+export function IntentCards({
+  intents = INTENTS, className = '', text, mark,
+}: { intents?: Intent[]; className?: string } & IntentCopy) {
   const { t, isRTL } = useLanguage();
   const ask = useAskHomatch();
+  const say = (intent: Intent) => text?.(intent) ?? t(intent.prompt);
 
   return (
     <div className={`grid gap-2.5 sm:grid-cols-2 ${className}`}>
@@ -75,7 +99,7 @@ export function IntentCards({ intents = INTENTS, className = '' }: { intents?: I
         <button
           key={intent.key}
           type="button"
-          onClick={() => ask(t(intent.prompt))}
+          onClick={() => ask(say(intent))}
           className="group flex items-center gap-3 rounded-[0.8rem] border border-foreground/[0.14] bg-card p-3 text-start transition-[border-color,box-shadow] duration-300 hover:border-foreground/45 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:p-3.5"
         >
           <FeatureGlyph
@@ -83,8 +107,11 @@ export function IntentCards({ intents = INTENTS, className = '' }: { intents?: I
             size={34}
             className="transition-transform duration-300 group-hover:scale-[1.06] motion-reduce:transform-none"
           />
-          <span className="min-w-0 flex-1 text-pretty text-[16px] leading-snug text-foreground sm:text-sm">
-            {t(intent.prompt)}
+          <span
+            className="min-w-0 flex-1 text-pretty text-[16px] leading-snug text-foreground sm:text-sm"
+            {...(mark?.(intent) ?? {})}
+          >
+            {say(intent)}
           </span>
           <ArrowRight
             className={`h-4 w-4 shrink-0 text-muted-foreground transition-[transform,color] duration-300 group-hover:text-gold-ink motion-reduce:transform-none ${
@@ -104,10 +131,13 @@ export function IntentCards({ intents = INTENTS, className = '' }: { intents?: I
  * Same behaviour, less furniture, because the hero has one job and it is not
  * to list eight things.
  */
-export function IntentChips({ keys, className = '' }: { keys: string[]; className?: string }) {
+export function IntentChips({
+  keys, className = '', text, mark,
+}: { keys: string[]; className?: string } & IntentCopy) {
   const { t } = useLanguage();
   const ask = useAskHomatch();
   const picked = INTENTS.filter(i => keys.includes(i.key));
+  const say = (intent: Intent) => text?.(intent) ?? t(intent.prompt);
 
   return (
     <div className={`flex flex-wrap gap-2 ${className}`}>
@@ -115,11 +145,11 @@ export function IntentChips({ keys, className = '' }: { keys: string[]; classNam
         <button
           key={intent.key}
           type="button"
-          onClick={() => ask(t(intent.prompt))}
+          onClick={() => ask(say(intent))}
           className="inline-flex items-center gap-2.5 rounded-full border border-white/25 py-2 pe-4 ps-2.5 text-start text-xs leading-snug text-white/80 transition-colors duration-300 hover:border-gold hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold motion-reduce:transition-none"
         >
           <FeatureGlyph name={intent.glyph} size={22} tone="dark" />
-          {t(intent.prompt)}
+          <span {...(mark?.(intent) ?? {})}>{say(intent)}</span>
         </button>
       ))}
     </div>

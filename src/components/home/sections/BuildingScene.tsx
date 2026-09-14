@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import type { FieldMark } from '@/site/content';
 import { useMotion } from '@/hooks/useMotion';
 
 /**
@@ -87,7 +88,7 @@ export interface BuildingCopy {
 const LAST = 5;
 
 export function BuildingScene({
-  copy, focus, compact = false,
+  copy, focus, compact = false, fields,
 }: {
   copy: BuildingCopy;
   /*
@@ -111,6 +112,22 @@ export function BuildingScene({
   focus?: number;
   /** Sized to sit beside the text rather than above it. */
   compact?: boolean;
+  /*
+   * The editor's field marks, supplied by the section that owns the fields.
+   *
+   * This component draws copy it does not own: `copy` arrives already
+   * resolved. Without a way to say WHICH field produced each string, Site
+   * Studio could not find the stage line or the callouts on the desktop
+   * layout — they were registry fields that nothing on screen admitted to
+   * being. Passed in rather than hooked here, so the scene stays usable
+   * outside a section scope.
+   */
+  fields?: {
+    stage?: FieldMark;
+    callout?: (i: number) => FieldMark;
+    value?: (i: number) => FieldMark;
+    note?: FieldMark;
+  };
 }) {
   const level = useMotion();
   const still = level === 'none';
@@ -445,7 +462,10 @@ export function BuildingScene({
             letter-spaced caption under it, and the column to its right is
             already saying what is being read. */}
         {!compact && (
-        <p className="mt-4 flex items-center justify-center gap-2 text-[14px] font-semibold uppercase tracking-[0.18em] text-gold lg:justify-start">
+        <p
+          className="mt-4 flex items-center justify-center gap-2 text-[14px] font-semibold uppercase tracking-[0.18em] text-gold lg:justify-start"
+          {...(fields?.stage ?? {})}
+        >
           <span
             className={`inline-block h-1.5 w-1.5 rounded-full ${done ? 'bg-gold' : 'bg-gold/70'}`}
             style={{ transition: still ? undefined : 'opacity 400ms ease' }}
@@ -499,15 +519,25 @@ export function BuildingScene({
               transition: still ? undefined : `opacity 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms, transform 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms`,
             }}
           >
-            <dt className="text-[13px] uppercase tracking-[0.14em] text-white/45">{c.label}</dt>
-            <dd className="mt-0.5 text-pretty text-[17px] font-semibold leading-tight text-white">{c.value}</dd>
+            <dt className="text-[13px] uppercase tracking-[0.14em] text-white/45" {...(fields?.callout?.(i) ?? {})}>
+              {c.label}
+            </dt>
+            {/* The storey is computed from the lit floor, so only the other
+                three values are editable: letting somebody type over the
+                floor would let the number disagree with the drawing. */}
+            <dd
+              className="mt-0.5 text-pretty text-[17px] font-semibold leading-tight text-white"
+              {...(i === 0 ? {} : (fields?.value?.(i) ?? {}))}
+            >
+              {c.value}
+            </dd>
           </div>
           );
         })}
       </dl>
       )}
       {!compact && (
-        <p className="mt-3 text-[13px] leading-relaxed text-white/40">{copy.note}</p>
+        <p className="mt-3 text-[13px] leading-relaxed text-white/40" {...(fields?.note ?? {})}>{copy.note}</p>
       )}
     </div>
   );

@@ -32,14 +32,14 @@ export function AISection() {
   const { t } = useLanguage();
 
   const reach = [
-    { key: 'match', icon: UserSearch, label: t('mp_match_title') },
-    { key: 'find', icon: Search, label: t('mp_find_title') },
-    { key: 'verify', icon: ShieldCheck, label: t('mp_verify_capability_title') },
-    { key: 'contract', icon: FileText, label: t('mp_contract_title') },
-    { key: 'mortgage', icon: Calculator, label: t('mp_mortgage_title') },
-    { key: 'calls', icon: PhoneCall, label: t('call_center_title') },
-    { key: 'email', icon: Mail, label: t('mp_email_title') },
-    { key: 'dev', icon: Building2, label: t('mp_dev_eyebrow') },
+    { key: 'match', icon: UserSearch, label: sf('reach_match', 'mp_match_title') },
+    { key: 'find', icon: Search, label: sf('reach_find', 'mp_find_title') },
+    { key: 'verify', icon: ShieldCheck, label: sf('reach_verify', 'mp_verify_capability_title') },
+    { key: 'contract', icon: FileText, label: sf('reach_contract', 'mp_contract_title') },
+    { key: 'mortgage', icon: Calculator, label: sf('reach_mortgage', 'mp_mortgage_title') },
+    { key: 'calls', icon: PhoneCall, label: sf('reach_calls', 'call_center_title') },
+    { key: 'email', icon: Mail, label: sf('reach_email', 'mp_email_title') },
+    { key: 'dev', icon: Building2, label: sf('reach_dev', 'mp_dev_eyebrow') },
   ];
 
   return (
@@ -67,17 +67,24 @@ export function AISection() {
         <div className="min-w-0">
           <HomatchAsk variant="console" placeholder={t('mp_hero_ai_placeholder')} actions={[]} />
 
-          <p className="mt-7 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            {t('mp_intent_label')}
+          <p className="mt-7 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('intent_label')}>
+            {sf('intent_label', 'mp_intent_label')}
           </p>
-          <IntentCards className="mt-4" />
+          {/* Eight questions, eight fields. Keyed by the intent rather than
+              numbered, because the set is fixed here and an admin's rewrite
+              should follow the question it belongs to. */}
+          <IntentCards
+            className="mt-4"
+            text={intent => sf(`q_${intent.key}`, intent.prompt)}
+            mark={intent => fp(`q_${intent.key}`)}
+          />
         </div>
 
         {/* What a question reaches. Not decoration: this is the list that
             separates an assistant from a chat window. */}
         <div className="min-w-0 self-start rounded-[1.1rem] border border-foreground/15 bg-secondary/60 p-5 sm:p-6">
-          <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            {t('mp_ai_reach_label')}
+          <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" {...fp('reach_label')}>
+            {sf('reach_label', 'mp_ai_reach_label')}
           </p>
           <ul className="mt-5 grid gap-2.5">
             {reach.map(item => (
@@ -88,7 +95,7 @@ export function AISection() {
                 >
                   <item.icon className="h-[15px] w-[15px]" strokeWidth={1.9} />
                 </span>
-                <span className="min-w-0 pt-1 text-[16px] leading-snug text-foreground">{item.label}</span>
+                <span className="min-w-0 pt-1 text-[16px] leading-snug text-foreground" {...fp(`reach_${item.key}`)}>{item.label}</span>
               </li>
             ))}
           </ul>

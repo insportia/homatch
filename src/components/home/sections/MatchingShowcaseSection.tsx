@@ -29,25 +29,25 @@ import { useSectionField, useFieldProps } from '@/site/content';
  */
 
 const BEATS = [
-  { key: 'property', icon: Building2, label: 'mp_match_beat_1' },
-  { key: 'analyse', icon: Sparkles, label: 'mp_match_beat_2' },
-  { key: 'signals', icon: Waves, label: 'mp_match_beat_3' },
-  { key: 'people', icon: UserSearch, label: 'mp_match_beat_4' },
+  { key: 'property', field: 'beat1', icon: Building2, label: 'mp_match_beat_1' },
+  { key: 'analyse', field: 'beat2', icon: Sparkles, label: 'mp_match_beat_2' },
+  { key: 'signals', field: 'beat3', icon: Waves, label: 'mp_match_beat_3' },
+  { key: 'people', field: 'beat4', icon: UserSearch, label: 'mp_match_beat_4' },
 ] as const;
 
 /* Relative strength only — a shape, never a percentage Homatch has not
    measured for a real property. */
 const SHORTLIST = [
-  { key: 'a', width: 'w-[92%]', reason: 'mp_result_match_reason_1' },
-  { key: 'b', width: 'w-[74%]', reason: 'mp_result_match_reason_2' },
-  { key: 'c', width: 'w-[58%]', reason: 'mp_result_match_reason_3' },
+  { key: 'a', field: 'reason1', width: 'w-[92%]', reason: 'mp_result_match_reason_1' },
+  { key: 'b', field: 'reason2', width: 'w-[74%]', reason: 'mp_result_match_reason_2' },
+  { key: 'c', field: 'reason3', width: 'w-[58%]', reason: 'mp_result_match_reason_3' },
 ] as const;
 
 export function MatchingShowcaseSection() {
   const sf = useSectionField();
   const fp = useFieldProps();
   const { session } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { isRTL } = useLanguage();
   const navigate = useNavigate();
 
   return (
@@ -103,7 +103,7 @@ export function MatchingShowcaseSection() {
                   {String(i + 1).padStart(2, '0')}
                 </span>
               </div>
-              <p className="mt-4 text-pretty text-[16px] font-semibold leading-snug text-white sm:mt-5 sm:text-[17px]">{t(beat.label)}</p>
+              <p className="mt-4 text-pretty text-[16px] font-semibold leading-snug text-white sm:mt-5 sm:text-[17px]" {...fp(beat.field)}>{sf(beat.field, beat.label)}</p>
             </li>
           ))}
         </ol>
@@ -112,8 +112,8 @@ export function MatchingShowcaseSection() {
         <div className="mt-3.5 grid gap-5 sm:mt-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:items-center">
           <div className="min-w-0 rounded-[0.9rem] border border-white/15 bg-[#171717] p-5 sm:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-white/55">
-                {t('mp_result_match_why')}
+              <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-white/55" {...fp('why_label')}>
+                {sf('why_label', 'mp_result_match_why')}
               </p>
             </div>
 
@@ -124,7 +124,7 @@ export function MatchingShowcaseSection() {
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/20 text-white/50" aria-hidden="true">
                       <UserSearch className="h-4 w-4" strokeWidth={1.75} />
                     </span>
-                    <span className="min-w-0 flex-1 text-[16px] leading-snug text-white/80">{t(row.reason)}</span>
+                    <span className="min-w-0 flex-1 text-[16px] leading-snug text-white/80" {...fp(row.field)}>{sf(row.field, row.reason)}</span>
                   </div>
                   <div className="ms-11 mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <div className={`h-full rounded-full bg-gold ${row.width}`} />
@@ -135,13 +135,13 @@ export function MatchingShowcaseSection() {
           </div>
 
           <div className="min-w-0">
-            <p className="text-pretty text-sm leading-relaxed text-white/60">{t('mp_match_caveat')}</p>
+            <p className="text-pretty text-sm leading-relaxed text-white/60" {...fp('caveat')}>{sf('caveat', 'mp_match_caveat')}</p>
             <button
               type="button"
               onClick={() => navigate(session ? '/property/add' : '/auth/signup')}
               className="group mt-6 inline-flex h-12 items-center justify-center gap-2.5 rounded-full bg-gold px-6 text-sm font-semibold text-[#0D0D0D] transition-colors duration-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D0D0D] motion-reduce:transition-none"
             >
-              {t('mp_match_cta')}
+              <span {...fp('cta')}>{sf('cta', 'mp_match_cta')}</span>
               <ArrowRight
                 className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
                 strokeWidth={2}

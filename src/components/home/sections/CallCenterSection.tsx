@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField, useFieldProps } from '@/site/content';
+import { useSectionField, useFieldProps, type FieldMark } from '@/site/content';
 
 /**
  * REGION 04 — the AI Call Center, on its own.
@@ -30,7 +30,14 @@ import { useSectionField, useFieldProps } from '@/site/content';
  * is lying about a product that has real calls behind it.
  */
 
-const STAGES = ['mp_cc_stage_lead', 'mp_calls_stage_2', 'mp_cc_stage_talk', 'mp_calls_stage_3', 'mp_calls_stage_4', 'mp_cc_stage_followup'] as const;
+const STAGES = [
+  { field: 'stage1', key: 'mp_cc_stage_lead' },
+  { field: 'stage2', key: 'mp_calls_stage_2' },
+  { field: 'stage3', key: 'mp_cc_stage_talk' },
+  { field: 'stage4', key: 'mp_calls_stage_3' },
+  { field: 'stage5', key: 'mp_calls_stage_4' },
+  { field: 'stage6', key: 'mp_cc_stage_followup' },
+] as const;
 
 /* A fixed, hand-set profile rather than Math.random(): the same panel has to
    look identical on every render, and a waveform that reshuffles on each
@@ -41,16 +48,16 @@ const WAVE = [
 ];
 
 const POINTS = [
-  { key: 'reach', title: 'mp_cc_point_1', desc: 'mp_cc_point_1_d' },
-  { key: 'intent', title: 'mp_cc_point_2', desc: 'mp_cc_point_2_d' },
-  { key: 'record', title: 'mp_cc_point_3', desc: 'mp_cc_point_3_d' },
+  { key: 'reach', field: 'p1', title: 'mp_cc_point_1', desc: 'mp_cc_point_1_d' },
+  { key: 'intent', field: 'p2', title: 'mp_cc_point_2', desc: 'mp_cc_point_2_d' },
+  { key: 'record', field: 'p3', title: 'mp_cc_point_3', desc: 'mp_cc_point_3_d' },
 ] as const;
 
 export function CallCenterSection() {
   const sf = useSectionField();
   const fp = useFieldProps();
   const { session } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { isRTL } = useLanguage();
   const navigate = useNavigate();
 
   const gated = (path: string) => () => navigate(session ? path : '/auth/signup');
@@ -86,8 +93,8 @@ export function CallCenterSection() {
             <ul className="mt-7 grid gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-9 sm:grid-cols-3">
               {POINTS.map(point => (
                 <li key={point.key} className="bg-[#171717] p-4 sm:p-5">
-                  <h3 className="text-sm font-semibold text-white">{t(point.title)}</h3>
-                  <p className="mt-2 text-pretty text-[16px] leading-relaxed text-white/60">{t(point.desc)}</p>
+                  <h3 className="text-sm font-semibold text-white" {...fp(`${point.field}_t`)}>{sf(`${point.field}_t`, point.title)}</h3>
+                  <p className="mt-2 text-pretty text-[16px] leading-relaxed text-white/60" {...fp(`${point.field}_d`)}>{sf(`${point.field}_d`, point.desc)}</p>
                 </li>
               ))}
             </ul>
@@ -104,13 +111,13 @@ export function CallCenterSection() {
           </div>
 
           {/* ── The call, as an object ─────────────────────────── */}
-          <LiveCallPanel />
+          <LiveCallPanel sf={sf} fp={fp} />
         </div>
 
         {/* ── The flow, full width under both columns ──────────── */}
         <ol className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-[0.9rem] border border-white/15 bg-white/10 sm:mt-14 sm:grid-cols-3 lg:grid-cols-6">
           {STAGES.map((stage, i) => (
-            <li key={stage} className="flex items-center gap-2.5 bg-[#171717] px-3.5 py-3.5 sm:gap-3 sm:px-4 sm:py-4">
+            <li key={stage.field} className="flex items-center gap-2.5 bg-[#171717] px-3.5 py-3.5 sm:gap-3 sm:px-4 sm:py-4">
               <span
                 className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[14px] font-semibold tabular-nums ${
                   i === STAGES.length - 1 ? 'bg-gold text-[#0D0D0D]' : 'border border-white/25 text-white/55'
@@ -119,7 +126,7 @@ export function CallCenterSection() {
               >
                 {i + 1}
               </span>
-              <span className="min-w-0 text-[15px] font-medium leading-tight text-white/85 sm:text-[16px]">{t(stage)}</span>
+              <span className="min-w-0 text-[15px] font-medium leading-tight text-white/85 sm:text-[16px]" {...fp(stage.field)}>{sf(stage.field, stage.key)}</span>
             </li>
           ))}
         </ol>
@@ -134,7 +141,10 @@ export function CallCenterSection() {
  * stage the conversation has reached, and the outcome slot that gets filled
  * when it ends. The bars ARE the content — there is no fabricated transcript.
  */
-function LiveCallPanel() {
+function LiveCallPanel({ sf, fp }: {
+  sf: ReturnType<typeof useSectionField>;
+  fp: ReturnType<typeof useFieldProps>;
+}) {
   const { t } = useLanguage();
 
   return (
@@ -147,7 +157,7 @@ function LiveCallPanel() {
               <span className="hm-ring absolute inset-0 rounded-full" />
               <span className="relative h-2 w-2 rounded-full bg-gold" />
             </span>
-            {t('mp_cc_live')}
+            <span {...fp('live')}>{sf('live', 'mp_cc_live')}</span>
           </span>
           <span className="font-mono text-[14px] tabular-nums text-white/40">02:14</span>
         </div>
@@ -173,22 +183,41 @@ function LiveCallPanel() {
 
         {/* What the conversation is doing right now */}
         <dl className="mt-5 space-y-px overflow-hidden rounded-[0.7rem] border border-white/[0.12] bg-white/10">
-          <Row label={t('mp_cc_row_stage')} value={t('mp_calls_stage_3')} />
-          <Row label={t('mp_cc_row_language')} value={t('mp_cc_row_language_v')} />
-          <Row label={t('mp_cc_row_outcome')} value={t('mp_cc_row_outcome_v')} pending />
+          <Row
+            label={sf('row_stage', 'mp_cc_row_stage')} labelMark={fp('row_stage')}
+            value={sf('row_stage_v', 'mp_calls_stage_3')} valueMark={fp('row_stage_v')}
+          />
+          <Row
+            label={sf('row_language', 'mp_cc_row_language')} labelMark={fp('row_language')}
+            value={sf('row_language_v', 'mp_cc_row_language_v')} valueMark={fp('row_language_v')}
+          />
+          <Row
+            label={sf('row_outcome', 'mp_cc_row_outcome')} labelMark={fp('row_outcome')}
+            value={sf('row_outcome_v', 'mp_cc_row_outcome_v')} valueMark={fp('row_outcome_v')}
+            pending
+          />
         </dl>
 
-        <p className="mt-5 text-pretty text-xs leading-relaxed text-white/45">{t('mp_cc_panel_note')}</p>
+        <p className="mt-5 text-pretty text-xs leading-relaxed text-white/45" {...fp('panel_note')}>
+          {sf('panel_note', 'mp_cc_panel_note')}
+        </p>
       </div>
     </div>
   );
 }
 
-function Row({ label, value, pending = false }: { label: string; value: string; pending?: boolean }) {
+function Row({ label, value, labelMark, valueMark, pending = false }: {
+  label: string; value: string; labelMark?: FieldMark; valueMark?: FieldMark; pending?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-4 bg-[#171717] px-4 py-3">
-      <dt className="min-w-0 text-[15px] text-white/50">{label}</dt>
-      <dd className={`min-w-0 text-end text-[15px] font-medium ${pending ? 'text-white/40' : 'text-white'}`}>{value}</dd>
+      <dt className="min-w-0 text-[15px] text-white/50" {...(labelMark ?? {})}>{label}</dt>
+      <dd
+        className={`min-w-0 text-end text-[15px] font-medium ${pending ? 'text-white/40' : 'text-white'}`}
+        {...(valueMark ?? {})}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

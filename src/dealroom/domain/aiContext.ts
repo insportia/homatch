@@ -1,4 +1,8 @@
 // HOMATCH — Ask Homatch AI: deterministic context assembly.
+/* Relative and with the extension: this module is loaded directly by a node
+   test and bundled into an edge function by the Supabase CLI, and neither has
+   a bundler to resolve the '@/' alias with. */
+import { MODEL_QUESTION_POLICY } from '../../lib/ai/identity.ts';
 //
 // WHAT MAKES THIS NOT A CHATBOT
 // -----------------------------
@@ -199,6 +203,17 @@ export function assembleContext(
 export function buildAskPrompt(ctx: AssembledContext, question: string): { system: string; user: string } {
   const system = [
     'You are Homatch AI, answering a buyer about ONE specific property.',
+    '',
+    /*
+     * "Are you ChatGPT?" is asked here too.
+     *
+     * Everything else in this prompt is about the evidence, and a question
+     * about the assistant itself falls outside all of it — so the model
+     * answered from whatever it thought it was. One policy, in one place, for
+     * every first-party surface; see src/lib/ai/identity.ts for why the
+     * answer is the one it is.
+     */
+    MODEL_QUESTION_POLICY,
     '',
     'You may use ONLY the evidence supplied below. You have no other knowledge',
     'about this property. You may not infer facts that are not stated.',

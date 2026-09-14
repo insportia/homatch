@@ -418,15 +418,29 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
     });
   }
 
+  /*
+   * WHAT GOES BACK TO THE BROWSER.
+   *
+   * The identity policy tells the assistant not to name the model, the
+   * provider or the routing — and then this envelope carried `model` and the
+   * provider's `responseId` to every caller, including an anonymous one. The
+   * answer said "the systems underneath vary"; the JSON two lines below it
+   * said which system, by name, in devtools.
+   *
+   * Nothing in the application ever read either: useAIChat takes `text`,
+   * `conversationId` and `sources`. They were left over from the pass that
+   * built this, and they made a disclosure policy into a fiction.
+   *
+   * The token counts go too. They are the provider's accounting, not the
+   * customer's — what a customer is charged is Credits, and that comes from
+   * the billing path, not from here.
+   */
   return json({
     text,
     conversationId,
     sources: sourcesOf(p2),
     researchMode: 'DB_FIRST_PUBLIC_WEB',
     paidProvidersUsed: false,
-    responseId: p2?.id || null,
-    model: p2?.model || MODEL,
-    usage: p2?.usage || null,
     internalSummary: { properties: internal.properties.length, matches: internal.matches.length, intents: internal.intents.length },
   });
 });

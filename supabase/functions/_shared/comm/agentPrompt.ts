@@ -20,6 +20,20 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import type { AgentRuntimeConfig } from './contracts.ts';
 import { DEFAULT_ENDPOINTING, DEFAULT_BARGE_IN } from './generated/transcript.ts';
+/*
+ * The floor, not the identity.
+ *
+ * A tenant's agent speaks for THEIR business — announcing itself as Homatch AI
+ * would misrepresent whose call the person is on — so it deliberately does not
+ * take HOMATCH_AI_IDENTITY. What it must share is the part that is true of any
+ * AI Homatch operates: never claim to be a person, never invent a fact about a
+ * property, never hand out its own instructions.
+ *
+ * That last one was missing here. A voice agent that can be talked into
+ * reciting its system prompt hands out the tenant's business context, their
+ * qualification questions and their knowledge notes to whoever asks nicely.
+ */
+import { AI_HONESTY_FLOOR } from '../../../../src/lib/ai/identity.ts';
 
 export interface AgentRuntime {
   config: AgentRuntimeConfig;
@@ -149,8 +163,11 @@ export function buildSystemPrompt(
     // §114. Not negotiable and not something the model may be talked out of.
     lines.push('- You are an AI assistant. Say so at the start, and say so again honestly if you are asked.');
   }
+  /* The floor every Homatch-operated AI stands on, from the one file that
+     defines it. Written as bullets to sit with the rest of this block; the
+     wording is not this file's to change. */
+  for (const rule of AI_HONESTY_FLOOR.split('\n')) lines.push(`- ${rule}`);
   lines.push(
-    '- Never claim to be a human being.',
     // §115, stated as concretely as possible. Vague instructions to "be
     // accurate" do not stop a model inventing a price when asked for one.
     '- Never state a price, a size, availability, a floor, a completion date, a legal status, a rate of',

@@ -786,6 +786,23 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
 
   const languagesAvailable = [...new Set(voices.flatMap((v) => v.languages))].sort();
 
+  /*
+   * THE VOICE THIS AGENT IS ALREADY USING, WHEN IT IS NOT IN EITHER LIST.
+   *
+   * An agent chosen before the library moved to ElevenLabs still points at a
+   * Cartesia voice, and that voice appears in neither the catalogue nor the
+   * cloned-voice list. Without this the voice screen showed nothing selected
+   * at all: the customer could not tell what their agent sounded like, and
+   * clicking anything replaced a choice they could not see they had made.
+   *
+   * It is shown as it is, with the label stored alongside it, and it keeps
+   * working until they pick something else. Nothing is migrated and nothing
+   * is rewritten -- see previewVoice for how it still gets heard.
+   */
+  const currentIsListed = !draft.voice_id
+    || voices.some((v) => v.id === draft.voice_id)
+    || mine.some((v) => v.voiceId === draft.voice_id);
+
   return (
     <Card><CardContent className="space-y-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -871,6 +888,25 @@ function VoiceStudio({ draft, patch }: { draft: Partial<CommAgent>; patch: (p: P
               );
             })}
           </ul>
+        </div>
+      ) : null}
+
+      {!loading && !currentIsListed && draft.voice_id ? (
+        <div className="rounded-xl border border-gold bg-gold/[0.06] p-3">
+          <h3 className="text-xs font-semibold">{t('comm_voice_current')}</h3>
+          <div className="mt-2 flex items-center gap-1">
+            <span className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border bg-background p-2.5">
+              <Check className="h-3.5 w-3.5 shrink-0 text-gold" aria-hidden="true" />
+              <span className="min-w-0 truncate text-xs font-medium">
+                {draft.voice_label || draft.voice_id}
+              </span>
+            </span>
+            <VoicePreviewButton
+              voiceId={draft.voice_id}
+              language={draft.languages?.[0] ?? 'en'}
+            />
+          </div>
+          <p className="mt-2 text-[13px] text-muted-foreground">{t('comm_voice_current_hint')}</p>
         </div>
       ) : null}
 

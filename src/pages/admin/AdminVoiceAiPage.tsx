@@ -133,11 +133,22 @@ function Num({ value }: { value: number | null | undefined }) {
 
 let currentClip: HTMLAudioElement | null = null;
 
-/** Play one clip, and only one. */
+/**
+ * Play one clip, and only one.
+ *
+ * A clip somebody STOPPED, or navigated away from, is not a failure. The
+ * first version reported it as one, so switching tabs while a voice was
+ * playing left an error toast on screen about audio that had worked
+ * perfectly. Tearing down an element mid-play can surface as an error event
+ * or as a rejected play() promise, so the intent is tracked rather than
+ * inferred: once we have stopped wanting this clip, nothing it does is news.
+ */
 function useClipPlayer() {
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const wanted = useRef<string | null>(null);
 
   const stop = useCallback(() => {
+    wanted.current = null;
     currentClip?.pause();
     currentClip = null;
     setPlayingId(null);
@@ -149,10 +160,23 @@ function useClipPlayer() {
     currentClip?.pause();
     const audio = new Audio(url);
     currentClip = audio;
-    audio.onended = () => { setPlayingId(null); currentClip = null; };
-    audio.onerror = () => { setPlayingId(null); currentClip = null; onError?.(); };
+    wanted.current = id;
+
+    const done = () => {
+      if (wanted.current === id) wanted.current = null;
+      currentClip = null;
+      setPlayingId(null);
+    };
+    const failed = () => {
+      const report = wanted.current === id;
+      done();
+      if (report) onError?.();
+    };
+
+    audio.onended = done;
+    audio.onerror = failed;
     setPlayingId(id);
-    void audio.play().catch(() => { setPlayingId(null); currentClip = null; onError?.(); });
+    void audio.play().catch(failed);
   }, []);
 
   return { playingId, play, stop };
@@ -1456,8 +1480,11 @@ function UsageTab() {
           * like an invoice becomes one in somebody's memory. Provider cost of
           * goods only — never what a customer pays.
           */}
-        <p className="text-[13px] font-medium text-amber-700 dark:text-amber-400">
-          {note || t(k('voice_ai_cogs_note'))}
+        {/* The server sends its own version of this line for API callers;
+            the screen says it in the reader's language. Same statement,
+            translated, rather than English sitting inside a Georgian page. */}
+        <p className="text-[13px] font-medium text-amber-700 dark:text-amber-400" title={note}>
+          {t(k('voice_ai_cogs_note'))}
         </p>
         <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
           <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>

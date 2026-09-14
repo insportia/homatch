@@ -341,6 +341,93 @@ export async function listElevenLabsModels(): Promise<ProviderResult<{ models: E
   };
 }
 
+/**
+ * Which models this account has, and what each of them can actually speak.
+ *
+ * Cached per instance because it is the same answer for every request and it
+ * is the difference between a model chosen on evidence and one chosen on a
+ * blog post. Refreshed when the cache is older than an hour, so a model
+ * ElevenLabs adds is picked up without a deploy.
+ */
+let modelCache: { at: number; models: ElevenLabsModel[] } | null = null;
+
+export async function ttsModelsCached(): Promise<ElevenLabsModel[]> {
+  if (modelCache && Date.now() - modelCache.at < 3_600_000) return modelCache.models;
+  const out = await listElevenLabsModels();
+  if (!out.ok || !out.data) return modelCache?.models ?? [];
+  const models = out.data.models.filter((m) => m.canDoTts);
+  modelCache = { at: Date.now(), models };
+  return models;
+}
+
+export interface ModelChoice {
+  modelId: string;
+  /** Whether to send language_code at all. */
+  sendLanguage: boolean;
+  /** True when the preferred model could not speak this language. */
+  substituted: boolean;
+  /** Every model this account has that lists the language, for diagnostics. */
+  capable: string[];
+}
+
+/**
+ * The model to say this in, decided by what the models actually support.
+ *
+ * THIS IS THE GEORGIAN PROBLEM AGAIN, IN THE OTHER DIRECTION.
+ *
+ * Asked to speak Georgian, eleven_flash_v2_5 answered 400 — measured on
+ * production. Its language list does not include ka. Guessing a different
+ * model id would be the same mistake in a new hat, so the account's own model
+ * catalogue is read and the answer comes from it:
+ *
+ *   the configured model, if it lists the language
+ *   otherwise the first model that does, preferring the low-latency ones
+ *   otherwise the configured model with NO language_code at all, which is
+ *   the provider's own multilingual behaviour rather than a refusal
+ *
+ * A language nobody can speak is reported rather than silently dropped, so
+ * Admin can see which of them this account actually covers instead of
+ * Homatch claiming a number.
+ */
+export async function chooseTtsModel(
+  preferred: string, language: string | null,
+): Promise<ModelChoice> {
+  const code = String(language ?? '').toLowerCase().split('-')[0];
+  if (!code) return { modelId: preferred, sendLanguage: false, substituted: false, capable: [] };
+
+  const models = await ttsModelsCached();
+  if (!models.length) {
+    // No catalogue to reason about. Send no language rather than a claim.
+    return { modelId: preferred, sendLanguage: false, substituted: false, capable: [] };
+  }
+
+  const speaks = (m: ElevenLabsModel) => m.languages.some((l) => l.toLowerCase().split('-')[0] === code);
+  const capable = models.filter(speaks).map((m) => m.modelId);
+
+  const chosen = models.find((m) => m.modelId === preferred);
+  if (chosen && speaks(chosen)) {
+    return { modelId: preferred, sendLanguage: true, substituted: false, capable };
+  }
+
+  // Prefer the quick ones, because this is a spoken turn somebody is waiting
+  // through, then anything at all that can say the words.
+  const ranked = [...models].sort((a, b) => rank(a.modelId) - rank(b.modelId));
+  const substitute = ranked.find(speaks);
+  if (substitute) {
+    return { modelId: substitute.modelId, sendLanguage: true, substituted: true, capable };
+  }
+
+  return { modelId: preferred, sendLanguage: false, substituted: false, capable };
+}
+
+function rank(modelId: string): number {
+  const m = modelId.toLowerCase();
+  if (m.includes('flash')) return 0;
+  if (m.includes('turbo')) return 1;
+  if (m.includes('multilingual')) return 2;
+  return 3;
+}
+
 // ── Speech ──────────────────────────────────────────────────────────────────
 
 export interface SynthesiseOptions {
@@ -349,6 +436,14 @@ export interface SynthesiseOptions {
   modelId?: string;
   /** ISO-639-1. Omitted when unknown rather than guessed. */
   languageCode?: string | null;
+  /**
+   * Whether to actually send it.
+   *
+   * False when the chosen model does not list the language: the provider
+   * answers 400 rather than ignoring it, and its own multilingual behaviour
+   * with no language_code is better than a refusal.
+   */
+  sendLanguage?: boolean;
   /** Only the settings the selected model actually supports. */
   settings?: {
     stability?: number; similarityBoost?: number; style?: number;
@@ -401,7 +496,9 @@ export async function synthesizeElevenLabs(
   const outputFormat = wantsPcm ? `pcm_${rate}` : 'mp3_44100_128';
 
   const body: Record<string, unknown> = { text, model_id: model };
-  if (opts.languageCode) body.language_code = opts.languageCode;
+  // Only when the caller has established the model can speak it. A
+  // language_code a model does not list is a 400, not a graceful ignore.
+  if (opts.languageCode && opts.sendLanguage !== false) body.language_code = opts.languageCode;
   if (opts.settings) {
     const s = opts.settings;
     body.voice_settings = {

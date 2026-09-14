@@ -32,7 +32,7 @@ import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
 import {
   elevenLabsCredentialsPresent, mintRealtimeToken, synthesizeElevenLabs,
-  ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
+  chooseTtsModel, ELEVENLABS_DEFAULTS, KEYTERM_LIMITS_DEFAULT,
 } from '../_shared/comm/elevenlabs.ts';
 import { ensureDefaultVoice } from '../_shared/comm/voiceLibrary.ts';
 import {
@@ -94,26 +94,36 @@ async function speakPhrase(sb: Sb, params: {
   sessionId?: string | null;
   surface?: string;
 }): Promise<{ ok: true; data: SpokenPhrase } | { ok: false; failures: Array<{ provider: string; code: string | null; status: number | null }> }> {
-  const failures: Array<{ provider: string; code: string | null; status: number | null }> = [];
+  const failures: Array<{ provider: string; code: string | null; status: number | null; detail?: string | null }> = [];
 
   if (elevenLabsCredentialsPresent()) {
     const voice = await defaultElevenLabsVoice(sb, params.language || null);
     if (voice) {
+      // Which model can actually say this, from the account's own catalogue
+      // rather than from a guess. Georgian is exactly why: eleven_flash_v2_5
+      // answered 400 for ka, measured on production.
+      const choice = await chooseTtsModel(voice.model, params.language || null);
       const at = Date.now();
       const out = await synthesizeElevenLabs({
         voiceId: voice.voiceId,
         text: params.text,
-        modelId: voice.model,
+        modelId: choice.modelId,
         languageCode: params.language || null,
+        sendLanguage: choice.sendLanguage,
         format: 'pcm',
         sampleRate: ELEVENLABS_DEFAULTS.pcmSampleRate,
       });
       const ms = Date.now() - at;
+      if (choice.substituted) {
+        logEvent('ai-talk', 'tts_model_substituted', {
+          from: voice.model, to: choice.modelId, language: params.language,
+        });
+      }
 
       await recordVoiceUsage(sb, {
         sessionId: params.sessionId ?? null,
         surface: params.surface ?? 'AI_TALK',
-        provider: 'ELEVENLABS', role: 'TTS', model: voice.model,
+        provider: 'ELEVENLABS', role: 'TTS', model: choice.modelId,
         characters: params.text.length, latencyMs: ms,
         ok: out.ok,
         errorCode: out.ok ? null : (out.error?.code ?? null),
@@ -138,6 +148,9 @@ async function speakPhrase(sb: Sb, params: {
         provider: 'ELEVENLABS',
         code: out.error?.code ?? null,
         status: Number(out.error?.providerCode) || null,
+        // The provider's own sentence, bounded. It names a model and a
+        // parameter, never anything Homatch sent it about a person.
+        detail: out.error?.message?.slice(0, 200) ?? null,
       });
     } else {
       failures.push({ provider: 'ELEVENLABS', code: 'NO_DEFAULT_VOICE', status: null });
@@ -1262,6 +1275,7 @@ async function speak(sb: Sb, body: TalkRequest): Promise<Response> {
       ok: false, reason: 'VOICE_UNAVAILABLE',
       providerCode: phrase.failures[0]?.code ?? null,
       providerStatus: phrase.failures[0]?.status ?? null,
+      providerDetail: phrase.failures[0]?.detail ?? null,
     }, 502);
   }
 

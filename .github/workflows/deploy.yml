@@ -103,6 +103,14 @@ jobs:
       - name: Web push handlers (real service worker)
         run: pnpm run test:push
 
+      # Keyboard use, accessible names, visible focus and 320px on the pages
+      # this pass touched — none of which the contrast and overflow gates can
+      # see — plus the two performance questions it could have got wrong: what
+      # a visitor downloads, and whether a search over 4,773 strings can be
+      # typed into.
+      - name: Accessibility and performance audit
+        run: pnpm run test:a11y
+
       # The edge functions are Deno TypeScript with URL and jsr: imports, so
       # they sit outside the tsconfig and nothing else parses them. A
       # research-agent/index.ts that could not be parsed AT ALL once passed

@@ -341,11 +341,13 @@ test('the recogniser is given every language the product speaks, not just Georgi
    * pipeline ended up pinned to ka-GE because of it. A Russian speaker would
    * have been transcribed into Georgian letters.
    */
-  const edge = read('supabase/functions/ai-talk-session/index.ts');
+  // The six now live in one shared module rather than being restated here.
+  const domain = read('src/lib/comm/talkLanguage.ts');
   for (const code of ['ka', 'en', 'ru', 'tr', 'ar', 'he']) {
-    assert.ok(new RegExp(`'${code}'`).test(edge), `${code} is not a language AI TALK offers`);
+    assert.ok(new RegExp(`'${code}'`).test(domain), `${code} is not a language AI TALK offers`);
   }
-  assert.ok(/speechCandidates\(/.test(edge), 'the socket must be given a candidate set');
+  const edge = read('supabase/functions/ai-talk-session/index.ts');
+  assert.ok(/resolveTurnLanguage\(/.test(edge), 'the server must resolve the turn language itself');
 
   /*
    * This assertion used to demand the whole candidate set be sent as the
@@ -372,11 +374,12 @@ test('the language the recogniser heard is carried back, not thrown away', () =>
   const client = read('src/lib/comm/voiceClient.ts')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
-  assert.ok(!/detected: null/.test(client), 'the recogniser answer must not be discarded');
-  // Normalised on the way in: Google says `iw` for Hebrew and sometimes
-  // carries a region and sometimes does not.
-  assert.ok(/detected: normaliseLanguageTag\(detected\)/.test(client),
-    'the recogniser answer must reach the stabiliser, in the spelling the product uses');
+  // It reaches the resolver as EVIDENCE now, not as an answer, which is the
+  // distinction that stopped Korean entering a Georgian session.
+  assert.ok(/providerLanguage: detected/.test(client),
+    'the recogniser answer must reach the resolver');
+  assert.ok(/resolveTurnLanguage\(/.test(client),
+    'the turn language must come from the one resolver');
 });
 
 test('script decides where it can, and the page locale never decides first', () => {
@@ -502,4 +505,20 @@ test('automatic detection is what the recogniser is configured with', () => {
     'multilingual recognition must use auto, which is the mode chirp_3 accepts');
   assert.ok(!/languageCodes: cfg\.languageCodes(?!\?)/.test(worker),
     'an explicit language list must never be sent as the recogniser config');
+});
+
+test('a turn that ends the call never offers somewhere to go', () => {
+  /*
+   * Observed in production: a Georgian farewell came back with a button to
+   * /active-search attached. A destination offered as the panel closes is not
+   * a helpful extra — the user has just said they are finished.
+   */
+  const farewell = parseAction('gmadlobt, nakhvamdis <<ACT {"go":"search","end":true,"why":"FAREWELL"}>>');
+  assert.equal(farewell.end, true);
+  assert.equal(farewell.endReason, 'FAREWELL');
+  assert.equal(farewell.destination, null, 'a closing turn must carry no CTA');
+
+  // And a turn that is NOT ending still offers one.
+  const helping = parseAction('here it is <<ACT {"go":"verify","end":false}>>');
+  assert.equal(helping.destination.path, '/verify');
 });

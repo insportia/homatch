@@ -141,10 +141,24 @@ export function parseAction(raw: string): TalkAction {
   try { body = JSON.parse(raw.slice(open, close + 1)) as typeof body; } catch { return none; }
 
   const why = String(body.why ?? '').trim().toUpperCase();
+  const end = body.end === true;
+
+  /*
+   * A CALL THAT IS ENDING OFFERS NOTHING.
+   *
+   * Observed in production: a Georgian farewell — "thank you, goodbye" — came
+   * back with a button to /active-search attached. The model had answered two
+   * questions at once and meant neither. Offering somewhere to go while
+   * saying goodbye is not a helpful extra; it is a button that appears as the
+   * panel closes, on a turn where the user has said they are finished.
+   *
+   * Ending and navigating are mutually exclusive by construction here, rather
+   * than by asking the model more nicely.
+   */
   return {
-    destination: resolveDestination(body.go),
-    end: body.end === true,
-    endReason: END_REASONS.has(why) ? (why as TalkEndReason) : (body.end === true ? 'OBJECTIVE_MET' : null),
+    destination: end ? null : resolveDestination(body.go),
+    end,
+    endReason: END_REASONS.has(why) ? (why as TalkEndReason) : (end ? 'OBJECTIVE_MET' : null),
   };
 }
 

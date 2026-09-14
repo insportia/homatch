@@ -57,6 +57,16 @@ const RESYNC_SECONDS = 0.25;
 export interface PcmPlayerStats {
   /** Pieces scheduled. */
   batches: number;
+  /** Sources actually handed to the audio clock. */
+  started: number;
+  /** Samples that were not silence. A stream of zeroes is not speech. */
+  nonSilentSamples: number;
+  /** The context clock when the first piece was scheduled to begin. */
+  firstStartAt: number | null;
+  /** True once the clock has passed that moment: sound has actually been produced. */
+  clockAdvanced: boolean;
+  /** What the context says about itself. A suspended context makes no sound. */
+  contextState: string;
   /** Times the incoming audio arrived too slowly to keep the cursor ahead. */
   underruns: number;
   /** Chunks dropped because they belonged to a turn that is over. */
@@ -95,7 +105,9 @@ export class PcmStreamPlayer {
     this.ctx = ctx;
     this.destination = destination;
     this.stats = {
-      batches: 0, underruns: 0, stale: 0,
+      batches: 0, started: 0, nonSilentSamples: 0, firstStartAt: null,
+      clockAdvanced: false, contextState: ctx.state,
+      underruns: 0, stale: 0,
       resampled: false, providerRate: null, contextRate: ctx.sampleRate,
     };
   }
@@ -103,6 +115,10 @@ export class PcmStreamPlayer {
   /** Begin a new turn. Anything still arriving from the previous one is dropped. */
   startTurn(generation: number): void {
     this.generation = generation;
+    this.stats.started = 0;
+    this.stats.nonSilentSamples = 0;
+    this.stats.firstStartAt = null;
+    this.stats.clockAdvanced = false;
     this.pendingSamples = [];
     this.pendingLength = 0;
     this.phase = 0;
@@ -122,7 +138,36 @@ export class PcmStreamPlayer {
   }
 
   snapshot(): PcmPlayerStats {
-    return { ...this.stats };
+    return {
+      ...this.stats,
+      contextState: this.ctx.state,
+      // Recomputed rather than remembered: the question is whether the clock
+      // has passed the moment the first piece was due, and only the clock
+      // knows that.
+      clockAdvanced: this.stats.firstStartAt !== null
+        && this.ctx.currentTime > this.stats.firstStartAt,
+    };
+  }
+
+  /**
+   * Did this reply actually make a sound?
+   *
+   * NOT "was a buffer queued". A buffer queued into a suspended context, or
+   * into a player that was never connected to anything, produces exactly the
+   * same success from every counter in the system and exactly no audio in the
+   * room — which is what production shipped.
+   *
+   * Every clause here is a separate way that has already failed or could:
+   * a context that never resumed, a graph never built, a reply of pure
+   * silence, and a clock that never reached the first scheduled piece.
+   */
+  audiblyPlayed(): { ok: boolean; reason: string | null } {
+    const s = this.snapshot();
+    if (s.contextState !== 'running') return { ok: false, reason: `CONTEXT_${s.contextState.toUpperCase()}` };
+    if (!s.started) return { ok: false, reason: 'NOTHING_SCHEDULED' };
+    if (!s.nonSilentSamples) return { ok: false, reason: 'ONLY_SILENCE' };
+    if (!s.clockAdvanced) return { ok: false, reason: 'CLOCK_NOT_ADVANCED' };
+    return { ok: true, reason: null };
   }
 
   /**
@@ -230,8 +275,15 @@ export class PcmStreamPlayer {
     }
 
     source.start(this.cursor);
+    if (this.stats.firstStartAt === null) this.stats.firstStartAt = this.cursor;
     this.cursor += buffer.duration;
     this.stats.batches += 1;
+    this.stats.started += 1;
+
+    // Silence is a real provider failure mode and answers 200 like any other.
+    for (let i = 0; i < merged.length; i += 32) {
+      if (Math.abs(merged[i]) > 0.002) { this.stats.nonSilentSamples += 1; break; }
+    }
 
     this.sources.push(source);
     source.onended = () => {

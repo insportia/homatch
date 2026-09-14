@@ -53,6 +53,10 @@ import {
   ACTION_MARKER, destinationMenu, parseAction, spokenPart, endsWithPartialMarker,
 } from '../_shared/comm/generated/talkActions.ts';
 import {
+  resolveTurnLanguage, textMatchesLanguage, normaliseLanguage,
+  TALK_LANGUAGES, type TalkLanguage,
+} from '../_shared/comm/generated/talkLanguage.ts';
+import {
   selectKeyterms, keytermStrings, detectEntities,
   type VocabularyTerm,
 } from '../_shared/comm/generated/keyterms.ts';
@@ -301,6 +305,14 @@ interface TalkRequest {
    * unsupported value is snapped to the nearest the provider offers.
    */
   outputSampleRate?: number;
+  /**
+   * converse: the recogniser's own language label for this utterance.
+   *
+   * Evidence, never an answer. It has returned Korean, Luxembourgish and
+   * Hausa for Georgian speech, so it is one input to the resolver and is
+   * discarded when it names a language AI TALK does not speak.
+   */
+  providerLanguage?: string;
   /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
   audioBase64?: string;
   /**
@@ -927,19 +939,6 @@ async function aiTalkVoice(
  * resampled, and a resample that never happens cannot add artefacts to the
  * joins.
  */
-/**
- * The languages AI TALK can hold a conversation in.
- *
- * Every one of these has to work end to end — the recogniser accepts it, the
- * model answers in it, and the voice can say it — so this is a deliberately
- * short list of what Homatch actually serves rather than everything a
- * provider claims. Georgian is first because it is the hardest and the one
- * the product is judged on.
- *
- * The visitor never chooses from this list. It is the set of candidates the
- * recogniser decides between, per utterance, on its own.
- */
-export const TALK_LANGUAGES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'] as const;
 
 /** The BCP-47 tags the recogniser wants, for the languages above. */
 const SPEECH_TAGS: Record<string, string> = {
@@ -1288,9 +1287,27 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
    * The page locale being LAST is the point. It used to be reachable whenever
    * script evidence was absent, which is every English and Turkish turn.
    */
-  const heard = scriptLanguage(said)
-    ?? (body.languageHint ? String(body.languageHint).toLowerCase().split('-')[0].slice(0, 3) : null);
-  const replyLanguage = heard ?? locale;
+  /*
+   * THE SERVER RESOLVES THIS ITSELF, FROM THE SAME MODULE THE BROWSER USES.
+   *
+   * Not because the browser is untrusted in the security sense -- it is a
+   * public surface and everything here is already guarded -- but because a
+   * language is the one field that decides which voice speaks, and a stale or
+   * malformed value produced a silent turn in production. Running the same
+   * pure function over the same inputs means the two sides cannot disagree,
+   * and whatever arrives in `languageHint` is treated as the session's
+   * PREVIOUS language rather than as an answer.
+   *
+   * The result is one of six by construction. Nothing else can reach Luna or
+   * Cartesia from here.
+   */
+  const resolution = resolveTurnLanguage({
+    transcript: said,
+    providerLanguage: body.providerLanguage ?? null,
+    previousSessionLanguage: body.languageHint ?? null,
+    pageLocale: locale,
+  });
+  const replyLanguage: TalkLanguage = resolution.resolvedLanguage;
 
   // What the conversation already knows, plus whatever this sentence added.
   const state = updateTalkState(sanitiseTalkState(body.state), said, replyLanguage);
@@ -1328,6 +1345,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         + 'apologise. Answer the real question underneath it, calmly, in the same short form. If '
         + 'there is no question underneath, ask what they are looking for.\n'
       : '',
+    `Answer ONLY in ${LANGUAGE_NAMES[replyLanguage]} for this turn. Not a word of any other language, `
+      + 'except a brand name like Homatch which stays in Latin letters.',
     'Answer out loud, in one or two short sentences, then at most one question.',
   ].filter(Boolean).join('\n');
 
@@ -1544,6 +1563,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       /** What has actually been shown and queued: `full` minus the marker. */
       let shown = '';
       let pending = '';
+      /** True once there was enough text to judge the language. */
+      let languageChecked = false;
+      /** True when the model answered in the wrong language and the turn is void. */
+      let wrongLanguage = false;
       let firstTextAt = 0;
       let failed: string | null = null;
 
@@ -1598,11 +1621,36 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           // the visitor is waiting on. Later ones are longer, because by then
           // the voice is already playing and a longer phrase sounds better
           // than a chopped one.
-          let phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
-          while (phrase) {
-            queuePhrase(phrase);
-            pending = pending.slice(phrase.length);
-            phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
+          /*
+           * THE LANGUAGE GATE, BEFORE A SINGLE PHRASE IS SYNTHESISED.
+           *
+           * Telling the model which language to answer in is an instruction,
+           * not a guarantee, and synthesis starts on the first few words --
+           * so by the time a wrong-language reply is obvious, it has already
+           * been spoken aloud and rendered on screen.
+           *
+           * Nothing is queued until there is enough text to judge. Once there
+           * is, a reply in the wrong script is abandoned here: no audio is
+           * requested, nothing further is sent, and the turn is retried once
+           * with a blunter instruction. Georgian, Russian, Arabic and Hebrew
+           * are decidable this way; English and Turkish share an alphabet and
+           * the check does not pretend otherwise.
+           */
+          if (!languageChecked && shown.trim().length >= 12) {
+            languageChecked = true;
+            if (!textMatchesLanguage(shown, replyLanguage)) {
+              wrongLanguage = true;
+              break;
+            }
+          }
+
+          if (languageChecked) {
+            let phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
+            while (phrase) {
+              queuePhrase(phrase);
+              pending = pending.slice(phrase.length);
+              phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
+            }
           }
         }
 
@@ -1618,6 +1666,61 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           pending += tail;
           send('text', { delta: tail });
         }
+        /*
+         * ONE RETRY, WITH THE INSTRUCTION MADE BLUNT.
+         *
+         * A model that drifted once usually complies when told plainly what
+         * it did. A second failure is not worth a third round trip on a path
+         * whose whole problem is latency, so it becomes a short, honest
+         * message in the right language rather than mixed-script text nobody
+         * asked for.
+         */
+        if (wrongLanguage) {
+          logEvent('ai-talk', 'reply_wrong_language', {
+            expected: replyLanguage,
+            reason: resolution.resolutionReason,
+          });
+
+          full = '';
+          shown = '';
+          pending = '';
+          languageChecked = false;
+          let retry = '';
+          for await (const event of streamLlm({
+            system: publicDemoInstructions(replyLanguage),
+            user: `${user}\n\nYour previous answer was in the wrong language. `
+              + `Answer ONLY in ${LANGUAGE_NAMES[replyLanguage]}. Nothing else.`,
+            maxTokens: 120, maxOutputTokens: 340,
+            reasoningEffort: 'minimal', timeoutMs: 15_000,
+          })) {
+            if (event.type === 'error') break;
+            if (event.type === 'done') break;
+            if (event.type === 'delta' && event.text) retry += event.text;
+          }
+
+          const retryVisible = spokenPart(retry);
+          if (retryVisible.trim() && textMatchesLanguage(retryVisible, replyLanguage)) {
+            shown = retryVisible;
+            full = retry;
+            send('text', { delta: retryVisible });
+            pending = retryVisible;
+            languageChecked = true;
+          } else {
+            logEvent('ai-talk', 'reply_wrong_language_twice', { expected: replyLanguage });
+            send('failed', { reason: 'LANGUAGE_UNAVAILABLE' });
+            llmFinished = true;
+            nudge();
+            await drain;
+            controller.close();
+            return;
+          }
+        }
+
+        /*
+         * The marker may only have completed on the final token, so the
+         * visible text is recomputed once at the end rather than trusted from
+         * the loop. Whatever is left unspoken is the last phrase.
+         */
         if (!failed && pending.trim()) queuePhrase(pending.trim());
         llmFinished = true;
         nudge();
@@ -2164,11 +2267,14 @@ async function resolveAnonSession(sb: Sb, candidate: string | undefined): Promis
  * renamed in the router is renamed in the prompt, and a key the model invents
  * resolves to nothing instead of to a 404 in front of a customer.
  */
+/** What each of the six is called, for the instruction the model reads. */
+const LANGUAGE_NAMES: Record<string, string> = {
+  ka: 'Georgian', en: 'English', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew',
+};
+
 function publicDemoInstructions(language: string): string {
-  const names: Record<string, string> = {
-    ka: 'Georgian', en: 'English', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew',
-  };
-  const name = names[language] ?? names[language.split('-')[0]] ?? 'the language the visitor is speaking';
+  const name = LANGUAGE_NAMES[language] ?? LANGUAGE_NAMES[language.split('-')[0]]
+    ?? 'the language the visitor is speaking';
 
   const lines = [
     'You are Homatch, a real-estate intelligence assistant for the Georgian market, talking to a visitor by voice.',

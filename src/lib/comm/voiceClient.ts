@@ -42,7 +42,9 @@ import {
   TARGET_SAMPLE_RATE,
 } from './audio.ts';
 import { PcmStreamPlayer } from './pcmPlayer.ts';
-import { normaliseLanguageTag } from './transcript.ts';
+import {
+  resolveTurnLanguage, type TalkLanguage, type LanguageResolution,
+} from './talkLanguage.ts';
 import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
 
 
@@ -242,6 +244,14 @@ export interface VoiceDiagnostics {
   liveFellBack: string | null;
   /** What the speech provider said when it refused. A code and a status. */
   voiceFailure: string | null;
+  /**
+   * Whether the last reply was actually heard: AUDIBLE, or why not.
+   *
+   * Separate from `playbacks`, which counts buffers handed over. Those two
+   * disagreed for the whole of the Cartesia migration — a player that was
+   * never constructed accepted every chunk and made no sound.
+   */
+  playback: string | null;
   state: VoiceState;
 }
 
@@ -341,7 +351,7 @@ export interface VoiceMilestone {
     | 'first_input_audio' | 'first_speech' | 'first_utterance_sent'
     | 'first_transcript' | 'user_turn_sent'
     | 'assistant_text' | 'tts_audio_received' | 'playback_started'
-    | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'failed';
+    | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
@@ -432,6 +442,12 @@ export class VoiceSession {
    * to is over, and all of them used to be acted on.
    */
   private turnGeneration = 0;
+  /** How this turn's language was decided, for the trace and for the request. */
+  private lastResolution: LanguageResolution | null = null;
+  /** The recogniser's raw label for the last utterance. Evidence, never an answer. */
+  private lastProviderLanguage: string | null = null;
+  /** The interface language, which is where somebody arrived, not what they speak. */
+  private readonly pageLocale: string;
   /** Cancels the in-flight turn's request when the visitor interrupts. */
   private turnAbort: AbortController | null = null;
   /** Where the next streamed phrase should start, on the audio clock. */
@@ -477,6 +493,8 @@ export class VoiceSession {
     } | null,
     liveFellBack: null as string | null,
     voiceFailure: null as string | null,
+    // AUDIBLE, or the reason the reply was not heard.
+    playback: null as string | null,
   };
   private diagHandle: number | null = null;
 
@@ -501,7 +519,14 @@ export class VoiceSession {
     private grant: VoiceGrant,
     private cb: VoiceCallbacks,
   ) {
-    this.language = { current: grant.primaryLanguage || 'ka', locked: false, votes: [] };
+    /*
+     * The interface language seeds the session and is remembered separately.
+     * It is where somebody arrived, not what they are speaking, so the
+     * resolver treats it as the weakest evidence there is — but it is the
+     * right answer for turn one, before anybody has said anything.
+     */
+    this.pageLocale = grant.primaryLanguage || 'ka';
+    this.language = { current: this.pageLocale, locked: false, votes: [] };
   }
 
   /** Record a milestone once. Repeats are noise: the FIRST is the fact. */
@@ -640,6 +665,7 @@ export class VoiceSession {
       stages: this.diag.stages,
       liveFellBack: this.diag.liveFellBack,
       voiceFailure: this.diag.voiceFailure,
+      playback: this.diag.playback,
       state: this.state,
     };
   }
@@ -721,8 +747,6 @@ export class VoiceSession {
     if (this.audioContext.state === 'running') this.milestone('audio_context_running');
 
     this.resampler = new Resampler(this.audioContext.sampleRate, TARGET_SAMPLE_RATE);
-    if (this.outputGain) this.player = new PcmStreamPlayer(this.audioContext, this.outputGain);
-
     /*
      * Everything the assistant says goes through one gain node with an
      * analyser on it. That is what lets the visualiser react to the actual
@@ -735,6 +759,25 @@ export class VoiceSession {
     this.outputBins = new Uint8Array(new ArrayBuffer(this.outputAnalyser.frequencyBinCount));
     this.outputGain.connect(this.outputAnalyser);
     this.outputAnalyser.connect(this.audioContext.destination);
+
+    /*
+     * THE PLAYER IS BUILT AFTER THE NODE IT PLAYS INTO. THIS IS NOT A STYLE
+     * POINT.
+     *
+     * It was built eight lines above this, guarded by `if (this.outputGain)`
+     * -- which was null, because the gain node is created here. So the player
+     * was never constructed, and `this.player?.push()` in enqueuePcm dropped
+     * every chunk of every reply on the floor. Silently: optional chaining on
+     * a null that is never supposed to be null is indistinguishable from
+     * working code, and the only symptom was that AI TALK made no sound.
+     *
+     * Nothing caught it. The server counted the audio events it sent, the
+     * client counted the ones it received, and both were right; nobody
+     * checked that a buffer had been scheduled. That is why there is now a
+     * hard assertion below and a `playbackStarted` signal that means what it
+     * says.
+     */
+    this.player = new PcmStreamPlayer(this.audioContext, this.outputGain);
 
     const source = this.audioContext.createMediaStreamSource(this.micStream);
 
@@ -988,24 +1031,32 @@ export class VoiceSession {
     this.milestone('first_transcript', this.turns.length);
     this.cb.onTranscript(this.turns);
 
-    const before = this.language.current;
     /*
-     * The recogniser's own answer, which used to be discarded here.
+     * THE TURN'S LANGUAGE, DECIDED ONCE, BY ONE THING.
      *
-     * `detected: null` meant the state machine only ever had script evidence
-     * to work with, so Georgian, Russian, Arabic and Hebrew were decided
-     * correctly and English and Turkish -- identical alphabets -- were never
-     * decided at all. They stayed on whatever the page locale was, which is
-     * how a voice assistant answers an English speaker in Georgian.
-     *
-     * stabiliseLanguage still outranks it with script evidence where there is
-     * any, and still refuses to move on one short low-confidence sample.
+     * This used to be a stabiliser fed the provider's label, which was
+     * reasonable until the provider started returning languages this product
+     * does not speak. Short Georgian came back as Korean, Luxembourgish and
+     * Hausa -- transcript and all -- and each of those became a vote. The
+     * resolver cannot do that: its answer is one of six by construction, an
+     * unsupported label contributes nothing, and an established session only
+     * moves on evidence strong enough to mean it.
      */
-    this.language = stabiliseLanguage(this.language, {
-      text: said,
-      detected: normaliseLanguageTag(detected),
-      confidence: detected ? 0.8 : 0.5,
+    const resolution = resolveTurnLanguage({
+      transcript: said,
+      providerLanguage: detected,
+      previousSessionLanguage: this.language.current,
+      pageLocale: this.pageLocale,
     });
+    this.lastResolution = resolution;
+    this.lastProviderLanguage = detected;
+
+    const before = this.language.current;
+    this.language = {
+      ...this.language,
+      current: resolution.resolvedLanguage,
+      locked: resolution.confidence >= 0.6,
+    };
     if (this.language.current !== before || this.language.locked) {
       this.cb.onLanguage(this.language.current, this.language.locked);
     }
@@ -1359,6 +1410,30 @@ export class VoiceSession {
     if (this.closed || generation !== this.turnGeneration) return;
 
     /*
+     * DID THIS TURN ACTUALLY MAKE A SOUND?
+     *
+     * Asked because the answer was no, in production, for every turn, and
+     * nothing noticed. The player was never constructed — it was built
+     * guarded by a node that had not been created yet — so every chunk went
+     * into `this.player?.push()` and vanished. The server counted the audio
+     * it sent, this side counted what it received, both were correct, and
+     * AI TALK was mute.
+     *
+     * "A buffer was queued" is not the question. The question is whether the
+     * context was running, something was scheduled, it was not pure silence,
+     * and the clock passed it.
+     */
+    const played = this.player?.audiblyPlayed() ?? { ok: false, reason: 'NO_PLAYER' };
+    this.diag.playback = played.ok ? 'AUDIBLE' : (played.reason ?? 'SILENT');
+    if (!played.ok) {
+      this.milestone('silent_turn', played.reason ?? 'UNKNOWN');
+      // A silent turn is a failure the visitor experienced, not a diagnostic.
+      // It is surfaced so the panel can offer a retry rather than sit there.
+      this.cb.onError?.('VOICE_SILENT');
+    }
+    this.publishDiagnostics();
+
+    /*
      * THE ASSISTANT DECIDED THIS WAS THE LAST TURN.
      *
      * Acted on here and not when the event arrived, because the sentence was
@@ -1476,6 +1551,19 @@ export class VoiceSession {
    * are played rather than resampled. Null before the context exists, in
    * which case the server uses its own default and accepts one conversion.
    */
+  /**
+   * What the recogniser called the last utterance, and how it was resolved.
+   *
+   * Sent with the turn so the server can run the SAME resolver over the same
+   * inputs rather than trusting an answer. The raw label is included because
+   * it is evidence; the resolution is included because it is what this side
+   * concluded, and a disagreement between the two sides is worth seeing in a
+   * trace rather than discovering in a silent turn.
+   */
+  get languageTrace(): { providerLanguage: string | null; resolution: LanguageResolution | null } {
+    return { providerLanguage: this.lastProviderLanguage, resolution: this.lastResolution };
+  }
+
   get outputSampleRate(): number | null {
     return this.audioContext?.sampleRate ?? null;
   }

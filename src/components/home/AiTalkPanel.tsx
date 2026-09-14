@@ -192,7 +192,20 @@ export function AiTalkPanel({ className }: { className?: string }) {
    * machine would end a conversation that is still alive.
    */
   const [failure, setFailure] = useState<string | null>(null);
-  const [remaining, setRemaining] = useState<number | null>(null);
+  /**
+   * Seconds left, in a ref rather than in state.
+   *
+   * It used to be state, which meant a value that changes once a second
+   * re-rendered the entire AI TALK card once a second — the orb wrapper, the
+   * controls, the status row and the transcript — for the sake of two digits.
+   * On a phone that competes with the audio callbacks for the same thread,
+   * while the voice is playing.
+   *
+   * The clock now reads this ref inside its own component, so a tick repaints
+   * two digits and nothing else.
+   */
+  const remainingRef = useRef<number | null>(null);
+  const setRemaining = useCallback((value: number | null) => { remainingRef.current = value; }, []);
   /**
    * Where the assistant has offered to take them.
    *
@@ -469,6 +482,15 @@ export function AiTalkPanel({ className }: { className?: string }) {
             ...(sessionRef.current?.outputSampleRate
               ? { outputSampleRate: sessionRef.current.outputSampleRate }
               : {}),
+            /*
+             * The recogniser's own label for this utterance. Evidence for the
+             * server's resolver, never an answer: it has returned Korean and
+             * Hausa for Georgian speech, and the server discards anything
+             * that is not one of the six languages AI TALK speaks.
+             */
+            ...(sessionRef.current?.languageTrace.providerLanguage
+              ? { providerLanguage: sessionRef.current.languageTrace.providerLanguage }
+              : {}),
           },
           signal,
         }),
@@ -625,13 +647,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
               {t(STATE_KEY[state] as TKey)}
             </span>
           </span>
-          {live && remaining !== null ? (
-            <span className="shrink-0 font-mono text-[13px] tabular-nums text-white/30">
-              {String(Math.floor(remaining / 60)).padStart(2, '0')}
-              :
-              {String(remaining % 60).padStart(2, '0')}
-            </span>
-          ) : null}
+          {live ? <TimeLeft secondsRef={remainingRef} /> : null}
         </div>
 
         {/* The voice itself. */}
@@ -912,6 +928,35 @@ function Invitation({ state, failure }: { state: VoiceState; failure: string | n
  * §27: live intelligence, visible. Facts only — no scores, no confidence, no
  * internal field names.
  */
+/**
+ * The remaining-seconds clock, and nothing else.
+ *
+ * Reads the ref on its own interval and holds the only state that changes
+ * once a second. Isolating it is the difference between repainting two digits
+ * and repainting the whole card — the card contains a canvas, a scrolling
+ * transcript and a backdrop-blurred panel, none of which have any reason to
+ * be touched because a second passed.
+ */
+function TimeLeft({ secondsRef }: { secondsRef: React.MutableRefObject<number | null> }) {
+  const [shown, setShown] = useState<number | null>(secondsRef.current);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      setShown((was) => (was === secondsRef.current ? was : secondsRef.current));
+    }, 500);
+    return () => window.clearInterval(tick);
+  }, [secondsRef]);
+
+  if (shown === null) return null;
+  return (
+    <span className="shrink-0 font-mono text-[13px] tabular-nums text-white/30">
+      {String(Math.floor(shown / 60)).padStart(2, '0')}
+      :
+      {String(shown % 60).padStart(2, '0')}
+    </span>
+  );
+}
+
 const Transcript = memo(TranscriptView, sameTranscript);
 
 function IntelligenceStrip({ data }: { data: Intelligence }) {

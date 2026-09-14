@@ -56,6 +56,9 @@ const FILES = [
   // Where AI TALK may send somebody, and when the call should end. It lives
   // beside the router because that is where a renamed route gets renamed.
   'talkActions.ts',
+  // The one place a turn's language is decided. Mirrored because the edge
+  // function must re-check what the browser resolved rather than trust it.
+  'talkLanguage.ts',
   'researchPlan.ts',
   'phone.ts',
   'goLive.ts',

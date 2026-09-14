@@ -42,6 +42,7 @@ import {
   TARGET_SAMPLE_RATE,
 } from './audio.ts';
 import { PcmStreamPlayer } from './pcmPlayer.ts';
+import { normaliseLanguageTag } from './transcript.ts';
 import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
 
 
@@ -1002,7 +1003,7 @@ export class VoiceSession {
      */
     this.language = stabiliseLanguage(this.language, {
       text: said,
-      detected: detected ? detected.toLowerCase().split('-')[0] : null,
+      detected: normaliseLanguageTag(detected),
       confidence: detected ? 0.8 : 0.5,
     });
     if (this.language.current !== before || this.language.locked) {

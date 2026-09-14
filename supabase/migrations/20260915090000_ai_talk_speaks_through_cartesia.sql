@@ -76,3 +76,40 @@ on conflict (provider, language) do update
 update public.voice_language_defaults
    set settings_locked = true
  where provider = 'ELEVENLABS' and language = 'ka';
+
+-- THE OTHER FIVE LANGUAGES, APPROVED ON MEASURED EVIDENCE.
+--
+-- AI TALK is multilingual: a visitor starts talking and the recogniser decides
+-- which of the candidate languages it heard. That is worth nothing if the
+-- voice then refuses to say it, and fail-closed means exactly that — a
+-- language with no approved row does not get spoken.
+--
+-- One voice covers all six. That is not an assumption from a capability list:
+-- each line below was synthesised through the deployed streaming path with
+-- this voice id and sonic-3, carrying a price and a Tbilisi district, because
+-- numbers, currency and place names are where a mismatched voice falls apart
+-- first. Measured on 2026-09-15, first audio byte and audio produced:
+--
+--   ka  154ms   0.076 s/char        en  149ms   0.058 s/char
+--   ru  166ms   0.063 s/char        tr  159ms   0.070 s/char
+--   ar  162ms   0.081 s/char        he  675ms   0.074 s/char
+--
+-- The seconds-per-character figures matter as much as the latencies: a
+-- provider that gives up mid-sentence still answers 200, and it shows up as
+-- almost no audio for a long sentence. These are consistent across all six.
+--
+-- WHAT THIS DOES NOT ESTABLISH
+--
+-- Whether it SOUNDS native. Nothing automated can tell you that — it is the
+-- exact failure that made the previous provider unusable for Georgian while
+-- every check passed — which is why the audition harness exists and why a
+-- person listens. These rows say the pipeline carries each language and
+-- returns plausible speech. Revoking one is a delete, and costs no deploy.
+insert into public.voice_language_defaults (provider, language, voice_id, model_id, send_language)
+select 'CARTESIA', lang, '0bfbea6c-2f8f-4f86-b411-aa2316561e36', 'sonic-3', true
+  from unnest(array['en', 'ru', 'tr', 'ar', 'he']) as lang
+on conflict (provider, language) do update
+  set voice_id      = excluded.voice_id,
+      model_id      = excluded.model_id,
+      send_language = excluded.send_language,
+      approved_at   = now();

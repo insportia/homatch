@@ -153,6 +153,22 @@ export function hebrewCharRatio(text: string): number {
   return chars.filter((c) => /\p{Script=Hebrew}/u.test(c)).length / chars.length;
 }
 
+/**
+ * A recogniser's language tag, as the rest of the product spells it.
+ *
+ * Google returns Hebrew as `iw` -- the code ISO renamed to `he` in 1989 and
+ * which several Google APIs still emit. It also returns a region on some
+ * results and not others: ka-GE for one turn, ru for the next. Both are
+ * normalised here, once, at the edge where they arrive, so nothing downstream
+ * has to know that `iw` and `he` are the same language.
+ */
+export function normaliseLanguageTag(tag: string | null | undefined): string | null {
+  const base = String(tag ?? '').toLowerCase().split('-')[0].trim();
+  if (!base) return null;
+  const legacy: Record<string, string> = { iw: 'he', in: 'id', ji: 'yi', mo: 'ro' };
+  return legacy[base] ?? base;
+}
+
 export const LANGUAGE_LOCK_MIN_CHARS = 24;
 export const LANGUAGE_LOCK_MIN_CONFIDENCE = 0.72;
 
@@ -188,15 +204,42 @@ export function stabiliseLanguage(
   const heRatio = hebrewCharRatio(text);
 
   /*
-   * Script evidence outranks the detector's own label -- where there IS script
-   * evidence. English and Turkish share an alphabet, so for those two the
-   * detector's label is the only evidence that exists, and it is used as-is.
-   * That is why `detected` must actually be supplied: it used to be passed as
-   * null, which left a Latin-script conversation permanently on whatever the
-   * page locale happened to be.
+   * A LABEL THAT CONTRADICTS THE SCRIPT IS NOT EVIDENCE.
+   *
+   * Measured on the deployed path: an English sentence was transcribed
+   * perfectly -- "Hello, I am looking for a two bedroom flat in Vake" -- and
+   * labelled ka-GE by the recogniser's own automatic detection. Taken at face
+   * value that is a Georgian vote on an English turn, and the assistant
+   * answers an English speaker in Georgian.
+   *
+   * Georgian, Russian, Arabic and Hebrew all have their own alphabet. If the
+   * label names one of them and the text contains essentially none of that
+   * script, the label is wrong about something it cannot be wrong about, and
+   * it is discarded rather than argued with. Short text is exempt: two
+   * characters prove nothing either way.
+   *
+   * Nothing is discarded for Latin-script labels. English and Turkish share
+   * an alphabet, so for those the detector is the only evidence there is.
    */
-  let language = sample.detected ?? state.current;
-  let confidence = sample.confidence ?? 0.4;
+  const SCRIPT_RATIOS: Record<string, number> = {
+    ka: kaRatio, ru: ruRatio, ar: arRatio, he: heRatio,
+  };
+  const claimed = sample.detected ? String(sample.detected).toLowerCase().split('-')[0] : null;
+  const contradicted = claimed !== null
+    && SCRIPT_RATIOS[claimed] !== undefined
+    && SCRIPT_RATIOS[claimed] < 0.2
+    && chars >= 8;
+
+  /*
+   * Script evidence outranks the detector's own label -- where there IS script
+   * evidence. That is why `detected` must actually be supplied: it used to be
+   * passed as null, which left a Latin-script conversation permanently on
+   * whatever the page locale happened to be.
+   */
+  let language = (contradicted ? null : claimed) ?? state.current;
+  // A contradicted label is not merely ignored; it must not carry its
+  // confidence into the vote it no longer supports.
+  let confidence = contradicted ? 0.3 : (sample.confidence ?? 0.4);
   if (kaRatio >= 0.5) { language = 'ka'; confidence = Math.max(confidence, 0.5 + kaRatio / 2); }
   else if (ruRatio >= 0.5) { language = 'ru'; confidence = Math.max(confidence, 0.5 + ruRatio / 2); }
   else if (arRatio >= 0.5) { language = 'ar'; confidence = Math.max(confidence, 0.5 + arRatio / 2); }

@@ -17,7 +17,7 @@ import {
   TALK_DESTINATIONS, resolveDestination, parseAction, spokenPart,
   endsWithPartialMarker, ACTION_MARKER, destinationMenu,
 } from '../talkActions.ts';
-import { stabiliseLanguage } from '../transcript.ts';
+import { stabiliseLanguage, normaliseLanguageTag } from '../transcript.ts';
 
 const read = (p) => readFileSync(p, 'utf8').split('\r\n').join('\n');
 
@@ -347,11 +347,16 @@ test('the recogniser is given every language the product speaks, not just Georgi
   }
   assert.ok(/speechCandidates\(/.test(edge), 'the socket must be given a candidate set');
 
-  const worker = read('official-worker/src/speech/GoogleSpeechStream.ts');
-  assert.ok(/languageCodes: cfg\.languageCodes/.test(worker),
-    'the recogniser must be configured with the whole set, not one tag');
-  assert.ok(!/languageCodes: \[cfg\.languageCode\]/.test(worker),
-    'a single hardcoded language is what made this Georgian-only');
+  /*
+   * This assertion used to demand the whole candidate set be sent as the
+   * recogniser config, which was the obvious design and which chirp_3 refuses
+   * with INVALID_ARGUMENT -- taking every stream down, not just the
+   * multilingual ones. The mode it does accept is `auto`, asserted in its own
+   * test below. What belongs here is that the SESSION knows about six
+   * languages, which is a different claim from how the recogniser is set up.
+   */
+  assert.ok(/multiLanguageEnabled\(\)/.test(read('official-worker/src/speech/GoogleSpeechStream.ts')),
+    'multilingual recognition must be a deliberate, switchable mode');
 });
 
 test('the language the recogniser heard is carried back, not thrown away', () => {
@@ -368,7 +373,10 @@ test('the language the recogniser heard is carried back, not thrown away', () =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
   assert.ok(!/detected: null/.test(client), 'the recogniser answer must not be discarded');
-  assert.ok(/detected: detected/.test(client), 'the recogniser answer must reach the stabiliser');
+  // Normalised on the way in: Google says `iw` for Hebrew and sometimes
+  // carries a region and sometimes does not.
+  assert.ok(/detected: normaliseLanguageTag\(detected\)/.test(client),
+    'the recogniser answer must reach the stabiliser, in the spelling the product uses');
 });
 
 test('script decides where it can, and the page locale never decides first', () => {
@@ -435,4 +443,63 @@ test('the browser sends its language set and the socket accepts one', () => {
   assert.ok(/MAX_STREAM_LANGUAGES/.test(gateway), 'the set must be capped to the provider limit');
   // Everything in that query string is browser-controlled.
   assert.ok(/\/\^\[a-z\]\{2,3\}-\[A-Z\]\{2\}\$\//.test(gateway), 'each tag must be validated');
+});
+
+test('a language label that contradicts the script is discarded', () => {
+  /*
+   * MEASURED ON THE DEPLOYED PATH.
+   *
+   * An English sentence — "Hello, I am looking for a two bedroom flat in
+   * Vake" — was transcribed perfectly and labelled ka-GE by the recogniser's
+   * own automatic detection. Taken at face value that is a Georgian vote on
+   * an English turn, and the assistant answers an English speaker in
+   * Georgian.
+   *
+   * Georgian has its own alphabet. A label naming it, on text containing none
+   * of it, is wrong about something it cannot be wrong about.
+   */
+  const fromEnglish = { current: 'en', locked: false, votes: [] };
+  const kept = stabiliseLanguage(fromEnglish, {
+    text: 'Hello, I am looking for a two bedroom flat in Vake',
+    detected: 'ka-GE', confidence: 0.9,
+  });
+  assert.equal(kept.current, 'en', 'a Georgian label on Latin text moved the conversation');
+
+  // The same guard must not fire when the label AGREES with the script.
+  const georgian = stabiliseLanguage({ current: 'en', locked: false, votes: [] }, {
+    text: 'გამარჯობა, ვაკეში ბინა მაინტერესებს',
+    detected: 'ka-GE', confidence: 0.9,
+  });
+  assert.equal(georgian.current, 'ka');
+
+  // And it must not fire on a Latin-script label, where the detector is the
+  // only evidence that exists.
+  const turkish = stabiliseLanguage({ current: 'ka', locked: false, votes: [] }, {
+    text: 'Merhaba, Vake semtinde iki odali bir daire ariyorum',
+    detected: 'tr', confidence: 0.9,
+  });
+  assert.equal(turkish.current, 'tr');
+});
+
+test('Hebrew arrives as the legacy tag and is normalised once, at the edge', () => {
+  // Google emits `iw`, the code ISO renamed to `he` in 1989. Nothing
+  // downstream should have to know they are the same language.
+  assert.equal(normaliseLanguageTag('iw'), 'he');
+  assert.equal(normaliseLanguageTag('iw-IL'), 'he');
+  assert.equal(normaliseLanguageTag('ka-GE'), 'ka');
+  assert.equal(normaliseLanguageTag('ru'), 'ru');
+  assert.equal(normaliseLanguageTag(null), null);
+  assert.equal(normaliseLanguageTag(''), null);
+});
+
+test('automatic detection is what the recogniser is configured with', () => {
+  // An explicit candidate list is refused by chirp_3 with INVALID_ARGUMENT,
+  // and that refusal takes every stream down, not just the multilingual ones.
+  const worker = read('official-worker/src/speech/GoogleSpeechStream.ts')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(/multiLanguageEnabled\(\) \? \['auto'\]/.test(worker),
+    'multilingual recognition must use auto, which is the mode chirp_3 accepts');
+  assert.ok(!/languageCodes: cfg\.languageCodes(?!\?)/.test(worker),
+    'an explicit language list must never be sent as the recogniser config');
 });

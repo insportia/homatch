@@ -23,9 +23,23 @@ import { supabase } from '@/db/supabase';
  * own default of false.
  */
 
-/** The switches a person actually thinks in. Not the 24 enum values. */
+/**
+ * The switches a person actually thinks in. Not the 24 enum values.
+ *
+ * WHY `messages` AND `viewings` ARE THEIR OWN SWITCHES
+ *
+ * Both used to be neither. A direct message and a viewing request are stored
+ * as MATCH_FOUND — the enum has no value of their own and adding one is a
+ * migration — so the category a person saw them under was "Buyer and property
+ * matches". Turning that off to stop hearing about automated matching also
+ * stopped a human being from reaching you about your property, and nothing on
+ * the screen said so.
+ *
+ * They are separated by what the event carries rather than by its type, so no
+ * schema change was needed to tell them apart; see categoryOf in push-send.
+ */
 export const NOTIFICATION_CATEGORIES = [
-  'matches', 'ai_results', 'leads', 'campaigns', 'whatsapp', 'billing', 'system',
+  'messages', 'viewings', 'matches', 'ai_results', 'leads', 'campaigns', 'whatsapp', 'billing', 'system',
 ] as const;
 
 export type NotificationCategory = typeof NOTIFICATION_CATEGORIES[number];

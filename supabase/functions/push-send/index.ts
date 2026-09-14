@@ -73,13 +73,34 @@ interface Prefs {
 }
 
 /**
- * Which switch governs an event type.
+ * Which switch governs an event.
  *
  * Grouped by what a person would think of turning off. Nobody wants to
  * silence CAMPAIGN_PAUSED while keeping CAMPAIGN_COMPLETED; they want to stop
  * hearing about campaigns.
+ *
+ * WHY IT READS THE METADATA AND NOT ONLY THE TYPE
+ *
+ * Three different things are stored as MATCH_FOUND: an automated match, a
+ * direct message from another person, and a viewing request. The enum has no
+ * value for the last two and adding one is a migration, so the producers say
+ * which is which in `metadata.kind` — and this used to ignore that and file
+ * all three under "Buyer and property matches".
+ *
+ * The result was a switch that did something other than what it said.
+ * Somebody who turned off automated matching also stopped hearing that a
+ * human being had written to them about their property, or asked to come and
+ * see it. Those are the two things on this platform most likely to be time
+ * critical, and they were being silenced by a control that never mentioned
+ * them.
  */
-function categoryOf(eventType: string): string {
+function categoryOf(eventType: string, metadata?: Record<string, unknown> | null): string {
+  /* The kind first: it is more specific than the type, and it is the only
+     thing that distinguishes the three meanings of MATCH_FOUND. */
+  const kind = typeof metadata?.kind === 'string' ? metadata.kind : '';
+  if (kind === 'NEW_MESSAGE') return 'messages';
+  if (kind === 'VIEWING_REQUEST' || kind === 'VIEWING_UPDATE') return 'viewings';
+
   if (eventType.startsWith('CAMPAIGN_')) return 'campaigns';
   if (eventType.startsWith('WHATSAPP_')) return 'whatsapp';
   if (eventType.startsWith('MATCH_')) return 'matches';
@@ -88,6 +109,10 @@ function categoryOf(eventType: string): string {
   if (eventType.startsWith('IMPORT_') || eventType.startsWith('PROVIDER_')) return 'system';
   if (eventType === 'VERIFY_COMPLETE' || eventType === 'DOCUMENT_ANALYZED') return 'ai_results';
   if (eventType === 'CALLBACK_REQUESTED' || eventType === 'QUALIFIED_LEAD') return 'leads';
+  /* A purchase is a billing event. It reached this line and was filed under
+     "Account and system", so turning off system notices also turned off the
+     confirmation that money had been spent. */
+  if (eventType === 'RESEARCH_PRODUCT_PURCHASED') return 'billing';
   return 'system';
 }
 
@@ -199,7 +224,9 @@ serve(async (req) => {
   }
 
   const { data: notif } = await sb.from('notifications')
-    .select('id, user_id, type, title, body, deep_link, priority, group_key, pushed_at')
+    /* metadata, because the category is decided partly by metadata.kind:
+       three different events share the MATCH_FOUND type. */
+    .select('id, user_id, type, title, body, deep_link, priority, group_key, pushed_at, metadata')
     .eq('id', body.notificationId).maybeSingle();
   if (!notif) return json({ ok: false, error: 'NOT_FOUND' }, 404);
   if (notif.pushed_at) return json({ ok: true, skipped: 'ALREADY_PUSHED' });
@@ -218,7 +245,7 @@ serve(async (req) => {
 
   if (!prefs.push_enabled) return json({ ok: true, skipped: 'PUSH_DISABLED' });
 
-  const category = categoryOf(notif.type);
+  const category = categoryOf(notif.type, notif.metadata as Record<string, unknown> | null);
   if (prefs.categories && prefs.categories[category] === false) {
     return json({ ok: true, skipped: 'CATEGORY_OFF' });
   }

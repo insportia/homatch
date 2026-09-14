@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import { recordStandaloneSession } from '@/lib/engagement';
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { AppWrapper } from "./components/common/PageMeta.tsx";
@@ -33,6 +34,17 @@ Sentry.init({
  * graph, so caching it would serve yesterday's code back to whoever is
  * editing it.
  */
+/*
+ * WAS THIS OPENED AS THE APP?
+ *
+ * Recorded once per start, before anything else can navigate. A first
+ * standalone launch is the closest thing to an install signal iOS will ever
+ * give — it is INFERRED, because the install itself happened at a moment no
+ * page was watching — and every launch after it is a returning session, which
+ * is a retention figure rather than an acquisition one.
+ */
+void recordStandaloneSession();
+
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   const register = () => {
     void navigator.serviceWorker.register('/sw.js').catch(() => {

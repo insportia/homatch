@@ -279,6 +279,10 @@ jobs:
             # whether a run is funded. Both authenticate the caller themselves
             # and then act under the service role, so JWT verification is
             # required, exactly as it already is in production.
+            # push-send signs VAPID and reads every push subscription, so it
+            # runs under the service role and authenticates the caller itself.
+            # The test action can only ever reach the callers own devices.
+            "push-send"
             "billing"
             "homatch-research"
             "homatch-ai"

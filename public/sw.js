@@ -29,7 +29,11 @@
  *   to the browser's dinosaur.
  */
 
-const VERSION = 'homatch-v1';
+/* Bumped when the worker's own behaviour changes, not when the app does:
+   the activate handler deletes every cache whose name does not start with
+   the current VERSION, so a worker that has learned to handle push must
+   not serve a shell cached by one that had not. */
+const VERSION = 'homatch-v2-push';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -104,4 +108,91 @@ self.addEventListener('fetch', (event) => {
    mid-session, which would swap the bundle under a running form. */
 self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   WEB PUSH
+
+   WHY THE PAYLOAD IS TRUSTED BUT THE LINK IS NOT
+
+   A push payload arrives encrypted to this device's own keys, so only a
+   sender holding the VAPID private key could have produced it. That makes
+   the CONTENT trustworthy. It does not make a URL inside it safe to open:
+   an absolute URL in a notification is a redirect, and a redirect somebody
+   else can aim is a phishing primitive. So `deep_link` is treated as a path
+   on this origin and anything else is discarded.
+
+   WHY A NOTIFICATION IS ALWAYS SHOWN
+
+   Every browser that implements push requires `userVisibleOnly: true`, and
+   enforces it: a push event that ends without showing a notification earns
+   a "this site sent a background push" warning, and eventually the
+   subscription is revoked. A malformed payload therefore still gets a
+   notification — the product's name and a neutral line — rather than
+   silence that costs the subscription.
+   ══════════════════════════════════════════════════════════════════════ */
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    /* Not JSON. Handled by the fallbacks below rather than by giving up:
+       see why a notification is always shown. */
+  }
+
+  const title = typeof payload.title === 'string' && payload.title.trim()
+    ? payload.title.slice(0, 120)
+    : 'Homatch';
+  const body = typeof payload.body === 'string' ? payload.body.slice(0, 300) : '';
+
+  /* A path on this origin, or nothing. */
+  const link = typeof payload.deep_link === 'string'
+    && payload.deep_link.startsWith('/')
+    && !payload.deep_link.startsWith('//')
+    ? payload.deep_link
+    : '/';
+
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    /* Collapses an aggregate: twelve match notifications with one group key
+       replace each other rather than stacking twelve deep. */
+    tag: typeof payload.group_key === 'string' ? payload.group_key.slice(0, 60) : undefined,
+    renotify: Boolean(payload.group_key),
+    data: { link, id: typeof payload.id === 'string' ? payload.id : null },
+    requireInteraction: payload.priority === 'CRITICAL',
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const link = (event.notification.data && event.notification.data.link) || '/';
+  const target = new URL(link, self.location.origin);
+  /* Belt and braces: even a link that got this far cannot leave the origin. */
+  if (target.origin !== self.location.origin) return;
+
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    /* Focus a tab that is already here rather than opening a fourth copy of
+       the app, then navigate it. */
+    for (const client of clients) {
+      if (new URL(client.url).origin !== self.location.origin) continue;
+      await client.focus();
+      if ('navigate' in client) await client.navigate(target.href).catch(() => {});
+      return;
+    }
+    await self.clients.openWindow(target.href);
+  })());
+});
+
+/* The browser can retire a subscription on its own — a key rotation, a long
+   silence, a user clearing site data. The page cannot hear about it, so the
+   worker re-subscribes and lets the app reconcile on its next load. */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ includeUncontrolled: true });
+    for (const client of clients) client.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED' });
+  })());
 });

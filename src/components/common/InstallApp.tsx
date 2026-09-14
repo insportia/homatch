@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useReducer, useState } from 'react';
 import { Download, Share, Plus, X, Check, ExternalLink } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { recordPwaEvent } from '@/lib/engagement';
 import {
   type InstallMode,
   canInstall, heldInstallPrompt, installedInThisTab, isIOSSafari, isStandalone,
@@ -99,8 +100,10 @@ export function hasInstallAction(mode: InstallMode): boolean {
 }
 
 export function InstallApp({
-  compact = false, tone = 'auto', variant = 'pill', className = '',
+  compact = false, tone = 'auto', variant = 'pill', className = '', source = 'header',
 }: {
+  /** Which surface offered it, so the funnel can say where installs come from. */
+  source?: string;
   /** Icon only. For a top bar that has run out of room. */
   compact?: boolean;
   /**
@@ -143,7 +146,27 @@ export function InstallApp({
     installed: justInstalled,
   });
 
+  /*
+   * WHAT WAS OFFERED, AND ON WHICH SURFACE.
+   *
+   * Once per mode per surface per page view — `recordPwaEvent` de-duplicates
+   * on that key — so a re-render is not a second impression and the funnel's
+   * denominator means what it says. A browser holding a native prompt is
+   * recorded separately: the gap between "could install in one tap" and
+   * "tapped" is the number worth knowing.
+   */
+  useEffect(() => {
+    if (mode === 'unsupported') return;
+    void recordPwaEvent('PWA_AFFORDANCE_VIEWED', 'DETECTED', { source: `${source}:${mode}` });
+    if (mode === 'standalone') return;
+    if (prompt !== null) {
+      void recordPwaEvent('PWA_NATIVE_PROMPT_AVAILABLE', 'DETECTED', { source });
+    }
+  }, [mode, prompt, source]);
+
   const onClick = useCallback(async () => {
+    void recordPwaEvent('PWA_INSTALL_CLICKED', 'CONFIRMED', { source: `${source}:${mode}`, once: false });
+
     /*
      * INSTALLED, AND THE HONEST NEXT ACTION.
      *
@@ -158,14 +181,30 @@ export function InstallApp({
       window.open(window.location.origin, '_blank', 'noopener');
       return;
     }
-    if (mode === 'ios-manual') { setSheet('ios'); return; }
+    if (mode === 'ios-manual') {
+      /* The end of the road for measurement: iOS installs happen in the Share
+         menu, which no page can observe. The funnel records that the
+         instructions were shown and stops claiming anything after it. */
+      void recordPwaEvent('PWA_IOS_INSTRUCTIONS_SHOWN', 'CONFIRMED', { source });
+      setSheet('ios');
+      return;
+    }
     // No prompt to replay: the honest answer is the browser's own menu.
     if (mode === 'pending' || !prompt) { setSheet('pending'); return; }
     /* The event is single-use — Chromium will not replay it. A dismissal is
        NOT a mute: the control stays, in its pending state, and explains
        itself if pressed again. */
-    await showInstallPrompt();
-  }, [mode, prompt]);
+    void recordPwaEvent('PWA_NATIVE_PROMPT_SHOWN', 'CONFIRMED', { source, once: false });
+    const outcome = await showInstallPrompt();
+    /* The browser's OWN answer, which is the only CONFIRMED install signal
+       that exists outside `appinstalled`. A click is not an install and is
+       never recorded as one. */
+    if (outcome === 'accepted') {
+      void recordPwaEvent('PWA_NATIVE_PROMPT_ACCEPTED', 'CONFIRMED', { source, once: false });
+    } else if (outcome === 'dismissed') {
+      void recordPwaEvent('PWA_NATIVE_PROMPT_DISMISSED', 'CONFIRMED', { source, once: false });
+    }
+  }, [mode, prompt, source]);
 
   /*
    * ── THE STATES THAT USED TO RENDER NOTHING ──────────────────────────

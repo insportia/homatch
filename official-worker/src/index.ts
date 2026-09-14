@@ -13,6 +13,7 @@ import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrow
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 import { attachSpeechGateway } from './speech/SpeechGateway.js';
 import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
+import { lastRecogniserError, speechConfigFromEnv } from './speech/GoogleSpeechStream.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -456,6 +457,15 @@ app.get('/health/speech-selftest', async (_q: any, r: any) => {
   selfTestLastAt = Date.now();
   try {
     const report = await runSpeechSelfTest(PORT, { token: TOKEN });
+    // What the provider actually said, beside what the chain actually did.
+    // The first run of this returned a bucketed word and the real answer was
+    // only ever in a log stream that would not come back.
+    const cfg = speechConfigFromEnv();
+    const enriched = {
+      ...report,
+      providerError: lastRecogniserError(),
+      config: cfg ? { region: cfg.region, model: cfg.model, sampleRate: cfg.sampleRate, language: cfg.languageCode } : null,
+    };
     console.log(JSON.stringify({
       at: new Date().toISOString(), service: 'speech', event: 'selftest',
       ok: report.ok, reason: report.reason,
@@ -464,7 +474,7 @@ app.get('/health/speech-selftest', async (_q: any, r: any) => {
       // speech, so it is safe to log and is the only thing worth reading here.
       final: report.finalText,
     }));
-    return r.json(report);
+    return r.json(enriched);
   } catch (e: any) {
     return r.status(500).json({ ok: false, reason: 'SELFTEST_THREW', detail: String(e?.message ?? e).slice(0, 200) });
   } finally {

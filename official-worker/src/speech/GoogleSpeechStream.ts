@@ -55,6 +55,24 @@ export interface SpeechEvents {
  * Read the service account once, from the environment, and fail loudly here
  * rather than on the first customer's first sentence.
  */
+/**
+ * The last thing the recogniser refused, kept for the self-test to report.
+ *
+ * Railway's log API would not return these when they were most needed, and a
+ * diagnostic whose answer lives somewhere you cannot reach is not one. It is a
+ * single slot on purpose: the interesting error is the current one, and
+ * keeping a history of provider messages is keeping somebody else's text
+ * around for no reason.
+ *
+ * Never a credential. Google's gRPC messages describe the request, and the
+ * service account is read from the environment and never appears in one.
+ */
+let lastError: { code: number | null; detail: string; at: string } | null = null;
+
+export function lastRecogniserError(): { code: number | null; detail: string; at: string } | null {
+  return lastError;
+}
+
 export function speechConfigFromEnv(): SpeechConfig | null {
   const projectId = process.env.GOOGLE_SPEECH_PROJECT_ID || '';
   const region = process.env.GOOGLE_SPEECH_REGION || '';
@@ -212,6 +230,12 @@ export class GoogleSpeechStream {
        * message is somebody else's text and does not get to be unbounded in
        * Homatch's logs.
        */
+      lastError = {
+        code: Number.isFinite(code) ? code : null,
+        detail: String(err?.details ?? err?.message ?? '').slice(0, 300),
+        at: new Date().toISOString(),
+      };
+
       console.log(JSON.stringify({
         at: new Date().toISOString(),
         service: 'speech',

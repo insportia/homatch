@@ -119,3 +119,41 @@ test('there is exactly one implementation of the grant, and both callers use it'
       `${fn} must not mint a grant of its own`);
   }
 });
+
+test('the recogniser uses the v2 client, because the root export is v1', () => {
+  /*
+   * `import { SpeechClient } from '@google-cloud/speech'` is v1. It looks
+   * exactly like the import anybody would write, it compiles, it constructs,
+   * it connects, and it authenticates -- and then every v2 field we send is
+   * unknown to it, google-gax drops unknown fields instead of throwing, and
+   * Google receives empty messages. The error it returns names v1's own
+   * audio_content field and reads like a sequencing bug, which cost three
+   * deploys to see through.
+   *
+   * Nothing about that failure is visible in a type check or a unit test, so
+   * it is asserted at the import line, where it is decidable.
+   */
+  // Comments are stripped first: the file explaining this trap necessarily
+  // quotes the bad import, and a guard that fails on its own documentation
+  // teaches people to delete the documentation.
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  const files = ['../src/speech/GoogleSpeechStream.ts', '../src/speech/SpeechRegionProbe.ts'];
+  for (const rel of files) {
+    const src = strip(readFileSync(new URL(rel, import.meta.url), 'utf8'));
+    assert.ok(/import \{ v2 \} from '@google-cloud\/speech'/.test(src),
+      `${rel} must import the v2 namespace`);
+    assert.ok(!/import \{[^}]*\bSpeechClient\b[^}]*\} from '@google-cloud\/speech'/.test(src),
+      `${rel} must not import SpeechClient from the package root -- that is v1`);
+  }
+});
+
+test('the v2 client is the one that actually carries a recognizer path', async () => {
+  // Belt and braces: proves the alias resolves to something different from the
+  // root export, so the assertion above cannot pass against a package that
+  // quietly repointed its root at v2 (or a future one that removes v2).
+  const pkg = await import('@google-cloud/speech');
+  assert.ok(pkg.v2?.SpeechClient, 'the package must still expose a v2 client');
+  assert.notEqual(pkg.SpeechClient, pkg.v2.SpeechClient,
+    'if these ever become the same, this whole class of bug is gone and this test should be deleted');
+});

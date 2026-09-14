@@ -22,7 +22,12 @@
 // Keeping the two apart matters: this workstream has already mistaken one kind
 // of green light for another once.
 
-import { SpeechClient } from '@google-cloud/speech';
+// v2, named explicitly: the package root exports the v1 client, and v1 has
+// no chirp_3 and no `recognizer` field. See GoogleSpeechStream.ts.
+import { v2 } from '@google-cloud/speech';
+
+const SpeechClient = v2.SpeechClient;
+type SpeechClient = InstanceType<typeof v2.SpeechClient>;
 import { speechEndpoint } from './GoogleSpeechStream.js';
 
 /**

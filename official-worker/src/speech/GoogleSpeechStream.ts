@@ -26,7 +26,28 @@
 // The credential never leaves this process. The browser is handed a
 // short-lived grant that proves Homatch sent it, and nothing else.
 
-import { SpeechClient } from '@google-cloud/speech';
+/*
+ * v2, NAMED EXPLICITLY.
+ *
+ * `import { SpeechClient } from '@google-cloud/speech'` is the v1 client --
+ * the root export is an alias for v1.SpeechClient, which this package has
+ * never changed and which nothing in the import site suggests.
+ *
+ * Every request here is v2 shaped: a `recognizer` path, `streamingConfig`,
+ * `explicitDecodingConfig`, and `audio` for the frames. Handed to a v1 client
+ * those field names are all unknown, google-gax drops unknown fields rather
+ * than throwing, and what reaches Google is an empty message -- which it
+ * answers with "Malordered Data Received. Expected audio_content none was
+ * set.", naming v1's own field and describing a request nobody wrote.
+ *
+ * That error is why this took three deploys to find: it reads as a sequencing
+ * bug in perfectly correctly sequenced code, and chirp_3 does not exist in v1
+ * at all, so the model name was never the thing being rejected.
+ */
+import { v2 } from '@google-cloud/speech';
+
+const SpeechClient = v2.SpeechClient;
+type SpeechClient = InstanceType<typeof v2.SpeechClient>;
 
 /** Google closes a stream at five minutes; restart before it does. */
 const STREAM_RESTART_MS = 4 * 60 * 1000;

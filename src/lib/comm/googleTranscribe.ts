@@ -24,6 +24,15 @@
 
 import type { LiveCallbacks, LiveGrant, LiveSocket } from './liveTranscribe.ts';
 
+/**
+ * How long to let the worker finish after being told the speaker has stopped.
+ *
+ * Slightly longer than the worker's own grace so the decision belongs to the
+ * side that knows whether a sentence is still coming, and short enough that a
+ * worker which has stopped answering cannot leave a socket open on this page.
+ */
+const CLOSE_GRACE_MS = 5000;
+
 /** What the worker's recogniser is configured for. */
 export const GOOGLE_SAMPLE_RATE = 16_000;
 
@@ -144,11 +153,35 @@ export class GoogleTranscriber implements LiveSocket {
   close(): void {
     this.closed = true;
     this.ready = false;
-    // Tell the worker rather than vanishing, so it can end the Google stream
-    // cleanly instead of waiting out a timeout holding a paid connection.
-    try { this.socket?.send(JSON.stringify({ type: 'close' })); } catch { /* already */ }
-    try { this.socket?.close(); } catch { /* already */ }
+
+    /*
+     * SAY SO, THEN GIVE THE LAST SENTENCE A MOMENT TO COME BACK.
+     *
+     * Telling the worker is what lets it end the Google stream cleanly rather
+     * than waiting out a timeout on a paid connection. But hanging up in the
+     * same breath threw away the final transcript of the last utterance:
+     * Google flushes it only after the audio side half-closes, so the reply
+     * arrives a beat after the request to stop.
+     *
+     * The worker closes the socket itself once it has the sentence, or gives
+     * up on its own. This timer only exists for the case where it does
+     * neither, so the page is never left holding an open socket. Nothing here
+     * blocks the caller: close() returns immediately and the session moves on.
+     */
+    const socket = this.socket;
     this.socket = null;
+    if (!socket) return;
+
+    try { socket.send(JSON.stringify({ type: 'close' })); } catch { /* already */ }
+
+    if (socket.readyState !== WebSocket.OPEN) {
+      try { socket.close(); } catch { /* already */ }
+      return;
+    }
+    const giveUp = window.setTimeout(() => {
+      try { socket.close(); } catch { /* already */ }
+    }, CLOSE_GRACE_MS);
+    socket.addEventListener('close', () => window.clearTimeout(giveUp), { once: true });
   }
 
   private onEvent(event: MessageEvent): void {

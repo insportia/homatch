@@ -197,6 +197,8 @@ export class GoogleSpeechStream {
   private idleTimer: NodeJS.Timeout | null = null;
   private closed = false;
   private restarting = false;
+  /** Set once the speaker has stopped: no more audio, but the final still matters. */
+  private finishing = false;
   private pending: Uint8Array[] = [];
   private framesIn = 0;
   private bytesIn = 0;
@@ -223,7 +225,7 @@ export class GoogleSpeechStream {
    * the hot path free of Buffer's generic parameter.
    */
   write(chunk: Uint8Array): void {
-    if (this.closed || !chunk.length) return;
+    if (this.closed || this.finishing || !chunk.length) return;
     this.framesIn += 1;
     this.bytesIn += chunk.byteLength;
     this.touchIdle();
@@ -242,6 +244,34 @@ export class GoogleSpeechStream {
       // A broken pipe is a restart, not a failure of the conversation.
       this.restart('write_failed');
     }
+  }
+
+  /**
+   * The speaker has stopped. Stop sending audio; do NOT tear the stream down.
+   *
+   * WHY THIS IS NOT close()
+   *
+   * close() ends the gRPC stream and immediately removes its listeners, so
+   * anything Google sends afterwards lands on a stream nobody is listening to.
+   * That is correct for abandoning a session and quietly wrong for ending a
+   * sentence, because the final transcript is the last thing to arrive: Google
+   * flushes it AFTER the input half-closes.
+   *
+   * The result was a recogniser that produced interim Georgian all the way
+   * through an utterance and then lost the only version of it that was going
+   * to be acted on. The last thing somebody says in a conversation is not a
+   * good thing to drop.
+   *
+   * So the input half-closes, the listeners stay, the restart timer is
+   * cancelled -- a stream ending because we ended it must not be resurrected
+   * -- and the caller waits, briefly, for the sentence to come back.
+   */
+  halfClose(): void {
+    if (this.closed || this.finishing) return;
+    this.finishing = true;
+    this.clearRestart();
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+    try { this.stream?.end(); } catch { /* already gone */ }
   }
 
   close(): void {
@@ -363,7 +393,7 @@ export class GoogleSpeechStream {
     });
 
     s.on('end', () => {
-      if (this.closed || this.restarting) return;
+      if (this.closed || this.restarting || this.finishing) return;
       this.restart('stream_ended');
     });
 

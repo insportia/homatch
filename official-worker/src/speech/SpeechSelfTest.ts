@@ -53,6 +53,11 @@ const SAMPLE_RATE = 16_000;
 const FRAME_BYTES = (SAMPLE_RATE / 50) * 2;
 /** A 6-second clip plus recognition time; well under any sane request timeout. */
 const OVERALL_TIMEOUT_MS = 45_000;
+/** A second of silence after the clip, the way a person stops talking. */
+const TRAILING_SILENCE_MS = 1000;
+const TRAILING_SILENCE_BYTES = (SAMPLE_RATE / 1000) * TRAILING_SILENCE_MS * 2;
+const SILENCE_FRAME = new Uint8Array(FRAME_BYTES);
+
 /** How long to keep waiting for a final after the audio has all been sent. */
 const FINAL_GRACE_MS = 12_000;
 
@@ -227,10 +232,9 @@ export async function runSpeechSelfTest(
       sendTimer = setInterval(() => {
         if (ws.readyState !== WebSocket.OPEN) return;
 
-        if (offset >= audio.length) {
+        if (offset >= audio.length + TRAILING_SILENCE_BYTES) {
           if (sendTimer) clearInterval(sendTimer);
           sendTimer = null;
-          lastAudioAt = Date.now();
           // Tell the gateway the utterance is over, exactly as the browser
           // client does, then allow a bounded wait for the endpointer.
           try { ws.send(JSON.stringify({ type: 'close' })); } catch { /* closing */ }
@@ -239,7 +243,24 @@ export async function runSpeechSelfTest(
           return;
         }
 
-        const frame = audio.subarray(offset, Math.min(offset + FRAME_BYTES, audio.length));
+        /*
+         * TRAILING SILENCE, BECAUSE REAL SPEAKERS STOP TALKING.
+         *
+         * The fixture ends on the last syllable. Google's endpointer decides
+         * an utterance is over by hearing the pause after it, so a clip that
+         * stops dead gives it nothing to decide on and the final waits for the
+         * half-close instead. A second of silence is what a person leaves, and
+         * measuring end-of-speech against a pause that never happened would
+         * have measured the wrong thing anyway.
+         *
+         * lastAudioAt is stamped at the END of the speech, not the end of the
+         * silence: the wait a person feels starts when they stop talking.
+         */
+        const speechRemaining = offset < audio.length;
+        const frame = speechRemaining
+          ? audio.subarray(offset, Math.min(offset + FRAME_BYTES, audio.length))
+          : SILENCE_FRAME;
+        if (!speechRemaining && !lastAudioAt) lastAudioAt = Date.now();
         offset += frame.length;
         if (!firstAudioAt) firstAudioAt = Date.now();
         report.audioBytesSent += frame.length;

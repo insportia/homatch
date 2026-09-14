@@ -30,6 +30,16 @@ import { GoogleSpeechStream, speechConfigFromEnv, speechConfigProblem } from './
 
 export const SPEECH_PATH = '/speech/stream';
 
+/**
+ * How long to wait for Google's final after the speaker stops.
+ *
+ * Long enough for the endpointer to flush a sentence, short enough that a
+ * provider which has silently stopped answering does not hold the socket. Both
+ * outcomes are reported, so a session that ends without its last sentence says
+ * so rather than looking identical to one that did not.
+ */
+const FINAL_GRACE_MS = 4000;
+
 /** A grant older than this is refused even if the signature is good. */
 const MAX_GRANT_AGE_MS = 10 * 60 * 1000;
 
@@ -174,7 +184,16 @@ function serve(
 
   const stream = new GoogleSpeechStream({ ...cfg, languageCode: language }, {
     onInterim: (text) => send({ type: 'interim', text }),
-    onFinal: (text, confidence) => send({ type: 'final', text, confidence }),
+    onFinal: (text, confidence) => {
+      send({ type: 'final', text, confidence });
+      // The sentence the half-close was waiting for. Ordinary mid-conversation
+      // finals leave awaitingFinal null and change nothing here.
+      if (awaitingFinal) {
+        clearTimeout(awaitingFinal);
+        awaitingFinal = null;
+        finish(1000, 'CLIENT_DONE');
+      }
+    },
     onRestart: () => send({ type: 'restarted' }),
     onUnavailable: (reason) => {
       send({ type: 'unavailable', reason });
@@ -210,11 +229,36 @@ function serve(
     // The only text message worth understanding is "I have stopped".
     try {
       const msg = JSON.parse(String(data));
-      if (msg?.type === 'close') finish(1000, 'CLIENT_DONE');
+      if (msg?.type === 'close') endOfSpeech();
     } catch { /* anything else is ignored rather than trusted */ }
   });
 
-  ws.on('close', () => finish(1000, 'SOCKET_CLOSED'));
+  /**
+   * "I have stopped talking" is not "close this socket".
+   *
+   * It used to be, and the last utterance of every conversation paid for it:
+   * Google flushes the final transcript AFTER the input half-closes, so
+   * tearing the stream down on the client's own end-of-turn threw away the
+   * only version of that sentence anybody was going to act on. Interim text
+   * had been arriving the whole time, which made it look like it worked.
+   *
+   * Now the audio side closes, the listeners stay, and the socket waits --
+   * briefly, and never forever. If the final arrives the socket closes on it;
+   * if it does not, the wait ends on its own rather than holding a paid
+   * connection open on the chance.
+   */
+  let awaitingFinal: NodeJS.Timeout | null = null;
+
+  function endOfSpeech(): void {
+    if (ended || awaitingFinal) return;
+    stream.halfClose();
+    awaitingFinal = setTimeout(() => finish(1000, 'CLIENT_DONE_NO_FINAL'), FINAL_GRACE_MS);
+  }
+
+  ws.on('close', () => {
+    if (awaitingFinal) clearTimeout(awaitingFinal);
+    finish(1000, 'SOCKET_CLOSED');
+  });
   ws.on('error', () => finish(1011, 'SOCKET_ERROR'));
 
   stream.start();

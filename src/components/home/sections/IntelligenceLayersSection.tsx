@@ -28,6 +28,21 @@ import { useSectionField, useFieldProps } from '@/site/content';
  * with the first floor lit, which reads perfectly well.
  */
 
+/*
+ * The registry keys behind the four callouts, in the order they render.
+ *
+ * The storey (index 0) is deliberately not marked on the VALUE: it is the lit
+ * floor, computed from the active layer, and letting somebody type over it
+ * would let the number disagree with the drawing beside it. Its LABEL is
+ * editable like the rest.
+ */
+const CALLOUT_FIELDS: ReadonlyArray<readonly [string, string]> = [
+  ['bi_cal_floor', 'bi_val_floor'],
+  ['bi_cal_area', 'bi_val_area'],
+  ['bi_cal_rooms', 'bi_val_rooms'],
+  ['bi_cal_status', 'bi_val_status'],
+];
+
 const LAYERS = [
   { key: 'property', label: 'mp_layer_property', desc: 'mp_layer_property_d' },
   { key: 'project', label: 'mp_layer_project', desc: 'mp_layer_project_d' },
@@ -211,14 +226,20 @@ export function IntelligenceLayersSection() {
               <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-gold">
                 {String(active + 1).padStart(2, '0')} / {String(LAYERS.length).padStart(2, '0')}
               </p>
-              <p className="mt-1.5 text-pretty text-[19px] font-semibold leading-[1.15] text-white">
-                {t(LAYERS[active].label)}
+              <p
+                className="mt-1.5 text-pretty text-[19px] font-semibold leading-[1.15] text-white"
+                {...fp(`layer_${LAYERS[active].key}`)}
+              >
+                {sf(`layer_${LAYERS[active].key}`, LAYERS[active].label)}
               </p>
               {/* The finding, clamped so a long Georgian sentence cannot push
                   the row taller than the drawing beside it and make the page
                   jump on every tick. The whole sentence is directly below. */}
-              <p className="mt-2 line-clamp-4 text-pretty text-[14px] leading-[1.5] text-white/65">
-                {t(LAYERS[active].desc)}
+              <p
+                className="mt-2 line-clamp-4 text-pretty text-[14px] leading-[1.5] text-white/65"
+                {...fp(`layer_${LAYERS[active].key}_d`)}
+              >
+                {sf(`layer_${LAYERS[active].key}_d`, LAYERS[active].desc)}
               </p>
             </div>
           </div>
@@ -238,8 +259,16 @@ export function IntelligenceLayersSection() {
                   transition: `opacity 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms, transform 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms`,
                 }}
               >
-                <dt className="text-[13px] uppercase tracking-[0.14em] text-white/45">{callout.label}</dt>
-                <dd className="mt-0.5 text-pretty text-[17px] font-semibold leading-tight text-white">
+                <dt
+                  className="text-[13px] uppercase tracking-[0.14em] text-white/45"
+                  {...fp(CALLOUT_FIELDS[i][0])}
+                >
+                  {callout.label}
+                </dt>
+                <dd
+                  className="mt-0.5 text-pretty text-[17px] font-semibold leading-tight text-white"
+                  {...(i === 0 ? {} : fp(CALLOUT_FIELDS[i][1]))}
+                >
                   {i === 0 ? String(storeyOf(focusFloor)) : callout.value}
                 </dd>
               </div>
@@ -294,7 +323,8 @@ export function IntelligenceLayersSection() {
  * signal that survives a design review and not daylight.
  */
 function LayerList({ active, onPick }: { active: number; onPick: (i: number) => void }) {
-  const { t } = useLanguage();
+  const sf = useSectionField();
+  const fp = useFieldProps();
   return (
     <ul>
       {LAYERS.map((layer, i) => {
@@ -329,8 +359,9 @@ function LayerList({ active, onPick }: { active: number; onPick: (i: number) => 
                 className={`min-w-0 flex-1 text-pretty text-[17px] leading-snug transition-colors duration-300 motion-reduce:transition-none sm:text-lg ${
                   on ? 'font-semibold text-white' : 'font-medium text-white/55 group-hover:text-white/85'
                 }`}
+                {...fp(`layer_${layer.key}`)}
               >
-                {t(layer.label)}
+                {sf(`layer_${layer.key}`, layer.label)}
               </span>
             </button>
           </li>
@@ -348,12 +379,19 @@ function LayerList({ active, onPick }: { active: number; onPick: (i: number) => 
  * moves under the reader's eye while they are reading it.
  */
 function LayerPanel({ active }: { active: number }) {
-  const { t } = useLanguage();
+  const sf = useSectionField();
+  const fp = useFieldProps();
+  const layer = LAYERS[active];
   return (
     <div className="min-w-0 rounded-[0.9rem] border border-white/15 bg-[#171717] p-5 sm:p-6">
-      <p className="text-[14px] font-semibold uppercase tracking-[0.2em] text-gold">{t(LAYERS[active].label)}</p>
-      <p className="mt-3 min-h-[7.5rem] text-pretty text-sm leading-relaxed text-white/70 sm:min-h-[8.5rem]">
-        {t(LAYERS[active].desc)}
+      <p className="text-[14px] font-semibold uppercase tracking-[0.2em] text-gold" {...fp(`layer_${layer.key}`)}>
+        {sf(`layer_${layer.key}`, layer.label)}
+      </p>
+      <p
+        className="mt-3 min-h-[7.5rem] text-pretty text-sm leading-relaxed text-white/70 sm:min-h-[8.5rem]"
+        {...fp(`layer_${layer.key}_d`)}
+      >
+        {sf(`layer_${layer.key}_d`, layer.desc)}
       </p>
       <p className="border-t border-white/[0.12] pt-4 text-[14px] uppercase tracking-[0.16em] text-white/35">
         {String(active + 1).padStart(2, '0')} / {String(LAYERS.length).padStart(2, '0')}

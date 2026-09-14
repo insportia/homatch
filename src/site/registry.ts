@@ -197,6 +197,23 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('eyebrow', 'studio_f_eyebrow', 'mp_layers_eyebrow'),
       f('title', 'studio_f_title', 'mp_layers_title'),
       f('body', 'studio_f_body', 'mp_layers_sub', 'textarea'),
+      /* THE SEVEN LAYERS. The name of each one and the sentence explaining
+         it -- the section's entire argument, and until now the only part of
+         it nobody could change without a deploy. */
+      f('layer_property', 'mp_layer_property', 'mp_layer_property'),
+      f('layer_property_d', 'mp_layer_property_d', 'mp_layer_property_d', 'textarea'),
+      f('layer_project', 'mp_layer_project', 'mp_layer_project'),
+      f('layer_project_d', 'mp_layer_project_d', 'mp_layer_project_d', 'textarea'),
+      f('layer_location', 'mp_layer_location', 'mp_layer_location'),
+      f('layer_location_d', 'mp_layer_location_d', 'mp_layer_location_d', 'textarea'),
+      f('layer_market', 'mp_layer_market', 'mp_layer_market'),
+      f('layer_market_d', 'mp_layer_market_d', 'mp_layer_market_d', 'textarea'),
+      f('layer_demand', 'mp_layer_demand', 'mp_layer_demand'),
+      f('layer_demand_d', 'mp_layer_demand_d', 'mp_layer_demand_d', 'textarea'),
+      f('layer_contract', 'mp_layer_contract', 'mp_layer_contract'),
+      f('layer_contract_d', 'mp_layer_contract_d', 'mp_layer_contract_d', 'textarea'),
+      f('layer_financing', 'mp_layer_financing', 'mp_layer_financing'),
+      f('layer_financing_d', 'mp_layer_financing_d', 'mp_layer_financing_d', 'textarea'),
       /* THE BUILDING SCENE. Stage labels, callout labels and the
          illustrative values shown beside the analysed unit. The animation
          must not depend on literal English: it plays in six languages, and

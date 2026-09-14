@@ -50,9 +50,15 @@ test('every one of those functions still resolves the auth user', () => {
     if (!existsSync(path)) continue;
     const src = readFileSync(path, 'utf8');
     assert.match(src, /auth\.getUser\(\)/, `${path} no longer authenticates its caller`);
+    /* Declaration or assignment. outreach-send now resolves ownerId in one
+       of two branches -- a session, or the scheduler acting as the campaign's
+       stored owner -- so the binding is declared first and assigned inside
+       the branch. The fact under test is unchanged: where a CALLER supplies
+       the identity, it is the auth user id and never the profile id, which
+       the doesNotMatch above is what actually guards. */
     assert.match(
       src,
-      /const\s+ownerId\s*=\s*user\s*\.\s*id/,
+      /(?:const\s+)?ownerId\s*=\s*user\s*\.\s*id/,
       `${path} must own rows by the auth user id`,
     );
   }

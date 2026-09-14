@@ -341,3 +341,120 @@ test('the customer email body is not copied into the webhook audit row', () => {
   assert.equal(/p_payload:\s*body/.test(claim), false, 'the raw payload is stored');
   assert.match(claim, /p_payload: \{ kind:/);
 });
+
+/*
+ * ── WHAT RESEND ACTUALLY SENDS ────────────────────────────────────────────
+ *
+ * email.received carries METADATA ONLY. Resend's documentation says it in as
+ * many words: no body, no headers, no attachment contents. A webhook written
+ * against the obvious guess — data.text — therefore records every genuine
+ * reply as a message with nothing in it, and does so silently: the
+ * conversation opens, the notification fires, the inbox shows a blank line,
+ * and nothing anywhere is an error.
+ *
+ * These fix the payload shape in place, so a future edit that drops the
+ * second call fails here rather than in somebody's inbox.
+ */
+
+/** A real email.received envelope, field for field, per the provider docs. */
+const RECEIVED = {
+  type: 'email.received',
+  created_at: '2026-02-22T23:41:12.126Z',
+  data: {
+    email_id: '56761188-7520-42d8-8898-ff6fc54ce618',
+    created_at: '2026-02-22T23:41:11.894Z',
+    from: 'Nino Beridze <nino@example.ge>',
+    to: ['replies@reply.homatch.live'],
+    bcc: [],
+    cc: [],
+    received_for: ['replies@reply.homatch.live'],
+    message_id: '<111-222-333@email.example.com>',
+    subject: 'Re: your property',
+    tags: {},
+    attachments: [],
+  },
+};
+
+test('the received id survives normalisation, because the body needs a second call', () => {
+  const email = normaliseInboundEmail(RECEIVED, 'svix-fallback');
+  assert.ok(email, 'a real email.received envelope was not recognised');
+  assert.equal(email.providerEmailId, '56761188-7520-42d8-8898-ff6fc54ce618');
+  // The thing the provider does NOT send, so the parser must not invent it.
+  assert.equal(email.text, null);
+  assert.equal(email.html, null);
+});
+
+test('the message id is the RFC one, not the provider delivery id', () => {
+  const email = normaliseInboundEmail(RECEIVED, 'svix-fallback');
+  // Threading and message-level dedupe both key on this; the provider's own
+  // id changes per delivery and would make one message look like two.
+  assert.equal(email.messageId, '<111-222-333@email.example.com>');
+});
+
+test('the address it was DELIVERED to picks the tenant, not only the To header', () => {
+  /*
+   * They differ whenever a message was forwarded. Trusting the header alone
+   * resolves a genuine reply to nobody and files it as unroutable — the one
+   * outcome that looks like a configuration problem and is not.
+   */
+  const forwarded = {
+    ...RECEIVED,
+    data: {
+      ...RECEIVED.data,
+      to: ['someone-else@elsewhere.example'],
+      received_for: ['replies@reply.homatch.live'],
+    },
+  };
+  const email = normaliseInboundEmail(forwarded, 'svix-fallback');
+  assert.ok(email.to.includes('replies@reply.homatch.live'),
+    'the delivered-to address is not among the addresses tenant resolution sees');
+});
+
+test('an address appearing in both to and received_for is not counted twice', () => {
+  const email = normaliseInboundEmail(RECEIVED, 'svix-fallback');
+  const seen = email.to.filter((a) => a === 'replies@reply.homatch.live');
+  assert.equal(seen.length, 1);
+});
+
+test('the webhook fetches the body it was not sent', () => {
+  // The call site, not the comment that explains it.
+  assert.match(FN, /api\.resend\.com\/emails\/receiving\//,
+    'the received-email API is never called, so a real reply is recorded empty');
+  assert.match(FN, /fetchReceivedBody\(email\.providerEmailId\)/);
+  // Only when it has to. A payload that did carry a body must not cost a
+  // round trip per message.
+  assert.match(FN, /\(email\.text \|\| email\.html\) \? null : await fetchReceivedBody/);
+});
+
+test('a body that cannot be fetched loses the fetch, not the message', () => {
+  const fn = FN.slice(FN.indexOf('async function fetchReceivedBody'));
+  const body = fn.slice(0, fn.search(/\r?\n\}\r?\n/));
+  // Three ways it can fail, and all three return null rather than throwing:
+  // the sender, subject, thread and notification are all already known, and a
+  // reply without its text is worth more than no reply.
+  assert.equal((body.match(/return null;/g) ?? []).length >= 3, true,
+    'a failed body fetch is not survivable');
+  assert.equal(/throw /.test(body), false, 'a failed body fetch throws away the message');
+  assert.match(body, /body_unfetchable/, 'a failed fetch is invisible to anybody debugging it');
+});
+
+test('a delivery receipt updates the send it belongs to, exactly once', () => {
+  // Same signature check, same dedupe gate, different subject — and the
+  // dedupe must come first, or a retried bounce bounces one recipient twice.
+  const route = FN.search(/email\\\.\(delivered\|bounced\|complained/);
+  assert.ok(route > 0, 'outbound delivery events are not handled at all');
+  const handler = FN.slice(FN.indexOf('async function handleDeliveryEvent'));
+  const claim = handler.indexOf("sb.rpc('comm_claim_webhook_event'");
+  const apply = handler.indexOf("sb.rpc('outreach_apply_delivery_event'");
+  assert.ok(claim > 0 && apply > claim, 'a retried delivery event is applied twice');
+  assert.match(handler, /outreach_recompute_campaign_counters/,
+    'the campaign counters never learn about the delivery');
+});
+
+test('a delayed delivery is acknowledged and never written as an outcome', () => {
+  const handler = FN.slice(FN.indexOf('const DELIVERY_STATUS'));
+  // A delay means the message is still in flight. Writing a status for it
+  // would replace a true SENT with one the next event has to undo.
+  assert.equal(/delivery_delayed'\s*:/.test(handler), false,
+    'a delay is being recorded as though it were an outcome');
+});

@@ -852,7 +852,7 @@ export type CommunityRecStatus = 'PENDING' | 'OPEN' | 'POST_GENERATED' | 'COPIED
 export type SocialPostStatus = 'DRAFT' | 'REVIEWED' | 'POSTED' | 'SKIPPED' | 'CANCELLED';
 export type SocialPostMode = 'manual' | 'ai_draft' | 'shorter' | 'professional' | 'investor' | 'buyer' | 'translate';
 export type OutreachCampaignType = 'EMAIL' | 'SMS' | 'AI_CALL' | 'COMMUNITY' | 'DIRECT_MATCH' | 'MULTI_CHANNEL';
-export type OutreachCampaignStatus = 'DRAFT' | 'READY' | 'SCHEDULED' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
+export type OutreachCampaignStatus = 'DRAFT' | 'READY' | 'REVIEW_REQUIRED' | 'APPROVED' | 'SCHEDULED' | 'RUNNING' | 'PAUSED' | 'COMPLIANCE_PAUSED' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
 export type OutreachProvider = 'WIX' | 'AWS_SES' | 'RETELL' | 'VAPI' | 'TWILIO' | 'MOCK';
 export type OutreachQueueStatus = 'PENDING' | 'SUPPRESSED' | 'QUEUED' | 'SENDING' | 'SENT' | 'DELIVERED' | 'FAILED' | 'BOUNCED' | 'COMPLAINED' | 'OPTED_OUT';
 export type AiCallStatus = 'DRAFT' | 'QUEUED' | 'DIALING' | 'ANSWERED' | 'NO_ANSWER' | 'BUSY' | 'FAILED' | 'COMPLETED' | 'OPTED_OUT';
@@ -1022,6 +1022,13 @@ export interface OutreachCampaign {
   sms_template?: string;
   approved_by?: string;
   approved_at?: string;
+  /* PRODUCTION or LEGACY_MOCK. A campaign with any simulated send in its
+     history is LEGACY_MOCK for ever and can never be dispatched. */
+  send_eligibility?: 'PRODUCTION' | 'LEGACY_MOCK';
+  failed_count?: number;
+  last_send_error?: string;
+  launched_at?: string;
+  timezone?: string;
   metadata?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;

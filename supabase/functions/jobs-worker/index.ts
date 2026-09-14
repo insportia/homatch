@@ -26,6 +26,10 @@
 //                is service-role only by design, and the customer's own
 //                cancel RPC runs as the customer — so the release lands
 //                here, within one tick, through the ordinary ledger path.
+//   6. DISPATCH  launch outreach campaigns whose scheduled time has come.
+//                SCHEDULED has been a value in the status enum since the
+//                table was written and nothing ever acted on it, so a
+//                scheduled campaign sat at its scheduled time for ever.
 //
 // Authenticated by a shared secret in admin_settings, exactly as the existing
 // verify driver and continuous-matching-worker are. It belongs to no customer,
@@ -368,6 +372,100 @@ async function unstickDocuments(sb: Sb): Promise<{ recovered: number; failed: nu
 }
 
 /* ------------------------------------------------------------------ *
+ * 6. Dispatch due campaigns                                           *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Launch every campaign whose scheduled time has arrived.
+ *
+ * WHY THE CLAIM IS IN THE DATABASE
+ *
+ * This function runs every thirty seconds and a dispatch takes longer than
+ * that, so two ticks overlap as a matter of course rather than as an edge
+ * case. outreach_claim_due_campaigns() moves a row out of SCHEDULED with
+ * FOR UPDATE SKIP LOCKED, so exactly one tick can ever win a given campaign —
+ * the guarantee is a row lock, not a flag this function checks and then acts
+ * on a moment later.
+ *
+ * Underneath that, outreach-send claims each CONTACT the same way, against a
+ * unique index. So the two ways a scheduled send could double up — two ticks
+ * on one campaign, two batches on one contact — are both closed by the
+ * database rather than by timing.
+ *
+ * A campaign is dispatched ONE batch here. outreach-send is built to be
+ * called again to continue, and the next tick finds it RUNNING and carries
+ * on, which keeps a large audience off this function's wall clock.
+ */
+async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Promise<{
+  claimed: number; dispatched: number; failed: number;
+}> {
+  const { data: due, error } = await sb.rpc('outreach_claim_due_campaigns', { p_limit: 5 });
+  if (error) {
+    console.error('[jobs-worker] could not claim due campaigns:', error.message);
+    return { claimed: 0, dispatched: 0, failed: 0 };
+  }
+
+  const rows = (due ?? []) as { id: string; owner_id: string; campaign_type: string }[];
+  let dispatched = 0;
+  let failed = 0;
+
+  for (const row of rows) {
+    try {
+      const res = await fetch(`${url}/functions/v1/outreach-send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          /* The platform's verify_jwt is satisfied by the service key; the
+             x-cron-token is what outreach-send actually trusts, and it is the
+             same secret this function was itself authenticated with. */
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''}`,
+          'x-cron-token': cronToken,
+        },
+        body: JSON.stringify({ campaign_id: row.id }),
+      });
+      const body = await res.json().catch(() => ({})) as { blocked?: boolean; reason?: string };
+
+      if (body?.blocked) {
+        /*
+         * Refused, for a stated reason — the kill switch, a spend cap, email
+         * sending being off. The campaign does not go back to SCHEDULED: its
+         * time has passed, and silently re-arming it would send it at some
+         * unrelated later moment when the block happened to lift. It is
+         * recorded as FAILED with the reason, which is a thing the owner can
+         * see and re-schedule deliberately.
+         */
+        await sb.from('outreach_campaigns').update({
+          status: 'FAILED',
+          last_send_error: body.reason ?? 'BLOCKED',
+          updated_at: new Date().toISOString(),
+        }).eq('id', row.id).eq('status', 'RUNNING');
+        failed++;
+        continue;
+      }
+
+      if (!res.ok) {
+        await sb.from('outreach_campaigns').update({
+          status: 'FAILED',
+          last_send_error: `dispatch HTTP ${res.status}`,
+          updated_at: new Date().toISOString(),
+        }).eq('id', row.id).eq('status', 'RUNNING');
+        failed++;
+        continue;
+      }
+      dispatched++;
+    } catch (e) {
+      /* Left RUNNING on a transport failure, deliberately: outreach-send is
+         resumable and the next tick continues it. Marking it FAILED here
+         would turn one bad request into a cancelled campaign. */
+      console.error('[jobs-worker] dispatch failed for', row.id, e instanceof Error ? e.message : String(e));
+      failed++;
+    }
+  }
+
+  return { claimed: rows.length, dispatched, failed };
+}
+
+/* ------------------------------------------------------------------ *
  * Entry                                                               *
  * ------------------------------------------------------------------ */
 
@@ -384,7 +482,7 @@ serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    const [mirrored, docsStarted, unstuck, swept, refunded] = await Promise.all([
+    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns] = await Promise.all([
       mirror(sb),
       driveDocuments(sb, url, serviceKey),
       unstickDocuments(sb),
@@ -394,9 +492,10 @@ serve(async (req) => {
       sb.rpc('background_jobs_release_cancelled', { p_limit: 25 })
         .then((r) => r.data)
         .catch(() => null),
+      dispatchDueCampaigns(sb, url, expected),
     ]);
 
-    return json({ ok: true, mirrored, docsStarted, unstuck, swept, refunded });
+    return json({ ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));
     return json({ error: 'internal_error' }, 500);

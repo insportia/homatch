@@ -179,6 +179,16 @@ export interface InboundEmail {
   eventType: string;
   /** The message id, for threading and for message-level dedupe. */
   messageId: string | null;
+  /*
+   * The provider's id for the RECEIVED email, which is neither the delivery
+   * id nor the RFC message id.
+   *
+   * Resend's email.received carries metadata ONLY -- its own documentation
+   * says so in as many words: no body, no headers, no attachment contents.
+   * The body is a second call against this id, and without it a real reply is
+   * recorded as a message with nothing in it.
+   */
+  providerEmailId: string | null;
   fromAddress: string;
   fromName: string | null;
   /** Every address it was addressed to, lowercased. */
@@ -270,9 +280,22 @@ export function normaliseInboundEmail(body: unknown, eventIdFallback: string): I
   const from = parseAddress(data.from);
   if (!from.address) return null;
 
-  const to = asArray(data.to)
+  /*
+   * Every address this arrived AT, because that is what picks the tenant.
+   *
+   * `to` is the To header the sender wrote. `received_for` is the address the
+   * provider actually delivered to, and the two differ whenever a message was
+   * forwarded -- exactly the case where trusting the header alone resolves to
+   * nobody and a genuine reply is filed as unroutable.
+   */
+  const to = [...asArray(data.to), ...asArray(data.received_for)]
     .map(v => (typeof v === 'string' ? parseAddress(v).address : null))
-    .filter((v): v is string => Boolean(v));
+    .filter((v): v is string => Boolean(v))
+    .filter((v, i, all) => all.indexOf(v) === i);
+
+  const providerEmailId = typeof data.email_id === 'string' && data.email_id
+    ? data.email_id
+    : (typeof data.id === 'string' && data.id ? data.id : null);
 
   const messageId = header(data, 'message-id')
     ?? (typeof data.message_id === 'string' ? data.message_id : null)
@@ -291,6 +314,7 @@ export function normaliseInboundEmail(body: unknown, eventIdFallback: string): I
     eventId,
     eventType,
     messageId,
+    providerEmailId,
     fromAddress: from.address,
     fromName: from.name,
     to,

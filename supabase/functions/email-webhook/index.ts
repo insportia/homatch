@@ -93,6 +93,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response('ok', { status: 200 });
   }
 
+  /*
+   * ── ONE ENDPOINT, BOTH DIRECTIONS ─────────────────────────────────
+   *
+   * A delivery receipt for mail WE sent arrives at the same URL, signed with
+   * the same secret, as a reply somebody wrote. Splitting them into two
+   * endpoints would mean two Resend webhooks, two signing secrets and two
+   * chances for one of them to be configured and the other forgotten.
+   *
+   * They are different events about different things, so they are routed
+   * apart here and share nothing but the signature check and the dedupe.
+   */
+  const eventType = String((body as { type?: unknown })?.type ?? '');
+  if (/^email\.(delivered|bounced|complained|delivery_delayed)$/.test(eventType)) {
+    const sb = serviceClient();
+    try {
+      await handleDeliveryEvent(sb, body, eventType, headers.id ?? '');
+    } catch (e) {
+      logEvent('email-webhook', 'delivery_event_failed', {
+        type: eventType, error: redact((e as Error)?.message),
+      });
+    }
+    return new Response('ok', { status: 200 });
+  }
+
   const email = normaliseInboundEmail(body, headers.id ?? '');
   if (!email) {
     /* Not an inbound email: a delivery receipt, a bounce, an event type added
@@ -131,6 +155,124 @@ Deno.serve(async (req: Request): Promise<Response> => {
 });
 
 type Sb = ReturnType<typeof serviceClient>;
+
+/** The provider's vocabulary, in outreach_sends'. */
+const DELIVERY_STATUS: Record<string, string> = {
+  'email.delivered': 'DELIVERED',
+  'email.bounced': 'BOUNCED',
+  'email.complained': 'COMPLAINED',
+};
+
+/**
+ * What became of a message this product sent.
+ *
+ * Deduplicated through the SAME claim a reply goes through, keyed on the
+ * provider's delivery id: a provider retries a webhook it did not get a 200
+ * for, and applying the same bounce twice would bounce one recipient twice in
+ * the counters.
+ *
+ * `email.delivery_delayed` is acknowledged and deliberately NOT applied. A
+ * delay is not an outcome -- the message is still in flight, and writing a
+ * status for it would replace a true SENT with a state the next event has to
+ * undo.
+ */
+async function handleDeliveryEvent(
+  sb: Sb, body: unknown, eventType: string, eventIdFallback: string,
+): Promise<void> {
+  const data = ((body as { data?: unknown })?.data ?? {}) as Record<string, unknown>;
+  const envelopeId = (body as { id?: unknown })?.id;
+  const eventId = typeof envelopeId === 'string' && envelopeId
+    ? envelopeId
+    : `${eventType}:${typeof data.email_id === 'string' ? data.email_id : eventIdFallback}`;
+
+  const { data: shouldProcess, error: claimError } = await sb.rpc('comm_claim_webhook_event', {
+    p_provider: 'RESEND',
+    p_event_key: eventId,
+    p_event_type: eventType,
+    p_payload: { kind: eventType, at: new Date().toISOString() },
+  });
+  if (claimError) throw new Error(`dedup claim failed: ${claimError.message}`);
+  if (!shouldProcess) {
+    logEvent('email-webhook', 'duplicate_dropped', { eventId });
+    return;
+  }
+
+  const status = DELIVERY_STATUS[eventType];
+  if (!status) {
+    // delivery_delayed, and anything added later. Claimed, so a retry of it
+    // is quiet, and then left alone.
+    await sb.rpc('comm_finish_webhook_event', {
+      p_provider: 'RESEND', p_event_key: eventId, p_error: null,
+    });
+    return;
+  }
+
+  /* The id Resend gave us when we sent it, which is what outreach-send stored
+     in provider_message_id. It is the only identifier both sides hold. */
+  const providerMessageId = typeof data.email_id === 'string' ? data.email_id : null;
+  const { data: campaignId, error } = await sb.rpc('outreach_apply_delivery_event', {
+    p_provider_message_id: providerMessageId,
+    p_status: status,
+    p_raw: eventType,
+  });
+  if (error) throw new Error(`apply delivery event failed: ${error.message}`);
+
+  if (!campaignId) {
+    /* A delivery receipt for mail this product did not send through a
+       campaign -- a transactional email, or one sent before these rows
+       existed. Not an error, and recorded so it is visible rather than
+       silently dropped. */
+    logEvent('email-webhook', 'delivery_event_unmatched', { type: eventType });
+    await sb.rpc('comm_finish_webhook_event', {
+      p_provider: 'RESEND', p_event_key: eventId, p_error: 'no matching send',
+    });
+    return;
+  }
+
+  await sb.rpc('outreach_recompute_campaign_counters', { p_campaign_id: campaignId });
+  logEvent('email-webhook', 'delivery_event_applied', { type: eventType, status });
+  await sb.rpc('comm_finish_webhook_event', {
+    p_provider: 'RESEND', p_event_key: eventId, p_error: null,
+  });
+}
+
+/**
+ * The body of a received email, from the provider's own store.
+ *
+ * Returns null on every failure rather than throwing. A body we could not
+ * fetch must not lose the message: the sender, the subject, the thread and
+ * the notification are all already known, and a reply recorded without its
+ * text is worth more to the person reading the inbox than no reply at all.
+ * The reason goes to the log, where somebody can see it.
+ */
+async function fetchReceivedBody(
+  providerEmailId: string | null,
+): Promise<{ text: string | null; html: string | null } | null> {
+  if (!providerEmailId) return null;
+  const key = Deno.env.get('RESEND_API_KEY');
+  if (!key) {
+    logEvent('email-webhook', 'body_unfetchable', { reason: 'RESEND_API_KEY_UNSET' });
+    return null;
+  }
+  try {
+    const res = await fetch(
+      `https://api.resend.com/emails/receiving/${encodeURIComponent(providerEmailId)}`,
+      { headers: { Authorization: `Bearer ${key}` } },
+    );
+    if (!res.ok) {
+      logEvent('email-webhook', 'body_unfetchable', { reason: `HTTP_${res.status}` });
+      return null;
+    }
+    const json = await res.json() as { text?: unknown; html?: unknown };
+    return {
+      text: typeof json.text === 'string' ? json.text : null,
+      html: typeof json.html === 'string' ? json.html : null,
+    };
+  } catch (e) {
+    logEvent('email-webhook', 'body_unfetchable', { reason: redact((e as Error)?.message) });
+    return null;
+  }
+}
 
 async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
   // THE dedup gate. Everything below runs at most once per delivery, ever.
@@ -172,7 +314,22 @@ async function handleInbound(sb: Sb, email: InboundEmail): Promise<void> {
     return;
   }
 
-  const body = email.text ?? stripHtml(email.html) ?? '';
+  /*
+   * THE BODY IS A SECOND CALL.
+   *
+   * Resend's email.received carries metadata only -- "webhooks do not include
+   * the email body, headers, or attachments, only their metadata" is their
+   * own sentence. So a webhook that reads data.text records every genuine
+   * reply as a message with nothing in it, and it does that silently: the
+   * conversation opens, the notification fires, the inbox shows a blank line,
+   * and nothing anywhere is an error.
+   *
+   * It is fetched here rather than in the pure module because it needs the
+   * network and the API key, and the shape the module normalises stays a
+   * function of its argument.
+   */
+  const fetched = (email.text || email.html) ? null : await fetchReceivedBody(email.providerEmailId);
+  const body = email.text ?? fetched?.text ?? stripHtml(email.html ?? fetched?.html ?? null) ?? '';
   const sentAt = email.sentAt ?? new Date().toISOString();
 
   const { data, error } = await sb.rpc('comm_record_inbound', {

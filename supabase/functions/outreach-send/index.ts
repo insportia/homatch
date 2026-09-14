@@ -49,33 +49,71 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
-    const { data: { user }, error: authErr } = await createClient(
-      Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    ).auth.getUser();
-    if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
-
     /*
-     * The AUTH id owns the row, not the profile id.
+     * ── TWO CALLERS, AND ONLY ONE OF THEM IS A PERSON ─────────
      *
-     * outreach_sends.owner_id carries no foreign key, so writing
-     * public.users.id here did not fail — it produced send records that the
-     * owner's own SELECT policy (owner_id = auth.uid()) does not match, i.e.
-     * a campaign history invisible to the person whose campaign it was. The
-     * profile lookup stays as the check that this caller is a customer.
+     * A scheduled campaign fires from the jobs-worker tick, where there is no
+     * session and no browser: the owner decided when they scheduled it, and
+     * the dispatch happens minutes or days later.
+     *
+     * So worker mode proves it is the scheduler with the SAME shared secret
+     * jobs-worker itself is authenticated by — admin_settings.jobs_worker_token,
+     * which lives server-side and is never sent to a browser — and takes the
+     * owner from the campaign row rather than from a user. It is deliberately
+     * NOT a way to send somebody else's campaign: it cannot name an owner, it
+     * can only act as the one already stored on the row it was given.
+     *
+     * A request with neither a session nor that token is refused, as before.
      */
-    const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
-    if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
-    const ownerId = user.id;
+    const cronToken = req.headers.get('x-cron-token');
+    let workerMode = false;
+    if (cronToken) {
+      const { data: tokenRow } = await supabase.from('admin_settings')
+        .select('value').eq('key', 'jobs_worker_token').maybeSingle();
+      const expected = (tokenRow as { value?: unknown } | null)?.value;
+      const expectedStr = expected == null ? '' : (typeof expected === 'string' ? expected : String(expected));
+      if (!expectedStr || cronToken !== expectedStr) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+      }
+      workerMode = true;
+    }
+
+    let ownerId: string;
+    if (!workerMode) {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+      const { data: { user }, error: authErr } = await createClient(
+        Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } }
+      ).auth.getUser();
+      if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+
+      /*
+       * The AUTH id owns the row, not the profile id.
+       *
+       * outreach_sends.owner_id carries no foreign key, so writing
+       * public.users.id here did not fail — it produced send records that the
+       * owner's own SELECT policy (owner_id = auth.uid()) does not match, i.e.
+       * a campaign history invisible to the person whose campaign it was. The
+       * profile lookup stays as the check that this caller is a customer.
+       */
+      const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
+      if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
+      ownerId = user.id;
+    } else {
+      ownerId = '';
+    }
 
     const { campaign_id } = await req.json();
     if (!campaign_id) return new Response(JSON.stringify({ error: 'campaign_id required' }), { status: 400, headers: corsHeaders });
 
-    const { data: campaign, error: campErr } = await supabase.from('outreach_campaigns')
-      .select('*').eq('id', campaign_id).eq('owner_id', ownerId).maybeSingle();
+    let campaignQuery = supabase.from('outreach_campaigns').select('*').eq('id', campaign_id);
+    // A session may only reach its own campaign. The worker is already scoped
+    // by the id the claim function handed it, and adopts that row's owner.
+    if (!workerMode) campaignQuery = campaignQuery.eq('owner_id', ownerId);
+    const { data: campaign, error: campErr } = await campaignQuery.maybeSingle();
     if (campErr || !campaign) return new Response(JSON.stringify({ error: 'Campaign not found' }), { status: 404, headers: corsHeaders });
+    if (workerMode) ownerId = campaign.owner_id as string;
     if (['COMPLETED', 'CANCELLED'].includes(campaign.status)) {
       return new Response(JSON.stringify({ error: `Campaign is ${campaign.status}, cannot send` }), { status: 400, headers: corsHeaders });
     }
@@ -108,6 +146,47 @@ serve(async (req) => {
     const callingEnabled = channel === 'AI_CALL' && truthy(fm['outreach_calling_enabled']);
     const realProviderName = channel === 'EMAIL' ? 'RESEND' : channel === 'SMS' ? 'TWILIO' : 'RETELL';
     const realEnabled = emailEnabled || smsEnabled || callingEnabled;
+
+    /*
+     * ── EMAIL IS NEVER SIMULATED ──────────────────────────────
+     *
+     * Every other refusal in this function is about money or safety. This one
+     * is about the record.
+     *
+     * With the flag off, getEmailAdapter returns the mock adapter, and the
+     * loop below writes outreach_sends rows with status SENT and a
+     * mock_email_... id, then increments sent_count. Nothing distinguishes
+     * that campaign card from one whose mail actually arrived -- the counters
+     * are the same counters -- so the product ends up asserting deliveries
+     * that never happened, to the person deciding whether outreach works.
+     *
+     * Refusing costs the ability to rehearse a send end to end. Recording a
+     * fiction as a fact costs the ability to believe the screen. SMS and
+     * voice keep their mock path, which is why the LEGACY_MOCK trigger still
+     * has work to do.
+     */
+    if (channel === 'EMAIL' && !emailEnabled) {
+      return new Response(JSON.stringify({
+        blocked: true, reason: 'EMAIL_SENDING_NOT_ENABLED',
+        message: 'Real email sending is off, and this campaign will not be simulated: a simulated send would be recorded as delivered. Enable outreach_email_sending_enabled with provider RESEND in Admin to send.',
+      }), { status: 423, headers: corsHeaders });
+    }
+
+    /*
+     * A campaign that was ever simulated can never be sent.
+     *
+     * Not "should not" -- the whole point is that turning the provider on
+     * later must not flush a rehearsal to real recipients who were never
+     * chosen for a real campaign. The mark is set by a database trigger on
+     * the send row, so it does not depend on this function having been the
+     * one that wrote it.
+     */
+    if (campaign.send_eligibility === 'LEGACY_MOCK') {
+      return new Response(JSON.stringify({
+        blocked: true, reason: 'CAMPAIGN_IS_LEGACY_MOCK',
+        message: 'This campaign has simulated sends in its history and can never be dispatched to real recipients. Duplicate it to send.',
+      }), { status: 423, headers: corsHeaders });
+    }
 
     if (realEnabled) {
       const cap = await checkSpendCap(supabase, realProviderName);

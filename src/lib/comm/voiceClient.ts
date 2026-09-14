@@ -41,7 +41,7 @@ import {
   Resampler, floatToPcm16, rms, encodeWav, joinBlocks, bytesToBase64,
   TARGET_SAMPLE_RATE,
 } from './audio.ts';
-import { LiveTranscriber, LIVE_SAMPLE_RATE, type LiveGrant } from './liveTranscribe.ts';
+import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
 
 
 /**
@@ -187,6 +187,9 @@ export interface VoiceDiagnostics {
   /** Which transcription path is carrying this session. */
   liveMode: 'live' | 'batch';
   liveModel: string | null;
+  /** Which provider granted the socket, and how many terms it was primed with. */
+  liveProvider: string | null;
+  liveKeyterms: number | null;
   /** Why the live path was given up on, when it was. */
   liveFellBack: string | null;
   /** What the speech provider said when it refused. A code and a status. */
@@ -336,7 +339,7 @@ export class VoiceSession {
   private resampler: Resampler | null = null;
   /** A second conversion, to the rate the live socket was opened at. */
   private liveResampler: Resampler | null = null;
-  private live: LiveTranscriber | null = null;
+  private live: LiveSocket | null = null;
   /** The id of the user turn currently being revised by partial text. */
   private livePartialId: string | null = null;
   private playbackTime = 0;
@@ -386,6 +389,8 @@ export class VoiceSession {
     playbacks: 0, lastError: null as string | null,
     liveMode: 'batch' as 'live' | 'batch',
     liveModel: null as string | null,
+    liveProvider: null as string | null,
+    liveKeyterms: null as number | null,
     liveFellBack: null as string | null,
     voiceFailure: null as string | null,
   };
@@ -545,6 +550,8 @@ export class VoiceSession {
       lastError: this.diag.lastError,
       liveMode: this.diag.liveMode,
       liveModel: this.diag.liveModel,
+      liveProvider: this.diag.liveProvider,
+      liveKeyterms: this.diag.liveKeyterms,
       liveFellBack: this.diag.liveFellBack,
       voiceFailure: this.diag.voiceFailure,
       state: this.state,
@@ -788,8 +795,11 @@ export class VoiceSession {
     try { grant = await this.cb.onListenGrant(); } catch { grant = null; }
     if (!grant?.token || this.closed) { this.diag.liveMode = 'batch'; return; }
 
+    // The provider decides the rate, because ElevenLabs mints its token for
+    // 16 kHz and OpenAI's socket runs at 24. Resampling to the wrong one is
+    // silence with the right byte count.
     const rate = grant.sampleRate ?? LIVE_SAMPLE_RATE;
-    const live = new LiveTranscriber(grant, {
+    const live = createTranscriber(grant, {
       onSpeechStart: () => {
         this.lastVoiceAt = Date.now();
         if (this.state === 'UNDERSTANDING' && !this.turnInFlight) this.setState('LISTENING');
@@ -822,6 +832,8 @@ export class VoiceSession {
     this.liveResampler = new Resampler(this.audioContext.sampleRate, rate);
     this.diag.liveMode = 'live';
     this.diag.liveModel = grant.model ?? null;
+    this.diag.liveProvider = grant.provider ?? null;
+    this.diag.liveKeyterms = grant.keyterms?.length ?? null;
   }
 
   /** Words that are still arriving. Shown, never committed. */

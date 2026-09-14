@@ -26,6 +26,8 @@
 // transcription alone: it cannot generate text, cannot generate speech, and
 // expires in minutes.
 
+import { ScribeTranscriber } from './scribeTranscribe.ts';
+
 const REALTIME_URL = 'wss://api.openai.com/v1/realtime?intent=transcription';
 
 /** The rate the socket is configured for, server-side. */
@@ -35,6 +37,41 @@ export interface LiveGrant {
   token: string;
   model?: string;
   sampleRate?: number;
+  /**
+   * Which protocol this token speaks.
+   *
+   * Decided server-side by which provider actually answered, not by the
+   * browser. ELEVENLABS leads because it is the one that can write Georgian;
+   * OPENAI is what carried this before and stays as the fallback.
+   */
+  provider?: 'ELEVENLABS' | 'OPENAI';
+  /**
+   * The terms the transcriber should be primed with, already chosen.
+   *
+   * A few dozen, selected server-side for this conversation out of a corpus
+   * of over a thousand. The browser sends what it is given and never adds to
+   * it -- see scribeTranscribe.ts for why that matters.
+   */
+  keyterms?: string[];
+  /** Sent only once the conversation has settled into a language. */
+  languageCode?: string | null;
+}
+
+/**
+ * What a transcription socket has to be, whoever is carrying it.
+ *
+ * Small on purpose: the session decides what a finished sentence means, and
+ * a socket that also had opinions about turns would mean two things deciding
+ * when somebody stopped talking.
+ */
+export interface LiveSocket {
+  readonly isReady: boolean;
+  readonly frames: number;
+  readonly bytes: number;
+  open(timeoutMs?: number): Promise<boolean>;
+  setGated(gated: boolean): void;
+  append(pcm: Int16Array): void;
+  close(): void;
 }
 
 export interface LiveCallbacks {
@@ -57,7 +94,7 @@ export interface LiveCallbacks {
  * about turns, playback, or state — the session does, and keeping that here
  * would mean two things deciding when somebody has finished speaking.
  */
-export class LiveTranscriber {
+export class LiveTranscriber implements LiveSocket {
   private socket: WebSocket | null = null;
   private closed = false;
   private ready = false;
@@ -214,4 +251,17 @@ function toBase64(pcm: Int16Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   }
   return btoa(binary);
+}
+
+/**
+ * The socket for whichever provider the server granted.
+ *
+ * The branch is here and nowhere else. A caller asks for a transcriber and
+ * gets one; it does not learn a protocol, and neither implementation learns
+ * about the other.
+ */
+export function createTranscriber(grant: LiveGrant, cb: LiveCallbacks): LiveSocket {
+  return grant.provider === 'ELEVENLABS'
+    ? new ScribeTranscriber(grant, cb)
+    : new LiveTranscriber(grant, cb);
 }

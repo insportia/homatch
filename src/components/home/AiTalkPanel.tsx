@@ -196,6 +196,16 @@ export function AiTalkPanel({ className }: { className?: string }) {
   const sessionIdRef = useRef<string | null>(null);
   const grantedRef = useRef<number>(0);
   const detectedRef = useRef<string | null>(null);
+  /*
+   * The language the session has SETTLED on, and whether it is settled.
+   *
+   * Separate from detectedRef because a grant is asked for mid-conversation
+   * and the answer to "which language" changes as somebody talks. A hint sent
+   * before the session is sure is worse than no hint: it pins the transcriber
+   * to a guess.
+   */
+  const languageRef = useRef<string | null>(null);
+  const languageLockedRef = useRef(false);
   /** What the conversation already knows. Carried between turns, not re-derived. */
   const knownRef = useRef<unknown>(null);
   /** Sent with each turn so the reply is in context. Bounded to recent turns. */
@@ -281,7 +291,11 @@ export function AiTalkPanel({ className }: { className?: string }) {
       {
         onState: (s) => setState(s),
         onTranscript: (next) => setTurns([...next]),
-        onLanguage: (lang) => { detectedRef.current = lang; },
+        onLanguage: (lang, locked) => {
+          detectedRef.current = lang;
+          languageRef.current = lang;
+          languageLockedRef.current = locked;
+        },
         onLevel: (l) => { inputLevel.current = l; },
         onSecondsConsumed: (consumed) => setRemaining(Math.max(0, grantedRef.current - consumed)),
         onError: (code) => setFailure(code),
@@ -321,13 +335,30 @@ export function AiTalkPanel({ className }: { className?: string }) {
         onListenGrant: async () => {
           if (!sessionIdRef.current) return null;
           const { data: ear, error: earError } = await supabase.functions.invoke('ai-talk-session', {
-            body: { action: 'listen', sessionId: sessionIdRef.current },
+            body: {
+              action: 'listen',
+              sessionId: sessionIdRef.current,
+              // Only once the conversation has settled. Sending the page
+              // locale is how a Russian speaker reading a Georgian page gets
+              // Georgian letters back.
+              languageHint: languageLockedRef.current ? languageRef.current : null,
+            },
           });
           const grant = ear as {
             ok?: boolean; token?: string; model?: string; sampleRate?: number;
+            provider?: 'ELEVENLABS' | 'OPENAI'; keyterms?: string[];
           } | null;
           if (earError || !grant?.ok || !grant.token) return null;
-          return { token: grant.token, model: grant.model, sampleRate: grant.sampleRate };
+          return {
+            token: grant.token,
+            model: grant.model,
+            sampleRate: grant.sampleRate,
+            // Which protocol the socket speaks, decided by which provider
+            // actually answered rather than by anything the browser assumes.
+            provider: grant.provider,
+            keyterms: grant.keyterms,
+            languageCode: languageLockedRef.current ? languageRef.current : null,
+          };
         },
 
         /*

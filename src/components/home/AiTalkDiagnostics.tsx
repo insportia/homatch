@@ -117,7 +117,9 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
       <Row
         label="Transcription"
         value={d.liveMode === 'live'
-          ? `live${d.liveModel ? ` (${d.liveModel})` : ''}`
+          ? `live${d.liveProvider ? ` · ${d.liveProvider}` : ''}`
+            + `${d.liveModel ? ` (${d.liveModel})` : ''}`
+            + `${d.liveKeyterms ? ` · ${d.liveKeyterms} keyterms` : ''}`
           : `batch${d.liveFellBack ? ` — fell back: ${d.liveFellBack}` : ''}`}
         tone={d.liveMode === 'live' ? 'good' : 'idle'}
       />

@@ -295,12 +295,62 @@ test('only one transcriber consumes the microphone at a time', () => {
 });
 
 test('our own voice is discarded rather than transcribed as theirs', () => {
-  const src = read('../comm/liveTranscribe.ts');
-  const at = src.indexOf('setGated(gated: boolean)');
-  assert.ok(at > 0, 'the gate is gone');
-  const branch = src.slice(at, at + 400);
-  assert.ok(/input_audio_buffer\.clear/.test(branch),
-    'ungating must clear what the socket buffered while the assistant was speaking');
+  /*
+   * Checked for BOTH sockets, because there are two protocols now.
+   *
+   * The guarantee is the same either way: nothing the microphone picks up of
+   * Homatch's own voice reaches a transcriber. How it is kept differs. Every
+   * implementation refuses to send while gated, which is the strong half; the
+   * OpenAI socket additionally clears the buffer it may already hold, because
+   * that protocol accumulates server-side and ElevenLabs' does not.
+   */
+  for (const file of ['../comm/liveTranscribe.ts', '../comm/scribeTranscribe.ts']) {
+    const src = read(file);
+    // The implementation's own gate, not the interface's declaration of one.
+    const at = src.indexOf('  setGated(gated: boolean): void {');
+    assert.ok(at > 0, `the gate is gone from ${file}`);
+    const branch = src.slice(at, at + 400);
+
+    const append = src.indexOf('  append(pcm: Int16Array): void {');
+    assert.ok(append > 0, `the append is gone from ${file}`);
+    assert.ok(/if \(!this\.isReady \|\| this\.gated/.test(src.slice(append, append + 200)),
+      `${file} must not send a frame while the assistant is speaking`);
+
+    if (file.includes('liveTranscribe')) {
+      assert.ok(/input_audio_buffer\.clear/.test(branch),
+        'ungating must clear what the OpenAI socket buffered while the assistant was speaking');
+    }
+  }
+});
+
+test('the two transcription sockets never speak each other protocol', () => {
+  /*
+   * A message name that belongs to the wrong provider is silently ignored by
+   * the one that receives it, and the conversation simply stops producing
+   * transcripts. Keeping the vocabularies disjoint is what makes that a build
+   * failure instead of a quiet one.
+   */
+  // Comments stripped first: each file's header explains the OTHER protocol
+  // to say why it is a separate file, and that prose is the documentation,
+  // not a leak.
+  const code = (file) => read(file)
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/^\s*\/\/.*$/gm, ' ');
+
+  const openai = code('../comm/liveTranscribe.ts');
+  const scribe = code('../comm/scribeTranscribe.ts');
+
+  assert.ok(!/input_audio_chunk|committed_transcript|partial_transcript/.test(openai),
+    'the OpenAI socket has picked up ElevenLabs message names');
+  assert.ok(!/input_audio_buffer|conversation\.item\.input_audio_transcription/.test(scribe),
+    'the ElevenLabs socket has picked up OpenAI message names');
+
+  // And the choice between them is made in exactly one place, from what the
+  // server said rather than from anything the browser assumed.
+  const at = read('../comm/liveTranscribe.ts').indexOf('export function createTranscriber(');
+  assert.ok(at > 0, 'the factory is gone');
+  assert.ok(/grant\.provider === 'ELEVENLABS'/.test(read('../comm/liveTranscribe.ts').slice(at, at + 400)),
+    'the provider must come from the grant');
 });
 
 test('the live path is an optimisation, and the server says so', () => {

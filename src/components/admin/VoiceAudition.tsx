@@ -108,6 +108,18 @@ export function VoiceAudition() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [shared, setShared] = useState<SharedVoice[]>([]);
   const [sharedSearch, setSharedSearch] = useState('');
+  /*
+   * WHOSE LANGUAGE TO SEARCH FOR, WHICH IS NOT ALWAYS THE ONE BEING SPOKEN.
+   *
+   * The provider has no Georgian speaker at all. The nearest thing available
+   * is a speaker of a language that shares more sounds with Georgian than
+   * English does — a native Russian speaker has the rolled r and the vowel
+   * timing, even though ღ, ყ and წ exist in neither. That is a lesser evil
+   * and not a native accent, and it is worth being able to HEAR rather than
+   * argue about, which means searching for one language while auditioning
+   * another.
+   */
+  const [speakerLanguage, setSpeakerLanguage] = useState('ka');
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const wanted = useRef<string | null>(null);
@@ -202,10 +214,12 @@ export function VoiceAudition() {
 
   const findShared = useCallback(async () => {
     setSearching(true);
-    const out = await searchSharedVoices({ language, search: sharedSearch.trim() || undefined, limit: 40 });
+    const out = await searchSharedVoices({
+      language: speakerLanguage, search: sharedSearch.trim() || undefined, limit: 40,
+    });
     setSearching(false);
     setShared(out?.voices ?? []);
-  }, [language, sharedSearch]);
+  }, [speakerLanguage, sharedSearch]);
 
   const addShared = useCallback(async (v: SharedVoice) => {
     setAdding(v.voiceId);
@@ -474,18 +488,32 @@ export function VoiceAudition() {
         <CardContent className="space-y-2">
           <p className="text-[13px] text-muted-foreground">{t(k('voice_ai_shared_library_hint'))}</p>
           <div className="flex flex-wrap items-center gap-2">
+            <Select value={speakerLanguage} onValueChange={setSpeakerLanguage}>
+              <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {LANGUAGES.map((l) => <SelectItem key={l} value={l}>{l.toUpperCase()}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <Input
               value={sharedSearch} onChange={(e) => setSharedSearch(e.target.value)}
               placeholder={t(k('voice_ai_search'))} className="h-8 w-48 text-xs"
             />
             <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => void findShared()} disabled={searching}>
               {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Search className="h-3.5 w-3.5" aria-hidden="true" />}
-              {t(k('voice_ai_search_speakers')).replace('{lang}', language.toUpperCase())}
+              {t(k('voice_ai_search_speakers')).replace('{lang}', speakerLanguage.toUpperCase())}
             </Button>
           </div>
 
+          {speakerLanguage !== language ? (
+            <p className="text-[13px] text-amber-700 dark:text-amber-400">
+              {t(k('voice_ai_nearest_language'))
+                .replace('{speaker}', speakerLanguage.toUpperCase())
+                .replace('{spoken}', language.toUpperCase())}
+            </p>
+          ) : null}
+
           {!shared.length ? (
-            <p className="text-[13px] text-muted-foreground">{t(k('voice_ai_no_shared_speakers')).replace('{lang}', language.toUpperCase())}</p>
+            <p className="text-[13px] text-muted-foreground">{t(k('voice_ai_no_shared_speakers')).replace('{lang}', speakerLanguage.toUpperCase())}</p>
           ) : (
             <ul className="max-h-72 space-y-1 overflow-y-auto pe-1">
               {shared.map((v) => (

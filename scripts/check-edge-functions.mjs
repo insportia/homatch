@@ -203,4 +203,44 @@ if (illegal.length) {
   process.exit(1);
 }
 
-console.log(`[edge-check] all ${entries.length} edge functions parse, resolve, and bind legally.`);
+/*
+ * PASS 4 — is every call actually calling what it looks like?
+ *
+ * Pass 1 proves the file PARSES. Pass 2 proves every name it calls EXISTS.
+ * Pass 3 proves no name is declared twice. None of them notices a call with
+ * the wrong number of arguments, because the name resolves and the file
+ * loads — it simply calls something other than the thing it was meant to.
+ *
+ * That shipped. ai-talk-session declared a local queue-er named speakPhrase
+ * inside the streaming turn, and the module-level synthesiser it called was
+ * also named speakPhrase. Inside its own body the name resolved to itself, so
+ * every reply recursed instead of being spoken:
+ *
+ *   const speakPhrase = (phrase: string) => {
+ *     ... await speakPhrase(sb, { text: phrase, ... })      // itself
+ *
+ * Text streamed, the assistant was silent, and nothing recorded a failure
+ * because nothing failed — synthesis was never reached. It was found by
+ * driving a real conversation on production and noticing that five turns had
+ * produced no audio and no usage row, which is a very expensive way to learn
+ * about a typo.
+ *
+ * TypeScript calls it TS2554 and has done all along. The resolved pass above
+ * was already computing it and throwing it away. There are none on a healthy
+ * tree: a call with the wrong arity is never what somebody meant.
+ */
+const WRONG_CALL = ['TS2554', 'TS2555'];
+
+const miscalled = refOutput
+  .split('\n')
+  .filter((l) => l.startsWith('supabase/functions') || l.startsWith('src/'))
+  .filter((l) => WRONG_CALL.some((code) => l.includes(`error ${code}:`)));
+
+if (miscalled.length) {
+  console.error('\n[edge-check] these call something with the wrong number of arguments,' +
+    ' so they are not calling what they look like:\n');
+  for (const m of miscalled) console.error('  ' + m.trim());
+  process.exit(1);
+}
+
+console.log(`[edge-check] all ${entries.length} edge functions parse, resolve, bind legally, and call what they name.`);

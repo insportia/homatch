@@ -999,7 +999,17 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       let wake: (() => void) | null = null;
       const nudge = () => { const w = wake; wake = null; w?.(); };
 
-      const speakPhrase = (phrase: string) => {
+      /*
+       * Queue one phrase for synthesis. NOT the synthesiser.
+       *
+       * It was called speakPhrase, which is also the name of the module-level
+       * function it calls -- so inside its own body the name resolved to
+       * itself, and every reply recursed instead of being spoken. Text
+       * streamed, the assistant was silent, and nothing recorded a failure
+       * because nothing failed: the synthesis was never reached. A different
+       * name is the whole fix, and the name is now what it does.
+       */
+      const queuePhrase = (phrase: string) => {
         const index = spoken.length;
         spoken.push((async () => {
           const at = Date.now();
@@ -1092,13 +1102,13 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           // than a chopped one.
           let phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
           while (phrase) {
-            speakPhrase(phrase);
+            queuePhrase(phrase);
             pending = pending.slice(phrase.length);
             phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
           }
         }
 
-        if (!failed && pending.trim()) speakPhrase(pending.trim());
+        if (!failed && pending.trim()) queuePhrase(pending.trim());
         llmFinished = true;
         nudge();
 

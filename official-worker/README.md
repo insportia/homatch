@@ -55,6 +55,45 @@ back successfully.
 This worker implements no automated CAPTCHA solving. A human completes any
 challenge in the preserved page.
 
+## Georgian speech recognition (`/speech/stream`)
+
+Google's realtime recognition is `StreamingRecognize` — a bidirectional gRPC
+stream. Supabase edge functions are Deno over HTTP and a browser is a browser;
+neither speaks gRPC, and the REST `:recognize` endpoint is a request-per-chunk
+shape nobody should call realtime. So the stream terminates here, and AI TALK's
+browser reaches it over a WebSocket carrying the same PCM16 frames it already
+captures for its other transcribers.
+
+- **Model** `chirp_3` — the family that both lists Georgian and supports
+  streaming. **Language** `ka-GE`, sent as one code: asking for detection
+  across several costs accuracy on the one that matters.
+- **Credentials** `GOOGLE_SPEECH_CREDENTIALS_JSON`, `GOOGLE_SPEECH_PROJECT_ID`,
+  `GOOGLE_SPEECH_REGION`. They never leave this process.
+- **This image runs as two Railway services and only one holds them.**
+  `GET /health` reports `speech.available` and, when it is false, why. Deployed
+  is not the same as able, and the edge function asks before routing anything
+  here.
+
+### The grant
+
+AI TALK's visitors are anonymous, so there is no user token to check. The edge
+function signs `sessionId.expiryMs` with `WORKER_TOKEN` — which this worker and
+that function already share and neither gives to a browser — and the browser
+carries only the signature. No database round trip in front of somebody's first
+word, no new secret, and a copied grant is worthless within minutes.
+
+Both halves are written in different languages on different machines, so
+`test/speechGrant.test.mjs` mints one the way the edge function does, verifies
+it the way this worker does, and reads the edge function's source to check the
+shape has not drifted.
+
+### Stream lifetime
+
+Google ends a stream at five minutes. This one replaces itself before that,
+holding and replaying audio across the swap so a restart is not a swallowed
+word. A permission or quota error is reported once and the socket given up: a
+recogniser that silently retries looks exactly like one that works.
+
 ## Commands
 
 ```

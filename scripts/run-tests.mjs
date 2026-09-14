@@ -69,6 +69,7 @@ const EXCLUDE = [
   /commSurfaces\.test\.mjs$/,
   /pushHandlers\.test\.mjs$/,
   /accessibilityAudit\.test\.mjs$/,
+  /pwaInstallSheet\.test\.mjs$/,
 ];
 const files = [];
 

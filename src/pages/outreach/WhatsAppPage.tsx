@@ -61,8 +61,8 @@ export default function WhatsAppPage() {
       const [accounts, stats, conversations, recentThreads, tpl, camp] = await Promise.all([
         listChannelAccounts(),
         getAnalytics({ since, channel: 'WHATSAPP' }),
-        listConversations({ unread: true, limit: 100 }),
-        listConversations({ limit: 6 }),
+        listConversations({ channel: 'WHATSAPP', unread: true, limit: 100 }),
+        listConversations({ channel: 'WHATSAPP', limit: 6 }),
         listTemplates(),
         listCampaigns({ channel: 'WHATSAPP', limit: 10 }),
       ]);
@@ -82,6 +82,20 @@ export default function WhatsAppPage() {
   useEffect(() => { void load(); }, [load]);
 
   const m = analytics?.messageStats;
+
+  /*
+   * NOTHING HAS HAPPENED ON THIS NUMBER YET.
+   *
+   * Nine KPI tiles and a funnel, every one of them empty, is nine repetitions
+   * of a fact the setup panel above has already stated once. It reads as a
+   * broken dashboard rather than a new one, and it pushes the two things that
+   * ARE actionable -- templates and the first campaign -- below the fold.
+   *
+   * Measured on traffic rather than on configuration: an account can be fully
+   * connected and have had no conversation, and that is still nothing to
+   * measure.
+   */
+  const noTraffic = !loading && !threads.length && !campaigns.length && !(m?.sent ?? 0);
   const funnel: Array<[string, number]> = [
     ['comm_wa_sent', m?.sent ?? 0],
     ['comm_wa_delivered', m?.delivered ?? 0],
@@ -94,7 +108,7 @@ export default function WhatsAppPage() {
   const approved = templates.filter((x) => x.status === 'APPROVED').length;
 
   return (
-    <CommsWorkspace
+    <CommsWorkspace product="whatsapp"
       header={
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
@@ -200,6 +214,7 @@ export default function WhatsAppPage() {
             <QuickCard icon={Plus} labelKey="comm_new_campaign_wa" onClick={() => navigate('/outreach/campaigns/new?channel=WHATSAPP')} />
           </div>
 
+          {noTraffic ? null : (<>
           <KpiRow cols={6}>
             <Kpi labelKey="comm_wa_sent" value={m?.sent ?? null} loading={loading} />
             <Kpi labelKey="comm_wa_delivered" value={m?.delivered ?? null} loading={loading} />
@@ -241,6 +256,7 @@ export default function WhatsAppPage() {
               )}
             </CardContent>
           </Card>
+          </>)}
 
           {/* ── Messaging campaigns, conversations, templates ────────────
               WhatsApp is its own product. It gets its own campaign list, its

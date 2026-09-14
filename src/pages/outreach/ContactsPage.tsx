@@ -73,7 +73,7 @@ export default function ContactsPage() {
   }, [rows]);
 
   return (
-    <CommsWorkspace
+    <CommsWorkspace product="contacts"
       header={
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">

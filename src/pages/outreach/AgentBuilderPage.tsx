@@ -268,19 +268,19 @@ export default function AgentBuilderPage() {
 
   if (loading) {
     return (
-      <CommsWorkspace><div><LoadingBlock rows={6} /></div></CommsWorkspace>
+      <CommsWorkspace product="calls"><div><LoadingBlock rows={6} /></div></CommsWorkspace>
     );
   }
   if (error || !agent) {
     return (
-      <CommsWorkspace><div>
+      <CommsWorkspace product="calls"><div>
         <ErrorState messageKey={error ?? 'comm_agent_not_found'} onRetry={() => { setLoading(true); void load(); }} />
       </div></CommsWorkspace>
     );
   }
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="calls">
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/agents')}>

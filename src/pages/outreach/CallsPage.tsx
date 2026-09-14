@@ -149,7 +149,7 @@ export default function CallsPage() {
   const hasNothing = !loading && !calls.length && !campaigns.length;
 
   return (
-    <CommsWorkspace
+    <CommsWorkspace product="calls"
       header={
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
@@ -220,6 +220,19 @@ export default function CallsPage() {
             </Card>
           ) : null}
 
+          {/*
+           * EVERYTHING BELOW MEASURES CALLS. WITH NO CALLS IT MEASURES NOTHING.
+           *
+           * The card above already says so, and then this used to render six
+           * KPIs reading zero, an empty campaigns box, an empty agents box and
+           * a search field over an empty table -- four more ways to say "no
+           * data" underneath the one that said it properly, which is what made
+           * a new account look like a broken product rather than a new one.
+           *
+           * Every action from these sections is on the start card, so nothing
+           * becomes unreachable by not drawing them.
+           */}
+          {hasNothing ? null : (<>
           <Section titleKey="comms_calls_performance" sub={t('comms_calls_performance_sub')}>
             <KpiRow cols={6}>
               <Kpi labelKey="comm_kpi_calls" icon={PhoneCall} value={stats.total} loading={loading} />
@@ -484,6 +497,7 @@ export default function CallsPage() {
             </ScrollTable>
           )}
           </Section>
+          </>)}
 
         <Sheet open={Boolean(selectedId)} onOpenChange={(open) => !open && setParams({}, { replace: true })}>
           <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">

@@ -228,7 +228,7 @@ export default function ContactImportPage() {
   }, []);
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="contacts">
         <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/contact-lists')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_contact_lists')}

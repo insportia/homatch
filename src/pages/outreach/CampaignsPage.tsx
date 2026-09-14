@@ -92,7 +92,7 @@ export default function CampaignsPage() {
   }, [load, t]);
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="calls">
         <div className="space-y-4">
           <PageHeader
             title={t('comm_campaigns_title')}

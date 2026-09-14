@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useReducer, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Download, Share, Plus, X, Check, ExternalLink } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { recordPwaEvent } from '@/lib/engagement';
@@ -332,6 +333,38 @@ function Sheet({
 }: { kind: 'ios' | 'pending'; onClose: () => void; onMute: () => void }) {
   const { t } = useLanguage();
 
+  /*
+   * THE PAGE BEHIND DOES NOT SCROLL WHILE THIS IS OPEN.
+   *
+   * On iOS a drag that begins on the overlay scrolls the document, and
+   * scrolling the document is what moves the address bar -- which resizes
+   * the visual viewport underneath a sheet the person is in the middle of
+   * reading. `overscroll-behavior` on the panel stops a flick that STARTS
+   * inside it; this stops one that starts anywhere else.
+   *
+   * Restored exactly, including an inline overflow the page may have set
+   * for itself, rather than assumed to have been the default.
+   */
+  useEffect(() => {
+    const { body } = document;
+    const previous = body.style.overflow;
+    body.style.overflow = 'hidden';
+    return () => { body.style.overflow = previous; };
+  }, []);
+
+  /*
+   * ESCAPE CLOSES IT.
+   *
+   * It is a real modal -- aria-modal, a backdrop, focus over the page -- and
+   * a modal a keyboard cannot dismiss is a trap. Cheap, and the only thing
+   * standing between somebody and the page when a pointer is not available.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const steps = kind === 'ios'
     ? [
       { icon: Share, text: t('pwa_ios_step1') },
@@ -343,17 +376,55 @@ function Sheet({
       { icon: Plus, text: t('pwa_pending_step2') },
     ];
 
-  return (
+  /*
+   * ── RENDERED AT THE BODY, NOT WHERE IT WAS DECLARED ───────────────────
+   *
+   * This control appears in the header, on the hero, and inside the mobile
+   * menu. The sheet used to render as a sibling of whichever button opened
+   * it, which means it inherited that button's ancestors -- and three
+   * ordinary ancestors each break a fixed overlay in a different way:
+   *
+   *   display:none   a collapsed mobile menu. The sheet mounts with no box
+   *                  at all, so the instructions exist and are 0px tall.
+   *   transform      ANY transformed ancestor becomes the containing block
+   *                  for `position: fixed`. The overlay then measures that
+   *                  element instead of the viewport, which is the classic
+   *                  way a modal ends up off-screen on iOS -- and no amount
+   *                  of dvh arithmetic can correct it, because the box it is
+   *                  being sized against is the wrong box.
+   *   overflow       clips it.
+   *
+   * A portal to the body has none of those ancestors, by construction. It
+   * also puts the overlay at the end of the document, so its stacking
+   * context is the page's rather than a header's.
+   */
+  return createPortal((
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-[hsl(0_0%_0%/0.45)] p-0 sm:items-center sm:p-6"
+      /*
+       * `viewport-sheet` sets the height from the DYNAMIC viewport. Without
+       * it, `inset-0` alone measures the layout viewport -- taller than the
+       * visible one on iOS whenever the browser chrome is showing -- and
+       * `items-end` then aligns the panel to the bottom of a box whose top
+       * is above the screen. That is what clipped these instructions down to
+       * their last step.
+       *
+       * `top-0 left-0 right-0` rather than `inset-0`, because a `bottom: 0`
+       * would reintroduce the layout-viewport height the class just replaced.
+       */
+      className="viewport-sheet fixed left-0 right-0 top-0 z-[60] flex items-end justify-center overflow-hidden bg-[hsl(0_0%_0%/0.45)] p-0 sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={kind === 'ios' ? t('pwa_ios_title') : t('pwa_pending_title')}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-t-[1.25rem] bg-card p-6 shadow-xl sm:rounded-[1.25rem]"
-        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+        className="viewport-sheet-panel w-full max-w-md rounded-t-[1.25rem] bg-card p-6 shadow-xl sm:rounded-[1.25rem]"
+        style={{
+          /* The inset is added to the padding, not used as an offset: the
+             panel stays flush to the bottom edge and keeps its content clear
+             of the home indicator. */
+          paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
@@ -398,5 +469,5 @@ function Sheet({
         </button>
       </div>
     </div>
-  );
+  ), document.body);
 }

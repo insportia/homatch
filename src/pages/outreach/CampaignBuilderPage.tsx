@@ -238,14 +238,14 @@ export default function CampaignBuilderPage() {
   }, [campaignId, navigate, t]);
 
   if (loading) {
-    return <CommsWorkspace><div><LoadingBlock rows={6} /></div></CommsWorkspace>;
+    return <CommsWorkspace product="calls"><div><LoadingBlock rows={6} /></div></CommsWorkspace>;
   }
 
   const isCall = draft.campaign_type === 'AI_CALL';
   const isWhatsApp = draft.campaign_type === 'WHATSAPP';
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="calls">
         <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/campaigns')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_campaigns_title')}

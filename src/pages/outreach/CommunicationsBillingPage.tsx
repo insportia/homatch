@@ -126,7 +126,7 @@ export default function CommunicationsBillingPage() {
   const maxDaily = Math.max(0.0001, ...(spend?.series ?? []).map((d) => d.amountUsd));
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="hub">
         <div className="space-y-4">
           <PageHeader
             title={t('comm_billing_title')}

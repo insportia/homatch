@@ -304,3 +304,42 @@ constraints that only widen. A test asserts that every value legal before the
 migration is still legal after it, and that no added column is `NOT NULL`
 without a default — so the schema can be applied before the frontend merges
 without breaking the frontend already in production (§146).
+
+## 12. Email templates: why there are none, and what they would need
+
+The Email workspace shows an honest empty state where a templates surface
+would go. That is not an unfinished screen — there is no store behind it, and
+building a list over the one that exists would be wrong in a way that is hard
+to undo.
+
+**The only template table is `comm_whatsapp_templates`, and it is a Meta
+object, not a generic one.** Its columns are that provider's vocabulary:
+`category`, `header_kind`, `buttons` (a JSON structure Meta validates),
+`provider_template_id`, `status` and `rejection_reason` — an approval
+lifecycle owned by Meta, which reviews and can reject each template before it
+may be sent. `outreach_campaigns.template_id` is a foreign key to it.
+
+An email template has none of that. It is a subject, an HTML body, a text
+body, a language, and nothing to approve. Storing one in a table shaped around
+a review process it does not participate in would mean either a permanent
+`status = 'APPROVED'` lie or a nullable approval state that WhatsApp's own
+queries then have to exclude.
+
+### What building it would actually take
+
+1. `comm_email_templates` — `owner_id` on `auth.users(id)` with RLS matching
+   `auth.uid()` like every other `comm_` table; `name`, `language`, `subject`,
+   `html_body`, `text_body`, `variables jsonb`, timestamps. No status column:
+   an email template is usable the moment it is saved.
+2. A nullable `email_template_id` on `outreach_campaigns`, separate from
+   `template_id`. Reusing the existing column would point one field at two
+   tables, which no foreign key can express.
+3. Variable substitution shared with the send path, so a preview and a
+   delivery cannot render differently — the substitution belongs beside
+   `outreach-send`'s existing unsubscribe-link injection, not in the browser.
+4. UI: a list, an editor reusing the campaign composer, and a picker in the
+   create/edit dialog that fills subject and body rather than linking to them,
+   so editing a template cannot silently change a campaign already scheduled.
+
+Until that exists, the composer is how an email campaign is written, and the
+workspace says so rather than showing an empty list that implies otherwise.

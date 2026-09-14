@@ -119,7 +119,7 @@ export default function AgentsPage() {
   }, [load, t]);
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="calls">
         <div className="space-y-4">
           <PageHeader
             title={t('comm_agents_title')}

@@ -48,7 +48,7 @@ export default function ChannelAccountsPage() {
   const anyTest = accounts.some((a) => a.environment === 'TEST');
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="hub">
         <div className="space-y-4">
           <PageHeader
             title={t('comm_numbers_title')}

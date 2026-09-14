@@ -5162,6 +5162,25 @@ const en = {
   email_blocked_not_enabled: 'Real email sending is off. Nothing was sent, and nothing was simulated.',
   email_no_delivery_yet: 'No delivery information yet',
   email_never_sent: 'Never sent',
+
+  // ── Email workspace ──────────────────────
+  email_ws_active: 'Active campaigns',
+  email_ws_delivery_rate: 'Delivery rate',
+  email_ws_reply_rate: 'Reply rate',
+  email_ws_replies: 'Replies',
+  email_ws_no_replies: 'No replies yet',
+  email_ws_no_replies_body: 'Replies to your campaigns arrive here once inbound email is receiving. Nothing is hidden — no reply has been received yet.',
+  email_ws_no_campaigns_yet: 'No campaigns yet',
+  email_ws_overview: 'At a glance',
+
+  // ── Email workspace: activity and templates ─────
+  email_ws_activity: 'Recent email activity',
+  email_ws_no_activity: 'Nothing has been sent yet',
+  email_ws_no_activity_body: 'Every message this workspace sends appears here with its delivery state, newest first.',
+  email_ws_templates: 'Templates',
+  email_ws_templates_none: 'Email templates are not available yet',
+  email_ws_templates_body: 'The only template store in this product is the WhatsApp one, which is shaped around Meta’s approval process and cannot hold an email subject and body. Reusable email templates need a store of their own, so the composer is the way to write a campaign today.',
+  comm_status: 'Status',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -10242,6 +10261,25 @@ const ka: Partial<Record<TranslationKey, string>> = {
   email_blocked_not_enabled: 'რეალური ელ-ფოსტის გაგზავნა გამორთულია. არაფერი გაგზავნილა და არაფერი სიმულირებულა.',
   email_no_delivery_yet: 'ჩაბარების ინფორმაცია ჯერ არ არის',
   email_never_sent: 'არასდროს გაგზავნილა',
+
+  // ── Email workspace ──────────────────────
+  email_ws_active: 'აქტიური კამპანიები',
+  email_ws_delivery_rate: 'ჩაბარების მაჩვენებელი',
+  email_ws_reply_rate: 'პასუხების მაჩვენებელი',
+  email_ws_replies: 'პასუხები',
+  email_ws_no_replies: 'პასუხები ჯერ არ არის',
+  email_ws_no_replies_body: 'თქვენს კამპანიებზე პასუხები აქ მოვა, როგორც კი შემომავალი ელ-ფოსტა ამოქმედდება. არაფერია დამალული — პასუხი ჯერ არ მიგვიღია.',
+  email_ws_no_campaigns_yet: 'კამპანიები ჯერ არ არის',
+  email_ws_overview: 'მოკლე მიმოხილვა',
+
+  // ── Email workspace: activity and templates ─────
+  email_ws_activity: 'ბოლო ელ-ფოსტის აქტივობა',
+  email_ws_no_activity: 'ჯერ არაფერი გაგზავნილა',
+  email_ws_no_activity_body: 'ყველა შეტყობინება, რომელსაც ეს სივრცე აგზავნის, აქ გამოჩნდება ჩაბარების სტატუსით, უახლესიდან.',
+  email_ws_templates: 'შაბლონები',
+  email_ws_templates_none: 'ელ-ფოსტის შაბლონები ჯერ მიუწვდომელია',
+  email_ws_templates_body: 'ამ პროდუქტში ერთადერთი შაბლონების საცავი WhatsApp-ისაა, რომელიც Meta-ს დამტკიცების პროცესზეა მორგებული და ელ-ფოსტის თემასა და ტექსტს ვერ დაიტევს. მრავალჯერადი ელ-ფოსტის შაბლონები ცალკე საცავს საჭიროებს, ამიტომ დღეს კამპანია კომპოზიტორით იწერება.',
+  comm_status: 'სტატუსი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -15313,6 +15351,25 @@ const ru: Partial<Record<TranslationKey, string>> = {
   email_blocked_not_enabled: 'Реальная отправка email отключена. Ничего не отправлено и ничего не симулировано.',
   email_no_delivery_yet: 'Пока нет данных о доставке',
   email_never_sent: 'Никогда не отправлялась',
+
+  // ── Email workspace ──────────────────────
+  email_ws_active: 'Активные кампании',
+  email_ws_delivery_rate: 'Доля доставки',
+  email_ws_reply_rate: 'Доля ответов',
+  email_ws_replies: 'Ответы',
+  email_ws_no_replies: 'Ответов пока нет',
+  email_ws_no_replies_body: 'Ответы на ваши кампании появятся здесь, как только заработает входящая почта. Ничего не скрыто — ответов пока не было.',
+  email_ws_no_campaigns_yet: 'Кампаний пока нет',
+  email_ws_overview: 'Сводка',
+
+  // ── Email workspace: activity and templates ─────
+  email_ws_activity: 'Недавняя почтовая активность',
+  email_ws_no_activity: 'Пока ничего не отправлено',
+  email_ws_no_activity_body: 'Каждое отправленное отсюда сообщение появится здесь со статусом доставки, сначала новые.',
+  email_ws_templates: 'Шаблоны',
+  email_ws_templates_none: 'Шаблоны писем пока недоступны',
+  email_ws_templates_body: 'Единственное хранилище шаблонов здесь — для WhatsApp; оно построено вокруг процесса одобрения Meta и не может хранить тему и текст письма. Многоразовые почтовые шаблоны требуют собственного хранилища, поэтому сегодня кампания пишется в редакторе.',
+  comm_status: 'Статус',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -20382,6 +20439,25 @@ const tr: Partial<Record<TranslationKey, string>> = {
   email_blocked_not_enabled: 'Gerçek e-posta gönderimi kapalı. Hiçbir şey gönderilmedi ve hiçbir şey simüle edilmedi.',
   email_no_delivery_yet: 'Henüz teslim bilgisi yok',
   email_never_sent: 'Hiç gönderilmedi',
+
+  // ── Email workspace ──────────────────────
+  email_ws_active: 'Aktif kampanyalar',
+  email_ws_delivery_rate: 'Teslim oranı',
+  email_ws_reply_rate: 'Yanıt oranı',
+  email_ws_replies: 'Yanıtlar',
+  email_ws_no_replies: 'Henüz yanıt yok',
+  email_ws_no_replies_body: 'Kampanyalarınıza gelen yanıtlar, gelen e-posta çalışmaya başladığında burada görünür. Hiçbir şey gizlenmiyor — henüz yanıt alınmadı.',
+  email_ws_no_campaigns_yet: 'Henüz kampanya yok',
+  email_ws_overview: 'Genel bakış',
+
+  // ── Email workspace: activity and templates ─────
+  email_ws_activity: 'Son e-posta etkinliği',
+  email_ws_no_activity: 'Henüz hiçbir şey gönderilmedi',
+  email_ws_no_activity_body: 'Bu çalışma alanının gönderdiği her mesaj, teslim durumuyla birlikte en yeniden başlayarak burada görünür.',
+  email_ws_templates: 'Şablonlar',
+  email_ws_templates_none: 'E-posta şablonları henüz kullanılamıyor',
+  email_ws_templates_body: 'Bu üründeki tek şablon deposu, Meta’nın onay sürecine göre biçimlenmiş olan WhatsApp deposudur ve bir e-posta konusu ile gövdesini tutamaz. Yeniden kullanılabilir e-posta şablonları kendi deposunu gerektirir; bu nedenle kampanya bugün besteciyle yazılır.',
+  comm_status: 'Durum',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -25451,6 +25527,25 @@ const ar: Partial<Record<TranslationKey, string>> = {
   email_blocked_not_enabled: 'إرسال البريد الحقيقي متوقف. لم يُرسَل شيء ولم تجرِ أي محاكاة.',
   email_no_delivery_yet: 'لا توجد معلومات تسليم بعد',
   email_never_sent: 'لم تُرسل قط',
+
+  // ── Email workspace ──────────────────────
+  email_ws_active: 'الحملات النشطة',
+  email_ws_delivery_rate: 'معدل التسليم',
+  email_ws_reply_rate: 'معدل الردود',
+  email_ws_replies: 'الردود',
+  email_ws_no_replies: 'لا توجد ردود بعد',
+  email_ws_no_replies_body: 'تظهر الردود على حملاتك هنا بمجرد تفعيل البريد الوارد. لا شيء مخفي — لم يصل أي رد بعد.',
+  email_ws_no_campaigns_yet: 'لا توجد حملات بعد',
+  email_ws_overview: 'نظرة سريعة',
+
+  // ── Email workspace: activity and templates ─────
+  email_ws_activity: 'نشاط البريد الأخير',
+  email_ws_no_activity: 'لم يُرسل أي شيء بعد',
+  email_ws_no_activity_body: 'تظهر هنا كل رسالة ترسلها مساحة العمل هذه مع حالة تسليمها، الأحدث أولاً.',
+  email_ws_templates: 'القوالب',
+  email_ws_templates_none: 'قوالب البريد غير متاحة بعد',
+  email_ws_templates_body: 'مخزن القوالب الوحيد في هذا المنتج هو مخزن واتساب، المبني حول عملية موافقة Meta ولا يمكنه حفظ موضوع البريد ونصه. تحتاج قوالب البريد القابلة لإعادة الاستخدام إلى مخزن خاص بها، لذا تُكتب الحملة اليوم عبر المحرّر.',
+  comm_status: 'الحالة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -30520,6 +30615,25 @@ const he: Partial<Record<TranslationKey, string>> = {
   email_blocked_not_enabled: 'שליחת דוא״ל אמיתית כבויה. דבר לא נשלח ודבר לא הודמה.',
   email_no_delivery_yet: 'אין עדיין מידע על מסירה',
   email_never_sent: 'מעולם לא נשלח',
+
+  // ── Email workspace ──────────────────────
+  email_ws_active: 'קמפיינים פעילים',
+  email_ws_delivery_rate: 'שיעור מסירה',
+  email_ws_reply_rate: 'שיעור תגובות',
+  email_ws_replies: 'תגובות',
+  email_ws_no_replies: 'אין עדיין תגובות',
+  email_ws_no_replies_body: 'תגובות לקמפיינים שלכם יופיעו כאן ברגע שהדוא״ל הנכנס יפעל. שום דבר אינו מוסתר — טרם התקבלה תגובה.',
+  email_ws_no_campaigns_yet: 'אין עדיין קמפיינים',
+  email_ws_overview: 'מבט מהיר',
+
+  // ── Email workspace: activity and templates ─────
+  email_ws_activity: 'פעילות דוא״ל אחרונה',
+  email_ws_no_activity: 'עדיין לא נשלח דבר',
+  email_ws_no_activity_body: 'כל הודעה שנשלחת מכאן תופיע כאן עם מצב המסירה שלה, החדשות ראשונות.',
+  email_ws_templates: 'תבניות',
+  email_ws_templates_none: 'תבניות דוא״ל אינן זמינות עדיין',
+  email_ws_templates_body: 'מאגר התבניות היחיד במוצר הוא זה של וואטסאפ, שבנוי סביב תהליך האישור של Meta ואינו יכול להחזיק נושא וגוף של דוא״ל. תבניות דוא״ל לשימוש חוזר דורשות מאגר משלהן, ולכן קמפיין נכתב היום בעורך.',
+  comm_status: 'סטטוס',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

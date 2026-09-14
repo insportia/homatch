@@ -988,3 +988,42 @@
   border-color: transparent;
   box-shadow: 0 18px 40px -24px rgb(0 0 0 / 0.35);
 }
+
+@layer utilities {
+  /* ── A modal that stays inside the phone's ACTUAL viewport ──────────
+
+     THE BUG THIS EXISTS FOR
+
+     `position: fixed; inset: 0` resolves against the LAYOUT viewport. On
+     iOS Safari the layout viewport is taller than the visible one whenever
+     the browser chrome is showing, so a sheet aligned to the bottom of that
+     box has its top pushed above the screen. The install instructions were
+     clipped to "3. Tap Add" and "Not now": every earlier step was off-screen
+     above, and nothing could scroll to reach them, because the overflow was
+     outside the element rather than inside it.
+
+     Height is therefore taken from the DYNAMIC viewport, which is the one
+     that shrinks and grows with the address bar. The `vh` line is not dead
+     code — it is the fallback any engine without `dvh` keeps.
+
+     Not a transform, and not a negative offset. Both are ways to move a box
+     relative to a container whose height is already wrong, which is how this
+     class of bug is usually "fixed" and why it comes back the moment the
+     browser chrome changes state. */
+  .viewport-sheet {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* The panel itself: never taller than what is visible between the two
+     insets, and SCROLLS when the content does not fit rather than clipping.
+     `overscroll-behavior: contain` stops a flick at the end of the list from
+     scrolling the page behind the modal, which on iOS also drags the sheet. */
+  .viewport-sheet-panel {
+    max-height: calc(100vh - 1.5rem);
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}

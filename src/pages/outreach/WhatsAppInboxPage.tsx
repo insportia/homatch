@@ -80,6 +80,10 @@ export default function WhatsAppInboxPage() {
     setError(null);
     try {
       setConversations(await listConversations({
+        // This is the WhatsApp inbox. Email replies land in the same table
+        // through the same comm_record_inbound, so without naming the channel
+        // they would appear here the day inbound email goes live.
+        channel: 'WHATSAPP',
         unread: filter === 'UNREAD',
         mode: filter === 'AI' ? 'AI' : filter === 'HUMAN' ? 'HUMAN' : undefined,
         qualified: filter === 'QUALIFIED',
@@ -176,7 +180,9 @@ export default function WhatsAppInboxPage() {
   }, [selected, loadList, t]);
 
   return (
-    <CommsWorkspace>
+    /* railless: this screen IS a left column. A conversation list with a
+       menu to the left of it has put the menu where the inbox goes. */
+    <CommsWorkspace product="whatsapp" railless>
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">

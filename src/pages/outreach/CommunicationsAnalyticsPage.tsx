@@ -67,7 +67,7 @@ export default function CommunicationsAnalyticsPage() {
   const maxSeries = Math.max(1, ...(data?.series ?? []).map((d) => d.calls + d.messages));
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="hub">
         <div className="space-y-4">
           <PageHeader title={t('comm_analytics_title')} subtitle={t('comm_analytics_subtitle')}>
             <Select value={range} onValueChange={(v) => setRange(v as Range)}>

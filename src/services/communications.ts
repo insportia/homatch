@@ -620,6 +620,30 @@ export async function listCalls(filter: CallFilter = {}): Promise<CommSend[]> {
   return (data ?? []) as CommSend[];
 }
 
+/**
+ * Recent EMAIL dispatches, newest first.
+ *
+ * The same outreach_sends the call centre reads, filtered to the other
+ * channel. One send table, one owner scope, one set of statuses -- an email
+ * "activity feed" backed by its own store would be a second answer to "what
+ * did we send" and the two would disagree within a week.
+ *
+ * Deliberately not joined to the campaign here: the caller already holds the
+ * campaigns it listed, so the name is resolved in the component from rows it
+ * has, rather than by asking the database for them twice.
+ */
+export async function listEmailSends(limit = 12): Promise<CommSend[]> {
+  const uid = await currentUserId();
+  if (!uid) return [];
+  const { data } = await supabase.from('outreach_sends')
+    .select('*')
+    .eq('owner_id', uid)
+    .eq('channel', 'EMAIL')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return (data ?? []) as CommSend[];
+}
+
 /** The Live Calls panel (§18). Bounded, and only the statuses that are on the wire. */
 export async function listLiveCalls(): Promise<CommSend[]> {
   const uid = await currentUserId();
@@ -643,6 +667,15 @@ export async function getCall(id: string): Promise<{ send: CommSend | null; extr
 // ── Conversations ───────────────────────────────────────────────────────────
 
 export interface InboxFilter {
+  /**
+   * WHATSAPP, EMAIL, VOICE, SMS. Omitted means every channel.
+   *
+   * The inbox was written when WhatsApp was the only two-way channel, so it
+   * read every conversation and was right by accident. Email replies land in
+   * the same table through the same comm_record_inbound, so without this the
+   * WhatsApp inbox would quietly start showing email.
+   */
+  channel?: string;
   unread?: boolean;
   mode?: 'AI' | 'HUMAN';
   qualified?: boolean;
@@ -661,6 +694,7 @@ export async function listConversations(filter: InboxFilter = {}): Promise<CommC
     .order('last_message_at', { ascending: false, nullsFirst: false })
     .limit(filter.limit ?? DEFAULT_LIMIT);
 
+  if (filter.channel) q = q.eq('channel', filter.channel);
   if (filter.unread) q = q.gt('unread_count', 0);
   if (filter.mode === 'AI') q = q.eq('mode', 'AI_ACTIVE');
   if (filter.mode === 'HUMAN') q = q.in('mode', ['HUMAN_ACTIVE', 'PENDING_HANDOFF']);

@@ -143,7 +143,7 @@ export default function CommunicationsOverviewPage() {
   ];
 
   return (
-    <CommsWorkspace
+    <CommsWorkspace product="hub"
       header={
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">

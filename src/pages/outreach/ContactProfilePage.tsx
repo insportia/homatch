@@ -84,10 +84,10 @@ export default function ContactProfilePage() {
   }, [contact, load, t]);
 
   if (loading) {
-    return <CommsWorkspace><div><LoadingBlock rows={6} /></div></CommsWorkspace>;
+    return <CommsWorkspace product="contacts"><div><LoadingBlock rows={6} /></div></CommsWorkspace>;
   }
   if (error || !contact) {
-    return <CommsWorkspace><div>
+    return <CommsWorkspace product="contacts"><div>
       <ErrorState messageKey={error ?? 'comm_contact_not_found'} onRetry={() => { setLoading(true); void load(); }} />
     </div></CommsWorkspace>;
   }
@@ -109,7 +109,7 @@ export default function ContactProfilePage() {
   ];
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="contacts">
         <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/contact-lists')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_contact_lists')}

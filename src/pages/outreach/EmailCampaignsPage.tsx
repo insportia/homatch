@@ -29,8 +29,7 @@
  */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Mail, Plus, Eye, AlertCircle, Loader2, BarChart2, Rocket, Clock, Pencil, XCircle } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { CommsWorkspace, Section } from '@/components/communications/CommsWorkspace';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -47,6 +46,8 @@ import { supabase } from '@/db/supabase';
 import { OutreachCampaign, ContactList } from '@/types/types';
 import { toast } from 'sonner';
 import { useOutreachProviderStatus } from '@/hooks/useOutreachProviderStatus';
+import { listConversations, listEmailSends } from '@/services/communications';
+import type { CommConversation, CommSend } from '@/types/communications';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT:     'bg-muted text-muted-foreground',
@@ -151,6 +152,15 @@ export default function EmailCampaignsPage() {
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [contactLists, setContactLists] = useState<ContactList[]>([]);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
+  /*
+   * Replies live in comm_conversations, not in a second email store: an
+   * inbound email is recorded by the same comm_record_inbound as every other
+   * channel, so this is the inbox the product already has, filtered to EMAIL.
+   * Filtered explicitly -- without the channel this would also list WhatsApp.
+   */
+  const [replies, setReplies] = useState<CommConversation[]>([]);
+  /* The dispatch log, from the same outreach_sends the call centre reads. */
+  const [activity, setActivity] = useState<CommSend[]>([]);
 
   const zone = useMemo(localZone, []);
 
@@ -182,7 +192,27 @@ export default function EmailCampaignsPage() {
     setContactLists(Array.isArray(data) ? data as ContactList[] : []);
   }, [homatchUser]);
 
-  useEffect(() => { load(); loadContactLists(); }, [load, loadContactLists]);
+  const loadActivity = useCallback(async () => {
+    try {
+      setActivity(await listEmailSends(12));
+    } catch {
+      setActivity([]);
+    }
+  }, []);
+
+  const loadReplies = useCallback(async () => {
+    try {
+      setReplies(await listConversations({ channel: 'EMAIL', limit: 8 }));
+    } catch {
+      /* A failed read of the replies panel must not blank the campaigns the
+         page is actually for. It stays empty and says so. */
+      setReplies([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    load(); loadContactLists(); loadReplies(); loadActivity();
+  }, [load, loadContactLists, loadReplies, loadActivity]);
 
   // Live counters: any change to this user's outreach_campaigns rows (from
   // this tab's own Launch click, from a delivery webhook, or from the
@@ -196,6 +226,50 @@ export default function EmailCampaignsPage() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [homatchUser, load]);
+
+  /*
+   * WHAT THE NUMBERS ARE, AND WHAT THEY ARE NOT.
+   *
+   * Every figure is a sum over the campaigns this owner actually has. There
+   * is no denominator invented to make a percentage look better and no metric
+   * the backend cannot answer: opens and clicks have columns but nothing
+   * writes them yet, so they are not shown. A tile that always reads 0%
+   * because nothing populates it teaches people to ignore the whole strip.
+   *
+   * Rates are null rather than 0 when their denominator is 0. "0% delivered"
+   * and "nothing sent yet" are different facts and only one of them is true.
+   */
+  const stats = useMemo(() => {
+    const sum = (k: keyof OutreachCampaign) =>
+      campaigns.reduce((n, c) => n + (Number(c[k] ?? 0) || 0), 0);
+    const sent = sum('sent_count');
+    const delivered = sum('delivered_count');
+    const bounced = sum('bounce_count');
+    const failed = sum('failed_count');
+    const active = campaigns.filter((c) => ['RUNNING', 'SCHEDULED'].includes(c.status)).length;
+    return {
+      sent, delivered, bounced, failed, active,
+      scheduled: campaigns.filter((c) => c.status === 'SCHEDULED').length,
+      drafts: campaigns.filter((c) => ['DRAFT', 'READY'].includes(c.status)).length,
+      deliveryRate: sent > 0 ? delivered / sent : null,
+      replyRate: sent > 0 ? replies.length / sent : null,
+    };
+  }, [campaigns, replies.length]);
+
+  /*
+   * A WORKSPACE NOBODY HAS USED YET IS NOT FIVE EMPTY PANELS.
+   *
+   * With no campaigns there is nothing sent, nothing delivered and nothing
+   * replied to -- so the strip is six tiles reading 0 and an em dash, and
+   * three dashed boxes beneath it each saying "nothing here" about a
+   * different absence. Four restatements of one fact, and the only useful
+   * control (create a campaign) ends up beneath all of them.
+   *
+   * So the measurements and the feeds appear once there is something to
+   * measure. The campaigns list keeps its own empty state, which is the one
+   * that carries the action.
+   */
+  const hasNothing = !loading && !campaigns.length && !activity.length && !replies.length;
 
   const visible = useMemo(() => {
     const spec = TABS.find(x => x.key === tab);
@@ -414,22 +488,46 @@ export default function EmailCampaignsPage() {
     </div>
   );
 
+  /*
+   * A figure, and the word for it.
+   *
+   * Deliberately plain: no gradient, no sparkline, no card the height of a
+   * paragraph carrying one number. This strip is read at a glance beside the
+   * work, not admired, and six identical tiles with decoration would push the
+   * campaigns themselves below the fold on a laptop.
+   *
+   * A null rate renders an em dash. Zero per cent and "nothing has been sent"
+   * are different statements and only one of them is true here.
+   */
+  const stat = (labelKey: string, value: string, tone?: 'warn') => (
+    <div key={labelKey} className="min-w-0 rounded-lg border bg-card px-3 py-2">
+      <p className="truncate text-[13px] leading-snug text-muted-foreground">{t(labelKey)}</p>
+      <p className={`mt-0.5 text-lg font-semibold leading-none tabular-nums ${tone === 'warn' && value !== '0' ? 'text-red-700' : ''}`}>
+        {value}
+      </p>
+    </div>
+  );
+  const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
+
   return (
-    <RouteGuard>
-      <AppLayout>
-        <div className="max-w-4xl mx-auto space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-xl font-semibold flex items-center gap-2">
-                <Mail className="h-5 w-5 text-primary" />
-                {t('email_campaigns_title')}
-              </h1>
-              <p className="text-sm text-muted-foreground mt-0.5">{t('email_campaigns_subtitle')}</p>
-            </div>
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4 me-2" />{t('email_new_campaign')}
-            </Button>
+    <CommsWorkspace
+      product="email"
+      header={(
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-xl font-semibold">
+              <Mail className="h-5 w-5 text-primary" />
+              {t('email_campaigns_title')}
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">{t('email_campaigns_subtitle')}</p>
           </div>
+          <Button size="sm" className="shrink-0" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4 me-2" />{t('email_new_campaign')}
+          </Button>
+        </div>
+      )}
+    >
+        <div className="space-y-5">
 
           <Alert variant={providerStatus?.email?.real ? 'default' : undefined} className={providerStatus?.email?.real ? 'border-green-500/40 bg-green-500/5' : ''}>
             <AlertCircle className="h-4 w-4" />
@@ -447,6 +545,20 @@ export default function EmailCampaignsPage() {
                 : t('email_sending_disabled')}
             </AlertDescription>
           </Alert>
+
+          {/* ── At a glance ──────────────────────────────────────────── */}
+          {hasNothing ? null : (
+          <Section titleKey="email_ws_overview">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              {stat('email_ws_active', String(stats.active))}
+              {stat('email_sent', String(stats.sent))}
+              {stat('email_delivered', String(stats.delivered))}
+              {stat('email_bounced', String(stats.bounced), 'warn')}
+              {stat('email_ws_delivery_rate', pct(stats.deliveryRate))}
+              {stat('email_ws_reply_rate', pct(stats.replyRate))}
+            </div>
+          </Section>
+          )}
 
           <div className="flex gap-1 flex-wrap border-b border-border pb-px">
             {TABS.map((x) => (
@@ -579,6 +691,113 @@ export default function EmailCampaignsPage() {
               })}
             </div>
           )}
+          {hasNothing ? null : (<>
+          {/* ── Replies ──────────────────────────────────────────────── */}
+          <Section titleKey="email_ws_replies">
+            {replies.length === 0 ? (
+              <div className="rounded-lg border border-dashed bg-card/50 px-4 py-6 text-center">
+                <p className="text-sm font-medium">{t('email_ws_no_replies')}</p>
+                <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                  {t('email_ws_no_replies_body')}
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y rounded-lg border bg-card">
+                {replies.map((c) => (
+                  <li key={c.id} className="flex min-w-0 items-center gap-3 px-3 py-2.5">
+                    <Mail className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-medium">
+                          {c.peer_name || c.peer_address}
+                        </span>
+                        {(c.unread_count ?? 0) > 0 && (
+                          <Badge className="bg-gold-soft px-1.5 text-[13px] text-gold-ink">{c.unread_count}</Badge>
+                        )}
+                      </div>
+                      {c.last_message_preview ? (
+                        <p className="truncate text-xs text-muted-foreground">{c.last_message_preview}</p>
+                      ) : null}
+                    </div>
+                    {c.last_message_at ? (
+                      <time
+                        dateTime={c.last_message_at}
+                        className="shrink-0 text-[13px] tabular-nums text-muted-foreground"
+                      >
+                        {new Date(c.last_message_at).toLocaleDateString(lang, { month: 'short', day: 'numeric' })}
+                      </time>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          {/* ── Live email activity ──────────────────────────────────── */}
+          <Section titleKey="email_ws_activity">
+            {activity.length === 0 ? (
+              <div className="rounded-lg border border-dashed bg-card/50 px-4 py-6 text-center">
+                <p className="text-sm font-medium">{t('email_ws_no_activity')}</p>
+                <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                  {t('email_ws_no_activity_body')}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[34rem] text-sm">
+                  <thead className="bg-secondary/40 text-start">
+                    <tr className="text-[13px] uppercase tracking-wide text-muted-foreground">
+                      <th scope="col" className="px-3 py-2 text-start font-medium">{t('email_from')}</th>
+                      <th scope="col" className="px-3 py-2 text-start font-medium">{t('email_campaign_name')}</th>
+                      <th scope="col" className="px-3 py-2 text-start font-medium">{t('comm_status')}</th>
+                      <th scope="col" className="px-3 py-2 text-end font-medium">{t('email_sent')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {activity.map((row) => {
+                      /* The campaign NAME from rows this page already holds.
+                         Asking the database again for something already in
+                         memory is how a list becomes N+1 queries. */
+                      const campaign = campaigns.find((c) => c.id === row.campaign_id);
+                      const failed = ['FAILED', 'BOUNCED', 'COMPLAINED'].includes(row.status);
+                      return (
+                        <tr key={row.id} className="align-middle">
+                          <td className="max-w-[14rem] truncate px-3 py-2">{row.recipient_email ?? '—'}</td>
+                          <td className="max-w-[12rem] truncate px-3 py-2 text-muted-foreground">
+                            {campaign?.name ?? '—'}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge
+                              variant="outline"
+                              className={`text-[13px] ${failed ? 'border-red-500/40 text-red-700' : ''}`}
+                            >
+                              {row.status}
+                            </Badge>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-end text-[13px] tabular-nums text-muted-foreground">
+                            {row.sent_at
+                              ? new Date(row.sent_at).toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                              : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
+
+          {/* ── Templates: what is true, rather than an empty list ────── */}
+          <Section titleKey="email_ws_templates">
+            <div className="rounded-lg border border-dashed bg-card/50 px-4 py-6 text-center">
+              <p className="text-sm font-medium">{t('email_ws_templates_none')}</p>
+              <p className="mx-auto mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                {t('email_ws_templates_body')}
+              </p>
+            </div>
+          </Section>
+          </>)}
         </div>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -668,7 +887,6 @@ export default function EmailCampaignsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </AppLayout>
-    </RouteGuard>
+    </CommsWorkspace>
   );
 }

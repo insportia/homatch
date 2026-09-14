@@ -77,7 +77,7 @@ export default function WhatsAppTemplatesPage() {
   }, [editing, load, t]);
 
   return (
-    <CommsWorkspace>
+    <CommsWorkspace product="whatsapp">
         <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/whatsapp')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_channel_whatsapp')}

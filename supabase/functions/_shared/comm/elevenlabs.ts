@@ -976,10 +976,20 @@ export async function streamElevenLabsDialogue(
     }), opts.timeoutMs ?? 25_000);
 
     socket.onopen = () => {
-      // The opening frame registers the voice and authenticates. Everything
-      // after it is text.
+      /*
+       * The opening frame registers the voice and authenticates. Everything
+       * after it is text.
+       *
+       * `voices` is a list of voice id STRINGS, not objects. Sent as
+       * [{ voice_id }] the provider refuses the socket with code 1007,
+       * "Could not validate message: voices.0: Input should be a valid
+       * string" -- and because that refusal arrives as a frame rather than an
+       * HTTP status, the connection just closed in about 70ms and every
+       * Georgian reply quietly took the whole-clip path instead. Five
+       * production turns did exactly that before anything recorded why.
+       */
       socket.send(JSON.stringify({
-        voices: [{ voice_id: opts.voiceId }],
+        voices: [opts.voiceId],
         // A WebSocket cannot carry a header, so the provider's documented
         // route is the opening frame. Same single read as every HTTP call.
         xi_api_key: apiKey(),
@@ -992,17 +1002,30 @@ export async function streamElevenLabsDialogue(
     };
 
     socket.onmessage = (event) => {
-      let message: { audio?: string; is_final?: boolean; error?: string; message?: string };
+      let message: { audio?: string; is_final?: boolean; error?: string; message?: string } & Record<string, unknown>;
       try { message = JSON.parse(String(event.data)); } catch { return; }
 
       if (message.error || (message.message && !message.audio)) {
+        /*
+         * THE WHOLE FRAME, NOT THE HEADLINE.
+         *
+         * `message.message` for a refused dialogue socket is the single word
+         * "validation_error", which says only that something in the request
+         * was wrong -- and the socket carries a model, an output format, a
+         * language code, a voice id and a settings object, so that is five
+         * candidates and no evidence. The provider puts the actual complaint
+         * in a sibling field whose name varies.
+         *
+         * So the frame is serialised whole and bounded. It is the provider's
+         * description of OUR request; it contains no audio and no credential,
+         * because the key travels in the opening frame and is never echoed
+         * back.
+         */
+        let detail: string;
+        try { detail = JSON.stringify(message).slice(0, 400); } catch { detail = 'unserialisable frame'; }
         finish({
           ok: false, sideEffect: 'NONE',
-          error: {
-            code: 'UNKNOWN',
-            message: String(message.error ?? message.message ?? 'the provider refused').slice(0, 200),
-            retryable: false,
-          },
+          error: { code: 'UNKNOWN', message: detail, retryable: false },
         });
         return;
       }

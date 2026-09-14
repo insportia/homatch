@@ -295,3 +295,29 @@ test('an abusive turn is answered, not scolded', () => {
     'the instruction must be conditional on abuse having happened');
 });
 
+test('the dialogue socket registers voices as ids, not as objects', () => {
+  /*
+   * `voices` on the Text to Dialogue socket is a list of voice id STRINGS.
+   * Sent as [{ voice_id }] -- which is how the same voice is named in every
+   * other ElevenLabs request, and therefore the obvious thing to write -- the
+   * provider refuses the connection with code 1007:
+   *
+   *   Could not validate message: voices.0: Input should be a valid string
+   *
+   * That refusal arrives as a WebSocket frame rather than an HTTP status, so
+   * nothing threw and nothing was classified: the socket closed in about
+   * 70ms, the code fell back to whole-clip synthesis, and Georgian silently
+   * stopped streaming. Five production turns ran that way -- first audio at
+   * roughly 3.1 to 5.2 seconds instead of 1.6 -- and the only trace anywhere
+   * was the word UNKNOWN.
+   *
+   * The shape is asserted here because it is invisible everywhere else: it
+   * type-checks, it deploys, it answers 200, and it sounds correct. It is
+   * just slow, for the one language this work exists for.
+   */
+  assert.ok(EL.includes('text-to-dialogue'), 'the dialogue socket is gone');
+  assert.ok(/voices: \[opts\.voiceId\]/.test(EL),
+    'voices must be a list of voice id strings');
+  assert.ok(!/voices: \[\{ *voice_id/.test(EL),
+    'voices must not be a list of objects -- the provider refuses that with code 1007');
+});

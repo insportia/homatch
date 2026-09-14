@@ -1053,7 +1053,25 @@ async function speakPhraseStreaming(sb: Sb, params: {
         ok: false, errorCode: out.error?.code ?? null,
         providerStatus: Number(out.error?.providerCode) || null,
       });
-      logEvent('ai-talk', 'tts_stream_fell_back', { code: out.error?.code ?? null });
+      /*
+       * THE PROVIDER'S OWN SENTENCE, NOT JUST THE BUCKET IT FELL INTO.
+       *
+       * This logged `code` alone, and `code` for a refused dialogue socket is
+       * UNKNOWN -- which is the value the classifier uses for "the provider
+       * said something we do not have a name for". So the one line written at
+       * the exact moment Georgian silently stopped streaming recorded the fact
+       * that something went wrong and threw away what it was.
+       *
+       * Five turns of production Georgian fell back to whole-clip synthesis on
+       * this path, in 60 to 90 milliseconds each, and nothing anywhere said
+       * why. redact() still passes over it, so a message that happens to carry
+       * an address or a token is masked rather than logged.
+       */
+      logEvent('ai-talk', 'tts_stream_fell_back', {
+        code: out.error?.code ?? null,
+        providerStatus: Number(out.error?.providerCode) || null,
+        detail: String(out.error?.message ?? '').slice(0, 300),
+      });
     }
   }
 

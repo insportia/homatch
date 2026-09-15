@@ -8,6 +8,11 @@ import { routes } from './routes';
 import NotFoundPage from './pages/NotFoundPage';
 import { reportError } from '@/lib/errorReporting';
 import { JobsProvider } from '@/contexts/JobsContext';
+/* Which developer workspace this account is looking at, and what their role
+   there permits. Inside AuthProvider because it needs the signed-in user, and
+   outside <Routes> because a route change must not re-resolve a membership
+   the whole product depends on. */
+import { DeveloperWorkspaceProvider } from '@/contexts/DeveloperWorkspaceContext';
 import { JobIndicator } from '@/components/jobs/JobIndicator';
 import { noteInAppNavigation } from '@/lib/backNavigation';
 
@@ -55,5 +60,5 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState>{
  * page that throws must not take the progress indicator with it, since the
  * job is still running and that is exactly when the customer needs to see so.
  */
-const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><NavigationCounter/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></JobsProvider></AuthProvider></LanguageProvider></Router>;
+const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
 export default App;

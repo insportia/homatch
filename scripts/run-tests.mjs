@@ -37,6 +37,12 @@ import { spawnSync } from 'node:child_process';
  *                   check and the fixture shape check. The isolation one is a
  *                   security gate, and a gate you have to remember to run
  *                   separately is not enforced.
+ *   tests/developer/
+ *                   Homatch for Developers: the spreadsheet writer, and the
+ *                   Digital Twin's two load-bearing guarantees (only Homatch
+ *                   staff may write the 3D; the public manifest carries counts
+ *                   rather than unit rows). Both read source files and need no
+ *                   browser and no database.
  *   supabase/functions/
  *                   pure helpers in edge code. Added because a test written
  *                   beside llm.ts ran zero times and reported nothing: the
@@ -64,7 +70,7 @@ import { spawnSync } from 'node:child_process';
  * remember to run is weaker than an enforced one; a gate that blocks every
  * release on an environment difference is worse than either.
  */
-const ROOTS = ['src', 'tests/matrix', 'tests/browser', 'supabase/functions'];
+const ROOTS = ['src', 'tests/matrix', 'tests/browser', 'tests/developer', 'supabase/functions'];
 const EXCLUDE = [
   /commSurfaces\.test\.mjs$/,
   /pushHandlers\.test\.mjs$/,

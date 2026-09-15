@@ -328,7 +328,7 @@ export interface VoiceCallbacks {
    * When present this replaces onUserTurn entirely. Voice Studio still uses
    * the older request-and-reply path, which is why both exist.
    */
-onConverse?: (text: string, signal: AbortSignal) => AsyncIterable<ConverseEvent>;
+onConverse?: (text: string, signal: AbortSignal, turnId: string) => AsyncIterable<ConverseEvent>;
   /** The conversation state the server sent back, to carry into the next turn. */
   /**
    * The assistant is offering a real Homatch destination.
@@ -351,7 +351,7 @@ export interface VoiceMilestone {
     | 'first_input_audio' | 'first_speech' | 'first_utterance_sent'
     | 'first_transcript' | 'user_turn_sent'
     | 'assistant_text' | 'tts_audio_received' | 'playback_started'
-    | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'failed';
+    | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
@@ -400,6 +400,22 @@ const MIN_VOICED_MS = 260;
 /** A single utterance ceiling, so one long monologue cannot grow unbounded. */
 const MAX_UTTERANCE_MS = 30_000;
 
+/**
+ * Where each state may go. Terminal states go nowhere; a new session is a new
+ * object. Any state may reach the error and end states, which is what an
+ * error IS: something that can happen from anywhere.
+ */
+const ALWAYS: VoiceState[] = ['ENDED', 'PROVIDER_ERROR', 'LIMIT_REACHED', 'MIC_UNAVAILABLE', 'MIC_DENIED', 'RECONNECTING'];
+const ALLOWED_TRANSITIONS: Partial<Record<VoiceState, VoiceState[]>> = {
+  IDLE: ['CONNECTING', ...ALWAYS],
+  CONNECTING: ['LISTENING', ...ALWAYS],
+  LISTENING: ['UNDERSTANDING', 'RESPONDING', ...ALWAYS],
+  UNDERSTANDING: ['RESPONDING', 'LISTENING', ...ALWAYS],
+  RESPONDING: ['INTERRUPTED', 'LISTENING', 'UNDERSTANDING', ...ALWAYS],
+  INTERRUPTED: ['LISTENING', 'UNDERSTANDING', ...ALWAYS],
+  RECONNECTING: ['LISTENING', ...ALWAYS],
+};
+
 export class VoiceSession {
   private audioContext: AudioContext | null = null;
   private micStream: MediaStream | null = null;
@@ -442,6 +458,13 @@ export class VoiceSession {
    * to is over, and all of them used to be acted on.
    */
   private turnGeneration = 0;
+  /**
+   * The id of the turn in flight, sent with its request so the server's
+   * trace and this side's diagnostics name the same thing. Distinct from the
+   * generation: the generation is what stale events are checked against, the
+   * id is what a person greps for.
+   */
+  private turnId: string | null = null;
   /** How this turn's language was decided, for the trace and for the request. */
   private lastResolution: LanguageResolution | null = null;
   /** The recogniser's raw label for the last utterance. Evidence, never an answer. */
@@ -1247,6 +1270,7 @@ export class VoiceSession {
      */
     this.turnGeneration += 1;
     const generation = this.turnGeneration;
+    this.turnId = `t${generation}-${Date.now().toString(36)}`;
     this.player?.startTurn(generation);
 
     /*
@@ -1264,7 +1288,7 @@ export class VoiceSession {
        * synthesising it.
        */
       this.turnAbort = new AbortController();
-      for await (const event of this.cb.onConverse!(said, this.turnAbort.signal)) {
+      for await (const event of this.cb.onConverse!(said, this.turnAbort.signal, this.turnId ?? `t${generation}`)) {
         if (this.closed) return;
         // The visitor interrupted, or a newer turn started. Whatever is still
         // arriving belongs to a conversation that has moved on.
@@ -1727,8 +1751,22 @@ export class VoiceSession {
     this.turnAbort = null;
   }
 
+  /**
+   * One state variable, and a table of where it may go from each value.
+   *
+   * There are no booleans to combine here, so "listening and speaking at
+   * once" is unrepresentable rather than merely discouraged. What the table
+   * adds is a record of the transitions that were not expected: it LOGS them
+   * rather than refusing, because refusing a transition in the middle of a
+   * live call is worse than a diagnostic line. An entry in the log is a bug
+   * to fix; a call that froze because a guard said no is a bug to explain.
+   */
   private setState(state: VoiceState, detail?: string): void {
     if (this.state === state) return;
+    const allowed = ALLOWED_TRANSITIONS[this.state];
+    if (allowed && !allowed.includes(state)) {
+      this.milestone('illegal_transition', `${this.state}->${state}`);
+    }
     this.state = state;
     this.cb.onState(state, detail);
   }

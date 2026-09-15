@@ -130,6 +130,18 @@ const FAILURE_KEY: Record<string, string> = {
   VOICE_NOT_APPROVED_FOR_LANGUAGE: 'talk_err_voice_not_approved',
   PLAYBACK_FAILED: 'talk_err_playback',
   PLAYBACK_BLOCKED: 'talk_err_playback',
+  /*
+   * The reply was produced and nothing was heard: a suspended context, a
+   * graph that was never connected, or a provider that answered with
+   * silence. Same sentence as a playback failure, because from the visitor's
+   * side it is one, and the retry is safe.
+   */
+  VOICE_SILENT: 'talk_err_playback',
+  /*
+   * The model answered in the wrong language twice. Not a voice problem and
+   * not the visitor's fault; the generic sentence and a retry are right.
+   */
+  LANGUAGE_UNAVAILABLE: 'talk_err_assistant',
   STT_UNAVAILABLE: 'talk_err_stt',
   TRANSCRIBE_FAILED: 'talk_err_stt',
   NETWORK: 'talk_err_assistant',
@@ -483,12 +495,14 @@ export function AiTalkPanel({ className }: { className?: string }) {
          * phrase by phrase while it is still being spoken, so nothing waits
          * for a stage that has already produced something usable.
          */
-        onConverse: (text, signal) => converseStream({
+        onConverse: (text, signal, turnId) => converseStream({
           url: FUNCTIONS_URL,
           anonKey: ANON_KEY,
           body: {
             action: 'converse',
             sessionId: sessionIdRef.current,
+            // Names this turn in the server's trace and in ours.
+            turnId,
             text,
             locale: language,
             ...(detectedRef.current ? { languageHint: detectedRef.current } : {}),

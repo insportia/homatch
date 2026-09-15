@@ -313,6 +313,8 @@ interface TalkRequest {
    * discarded when it names a language AI TALK does not speak.
    */
   providerLanguage?: string;
+  /** converse: the browser's name for this turn, echoed into the trace. */
+  turnId?: string;
   /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
   audioBase64?: string;
   /**
@@ -1803,6 +1805,45 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             streamed: spoken[0] ? spoken[0].chunks.length > 1 : null,
           },
         });
+        /*
+         * ONE TRACE PER TURN.
+         *
+         * Everything that decided this turn, on one line, so the next mixed
+         * script or silent reply is a query and not an afternoon. Counts and
+         * codes only: no transcript, no reply text, no credential. The
+         * language fields are the resolver's own record of what it was given
+         * and what it concluded, which is the part that was invisible while a
+         * Georgian session was quietly becoming Korean.
+         */
+        logEvent('ai-talk', 'turn_trace', {
+          session_id: session.id,
+          turn_id: String(body.turnId ?? '').slice(0, 40) || null,
+          ui_locale: locale,
+          provider_language: resolution.providerLanguage,
+          normalized_provider_language: resolution.normalizedProviderLanguage,
+          transcript_script: resolution.transcriptScript,
+          previous_session_language: resolution.previousSessionLanguage,
+          resolved_language: resolution.resolvedLanguage,
+          resolution_reason: resolution.resolutionReason,
+          resolution_confidence: resolution.confidence,
+          language_switched: resolution.switched,
+          reply_language_guard: languageChecked ? (wrongLanguage ? 'RETRIED' : 'OK') : 'UNCHECKED',
+          llm_first_token_ms: llmFirstTokenAt,
+          llm_final_ms: Date.now() - startedAt,
+          tts_provider: spoken[0]?.provider ?? null,
+          tts_model: spoken[0]?.model ?? null,
+          tts_request_language: replyLanguage,
+          tts_sample_rate: spoken[0]?.sampleRate ?? null,
+          tts_encoding: 'pcm_s16le',
+          tts_request_ms: ttsRequestAt,
+          tts_first_byte_ms: ttsFirstByteAt,
+          tts_chunk_count: seq,
+          tts_bytes: audioBytes,
+          tts_failure: voiceFailure?.code ?? null,
+          action_offered: action.destination?.key ?? null,
+          auto_end_reason: action.end ? (action.endReason ?? 'OBJECTIVE_MET') : null,
+        });
+
         logEvent('ai-talk', 'converse_ok', {
           sessionId: session.id, firstTextMs: firstTextAt, firstAudioMs: firstAudioAt || null,
           totalMs: Date.now() - startedAt, phrases: spoken.length, bytes: audioBytes,

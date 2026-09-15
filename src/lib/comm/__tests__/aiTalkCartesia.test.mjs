@@ -537,3 +537,137 @@ test('the transcript still updates when the tab is in the background', () => {
   assert.ok(/window\.setTimeout\(flush/.test(panel),
     'a hidden tab needs a timer, since it will never get a frame');
 });
+
+// ── What "audible" is allowed to mean ──────────────────────────────────────
+
+test('a reply of pure silence is not reported as playback', () => {
+  // A provider that gives up answers 200 with zeroes. That is not speech.
+  const ctx = new FakeContext(48000);
+  ctx.state = 'running';
+  const player = new PcmStreamPlayer(ctx, {});
+  player.startTurn(1);
+  const silent = Buffer.alloc(9600).toString('base64');   // 0.1s of zeroes
+  player.push(silent, 48000, 1);
+  player.endOfTurn();
+  ctx.currentTime = 5;
+  const v = player.audiblyPlayed();
+  assert.equal(v.ok, false);
+  assert.equal(v.reason, 'ONLY_SILENCE');
+});
+
+test('a suspended context is reported, not treated as playback', () => {
+  // Chrome creates contexts suspended without a gesture; a buffer scheduled
+  // into one is a buffer nobody will ever hear.
+  const ctx = new FakeContext(48000);
+  ctx.state = 'suspended';
+  const player = new PcmStreamPlayer(ctx, {});
+  player.startTurn(1);
+  player.push(tone(0.2, 48000), 48000, 1);
+  player.endOfTurn();
+  ctx.currentTime = 5;
+  const v = player.audiblyPlayed();
+  assert.equal(v.ok, false);
+  assert.equal(v.reason, 'CONTEXT_SUSPENDED');
+});
+
+test('nothing scheduled is not playback, whatever the counters say', () => {
+  const ctx = new FakeContext(48000);
+  ctx.state = 'running';
+  const player = new PcmStreamPlayer(ctx, {});
+  player.startTurn(1);
+  assert.equal(player.audiblyPlayed().reason, 'NOTHING_SCHEDULED');
+});
+
+test('a real reply into a running context is audible once the clock passes it', () => {
+  const ctx = new FakeContext(48000);
+  ctx.state = 'running';
+  const player = new PcmStreamPlayer(ctx, {});
+  player.startTurn(1);
+  player.push(tone(0.3, 48000), 48000, 1);
+  player.endOfTurn();
+  // Before the clock reaches the first piece: scheduled, not yet heard.
+  assert.equal(player.audiblyPlayed().reason, 'CLOCK_NOT_ADVANCED');
+  ctx.currentTime = 1;
+  assert.equal(player.audiblyPlayed().ok, true);
+});
+
+test('an underrun resyncs once instead of accumulating drift', () => {
+  const ctx = new FakeContext(48000);
+  ctx.state = 'running';
+  const player = new PcmStreamPlayer(ctx, {});
+  player.startTurn(1);
+  player.push(tone(0.15, 48000), 48000, 1);            // scheduled at ~0.05
+  // The network stalls: the clock runs well past everything scheduled.
+  ctx.currentTime = 3;
+  player.push(tone(0.15, 48000), 48000, 1);
+  const last = ctx.scheduled[ctx.scheduled.length - 1];
+  assert.ok(last.started >= 3 && last.started < 3.2,
+    `after a stall the next piece must restart near the clock, not at ${last.started}`);
+  assert.equal(player.snapshot().underruns, 1, 'the stall must be counted once');
+});
+
+// ── Session identity, reset, and what reaches the screen ───────────────────
+
+test('every turn carries a generation and an id, and stale events are dropped', () => {
+  const client = read('src/lib/comm/voiceClient.ts');
+  assert.ok(/this\.turnGeneration \+= 1;/.test(client), 'a turn must claim a generation');
+  assert.ok(/this\.turnId = `t\$\{generation\}/.test(client), 'a turn must have an id for the trace');
+  assert.ok(/if \(generation !== this\.turnGeneration\) return;/.test(client),
+    'events from a superseded turn must be dropped before they touch state');
+  assert.ok(/if \(this\.closed \|\| generation !== this\.turnGeneration\) return;/.test(client),
+    'a stale turn must not resume listening or end the session on behalf of a newer one');
+});
+
+test('a new session starts with no language, transcript, destination or queue from the last one', () => {
+  const panel = read('src/components/home/AiTalkPanel.tsx');
+  const at = panel.indexOf('const start = useCallback(async () => {');
+  const body = panel.slice(at, at + 900);
+  for (const reset of ['setTurns([])', 'setDestination(null)', 'setFailure(null)',
+                       'detectedRef.current = null', 'historyRef.current = []']) {
+    assert.ok(body.includes(reset), `start() must reset: ${reset}`);
+  }
+  // And the session object is new each time, so the player, generation and
+  // language state are fresh by construction rather than by cleanup.
+  assert.ok(/const session = new Session\(/.test(panel), 'each start must construct a new session');
+});
+
+test('the visible transcript renders recognised text and nothing else', () => {
+  // No provider label, no candidate list, no confidence, no diagnostics.
+  const panel = read('src/components/home/AiTalkPanel.tsx');
+  const at = panel.indexOf('function TranscriptView(');
+  const body = panel.slice(at, panel.indexOf('\n}\n', at));
+  assert.ok(/\{turn\.text\}/.test(body), 'a row must render the turn text');
+  for (const forbidden of ['providerLanguage', 'resolution', 'confidence', 'candidates', 'diag']) {
+    assert.ok(!body.includes(forbidden), `the transcript must not render ${forbidden}`);
+  }
+});
+
+test('a silent or wrong-language turn is named to the visitor, not swallowed', () => {
+  const panel = read('src/components/home/AiTalkPanel.tsx');
+  assert.ok(/VOICE_SILENT: 'talk_err_playback'/.test(panel), 'a silent turn must have a sentence');
+  assert.ok(/LANGUAGE_UNAVAILABLE: 'talk_err_assistant'/.test(panel), 'a language failure must have a sentence');
+  const client = read('src/lib/comm/voiceClient.ts');
+  assert.ok(/this\.cb\.onError\?\.\('VOICE_SILENT'\)/.test(client), 'a silent turn must be reported');
+});
+
+test('the state machine is one variable with a transition table', () => {
+  const client = read('src/lib/comm/voiceClient.ts');
+  assert.ok(/const ALLOWED_TRANSITIONS/.test(client), 'transitions must be declared');
+  assert.ok(/milestone\('illegal_transition'/.test(client), 'an unexpected transition must be recorded');
+  // Not enforced: refusing a transition mid-call is worse than logging it.
+  assert.ok(!/if \(allowed && !allowed\.includes\(state\)\) return;/.test(client),
+    'a guard that blocks transitions would freeze a live call');
+});
+
+test('the server writes one structured trace per turn, with no transcript in it', () => {
+  const edge = read('supabase/functions/ai-talk-session/index.ts');
+  const at = edge.indexOf("logEvent('ai-talk', 'turn_trace'");
+  assert.ok(at > 0, 'the per-turn trace is missing');
+  const body = edge.slice(at, edge.indexOf('});', at));
+  for (const field of ['session_id', 'turn_id', 'provider_language', 'normalized_provider_language',
+                       'transcript_script', 'resolved_language', 'resolution_reason', 'tts_first_byte_ms',
+                       'tts_chunk_count', 'tts_sample_rate', 'auto_end_reason']) {
+    assert.ok(body.includes(field), `trace must carry ${field}`);
+  }
+  assert.ok(!/said|full|shown|transcript:/.test(body), 'the trace must not carry what was said');
+});

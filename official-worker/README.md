@@ -101,3 +101,28 @@ npm start          # tsx src/index.ts   (identical to what the container execs)
 npm test           # type-check the test build, then run the full suite
 npm run test:build # tsc -p tsconfig.test.json
 ```
+
+## Speech recognition configuration, as deployed
+
+One documented behaviour, because the alternative was three contradictory
+sentences in three reports.
+
+| Setting | Production value | Where it is set |
+|---|---|---|
+| API | Google Speech-to-Text **v2** (`v2.SpeechClient`, never the package root) | code |
+| Recognizer | `projects/<project>/locations/eu/recognizers/_` | `GOOGLE_SPEECH_PROJECT_ID`, `GOOGLE_SPEECH_REGION=eu` |
+| Model | `chirp_3` | `GOOGLE_SPEECH_MODEL` (default) |
+| Audio | LINEAR16, 16 000 Hz, mono, explicit decoding | code |
+| `languageCodes` | **exactly one**: the language the session settled on, sent by the browser as `?language=`; `ka-GE` when none is settled | gateway query + `GOOGLE_SPEECH_LANGUAGE` |
+| Automatic detection | **off** (`GOOGLE_SPEECH_MULTILANG=0`) | Railway variable |
+| Client hints | `?languages=` is accepted, validated and **ignored by the recogniser** while auto is off; it only bounds what the session will resolve to | gateway |
+| Page locale | seeds the session language before anybody has spoken; nothing else | browser |
+| Fallback | Scribe (ElevenLabs STT, route priority 5) when this gateway is unavailable — logged as `google_stt_unavailable`, never silent | edge route table |
+
+Why auto is off: `chirp_3` refuses an explicit list of languages
+(`INVALID_ARGUMENT`), and the single code `auto` it does accept is not scoped
+to this product's languages. It is scoped to every language Google supports,
+and fed short Georgian it returned Korean, Luxembourgish, Hausa and
+Lithuanian — transcript and all. Recognition therefore runs on one language
+per session, which is deterministic. `/health/speech-languages` re-runs the
+measurement that established this.

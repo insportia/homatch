@@ -107,3 +107,28 @@ test('mentionsBrand is repeatable, so the report cannot miscount', () => {
   assert.equal(mentionsBrand(s), true, 'a stateful global regex would say false here');
   assert.equal(mentionsBrand('ბინა ვაკეში'), false);
 });
+
+// ── A letter of the visitor's language is never deleted ────────────────────
+
+test('a declined Georgian spelling keeps every letter of its ending', () => {
+  // ჰოუმეჩის used to come back as ჰოუმეჩს: the stem list contained the
+  // nominative ჰოუმეჩი, which swallowed the ი and left ს to be re-welded.
+  assert.equal(speechText('ჰოუმეჩის ბინები', 'ka'), `${SPOKEN_KA}ის ბინები`);
+  assert.equal(speechText('ჰომაჩის ბინები', 'ka'), `${SPOKEN_KA}ის ბინები`);
+  assert.equal(speechText('ჰოუმეჩი გეხმარებათ', 'ka'), `${SPOKEN_KA}ი გეხმარებათ`);
+});
+
+test('a text already in the spoken spelling is returned unchanged', () => {
+  // Normalising twice must not differ from normalising once, or a retried
+  // phrase is spoken differently from the first attempt.
+  for (const s of ['ჰოუმეჩი გისმენთ.', 'ჰოუმეჩის AI ასისტენტი გისმენთ.', 'ეს არის ჰოუმეჩ.']) {
+    assert.equal(speechText(s, 'ka'), s, s);
+  }
+});
+
+test('normalising is idempotent for every written form', () => {
+  for (const s of ['Homatch-ის AI ასისტენტი.', 'ეს არის Homatch.', 'ჰომაჩის ბინა', 'Homatchზე']) {
+    const once = speechText(s, 'ka');
+    assert.equal(speechText(once, 'ka'), once, `${s} -> ${once}`);
+  }
+});

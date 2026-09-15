@@ -77,9 +77,18 @@ const BRAND_SPOKEN: Record<TalkLanguage, string> = {
  * mispronunciation rather than a fixed one. All of them collapse to the same
  * spoken form.
  */
+/*
+ * STEMS ONLY. A Georgian ending is never part of a stem here.
+ *
+ * These listed the nominative forms too -- ჰომაჩი, ჰოუმეჩი -- and because the
+ * alternation is tried longest-first, `ჰოუმეჩის` matched the stem `ჰოუმეჩი`
+ * and left `ს` as the ending. `ს` is a real case ending, so it was welded back
+ * on and the result was `ჰოუმეჩს`: a letter of the visitor's own language
+ * silently deleted. Every ending, `ი` included, belongs to the tail group.
+ */
 const BRAND_WRITTEN = [
   'homatch',
-  'ჰომაჩი', 'ჰომაჩ', 'ჰოუმეჩი', 'ჰოუმეჩ', 'ჰომატჩი', 'ჰომატჩ',
+  'ჰომაჩ', 'ჰოუმეჩ', 'ჰომატჩ',
 ];
 
 /** Georgian letters, for recognising a case ending welded to the name. */

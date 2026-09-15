@@ -43,6 +43,17 @@ export interface ConverseRequest {
   url: string;
   /** The publishable key. Public by design — it is in every bundle already. */
   anonKey: string;
+  /**
+   * The signed-in visitor's access token, when there is one.
+   *
+   * converse used to send the anon key as the bearer unconditionally, which
+   * meant a signed-in visitor's conversation reached the server as anonymous —
+   * and an administrator's testing session was therefore held to the ordinary
+   * quota no matter that they were an administrator. When present this is the
+   * bearer instead; the anon key stays the fallback for the anonymous hero,
+   * whose behaviour does not change.
+   */
+  accessToken?: string | null;
   body: Record<string, unknown>;
   signal?: AbortSignal;
 }
@@ -64,7 +75,8 @@ export async function* converseStream(req: ConverseRequest): AsyncGenerator<Conv
         'content-type': 'application/json',
         accept: 'text/event-stream',
         apikey: req.anonKey,
-        authorization: `Bearer ${req.anonKey}`,
+        // The visitor's own identity when signed in; the public key otherwise.
+        authorization: `Bearer ${req.accessToken || req.anonKey}`,
       },
       body: JSON.stringify(req.body),
       signal: req.signal,

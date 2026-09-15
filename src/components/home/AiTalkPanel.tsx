@@ -275,6 +275,16 @@ export function AiTalkPanel({ className }: { className?: string }) {
    * last write always carries the whole transcript — and the work per frame
    * is one render instead of thirty.
    */
+  /**
+   * The signed-in visitor's access token, resolved once when a call starts.
+   *
+   * Null for the anonymous hero, which is the common case and unchanged. When
+   * a Homatch user is signed in — an administrator, for the testing
+   * entitlement — their whole AI TALK exchange carries their identity, so the
+   * server resolves their usage tier from a verified token rather than seeing
+   * an anonymous request.
+   */
+  const accessTokenRef = useRef<string | null>(null);
   const pendingTurns = useRef<TranscriptTurn[] | null>(null);
   const transcriptFrame = useRef<number | null>(null);
 
@@ -360,6 +370,15 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
   const start = useCallback(async () => {
     setState('CONNECTING');
+    /*
+     * Whose session this is, if anyone's. getSession() reads the token the
+     * app already holds; it does not hit the network. Anonymous visitors get
+     * null and the anon key, exactly as before.
+     */
+    try {
+      const { data } = await supabase.auth.getSession();
+      accessTokenRef.current = data.session?.access_token ?? null;
+    } catch { accessTokenRef.current = null; }
     setTurns([]);
     setIntelligence(null);
     setFailure(null);
@@ -498,6 +517,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
         onConverse: (text, signal, turnId) => converseStream({
           url: FUNCTIONS_URL,
           anonKey: ANON_KEY,
+          accessToken: accessTokenRef.current,
           body: {
             action: 'converse',
             sessionId: sessionIdRef.current,

@@ -162,3 +162,21 @@ test('every grant decision is explained without a token, an address or an email'
   }
   assert.ok(!/ipHash|email|token|Authorization/.test(body), 'the decision log must carry no identity material');
 });
+
+// ── The signed-in visitor's AI TALK carries their identity ─────────────────
+
+test('converse sends the session token as bearer when signed in, the anon key otherwise', () => {
+  const read = (p) => readFileSync(p, 'utf8').split('\r\n').join('\n');
+  const converse = read('src/lib/comm/converse.ts');
+  // The bearer prefers the access token and falls back to the anon key.
+  assert.ok(/Bearer \$\{req\.accessToken \|\| req\.anonKey\}/.test(converse),
+    'the conversation must run as the signed-in visitor when there is one');
+  // apikey stays the anon key — that header is the project key, not identity.
+  assert.ok(/apikey: req\.anonKey/.test(converse));
+
+  const panel = read('src/components/home/AiTalkPanel.tsx');
+  assert.ok(/supabase\.auth\.getSession\(\)/.test(panel),
+    'the panel must resolve the visitor session at start');
+  assert.ok(/accessToken: accessTokenRef\.current/.test(panel),
+    'the resolved token must reach converse');
+});

@@ -11,6 +11,12 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // The three advertising platforms, by their own names. Meta, Google and
+  // TikTok are written identically in all six locales because they are
+  // company names, not words — the same reason WhatsApp is allowlisted below.
+  'dev_ads_provider_meta',
+  'dev_ads_provider_google',
+  'dev_ads_provider_tiktok',
   // "Webhook" — the integration mechanism's own name. Turkish and Hebrew both
   // use the English term verbatim in technical usage, exactly as the other
   // four locales here carry their own real forms; this is an admin-only

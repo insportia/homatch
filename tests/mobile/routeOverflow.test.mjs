@@ -73,7 +73,18 @@ const ROUTES = [
   { path: '/developers/contacts', name: 'developer contacts', auth: true },
   { path: '/developers/sales/ledger', name: 'developer sales ledger', auth: true },
   { path: '/developers/settings', name: 'developer settings', auth: true },
+  { path: '/developers/sales/offers', name: 'developer offers', auth: true },
+  { path: '/developers/sales/contracts', name: 'developer contracts', auth: true },
+  { path: '/developers/sales/commissions', name: 'developer commissions', auth: true },
+  { path: '/developers/sales/handover', name: 'developer handover', auth: true },
+  { path: '/developers/marketing', name: 'developer marketing', auth: true },
+  { path: '/developers/insights', name: 'developer insights', auth: true },
+  { path: '/developers/settings/audit', name: 'developer activity record', auth: true },
   { path: '/s/harness-token', name: 'shared apartment' },
+  /* The buyer-facing surfaces. Neither needs an account, and both are
+     opened on a phone far more often than on anything else. */
+  { path: '/buyer/harness-token', name: 'buyer room' },
+  { path: '/p/harness/harness-project', name: 'digital twin viewer' },
 ];
 
 function findChrome() {
@@ -132,6 +143,32 @@ const DEV_WORKSPACE = {
 
 /* Every counter zero. The point of this gate is the LAYOUT, and on most of
    these screens the empty state is the widest thing that ever renders. */
+/* The executive rollup, all zeroes. These screens are measured for LAYOUT,
+   and inventing figures here would mean measuring a table that production
+   would not show. */
+const DEV_DASHBOARD = {
+  inventory: {
+    total: 0, available: 0, reserved: 0, on_hold: 0, negotiation: 0,
+    contract_pending: 0, sold: 0, value_available: 0, area_available: 0,
+  },
+  sales: { count: 0, value: 0, avg_value: null, discount_given: 0 },
+  money: { collected: 0, awaiting_confirmation: 0 },
+  receivables: { overdue_count: 0, overdue_amount: 0, due_30d: 0, outstanding_total: 0 },
+  funnel: { leads: 0, qualified: 0, viewing: 0, reserved: 0, sold: 0, lost: 0 },
+  by_project: [], by_salesperson: [], by_source: [],
+  commissions: { pending: 0, approved: 0, paid: 0 },
+  handover: { pending: 0, overdue: 0, completed: 0 },
+};
+
+const TWIN_ANALYTICS = {
+  since: new Date(0).toISOString(),
+  totals: {
+    opens: 0, unit_views: 0, floorplan_views: 0,
+    walkthroughs: 0, contact_requests: 0, visitors: 0,
+  },
+  by_origin: [], top_units: [], daily: [],
+};
+
 const DEV_OVERVIEW = {
   units: { total: 0, available: 0, reserved: 0, negotiation: 0, contract_pending: 0, sold: 0, value_available: 0 },
   leads: { total: 0, new: 0, active: 0, negotiation: 0, overdue_follow_ups: 0 },
@@ -225,6 +262,16 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
       if (url.includes('/rest/v1/rpc/dev_claim_invites')) return r.fulfill(json(0));
       if (url.includes('/rest/v1/rpc/dev_expire_reservations')) return r.fulfill(json(0));
       if (url.includes('/rest/v1/rpc/dev_share_resolve')) return r.fulfill(json({ error: 'NOT_FOUND' }));
+      /* The buyer room and the twin viewer both resolve a token that does
+         not exist here, so each renders its "we could not find that"
+         state -- which is a real layout with real copy, and exactly the
+         one a mistyped link produces in production. */
+      if (url.includes('/rest/v1/rpc/dev_buyer_room')) return r.fulfill(json({ error: 'NOT_FOUND' }));
+      if (url.includes('/rest/v1/rpc/dt_experience_manifest')) return r.fulfill(json({ error: 'NOT_FOUND' }));
+      if (url.includes('/rest/v1/rpc/dev_dashboard')) return r.fulfill(json(DEV_DASHBOARD));
+      if (url.includes('/rest/v1/rpc/dt_analytics')) return r.fulfill(json(TWIN_ANALYTICS));
+      if (url.includes('/rest/v1/rpc/dev_generate_notifications')) return r.fulfill(json(0));
+      if (url.includes('/rest/v1/rpc/dev_expire_offers')) return r.fulfill(json(0));
       if (url.includes('/rest/v1/')) return r.fulfill(json([]));
       return r.fulfill(json({}));
     });

@@ -19,7 +19,7 @@ import {
   DEFAULT_LEDGER_COLUMNS, suggestFieldForHeader, type ExportTemplate,
 } from '@/services/developer/exports';
 import { readFile } from '@/lib/comm/importFile';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 
 /**
  * A DEVELOPER'S OWN SALES FILE FORMAT (§42).
@@ -105,7 +105,7 @@ export default function DeveloperExportTemplatesPage() {
                     toast.success(t('dev_template_deleted'));
                     await load();
                   } catch (e) {
-                    toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+                    toast.error(devErrorText(e, t));
                   }
                 }}
               >
@@ -192,7 +192,7 @@ function TemplateEditor({
       toast.success(t('dev_saved'));
       onSaved();
     } catch (e) {
-      toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+      toast.error(devErrorText(e, t));
     } finally {
       setSaving(false);
     }

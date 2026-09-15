@@ -23,7 +23,7 @@ import { IMPORT_FIELDS, suggestFieldForHeader, type ImportField } from '@/servic
  * rather than rediscovering it one customer file at a time.
  */
 import { readFile } from '@/lib/comm/importFile';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import { TableScroll, Th, Td, Eyebrow, GoldRule } from './primitives';
 import type { ImportResult } from '@/services/developer/types';
 
@@ -201,7 +201,7 @@ export function ImportInventoryDialog({
       setStep('result');
       onImported();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setBusy(false);
     }

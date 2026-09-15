@@ -24,7 +24,7 @@ import { LeadDrawer } from '@/components/developer/LeadDrawer';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { listLeads, createLead, type LeadWithContact } from '@/services/developer/crm';
 import { listProjects } from '@/services/developer/inventory';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import { PIPELINE_STAGES } from '@/services/developer/types';
 import type { LeadStage, DevProject } from '@/services/developer/types';
 
@@ -364,7 +364,7 @@ function CreateLeadDialog({
       toast.success(t('dev_lead_created'));
       onCreated(id);
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }

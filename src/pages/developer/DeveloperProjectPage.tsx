@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Upload, Download, Eye, EyeOff, Search, LayoutGrid, Rows3, ExternalLink, Plus,
+  Share2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,10 +25,15 @@ import { ImportInventoryDialog } from '@/components/developer/ImportInventoryDia
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import {
   getProject, listBuildings, listUnits, setProjectPublished, setUnitsPublished,
+  listPaymentPlans,
 } from '@/services/developer/inventory';
 import { exportInventoryXlsx } from '@/services/developer/exports';
-import { DevError } from '@/services/developer/client';
-import type { DevProject, DevBuilding, DevUnit, UnitStatus } from '@/services/developer/types';
+import { devErrorText } from '@/services/developer/client';
+import { BulkEditDialog } from '@/components/developer/BulkEditDialog';
+import { ShareProjectPanel } from '@/components/developer/ShareProjectPanel';
+import type {
+  DevProject, DevBuilding, DevUnit, UnitStatus, DevPaymentPlan,
+} from '@/services/developer/types';
 import { CONSTRUCTION_KEYS } from './DeveloperProjectsPage';
 
 /**
@@ -54,7 +60,7 @@ const ALL_STATUSES: UnitStatus[] = [
   'AVAILABLE', 'ON_HOLD', 'NEGOTIATION', 'RESERVED', 'CONTRACT_PENDING', 'SOLD', 'HIDDEN',
 ];
 
-type ViewMode = 'table' | 'visual';
+type ViewMode = 'table' | 'visual' | 'share';
 
 export default function DeveloperProjectPage() {
   const { id } = useParams<{ id: string }>();
@@ -77,6 +83,8 @@ export default function DeveloperProjectPage() {
   const [sort, setSort] = useState<{ by: 'unit_number' | 'price' | 'area_total' | 'floor_level' | 'status'; asc: boolean }>(
     { by: 'unit_number', asc: true });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [paymentPlans, setPaymentPlans] = useState<DevPaymentPlan[]>([]);
   const [openUnitId, setOpenUnitId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -88,6 +96,9 @@ export default function DeveloperProjectPage() {
       const [p, b] = await Promise.all([getProject(id), listBuildings(id)]);
       setProject(p);
       setBuildings(b);
+      // Plans a bulk change can assign. Scoped to this project's own
+      // workspace, and read after the project so the id is known.
+      setPaymentPlans(await listPaymentPlans(p.workspace_id));
     } catch (e) {
       setError(e instanceof Error ? e.message : null);
     }
@@ -143,7 +154,7 @@ export default function DeveloperProjectPage() {
       setSelected(new Set());
       await loadUnits();
     } catch (e) {
-      toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+      toast.error(devErrorText(e, t));
     }
   };
 
@@ -169,7 +180,7 @@ export default function DeveloperProjectPage() {
         ].filter(Boolean),
       });
     } catch (e) {
-      toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+      toast.error(devErrorText(e, t));
     }
   };
 
@@ -203,7 +214,7 @@ export default function DeveloperProjectPage() {
                   setProject(updated);
                   toast.success(updated.is_published ? t('dev_project_published') : t('dev_project_unpublished'));
                 } catch (e) {
-                  toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+                  toast.error(devErrorText(e, t));
                 }
               }}
             >
@@ -278,13 +289,33 @@ export default function DeveloperProjectPage() {
             <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
             {t('dev_view_visual')}
           </button>
+          <button
+            type="button"
+            onClick={() => switchView('share')}
+            aria-pressed={view === 'share'}
+            className={cn(
+              'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
+              view === 'share' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
+            {t('dev_view_share')}
+          </button>
         </div>
       </div>
 
-      {loading && <LoadingRows rows={8} />}
-      {!loading && error && <ErrorState message={error} onRetry={loadUnits} />}
+      {/* Sharing is about the project, not its inventory, so it does not
+          wait on the unit query or show its empty states. */}
+      {view === 'share' && workspace && project && (
+        <ShareProjectPanel workspace={workspace} project={project} />
+      )}
 
-      {!loading && !error && total === 0 && !debouncedSearch && statusFilter.length === 0 && (
+      {view !== 'share' && loading && <LoadingRows rows={8} />}
+      {view !== 'share' && !loading && error && (
+        <ErrorState message={error} onRetry={loadUnits} />
+      )}
+
+      {view !== 'share' && !loading && !error && total === 0 && !debouncedSearch && statusFilter.length === 0 && (
         <Panel>
           <EmptyState
             icon={<Upload className="h-7 w-7" />}
@@ -300,7 +331,7 @@ export default function DeveloperProjectPage() {
         </Panel>
       )}
 
-      {!loading && !error && total === 0 && (debouncedSearch || statusFilter.length > 0) && (
+      {view !== 'share' && !loading && !error && total === 0 && (debouncedSearch || statusFilter.length > 0) && (
         <Panel>
           <EmptyState
             icon={<Search className="h-7 w-7" />}
@@ -332,6 +363,11 @@ export default function DeveloperProjectPage() {
               <span className="text-xs font-medium">
                 {t('dev_n_selected').replace('{n}', String(selected.size))}
               </span>
+              {can('inventory') && (
+                <Button size="sm" onClick={() => setBulkOpen(true)}>
+                  {t('dev_bulk_edit')}
+                </Button>
+              )}
               {can('publish') && (
                 <>
                   <Button size="sm" variant="outline" onClick={() => bulkPublish(true)}>
@@ -455,6 +491,20 @@ export default function DeveloperProjectPage() {
         onClose={() => setOpenUnitId(null)}
         onChanged={() => { void loadUnits(); }}
       />
+
+      {bulkOpen && (
+        <BulkEditDialog
+          units={units.filter((u) => selected.has(u.id))}
+          paymentPlans={paymentPlans}
+          currency={project?.currency}
+          onClose={() => setBulkOpen(false)}
+          onDone={async () => {
+            setBulkOpen(false);
+            setSelected(new Set());
+            await loadUnits();
+          }}
+        />
+      )}
 
       {project && (
         <ImportInventoryDialog

@@ -24,7 +24,7 @@ import { listProjects } from '@/services/developer/inventory';
 import {
   exportLedgerXlsx, exportLedgerCsv, listTemplates, type ExportTemplate,
 } from '@/services/developer/exports';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import type { SalesLedgerRow, DevProject } from '@/services/developer/types';
 
 /**
@@ -109,7 +109,7 @@ export default function DeveloperLedgerPage() {
       else exportLedgerCsv(rows, context, template);
       toast.success(t('dev_export_ready'));
     } catch (e) {
-      toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+      toast.error(devErrorText(e, t));
     }
   };
 

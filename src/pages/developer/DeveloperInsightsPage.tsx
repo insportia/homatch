@@ -12,8 +12,11 @@ import { listUnits, listProjects } from '@/services/developer/inventory';
 import { listLedger } from '@/services/developer/sales';
 import { listLeads, type LeadWithContact } from '@/services/developer/crm';
 import { supabase } from '@/services/developer/client';
+import { loadDashboard, loadTwinAnalytics } from '@/services/developer/dashboard';
+import { listTeam } from '@/services/developer/workspace';
 import type {
   WorkspaceOverview, DevUnit, SalesLedgerRow, DevProject,
+  DevDashboard, TwinAnalytics, DevMember,
 } from '@/services/developer/types';
 
 /**
@@ -54,6 +57,9 @@ export default function DeveloperInsightsPage() {
   const [leads, setLeads] = useState<LeadWithContact[]>([]);
   const [projects, setProjects] = useState<DevProject[]>([]);
   const [interest, setInterest] = useState<Map<string, UnitInterest>>(new Map());
+  const [dashboard, setDashboard] = useState<DevDashboard | null>(null);
+  const [twin, setTwin] = useState<TwinAnalytics | null>(null);
+  const [team, setTeam] = useState<DevMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,18 +68,29 @@ export default function DeveloperInsightsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [o, unitPage, ledgerRows, leadRows, projectRows] = await Promise.all([
-        getOverview(workspace.id),
-        listUnits(workspace.id, { limit: 3000 }),
-        listLedger(workspace.id),
-        can('crm') ? listLeads(workspace.id, { limit: 1000 }) : Promise.resolve([]),
-        listProjects(workspace.id),
-      ]);
+      const [o, unitPage, ledgerRows, leadRows, projectRows, board, twinStats, members] =
+        await Promise.all([
+          getOverview(workspace.id),
+          listUnits(workspace.id, { limit: 3000 }),
+          listLedger(workspace.id),
+          can('crm') ? listLeads(workspace.id, { limit: 1000 }) : Promise.resolve([]),
+          listProjects(workspace.id),
+          /* The executive rollup. SECURITY INVOKER, so a sales agent running
+             this sees their own rows and an owner sees everything — same SQL,
+             a different answer, decided by RLS rather than by a filter
+             somebody has to remember to add. */
+          loadDashboard(workspace.id),
+          loadTwinAnalytics(workspace.id, null, 30),
+          listTeam(workspace.id),
+        ]);
       setOverview(o);
       setUnits(unitPage.rows);
       setLedger(ledgerRows);
       setLeads(leadRows);
       setProjects(projectRows);
+      setDashboard(board);
+      setTwin(twinStats);
+      setTeam(members);
 
       // Share activity, joined to units through the links that produced it.
       // Counted here rather than in SQL because it is only ever a few hundred
@@ -204,6 +221,189 @@ export default function DeveloperInsightsPage() {
               />
             </div>
           </section>
+
+          {/* ── Money owed, money owing ──────────────────────────────── */}
+          {dashboard && (
+            <Panel>
+              <PanelHeader
+                title={t('dev_insights_receivables')}
+                description={t('dev_insights_receivables_body')}
+              />
+              <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4 sm:p-5">
+                <StatTile
+                  label={t('dev_insights_collected')}
+                  value={<Money amount={dashboard.money.collected} currency={workspace?.default_currency} />}
+                  tone="good"
+                  hint={t('dev_insights_collected_hint')}
+                />
+                <StatTile
+                  label={t('dev_insights_outstanding')}
+                  value={<Money amount={dashboard.receivables.outstanding_total} currency={workspace?.default_currency} />}
+                />
+                <StatTile
+                  label={t('dev_insights_due_30d')}
+                  value={<Money amount={dashboard.receivables.due_30d} currency={workspace?.default_currency} />}
+                />
+                <StatTile
+                  label={t('dev_insights_overdue')}
+                  value={<Money amount={dashboard.receivables.overdue_amount} currency={workspace?.default_currency} />}
+                  tone={dashboard.receivables.overdue_count > 0 ? 'attention' : 'default'}
+                  hint={dashboard.receivables.overdue_count > 0
+                    ? t('dev_insights_overdue_hint')
+                      .replace('{n}', String(dashboard.receivables.overdue_count))
+                    : undefined}
+                />
+              </div>
+
+              {(dashboard.commissions.pending > 0
+                || dashboard.commissions.approved > 0
+                || dashboard.commissions.paid > 0) && (
+                <div className="border-t border-border p-4 sm:p-5">
+                  <Eyebrow>{t('dev_sales_tab_commissions')}</Eyebrow>
+                  <GoldRule className="mt-1.5" />
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <StatTile
+                      label={t('dev_commission_status_pending')}
+                      value={<Money amount={dashboard.commissions.pending} currency={workspace?.default_currency} />}
+                    />
+                    <StatTile
+                      label={t('dev_commission_status_approved')}
+                      value={<Money amount={dashboard.commissions.approved} currency={workspace?.default_currency} />}
+                    />
+                    <StatTile
+                      label={t('dev_commission_status_paid')}
+                      value={<Money amount={dashboard.commissions.paid} currency={workspace?.default_currency} />}
+                    />
+                  </div>
+                  {/* Never netted against revenue anywhere in this product. A
+                      commission is an expense owed to somebody, and putting it
+                      in a column that sums to "collected" is how a sales
+                      report starts double-counting a sale. */}
+                  <p className="mt-2 text-2xs text-muted-foreground">
+                    {t('dev_insights_commissions_note')}
+                  </p>
+                </div>
+              )}
+            </Panel>
+          )}
+
+          {/* ── Who is selling, and where the buyers came from ────────── */}
+          {dashboard && (dashboard.by_salesperson.length > 0 || dashboard.by_source.length > 0) && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {dashboard.by_salesperson.length > 0 && (
+                <Panel>
+                  <PanelHeader title={t('dev_insights_by_salesperson')} />
+                  <TableScroll>
+                    <table className="w-full text-sm" data-tabular>
+                      <thead className="border-b border-border bg-muted/40">
+                        <tr>
+                          <Th>{t('dev_sales_manager')}</Th>
+                          <Th className="text-right">{t('dev_insights_sales')}</Th>
+                          <Th className="text-right">{t('dev_insights_value')}</Th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {[...dashboard.by_salesperson]
+                          .sort((a, b) => b.value - a.value)
+                          .map((row) => {
+                            const person = team.find((m) => m.user_id === row.user_id);
+                            return (
+                              <tr key={row.user_id}>
+                                <Td>{person?.full_name || person?.email || t('dev_unassigned')}</Td>
+                                <Td className="text-right">{row.sales}</Td>
+                                <Td className="text-right">
+                                  <Money amount={row.value} currency={workspace?.default_currency} />
+                                </Td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </TableScroll>
+                </Panel>
+              )}
+
+              {dashboard.by_source.length > 0 && (
+                <Panel>
+                  <PanelHeader
+                    title={t('dev_insights_by_source')}
+                    description={t('dev_insights_by_source_body')}
+                  />
+                  <TableScroll>
+                    <table className="w-full text-sm" data-tabular>
+                      <thead className="border-b border-border bg-muted/40">
+                        <tr>
+                          <Th>{t('dev_lead_source')}</Th>
+                          <Th className="text-right">{t('dev_insights_sales')}</Th>
+                          <Th className="text-right">{t('dev_insights_value')}</Th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {[...dashboard.by_source]
+                          .sort((a, b) => b.value - a.value)
+                          .map((row) => (
+                            <tr key={row.source}>
+                              <Td>
+                                {row.source === 'UNRECORDED'
+                                  ? t('dev_insights_source_unrecorded')
+                                  : row.source}
+                              </Td>
+                              <Td className="text-right">{row.sales}</Td>
+                              <Td className="text-right">
+                                <Money amount={row.value} currency={workspace?.default_currency} />
+                              </Td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </TableScroll>
+                </Panel>
+              )}
+            </div>
+          )}
+
+          {/* ── The 3D, and whether anybody opened it ─────────────────── */}
+          {twin && twin.totals.opens > 0 && (
+            <Panel>
+              <PanelHeader
+                title={t('dev_insights_twin')}
+                description={t('dev_insights_twin_body')}
+              />
+              <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4 sm:p-5">
+                <StatTile label={t('dev_insights_twin_opens')} value={twin.totals.opens} />
+                <StatTile label={t('dev_insights_twin_visitors')} value={twin.totals.visitors} />
+                <StatTile label={t('dev_insights_twin_unit_views')} value={twin.totals.unit_views} />
+                <StatTile
+                  label={t('dev_insights_twin_enquiries')}
+                  value={twin.totals.contact_requests}
+                  tone={twin.totals.contact_requests > 0 ? 'good' : 'default'}
+                />
+              </div>
+
+              {twin.top_units.length > 0 && (
+                <TableScroll className="border-t border-border">
+                  <table className="w-full text-sm" data-tabular>
+                    <thead className="bg-muted/40">
+                      <tr>
+                        <Th>{t('dev_unit')}</Th>
+                        <Th>{t('dev_status')}</Th>
+                        <Th className="text-right">{t('dev_insights_twin_views')}</Th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {twin.top_units.map((u) => (
+                        <tr key={u.unit_id}>
+                          <Td className="font-medium">{u.unit_number}</Td>
+                          <Td><UnitStatusPill status={u.status} /></Td>
+                          <Td className="text-right">{u.views}</Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              )}
+            </Panel>
+          )}
 
           {/* ── Speed ────────────────────────────────────────────────── */}
           <Panel>

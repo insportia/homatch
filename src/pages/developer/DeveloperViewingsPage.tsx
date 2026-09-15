@@ -22,7 +22,7 @@ import { salesTabs } from './salesNav';
 import {
   listViewings, updateViewing, completeViewing, listLeads, type LeadWithContact,
 } from '@/services/developer/crm';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import { DISPOSITIONS } from '@/services/developer/types';
 import type { DevViewing } from '@/services/developer/types';
 
@@ -152,7 +152,7 @@ export default function DeveloperViewingsPage() {
                                 await updateViewing(v.id, { status: 'CANCELLED' });
                                 await load();
                               } catch (error) {
-                                toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                                toast.error(devErrorText(error, t));
                               }
                             }}
                           >
@@ -230,7 +230,7 @@ function CompleteDialog({
                 toast.success(t('dev_viewing_completed'));
                 onDone();
               } catch (error) {
-                toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                toast.error(devErrorText(error, t));
               } finally {
                 setSaving(false);
               }

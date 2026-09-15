@@ -442,8 +442,143 @@ export interface DevDeal {
   currency: string;
   payment_plan_id: string | null;
   status: 'CONTRACT_PENDING' | 'CONTRACTED' | 'COMPLETED' | 'CANCELLED';
+  /** Where the DOCUMENT is. Moves on its own clock; see ContractStatus. */
+  contract_status: ContractStatus;
+  contract_signed_at: string | null;
+  payment_method: DealPaymentMethod | null;
+  handover_target_date: string | null;
   notes: string | null;
   created_at: string;
+}
+
+/**
+ * WHERE THE PAPERWORK IS, as distinct from where the sale is.
+ *
+ * A deal can be live and contracted while the document itself is still with
+ * legal. Collapsing the two into one field is how a sales report starts
+ * claiming revenue that nobody has signed for.
+ */
+export type ContractStatus =
+  | 'DRAFT' | 'REVIEW' | 'SIGNED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+
+export const CONTRACT_STATUSES: ContractStatus[] = [
+  'DRAFT', 'REVIEW', 'SIGNED', 'ACTIVE', 'COMPLETED', 'CANCELLED',
+];
+
+export type DealPaymentMethod = 'CASH' | 'INSTALMENTS' | 'MORTGAGE' | 'MIXED' | 'OTHER';
+
+export interface DevCommission {
+  id: string;
+  workspace_id: string;
+  deal_id: string;
+  beneficiary_kind: 'AGENT' | 'BROKER' | 'OTHER';
+  user_id: string | null;
+  broker_invite_id: string | null;
+  beneficiary_name: string | null;
+  basis: 'PERCENT' | 'FIXED';
+  rate: number | null;
+  amount: number;
+  currency: string;
+  status: 'PENDING' | 'APPROVED' | 'PAID' | 'CANCELLED';
+  approved_by: string | null;
+  approved_at: string | null;
+  paid_at: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface HandoverChecklistItem {
+  label: string;
+  done: boolean;
+  note?: string | null;
+}
+
+export interface DevHandover {
+  id: string;
+  workspace_id: string;
+  deal_id: string;
+  unit_id: string;
+  target_date: string | null;
+  actual_date: string | null;
+  status: 'PENDING' | 'SCHEDULED' | 'READY' | 'COMPLETED' | 'CANCELLED';
+  checklist: HandoverChecklistItem[];
+  responsible: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export type NotificationKind =
+  | 'RESERVATION_EXPIRING' | 'RESERVATION_EXPIRED' | 'PAYMENT_DUE' | 'PAYMENT_OVERDUE'
+  | 'PAYMENT_TO_CONFIRM' | 'FOLLOW_UP_DUE' | 'HANDOVER_DUE' | 'OFFER_EXPIRING'
+  | 'DOCUMENT_TO_REVIEW' | 'UNIT_SOLD';
+
+export interface DevNotification {
+  id: string;
+  workspace_id: string;
+  user_id: string | null;
+  kind: NotificationKind;
+  title: string;
+  body: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+/**
+ * An ad account a workspace intends to connect, and how far that got.
+ *
+ * There is deliberately no token field. An OAuth credential belongs in the
+ * platform's secret store, referenced by name; `credential_ref` is that name.
+ * Nothing in this product can spend money on an ad platform.
+ */
+export interface DevAdConnection {
+  id: string;
+  workspace_id: string;
+  provider: 'META' | 'GOOGLE' | 'TIKTOK' | 'OTHER';
+  account_label: string | null;
+  external_account_id: string | null;
+  credential_ref: string | null;
+  status: 'NOT_CONNECTED' | 'PENDING_CREDENTIALS' | 'CONNECTED' | 'ERROR' | 'DISABLED';
+  status_detail: string | null;
+  last_checked_at: string | null;
+  source_map: Record<string, string>;
+  created_at: string;
+}
+
+/** Every figure below is a count or a sum of rows that exist. Nothing is modelled. */
+export interface DevDashboard {
+  inventory: {
+    total: number; available: number; reserved: number; on_hold: number;
+    negotiation: number; contract_pending: number; sold: number;
+    value_available: number; area_available: number;
+  };
+  sales: { count: number; value: number; avg_value: number | null; discount_given: number };
+  money: { collected: number; awaiting_confirmation: number };
+  receivables: {
+    overdue_count: number; overdue_amount: number;
+    due_30d: number; outstanding_total: number;
+  };
+  funnel: {
+    leads: number; qualified: number; viewing: number;
+    reserved: number; sold: number; lost: number;
+  };
+  by_project: Array<{ project_id: string; name: string; available: number; sold: number; total: number }>;
+  by_salesperson: Array<{ user_id: string; sales: number; value: number }>;
+  by_source: Array<{ source: string; sales: number; value: number }>;
+  commissions: { pending: number; approved: number; paid: number };
+  handover: { pending: number; overdue: number; completed: number };
+}
+
+export interface TwinAnalytics {
+  since: string;
+  totals: {
+    opens: number; unit_views: number; floorplan_views: number;
+    walkthroughs: number; contact_requests: number; visitors: number;
+  };
+  by_origin: Array<{ origin: string; events: number }>;
+  top_units: Array<{ unit_id: string; unit_number: string; status: UnitStatus; views: number }>;
+  daily: Array<{ day: string; opens: number; unit_views: number }>;
 }
 
 export interface DevScheduleRow {
@@ -543,6 +678,34 @@ export interface DevWalkthrough {
   updated_at: string;
 }
 
+/**
+ * AN OUTSIDE BROKER'S TERMS, AND THE UNITS THEY MAY SELL.
+ *
+ * Deliberately not a membership. A broker gets a token, a commission, an
+ * expiry and a named list of apartments — never a workspace login, never the
+ * pipeline, and never another broker's terms.
+ */
+export interface DevBrokerInvite {
+  id: string;
+  workspace_id: string;
+  project_id: string | null;
+  broker_user_id: string | null;
+  broker_contact_id: string | null;
+  broker_name: string | null;
+  broker_email: string | null;
+  token: string;
+  commission_type: 'PERCENT' | 'FIXED';
+  commission_value: number;
+  currency: string;
+  terms: string | null;
+  /** Named explicitly. An empty list is not "everything". */
+  unit_ids: string[];
+  valid_until: string | null;
+  status: 'INVITED' | 'ACCEPTED' | 'DECLINED' | 'REVOKED' | 'EXPIRED';
+  accepted_at: string | null;
+  created_at: string;
+}
+
 export interface DevShareLink {
   id: string;
   workspace_id: string;
@@ -640,6 +803,55 @@ export interface ImportResult {
 }
 
 /** The payload dev_share_resolve returns to an anonymous visitor. */
+/**
+ * WHAT A BUYER SEES OF THEIR OWN PURCHASE.
+ *
+ * Deliberately narrow. There is no lead, no CRM note, no internal document,
+ * no other buyer, no price rule and no commission in this shape — not hidden
+ * by a filter, absent from the SELECT list in dev_buyer_room() itself.
+ */
+export interface BuyerRoomPayload {
+  error?: 'NOT_FOUND' | 'REVOKED' | 'EXPIRED';
+  developer?: {
+    name: string; logo_url: string | null; brand_color: string | null; website: string | null;
+  };
+  buyer?: { name: string | null };
+  deal?: {
+    id: string;
+    contract_number: string | null;
+    contract_date: string | null;
+    contract_status: ContractStatus;
+    sale_price: number;
+    currency: string;
+    paid: number;
+    outstanding: number;
+    schedule: Array<{
+      label: string; due_date: string | null; amount: number;
+      currency: string; status: DevScheduleRow['status']; paid_amount: number;
+    }>;
+    payments: Array<{
+      amount: number; currency: string; paid_at: string;
+      method: string | null; reference: string | null;
+    }>;
+  } | null;
+  reservation?: {
+    reserved_at: string; expires_at: string | null;
+    amount: number | null; currency: string; status: DevReservation['status'];
+  } | null;
+  unit?: {
+    unit_number: string; bedrooms: number | null; rooms: number | null;
+    area_total: number | null; area_balcony: number | null;
+    floor_level: number | null; orientation: string | null; view_text: string | null;
+    floor_plan_url: string | null; photos: string[] | null;
+    project: string; city: string | null; district: string | null;
+    handover_date: string | null; construction_status: ConstructionStatus | null;
+  } | null;
+  documents?: Array<{
+    id: string; title: string; doc_type: DocumentType; created_at: string;
+  }>;
+  contact?: { name: string | null; email: string | null } | null;
+}
+
 export interface SharedUnitPayload {
   error?: 'NOT_FOUND' | 'REVOKED' | 'EXPIRED' | 'UNSUPPORTED';
   unit?: Partial<DevUnit> & { unit_number: string };

@@ -13,7 +13,7 @@
 // creates the payment — and only the second one changes any figure in this
 // product.
 
-import { run, runList, supabase } from './client';
+import { run, runList, supabase, rpc } from './client';
 import type { DevDocument, DocumentType, DocumentExtraction } from './types';
 
 export const MEDIA_BUCKET = 'developer-media';
@@ -256,6 +256,95 @@ export async function confirmExtractionAsPayment(
     title: 'Receipt reviewed and recorded as a payment',
     meta: { document_id: document.id, payment_id: payment.id, amount: confirmed.amount },
   });
+}
+
+/**
+ * ASK FOR THE DOCUMENT TO BE READ.
+ *
+ * Returns what happened rather than throwing on every unhappy path, because
+ * most of them are not errors: a brochure has no contract number, a
+ * photographed contract has no text layer, and both are facts a person needs
+ * told plainly. Only an unreachable function throws.
+ *
+ * Nothing this returns has changed a figure. The reading lands on the
+ * document and waits for a human; see applyExtraction below.
+ */
+export type ExtractionState =
+  | 'EXTRACTED' | 'NOTHING_FOUND' | 'REQUIRES_OCR' | 'NOT_EXTRACTABLE'
+  | 'BILLING_REQUIRED' | 'FAILED';
+
+export interface ExtractionRunResult {
+  state: ExtractionState;
+  reason?: string;
+  fields?: number;
+  dropped?: number;
+  confidence?: number | null;
+}
+
+export async function requestExtraction(documentId: string): Promise<ExtractionRunResult> {
+  const { data, error } = await supabase.functions.invoke<ExtractionRunResult>(
+    'developer-document-extract',
+    { body: { documentId } },
+  );
+  if (error) {
+    // A 402 is a real answer, not a transport failure: the edge client
+    // surfaces it as an error, so it is unwrapped rather than thrown.
+    const context = (error as { context?: { status?: number } }).context;
+    if (context?.status === 402) return { state: 'BILLING_REQUIRED' };
+    throw error;
+  }
+  return data ?? { state: 'FAILED', reason: 'NO_RESPONSE' };
+}
+
+/**
+ * APPLYING WHAT A REVIEWER ACCEPTED — and only that.
+ *
+ * `fields` is the subset of the proposal a person ticked on screen, not the
+ * extraction object. That distinction is the whole safety property: an
+ * unattended process cannot reach this function with a full payload and
+ * quietly rewrite a contract, because the payload is assembled from
+ * checkboxes.
+ *
+ * The database refuses a field whose current value disagrees with the
+ * proposal unless `overwrite` is set, and it returns what it applied AND what
+ * it declined, with the reason. A receipt becomes a RECORDED payment and
+ * never a confirmed one — confirming money stays finance's deliberate act.
+ */
+export interface ExtractionApplyResult {
+  applied: Array<{ field: string; from?: unknown; to: unknown; note?: string; payment_id?: string }>;
+  skipped: Array<{ field: string; existing?: unknown; proposed: unknown; reason: string }>;
+  /**
+   * Something the change left inconsistent that a person has to decide about.
+   *
+   * Correcting a sale price does NOT re-derive the instalments: those are what
+   * the buyer agreed to and one of them is usually already paid, so rewriting
+   * them would silently change a signed payment plan. The gap between the new
+   * price and the plan's total is reported here instead.
+   */
+  warnings: Array<{
+    kind: 'SCHEDULE_TOTAL_MISMATCH';
+    sale_price: number;
+    schedule_total: number;
+    difference: number;
+  }>;
+}
+
+export async function applyExtraction(
+  documentId: string,
+  fields: Record<string, string | number | null>,
+  overwrite = false,
+): Promise<ExtractionApplyResult> {
+  return rpc<ExtractionApplyResult>('dev_apply_extraction', {
+    p_document_id: documentId,
+    p_fields: fields,
+    p_overwrite: overwrite,
+  }, documentId);
+}
+
+export async function rejectExtraction(documentId: string, reason: string): Promise<void> {
+  await rpc<void>('dev_reject_extraction', {
+    p_document_id: documentId, p_reason: reason,
+  }, documentId);
 }
 
 /**

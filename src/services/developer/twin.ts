@@ -203,6 +203,73 @@ export async function loadFloorUnits(
   return (data ?? []) as TwinUnit[];
 }
 
+/**
+ * A PUBLISHED SCENE, as an anonymous visitor may read it.
+ *
+ * `graph` and `camera_presets` are the studio's own authored structure and are
+ * passed through untouched; the viewer reads what it understands and ignores
+ * the rest, so a studio format change does not break a deployed page.
+ *
+ * Assets arrive as addressing fields rather than URLs. Building the URL is
+ * assetUrl()'s job, because that is the one place that knows whether the bytes
+ * live in Supabase Storage, R2 or a CDN.
+ */
+export interface TwinScene {
+  error?: 'NO_SCENE';
+  id: string;
+  kind: SceneKind;
+  name: string | null;
+  building_id: string | null;
+  unit_type_id: string | null;
+  version: number;
+  graph: Record<string, unknown>;
+  camera_presets: Array<{ name: string; position: number[]; target: number[] }>;
+  hotspots: Array<{
+    id: string; label: string; position: number[];
+    kind?: string; unit_id?: string | null;
+  }>;
+  /** What the studio measured this scene to weigh. See docs/digital-twin-budgets.md. */
+  budget: { bytes?: number; draw_calls?: number; triangles?: number } | null;
+  assets: TwinAsset[];
+}
+
+/** One floor, as the schematic draws it. Derived from real inventory counts. */
+export interface TwinSchematicFloor {
+  level: number;
+  available: number;
+  total: number;
+}
+
+export async function loadScene(sceneId: string): Promise<TwinScene | null> {
+  const { data, error } = await supabase.rpc('dt_scene', { p_scene_id: sceneId });
+  if (error) {
+    reportError(error, { route: '/p', stage: 'loadScene', boundary: 'digital-twin' });
+    return null;
+  }
+  const payload = data as TwinScene | null;
+  if (!payload || payload.error) return null;
+  return payload;
+}
+
+/**
+ * The scene for an apartment's TYPE, which is where the economics live.
+ *
+ * 500 apartments across 20 layouts means 20 interiors. A visitor opening 1408
+ * asks for its type's scene, and the browser has very probably already cached
+ * it from 1108 — the asset URL is immutable and content-addressed, so the
+ * second open costs a cache hit rather than a download.
+ */
+export async function loadUnitScene(unitId: string): Promise<TwinScene | null> {
+  const { data, error } = await supabase.rpc('dt_unit_scene', { p_unit_id: unitId });
+  if (error) {
+    reportError(error, { route: '/p', stage: 'loadUnitScene', boundary: 'digital-twin' });
+    return null;
+  }
+  const payload = data as TwinScene | null;
+  if (!payload || payload.error) return null;
+  return payload;
+}
+
 // ── Where the heavy bytes come from ────────────────────────────────────────
 
 /**

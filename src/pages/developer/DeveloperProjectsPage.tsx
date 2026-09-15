@@ -19,7 +19,7 @@ import {
 } from '@/components/developer/primitives';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { listProjects, createProject, listUnits } from '@/services/developer/inventory';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import type { DevProject, ConstructionStatus } from '@/services/developer/types';
 
 const CONSTRUCTION_STATUSES: ConstructionStatus[] = [
@@ -244,7 +244,7 @@ function CreateProjectDialog({
       toast.success(t('dev_project_created'));
       onCreated(project);
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }

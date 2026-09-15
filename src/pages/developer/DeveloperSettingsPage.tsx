@@ -23,7 +23,7 @@ import {
   listTeam, inviteMember, setMemberRole, removeMember, listPendingInvites,
   updateWorkspace, type PendingInvite,
 } from '@/services/developer/workspace';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import type { DevMember, DevRole } from '@/services/developer/types';
 
 /**
@@ -44,6 +44,7 @@ const ASSIGNABLE_ROLES: DevRole[] = [
 export const SETTINGS_TABS = [
   { path: '/developers/settings', labelKey: 'dev_settings_tab_workspace' },
   { path: '/developers/settings/exports', labelKey: 'dev_settings_tab_exports' },
+  { path: '/developers/settings/audit', labelKey: 'dev_settings_tab_audit' },
 ];
 
 export default function DeveloperSettingsPage() {
@@ -106,7 +107,7 @@ export default function DeveloperSettingsPage() {
       toast.success(t('dev_saved'));
       await refresh();
     } catch (e) {
-      toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+      toast.error(devErrorText(e, t));
     } finally {
       setSavingWorkspace(false);
     }
@@ -122,7 +123,7 @@ export default function DeveloperSettingsPage() {
       setInviteEmail('');
       await load();
     } catch (e) {
-      toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+      toast.error(devErrorText(e, t));
     } finally {
       setInviting(false);
     }
@@ -257,7 +258,7 @@ export default function DeveloperSettingsPage() {
                                 toast.success(t('dev_saved'));
                                 await load();
                               } catch (e) {
-                                toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+                                toast.error(devErrorText(e, t));
                               }
                             }}
                           >
@@ -333,7 +334,7 @@ export default function DeveloperSettingsPage() {
                   setRemovingUser(null);
                   await load();
                 } catch (e) {
-                  toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+                  toast.error(devErrorText(e, t));
                 }
               }}
             >

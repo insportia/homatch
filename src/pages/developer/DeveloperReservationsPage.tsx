@@ -24,7 +24,7 @@ import {
 } from '@/services/developer/sales';
 import { listUnits } from '@/services/developer/inventory';
 import { listLeads, type LeadWithContact } from '@/services/developer/crm';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import type { DevReservation, DevUnit, DevPaymentPlan } from '@/services/developer/types';
 
 /**
@@ -241,7 +241,7 @@ function ConvertDialog({
       toast.success(t('dev_deal_created'));
       onDone();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }
@@ -347,7 +347,7 @@ function ReleaseDialog({
                 toast.success(t('dev_reservation_released'));
                 onDone();
               } catch (error) {
-                toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                toast.error(devErrorText(error, t));
               } finally {
                 setSaving(false);
               }

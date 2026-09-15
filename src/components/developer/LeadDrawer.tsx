@@ -26,7 +26,7 @@ import {
   reassignLead, type LeadWithContact,
 } from '@/services/developer/crm';
 import { listTeam } from '@/services/developer/workspace';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import {
   DISPOSITIONS, PIPELINE_STAGES, WORKFLOW_ONLY_STAGES,
 } from '@/services/developer/types';
@@ -76,7 +76,7 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
     try {
       setLead(await getLead(leadId));
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
       onClose();
     } finally {
       setLoading(false);
@@ -178,7 +178,7 @@ function ActionBar({ lead, onLogged }: { lead: LeadWithContact; onLogged: () => 
       });
       onLogged();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     }
   };
 
@@ -268,7 +268,7 @@ function TimelineTab({
     try {
       setItems(await listActivities(lead.id));
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setLoading(false);
     }
@@ -288,7 +288,7 @@ function TimelineTab({
       await load();
       onChanged();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }
@@ -383,7 +383,7 @@ function DetailsTab({
       toast.success(t('dev_saved'));
       onChanged();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     }
   };
 
@@ -394,7 +394,7 @@ function DetailsTab({
       await recordDisposition(workspace.id, lead.id, value);
       onChanged();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     }
   };
 
@@ -506,7 +506,7 @@ function DetailsTab({
                     toast.success(t('dev_reassigned'));
                     onChanged();
                   } catch (error) {
-                    toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                    toast.error(devErrorText(error, t));
                   }
                 }}
               >
@@ -543,7 +543,7 @@ function TasksTab({ leadId, language }: { leadId: string; language: string }) {
     try {
       setTasks(await listTasks(workspace.id, { leadId }));
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setLoading(false);
     }
@@ -561,7 +561,7 @@ function TasksTab({ leadId, language }: { leadId: string; language: string }) {
       setTitle(''); setDue('');
       await load();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     }
   };
 
@@ -636,7 +636,7 @@ function ViewingsTab({
     try {
       setViewings(await listViewings(workspace.id, { leadId: lead.id }));
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setLoading(false);
     }
@@ -658,7 +658,7 @@ function ViewingsTab({
       await load();
       onChanged();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     }
   };
 

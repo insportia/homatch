@@ -45,56 +45,42 @@ export function resolveSchedule(
 export interface CreateOfferInput {
   leadId: string;
   unitId: string;
-  basePrice: number;
-  discountPct?: number;
-  finalPrice: number;
-  currency: string;
+  discountPct?: number | null;
+  discountAmount?: number | null;
   depositAmount?: number | null;
   paymentPlanId?: string | null;
-  milestones?: PaymentMilestone[];
   validUntil?: string | null;
   notes?: string | null;
 }
 
+/**
+ * An offer is created by the DATABASE, not here.
+ *
+ * The price it is based on is the unit's own price read inside the same
+ * transaction, and the discount permission is checked there too — a sales
+ * agent may quote list price all day and may not take 8% off. Doing the
+ * arithmetic in the browser and inserting the result would mean the figure
+ * a customer sees is whatever the client sent.
+ */
 export async function createOffer(
-  workspaceId: string, input: CreateOfferInput,
+  _workspaceId: string, input: CreateOfferInput,
 ): Promise<DevOffer> {
-  const discountAmount = Math.max(input.basePrice - input.finalPrice, 0);
-  const schedule = input.milestones
-    ? resolveSchedule(input.milestones, input.finalPrice)
-    : [];
+  const id = await rpc<string>('dev_create_offer', {
+    p_lead_id: input.leadId,
+    p_unit_id: input.unitId,
+    p_discount_pct: input.discountPct ?? null,
+    p_discount_amount: input.discountAmount ?? null,
+    p_deposit_amount: input.depositAmount ?? null,
+    p_payment_plan_id: input.paymentPlanId ?? null,
+    p_valid_until: input.validUntil ?? null,
+    p_notes: input.notes ?? null,
+  }, input.unitId);
 
-  const offer = await run<DevOffer>(
-    'createOffer',
-    supabase.from('dev_offers').insert({
-      workspace_id: workspaceId,
-      lead_id: input.leadId,
-      unit_id: input.unitId,
-      base_price: input.basePrice,
-      discount_pct: input.discountPct ?? (input.basePrice > 0
-        ? Math.round((discountAmount / input.basePrice) * 10000) / 100
-        : 0),
-      discount_amount: discountAmount,
-      final_price: input.finalPrice,
-      currency: input.currency,
-      deposit_amount: input.depositAmount ?? null,
-      payment_plan_id: input.paymentPlanId ?? null,
-      schedule,
-      valid_until: input.validUntil ?? null,
-      notes: input.notes ?? null,
-      status: 'DRAFT',
-    }).select().single(),
-    workspaceId,
+  return run<DevOffer>(
+    'createOfferRead',
+    supabase.from('dev_offers').select('*').eq('id', id).single(),
+    id,
   );
-
-  const { addActivity } = await import('./crm');
-  await addActivity(workspaceId, {
-    leadId: input.leadId, unitId: input.unitId,
-    kind: 'OFFER', provenance: 'HOMATCH',
-    title: 'Offer prepared',
-    meta: { offer_id: offer.id, final_price: input.finalPrice, currency: input.currency },
-  });
-  return offer;
 }
 
 export async function listOffers(leadId: string): Promise<DevOffer[]> {
@@ -106,21 +92,62 @@ export async function listOffers(leadId: string): Promise<DevOffer[]> {
   );
 }
 
-export async function markOfferSent(workspaceId: string, offer: DevOffer): Promise<DevOffer> {
-  const updated = await run<DevOffer>(
-    'markOfferSent',
-    supabase.from('dev_offers')
-      .update({ status: 'SENT', sent_at: new Date().toISOString() })
-      .eq('id', offer.id).select().single(),
-    offer.id,
+export interface OfferRow extends DevOffer {
+  unit_number: string | null;
+  buyer_name: string | null;
+}
+
+/** Every live offer in the workspace, for the people who chase them. */
+export async function listWorkspaceOffers(
+  workspaceId: string, status?: DevOffer['status'] | null,
+): Promise<OfferRow[]> {
+  let query = supabase
+    .from('dev_offers')
+    .select('*, dev_units(unit_number)')
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: false });
+  if (status) query = query.eq('status', status);
+
+  const rows = await runList<DevOffer & { dev_units: { unit_number: string } | null }>(
+    'listWorkspaceOffers', query, workspaceId,
   );
-  const { addActivity } = await import('./crm');
-  await addActivity(workspaceId, {
-    leadId: offer.lead_id, unitId: offer.unit_id, kind: 'OFFER',
-    provenance: 'HOMATCH', direction: 'OUT', title: 'Offer sent',
-    meta: { offer_id: offer.id },
-  });
-  return updated;
+
+  // Names come from dev_lead_contacts, never from a join onto
+  // outreach_contacts — that table is owner-scoped and an inner join would
+  // silently drop a colleague's rows.
+  const leadIds = Array.from(new Set(rows.map((r) => r.lead_id)));
+  const names = new Map<string, string>();
+  if (leadIds.length > 0) {
+    const contacts = await runList<{ lead_id: string; full_name: string | null }>(
+      'listOfferBuyers',
+      supabase.from('dev_lead_contacts').select('lead_id, full_name').in('lead_id', leadIds),
+      workspaceId,
+    );
+    for (const c of contacts) if (c.full_name) names.set(c.lead_id, c.full_name);
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    unit_number: r.dev_units?.unit_number ?? null,
+    buyer_name: names.get(r.lead_id) ?? null,
+  }));
+}
+
+export async function setOfferStatus(
+  offerId: string, status: DevOffer['status'], note?: string | null,
+): Promise<void> {
+  await rpc<void>('dev_set_offer_status', {
+    p_offer_id: offerId, p_status: status, p_note: note ?? null,
+  }, offerId);
+}
+
+export async function markOfferSent(_workspaceId: string, offer: DevOffer): Promise<void> {
+  await setOfferStatus(offer.id, 'SENT');
+}
+
+/** Offers whose validity date has passed. Idempotent. */
+export async function expireOffers(workspaceId: string): Promise<number> {
+  return rpc<number>('dev_expire_offers', { p_workspace: workspaceId }, workspaceId);
 }
 
 // ── Reservations ───────────────────────────────────────────────────────────

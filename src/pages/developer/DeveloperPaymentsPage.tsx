@@ -24,7 +24,7 @@ import {
   listPayments, confirmPayment, rejectPayment, recordPayment,
   listLedger, listSchedule, listReceivables,
 } from '@/services/developer/sales';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import type { DevPayment, SalesLedgerRow, DevScheduleRow } from '@/services/developer/types';
 
 /**
@@ -178,7 +178,7 @@ export default function DeveloperPaymentsPage() {
                                       toast.success(t('dev_payment_confirmed'));
                                       await load();
                                     } catch (error) {
-                                      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                                      toast.error(devErrorText(error, t));
                                     }
                                   }}
                                 >
@@ -364,7 +364,7 @@ function RecordPaymentDialog({
       toast.success(t('dev_payment_recorded'));
       onDone();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }
@@ -502,7 +502,7 @@ function RejectDialog({
                 toast.success(t('dev_payment_rejected'));
                 onDone();
               } catch (error) {
-                toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                toast.error(devErrorText(error, t));
               } finally {
                 setSaving(false);
               }

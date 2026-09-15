@@ -13,7 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { createWorkspace } from '@/services/developer/workspace';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import { Panel, Eyebrow, GoldRule, LoadingRows } from '@/components/developer/primitives';
 
 /**
@@ -68,7 +68,7 @@ export default function DeveloperStartPage() {
       selectWorkspace(id);
       navigate('/developers/projects', { replace: true });
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
       setSaving(false);
     }
   };

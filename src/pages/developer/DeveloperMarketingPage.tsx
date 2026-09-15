@@ -13,6 +13,8 @@ import {
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { supabase } from '@/services/developer/client';
 import { listLeads, type LeadWithContact } from '@/services/developer/crm';
+import { AdConnectionsPanel } from '@/components/developer/AdConnectionsPanel';
+import { BrokerPanel } from '@/components/developer/BrokerPanel';
 
 /**
  * MARKETING (§54, §55, §97).
@@ -157,6 +159,33 @@ export default function DeveloperMarketingPage() {
                 )}
               />
             </Panel>
+          )}
+
+          {/* Paid traffic. The attribution mapping works today; pulling
+              spend from the platforms is blocked on a credential this
+              deployment does not have, and the panel says which is which
+              rather than showing a dead "Connect" button. */}
+          {workspace && (
+            <section>
+              <div className="mb-3">
+                <Eyebrow>{t('dev_mk_paid')}</Eyebrow>
+                <GoldRule className="mt-2" />
+              </div>
+              <AdConnectionsPanel workspaceId={workspace.id} />
+            </section>
+          )}
+
+          {/* Inventory out to people who do not work here. Deliberately
+              not a workspace membership — a broker gets a link, a named
+              list of apartments, a commission and an expiry. */}
+          {workspace && (
+            <section>
+              <div className="mb-3">
+                <Eyebrow>{t('dev_mk_distribution')}</Eyebrow>
+                <GoldRule className="mt-2" />
+              </div>
+              <BrokerPanel workspaceId={workspace.id} />
+            </section>
           )}
         </div>
       )}

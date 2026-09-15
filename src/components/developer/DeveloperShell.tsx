@@ -17,6 +17,7 @@ import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import type { DevCapability } from '@/services/developer/types';
 import { LoadingRows, EmptyState } from './primitives';
+import { NotificationBell } from './NotificationBell';
 
 /**
  * THE WORKSPACE SHELL.
@@ -286,6 +287,7 @@ export function DeveloperShell({
               </SheetContent>
             </Sheet>
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+            <NotificationBell />
           </div>
 
           <main className="mx-auto w-full max-w-[1400px] px-3 pb-20 pt-4 sm:px-5 lg:px-8 lg:pt-8">
@@ -297,7 +299,11 @@ export function DeveloperShell({
                     <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
                   )}
                 </div>
-                {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+                <div className="flex flex-wrap items-center gap-2">
+                  {actions}
+                  {/* Desktop only: the mobile bar above already carries one. */}
+                  <span className="hidden lg:inline-flex"><NotificationBell /></span>
+                </div>
               </div>
               {tabs && <div className="mt-4">{tabs}</div>}
             </header>

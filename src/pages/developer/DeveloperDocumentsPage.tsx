@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FileText, Upload, Search, ExternalLink, ShieldAlert, Banknote, CheckCircle2,
+  ScanLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,12 +23,14 @@ import {
   Money, formatDate, formatDateTime, Eyebrow, GoldRule,
 } from '@/components/developer/primitives';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
+import { ExtractionReview } from '@/components/developer/ExtractionReview';
 import {
   listDocuments, uploadDocument, signedDocumentUrl, confirmExtractionAsPayment,
+  requestExtraction,
   suggestMatches, updateDocument, MAX_DOCUMENT_BYTES, type DocumentMatch,
 } from '@/services/developer/documents';
 import { listLedger, listSchedule } from '@/services/developer/sales';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import type {
   DevDocument, DocumentType, SalesLedgerRow, DevScheduleRow,
 } from '@/services/developer/types';
@@ -64,6 +67,19 @@ const DOC_TYPES: DocumentType[] = [
   'BROCHURE', 'FLOOR_PLAN', 'PROJECT_DOCUMENT', 'LEGAL_DOCUMENT', 'OTHER',
 ];
 
+/**
+ * Documents that carry fields worth reading. Everything else — a brochure,
+ * a floor plan, an identity document — is stored and never sent to a model,
+ * which is most of why this feature is cheap to run.
+ */
+const EXTRACTABLE: DocumentType[] = [
+  'CONTRACT', 'RESERVATION_AGREEMENT', 'INVOICE',
+  'PAYMENT_RECEIPT', 'BANK_CONFIRMATION', 'PAYMENT_SCHEDULE',
+];
+
+/** Documents whose fields amend the DEAL rather than record a payment. */
+const CONTRACT_LIKE: DocumentType[] = ['CONTRACT', 'RESERVATION_AGREEMENT'];
+
 /** Types that may legitimately be made visible outside the company. */
 const PUBLISHABLE: DocumentType[] = ['BROCHURE', 'FLOOR_PLAN', 'PROJECT_DOCUMENT'];
 
@@ -80,6 +96,7 @@ export default function DeveloperDocumentsPage() {
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [uploading, setUploading] = useState(false);
   const [reviewing, setReviewing] = useState<DevDocument | null>(null);
+  const [extracting, setExtracting] = useState<string | null>(null);
   const reviewOnly = params.get('review') === '1';
 
   const debouncedSearch = useDebounce(search, 250);
@@ -118,9 +135,47 @@ export default function DeveloperDocumentsPage() {
       const url = await signedDocumentUrl(doc.storage_path, 60);
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
-      toast.error(t(e instanceof DevError ? e.key : 'dev_err_generic'));
+      toast.error(devErrorText(e, t));
     }
   };
+
+  /**
+   * Every outcome here is reported in the words that fit it. A scan is a
+   * scan, an empty reading is an empty reading, and a wallet that will not
+   * cover it says so — none of these is 'something went wrong'.
+   */
+  async function readDocument(doc: DevDocument) {
+    setExtracting(doc.id);
+    try {
+      const outcome = await requestExtraction(doc.id);
+      switch (outcome.state) {
+        case 'EXTRACTED':
+          toast.success(
+            t('dev_doc_read_ok').replace('{n}', String(outcome.fields ?? 0)),
+          );
+          break;
+        case 'NOTHING_FOUND':
+          toast.error(t('dev_doc_read_nothing'));
+          break;
+        case 'REQUIRES_OCR':
+          toast.error(t('dev_doc_read_scan'));
+          break;
+        case 'NOT_EXTRACTABLE':
+          toast.error(t('dev_doc_read_not_extractable'));
+          break;
+        case 'BILLING_REQUIRED':
+          toast.error(t('dev_doc_read_billing'));
+          break;
+        default:
+          toast.error(t('dev_doc_read_failed'));
+      }
+      await load();
+    } catch (e) {
+      toast.error(devErrorText(e, t));
+    } finally {
+      setExtracting(null);
+    }
+  }
 
   return (
     <DeveloperShell
@@ -246,6 +301,31 @@ export default function DeveloperDocumentsPage() {
                       <Td className="text-muted-foreground">{formatDate(doc.created_at, language)}</Td>
                       <Td>
                         <div className="flex justify-end gap-1.5">
+                          {/* Ask for the document to be read. Offered only
+                              where there is something to read — a brochure
+                              has no contract number — and only before it
+                              has been read, so nobody pays twice for the
+                              same page by clicking again. */}
+                          {EXTRACTABLE.includes(doc.doc_type)
+                            && doc.status === 'UPLOADED'
+                            && can('documents') && (
+                            <Button
+                              size="sm" variant="ghost"
+                              disabled={extracting === doc.id}
+                              onClick={() => void readDocument(doc)}
+                            >
+                              <ScanLine className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                              {extracting === doc.id ? t('dev_doc_reading') : t('dev_doc_read')}
+                            </Button>
+                          )}
+                          {CONTRACT_LIKE.includes(doc.doc_type)
+                            && doc.status === 'EXTRACTED'
+                            && can('documents') && (
+                            <Button size="sm" variant="outline" onClick={() => setReviewing(doc)}>
+                              <ScanLine className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                              {t('dev_doc_review_fields')}
+                            </Button>
+                          )}
                           {(doc.status === 'EXTRACTED' || doc.status === 'UPLOADED')
                             && ['PAYMENT_RECEIPT', 'BANK_CONFIRMATION', 'INVOICE'].includes(doc.doc_type)
                             && can('documents') && (
@@ -321,7 +401,7 @@ function UploadDialog({
       toast.success(t('dev_doc_uploaded'));
       onDone();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }
@@ -421,6 +501,19 @@ function ReviewDialog({
   const [reference, setReference] = useState(extraction?.suggested_reference ?? '');
   const [saving, setSaving] = useState(false);
 
+  /* The ledger row this document belongs to, which already carries the
+     four fields a contract review compares against. */
+  const contractTarget = useMemo(() => {
+    const row = deals.find((d) => d.deal_id === (doc.deal_id ?? dealId));
+    if (!row) return null;
+    return {
+      contract_number: row.contract_number,
+      contract_date: row.contract_date,
+      sale_price: row.sale_price,
+      currency: row.currency,
+    };
+  }, [deals, doc.deal_id, dealId]);
+
   const matches: DocumentMatch[] = useMemo(() => {
     if (!extraction) return [];
     return suggestMatches(extraction, deals.map((d) => ({
@@ -469,7 +562,23 @@ function ReviewDialog({
             {doc.title}
           </p>
 
-          {extraction ? (
+          {/*
+           * A CONTRACT AND A RECEIPT ARE REVIEWED DIFFERENTLY.
+           *
+           * A receipt becomes a payment, which needs a deal, an amount and
+           * an instalment to sit against — the flow below. A contract
+           * amends the deal itself, field by field, and every one of those
+           * fields already has a value somebody may have typed. So it gets
+           * the tick-what-you-accept gate, where the server refuses to
+           * overwrite a disagreement unless it is told to.
+           */}
+          {CONTRACT_LIKE.includes(doc.doc_type) ? (
+            <ExtractionReview
+              doc={doc}
+              deal={contractTarget}
+              onApplied={async () => { onDone(); }}
+            />
+          ) : extraction ? (
             <section className="space-y-2">
               <div>
                 <Eyebrow>{t('dev_doc_what_we_read')}</Eyebrow>
@@ -608,7 +717,7 @@ function ReviewDialog({
                 toast.success(t('dev_doc_rejected'));
                 onDone();
               } catch (error) {
-                toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                toast.error(devErrorText(error, t));
               }
             }}
           >
@@ -632,7 +741,7 @@ function ReviewDialog({
                 toast.success(t('dev_doc_confirmed_as_payment'));
                 onDone();
               } catch (error) {
-                toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                toast.error(devErrorText(error, t));
               } finally {
                 setSaving(false);
               }

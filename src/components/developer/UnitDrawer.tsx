@@ -30,7 +30,7 @@ import {
 } from '@/services/developer/inventory';
 import { reserveUnit, getUnitReservation, cancelReservation } from '@/services/developer/sales';
 import { listLeads, type LeadWithContact } from '@/services/developer/crm';
-import { DevError } from '@/services/developer/client';
+import { devErrorText } from '@/services/developer/client';
 import type {
   DevUnit, UnitStatus, DevWalkthrough, DevShareLink, DevShareEventRow, DevReservation,
 } from '@/services/developer/types';
@@ -75,7 +75,7 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
       setUnit(u);
       setReservation(r);
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
       onClose();
     } finally {
       setLoading(false);
@@ -150,7 +150,7 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
                       await load();
                       onChanged();
                     } catch (error) {
-                      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+                      toast.error(devErrorText(error, t));
                     }
                   }}
                   onSaved={async () => { await load(); onChanged(); }}
@@ -232,7 +232,7 @@ function OverviewTab({
       toast.success(t('dev_saved'));
       await onSaved();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }
@@ -243,7 +243,7 @@ function OverviewTab({
       await updateUnit(unit.id, { status });
       await onSaved();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     }
   };
 
@@ -255,7 +255,7 @@ function OverviewTab({
       });
       await onSaved();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     }
   };
 
@@ -417,7 +417,7 @@ function WalkthroughTab({ unit, canEdit }: { unit: DevUnit; canEdit: boolean }) 
     try {
       setTours(await listWalkthroughs(unit.id));
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setLoading(false);
     }
@@ -441,7 +441,7 @@ function WalkthroughTab({ unit, canEdit }: { unit: DevUnit; canEdit: boolean }) 
       toast.success(t('dev_tour_added'));
       await load();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }
@@ -457,7 +457,7 @@ function WalkthroughTab({ unit, canEdit }: { unit: DevUnit; canEdit: boolean }) 
       });
       await load();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     }
   };
 
@@ -571,7 +571,7 @@ function ShareTab({ unit }: { unit: DevUnit }) {
       }
       setEvents(map);
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setLoading(false);
     }
@@ -590,7 +590,7 @@ function ShareTab({ unit }: { unit: DevUnit }) {
       toast.success(t('dev_share_created'));
       await load();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setCreating(false);
     }
@@ -697,7 +697,7 @@ function HistoryTab({ unitId, language }: { unitId: string; language: string }) 
     listUnitEvents(unitId)
       .then((rows) => { if (!cancelled) setEvents(rows); })
       .catch((error) => {
-        if (!cancelled) toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+        if (!cancelled) toast.error(devErrorText(error, t));
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -762,7 +762,7 @@ function ReserveDialog({
     setExpires(d.toISOString().slice(0, 10));
     listLeads(workspace.id, { limit: 300 })
       .then(setLeads)
-      .catch((error) => toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic')))
+      .catch((error) => toast.error(devErrorText(error, t)))
       .finally(() => setLoading(false));
   }, [open, workspace, t]);
 
@@ -782,7 +782,7 @@ function ReserveDialog({
       toast.success(t('dev_reserved'));
       onReserved();
     } catch (error) {
-      toast.error(t(error instanceof DevError ? error.key : 'dev_err_generic'));
+      toast.error(devErrorText(error, t));
     } finally {
       setSaving(false);
     }

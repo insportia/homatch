@@ -7,7 +7,7 @@
 
 import { supabase } from '@/db/supabase';
 import { reportError } from '@/lib/errorReporting';
-import type { SharedUnitPayload, ShareEvent } from './types';
+import type { SharedUnitPayload, ShareEvent, BuyerRoomPayload } from './types';
 
 export async function resolveShare(token: string): Promise<SharedUnitPayload> {
   const { data, error } = await supabase.rpc('dev_share_resolve', { p_token: token });
@@ -29,6 +29,55 @@ export async function resolvePublicProject(
     return { error: 'NOT_FOUND' };
   }
   return (data ?? { error: 'NOT_FOUND' }) as SharedUnitPayload;
+}
+
+/**
+ * THE BUYER'S OWN ROOM.
+ *
+ * One token, one purchase. The payload carries the unit, the reservation or
+ * the contract, the instalment plan, what has actually been confirmed as paid,
+ * and the documents somebody deliberately marked BUYER — nothing else. No CRM
+ * note, no internal document, no other buyer, no price rule, no commission.
+ *
+ * As with the shared unit page, `anon` holds no table grant, so the boundary
+ * is the function's own SELECT list rather than a filter a component has to
+ * remember.
+ */
+export async function resolveBuyerRoom(token: string): Promise<BuyerRoomPayload> {
+  const { data, error } = await supabase.rpc('dev_buyer_room', { p_token: token });
+  if (error) {
+    reportError(error, { route: '/buyer', stage: 'resolveBuyerRoom', boundary: 'developer-share' });
+    return { error: 'NOT_FOUND' };
+  }
+  return (data ?? { error: 'NOT_FOUND' }) as BuyerRoomPayload;
+}
+
+/**
+ * A download link for one document the buyer was given.
+ *
+ * A Supabase signed URL is an HMAC minted with the service key, so this is the
+ * one thing on the buyer path that SQL cannot do alone. The edge function asks
+ * the DATABASE whether the token and the document belong together — only a
+ * document marked BUYER, on this token's own lead, resolves to a path — and
+ * signs just the path it is handed. A buyer who edits the document id in the
+ * request gets NOT_FOUND, not somebody else's contract.
+ */
+export async function buyerRoomDocumentUrl(
+  token: string, documentId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase.functions.invoke<{ url?: string; error?: string }>(
+    'developer-buyer-document',
+    { body: { token, documentId } },
+  );
+  if (error || !data?.url) {
+    if (error) {
+      reportError(error, {
+        route: '/buyer', stage: 'buyerRoomDocument', boundary: 'developer-share',
+      });
+    }
+    return null;
+  }
+  return data.url;
 }
 
 /**

@@ -81,6 +81,25 @@ export function toDevError(
   return new DevError(key, message, code);
 }
 
+/**
+ * THE SENTENCE TO PUT IN FRONT OF SOMEBODY.
+ *
+ * `dev_err_passthrough` is not a message — it is a marker meaning "the
+ * database already wrote one". Our own PL/pgSQL raises say things like
+ * "Unit A-704 is no longer available to offer." and a person can act on that;
+ * replacing it with "That could not be done." throws away the only useful
+ * part. Every call site goes through here so the choice is made once.
+ */
+export function devErrorText(
+  error: unknown, t: (key: string) => string,
+): string {
+  if (error instanceof DevError) {
+    if (error.key === 'dev_err_passthrough') return error.message;
+    return t(error.key);
+  }
+  return t('dev_err_generic');
+}
+
 /** Run a PostgREST query and throw a DevError rather than returning `{ error }`. */
 export async function run<T>(
   op: string,

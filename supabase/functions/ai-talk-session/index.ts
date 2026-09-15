@@ -27,7 +27,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serviceClient, json, preflight, logEvent, authenticate, corsHeaders } from '../_shared/comm/auth.ts';
 import {
   cartesiaCredentialsPresent, synthesizeSpeech, synthesizePcm, PCM_SAMPLE_RATE,
-  streamCartesiaPcm, nearestCartesiaRate,
+  streamCartesiaPcm, nearestCartesiaRate, clampCartesiaSpeed,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
@@ -56,6 +56,7 @@ import {
   resolveTurnLanguage, textMatchesLanguage, normaliseLanguage,
   TALK_LANGUAGES, type TalkLanguage,
 } from '../_shared/comm/generated/talkLanguage.ts';
+import { speechText } from '../_shared/comm/generated/speechText.ts';
 import {
   selectKeyterms, keytermStrings, detectEntities,
   type VocabularyTerm,
@@ -139,10 +140,19 @@ async function speakPhrase(sb: Sb, params: {
   }
 
   const started = Date.now();
+  /*
+   * THE LAST HOP BEFORE THE VOICE, AND THE ONLY PLACE THE SPELLING BENDS.
+   *
+   * params.text is the reply as Luna wrote it and as the visitor will read
+   * it. What goes to Cartesia is a respelled COPY: a Latin brand inside a
+   * Georgian sentence is spelled out letter by letter by sonic-3, and no
+   * amount of prompting fixes that because the model is reading correctly.
+   * Nothing downstream of here is stored or displayed.
+   */
   const out = await synthesizePcm({
     voiceId: voice.voiceId,
     language: params.language || 'ka',
-    text: params.text,
+    text: speechText(params.text, params.language),
   });
   const ms = Date.now() - started;
 
@@ -1000,6 +1010,35 @@ function speechCandidates(settled: string | null, locale: string | null): string
   return order;
 }
 
+/**
+ * How fast AI TALK speaks, as an operator setting.
+ *
+ * "Cartesia sounds too slow" is a judgement about a human experience, and the
+ * right value for it is found by LISTENING rather than by reasoning. So it is
+ * an environment variable with a modest default: the owner can move it and
+ * hear the difference without a deploy, and it is clamped to the range
+ * Cartesia documents so a typo cannot take the voice out entirely.
+ *
+ * This is provider-native pacing. It is deliberately NOT the browser's
+ * playbackRate, which would shorten the audio by resampling it and raise the
+ * pitch to match.
+ */
+function ttsSpeed(): number | null {
+  const raw = Deno.env.get('AI_TALK_TTS_SPEED');
+  if (!raw) return CARTESIA_DEFAULT_SPEED;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : CARTESIA_DEFAULT_SPEED;
+}
+
+/**
+ * Slightly quicker than the model's own default.
+ *
+ * Small on purpose. The measured provider latency is 177-301ms, so the voice
+ * was never the reason a reply felt late; what "slow" describes is delivery,
+ * and a large jump there reads as rushed rather than competent.
+ */
+const CARTESIA_DEFAULT_SPEED = 1.1;
+
 async function speakPhraseStreaming(sb: Sb, params: {
   text: string;
   language: string;
@@ -1041,9 +1080,12 @@ async function speakPhraseStreaming(sb: Sb, params: {
   const at = Date.now();
   const out = await streamCartesiaPcm({
     voiceId: voice.voiceId,
-    text: params.text,
+    // Respelled for the voice only. See speakPhrase above: the reply that is
+    // streamed to the browser and written to history is params.text, unchanged.
+    text: speechText(params.text, params.language),
     language: params.language || 'ka',
     sampleRate: params.outputSampleRate ?? undefined,
+    speed: ttsSpeed(),
     signal: params.signal,
   }, (chunk) => params.onChunk(chunk));
 
@@ -1868,6 +1910,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           tts_request_language: replyLanguage,
           tts_sample_rate: spoken[0]?.sampleRate ?? null,
           tts_encoding: 'pcm_s16le',
+          // The pace that was actually asked for, so a report about how the
+          // voice sounded can be tied to the setting that produced it.
+          tts_speed: clampCartesiaSpeed(ttsSpeed()),
           tts_request_ms: ttsRequestAt,
           tts_first_byte_ms: ttsFirstByteAt,
           tts_chunk_count: seq,
@@ -2355,8 +2400,12 @@ function publicDemoInstructions(language: string): string {
     '',
     'THE ONE RULE THAT MATTERS MOST: at most two sentences and at most 30 words, in total, every time.',
     'A third sentence is a mistake, not a bonus. Everything below assumes you are keeping to it.',
-    'One useful sentence is better than two. Answer first; only expand if they ask for detail, or the',
-    'task genuinely cannot be said shorter.',
+    '',
+    'BUT SPEND THOSE WORDS. Brevity is the limit, not the goal: inside it, be as useful as a good agent',
+    'who is in a hurry. Answer the question in the FIRST clause -- the number, the district, the answer,',
+    'the yes or no -- and use what is left to say the one thing that changes their decision. A reply that',
+    'is short because it says nothing is worse than no reply; "it depends" and "there are several factors"',
+    'are not answers. If you genuinely cannot answer, say what you would need, in one sentence.',
     '',
     'NEVER DO ANY OF THESE. They are what makes a voice assistant exhausting:',
     '- repeat or rephrase what they just said back to them',
@@ -2377,6 +2426,16 @@ function publicDemoInstructions(language: string): string {
     'This is heard, not read. One or two short sentences, then AT MOST one question. Never a list, never',
     'bullet points, never markdown, never an abbreviation that cannot be read aloud. If they ask for detail,',
     'give it — still spoken, still short. Acknowledge what they just told you before you ask anything.',
+    '',
+    /*
+     * PUNCTUATION IS PACING. The voice takes its breaths from the commas and
+     * full stops in the text it is given, and the reply is spoken phrase by
+     * phrase as it is written, so a sentence with no internal punctuation is
+     * delivered as one long unbroken run and is heard as hurried and robotic.
+     * This is the same lever as the player's buffering, applied at the source.
+     */
+    'Punctuate the way a person breathes: a comma where you would pause, a full stop where you would stop.',
+    'Write plain spoken words, not written ones — say numbers and amounts the way they are said aloud.',
     '',
     'WHAT YOU KNOW',
     'Buying, selling, renting and investing. Mortgages and instalment plans. Developer due diligence and',

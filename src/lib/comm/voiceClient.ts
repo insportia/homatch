@@ -197,6 +197,14 @@ export interface VoiceDiagnostics {
   sttOk: number;
   sttEmpty: number;
   sttFailed: number;
+  /**
+   * Finals that arrived mid-turn and were answered late rather than lost.
+   *
+   * Worth a counter of its own: while this was a silent `return` the only
+   * symptom was a visitor saying something and nothing happening, which is
+   * indistinguishable from the microphone not working.
+   */
+  finalsDeferred: number;
   lastSttMs: number | null;
   lastSttChars: number | null;
   lastSttLanguage: string | null;
@@ -433,6 +441,22 @@ export class VoiceSession {
   private muted = false;
   /** Guards against two turns in flight. */
   private turnInFlight = false;
+  /**
+   * A finished sentence that arrived while the previous turn was still going.
+   *
+   * It used to be dropped on the floor. Google's endpointer takes one and a
+   * half to three seconds to decide a short Georgian word is over -- `კი`
+   * measured 2.1s, `არა` never endpointed at all and only came back on the
+   * half-close -- so a final routinely lands AFTER the turn it belongs to has
+   * started, and an acknowledgement the visitor definitely said simply never
+   * happened. Held here instead and answered when the floor is free.
+   *
+   * One, not a queue: while a turn is in flight the microphone is gated and
+   * nothing new is being transcribed, so at most one final can be in the air.
+   * A second would mean a bug somewhere else, and the newer sentence is the
+   * one the visitor would expect an answer to.
+   */
+  private pendingFinal: { text: string; detected: string | null } | null = null;
   /** True while an utterance is being transcribed. */
   private transcribing = false;
   /** Sent to the server so each reply is in context. */
@@ -496,7 +520,7 @@ export class VoiceSession {
     blocks: 0, samplesCaptured: 0, bytesSent: 0, rms: 0, peakRms: 0,
     utterances: 0, lastUtteranceMs: null as number | null,
     lastUtteranceBytes: null as number | null,
-    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0,
+    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0,
     lastSttMs: null as number | null, lastSttChars: null as number | null,
     lastSttLanguage: null as string | null, lastTranscript: null as string | null,
     turnsSent: 0, lastTurnMs: null as number | null,
@@ -667,6 +691,7 @@ export class VoiceSession {
       sttOk: this.diag.sttOk,
       sttEmpty: this.diag.sttEmpty,
       sttFailed: this.diag.sttFailed,
+      finalsDeferred: this.diag.finalsDeferred ?? 0,
       lastSttMs: this.diag.lastSttMs,
       lastSttChars: this.diag.lastSttChars,
       lastSttLanguage: this.diag.lastSttLanguage,
@@ -1030,7 +1055,23 @@ export class VoiceSession {
 
   /** The finished sentence, from the live socket. */
   private async onLiveFinal(text: string, detected: string | null = null): Promise<void> {
-    if (this.closed || this.turnInFlight) return;
+    if (this.closed) return;
+
+    /*
+     * A REAL TRANSCRIPT IS NEVER THROWN AWAY, ONLY DELAYED.
+     *
+     * This is a final from the recogniser -- a finished sentence it committed
+     * to, not a partial and not a guess. Returning here used to lose it
+     * completely, and lose it twice over: the early return also skipped the
+     * livePartialId reset below, so the next utterance reused this one's
+     * transcript id and overwrote it. The visitor saw their word appear and
+     * then vanish.
+     */
+    if (this.turnInFlight) {
+      this.pendingFinal = { text, detected };
+      this.diag.finalsDeferred = (this.diag.finalsDeferred ?? 0) + 1;
+      return;
+    }
 
     const said = text.trim();
     const id = this.livePartialId ?? `u${++this.utteranceSeq}`;
@@ -1238,6 +1279,17 @@ export class VoiceSession {
       this.turnInFlight = false;
       this.publishDiagnostics();
     }
+
+    /*
+     * Anything said while that turn was running gets answered now.
+     *
+     * After turnInFlight is false, so the recursion is one level: the
+     * deferred sentence takes an ordinary turn, and anything deferred during
+     * THAT turn is drained by that turn's own finally.
+     */
+    const deferred = this.pendingFinal;
+    this.pendingFinal = null;
+    if (deferred && !this.closed) await this.onLiveFinal(deferred.text, deferred.detected);
   }
 
   /**

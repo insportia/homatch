@@ -671,3 +671,58 @@ test('the server writes one structured trace per turn, with no transcript in it'
   }
   assert.ok(!/said|full|shown|transcript:/.test(body), 'the trace must not carry what was said');
 });
+
+// ── CARTESIA_PACING: the voice is paced by the provider, never by the player ─
+//
+// "It sounds slow" has one obvious fix and one correct fix. The obvious one is
+// raising playbackRate in the browser, which shortens the audio by resampling
+// it and takes the pitch up with it — the chipmunk this whole migration was
+// about. The correct one is asking sonic to GENERATE at a different pace.
+
+const cartesiaSrc = readFileSync('supabase/functions/_shared/comm/cartesia.ts', 'utf8');
+const edgeSrc = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+const playerSrc = readFileSync('src/lib/comm/pcmPlayer.ts', 'utf8');
+const clientSrc = readFileSync('src/lib/comm/voiceClient.ts', 'utf8');
+
+const stripComments = (src) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/^\s*\*.*$/gm, '');
+
+test('pacing is a provider generation control, not a browser resample', () => {
+  const player = stripComments(playerSrc);
+  const client = stripComments(clientSrc);
+  // playbackRate on a buffer source is resampling, and resampling moves pitch.
+  assert.ok(!/playbackRate/.test(player), 'the player must never retime audio');
+  assert.ok(!/playbackRate/.test(client), 'the client must never retime audio');
+  assert.ok(/generation_config/.test(cartesiaSrc), 'pacing must be asked of the provider');
+});
+
+test('the speed sent is always one the API documents as valid', () => {
+  // Cartesia documents [0.6, 1.5] inclusive and answers 400 outside it. A bad
+  // value must become a valid one here, not a failed turn mid-conversation.
+  assert.ok(/min:\s*0\.6/.test(cartesiaSrc) && /max:\s*1\.5/.test(cartesiaSrc));
+  assert.ok(/Math\.min\(/.test(cartesiaSrc) && /Math\.max\(/.test(cartesiaSrc));
+});
+
+test('the default speed stays inside the documented range', () => {
+  const m = /const CARTESIA_DEFAULT_SPEED = ([0-9.]+);/.exec(edgeSrc);
+  assert.ok(m, 'there must be one named default');
+  const speed = Number(m[1]);
+  assert.ok(speed >= 0.6 && speed <= 1.5, `${speed} is outside what Cartesia accepts`);
+  // A big jump reads as rushed rather than competent, and the measured
+  // provider latency (177–301ms) says the voice was never why a reply felt late.
+  assert.ok(speed <= 1.25, `${speed} is a rush, not a pace`);
+});
+
+test('the requested pace is recorded on the turn that used it', () => {
+  assert.ok(/tts_speed:/.test(edgeSrc), 'a report about how it sounded needs the setting that made it');
+});
+
+test('the output rate we may ask for is exactly what Cartesia serves', () => {
+  // Every rate in the list is one the API documents for raw pcm_s16le. A rate
+  // it does not serve comes back as a different rate, which is the whine.
+  const documented = [8000, 16000, 22050, 24000, 44100, 48000];
+  const m = /CARTESIA_OUTPUT_RATES = \[([^\]]+)\]/.exec(cartesiaSrc);
+  assert.ok(m);
+  const listed = m[1].split(',').map((n) => Number(n.trim())).filter(Number.isFinite);
+  assert.deepEqual(listed, documented);
+});

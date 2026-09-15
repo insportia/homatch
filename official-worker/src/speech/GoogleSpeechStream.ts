@@ -423,7 +423,22 @@ export class GoogleSpeechStream {
        * retries a permission error forever looks exactly like one that works.
        */
       const code = Number(err?.code);
-      const retryable = code === 11 /* OUT_OF_RANGE */ || code === 4 /* DEADLINE_EXCEEDED */ || code === 14 /* UNAVAILABLE */;
+      /*
+       * ABORTED (10) IS HOUSEKEEPING TOO, AND USED NOT TO BE.
+       *
+       * Google ends an idle stream with code 10 and the sentence "Stream timed
+       * out after receiving no more client requests." That happened in
+       * ordinary use: the browser gates the microphone while the assistant
+       * speaks, so a long enough answer meant a long enough silence, and the
+       * recogniser was torn down mid-conversation. Treated as fatal, it closed
+       * the socket 1011 and the visitor's next sentence had nothing listening.
+       *
+       * The browser now sends keepalive silence so this should not arise. It
+       * is retryable anyway: a stream that ended because it was quiet is a
+       * stream to reopen, not a reason to stop hearing somebody.
+       */
+      const retryable = code === 11 /* OUT_OF_RANGE */ || code === 4 /* DEADLINE_EXCEEDED */
+        || code === 14 /* UNAVAILABLE */ || code === 10 /* ABORTED */;
 
       /*
        * THE CODE AND THE PROVIDER'S OWN SENTENCE, IN THE LOG.

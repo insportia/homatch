@@ -62,7 +62,7 @@ import {
 } from '../_shared/comm/generated/keyterms.ts';
 import { transcribeSpeech, transcriptionAvailable, scriptLanguage } from '../_shared/comm/transcribe.ts';
 import {
-  decideGrant, grantExpiry, shouldEndSession, hashVisitor,
+  decideGrant, type UsageTier, grantExpiry, shouldEndSession, hashVisitor,
   DEFAULT_TALK_LIMITS, type TalkLimits,
 } from '../_shared/comm/generated/talkAllowance.ts';
 import { extractDeterministic, scoreLead } from '../_shared/comm/generated/extraction.ts';
@@ -367,8 +367,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const caller = await authenticate(req).catch(() => null);
   const userId = caller?.userId ?? null;
 
+  /*
+   * THE USAGE TIER IS DECIDED HERE, FROM THE TOKEN, AND NOWHERE ELSE.
+   *
+   * authenticate() has verified the JWT with the auth service and handed back
+   * a client bound to it. Asking that client for is_admin() makes Postgres
+   * evaluate the flag for the token's OWN auth.uid() — the same canonical
+   * check every admin screen uses. Nothing in the request body is consulted:
+   * an `email`, `admin` or `unlimited` field is simply never read, so it
+   * cannot be spoofed because it cannot be said.
+   *
+   * A verified account that is not an administrator is STANDARD, which is
+   * held to exactly the anonymous rules. Signing in buys nothing here.
+   */
+  const usageTier: UsageTier = caller
+    ? ((await caller.sb.rpc('is_admin').then((r) => r.data === true).catch(() => false))
+      ? 'ADMIN_UNLIMITED'
+      : 'STANDARD')
+    : 'ANONYMOUS';
+
   switch (body.action) {
-    case 'start':     return await start(sb, req, body, limits, enabled, userId);
+    case 'start':     return await start(sb, req, body, limits, enabled, userId, usageTier);
     case 'turn':      return await turn(sb, body);
     case 'transcribe': return await transcribe(sb, body);
     case 'speak':     return await speak(sb, body);
@@ -384,6 +403,7 @@ type Sb = ReturnType<typeof serviceClient>;
 
 async function start(
   sb: Sb, req: Request, body: TalkRequest, limits: TalkLimits, enabled: boolean, userId: string | null,
+  usageTier: UsageTier,
 ): Promise<Response> {
   /*
    * A conversation needs something that can SPEAK, and that is Cartesia.
@@ -437,6 +457,7 @@ async function start(
 
   const decision = decideGrant({
     limits,
+    usageTier,
     consumedTodaySeconds: consumedToday,
     sessionsStartedToday: (todays ?? []).length,
     visitorActiveSessions: activeForVisitor ?? 0,
@@ -444,8 +465,20 @@ async function start(
     enabled,
   });
 
+  // Every decision, granted or not, explains itself once. Never the token,
+  // never the address, never an email: a tier and a reason are enough.
+  logEvent('ai-talk', 'grant_decided', {
+    authenticated: Boolean(userId),
+    usageTier: decision.usageTier,
+    granted: decision.granted,
+    limitType: decision.reason ?? null,
+    limitBypassed: decision.limitBypassed,
+    bypassReason: decision.bypassReason ?? null,
+    grantedSeconds: decision.seconds,
+  });
+
   if (!decision.granted) {
-    logEvent('ai-talk', 'grant_refused', { reason: decision.reason ?? null });
+    logEvent('ai-talk', 'grant_refused', { reason: decision.reason ?? null, usageTier: decision.usageTier });
     return json({ ok: false, reason: decision.reason, userMessage: decision.userMessage }, 429);
   }
 

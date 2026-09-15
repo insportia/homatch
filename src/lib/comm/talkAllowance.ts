@@ -47,8 +47,35 @@ export type TalkDenyReason =
   | 'PLATFORM_AT_CAPACITY'
   | 'DISABLED';
 
+/**
+ * Who is asking, as far as the SERVER has verified.
+ *
+ *   ANONYMOUS        no token, or one that did not verify
+ *   STANDARD         a verified account, held to exactly the anonymous rules
+ *   ADMIN_UNLIMITED  a verified account whose identity Postgres reports as an
+ *                    administrator — public.is_admin() evaluated for the
+ *                    token's own auth.uid(), never a claim in a request body
+ *
+ * The tier is an INPUT here. This module cannot verify anything; it only
+ * promises what it will do once somebody who can has said which tier applies.
+ */
+export type UsageTier = 'ANONYMOUS' | 'STANDARD' | 'ADMIN_UNLIMITED';
+
+/**
+ * How long an administrator's testing session may run.
+ *
+ * The ordinary session cap is a product decision about a demo. This is the
+ * TECHNICAL ceiling underneath it: the same fifteen minutes the speech worker
+ * enforces on its own socket, after which a session is a leak rather than a
+ * conversation. Product allowance is bypassed for an administrator; this is
+ * not, because it is not an allowance.
+ */
+export const ADMIN_SESSION_SECONDS = 900;
+
 export interface GrantInput {
   limits: TalkLimits;
+  /** Verified server-side. Absent means anonymous. */
+  usageTier?: UsageTier;
   /** Seconds this visitor has already consumed in the rolling day. */
   consumedTodaySeconds: number;
   sessionsStartedToday: number;
@@ -66,39 +93,69 @@ export interface GrantDecision {
    * be tasteful, and §131's principle applies to anonymous users too).
    */
   userMessage?: 'LIMIT_REACHED' | 'BUSY' | 'UNAVAILABLE';
+  /** The tier the decision was made for. */
+  usageTier: UsageTier;
+  /** Which product limits were set aside, if any, and on whose authority. */
+  limitBypassed: boolean;
+  bypassReason?: 'VERIFIED_ADMIN_ENTITLEMENT';
 }
 
 export function decideGrant(input: GrantInput): GrantDecision {
   const L = input.limits;
+  const tier: UsageTier = input.usageTier ?? 'ANONYMOUS';
+  const admin = tier === 'ADMIN_UNLIMITED';
+  const refuse = (reason: TalkDenyReason, userMessage: GrantDecision['userMessage']): GrantDecision =>
+    ({ granted: false, seconds: 0, reason, userMessage, usageTier: tier, limitBypassed: false });
 
-  if (!input.enabled) {
-    return { granted: false, seconds: 0, reason: 'DISABLED', userMessage: 'UNAVAILABLE' };
-  }
+  /*
+   * WHAT AN ADMINISTRATOR DOES NOT GET TO SKIP.
+   *
+   * The three checks before the product caps are not allowances. The kill
+   * switch is an operator deciding the feature is off; a second concurrent
+   * session from one visitor is two tabs fighting over one microphone; and
+   * platform concurrency is what stops a busy afternoon from taking the
+   * providers down. None of those is a quota, so none of them is bypassed —
+   * for anybody.
+   */
+  if (!input.enabled) return refuse('DISABLED', 'UNAVAILABLE');
   if (input.visitorActiveSessions >= L.perVisitorConcurrent) {
     // Two tabs, or a session the previous page never closed. Neither should
     // get a second grant running.
-    return { granted: false, seconds: 0, reason: 'ALREADY_IN_SESSION', userMessage: 'BUSY' };
+    return refuse('ALREADY_IN_SESSION', 'BUSY');
   }
-  if (input.globalActiveSessions >= L.globalConcurrent) {
-    return { granted: false, seconds: 0, reason: 'PLATFORM_AT_CAPACITY', userMessage: 'BUSY' };
-  }
-  if (input.sessionsStartedToday >= L.dailySessions) {
-    return { granted: false, seconds: 0, reason: 'TOO_MANY_SESSIONS_TODAY', userMessage: 'LIMIT_REACHED' };
+  if (input.globalActiveSessions >= L.globalConcurrent) return refuse('PLATFORM_AT_CAPACITY', 'BUSY');
+
+  /*
+   * WHAT AN ADMINISTRATOR DOES SKIP: the product's own demo quota.
+   *
+   * Sessions per rolling day, seconds per rolling day, and the length of one
+   * session exist to bound what an anonymous visitor can cost. They also
+   * bound engineering verification to six or sixty sessions a day from one
+   * office IP, which is how a day of live testing ended with
+   * TOO_MANY_SESSIONS_TODAY. The tier is decided by the server from a
+   * verified token; there is no field in any request that can set it.
+   */
+  if (admin) {
+    return {
+      granted: true,
+      seconds: ADMIN_SESSION_SECONDS,
+      usageTier: tier,
+      limitBypassed: true,
+      bypassReason: 'VERIFIED_ADMIN_ENTITLEMENT',
+    };
   }
 
+  if (input.sessionsStartedToday >= L.dailySessions) return refuse('TOO_MANY_SESSIONS_TODAY', 'LIMIT_REACHED');
+
   const remainingToday = L.dailySeconds - Math.max(0, input.consumedTodaySeconds);
-  if (remainingToday <= 0) {
-    return { granted: false, seconds: 0, reason: 'DAILY_LIMIT_REACHED', userMessage: 'LIMIT_REACHED' };
-  }
+  if (remainingToday <= 0) return refuse('DAILY_LIMIT_REACHED', 'LIMIT_REACHED');
 
   const seconds = Math.min(L.sessionSeconds, remainingToday);
   // A grant of eight seconds is worse than no grant: the visitor gets a demo
   // that cuts off mid-sentence and concludes the product is broken.
-  if (seconds < 15) {
-    return { granted: false, seconds: 0, reason: 'DAILY_LIMIT_REACHED', userMessage: 'LIMIT_REACHED' };
-  }
+  if (seconds < 15) return refuse('DAILY_LIMIT_REACHED', 'LIMIT_REACHED');
 
-  return { granted: true, seconds };
+  return { granted: true, seconds, usageTier: tier, limitBypassed: false };
 }
 
 /**

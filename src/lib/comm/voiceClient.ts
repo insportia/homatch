@@ -431,11 +431,41 @@ const MIN_VOICED_MS = 260;
  * Nothing here is allowed to fire before there has been real speech, which is
  * what stops a room's background noise from committing empty turns.
  */
-const END_TURN_SHORT_MS = 520;
+/*
+ * THREE TIERS, CHOSEN FROM HOW MUCH VOICE THERE HAS BEEN.
+ *
+ * MEASURED, voiced audio in real Cartesia Georgian:
+ *
+ *   კი 260ms   არა 300ms   ჰო 380ms          one-word answers
+ *   კარგი 580ms   დიახ 820ms                  also complete answers
+ *   "მინდა ბინა" 840ms                        NOT complete: a fragment
+ *   "მინდა ოროთახიანი ბინა კრიწანისში." 1940ms  a finished sentence
+ *
+ * The middle of that list is the problem and it is why there are three tiers
+ * rather than two. A complete "კარგი" and an unfinished "მინდა ბინა" are the
+ * same length, carry the same energy, and cannot be told apart acoustically.
+ * Since one of them is still being composed, the tier they share has to be
+ * PATIENT -- measured, a 650ms mid-sentence pause was being cut in half by
+ * the old single 520ms window, turning one request into two wrong answers.
+ *
+ * Below 450ms there is no such ambiguity: nothing in this language is a
+ * quarter-second fragment of a longer thought. Those finalise briskly.
+ */
+const END_TURN_ACK_MS = 300;
+const END_TURN_SHORT_MS = 700;
 const END_TURN_LONG_MS = 900;
-/** Speech shorter than this is not an utterance, it is a noise. */
-const END_TURN_MIN_SPEECH_MS = 240;
-/** Above this much speech, treat it as a composed sentence and be patient. */
+/*
+ * Speech shorter than this is not an utterance, it is a noise.
+ *
+ * It was 240ms, which is within the measurement noise of "კი" at 260ms -- so
+ * whether the fastest path in the system applied to the shortest word in the
+ * language depended on how that particular take was synthesised. A gate that
+ * close to the thing it is gating is a coin toss.
+ */
+const END_TURN_MIN_SPEECH_MS = 140;
+/** Under this, an utterance is a one-word answer with nothing to continue. */
+const END_TURN_ACK_SPEECH_MS = 450;
+/** Above this, a composed sentence: patient, because it may pause to think. */
 const END_TURN_LONG_SPEECH_MS = 1600;
 
 /** A single utterance ceiling, so one long monologue cannot grow unbounded. */
@@ -1032,9 +1062,11 @@ export class VoiceSession {
      * been, not how long the microphone has been open: a long pause before
      * "კი" is still a one-word answer.
      */
-    const window = this.liveSpeechMs >= END_TURN_LONG_SPEECH_MS
-      ? END_TURN_LONG_MS
-      : END_TURN_SHORT_MS;
+    const window = this.liveSpeechMs < END_TURN_ACK_SPEECH_MS
+      ? END_TURN_ACK_MS
+      : this.liveSpeechMs >= END_TURN_LONG_SPEECH_MS
+        ? END_TURN_LONG_MS
+        : END_TURN_SHORT_MS;
     if (silenceMs < window) return;
 
     this.liveEnded = true;

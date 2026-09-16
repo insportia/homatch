@@ -68,17 +68,35 @@ test('finalize is optional, so a transcriber without a half-close still works', 
 
 // ── ADAPTIVE, and every refusal is a way of being wrong ───────────────────
 
-test('the window is adaptive, short answers briskly and sentences patiently', () => {
+test('three tiers, because the middle one is genuinely ambiguous', () => {
+  /*
+   * MEASURED voiced audio: კი 260ms, არა 300ms, ჰო 380ms are one-word
+   * answers. კარგი 580ms and დიახ 820ms are ALSO complete answers -- and
+   * "მინდა ბინა", an unfinished fragment, is 840ms. The middle of that range
+   * cannot be resolved acoustically, so the tier it shares must be patient
+   * while the unambiguous short tier need not be.
+   */
   const c = client;
-  const shortMs = Number(/END_TURN_SHORT_MS = (\d+)/.exec(c)[1]);
-  const longMs = Number(/END_TURN_LONG_MS = (\d+)/.exec(c)[1]);
-  assert.ok(shortMs < longMs, 'one fixed timeout cannot serve "კი" and a composed sentence');
-  // Short enough to beat the endpointer's 1.8-3.1s, long enough not to cut
-  // between words.
-  assert.ok(shortMs >= 350 && shortMs <= 700, `${shortMs}ms`);
-  assert.ok(longMs >= 700 && longMs <= 1300, `${longMs}ms`);
+  const ack = Number(/END_TURN_ACK_MS = (\d+)/.exec(c)[1]);
+  const mid = Number(/END_TURN_SHORT_MS = (\d+)/.exec(c)[1]);
+  const long = Number(/END_TURN_LONG_MS = (\d+)/.exec(c)[1]);
+  assert.ok(ack < mid && mid <= long, `${ack} < ${mid} <= ${long}`);
+  assert.ok(ack >= 200 && ack <= 400, `${ack}ms: brisk, but not inside a word`);
+  // Measured: a 700ms window keeps a mid-sentence pause of up to 600ms and
+  // ends the turn beyond 750ms.
+  assert.ok(mid >= 600, `${mid}ms would cut a normal thinking pause in half`);
   const fn = body(client, 'private maybeEndLiveTurn()');
-  assert.ok(/END_TURN_LONG_SPEECH_MS/.test(fn), 'the choice must be made from speech, not clock');
+  assert.ok(/END_TURN_ACK_SPEECH_MS/.test(fn) && /END_TURN_LONG_SPEECH_MS/.test(fn),
+    'the tier must be chosen from how much VOICE there has been');
+});
+
+test('the gate is not so close to "კი" that it becomes a coin toss', () => {
+  // It was 240ms against a measured 260ms, and sonic-3 is stochastic -- so
+  // whether the fastest path applied to the shortest word in the language
+  // depended on the take.
+  const min = Number(/END_TURN_MIN_SPEECH_MS = (\d+)/.exec(client)[1]);
+  assert.ok(min <= 180, `${min}ms is within measurement noise of a one-word answer`);
+  assert.ok(min >= 80, `${min}ms would let a cough commit a turn`);
 });
 
 test('a turn is never ended for silence that was never preceded by speech', () => {

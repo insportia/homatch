@@ -693,11 +693,24 @@ test('on a phone the building stands beside its finding, and they move together'
  * installed app — because both resolved to one mode that rendered null into a
  * row which had reserved space for it.
  *
- * This asserts the property rather than the pixels: the row is the same
- * height and carries an affordance in every state a person can be in, at
- * every width the product supports.
+ * WHAT THE DEFECT ACTUALLY WAS, NOW THAT ONE STATE HAS CHANGED SIDES
+ *
+ * Not "the control vanished" -- it was the HOLE. Space reserved for something
+ * that renders nothing, so the row keeps a divider and a wide empty rectangle
+ * where a button used to be.
+ *
+ * Inside the installed app the control is now deliberately absent: an app
+ * offering to install itself is absurd, and a chip announcing that the app
+ * you are looking at exists reports the obvious. That is a different thing
+ * from the hole, and the difference is whether the row knows. `hasInstallAction`
+ * tells the strip in advance, so the divider goes with the button.
+ *
+ * So: present and full-size where there is something to offer, cleanly absent
+ * where there is not, and the row the same height either way — because a
+ * person switching between the app and the website should not see the header
+ * change shape.
  */
-test('the app affordance is present and the same size in every state', opts, async (t) => {
+test('the app affordance is present where it belongs, absent where it does not', opts, async (t) => {
   if (skipReason) assert.fail(`shell gate could not run: ${skipReason}`);
   const { chromium } = resolvePlaywright();
   const browser = await serve(t, chromium);
@@ -737,19 +750,49 @@ test('the app affordance is present and the same size in every state', opts, asy
           .find((e) => /Homatch/i.test(e.getAttribute('aria-label') || '')
             && !/home page/i.test(e.getAttribute('aria-label') || '')
             && !(e.getAttribute('aria-label') || '').includes('მთავარი'));
-        if (!app) return null;
+        const overflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+        /*
+         * The HEADER is the thing measured for movement, because it is the
+         * same element in every state. Measuring the control's own parent
+         * compared two different boxes once the control was gone, and read
+         * as a 14px jump that nobody would ever see.
+         */
+        const header = document.querySelector('header');
+        /*
+         * And the hole, tested directly: the divider is a hairline, `h-5
+         * w-px`. One still standing when the control beside it has gone is
+         * the exact defect this file was written for.
+         */
+        const hairlines = [...(header?.querySelectorAll('span, div') ?? [])]
+          .map((e) => e.getBoundingClientRect())
+          .filter((r) => r.width > 0 && r.width < 4 && r.height > 8).length;
         return {
-          h: Math.round(app.getBoundingClientRect().height),
-          rowH: Math.round(app.parentElement.getBoundingClientRect().height),
-          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          present: !!app,
+          h: app ? Math.round(app.getBoundingClientRect().height) : 0,
+          rowH: header ? Math.round(header.getBoundingClientRect().height) : 0,
+          hairlines,
+          overflow,
         };
       });
 
-      if (!found) {
+      if (found.overflow) failures.push(`${state} @${width}: ${found.overflow}px overflow`);
+
+      if (state === 'standalone') {
+        /* Absent by instruction. An installed app must not carry a control
+           for installing itself. */
+        if (found.present) {
+          failures.push(`${state} @${width}: the installed app still carries an install affordance`);
+        }
+        if (found.hairlines > 0) {
+          failures.push(`${state} @${width}: ${found.hairlines} divider(s) left beside nothing — the hole`);
+        }
+      } else if (!found.present) {
         failures.push(`${state} @${width}: no app affordance at all`);
-      } else {
-        if (found.overflow) failures.push(`${state} @${width}: ${found.overflow}px overflow`);
-        if (found.h < 36) failures.push(`${state} @${width}: the control is ${found.h}px tall`);
+      } else if (found.h < 36) {
+        failures.push(`${state} @${width}: the control is ${found.h}px tall`);
+      }
+
+      if (found.rowH) {
         const key = `@${width}`;
         const before = seen.get(key);
         if (before === undefined) seen.set(key, found.rowH);

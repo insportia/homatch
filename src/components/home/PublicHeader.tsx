@@ -6,7 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
-import { InstallApp, useInstallMode, hasInstallAction } from '@/components/common/InstallApp';
+import { InstallApp, useInstallState, hasInstallAction } from '@/components/common/InstallApp';
 import { PAGE } from '@/components/home/sections/primitives';
 import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
@@ -75,9 +75,9 @@ export function PublicHeader(props: { links: HeaderLink[]; solid?: boolean }) {
 
 function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boolean }) {
   /* Read BEFORE laying out, so the strip never reserves room for a control
-     that is about to render nothing. See useInstallMode. */
-  const installMode = useInstallMode();
-  const canOfferApp = hasInstallAction(installMode);
+     that is about to render nothing. See useInstallState. */
+  const installState = useInstallState();
+  const canOfferApp = hasInstallAction(installState);
   const { session } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();

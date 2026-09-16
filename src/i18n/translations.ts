@@ -4926,9 +4926,6 @@ const en = {
   general_menu: 'Menu',
   /* Install / PWA */
   pwa_install: 'Install App',
-  pwa_open: 'Open Homatch',
-  pwa_open_aria: 'Open the Homatch app',
-  pwa_ready: 'Homatch is installed',
   pwa_install_aria: 'Install the Homatch app on this device',
   pwa_ios_title: 'Add Homatch to your Home Screen',
   pwa_ios_lead: 'Safari installs apps from the Share menu.',
@@ -5194,10 +5191,11 @@ const en = {
 
   // ── PWA install: iPad, and iOS browsers that cannot ──
   pwa_ios_step1_ipad: 'Tap Share at the top right of Safari',
-  pwa_iosbrowser_title: 'Open Homatch in Safari to install it',
-  pwa_iosbrowser_lead: 'On iPhone and iPad only Safari can add an app to the Home Screen. This browser cannot — the option is not in its menu.',
-  pwa_iosbrowser_step1: 'Copy this page’s address, or tap Share then Open in Safari',
-  pwa_iosbrowser_step2: 'In Safari, tap Install App again — it takes three taps from there',
+  pwa_iosbrowser_title: 'Add Homatch to your Home Screen',
+  pwa_iosbrowser_lead: 'This browser installs apps from its Share menu.',
+  pwa_iosbrowser_step1: 'Open this browser’s Share menu',
+  pwa_iosbrowser_step2: 'Choose Add to Home Screen',
+  pwa_iosbrowser_step3: 'Tap Add',
   pwa_preparing: 'Preparing install…',
 
   // ── HOMATCH FOR DEVELOPERS ────────────────────────────────────────────
@@ -6418,6 +6416,18 @@ const en = {
   dev_extract_schedule_mismatch: 'The payment plan still totals {total}, not {price}. Somebody has to decide how the difference is absorbed.',
   pwa_unavailable: 'Install not offered',
   pwa_ready_install: 'Ready — Install App',
+  pwa_ok: 'OK',
+  pwa_already_installed: 'Already installed',
+  pwa_installed_body: 'Homatch is already installed on this device.',
+  pwa_install_success: 'Homatch installed',
+  pwa_install_success_body: 'Homatch installed successfully.',
+  pwa_unavailable_body: 'This browser has not offered to install Homatch on this device.',
+  pwa_ios_step1_compact: 'Tap ••• beside the address bar, then Share',
+  pwa_ioschrome_title: 'Add Homatch to your Home Screen',
+  pwa_ioschrome_lead: 'Chrome installs apps from its Share menu.',
+  pwa_ioschrome_step1: 'Tap Share, to the right of the address bar',
+  pwa_ioschrome_step2: 'Choose Add to Home Screen',
+  pwa_ioschrome_step3: 'Tap Add',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -11262,9 +11272,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   general_menu: 'მენიუ',
   /* Install / PWA */
   pwa_install: 'აპლიკაციის დაყენება',
-  pwa_open: 'გახსენით Homatch',
-  pwa_open_aria: 'Homatch აპის გახსნა',
-  pwa_ready: 'Homatch დაინსტალირებულია',
   pwa_install_aria: 'დააყენე Homatch-ის აპლიკაცია ამ მოწყობილობაზე',
   pwa_ios_title: 'დაამატე Homatch მთავარ ეკრანზე',
   pwa_ios_lead: 'Safari აპლიკაციებს Share მენიუდან აყენებს.',
@@ -11530,10 +11537,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   // ── PWA install: iPad, and iOS browsers that cannot ──
   pwa_ios_step1_ipad: 'შეეხეთ Share-ს Safari-ს ზედა მარჯვენა კუთხეში',
-  pwa_iosbrowser_title: 'დასაყენებლად გახსენით Homatch Safari-ში',
-  pwa_iosbrowser_lead: 'iPhone-სა და iPad-ზე მხოლოდ Safari-ს შეუძლია აპის მთავარ ეკრანზე დამატება. ამ ბრაუზერს არ შეუძლია — ეს პარამეტრი მის მენიუში არ არის.',
-  pwa_iosbrowser_step1: 'დააკოპირეთ ამ გვერდის მისამართი, ან შეეხეთ Share → Safari-ში გახსნა',
-  pwa_iosbrowser_step2: 'Safari-ში კვლავ შეეხეთ „აპლიკაციის დაყენება“ — იქიდან სამი შეხებაა',
+  pwa_iosbrowser_title: 'დაამატეთ Homatch მთავარ ეკრანზე',
+  pwa_iosbrowser_lead: 'ეს ბრაუზერი აპლიკაციებს Share მენიუდან აყენებს.',
+  pwa_iosbrowser_step1: 'გახსენით ამ ბრაუზერის Share მენიუ',
+  pwa_iosbrowser_step2: 'აირჩიეთ Add to Home Screen',
+  pwa_iosbrowser_step3: 'შეეხეთ Add-ს',
   pwa_preparing: 'ემზადება დასაყენებლად…',
 
   // ── HOMATCH FOR DEVELOPERS ────────────────────────────────────────────
@@ -12754,6 +12762,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dev_extract_schedule_mismatch: 'გადახდის გეგმა ჯერ კვლავ {total}-ია, არა {price}. ვიღაცამ უნდა გადაწყვიტოს, როგორ დაეჿასება სხვაობა.',
   pwa_unavailable: 'დაყენება არ არის შემოთავაზებული',
   pwa_ready_install: 'მზადაა — დააყენეთ',
+  pwa_ok: 'კარგი',
+  pwa_already_installed: 'უკვე დაინსტალირებულია',
+  pwa_installed_body: 'Homatch უკვე დაინსტალირებული გაქვთ.',
+  pwa_install_success: 'Homatch დაინსტალირდა',
+  pwa_install_success_body: 'Homatch წარმატებით დაინსტალირდა.',
+  pwa_unavailable_body: 'ამ ბრაუზერს Homatch-ის დაყენება არ შემოუთავაზებია ამ მოწყობილობაზე.',
+  pwa_ios_step1_compact: 'შეეხეთ ••• მისამართის ველის გვერდით, შემდეგ Share-ს',
+  pwa_ioschrome_title: 'დაამატეთ Homatch მთავარ ეკრანზე',
+  pwa_ioschrome_lead: 'Chrome აპლიკაციებს Share მენიუდან აყენებს.',
+  pwa_ioschrome_step1: 'შეეხეთ Share-ს მისამართის ველის მარჯვნივ',
+  pwa_ioschrome_step2: 'აირჩიეთ Add to Home Screen',
+  pwa_ioschrome_step3: 'შეეხეთ Add-ს',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -17589,9 +17609,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   general_menu: 'Меню',
   /* Install / PWA */
   pwa_install: 'Установить приложение',
-  pwa_open: 'Открыть Homatch',
-  pwa_open_aria: 'Открыть приложение Homatch',
-  pwa_ready: 'Homatch установлен',
   pwa_install_aria: 'Установить приложение Homatch на это устройство',
   pwa_ios_title: 'Добавьте Homatch на главный экран',
   pwa_ios_lead: 'Safari устанавливает приложения через меню «Поделиться».',
@@ -17857,10 +17874,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   // ── PWA install: iPad, and iOS browsers that cannot ──
   pwa_ios_step1_ipad: 'Нажмите «Поделиться» в правом верхнем углу Safari',
-  pwa_iosbrowser_title: 'Откройте Homatch в Safari, чтобы установить',
-  pwa_iosbrowser_lead: 'На iPhone и iPad добавить приложение на экран «Домой» может только Safari. Этот браузер не может — такого пункта в его меню нет.',
-  pwa_iosbrowser_step1: 'Скопируйте адрес этой страницы или нажмите «Поделиться» → «Открыть в Safari»',
-  pwa_iosbrowser_step2: 'В Safari снова нажмите «Установить приложение» — оттуда три нажатия',
+  pwa_iosbrowser_title: 'Добавьте Homatch на главный экран',
+  pwa_iosbrowser_lead: 'Этот браузер устанавливает приложения из меню «Поделиться».',
+  pwa_iosbrowser_step1: 'Откройте меню «Поделиться» в этом браузере',
+  pwa_iosbrowser_step2: 'Выберите «На экран Домой»',
+  pwa_iosbrowser_step3: 'Нажмите «Добавить»',
   pwa_preparing: 'Подготовка к установке…',
 
   // ── HOMATCH FOR DEVELOPERS ────────────────────────────────────────────
@@ -19081,6 +19099,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dev_extract_schedule_mismatch: 'План платежей по-прежнему даёт {total}, а не {price}. Кто-то должен решить, как покрыть разницу.',
   pwa_unavailable: 'Установка не предлагается',
   pwa_ready_install: 'Готово — установить',
+  pwa_ok: 'ОК',
+  pwa_already_installed: 'Уже установлено',
+  pwa_installed_body: 'Homatch уже установлен на этом устройстве.',
+  pwa_install_success: 'Homatch установлен',
+  pwa_install_success_body: 'Homatch успешно установлен.',
+  pwa_unavailable_body: 'Этот браузер не предложил установить Homatch на это устройство.',
+  pwa_ios_step1_compact: 'Нажмите ••• рядом с адресной строкой, затем «Поделиться»',
+  pwa_ioschrome_title: 'Добавьте Homatch на главный экран',
+  pwa_ioschrome_lead: 'Chrome устанавливает приложения из меню «Поделиться».',
+  pwa_ioschrome_step1: 'Нажмите «Поделиться» справа от адресной строки',
+  pwa_ioschrome_step2: 'Выберите «На экран Домой»',
+  pwa_ioschrome_step3: 'Нажмите «Добавить»',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -23914,9 +23944,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   general_menu: 'Menü',
   /* Install / PWA */
   pwa_install: 'Uygulamayı Yükle',
-  pwa_open: 'Homatch uygulamasını aç',
-  pwa_open_aria: 'Homatch uygulamasını aç',
-  pwa_ready: 'Homatch yüklendi',
   pwa_install_aria: 'Homatch uygulamasını bu cihaza yükle',
   pwa_ios_title: 'Homatch\'i Ana Ekrana ekleyin',
   pwa_ios_lead: 'Safari uygulamaları Paylaş menüsünden yükler.',
@@ -24182,10 +24209,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   // ── PWA install: iPad, and iOS browsers that cannot ──
   pwa_ios_step1_ipad: 'Safari\'nin sağ üstündeki Paylaş simgesine dokunun',
-  pwa_iosbrowser_title: 'Yüklemek için Homatch\'i Safari\'de açın',
-  pwa_iosbrowser_lead: 'iPhone ve iPad\'de bir uygulamayı Ana Ekrana yalnızca Safari ekleyebilir. Bu tarayıcı ekleyemez — bu seçenek menüsünde yok.',
-  pwa_iosbrowser_step1: 'Bu sayfanın adresini kopyalayın veya Paylaş → Safari’de Aç seçin',
-  pwa_iosbrowser_step2: 'Safari\'de yeniden Uygulamayı Yükle\'ye dokunun — oradan üç dokunuş sürer',
+  pwa_iosbrowser_title: 'Homatch uygulamasını ana ekrana ekleyin',
+  pwa_iosbrowser_lead: 'Bu tarayıcı uygulamaları Paylaş menüsünden yükler.',
+  pwa_iosbrowser_step1: 'Bu tarayıcının Paylaş menüsünü açın',
+  pwa_iosbrowser_step2: 'Ana Ekrana Ekle seçeneğini seçin',
+  pwa_iosbrowser_step3: 'Ekle düğmesine dokunun',
   pwa_preparing: 'Yükleme hazırlanıyor…',
 
   // ── HOMATCH FOR DEVELOPERS ────────────────────────────────────────────
@@ -25406,6 +25434,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dev_extract_schedule_mismatch: 'Ödeme planı hâlâ {price} değil {total} ediyor. Aradaki farkın nasıl karşılanacağına birinin karar vermesi gerekiyor.',
   pwa_unavailable: 'Yükleme sunulmuyor',
   pwa_ready_install: 'Hazır — Yükle',
+  pwa_ok: 'Tamam',
+  pwa_already_installed: 'Zaten yüklü',
+  pwa_installed_body: 'Homatch bu cihazda zaten yüklü.',
+  pwa_install_success: 'Homatch yüklendi',
+  pwa_install_success_body: 'Homatch başarıyla yüklendi.',
+  pwa_unavailable_body: 'Bu tarayıcı bu cihazda Homatch yüklemeyi önermedi.',
+  pwa_ios_step1_compact: 'Adres çubuğunun yanındaki ••• simgesine, sonra Paylaş öğesine dokunun',
+  pwa_ioschrome_title: 'Homatch uygulamasını ana ekrana ekleyin',
+  pwa_ioschrome_lead: 'Chrome uygulamaları Paylaş menüsünden yükler.',
+  pwa_ioschrome_step1: 'Adres çubuğunun sağındaki Paylaş simgesine dokunun',
+  pwa_ioschrome_step2: 'Ana Ekrana Ekle seçeneğini seçin',
+  pwa_ioschrome_step3: 'Ekle düğmesine dokunun',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -30239,9 +30279,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   general_menu: 'القائمة',
   /* Install / PWA */
   pwa_install: 'تثبيت التطبيق',
-  pwa_open: 'افتح Homatch',
-  pwa_open_aria: 'فتح تطبيق Homatch',
-  pwa_ready: 'تم تثبيت Homatch',
   pwa_install_aria: 'ثبّت تطبيق Homatch على هذا الجهاز',
   pwa_ios_title: 'أضف Homatch إلى الشاشة الرئيسية',
   pwa_ios_lead: 'يثبّت Safari التطبيقات من قائمة المشاركة.',
@@ -30507,10 +30544,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   // ── PWA install: iPad, and iOS browsers that cannot ──
   pwa_ios_step1_ipad: 'اضغط على "مشاركة" أعلى يمين Safari',
-  pwa_iosbrowser_title: 'افتح Homatch في Safari لتثبيته',
-  pwa_iosbrowser_lead: 'على iPhone وiPad، يستطيع Safari وحده إضافة تطبيق إلى الشاشة الرئيسية. هذا المتصفح لا يستطيع — الخيار غير موجود في قائمته.',
-  pwa_iosbrowser_step1: 'انسخ عنوان هذه الصفحة، أو اضغط مشاركة ثم "فتح في Safari"',
-  pwa_iosbrowser_step2: 'في Safari اضغط "تثبيت التطبيق" مرة أخرى — ثلاث ضغطات من هناك',
+  pwa_iosbrowser_title: 'أضف Homatch إلى الشاشة الرئيسية',
+  pwa_iosbrowser_lead: 'يثبّت هذا المتصفح التطبيقات من قائمة المشاركة.',
+  pwa_iosbrowser_step1: 'افتح قائمة المشاركة في هذا المتصفح',
+  pwa_iosbrowser_step2: 'اختر "إضافة إلى الشاشة الرئيسية"',
+  pwa_iosbrowser_step3: 'اضغط "إضافة"',
   pwa_preparing: 'جارٍ التحضير للتثبيت…',
 
   // ── HOMATCH FOR DEVELOPERS ────────────────────────────────────────────
@@ -31731,6 +31769,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dev_extract_schedule_mismatch: 'ما زال مجموع خطة السداد {total} وليس {price}. على أحدهم أن يقرر كيف يُستوعَب الفرق.',
   pwa_unavailable: 'التثبيت غير متاح',
   pwa_ready_install: 'جاهز — ثبّت التطبيق',
+  pwa_ok: 'حسناً',
+  pwa_already_installed: 'مثبّت بالفعل',
+  pwa_installed_body: 'Homatch مثبّت بالفعل على هذا الجهاز.',
+  pwa_install_success: 'تم تثبيت Homatch',
+  pwa_install_success_body: 'تم تثبيت Homatch بنجاح.',
+  pwa_unavailable_body: 'لم يعرض هذا المتصفح تثبيت Homatch على هذا الجهاز.',
+  pwa_ios_step1_compact: 'اضغط على ••• بجوار شريط العنوان، ثم "مشاركة"',
+  pwa_ioschrome_title: 'أضف Homatch إلى الشاشة الرئيسية',
+  pwa_ioschrome_lead: 'يثبّت Chrome التطبيقات من قائمة المشاركة.',
+  pwa_ioschrome_step1: 'اضغط على "مشاركة" يمين شريط العنوان',
+  pwa_ioschrome_step2: 'اختر "إضافة إلى الشاشة الرئيسية"',
+  pwa_ioschrome_step3: 'اضغط "إضافة"',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -36564,9 +36614,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   general_menu: 'תפריט',
   /* Install / PWA */
   pwa_install: 'התקנת האפליקציה',
-  pwa_open: 'פתחו את Homatch',
-  pwa_open_aria: 'פתיחת אפליקציית Homatch',
-  pwa_ready: 'Homatch מותקן',
   pwa_install_aria: 'התקינו את אפליקציית Homatch במכשיר הזה',
   pwa_ios_title: 'הוסיפו את Homatch למסך הבית',
   pwa_ios_lead: 'ספארי מתקין אפליקציות מתפריט השיתוף.',
@@ -36832,10 +36879,11 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   // ── PWA install: iPad, and iOS browsers that cannot ──
   pwa_ios_step1_ipad: 'הקישו על שיתוף בפינה הימנית העליונה של Safari',
-  pwa_iosbrowser_title: 'פתחו את Homatch ב־Safari כדי להתקין',
-  pwa_iosbrowser_lead: 'ב־iPhone וב־iPad רק Safari יכול להוסיף אפליקציה למסך הבית. הדפדפן הזה לא — האפשרות אינה בתפריט שלו.',
-  pwa_iosbrowser_step1: 'העתיקו את כתובת הדף, או הקישו שיתוף ואז "פתח ב־Safari"',
-  pwa_iosbrowser_step2: 'ב־Safari הקישו שוב על "התקנת אפליקציה" — משם זה שלוש הקשות',
+  pwa_iosbrowser_title: 'הוסיפו את Homatch למסך הבית',
+  pwa_iosbrowser_lead: 'הדפדפן הזה מתקין אפליקציות מתפריט השיתוף.',
+  pwa_iosbrowser_step1: 'פתחו את תפריט השיתוף בדפדפן',
+  pwa_iosbrowser_step2: 'בחרו "הוספה למסך הבית"',
+  pwa_iosbrowser_step3: 'הקישו על "הוספה"',
   pwa_preparing: 'מכין התקנה…',
 
   // ── HOMATCH FOR DEVELOPERS ────────────────────────────────────────────
@@ -38056,6 +38104,18 @@ const he: Partial<Record<TranslationKey, string>> = {
   dev_extract_schedule_mismatch: 'תוכנית התשלומים עדיין מסתכמת ב-{total} ולא ב-{price}. מישהו צריך להחליט איך לגשר על הפער.',
   pwa_unavailable: 'התקנה לא מוצעת',
   pwa_ready_install: 'מוכן — התקינו',
+  pwa_ok: 'אישור',
+  pwa_already_installed: 'כבר מותקן',
+  pwa_installed_body: 'Homatch כבר מותקן במכשיר הזה.',
+  pwa_install_success: 'Homatch הותקן',
+  pwa_install_success_body: 'Homatch הותקן בהצלחה.',
+  pwa_unavailable_body: 'הדפדפן הזה לא הציע להתקין את Homatch במכשיר הזה.',
+  pwa_ios_step1_compact: 'הקישו על ••• ליד שורת הכתובת, ואז על שיתוף',
+  pwa_ioschrome_title: 'הוסיפו את Homatch למסך הבית',
+  pwa_ioschrome_lead: 'Chrome מתקין אפליקציות מתפריט השיתוף.',
+  pwa_ioschrome_step1: 'הקישו על שיתוף מימין לשורת הכתובת',
+  pwa_ioschrome_step2: 'בחרו "הוספה למסך הבית"',
+  pwa_ioschrome_step3: 'הקישו על "הוספה"',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

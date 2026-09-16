@@ -1,107 +1,79 @@
 import React, { useCallback, useEffect, useReducer, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Share, Plus, X, Check, ExternalLink, Loader2 } from 'lucide-react';
+import { Download, Share, Plus, X, Check, Loader2, Info } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { recordPwaEvent } from '@/lib/engagement';
 import {
-  type InstallMode,
-  isCheckingInstall,
-  canInstall, heldInstallPrompt, installedInThisTab, isIOSSafari, isIOSOtherBrowser,
-  isIPad, isStandalone,
-  rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted, watchInstall,
+  type InstallDialogKind,
+  type InstallState,
+  classifyPlatform, currentEvidence, dialogForState, heldInstallPrompt,
+  installedInThisTab, iosMajorVersion, isCheckingInstall, isIPad,
+  rememberMuted, resolveInstallState, showInstallPrompt, wasMuted, watchInstall,
 } from '@/lib/pwa';
 
 /**
  * THE INSTALL CONTROL.
  *
- * Four genuinely different situations behind one button, because the
- * platforms genuinely differ:
+ * One rule, and everything here follows from it:
  *
- *   native      Chromium handed us a `beforeinstallprompt`, which we hold and
- *               replay on the click. One tap, real native dialog.
- *   pending     Chromium CAN install but has not offered a prompt yet. The
- *               event fires late, and on a first visit it may not fire at all.
- *   ios-manual  iOS fires nothing and exposes no install API whatsoever.
- *               There is no button anyone can write that installs a PWA on
- *               iOS, so the click opens a sheet naming the Safari menu items.
- *   standalone  already installed. Offer nothing.
+ *   A VISIBLE INSTALL CONTROL ALWAYS ANSWERS A PRESS, IMMEDIATELY.
  *
- * WHY DISMISSING THE BROWSER DIALOG NO LONGER HIDES THIS
+ * There are exactly two shapes a press can take. Either the browser has
+ * handed us a real prompt and we raise it, or it has not and the press opens
+ * a small dialog that says what is true on this platform. Which dialog is not
+ * decided here: `dialogForState` in lib/pwa.ts derives it from the state,
+ * which is derived from the platform. So a Chrome user cannot be shown iPhone
+ * instructions, and an iPhone user cannot be left waiting for an Android
+ * event -- not by convention, but because neither value can be constructed.
  *
- * It used to. Pressing Install and then changing your mind in Chrome's own
- * dialog called rememberDismissal(), and the control vanished for sixty days
- * — the single likeliest interaction was the one that destroyed the entry
- * point, and it looked like the button had broken itself.
+ * THE THIRD SHAPE, WHICH IS NOT A THIRD SHAPE
  *
- * Closing a dialog means "not now". Only the explicit "don't show me this
- * again" in the iOS sheet mutes the control, and only for that period.
- *
- * WHY THE PROMPT IS NOT HELD HERE
- *
- * `beforeinstallprompt` fires once, at the window, early. A control that
- * registers its own listener on mount only sees it if it was already on
- * screen — and the control in the phone's menu is mounted when the menu is
- * OPENED, which is always afterwards. It held nothing, reported `pending`,
- * and offered the manual instructions instead: on a phone, one-tap install
- * was unreachable, and nothing said so.
- *
- * So lib/pwa.ts listens once for the page and every control reads from
- * there. See the note on that store.
+ * On Chromium, in the first few seconds, there may be no prompt yet. The
+ * press is RECORDED rather than refused: the control shows it is working and
+ * the event is spent the moment it lands. That is still an immediate answer;
+ * it is just an answer that takes a moment to finish. It is reachable only on
+ * a platform where the event genuinely exists.
  */
+
+/** Only one success dialog per page, however many controls are mounted. */
+let announcedInstall = false;
+
 /**
  * THE PAGE'S INSTALL STATE, FOR ANYONE WHO NEEDS TO LAY OUT AROUND IT.
  *
- * The control renders nothing at all in three of its states — unsupported
- * browser, already running as the app, and muted by an explicit "don't show
- * me this again". A caller that reserves room for it anyway draws a hole:
- * the mobile utility strip rendered its divider and a flex-1 gap beside the
- * language chip, so somebody who had once dismissed the sheet saw a wide
- * empty rectangle where the button used to be.
- *
- * So the state is readable BEFORE the control is rendered, from the same
- * store the control itself reads. One source, so the strip and the button
- * cannot disagree about whether there is anything to show.
+ * Readable BEFORE the control is rendered, from the same store the control
+ * reads, so a strip and the button inside it cannot disagree about whether
+ * there is anything to show.
  */
-export function useInstallMode(): InstallMode {
+export function useInstallState(): InstallState {
   const [, restate] = useReducer((n: number) => n + 1, 0);
-  const [muted, setMuted] = useState(false);
   useEffect(() => {
     restate();
     return watchInstall(restate);
   }, []);
-  // Kept so a mute performed in one control collapses the other immediately.
-  useEffect(() => {
-    const id = window.setInterval(() => setMuted(wasMuted()), 2000);
-    return () => window.clearInterval(id);
-  }, []);
-  return resolveInstallMode({
-    standalone: isStandalone(),
+  return resolveInstallState({
+    platform: classifyPlatform(),
     hasNativePrompt: heldInstallPrompt() !== null,
-    iosSafari: isIOSSafari(),
-    iosOther: isIOSOtherBrowser(),
+    evidence: currentEvidence(),
     checking: isCheckingInstall(),
-    installable: canInstall(),
-    muted: muted || wasMuted(),
-    installed: installedInThisTab(),
   });
 }
 
 /**
  * Is there an app affordance worth giving room to?
  *
- * True for every state except the one browser that genuinely cannot install
- * a web app. That is a deliberate widening: it used to exclude `standalone`
- * and the dismissed state too, and those are the two cases the owner kept
- * finding — open Homatch as an installed app, or press "not now" once, and
- * the application row simply stopped existing.
+ * False in exactly the two states that render nothing:
  *
- * Standalone and dismissed now render a compact app chip instead of nothing,
- * so the strip has the same shape in every state a person will actually be
- * in. `unsupported` still renders nothing, because a control that cannot do
- * its job is worse than an absence.
+ *   standalone   you ARE the app. An installed app must not carry a control
+ *                for installing itself, and a chip saying "Installed" inside
+ *                the installed app is clutter reporting the obvious.
+ *   unsupported  the browser has no install story at all.
+ *
+ * Every other state renders something pressable, which is why the caller can
+ * reserve the space without risking the empty rectangle this exists to stop.
  */
-export function hasInstallAction(mode: InstallMode): boolean {
-  return mode !== 'unsupported';
+export function hasInstallAction(state: InstallState): boolean {
+  return state !== 'unsupported' && state !== 'standalone';
 }
 
 export function InstallApp({
@@ -113,8 +85,7 @@ export function InstallApp({
   compact?: boolean;
   /**
    * `dark` is for a control sitting on the black hero, where the default
-   * foreground-on-transparent treatment is all but invisible until hover —
-   * which is how this button used to look on the home page.
+   * foreground-on-transparent treatment is all but invisible until hover.
    */
   tone?: 'auto' | 'dark';
   /** `block` fills its container, for the mobile menu. */
@@ -122,23 +93,15 @@ export function InstallApp({
   className?: string;
 }) {
   const { t } = useLanguage();
-  /*
-   * ── THE SHEET IS AN iOS OBJECT ────────────────────────────────────
-   *
-   * There is no longer a Chromium kind. That is the fix: the modal a Chrome
-   * user was seeing cannot be opened from here because there is no value to
-   * open it with. Routing is enforced by the type, not by a condition
-   * somebody has to remember to write correctly.
-   */
-  const [sheet, setSheet] = useState<null | 'ios' | 'ios-browser'>(null);
+  const [dialog, setDialog] = useState<InstallDialogKind | null>(null);
   const [muted, setMuted] = useState(false);
 
   /*
    * Re-render when the page's install state changes, and read it fresh.
    *
-   * Not a copy in state: a copy is what produced the bug in the header note.
-   * There is one prompt, one "was it installed here", and every control on
-   * the page is a view of them.
+   * Not a copy in state: there is one prompt, one "was it installed here",
+   * one answer from the browser about related apps, and every control on the
+   * page is a view of them.
    */
   const [, restate] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
@@ -151,8 +114,7 @@ export function InstallApp({
   /*
    * The CHECKING window closes on a clock, not on an event, so nothing would
    * otherwise re-render when it expires and the label would stay "Preparing"
-   * on a browser that has finished deciding. One second is far finer than a
-   * person notices and stops as soon as the answer is known.
+   * on a browser that has finished deciding.
    */
   const [, tick] = useReducer((n: number) => n + 1, 0);
   const checking = isCheckingInstall();
@@ -165,77 +127,75 @@ export function InstallApp({
   /*
    * ── THE TAP IS A FACT, EVEN BEFORE THE BROWSER IS READY ────────────
    *
-   * The previous version made the control `disabled` while Chromium decided.
-   * That removed the wrong modal by removing the user's action, which is a
-   * worse trade: a primary CTA that looks pressable and ignores a press is
-   * indistinguishable from a broken app.
-   *
-   * So the press is RECORDED instead. `intent` says somebody asked to
-   * install before the browser could offer; when the event lands we spend it
-   * on their behalf. Chromium's transient user activation lasts five
-   * seconds, so a prompt arriving soon after the tap can still be raised
-   * from that gesture -- and if it arrives too late for that, the control
-   * says "Ready" and the second tap costs one more touch rather than a
-   * mystery.
-   *
-   * What never happens on Chromium, in any of these branches, is the manual
-   * modal. There is still no value that would open it.
+   * Chromium's transient user activation lasts five seconds, so a prompt
+   * arriving soon after the tap can still be raised from that gesture. If it
+   * arrives too late for that, the control says "Ready" and the second tap
+   * costs one more touch rather than a mystery.
    */
   const [intent, setIntent] = useState(false);
   const [readyToPrompt, setReadyToPrompt] = useState(false);
-  const [gaveUp, setGaveUp] = useState(false);
   const [prompting, setPrompting] = useState(false);
   const tappedAt = React.useRef(0);
 
+  const platform = classifyPlatform();
   const prompt = heldInstallPrompt();
   const justInstalled = installedInThisTab();
-  const mode: InstallMode = resolveInstallMode({
-    standalone: isStandalone(),
+  const state = resolveInstallState({
+    platform,
     hasNativePrompt: prompt !== null,
-    iosSafari: isIOSSafari(),
-    iosOther: isIOSOtherBrowser(),
-    checking: isCheckingInstall(),
-    installable: canInstall(),
-    muted: muted || wasMuted(),
-    installed: justInstalled,
+    evidence: currentEvidence(),
+    checking,
   });
+
+  /*
+   * ── THE INSTALL LANDED ─────────────────────────────────────────────
+   *
+   * `appinstalled` is the one unambiguous moment. It closes whatever install
+   * UI is open, stops any wait, and says so once -- by page, not by control,
+   * or three mounted controls would stack three dialogs on top of each other.
+   *
+   * The marker is persisted in lib/pwa.ts, at the event, rather than here:
+   * the fact belongs to the browser profile and must not depend on which
+   * component happened to be mounted.
+   */
+  useEffect(() => {
+    if (!justInstalled || announcedInstall) return;
+    announcedInstall = true;
+    setIntent(false);
+    setPrompting(false);
+    setReadyToPrompt(false);
+    setDialog('installed');
+  }, [justInstalled]);
 
   /*
    * WHAT WAS OFFERED, AND ON WHICH SURFACE.
    *
-   * Once per mode per surface per page view — `recordPwaEvent` de-duplicates
-   * on that key — so a re-render is not a second impression and the funnel's
-   * denominator means what it says. A browser holding a native prompt is
-   * recorded separately: the gap between "could install in one tap" and
-   * "tapped" is the number worth knowing.
+   * Once per state per surface per page view — `recordPwaEvent` de-duplicates
+   * on that key — so a re-render is not a second impression.
    */
   useEffect(() => {
-    if (mode === 'unsupported') return;
-    void recordPwaEvent('PWA_AFFORDANCE_VIEWED', 'DETECTED', { source: `${source}:${mode}` });
-    if (mode === 'standalone') return;
+    if (state === 'unsupported') return;
+    void recordPwaEvent('PWA_AFFORDANCE_VIEWED', 'DETECTED', { source: `${source}:${state}` });
+    if (state === 'standalone') return;
     if (prompt !== null) {
       void recordPwaEvent('PWA_NATIVE_PROMPT_AVAILABLE', 'DETECTED', { source });
     }
-  }, [mode, prompt, source]);
+  }, [state, prompt, source]);
 
   /*
    * ACTIVATION IS A CLOCK, AND IT IS THE BROWSER'S CLOCK.
    *
    * Chromium allows prompt() only while the gesture that triggered it is
-   * still "transiently active", which lasts five seconds. Awaiting does not
-   * consume that, so an event arriving a moment after the tap can still be
-   * raised from it. 3.5s leaves margin for the call itself rather than
-   * racing the limit.
-   *
-   * Beyond it we do NOT guess and we do not silently fail: the control turns
-   * into an explicit "Ready" that the next tap fulfils.
+   * still transiently active, which lasts five seconds. Measured against the
+   * deployed site: the same held event is ALLOWED 0.3s after a tap and
+   * refused with NotAllowedError 7.0s after it. 3.5s leaves margin for the
+   * call rather than racing the limit.
    */
   const ACTIVATION_SAFE_MS = 3500;
   /*
    * And a browser that never answers. Observed arrivals on the deployed site
    * were 1668, 1791, 2145 and 3687ms; twelve seconds is more than three times
-   * the slowest, so reaching it means the answer is not coming rather than
-   * that we were impatient.
+   * the slowest, so reaching it means the answer is not coming.
    */
   const GIVE_UP_MS = 12000;
 
@@ -264,346 +224,204 @@ export function InstallApp({
       return undefined;
     }
 
-    const id = window.setTimeout(() => { setIntent(false); setGaveUp(true); }, GIVE_UP_MS);
+    /*
+     * Nothing arrived. The wait ends in a control that states the outcome and
+     * still opens an explanation when pressed -- never in a spinner that
+     * outlives the question.
+     */
+    const id = window.setTimeout(() => { setIntent(false); }, GIVE_UP_MS);
     return () => window.clearTimeout(id);
   }, [intent, prompting, prompt, source]);
 
   const onClick = useCallback(async () => {
-    void recordPwaEvent('PWA_INSTALL_CLICKED', 'CONFIRMED', { source: `${source}:${mode}`, once: false });
+    void recordPwaEvent('PWA_INSTALL_CLICKED', 'CONFIRMED', { source: `${source}:${state}`, once: false });
 
     /*
-     * INSTALLED, AND THE HONEST NEXT ACTION.
+     * ── THE IMMEDIATE ANSWER ───────────────────────────────────────────
      *
-     * No browser lets a page launch an installed app on demand — and faking
-     * it, by showing a spinner and doing nothing, is worse than saying what
-     * is true. So the control becomes a door: opening the app's own scope.
-     * Where the platform honours installed scope this lands in the app
-     * window; where it does not, it is a new tab, which is a real thing that
-     * really happened rather than a pretend launch.
+     * Already installed, or on a platform that installs through its own menu,
+     * or on a browser that declined: all of them open a small dialog on this
+     * press, with no loading and no waiting.
+     *
+     * The kind is DERIVED, never chosen here. That is what makes the reported
+     * Chromium bug unreachable: there is no branch in this file that could
+     * name an iOS dialog, and no state a Chromium platform can produce that
+     * `dialogForState` maps to one.
      */
-    if (mode === 'installed') {
-      window.open(window.location.origin, '_blank', 'noopener');
+    const kind = dialogForState(state);
+    if (kind) {
+      if (kind !== 'installed' && kind !== 'unavailable') {
+        void recordPwaEvent('PWA_IOS_INSTRUCTIONS_SHOWN', 'CONFIRMED', { source: `${source}:${kind}` });
+      }
+      setDialog(kind);
       return;
     }
-    if (mode === 'ios-browser') {
-      /* Not an install, and not pretending to be. The only thing this browser
-         can contribute is getting the person to the one that can. */
-      void recordPwaEvent('PWA_IOS_INSTRUCTIONS_SHOWN', 'CONFIRMED', { source: `${source}:browser` });
-      setSheet('ios-browser');
-      return;
-    }
-    if (mode === 'ios-manual') {
-      /* The end of the road for measurement: iOS installs happen in the Share
-         menu, which no page can observe. The funnel records that the
-         instructions were shown and stops claiming anything after it. */
-      void recordPwaEvent('PWA_IOS_INSTRUCTIONS_SHOWN', 'CONFIRMED', { source });
-      setSheet('ios');
-      return;
-    }
-    /*
-     * ── NO PROMPT, NO ACTION ──────────────────────────────────────────
-     *
-     * This used to wait for a late event and, failing that, open the manual
-     * instructions. Both halves were wrong. The wait was a timeout guessing
-     * at a number that measurement showed varies from 1.7 to 3.7 seconds on
-     * the same site, and the fallback answered a Chrome user with iOS steps.
-     *
-     * Neither is needed now, because the control that leads here only exists
-     * when a prompt is already held. Reaching this line without one means the
-     * event was spent or withdrawn between render and click, and the honest
-     * response to that is nothing at all -- the control re-renders into its
-     * real state on the next tick.
-     */
+
     /*
      * ── THE PRESS IS ALWAYS ANSWERED ──────────────────────────────────
      *
      * No prompt in hand means the browser has not offered YET, not that this
      * press meant nothing. It is recorded, the control immediately shows it
      * is working, and the effect above spends the event the moment it lands.
-     *
-     * The one thing that does not happen is the manual modal, on any branch.
      */
     if (!heldInstallPrompt()) {
       tappedAt.current = Date.now();
       setIntent(true);
       return;
     }
-    /* The event is single-use — Chromium will not replay it. A dismissal is
-       NOT a mute: the control stays, in its pending state, and explains
-       itself if pressed again. */
+
     void recordPwaEvent('PWA_NATIVE_PROMPT_SHOWN', 'CONFIRMED', { source, once: false });
-    /* Reads the store rather than the `prompt` captured when this callback
-       was created: in the pending case it arrived after that. */
     const outcome = await showInstallPrompt();
     /* Spent, whatever the answer: Chromium will not replay it. The control
-       goes back to its ordinary word rather than staying on "Ready", which
-       would promise a prompt that no longer exists. */
+       goes back to its ordinary word rather than staying on "Ready". */
     setReadyToPrompt(false);
-    /* The browser's OWN answer, which is the only CONFIRMED install signal
-       that exists outside `appinstalled`. A click is not an install and is
-       never recorded as one. */
     if (outcome === 'accepted') {
       void recordPwaEvent('PWA_NATIVE_PROMPT_ACCEPTED', 'CONFIRMED', { source, once: false });
     } else if (outcome === 'dismissed') {
       void recordPwaEvent('PWA_NATIVE_PROMPT_DISMISSED', 'CONFIRMED', { source, once: false });
     }
-  }, [mode, prompt, source]);
+  }, [state, source]);
+
+  const panel = dialog && (
+    <InstallDialog
+      kind={dialog}
+      justInstalled={justInstalled}
+      onClose={() => setDialog(null)}
+      onMute={() => { rememberMuted(); setDialog(null); setMuted(true); }}
+    />
+  );
 
   /*
-   * ── THE STATES THAT USED TO RENDER NOTHING ──────────────────────────
+   * ── THE TWO STATES WITH NOTHING TO SAY ──────────────────────────────
    *
-   * `standalone` — Homatch is ALREADY the app you are looking at. Offering
-   * to install it would be absurd, and rendering nothing left a hole where
-   * the application row was. So: a compact, non-interactive identity chip.
-   * It does not claim the browser can launch anything, because in standalone
-   * there is nothing to launch: you are there.
+   * `standalone` is the app itself: offering to install it would be absurd,
+   * and so would a chip announcing that the app you are looking at exists.
+   * `unsupported` is a browser with no install story at all.
    *
-   * `dismissed` — somebody pressed "not now". That is not "never", and it is
-   * not a reason to delete the entry point: the same quiet chip, pressable,
-   * opening the explanation sheet rather than the browser's own prompt. It
-   * cannot nag, because it never raises a native dialog by itself.
-   *
-   * `unsupported` — the browser cannot install web apps at all. This is the
-   * one case where nothing is the honest answer.
+   * Both return null, and `hasInstallAction` says so in advance so the strip
+   * around them does not reserve a hole.
    */
-  if (mode === 'unsupported') return null;
+  if (state === 'standalone' || state === 'unsupported') return panel ?? null;
+
+  const quiet = tone === 'dark'
+    ? 'bg-white/[0.06] text-white/70 ring-1 ring-inset ring-white/15'
+    : 'bg-secondary text-muted-foreground ring-1 ring-inset ring-border';
+  const shape = variant === 'block'
+    ? 'w-full min-h-[3rem] rounded-[0.9rem] px-4 text-[17px]'
+    : `min-h-[2.5rem] rounded-full text-sm ${compact ? 'w-10 px-0' : 'px-3.5'}`;
 
   /*
-   * ── CHROMIUM, NO PROMPT IN HAND ────────────────────────────────────
+   * WORKING IS NOT DEAD.
    *
-   * Two states, and neither of them is a button that says Install App.
-   *
-   * `checking`  the browser has not answered yet. A NON-INTERACTIVE chip,
-   *             because a control that cannot do the thing must not invite
-   *             the press. Measurement is why: the event arrived at 1668,
-   *             1791, 2145 and 3687ms across four runs of the same site, so
-   *             any button rendered before it is a promise with a coin-flip
-   *             behind it.
-   *
-   * `native-unavailable`  the browser has decided it will not offer. Add to
-   *             Home Screen is NOT the same product as a native install, and
-   *             offering it here answers a question Chromium already
-   *             declined. Nothing is rendered.
-   *
-   * Together these are why the reported screenshot is now impossible on
-   * Chromium: no Chromium state reaches a control that can open the sheet.
+   * Somebody has already pressed, and this is the progress of that press --
+   * a response to their tap rather than a refusal of it. Reachable only on
+   * Chromium, because only there is there an event to be waiting for.
    */
-  /*
-   * Both render the SAME non-interactive chip, in the same box as the real
-   * button. Rendering nothing was tried and two existing gates caught it: the
-   * affordance vanishing leaves a hole in the mobile utility strip, which is
-   * the defect those gates exist for. A chip keeps the row's shape and still
-   * cannot install anything, which is the property that matters.
-   */
-  /*
-   * ── WORKING, AND NOT-AVAILABLE, ARE DIFFERENT FROM DEAD ────────────
-   *
-   * Only two things here are non-interactive, and neither of them is an
-   * Install CTA that ignores you:
-   *
-   *   working    somebody has already pressed, and this is the progress of
-   *              that press. A spinner is the response to their tap, not a
-   *              refusal of it.
-   *   settled    the browser has said no, or never answered. A quiet chip
-   *              that states it. Styled as a chip rather than the gold
-   *              primary, so it does not read as an action on offer.
-   *
-   * The CHECKING state itself is NOT here -- it renders the ordinary active
-   * button below, because a person must be able to ask before the browser is
-   * ready, and their asking is what `intent` records.
-   */
-  const settled = mode === 'native-unavailable' || gaveUp;
-  const working = intent || prompting;
-
-  if (settled || working) {
-    const quiet = tone === 'dark'
-      ? 'bg-white/[0.06] text-white/70 ring-1 ring-inset ring-white/15'
-      : 'bg-secondary text-muted-foreground ring-1 ring-inset ring-border';
-    const shape = variant === 'block'
-      ? 'w-full min-h-[3rem] rounded-[0.9rem] px-4 text-[17px]'
-      : `min-h-[2.5rem] rounded-full text-sm ${compact ? 'w-10 px-0' : 'px-3.5'}`;
-    return (
-      <span
-        role="status"
-        aria-live="polite"
-        aria-label={working ? t('pwa_preparing') : t('pwa_unavailable')}
-        className={`inline-flex items-center justify-center gap-2 font-medium ${shape} ${quiet} ${className}`}
-      >
-        {working
-          ? <Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-          : <Download className="h-4 w-4 shrink-0 opacity-60" aria-hidden="true" />}
-        {!compact && (
-          <span className="min-w-0 truncate">
-            {working ? t('pwa_preparing') : t('pwa_unavailable')}
-          </span>
-        )}
-      </span>
-    );
-  }
-
-  if (mode === 'standalone' || mode === 'dismissed') {
-    const quiet = tone === 'dark'
-      ? 'bg-white/[0.08] text-white/85 ring-1 ring-inset ring-white/20'
-      : 'bg-secondary text-muted-foreground ring-1 ring-inset ring-border';
-    const chip = 'inline-flex items-center justify-center gap-2 font-medium transition-colors '
-      + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring '
-      + `motion-reduce:transition-none ${variant === 'block'
-        ? 'w-full min-h-[3rem] rounded-[0.9rem] px-4 text-[17px]'
-        : `min-h-[2.5rem] rounded-full text-sm ${compact ? 'w-10 px-0' : 'px-3.5'}`}`;
-
-    if (mode === 'standalone') {
-      return (
-        <span className={`${chip} ${quiet} ${className}`} aria-label={t('pwa_ready')}>
-          <Check className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
-          {!compact && <span className="min-w-0 truncate">{t('pwa_installed')}</span>}
-        </span>
-      );
-    }
-
+  if (intent || prompting) {
     return (
       <>
-        <button
-          type="button"
-          /*
-           * QUIET IS NOT DISABLED.
-           *
-           * The mute makes this a chip instead of a button, which is what
-           * somebody who pressed "not now" asked for. It must not also cost
-           * them the real install: pressing the chip on a browser that is
-           * holding a prompt used to open Add to Home Screen instructions
-           * while the actual dialog sat captured and unused.
-           *
-           * Pressing is asking. Asking gets the browser's own dialog.
-           *
-           * Three fallbacks, not two -- the pending sheet explains a browser
-           * menu that on iOS Chrome does not contain the item.
-           */
-          onClick={() => {
-            void (async () => {
-              if (heldInstallPrompt()) {
-                void recordPwaEvent('PWA_NATIVE_PROMPT_SHOWN', 'CONFIRMED', { source, once: false });
-                const outcome = await showInstallPrompt();
-                if (outcome !== 'unavailable') return;
-              }
-              /* iOS only. A Chromium browser with no prompt in hand has
-                 nothing to say here that is true, so it says nothing. */
-              if (isIOSSafari()) setSheet('ios');
-              else if (isIOSOtherBrowser()) setSheet('ios-browser');
-            })();
-          }}
-          aria-label={t('pwa_install_aria')}
-          className={`${chip} ${quiet} ${className}`}
+        <span
+          role="status"
+          aria-live="polite"
+          aria-label={t('pwa_preparing')}
+          className={`inline-flex items-center justify-center gap-2 font-medium ${shape} ${quiet} ${className}`}
         >
-          <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
-          {!compact && <span className="min-w-0 truncate">{t('pwa_install')}</span>}
-        </button>
-        {sheet && (
-          <Sheet
-            kind={sheet}
-            onClose={() => setSheet(null)}
-            onMute={() => { rememberMuted(); setSheet(null); setMuted(true); }}
-          />
-        )}
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          {!compact && <span className="min-w-0 truncate">{t('pwa_preparing')}</span>}
+        </span>
+        {panel}
       </>
     );
   }
 
   /*
-   * A FILLED CONTROL, NOT AN OUTLINE THAT APPEARS ON HOVER.
+   * ── HOW LOUD, AND ONLY HOW LOUD ─────────────────────────────────────
    *
-   * On the black hero the old treatment was `border-foreground/20` over
-   * transparent: a dark hairline on near-black, invisible until a hover
-   * background revealed it. A control nobody can see is a control nobody
-   * presses. Both tones now carry their own surface at rest, and hover
-   * strengthens what is already there instead of introducing it.
+   * Muting, and the states that are not an offer, change the SKIN. They never
+   * change what a press does. "Not now" asked us to stop shouting, which is a
+   * request about volume; it was never a request to make the control useless,
+   * and treating it as one is how pressing the quiet chip used to open the
+   * wrong thing.
    */
+  const isOffer = state === 'native-ready' || state === 'checking'
+    || state === 'ios-safari' || state === 'ios-chrome' || state === 'ios-other';
+  const loud = isOffer && !(muted || wasMuted());
+
   const base = 'inline-flex items-center justify-center gap-2 font-semibold transition-colors '
     + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 '
     + 'motion-reduce:transition-none';
-  const shape = variant === 'block'
+  const loudShape = variant === 'block'
     ? 'w-full min-h-[3rem] rounded-[0.9rem] px-4 text-[17px]'
     : `min-h-[2.5rem] rounded-full text-sm ${compact ? 'w-10 px-0' : 'px-4'}`;
   const skin = tone === 'dark'
     /* bg-white/[0.12], not bg-white/12. Tailwind's opacity scale goes in
-       fives, so `/12` names no rule at all and silently generates nothing:
-       this button has been fully transparent on every dark surface it has
-       ever appeared on — the exact "invisible until hover" it was supposed
-       to have fixed. An arbitrary value keeps the intended 12%. */
+       fives, so `/12` names no rule at all and silently generates nothing. */
     ? 'bg-white/[0.12] text-white ring-1 ring-inset ring-white/30 hover:bg-white/20 hover:ring-white/50'
     : 'bg-gold-soft text-gold-ink ring-1 ring-inset ring-gold/45 hover:bg-gold hover:text-[#0D0D0D] hover:ring-gold';
+
+  /*
+   * INSTALLED, IN AN ORDINARY TAB.
+   *
+   * The reported bug: install Homatch, come back to the website, press
+   * Install, nothing happens -- because Chromium does not offer an install
+   * for an app that is already installed, so the control sat waiting for an
+   * event that was never coming.
+   *
+   * It now says what is true before the press, and answers the press with a
+   * small dialog. It stays PRESSABLE on purpose: a greyed-out control that
+   * explains nothing is the same dead end in a different colour.
+   */
+  const installed = state === 'installed';
+  const label = installed ? t('pwa_installed')
+    : readyToPrompt ? t('pwa_ready_install')
+      : t('pwa_install');
 
   return (
     <>
       <button
         type="button"
         onClick={() => { void onClick(); }}
-        aria-label={mode === 'installed' ? t('pwa_open_aria') : t('pwa_install_aria')}
-        className={`${base} ${shape} ${skin} ${className}`}
+        aria-label={installed ? t('pwa_installed_body') : t('pwa_install_aria')}
+        className={`${base} ${loud ? `${loudShape} ${skin}` : `${shape} ${quiet}`} ${className}`}
       >
-        {mode === 'installed'
-          ? <ExternalLink className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+        {installed
+          ? <Check className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
           : <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />}
-        {!compact && (
-          <span className="min-w-0 truncate">
-            {/*
-              * By the time this renders, the word is guaranteed. `checking`
-              * and `native-unavailable` returned above, so "Install App"
-              * here means a prompt is held or the platform installs
-              * manually -- never "we hope one turns up".
-              */}
-            {mode === 'installed' ? t('pwa_open')
-              /* The event landed after the gesture expired, so the browser
-                 needs a fresh one. Saying so beats a press that quietly
-                 fails. */
-              : readyToPrompt ? t('pwa_ready_install')
-                : t('pwa_install')}
-          </span>
-        )}
+        {!compact && <span className="min-w-0 truncate">{label}</span>}
       </button>
-
-      {sheet && (
-        <Sheet
-          kind={sheet}
-          onClose={() => setSheet(null)}
-          onMute={() => { rememberMuted(); setSheet(null); setMuted(true); }}
-        />
-      )}
+      {panel}
     </>
   );
 }
 
 /**
- * The explanation, for the two cases a click cannot resolve by itself.
+ * ONE DIALOG, FIVE THINGS TO SAY.
  *
- * `ios` names the Safari menu items, because iOS has no install API at all.
- * `pending` is Chromium before it has offered a prompt: the honest answer is
- * that the browser's own menu can do it now, and the button will too once the
- * browser offers.
+ * Compact by default and only as tall as its content: the two notices have no
+ * steps at all and are a few lines in a small card, which is what "Homatch is
+ * already installed" deserves. The three instruction kinds add a numbered
+ * list, and nothing else about the component changes.
+ *
+ * Five kinds and one design, rather than five modals that drift apart.
  */
-function Sheet({
-  kind, onClose, onMute,
-}: { kind: 'ios' | 'ios-browser'; onClose: () => void; onMute: () => void }) {
-  /*
-   * TWO KINDS, BOTH iOS.
-   *
-   * There is no Chromium kind, and that absence is the fix. A Chrome user
-   * cannot be shown this sheet because there is no value that would open it
-   * for them -- so putting the path back is a compile error rather than a
-   * judgement call inside a click handler.
-   */
+function InstallDialog({
+  kind, justInstalled, onClose, onMute,
+}: {
+  kind: InstallDialogKind;
+  /** The install happened just now, so the notice congratulates rather than informs. */
+  justInstalled: boolean;
+  onClose: () => void;
+  onMute: () => void;
+}) {
   const { t } = useLanguage();
 
   /*
    * THE PAGE BEHIND DOES NOT SCROLL WHILE THIS IS OPEN.
    *
    * On iOS a drag that begins on the overlay scrolls the document, and
-   * scrolling the document is what moves the address bar -- which resizes
-   * the visual viewport underneath a sheet the person is in the middle of
-   * reading. `overscroll-behavior` on the panel stops a flick that STARTS
-   * inside it; this stops one that starts anywhere else.
-   *
-   * Restored exactly, including an inline overflow the page may have set
-   * for itself, rather than assumed to have been the default.
+   * scrolling the document moves the address bar -- which resizes the visual
+   * viewport underneath a dialog somebody is in the middle of reading.
+   * Restored exactly, including an inline overflow the page may have set.
    */
   useEffect(() => {
     const { body } = document;
@@ -612,133 +430,168 @@ function Sheet({
     return () => { body.style.overflow = previous; };
   }, []);
 
-  /*
-   * ESCAPE CLOSES IT.
-   *
-   * It is a real modal -- aria-modal, a backdrop, focus over the page -- and
-   * a modal a keyboard cannot dismiss is a trap. Cheap, and the only thing
-   * standing between somebody and the page when a pointer is not available.
-   */
+  /* A modal a keyboard cannot dismiss is a trap. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const steps = kind === 'ios'
+  /*
+   * Safari moved its Share button. iOS 26 made Compact the default tab bar
+   * layout, and in Compact there is no Share control on screen -- it lives
+   * behind the ••• beside the address bar. "Tap Share at the bottom" is
+   * therefore wrong directions on a current iPhone with default settings,
+   * in exactly the way the iPad wording exists to prevent.
+   */
+  const iosVersion = iosMajorVersion();
+  const safariStep1 = isIPad() ? t('pwa_ios_step1_ipad')
+    : (iosVersion ?? 0) >= 26 ? t('pwa_ios_step1_compact')
+      : t('pwa_ios_step1');
+
+  const steps = kind === 'ios-safari'
     ? [
-      /*
-       * Safari puts Share in the BOTTOM toolbar on iPhone and the TOP RIGHT
-       * on iPad. One sentence, and getting it wrong sends an iPad owner to a
-       * toolbar that does not contain the control -- from which the only
-       * available conclusion is that the feature does not exist.
-       *
-       * This is the whole of the difference: the modal, its wording and its
-       * three steps are otherwise exactly as they were.
-       */
-      { icon: Share, text: isIPad() ? t('pwa_ios_step1_ipad') : t('pwa_ios_step1') },
+      { icon: Share, text: safariStep1 },
       { icon: Plus, text: t('pwa_ios_step2') },
       { icon: Download, text: t('pwa_ios_step3') },
     ]
-    : [
-      { icon: Share, text: t('pwa_iosbrowser_step1') },
-      { icon: Download, text: t('pwa_iosbrowser_step2') },
-    ];
+    : kind === 'ios-chrome'
+      ? [
+        { icon: Share, text: t('pwa_ioschrome_step1') },
+        { icon: Plus, text: t('pwa_ioschrome_step2') },
+        { icon: Download, text: t('pwa_ioschrome_step3') },
+      ]
+      : kind === 'ios-other'
+        ? [
+          { icon: Share, text: t('pwa_iosbrowser_step1') },
+          { icon: Plus, text: t('pwa_iosbrowser_step2') },
+          { icon: Download, text: t('pwa_iosbrowser_step3') },
+        ]
+        : [];
 
-  const title = kind === 'ios' ? t('pwa_ios_title') : t('pwa_iosbrowser_title');
-  const lead = kind === 'ios' ? t('pwa_ios_lead') : t('pwa_iosbrowser_lead');
+  const title = kind === 'installed'
+    ? (justInstalled ? t('pwa_install_success') : t('pwa_already_installed'))
+    : kind === 'unavailable' ? t('pwa_unavailable')
+      : kind === 'ios-safari' ? t('pwa_ios_title')
+        : kind === 'ios-chrome' ? t('pwa_ioschrome_title')
+          : t('pwa_iosbrowser_title');
+
+  const lead = kind === 'installed'
+    ? (justInstalled ? t('pwa_install_success_body') : t('pwa_installed_body'))
+    : kind === 'unavailable' ? t('pwa_unavailable_body')
+      : kind === 'ios-safari' ? t('pwa_ios_lead')
+        : kind === 'ios-chrome' ? t('pwa_ioschrome_lead')
+          : t('pwa_iosbrowser_lead');
+
+  /* Only an offer can be muted. "Not now" on a notice would be answering a
+     question nobody asked. */
+  const mutable = steps.length > 0;
 
   /*
    * ── RENDERED AT THE BODY, NOT WHERE IT WAS DECLARED ───────────────────
    *
    * This control appears in the header, on the hero, and inside the mobile
-   * menu. The sheet used to render as a sibling of whichever button opened
-   * it, which means it inherited that button's ancestors -- and three
-   * ordinary ancestors each break a fixed overlay in a different way:
-   *
-   *   display:none   a collapsed mobile menu. The sheet mounts with no box
-   *                  at all, so the instructions exist and are 0px tall.
-   *   transform      ANY transformed ancestor becomes the containing block
-   *                  for `position: fixed`. The overlay then measures that
-   *                  element instead of the viewport, which is the classic
-   *                  way a modal ends up off-screen on iOS -- and no amount
-   *                  of dvh arithmetic can correct it, because the box it is
-   *                  being sized against is the wrong box.
-   *   overflow       clips it.
-   *
-   * A portal to the body has none of those ancestors, by construction. It
-   * also puts the overlay at the end of the document, so its stacking
-   * context is the page's rather than a header's.
+   * menu. Three ordinary ancestors each break a fixed overlay differently:
+   * `display:none` gives it no box, a `transform` makes that element the
+   * containing block for `position: fixed` (the classic way a modal ends up
+   * off-screen on iOS), and `overflow` clips it. A portal to the body has
+   * none of them, by construction.
    */
   return createPortal((
     <div
       /*
        * `viewport-sheet` sets the height from the DYNAMIC viewport. Without
-       * it, `inset-0` alone measures the layout viewport -- taller than the
-       * visible one on iOS whenever the browser chrome is showing -- and
-       * `items-end` then aligns the panel to the bottom of a box whose top
-       * is above the screen. That is what clipped these instructions down to
-       * their last step.
-       *
-       * `top-0 left-0 right-0` rather than `inset-0`, because a `bottom: 0`
-       * would reintroduce the layout-viewport height the class just replaced.
+       * it, `inset-0` measures the layout viewport -- taller than the visible
+       * one on iOS whenever the browser chrome is showing -- and the panel is
+       * aligned inside a box whose top is above the screen.
        */
-      className="viewport-sheet fixed left-0 right-0 top-0 z-[60] flex items-end justify-center overflow-hidden bg-[hsl(0_0%_0%/0.45)] p-0 sm:items-center sm:p-6"
+      className="viewport-sheet fixed left-0 right-0 top-0 z-[60] flex items-center justify-center overflow-hidden bg-[hsl(0_0%_0%/0.5)] p-4"
       role="dialog"
       aria-modal="true"
       aria-label={title}
       onClick={onClose}
     >
       <div
-        className="viewport-sheet-panel w-full max-w-md rounded-t-[1.25rem] bg-card p-6 shadow-xl sm:rounded-[1.25rem]"
+        className="viewport-sheet-panel w-full max-w-[21.5rem] rounded-[1.25rem] border border-border bg-card p-5 shadow-2xl
+          animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
         style={{
-          /* The inset is added to the padding, not used as an offset: the
-             panel stays flush to the bottom edge and keeps its content clear
-             of the home indicator. */
-          paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+          /* Clear of the home indicator without detaching from the centre. */
+          marginBottom: 'env(safe-area-inset-bottom)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="font-display text-xl font-bold tracking-[-0.015em]">
-            {title}
-          </h2>
+        <div className="flex items-center gap-3">
+          {/* The app's own icon, so the dialog is recognisably about Homatch
+              and not a generic browser notice. */}
+          <img
+            src="/icon-192.png"
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-10 shrink-0 rounded-[0.7rem] ring-1 ring-inset ring-border"
+          />
+          <span className="min-w-0 flex-1 font-display text-[15px] font-bold tracking-[-0.01em]">
+            Homatch
+          </span>
           <button
             type="button"
             onClick={onClose}
             aria-label={t('pwa_close')}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-secondary"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-secondary"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        <p className="mt-2 text-base leading-relaxed text-ink-soft">
+        <h2 className="mt-4 flex items-center gap-2 font-display text-[17px] font-bold leading-snug tracking-[-0.015em]">
+          {kind === 'installed' && (
+            <Check className="h-[18px] w-[18px] shrink-0 text-gold" strokeWidth={2.75} aria-hidden="true" />
+          )}
+          {kind === 'unavailable' && (
+            <Info className="h-[18px] w-[18px] shrink-0 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
+          )}
+          <span className="min-w-0">{title}</span>
+        </h2>
+
+        <p className="mt-1.5 text-[15px] leading-relaxed text-ink-soft">
           {lead}
         </p>
 
-        <ol className="mt-5 space-y-3">
-          {steps.map((step, i) => (
-            <li key={step.text} className="flex items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[0.7rem] border border-border bg-secondary">
-                <step.icon className="h-[18px] w-[18px] text-foreground" strokeWidth={1.75} aria-hidden="true" />
-              </span>
-              <span className="min-w-0 text-base leading-snug">
-                <span className="me-1.5 font-semibold text-muted-foreground">{i + 1}.</span>
-                {step.text}
-              </span>
-            </li>
-          ))}
-        </ol>
+        {steps.length > 0 && (
+          <ol className="mt-4 space-y-2.5">
+            {steps.map((step, i) => (
+              <li key={step.text} className="flex items-center gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[0.6rem] border border-border bg-secondary">
+                  <step.icon className="h-[17px] w-[17px] text-foreground" strokeWidth={1.75} aria-hidden="true" />
+                </span>
+                <span className="min-w-0 text-[15px] leading-snug">
+                  <span className="me-1.5 font-semibold text-muted-foreground">{i + 1}.</span>
+                  {step.text}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
 
-        {/* The ONLY thing that hides the control, and it says so. */}
-        <button
-          type="button"
-          onClick={onMute}
-          className="mt-6 min-h-[2.75rem] w-full rounded-full border border-border text-sm font-medium text-muted-foreground hover:bg-secondary"
-        >
-          {t('pwa_dismiss')}
-        </button>
+        <div className="mt-5 flex items-center gap-2">
+          {mutable && (
+            /* The ONLY thing that quietens the control, and it says so. */
+            <button
+              type="button"
+              onClick={onMute}
+              className="min-h-[2.75rem] flex-1 rounded-full border border-border text-sm font-medium text-muted-foreground hover:bg-secondary"
+            >
+              {t('pwa_dismiss')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[2.75rem] flex-1 rounded-full bg-gold-soft text-sm font-semibold text-gold-ink ring-1 ring-inset ring-gold/45 hover:bg-gold hover:text-[#0D0D0D]"
+          >
+            {mutable ? t('pwa_close') : t('pwa_ok')}
+          </button>
+        </div>
       </div>
     </div>
   ), document.body);

@@ -12,6 +12,10 @@
   "lang": "ka",
   "dir": "auto",
   "categories": ["business", "finance", "productivity"],
+  "related_applications": [
+    { "platform": "webapp", "url": "/manifest.webmanifest", "id": "/" }
+  ],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icon-192.png",

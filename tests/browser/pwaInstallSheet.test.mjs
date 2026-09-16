@@ -77,7 +77,14 @@ const SIZES = [
   { name: 'iPhone SE', width: 375, height: 667, mustScroll: false },
   { name: 'iPhone 14', width: 390, height: 844, mustScroll: false },
   { name: 'iPhone 15 Pro Max', width: 430, height: 932, mustScroll: false },
-  { name: 'short viewport (bars expanded / landscape)', width: 375, height: 390, mustScroll: true },
+  /*
+   * Landscape on the smallest iPhone still sold, with both Safari bars
+   * showing: 667 wide by roughly 300 tall. The dialog is compact enough now
+   * that 390 no longer overflows it -- measured at 358px of content in a
+   * 358px box -- so this had to get shorter to keep covering the path where
+   * the content genuinely cannot fit and must scroll rather than clip.
+   */
+  { name: 'short viewport (bars expanded / landscape)', width: 375, height: 300, mustScroll: true },
 ];
 
 function findChrome() {
@@ -291,32 +298,67 @@ test('the install instructions are fully on screen, at every iPhone size', opts,
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
 });
 
-/** Open the page as a given platform, click the install control, report. */
+/* ------------------------------------------------------------------ *
+ * ONE HARNESS, DRIVEN AS A PLATFORM                                   *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Open the page as a given platform and browser state, press the install
+ * control, and report exactly what a person would have seen.
+ *
+ * Everything it can fake is a browser fact, never one of ours: a user agent,
+ * a standalone display mode, whether `beforeinstallprompt` fires and when,
+ * what `getInstalledRelatedApps()` answers, and what is already in storage.
+ * The product's own routing is what is under test, so none of it is stubbed.
+ */
 async function runAt(base, browser, {
   ua, standalone, fireBip, lateBip, muted, captureAfterClick,
-  /* How long to sit there after the event, or after giving up on one. Only
-     the never-arrives case needs longer than the default. */
+  /** What getInstalledRelatedApps() answers: true, false, or not implemented. */
+  relatedApps = null,
+  /** A remembered install from a previous visit in this profile. */
+  marker = false,
+  /** Fire `appinstalled`, then reload, to reach the next-visit case for real. */
+  installThenReload = false,
+  /** How long to sit there after the event, or after giving up on one. */
   settleMs,
-  /* Press once more once the event has landed. Past the activation window the
-     control is supposed to say "Ready" and cost exactly one more touch --
-     this is what checks that the extra touch actually works. */
+  /** Press once more once the event has landed. */
   secondTap,
-  /* Make the first prompt() throw the NotAllowedError Chromium really throws
-     when the gesture has expired, so the recovery can be exercised. */
+  /** Make the first prompt() throw the NotAllowedError Chromium throws. */
   refuseFirst,
+  /** Wait this long before pressing. Past 6s the checking window has closed. */
+  preWait,
 }) {
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     userAgent: ua, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
   });
-  await ctx.addInitScript(([isStandalone, wantBip, lateMs, wantMuted, wantRefusal]) => {
+  await ctx.addInitScript(([isStandalone, wantBip, lateMs, wantMuted, wantRefusal,
+    related, wantMarker, keepMarker]) => {
     window.localStorage.setItem('homatch_lang', 'en');
     if (wantMuted) {
       // What rememberMuted() writes: a recent timestamp.
-      window.localStorage.setItem('homatch_pwa_dismissed_at', String(Date.now()));
+      window.localStorage.setItem('homatch_install_dismissed_at', String(Date.now()));
     } else {
-      window.localStorage.removeItem('homatch_pwa_dismissed_at');
+      window.localStorage.removeItem('homatch_install_dismissed_at');
     }
+    if (wantMarker) window.localStorage.setItem('homatch_pwa_installed', String(Date.now()));
+    /* `keepMarker` is the install-then-reload case: the product writes the
+       marker from a real `appinstalled`, and clearing it here on the reload
+       would erase the very thing the next visit is supposed to read. */
+    else if (!keepMarker) window.localStorage.removeItem('homatch_pwa_installed');
+
+    /*
+     * The browser's own answer about our app. `null` leaves the API absent,
+     * which is what Firefox and older Chrome do, and is a different case from
+     * answering "not installed".
+     */
+    if (related !== null) {
+      Object.defineProperty(window.navigator, 'getInstalledRelatedApps', {
+        value: () => Promise.resolve(related ? [{ platform: 'webapp', id: '/' }] : []),
+        configurable: true,
+      });
+    }
+
     window.__promptCalls = 0;
     /*
      * The refusal, in the exact shape Chromium produces it. Measured against
@@ -343,8 +385,8 @@ async function runAt(base, browser, {
       return Promise.resolve();
     };
     if (lateMs) {
-      /* Dispatched AFTER the click, which is the ordering the fix exists
-         for. The click handler must wait rather than conclude. */
+      /* Dispatched AFTER the click, which is the ordering the intent model
+         exists for. The click must be recorded rather than refused. */
       window.__fireLate = () => {
         const e = new Event('beforeinstallprompt');
         e.prompt = window.__mkPrompt();
@@ -367,12 +409,13 @@ async function runAt(base, browser, {
          would have offered one, which is Chromium's business. */
       window.addEventListener('load', () => {
         const e = new Event('beforeinstallprompt');
-        e.prompt = () => { window.__promptCalls += 1; return Promise.resolve(); };
+        e.prompt = window.__mkPrompt();
         e.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'web' });
         window.dispatchEvent(e);
       });
     }
-  }, [Boolean(standalone), Boolean(fireBip), lateBip ?? 0, Boolean(muted), Boolean(refuseFirst)]);
+  }, [Boolean(standalone), Boolean(fireBip), lateBip ?? 0, Boolean(muted),
+    Boolean(refuseFirst), relatedApps, Boolean(marker), Boolean(installThenReload)]);
 
   const page = await ctx.newPage();
   await page.route('**', async (r) => {
@@ -381,12 +424,37 @@ async function runAt(base, browser, {
     return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' });
   });
   await page.goto(base, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1400);
+  await page.waitForTimeout(preWait ?? 1400);
 
+  /*
+   * THE INSTALL THAT HAPPENED YESTERDAY.
+   *
+   * Not simulated by writing the marker and hoping the product reads it --
+   * the product WRITES it, from the browser's own `appinstalled`, and then
+   * the page is reloaded so the next visit starts the way a real one does.
+   */
+  if (installThenReload) {
+    await page.evaluate(() => { window.dispatchEvent(new Event('appinstalled')); });
+    await page.waitForTimeout(300);
+    const persisted = await page.evaluate(() => window.localStorage.getItem('homatch_pwa_installed'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1400);
+    const out = await pressAndRead(page, { captureAfterClick: true, settleMs: settleMs ?? 900 });
+    await ctx.close();
+    return { persisted, ...out };
+  }
+
+  const out = await pressAndRead(page, { captureAfterClick, lateBip, secondTap, settleMs });
+  await ctx.close();
+  return out;
+}
+
+/** Press the control, watch what changes, and describe whatever opened. */
+async function pressAndRead(page, { captureAfterClick, lateBip, secondTap, settleMs }) {
   const labelBeforeClick = await page.evaluate(() => {
     const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
-      const l = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
-      return /install|preparing|დაყენ/i.test(l);
+      const l = `${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`;
+      return /install|preparing|ready|დაყენ/i.test(l);
     });
     return el ? (el.textContent || '').trim() : null;
   });
@@ -398,34 +466,36 @@ async function runAt(base, browser, {
     if (!target) return false;
     /*
      * A DISABLED control is not an active one, and that difference is the
-     * whole property under test. The chip shown while Chromium is still
-     * deciding carries the same accessible name on purpose -- a greyed-out
-     * Save is still called Save -- so the name alone cannot answer "can
-     * this be pressed". Ask the button.
+     * whole property under test. Ask the button, not its accessible name --
+     * a greyed-out Save is still called Save.
      */
     if (target.disabled) return false;
     target.click();
     return true;
   });
-  /* Read the control the instant the press lands, before the event can
-     arrive. "Did anything happen" is the property, so it is a comparison
-     of the rendered label against the one that was there a moment ago. */
+
+  /* Read the control the instant the press lands, before any event can
+     arrive. "Did anything happen" is the property, so it is a comparison of
+     the rendered label against the one that was there a moment ago. */
   let changedAfterClick = null;
   let dialogAfterClick = null;
+  let dialogTitleAfterClick = null;
   if (captureAfterClick) {
     await page.waitForTimeout(120);
     const now = await page.evaluate(() => ({
       label: (() => {
         const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
-          const l = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
-          return /install|preparing|დაყენ/i.test(l);
+          const l = `${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`;
+          return /install|preparing|ready|დაყენ/i.test(l);
         });
         return el ? (el.textContent || '').trim() : null;
       })(),
       dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
+      title: document.querySelector('[role="dialog"] h2')?.textContent?.trim() ?? null,
     }));
-    changedAfterClick = now.label !== labelBeforeClick;
+    changedAfterClick = now.label !== labelBeforeClick || now.dialog;
     dialogAfterClick = now.dialog;
+    dialogTitleAfterClick = now.title;
   }
   if (lateBip) {
     await page.waitForTimeout(lateBip);
@@ -452,22 +522,53 @@ async function runAt(base, browser, {
     dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
     promptCalls: window.__promptCalls ?? 0,
     title: document.querySelector('[role="dialog"] h2')?.textContent?.trim() ?? null,
-    steps: [...document.querySelectorAll('[role="dialog"] ol li')].length,
+    body: document.querySelector('[role="dialog"] h2 + p')?.textContent?.trim() ?? null,
+    steps: [...document.querySelectorAll('[role="dialog"] ol li')].map((li) => (li.textContent || '').trim()),
     /* Whatever the person is left looking at, once everything has settled. */
     finalLabel: (() => {
       const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
         const l = `${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`;
-        return /install|preparing|ready|unavailable|დაყენ/i.test(l);
+        return /install|preparing|ready|დაყენ/i.test(l);
       });
       return el ? (el.textContent || '').trim() : null;
     })(),
+    /* An install affordance of any kind, pressable or not. */
+    anyControl: [...document.querySelectorAll('button, span[role="status"]')].some((b) => {
+      const l = `${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`;
+      return /install|preparing|დაყენ/i.test(l);
+    }),
   }));
-  await ctx.close();
-  return { clicked, changedAfterClick, dialogAfterClick, secondTapped, ...out };
+  return {
+    clicked, changedAfterClick, dialogAfterClick, dialogTitleAfterClick, secondTapped, ...out,
+  };
+}
+
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+const IOS_CHROME_UA = IOS_SAFARI_UA.replace('Version/17.5', 'CriOS/126.0');
+const IOS_FIREFOX_UA = IOS_SAFARI_UA.replace('Version/17.5', 'FxiOS/126.0');
+
+/** One preview server and one browser, shared by a whole suite. */
+function harness(t, port) {
+  const { chromium } = resolvePlaywright();
+  const server = spawn(
+    process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    ['vite', 'preview', '--port', String(port), '--strictPort', '--host', '127.0.0.1'],
+    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
+  );
+  const base = `http://127.0.0.1:${port}`;
+  const ready = (async () => {
+    const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+    t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
+    for (let i = 0; i < 80; i += 1) {
+      try { await fetch(base); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
+    }
+    return browser;
+  })();
+  return { base, ready };
 }
 
 /*
- * ── THE FOUR PATHS, EACH TAKING THE FEWEST TAPS ITS PLATFORM ALLOWS ───────
+ * ── THE FOUR PLATFORMS, EACH TAKING THE FEWEST TAPS IT ACTUALLY ALLOWS ────
  *
  * The number of taps is set by the operating system, not by us. What IS ours
  * is whether we add one on top:
@@ -475,35 +576,22 @@ async function runAt(base, browser, {
  *   Chromium with a held prompt   must raise the browser's own dialog on the
  *                                 first click. A Homatch modal before the
  *                                 browser's modal is a tap we invented.
- *   iOS Safari                    must open the instructions immediately.
- *   iOS Chrome/Firefox            must say where it CAN be done. This used to
- *                                 render nothing at all.
+ *   iOS Safari                    must open Safari's steps immediately.
+ *   iOS Chrome                    must open CHROME's steps immediately -- not
+ *                                 Safari's, and not a suggestion to go and
+ *                                 find Safari, which has been wrong since
+ *                                 iOS 16.4.
  *   already installed             must offer no install control and no modal.
  */
 test('each platform takes the shortest path it actually permits', opts, async (t) => {
   if (skipReason) assert.fail(`PWA path gate could not run: ${skipReason}`);
-
-  const { chromium } = resolvePlaywright();
-  const server = spawn(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['vite', 'preview', '--port', String(PORT + 1), '--strictPort', '--host', '127.0.0.1'],
-    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
-  );
-  const base = `http://127.0.0.1:${PORT + 1}`;
-  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
-  t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
-  for (let i = 0; i < 80; i += 1) {
-    try { await fetch(base); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
-  }
-
-  const IOS_CHROME_UA = IOS_SAFARI_UA.replace('Version/17.5', 'CriOS/126.0');
+  const { base, ready } = harness(t, PORT + 1);
+  const browser = await ready;
   const failures = [];
-
   const run = (o) => runAt(base, browser, o);
 
   // 1. Chromium holding a prompt: straight to the browser's own dialog.
-  const chromiumUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
-  const native = await run({ name: 'android', ua: chromiumUA, fireBip: true });
+  const native = await run({ ua: ANDROID_UA, fireBip: true });
   if (!native.clicked) failures.push('android: no install control was rendered');
   else {
     if (native.promptCalls !== 1) {
@@ -512,51 +600,48 @@ test('each platform takes the shortest path it actually permits', opts, async (t
     if (native.dialog) failures.push('android: a Homatch modal opened before the browser dialog — that is a tap we invented');
   }
 
-  // 2. iOS Safari: instructions, immediately, three steps.
-  const ios = await run({ name: 'ios', ua: IOS_SAFARI_UA });
-  if (!ios.clicked) failures.push('ios: no install control was rendered');
+  // 2. iOS Safari: Safari's own steps, immediately, three of them.
+  const ios = await run({ ua: IOS_SAFARI_UA, captureAfterClick: true });
+  if (!ios.clicked) failures.push('ios-safari: no install control was rendered');
   else {
-    if (!ios.dialog) failures.push('ios: the instructions did not open');
-    if (ios.steps !== 3) failures.push(`ios: expected the three Safari steps, found ${ios.steps}`);
+    if (!ios.dialogAfterClick) failures.push('ios-safari: the instructions did not open on the press itself');
+    if (ios.steps.length !== 3) failures.push(`ios-safari: expected three steps, found ${ios.steps.length}`);
+    if (!/Safari/i.test(ios.steps.join(' '))) {
+      failures.push(`ios-safari: the steps never mention Safari — ${JSON.stringify(ios.steps)}`);
+    }
   }
 
-  // 3. iOS Chrome: told where it can be done, rather than nothing at all.
-  const iosChrome = await run({ name: 'ios-chrome', ua: IOS_CHROME_UA });
-  if (!iosChrome.clicked) {
-    failures.push('ios-chrome: still renders no control, so the user cannot learn that Safari installs it');
-  } else if (!iosChrome.dialog) {
-    failures.push('ios-chrome: the control does nothing');
+  // 3. Firefox/Edge on iOS: their own Share menu, not a trip to Safari.
+  const iosOther = await run({ ua: IOS_FIREFOX_UA, captureAfterClick: true });
+  if (!iosOther.clicked) failures.push('ios-other: no install control was rendered');
+  else {
+    if (!iosOther.dialogAfterClick) failures.push('ios-other: the control did nothing on the press');
+    if (iosOther.steps.length !== 3) failures.push(`ios-other: expected three steps, found ${iosOther.steps.length}`);
   }
 
   // 4. Installed: nothing to offer, and nothing that opens.
-  const installed = await run({ name: 'standalone', ua: IOS_SAFARI_UA, standalone: true });
+  const installed = await run({ ua: IOS_SAFARI_UA, standalone: true });
   if (installed.dialog) failures.push('standalone: an install modal opened inside the installed app');
 
   /*
    * 5. A TAP BEFORE THE BROWSER IS READY.
    *
-   * The reported failure, in both of its forms. First the control opened iOS
-   * instructions on Chrome; then, after that was closed off, it became a
-   * disabled button that ignored the tap entirely -- which is worse, because
-   * a primary CTA that looks pressable and does nothing reads as a broken
-   * app.
-   *
-   * So this asserts three things about the same press: it was possible, it
-   * visibly changed something, and it did not open the modal.
+   * It must be possible, it must visibly change something, and it must not
+   * open the manual modal -- then be fulfilled when the event arrives.
    */
-  const early = await run({ name: 'early-tap', ua: chromiumUA, lateBip: 900, captureAfterClick: true });
+  const early = await run({ ua: ANDROID_UA, lateBip: 900, captureAfterClick: true });
   if (!early.clicked) {
     failures.push('early-tap: the install control was not pressable before the event — a dead CTA');
   } else {
-    if (!early.changedAfterClick) {
-      failures.push('early-tap: the press produced no visible change — the tap was ignored');
-    }
-    if (early.dialogAfterClick) {
-      failures.push('early-tap: the manual modal opened on Chromium — the original bug');
-    }
-    if (early.dialog) {
-      failures.push('early-tap: the manual modal opened once the event arrived');
-    }
+    if (!early.changedAfterClick) failures.push('early-tap: the press produced no visible change — the tap was ignored');
+    if (early.dialogAfterClick) failures.push('early-tap: the manual modal opened on Chromium — the original bug');
+    /*
+     * Asserted on STEPS rather than on "a dialog is open", because after a
+     * successful install one legitimately is: the small "Homatch installed"
+     * confirmation. Manual instructions are the thing that must never reach a
+     * Chromium browser, and steps are what make a dialog instructions.
+     */
+    if (early.steps.length > 0) failures.push('early-tap: Add to Home Screen steps were shown on Chromium');
     if (early.promptCalls !== 1) {
       failures.push(`early-tap: the recorded intent was not fulfilled (prompt called ${early.promptCalls} times)`);
     }
@@ -566,16 +651,213 @@ test('each platform takes the shortest path it actually permits', opts, async (t
    * 6. MUTED, ON A BROWSER THAT IS OFFERING.
    *
    * "Not now" means stop nagging, not disable the capability. The control is
-   * a quiet chip, and pressing it must still spend the real prompt rather
-   * than explain a browser menu.
+   * a quiet chip, and pressing it must still spend the real prompt.
    */
-  const muted = await run({ name: 'muted', ua: chromiumUA, fireBip: true, muted: true });
+  const muted = await run({ ua: ANDROID_UA, fireBip: true, muted: true });
   if (!muted.clicked) failures.push('muted: the control vanished entirely');
   else {
     if (muted.promptCalls !== 1) {
       failures.push(`muted: a held prompt was not used (prompt called ${muted.promptCalls} times)`);
     }
     if (muted.dialog) failures.push('muted: instructions opened while a real prompt was held');
+  }
+
+  assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
+});
+
+/*
+ * ── ALREADY INSTALLED, IN AN ORDINARY BROWSER TAB ─────────────────────────
+ *
+ * The first reported bug, driven the way it actually happened: install
+ * Homatch, leave, come back to the website, press Install.
+ *
+ * Chromium does not offer an install for an app that is already installed, so
+ * there is no `beforeinstallprompt` and there never will be. The old control
+ * waited for one anyway -- "Preparing install…", then twelve seconds, then
+ * nothing a person could see.
+ *
+ * Two routes to the same answer are tested separately, because in the field
+ * either one may be the only one available: the browser's own
+ * getInstalledRelatedApps(), and the marker the product writes at
+ * `appinstalled` and reads on the next visit.
+ */
+test('an app that is already installed says so on the first press', opts, async (t) => {
+  if (skipReason) assert.fail(`PWA installed-state gate could not run: ${skipReason}`);
+  const { base, ready } = harness(t, PORT + 2);
+  const browser = await ready;
+  const failures = [];
+
+  const check = (name, r) => {
+    if (!r.clicked) { failures.push(`${name}: the control was not pressable`); return; }
+    if (!r.dialogAfterClick) {
+      failures.push(`${name}: nothing opened on the press itself — this is the reported "nothing happens"`);
+    }
+    if (!/already installed|installed/i.test(r.dialogTitleAfterClick ?? '')) {
+      failures.push(`${name}: the dialog said "${r.dialogTitleAfterClick}" rather than that it is already installed`);
+    }
+    if (r.steps.length !== 0) {
+      failures.push(`${name}: manual install instructions were shown to somebody who already has it`);
+    }
+    if (r.promptCalls !== 0) failures.push(`${name}: a native prompt was raised (${r.promptCalls})`);
+    if (/preparing/i.test(r.finalLabel ?? '')) {
+      failures.push(`${name}: the control went into a wait ("${r.finalLabel}")`);
+    }
+  };
+
+  /* A. The browser's own answer, which is the only signal that survives
+     closing the browser. This is the owner's case exactly: installed on
+     another day, nothing in this tab's memory. */
+  check('related-apps', await runAt(base, browser, {
+    ua: ANDROID_UA, relatedApps: true, captureAfterClick: true,
+  }));
+
+  /* B. The product's own memory, for a browser with no such API -- and
+     written by the real `appinstalled`, then read after a real reload,
+     rather than planted in storage and assumed. */
+  const remembered = await runAt(base, browser, {
+    ua: ANDROID_UA, relatedApps: null, installThenReload: true,
+  });
+  if (!remembered.persisted) {
+    failures.push('appinstalled fired and nothing was written down, so the next visit starts blind');
+  }
+  check('remembered-after-reload', remembered);
+
+  assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
+});
+
+/*
+ * ── AND THE MEMORY MUST NOT OUTLIVE THE APP ───────────────────────────────
+ *
+ * Somebody uninstalls Homatch. Chromium starts offering again, which is
+ * proof the remembered install is gone. If the marker won, the control would
+ * say "already installed" about an app that is no longer there -- a permanent
+ * lie, and one that would make reinstalling impossible.
+ */
+test('a stale installed marker loses to a browser that is offering', opts, async (t) => {
+  if (skipReason) assert.fail(`PWA stale-marker gate could not run: ${skipReason}`);
+  const { base, ready } = harness(t, PORT + 3);
+  const browser = await ready;
+
+  const r = await runAt(base, browser, {
+    ua: ANDROID_UA, marker: true, relatedApps: false, fireBip: true, captureAfterClick: true,
+  });
+
+  const failures = [];
+  if (!r.clicked) failures.push('the control was not pressable');
+  if (r.promptCalls !== 1) {
+    failures.push(`the stale marker blocked a real install (prompt called ${r.promptCalls} times, expected 1)`);
+  }
+  if (r.dialog || r.dialogAfterClick) {
+    failures.push(`a dialog opened instead of the browser's own install ("${r.dialogTitleAfterClick}")`);
+  }
+  assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
+});
+
+/*
+ * ── iOS CHROME, WHICH IS NOT ANDROID CHROME ───────────────────────────────
+ *
+ * The second reported bug. Chrome on iPhone is WebKit in Google's chrome:
+ * `beforeinstallprompt` does not exist, so a control that waits for one hangs
+ * for twelve seconds and then concludes something false.
+ *
+ * And it must get CHROME's instructions. "Only Safari can add to the Home
+ * Screen" stopped being true in iOS 16.4; Chrome's own Share menu has Add to
+ * Home Screen, and its Share button sits to the right of the address bar
+ * rather than in a bottom toolbar.
+ *
+ * STATED PLAINLY: this is a desktop Chrome driving a mobile user agent. It
+ * proves the ROUTING -- which words, how fast, and that no wait begins. It
+ * cannot prove anything about a real iPhone, and the real-device result is
+ * reported separately and is not implied by this passing.
+ */
+test('iOS Chrome is answered immediately, in its own words', opts, async (t) => {
+  if (skipReason) assert.fail(`PWA iOS Chrome gate could not run: ${skipReason}`);
+  const { base, ready } = harness(t, PORT + 4);
+  const browser = await ready;
+  const failures = [];
+
+  const r = await runAt(base, browser, { ua: IOS_CHROME_UA, captureAfterClick: true, settleMs: 13000 });
+
+  if (!r.clicked) failures.push('the install control was not pressable on iOS Chrome');
+  if (!r.dialogAfterClick) {
+    failures.push('the first press opened nothing — an iPhone cannot wait for an event WebKit does not send');
+  }
+  if (r.steps.length !== 3) {
+    failures.push(`expected three Chrome steps, found ${r.steps.length}: ${JSON.stringify(r.steps)}`);
+  }
+  const stepText = r.steps.join(' ');
+  if (!/address bar/i.test(stepText)) {
+    failures.push(`the steps do not point at Chrome's own Share button: ${JSON.stringify(r.steps)}`);
+  }
+  if (/\bSafari\b/i.test(stepText) || /\bSafari\b/i.test(r.body ?? '')) {
+    failures.push('iOS Chrome was sent to Safari, which it has not needed since iOS 16.4');
+  }
+  /* Settled for thirteen seconds -- past GIVE_UP_MS -- so a wait that started
+     anyway would have had every chance to show itself. */
+  if (/preparing/i.test(r.finalLabel ?? '')) {
+    failures.push(`iOS Chrome entered the Chromium waiting state ("${r.finalLabel}")`);
+  }
+  if (r.promptCalls !== 0) failures.push(`a native prompt was expected on iOS (${r.promptCalls} calls)`);
+
+  assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
+});
+
+/*
+ * ── iOS SAFARI, UNCHANGED, AND STILL ITS OWN FLOW ─────────────────────────
+ *
+ * The Safari steps must stay Safari's. The one thing that did change is where
+ * step one points: iOS 26 made Compact the default tab bar, and Compact has
+ * no Share button on screen at all.
+ */
+test('iOS Safari gets Safari steps, and they point where Share actually is', opts, async (t) => {
+  if (skipReason) assert.fail(`PWA iOS Safari gate could not run: ${skipReason}`);
+  const { base, ready } = harness(t, PORT + 5);
+  const browser = await ready;
+  const failures = [];
+
+  const modern = await runAt(base, browser, { ua: IOS_SAFARI_UA, captureAfterClick: true });
+  if (!modern.clicked) failures.push('no install control on iOS Safari');
+  if (!modern.dialogAfterClick) failures.push('the Safari instructions did not open on the press');
+  if (modern.steps.length !== 3) failures.push(`expected three steps, found ${modern.steps.length}`);
+  if (!/Add to Home Screen/i.test(modern.steps.join(' '))) {
+    failures.push(`the steps never name the menu item: ${JSON.stringify(modern.steps)}`);
+  }
+
+  /* iOS 26 default layout: Share is behind the ••• beside the address bar, so
+     "tap Share at the bottom" is wrong directions on a current iPhone. */
+  const ios26 = await runAt(base, browser, {
+    ua: IOS_SAFARI_UA.replace('OS 17_5', 'OS 26_0').replace('Version/17.5', 'Version/26.0'),
+    captureAfterClick: true,
+  });
+  const step1 = ios26.steps[0] ?? '';
+  if (/bottom/i.test(step1)) {
+    failures.push(`iOS 26 was told to tap Share at the bottom, where Compact has no Share button: "${step1}"`);
+  }
+  if (!/•|address bar/i.test(step1)) {
+    failures.push(`iOS 26 step one does not point at the ••• menu: "${step1}"`);
+  }
+
+  assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
+});
+
+/*
+ * ── INSIDE THE INSTALLED APP THERE IS NOTHING TO INSTALL ──────────────────
+ *
+ * Not a quiet chip, not a badge: nothing. An app carrying a control for
+ * installing itself is clutter reporting the obvious, and the strip around it
+ * is told in advance so it does not reserve an empty rectangle.
+ */
+test('the installed app carries no install control at all', opts, async (t) => {
+  if (skipReason) assert.fail(`PWA standalone gate could not run: ${skipReason}`);
+  const { base, ready } = harness(t, PORT + 6);
+  const browser = await ready;
+  const failures = [];
+
+  for (const [name, ua] of [['ios', IOS_SAFARI_UA], ['android', ANDROID_UA]]) {
+    const r = await runAt(base, browser, { ua, standalone: true, captureAfterClick: true });
+    if (r.anyControl) failures.push(`${name}: an install affordance is rendered inside the installed app`);
+    if (r.clicked) failures.push(`${name}: there was an install button to press`);
+    if (r.dialog) failures.push(`${name}: a dialog opened by itself inside the app`);
   }
 
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
@@ -589,43 +871,25 @@ test('each platform takes the shortest path it actually permits', opts, async (t
  * 1668, 1791, 2145 and 3687ms across four runs -- so "how long" is not a
  * property of this code and cannot be designed around, only responded to.
  *
- * Four delays, chosen to sit either side of the one real boundary. Chromium
- * keeps a gesture transiently active for five seconds, so ACTIVATION_SAFE_MS
- * is 3.5s:
+ * Four delays, either side of the one real boundary. Chromium keeps a gesture
+ * transiently active for five seconds, so ACTIVATION_SAFE_MS is 3.5s:
  *
  *   500ms, 2s   inside it. The held intent is spent on the person's behalf:
- *               one tap, then the browser's own dialog, nothing further asked.
+ *               one tap, then the browser's own dialog.
  *   4s, 8s      outside it. The gesture is gone and prompt() would be refused,
- *               so we do not pretend otherwise. The control says Ready and the
- *               next touch fulfils it -- one extra tap, with a visible reason.
- *
- * Identical across all four, and the actual requirement: the first tap is
- * possible, visibly acknowledged, and never the manual modal.
+ *               so the control says Ready and the next touch fulfils it.
  */
 test('a slow browser is answered by the control, not by silence', opts, async (t) => {
   if (skipReason) assert.fail(`PWA slow-event gate could not run: ${skipReason}`);
-
-  const { chromium } = resolvePlaywright();
-  const server = spawn(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['vite', 'preview', '--port', String(PORT + 2), '--strictPort', '--host', '127.0.0.1'],
-    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
-  );
-  const base = `http://127.0.0.1:${PORT + 2}`;
-  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
-  t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
-  for (let i = 0; i < 80; i += 1) {
-    try { await fetch(base); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
-  }
-
-  const chromiumUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+  const { base, ready } = harness(t, PORT + 7);
+  const browser = await ready;
   const ACTIVATION_SAFE_MS = 3500;
   const failures = [];
 
   for (const delay of [500, 2000, 4000, 8000]) {
     const inWindow = delay < ACTIVATION_SAFE_MS;
     const r = await runAt(base, browser, {
-      ua: chromiumUA, lateBip: delay, captureAfterClick: true, secondTap: !inWindow,
+      ua: ANDROID_UA, lateBip: delay, captureAfterClick: true, secondTap: !inWindow,
     });
 
     // The same three, whatever the delay, because that is the whole point.
@@ -635,10 +899,11 @@ test('a slow browser is answered by the control, not by silence', opts, async (t
     }
     if (!r.changedAfterClick) failures.push(`${delay}ms: the press produced no visible change`);
     if (r.dialogAfterClick) failures.push(`${delay}ms: the manual modal opened on Chromium — the original bug`);
-    if (r.dialog) failures.push(`${delay}ms: the manual modal opened once the event arrived`);
+    /* Steps, not "a dialog": the install confirmation is a dialog too, and it
+       is the correct thing to see once the install has actually happened. */
+    if (r.steps.length > 0) failures.push(`${delay}ms: Add to Home Screen steps were shown on Chromium`);
 
     if (inWindow) {
-      // Inside the gesture: their one tap is enough on its own.
       if (r.promptCalls !== 1) {
         failures.push(`${delay}ms: inside the activation window the held intent was not spent (prompt called ${r.promptCalls} times)`);
       }
@@ -658,20 +923,17 @@ test('a slow browser is answered by the control, not by silence', opts, async (t
   /*
    * AND THE CASE THE ELAPSED TIME CANNOT PREDICT: CHROMIUM SAYS NO ANYWAY.
    *
-   * 3.5s is a margin, not a guarantee -- the gesture can be gone for reasons
-   * this code cannot see, and the only authority on that is the browser's own
-   * answer. So the first prompt() here throws the real NotAllowedError, from
-   * well inside the window, and the requirement is that the person is left
+   * 3.5s is a margin, not a guarantee, and the only authority is the
+   * browser's own answer. So the first prompt() here throws the real
+   * NotAllowedError from well inside the window, and the person must be left
    * holding something that works.
    *
    * The subtle half is in pwa.ts: a REFUSED event was never shown, so it was
    * never spent, and discarding it would leave "Ready — Install App" with
-   * nothing behind it. That is why this asserts the second press reaches
-   * prompt() a second time rather than merely that a control is visible.
+   * nothing behind it.
    */
   const refused = await runAt(base, browser, {
-    ua: chromiumUA, lateBip: 2000, captureAfterClick: true,
-    refuseFirst: true, secondTap: true,
+    ua: ANDROID_UA, lateBip: 2000, captureAfterClick: true, refuseFirst: true, secondTap: true,
   });
   if (!refused.clicked) failures.push('refusal: the control was not pressable before the event');
   if (!refused.secondTapped) {
@@ -680,7 +942,7 @@ test('a slow browser is answered by the control, not by silence', opts, async (t
   if (refused.promptCalls !== 2) {
     failures.push(`refusal: the refused event was not offered again (prompt called ${refused.promptCalls} times, expected 2)`);
   }
-  if (refused.dialog) failures.push('refusal: the refusal was answered with Add to Home Screen instructions');
+  if (refused.steps.length > 0) failures.push('refusal: the refusal was answered with manual instructions');
 
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
 });
@@ -693,32 +955,19 @@ test('a slow browser is answered by the control, not by silence', opts, async (t
  * "Preparing installation…" for the rest of the session, which is a lie told
  * slowly.
  *
- * So: press, receive no event ever, and check the two things that matter. It
- * must stop claiming to be preparing, and it must not answer the silence by
- * routing a Chrome user into Add to Home Screen instructions -- turning a
- * timeout into a platform diagnosis is precisely the bug that was closed off.
+ * It must stop claiming to be preparing, it must still answer a press, and it
+ * must not answer the silence by routing a Chrome user into Add to Home
+ * Screen instructions.
  */
 test('a browser that never answers does not leave the control preparing for ever', opts, async (t) => {
   if (skipReason) assert.fail(`PWA no-event gate could not run: ${skipReason}`);
+  const { base, ready } = harness(t, PORT + 8);
+  const browser = await ready;
 
-  const { chromium } = resolvePlaywright();
-  const server = spawn(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['vite', 'preview', '--port', String(PORT + 3), '--strictPort', '--host', '127.0.0.1'],
-    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
-  );
-  const base = `http://127.0.0.1:${PORT + 3}`;
-  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
-  t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
-  for (let i = 0; i < 80; i += 1) {
-    try { await fetch(base); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
-  }
-
-  const chromiumUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
-  /* GIVE_UP_MS is 12s. Sit past it rather than at it, so that a pass means the
-     state really changed and not that the clock happened to be generous. */
+  /* GIVE_UP_MS is 12s. Sit past it rather than at it, so that a pass means
+     the state really changed and not that the clock was generous. */
   const r = await runAt(base, browser, {
-    ua: chromiumUA, captureAfterClick: true, settleMs: 13000,
+    ua: ANDROID_UA, relatedApps: false, captureAfterClick: true, settleMs: 13000,
   });
 
   const failures = [];
@@ -727,10 +976,27 @@ test('a browser that never answers does not leave the control preparing for ever
   if (/preparing|ემზადება/i.test(r.finalLabel ?? '')) {
     failures.push(`still says "${r.finalLabel}" long after the browser stopped answering — an endless wait`);
   }
-  if (r.dialog || r.dialogAfterClick) {
+  if (r.dialogAfterClick) {
     failures.push('the silence was answered with Add to Home Screen instructions on Chromium');
   }
   if (r.promptCalls !== 0) failures.push(`a prompt was raised out of nothing (${r.promptCalls} calls)`);
+
+  /*
+   * And the SETTLED control still answers a press, rather than becoming the
+   * dead chip this whole sequence of fixes began with. Pressed at 8s, past
+   * the six-second checking window, so this is the decided state and not the
+   * waiting one.
+   */
+  const again = await runAt(base, browser, {
+    ua: ANDROID_UA, relatedApps: false, preWait: 8000, captureAfterClick: true,
+  });
+  if (!again.clicked) failures.push('once settled, the control could no longer be pressed');
+  else if (!again.dialogAfterClick) {
+    failures.push('the settled control was pressable and answered with nothing');
+  }
+  if (again.steps.length !== 0) {
+    failures.push('a Chromium browser that declined was shown Add to Home Screen steps');
+  }
 
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
 });

@@ -1,6 +1,6 @@
 import { supabase } from '@/db/supabase';
 import { currentAnonymousToken } from '@/services/anonymousSession';
-import { isIOS, isIOSSafari, isStandalone } from '@/lib/pwa';
+import { isIOS, isStandalone } from '@/lib/pwa';
 
 /*
  * THE INSTALL AND PUSH FUNNEL.
@@ -190,7 +190,13 @@ export function recordStandaloneSession(): void {
   }
 }
 
-/** iOS has no install event of any kind, and the funnel has to say so. */
+/**
+ * iOS has no install event of any kind, and the funnel has to say so.
+ *
+ * Every iOS browser, not just Safari. Since iOS 16.4 Chrome, Edge and Firefox
+ * add to the Home Screen too -- and like Safari they announce nothing when
+ * they do, so an install through any of them is equally unobservable.
+ */
 export function iosCannotConfirmInstall(): boolean {
-  return isIOSSafari();
+  return isIOS();
 }

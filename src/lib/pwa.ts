@@ -4,75 +4,65 @@
  * No React and no JSX so node:test can load it, and because the interesting
  * part is a small state machine that is easy to get subtly wrong.
  *
- * THE HONEST PART
+ * ── PLATFORM FIRST, BROWSER SECOND ────────────────────────────────────────
  *
- * Chromium fires `beforeinstallprompt`, which we can hold and replay on a
- * click — that is a real one-tap install. Safari fires nothing and exposes
- * no API, so on iOS there is no button we can wire to an install. Pretending
- * otherwise produces a button that does nothing, which is worse than saying
- * "Share, then Add to Home Screen". So the platform decides which of two
- * genuinely different affordances is offered, and `canPromptNatively` is
- * never true on iOS.
+ * The question is never "is this Chrome". It is "what can THIS engine, on
+ * THIS operating system, actually do about installing a web app" -- and the
+ * answer differs between two browsers that share a name. Chrome on Android
+ * fires `beforeinstallprompt` and installs in one tap. Chrome on iPhone is
+ * WebKit in Google's chrome: no install event exists, none is coming, and
+ * waiting for one is a control that hangs for twelve seconds and then lies.
+ *
+ * So classification happens once, in `classifyPlatform`, and iOS is decided
+ * BEFORE anything Chromium-shaped is considered. No iOS browser can reach a
+ * Chromium state, and no Chromium browser can reach an iOS state -- not by
+ * convention, but because the two live in different arms of one switch.
+ *
+ * ── WHAT CHANGED ABOUT iOS, AND WHY THE OLD COPY WAS WRONG ────────────────
+ *
+ * This code said "only Safari can add to the Home Screen on iOS". That was
+ * true when it was written and has not been true since iOS 16.4 (March
+ * 2023), which let third-party browsers offer the same Add to Home Screen as
+ * Safari. Chrome, Edge, Firefox and DuckDuckGo on iOS all do. Sending those
+ * people to Safari was not a smaller feature set -- it was wrong directions
+ * to a menu item that was in front of them the whole time.
+ *
+ * ── AND WHAT COUNTS AS EVIDENCE THAT IT IS ALREADY INSTALLED ──────────────
+ *
+ * `appinstalled` only ever describes the page it fired on. Install Homatch,
+ * close the browser, come back tomorrow to the ordinary website, and that
+ * event is ancient history -- which is why the control sat there saying
+ * "Preparing install…" for a browser that was never going to offer, because
+ * Chromium does not offer an install for an app that is already installed.
+ * Three signals of different strength answer it instead; see `resolveEvidence`.
  */
 
-export type InstallMode =
-  /** Already running as an installed app. Nothing to offer. */
+/* ------------------------------------------------------------------ *
+ * PLATFORM                                                            *
+ * ------------------------------------------------------------------ */
+
+export type Platform =
+  /** Running AS the installed app. Nothing to install, nothing to offer. */
   | 'standalone'
-  /** Chromium held a prompt for us; one click installs. */
-  | 'native'
+  /** iPhone/iPad Safari. Manual, via Share → Add to Home Screen. */
+  | 'ios-safari'
   /**
-   * Installed during this visit.
+   * Chrome on iOS. NOT Chromium.
    *
-   * The browser will not let a page launch an installed app on command, so
-   * the honest next action is an OPEN control rather than a claim that we
-   * launched it. See InstallApp for what the press actually does.
+   * Every iOS browser is WebKit underneath, so `beforeinstallprompt` does
+   * not exist here and no amount of waiting produces one. Since iOS 16.4
+   * Chrome offers its own Add to Home Screen, in its own Share menu, in a
+   * different place from Safari's -- which is the whole reason this is its
+   * own platform rather than a footnote on `ios-other`.
    */
-  | 'installed'
-  /**
-   * Chromium, and the browser has not offered a prompt YET.
-   *
-   * This replaces a mode called `pending` that rendered an active "Install
-   * App" button. That button was a lie with a short half-life: pressing it
-   * before the event arrived could end in a page of Add to Home Screen
-   * instructions, which is not installing and is not what the word said.
-   *
-   * The rule this enforces: the active Install control exists if and only if
-   * a real prompt is already held. Anything less says something else.
-   */
-  | 'checking'
-  /**
-   * Chromium, done deciding, and it will not offer.
-   *
-   * NOT the manual-install case. Add to Home Screen on Chromium is a
-   * different and worse thing than a native install, and offering it here
-   * would be answering a question the browser already declined. Nothing
-   * clickable is rendered.
-   */
-  | 'native-unavailable'
-  /** iOS Safari: real, but manual, and it needs instructions. */
-  | 'ios-manual'
-  /**
-   * iOS, but not Safari.
-   *
-   * Chrome, Firefox and Edge on iOS are Safari's engine in someone else's
-   * chrome, and none of them can add to the home screen -- the menu item
-   * simply is not there. This used to resolve to `unsupported`, which renders
-   * nothing at all: a person on iOS Chrome saw no button, got no explanation,
-   * and had no way to learn that the same page in Safari installs in three
-   * taps. The install was one hop away and the product never said so.
-   */
-  | 'ios-browser'
-  /** Nothing to offer: unsupported browser, or the customer muted it. */
-  /**
-    * The customer said "not now", and meant it.
-    *
-    * Distinct from `unsupported`, and the distinction is the whole point:
-    * this browser CAN install Homatch, so the door still exists and the
-    * control still renders — quietly, as a way back in rather than as an
-    * offer. Nothing here ever raises the browser's own prompt by itself.
-    */
-  | 'dismissed'
-  /** The browser cannot install web apps. There is nothing to render. */
+  | 'ios-chrome'
+  /** Firefox, Edge, Opera, DuckDuckGo on iOS. Also manual, also capable. */
+  | 'ios-other'
+  /** Android Chrome, Samsung Internet, Edge: a real one-tap install. */
+  | 'android-chromium'
+  /** Desktop Chrome/Edge: the same install event, a different window. */
+  | 'desktop-chromium'
+  /** Firefox and Safari on the desktop. No install anything. */
   | 'unsupported';
 
 /** The event Chromium fires. Not in lib.dom yet. */
@@ -81,13 +71,11 @@ export interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-const DISMISS_KEY = 'homatch_install_dismissed_at';
-/** A dismissal is respected for this long before the CTA may return. */
-export const DISMISS_DAYS = 60;
-
 export function isStandalone(nav: Navigator = navigator, win: Window = window): boolean {
   // iOS uses a non-standard navigator flag; everyone else reports the
-  // display-mode media query.
+  // display-mode media query. A web app added to the Home Screen from
+  // Chrome on iOS launches in the same standalone WebKit view as one added
+  // from Safari, so both signals are read on both.
   const iosStandalone = (nav as Navigator & { standalone?: boolean }).standalone === true;
   const displayMode = typeof win.matchMedia === 'function'
     && win.matchMedia('(display-mode: standalone)').matches;
@@ -95,12 +83,12 @@ export function isStandalone(nav: Navigator = navigator, win: Window = window): 
 }
 
 /**
- * Can this browser install a web app at all?
+ * Does this engine implement the install prompt event?
  *
- * There is no feature query for "is installable", so this asks the
- * closest honest question: does the engine implement the install prompt
- * event? Chromium-family browsers do. Firefox and desktop Safari do not,
- * and correctly get no control rather than a button that cannot work.
+ * The closest honest question to "can this browser install", and the reason
+ * it is asked of the engine rather than the user agent string. False on every
+ * iOS browser including Chrome, which is correct: iOS installs are real, but
+ * they are manual and they are never announced to the page.
  */
 export function canInstall(win: Window = window): boolean {
   return 'BeforeInstallPromptEvent' in win || 'onbeforeinstallprompt' in win;
@@ -116,33 +104,107 @@ export function isIOS(nav: Navigator = navigator): boolean {
 /**
  * An iPad, which matters for one sentence.
  *
- * Safari puts the Share control in the BOTTOM toolbar on iPhone and in the
- * TOP RIGHT on iPad. Telling an iPad owner to look at the bottom of the
- * screen sends them to a toolbar that does not contain it, which is a worse
- * failure than saying nothing: they conclude the feature is missing.
+ * Safari puts the Share control in the BOTTOM toolbar on iPhone and the TOP
+ * RIGHT on iPad. Telling an iPad owner to look at the bottom of the screen
+ * sends them to a toolbar that does not contain it, which is a worse failure
+ * than saying nothing: they conclude the feature is missing.
  */
 export function isIPad(nav: Navigator = navigator): boolean {
   const ua = nav.userAgent || '';
   return /iPad/.test(ua) || (/Macintosh/.test(ua) && (nav.maxTouchPoints ?? 0) > 1);
 }
 
-/** Only Safari can add to the home screen on iOS; other iOS browsers cannot. */
-export function isIOSSafari(nav: Navigator = navigator): boolean {
-  if (!isIOS(nav)) return false;
-  const ua = nav.userAgent || '';
-  // Chrome (CriOS), Firefox (FxiOS) and Edge (EdgiOS) on iOS cannot install.
-  return !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+/** Chrome on iOS announces itself as CriOS. Only meaningful when on iOS. */
+export function isIOSChrome(nav: Navigator = navigator): boolean {
+  return isIOS(nav) && /CriOS/.test(nav.userAgent || '');
 }
 
-/** On iOS, in a browser that cannot install. Reachable in one hop: Safari. */
+/** Safari on iOS: iOS, and none of the other vendors' markers. */
+export function isIOSSafari(nav: Navigator = navigator): boolean {
+  if (!isIOS(nav)) return false;
+  return !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/.test(nav.userAgent || '');
+}
+
+/** On iOS, and not Safari. Since iOS 16.4 these install too. */
 export function isIOSOtherBrowser(nav: Navigator = navigator): boolean {
   return isIOS(nav) && !isIOSSafari(nav);
 }
 
+/**
+ * Where Safari keeps its Share control, which moved.
+ *
+ * iOS 26 made Compact the default tab bar layout, and in Compact there is no
+ * Share button on screen at all: it is behind the ⋯ beside the address bar.
+ * The old step one -- "tap Share at the bottom" -- is therefore wrong
+ * directions on a current iPhone with default settings, in exactly the way
+ * the iPad wording exists to prevent.
+ *
+ * Read from the OS version because there is no capability query for the
+ * position of a button, and the alternative is being confidently wrong.
+ */
+export function iosMajorVersion(nav: Navigator = navigator): number | null {
+  const m = /OS (\d+)[_ ]/.exec(nav.userAgent || '');
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * ONE CLASSIFICATION, AND EVERYTHING DOWNSTREAM READS IT.
+ *
+ * The order is the design. Standalone first, because an installed app must
+ * never advertise installing itself. Then iOS in full -- all of it, before
+ * any Chromium test -- so that a user agent containing "Chrome" on an iPhone
+ * cannot possibly be classified as the thing that has an install event.
+ */
+export function classifyPlatform(nav: Navigator = navigator, win: Window = window): Platform {
+  if (isStandalone(nav, win)) return 'standalone';
+  if (isIOS(nav)) {
+    if (isIOSSafari(nav)) return 'ios-safari';
+    if (isIOSChrome(nav)) return 'ios-chrome';
+    return 'ios-other';
+  }
+  if (!canInstall(win)) return 'unsupported';
+  return /Android/.test(nav.userAgent || '') ? 'android-chromium' : 'desktop-chromium';
+}
+
+/** The two platforms that have a real `beforeinstallprompt`. */
+export function isChromiumPlatform(platform: Platform): boolean {
+  return platform === 'android-chromium' || platform === 'desktop-chromium';
+}
+
+/** The three that install manually, through their own Share menu. */
+export function isIOSPlatform(platform: Platform): boolean {
+  return platform === 'ios-safari' || platform === 'ios-chrome' || platform === 'ios-other';
+}
+
+/* ------------------------------------------------------------------ *
+ * EVIDENCE OF AN EXISTING INSTALL                                     *
+ * ------------------------------------------------------------------ */
+
+export type InstallEvidence =
+  /** Proven: we are the app, we watched it install, or the browser says so. */
+  | 'confirmed'
+  /** Remembered from a previous visit in this browser profile. Refutable. */
+  | 'likely'
+  | 'none';
+
+const DISMISS_KEY = 'homatch_install_dismissed_at';
+const INSTALLED_KEY = 'homatch_pwa_installed';
+/** A dismissal is respected for this long before the CTA may return. */
+export const DISMISS_DAYS = 60;
+
+function readStore(storage?: Storage): Storage | null {
+  try {
+    return storage ?? window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function wasMuted(now: number = Date.now(), storage?: Storage): boolean {
   try {
-    const store = storage ?? window.localStorage;
-    const raw = store.getItem(DISMISS_KEY);
+    const raw = readStore(storage)?.getItem(DISMISS_KEY);
     if (!raw) return false;
     const at = Number(raw);
     if (!Number.isFinite(at)) return false;
@@ -156,84 +218,183 @@ export function wasMuted(now: number = Date.now(), storage?: Storage): boolean {
 
 export function rememberMuted(now: number = Date.now(), storage?: Storage): void {
   try {
-    (storage ?? window.localStorage).setItem(DISMISS_KEY, String(now));
+    readStore(storage)?.setItem(DISMISS_KEY, String(now));
   } catch {
     // Nothing to do; the CTA simply reappears next visit.
   }
 }
 
 /**
- * What to offer, given everything we know.
+ * Remember that this browser profile installed Homatch.
  *
- * `standalone` wins over every other state: an installed app must never show
- * its own install button.
+ * Deliberately device-and-profile local. An account flag would say "this
+ * person installed it somewhere", which is not the question: they are asking
+ * about the phone in their hand, and the same account on a laptop has not
+ * installed anything.
  */
-export function resolveInstallMode(opts: {
+export function rememberInstalled(now: number = Date.now(), storage?: Storage): void {
+  try {
+    readStore(storage)?.setItem(INSTALLED_KEY, String(now));
+  } catch {
+    /* Supplemental evidence only. Its absence costs nothing that the live
+       signals do not also answer. */
+  }
+}
+
+/**
+ * Forget it, because the browser has just contradicted it.
+ *
+ * Chromium does not offer to install an app that is already installed. So a
+ * `beforeinstallprompt` is not merely permission to install -- it is proof
+ * that the remembered install is gone, and the memory must not be allowed to
+ * outlive the fact. A marker that can never be wrong is a marker that is
+ * eventually a permanent lie.
+ */
+export function forgetInstalled(storage?: Storage): void {
+  try {
+    readStore(storage)?.removeItem(INSTALLED_KEY);
+  } catch {
+    /* Nothing to do. */
+  }
+}
+
+export function hasInstalledMarker(storage?: Storage): boolean {
+  try {
+    return Boolean(readStore(storage)?.getItem(INSTALLED_KEY));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * How sure are we, and on what.
+ *
+ *   standalone       we ARE the app. Not an inference.
+ *   installedHere    `appinstalled` fired on this page. Not an inference.
+ *   relatedApps      getInstalledRelatedApps() found our own manifest listed
+ *                    as an installed `webapp`. The browser's own answer, and
+ *                    the only one that survives closing the browser.
+ *                    `null` means it has not answered yet, which is not "no".
+ *   marker           localStorage, from a previous visit. Good evidence and
+ *                    beatable evidence -- see forgetInstalled.
+ */
+export function resolveEvidence(o: {
   standalone: boolean;
+  installedHere: boolean;
+  relatedApps: boolean | null;
+  marker: boolean;
+}): InstallEvidence {
+  if (o.standalone || o.installedHere || o.relatedApps === true) return 'confirmed';
+  if (o.marker) return 'likely';
+  return 'none';
+}
+
+/* ------------------------------------------------------------------ *
+ * THE STATE                                                           *
+ * ------------------------------------------------------------------ */
+
+export type InstallState =
+  /** Running as the app. The control does not render. */
+  | 'standalone'
+  /** A prompt is held. One tap raises the browser's own dialog. */
+  | 'native-ready'
+  /** Already on this device, and we are in an ordinary tab. */
+  | 'installed'
+  | 'ios-safari'
+  | 'ios-chrome'
+  | 'ios-other'
+  /** Chromium, still deciding. Only ever reachable on a Chromium platform. */
+  | 'checking'
+  /** Chromium, decided against offering. */
+  | 'unavailable'
+  /** No install story at all. The control does not render. */
+  | 'unsupported';
+
+/**
+ * ONE RESOLVER. THE PRECEDENCE IS THE PRODUCT.
+ *
+ * Read it as a list of things that beat the things below them, each for a
+ * reason about how browsers actually behave:
+ *
+ * 1. STANDALONE beats everything. An app offering to install itself is
+ *    absurd, and no other signal can make it less so.
+ *
+ * 2. A HELD PROMPT beats remembered installs. This is the stale-marker
+ *    escape hatch: Chromium does not offer an install for an app that is
+ *    already there, so an offer is live proof that it is not. Capability
+ *    always outranks memory, in that direction.
+ *
+ * 3. CONFIRMED evidence beats the platform's manual flow. Being told by the
+ *    browser that our app is installed is stronger than knowing which
+ *    browser we are in.
+ *
+ * 4. THE iOS PLATFORMS. Placed above `checking` on purpose, and this is the
+ *    second reported bug: iOS has no install event, so a state that waits
+ *    for one can only ever end in a twelve-second wait and a false
+ *    conclusion. On iOS there is nothing to wait FOR, and the instructions
+ *    are correct immediately.
+ *
+ * 5. A REMEMBERED install, below the iOS flows because on iOS nothing can
+ *    ever refute it -- no `appinstalled`, no prompt event, no related-apps
+ *    API -- and evidence that cannot be corrected must not outrank an
+ *    instruction that is always actionable.
+ *
+ * 6/7. Chromium, before and after it has made up its mind.
+ */
+export function resolveInstallState(o: {
+  platform: Platform;
   hasNativePrompt: boolean;
-  iosSafari: boolean;
-  /** The browser can install web apps at all (Chromium, Edge, Samsung). */
-  installable: boolean;
-  /**
-   * The customer asked not to be offered this again — and ONLY that.
-   *
-   * Closing the browser's own install dialog is not this. That used to
-   * set the same flag, so pressing Install and then changing your mind
-   * removed the button for sixty days: the likeliest interaction was the
-   * one that destroyed the entry point. Dismissing a dialog means "not
-   * now", and "not now" leaves the door where it was.
-   */
-  muted: boolean;
-  /** An install completed in this tab. */
-  installed?: boolean;
-  /** iOS, in a browser that cannot install. Safari can, one hop away. */
-  iosOther?: boolean;
-  /**
-   * A Chromium that may still produce a prompt. Time-bounded by the caller,
-   * because only it knows how long this page has been open.
-   */
-  checking?: boolean;
-}): InstallMode {
-  if (opts.standalone) return 'standalone';
-  /* Installed beats muted: somebody who has just installed it wants the door,
-     not silence, and "don't offer me this again" was about the offer. */
-  if (opts.installed) return 'installed';
-  /* "Not now" from somebody whose browser could install it: the control
-     stays, in its quiet state. "Not now" on a browser that could never have
-     installed it resolves to `unsupported` below, because there is nothing
-     to come back to. */
-  /*
-   * Muting decides how the control LOOKS, not what it can do.
-   *
-   * This test stays above the native one on purpose: somebody who asked
-   * not to be nagged gets the quiet chip rather than the gold button. What
-   * changed is what that chip DOES when pressed -- see InstallApp, which
-   * spends a held prompt rather than opening instructions. Returning
-   * 'native' here instead would have made the loud button reappear, which
-   * is the nagging the mute was asking us to stop.
-   */
-  if (opts.muted) return opts.installable || opts.iosSafari ? 'dismissed' : 'unsupported';
-  /*
-   * THE ONLY ROUTE TO AN ACTIVE INSTALL CONTROL.
-   *
-   * Derived from the held event, never from what the browser looks like. A
-   * user agent that resembles Chrome is not a capability.
-   */
-  if (opts.hasNativePrompt) return 'native';
-  if (opts.iosSafari) return 'ios-manual';
-  /* Before the `installable` tests below, which are false on every iOS
-     browser and would otherwise send these to `unsupported`. */
-  if (opts.iosOther) return 'ios-browser';
-  /*
-   * Chromium, no prompt in hand. Two different facts, and they used to share
-   * one mode called `pending` that rendered an active Install button.
-   *
-   * Still deciding is not the same as declined, and neither of them is
-   * "install this manually" -- which is the answer the old mode eventually
-   * gave, and the reason a Chrome user was shown iOS instructions.
-   */
-  if (opts.installable) return opts.checking ? 'checking' : 'native-unavailable';
+  evidence: InstallEvidence;
+  /** Chromium may still produce a prompt; time-bounded by the caller. */
+  checking: boolean;
+}): InstallState {
+  if (o.platform === 'standalone') return 'standalone';
+  if (o.hasNativePrompt) return 'native-ready';
+  if (o.evidence === 'confirmed') return 'installed';
+  if (o.platform === 'ios-safari') return 'ios-safari';
+  if (o.platform === 'ios-chrome') return 'ios-chrome';
+  if (o.platform === 'ios-other') return 'ios-other';
+  if (o.evidence === 'likely') return 'installed';
+  if (isChromiumPlatform(o.platform)) return o.checking ? 'checking' : 'unavailable';
   return 'unsupported';
+}
+
+/* ------------------------------------------------------------------ *
+ * WHAT A PRESS OPENS                                                  *
+ * ------------------------------------------------------------------ */
+
+export type InstallDialogKind =
+  | 'installed'
+  | 'ios-safari'
+  | 'ios-chrome'
+  | 'ios-other'
+  | 'unavailable';
+
+/**
+ * THE ONLY ROUTE FROM A PRESS TO A DIALOG.
+ *
+ * The reported Chromium bug -- a Chrome user shown iPhone instructions --
+ * is unreachable here because the dialog kind is derived from the STATE, and
+ * the state is derived from the PLATFORM. A Chromium platform cannot produce
+ * an iOS state, so it cannot produce an iOS dialog. There is no condition to
+ * get wrong and no literal for a caller to pass by mistake: the component
+ * calls this function and renders whatever it returns.
+ *
+ * `null` for the three states where a press does something other than open a
+ * dialog -- raise the browser's own prompt, record an intent, or nothing at
+ * all because the control is not rendered.
+ */
+export function dialogForState(state: InstallState): InstallDialogKind | null {
+  switch (state) {
+    case 'installed': return 'installed';
+    case 'ios-safari': return 'ios-safari';
+    case 'ios-chrome': return 'ios-chrome';
+    case 'ios-other': return 'ios-other';
+    case 'unavailable': return 'unavailable';
+    /* native-ready raises the real prompt, checking records the press, and
+       standalone/unsupported never render a control to press. */
+    default: return null;
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -251,17 +412,51 @@ export function resolveInstallMode(opts: {
  * too late, held nothing, and offered the manual instructions instead. On a
  * phone, where installing matters most, one-tap install was unreachable.
  *
- * So the prompt is held HERE, once, for the page. A control mounted at any
- * later moment reads the same captured event, and a control that uses it
- * spends it for everyone — because there is only one, and Chromium will not
- * replay it.
+ * So the prompt is held HERE, once, for the page.
  */
 let heldPrompt: BeforeInstallPromptEvent | null = null;
 let installedHere = false;
+/** getInstalledRelatedApps has not answered yet. Not the same as "no". */
+let relatedApps: boolean | null = null;
 const watchers = new Set<() => void>();
 
 function announce(): void {
   for (const watcher of watchers) watcher();
+}
+
+/**
+ * ASK THE BROWSER WHETHER OUR OWN APP IS INSTALLED.
+ *
+ * getInstalledRelatedApps() is the only signal that survives closing the
+ * browser: Chrome on Android since 84, Chrome and Edge on the desktop since
+ * 140. It answers about the `webapp` entry Homatch lists in its own manifest
+ * under `related_applications`, which is why that entry exists -- without it
+ * this returns an empty array forever and the whole question is unanswerable.
+ *
+ * Requires a secure top-level context and a page inside the manifest scope.
+ * Anything else, including the API simply not existing, resolves to "no
+ * evidence" rather than throwing: this is supplemental, and a browser that
+ * cannot answer must not break the control.
+ */
+function probeInstalledApps(): void {
+  if (typeof navigator === 'undefined') return;
+  const nav = navigator as Navigator & {
+    getInstalledRelatedApps?: () => Promise<Array<{ platform?: string; id?: string }>>;
+  };
+  if (typeof nav.getInstalledRelatedApps !== 'function') {
+    relatedApps = false;
+    return;
+  }
+  void nav.getInstalledRelatedApps().then(
+    (apps) => {
+      relatedApps = apps.some((app) => app.platform === 'webapp');
+      /* Promote the browser's answer into the local marker, so the next
+         visit is right immediately rather than after another round trip. */
+      if (relatedApps) rememberInstalled();
+      announce();
+    },
+    () => { relatedApps = false; },
+  );
 }
 
 /**
@@ -278,13 +473,21 @@ function wire(): void {
     // prompt should happen on OUR control, in context.
     e.preventDefault();
     heldPrompt = e as BeforeInstallPromptEvent;
+    /* The offer itself refutes a remembered install -- see forgetInstalled.
+       This is what lets somebody who uninstalled Homatch install it again. */
+    relatedApps = false;
+    forgetInstalled();
     announce();
   });
   window.addEventListener('appinstalled', () => {
     heldPrompt = null;
     installedHere = true;
+    /* The one moment we know for certain, and the one worth writing down:
+       every later visit in this profile starts from it. */
+    rememberInstalled();
     announce();
   });
+  probeInstalledApps();
 }
 wire();
 
@@ -302,6 +505,26 @@ export function heldInstallPrompt(): BeforeInstallPromptEvent | null {
 /** Did an install complete in this tab? Distinct from "is standalone". */
 export function installedInThisTab(): boolean {
   return installedHere;
+}
+
+/** The browser's own answer about our app, or null if it has not given one. */
+export function relatedAppsInstalled(): boolean | null {
+  return relatedApps;
+}
+
+/**
+ * Everything the page knows about an existing install, in one call.
+ *
+ * Kept here rather than in the component so that a second control cannot
+ * assemble the evidence differently from the first.
+ */
+export function currentEvidence(): InstallEvidence {
+  return resolveEvidence({
+    standalone: typeof window === 'undefined' ? false : isStandalone(),
+    installedHere,
+    relatedApps,
+    marker: hasInstalledMarker(),
+  });
 }
 
 /**
@@ -342,7 +565,10 @@ export async function showInstallPrompt(): Promise<'accepted' | 'dismissed' | 'u
   heldPrompt = null;
   try {
     const { outcome } = await prompt.userChoice;
-    if (outcome === 'accepted') installedHere = true;
+    if (outcome === 'accepted') {
+      installedHere = true;
+      rememberInstalled();
+    }
     announce();
     return outcome;
   } catch {
@@ -355,9 +581,9 @@ export async function showInstallPrompt(): Promise<'accepted' | 'dismissed' | 'u
 export function resetInstallState(): void {
   heldPrompt = null;
   installedHere = false;
+  relatedApps = null;
   announce();
 }
-
 
 /**
  * How long after load a Chromium browser is still deciding.
@@ -376,17 +602,15 @@ const loadedAt = Date.now();
 /**
  * Is the browser still making up its mind?
  *
- * The state this distinguishes is the one the control used to get wrong.
- * "No prompt in hand" was being rendered as "this browser cannot install",
- * which on Chromium is false for the first few seconds of every visit -- and
- * pressing the control in that window produced Add to Home Screen
- * instructions for somebody whose browser was about to offer a real install.
- *
- * CHECKING is not NATIVE and it is not MANUAL_ONLY. It is its own state, and
- * a control that shows it is telling the truth about what it knows.
+ * Only ever true where there is something to make up a mind ABOUT. `canInstall`
+ * is false on every iOS browser, Chrome included, so no iPhone can enter a
+ * waiting state for an event its engine does not implement -- which was the
+ * second reported bug, seen as twelve seconds of "Preparing install…" on a
+ * device where nothing was ever going to arrive.
  */
 export function isCheckingInstall(): boolean {
   if (heldPrompt) return false;
-  if (!canInstall()) return false;
+  if (typeof window === 'undefined') return false;
+  if (!isChromiumPlatform(classifyPlatform())) return false;
   return Date.now() - loadedAt < CHECK_WINDOW_MS;
 }

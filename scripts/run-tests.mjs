@@ -75,6 +75,10 @@ const EXCLUDE = [
   /commSurfaces\.test\.mjs$/,
   /pushHandlers\.test\.mjs$/,
   /accessibilityAudit\.test\.mjs$/,
+  // Drives real Chrome through the whole Developer journey for about a
+  // minute and a half, and needs the harness bundle in dist/. It runs as
+  // its own CI step (`test:developer`) rather than inside the unit suite.
+  /developerAcceptance\.test\.mjs$/,
   /pwaInstallSheet\.test\.mjs$/,
 ];
 const files = [];

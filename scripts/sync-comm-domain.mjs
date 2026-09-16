@@ -59,6 +59,10 @@ const FILES = [
   // The one place a turn's language is decided. Mirrored because the edge
   // function must re-check what the browser resolved rather than trust it.
   'talkLanguage.ts',
+  // How the brand is SAID, per language. Mirrored because the edge function
+  // is what hands text to the voice provider, so the edge copy is the one
+  // standing between "Homatch" and sonic-3 spelling it out letter by letter.
+  'speechText.ts',
   'researchPlan.ts',
   'phone.ts',
   'goLive.ts',

@@ -119,6 +119,63 @@ sentences in three reports.
 | Page locale | seeds the session language before anybody has spoken; nothing else | browser |
 | Fallback | Scribe (ElevenLabs STT, route priority 5) when this gateway is unavailable — logged as `google_stt_unavailable`, never silent | edge route table |
 
+### What a quiet stream costs, and why the browser sends silence
+
+Measured against this deployment, not inferred. A probe streamed Georgian and
+then sent nothing at all — which is exactly what the browser used to do while
+the assistant was speaking, because the microphone is gated so the reply is
+not transcribed as if the visitor had said it. After roughly nine seconds:
+
+```
+code 10  "Stream timed out after receiving no more client requests."
+```
+
+Code 10 was not in the retryable set, so the gateway reported `unavailable`
+and closed 1011. An ordinary reply is longer than nine seconds, so the
+recognition stream was routinely being torn down mid-conversation and the
+visitor's next sentence had nothing listening to it. This is the actual reason
+a short Georgian acknowledgement after a longer answer "was not heard": not
+recognition, which transcribes `კი` correctly every time, but a dead stream.
+
+Two changes, belt and braces:
+
+- The browser sends a tenth of a second of **silence every three seconds while
+  gated** (`googleTranscribe.ts`). Microphone audio is still dropped, so echo
+  protection is unchanged; silence carries nothing to transcribe and produces
+  no interim, no final and no turn. It only keeps the socket open.
+- Code 10 is now **retryable**, so a stream that ends because it went quiet is
+  reopened rather than ending the conversation.
+
+### Short Georgian utterances, measured
+
+Eleven clips streamed through this gateway, `chirp_3`, `ka-GE`, region `eu`:
+
+| said | length | final | finalised by | ms after speech |
+|---|---|---|---|---|
+| კი | 0.88s | კი | endpointer | 2119 |
+| არა | 0.33s | არა | **half-close only** | 5604 |
+| დიახ | 0.79s | დიახ. | endpointer | 2308 |
+| კარგი | 0.65s | კარგი | endpointer | 2261 |
+| ჰო | 0.51s | **ხო** | endpointer | 1901 |
+| არა, მადლობა | 1.76s | არა, მადლობა. | endpointer | 1685 |
+| კი, მაინტერესებს | 1.21s | კი, მაინტერესებს. | endpointer | 1348 |
+| გასაგებია | 0.79s | გასაგებია. | endpointer | 2537 |
+| მაჩვენე | 1.11s | მაჩვენე. | endpointer | 2302 |
+| გააგრძელე | 0.88s | გააგრძელე. | endpointer | 2936 |
+| გამარჯობა, ვაკეში ბინა მაინტერესებს. | 2.83s | exact | endpointer | 1358 |
+
+Eleven of eleven recognised, eleven of eleven resolved `ka-GE`. One
+substitution (`ჰო` → `ხო`). **Recognition is not the problem.** What the table
+shows instead is that a final lands 1.3–2.9 seconds after the speaker stops —
+long enough to arrive after the next turn has already begun, which is why the
+browser now holds such a final rather than discarding it — and that the
+shortest clip never endpointed at all and came back only on the half-close.
+
+Interim results are enabled and do work, but they are late and sparse: the
+self-test measures one interim at 5797ms on a 7.3-second clip. Utterances
+shorter than that finish before an interim is ever due, which is why short
+Georgian shows no on-screen text until the final arrives.
+
 Why auto is off: `chirp_3` refuses an explicit list of languages
 (`INVALID_ARGUMENT`), and the single code `auto` it does accept is not scoped
 to this product's languages. It is scoped to every language Google supports,

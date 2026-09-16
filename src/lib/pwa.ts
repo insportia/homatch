@@ -186,6 +186,16 @@ export function resolveInstallMode(opts: {
      stays, in its quiet state. "Not now" on a browser that could never have
      installed it resolves to `unsupported` below, because there is nothing
      to come back to. */
+  /*
+   * Muting decides how the control LOOKS, not what it can do.
+   *
+   * This test stays above the native one on purpose: somebody who asked
+   * not to be nagged gets the quiet chip rather than the gold button. What
+   * changed is what that chip DOES when pressed -- see InstallApp, which
+   * spends a held prompt rather than opening instructions. Returning
+   * 'native' here instead would have made the loud button reappear, which
+   * is the nagging the mute was asking us to stop.
+   */
   if (opts.muted) return opts.installable || opts.iosSafari ? 'dismissed' : 'unsupported';
   if (opts.hasNativePrompt) return 'native';
   if (opts.iosSafari) return 'ios-manual';
@@ -306,4 +316,77 @@ export function resetInstallState(): void {
   heldPrompt = null;
   installedHere = false;
   announce();
+}
+
+/**
+ * Wait, briefly, for a prompt the browser has not delivered yet.
+ *
+ * WHY THIS EXISTS
+ *
+ * Measured against the deployed site in a real Chrome: `beforeinstallprompt`
+ * arrives about FOUR SECONDS after load, once the manifest is parsed and the
+ * service worker is in control. Anyone who presses Install before then was
+ * being handed Add to Home Screen instructions by a browser that was, a
+ * moment later, going to offer a one-tap install.
+ *
+ * A control that is wrong for the first four seconds of every visit is wrong
+ * at exactly the moment people use it, because pressing it is often the first
+ * thing they do.
+ *
+ * WHY THE WINDOW IS SHORT
+ *
+ * `prompt()` requires user activation, and Chromium's transient activation
+ * lasts five seconds. Waiting longer than that would spend the gesture and
+ * the call would be rejected -- so this waits well inside it and gives up in
+ * time to fall back to something that still works.
+ */
+export function awaitInstallPrompt(timeoutMs = 2500): Promise<BeforeInstallPromptEvent | null> {
+  if (heldPrompt) return Promise.resolve(heldPrompt);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (value: BeforeInstallPromptEvent | null) => {
+      if (done) return;
+      done = true;
+      watchers.delete(check);
+      clearTimeout(timer);
+      resolve(value);
+    };
+    function check(): void {
+      if (heldPrompt) finish(heldPrompt);
+    }
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    watchers.add(check);
+  });
+}
+
+/**
+ * How long after load a Chromium browser is still deciding.
+ *
+ * Measured twice against the deployed site in a real Chrome:
+ * beforeinstallprompt arrived at 1668ms on one run and about 4000ms on
+ * another. The variance is the point -- it depends on when the manifest is
+ * parsed and the worker takes control, which depends on the network.
+ *
+ * Six seconds covers both with room, and is short enough that a browser which
+ * is genuinely never going to offer is not misdescribed for long.
+ */
+const CHECK_WINDOW_MS = 6000;
+const loadedAt = Date.now();
+
+/**
+ * Is the browser still making up its mind?
+ *
+ * The state this distinguishes is the one the control used to get wrong.
+ * "No prompt in hand" was being rendered as "this browser cannot install",
+ * which on Chromium is false for the first few seconds of every visit -- and
+ * pressing the control in that window produced Add to Home Screen
+ * instructions for somebody whose browser was about to offer a real install.
+ *
+ * CHECKING is not NATIVE and it is not MANUAL_ONLY. It is its own state, and
+ * a control that shows it is telling the truth about what it knows.
+ */
+export function isCheckingInstall(): boolean {
+  if (heldPrompt) return false;
+  if (!canInstall()) return false;
+  return Date.now() - loadedAt < CHECK_WINDOW_MS;
 }

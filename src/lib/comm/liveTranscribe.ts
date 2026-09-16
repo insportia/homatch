@@ -67,6 +67,14 @@ export interface LiveGrant {
   keyterms?: string[];
   /** Sent only once the conversation has settled into a language. */
   languageCode?: string | null;
+  /**
+   * Ask the recogniser to identify the language on this socket.
+   *
+   * Set by the SESSION, not by the server: it is a statement about whether
+   * this conversation has settled on a language yet, and only the session
+   * knows that. See voiceClient's openLiveTranscription.
+   */
+  detect?: boolean;
   /** Every language this conversation could plausibly be in, primary first. */
   languages?: string[];
 }
@@ -85,6 +93,16 @@ export interface LiveSocket {
   open(timeoutMs?: number): Promise<boolean>;
   setGated(gated: boolean): void;
   append(pcm: Int16Array): void;
+  /**
+   * End the current turn and ask for its final, without closing the socket.
+   *
+   * Optional because only the Google path has a half-close to offer; a
+   * transcriber that endpoints for itself simply does not implement it and
+   * the session falls back to waiting, exactly as it always did. Returns
+   * whether the request actually went out.
+   */
+  finalize?(): boolean;
+  readonly isFinalizing?: boolean;
   close(): void;
 }
 

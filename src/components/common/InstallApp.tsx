@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { recordPwaEvent } from '@/lib/engagement';
 import {
   type InstallMode,
+  awaitInstallPrompt, isCheckingInstall,
   canInstall, heldInstallPrompt, installedInThisTab, isIOSSafari, isIOSOtherBrowser,
   isIPad, isStandalone,
   rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted, watchInstall,
@@ -138,6 +139,20 @@ export function InstallApp({
     return watchInstall(restate);
   }, []);
 
+  /*
+   * The CHECKING window closes on a clock, not on an event, so nothing would
+   * otherwise re-render when it expires and the label would stay "Preparing"
+   * on a browser that has finished deciding. One second is far finer than a
+   * person notices and stops as soon as the answer is known.
+   */
+  const [, tick] = useReducer((n: number) => n + 1, 0);
+  const checking = isCheckingInstall();
+  useEffect(() => {
+    if (!checking) return undefined;
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [checking]);
+
   const prompt = heldInstallPrompt();
   const justInstalled = installedInThisTab();
   const mode: InstallMode = resolveInstallMode({
@@ -200,12 +215,32 @@ export function InstallApp({
       setSheet('ios');
       return;
     }
-    // No prompt to replay: the honest answer is the browser's own menu.
-    if (mode === 'pending' || !prompt) { setSheet('pending'); return; }
+    /*
+     * ── NOT YET IS NOT THE SAME AS NEVER ──────────────────────────────
+     *
+     * Measured on the deployed site in a real Chrome: beforeinstallprompt
+     * lands about four seconds after load. Pressing Install before then used
+     * to open a page of instructions -- on a browser that was about to offer
+     * a one-tap install, and whose prompt then sat captured and unused.
+     *
+     * So a pending press WAITS for it, briefly, instead of concluding. The
+     * window is inside Chromium's five-second transient activation, because
+     * prompt() needs the gesture that is being spent right now; longer would
+     * buy an event we are no longer allowed to use.
+     *
+     * The instructions remain the answer when nothing arrives -- which is
+     * what a browser that genuinely will not offer looks like from here.
+     */
+    if (mode === 'pending' || !prompt) {
+      const arrived = await awaitInstallPrompt();
+      if (!arrived) { setSheet('pending'); return; }
+    }
     /* The event is single-use — Chromium will not replay it. A dismissal is
        NOT a mute: the control stays, in its pending state, and explains
        itself if pressed again. */
     void recordPwaEvent('PWA_NATIVE_PROMPT_SHOWN', 'CONFIRMED', { source, once: false });
+    /* Reads the store rather than the `prompt` captured when this callback
+       was created: in the pending case it arrived after that. */
     const outcome = await showInstallPrompt();
     /* The browser's OWN answer, which is the only CONFIRMED install signal
        that exists outside `appinstalled`. A click is not an install and is
@@ -259,11 +294,30 @@ export function InstallApp({
       <>
         <button
           type="button"
-          /* Three cases, not two. The pending sheet explains a browser menu
-             that on iOS Chrome does not contain the item. */
-          onClick={() => setSheet(
-            isIOSSafari() ? 'ios' : isIOSOtherBrowser() ? 'ios-browser' : 'pending',
-          )}
+          /*
+           * QUIET IS NOT DISABLED.
+           *
+           * The mute makes this a chip instead of a button, which is what
+           * somebody who pressed "not now" asked for. It must not also cost
+           * them the real install: pressing the chip on a browser that is
+           * holding a prompt used to open Add to Home Screen instructions
+           * while the actual dialog sat captured and unused.
+           *
+           * Pressing is asking. Asking gets the browser's own dialog.
+           *
+           * Three fallbacks, not two -- the pending sheet explains a browser
+           * menu that on iOS Chrome does not contain the item.
+           */
+          onClick={() => {
+            void (async () => {
+              if (heldInstallPrompt()) {
+                void recordPwaEvent('PWA_NATIVE_PROMPT_SHOWN', 'CONFIRMED', { source, once: false });
+                const outcome = await showInstallPrompt();
+                if (outcome !== 'unavailable') return;
+              }
+              setSheet(isIOSSafari() ? 'ios' : isIOSOtherBrowser() ? 'ios-browser' : 'pending');
+            })();
+          }}
           aria-label={t('pwa_install_aria')}
           className={`${chip} ${quiet} ${className}`}
         >
@@ -318,7 +372,19 @@ export function InstallApp({
           : <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />}
         {!compact && (
           <span className="min-w-0 truncate">
-            {mode === 'installed' ? t('pwa_open') : t('pwa_install')}
+            {/*
+              * THE CONTROL SAYS WHAT IT KNOWS.
+              *
+              * While the browser is still deciding, this used to read
+              * "Install App" and then hand over Add to Home Screen
+              * instructions -- a label that promised something the control
+              * could not yet do. Naming the state instead costs a few
+              * seconds of a quieter word and never misdescribes what a press
+              * will produce.
+              */}
+            {mode === 'installed' ? t('pwa_open')
+              : (mode === 'pending' && checking) ? t('pwa_preparing')
+                : t('pwa_install')}
           </span>
         )}
       </button>

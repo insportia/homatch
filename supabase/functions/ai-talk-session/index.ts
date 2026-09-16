@@ -27,7 +27,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serviceClient, json, preflight, logEvent, authenticate, corsHeaders } from '../_shared/comm/auth.ts';
 import {
   cartesiaCredentialsPresent, synthesizeSpeech, synthesizePcm, PCM_SAMPLE_RATE,
-  streamCartesiaPcm, nearestCartesiaRate,
+  streamCartesiaPcm, nearestCartesiaRate, clampCartesiaSpeed,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
@@ -53,9 +53,10 @@ import {
   ACTION_MARKER, destinationMenu, parseAction, spokenPart, endsWithPartialMarker,
 } from '../_shared/comm/generated/talkActions.ts';
 import {
-  resolveTurnLanguage, textMatchesLanguage, normaliseLanguage,
+  resolveTurnLanguage, textMatchesLanguage, detectLanguageRequest, normaliseLanguage,
   TALK_LANGUAGES, type TalkLanguage,
 } from '../_shared/comm/generated/talkLanguage.ts';
+import { speechText } from '../_shared/comm/generated/speechText.ts';
 import {
   selectKeyterms, keytermStrings, detectEntities,
   type VocabularyTerm,
@@ -139,10 +140,19 @@ async function speakPhrase(sb: Sb, params: {
   }
 
   const started = Date.now();
+  /*
+   * THE LAST HOP BEFORE THE VOICE, AND THE ONLY PLACE THE SPELLING BENDS.
+   *
+   * params.text is the reply as Luna wrote it and as the visitor will read
+   * it. What goes to Cartesia is a respelled COPY: a Latin brand inside a
+   * Georgian sentence is spelled out letter by letter by sonic-3, and no
+   * amount of prompting fixes that because the model is reading correctly.
+   * Nothing downstream of here is stored or displayed.
+   */
   const out = await synthesizePcm({
     voiceId: voice.voiceId,
     language: params.language || 'ka',
-    text: params.text,
+    text: speechText(params.text, params.language),
   });
   const ms = Date.now() - started;
 
@@ -1000,6 +1010,35 @@ function speechCandidates(settled: string | null, locale: string | null): string
   return order;
 }
 
+/**
+ * How fast AI TALK speaks, as an operator setting.
+ *
+ * "Cartesia sounds too slow" is a judgement about a human experience, and the
+ * right value for it is found by LISTENING rather than by reasoning. So it is
+ * an environment variable with a modest default: the owner can move it and
+ * hear the difference without a deploy, and it is clamped to the range
+ * Cartesia documents so a typo cannot take the voice out entirely.
+ *
+ * This is provider-native pacing. It is deliberately NOT the browser's
+ * playbackRate, which would shorten the audio by resampling it and raise the
+ * pitch to match.
+ */
+function ttsSpeed(): number | null {
+  const raw = Deno.env.get('AI_TALK_TTS_SPEED');
+  if (!raw) return CARTESIA_DEFAULT_SPEED;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : CARTESIA_DEFAULT_SPEED;
+}
+
+/**
+ * Slightly quicker than the model's own default.
+ *
+ * Small on purpose. The measured provider latency is 177-301ms, so the voice
+ * was never the reason a reply felt late; what "slow" describes is delivery,
+ * and a large jump there reads as rushed rather than competent.
+ */
+const CARTESIA_DEFAULT_SPEED = 1.1;
+
 async function speakPhraseStreaming(sb: Sb, params: {
   text: string;
   language: string;
@@ -1041,9 +1080,12 @@ async function speakPhraseStreaming(sb: Sb, params: {
   const at = Date.now();
   const out = await streamCartesiaPcm({
     voiceId: voice.voiceId,
-    text: params.text,
+    // Respelled for the voice only. See speakPhrase above: the reply that is
+    // streamed to the browser and written to history is params.text, unchanged.
+    text: speechText(params.text, params.language),
     language: params.language || 'ka',
     sampleRate: params.outputSampleRate ?? undefined,
+    speed: ttsSpeed(),
     signal: params.signal,
   }, (chunk) => params.onChunk(chunk));
 
@@ -1342,12 +1384,41 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
     previousSessionLanguage: body.languageHint ?? null,
     pageLocale: locale,
   });
-  const replyLanguage: TalkLanguage = resolution.resolvedLanguage;
+  /*
+   * ASKED FOR A LANGUAGE, WHICH OUTRANKS THE ONE THEY ASKED IN.
+   *
+   * "ინგლისურად მელაპარაკე" is a GEORGIAN sentence, so the resolver above
+   * correctly resolves it to Georgian, and answering in Georgian is exactly
+   * what the visitor just said not to do. Worse than ignored: the model would
+   * obey the request, and the reply-language guard further down would then
+   * throw the English answer away and retry it in Georgian, so the system
+   * actively undid the one thing that was explicitly asked for.
+   *
+   * Read from the words, deterministically, before a token is generated --
+   * the switch has to reach the prompt, the guard, the voice and the next
+   * recogniser, and by the time a reply exists it is too late for all four.
+   */
+  const requested = detectLanguageRequest(said, resolution.resolvedLanguage);
+  const replyLanguage: TalkLanguage = requested ?? resolution.resolvedLanguage;
+  if (requested) {
+    logEvent('ai-talk', 'language_switch_requested', {
+      from: resolution.resolvedLanguage, to: requested,
+    });
+  }
 
   // What the conversation already knows, plus whatever this sentence added.
   const state = updateTalkState(sanitiseTalkState(body.state), said, replyLanguage);
 
-  const history = Array.isArray(body.history) ? body.history.slice(-6) : [];
+  /*
+   * Enough turns to follow a conversation, few enough to stay cheap.
+   *
+   * Six was three exchanges, which is not enough to resolve "and under a
+   * hundred and sixty thousand?" back to the rooms and the district that were
+   * named before it. Twelve is still a fixed ceiling -- the prompt cannot grow
+   * with the session, so a long conversation does not get progressively
+   * slower -- and each turn is already truncated.
+   */
+  const history = Array.isArray(body.history) ? body.history.slice(-12) : [];
   const conversation = history
     .map((h) => `${h.role === 'assistant' ? 'Homatch' : 'Visitor'}: ${String(h.content ?? '').slice(0, 300)}`)
     .join('\n');
@@ -1382,7 +1453,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       : '',
     `Answer ONLY in ${LANGUAGE_NAMES[replyLanguage]} for this turn. Not a word of any other language, `
       + 'except a brand name like Homatch which stays in Latin letters.',
-    'Answer out loud, in one or two short sentences, then at most one question.',
+    // Deliberately not a sentence count. The instruction used to end by
+    // demanding "one or two short sentences" of EVERY turn, which overrode
+    // everything above it and is why each answer came out the same size.
+    'Answer out loud, at the length this particular question deserves.',
   ].filter(Boolean).join('\n');
 
   await sb.from('comm_talk_sessions')
@@ -1609,11 +1683,22 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         for await (const event of streamLlm({
           system: publicDemoInstructions(replyLanguage),
           user,
-          maxTokens: 120,
-          // Two spoken sentences is about 60 tokens; the rest is headroom for
-          // reasoning. A model left with room for 1,200 writes 1,200, and the
-          // visitor waits through every one of them being spoken aloud.
-          maxOutputTokens: 340,
+          /*
+           * Enough for the answer the prompt now asks for.
+           *
+           * This was 120 visible tokens, which is about two spoken sentences,
+           * and it was correct while the instructions demanded exactly two.
+           * They no longer do -- a real question is supposed to get a real
+           * answer -- so the budget and the instruction had come apart, and
+           * the way that shows up is a model stopped in the middle of its
+           * fourth sentence with the voice already speaking the third.
+           *
+           * Still bounded, and deliberately not generous: a model left with
+           * room for 1,200 tokens writes 1,200, and the visitor waits through
+           * every one of them being spoken aloud.
+           */
+          maxTokens: 220,
+          maxOutputTokens: 460,
           // Two sentences about a flat is not a reasoning problem, and the
           // thinking was the largest and least predictable part of the wait.
           reasoningEffort: 'minimal',
@@ -1725,7 +1810,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             system: publicDemoInstructions(replyLanguage),
             user: `${user}\n\nYour previous answer was in the wrong language. `
               + `Answer ONLY in ${LANGUAGE_NAMES[replyLanguage]}. Nothing else.`,
-            maxTokens: 120, maxOutputTokens: 340,
+            maxTokens: 220, maxOutputTokens: 460,
             reasoningEffort: 'minimal', timeoutMs: 15_000,
           })) {
             if (event.type === 'error') break;
@@ -1868,6 +1953,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           tts_request_language: replyLanguage,
           tts_sample_rate: spoken[0]?.sampleRate ?? null,
           tts_encoding: 'pcm_s16le',
+          // The pace that was actually asked for, so a report about how the
+          // voice sounded can be tied to the setting that produced it.
+          tts_speed: clampCartesiaSpeed(ttsSpeed()),
           tts_request_ms: ttsRequestAt,
           tts_first_byte_ms: ttsFirstByteAt,
           tts_chunk_count: seq,
@@ -2353,10 +2441,20 @@ function publicDemoInstructions(language: string): string {
   const lines = [
     'You are Homatch, a real-estate intelligence assistant for the Georgian market, talking to a visitor by voice.',
     '',
-    'THE ONE RULE THAT MATTERS MOST: at most two sentences and at most 30 words, in total, every time.',
-    'A third sentence is a mistake, not a bonus. Everything below assumes you are keeping to it.',
-    'One useful sentence is better than two. Answer first; only expand if they ask for detail, or the',
-    'task genuinely cannot be said shorter.',
+    'LENGTH FOLLOWS THE QUESTION. It is not a fixed budget.',
+    'A yes-or-no question gets a yes or a no and the one fact that qualifies it — often under ten words.',
+    'A real question ("how does the mortgage work", "is Vake worth it at this price") gets a real answer:',
+    'three or four spoken sentences if that is what it takes to actually answer it. Nobody wants the same',
+    'length every time, and a reply trimmed to a fixed size stops being an answer and starts sounding',
+    'like a recording. Being brief is never a reason to be useless.',
+    '',
+    'ANSWER FIRST, IN THE FIRST CLAUSE — the number, the district, the yes or no — then the one thing that',
+    'changes their decision. "It depends" and "there are several factors" are not answers; if it genuinely',
+    'depends, say what it depends ON. If you cannot answer, say what you would need to.',
+    '',
+    'AND DO NOT SOUND LIKE A RECORDING. Vary how you begin. Never open two consecutive replies the same',
+    'way. You are in a conversation, not reading from a card: say the name Homatch when it carries',
+    'meaning and not otherwise — they know where they are — and do not restate what they just said.',
     '',
     'NEVER DO ANY OF THESE. They are what makes a voice assistant exhausting:',
     '- repeat or rephrase what they just said back to them',
@@ -2374,9 +2472,20 @@ function publicDemoInstructions(language: string): string {
     'ROI, mortgage, price per square. Understand those as the Georgian sentence they sit in.',
     '',
     'HOW TO SPEAK',
-    'This is heard, not read. One or two short sentences, then AT MOST one question. Never a list, never',
-    'bullet points, never markdown, never an abbreviation that cannot be read aloud. If they ask for detail,',
-    'give it — still spoken, still short. Acknowledge what they just told you before you ask anything.',
+    'This is heard, not read. Spoken sentences, and AT MOST one question at the end — often none, because',
+    'a statement invites an answer just as well and constant questioning is what makes an assistant tiring.',
+    'Never a list, never bullet points, never markdown, never an abbreviation that cannot be read aloud.',
+    'Acknowledge what they just told you before you ask anything.',
+    '',
+    /*
+     * PUNCTUATION IS PACING. The voice takes its breaths from the commas and
+     * full stops in the text it is given, and the reply is spoken phrase by
+     * phrase as it is written, so a sentence with no internal punctuation is
+     * delivered as one long unbroken run and is heard as hurried and robotic.
+     * This is the same lever as the player's buffering, applied at the source.
+     */
+    'Punctuate the way a person breathes: a comma where you would pause, a full stop where you would stop.',
+    'Write plain spoken words, not written ones — say numbers and amounts the way they are said aloud.',
     '',
     'WHAT YOU KNOW',
     'Buying, selling, renting and investing. Mortgages and instalment plans. Developer due diligence and',

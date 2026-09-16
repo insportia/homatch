@@ -55,6 +55,52 @@ const STREAM_RESTART_MS = 4 * 60 * 1000;
 /** Nothing heard at all for this long means the socket is dead weight. */
 const IDLE_TIMEOUT_MS = 90 * 1000;
 
+/**
+ * HOW LONG GOOGLE WAITS AFTER SOMEBODY STOPS TALKING -- ASKED FOR, IGNORED.
+ *
+ * Chirp 3's endpointer is slow. Measured on this deployment: a final lands
+ * 1.6 to 2.8 seconds after the speaker stops, and a 0.33-second "კი." never
+ * endpoints at all. That is most of the dead air in a conversation.
+ *
+ * voice_activity_timeout.speech_end_timeout is the documented lever for it,
+ * and it DOES NOT WORK ON THIS MODEL. Measured, after deploying it: finals at
+ * 1633/1710/2009/2828ms, statistically identical to the 1348-2936ms before
+ * it, the short clip still never finalising, and -- the decisive part -- ZERO
+ * stream restarts. If the timeout were in force the server would end the
+ * stream after the configured silence and this class would restart it, every
+ * single turn. It never did, so the field is being accepted and ignored.
+ *
+ * Which of the two ways that happens is NOT isolated: google-gax drops fields
+ * it does not recognise without complaint (this integration has already lost
+ * an afternoon to exactly that), and Chirp 3 may simply not implement it.
+ * Either way Google answered no INVALID_ARGUMENT and changed no behaviour.
+ *
+ * It is left in place, off by default, because it costs nothing and the day
+ * Google implements it this is already wired. It is NOT a fix, and the turn
+ * boundary is still the endpointer's. The lever that does work is the
+ * half-close -- the self-test half-closes after a second of silence and gets
+ * its final 310ms later, every time, including for utterances the endpointer
+ * never ends -- and moving the client onto that is the real repair.
+ */
+const SPEECH_END_TIMEOUT_MS = Math.max(
+  500,
+  Number(process.env.GOOGLE_SPEECH_END_TIMEOUT_MS || 900),
+);
+
+/** A protobuf Duration, which is how google-gax wants a timeout expressed. */
+function duration(ms: number): { seconds: number; nanos: number } {
+  return { seconds: Math.floor(ms / 1000), nanos: (ms % 1000) * 1_000_000 };
+}
+
+/**
+ * Off by default: it was measured to change nothing on chirp_3.
+ *
+ * Set GOOGLE_SPEECH_FAST_ENDPOINT=1 to send it again -- worth re-measuring
+ * whenever the model version moves.
+ */
+export function fastEndpointingEnabled(): boolean {
+  return String(process.env.GOOGLE_SPEECH_FAST_ENDPOINT ?? '0') === '1';
+}
 export interface SpeechConfig {
   projectId: string;
   region: string;
@@ -68,6 +114,8 @@ export interface SpeechConfig {
    * transcript. The visitor never picks a language.
    */
   languageCodes: string[];
+  /** Ask the recogniser to identify the language, for this stream only. */
+  detect?: boolean;
   model: string;
   sampleRate: number;
 }
@@ -423,7 +471,22 @@ export class GoogleSpeechStream {
        * retries a permission error forever looks exactly like one that works.
        */
       const code = Number(err?.code);
-      const retryable = code === 11 /* OUT_OF_RANGE */ || code === 4 /* DEADLINE_EXCEEDED */ || code === 14 /* UNAVAILABLE */;
+      /*
+       * ABORTED (10) IS HOUSEKEEPING TOO, AND USED NOT TO BE.
+       *
+       * Google ends an idle stream with code 10 and the sentence "Stream timed
+       * out after receiving no more client requests." That happened in
+       * ordinary use: the browser gates the microphone while the assistant
+       * speaks, so a long enough answer meant a long enough silence, and the
+       * recogniser was torn down mid-conversation. Treated as fatal, it closed
+       * the socket 1011 and the visitor's next sentence had nothing listening.
+       *
+       * The browser now sends keepalive silence so this should not arise. It
+       * is retryable anyway: a stream that ended because it was quiet is a
+       * stream to reopen, not a reason to stop hearing somebody.
+       */
+      const retryable = code === 11 /* OUT_OF_RANGE */ || code === 4 /* DEADLINE_EXCEEDED */
+        || code === 14 /* UNAVAILABLE */ || code === 10 /* ABORTED */;
 
       /*
        * THE CODE AND THE PROVIDER'S OWN SENTENCE, IN THE LOG.
@@ -507,7 +570,9 @@ export class GoogleSpeechStream {
            * it is simply not what the recogniser is configured with.
            * /health/speech-languages re-runs the measurement above.
            */
-          languageCodes: multiLanguageEnabled() ? ['auto'] : [cfg.languageCode],
+          // `auto` when this socket asked to identify the language, when an
+          // operator has turned detection on globally, or one language.
+          languageCodes: (cfg.detect || multiLanguageEnabled()) ? ['auto'] : [cfg.languageCode],
           model: cfg.model,
           features: {
             enableAutomaticPunctuation: true,
@@ -523,6 +588,15 @@ export class GoogleSpeechStream {
           // turn detector; this supplies the provider's opinion as evidence
           // rather than replacing it — see SpeechGateway for how the two meet.
           enableVoiceActivityEvents: true,
+          /*
+           * And it is the voice activity detector, not the endpointer, that
+           * decides a turn is over. See SPEECH_END_TIMEOUT_MS: the endpointer
+           * takes one and a half to three seconds on this model, which is the
+           * silence a person sits through after every sentence they say.
+           */
+          ...(fastEndpointingEnabled()
+            ? { voiceActivityTimeout: { speechEndTimeout: duration(SPEECH_END_TIMEOUT_MS) } }
+            : {}),
         },
       },
     });

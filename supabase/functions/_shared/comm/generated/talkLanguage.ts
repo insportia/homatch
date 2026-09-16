@@ -329,3 +329,91 @@ export function textMatchesLanguage(text: string, language: TalkLanguage): boole
   // one is not.
   return evidence.script === 'latin' && evidence.ratio >= 0.5;
 }
+
+/*
+ * ASKING FOR A DIFFERENT LANGUAGE, WHICH IS NOT THE SAME AS SPEAKING ONE.
+ *
+ * "ინგლისურად მელაპარაკე" is a Georgian sentence. Everything that decides a
+ * turn's language agrees it is Georgian, and every one of them is right: the
+ * script is Georgian, the recogniser was configured for Georgian, and the
+ * words are Georgian words. The visitor is nonetheless asking to stop
+ * speaking Georgian.
+ *
+ * Without this the request was not merely ignored, it was actively undone.
+ * The model would answer in English because it had been asked to, and the
+ * reply-language guard -- which exists so a Georgian session cannot silently
+ * become Korean -- would see English where it expected Georgian, throw the
+ * answer away and retry it with a blunter instruction to use Georgian. The
+ * one thing the visitor explicitly asked for was the one thing the system
+ * was built to prevent.
+ *
+ * So the request is read BEFORE the reply is generated, from the words
+ * themselves. Deterministic and testable: no model call decides this, because
+ * a model call is exactly what cannot be trusted to obey it.
+ */
+
+/** What each language is called, in each language somebody might ask in. */
+const LANGUAGE_REQUEST_TERMS: Record<TalkLanguage, string[]> = {
+  ka: ['ქართულ', 'georgian', 'грузинс', 'gürcüce', 'gurcuce', 'جورجي', 'גאורגי'],
+  en: ['ინგლისურ', 'english', 'английск', 'ingilizce', 'إنجليزي', 'انجليزي', 'אנגלית'],
+  ru: ['რუსულ', 'russian', 'русск', 'rusça', 'rusca', 'روسي', 'רוסית'],
+  tr: ['თურქულ', 'turkish', 'турецк', 'türkçe', 'turkce', 'تركي', 'טורקית'],
+  ar: ['არაბულ', 'arabic', 'арабск', 'arapça', 'arapca', 'عربي', 'ערבית'],
+  he: ['ებრაულ', 'hebrew', 'иврит', 'еврейск', 'ibranice', 'عبري', 'עברית'],
+};
+
+/**
+ * Words that make a mention of a language into a REQUEST to use it.
+ *
+ * "Do you speak English?" and "I read the Russian listing" mention a language
+ * without asking for one, and switching on those would be worse than never
+ * switching at all. Georgian marks the request with the verb rather than a
+ * preposition, and `-ად` is already carried by the term itself, so the
+ * Georgian cues are the speaking verbs.
+ */
+const SWITCH_CUES = [
+  // Georgian: speak to me / let us speak / switch / continue
+  // 'აგრძელ' rather than a whole verb: Georgian conjugates around the root,
+  // so გააგრძელე and გავაგრძელოთ share this and nothing longer.
+  'ლაპარაკ', 'საუბრ', 'ესაუბრ', 'გადავიდეთ', 'აგრძელ', 'მელაპარაკ', 'მიპასუხ', 'მიპასუხე',
+  // English
+  'speak', 'talk', 'switch', 'continue', 'answer', 'reply', 'in ', 'let us', "let's",
+  // Russian
+  'говор', 'перейд', 'продолж', 'ответ', 'давай', 'по-',
+  // Turkish
+  'konuş', 'konus', 'geç', 'gec', 'devam', 'cevap',
+  // Arabic
+  'تكلم', 'تحدث', 'بال', 'أجب', 'واصل',
+  // Hebrew
+  'דבר', 'תדבר', 'תמשיך', 'תענה', 'בוא',
+];
+
+/**
+ * The language the visitor is ASKING to be answered in, or null.
+ *
+ * Null is the overwhelmingly common answer and the safe one: a turn that is
+ * not a language request is left entirely to the ordinary resolver.
+ */
+export function detectLanguageRequest(
+  transcript: string, current?: TalkLanguage | null,
+): TalkLanguage | null {
+  const text = String(transcript ?? '').toLowerCase();
+  if (!text.trim()) return null;
+  // A request is a short instruction. A paragraph that happens to contain the
+  // word "English" is talking about something else.
+  if (text.length > 120) return null;
+  if (!SWITCH_CUES.some((cue) => text.includes(cue))) return null;
+
+  let found: TalkLanguage | null = null;
+  for (const language of TALK_LANGUAGES) {
+    if (!LANGUAGE_REQUEST_TERMS[language].some((term) => text.includes(term))) continue;
+    // Two different languages named in one breath is a comparison, not an
+    // instruction: "is it in English or Russian?" gets no switch.
+    if (found && found !== language) return null;
+    found = language;
+  }
+  // Already speaking it. Not a switch, and acting on it would restart the
+  // recogniser for nothing.
+  if (found && current && found === current) return null;
+  return found;
+}

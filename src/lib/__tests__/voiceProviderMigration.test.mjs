@@ -301,7 +301,21 @@ test('the abuse lexicon is read from the corpus, matched on whole words, and nev
 test('an abusive turn is answered, not scolded', () => {
   const at = TALK.indexOf('async function converse(');
   assert.ok(at > 0, 'converse is gone');
-  const body = TALK.slice(at, at + 4000);
+  /*
+   * The WHOLE function, not a fixed number of characters from its start.
+   *
+   * This read the first 4000 characters, which meant the assertions below
+   * silently depended on where in converse the instruction happened to sit.
+   * Adding the language-switch decision above it moved the abuse instruction
+   * past the window and failed a test about abuse handling, which had not
+   * changed at all. The next declaration is the real end of the function.
+   */
+  const rest = TALK.slice(at + 1);
+  const NEWLINE = String.fromCharCode(10);
+  const end = ['async function ', 'function ', 'const ', 'export ']
+    .map((d) => rest.indexOf(NEWLINE + d)).filter((n) => n > 0)
+    .sort((a, b) => a - b)[0] ?? -1;
+  const body = end === -1 ? rest : rest.slice(0, end);
 
   assert.ok(/They have been abusive/.test(body), 'the instruction is gone');
   assert.ok(/Answer the real question underneath it/.test(body),

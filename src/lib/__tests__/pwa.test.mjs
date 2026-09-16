@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   DISMISS_DAYS, heldInstallPrompt, installedInThisTab, isIOS, isIOSSafari,
-  isStandalone, isIPad, isIOSOtherBrowser,
+  isStandalone, isIPad, isIOSOtherBrowser, awaitInstallPrompt, resetInstallState,
   rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted,
   watchInstall,
 } from '../pwa.ts';
@@ -464,4 +464,45 @@ test('iOS Chrome is iOS, and is not Safari', () => {
   assert.equal(isIOSSafari(criOS), false);
   const safari = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1', maxTouchPoints: 5 };
   assert.equal(isIOSOtherBrowser(safari), false, 'Safari would be denied the instructions it is the only browser able to follow');
+});
+
+/*
+ * ── A REAL PROMPT OUTRANKS EVERYTHING WE REMEMBER ─────────────────────────
+ *
+ * Both of these were live defects, and both produced the same symptom: the
+ * Add to Home Screen instructions appearing on a browser that could have
+ * installed in one tap.
+ */
+
+test('muting quiets the control without disabling the capability', () => {
+  /*
+   * The mode stays `dismissed`, because somebody who asked not to be nagged
+   * should not get the gold button back. What must NOT happen is the quiet
+   * chip then opening Add to Home Screen instructions while the browser is
+   * holding a real prompt -- that lives in InstallApp, and is asserted there.
+   */
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: true, iosSafari: false,
+    installable: true, muted: true,
+  }), 'dismissed', 'a mute must still quiet the control');
+});
+
+test('installed and standalone still outrank a held prompt', () => {
+  /* Capability-first must not offer to install something already installed. */
+  assert.equal(resolveInstallMode({
+    standalone: true, hasNativePrompt: true, iosSafari: false, installable: true, muted: false,
+  }), 'standalone');
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: true, iosSafari: false,
+    installable: true, muted: false, installed: true,
+  }), 'installed');
+});
+
+
+test('the wait gives up rather than spending the gesture', async () => {
+  resetInstallState();
+  const started = Date.now();
+  const got = await awaitInstallPrompt(120);
+  assert.equal(got, null);
+  assert.ok(Date.now() - started < 2000, 'the wait must be bounded well inside transient activation');
 });

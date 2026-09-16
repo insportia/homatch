@@ -547,6 +547,35 @@ export async function synthesizePcm(params: {
 export const CARTESIA_OUTPUT_RATES = [8000, 16000, 22050, 24000, 44100, 48000] as const;
 
 /**
+ * How fast the voice speaks, as the PROVIDER understands it.
+ *
+ * WHY THIS AND NOT playbackRate
+ *
+ * The obvious fix for "the voice sounds slow" is to raise the playback rate
+ * in the browser. That is resampling: it shortens the audio and raises the
+ * pitch with it, which is the chipmunk the whole Cartesia migration was
+ * meant to end. It also fights the player, whose whole job is to convert
+ * 48 kHz PCM at exactly one rate with a carried phase.
+ *
+ * generation_config.speed is a GENERATION control -- sonic produces speech at
+ * the requested pace, at its own pitch -- so the audio arriving here is
+ * already the right speed and every sample downstream is untouched. Cartesia
+ * documents the range as [0.6, 1.5] inclusive; anything outside it is a 400,
+ * so it is clamped here rather than sent and refused mid-conversation.
+ */
+export const CARTESIA_SPEED_RANGE = { min: 0.6, max: 1.5 } as const;
+
+/** A speed the API will accept, or null to let the model use its default. */
+export function clampCartesiaSpeed(speed: number | null | undefined): number | null {
+  if (speed === null || speed === undefined) return null;
+  const n = Number(speed);
+  if (!Number.isFinite(n)) return null;
+  // 1.0 is the default, and sending it is the same as not sending it.
+  if (n === 1) return null;
+  return Math.min(CARTESIA_SPEED_RANGE.max, Math.max(CARTESIA_SPEED_RANGE.min, n));
+}
+
+/**
  * The nearest rate Cartesia will actually produce.
  *
  * Nearest rather than "must match": AudioContext on some Android devices
@@ -604,6 +633,8 @@ export async function streamCartesiaPcm(
     language: string;
     text: string;
     sampleRate?: number;
+    /** Provider-native pacing. See CARTESIA_SPEED_RANGE. */
+    speed?: number | null;
     timeoutMs?: number;
     signal?: AbortSignal;
   },
@@ -618,6 +649,7 @@ export async function streamCartesiaPcm(
   }
 
   const sampleRate = nearestCartesiaRate(params.sampleRate ?? PCM_SAMPLE_RATE);
+  const speed = clampCartesiaSpeed(params.speed);
   let last: ProviderResult<never>['error'] | undefined;
 
   for (const model of TTS_MODELS) {
@@ -642,6 +674,9 @@ export async function streamCartesiaPcm(
           voice: { mode: 'id', id: params.voiceId },
           language: String(params.language ?? 'en').toLowerCase().slice(0, 2),
           output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: sampleRate },
+          // Omitted entirely at the default, so an unset speed is the model's
+          // own pacing rather than us asserting 1.0 at it.
+          ...(speed === null ? {} : { generation_config: { speed } }),
         }),
         signal: controller.signal,
       });

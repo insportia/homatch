@@ -36,6 +36,31 @@ const CLOSE_GRACE_MS = 5000;
 /** What the worker's recogniser is configured for. */
 export const GOOGLE_SAMPLE_RATE = 16_000;
 
+/**
+ * How often a gated stream reminds Google it is still there.
+ *
+ * MEASURED, not guessed. While the assistant speaks the microphone is gated
+ * and this used to send NOTHING AT ALL for the whole reply. Google ends a
+ * stream that goes quiet:
+ *
+ *   code 10, "Stream timed out after receiving no more client requests."
+ *
+ * which this worker classifies as non-retryable, so the socket closed 1011
+ * and the conversation stopped being able to hear. A ten-second answer was
+ * enough. That is the real reason a Georgian acknowledgement after a longer
+ * reply went nowhere: not the recogniser, which transcribes `კი` correctly
+ * every time, but a recognition stream that was no longer alive to hear it.
+ *
+ * Three seconds is comfortably inside the provider's tolerance, and a tenth
+ * of a second of audio every three seconds is roughly three per cent of what
+ * streaming continuously would cost -- and it is billed silence either way,
+ * so the frame is kept as short as it can be rather than filling the gap.
+ */
+const GATED_KEEPALIVE_MS = 3000;
+
+/** A tenth of a second: long enough to be a request, short enough to be free. */
+const KEEPALIVE_SECONDS = 0.1;
+
 export class GoogleTranscriber implements LiveSocket {
   private socket: WebSocket | null = null;
   private closed = false;
@@ -46,6 +71,17 @@ export class GoogleTranscriber implements LiveSocket {
   private gated = false;
   private framesSent = 0;
   private bytesSent = 0;
+  /** Keeps the stream alive while the microphone is gated. */
+  private keepalive: number | null = null;
+  /**
+   * True from asking for the final until the socket answers or gives up.
+   *
+   * The socket is deliberately still open and still listened to: the whole
+   * point of asking is the sentence that comes back afterwards.
+   */
+  private finalizing = false;
+  /** Silence frames sent purely to stop the stream timing out. */
+  private keepalives = 0;
 
   constructor(private readonly grant: LiveGrant, private readonly cb: LiveCallbacks) {}
 
@@ -76,6 +112,31 @@ export class GoogleTranscriber implements LiveSocket {
      * candidate, which is what keeps a settled conversation from being
      * re-decided on every pause.
      */
+    /*
+     * IDENTIFY THE LANGUAGE, WHILE THERE IS STILL ONE TO IDENTIFY.
+     *
+     * Chirp 3 takes one language or `auto`. One language is far more accurate
+     * and is what a settled conversation uses; `auto` is the only way to
+     * answer "what is this person speaking", which is the question somebody
+     * poses by simply starting to talk on a page whose locale says nothing
+     * about them.
+     *
+     * MEASURED, all six languages, short opener and full sentence:
+     *
+     *   en ru tr ar   correct on both, every time
+     *   ka            correct on a sentence; a bare "გამარჯობა" comes back
+     *                 as Javanese, transcribed "gamarjoba" in Latin
+     *   he            correct on a sentence (as `iw`, the legacy code this
+     *                 product already aliases); a bare "שלום" comes back as
+     *                 hi-Latn, "Shalom"
+     *
+     * So it is used to ESTABLISH the language and then dropped. An
+     * unsupported label like jv or hi-Latn resolves to nothing and the
+     * session keeps what it had, which is why a short Georgian greeting
+     * degrades to one imperfect transcript rather than a Javanese session.
+     */
+    if (this.grant.detect) query.set('detect', '1');
+
     const candidates = (this.grant.languages ?? [])
       .map((code) => TAGS[String(code).toLowerCase().split('-')[0]] ?? null)
       .filter((tag): tag is string => Boolean(tag));
@@ -110,9 +171,14 @@ export class GoogleTranscriber implements LiveSocket {
       // A socket that dies mid-conversation must be reported, not ignored:
       // the failure this product has already paid for is a transport that
       // stopped while the panel went on saying "Listening".
+      //
+      // Unless we ended the turn ourselves. The worker closes the socket once
+      // it has handed back the sentence we asked for, so after finalize() a
+      // close is the expected end of this stream and not a fault: reporting
+      // it would drop the session to the batch path on every single turn.
       const wasReady = this.ready;
       this.ready = false;
-      if (!this.closed && wasReady) this.cb.onUnavailable('SOCKET_CLOSED');
+      if (!this.closed && !this.finalizing && wasReady) this.cb.onUnavailable('SOCKET_CLOSED');
     };
 
     const opened = await new Promise<boolean>((resolve) => {
@@ -130,11 +196,40 @@ export class GoogleTranscriber implements LiveSocket {
     return true;
   }
 
-  /** Drop frames without closing: the assistant is speaking. */
+  /**
+   * Drop frames without closing: the assistant is speaking.
+   *
+   * The visitor's audio still does not go anywhere -- that is the echo
+   * protection and it is unchanged. What changes is that the STREAM is kept
+   * alive with silence rather than left to time out. Silence is not "sending
+   * noise to the recogniser": there is nothing in it to transcribe, and it
+   * produces no interim, no final and no turn. It exists so that the socket
+   * is still open when the visitor speaks again.
+   */
   setGated(gated: boolean): void {
     if (gated === this.gated) return;
     this.gated = gated;
     if (!gated) this.speaking = false;
+    if (gated) this.startKeepalive();
+    else this.stopKeepalive();
+  }
+
+  private startKeepalive(): void {
+    this.stopKeepalive();
+    const samples = Math.round(GOOGLE_SAMPLE_RATE * KEEPALIVE_SECONDS);
+    this.keepalive = window.setInterval(() => {
+      // isReady, not this.gated: if the socket died anyway there is nothing
+      // to keep alive and the close handler has already reported it.
+      if (!this.isReady) { this.stopKeepalive(); return; }
+      try {
+        this.socket!.send(new Uint8Array(samples * 2));
+        this.keepalives += 1;
+      } catch { /* the close handler reports it */ }
+    }, GATED_KEEPALIVE_MS);
+  }
+
+  private stopKeepalive(): void {
+    if (this.keepalive !== null) { window.clearInterval(this.keepalive); this.keepalive = null; }
   }
 
   /**
@@ -145,6 +240,8 @@ export class GoogleTranscriber implements LiveSocket {
    * third more bytes to every frame of a live conversation for nothing.
    */
   append(pcm: Int16Array): void {
+    // Audio after the turn was ended belongs to the NEXT stream, not this one.
+    if (this.finalizing) return;
     if (!this.isReady || this.gated || !pcm.length) return;
     this.framesSent += 1;
     this.bytesSent += pcm.byteLength;
@@ -165,9 +262,40 @@ export class GoogleTranscriber implements LiveSocket {
     } catch { /* the close handler reports it */ }
   }
 
+  /**
+   * END THIS TURN NOW, AND KEEP LISTENING FOR THE SENTENCE.
+   *
+   * Chirp 3's endpointer is the slowest thing in the conversation: measured
+   * on this deployment a final lands 1.6-2.8 seconds after somebody stops,
+   * and a short "კი." never arrives at all. The documented lever for that,
+   * voice_activity_timeout, was deployed and measured to do nothing.
+   *
+   * What does work is the half-close. Google flushes the final as soon as the
+   * audio side ends, and the worker's own self-test measures that at a steady
+   * ~310ms -- including for the utterances the endpointer never ends. So the
+   * turn boundary becomes a decision this session makes, from its own voice
+   * activity, rather than a wait for a provider that may never finish.
+   *
+   * This is NOT close(): the socket stays open and its handlers stay attached
+   * precisely so the final can arrive. The worker closes it once it has the
+   * sentence, and the session opens a fresh one for the next turn.
+   */
+  finalize(): boolean {
+    if (this.finalizing || this.closed || !this.isReady) return false;
+    this.finalizing = true;
+    // Nothing more to keep alive: we have just asked it to stop.
+    this.stopKeepalive();
+    try { this.socket!.send(JSON.stringify({ type: 'close' })); } catch { return false; }
+    return true;
+  }
+
+  /** True once the final for this turn has been asked for. */
+  get isFinalizing(): boolean { return this.finalizing; }
+
   close(): void {
     this.closed = true;
     this.ready = false;
+    this.stopKeepalive();
 
     /*
      * SAY SO, THEN GIVE THE LAST SENTENCE A MOMENT TO COME BACK.

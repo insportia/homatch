@@ -372,21 +372,36 @@ export function InstallApp({
    * explains nothing is the same dead end in a different colour.
    */
   const installed = state === 'installed';
+  const declined = state === 'unavailable';
+  /*
+   * THE WORD HAS TO MATCH THE STATE BEFORE THE PRESS, NOT AFTER IT.
+   *
+   * A browser that has decided not to offer still gets a pressable control
+   * that explains itself -- but it must not be labelled "Install App" while
+   * it does. That is the same promise-with-nothing-behind-it that started
+   * this, one step quieter: the press would be answered, and answered with a
+   * refusal the word had not prepared anyone for.
+   */
   const label = installed ? t('pwa_installed')
-    : readyToPrompt ? t('pwa_ready_install')
-      : t('pwa_install');
+    : declined ? t('pwa_unavailable')
+      : readyToPrompt ? t('pwa_ready_install')
+        : t('pwa_install');
 
   return (
     <>
       <button
         type="button"
         onClick={() => { void onClick(); }}
-        aria-label={installed ? t('pwa_installed_body') : t('pwa_install_aria')}
+        aria-label={installed ? t('pwa_installed_body')
+          : declined ? t('pwa_unavailable_body')
+            : t('pwa_install_aria')}
         className={`${base} ${loud ? `${loudShape} ${skin}` : `${shape} ${quiet}`} ${className}`}
       >
         {installed
           ? <Check className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />
-          : <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />}
+          : declined
+            ? <Info className="h-4 w-4 shrink-0 opacity-70" strokeWidth={2.25} aria-hidden="true" />
+            : <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />}
         {!compact && <span className="min-w-0 truncate">{label}</span>}
       </button>
       {panel}

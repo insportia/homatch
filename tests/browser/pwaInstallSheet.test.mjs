@@ -997,6 +997,15 @@ test('a browser that never answers does not leave the control preparing for ever
   if (again.steps.length !== 0) {
     failures.push('a Chromium browser that declined was shown Add to Home Screen steps');
   }
+  /* And it must say so BEFORE the press. A control still reading "Install
+     App" on a browser that has declined is a promise with nothing behind it
+     -- quieter than the original bug, and the same kind of untrue. */
+  if (/^install app$/i.test((again.finalLabel ?? '').trim())) {
+    failures.push(`the declined control still offers to install ("${again.finalLabel}")`);
+  }
+  if (!/not offered|unavailable/i.test(again.finalLabel ?? '')) {
+    failures.push(`the declined control does not say what happened ("${again.finalLabel}")`);
+  }
 
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
 });

@@ -325,15 +325,30 @@ test('each platform takes the shortest path it actually permits', opts, async (t
   const failures = [];
 
   /** Open the page as a given platform, click the install control, report. */
-  async function run({ name, ua, standalone, fireBip }) {
+  async function run({ name, ua, standalone, fireBip, lateBip, muted }) {
     const ctx = await browser.newContext({
       viewport: { width: 390, height: 844 },
       userAgent: ua, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
     });
-    await ctx.addInitScript(([isStandalone, wantBip]) => {
+    await ctx.addInitScript(([isStandalone, wantBip, lateMs, wantMuted]) => {
       window.localStorage.setItem('homatch_lang', 'en');
-      window.localStorage.removeItem('homatch_pwa_dismissed_at');
+      if (wantMuted) {
+        // What rememberMuted() writes: a recent timestamp.
+        window.localStorage.setItem('homatch_pwa_dismissed_at', String(Date.now()));
+      } else {
+        window.localStorage.removeItem('homatch_pwa_dismissed_at');
+      }
       window.__promptCalls = 0;
+      if (lateMs) {
+        /* Dispatched AFTER the click, which is the ordering the fix exists
+           for. The click handler must wait rather than conclude. */
+        window.__fireLate = () => {
+          const e = new Event('beforeinstallprompt');
+          e.prompt = () => { window.__promptCalls += 1; return Promise.resolve(); };
+          e.userChoice = Promise.resolve({ outcome: 'accepted', platform: 'web' });
+          window.dispatchEvent(e);
+        };
+      }
       if (isStandalone) {
         // What isStandalone() reads on iOS, and on Chromium.
         Object.defineProperty(window.navigator, 'standalone', { value: true, configurable: true });
@@ -354,7 +369,7 @@ test('each platform takes the shortest path it actually permits', opts, async (t
           window.dispatchEvent(e);
         });
       }
-    }, [Boolean(standalone), Boolean(fireBip)]);
+    }, [Boolean(standalone), Boolean(fireBip), lateBip ?? 0, Boolean(muted)]);
 
     const page = await ctx.newPage();
     await page.route('**', async (r) => {
@@ -374,7 +389,11 @@ test('each platform takes the shortest path it actually permits', opts, async (t
       target.click();
       return true;
     });
-    await page.waitForTimeout(600);
+    if (lateBip) {
+      await page.waitForTimeout(lateBip);
+      await page.evaluate(() => window.__fireLate?.());
+    }
+    await page.waitForTimeout(900);
 
     const out = await page.evaluate(() => ({
       dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
@@ -416,6 +435,40 @@ test('each platform takes the shortest path it actually permits', opts, async (t
   // 4. Installed: nothing to offer, and nothing that opens.
   const installed = await run({ name: 'standalone', ua: IOS_SAFARI_UA, standalone: true });
   if (installed.dialog) failures.push('standalone: an install modal opened inside the installed app');
+
+  /*
+   * 5. THE FOUR-SECOND WINDOW.
+   *
+   * Measured against the deployed site in a real Chrome: beforeinstallprompt
+   * arrives about four seconds after load. A press before then used to open
+   * Add to Home Screen instructions on a browser that was about to offer a
+   * one-tap install. Here the click happens FIRST and the event arrives
+   * afterwards, which is the order that was broken.
+   */
+  const rescued = await run({ name: 'late-event', ua: chromiumUA, lateBip: 250 });
+  if (!rescued.clicked) failures.push('late-event: no install control was rendered');
+  else {
+    if (rescued.promptCalls !== 1) {
+      failures.push(`late-event: a prompt arriving after the click was ignored (prompt called ${rescued.promptCalls} times)`);
+    }
+    if (rescued.dialog) failures.push('late-event: instructions opened instead of waiting for the prompt that was coming');
+  }
+
+  /*
+   * 6. MUTED, ON A BROWSER THAT IS OFFERING.
+   *
+   * "Not now" means stop nagging, not disable the capability. The control is
+   * a quiet chip, and pressing it must still spend the real prompt rather
+   * than explain a browser menu.
+   */
+  const muted = await run({ name: 'muted', ua: chromiumUA, fireBip: true, muted: true });
+  if (!muted.clicked) failures.push('muted: the control vanished entirely');
+  else {
+    if (muted.promptCalls !== 1) {
+      failures.push(`muted: a held prompt was not used (prompt called ${muted.promptCalls} times)`);
+    }
+    if (muted.dialog) failures.push('muted: instructions opened while a real prompt was held');
+  }
 
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
 });

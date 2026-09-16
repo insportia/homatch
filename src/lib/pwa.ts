@@ -186,6 +186,16 @@ export function resolveInstallMode(opts: {
      stays, in its quiet state. "Not now" on a browser that could never have
      installed it resolves to `unsupported` below, because there is nothing
      to come back to. */
+  /*
+   * Muting decides how the control LOOKS, not what it can do.
+   *
+   * This test stays above the native one on purpose: somebody who asked
+   * not to be nagged gets the quiet chip rather than the gold button. What
+   * changed is what that chip DOES when pressed -- see InstallApp, which
+   * spends a held prompt rather than opening instructions. Returning
+   * 'native' here instead would have made the loud button reappear, which
+   * is the nagging the mute was asking us to stop.
+   */
   if (opts.muted) return opts.installable || opts.iosSafari ? 'dismissed' : 'unsupported';
   if (opts.hasNativePrompt) return 'native';
   if (opts.iosSafari) return 'ios-manual';
@@ -306,4 +316,45 @@ export function resetInstallState(): void {
   heldPrompt = null;
   installedHere = false;
   announce();
+}
+
+/**
+ * Wait, briefly, for a prompt the browser has not delivered yet.
+ *
+ * WHY THIS EXISTS
+ *
+ * Measured against the deployed site in a real Chrome: `beforeinstallprompt`
+ * arrives about FOUR SECONDS after load, once the manifest is parsed and the
+ * service worker is in control. Anyone who presses Install before then was
+ * being handed Add to Home Screen instructions by a browser that was, a
+ * moment later, going to offer a one-tap install.
+ *
+ * A control that is wrong for the first four seconds of every visit is wrong
+ * at exactly the moment people use it, because pressing it is often the first
+ * thing they do.
+ *
+ * WHY THE WINDOW IS SHORT
+ *
+ * `prompt()` requires user activation, and Chromium's transient activation
+ * lasts five seconds. Waiting longer than that would spend the gesture and
+ * the call would be rejected -- so this waits well inside it and gives up in
+ * time to fall back to something that still works.
+ */
+export function awaitInstallPrompt(timeoutMs = 2500): Promise<BeforeInstallPromptEvent | null> {
+  if (heldPrompt) return Promise.resolve(heldPrompt);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (value: BeforeInstallPromptEvent | null) => {
+      if (done) return;
+      done = true;
+      watchers.delete(check);
+      clearTimeout(timer);
+      resolve(value);
+    };
+    function check(): void {
+      if (heldPrompt) finish(heldPrompt);
+    }
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    watchers.add(check);
+  });
 }

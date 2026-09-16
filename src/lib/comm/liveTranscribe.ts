@@ -85,6 +85,16 @@ export interface LiveSocket {
   open(timeoutMs?: number): Promise<boolean>;
   setGated(gated: boolean): void;
   append(pcm: Int16Array): void;
+  /**
+   * End the current turn and ask for its final, without closing the socket.
+   *
+   * Optional because only the Google path has a half-close to offer; a
+   * transcriber that endpoints for itself simply does not implement it and
+   * the session falls back to waiting, exactly as it always did. Returns
+   * whether the request actually went out.
+   */
+  finalize?(): boolean;
+  readonly isFinalizing?: boolean;
   close(): void;
 }
 

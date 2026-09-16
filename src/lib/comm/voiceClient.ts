@@ -209,6 +209,10 @@ export interface VoiceDiagnostics {
   languageSwitches: number;
   /** The language the recogniser was last reopened for, if ever. */
   lastRelisten: string | null;
+  /** Turns this session ended itself rather than waiting for the endpointer. */
+  turnsEndedLocally: number;
+  lastEndTurnSilenceMs: number | null;
+  lastEndTurnSpeechMs: number | null;
   lastSttMs: number | null;
   lastSttChars: number | null;
   lastSttLanguage: string | null;
@@ -409,6 +413,31 @@ const MIN_SPEECH_MS = 320;
  */
 const MIN_VOICED_MS = 260;
 
+/*
+ * WHEN TO DECIDE A LIVE TURN IS OVER, RATHER THAN WAIT TO BE TOLD.
+ *
+ * Chirp 3's endpointer measures 1.6-2.8 seconds after somebody stops talking,
+ * and a short "კი." never endpoints at all. Half-closing the stream flushes
+ * the final in about 310ms instead, so the wait becomes a decision this
+ * session makes from its own voice activity.
+ *
+ * The window is ADAPTIVE because one number cannot serve both cases. A person
+ * answering "კი" has finished the moment the word ends; a person composing
+ * "ვაკეში მინდა ბინა... ორ ოთახიანი" pauses mid-thought, and cutting them
+ * there turns one sentence into two turns and two wrong answers. So a short
+ * utterance is committed briskly, and a longer one is given the benefit of
+ * the doubt.
+ *
+ * Nothing here is allowed to fire before there has been real speech, which is
+ * what stops a room's background noise from committing empty turns.
+ */
+const END_TURN_SHORT_MS = 520;
+const END_TURN_LONG_MS = 900;
+/** Speech shorter than this is not an utterance, it is a noise. */
+const END_TURN_MIN_SPEECH_MS = 240;
+/** Above this much speech, treat it as a composed sentence and be patient. */
+const END_TURN_LONG_SPEECH_MS = 1600;
+
 /** A single utterance ceiling, so one long monologue cannot grow unbounded. */
 const MAX_UTTERANCE_MS = 30_000;
 
@@ -463,6 +492,10 @@ export class VoiceSession {
   private pendingFinal: { text: string; detected: string | null } | null = null;
   /** A language the recogniser must be reopened for, once the floor is free. */
   private relistenLanguage: TalkLanguage | null = null;
+  /** Voiced milliseconds in the utterance currently being spoken to the socket. */
+  private liveSpeechMs = 0;
+  /** True once this turn has been ended deliberately; reset on a new socket. */
+  private liveEnded = false;
   /** True while an utterance is being transcribed. */
   private transcribing = false;
   /** Sent to the server so each reply is in context. */
@@ -527,6 +560,8 @@ export class VoiceSession {
     utterances: 0, lastUtteranceMs: null as number | null,
     lastUtteranceBytes: null as number | null,
     sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, lastRelisten: null as string | null,
+    turnsEndedLocally: 0,
+    lastEndTurnSilenceMs: null as number | null, lastEndTurnSpeechMs: null as number | null,
     lastSttMs: null as number | null, lastSttChars: null as number | null,
     lastSttLanguage: null as string | null, lastTranscript: null as string | null,
     turnsSent: 0, lastTurnMs: null as number | null,
@@ -700,6 +735,9 @@ export class VoiceSession {
       finalsDeferred: this.diag.finalsDeferred ?? 0,
       languageSwitches: this.diag.languageSwitches ?? 0,
       lastRelisten: this.diag.lastRelisten ?? null,
+      turnsEndedLocally: this.diag.turnsEndedLocally ?? 0,
+      lastEndTurnSilenceMs: this.diag.lastEndTurnSilenceMs ?? null,
+      lastEndTurnSpeechMs: this.diag.lastEndTurnSpeechMs ?? null,
       lastSttMs: this.diag.lastSttMs,
       lastSttChars: this.diag.lastSttChars,
       lastSttLanguage: this.diag.lastSttLanguage,
@@ -916,6 +954,8 @@ export class VoiceSession {
         this.diag.bytesSent += live.length * 2;
         this.live.append(floatToPcm16(live));
       }
+      if (level >= SPEECH_RMS) this.liveSpeechMs += blockMs;
+      this.maybeEndLiveTurn();
       return;
     }
 
@@ -966,6 +1006,70 @@ export class VoiceSession {
     }
   }
 
+
+  /**
+   * Has this person finished talking, and should the sentence be asked for?
+   *
+   * Every condition here is a way of being WRONG about that, and each one has
+   * a cost: ending a turn nobody started sends an empty utterance; ending one
+   * mid-sentence answers half a question; ending one while the assistant is
+   * speaking transcribes the assistant. So the checks are all refusals, and
+   * the decision is only taken when none of them applies.
+   */
+  private maybeEndLiveTurn(): void {
+    const live = this.live;
+    if (!live?.finalize || this.liveEnded || live.isFinalizing) return;
+    // Not while the assistant holds the floor, and not while a turn it has
+    // already been given is still being answered.
+    if (this.micGated || this.muted || this.turnInFlight || this.closed) return;
+    // Nothing was said. Background noise is not a turn.
+    if (this.liveSpeechMs < END_TURN_MIN_SPEECH_MS) return;
+
+    const silenceMs = this.lastVoiceAt ? Date.now() - this.lastVoiceAt : 0;
+    /*
+     * A composed sentence gets the longer window, a one-word answer the
+     * shorter one. The measurement that matters is how much VOICE there has
+     * been, not how long the microphone has been open: a long pause before
+     * "კი" is still a one-word answer.
+     */
+    const window = this.liveSpeechMs >= END_TURN_LONG_SPEECH_MS
+      ? END_TURN_LONG_MS
+      : END_TURN_SHORT_MS;
+    if (silenceMs < window) return;
+
+    this.liveEnded = true;
+    this.marks.speechEndedAtMs = Date.now() - silenceMs;
+    this.marks.endpointConfirmedAtMs = Date.now();
+    this.diag.turnsEndedLocally = (this.diag.turnsEndedLocally ?? 0) + 1;
+    this.diag.lastEndTurnSilenceMs = silenceMs;
+    this.diag.lastEndTurnSpeechMs = Math.round(this.liveSpeechMs);
+    if (!live.finalize()) {
+      // The socket would not take it; leave the provider's endpointer to it
+      // rather than stranding the turn.
+      this.liveEnded = false;
+      return;
+    }
+    if (this.state === 'LISTENING') this.setState('UNDERSTANDING');
+  }
+
+  /**
+   * Replace the recogniser socket with a fresh one.
+   *
+   * Asking for a final ENDS that stream -- the worker closes it once Google
+   * has flushed the sentence -- so every deliberate turn boundary costs one
+   * socket. Opened while the assistant is still being written and spoken, so
+   * the grant round trip happens in time nobody is waiting through.
+   */
+  private async rotateLive(): Promise<void> {
+    if (this.closed) return;
+    const old = this.live;
+    this.live = null;
+    this.liveResampler = null;
+    this.liveSpeechMs = 0;
+    this.liveEnded = false;
+    try { old?.close(); } catch { /* already gone */ }
+    await this.openLiveTranscription();
+  }
 
   /**
    * Try the live socket. Fall back silently if it will not hold.
@@ -1084,6 +1188,16 @@ export class VoiceSession {
     const said = text.trim();
     const id = this.livePartialId ?? `u${++this.utteranceSeq}`;
     this.livePartialId = null;
+
+    /*
+     * A turn we ended ourselves has spent its socket: the worker closes the
+     * stream once Google has flushed the sentence. Replace it NOW rather than
+     * when the floor comes back, so the grant round trip overlaps the reply
+     * being written and spoken instead of the silence before the next one.
+     */
+    if (this.live?.isFinalizing) void this.rotateLive();
+    this.liveSpeechMs = 0;
+    this.liveEnded = false;
 
     if (!said) { this.resumeListening(); return; }
 
@@ -1771,10 +1885,7 @@ export class VoiceSession {
     const target = this.relistenLanguage;
     this.relistenLanguage = null;
     if (!target || this.closed || !this.live) return;
-    try { this.live.close(); } catch { /* already gone */ }
-    this.live = null;
-    this.liveResampler = null;
-    await this.openLiveTranscription();
+    await this.rotateLive();
     this.diag.lastRelisten = target;
   }
 

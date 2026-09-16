@@ -501,8 +501,12 @@ test('automatic detection is what the recogniser is configured with', () => {
   const worker = read('official-worker/src/speech/GoogleSpeechStream.ts')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
-  assert.ok(/multiLanguageEnabled\(\) \? \['auto'\]/.test(worker),
+  // Either trigger -- a socket that asked to identify the language, or the
+  // global operator switch -- must resolve to `auto` and never to a list.
+  assert.ok(/\?\s*\['auto'\]\s*:\s*\[cfg\.languageCode\]/.test(worker),
     'multilingual recognition must use auto, which is the mode chirp_3 accepts');
+  assert.ok(/multiLanguageEnabled\(\)/.test(worker), 'the global switch must still be honoured');
+  assert.ok(/cfg\.detect/.test(worker), 'and a single socket must be able to ask');
   assert.ok(!/languageCodes: cfg\.languageCodes(?!\?)/.test(worker),
     'an explicit language list must never be sent as the recogniser config');
 });

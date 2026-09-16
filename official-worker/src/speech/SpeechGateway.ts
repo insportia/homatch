@@ -151,7 +151,8 @@ export function attachSpeechGateway(server: Server, opts: { token: string }): {
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      serve(ws, cfg, grant, url.searchParams.get('language'), url.searchParams.get('languages'));
+      serve(ws, cfg, grant, url.searchParams.get('language'), url.searchParams.get('languages'),
+        url.searchParams.get('detect') === '1');
     });
   });
 
@@ -165,6 +166,20 @@ function serve(
   languageOverride: string | null,
   /** Every language the caller expects, comma-separated, or null for the default set. */
   languagesOverride: string | null,
+  /**
+   * Let the recogniser decide the language for itself, for THIS socket only.
+   *
+   * Chirp 3 takes exactly one language code or the single code `auto`, and
+   * nothing in between -- an explicit list is INVALID_ARGUMENT. `auto` was
+   * measured to damage short Georgian badly enough to be switched off
+   * globally, so it is not a mode this service runs in.
+   *
+   * It is still the only way to answer "what language is this person
+   * speaking", which is the question a visitor who simply starts talking
+   * poses. Per-socket and opt-in, so that question can be asked on a stream
+   * that expects it without changing what every other stream does.
+   */
+  detect: boolean,
 ): void {
   const send: Send = (payload) => {
     if (ws.readyState !== ws.OPEN) return;
@@ -211,7 +226,8 @@ function serve(
   const started = Date.now();
   let ended = false;
 
-  const stream = new GoogleSpeechStream({ ...cfg, languageCode: language, languageCodes: languages }, {
+  const stream = new GoogleSpeechStream(
+    { ...cfg, languageCode: language, languageCodes: detect ? ['auto'] : languages, detect }, {
     onInterim: (text, heard) => send({ type: 'interim', text, language: heard ?? language }),
     onFinal: (text, confidence, heard) => {
       // The language the PROVIDER decided it heard, not the one we guessed.

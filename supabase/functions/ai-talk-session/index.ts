@@ -1683,11 +1683,22 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         for await (const event of streamLlm({
           system: publicDemoInstructions(replyLanguage),
           user,
-          maxTokens: 120,
-          // Two spoken sentences is about 60 tokens; the rest is headroom for
-          // reasoning. A model left with room for 1,200 writes 1,200, and the
-          // visitor waits through every one of them being spoken aloud.
-          maxOutputTokens: 340,
+          /*
+           * Enough for the answer the prompt now asks for.
+           *
+           * This was 120 visible tokens, which is about two spoken sentences,
+           * and it was correct while the instructions demanded exactly two.
+           * They no longer do -- a real question is supposed to get a real
+           * answer -- so the budget and the instruction had come apart, and
+           * the way that shows up is a model stopped in the middle of its
+           * fourth sentence with the voice already speaking the third.
+           *
+           * Still bounded, and deliberately not generous: a model left with
+           * room for 1,200 tokens writes 1,200, and the visitor waits through
+           * every one of them being spoken aloud.
+           */
+          maxTokens: 220,
+          maxOutputTokens: 460,
           // Two sentences about a flat is not a reasoning problem, and the
           // thinking was the largest and least predictable part of the wait.
           reasoningEffort: 'minimal',
@@ -1799,7 +1810,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             system: publicDemoInstructions(replyLanguage),
             user: `${user}\n\nYour previous answer was in the wrong language. `
               + `Answer ONLY in ${LANGUAGE_NAMES[replyLanguage]}. Nothing else.`,
-            maxTokens: 120, maxOutputTokens: 340,
+            maxTokens: 220, maxOutputTokens: 460,
             reasoningEffort: 'minimal', timeoutMs: 15_000,
           })) {
             if (event.type === 'error') break;

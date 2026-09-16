@@ -114,6 +114,8 @@ export interface SpeechConfig {
    * transcript. The visitor never picks a language.
    */
   languageCodes: string[];
+  /** Ask the recogniser to identify the language, for this stream only. */
+  detect?: boolean;
   model: string;
   sampleRate: number;
 }
@@ -568,7 +570,9 @@ export class GoogleSpeechStream {
            * it is simply not what the recogniser is configured with.
            * /health/speech-languages re-runs the measurement above.
            */
-          languageCodes: multiLanguageEnabled() ? ['auto'] : [cfg.languageCode],
+          // `auto` when this socket asked to identify the language, when an
+          // operator has turned detection on globally, or one language.
+          languageCodes: (cfg.detect || multiLanguageEnabled()) ? ['auto'] : [cfg.languageCode],
           model: cfg.model,
           features: {
             enableAutomaticPunctuation: true,

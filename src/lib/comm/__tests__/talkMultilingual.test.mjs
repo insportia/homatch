@@ -20,6 +20,19 @@ const client = readFileSync('src/lib/comm/voiceClient.ts', 'utf8');
 const worker = readFileSync('official-worker/src/speech/GoogleSpeechStream.ts', 'utf8');
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
+/** One method's body, so an assertion cannot drift onto a neighbour. */
+const body = (src, name) => {
+  const at = src.indexOf(name);
+  if (at < 0) throw new Error(`${name} is missing`);
+  const open = src.indexOf('{', at);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) return strip(src.slice(open, i + 1));
+  }
+  throw new Error(`${name} never closes`);
+};
+
 // ── LANGUAGE_SWITCHING ────────────────────────────────────────────────────
 
 test('a request to switch is read in whatever language it is asked in', () => {
@@ -96,9 +109,16 @@ test('the browser adopts the server language and reopens the recogniser', () => 
   const c = strip(client);
   assert.ok(/adoptLanguage\(event\.language\)/.test(c), 'the reply carries the decision');
   assert.ok(/private async relisten\(\)/.test(c), 'the socket must be replaced');
-  // The recogniser's language is fixed when its socket is granted, so
-  // adopting the label without reopening would be half a switch.
-  assert.ok(/this\.live\.close\(\)/.test(c) && /openLiveTranscription\(\)/.test(c));
+  /*
+   * The recogniser's language is fixed when its socket is granted, so
+   * adopting the label without reopening would be half a switch. The
+   * replacement is now one shared path -- rotateLive -- because a deliberate
+   * turn boundary spends a socket for exactly the same reason a language
+   * switch does, and two copies of "close it and open another" is how one of
+   * them gets a fix the other does not.
+   */
+  assert.ok(/await this\.rotateLive\(\)/.test(c), 'relisten must rotate the socket');
+  assert.ok(/openLiveTranscription\(\)/.test(body(client, 'private async rotateLive()')));
   // Not mid-reply: that would tear down the socket while it is still needed.
   const resume = c.slice(c.indexOf('private resumeListening'));
   assert.ok(/relistenLanguage/.test(resume.slice(0, 400)), 'reopened when the floor is free');

@@ -73,6 +73,13 @@ export class GoogleTranscriber implements LiveSocket {
   private bytesSent = 0;
   /** Keeps the stream alive while the microphone is gated. */
   private keepalive: number | null = null;
+  /**
+   * True from asking for the final until the socket answers or gives up.
+   *
+   * The socket is deliberately still open and still listened to: the whole
+   * point of asking is the sentence that comes back afterwards.
+   */
+  private finalizing = false;
   /** Silence frames sent purely to stop the stream timing out. */
   private keepalives = 0;
 
@@ -139,9 +146,14 @@ export class GoogleTranscriber implements LiveSocket {
       // A socket that dies mid-conversation must be reported, not ignored:
       // the failure this product has already paid for is a transport that
       // stopped while the panel went on saying "Listening".
+      //
+      // Unless we ended the turn ourselves. The worker closes the socket once
+      // it has handed back the sentence we asked for, so after finalize() a
+      // close is the expected end of this stream and not a fault: reporting
+      // it would drop the session to the batch path on every single turn.
       const wasReady = this.ready;
       this.ready = false;
-      if (!this.closed && wasReady) this.cb.onUnavailable('SOCKET_CLOSED');
+      if (!this.closed && !this.finalizing && wasReady) this.cb.onUnavailable('SOCKET_CLOSED');
     };
 
     const opened = await new Promise<boolean>((resolve) => {
@@ -203,6 +215,8 @@ export class GoogleTranscriber implements LiveSocket {
    * third more bytes to every frame of a live conversation for nothing.
    */
   append(pcm: Int16Array): void {
+    // Audio after the turn was ended belongs to the NEXT stream, not this one.
+    if (this.finalizing) return;
     if (!this.isReady || this.gated || !pcm.length) return;
     this.framesSent += 1;
     this.bytesSent += pcm.byteLength;
@@ -222,6 +236,36 @@ export class GoogleTranscriber implements LiveSocket {
       this.socket!.send(bytes);
     } catch { /* the close handler reports it */ }
   }
+
+  /**
+   * END THIS TURN NOW, AND KEEP LISTENING FOR THE SENTENCE.
+   *
+   * Chirp 3's endpointer is the slowest thing in the conversation: measured
+   * on this deployment a final lands 1.6-2.8 seconds after somebody stops,
+   * and a short "კი." never arrives at all. The documented lever for that,
+   * voice_activity_timeout, was deployed and measured to do nothing.
+   *
+   * What does work is the half-close. Google flushes the final as soon as the
+   * audio side ends, and the worker's own self-test measures that at a steady
+   * ~310ms -- including for the utterances the endpointer never ends. So the
+   * turn boundary becomes a decision this session makes, from its own voice
+   * activity, rather than a wait for a provider that may never finish.
+   *
+   * This is NOT close(): the socket stays open and its handlers stay attached
+   * precisely so the final can arrive. The worker closes it once it has the
+   * sentence, and the session opens a fresh one for the next turn.
+   */
+  finalize(): boolean {
+    if (this.finalizing || this.closed || !this.isReady) return false;
+    this.finalizing = true;
+    // Nothing more to keep alive: we have just asked it to stop.
+    this.stopKeepalive();
+    try { this.socket!.send(JSON.stringify({ type: 'close' })); } catch { return false; }
+    return true;
+  }
+
+  /** True once the final for this turn has been asked for. */
+  get isFinalizing(): boolean { return this.finalizing; }
 
   close(): void {
     this.closed = true;

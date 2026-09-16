@@ -43,7 +43,7 @@ import {
 } from './audio.ts';
 import { PcmStreamPlayer } from './pcmPlayer.ts';
 import {
-  resolveTurnLanguage, type TalkLanguage, type LanguageResolution,
+  resolveTurnLanguage, normaliseLanguage, type TalkLanguage, type LanguageResolution,
 } from './talkLanguage.ts';
 import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
 
@@ -205,6 +205,10 @@ export interface VoiceDiagnostics {
    * indistinguishable from the microphone not working.
    */
   finalsDeferred: number;
+  /** Times the conversation changed language because the visitor asked. */
+  languageSwitches: number;
+  /** The language the recogniser was last reopened for, if ever. */
+  lastRelisten: string | null;
   lastSttMs: number | null;
   lastSttChars: number | null;
   lastSttLanguage: string | null;
@@ -457,6 +461,8 @@ export class VoiceSession {
    * one the visitor would expect an answer to.
    */
   private pendingFinal: { text: string; detected: string | null } | null = null;
+  /** A language the recogniser must be reopened for, once the floor is free. */
+  private relistenLanguage: TalkLanguage | null = null;
   /** True while an utterance is being transcribed. */
   private transcribing = false;
   /** Sent to the server so each reply is in context. */
@@ -520,7 +526,7 @@ export class VoiceSession {
     blocks: 0, samplesCaptured: 0, bytesSent: 0, rms: 0, peakRms: 0,
     utterances: 0, lastUtteranceMs: null as number | null,
     lastUtteranceBytes: null as number | null,
-    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0,
+    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, lastRelisten: null as string | null,
     lastSttMs: null as number | null, lastSttChars: null as number | null,
     lastSttLanguage: null as string | null, lastTranscript: null as string | null,
     turnsSent: 0, lastTurnMs: null as number | null,
@@ -692,6 +698,8 @@ export class VoiceSession {
       sttEmpty: this.diag.sttEmpty,
       sttFailed: this.diag.sttFailed,
       finalsDeferred: this.diag.finalsDeferred ?? 0,
+      languageSwitches: this.diag.languageSwitches ?? 0,
+      lastRelisten: this.diag.lastRelisten ?? null,
       lastSttMs: this.diag.lastSttMs,
       lastSttChars: this.diag.lastSttChars,
       lastSttLanguage: this.diag.lastSttLanguage,
@@ -1367,6 +1375,18 @@ export class VoiceSession {
           }
           case 'reply': {
             text = event.text || text;
+            /*
+             * THE SERVER'S LANGUAGE WINS, BECAUSE IT SAW SOMETHING WE CANNOT.
+             *
+             * This browser resolves a turn's language from the transcript and
+             * the recogniser's label, and for "ინგლისურად მელაპარაკე" both
+             * say Georgian -- correctly, because it IS a Georgian sentence.
+             * The server additionally reads it as a REQUEST and answers in
+             * English. If that were not adopted here the next recogniser
+             * would still be configured for Georgian and the visitor, now
+             * speaking English, would get nonsense back.
+             */
+            this.adoptLanguage(event.language);
             this.turns = reduceTranscript(this.turns, {
               id, speaker: 'AGENT', text, final: true,
               language: event.language ?? this.language.current, atMs: Date.now(),
@@ -1720,9 +1740,50 @@ export class VoiceSession {
     }
   }
 
+  /**
+   * Take the language the server answered in, and arrange to HEAR it.
+   *
+   * Adopting the label alone would be half a switch: the recogniser's
+   * language is fixed when its socket is granted, so a session that starts
+   * in Georgian keeps a Georgian recogniser until the socket is replaced.
+   * The reopen is deferred to resumeListening rather than done here, because
+   * here the assistant is still speaking and tearing down the socket
+   * mid-reply would lose whatever it was about to hear.
+   */
+  private adoptLanguage(language: string | undefined): void {
+    const next = normaliseLanguage(language);
+    if (!next || next === this.language.current) return;
+    this.language = { ...this.language, current: next, locked: true };
+    this.relistenLanguage = next;
+    this.diag.languageSwitches = (this.diag.languageSwitches ?? 0) + 1;
+    this.cb.onLanguage(next, true);
+  }
+
+  /**
+   * Replace the recogniser socket so it hears the language now being spoken.
+   *
+   * Opened before the old one is discarded would be two sockets on one
+   * microphone; discarded first is a short deaf window, which is the safer of
+   * the two because the visitor is not talking yet -- the assistant has only
+   * just stopped.
+   */
+  private async relisten(): Promise<void> {
+    const target = this.relistenLanguage;
+    this.relistenLanguage = null;
+    if (!target || this.closed || !this.live) return;
+    try { this.live.close(); } catch { /* already gone */ }
+    this.live = null;
+    this.liveResampler = null;
+    await this.openLiveTranscription();
+    this.diag.lastRelisten = target;
+  }
+
   /** Hand the floor back. Only from here, so the mic cannot open mid-reply. */
   private resumeListening(): void {
     if (this.closed) return;
+    // A language switch replaces the recogniser before the floor is handed
+    // back, so the first thing they say in the new language is heard in it.
+    if (this.relistenLanguage) void this.relisten();
     this.micGated = false;
     this.lastVoiceAt = 0;
     this.sustainedSpeechMs = 0;

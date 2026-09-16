@@ -53,7 +53,7 @@ import {
   ACTION_MARKER, destinationMenu, parseAction, spokenPart, endsWithPartialMarker,
 } from '../_shared/comm/generated/talkActions.ts';
 import {
-  resolveTurnLanguage, textMatchesLanguage, normaliseLanguage,
+  resolveTurnLanguage, textMatchesLanguage, detectLanguageRequest, normaliseLanguage,
   TALK_LANGUAGES, type TalkLanguage,
 } from '../_shared/comm/generated/talkLanguage.ts';
 import { speechText } from '../_shared/comm/generated/speechText.ts';
@@ -1384,12 +1384,41 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
     previousSessionLanguage: body.languageHint ?? null,
     pageLocale: locale,
   });
-  const replyLanguage: TalkLanguage = resolution.resolvedLanguage;
+  /*
+   * ASKED FOR A LANGUAGE, WHICH OUTRANKS THE ONE THEY ASKED IN.
+   *
+   * "ინგლისურად მელაპარაკე" is a GEORGIAN sentence, so the resolver above
+   * correctly resolves it to Georgian, and answering in Georgian is exactly
+   * what the visitor just said not to do. Worse than ignored: the model would
+   * obey the request, and the reply-language guard further down would then
+   * throw the English answer away and retry it in Georgian, so the system
+   * actively undid the one thing that was explicitly asked for.
+   *
+   * Read from the words, deterministically, before a token is generated --
+   * the switch has to reach the prompt, the guard, the voice and the next
+   * recogniser, and by the time a reply exists it is too late for all four.
+   */
+  const requested = detectLanguageRequest(said, resolution.resolvedLanguage);
+  const replyLanguage: TalkLanguage = requested ?? resolution.resolvedLanguage;
+  if (requested) {
+    logEvent('ai-talk', 'language_switch_requested', {
+      from: resolution.resolvedLanguage, to: requested,
+    });
+  }
 
   // What the conversation already knows, plus whatever this sentence added.
   const state = updateTalkState(sanitiseTalkState(body.state), said, replyLanguage);
 
-  const history = Array.isArray(body.history) ? body.history.slice(-6) : [];
+  /*
+   * Enough turns to follow a conversation, few enough to stay cheap.
+   *
+   * Six was three exchanges, which is not enough to resolve "and under a
+   * hundred and sixty thousand?" back to the rooms and the district that were
+   * named before it. Twelve is still a fixed ceiling -- the prompt cannot grow
+   * with the session, so a long conversation does not get progressively
+   * slower -- and each turn is already truncated.
+   */
+  const history = Array.isArray(body.history) ? body.history.slice(-12) : [];
   const conversation = history
     .map((h) => `${h.role === 'assistant' ? 'Homatch' : 'Visitor'}: ${String(h.content ?? '').slice(0, 300)}`)
     .join('\n');
@@ -1424,7 +1453,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       : '',
     `Answer ONLY in ${LANGUAGE_NAMES[replyLanguage]} for this turn. Not a word of any other language, `
       + 'except a brand name like Homatch which stays in Latin letters.',
-    'Answer out loud, in one or two short sentences, then at most one question.',
+    // Deliberately not a sentence count. The instruction used to end by
+    // demanding "one or two short sentences" of EVERY turn, which overrode
+    // everything above it and is why each answer came out the same size.
+    'Answer out loud, at the length this particular question deserves.',
   ].filter(Boolean).join('\n');
 
   await sb.from('comm_talk_sessions')
@@ -2398,14 +2430,20 @@ function publicDemoInstructions(language: string): string {
   const lines = [
     'You are Homatch, a real-estate intelligence assistant for the Georgian market, talking to a visitor by voice.',
     '',
-    'THE ONE RULE THAT MATTERS MOST: at most two sentences and at most 30 words, in total, every time.',
-    'A third sentence is a mistake, not a bonus. Everything below assumes you are keeping to it.',
+    'LENGTH FOLLOWS THE QUESTION. It is not a fixed budget.',
+    'A yes-or-no question gets a yes or a no and the one fact that qualifies it — often under ten words.',
+    'A real question ("how does the mortgage work", "is Vake worth it at this price") gets a real answer:',
+    'three or four spoken sentences if that is what it takes to actually answer it. Nobody wants the same',
+    'length every time, and a reply trimmed to a fixed size stops being an answer and starts sounding',
+    'like a recording. Being brief is never a reason to be useless.',
     '',
-    'BUT SPEND THOSE WORDS. Brevity is the limit, not the goal: inside it, be as useful as a good agent',
-    'who is in a hurry. Answer the question in the FIRST clause -- the number, the district, the answer,',
-    'the yes or no -- and use what is left to say the one thing that changes their decision. A reply that',
-    'is short because it says nothing is worse than no reply; "it depends" and "there are several factors"',
-    'are not answers. If you genuinely cannot answer, say what you would need, in one sentence.',
+    'ANSWER FIRST, IN THE FIRST CLAUSE — the number, the district, the yes or no — then the one thing that',
+    'changes their decision. "It depends" and "there are several factors" are not answers; if it genuinely',
+    'depends, say what it depends ON. If you cannot answer, say what you would need to.',
+    '',
+    'AND DO NOT SOUND LIKE A RECORDING. Vary how you begin. Never open two consecutive replies the same',
+    'way. You are in a conversation, not reading from a card: say the name Homatch when it carries',
+    'meaning and not otherwise — they know where they are — and do not restate what they just said.',
     '',
     'NEVER DO ANY OF THESE. They are what makes a voice assistant exhausting:',
     '- repeat or rephrase what they just said back to them',
@@ -2423,9 +2461,10 @@ function publicDemoInstructions(language: string): string {
     'ROI, mortgage, price per square. Understand those as the Georgian sentence they sit in.',
     '',
     'HOW TO SPEAK',
-    'This is heard, not read. One or two short sentences, then AT MOST one question. Never a list, never',
-    'bullet points, never markdown, never an abbreviation that cannot be read aloud. If they ask for detail,',
-    'give it — still spoken, still short. Acknowledge what they just told you before you ask anything.',
+    'This is heard, not read. Spoken sentences, and AT MOST one question at the end — often none, because',
+    'a statement invites an answer just as well and constant questioning is what makes an assistant tiring.',
+    'Never a list, never bullet points, never markdown, never an abbreviation that cannot be read aloud.',
+    'Acknowledge what they just told you before you ask anything.',
     '',
     /*
      * PUNCTUATION IS PACING. The voice takes its breaths from the commas and

@@ -182,9 +182,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PINNED, and the lookup is authenticated.
+      #
+      # `version: latest` makes this action resolve the newest CLI release
+      # through the GitHub API, and on a shared runner that call is
+      # unauthenticated and rate limited -- which is why this step failed in
+      # CI while the identical deploy succeeded from a laptop. The action's
+      # own `github-token` input exists for exactly that reason.
+      #
+      # Pinned as well, because "whatever shipped this morning" is not a
+      # deployment tool: 2.117.0 is the version these functions were actually
+      # deployed with by hand. Moving it is a deliberate edit and a re-test.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.117.0
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Apply pending migrations
         env:
@@ -240,9 +252,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PINNED, and the lookup is authenticated.
+      #
+      # `version: latest` makes this action resolve the newest CLI release
+      # through the GitHub API, and on a shared runner that call is
+      # unauthenticated and rate limited -- which is why this step failed in
+      # CI while the identical deploy succeeded from a laptop. The action's
+      # own `github-token` input exists for exactly that reason.
+      #
+      # Pinned as well, because "whatever shipped this morning" is not a
+      # deployment tool: 2.117.0 is the version these functions were actually
+      # deployed with by hand. Moving it is a deliberate edit and a re-test.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.117.0
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy functions — JWT required
         env:

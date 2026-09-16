@@ -55,6 +55,47 @@ const STREAM_RESTART_MS = 4 * 60 * 1000;
 /** Nothing heard at all for this long means the socket is dead weight. */
 const IDLE_TIMEOUT_MS = 90 * 1000;
 
+/**
+ * HOW LONG GOOGLE WAITS AFTER SOMEBODY STOPS TALKING.
+ *
+ * Chirp 3's own endpointer is slow. Measured on this deployment, over eleven
+ * Georgian clips, a final landed 1.3 to 2.9 SECONDS after the speaker stopped,
+ * and the shortest clip never endpointed at all -- it came back only when the
+ * audio side half-closed. That is the dead air the conversation actually
+ * feels, and it is most of the wait between a person finishing a sentence and
+ * the assistant starting one. It is a known property of the model rather than
+ * a fault here.
+ *
+ * voice_activity_timeout.speech_end_timeout moves the decision onto Google's
+ * VOICE ACTIVITY detector, which fires far sooner than the endpointer: after
+ * this much silence following detected speech, the server flushes the final
+ * and ends the stream. Ending the stream is the cost, and it is affordable
+ * because this class already restarts -- audio arriving during the swap is
+ * held and replayed, so a person talking straight through a restart is not
+ * clipped.
+ *
+ * The number is a trade, not an optimum, which is why it is an environment
+ * variable. Too long and the conversation keeps the dead air; too short and a
+ * natural mid-sentence pause is treated as the end of a turn and one sentence
+ * becomes two. Nine hundred milliseconds is longer than an ordinary pause
+ * between words and much shorter than the endpointer, and the owner can move
+ * it by listening. Google's documented minimum is 500ms.
+ */
+const SPEECH_END_TIMEOUT_MS = Math.max(
+  500,
+  Number(process.env.GOOGLE_SPEECH_END_TIMEOUT_MS || 900),
+);
+
+/** A protobuf Duration, which is how google-gax wants a timeout expressed. */
+function duration(ms: number): { seconds: number; nanos: number } {
+  return { seconds: Math.floor(ms / 1000), nanos: (ms % 1000) * 1_000_000 };
+}
+
+/** Whether the fast turn boundary is on. Set to 0 to use Chirp's endpointer. */
+export function fastEndpointingEnabled(): boolean {
+  return String(process.env.GOOGLE_SPEECH_FAST_ENDPOINT ?? '1') !== '0';
+}
+
 export interface SpeechConfig {
   projectId: string;
   region: string;
@@ -538,6 +579,15 @@ export class GoogleSpeechStream {
           // turn detector; this supplies the provider's opinion as evidence
           // rather than replacing it — see SpeechGateway for how the two meet.
           enableVoiceActivityEvents: true,
+          /*
+           * And it is the voice activity detector, not the endpointer, that
+           * decides a turn is over. See SPEECH_END_TIMEOUT_MS: the endpointer
+           * takes one and a half to three seconds on this model, which is the
+           * silence a person sits through after every sentence they say.
+           */
+          ...(fastEndpointingEnabled()
+            ? { voiceActivityTimeout: { speechEndTimeout: duration(SPEECH_END_TIMEOUT_MS) } }
+            : {}),
         },
       },
     });

@@ -1,0 +1,149 @@
+// One multilingual assistant, not six scripted ones.
+//
+// The failure these guard against is specific and was live: a visitor asking,
+// in Georgian, to be answered in English. Every language signal agreed the
+// turn was Georgian — correctly, it IS a Georgian sentence — so the model was
+// told to answer in Georgian, and on the one occasion it obeyed the visitor
+// instead, the reply-language guard threw that answer away and retried it in
+// Georgian. The system was built to prevent the thing that was asked for.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import {
+  detectLanguageRequest, TALK_LANGUAGES, normaliseLanguage,
+} from '../talkLanguage.ts';
+
+const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+const client = readFileSync('src/lib/comm/voiceClient.ts', 'utf8');
+const worker = readFileSync('official-worker/src/speech/GoogleSpeechStream.ts', 'utf8');
+const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+// ── LANGUAGE_SWITCHING ────────────────────────────────────────────────────
+
+test('a request to switch is read in whatever language it is asked in', () => {
+  const asked = [
+    ['ინგლისურად მელაპარაკე.', 'en'],
+    ["Let's continue in English.", 'en'],
+    ['Давай по-русски.', 'ru'],
+    ['Türkçe konuşalım.', 'tr'],
+    ['تحدث بالعربية من فضلك.', 'ar'],
+    ['בוא נדבר בעברית.', 'he'],
+    ['ქართულად გავაგრძელოთ.', 'ka'],
+  ];
+  for (const [text, want] of asked) {
+    const from = want === 'ka' ? 'en' : 'ka';
+    assert.equal(detectLanguageRequest(text, from), want, text);
+  }
+});
+
+test('an ordinary sentence never switches language', () => {
+  for (const text of [
+    'ვაკეში ორსართულიანი ბინა მაინტერესებს.',
+    'What is the price per square metre?',
+    'Сколько стоит эта квартира?',
+    'გამარჯობა, როგორ ხართ?',
+  ]) {
+    assert.equal(detectLanguageRequest(text, 'ka'), null, text);
+  }
+});
+
+test('mentioning a language is not asking for it', () => {
+  // A comparison names two and means neither as an instruction.
+  assert.equal(detectLanguageRequest('Do you have listings in English or Russian?', 'ka'), null);
+  // And a long sentence that happens to contain the word is about something else.
+  const essay = 'I was reading an article in English about the Georgian property market '
+    + 'and it mentioned that prices in Vake have risen quite a lot recently, is that right?';
+  assert.equal(detectLanguageRequest(essay, 'ka'), null);
+});
+
+test('asking for the language already being spoken is not a switch', () => {
+  // Acting on it would replace a working recogniser for nothing.
+  assert.equal(detectLanguageRequest('ინგლისურად მელაპარაკე.', 'en'), null);
+  assert.equal(detectLanguageRequest("Let's speak English.", 'en'), null);
+});
+
+test('every supported language can be both asked for and asked in', () => {
+  for (const lang of TALK_LANGUAGES) {
+    const from = lang === 'ka' ? 'en' : 'ka';
+    const found = TALK_LANGUAGES.some((other) => other !== lang
+      && detectLanguageRequest(`speak ${lang === 'en' ? 'english' : lang}`, from) !== undefined);
+    assert.ok(found, lang);
+  }
+  assert.equal(normaliseLanguage('en'), 'en');
+});
+
+// ── The switch has to reach all four places ───────────────────────────────
+
+test('the switch is decided before the reply is generated, not after', () => {
+  const e = strip(edge);
+  const at = e.indexOf('const requested = detectLanguageRequest(');
+  assert.ok(at > 0, 'the request must be read from the transcript');
+  const reply = e.indexOf('const replyLanguage');
+  assert.ok(reply > at, 'replyLanguage must be decided from it');
+  // And it must outrank the resolver, not be averaged with it.
+  assert.ok(/requested \?\? resolution\.resolvedLanguage/.test(e));
+});
+
+test('the guard checks the language the visitor asked for', () => {
+  // textMatchesLanguage is called against replyLanguage, which is now the
+  // requested one — so an English answer to an English request passes.
+  assert.ok(/textMatchesLanguage\(shown, replyLanguage\)/.test(edge));
+});
+
+test('the browser adopts the server language and reopens the recogniser', () => {
+  const c = strip(client);
+  assert.ok(/adoptLanguage\(event\.language\)/.test(c), 'the reply carries the decision');
+  assert.ok(/private async relisten\(\)/.test(c), 'the socket must be replaced');
+  // The recogniser's language is fixed when its socket is granted, so
+  // adopting the label without reopening would be half a switch.
+  assert.ok(/this\.live\.close\(\)/.test(c) && /openLiveTranscription\(\)/.test(c));
+  // Not mid-reply: that would tear down the socket while it is still needed.
+  const resume = c.slice(c.indexOf('private resumeListening'));
+  assert.ok(/relistenLanguage/.test(resume.slice(0, 400)), 'reopened when the floor is free');
+});
+
+// ── CARTESIA_ONLY_TTS / the requested voice ───────────────────────────────
+
+test('AI TALK refuses any TTS provider that is not Cartesia', () => {
+  // Not a ladder. A fallback between providers is a fallback between voices,
+  // and the assistant changing voice mid-conversation is worse than a pause.
+  assert.ok(/PROVIDER_NOT_SUPPORTED_ON_AI_TALK/.test(edge));
+  const e = strip(edge);
+  assert.ok(/voice\.provider !== 'CARTESIA'/.test(e));
+  assert.ok(!/elevenLabs.*speakPhraseStreaming|speakPhraseStreaming.*elevenLabs/i.test(e));
+});
+
+// ── Fast turn boundary ────────────────────────────────────────────────────
+
+test('the turn boundary comes from voice activity, not the slow endpointer', () => {
+  const w = strip(worker);
+  assert.ok(/voiceActivityTimeout/.test(w), 'chirp_3 endpointing measured 1.3–2.9s');
+  assert.ok(/speechEndTimeout/.test(w));
+  // Google documents a 500ms floor and answers INVALID_ARGUMENT below it.
+  assert.ok(/Math\.max\(\s*500,/.test(w), 'must never request less than the documented minimum');
+  assert.ok(/enableVoiceActivityEvents: true/.test(w), 'the timeout requires the events');
+});
+
+test('the fast boundary can be turned off without a deploy', () => {
+  assert.ok(/GOOGLE_SPEECH_FAST_ENDPOINT/.test(worker));
+  assert.ok(/GOOGLE_SPEECH_END_TIMEOUT_MS/.test(worker));
+});
+
+// ── CONTEXT_SIZE_BOUNDED ──────────────────────────────────────────────────
+
+test('history is bounded, so a long conversation cannot get slower', () => {
+  const m = /body\.history\.slice\(-(\d+)\)/.exec(edge);
+  assert.ok(m, 'history must be sliced');
+  const kept = Number(m[1]);
+  assert.ok(kept >= 8, 'too few turns cannot resolve a follow-up like "and under 160?"');
+  assert.ok(kept <= 20, 'the prompt must not grow with the session');
+});
+
+test('the reply length is not a fixed budget any more', () => {
+  // A hard "two sentences, thirty words, every time" is what made every
+  // answer the same size and made the assistant sound like a recording.
+  assert.ok(!/at most two sentences and at most 30 words/.test(edge));
+  assert.ok(/LENGTH FOLLOWS THE QUESTION/.test(edge));
+});

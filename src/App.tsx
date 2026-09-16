@@ -4,6 +4,7 @@ import IntersectObserver from '@/components/common/IntersectObserver';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
+import { Suspense } from 'react';
 import { routes } from './routes';
 import NotFoundPage from './pages/NotFoundPage';
 import { reportError } from '@/lib/errorReporting';
@@ -60,5 +61,15 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState>{
  * page that throws must not take the progress indicator with it, since the
  * job is still running and that is exactly when the customer needs to see so.
  */
-const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
+/**
+ * What is shown for the moment a route's code is being fetched.
+ *
+ * Deliberately empty rather than a spinner. Routes are lazy now, so this
+ * appears for a few hundred milliseconds on a cold navigation, and a spinner
+ * that flashes and vanishes reads as a fault where nothing was wrong. The
+ * page's own skeletons take over as soon as it mounts.
+ */
+const RouteFallback: React.FC = () => <div className="min-h-[50vh]" aria-busy="true" />;
+
+const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Suspense fallback={<RouteFallback/>}><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></Suspense></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
 export default App;

@@ -1085,6 +1085,16 @@ const CARTESIA_DEFAULT_SPEED = 1.1;
 async function speakPhraseStreaming(sb: Sb, params: {
   text: string;
   language: string;
+  /**
+   * The voice, already resolved for this turn.
+   *
+   * Looking it up here costs two Supabase queries, and this function runs
+   * once PER PHRASE -- so the first phrase of every reply paid a database
+   * round trip standing between the model's first words and the synthesiser.
+   * The caller resolves it once, while the model is still being asked, and
+   * hands it in. Absent, it is looked up as before.
+   */
+  voice?: { provider: string; voiceId: string } | null;
   sessionId?: string | null;
   surface?: string;
   outputSampleRate?: number | null;
@@ -1094,7 +1104,7 @@ async function speakPhraseStreaming(sb: Sb, params: {
   | { ok: true; firstByteMs: number; totalMs: number; sampleRate: number; provider: string; voiceId: string; model: string; streamed: true }
   | { ok: false; failures: Array<{ provider: string; code: string | null; status: number | null; detail?: string | null }> }
 > {
-  const voice = await aiTalkVoice(sb, params.language || null);
+  const voice = params.voice ?? await aiTalkVoice(sb, params.language || null);
   if (!voice) {
     return {
       ok: false,
@@ -1496,6 +1506,13 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
    * -- getting the request accepted, reading the prompt, and thinking -- and
    * they have different fixes.
    */
+  /*
+   * The voice, fetched while the model is being asked rather than after it
+   * answers. Two Supabase queries that used to sit between the first phrase
+   * and the synthesiser, once per phrase.
+   */
+  const voicePromise = aiTalkVoice(sb, replyLanguage).catch(() => null);
+
   let llmStartedMs: number | null = null;
   let llmEffort: string | null = null;
   let llmHeadersMs: number | null = null;
@@ -1644,6 +1661,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             text: phrase, language: replyLanguage,
             sessionId: session.id, surface: 'AI_TALK',
             outputSampleRate,
+            // Resolved once for the turn, before the model answered, so the
+            // first phrase does not wait on a lookup to be spoken.
+            voice: await voicePromise,
             signal: turnAbort.signal,
             onChunk: (chunk) => {
               if (slot.firstByteMs === null) slot.firstByteMs = Date.now() - at;

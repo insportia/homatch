@@ -53,7 +53,15 @@ test('the verification routes exist and are the canonical ones', () => {
 
 test('each new route resolves to a real page component, not a placeholder', () => {
   for (const c of ['VerifyPage', 'VerificationCasePage']) {
-    assert.ok(ROUTES.includes(`import ${c} from`), `${c} is not imported`);
+    /*
+     * Eager or lazy -- both resolve to the real page. What this test is for
+     * is that the route does not point at a stub, and code-splitting does not
+     * change that: the pages are fetched when their route is entered rather
+     * than shipped in the bundle the home page parses.
+     */
+    const eager = ROUTES.includes(`import ${c} from`);
+    const split = ROUTES.includes(`const ${c} = lazy(() => import(`);
+    assert.ok(eager || split, `${c} is neither imported nor lazily loaded`);
     assert.ok(ROUTES.includes(`<${c} />`) || ROUTES.includes(`<${c} />)`), `${c} is not rendered`);
   }
 });

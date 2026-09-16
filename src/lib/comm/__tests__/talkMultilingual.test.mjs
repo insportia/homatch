@@ -117,17 +117,25 @@ test('AI TALK refuses any TTS provider that is not Cartesia', () => {
 
 // ── Fast turn boundary ────────────────────────────────────────────────────
 
-test('the turn boundary comes from voice activity, not the slow endpointer', () => {
+test('the voice-activity timeout is wired, clamped, and OFF by default', () => {
+  // It was deployed and measured to change nothing on chirp_3: finals at
+  // 1633/1710/2009/2828ms against 1348-2936ms before, the 0.33s clip still
+  // never finalising, and zero stream restarts — which is the decisive part,
+  // because an enforced timeout ends the stream and this class restarts it on
+  // every turn. Kept, off, so the day Google implements it it is already
+  // there; default-on would be shipping a fix that does not fix anything.
   const w = strip(worker);
-  assert.ok(/voiceActivityTimeout/.test(w), 'chirp_3 endpointing measured 1.3–2.9s');
-  assert.ok(/speechEndTimeout/.test(w));
-  // Google documents a 500ms floor and answers INVALID_ARGUMENT below it.
-  assert.ok(/Math\.max\(\s*500,/.test(w), 'must never request less than the documented minimum');
+  assert.ok(/voiceActivityTimeout/.test(w));
+  assert.ok(/Math\.max\(\s*500,/.test(w), 'never below the documented floor');
   assert.ok(/enableVoiceActivityEvents: true/.test(w), 'the timeout requires the events');
+  assert.ok(/GOOGLE_SPEECH_FAST_ENDPOINT \?\? '0'/.test(w),
+    'default must be off until it is measured to do something');
 });
 
-test('the fast boundary can be turned off without a deploy', () => {
-  assert.ok(/GOOGLE_SPEECH_FAST_ENDPOINT/.test(worker));
+test('the code does not claim the endpointing is fixed', () => {
+  // A comment asserting a repair that measurement disproved is how folklore
+  // gets into a codebase, and this one was caught once already.
+  assert.ok(/DOES NOT WORK ON THIS MODEL/.test(worker));
   assert.ok(/GOOGLE_SPEECH_END_TIMEOUT_MS/.test(worker));
 });
 

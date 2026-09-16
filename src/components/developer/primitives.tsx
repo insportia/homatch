@@ -225,25 +225,65 @@ export function PaymentStatusPill({ status }: { status: 'PAID' | 'OVERDUE' | 'PA
  * it (§85). It never draws a chart of nothing, and it never invents a row to
  * make the screen look inhabited.
  */
+/**
+ * AN EMPTY SCREEN IS STILL A SCREEN.
+ *
+ * A new customer sees more of these than anything else in their first hour,
+ * and the version this replaced was a small grey icon and two lines of text
+ * marooned in the middle of a very large white field — which reads as an
+ * unfinished product rather than as a product with nothing in it yet.
+ *
+ * Three things changed and none of them is decoration. The panel is given a
+ * floor so it occupies the space it is standing in. The icon sits in a ruled
+ * plate rather than floating. And `steps` lets a first-run state say what to
+ * do FIRST, SECOND, THIRD — the one moment where the product has to explain
+ * itself and has nothing but words to do it with.
+ */
 export function EmptyState({
-  icon, title, description, action, className,
+  icon, title, description, action, steps, className,
 }: {
   icon?: React.ReactNode;
   title: string;
   description?: string;
   action?: React.ReactNode;
+  /** An ordered route out of the empty state, for first-run screens. */
+  steps?: string[];
   className?: string;
 }) {
   return (
     <div className={cn(
-      'flex flex-col items-center justify-center gap-3 px-6 py-14 text-center',
+      'flex min-h-[18rem] flex-col items-center justify-center gap-4 px-6 py-16 text-center',
       className,
     )}>
-      {icon && <div className="text-muted-foreground/60" aria-hidden="true">{icon}</div>}
-      <div className="max-w-sm space-y-1.5">
-        <p className="text-base font-semibold">{title}</p>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+      {icon && (
+        <div
+          aria-hidden="true"
+          className="flex h-14 w-14 items-center justify-center rounded-xl border border-border bg-muted/50 text-muted-foreground/70"
+        >
+          {icon}
+        </div>
+      )}
+      <div className="max-w-md space-y-1.5">
+        <p className="text-lg font-semibold tracking-tight">{title}</p>
+        {description && (
+          <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+        )}
       </div>
+      {steps && steps.length > 0 && (
+        <ol className="mt-1 w-full max-w-sm space-y-2 text-left">
+          {steps.map((step, i) => (
+            <li key={step} className="flex items-start gap-2.5">
+              <span
+                aria-hidden="true"
+                className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gold-border/60 text-2xs font-semibold tabular text-gold-ink"
+              >
+                {i + 1}
+              </span>
+              <span className="text-xs leading-relaxed text-muted-foreground">{step}</span>
+            </li>
+          ))}
+        </ol>
+      )}
       {action}
     </div>
   );

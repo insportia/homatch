@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  Upload, Download, Eye, EyeOff, Search, LayoutGrid, Rows3, ExternalLink, Plus,
+  Upload, Download, Eye, EyeOff, Search, LayoutGrid, Rows3, ExternalLink, Plus, Box,
   Share2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,8 @@ import { exportInventoryXlsx } from '@/services/developer/exports';
 import { devErrorText } from '@/services/developer/client';
 import { BulkEditDialog } from '@/components/developer/BulkEditDialog';
 import { ShareProjectPanel } from '@/components/developer/ShareProjectPanel';
+import { ProjectTwinPanel } from '@/components/developer/ProjectTwinPanel';
+import { ProjectHeader } from '@/components/developer/ProjectHeader';
 import type {
   DevProject, DevBuilding, DevUnit, UnitStatus, DevPaymentPlan,
 } from '@/services/developer/types';
@@ -60,7 +62,7 @@ const ALL_STATUSES: UnitStatus[] = [
   'AVAILABLE', 'ON_HOLD', 'NEGOTIATION', 'RESERVED', 'CONTRACT_PENDING', 'SOLD', 'HIDDEN',
 ];
 
-type ViewMode = 'table' | 'visual' | 'share';
+type ViewMode = 'visual' | 'table' | 'twin' | 'share';
 
 export default function DeveloperProjectPage() {
   const { id } = useParams<{ id: string }>();
@@ -76,7 +78,7 @@ export default function DeveloperProjectPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [view, setView] = useState<ViewMode>((params.get('view') as ViewMode) ?? 'table');
+  const [view, setView] = useState<ViewMode>((params.get('view') as ViewMode) ?? 'visual');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<UnitStatus[]>([]);
   const [page, setPage] = useState(0);
@@ -116,8 +118,8 @@ export default function DeveloperProjectPage() {
         orderBy: sort.by,
         ascending: sort.asc,
         // The visual view draws the building, so it needs the building.
-        limit: view === 'visual' ? 3000 : PAGE_SIZE,
-        offset: view === 'visual' ? 0 : page * PAGE_SIZE,
+        limit: view === 'table' ? PAGE_SIZE : 3000,
+        offset: view === 'table' ? page * PAGE_SIZE : 0,
       });
       setUnits(result.rows);
       setTotal(result.total);
@@ -190,6 +192,7 @@ export default function DeveloperProjectPage() {
 
   return (
     <DeveloperShell
+      ownHeading={Boolean(project)}
       title={project?.name ?? t('dev_nav_projects')}
       description={project ? [
         [project.district, project.city].filter(Boolean).join(', '),
@@ -236,73 +239,91 @@ export default function DeveloperProjectPage() {
         </>
       )}
     >
-      {/* Controls */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('dev_search_units')}
-            aria-label={t('dev_search_units')}
-            className="pl-8"
-          />
-        </div>
+      {/* WHICH BUILDING YOU ARE IN, BEFORE ANYTHING YOU CAN DO TO IT. */}
+      {project && (
+        <ProjectHeader
+          project={project}
+          units={view === 'table' ? units : units}
+          currency={workspace?.default_currency}
+          className="mb-6"
+        />
+      )}
 
-        <Select
-          value={statusFilter.length === 1 ? statusFilter[0] : 'ALL'}
-          onValueChange={(v) => setStatusFilter(v === 'ALL' ? [] : [v as UnitStatus])}
-        >
-          <SelectTrigger className="w-auto min-w-[9rem]" aria-label={t('dev_filter_status')}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">{t('dev_filter_all')}</SelectItem>
-            {ALL_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{t(UNIT_STATUS_KEYS[s])}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <div className="ml-auto flex items-center rounded-md border border-border p-0.5" role="group" aria-label={t('dev_view_mode')}>
+      {/* THE PROJECT'S OWN NAVIGATION.
+          Four places rather than a segmented control tucked into the corner
+          of a toolbar: the building, the inventory behind it, the three
+          dimensions of it, and the link a buyer gets. */}
+      <div className="mb-5 flex items-center gap-1 overflow-x-auto border-b border-border" role="tablist" aria-label={t('dev_view_mode')}>
+        {([
+          ['visual', t('dev_view_visual'), LayoutGrid],
+          ['table', t('dev_view_table'), Rows3],
+          ['twin', t('dev_view_twin'), Box],
+          ['share', t('dev_view_share'), Share2],
+        ] as Array<[ViewMode, string, typeof Rows3]>).map(([key, label, Icon]) => (
           <button
+            key={key}
             type="button"
-            onClick={() => switchView('table')}
-            aria-pressed={view === 'table'}
+            role="tab"
+            aria-selected={view === key}
+            onClick={() => switchView(key)}
             className={cn(
-              'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
-              view === 'table' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground',
+              'relative flex shrink-0 items-center gap-1.5 px-3.5 py-2.5 text-sm transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+              view === key
+                ? 'font-semibold text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            <Rows3 className="h-3.5 w-3.5" aria-hidden="true" />
-            {t('dev_view_table')}
-          </button>
-          <button
-            type="button"
-            onClick={() => switchView('visual')}
-            aria-pressed={view === 'visual'}
-            className={cn(
-              'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
-              view === 'visual' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground',
+            <Icon className="h-4 w-4" aria-hidden="true" />
+            {label}
+            {view === key && (
+              <span aria-hidden="true" className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-gold" />
             )}
-          >
-            <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
-            {t('dev_view_visual')}
           </button>
-          <button
-            type="button"
-            onClick={() => switchView('share')}
-            aria-pressed={view === 'share'}
-            className={cn(
-              'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
-              view === 'share' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
-            {t('dev_view_share')}
-          </button>
-        </div>
+        ))}
       </div>
+
+      {/* Inventory controls belong to the two inventory views, not to the
+          walkthrough and not to the share link. */}
+      {(view === 'table' || view === 'visual') && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('dev_search_units')}
+              aria-label={t('dev_search_units')}
+              className="pl-8"
+            />
+          </div>
+
+          <Select
+            value={statusFilter.length === 1 ? statusFilter[0] : 'ALL'}
+            onValueChange={(v) => setStatusFilter(v === 'ALL' ? [] : [v as UnitStatus])}
+          >
+            <SelectTrigger className="w-auto min-w-[9rem]" aria-label={t('dev_filter_status')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">{t('dev_filter_all')}</SelectItem>
+              {ALL_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>{t(UNIT_STATUS_KEYS[s])}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {view === 'twin' && workspace && project && (
+        <ProjectTwinPanel
+          workspace={workspace}
+          project={project}
+          units={units}
+          onSelectUnit={(unit) => setOpenUnitId(unit.id)}
+        />
+      )}
+
 
       {/* Sharing is about the project, not its inventory, so it does not
           wait on the unit query or show its empty states. */}
@@ -310,12 +331,12 @@ export default function DeveloperProjectPage() {
         <ShareProjectPanel workspace={workspace} project={project} />
       )}
 
-      {view !== 'share' && loading && <LoadingRows rows={8} />}
-      {view !== 'share' && !loading && error && (
+      {view !== 'share' && view !== 'twin' && loading && <LoadingRows rows={8} />}
+      {view !== 'share' && view !== 'twin' && !loading && error && (
         <ErrorState message={error} onRetry={loadUnits} />
       )}
 
-      {view !== 'share' && !loading && !error && total === 0 && !debouncedSearch && statusFilter.length === 0 && (
+      {view !== 'share' && view !== 'twin' && !loading && !error && total === 0 && !debouncedSearch && statusFilter.length === 0 && (
         <Panel>
           <EmptyState
             icon={<Upload className="h-7 w-7" />}
@@ -331,7 +352,7 @@ export default function DeveloperProjectPage() {
         </Panel>
       )}
 
-      {view !== 'share' && !loading && !error && total === 0 && (debouncedSearch || statusFilter.length > 0) && (
+      {view !== 'share' && view !== 'twin' && !loading && !error && total === 0 && (debouncedSearch || statusFilter.length > 0) && (
         <Panel>
           <EmptyState
             icon={<Search className="h-7 w-7" />}

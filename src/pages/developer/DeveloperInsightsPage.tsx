@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Eye, Info } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DeveloperShell } from '@/components/developer/DeveloperShell';
+import { SalesBar, BarRows, Funnel, SectionHead } from '@/components/developer/visuals';
 import {
   Panel, PanelHeader, StatTile, EmptyState, LoadingRows, ErrorState,
   TableScroll, Th, Td, Money, formatArea, Eyebrow, GoldRule, UnitStatusPill,
@@ -177,6 +178,40 @@ export default function DeveloperInsightsPage() {
     return Array.from(map.entries()).sort((a, b) => b[1].total - a[1].total).slice(0, 8);
   }, [leads, t]);
 
+  /**
+   * THE SHAPE OF THE BUSINESS, DRAWN.
+   *
+   * Four numbers in four boxes hide the only interesting thing about a
+   * funnel: where it narrows. Each step is measured against the first, so
+   * the taper IS the conversion rate. Steps with nothing behind them are not
+   * drawn at all — a funnel of zeroes is a decoration.
+   */
+  const funnel = useMemo(() => {
+    const steps = [
+      { label: t('dev_funnel_leads'), value: leads.length },
+      { label: t('dev_funnel_viewings'), value: leads.filter(
+        (l) => ['VIEWING_SCHEDULED', 'VIEWING_COMPLETED', 'NEGOTIATION', 'RESERVATION',
+          'CONTRACT', 'PAYMENT_PENDING', 'SOLD'].includes(l.stage)).length },
+      { label: t('dev_funnel_reserved'), value: leads.filter(
+        (l) => ['RESERVATION', 'CONTRACT', 'PAYMENT_PENDING', 'SOLD'].includes(l.stage)).length },
+      { label: t('dev_funnel_sold'), value: leads.filter((l) => l.stage === 'SOLD').length },
+    ];
+    return steps[0].value > 0 ? steps : [];
+  }, [leads, t]);
+
+  /** What is left in each development, longest bar first. */
+  const byProject = useMemo(() => {
+    const rows = projects.map((project) => {
+      const own = units.filter((u) => u.project_id === project.id);
+      return {
+        label: project.name,
+        value: own.filter((u) => u.status === 'AVAILABLE').length,
+        hint: `/ ${own.length}`,
+      };
+    }).filter((row) => row.value > 0 || row.hint !== '/ 0');
+    return rows.sort((a, b) => b.value - a.value);
+  }, [projects, units]);
+
   return (
     <DeveloperShell title={t('dev_nav_insights')} description={t('dev_insights_subtitle')}>
       {loading && <LoadingRows rows={8} />}
@@ -193,7 +228,49 @@ export default function DeveloperInsightsPage() {
       )}
 
       {!loading && !error && units.length > 0 && overview && (
-        <div className="space-y-6">
+        <div className="space-y-8">
+          {/* ── Where the building stands, drawn ──────────────────────
+              A stacked bar rather than five counts: the only interesting
+              property of these numbers is their proportion to each other. */}
+          <section className="rounded-xl border border-border bg-card p-5 sm:p-6">
+            <SalesBar
+              size="lg"
+              showLegend
+              counts={{
+                available: overview.units.available,
+                negotiation: overview.units.negotiation,
+                reserved: overview.units.reserved,
+                contract_pending: overview.units.contract_pending,
+                sold: overview.units.sold,
+              }}
+            />
+          </section>
+
+          {/* ── The funnel, and what is left where ────────────────────
+              Both draw only from rows that exist; either is absent entirely
+              when its source is empty, rather than rendering an axis with
+              nothing under it. */}
+          {(funnel.length > 0 || byProject.length > 0) && (
+            <div className="grid gap-5 lg:grid-cols-2">
+              {funnel.length > 0 && (
+                <section>
+                  <SectionHead title={t('dev_insights_funnel')} sub={t('dev_insights_funnel_sub')} />
+                  <Panel className="p-5">
+                    <Funnel steps={funnel} />
+                  </Panel>
+                </section>
+              )}
+              {byProject.length > 0 && (
+                <section>
+                  <SectionHead title={t('dev_insights_by_project')} />
+                  <Panel className="p-5">
+                    <BarRows rows={byProject} />
+                  </Panel>
+                </section>
+              )}
+            </div>
+          )}
+
           {/* ── Inventory ────────────────────────────────────────────── */}
           <section>
             <div className="mb-3">

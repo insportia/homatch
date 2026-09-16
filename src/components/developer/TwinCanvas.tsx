@@ -455,10 +455,24 @@ function buildSchematic(
     state.plates.set(floor.level, mesh);
   });
 
+  /*
+   * FRAME WHAT IS THERE, NOT A CONSTANT.
+   *
+   * The camera used to sit at a fixed distance with a floor of 26 units, which
+   * suits a tower and strands a three-storey block in the middle of an empty
+   * frame — most of the picture sky, the building a chip at the centre. The
+   * distance now comes from the massing's own bounding sphere and the camera's
+   * field of view, so a podium and a forty-floor tower are both framed the
+   * same way: filling the shot with a margin around them.
+   */
   const height = ordered.length * (plateHeight + gap);
+  const widest = 9 + 5;
+  const radius = Math.hypot(widest, height, widest * 0.68) / 2;
+  const fov = (state.camera.fov * Math.PI) / 180;
+  const distance = (radius / Math.sin(fov / 2)) * 0.82;
+
   state.controls.target.set(0, height / 2, 0);
-  const distance = Math.max(26, height * 1.5);
-  state.camera.position.set(distance * 0.72, height * 0.85 + 6, distance * 0.8);
+  state.camera.position.set(distance * 0.62, height * 0.55 + radius * 0.42, distance * 0.7);
   state.camera.updateProjectionMatrix();
   state.controls.update();
 }

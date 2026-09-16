@@ -210,6 +210,13 @@ export interface DeveloperShellProps {
   /** Page title, rendered as the h1 of the main region. */
   title: string;
   description?: string;
+  /**
+   * Set when the page draws its own headline — the project workspace opens on
+   * a header carrying the development's name, and a second h1 above it would
+   * say the same thing twice and leave the page with two of them. The title
+   * is still required: the mobile bar and the document use it.
+   */
+  ownHeading?: boolean;
   actions?: React.ReactNode;
   /** Sub-navigation for the current section. */
   tabs?: React.ReactNode;
@@ -218,7 +225,7 @@ export interface DeveloperShellProps {
 }
 
 export function DeveloperShell({
-  children, title, description, actions, tabs, requires,
+  children, title, description, actions, tabs, requires, ownHeading = false,
 }: DeveloperShellProps) {
   useSurfaceTheme('light');
   const { t } = useLanguage();
@@ -297,12 +304,18 @@ export function DeveloperShell({
           </div>
 
           <main className="mx-auto w-full max-w-[1400px] px-3 pb-20 pt-4 sm:px-5 lg:px-8 lg:pt-8">
-            <header className="mb-5">
+            <header className={ownHeading ? 'mb-4' : 'mb-5'}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
-                  {description && (
-                    <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
+                  {ownHeading ? (
+                    <span className="sr-only">{title}</span>
+                  ) : (
+                    <>
+                      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
+                      {description && (
+                        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
+                      )}
+                    </>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

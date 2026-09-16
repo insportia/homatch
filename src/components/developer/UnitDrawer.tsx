@@ -31,6 +31,7 @@ import {
 import { reserveUnit, getUnitReservation, cancelReservation } from '@/services/developer/sales';
 import { listLeads, type LeadWithContact } from '@/services/developer/crm';
 import { devErrorText } from '@/services/developer/client';
+import { UnitTwinTab } from './UnitTwinTab';
 import type {
   DevUnit, UnitStatus, DevWalkthrough, DevShareLink, DevShareEventRow, DevReservation,
 } from '@/services/developer/types';
@@ -66,6 +67,7 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
   const [reservation, setReservation] = useState<DevReservation | null>(null);
   const [loading, setLoading] = useState(false);
   const [reserving, setReserving] = useState(false);
+  const [tab, setTab] = useState('overview');
 
   const load = useCallback(async () => {
     if (!unitId) { setUnit(null); return; }
@@ -125,8 +127,34 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
 
         {loading && <LoadingRows rows={6} />}
 
+        {/* WHAT YOU DO WITH AN APARTMENT, WHERE YOU CAN SEE IT.
+            Reserving and sharing were reachable only by scrolling into a tab;
+            the walkthrough was not reachable at all. These four are the sales
+            floor's whole vocabulary and they sit above everything else. */}
         {!loading && unit && (
-          <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
+          <div className="flex shrink-0 flex-wrap gap-2 border-b border-border bg-muted/30 px-4 py-2.5 sm:px-5">
+            <Button
+              size="sm" variant="outline"
+              onClick={() => setTab('tour')}
+            >
+              <Box className="mr-1.5 h-3.5 w-3.5" />
+              {t('dev_unit_action_walkthrough')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setTab('share')}>
+              <Share2 className="mr-1.5 h-3.5 w-3.5" />
+              {t('dev_tab_share')}
+            </Button>
+            {can('sale') && unit.status === 'AVAILABLE' && (
+              <Button size="sm" onClick={() => setReserving(true)}>
+                <KeyRound className="mr-1.5 h-3.5 w-3.5" />
+                {t('dev_reserve_unit')}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {!loading && unit && (
+          <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
             <TabsList className="mx-4 mt-3 w-[calc(100%-2rem)] justify-start overflow-x-auto sm:mx-5 sm:w-[calc(100%-2.5rem)]">
               <TabsTrigger value="overview">{t('dev_tab_overview')}</TabsTrigger>
               <TabsTrigger value="tour">{t('dev_tab_tour')}</TabsTrigger>
@@ -157,11 +185,13 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
                 />
               </TabsContent>
 
-              <TabsContent value="tour" className="mt-0">
-                {/* §2: the developer SEES what Homatch built and cannot
-                    change it. dev_walkthroughs' policy refuses them anyway;
-                    this is what stops us offering a button that would fail. */}
-                <WalkthroughTab unit={unit} canEdit={isStudio} />
+              <TabsContent value="tour" className="mt-0 space-y-6">
+                {/* The scene itself, or an honest account of why there is not
+                    one yet. §2 still holds: a developer SEES what Homatch
+                    built and cannot author it — dev_walkthroughs' policy
+                    refuses them, which is why authoring stays behind isStudio. */}
+                <UnitTwinTab unit={unit} />
+                {isStudio && <WalkthroughTab unit={unit} canEdit />}
               </TabsContent>
 
               <TabsContent value="share" className="mt-0">

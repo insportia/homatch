@@ -456,8 +456,22 @@ export class GoogleSpeechStream {
        * 300-600ms window before asking. Those two waits are additive today:
        * measured, our window plus Google's ~600ms flush is the whole 1300ms.
        *
-       * Reported rather than acted on, first: whether these arrive at all,
-       * and how early, decides whether they can replace the window.
+       * MEASURED, and the answer is that they cannot replace the window.
+       * Streaming one Georgian sentence and timing both events against the
+       * last voiced frame:
+       *
+       *   SPEECH_ACTIVITY_BEGIN   -1752ms   (during speech, as expected)
+       *   SPEECH_ACTIVITY_END     +1360ms
+       *   final                   +1936ms
+       *
+       * Google announces the end of speech 1360ms AFTER it ended -- later
+       * than the browser's own window plus the half-close flush delivers the
+       * whole transcript (~1300ms). So the two waits are not duplicating each
+       * other: our energy detector is simply faster than the provider's, and
+       * acting on these events would make the conversation slower.
+       *
+       * Kept and forwarded anyway, because they are the provider's own
+       * opinion about turn boundaries and cost nothing to carry.
        */
       const speechEvent = String(response?.speechEventType ?? '');
       if (speechEvent && speechEvent !== 'SPEECH_EVENT_TYPE_UNSPECIFIED') {

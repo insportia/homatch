@@ -1595,6 +1595,21 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       };
 
       /*
+       * THE FIRST BYTE, SENT BEFORE ANY WORK.
+       *
+       * The browser sees about 1.6 seconds between asking for a turn and the
+       * first word, while this function's own stamps account for roughly
+       * 850ms of it. The missing time is either the trip here or work done
+       * before the stream opens, and those have completely different fixes:
+       * one is a region problem and the other is ours.
+       *
+       * So the stream says hello immediately, carrying how long THIS handler
+       * had already been running when it did. Everything the client measures
+       * before the ack, minus handlerMs, is transport.
+       */
+      send('ack', { handlerMs: Date.now() - handlerStartedAt });
+
+      /*
        * SYNTHESIS RUNS BESIDE THE MODEL, AND SO DOES SENDING IT.
        *
        * The first version got half of this right: phrases were synthesised as

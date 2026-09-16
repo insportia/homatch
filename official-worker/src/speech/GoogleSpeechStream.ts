@@ -127,6 +127,8 @@ export interface SpeechEvents {
   onUnavailable: (reason: string) => void;
   /** A restart happened and nothing was lost; for diagnostics only. */
   onRestart: () => void;
+  /** Google's own voice-activity announcement, when it makes one. */
+  onSpeechEvent?: (kind: string) => void;
 }
 
 /**
@@ -443,6 +445,24 @@ export class GoogleSpeechStream {
     }
 
     s.on('data', (response: any) => {
+      /*
+       * GOOGLE'S OWN VOICE ACTIVITY DETECTOR, WHICH WE HAVE BEEN DISCARDING.
+       *
+       * enableVoiceActivityEvents has been on since this class was written
+       * and nothing has ever read speechEventType. If Google is announcing
+       * the end of speech, that is the provider's own endpointer telling us
+       * the exact moment to flush -- and the browser has instead been
+       * counting silence with an energy threshold and then waiting its own
+       * 300-600ms window before asking. Those two waits are additive today:
+       * measured, our window plus Google's ~600ms flush is the whole 1300ms.
+       *
+       * Reported rather than acted on, first: whether these arrive at all,
+       * and how early, decides whether they can replace the window.
+       */
+      const speechEvent = String(response?.speechEventType ?? '');
+      if (speechEvent && speechEvent !== 'SPEECH_EVENT_TYPE_UNSPECIFIED') {
+        this.events.onSpeechEvent?.(speechEvent);
+      }
       for (const result of response?.results ?? []) {
         const alt = result?.alternatives?.[0];
         const text = String(alt?.transcript ?? '').trim();

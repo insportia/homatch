@@ -57,7 +57,19 @@ test('interruption resolves to a live state and cannot strand the session', () =
   const c = strip(src);
   const at = c.indexOf("if (action === 'STOP')");
   assert.ok(at > 0, 'the barge-in decision must act');
-  const block = c.slice(at, at + 420);
+  /*
+   * The whole block, not a fixed number of characters from its start. A
+   * window that size silently depends on how much comment sits inside the
+   * branch, and adding an explanation to it failed a test about interruption
+   * that had not changed. Balanced braces from the branch's opening one.
+   */
+  const open = c.indexOf('{', at);
+  let depth = 0, end = c.length;
+  for (let i = open; i < c.length; i++) {
+    if (c[i] === '{') depth++;
+    else if (c[i] === '}' && --depth === 0) { end = i + 1; break; }
+  }
+  const block = c.slice(at, end);
   assert.ok(/setState\('INTERRUPTED'\)/.test(block));
   // INTERRUPTED is a moment, not a resting place: something must take the
   // session back to listening or the microphone never reopens.

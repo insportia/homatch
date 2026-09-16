@@ -209,6 +209,12 @@ export interface VoiceDiagnostics {
   languageSwitches: number;
   /** The language the recogniser was last reopened for, if ever. */
   lastRelisten: string | null;
+  /** Milliseconds the assistant kept speaking after being interrupted. */
+  lastBargeStopMs: number | null;
+  /** Voiced audio that arrived with no socket ready to take it. */
+  voicedBeforeReadyMs: number;
+  /** One row per completed turn, for a real-device session. */
+  turnTrace: Array<Record<string, unknown>>;
   /** Turns this session ended itself rather than waiting for the endpointer. */
   turnsEndedLocally: number;
   lastEndTurnSilenceMs: number | null;
@@ -539,6 +545,24 @@ export class VoiceSession {
   private pendingFinal: { text: string; detected: string | null } | null = null;
   /** A language the recogniser must be reopened for, once the floor is free. */
   private relistenLanguage: TalkLanguage | null = null;
+  /*
+   * WHAT A REAL MICROPHONE TEST HAS TO BE ABLE TO ANSWER.
+   *
+   * Every latency number so far comes from synthetic speech played into the
+   * stack. The questions a real device raises are different and cannot be
+   * answered from a laptop: was the first syllable captured, did the socket
+   * exist yet when somebody started talking, and how fast does the assistant
+   * actually stop when interrupted.
+   *
+   * These are counters and timestamps only. No audio is retained anywhere,
+   * and the transcript shown is the person's own words on their own screen.
+   */
+  private turnTrace: Array<Record<string, unknown>> = [];
+  /** Voiced audio seen before the recogniser socket was ready to take it. */
+  private voicedBeforeReadyMs = 0;
+  /** When the visitor's speech interrupted the assistant, and when it stopped. */
+  private bargeSpeechAt = 0;
+  private lastBargeStopMs: number | null = null;
   /** Voiced milliseconds in the utterance currently being spoken to the socket. */
   private liveSpeechMs = 0;
   /** True once this turn has been ended deliberately; reset on a new socket. */
@@ -607,6 +631,7 @@ export class VoiceSession {
     utterances: 0, lastUtteranceMs: null as number | null,
     lastUtteranceBytes: null as number | null,
     sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, lastRelisten: null as string | null,
+    lastBargeStopMs: null as number | null,
     turnsEndedLocally: 0,
     lastEndTurnSilenceMs: null as number | null, lastEndTurnSpeechMs: null as number | null,
     lastSttMs: null as number | null, lastSttChars: null as number | null,
@@ -782,6 +807,9 @@ export class VoiceSession {
       finalsDeferred: this.diag.finalsDeferred ?? 0,
       languageSwitches: this.diag.languageSwitches ?? 0,
       lastRelisten: this.diag.lastRelisten ?? null,
+      lastBargeStopMs: this.diag.lastBargeStopMs ?? null,
+      voicedBeforeReadyMs: Math.round(this.voicedBeforeReadyMs),
+      turnTrace: this.turnTrace,
       turnsEndedLocally: this.diag.turnsEndedLocally ?? 0,
       lastEndTurnSilenceMs: this.diag.lastEndTurnSilenceMs ?? null,
       lastEndTurnSpeechMs: this.diag.lastEndTurnSpeechMs ?? null,
@@ -994,6 +1022,20 @@ export class VoiceSession {
      * pause inside a sentence differently from the end of one, which is the
      * thing an energy threshold here was never going to get right.
      */
+    /*
+     * SPEECH THAT ARRIVED BEFORE THERE WAS ANYWHERE TO SEND IT.
+     *
+     * The session only says LISTENING once the socket is open, so in theory
+     * this is always zero. In practice a socket can drop and be replaced
+     * mid-conversation, and a person who starts talking in that window loses
+     * the front of their word. Counted rather than assumed, because "no
+     * first-syllable clipping" is exactly the claim that needs evidence from
+     * a real microphone.
+     */
+    if (level >= SPEECH_RMS && !this.live?.isReady && !this.micGated && !this.muted) {
+      this.voicedBeforeReadyMs += blockMs;
+    }
+
     if (this.live?.isReady && this.liveResampler) {
       const live = this.liveResampler.process(input);
       if (live.length) {
@@ -1467,6 +1509,29 @@ export class VoiceSession {
      * deferred sentence takes an ordinary turn, and anything deferred during
      * THAT turn is drained by that turn's own finally.
      */
+    /*
+     * ONE ROW PER TURN, FOR A PERSON HOLDING A REAL PHONE.
+     *
+     * Everything here is a duration or a count. The transcript is included
+     * because the question a real-device test asks is "what did it actually
+     * hear", and it is the speaker's own words shown back to them on their
+     * own screen; nothing is stored or sent anywhere by this.
+     */
+    this.turnTrace.push({
+      at: new Date().toISOString(),
+      heard: this.diag.lastTranscript,
+      language: this.language.current,
+      endTurnSilenceMs: this.diag.lastEndTurnSilenceMs,
+      endTurnSpeechMs: this.diag.lastEndTurnSpeechMs,
+      sttMs: this.diag.lastSttMs,
+      llmMs: this.diag.lastLlmMs ?? null,
+      firstAudioMs: this.diag.lastPlaybackMs ?? null,
+      bargeStopMs: this.lastBargeStopMs,
+      voicedBeforeReadyMs: Math.round(this.voicedBeforeReadyMs),
+      deferredFinals: this.diag.finalsDeferred ?? 0,
+    });
+    if (this.turnTrace.length > 40) this.turnTrace.shift();
+
     const deferred = this.pendingFinal;
     this.pendingFinal = null;
     if (deferred && !this.closed) await this.onLiveFinal(deferred.text, deferred.detected);
@@ -1975,6 +2040,9 @@ export class VoiceSession {
   private trackVoiceActivity(level: number, blockMs: number): void {
     const speaking = level >= DEFAULT_BARGE_IN.energyThreshold;
     if (speaking) {
+      // The first loud block of an interruption is what the stop is measured
+      // against; it is cleared when the assistant is no longer speaking.
+      if (!this.bargeSpeechAt && this.state === 'RESPONDING') this.bargeSpeechAt = Date.now();
       this.sustainedSpeechMs += blockMs;
 
       if (this.state === 'RESPONDING') {
@@ -1990,7 +2058,17 @@ export class VoiceSession {
         });
         if (action === 'DUCK') this.duckPlayback();
         if (action === 'STOP') {
+          /*
+           * How long the assistant kept talking after being interrupted.
+           * Measured from when the visitor's voice was first sustained enough
+           * to count as an interruption, not from this decision -- the wait a
+           * person feels starts when they start speaking.
+           */
+          const spokeAt = this.bargeSpeechAt || Date.now();
           this.stopPlayback();
+          this.lastBargeStopMs = Date.now() - spokeAt;
+          this.diag.lastBargeStopMs = this.lastBargeStopMs;
+          this.bargeSpeechAt = 0;
           this.setState('INTERRUPTED');
           window.setTimeout(() => {
             if (this.state === 'INTERRUPTED') this.setState('LISTENING');

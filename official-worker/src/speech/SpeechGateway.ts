@@ -242,6 +242,12 @@ function serve(
       }
     },
     onRestart: () => send({ type: 'restarted' }),
+    /*
+     * Forwarded so the browser can stop counting silence for itself when the
+     * recogniser has already decided. It is a fact from the provider, not an
+     * instruction: the session decides what to do with it.
+     */
+    onSpeechEvent: (kind) => send({ type: 'speech_event', kind }),
     onUnavailable: (reason) => {
       send({ type: 'unavailable', reason });
       finish(1011, reason);

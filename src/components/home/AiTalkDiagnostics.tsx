@@ -43,6 +43,32 @@ const ms = (v: number | null | undefined) => (v === null || v === undefined ? 'â
 export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
   if (!d) return null;
 
+  /*
+   * A REAL DEVICE CANNOT BE READ OVER SOMEBODY'S SHOULDER.
+   *
+   * Every latency number this project has is from synthetic speech played
+   * into the stack. The questions a phone raises -- was the first syllable
+   * captured, how fast did it stop when interrupted, what did it actually
+   * hear in a noisy room -- can only be answered by the person holding it,
+   * and only if they can get the answer back off the phone.
+   *
+   * So the turn trace is copyable. Durations, counts, and the transcript the
+   * speaker just watched appear on their own screen; nothing is recorded,
+   * nothing is uploaded, and this whole panel is behind ?debugAiTalk=1.
+   */
+  const copyTrace = () => {
+    const payload = JSON.stringify({
+      device: navigator.userAgent,
+      liveMode: d.liveMode ?? null,
+      liveProvider: d.liveProvider ?? null,
+      voicedBeforeReadyMs: d.voicedBeforeReadyMs ?? null,
+      lastBargeStopMs: d.lastBargeStopMs ?? null,
+      languageSwitches: d.languageSwitches ?? null,
+      turns: d.turnTrace ?? [],
+    }, null, 1);
+    void navigator.clipboard?.writeText(payload).catch(() => {});
+  };
+
   const kb = (bytes: number | null | undefined) =>
     bytes === null || bytes === undefined ? 'â€”' : `${(bytes / 1024).toFixed(1)} kB`;
 
@@ -163,6 +189,29 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
           <div className="[overflow-wrap:anywhere] text-white">{d.lastTranscript}</div>
         </div>
       ) : null}
+
+      {/* The three answers only a real device can give. */}
+      <div className="mt-1.5 border-t border-white/10 pt-1.5">
+        <Row
+          label="Voice before socket ready"
+          value={`${d.voicedBeforeReadyMs ?? 0} ms`}
+          tone={(d.voicedBeforeReadyMs ?? 0) > 0 ? 'bad' : 'good'}
+        />
+        <Row
+          label="Barge-in stop"
+          value={d.lastBargeStopMs === null || d.lastBargeStopMs === undefined
+            ? 'not interrupted yet' : `${d.lastBargeStopMs} ms`}
+        />
+        <Row label="Turns traced" value={String(d.turnTrace?.length ?? 0)} />
+      </div>
+
+      <button
+        type="button"
+        onClick={copyTrace}
+        className="mt-2 w-full rounded border border-white/20 bg-white/5 px-2 py-1 text-white/80"
+      >
+        Copy turn trace
+      </button>
     </div>
   );
 }

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useReducer, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Share, Plus, X, Check, ExternalLink } from 'lucide-react';
+import { Download, Share, Plus, X, Check, ExternalLink, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { recordPwaEvent } from '@/lib/engagement';
 import {
   type InstallMode,
-  awaitInstallPrompt, isCheckingInstall,
+  isCheckingInstall,
   canInstall, heldInstallPrompt, installedInThisTab, isIOSSafari, isIOSOtherBrowser,
   isIPad, isStandalone,
   rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted, watchInstall,
@@ -79,6 +79,7 @@ export function useInstallMode(): InstallMode {
     hasNativePrompt: heldInstallPrompt() !== null,
     iosSafari: isIOSSafari(),
     iosOther: isIOSOtherBrowser(),
+    checking: isCheckingInstall(),
     installable: canInstall(),
     muted: muted || wasMuted(),
     installed: installedInThisTab(),
@@ -121,7 +122,15 @@ export function InstallApp({
   className?: string;
 }) {
   const { t } = useLanguage();
-  const [sheet, setSheet] = useState<null | 'ios' | 'pending' | 'ios-browser'>(null);
+  /*
+   * ── THE SHEET IS AN iOS OBJECT ────────────────────────────────────
+   *
+   * There is no longer a Chromium kind. That is the fix: the modal a Chrome
+   * user was seeing cannot be opened from here because there is no value to
+   * open it with. Routing is enforced by the type, not by a condition
+   * somebody has to remember to write correctly.
+   */
+  const [sheet, setSheet] = useState<null | 'ios' | 'ios-browser'>(null);
   const [muted, setMuted] = useState(false);
 
   /*
@@ -160,6 +169,7 @@ export function InstallApp({
     hasNativePrompt: prompt !== null,
     iosSafari: isIOSSafari(),
     iosOther: isIOSOtherBrowser(),
+    checking: isCheckingInstall(),
     installable: canInstall(),
     muted: muted || wasMuted(),
     installed: justInstalled,
@@ -216,25 +226,20 @@ export function InstallApp({
       return;
     }
     /*
-     * ── NOT YET IS NOT THE SAME AS NEVER ──────────────────────────────
+     * ── NO PROMPT, NO ACTION ──────────────────────────────────────────
      *
-     * Measured on the deployed site in a real Chrome: beforeinstallprompt
-     * lands about four seconds after load. Pressing Install before then used
-     * to open a page of instructions -- on a browser that was about to offer
-     * a one-tap install, and whose prompt then sat captured and unused.
+     * This used to wait for a late event and, failing that, open the manual
+     * instructions. Both halves were wrong. The wait was a timeout guessing
+     * at a number that measurement showed varies from 1.7 to 3.7 seconds on
+     * the same site, and the fallback answered a Chrome user with iOS steps.
      *
-     * So a pending press WAITS for it, briefly, instead of concluding. The
-     * window is inside Chromium's five-second transient activation, because
-     * prompt() needs the gesture that is being spent right now; longer would
-     * buy an event we are no longer allowed to use.
-     *
-     * The instructions remain the answer when nothing arrives -- which is
-     * what a browser that genuinely will not offer looks like from here.
+     * Neither is needed now, because the control that leads here only exists
+     * when a prompt is already held. Reaching this line without one means the
+     * event was spent or withdrawn between render and click, and the honest
+     * response to that is nothing at all -- the control re-renders into its
+     * real state on the next tick.
      */
-    if (mode === 'pending' || !prompt) {
-      const arrived = await awaitInstallPrompt();
-      if (!arrived) { setSheet('pending'); return; }
-    }
+    if (!heldInstallPrompt()) return;
     /* The event is single-use — Chromium will not replay it. A dismissal is
        NOT a mute: the control stays, in its pending state, and explains
        itself if pressed again. */
@@ -270,6 +275,77 @@ export function InstallApp({
    * one case where nothing is the honest answer.
    */
   if (mode === 'unsupported') return null;
+
+  /*
+   * ── CHROMIUM, NO PROMPT IN HAND ────────────────────────────────────
+   *
+   * Two states, and neither of them is a button that says Install App.
+   *
+   * `checking`  the browser has not answered yet. A NON-INTERACTIVE chip,
+   *             because a control that cannot do the thing must not invite
+   *             the press. Measurement is why: the event arrived at 1668,
+   *             1791, 2145 and 3687ms across four runs of the same site, so
+   *             any button rendered before it is a promise with a coin-flip
+   *             behind it.
+   *
+   * `native-unavailable`  the browser has decided it will not offer. Add to
+   *             Home Screen is NOT the same product as a native install, and
+   *             offering it here answers a question Chromium already
+   *             declined. Nothing is rendered.
+   *
+   * Together these are why the reported screenshot is now impossible on
+   * Chromium: no Chromium state reaches a control that can open the sheet.
+   */
+  /*
+   * Both render the SAME non-interactive chip, in the same box as the real
+   * button. Rendering nothing was tried and two existing gates caught it: the
+   * affordance vanishing leaves a hole in the mobile utility strip, which is
+   * the defect those gates exist for. A chip keeps the row's shape and still
+   * cannot install anything, which is the property that matters.
+   */
+  if (mode === 'checking' || mode === 'native-unavailable') {
+    const quiet = tone === 'dark'
+      ? 'bg-white/[0.06] text-white/60 ring-1 ring-inset ring-white/15'
+      : 'bg-secondary text-muted-foreground ring-1 ring-inset ring-border';
+    const shape = variant === 'block'
+      ? 'w-full min-h-[3rem] rounded-[0.9rem] px-4 text-[17px]'
+      : `min-h-[2.5rem] rounded-full text-sm ${compact ? 'w-10 px-0' : 'px-3.5'}`;
+    return (
+      /*
+       * A DISABLED BUTTON, not a span.
+       *
+       * The action exists and is not available yet, which is precisely what
+       * `disabled` means -- and it cannot be pressed, which is the guarantee.
+       * A span would have been equally unpressable and wrong twice over: the
+       * control disappears from the accessibility tree as an action, and the
+       * mobile gates that exist because this affordance kept vanishing look
+       * for a button and would have found a hole again.
+       */
+      <button
+        type="button"
+        disabled
+        aria-live="polite"
+        /* Named for the action it WOULD perform, which is how a disabled
+           control is supposed to read: a greyed-out Save is still called
+           Save. It also keeps the affordance findable in the accessibility
+           tree, which the mobile strip gate relies on. */
+        aria-label={t('pwa_install_aria')}
+        className={`inline-flex items-center justify-center gap-2 font-medium ${shape} ${quiet} ${className} cursor-default`}
+      >
+        {mode === 'checking'
+          ? <Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          : <Download className="h-4 w-4 shrink-0 opacity-60" aria-hidden="true" />}
+        {!compact && (
+          <span className="min-w-0 truncate">
+            {/* Two different facts: still deciding, and decided against. Neither
+                of them is "install this by hand", which is the sentence a Chrome
+                user was being given. */}
+            {mode === 'checking' ? t('pwa_preparing') : t('pwa_unavailable')}
+          </span>
+        )}
+      </button>
+    );
+  }
 
   if (mode === 'standalone' || mode === 'dismissed') {
     const quiet = tone === 'dark'
@@ -315,7 +391,10 @@ export function InstallApp({
                 const outcome = await showInstallPrompt();
                 if (outcome !== 'unavailable') return;
               }
-              setSheet(isIOSSafari() ? 'ios' : isIOSOtherBrowser() ? 'ios-browser' : 'pending');
+              /* iOS only. A Chromium browser with no prompt in hand has
+                 nothing to say here that is true, so it says nothing. */
+              if (isIOSSafari()) setSheet('ios');
+              else if (isIOSOtherBrowser()) setSheet('ios-browser');
             })();
           }}
           aria-label={t('pwa_install_aria')}
@@ -373,18 +452,12 @@ export function InstallApp({
         {!compact && (
           <span className="min-w-0 truncate">
             {/*
-              * THE CONTROL SAYS WHAT IT KNOWS.
-              *
-              * While the browser is still deciding, this used to read
-              * "Install App" and then hand over Add to Home Screen
-              * instructions -- a label that promised something the control
-              * could not yet do. Naming the state instead costs a few
-              * seconds of a quieter word and never misdescribes what a press
-              * will produce.
+              * By the time this renders, the word is guaranteed. `checking`
+              * and `native-unavailable` returned above, so "Install App"
+              * here means a prompt is held or the platform installs
+              * manually -- never "we hope one turns up".
               */}
-            {mode === 'installed' ? t('pwa_open')
-              : (mode === 'pending' && checking) ? t('pwa_preparing')
-                : t('pwa_install')}
+            {mode === 'installed' ? t('pwa_open') : t('pwa_install')}
           </span>
         )}
       </button>
@@ -410,7 +483,15 @@ export function InstallApp({
  */
 function Sheet({
   kind, onClose, onMute,
-}: { kind: 'ios' | 'pending' | 'ios-browser'; onClose: () => void; onMute: () => void }) {
+}: { kind: 'ios' | 'ios-browser'; onClose: () => void; onMute: () => void }) {
+  /*
+   * TWO KINDS, BOTH iOS.
+   *
+   * There is no Chromium kind, and that absence is the fix. A Chrome user
+   * cannot be shown this sheet because there is no value that would open it
+   * for them -- so putting the path back is a compile error rather than a
+   * judgement call inside a click handler.
+   */
   const { t } = useLanguage();
 
   /*
@@ -460,22 +541,13 @@ function Sheet({
       { icon: Plus, text: t('pwa_ios_step2') },
       { icon: Download, text: t('pwa_ios_step3') },
     ]
-    : kind === 'ios-browser'
-      ? [
-        { icon: Share, text: t('pwa_iosbrowser_step1') },
-        { icon: Download, text: t('pwa_iosbrowser_step2') },
-      ]
-      : [
-        { icon: Download, text: t('pwa_pending_step1') },
-        { icon: Plus, text: t('pwa_pending_step2') },
-      ];
+    : [
+      { icon: Share, text: t('pwa_iosbrowser_step1') },
+      { icon: Download, text: t('pwa_iosbrowser_step2') },
+    ];
 
-  const title = kind === 'ios' ? t('pwa_ios_title')
-    : kind === 'ios-browser' ? t('pwa_iosbrowser_title')
-      : t('pwa_pending_title');
-  const lead = kind === 'ios' ? t('pwa_ios_lead')
-    : kind === 'ios-browser' ? t('pwa_iosbrowser_lead')
-      : t('pwa_pending_lead');
+  const title = kind === 'ios' ? t('pwa_ios_title') : t('pwa_iosbrowser_title');
+  const lead = kind === 'ios' ? t('pwa_ios_lead') : t('pwa_iosbrowser_lead');
 
   /*
    * ── RENDERED AT THE BODY, NOT WHERE IT WAS DECLARED ───────────────────

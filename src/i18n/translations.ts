@@ -6418,6 +6418,7 @@ const en = {
   twin_share: 'Share',
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — Brand',
   dev_extract_schedule_mismatch: 'The payment plan still totals {total}, not {price}. Somebody has to decide how the difference is absorbed.',
+  pwa_unavailable: 'Install not offered',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -12754,6 +12755,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   twin_share: 'გაზიარება',
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — ბრენდი',
   dev_extract_schedule_mismatch: 'გადახდის გეგმა ჯერ კვლავ {total}-ია, არა {price}. ვიღაცამ უნდა გადაწყვიტოს, როგორ დაეჿასება სხვაობა.',
+  pwa_unavailable: 'დაყენება არ არის შემოთავაზებული',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -19081,6 +19083,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   twin_share: 'Поделиться',
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — бренд',
   dev_extract_schedule_mismatch: 'План платежей по-прежнему даёт {total}, а не {price}. Кто-то должен решить, как покрыть разницу.',
+  pwa_unavailable: 'Установка не предлагается',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -25406,6 +25409,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   twin_share: 'Paylaş',
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — marka',
   dev_extract_schedule_mismatch: 'Ödeme planı hâlâ {price} değil {total} ediyor. Aradaki farkın nasıl karşılanacağına birinin karar vermesi gerekiyor.',
+  pwa_unavailable: 'Yükleme sunulmuyor',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -31731,6 +31735,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   twin_share: 'مشاركة',
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — العلامة',
   dev_extract_schedule_mismatch: 'ما زال مجموع خطة السداد {total} وليس {price}. على أحدهم أن يقرر كيف يُستوعَب الفرق.',
+  pwa_unavailable: 'التثبيت غير متاح',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -38056,6 +38061,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   twin_share: 'שיתוף',
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — מותג',
   dev_extract_schedule_mismatch: 'תוכנית התשלומים עדיין מסתכמת ב-{total} ולא ב-{price}. מישהו צריך להחליט איך לגשר על הפער.',
+  pwa_unavailable: 'התקנה לא מוצעת',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

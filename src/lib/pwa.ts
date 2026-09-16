@@ -29,15 +29,26 @@ export type InstallMode =
    */
   | 'installed'
   /**
-   * The browser can install, but has not offered a prompt yet.
+   * Chromium, and the browser has not offered a prompt YET.
    *
-   * beforeinstallprompt fires late, and on a browser that has not yet
-   * decided the site is engaging enough it may never fire. Treating that
-   * as "unavailable" made the control appear a second or two after load,
-   * which reads as a glitch. This keeps it on the page and says what is
-   * true: installing is possible, and here is how.
+   * This replaces a mode called `pending` that rendered an active "Install
+   * App" button. That button was a lie with a short half-life: pressing it
+   * before the event arrived could end in a page of Add to Home Screen
+   * instructions, which is not installing and is not what the word said.
+   *
+   * The rule this enforces: the active Install control exists if and only if
+   * a real prompt is already held. Anything less says something else.
    */
-  | 'pending'
+  | 'checking'
+  /**
+   * Chromium, done deciding, and it will not offer.
+   *
+   * NOT the manual-install case. Add to Home Screen on Chromium is a
+   * different and worse thing than a native install, and offering it here
+   * would be answering a question the browser already declined. Nothing
+   * clickable is rendered.
+   */
+  | 'native-unavailable'
   /** iOS Safari: real, but manual, and it needs instructions. */
   | 'ios-manual'
   /**
@@ -177,6 +188,11 @@ export function resolveInstallMode(opts: {
   installed?: boolean;
   /** iOS, in a browser that cannot install. Safari can, one hop away. */
   iosOther?: boolean;
+  /**
+   * A Chromium that may still produce a prompt. Time-bounded by the caller,
+   * because only it knows how long this page has been open.
+   */
+  checking?: boolean;
 }): InstallMode {
   if (opts.standalone) return 'standalone';
   /* Installed beats muted: somebody who has just installed it wants the door,
@@ -197,23 +213,26 @@ export function resolveInstallMode(opts: {
    * is the nagging the mute was asking us to stop.
    */
   if (opts.muted) return opts.installable || opts.iosSafari ? 'dismissed' : 'unsupported';
+  /*
+   * THE ONLY ROUTE TO AN ACTIVE INSTALL CONTROL.
+   *
+   * Derived from the held event, never from what the browser looks like. A
+   * user agent that resembles Chrome is not a capability.
+   */
   if (opts.hasNativePrompt) return 'native';
   if (opts.iosSafari) return 'ios-manual';
-  /* Before the `installable` test below, which is false on every iOS browser
-     and would otherwise send these to `unsupported`. */
+  /* Before the `installable` tests below, which are false on every iOS
+     browser and would otherwise send these to `unsupported`. */
   if (opts.iosOther) return 'ios-browser';
   /*
-   * No native prompt yet, and not iOS.
+   * Chromium, no prompt in hand. Two different facts, and they used to share
+   * one mode called `pending` that rendered an active Install button.
    *
-   * beforeinstallprompt fires late, and on a browser that supports
-   * installing but has not decided the site is engaging enough it may
-   * never fire at all. Returning a nothing-to-show state here is what made
-   * the button appear a second or two after load, which reads as a glitch.
-   * 'pending' keeps the control on the page in a state that says what it
-   * is: installing is possible, the browser has not offered it yet, and
-   * pressing it explains how.
+   * Still deciding is not the same as declined, and neither of them is
+   * "install this manually" -- which is the answer the old mode eventually
+   * gave, and the reason a Chrome user was shown iOS instructions.
    */
-  if (opts.installable) return 'pending';
+  if (opts.installable) return opts.checking ? 'checking' : 'native-unavailable';
   return 'unsupported';
 }
 
@@ -318,46 +337,6 @@ export function resetInstallState(): void {
   announce();
 }
 
-/**
- * Wait, briefly, for a prompt the browser has not delivered yet.
- *
- * WHY THIS EXISTS
- *
- * Measured against the deployed site in a real Chrome: `beforeinstallprompt`
- * arrives about FOUR SECONDS after load, once the manifest is parsed and the
- * service worker is in control. Anyone who presses Install before then was
- * being handed Add to Home Screen instructions by a browser that was, a
- * moment later, going to offer a one-tap install.
- *
- * A control that is wrong for the first four seconds of every visit is wrong
- * at exactly the moment people use it, because pressing it is often the first
- * thing they do.
- *
- * WHY THE WINDOW IS SHORT
- *
- * `prompt()` requires user activation, and Chromium's transient activation
- * lasts five seconds. Waiting longer than that would spend the gesture and
- * the call would be rejected -- so this waits well inside it and gives up in
- * time to fall back to something that still works.
- */
-export function awaitInstallPrompt(timeoutMs = 2500): Promise<BeforeInstallPromptEvent | null> {
-  if (heldPrompt) return Promise.resolve(heldPrompt);
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (value: BeforeInstallPromptEvent | null) => {
-      if (done) return;
-      done = true;
-      watchers.delete(check);
-      clearTimeout(timer);
-      resolve(value);
-    };
-    function check(): void {
-      if (heldPrompt) finish(heldPrompt);
-    }
-    const timer = setTimeout(() => finish(null), timeoutMs);
-    watchers.add(check);
-  });
-}
 
 /**
  * How long after load a Chromium browser is still deciding.

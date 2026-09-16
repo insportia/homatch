@@ -386,6 +386,14 @@ test('each platform takes the shortest path it actually permits', opts, async (t
         return l.includes('install') || l.includes('add to home');
       });
       if (!target) return false;
+      /*
+       * A DISABLED control is not an active one, and that difference is the
+       * whole property under test. The chip shown while Chromium is still
+       * deciding carries the same accessible name on purpose -- a greyed-out
+       * Save is still called Save -- so the name alone cannot answer "can
+       * this be pressed". Ask the button.
+       */
+      if (target.disabled) return false;
       target.click();
       return true;
     });
@@ -437,21 +445,23 @@ test('each platform takes the shortest path it actually permits', opts, async (t
   if (installed.dialog) failures.push('standalone: an install modal opened inside the installed app');
 
   /*
-   * 5. THE FOUR-SECOND WINDOW.
+   * 5. CHROMIUM, STILL DECIDING.
    *
-   * Measured against the deployed site in a real Chrome: beforeinstallprompt
-   * arrives about four seconds after load. A press before then used to open
-   * Add to Home Screen instructions on a browser that was about to offer a
-   * one-tap install. Here the click happens FIRST and the event arrives
-   * afterwards, which is the order that was broken.
+   * The old architecture rendered an active "Install App" button here and
+   * raced: press it early and you got Add to Home Screen instructions on a
+   * Chrome browser. There is nothing to race now -- the control is not a
+   * button until a prompt is held, so the failure is unreachable rather than
+   * unlikely.
+   *
+   * Asserted as an ABSENCE of the clickable control, which is the property,
+   * not as the presence of a particular word.
    */
-  const rescued = await run({ name: 'late-event', ua: chromiumUA, lateBip: 250 });
-  if (!rescued.clicked) failures.push('late-event: no install control was rendered');
-  else {
-    if (rescued.promptCalls !== 1) {
-      failures.push(`late-event: a prompt arriving after the click was ignored (prompt called ${rescued.promptCalls} times)`);
-    }
-    if (rescued.dialog) failures.push('late-event: instructions opened instead of waiting for the prompt that was coming');
+  const checking = await run({ name: 'checking', ua: chromiumUA });
+  if (checking.clicked) {
+    failures.push('checking: an active install control existed with no prompt behind it');
+  }
+  if (checking.dialog) {
+    failures.push('checking: the manual modal opened on Chromium — the exact reported bug');
   }
 
   /*

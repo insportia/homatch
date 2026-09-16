@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   DISMISS_DAYS, heldInstallPrompt, installedInThisTab, isIOS, isIOSSafari,
-  isStandalone, isIPad, isIOSOtherBrowser, awaitInstallPrompt, resetInstallState,
+  isStandalone, isIPad, isIOSOtherBrowser, resetInstallState,
   rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted,
   watchInstall,
 } from '../pwa.ts';
@@ -226,16 +226,32 @@ test('it still only registers in a real build', () => {
  * Muting is now a separate, explicit act, available only from the sheet.
  */
 
-test('a snoozed prompt leaves the control on the page', () => {
-  // Chromium, prompt already spent by a dismissal: still installable.
-  assert.equal(
-    resolveInstallMode({
-      standalone: false, hasNativePrompt: false, iosSafari: false,
-      installable: true, muted: false,
-    }),
-    'pending',
-    'dismissing the native dialog must not remove the way back in',
-  );
+test('a snoozed prompt leaves a way back in, without inventing one', () => {
+  /*
+   * The defect this guards is real and unchanged: refusing Chrome's own
+   * dialog must not permanently remove the entry point.
+   *
+   * What changed is the answer. It used to resolve to `pending`, which
+   * rendered an active "Install App" button with NO prompt behind it -- and
+   * pressing that button opened Add to Home Screen instructions. Keeping the
+   * door by mislabelling it is not keeping the door; it is the bug.
+   *
+   * Chromium will not replay a spent event, it offers a new one later. So the
+   * honest sequence is: quiet while there is nothing to offer, and a real
+   * install control the moment there is.
+   */
+  const spent = resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: false,
+    installable: true, muted: false,
+  });
+  assert.notEqual(spent, 'native', 'an active install was offered with no prompt behind it');
+  assert.notEqual(spent, 'ios-manual', 'a Chrome user was routed into the manual flow');
+
+  // And the way back in, the moment the browser offers again.
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: true, iosSafari: false,
+    installable: true, muted: false,
+  }), 'native', 'a fresh prompt did not restore the install control');
 });
 
 test('only an explicit mute quiets the control', () => {
@@ -499,10 +515,137 @@ test('installed and standalone still outrank a held prompt', () => {
 });
 
 
-test('the wait gives up rather than spending the gesture', async () => {
-  resetInstallState();
-  const started = Date.now();
-  const got = await awaitInstallPrompt(120);
-  assert.equal(got, null);
-  assert.ok(Date.now() - started < 2000, 'the wait must be bounded well inside transient activation');
+
+/*
+ * ── THE RULE ──────────────────────────────────────────────────────────────
+ *
+ * If the button says "Install App", a real native prompt is already held.
+ *
+ * Everything below exists because the old architecture broke that rule for
+ * the first few seconds of every Chromium visit, and answered the press with
+ * iOS Add to Home Screen instructions. The fix is not a better timeout; it is
+ * that no Chromium state renders a control that can open the sheet.
+ */
+
+test('CHROMIUM_CHECKING is not an install action', () => {
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: false,
+    installable: true, muted: false, checking: true,
+  }), 'checking', 'a browser still deciding was described as something else');
+});
+
+test('CHROMIUM_NATIVE_READY requires the held event, not the user agent', () => {
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: true, iosSafari: false,
+    installable: true, muted: false, checking: true,
+  }), 'native', 'a held prompt must win even while the check window is open');
+});
+
+test('CHROMIUM_NATIVE_UNAVAILABLE is not the manual-install case', () => {
+  /* Add to Home Screen on Chromium is a different and worse product than a
+     native install. Offering it answers a question Chromium already
+     declined. */
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: false,
+    installable: true, muted: false, checking: false,
+  }), 'native-unavailable');
+});
+
+test('CHROMIUM_DISMISSED never becomes a manual-install state', () => {
+  const mode = resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: false,
+    installable: true, muted: true, checking: false,
+  });
+  assert.equal(mode, 'dismissed');
+  assert.notEqual(mode, 'ios-manual');
+});
+
+test('IOS_SAFARI keeps the manual flow, which is correct there', () => {
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: true,
+    installable: false, muted: false, iosOther: false,
+  }), 'ios-manual');
+});
+
+test('IOS_CHROME is its own answer, not Android and not Safari', () => {
+  /* CriOS is WebKit in someone else's chrome: no beforeinstallprompt, and no
+     Add to Home Screen in its menu either. Telling it either of the other two
+     stories would be false. */
+  assert.equal(resolveInstallMode({
+    standalone: false, hasNativePrompt: false, iosSafari: false,
+    installable: false, muted: false, iosOther: true,
+  }), 'ios-browser');
+});
+
+test('STANDALONE offers nothing at all', () => {
+  assert.equal(resolveInstallMode({
+    standalone: true, hasNativePrompt: true, iosSafari: false,
+    installable: true, muted: false, checking: true,
+  }), 'standalone');
+});
+
+test('the mode that used to lie no longer exists', () => {
+  /* `pending` rendered an active Install App button with no prompt behind it.
+     Its absence from every resolution is the invariant. */
+  const every = [
+    { standalone: false, hasNativePrompt: false, iosSafari: false, installable: true, muted: false, checking: true },
+    { standalone: false, hasNativePrompt: false, iosSafari: false, installable: true, muted: false, checking: false },
+    { standalone: false, hasNativePrompt: false, iosSafari: false, installable: false, muted: false },
+    { standalone: false, hasNativePrompt: true, iosSafari: false, installable: true, muted: false },
+    { standalone: false, hasNativePrompt: false, iosSafari: true, installable: false, muted: false },
+    { standalone: false, hasNativePrompt: false, iosSafari: false, installable: false, muted: false, iosOther: true },
+  ];
+  for (const opts of every) {
+    assert.notEqual(resolveInstallMode(opts), 'pending');
+  }
+});
+
+/*
+ * ── THE SCREENSHOT MUST BE UNREACHABLE, NOT UNLIKELY ──────────────────────
+ *
+ * Every earlier attempt at this bug was a condition: wait a bit longer, check
+ * one more flag, reorder two tests. Each narrowed the window and none closed
+ * it, because a condition is only as good as the next person who edits it.
+ *
+ * These read the source and assert the SHAPE instead: the sheet has no
+ * Chromium kind to be opened with, and every call site that opens one is
+ * guarded by an iOS test. A future edit that reintroduces the path fails here
+ * rather than in somebody's hand.
+ */
+const INSTALL_SRC = readFileSync(join('src', 'components', 'common', 'InstallApp.tsx'), 'utf8');
+
+test('the manual sheet has no Chromium kind to be opened with', () => {
+  const decl = INSTALL_SRC.match(/kind:\s*('[a-z-]+'(?:\s*\|\s*'[a-z-]+')*)\s*;/);
+  assert.ok(decl, 'the Sheet kind union could not be found');
+  const kinds = decl[1].split('|').map((k) => k.trim().replace(/'/g, ''));
+  assert.deepEqual(
+    kinds.filter((k) => !k.startsWith('ios')), [],
+    `the Sheet accepts a non-iOS kind (${kinds.join(', ')}), so a Chromium user can be shown it`,
+  );
+});
+
+test('every sheet is opened behind an iOS test', () => {
+  /* Each setSheet call must sit within a few lines of an iOS predicate or an
+     iOS mode check. Crude on purpose: it is a shape check, and a call that
+     drifts away from its guard is exactly the edit worth failing on. */
+  const lines = INSTALL_SRC.split(/\r?\n/);
+  const offenders = [];
+  lines.forEach((line, i) => {
+    if (!/setSheet\('/.test(line)) return;
+    const context = lines.slice(Math.max(0, i - 6), i + 1).join('\n');
+    const guarded = /isIOSSafari\(\)|isIOSOtherBrowser\(\)|mode === 'ios-manual'|mode === 'ios-browser'/.test(context);
+    if (!guarded) offenders.push(`line ${i + 1}: ${line.trim()}`);
+  });
+  assert.deepEqual(offenders, [],
+    `these open the manual sheet without an iOS guard:\n  ${offenders.join('\n  ')}`);
+});
+
+test('no timeout can decide that installation is manual', () => {
+  /* The previous fix waited a guessed number of milliseconds and then opened
+     the instructions. Measurement showed the event arriving at 1668, 1791,
+     2145 and 3687ms on the same site, so any such number is a coin flip. */
+  assert.equal(/awaitInstallPrompt/.test(INSTALL_SRC), false,
+    'a timeout-based wait is back in the install click path');
+  assert.equal(/setTimeout[^\n]*setSheet/.test(INSTALL_SRC), false,
+    'a timer opens the manual sheet');
 });

@@ -276,6 +276,41 @@ test('a discount needs the discount permission, checked in the database', () => 
   assert.match(body, /v_final := v_base - v_disc;/);
 });
 
+test('an offer at list price is possible at all', () => {
+  const body = fn(migration('offer_no_discount'), 'dev_create_offer');
+
+  /*
+   * THE REGRESSION THIS EXISTS FOR.
+   *
+   * discount_pct is NOT NULL DEFAULT 0, and the CASE that computed it had
+   * no ELSE -- so quoting the advertised price produced an explicit NULL,
+   * which does not fall back to a column default, and the insert died with
+   * 23502. Every DISCOUNTED offer worked, which is why it survived the unit
+   * tests and the first end-to-end run: both passed a discount, because a
+   * discount was the interesting case. The most ordinary action in the
+   * product was the one nothing exercised.
+   */
+  const insert = new RegExp(
+    'insert into public\\.dev_offers \\([\\s\\S]*?returning id into v_offer;',
+    'm',
+  ).exec(body);
+  assert.ok(insert, 'the offer insert is present');
+
+  const normalised = insert[0].replace(/\s+/g, ' ');
+  assert.match(
+    normalised,
+    /coalesce\( case when p_discount_pct is not null[\s\S]*?end, 0\)/,
+    'discount_pct falls back to 0 rather than NULL',
+  );
+
+  // The permission check must still stand: nought per cent is not a
+  // discount, and anything above it still needs the capability.
+  assert.match(
+    body,
+    /if v_disc > 0 and not public\.dev_can\(v_unit\.workspace_id, 'discount'\) then/,
+  );
+});
+
 test('accepting an offer does not take the apartment off the market', () => {
   const body = fn(migration('developer_os_offers_extraction'), 'dev_set_offer_status');
   // Reserving is a second, deliberate act with its own deposit and expiry.

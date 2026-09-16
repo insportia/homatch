@@ -452,7 +452,24 @@ const MIN_VOICED_MS = 260;
  * quarter-second fragment of a longer thought. Those finalise briskly.
  */
 const END_TURN_ACK_MS = 300;
-const END_TURN_SHORT_MS = 700;
+/*
+ * 600ms, and the number is a measured trade rather than a preference.
+ *
+ * A/B through one corrected harness, same corpus, back to back:
+ *
+ *   mid window 520ms   speech_end -> final  p50 1251ms
+ *   mid window 700ms   speech_end -> final  p50 1447ms
+ *
+ * Most real utterances land in this tier, so every millisecond here is paid
+ * on the common case. Against that, the pause sweep: a 700ms window keeps a
+ * mid-sentence pause of up to 600ms, a 520ms window only about 400ms, and a
+ * person composing a requirement pauses for longer than 400ms often.
+ *
+ * 600ms keeps pauses to roughly half a second for about eighty milliseconds
+ * over the old behaviour. Faster than protecting everything, safer than
+ * chasing the benchmark.
+ */
+const END_TURN_SHORT_MS = 600;
 const END_TURN_LONG_MS = 900;
 /*
  * Speech shorter than this is not an utterance, it is a noise.

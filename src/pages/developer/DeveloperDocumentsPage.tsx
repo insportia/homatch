@@ -18,9 +18,10 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDebounce } from '@/hooks/use-debounce';
 import { DeveloperShell } from '@/components/developer/DeveloperShell';
+import { Headline, BarRows } from '@/components/developer/visuals';
 import {
   Panel, PanelHeader, EmptyState, LoadingRows, ErrorState, TableScroll, Th, Td,
-  Money, formatDate, formatDateTime, Eyebrow, GoldRule,
+  Money, formatDate, formatDateTime, formatNumber, Eyebrow, GoldRule,
 } from '@/components/developer/primitives';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { ExtractionReview } from '@/components/developer/ExtractionReview';
@@ -177,6 +178,27 @@ export default function DeveloperDocumentsPage() {
     }
   }
 
+  /**
+   * THE WORKFLOW, COUNTED.
+   *
+   * Uploaded, being read, waiting for a person, confirmed. A document centre
+   * that opens on a search box tells a developer nothing about whether anybody
+   * has to do something today; these four numbers do, and the middle one is
+   * the only one that is ever anybody's job.
+   */
+  const flow = useMemo(() => {
+    const by = (...states: Array<DevDocument['status']>) =>
+      documents.filter((d) => states.includes(d.status)).length;
+    return {
+      total: documents.length,
+      uploaded: by('UPLOADED'),
+      reading: by('ANALYZING'),
+      review: by('EXTRACTED'),
+      confirmed: by('CONFIRMED'),
+      failed: by('FAILED', 'REJECTED'),
+    };
+  }, [documents]);
+
   return (
     <DeveloperShell
       title={t('dev_nav_documents')}
@@ -189,6 +211,35 @@ export default function DeveloperDocumentsPage() {
         </Button>
       ) : undefined}
     >
+      {documents.length > 0 && (
+        <Headline
+          className="mb-6"
+          metrics={[
+            {
+              label: t('dev_doc_flow_review'),
+              value: formatNumber(flow.review, language),
+              tone: flow.review > 0 ? 'attention' : undefined,
+              hint: t('dev_doc_flow_review_hint'),
+            },
+            { label: t('dev_doc_flow_confirmed'), value: formatNumber(flow.confirmed, language) },
+            { label: t('dev_doc_flow_total'), value: formatNumber(flow.total, language) },
+          ]}
+        >
+          {/* The pipeline as widths rather than as four more numbers. A step
+              with nothing in it is not drawn, so this never becomes a chart of
+              zeroes. */}
+          <BarRows
+            max={flow.total}
+            rows={[
+              { label: t('dev_doc_flow_uploaded'), value: flow.uploaded, tone: 'neutral' as const },
+              { label: t('dev_doc_flow_reading'), value: flow.reading, tone: 'neutral' as const },
+              { label: t('dev_doc_flow_review'), value: flow.review },
+              { label: t('dev_doc_flow_confirmed'), value: flow.confirmed, tone: 'neutral' as const },
+            ].filter((row) => row.value > 0)}
+          />
+        </Headline>
+      )}
+
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />

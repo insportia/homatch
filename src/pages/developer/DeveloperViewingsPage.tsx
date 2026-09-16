@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DeveloperShell, SubNav } from '@/components/developer/DeveloperShell';
+import { SalesContext } from '@/components/developer/SalesContext';
 import {
   Panel, PanelHeader, EmptyState, LoadingRows, ErrorState, formatDateTime,
 } from '@/components/developer/primitives';
@@ -89,6 +90,8 @@ export default function DeveloperViewingsPage() {
       tabs={<SubNav items={salesTabs(can)} />}
       requires="crm"
     >
+      <SalesContext className="mb-6" />
+
       {loading && <LoadingRows rows={5} />}
       {!loading && error && <ErrorState message={error} onRetry={load} />}
 

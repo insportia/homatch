@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DeveloperShell, SubNav } from '@/components/developer/DeveloperShell';
+import { SalesContext } from '@/components/developer/SalesContext';
 import {
   Panel, EmptyState, LoadingRows, ErrorState, TableScroll, Th, Td,
   formatDate, StatTile, formatNumber,
@@ -126,6 +127,8 @@ export default function DeveloperHandoverPage() {
         </Button>
       ) : undefined}
     >
+      <SalesContext className="mb-6" />
+
       {loading && <LoadingRows rows={6} />}
       {!loading && error && <ErrorState message={error} onRetry={load} />}
 

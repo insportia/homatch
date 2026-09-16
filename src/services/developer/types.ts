@@ -839,6 +839,8 @@ export interface BuyerRoomPayload {
     amount: number | null; currency: string; status: DevReservation['status'];
   } | null;
   unit?: {
+    /** Added so the room can ask dt_unit_scene() for this apartment's tour. */
+    unit_id?: string | null;
     unit_number: string; bedrooms: number | null; rooms: number | null;
     area_total: number | null; area_balcony: number | null;
     floor_level: number | null; orientation: string | null; view_text: string | null;

@@ -119,7 +119,7 @@ const SCREENS = [
   ['studio', '/studio'],
 ];
 
-const backend = makeBackend();
+const backend = makeBackend({ demo: true });
 mkdirSync(OUT, { recursive: true });
 
 const server = spawn(

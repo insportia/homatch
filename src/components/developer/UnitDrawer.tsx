@@ -32,6 +32,7 @@ import { reserveUnit, getUnitReservation, cancelReservation } from '@/services/d
 import { listLeads, type LeadWithContact } from '@/services/developer/crm';
 import { devErrorText } from '@/services/developer/client';
 import { UnitTwinTab } from './UnitTwinTab';
+import { UnitSalesTab } from './UnitSalesTab';
 import type {
   DevUnit, UnitStatus, DevWalkthrough, DevShareLink, DevShareEventRow, DevReservation,
 } from '@/services/developer/types';
@@ -158,6 +159,7 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
             <TabsList className="mx-4 mt-3 w-[calc(100%-2rem)] justify-start overflow-x-auto sm:mx-5 sm:w-[calc(100%-2.5rem)]">
               <TabsTrigger value="overview">{t('dev_tab_overview')}</TabsTrigger>
               <TabsTrigger value="tour">{t('dev_tab_tour')}</TabsTrigger>
+              <TabsTrigger value="sales">{t('dev_nav_sales')}</TabsTrigger>
               <TabsTrigger value="share">{t('dev_tab_share')}</TabsTrigger>
               <TabsTrigger value="history">{t('dev_tab_history')}</TabsTrigger>
             </TabsList>
@@ -192,6 +194,11 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
                     refuses them, which is why authoring stays behind isStudio. */}
                 <UnitTwinTab unit={unit} />
                 {isStudio && <WalkthroughTab unit={unit} canEdit />}
+              </TabsContent>
+
+              {/* BUYER -> UNIT -> SALE, read from the apartment's end. */}
+              <TabsContent value="sales" className="mt-0">
+                <UnitSalesTab unit={unit} />
               </TabsContent>
 
               <TabsContent value="share" className="mt-0">

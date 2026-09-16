@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
+import type { SalesLedgerRow } from '@/services/developer/types';
 import {
   Panel, PanelHeader, TableScroll, Th, Td, formatDate, formatMoney, formatNumber,
 } from './primitives';
@@ -59,7 +60,19 @@ const STATUS_KEY: Record<DevBrokerInvite['status'], string> = {
   EXPIRED: 'dev_broker_status_expired',
 };
 
-export function BrokerPanel({ workspaceId }: { workspaceId: string }) {
+/**
+ * A broker is a sales channel, so the table says what the channel produced.
+ *
+ * It listed who had been invited, how many apartments they could see and what
+ * commission had been agreed — everything about the arrangement and nothing
+ * about the business. `sales` and `revenue` come from the sales ledger, which
+ * records the broker on the sale itself; a broker with no sales shows a dash
+ * rather than a zero, because nought sales and no attribution are different
+ * facts and only one of them is this table's to assert.
+ */
+export function BrokerPanel({
+  workspaceId, ledger = [],
+}: { workspaceId: string; ledger?: SalesLedgerRow[] }) {
   const { t, lang: language } = useLanguage();
   const [rows, setRows] = useState<BrokerInviteRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +91,20 @@ export function BrokerPanel({ workspaceId }: { workspaceId: string }) {
   }, [workspaceId, t]);
 
   useEffect(() => { void load(); }, [load]);
+
+  /** What each broker actually sold, keyed by the name the ledger records. */
+  const byBroker = useMemo(() => {
+    const map = new Map<string, { sales: number; revenue: number; currency: string | null }>();
+    for (const sale of ledger) {
+      if (!sale.broker) continue;
+      const found = map.get(sale.broker) ?? { sales: 0, revenue: 0, currency: null };
+      found.sales += 1;
+      found.revenue += Number(sale.sale_price ?? 0);
+      found.currency = found.currency ?? sale.currency;
+      map.set(sale.broker, found);
+    }
+    return map;
+  }, [ledger]);
 
   async function copyLink(row: BrokerInviteRow) {
     try {
@@ -137,6 +164,8 @@ export function BrokerPanel({ workspaceId }: { workspaceId: string }) {
                 <Th>{t('dev_broker')}</Th>
                 <Th className="text-right">{t('dev_broker_units')}</Th>
                 <Th className="text-right">{t('dev_broker_commission')}</Th>
+                <Th className="text-right">{t('dev_funnel_sold')}</Th>
+                <Th className="text-right">{t('dev_mk_revenue')}</Th>
                 <Th>{t('dev_broker_valid_until')}</Th>
                 <Th>{t('dev_status')}</Th>
                 <Th />
@@ -158,6 +187,17 @@ export function BrokerPanel({ workspaceId }: { workspaceId: string }) {
                     {row.commission_type === 'PERCENT'
                       ? `${row.commission_value}%`
                       : formatMoney(row.commission_value, row.currency, language)}
+                  </Td>
+                  <Td className="text-right tabular font-semibold">
+                    {(byBroker.get(row.broker_name ?? '')?.sales ?? 0) > 0
+                      ? formatNumber(byBroker.get(row.broker_name ?? '')?.sales ?? 0, language)
+                      : '—'}
+                  </Td>
+                  <Td className="text-right tabular">
+                    {(byBroker.get(row.broker_name ?? '')?.revenue ?? 0) > 0
+                      ? formatMoney(byBroker.get(row.broker_name ?? '')?.revenue ?? 0,
+                        byBroker.get(row.broker_name ?? '')?.currency, language)
+                      : '—'}
                   </Td>
                   <Td className="text-muted-foreground">
                     {row.valid_until ? formatDate(row.valid_until, language) : t('dev_broker_no_expiry')}

@@ -24,6 +24,12 @@
 
 /**
  * @param {{ empty?: boolean }} [options]
+ *   `demo: true` seeds a working sales floor — buyers at every stage, a
+ *   viewing, an offer, a reservation, a signed contract with a paid
+ *   instalment and an overdue one, a receipt, a document awaiting review
+ *   and a broker. It exists so the screens that only make sense WITH sales
+ *   can be looked at at all; no gate asserts against it, and production
+ *   never sees it.
  *   `empty: true` starts with an account and NOTHING else — no workspace, no
  *   membership, no project, no apartments. That is the state production is
  *   actually in, and the only state in which the first-run screens can be
@@ -32,6 +38,7 @@
  */
 export function makeBackend(options = {}) {
   const empty = options.empty === true;
+  const demo = options.demo === true;
   const now = () => new Date().toISOString();
   const today = () => new Date().toISOString().slice(0, 10);
   let seq = 0;
@@ -808,6 +815,171 @@ export function makeBackend(options = {}) {
       };
     });
   }
+
+  /**
+   * A SALES FLOOR WITH SOMETHING ON IT.
+   *
+   * Every screen below Sales reads as a title over an empty box until there
+   * are deals behind it, which is exactly how a redesign of those screens ends
+   * up being judged against a blank page. This seeds one of each real thing —
+   * and only through the shapes production writes, so what the interface
+   * renders here is what it renders there.
+   */
+  function seedDemo() {
+    const day = 86400000;
+    const iso = (offsetDays) => new Date(Date.now() + offsetDays * day).toISOString();
+    const date = (offsetDays) => iso(offsetDays).slice(0, 10);
+    const units = db.dev_units;
+    if (units.length === 0) return;
+
+    const people = [
+      ['Nino Beridze', '+995 555 010 203', 'nino@example.test', 'INTERESTED', 'WEBSITE', 120000, 150000],
+      ['Giorgi Kapanadze', '+995 555 020 304', 'giorgi@example.test', 'VIEWING_COMPLETED', 'BROKER', 160000, 200000],
+      ['Ana Tsereteli', '+995 555 030 405', 'ana@example.test', 'NEGOTIATION', 'INSTAGRAM', 130000, 145000],
+      ['Levan Gogoladze', '+995 555 040 506', 'levan@example.test', 'RESERVATION', 'REFERRAL', 175000, 195000],
+      ['Mariam Kvaratskhelia', '+995 555 050 607', 'mariam@example.test', 'CONTRACT', 'WEBSITE', 180000, 200000],
+      ['Data Chkheidze', '+995 555 060 708', 'data@example.test', 'NEW', 'FACEBOOK', 100000, 130000],
+      ['Salome Jorbenadze', '+995 555 070 809', 'salome@example.test', 'LOST', 'WEBSITE', 90000, 110000],
+    ];
+
+    const leadIds = [];
+    people.forEach(([name, phone, email, stage, source, lo, hi], i) => {
+      const contactId = uuid();
+      const leadId = uuid();
+      leadIds.push(leadId);
+      db.outreach_contacts.push({
+        id: contactId, workspace_id: WS, full_name: name, phone, email,
+        created_at: iso(-30 + i),
+      });
+      db.dev_leads.push({
+        id: leadId, workspace_id: WS, contact_id: contactId, project_id: PROJECT,
+        stage, disposition: null, assigned_to: 'u1', source, campaign_id: null,
+        budget_min: lo, budget_max: hi, currency: 'USD',
+        preferences: { districts: ['Vera', 'Vake'], bedrooms: i % 2 ? 2 : 3 },
+        score: 40 + i * 8, score_factors: [], lost_reason: stage === 'LOST' ? 'PRICE' : null,
+        lost_note: null,
+        next_follow_up_at: stage === 'LOST' ? null : iso(i - 2),
+        last_activity_at: iso(-i), notes: null, created_by: 'u1',
+        created_at: iso(-30 + i), updated_at: iso(-i),
+      });
+      db.dev_lead_contacts.push({
+        lead_id: leadId, workspace_id: WS, contact_id: contactId, full_name: name,
+        phone, email, language: 'ka', country: 'GE', city: 'Tbilisi', company: null,
+        consent_status: 'GRANTED', do_not_contact: false, do_not_call: false,
+      });
+      db.dev_activities.push({
+        id: uuid(), workspace_id: WS, lead_id: leadId, unit_id: null, deal_id: null,
+        kind: i % 2 ? 'CALL' : 'NOTE',
+        title: i % 2 ? 'Called about the three bedroom' : 'Asked for the payment plan',
+        body: null, occurred_at: iso(-i), created_by: 'u1', created_at: iso(-i),
+      });
+    });
+
+    db.dev_viewings.push({
+      id: uuid(), workspace_id: WS, lead_id: leadIds[1], unit_id: units[1].id,
+      scheduled_at: iso(1), status: 'SCHEDULED', outcome: null, notes: null,
+      assigned_to: 'u1', created_by: 'u1', created_at: iso(-2), updated_at: iso(-2),
+    });
+
+    const offerUnit = units[2];
+    db.dev_offers.push({
+      id: uuid(), workspace_id: WS, lead_id: leadIds[2], unit_id: offerUnit.id,
+      base_price: Number(offerUnit.price), discount_pct: 3,
+      discount_amount: Math.round(Number(offerUnit.price) * 0.03),
+      final_price: Number(offerUnit.price) - Math.round(Number(offerUnit.price) * 0.03),
+      currency: 'USD', deposit_amount: 5000, payment_plan_id: null, schedule: [],
+      valid_until: date(7), status: 'SENT', sent_at: iso(-1), viewed_at: iso(-1),
+      accepted_at: null, notes: null, created_at: iso(-1),
+    });
+
+    const resUnit = units[3];
+    resUnit.status = 'RESERVED';
+    db.dev_reservations.push({
+      id: uuid(), workspace_id: WS, unit_id: resUnit.id, lead_id: leadIds[3],
+      offer_id: null, amount: 6000, currency: 'USD', reserved_at: iso(-5),
+      expires_at: iso(2), status: 'ACTIVE', assigned_to: 'u1', broker_id: null,
+      source: 'REFERRAL', notes: null, cancelled_reason: null, created_at: iso(-5),
+    });
+
+    const soldUnit = units[4];
+    soldUnit.status = 'SOLD';
+    const dealId = uuid();
+    const salePrice = Number(soldUnit.price);
+    db.dev_deals.push({
+      id: dealId, workspace_id: WS, unit_id: soldUnit.id, lead_id: leadIds[4],
+      project_id: PROJECT, reservation_id: null, offer_id: null, assigned_to: 'u1',
+      broker_id: null, source: 'WEBSITE', contract_number: 'VH-2026-014',
+      contract_date: date(-18), sale_date: date(-18), list_price: salePrice,
+      discount_amount: 0, sale_price: salePrice, currency: 'USD',
+      payment_plan_id: db.dev_payment_plans[0] ? db.dev_payment_plans[0].id : null,
+      status: 'CONTRACTED', contract_status: 'SIGNED', contract_signed_at: iso(-18),
+      payment_method: 'INSTALMENTS', handover_target_date: date(300),
+      notes: null, created_at: iso(-18),
+    });
+
+    const milestones = [
+      ['On signing', 0.3, -18, 'PAID'],
+      ['At topping out', 0.4, -3, 'OVERDUE'],
+      ['On handover', 0.3, 280, 'PENDING'],
+    ];
+    milestones.forEach((row, i) => {
+      const amount = Math.round(salePrice * row[1]);
+      db.dev_payment_schedule.push({
+        id: uuid(), workspace_id: WS, deal_id: dealId, seq: i + 1, label: row[0],
+        due_date: date(row[2]), amount, currency: 'USD', status: row[3],
+        paid_amount: row[3] === 'PAID' ? amount : 0,
+        created_at: iso(-18), updated_at: iso(-18),
+      });
+    });
+
+    const firstRow = db.dev_payment_schedule[0];
+    db.dev_payments.push({
+      id: uuid(), workspace_id: WS, deal_id: dealId, schedule_id: firstRow.id,
+      amount: firstRow.amount, currency: 'USD', paid_at: iso(-17),
+      method: 'BANK_TRANSFER', reference: 'TBC-88142', document_id: null,
+      status: 'CONFIRMED', confirmed_by: 'u1', confirmed_at: iso(-17),
+      rejected_reason: null, notes: null, created_at: iso(-17),
+    });
+
+    db.dev_documents.push({
+      id: uuid(), workspace_id: WS, doc_type: 'PAYMENT_RECEIPT',
+      title: 'Receipt TBC-88142.pdf', storage_path: 'demo/receipt.pdf',
+      mime: 'application/pdf', size_bytes: 184320, project_id: PROJECT,
+      unit_id: soldUnit.id, deal_id: dealId, lead_id: leadIds[4],
+      reservation_id: null, visibility: 'PRIVATE', status: 'EXTRACTED',
+      extraction: {
+        fields: {
+          amount: { value: 73600, confidence: 0.58 },
+          reference: { value: 'TBC-88142', confidence: 0.91 },
+        },
+      },
+      extraction_confidence: 0.58, extraction_error: null,
+      uploaded_by: 'u1', created_at: iso(-2),
+    });
+
+    db.dev_documents.push({
+      id: uuid(), workspace_id: WS, doc_type: 'CONTRACT',
+      title: 'Contract VH-2026-014.pdf', storage_path: 'demo/contract.pdf',
+      mime: 'application/pdf', size_bytes: 512000, project_id: PROJECT,
+      unit_id: soldUnit.id, deal_id: dealId, lead_id: leadIds[4],
+      reservation_id: null, visibility: 'BUYER', status: 'CONFIRMED',
+      extraction: null, extraction_confidence: null, extraction_error: null,
+      uploaded_by: 'u1', created_at: iso(-18),
+    });
+
+    db.dev_broker_invites.push({
+      id: uuid(), workspace_id: WS, project_id: PROJECT, broker_user_id: null,
+      broker_contact_id: null, broker_name: 'Caucasus Realty',
+      broker_email: 'irakli@caucasus.test', token: 'demo-broker-token',
+      commission_type: 'PERCENT', commission_value: 2.5, currency: 'USD',
+      terms: null, unit_ids: [units[0].id, units[1].id], valid_until: date(60),
+      status: 'ACCEPTED', created_by: 'u1', created_at: iso(-40), updated_at: iso(-38),
+    });
+
+    refreshLedger();
+  }
+
+  if (demo) seedDemo();
 
   return { db, select, withEmbeds, RPC, uuid, now, WS, PROJECT, BUILDING, refreshLedger };
 }

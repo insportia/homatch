@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import {
   Home, Ruler, Compass, Eye, FileText, Download, CalendarClock,
-  CheckCircle2, Clock, AlertTriangle, Mail, Building2,
+  CheckCircle2, Clock, AlertTriangle, Mail, Building2, Box,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,7 +14,13 @@ import { resolveBuyerRoom, buyerRoomDocumentUrl } from '@/services/developer/sha
 import {
   formatMoney, formatArea, formatDate, formatNumber,
 } from '@/components/developer/primitives';
+import { ProjectCover } from '@/components/developer/visuals';
+import { loadUnitScene, type TwinScene } from '@/services/developer/twin';
 import type { BuyerRoomPayload } from '@/services/developer/types';
+
+/* three.js is a megabyte and most buyer rooms have no scene to show, so the
+   viewer is fetched only once a published one has actually come back. */
+const TwinCanvas = lazy(() => import('@/components/developer/TwinCanvas'));
 
 /**
  * THE BUYER'S ROOM.
@@ -44,6 +50,7 @@ export default function BuyerRoomPage() {
   const [payload, setPayload] = useState<BuyerRoomPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [scene, setScene] = useState<TwinScene | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -54,6 +61,26 @@ export default function BuyerRoomPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [token]);
+
+  /**
+   * THE WALKTHROUGH OF THIS APARTMENT, IF THERE IS ONE.
+   *
+   * dt_unit_scene() is the same anon-callable read the public viewer uses, and
+   * it applies the same three gates: the scene published, its version
+   * published, and the project's experience published. So a walkthrough
+   * appears here only where the developer has actually released one, and
+   * nothing appears otherwise. There is no path on this page that opens a
+   * photograph and calls it three dimensions.
+   */
+  const unitId = payload?.unit?.unit_id ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    if (!unitId) { setScene(null); return undefined; }
+    void loadUnitScene(unitId)
+      .then((found) => { if (!cancelled) setScene(found); })
+      .catch(() => { /* a missing scene is not an error a buyer should see */ });
+    return () => { cancelled = true; };
+  }, [unitId]);
 
   const progress = useMemo(() => {
     const deal = payload?.deal;
@@ -149,27 +176,56 @@ export default function BuyerRoomPage() {
       <main className="mx-auto max-w-3xl space-y-5 px-4 py-6 sm:px-6">
         {/* ── The apartment ─────────────────────────────────────────────── */}
         {unit && (
-          <section className="overflow-hidden rounded-lg border border-border bg-card">
-            {unit.photos && unit.photos.length > 0 && (
-              <img
-                src={unit.photos[0]}
-                alt={unit.unit_number}
-                className="h-48 w-full object-cover sm:h-64"
-                loading="lazy"
+          <section className="overflow-hidden rounded-xl border border-border bg-card">
+            {/* THE COVER. A buyer opens this once, about the apartment they are
+                spending their savings on; the photograph is the page, not a
+                thumbnail above a definition list. The identity sits on it, so
+                the first screenful says which apartment and whose. */}
+            <div className="relative">
+              <ProjectCover
+                src={unit.photos && unit.photos.length > 0 ? unit.photos[0] : null}
+                name={`${unit.project} ${unit.unit_number}`}
+                ratio="aspect-[16/10] sm:aspect-[2/1]"
               />
-            )}
-            <div className="p-4 sm:p-5">
-              <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-gold-ink">
-                {unit.project}
-              </p>
-              <h1 className="mt-1 text-xl font-semibold tracking-tight">
-                {t('buyer_room_unit').replace('{number}', unit.unit_number)}
-              </h1>
-              {(unit.city || unit.district) && (
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  {[unit.district, unit.city].filter(Boolean).join(', ')}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/60 to-transparent"
+              />
+              <div className="absolute inset-x-4 bottom-4 sm:inset-x-6 sm:bottom-5">
+                <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-white/80">
+                  {unit.project}
                 </p>
-              )}
+                <h1
+                  className="mt-1 font-semibold tracking-[-0.025em] text-white drop-shadow-sm"
+                  style={{ fontSize: 'clamp(1.4rem, 5vw, 2rem)' }}
+                >
+                  {t('buyer_room_unit').replace('{number}', unit.unit_number)}
+                </h1>
+                {(unit.city || unit.district) && (
+                  <p className="mt-0.5 text-sm text-white/80">
+                    {[unit.district, unit.city].filter(Boolean).join(', ')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* The rest of the photographs, where the developer uploaded any. */}
+            {unit.photos && unit.photos.length > 1 && (
+              <ul className="flex gap-2 overflow-x-auto px-4 pt-4 sm:px-5">
+                {unit.photos.slice(1, 7).map((photo) => (
+                  <li key={photo} className="shrink-0">
+                    <img
+                      src={photo}
+                      alt=""
+                      loading="lazy"
+                      className="h-20 w-28 rounded-md object-cover sm:h-24 sm:w-36"
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="p-4 sm:p-5">
 
               <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
                 {unit.area_total != null && (
@@ -208,6 +264,34 @@ export default function BuyerRoomPage() {
                 </a>
               )}
             </div>
+          </section>
+        )}
+
+        {/* ── The walkthrough, where one has been published ───────────────
+            Rendered only when the scene came back WITH assets. A published
+            scene carrying no geometry is not a walkthrough, and this page
+            would rather show nothing than show a box and call it one. */}
+        {scene && scene.assets.length > 0 && (
+          <section className="overflow-hidden rounded-xl border border-border bg-card">
+            <div className="flex items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+              <Box className="h-4 w-4 text-gold-ink" aria-hidden="true" />
+              <h2 className="text-sm font-semibold tracking-tight">
+                {t('buyer_room_walkthrough')}
+              </h2>
+            </div>
+            <Suspense fallback={(
+              <div className="flex h-72 items-center justify-center bg-sand/40">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+              </div>
+            )}>
+              <TwinCanvas
+                scene={scene}
+                floors={[]}
+                activeLevel={null}
+                onSelectLevel={() => {}}
+                className="h-72 sm:h-96"
+              />
+            </Suspense>
           </section>
         )}
 

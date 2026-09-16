@@ -17,6 +17,7 @@ import {
   Panel, EmptyState, LoadingRows, ErrorState, TableScroll, Th, Td,
   Money, PaymentStatusPill, formatDate, formatArea,
 } from '@/components/developer/primitives';
+import { SalesContext } from '@/components/developer/SalesContext';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { salesTabs } from './salesNav';
 import { listLedger } from '@/services/developer/sales';
@@ -160,6 +161,8 @@ export default function DeveloperLedgerPage() {
         </DropdownMenu>
       )}
     >
+      <SalesContext className="mb-6" />
+
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <div className="space-y-1.5">
           <Label htmlFor="dev-led-project" className="text-2xs uppercase tracking-wider text-muted-foreground">

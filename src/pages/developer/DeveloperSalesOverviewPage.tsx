@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { TrendingUp } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DeveloperShell, SubNav } from '@/components/developer/DeveloperShell';
+import { SalesContext } from '@/components/developer/SalesContext';
 import {
   Panel, PanelHeader, StatTile, EmptyState, LoadingRows, ErrorState,
   Money, Eyebrow, GoldRule,
@@ -81,6 +82,8 @@ export default function DeveloperSalesOverviewPage() {
       description={t('dev_sales_overview_subtitle')}
       tabs={<SubNav items={salesTabs(can)} />}
     >
+      <SalesContext className="mb-6" />
+
       {loading && <LoadingRows rows={6} />}
       {!loading && error && <ErrorState message={error} onRetry={load} />}
 

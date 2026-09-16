@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { UnitStatus } from '@/services/developer/types';
-import { formatMoney, formatNumber } from './primitives';
+import { formatMoney, formatNumber, formatDate } from './primitives';
 
 /**
  * THE VISUAL LANGUAGE OF THE DEVELOPER PRODUCT.
@@ -440,5 +440,119 @@ export function MoneyBar({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * THE BAND EVERY WORKSPACE OPENS ON.
+ *
+ * Contacts, Sales, Payments, Documents and Marketing each used to open on a
+ * title, a filter row, and then whatever rows existed — which on a real sales
+ * floor with one live reservation is a line of text and six hundred pixels of
+ * nothing. Measured: 20-30% of the viewport carrying anything.
+ *
+ * A workspace states its position first. Two to four figures at declining
+ * weight, and underneath them whatever drawing belongs to that workspace — a
+ * sales bar, a funnel, a money bar, a row of statuses. The figures are always
+ * counts of rows that exist; where a workspace has nothing to report it renders
+ * nothing here rather than a row of zeroes.
+ */
+export function Headline({
+  metrics, children, className, aside,
+}: {
+  metrics: Array<{
+    label: string;
+    value: React.ReactNode;
+    hint?: React.ReactNode;
+    tone?: 'attention' | 'good';
+  }>;
+  children?: React.ReactNode;
+  aside?: React.ReactNode;
+  className?: string;
+}) {
+  if (metrics.length === 0 && !children) return null;
+  return (
+    <section className={cn('rounded-xl border border-border bg-card p-5 sm:p-6', className)}>
+      <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-5">
+        <div className="flex flex-wrap items-end gap-x-10 gap-y-5">
+          {metrics.map((m, i) => (
+            <Metric
+              key={m.label}
+              weight={i === 0 ? 'hero' : 'default'}
+              label={m.label}
+              value={m.value}
+              hint={m.hint}
+              tone={m.tone}
+            />
+          ))}
+        </div>
+        {aside && <div className="shrink-0">{aside}</div>}
+      </div>
+      {children && <div className="mt-5">{children}</div>}
+    </section>
+  );
+}
+
+/**
+ * WHAT HAPPENED TO THIS BUYER, IN ORDER.
+ *
+ * A relationship is a sequence, and a list of rows with a date column is not
+ * one — the eye has to reconstruct the order the product already knows. A rule
+ * down the left with a marker per event says it in the shape of the thing.
+ *
+ * Marker tone carries meaning the label already carries in words, never
+ * instead of it: money is green, a loss is muted, everything else is the
+ * ordinary mark. Colour is never the only signal.
+ */
+export function Timeline({
+  items, className, empty,
+}: {
+  items: Array<{
+    id: string;
+    title: string;
+    body?: string | null;
+    at: string;
+    icon?: React.ComponentType<{ className?: string }>;
+    tone?: 'money' | 'lost' | 'default';
+  }>;
+  className?: string;
+  empty?: React.ReactNode;
+}) {
+  const { lang: language } = useLanguage();
+  if (items.length === 0) return <>{empty ?? null}</>;
+  return (
+    <ol className={cn('relative space-y-4 pl-6', className)}>
+      <span
+        aria-hidden="true"
+        className="absolute bottom-2 left-[0.4375rem] top-2 w-px bg-border"
+      />
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <li key={item.id} className="relative">
+            <span
+              aria-hidden="true"
+              className={cn(
+                'absolute -left-6 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-card',
+                item.tone === 'money' ? 'bg-emerald-600'
+                  : item.tone === 'lost' ? 'bg-muted-foreground/50' : 'bg-gold',
+              )}
+            />
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <p className="flex min-w-0 items-center gap-1.5 text-sm">
+                {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                <span className="truncate">{item.title}</span>
+              </p>
+              <time dateTime={item.at} className="shrink-0 text-2xs text-muted-foreground">
+                {formatDate(item.at, language)}
+              </time>
+            </div>
+            {item.body && (
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{item.body}</p>
+            )}
+          </li>
+        );
+      })}
+    </ol>
   );
 }

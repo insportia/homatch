@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Megaphone, PhoneCall, MessageCircle, Mail, Users, ArrowRight, Share2,
@@ -8,11 +8,15 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { DeveloperShell } from '@/components/developer/DeveloperShell';
 import {
   Panel, PanelHeader, StatTile, EmptyState, LoadingRows, ErrorState,
-  Eyebrow, GoldRule, formatDateTime,
+  Eyebrow, GoldRule, formatDateTime, formatMoney, formatNumber,
+  TableScroll, Th, Td,
 } from '@/components/developer/primitives';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { supabase } from '@/services/developer/client';
 import { listLeads, type LeadWithContact } from '@/services/developer/crm';
+import { Headline, SectionHead } from '@/components/developer/visuals';
+import { listLedger } from '@/services/developer/sales';
+import type { SalesLedgerRow } from '@/services/developer/types';
 import { AdConnectionsPanel } from '@/components/developer/AdConnectionsPanel';
 import { BrokerPanel } from '@/components/developer/BrokerPanel';
 
@@ -37,6 +41,7 @@ export default function DeveloperMarketingPage() {
   const { workspace } = useDeveloperWorkspace();
 
   const [leads, setLeads] = useState<LeadWithContact[]>([]);
+  const [ledger, setLedger] = useState<SalesLedgerRow[]>([]);
   const [shareStats, setShareStats] = useState<{ links: number; opens: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +51,12 @@ export default function DeveloperMarketingPage() {
     setLoading(true);
     setError(null);
     try {
-      const rows = await listLeads(workspace.id, { limit: 1000 });
+      const [rows, sales] = await Promise.all([
+        listLeads(workspace.id, { limit: 1000 }),
+        listLedger(workspace.id).catch(() => [] as SalesLedgerRow[]),
+      ]);
       setLeads(rows);
+      setLedger(sales);
 
       const { data: links } = await supabase
         .from('dev_share_links')
@@ -65,6 +74,49 @@ export default function DeveloperMarketingPage() {
   }, [workspace]);
 
   useEffect(() => { void load(); }, [load]);
+
+  /**
+   * WHICH SOURCE IS PRODUCING SALES.
+   *
+   * Leads by source come from the CRM; sales and revenue by source come from
+   * the sales ledger, which records lead_source on the sale itself rather than
+   * inferring it back through the buyer. Sources with neither are not rows.
+   *
+   * There is no cost column and no return on spend. Platform spend is not
+   * connected to this workspace (see the note under Paid channels), and a
+   * return computed against a number we do not have would be the one invented
+   * figure on an otherwise honest page.
+   */
+  const bySource = useMemo(() => {
+    const rows = new Map<string, {
+      source: string; leads: number; viewed: number; reserved: number;
+      sold: number; revenue: number; currency: string | null;
+    }>();
+    const row = (key: string) => {
+      const found = rows.get(key) ?? {
+        source: key, leads: 0, viewed: 0, reserved: 0, sold: 0, revenue: 0, currency: null,
+      };
+      rows.set(key, found);
+      return found;
+    };
+
+    for (const lead of leads) {
+      const entry = row(lead.source || t('dev_source_unknown'));
+      entry.leads += 1;
+      if (['VIEWING_SCHEDULED', 'VIEWING_COMPLETED', 'NEGOTIATION', 'RESERVATION',
+        'CONTRACT', 'PAYMENT_PENDING', 'SOLD'].includes(lead.stage)) entry.viewed += 1;
+      if (['RESERVATION', 'CONTRACT', 'PAYMENT_PENDING', 'SOLD'].includes(lead.stage)) {
+        entry.reserved += 1;
+      }
+    }
+    for (const sale of ledger) {
+      const entry = row(sale.lead_source || t('dev_source_unknown'));
+      entry.sold += 1;
+      entry.revenue += Number(sale.sale_price ?? 0);
+      entry.currency = entry.currency ?? sale.currency;
+    }
+    return [...rows.values()].sort((a, b) => b.revenue - a.revenue || b.leads - a.leads);
+  }, [leads, ledger, t]);
 
   const channels = [
     {
@@ -161,6 +213,55 @@ export default function DeveloperMarketingPage() {
             </Panel>
           )}
 
+          {/* ── Which source produced what ─────────────────────────────
+              The chain a developer actually asks about, and only the columns
+              these rows can answer: no spend and no return on spend, because
+              the platforms are not connected to this workspace. */}
+          {bySource.length > 0 && (
+            <section>
+              <SectionHead title={t('dev_mk_by_source')} sub={t('dev_mk_by_source_sub')} />
+              <Panel>
+                <TableScroll>
+                  <table className="w-full min-w-[40rem] text-sm">
+                    <thead>
+                      <tr>
+                        <Th>{t('dev_mk_source')}</Th>
+                        <Th className="text-right">{t('dev_funnel_leads')}</Th>
+                        <Th className="text-right">{t('dev_funnel_viewings')}</Th>
+                        <Th className="text-right">{t('dev_funnel_reserved')}</Th>
+                        <Th className="text-right">{t('dev_funnel_sold')}</Th>
+                        <Th className="text-right">{t('dev_mk_revenue')}</Th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {bySource.map((row) => (
+                        <tr key={row.source}>
+                          <Td className="font-medium">{row.source}</Td>
+                          <Td className="text-right tabular">{formatNumber(row.leads, language)}</Td>
+                          <Td className="text-right tabular text-muted-foreground">
+                            {formatNumber(row.viewed, language)}
+                          </Td>
+                          <Td className="text-right tabular text-muted-foreground">
+                            {formatNumber(row.reserved, language)}
+                          </Td>
+                          <Td className="text-right tabular font-semibold">
+                            {formatNumber(row.sold, language)}
+                          </Td>
+                          <Td className="text-right tabular">
+                            {row.revenue > 0
+                              ? formatMoney(row.revenue, row.currency ?? workspace?.default_currency, language)
+                              : '—'}
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              </Panel>
+              <p className="mt-2 text-2xs text-muted-foreground">{t('dev_mk_no_spend_note')}</p>
+            </section>
+          )}
+
           {/* Paid traffic. The attribution mapping works today; pulling
               spend from the platforms is blocked on a credential this
               deployment does not have, and the panel says which is which
@@ -184,7 +285,7 @@ export default function DeveloperMarketingPage() {
                 <Eyebrow>{t('dev_mk_distribution')}</Eyebrow>
                 <GoldRule className="mt-2" />
               </div>
-              <BrokerPanel workspaceId={workspace.id} />
+              <BrokerPanel workspaceId={workspace.id} ledger={ledger} />
             </section>
           )}
         </div>

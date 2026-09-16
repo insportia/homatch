@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Users, Plus, Search, Rows3, Columns3, Clock } from 'lucide-react';
+import {
+  Users, Plus, Search, Rows3, Columns3, Clock, Building2, AlertTriangle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,12 +20,14 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { DeveloperShell } from '@/components/developer/DeveloperShell';
 import {
   Panel, EmptyState, LoadingRows, ErrorState, TableScroll, Th, Td,
-  StagePill, Money, relativeTime,
+  StagePill, Money, relativeTime, formatMoney, formatNumber,
 } from '@/components/developer/primitives';
+import { Headline, Funnel } from '@/components/developer/visuals';
 import { LeadDrawer } from '@/components/developer/LeadDrawer';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { listLeads, createLead, type LeadWithContact } from '@/services/developer/crm';
-import { listProjects } from '@/services/developer/inventory';
+import { listProjects, listUnits } from '@/services/developer/inventory';
+import { listLeadUnits } from '@/services/developer/crm';
 import { devErrorText } from '@/services/developer/client';
 import { PIPELINE_STAGES } from '@/services/developer/types';
 import type { LeadStage, DevProject } from '@/services/developer/types';
@@ -58,6 +62,9 @@ export default function DeveloperContactsPage() {
   const { workspace, can } = useDeveloperWorkspace();
 
   const [leads, setLeads] = useState<LeadWithContact[]>([]);
+  /* Which apartments each buyer is on. "Which one?" is the first question
+     anybody asks about a buyer, and the card could not answer it. */
+  const [interest, setInterest] = useState<Map<string, string[]>>(new Map());
   const [projects, setProjects] = useState<DevProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +82,7 @@ export default function DeveloperContactsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [rows, projectRows] = await Promise.all([
+      const [rows, projectRows, unitRows] = await Promise.all([
         listLeads(workspace.id, {
           search: debouncedSearch || undefined,
           projectId: projectFilter === 'ALL' ? undefined : projectFilter,
@@ -83,9 +90,25 @@ export default function DeveloperContactsPage() {
           limit: 400,
         }),
         listProjects(workspace.id),
+        listUnits(workspace.id, { limit: 5000, orderBy: 'unit_number' }),
       ]);
       setLeads(rows);
       setProjects(projectRows);
+
+      /* The apartments behind each buyer. One request per buyer would be
+         seventy on a real workspace, so the links are fetched in parallel and
+         only for the rows this screen can show, then resolved against the one
+         inventory read above rather than a lookup each. */
+      const numbers = new Map(unitRows.rows.map((u) => [u.id, u.unit_number]));
+      const pairs = await Promise.all(rows.slice(0, 60).map(async (lead) => {
+        const links = await listLeadUnits(lead.id).catch(() => []);
+        const labels = links
+          .filter((l) => l.interest !== 'REJECTED')
+          .map((l) => numbers.get(l.unit_id))
+          .filter((n): n is string => Boolean(n));
+        return [lead.id, labels] as const;
+      }));
+      setInterest(new Map(pairs));
     } catch (e) {
       setError(e instanceof Error ? e.message : null);
     } finally {
@@ -94,6 +117,41 @@ export default function DeveloperContactsPage() {
   }, [workspace, debouncedSearch, projectFilter, overdueOnly]);
 
   useEffect(() => { void load(); }, [load]);
+
+  /**
+   * THE CRM'S OWN POSITION.
+   *
+   * Live is everything not won and not lost. Budget adds the TOP of each live
+   * buyer's stated range — it is what this pipeline could be worth if every
+   * one of them bought at their ceiling, which is a real number and is
+   * labelled as the ceiling rather than as a forecast.
+   */
+  const crmSummary = useMemo(() => {
+    const live = leads.filter((l) => !['SOLD', 'LOST'].includes(l.stage));
+    const now = Date.now();
+    const seen = (stages: LeadStage[]) => leads.filter((l) => stages.includes(l.stage)).length;
+    return {
+      live: live.length,
+      won: leads.filter((l) => l.stage === 'SOLD').length,
+      lost: leads.filter((l) => l.stage === 'LOST').length,
+      overdue: live.filter(
+        (l) => l.next_follow_up_at && new Date(l.next_follow_up_at).getTime() < now).length,
+      budget: live.reduce((sum, l) => sum + Number(l.budget_max ?? l.budget_min ?? 0), 0),
+      funnel: leads.length === 0 ? [] : [
+        { label: t('dev_funnel_leads'), value: leads.length },
+        {
+          label: t('dev_funnel_viewings'),
+          value: seen(['VIEWING_SCHEDULED', 'VIEWING_COMPLETED', 'NEGOTIATION',
+            'RESERVATION', 'CONTRACT', 'PAYMENT_PENDING', 'SOLD']),
+        },
+        {
+          label: t('dev_funnel_reserved'),
+          value: seen(['RESERVATION', 'CONTRACT', 'PAYMENT_PENDING', 'SOLD']),
+        },
+        { label: t('dev_funnel_sold'), value: seen(['SOLD']) },
+      ],
+    };
+  }, [leads, t]);
 
   const byStage = useMemo(() => {
     const map = new Map<LeadStage, LeadWithContact[]>();
@@ -177,6 +235,36 @@ export default function DeveloperContactsPage() {
         </div>
       </div>
 
+      {!loading && !error && leads.length > 0 && (
+        <Headline
+          className="mb-6"
+          metrics={[
+            {
+              label: t('dev_stat_live_pipeline'),
+              value: formatNumber(crmSummary.live, language),
+              hint: crmSummary.budget > 0
+                ? `${formatMoney(crmSummary.budget, workspace?.default_currency, language)} ${t('dev_crm_budget_note')}`
+                : undefined,
+            },
+            {
+              label: t('dev_crm_needs_action'),
+              value: formatNumber(crmSummary.overdue, language),
+              tone: crmSummary.overdue > 0 ? 'attention' : undefined,
+              hint: t('dev_crm_needs_action_hint'),
+            },
+            {
+              label: t('dev_stat_sold'),
+              value: formatNumber(crmSummary.won, language),
+              hint: crmSummary.lost > 0
+                ? `${formatNumber(crmSummary.lost, language)} ${t('dev_stage_lost').toLowerCase()}`
+                : undefined,
+            },
+          ]}
+        >
+          <Funnel steps={crmSummary.funnel} />
+        </Headline>
+      )}
+
       {loading && <LoadingRows rows={8} />}
       {!loading && error && <ErrorState message={error} onRetry={load} />}
 
@@ -230,8 +318,26 @@ export default function DeveloperContactsPage() {
                               <Money amount={lead.budget_max} currency={lead.currency} />
                             </p>
                           )}
-                          <p className="mt-1 text-2xs text-muted-foreground">
-                            {relativeTime(lead.last_activity_at, language)}
+                          {/* THE APARTMENTS. A buyer with no apartment against
+                              them is a buyer nobody has matched yet, and that
+                              is worth seeing at a glance too. */}
+                          {(interest.get(lead.id) ?? []).length > 0 && (
+                            <p className="mt-1.5 flex items-center gap-1 truncate text-2xs text-gold-ink">
+                              <Building2 className="h-3 w-3 shrink-0" aria-hidden="true" />
+                              <span className="truncate tabular">
+                                {(interest.get(lead.id) ?? []).slice(0, 3).join(', ')}
+                              </span>
+                            </p>
+                          )}
+                          <p className="mt-1.5 flex items-center justify-between gap-2 text-2xs text-muted-foreground">
+                            <span className="truncate">{relativeTime(lead.last_activity_at, language)}</span>
+                            {lead.next_follow_up_at
+                              && new Date(lead.next_follow_up_at).getTime() < Date.now() && (
+                              <span className="inline-flex shrink-0 items-center gap-1 text-amber-700 dark:text-amber-400">
+                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                                {t('dev_stat_overdue')}
+                              </span>
+                            )}
                           </p>
                         </button>
                       </li>

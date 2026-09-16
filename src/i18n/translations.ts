@@ -6478,6 +6478,30 @@ const en = {
   pwa_ioschrome_step1: 'Tap Share, to the right of the address bar',
   pwa_ioschrome_step2: 'Choose Add to Home Screen',
   pwa_ioschrome_step3: 'Tap Add',
+
+  dev_crm_budget_note: 'combined ceiling',
+  dev_crm_needs_action: 'Needs a call',
+  dev_crm_needs_action_hint: 'follow-up already due',
+  dev_sales_context_pipeline_hint: 'apartments in play',
+
+  dev_doc_flow_uploaded: 'Uploaded',
+  dev_doc_flow_reading: 'Being read',
+  dev_doc_flow_review: 'Waiting for you',
+  dev_doc_flow_review_hint: 'a person has to confirm these',
+  dev_doc_flow_confirmed: 'Confirmed',
+  dev_doc_flow_total: 'All documents',
+  buyer_room_walkthrough: 'Walk through your apartment',
+
+  dev_unit_sales_empty_title: 'Nothing on this apartment yet',
+  dev_unit_sales_empty_body: 'No buyer, no offer, no hold. Share it with somebody and what follows appears here.',
+  dev_unit_sales_buyers: 'Buyers on this development',
+  dev_unit_sales_buyers_sub: 'Everyone you are allowed to see, so you can put a name to this apartment.',
+
+  dev_mk_by_source: 'What each source produced',
+  dev_mk_by_source_sub: 'Buyers from the CRM, sales from the ledger. Both are rows, not estimates.',
+  dev_mk_source: 'Source',
+  dev_mk_revenue: 'Revenue',
+  dev_mk_no_spend_note: 'No spend and no return on spend: the advertising platforms are not connected to this workspace, and a return computed against a figure we do not have would be the one invented number on this page.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -12874,6 +12898,30 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pwa_ioschrome_step1: 'შეეხეთ Share-ს მისამართის ველის მარჯვნივ',
   pwa_ioschrome_step2: 'აირჩიეთ Add to Home Screen',
   pwa_ioschrome_step3: 'შეეხეთ Add-ს',
+
+  dev_crm_budget_note: 'ჯამური ჭერი',
+  dev_crm_needs_action: 'საჭიროებს დარეკვას',
+  dev_crm_needs_action_hint: 'შეხსენების ვადა გასულია',
+  dev_sales_context_pipeline_hint: 'ბინა მიმდინარე გარიგებაში',
+
+  dev_doc_flow_uploaded: 'ატვირთული',
+  dev_doc_flow_reading: 'იკითხება',
+  dev_doc_flow_review: 'გელოდებათ',
+  dev_doc_flow_review_hint: 'ამათ ადამიანი უნდა დაადასტუროს',
+  dev_doc_flow_confirmed: 'დადასტურებული',
+  dev_doc_flow_total: 'სულ დოკუმენტი',
+  buyer_room_walkthrough: 'მოიარეთ თქვენი ბინა',
+
+  dev_unit_sales_empty_title: 'ამ ბინაზე ჯერ არაფერია',
+  dev_unit_sales_empty_body: 'არც მყიდველი, არც შეთავაზება, არც ჯავშანი. გაუზიარეთ ვინმეს და შემდგომი აქ გამოჩნდება.',
+  dev_unit_sales_buyers: 'ამ პროექტის მყიდველები',
+  dev_unit_sales_buyers_sub: 'ყველა, ვისი ნახვის უფლებაც გაქვთ — რომ ამ ბინას სახელი მოუძებნოთ.',
+
+  dev_mk_by_source: 'რა მოიტანა თითოეულმა არხმა',
+  dev_mk_by_source_sub: 'მყიდველები CRM-იდან, გაყიდვები რეესტრიდან. ორივე ჩანაწერია, არა შეფასება.',
+  dev_mk_source: 'წყარო',
+  dev_mk_revenue: 'შემოსავალი',
+  dev_mk_no_spend_note: 'დანახარჯი და უკუგება არ არის: სარეკლამო პლატფორმები ამ სივრცეს არ უკავშირდება, ხოლო უკუგება, რომელიც არარსებულ ციფრს დაეყრდნობა, ამ გვერდზე ერთადერთი მოგონილი რიცხვი იქნებოდა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -19261,6 +19309,30 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pwa_ioschrome_step1: 'Нажмите «Поделиться» справа от адресной строки',
   pwa_ioschrome_step2: 'Выберите «На экран Домой»',
   pwa_ioschrome_step3: 'Нажмите «Добавить»',
+
+  dev_crm_budget_note: 'суммарный потолок',
+  dev_crm_needs_action: 'Нужен звонок',
+  dev_crm_needs_action_hint: 'срок связи уже прошёл',
+  dev_sales_context_pipeline_hint: 'квартир в работе',
+
+  dev_doc_flow_uploaded: 'Загружено',
+  dev_doc_flow_reading: 'Распознаётся',
+  dev_doc_flow_review: 'Ждёт вас',
+  dev_doc_flow_review_hint: 'их должен подтвердить человек',
+  dev_doc_flow_confirmed: 'Подтверждено',
+  dev_doc_flow_total: 'Всего документов',
+  buyer_room_walkthrough: 'Прогулка по вашей квартире',
+
+  dev_unit_sales_empty_title: 'По этой квартире пока ничего',
+  dev_unit_sales_empty_body: 'Ни покупателя, ни предложения, ни брони. Отправьте её кому-нибудь — дальнейшее появится здесь.',
+  dev_unit_sales_buyers: 'Покупатели этого объекта',
+  dev_unit_sales_buyers_sub: 'Все, кого вам разрешено видеть, — чтобы подобрать этой квартире имя.',
+
+  dev_mk_by_source: 'Что принёс каждый источник',
+  dev_mk_by_source_sub: 'Покупатели из CRM, продажи из реестра. И то и другое — записи, а не оценки.',
+  dev_mk_source: 'Источник',
+  dev_mk_revenue: 'Выручка',
+  dev_mk_no_spend_note: 'Ни расходов, ни отдачи от них: рекламные площадки к этому пространству не подключены, а отдача, посчитанная от несуществующей цифры, стала бы единственным выдуманным числом на странице.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -25646,6 +25718,30 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pwa_ioschrome_step1: 'Adres çubuğunun sağındaki Paylaş simgesine dokunun',
   pwa_ioschrome_step2: 'Ana Ekrana Ekle seçeneğini seçin',
   pwa_ioschrome_step3: 'Ekle düğmesine dokunun',
+
+  dev_crm_budget_note: 'toplam tavan',
+  dev_crm_needs_action: 'Aranması gerekiyor',
+  dev_crm_needs_action_hint: 'takip zamanı geçmiş',
+  dev_sales_context_pipeline_hint: 'işlemdeki daire',
+
+  dev_doc_flow_uploaded: 'Yüklendi',
+  dev_doc_flow_reading: 'Okunuyor',
+  dev_doc_flow_review: 'Sizi bekliyor',
+  dev_doc_flow_review_hint: 'bunları bir kişi onaylamalı',
+  dev_doc_flow_confirmed: 'Onaylandı',
+  dev_doc_flow_total: 'Toplam belge',
+  buyer_room_walkthrough: 'Dairenizde gezinin',
+
+  dev_unit_sales_empty_title: 'Bu daireye dair henüz bir şey yok',
+  dev_unit_sales_empty_body: 'Alıcı yok, teklif yok, rezervasyon yok. Birine paylaşın; sonrası burada görünür.',
+  dev_unit_sales_buyers: 'Bu projedeki alıcılar',
+  dev_unit_sales_buyers_sub: 'Görmenize izin verilen herkes; bu daireye bir isim eşleştirebilmeniz için.',
+
+  dev_mk_by_source: 'Her kaynağın getirdiği',
+  dev_mk_by_source_sub: 'Alıcılar CRM\'den, satışlar defterden. İkisi de kayıt, tahmin değil.',
+  dev_mk_source: 'Kaynak',
+  dev_mk_revenue: 'Gelir',
+  dev_mk_no_spend_note: 'Harcama ve harcama getirisi yok: reklam platformları bu çalışma alanına bağlı değil ve elimizde olmayan bir rakama göre hesaplanan getiri, bu sayfadaki tek uydurma sayı olurdu.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -32031,6 +32127,30 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pwa_ioschrome_step1: 'اضغط على "مشاركة" يمين شريط العنوان',
   pwa_ioschrome_step2: 'اختر "إضافة إلى الشاشة الرئيسية"',
   pwa_ioschrome_step3: 'اضغط "إضافة"',
+
+  dev_crm_budget_note: 'السقف الإجمالي',
+  dev_crm_needs_action: 'بحاجة إلى اتصال',
+  dev_crm_needs_action_hint: 'موعد المتابعة قد فات',
+  dev_sales_context_pipeline_hint: 'شقق قيد التفاوض',
+
+  dev_doc_flow_uploaded: 'مرفوع',
+  dev_doc_flow_reading: 'قيد القراءة',
+  dev_doc_flow_review: 'بانتظاركم',
+  dev_doc_flow_review_hint: 'يجب أن يؤكدها شخص',
+  dev_doc_flow_confirmed: 'مؤكَّد',
+  dev_doc_flow_total: 'إجمالي المستندات',
+  buyer_room_walkthrough: 'تجوّلوا في شقتكم',
+
+  dev_unit_sales_empty_title: 'لا شيء على هذه الشقة بعد',
+  dev_unit_sales_empty_body: 'لا مشترٍ ولا عرض ولا حجز. شاركوها مع أحدهم وسيظهر ما يليها هنا.',
+  dev_unit_sales_buyers: 'مشترو هذا المشروع',
+  dev_unit_sales_buyers_sub: 'كل من يُسمح لكم برؤيتهم، لتربطوا اسمًا بهذه الشقة.',
+
+  dev_mk_by_source: 'ما حققه كل مصدر',
+  dev_mk_by_source_sub: 'المشترون من نظام العملاء والمبيعات من السجل. كلاهما سجلات لا تقديرات.',
+  dev_mk_source: 'المصدر',
+  dev_mk_revenue: 'الإيرادات',
+  dev_mk_no_spend_note: 'لا إنفاق ولا عائد على الإنفاق: منصات الإعلان غير موصولة بمساحة العمل هذه، وعائد يُحسب على رقم لا نملكه سيكون الرقم الوحيد المختلق في هذه الصفحة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -38416,6 +38536,30 @@ const he: Partial<Record<TranslationKey, string>> = {
   pwa_ioschrome_step1: 'הקישו על שיתוף מימין לשורת הכתובת',
   pwa_ioschrome_step2: 'בחרו "הוספה למסך הבית"',
   pwa_ioschrome_step3: 'הקישו על "הוספה"',
+
+  dev_crm_budget_note: 'תקרה מצטברת',
+  dev_crm_needs_action: 'צריך שיחה',
+  dev_crm_needs_action_hint: 'מועד המעקב כבר עבר',
+  dev_sales_context_pipeline_hint: 'דירות בתהליך',
+
+  dev_doc_flow_uploaded: 'הועלה',
+  dev_doc_flow_reading: 'בקריאה',
+  dev_doc_flow_review: 'ממתין לכם',
+  dev_doc_flow_review_hint: 'אדם צריך לאשר אותם',
+  dev_doc_flow_confirmed: 'אושר',
+  dev_doc_flow_total: 'סך המסמכים',
+  buyer_room_walkthrough: 'סיור בדירה שלכם',
+
+  dev_unit_sales_empty_title: 'עדיין אין כלום על הדירה הזו',
+  dev_unit_sales_empty_body: 'אין קונה, אין הצעה, אין שריון. שתפו אותה עם מישהו והמשך יופיע כאן.',
+  dev_unit_sales_buyers: 'קונים בפרויקט הזה',
+  dev_unit_sales_buyers_sub: 'כל מי שמותר לכם לראות, כדי לשייך שם לדירה הזו.',
+
+  dev_mk_by_source: 'מה כל מקור הביא',
+  dev_mk_by_source_sub: 'קונים מה-CRM, מכירות מהספר. שניהם רשומות, לא הערכות.',
+  dev_mk_source: 'מקור',
+  dev_mk_revenue: 'הכנסה',
+  dev_mk_no_spend_note: 'אין הוצאה ואין תשואה עליה: פלטפורמות הפרסום אינן מחוברות לסביבה הזו, ותשואה שתחושב מול מספר שאין לנו תהיה המספר הבדוי היחיד בדף.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

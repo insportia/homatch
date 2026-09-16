@@ -66,6 +66,13 @@ jobs:
       - name: Developer acceptance (real browser)
         run: pnpm run test:developer
 
+      # The journey before that one: an account that belongs to no
+      # workspace, which is the state production is actually in. It is the
+      # only run in which the public Developer page, the onboarding form
+      # and every first-run empty state are reachable at all.
+      - name: Developer onboarding (real browser)
+        run: pnpm run test:onboarding
+
       - name: Site Studio regression (real browser)
         run: pnpm run test:studio
 

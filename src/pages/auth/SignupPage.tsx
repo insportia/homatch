@@ -23,6 +23,7 @@ function GoogleIcon() {
 }
 
 import { consumePendingAsk } from '@/lib/pendingAsk';
+import { takePendingPath } from '@/services/returnTo';
 
 const PENDING_URL_KEY = 'homatch_pending_url';
 
@@ -65,7 +66,10 @@ export default function SignupPage() {
       sessionStorage.removeItem('homatch_pending_intent');
       navigate('/property/create');
     } else {
-      navigate('/dashboard', { replace: true });
+      // A page that sent them here to make an account gets them back, the same
+      // way LoginPage and AuthCallbackPage already did. Signing up was the one
+      // way in that forgot, and it is the way a new developer arrives.
+      navigate(takePendingPath() ?? '/dashboard', { replace: true });
     }
   }, [session, intent, navigate]);
 

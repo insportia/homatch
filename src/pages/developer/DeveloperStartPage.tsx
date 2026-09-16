@@ -14,6 +14,7 @@ import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { createWorkspace } from '@/services/developer/workspace';
 import { devErrorText } from '@/services/developer/client';
+import { rememberPendingPath } from '@/services/returnTo';
 import { Panel, Eyebrow, GoldRule, LoadingRows } from '@/components/developer/primitives';
 
 /**
@@ -49,7 +50,8 @@ export default function DeveloperStartPage() {
 
   useEffect(() => {
     if (!authLoading && !homatchUser) {
-      navigate('/auth/login?returnTo=/developers/start', { replace: true });
+      rememberPendingPath('/developers/start');
+      navigate('/auth/login', { replace: true });
     }
   }, [authLoading, homatchUser, navigate]);
 

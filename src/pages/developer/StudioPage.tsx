@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { rememberPendingPath } from '@/services/returnTo';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import {
@@ -42,7 +43,8 @@ export default function StudioPage() {
 
   useEffect(() => {
     if (!authLoading && !homatchUser) {
-      navigate('/auth/login?returnTo=/studio', { replace: true });
+      rememberPendingPath('/studio');
+      navigate('/auth/login', { replace: true });
     }
   }, [authLoading, homatchUser, navigate]);
 

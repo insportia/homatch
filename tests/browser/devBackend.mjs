@@ -22,7 +22,16 @@
 // The numbers the handlers return are the ones production returned during
 // those runs, so what the interface renders here is what it renders there.
 
-export function makeBackend() {
+/**
+ * @param {{ empty?: boolean }} [options]
+ *   `empty: true` starts with an account and NOTHING else — no workspace, no
+ *   membership, no project, no apartments. That is the state production is
+ *   actually in, and the only state in which the first-run screens can be
+ *   seen at all: with a workspace already seeded, onboarding is skipped and
+ *   every empty state is unreachable.
+ */
+export function makeBackend(options = {}) {
+  const empty = options.empty === true;
   const now = () => new Date().toISOString();
   const today = () => new Date().toISOString().slice(0, 10);
   let seq = 0;
@@ -42,25 +51,25 @@ export function makeBackend() {
       id: 'u1', auth_id: 'u1', email: 'harness@example.test', is_admin: false,
       preferred_language: 'en', full_name: 'Harness User', created_at: now(),
     }],
-    dev_workspaces: [{
+    dev_workspaces: empty ? [] : [{
       id: WS, owner_id: 'u1', name: 'Harness Developments',
       slug: 'harness-developments', country: 'GE', city: 'Tbilisi',
       default_currency: 'USD', status: 'ACTIVE', feature_flags: {},
       brand_logo_url: null, brand_color: null, website: null, legal_name: null,
       developer_profile_id: null, created_at: now(), updated_at: now(),
     }],
-    dev_members: [{
+    dev_members: empty ? [] : [{
       // status matters: listMyWorkspaces filters on ACTIVE, and a row without
       // it is a membership the product correctly refuses to see.
       id: uuid(), workspace_id: WS, user_id: 'u1', role: 'OWNER',
       status: 'ACTIVE', title: null, invited_by: null,
       created_at: now(), updated_at: now(),
     }],
-    dev_team: [{
+    dev_team: empty ? [] : [{
       workspace_id: WS, user_id: 'u1', role: 'OWNER',
       full_name: 'Harness User', email: 'harness@example.test', title: null,
     }],
-    dev_projects: [{
+    dev_projects: empty ? [] : [{
       id: PROJECT, workspace_id: WS, name: 'Vera Heights', slug: 'vera-heights',
       country: 'GE', city: 'Tbilisi', district: 'Vera', address: 'Vera 12',
       description: 'Twelve apartments over three floors.',
@@ -71,7 +80,7 @@ export function makeBackend() {
       latitude: null, longitude: null, registry_project_id: null,
       created_by: 'u1', created_at: now(), updated_at: now(),
     }],
-    dev_buildings: [{
+    dev_buildings: empty ? [] : [{
       id: BUILDING, workspace_id: WS, project_id: PROJECT, name: 'Block A',
       code: 'A', floors_count: 3, facade_image_url: null, sort_order: 0,
       created_at: now(), updated_at: now(),
@@ -89,7 +98,7 @@ export function makeBackend() {
   };
 
   // Twelve apartments, two layouts — the shape the import produces.
-  for (const level of [5, 6, 7]) {
+  for (const level of (empty ? [] : [5, 6, 7])) {
     for (let n = 1; n <= 4; n += 1) {
       const two = n <= 2;
       const code = two ? 'T2' : 'T3';
@@ -126,7 +135,7 @@ export function makeBackend() {
     }
   }
 
-  db.dev_payment_plans.push({
+  if (!empty) db.dev_payment_plans.push({
     id: uuid(), workspace_id: WS, project_id: PROJECT, name: 'Standard 30/40/30',
     milestones: [
       { label: 'On signing', percent: 30, offset_days: 0 },
@@ -228,6 +237,118 @@ export function makeBackend() {
   // ── The workflow RPCs ────────────────────────────────────────────────────
 
   const RPC = {
+    /*
+     * Onboarding's one write, shaped like the real one: the caller becomes the
+     * OWNER of a workspace that did not exist, an ACTIVE membership is created
+     * for THEM and nobody else, and an audit row records it. The production
+     * function is SECURITY DEFINER and derives the user from the verified
+     * token rather than from anything the client sends, which is the half
+     * this cannot model and which is proven against the database instead.
+     */
+    dev_create_workspace: (args) => {
+      const name = String(args.p_name ?? '').trim();
+      if (!name) return { __error: 'A workspace needs a name.' };
+      const id = uuid();
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace';
+      db.dev_workspaces.push({
+        id, owner_id: 'u1', name, slug,
+        country: args.p_country ?? null, city: args.p_city ?? null,
+        default_currency: args.p_currency ?? 'USD', status: 'ACTIVE',
+        feature_flags: {}, brand_logo_url: null, brand_color: null,
+        website: null, legal_name: null, developer_profile_id: null,
+        created_at: now(), updated_at: now(),
+      });
+      db.dev_members.push({
+        id: uuid(), workspace_id: id, user_id: 'u1', role: 'OWNER',
+        status: 'ACTIVE', title: null, invited_by: null,
+        created_at: now(), updated_at: now(),
+      });
+      db.dev_team.push({
+        workspace_id: id, user_id: 'u1', role: 'OWNER',
+        full_name: 'Harness User', email: 'harness@example.test', title: null,
+      });
+      db.dev_audit_log.push({
+        id: uuid(), workspace_id: id, actor_id: 'u1', entity_type: 'workspace',
+        entity_id: id, action: 'CREATED', before_state: null,
+        after_state: { name }, created_at: now(),
+      });
+      return id;
+    },
+
+    /*
+     * The import, which is how a developer's first apartments arrive: the
+     * building and the floor come out of the spreadsheet's own columns, so
+     * "Block A / 5 / A-501" creates the building and the floor as well as the
+     * apartment. Production does this in one transaction; a sheet that breaks
+     * on row 400 leaves no rows behind at all.
+     */
+    dev_import_units: (args) => {
+      const project = db.dev_projects.find((p) => p.id === args.p_project_id);
+      if (!project) return { __error: 'Unknown project.' };
+      const rows = Array.isArray(args.p_rows) ? args.p_rows : [];
+      let inserted = 0;
+      let updated = 0;
+      const errors = [];
+      rows.forEach((row, i) => {
+        const number = String(row.unit_number ?? '').trim();
+        if (!number) { errors.push({ row: i + 1, message: 'No unit number.' }); return; }
+        const buildingName = String(row.building ?? '').trim() || 'Building';
+        let building = db.dev_buildings.find(
+          (b) => b.project_id === project.id && b.name === buildingName);
+        if (!building) {
+          building = {
+            id: uuid(), workspace_id: project.workspace_id, project_id: project.id,
+            name: buildingName, code: buildingName.slice(0, 4), floors_count: 0,
+            facade_image_url: null, sort_order: db.dev_buildings.length,
+            created_at: now(), updated_at: now(),
+          };
+          db.dev_buildings.push(building);
+        }
+        const level = row.floor_level === undefined || row.floor_level === ''
+          ? null : Number(row.floor_level);
+        if (level !== null && Number.isFinite(level)) {
+          const seen = db.dev_floors.find(
+            (fl) => fl.building_id === building.id && fl.level === level);
+          if (!seen) {
+            db.dev_floors.push({
+              id: uuid(), workspace_id: project.workspace_id, project_id: project.id,
+              building_id: building.id, level, name: `Floor ${level}`,
+              plan_image_url: null, created_at: now(), updated_at: now(),
+            });
+          }
+          building.floors_count = db.dev_floors.filter(
+            (fl) => fl.building_id === building.id).length;
+        }
+        const existing = db.dev_units.find(
+          (u) => u.project_id === project.id && u.unit_number === number);
+        if (existing) {
+          if (args.p_mode === 'UPSERT') { Object.assign(existing, { updated_at: now() }); updated += 1; }
+          else errors.push({ row: i + 1, message: 'Already here.' });
+          return;
+        }
+        const price = row.price === undefined || row.price === '' ? null : Number(row.price);
+        const area = row.area_total === undefined || row.area_total === ''
+          ? null : Number(row.area_total);
+        db.dev_units.push({
+          id: uuid(), workspace_id: project.workspace_id, project_id: project.id,
+          building_id: building.id, floor_id: null, unit_number: number,
+          floor_level: level, status: 'AVAILABLE', unit_type: null, unit_type_id: null,
+          bedrooms: row.bedrooms ? Number(row.bedrooms) : null,
+          rooms: row.rooms ? Number(row.rooms) : null,
+          area_total: area, area_internal: null, area_balcony: null, area_terrace: null,
+          orientation: null, view_text: null, ceiling_height: null, condition: null,
+          parking: null, storage: null, floor_plan_url: null, photos: [], video_url: null,
+          price, currency: project.currency ?? 'USD',
+          price_per_sqm: price && area ? Math.round((price / area) * 100) / 100 : null,
+          payment_plan_id: null, notes: null, hotspot: null,
+          is_published: false, published_at: null, sort_order: db.dev_units.length,
+          created_by: 'u1', created_at: now(), updated_at: now(),
+        });
+        inserted += 1;
+      });
+      return { inserted, updated, skipped: errors.length, errors };
+    },
+
     dev_claim_invites: () => 0,
     dev_expire_reservations: () => 0,
     dev_expire_offers: () => 0,

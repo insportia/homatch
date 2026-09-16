@@ -15,6 +15,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
+import { rememberPendingPath } from '@/services/returnTo';
 import type { DevCapability } from '@/services/developer/types';
 import { LoadingRows, EmptyState } from './primitives';
 import { NotificationBell } from './NotificationBell';
@@ -224,13 +225,18 @@ export function DeveloperShell({
   const navigate = useNavigate();
   const { homatchUser, loading: authLoading } = useAuth();
   const { loading, workspace, can, needsOnboarding } = useDeveloperWorkspace();
+  const shellLocation = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !homatchUser) {
-      navigate('/auth/login?returnTo=/developers/home', { replace: true });
+      // Where they were, not where we guess: a link to a contract should come
+      // back to that contract. Remembered in sessionStorage because that is
+      // what LoginPage reads and what survives the Google round trip.
+      rememberPendingPath(`${shellLocation.pathname}${shellLocation.search}`);
+      navigate('/auth/login', { replace: true });
     }
-  }, [authLoading, homatchUser, navigate]);
+  }, [authLoading, homatchUser, navigate, shellLocation]);
 
   useEffect(() => {
     if (needsOnboarding) navigate('/developers/start', { replace: true });

@@ -323,6 +323,10 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('eyebrow', 'studio_f_eyebrow', 'mp_dev_eyebrow'),
       f('title', 'studio_f_title', 'mp_dev_title'),
       f('body', 'studio_f_body', 'mp_dev_sub', 'textarea'),
+      /* Three, in the order a reader needs them: start, ask, read on. The
+         first is the one this page exists for, and until it was added the
+         Developer page had no route into the Developer product at all. */
+      f('cta_start', 'studio_f_cta_start', 'devp_hero_cta_start'),
       f('cta', 'studio_f_cta', 'mp_dev_cta'),
       f('cta_secondary', 'studio_f_cta_secondary', 'devp_hero_cta2'),
     ],

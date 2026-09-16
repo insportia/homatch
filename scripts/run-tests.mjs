@@ -79,6 +79,9 @@ const EXCLUDE = [
   // minute and a half, and needs the harness bundle in dist/. It runs as
   // its own CI step (`test:developer`) rather than inside the unit suite.
   /developerAcceptance\.test\.mjs$/,
+  // The same, for the journey before that one: an account with no
+  // workspace at all. Own CI step (`test:onboarding`).
+  /developerOnboarding\.test\.mjs$/,
   /pwaInstallSheet\.test\.mjs$/,
 ];
 const files = [];

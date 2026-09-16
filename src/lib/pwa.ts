@@ -315,16 +315,37 @@ export function installedInThisTab(): boolean {
 export async function showInstallPrompt(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
   const prompt = heldPrompt;
   if (!prompt) return 'unavailable';
-  heldPrompt = null;
+
   try {
     await prompt.prompt();
+  } catch {
+    /*
+     * REFUSED IS NOT SPENT, AND THE DIFFERENCE IS THE SECOND TAP.
+     *
+     * The refusal Chromium actually raises here is NotAllowedError, "the
+     * prompt() method must be called with a user gesture" -- measured against
+     * the deployed site, where the same held event is allowed 0.3s after a tap
+     * and refused 7.0s after it. The event was never shown, so it is not used
+     * up; what expired was the gesture.
+     *
+     * Chromium does not send a replacement on request, so dropping it here
+     * would leave the "Ready — Install App" control with nothing behind it --
+     * a second dead button, which is precisely the defect this exists to
+     * remove. Keeping it is what lets the next press, carrying a fresh
+     * gesture, actually install the app.
+     */
+    announce();
+    return 'unavailable';
+  }
+
+  // Shown, and therefore spent, whatever the answer turns out to be.
+  heldPrompt = null;
+  try {
     const { outcome } = await prompt.userChoice;
     if (outcome === 'accepted') installedHere = true;
     announce();
     return outcome;
   } catch {
-    // A browser that refuses to show the dialog leaves the control in its
-    // pending state, which explains the browser's own menu.
     announce();
     return 'unavailable';
   }

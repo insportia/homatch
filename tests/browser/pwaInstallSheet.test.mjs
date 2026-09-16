@@ -291,6 +291,181 @@ test('the install instructions are fully on screen, at every iPhone size', opts,
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
 });
 
+/** Open the page as a given platform, click the install control, report. */
+async function runAt(base, browser, {
+  ua, standalone, fireBip, lateBip, muted, captureAfterClick,
+  /* How long to sit there after the event, or after giving up on one. Only
+     the never-arrives case needs longer than the default. */
+  settleMs,
+  /* Press once more once the event has landed. Past the activation window the
+     control is supposed to say "Ready" and cost exactly one more touch --
+     this is what checks that the extra touch actually works. */
+  secondTap,
+  /* Make the first prompt() throw the NotAllowedError Chromium really throws
+     when the gesture has expired, so the recovery can be exercised. */
+  refuseFirst,
+}) {
+  const ctx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent: ua, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
+  });
+  await ctx.addInitScript(([isStandalone, wantBip, lateMs, wantMuted, wantRefusal]) => {
+    window.localStorage.setItem('homatch_lang', 'en');
+    if (wantMuted) {
+      // What rememberMuted() writes: a recent timestamp.
+      window.localStorage.setItem('homatch_pwa_dismissed_at', String(Date.now()));
+    } else {
+      window.localStorage.removeItem('homatch_pwa_dismissed_at');
+    }
+    window.__promptCalls = 0;
+    /*
+     * The refusal, in the exact shape Chromium produces it. Measured against
+     * the deployed site with a real browser: the same held event is ALLOWED
+     * 0.3s after a tap and answered with
+     *
+     *   NotAllowedError: Failed to execute 'prompt' on
+     *   'BeforeInstallPromptEvent': The prompt() method must be called with a
+     *   user gesture
+     *
+     * 7.0s after it. Only the first call refuses, because the point is that
+     * the SECOND press -- carrying a fresh gesture -- has to succeed.
+     */
+    window.__mkPrompt = () => () => {
+      window.__promptCalls += 1;
+      if (wantRefusal && window.__promptCalls === 1) {
+        const err = new Error(
+          "Failed to execute 'prompt' on 'BeforeInstallPromptEvent': "
+          + 'The prompt() method must be called with a user gesture',
+        );
+        err.name = 'NotAllowedError';
+        return Promise.reject(err);
+      }
+      return Promise.resolve();
+    };
+    if (lateMs) {
+      /* Dispatched AFTER the click, which is the ordering the fix exists
+         for. The click handler must wait rather than conclude. */
+      window.__fireLate = () => {
+        const e = new Event('beforeinstallprompt');
+        e.prompt = window.__mkPrompt();
+        e.userChoice = Promise.resolve({ outcome: 'accepted', platform: 'web' });
+        window.dispatchEvent(e);
+      };
+    }
+    if (isStandalone) {
+      // What isStandalone() reads on iOS, and on Chromium.
+      Object.defineProperty(window.navigator, 'standalone', { value: true, configurable: true });
+      const mm = window.matchMedia.bind(window);
+      window.matchMedia = (q) => (/display-mode:\s*standalone/.test(q)
+        ? { matches: true, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }
+        : mm(q));
+    }
+    if (wantBip) {
+      /* A real BeforeInstallPromptEvent cannot be constructed in a page, so
+         this is a stand-in carrying the two members the code uses. It proves
+         our WIRING calls prompt() on the first click -- not that Chromium
+         would have offered one, which is Chromium's business. */
+      window.addEventListener('load', () => {
+        const e = new Event('beforeinstallprompt');
+        e.prompt = () => { window.__promptCalls += 1; return Promise.resolve(); };
+        e.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'web' });
+        window.dispatchEvent(e);
+      });
+    }
+  }, [Boolean(standalone), Boolean(fireBip), lateBip ?? 0, Boolean(muted), Boolean(refuseFirst)]);
+
+  const page = await ctx.newPage();
+  await page.route('**', async (r) => {
+    const url = r.request().url();
+    if (url.startsWith(base)) return r.continue();
+    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' });
+  });
+  await page.goto(base, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1400);
+
+  const labelBeforeClick = await page.evaluate(() => {
+    const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
+      const l = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
+      return /install|preparing|დაყენ/i.test(l);
+    });
+    return el ? (el.textContent || '').trim() : null;
+  });
+  const clicked = await page.evaluate(() => {
+    const target = [...document.querySelectorAll('button')].find((b) => {
+      const l = (b.getAttribute('aria-label') || '').toLowerCase();
+      return l.includes('install') || l.includes('add to home');
+    });
+    if (!target) return false;
+    /*
+     * A DISABLED control is not an active one, and that difference is the
+     * whole property under test. The chip shown while Chromium is still
+     * deciding carries the same accessible name on purpose -- a greyed-out
+     * Save is still called Save -- so the name alone cannot answer "can
+     * this be pressed". Ask the button.
+     */
+    if (target.disabled) return false;
+    target.click();
+    return true;
+  });
+  /* Read the control the instant the press lands, before the event can
+     arrive. "Did anything happen" is the property, so it is a comparison
+     of the rendered label against the one that was there a moment ago. */
+  let changedAfterClick = null;
+  let dialogAfterClick = null;
+  if (captureAfterClick) {
+    await page.waitForTimeout(120);
+    const now = await page.evaluate(() => ({
+      label: (() => {
+        const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
+          const l = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
+          return /install|preparing|დაყენ/i.test(l);
+        });
+        return el ? (el.textContent || '').trim() : null;
+      })(),
+      dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
+    }));
+    changedAfterClick = now.label !== labelBeforeClick;
+    dialogAfterClick = now.dialog;
+  }
+  if (lateBip) {
+    await page.waitForTimeout(lateBip);
+    await page.evaluate(() => window.__fireLate?.());
+  }
+  await page.waitForTimeout(900);
+
+  let secondTapped = null;
+  if (secondTap) {
+    secondTapped = await page.evaluate(() => {
+      const target = [...document.querySelectorAll('button')].find((b) => {
+        const l = (b.getAttribute('aria-label') || '').toLowerCase();
+        return l.includes('install') || l.includes('add to home');
+      });
+      if (!target || target.disabled) return false;
+      target.click();
+      return true;
+    });
+    await page.waitForTimeout(600);
+  }
+  if (settleMs) await page.waitForTimeout(settleMs);
+
+  const out = await page.evaluate(() => ({
+    dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
+    promptCalls: window.__promptCalls ?? 0,
+    title: document.querySelector('[role="dialog"] h2')?.textContent?.trim() ?? null,
+    steps: [...document.querySelectorAll('[role="dialog"] ol li')].length,
+    /* Whatever the person is left looking at, once everything has settled. */
+    finalLabel: (() => {
+      const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
+        const l = `${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`;
+        return /install|preparing|ready|unavailable|დაყენ/i.test(l);
+      });
+      return el ? (el.textContent || '').trim() : null;
+    })(),
+  }));
+  await ctx.close();
+  return { clicked, changedAfterClick, dialogAfterClick, secondTapped, ...out };
+}
+
 /*
  * ── THE FOUR PATHS, EACH TAKING THE FEWEST TAPS ITS PLATFORM ALLOWS ───────
  *
@@ -324,121 +499,7 @@ test('each platform takes the shortest path it actually permits', opts, async (t
   const IOS_CHROME_UA = IOS_SAFARI_UA.replace('Version/17.5', 'CriOS/126.0');
   const failures = [];
 
-  /** Open the page as a given platform, click the install control, report. */
-  async function run({ name, ua, standalone, fireBip, lateBip, muted, captureAfterClick }) {
-    const ctx = await browser.newContext({
-      viewport: { width: 390, height: 844 },
-      userAgent: ua, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
-    });
-    await ctx.addInitScript(([isStandalone, wantBip, lateMs, wantMuted]) => {
-      window.localStorage.setItem('homatch_lang', 'en');
-      if (wantMuted) {
-        // What rememberMuted() writes: a recent timestamp.
-        window.localStorage.setItem('homatch_pwa_dismissed_at', String(Date.now()));
-      } else {
-        window.localStorage.removeItem('homatch_pwa_dismissed_at');
-      }
-      window.__promptCalls = 0;
-      if (lateMs) {
-        /* Dispatched AFTER the click, which is the ordering the fix exists
-           for. The click handler must wait rather than conclude. */
-        window.__fireLate = () => {
-          const e = new Event('beforeinstallprompt');
-          e.prompt = () => { window.__promptCalls += 1; return Promise.resolve(); };
-          e.userChoice = Promise.resolve({ outcome: 'accepted', platform: 'web' });
-          window.dispatchEvent(e);
-        };
-      }
-      if (isStandalone) {
-        // What isStandalone() reads on iOS, and on Chromium.
-        Object.defineProperty(window.navigator, 'standalone', { value: true, configurable: true });
-        const mm = window.matchMedia.bind(window);
-        window.matchMedia = (q) => (/display-mode:\s*standalone/.test(q)
-          ? { matches: true, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }
-          : mm(q));
-      }
-      if (wantBip) {
-        /* A real BeforeInstallPromptEvent cannot be constructed in a page, so
-           this is a stand-in carrying the two members the code uses. It proves
-           our WIRING calls prompt() on the first click -- not that Chromium
-           would have offered one, which is Chromium's business. */
-        window.addEventListener('load', () => {
-          const e = new Event('beforeinstallprompt');
-          e.prompt = () => { window.__promptCalls += 1; return Promise.resolve(); };
-          e.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'web' });
-          window.dispatchEvent(e);
-        });
-      }
-    }, [Boolean(standalone), Boolean(fireBip), lateBip ?? 0, Boolean(muted)]);
-
-    const page = await ctx.newPage();
-    await page.route('**', async (r) => {
-      const url = r.request().url();
-      if (url.startsWith(base)) return r.continue();
-      return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' });
-    });
-    await page.goto(base, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1400);
-
-    const labelBeforeClick = await page.evaluate(() => {
-      const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
-        const l = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
-        return /install|preparing|დაყენ/i.test(l);
-      });
-      return el ? (el.textContent || '').trim() : null;
-    });
-    const clicked = await page.evaluate(() => {
-      const target = [...document.querySelectorAll('button')].find((b) => {
-        const l = (b.getAttribute('aria-label') || '').toLowerCase();
-        return l.includes('install') || l.includes('add to home');
-      });
-      if (!target) return false;
-      /*
-       * A DISABLED control is not an active one, and that difference is the
-       * whole property under test. The chip shown while Chromium is still
-       * deciding carries the same accessible name on purpose -- a greyed-out
-       * Save is still called Save -- so the name alone cannot answer "can
-       * this be pressed". Ask the button.
-       */
-      if (target.disabled) return false;
-      target.click();
-      return true;
-    });
-    /* Read the control the instant the press lands, before the event can
-       arrive. "Did anything happen" is the property, so it is a comparison
-       of the rendered label against the one that was there a moment ago. */
-    let changedAfterClick = null;
-    let dialogAfterClick = null;
-    if (captureAfterClick) {
-      await page.waitForTimeout(120);
-      const now = await page.evaluate(() => ({
-        label: (() => {
-          const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
-            const l = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
-            return /install|preparing|დაყენ/i.test(l);
-          });
-          return el ? (el.textContent || '').trim() : null;
-        })(),
-        dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
-      }));
-      changedAfterClick = now.label !== labelBeforeClick;
-      dialogAfterClick = now.dialog;
-    }
-    if (lateBip) {
-      await page.waitForTimeout(lateBip);
-      await page.evaluate(() => window.__fireLate?.());
-    }
-    await page.waitForTimeout(900);
-
-    const out = await page.evaluate(() => ({
-      dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
-      promptCalls: window.__promptCalls ?? 0,
-      title: document.querySelector('[role="dialog"] h2')?.textContent?.trim() ?? null,
-      steps: [...document.querySelectorAll('[role="dialog"] ol li')].length,
-    }));
-    await ctx.close();
-    return { clicked, changedAfterClick, dialogAfterClick, ...out };
-  }
+  const run = (o) => runAt(base, browser, o);
 
   // 1. Chromium holding a prompt: straight to the browser's own dialog.
   const chromiumUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
@@ -516,6 +577,160 @@ test('each platform takes the shortest path it actually permits', opts, async (t
     }
     if (muted.dialog) failures.push('muted: instructions opened while a real prompt was held');
   }
+
+  assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
+});
+
+/*
+ * ── HOWEVER LATE THE ANSWER IS, THE FIRST TAP ALREADY DID SOMETHING ───────
+ *
+ * Chromium answers beforeinstallprompt when it is ready, not when somebody
+ * wants to install. Measured on the deployed site, the same page produced
+ * 1668, 1791, 2145 and 3687ms across four runs -- so "how long" is not a
+ * property of this code and cannot be designed around, only responded to.
+ *
+ * Four delays, chosen to sit either side of the one real boundary. Chromium
+ * keeps a gesture transiently active for five seconds, so ACTIVATION_SAFE_MS
+ * is 3.5s:
+ *
+ *   500ms, 2s   inside it. The held intent is spent on the person's behalf:
+ *               one tap, then the browser's own dialog, nothing further asked.
+ *   4s, 8s      outside it. The gesture is gone and prompt() would be refused,
+ *               so we do not pretend otherwise. The control says Ready and the
+ *               next touch fulfils it -- one extra tap, with a visible reason.
+ *
+ * Identical across all four, and the actual requirement: the first tap is
+ * possible, visibly acknowledged, and never the manual modal.
+ */
+test('a slow browser is answered by the control, not by silence', opts, async (t) => {
+  if (skipReason) assert.fail(`PWA slow-event gate could not run: ${skipReason}`);
+
+  const { chromium } = resolvePlaywright();
+  const server = spawn(
+    process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    ['vite', 'preview', '--port', String(PORT + 2), '--strictPort', '--host', '127.0.0.1'],
+    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
+  );
+  const base = `http://127.0.0.1:${PORT + 2}`;
+  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+  t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
+  for (let i = 0; i < 80; i += 1) {
+    try { await fetch(base); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
+  }
+
+  const chromiumUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+  const ACTIVATION_SAFE_MS = 3500;
+  const failures = [];
+
+  for (const delay of [500, 2000, 4000, 8000]) {
+    const inWindow = delay < ACTIVATION_SAFE_MS;
+    const r = await runAt(base, browser, {
+      ua: chromiumUA, lateBip: delay, captureAfterClick: true, secondTap: !inWindow,
+    });
+
+    // The same three, whatever the delay, because that is the whole point.
+    if (!r.clicked) {
+      failures.push(`${delay}ms: the control was not pressable before the event — a dead CTA`);
+      continue;
+    }
+    if (!r.changedAfterClick) failures.push(`${delay}ms: the press produced no visible change`);
+    if (r.dialogAfterClick) failures.push(`${delay}ms: the manual modal opened on Chromium — the original bug`);
+    if (r.dialog) failures.push(`${delay}ms: the manual modal opened once the event arrived`);
+
+    if (inWindow) {
+      // Inside the gesture: their one tap is enough on its own.
+      if (r.promptCalls !== 1) {
+        failures.push(`${delay}ms: inside the activation window the held intent was not spent (prompt called ${r.promptCalls} times)`);
+      }
+    } else {
+      /* Outside it: exactly one extra touch, and it has to actually work.
+         Asserting the second press succeeds is what separates an honest
+         "Ready" from a second dead button. */
+      if (!r.secondTapped) {
+        failures.push(`${delay}ms: past the activation window there was no pressable control left to finish with`);
+      }
+      if (r.promptCalls !== 1) {
+        failures.push(`${delay}ms: the second tap did not raise the browser dialog (prompt called ${r.promptCalls} times)`);
+      }
+    }
+  }
+
+  /*
+   * AND THE CASE THE ELAPSED TIME CANNOT PREDICT: CHROMIUM SAYS NO ANYWAY.
+   *
+   * 3.5s is a margin, not a guarantee -- the gesture can be gone for reasons
+   * this code cannot see, and the only authority on that is the browser's own
+   * answer. So the first prompt() here throws the real NotAllowedError, from
+   * well inside the window, and the requirement is that the person is left
+   * holding something that works.
+   *
+   * The subtle half is in pwa.ts: a REFUSED event was never shown, so it was
+   * never spent, and discarding it would leave "Ready — Install App" with
+   * nothing behind it. That is why this asserts the second press reaches
+   * prompt() a second time rather than merely that a control is visible.
+   */
+  const refused = await runAt(base, browser, {
+    ua: chromiumUA, lateBip: 2000, captureAfterClick: true,
+    refuseFirst: true, secondTap: true,
+  });
+  if (!refused.clicked) failures.push('refusal: the control was not pressable before the event');
+  if (!refused.secondTapped) {
+    failures.push('refusal: after the browser refused, nothing pressable was left — a second dead button');
+  }
+  if (refused.promptCalls !== 2) {
+    failures.push(`refusal: the refused event was not offered again (prompt called ${refused.promptCalls} times, expected 2)`);
+  }
+  if (refused.dialog) failures.push('refusal: the refusal was answered with Add to Home Screen instructions');
+
+  assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
+});
+
+/*
+ * ── AND A BROWSER THAT NEVER ANSWERS AT ALL ───────────────────────────────
+ *
+ * Not every page load earns an install prompt, and Chromium says nothing when
+ * it decides against one. A waiting state with no exit would then sit on
+ * "Preparing installation…" for the rest of the session, which is a lie told
+ * slowly.
+ *
+ * So: press, receive no event ever, and check the two things that matter. It
+ * must stop claiming to be preparing, and it must not answer the silence by
+ * routing a Chrome user into Add to Home Screen instructions -- turning a
+ * timeout into a platform diagnosis is precisely the bug that was closed off.
+ */
+test('a browser that never answers does not leave the control preparing for ever', opts, async (t) => {
+  if (skipReason) assert.fail(`PWA no-event gate could not run: ${skipReason}`);
+
+  const { chromium } = resolvePlaywright();
+  const server = spawn(
+    process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    ['vite', 'preview', '--port', String(PORT + 3), '--strictPort', '--host', '127.0.0.1'],
+    { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' },
+  );
+  const base = `http://127.0.0.1:${PORT + 3}`;
+  const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+  t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
+  for (let i = 0; i < 80; i += 1) {
+    try { await fetch(base); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
+  }
+
+  const chromiumUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+  /* GIVE_UP_MS is 12s. Sit past it rather than at it, so that a pass means the
+     state really changed and not that the clock happened to be generous. */
+  const r = await runAt(base, browser, {
+    ua: chromiumUA, captureAfterClick: true, settleMs: 13000,
+  });
+
+  const failures = [];
+  if (!r.clicked) failures.push('the control was not pressable — a dead CTA');
+  if (!r.changedAfterClick) failures.push('the press produced no visible change');
+  if (/preparing|ემზადება/i.test(r.finalLabel ?? '')) {
+    failures.push(`still says "${r.finalLabel}" long after the browser stopped answering — an endless wait`);
+  }
+  if (r.dialog || r.dialogAfterClick) {
+    failures.push('the silence was answered with Add to Home Screen instructions on Chromium');
+  }
+  if (r.promptCalls !== 0) failures.push(`a prompt was raised out of nothing (${r.promptCalls} calls)`);
 
   assert.deepEqual(failures, [], `\n  - ${failures.join('\n  - ')}\n`);
 });

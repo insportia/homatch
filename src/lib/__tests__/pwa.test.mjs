@@ -408,6 +408,42 @@ test('spending a prompt that was never offered says so, rather than throwing', a
   assert.equal(await showInstallPrompt(), 'unavailable');
 });
 
+test('a prompt the browser REFUSED is not thrown away, because it was never shown', () => {
+  /*
+   * Chromium refuses a prompt() whose gesture has expired, and it says so:
+   *
+   *   NotAllowedError: Failed to execute 'prompt' on
+   *   'BeforeInstallPromptEvent': The prompt() method must be called with a
+   *   user gesture
+   *
+   * Measured in a real Chrome against the deployed site -- the same held
+   * event was ALLOWED 0.3s after a tap and refused 7.0s after it.
+   *
+   * A refusal is not a spend: no dialog was raised, so the event is still
+   * good. Chromium sends no replacement on request, so discarding it here
+   * leaves the "Ready — Install App" control with nothing behind it, and the
+   * person's second tap does nothing -- the exact defect being closed.
+   *
+   * Asserted structurally because the behaviour cannot be reached without a
+   * browser: the discard must sit AFTER the call it depends on. There is a
+   * browser gate that exercises it for real; this one fails in milliseconds
+   * if somebody moves one line.
+   */
+  const body = pwaSource.slice(
+    pwaSource.indexOf('export async function showInstallPrompt'),
+  ).split('\n}')[0];
+
+  const shown = body.indexOf('await prompt.prompt()');
+  const discarded = body.indexOf('heldPrompt = null');
+  assert.ok(shown > 0, 'showInstallPrompt no longer calls prompt()');
+  assert.ok(discarded > 0, 'showInstallPrompt never releases the held prompt');
+  assert.ok(
+    discarded > shown,
+    'the held prompt is discarded before it is shown, so a refusal loses it and '
+    + 'the "Ready" control becomes a second dead button',
+  );
+});
+
 /*
  * ── THE SHORTEST PATH EACH PLATFORM ACTUALLY ALLOWS ───────────────────────
  *

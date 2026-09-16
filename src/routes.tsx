@@ -36,6 +36,41 @@ import PartnersPage from './pages/PartnersPage';
 import PricingPage from './pages/PricingPage';
 import DevelopersPage from './pages/DevelopersPage';
 import AboutPage from './pages/AboutPage';
+/*
+ * HOMATCH FOR DEVELOPERS — the private sales workspace.
+ *
+ * /developers stays exactly what it was: the public commercial page. The
+ * product itself lives underneath it at /developers/home, /developers/projects
+ * and so on, which is why the marketing route keeps its exact path and every
+ * one of these is deeper. A visitor who has never signed in still lands on
+ * the page that explains the offer.
+ */
+import DeveloperStartPage from './pages/developer/DeveloperStartPage';
+import DeveloperHomePage from './pages/developer/DeveloperHomePage';
+import DeveloperProjectsPage from './pages/developer/DeveloperProjectsPage';
+import DeveloperProjectPage from './pages/developer/DeveloperProjectPage';
+import DeveloperContactsPage from './pages/developer/DeveloperContactsPage';
+import DeveloperSalesOverviewPage from './pages/developer/DeveloperSalesOverviewPage';
+import DeveloperViewingsPage from './pages/developer/DeveloperViewingsPage';
+import DeveloperReservationsPage from './pages/developer/DeveloperReservationsPage';
+import DeveloperOffersPage from './pages/developer/DeveloperOffersPage';
+import DeveloperContractsPage from './pages/developer/DeveloperContractsPage';
+import DeveloperCommissionsPage from './pages/developer/DeveloperCommissionsPage';
+import DeveloperHandoverPage from './pages/developer/DeveloperHandoverPage';
+import DeveloperPaymentsPage from './pages/developer/DeveloperPaymentsPage';
+import DeveloperLedgerPage from './pages/developer/DeveloperLedgerPage';
+import DeveloperDocumentsPage from './pages/developer/DeveloperDocumentsPage';
+import DeveloperMarketingPage from './pages/developer/DeveloperMarketingPage';
+import DeveloperInsightsPage from './pages/developer/DeveloperInsightsPage';
+import DeveloperSettingsPage from './pages/developer/DeveloperSettingsPage';
+import DeveloperExportTemplatesPage from './pages/developer/DeveloperExportTemplatesPage';
+import DeveloperAuditPage from './pages/developer/DeveloperAuditPage';
+import SharedUnitPage from './pages/developer/SharedUnitPage';
+import PublicProjectPage from './pages/developer/PublicProjectPage';
+import BuyerRoomPage from './pages/developer/BuyerRoomPage';
+import TwinViewerPage from './pages/developer/TwinViewerPage';
+import StudioPage from './pages/developer/StudioPage';
+import StudioProjectPage from './pages/developer/StudioProjectPage';
 // Outreach pages
 import OutreachHubPage from './pages/outreach/OutreachHubPage';
 import CommunitiesPage from './pages/outreach/CommunitiesPage';
@@ -144,6 +179,59 @@ export const routes: RouteConfig[] = [
    * DevelopersPage for what it deliberately does not claim.
    */
   { name: 'Developers',        path: '/developers',               element: <DevelopersPage />,    public: true },
+  /*
+   * The public surfaces of Homatch for Developers. Both are reachable with no
+   * account, and neither can read a dev_* table — see the import comment.
+   */
+  { name: 'Shared unit',       path: '/s/:token',                 element: <SharedUnitPage />,    public: true, visible: false },
+  { name: 'Public project',    path: '/projects/:developer/:project', element: <PublicProjectPage />, public: true, visible: false },
+  /* A buyer's own room. Public in the sense that it needs no account; the
+     token in the path is the credential, and it is checked in SQL. */
+  { name: 'Buyer room',        path: '/buyer/:token',             element: <BuyerRoomPage />, public: true, visible: false },
+  /* The Digital Twin. /p is the page a buyer opens; /embed is the same page
+     with the chrome removed, so an iframe on a developer's own website shows
+     THIS canonical project rather than a copy of it that can drift. */
+  { name: 'Twin viewer',       path: '/p/:workspace/:project',    element: <TwinViewerPage />, public: true, visible: false },
+  { name: 'Twin embed',        path: '/embed/:workspace/:project', element: <TwinViewerPage embedded />, public: true, visible: false },
+
+  /* HOMATCH PROJECT STUDIO — internal. Not under /developers, because it is
+     not a developer's workspace: it spans every customer, and the people who
+     use it are our own 3D team. The route renders an explanation for anybody
+     who is not on dt_studio_staff, and every function behind it refuses them
+     again in SQL. */
+  { name: 'Studio',            path: '/studio',                   element: <StudioPage />, visible: false },
+  { name: 'Studio project',    path: '/studio/:projectId',        element: <StudioProjectPage />, visible: false },
+  /*
+   * THE DEVELOPER WORKSPACE.
+   *
+   * Every one of these renders inside DeveloperShell, which requires a signed-in
+   * account with an active membership and sends anybody else to /developers/start.
+   * The shell also hides navigation the role cannot use — and the server refuses
+   * it a second time regardless, which is the half that actually enforces it.
+   */
+  { name: 'Developer start',   path: '/developers/start',         element: <DeveloperStartPage />, visible: false },
+  { name: 'Developer Home',    path: '/developers/home',          element: <DeveloperHomePage /> },
+  { name: 'Developer Projects', path: '/developers/projects',     element: <DeveloperProjectsPage /> },
+  { name: 'Developer Project', path: '/developers/projects/:id',  element: <DeveloperProjectPage />, visible: false },
+  { name: 'Developer Contacts', path: '/developers/contacts',     element: <DeveloperContactsPage /> },
+  { name: 'Developer Sales',   path: '/developers/sales',         element: <DeveloperSalesOverviewPage /> },
+  { name: 'Developer Viewings', path: '/developers/sales/viewings', element: <DeveloperViewingsPage />, visible: false },
+  { name: 'Developer Reservations', path: '/developers/sales/reservations', element: <DeveloperReservationsPage />, visible: false },
+  { name: 'Developer Offers',  path: '/developers/sales/offers',  element: <DeveloperOffersPage />, visible: false },
+  { name: 'Developer Contracts', path: '/developers/sales/contracts', element: <DeveloperContractsPage />, visible: false },
+  /* The old /deals path is where this screen used to live. It still resolves,
+     because a link to a contract in somebody's email must not go dead. */
+  { name: 'Developer Deals',   path: '/developers/sales/deals',   element: <DeveloperContractsPage />, visible: false },
+  { name: 'Developer Commissions', path: '/developers/sales/commissions', element: <DeveloperCommissionsPage />, visible: false },
+  { name: 'Developer Handover', path: '/developers/sales/handover', element: <DeveloperHandoverPage />, visible: false },
+  { name: 'Developer Payments', path: '/developers/sales/payments', element: <DeveloperPaymentsPage />, visible: false },
+  { name: 'Developer Sales Ledger', path: '/developers/sales/ledger', element: <DeveloperLedgerPage />, visible: false },
+  { name: 'Developer Documents', path: '/developers/documents',   element: <DeveloperDocumentsPage /> },
+  { name: 'Developer Marketing', path: '/developers/marketing',   element: <DeveloperMarketingPage /> },
+  { name: 'Developer Insights', path: '/developers/insights',     element: <DeveloperInsightsPage /> },
+  { name: 'Developer Settings', path: '/developers/settings',     element: <DeveloperSettingsPage /> },
+  { name: 'Developer Export Templates', path: '/developers/settings/exports', element: <DeveloperExportTemplatesPage />, visible: false },
+  { name: 'Developer Audit',   path: '/developers/settings/audit',  element: <DeveloperAuditPage />, visible: false },
   // Customer
   { name: 'Dashboard',         path: '/dashboard',                element: <DashboardPage /> },
   // Compatibility only. "Deal Room" was briefly a separate destination; it is

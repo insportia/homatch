@@ -45,6 +45,33 @@ const ROUTES = [
   '/outreach', '/outreach/email', '/outreach/calls', '/outreach/sms',
   '/outreach/communities', '/outreach/contact-lists', '/outreach/insights',
   '/deal-rooms', '/chat', '/live-chat',
+
+  /*
+   * HOMATCH FOR DEVELOPERS.
+   *
+   * The whole sales floor, because a dead screen here is a dead screen in
+   * somebody's working day: the eight top-level destinations, every tab
+   * inside Sales, and the three surfaces a buyer or a visitor reaches
+   * without an account. The dev_* stubs below answer as a workspace on
+   * its first morning -- one OWNER, nothing sold yet -- which is exactly
+   * the state where an empty state is supposed to speak and a screen that
+   * renders nothing is a defect.
+   */
+  '/developers/home', '/developers/projects', '/developers/contacts',
+  '/developers/sales', '/developers/sales/viewings', '/developers/sales/offers',
+  '/developers/sales/reservations', '/developers/sales/contracts',
+  '/developers/sales/payments', '/developers/sales/commissions',
+  '/developers/sales/handover', '/developers/sales/ledger',
+  '/developers/documents', '/developers/marketing', '/developers/insights',
+  '/developers/settings', '/developers/settings/exports',
+  '/developers/settings/audit',
+  /* Internal, and correct behaviour for a non-studio account is the
+     explanation rather than the tool -- which still has to render. */
+  '/studio',
+  /* No account needed. Each resolves a token that does not exist here, so
+     each renders its "we could not find that" state -- a real layout with
+     real copy, and the one a mistyped link produces in production. */
+  '/s/harness-token', '/buyer/harness-token', '/p/harness/harness-project',
 ];
 
 /* What the error boundary says when a screen has died. */
@@ -110,6 +137,55 @@ function fakeSession() {
   };
 }
 
+/* One developer workspace, owned by the harness account. */
+const DEV_WORKSPACE = {
+  id: 'ws-harness', owner_id: 'u1', name: 'Harness Developments',
+  slug: 'harness-developments', country: 'GE', city: 'Tbilisi',
+  default_currency: 'USD', status: 'ACTIVE', feature_flags: {},
+  brand_logo_url: null, brand_color: null, website: null,
+  legal_name: null, developer_profile_id: null,
+  created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+};
+
+/* Nothing has happened yet. Every figure is a real zero.
+   Shape copied from WorkspaceOverview exactly: dev_workspace_overview builds a
+   fixed jsonb object, so a partial payload is not a state production can be
+   in — and a fixture that invents one tests the error boundary, not the page. */
+const DEV_OVERVIEW = {
+  units: { total: 0, available: 0, reserved: 0, negotiation: 0, contract_pending: 0, sold: 0, value_available: 0 },
+  leads: { total: 0, new: 0, active: 0, negotiation: 0, overdue_follow_ups: 0 },
+  viewings: { today: 0, upcoming: 0 },
+  reservations: { active: 0, expiring_soon: 0, expired_unresolved: 0 },
+  sales: { this_month: 0, value_this_month: 0, contracted_value: 0 },
+  money: { collected: 0, collected_this_month: 0, awaiting_confirmation: 0 },
+  schedule: { overdue_count: 0, overdue_amount: 0, due_30d: 0 },
+  tasks: { open: 0, overdue: 0 },
+  documents: { needs_review: 0 },
+};
+
+const DEV_DASHBOARD = {
+  inventory: {
+    total: 0, available: 0, reserved: 0, on_hold: 0, negotiation: 0,
+    contract_pending: 0, sold: 0, value_available: 0, area_available: 0,
+  },
+  sales: { count: 0, value: 0, avg_value: null, discount_given: 0 },
+  money: { collected: 0, awaiting_confirmation: 0 },
+  receivables: { overdue_count: 0, overdue_amount: 0, due_30d: 0, outstanding_total: 0 },
+  funnel: { leads: 0, qualified: 0, viewing: 0, reserved: 0, sold: 0, lost: 0 },
+  by_project: [], by_salesperson: [], by_source: [],
+  commissions: { pending: 0, approved: 0, paid: 0 },
+  handover: { pending: 0, overdue: 0, completed: 0 },
+};
+
+const TWIN_ANALYTICS = {
+  since: new Date(0).toISOString(),
+  totals: {
+    opens: 0, unit_views: 0, floorplan_views: 0,
+    walkthroughs: 0, contact_requests: 0, visitors: 0,
+  },
+  by_origin: [], top_units: [], daily: [],
+};
+
 /* A real customer with a real profile and nothing in their account yet. */
 const PROFILE = {
   id: 'u1', auth_id: 'u1', email: 'harness@example.test',
@@ -160,6 +236,35 @@ test('every customer route renders, is named, and finishes loading', opts, async
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     if (url.includes('/rest/v1/users')) return r.fulfill(json(PROFILE));
+
+    /*
+     * A DEVELOPER WORKSPACE ON ITS FIRST MORNING.
+     *
+     * Without a membership every /developers route redirects to onboarding
+     * and none of the screens under test is ever rendered. These put the
+     * harness account inside one workspace as its OWNER; every other dev_*
+     * read falls through to the empty array below.
+     */
+    if (url.includes('/rest/v1/dev_members')) {
+      return r.fulfill(json([{ workspace_id: DEV_WORKSPACE.id, role: 'OWNER' }]));
+    }
+    if (url.includes('/rest/v1/dev_workspaces')) return r.fulfill(json([DEV_WORKSPACE]));
+    if (url.includes('/rest/v1/rpc/dev_workspace_overview')) return r.fulfill(json(DEV_OVERVIEW));
+    if (url.includes('/rest/v1/rpc/dev_dashboard')) return r.fulfill(json(DEV_DASHBOARD));
+    if (url.includes('/rest/v1/rpc/dt_analytics')) return r.fulfill(json(TWIN_ANALYTICS));
+    if (url.includes('/rest/v1/rpc/dev_claim_invites')) return r.fulfill(json(0));
+    if (url.includes('/rest/v1/rpc/dev_expire_reservations')) return r.fulfill(json(0));
+    if (url.includes('/rest/v1/rpc/dev_expire_offers')) return r.fulfill(json(0));
+    if (url.includes('/rest/v1/rpc/dev_generate_notifications')) return r.fulfill(json(0));
+    /* Studio is internal: the harness account is not staff, and the page
+       must say so rather than break. */
+    if (url.includes('/rest/v1/rpc/dt_studio_projects')) return r.fulfill(json(null));
+    if (url.includes('/rest/v1/rpc/dev_share_resolve')
+        || url.includes('/rest/v1/rpc/dev_buyer_room')
+        || url.includes('/rest/v1/rpc/dt_experience_manifest')
+        || url.includes('/rest/v1/rpc/dev_public_project')) {
+      return r.fulfill(json({ error: 'NOT_FOUND' }));
+    }
     if (url.includes('/rest/v1/')) return r.fulfill(json([]));
     return r.fulfill(json({}));
   });

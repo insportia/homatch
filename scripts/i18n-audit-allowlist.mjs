@@ -35,6 +35,10 @@ export const AUDIT_ALLOWED_STRINGS = [
 // Exact-string exceptions — reviewed case by case.
 export const AUDIT_ALLOWED_EXACT = new Set([
   'Homatch',
+  // An example hostname in the Studio's custom-domain field. A domain is a
+  // technical token with no translation — showing "alan.gelistirici.com" in
+  // Turkish would teach the wrong shape, not the right word.
+  'twin.developer.com',
   'Homatch AI',
   // The voice provider's own name, on the admin Voice AI screen. A company
   // name, written the same way in every language — exactly like 'Homatch'.

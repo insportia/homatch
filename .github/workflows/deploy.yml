@@ -273,6 +273,21 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           JWT_FUNCTIONS=(
+            # HOMATCH FOR DEVELOPERS. Both are browser-facing and keep the
+            # gateway JWT check on: the anon key is a valid JWT, so the check
+            # costs nothing and keeps them off the open internet. The real
+            # credential in each case is a share token, checked in SQL.
+            #
+            #   developer-buyer-document  signs one document a buyer was
+            #                             given. The database decides whether
+            #                             the token and the document belong
+            #                             together; this only mints the URL.
+            #   developer-document-extract  reads a contract or receipt and
+            #                             writes the reading onto the document
+            #                             and nowhere else. It never touches
+            #                             dev_deals or dev_payments.
+            "developer-buyer-document"
+            "developer-document-extract"
             "atomic-unlock"
             "credits-topup"
             "import-property"

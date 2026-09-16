@@ -57,6 +57,15 @@ jobs:
       # text in place, paste markup at it, add/duplicate/move/hide/delete a
       # block. Four defects that passed type-check, lint and every unit test
       # were found only by doing this, so it runs on every change.
+      # The Developer journey, driven the way a person drives it: open a
+      # project, open an apartment, type a buyer into the form, submit it,
+      # RELOAD, and check it is still there. Route rendering is covered
+      # above; this is the half where a screen can look perfect while the
+      # button on it does nothing. Uses the same harness bundle built for
+      # the mobile gate, so it reaches no network and needs no credentials.
+      - name: Developer acceptance (real browser)
+        run: pnpm run test:developer
+
       - name: Site Studio regression (real browser)
         run: pnpm run test:studio
 

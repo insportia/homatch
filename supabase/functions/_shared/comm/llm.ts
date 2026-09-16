@@ -38,6 +38,8 @@ export function llmAvailable(): boolean {
   return hasSecret('OPENAI_API_KEY');
 }
 
+
+
 interface LlmCallOptions {
   system: string;
   user: string;
@@ -60,7 +62,20 @@ interface LlmCallOptions {
    * largest thing left in a spoken reply. It is reasoning, and a two-sentence
    * answer to "I want a two-bedroom in Krtsanisi" does not need any.
    */
-  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
+  /*
+   * 'none' IS A REAL LEVEL, AND IT IS THE ONE A SPOKEN REPLY WANTS.
+   *
+   * This listed 'minimal' as the floor, which gpt-5.6-luna does not accept:
+   *
+   *   "Unsupported value: 'minimal' is not supported with the
+   *    'gpt-5.6-luna' model. Supported values are: 'none', 'low', ..."
+   *
+   * The request 400s, the fallback below catches it, and every call since has
+   * run at 'low' -- one step ABOVE the floor rather than at it. Measured, the
+   * wait before the first spoken word tracks how much the model reasons, so
+   * that fallback has been paying for thinking nobody asked for.
+   */
+  reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
   /** Forces a JSON object back, so callers never have to scrape prose. */
   json?: boolean;
   maxTokens?: number;
@@ -215,10 +230,37 @@ function llmFailureReason(result: LlmResult): string {
  * Two request shapes against one model is how the last outage happened.
  */
 export interface LlmStreamEvent {
-  type: 'delta' | 'done' | 'error';
+  type: 'delta' | 'done' | 'error' | 'meta';
   text?: string;
   error?: string;
   status?: number | null;
+  /**
+   * Where the wait before the first word actually went.
+   *
+   * "The model is slow" is three different problems wearing one number:
+   * getting the request accepted, the model reading a long prompt, and the
+   * model thinking before it speaks. They have different fixes -- a shorter
+   * prompt helps the second and does nothing for the first -- so they are
+   * measured apart.
+   *
+   *   headersMs   request sent to response headers: connection, TLS, queueing
+   *   firstTokenMs  headers to the first word the visitor will hear
+   *   inputTokens   how much prompt the model had to read to start
+   */
+  headersMs?: number;
+  firstTokenMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  /**
+   * The reasoning level the provider was ACTUALLY asked for.
+   *
+   * 'minimal' is requested, but a model that refuses it answers 400 once and
+   * this module then remembers to ask for 'low' instead -- for the life of
+   * the isolate, silently. Since the wait before the first spoken word
+   * tracks how much the model reasons, "which level is really in force" stops
+   * being a detail and becomes the question.
+   */
+  effort?: string;
 }
 
 /**
@@ -240,7 +282,10 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
 
   const wanted = opts.reasoningEffort ?? 'low';
-  const effort = wanted === 'minimal' && !minimalEffortSupported ? 'low' : wanted;
+  // 'minimal' is not served by every model and 'none' is; a caller asking for
+  // the floor gets the lowest level this model actually accepts.
+  const floorRefused = wanted === 'minimal' || wanted === 'none';
+  const effort = floorRefused && !minimalEffortSupported ? 'low' : wanted;
 
   const ask = (level: string) => fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -260,15 +305,33 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
     signal: controller.signal,
   });
 
+  const startedAt = Date.now();
   try {
     let res = await ask(effort);
+    let headersAt = Date.now();
 
     // A model that will not take the lowest setting says so with a 400. One
     // retry, and the instance remembers, so this costs a round trip once
     // rather than on every turn.
-    if (!res.ok && res.status === 400 && effort === 'minimal') {
+    if (!res.ok && res.status === 400 && floorRefused) {
+      /*
+       * WHY THIS IS LOGGED RATHER THAN JUST HANDLED.
+       *
+       * The flag is remembered for the life of the isolate, so ONE 400 --
+       * from anything, not necessarily the effort level -- silently downgrades
+       * every later turn's reasoning. That is invisible from the outside and
+       * it is not free: the wait before the first spoken word tracks how much
+       * the model reasons. If this fires for a reason that has nothing to do
+       * with 'minimal', we want to know rather than infer.
+       */
+      const why = await res.text().catch(() => '');
+      console.log(JSON.stringify({
+        at: new Date().toISOString(), scope: 'llm', event: 'low_effort_refused',
+        model, asked: effort, detail: why.slice(0, 200),
+      }));
       minimalEffortSupported = false;
       res = await ask('low');
+      headersAt = Date.now();
     }
 
     if (!res.ok || !res.body) {
@@ -299,15 +362,36 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
           const raw = line.slice(5).trim();
           if (!raw || raw === '[DONE]') continue;
           let event: { type?: string; delta?: string; text?: string;
-            response?: { status?: string; incomplete_details?: { reason?: string } } };
+            response?: {
+              status?: string; incomplete_details?: { reason?: string };
+              usage?: { input_tokens?: number; output_tokens?: number };
+            } };
           try { event = JSON.parse(raw); } catch { continue; }
 
           // The Responses stream names its text deltas explicitly. Reasoning
           // deltas have their own type and are deliberately NOT forwarded:
           // they are the model thinking, not the model speaking.
           if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
+            if (!sawText) {
+              // Once, at the first word: the two halves of the wait, so a
+              // slow turn can be attributed without guessing.
+              yield {
+                type: 'meta',
+                headersMs: headersAt - startedAt,
+                firstTokenMs: Date.now() - headersAt,
+                effort: minimalEffortSupported ? effort : 'low',
+              };
+            }
             sawText = true;
             yield { type: 'delta', text: event.delta };
+          } else if (event.type === 'response.completed' && event.response?.usage) {
+            // How much prompt the model had to read. The only honest way to
+            // answer "is the prompt too big", and it costs nothing to carry.
+            yield {
+              type: 'meta',
+              inputTokens: event.response.usage.input_tokens ?? 0,
+              outputTokens: event.response.usage.output_tokens ?? 0,
+            };
           } else if (event.type === 'response.failed' || event.type === 'error') {
             yield { type: 'error', error: 'response_failed' };
             return;

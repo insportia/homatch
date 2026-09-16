@@ -1343,8 +1343,20 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
   const said = String(body.text ?? '').trim().slice(0, 1000);
   if (!said) return json({ ok: false, reason: 'EMPTY' }, 400);
 
+  const handlerStartedAt = Date.now();
+
+  /*
+   * TWO ROUND TRIPS THAT USED TO HAPPEN ONE AFTER THE OTHER.
+   *
+   * Both need only `sb` and the sentence, neither needs the other's answer,
+   * and both sat on the path between a visitor finishing a sentence and the
+   * model being asked anything. Measured: the model's own time to first token
+   * is about 1.4 seconds while the browser sees 2.1 -- the difference is work
+   * like this, done in series, before the request is even built.
+   */
+  const abuseCheck = turnContainsAbuse(sb, said);
   const guard = await activeSession(sb, body.sessionId);
-  if ('refusal' in guard) return guard.refusal;
+  if ('refusal' in guard) { void abuseCheck.catch(() => false); return guard.refusal; }
   const session = guard.row;
 
   const locale = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
@@ -1434,7 +1446,22 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
    * is recorded is one boolean -- not the sentence, not the word, not a
    * count. The conversation stays theirs.
    */
-  const abusive = session.abuse_seen === true || await turnContainsAbuse(sb, said);
+  /*
+   * Where the wait before the first spoken word went.
+   *
+   * Recorded per turn because "Luna is slow" is three problems in one number
+   * -- getting the request accepted, reading the prompt, and thinking -- and
+   * they have different fixes.
+   */
+  let llmStartedMs: number | null = null;
+  let llmEffort: string | null = null;
+  let llmHeadersMs: number | null = null;
+  let llmThinkMs: number | null = null;
+  let llmInputTokens: number | null = null;
+  let llmOutputTokens: number | null = null;
+
+  // Already in flight since the top of the handler; this is where it is needed.
+  const abusive = session.abuse_seen === true || await abuseCheck.catch(() => false);
 
   const user = [
     conversation ? `Recent turns:\n${conversation}\n` : '',
@@ -1459,12 +1486,23 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
     'Answer out loud, at the length this particular question deserves.',
   ].filter(Boolean).join('\n');
 
-  await sb.from('comm_talk_sessions')
+  /*
+   * The turn counter is not worth a visitor's silence.
+   *
+   * Nothing below reads it back, and awaiting it put a whole Supabase round
+   * trip between the sentence and the model. It is still written and a
+   * failure is still recorded; it simply no longer happens while somebody is
+   * waiting to be answered.
+   */
+  void sb.from('comm_talk_sessions')
     .update({
       turns: Number(session.turns ?? 0) + 1,
       ...(abusive && session.abuse_seen !== true ? { abuse_seen: true } : {}),
     })
-    .eq('id', session.id);
+    .eq('id', session.id)
+    .then(({ error }) => {
+      if (error) logEvent('ai-talk', 'turn_count_failed', { error: String(error.message).slice(0, 80) });
+    });
 
   /*
    * What the browser will play at, snapped to something the provider offers.
@@ -1680,6 +1718,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       let failed: string | null = null;
 
       try {
+        llmStartedMs = Date.now() - handlerStartedAt;
         for await (const event of streamLlm({
           system: publicDemoInstructions(replyLanguage),
           user,
@@ -1699,11 +1738,29 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
            */
           maxTokens: 220,
           maxOutputTokens: 460,
-          // Two sentences about a flat is not a reasoning problem, and the
-          // thinking was the largest and least predictable part of the wait.
-          reasoningEffort: 'minimal',
+          /*
+           * NO REASONING. A spoken answer about a flat is not a reasoning
+           * problem, and the thinking was the largest and least predictable
+           * part of the wait -- measured between 262ms and 2592ms, tracking
+           * how long an answer the model was planning.
+           *
+           * This asked for 'minimal', which gpt-5.6-luna refuses; the refusal
+           * fell back to 'low', one step ABOVE the floor, on every turn of
+           * every conversation. The provider names 'none' in the very error
+           * it returns, and 'none' is what a voice turn wants.
+           */
+          reasoningEffort: 'none',
           timeoutMs: 20_000,
         })) {
+          if (event.type === 'meta') {
+            // Where the wait went, kept for the trace. Never spoken.
+            if (event.headersMs !== undefined) llmHeadersMs = event.headersMs;
+            if (event.firstTokenMs !== undefined) llmThinkMs = event.firstTokenMs;
+            if (event.effort !== undefined) llmEffort = event.effort;
+            if (event.inputTokens !== undefined) llmInputTokens = event.inputTokens;
+            if (event.outputTokens !== undefined) llmOutputTokens = event.outputTokens;
+            continue;
+          }
           if (event.type === 'error') { failed = event.error ?? 'llm'; break; }
           if (event.type === 'done') break;
           if (event.type !== 'delta' || !event.text) continue;
@@ -1811,7 +1868,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             user: `${user}\n\nYour previous answer was in the wrong language. `
               + `Answer ONLY in ${LANGUAGE_NAMES[replyLanguage]}. Nothing else.`,
             maxTokens: 220, maxOutputTokens: 460,
-            reasoningEffort: 'minimal', timeoutMs: 15_000,
+            reasoningEffort: 'none', timeoutMs: 15_000,
           })) {
             if (event.type === 'error') break;
             if (event.type === 'done') break;
@@ -1956,6 +2013,13 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           // The pace that was actually asked for, so a report about how the
           // voice sounded can be tied to the setting that produced it.
           tts_speed: clampCartesiaSpeed(ttsSpeed()),
+          // Everything this function did before it asked the model anything.
+          llm_started_ms: llmStartedMs,
+          llm_effort: llmEffort,
+          llm_headers_ms: llmHeadersMs,
+          llm_think_ms: llmThinkMs,
+          llm_input_tokens: llmInputTokens,
+          llm_output_tokens: llmOutputTokens,
           tts_request_ms: ttsRequestAt,
           tts_first_byte_ms: ttsFirstByteAt,
           tts_chunk_count: seq,
@@ -2438,108 +2502,78 @@ function publicDemoInstructions(language: string): string {
   const name = LANGUAGE_NAMES[language] ?? LANGUAGE_NAMES[language.split('-')[0]]
     ?? 'the language the visitor is speaking';
 
+  /*
+   * DENSE ON PURPOSE.
+   *
+   * This was 1,750 tokens of prose, and prose is how a prompt gets long
+   * without getting clearer. Every rule below was in the old one; what has
+   * gone is the explaining -- the paragraph arguing why repeating the
+   * visitor's question is tiring, rather than the instruction not to.
+   *
+   * Measured before touching it: the model reads this in a few hundred
+   * milliseconds and thinks for a few hundred more, so this is not where the
+   * latency is. It is still worth being short -- it is sent on every single
+   * turn of every conversation -- but the trade is deliberately conservative,
+   * because a cheaper prompt that answers worse is not cheaper.
+   */
   const lines = [
-    'You are Homatch, a real-estate intelligence assistant for the Georgian market, talking to a visitor by voice.',
+    `You are Homatch, a real-estate assistant for the Georgian market, speaking to a visitor by VOICE in ${name}.`,
     '',
-    'LENGTH FOLLOWS THE QUESTION. It is not a fixed budget.',
-    'A yes-or-no question gets a yes or a no and the one fact that qualifies it — often under ten words.',
-    'A real question ("how does the mortgage work", "is Vake worth it at this price") gets a real answer:',
-    'three or four spoken sentences if that is what it takes to actually answer it. Nobody wants the same',
-    'length every time, and a reply trimmed to a fixed size stops being an answer and starts sounding',
-    'like a recording. Being brief is never a reason to be useless.',
+    'LENGTH FOLLOWS THE QUESTION, and is never a fixed budget.',
+    '- yes/no question -> the yes or no plus the one fact that qualifies it, often under ten words',
+    '- real question -> a real answer, three or four spoken sentences if that is what it takes',
+    'Answer in the FIRST clause: the number, the district, the yes or no. Then the one thing that changes',
+    'their decision. "It depends" is not an answer; say what it depends ON. If you cannot answer, say what',
+    'you would need. Being brief is never a reason to be useless.',
     '',
-    'ANSWER FIRST, IN THE FIRST CLAUSE — the number, the district, the yes or no — then the one thing that',
-    'changes their decision. "It depends" and "there are several factors" are not answers; if it genuinely',
-    'depends, say what it depends ON. If you cannot answer, say what you would need to.',
+    'NEVER: repeat or rephrase what they just said; open with pleasantries or "great question"; announce',
+    'what you are about to do; add an unasked disclaimer; summarise yourself; repeat something you already',
+    'said this call; fill space while thinking; open two replies the same way; name Homatch when it carries',
+    'no meaning; read a list or bullets aloud; use markdown or an unspeakable abbreviation.',
     '',
-    'AND DO NOT SOUND LIKE A RECORDING. Vary how you begin. Never open two consecutive replies the same',
-    'way. You are in a conversation, not reading from a card: say the name Homatch when it carries',
-    'meaning and not otherwise — they know where they are — and do not restate what they just said.',
+    'SPOKEN, NOT WRITTEN. At most one question at the end, often none. Punctuate the way a person breathes:',
+    'a comma where you would pause, a full stop where you would stop -- the voice takes its pauses from your',
+    'punctuation. Say numbers and amounts the way they are said aloud. Acknowledge what they told you before',
+    'asking anything.',
     '',
-    'NEVER DO ANY OF THESE. They are what makes a voice assistant exhausting:',
-    '- repeat or rephrase what they just said back to them',
-    '- open with pleasantries, praise, or "great question"',
-    '- explain what you are about to do before doing it',
-    '- add a disclaimer nobody asked for',
-    '- summarise what you just said',
-    '- repeat something you already told them earlier in this call',
-    '- fill space while you think',
+    `LANGUAGE: reply in ${name}. If they change language, change with them and keep everything you already`,
+    'understood. Never ask them to pick one and never mention which you are using. Georgian speakers mix in',
+    'English and Russian property terms constantly -- read those as part of the Georgian sentence.',
     '',
-    'LANGUAGE',
-    `Reply in ${name}. Follow the visitor turn by turn: if they change language mid-conversation, change with`,
-    'them and keep everything you already understood. Never ask them to pick a language, never mention which',
-    'one you are using. Georgian speakers mix in English and Russian terms constantly — property, developer,',
-    'ROI, mortgage, price per square. Understand those as the Georgian sentence they sit in.',
-    '',
-    'HOW TO SPEAK',
-    'This is heard, not read. Spoken sentences, and AT MOST one question at the end — often none, because',
-    'a statement invites an answer just as well and constant questioning is what makes an assistant tiring.',
-    'Never a list, never bullet points, never markdown, never an abbreviation that cannot be read aloud.',
-    'Acknowledge what they just told you before you ask anything.',
-    '',
-    /*
-     * PUNCTUATION IS PACING. The voice takes its breaths from the commas and
-     * full stops in the text it is given, and the reply is spoken phrase by
-     * phrase as it is written, so a sentence with no internal punctuation is
-     * delivered as one long unbroken run and is heard as hurried and robotic.
-     * This is the same lever as the player's buffering, applied at the source.
-     */
-    'Punctuate the way a person breathes: a comma where you would pause, a full stop where you would stop.',
-    'Write plain spoken words, not written ones — say numbers and amounts the way they are said aloud.',
-    '',
-    'WHAT YOU KNOW',
-    'Buying, selling, renting and investing. Mortgages and instalment plans. Developer due diligence and',
-    'project risk. Property verification, the public registry, extracts, encumbrances. Purchase and',
-    'preliminary sale contracts. Districts and how they differ. Price per square metre, rental yield and ROI.',
-    'Floors, parking, areas, room counts, and the shell states a flat is sold in.',
-    '',
-    'That is what you can DRAW ON, not an agenda to read out. Never list considerations. When something',
-    'matters, name the ONE that matters most and say why in a few words.',
+    'YOU CAN DRAW ON: buying, selling, renting, investing; mortgages and instalments; developer due diligence',
+    'and project risk; verification, the public registry, extracts, encumbrances; purchase and preliminary',
+    'contracts; districts and how they differ; price per square metre, yield, ROI; floors, parking, areas,',
+    'room counts, shell states. That is background, not an agenda -- name the ONE thing that matters and why.',
     '',
     'RULES',
-    '- Say you are an AI assistant in your FIRST reply only, in a few words. Never again after that.',
+    '- Say you are an AI assistant in your FIRST reply only, briefly. Never again.',
     /* The model question, in the one form this surface can carry. The full
-       policy is prose and this prompt is tuned to two-sentence replies, so it
-       is compressed rather than pasted — the decisions it encodes are the
-       same, and src/lib/ai/identity.ts is where they are argued. */
-    '- If asked what model or whose AI you are: you are Homatch AI; the technical systems underneath',
-    '  vary as Homatch picks the best one for each task; never name a model, a provider or a vendor;',
-    '  never claim Homatch trained its own; never treat the question as improper. Then move on.',
-    '- You have NO access to any specific listing, price, availability or any person\'s records.',
-    '  Never state a price, a property, an address or an availability. If asked, say plainly that you',
-    '  cannot look that up here and that Homatch can do it properly once they continue on the site.',
-    '- Never guarantee anything. Never quote a rate of return as a fact.',
-    '- Do not ask for a name, a phone number, an email address or any identifying detail.',
-    '- Talk about property only. If the conversation goes elsewhere, bring it back once, politely,',
-    '  and if it does not come back, say this demo is only about property and wrap up.',
-    '- Write the name Homatch in Latin letters, always, in every language. Never transliterate it',
-    '  into Georgian, Cyrillic, Arabic or Hebrew script.',
+       policy is prose and lives in src/lib/ai/identity.ts, where it is
+       argued; the decisions it encodes are the same. */
+    '- Asked what model or whose AI you are: you are Homatch AI; the systems underneath vary as Homatch picks',
+    '  the best for each task; never name a model, a provider or a vendor.',
+    '  Never claim Homatch trained its own model, and never treat the question as improper. Then move on.',
+    '- You have NO access to any listing, price, availability or person\'s records. Never state a price, a',
+    '  property, an address or an availability. Say plainly you cannot look it up here and that Homatch can,',
+    '  once they continue on the site.',
+    '- Never guarantee anything. Never quote a rate of return as fact.',
+    '- Never ask for a name, phone number, email or any identifying detail.',
+    '- Property only. If it drifts, bring it back once; if it does not come back, say this demo is about',
+    '  property and wrap up.',
+    '- Write "Homatch" in Latin letters in every language. Never transliterate it.',
     '',
-    'SENDING THEM SOMEWHERE, AND ENDING THE CALL',
-    '',
-    'You cannot look anything up in this conversation, but Homatch can. When what they want is a thing',
-    'the site does, say so in your normal short sentence and add the marker below. The app turns it into',
-    'a button they can tap; you never write a link, a URL or a path, and you never read the marker aloud.',
-    '',
-    'After your sentence, on the same line, you may append EXACTLY:',
+    'SENDING THEM SOMEWHERE, AND ENDING',
+    'You cannot look anything up; Homatch can. When they want something the site does, say so in your normal',
+    'sentence and append EXACTLY, on the same line, never read aloud, never a URL or path:',
     `${ACTION_MARKER} {"go":"<key>","end":<true|false>,"why":"<reason>"}>>`,
-    '',
-    'Destinations. Use the KEY on the left, never anything else:',
+    'Use a KEY from this list and nothing else:',
     destinationMenu(),
+    'Only when it genuinely helps. Not on every reply.',
     '',
-    'Only offer one when it genuinely helps: they asked for something that page does, or you have taken',
-    'them as far as talking can. Do not attach one to every reply.',
-    '',
-    'END THE CALL when there is nothing useful left to do, with "end":true and one of:',
-    '  OBJECTIVE_MET       you answered what they came for and they have no follow-up',
-    '  FAREWELL            they said goodbye, thanks, that is all, or similar',
-    '  HANDED_OFF          you have sent them to the page that does the rest',
-    '  NOTHING_ACTIONABLE  repeated turns with no real request and nothing to act on',
-    '  ABUSE               they keep being abusive with no real question underneath',
-    '',
-    'Before ending, your sentence should be a short, warm sign-off — not an explanation that you are',
-    'ending. Do NOT end because a turn was brief, quiet, or off-topic once: people pause and wander.',
-    'End when there is genuinely nothing left, not to get rid of them.',
+    'END with "end":true and one of: OBJECTIVE_MET (answered, no follow-up); FAREWELL (they said goodbye or',
+    'thanks); HANDED_OFF (you sent them to the page that does the rest); NOTHING_ACTIONABLE (repeated turns',
+    'with nothing to act on); ABUSE (abusive with no real question underneath).',
+    'Ending, say a short warm sign-off -- not an explanation that you are ending.',
   ];
 
   if (name === 'Georgian') {

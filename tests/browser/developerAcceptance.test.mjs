@@ -404,25 +404,45 @@ test('the Developer journey works when a person actually drives it', opts, async
     /viewing/i.test(crmText) || /viewing/i.test(tasksText)
       ? null : 'no viewing visible on the buyer');
 
-  // ── 5. COMMUNICATION ACTIONS ────────────────────────────────────────────
-  const commHtml = await page.content();
-  const telHref = /href="tel:/.test(commHtml);
-  const mailHref = /href="mailto:/.test(commHtml);
-  const waHref = /wa\.me|whatsapp/i.test(commHtml);
-  const commLabels = {
-    call: /\bCall\b/i.test(crmText),
-    email: /\bEmail\b/i.test(crmText),
-    whatsapp: /WhatsApp/i.test(crmText),
-  };
-  record('CALL_ACTION', commLabels.call || telHref,
-    commLabels.call || telHref ? 'a call action is present on the buyer'
-      : 'no call action found in the buyer drawer');
-  record('EMAIL_ACTION', commLabels.email || mailHref,
-    commLabels.email || mailHref ? 'an email action is present on the buyer'
-      : 'no email action found in the buyer drawer');
-  record('WHATSAPP_ACTION', commLabels.whatsapp || waHref,
-    commLabels.whatsapp || waHref ? 'a WhatsApp action is present on the buyer'
-      : 'no WhatsApp action found in the buyer drawer');
+  // ── 5. COMMUNICATION ACTIONS ────────────────────────────────
+  /*
+   * A label is not proof. What matters is WHERE each one goes: three
+   * different Homatch products, each scoped to this contact, with no
+   * second dialler and no generic channel picker in between. So the
+   * destinations are read out of the drawer rather than the words.
+   */
+  const commHrefs = await page.evaluate(() => Array.from(
+    document.querySelectorAll('a[href]'), (a) => a.getAttribute('href'),
+  ));
+  const scoped = (prefix) => commHrefs.filter(
+    (h) => h && h.startsWith(prefix) && h.includes('contact='),
+  );
+  const callTo = scoped('/outreach/calls');
+  const waTo = scoped('/outreach/whatsapp/inbox');
+  const mailTo = scoped('/outreach/email');
+
+  record('CALL_ACTION', callTo.length === 1,
+    callTo.length === 1 ? `opens ${callTo[0]}`
+      : `expected one scoped call link, found ${callTo.length}`);
+  record('EMAIL_ACTION', mailTo.length === 1,
+    mailTo.length === 1 ? `opens ${mailTo[0]}`
+      : `expected one scoped email link, found ${mailTo.length}`);
+  record('WHATSAPP_ACTION', waTo.length === 1,
+    waTo.length === 1 ? `opens ${waTo[0]}`
+      : `expected one scoped WhatsApp link, found ${waTo.length}`);
+
+  // No channel may route into another's product, and the contact id must
+  // be the same buyer on all three.
+  const contactIds = new Set([...callTo, ...waTo, ...mailTo]
+    .map((h) => new URLSearchParams(h.split('?')[1]).get('contact')));
+  const noCrossRouting = !callTo.some((h) => h.includes('whatsapp') || h.includes('email'))
+    && !waTo.some((h) => h.includes('/calls') || h.includes('/email'))
+    && !mailTo.some((h) => h.includes('/calls') || h.includes('whatsapp'))
+    && contactIds.size === 1;
+  record('COMMS_NO_CROSS_ROUTING', noCrossRouting,
+    noCrossRouting
+      ? 'three distinct products, all scoped to the same contact'
+      : `channels overlap or disagree about the contact: ${[...contactIds].join(',')}`);
 
   // ── 6. OFFERS: list price, then discounted ──────────────────────────────
   const unitA = backend.db.dev_units.find((u) => u.unit_number === 'A-703');

@@ -112,6 +112,31 @@ export class GoogleTranscriber implements LiveSocket {
      * candidate, which is what keeps a settled conversation from being
      * re-decided on every pause.
      */
+    /*
+     * IDENTIFY THE LANGUAGE, WHILE THERE IS STILL ONE TO IDENTIFY.
+     *
+     * Chirp 3 takes one language or `auto`. One language is far more accurate
+     * and is what a settled conversation uses; `auto` is the only way to
+     * answer "what is this person speaking", which is the question somebody
+     * poses by simply starting to talk on a page whose locale says nothing
+     * about them.
+     *
+     * MEASURED, all six languages, short opener and full sentence:
+     *
+     *   en ru tr ar   correct on both, every time
+     *   ka            correct on a sentence; a bare "გამარჯობა" comes back
+     *                 as Javanese, transcribed "gamarjoba" in Latin
+     *   he            correct on a sentence (as `iw`, the legacy code this
+     *                 product already aliases); a bare "שלום" comes back as
+     *                 hi-Latn, "Shalom"
+     *
+     * So it is used to ESTABLISH the language and then dropped. An
+     * unsupported label like jv or hi-Latn resolves to nothing and the
+     * session keeps what it had, which is why a short Georgian greeting
+     * degrades to one imperfect transcript rather than a Javanese session.
+     */
+    if (this.grant.detect) query.set('detect', '1');
+
     const candidates = (this.grant.languages ?? [])
       .map((code) => TAGS[String(code).toLowerCase().split('-')[0]] ?? null)
       .filter((tag): tag is string => Boolean(tag));

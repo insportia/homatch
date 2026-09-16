@@ -67,6 +67,14 @@ export interface LiveGrant {
   keyterms?: string[];
   /** Sent only once the conversation has settled into a language. */
   languageCode?: string | null;
+  /**
+   * Ask the recogniser to identify the language on this socket.
+   *
+   * Set by the SESSION, not by the server: it is a statement about whether
+   * this conversation has settled on a language yet, and only the session
+   * knows that. See voiceClient's openLiveTranscription.
+   */
+  detect?: boolean;
   /** Every language this conversation could plausibly be in, primary first. */
   languages?: string[];
 }

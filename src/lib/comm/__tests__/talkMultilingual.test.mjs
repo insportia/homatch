@@ -175,3 +175,74 @@ test('the reply length is not a fixed budget any more', () => {
   assert.ok(!/at most two sentences and at most 30 words/.test(edge));
   assert.ok(/LENGTH FOLLOWS THE QUESTION/.test(edge));
 });
+
+// ── Somebody simply starts talking ────────────────────────────────────────
+//
+// MEASURED against the deployed recogniser on `auto`, every supported
+// language, a bare greeting and a full sentence:
+//
+//   en ru tr ar   correct on both, short and long
+//   ka            correct on a sentence; a bare "გამარჯობა" returns Javanese,
+//                 transcribed "gamarjoba" in Latin letters
+//   he            correct on a sentence, reported as `iw` (the legacy code
+//                 this product already aliases); a bare "שלום" returns
+//                 hi-Latn, "Shalom"
+//
+// Eleven of twelve transcripts were correct. So detection is good enough to
+// ESTABLISH a language and not good enough to run a settled conversation on,
+// which is exactly how it is used.
+
+import { resolveTurnLanguage } from '../talkLanguage.ts';
+
+test('a first utterance in any language settles the session, whatever the page says', () => {
+  // The page locale is where somebody arrived, not what they speak.
+  const first = (transcript, providerLanguage) => resolveTurnLanguage({
+    transcript, providerLanguage, previousSessionLanguage: null, pageLocale: 'ka',
+  });
+  assert.equal(first('Hello, can you help me find an apartment?', 'en').resolvedLanguage, 'en');
+  assert.equal(first('Здравствуйте, я ищу двухкомнатную квартиру.', 'ru').resolvedLanguage, 'ru');
+  assert.equal(first('Merhaba, bir daire arıyorum.', 'tr').resolvedLanguage, 'tr');
+  assert.equal(first('مرحبا ابحث عن شقه في تبليسي.', 'ar').resolvedLanguage, 'ar');
+  // Hebrew comes back as `iw`, which ISO renamed to `he` in 1989.
+  assert.equal(first('שלום, אני מחפש דירה בטביליסי.', 'iw').resolvedLanguage, 'he');
+  for (const t of ['Hello, can you help me find an apartment?', 'Привет']) {
+    assert.ok(first(t, t === 'Привет' ? 'ru' : 'en').confidence >= 0.6, 'must settle, not dither');
+  }
+});
+
+test('a mis-detected short greeting cannot hijack the session', () => {
+  // This is the one the measurement says will happen: a bare Georgian
+  // greeting on `auto` comes back as Javanese with a Latin transcript. An
+  // unsupported label contributes nothing, and one short Latin word is not
+  // enough evidence to leave a non-Latin session.
+  const r = resolveTurnLanguage({
+    transcript: 'gamarjoba', providerLanguage: 'jv',
+    previousSessionLanguage: 'ka', pageLocale: 'ka',
+  });
+  assert.equal(r.resolvedLanguage, 'ka');
+  assert.ok(r.confidence < 0.6, 'and it must not lock on that evidence');
+
+  const he = resolveTurnLanguage({
+    transcript: 'Shalom', providerLanguage: 'hi-Latn',
+    previousSessionLanguage: 'ka', pageLocale: 'ka',
+  });
+  assert.equal(he.resolvedLanguage, 'ka');
+  assert.ok(he.confidence < 0.6);
+});
+
+test('detection is asked for until the language is settled, and not after', () => {
+  const c = strip(client);
+  // A settled conversation is recognised far more accurately on one language
+  // than on auto, so detection is a startup cost and not a running one.
+  assert.ok(/detect: !this\.language\.locked/.test(c),
+    'detection must stop once the session has locked a language');
+  const g = strip(readFileSync('src/lib/comm/googleTranscribe.ts', 'utf8'));
+  assert.ok(/if \(this\.grant\.detect\) query\.set\('detect', '1'\);/.test(g));
+});
+
+test('the gateway takes detection per socket, not as a global mode', () => {
+  const gw = strip(readFileSync('official-worker/src/speech/SpeechGateway.ts', 'utf8'));
+  assert.ok(/detect: boolean/.test(gw), 'one socket asking must not change the others');
+  assert.ok(/searchParams\.get\('detect'\) === '1'/.test(gw));
+  assert.ok(/detect \? \['auto'\] : languages/.test(gw));
+});

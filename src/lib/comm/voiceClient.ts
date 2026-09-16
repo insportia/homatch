@@ -1089,7 +1089,16 @@ export class VoiceSession {
     // 16 kHz and OpenAI's socket runs at 24. Resampling to the wrong one is
     // silence with the right byte count.
     const rate = grant.sampleRate ?? LIVE_SAMPLE_RATE;
-    const live = createTranscriber(grant, {
+    /*
+     * Until the conversation has settled on a language, ask what it is.
+     *
+     * The page locale is where somebody arrived, not what they speak, and a
+     * Georgian page answering an English speaker in Georgian letters is the
+     * whole of the multilingual complaint. Detection is on until the session
+     * locks a language and off afterwards, because a settled conversation is
+     * recognised far more accurately on one language than on `auto`.
+     */
+    const live = createTranscriber({ ...grant, detect: !this.language.locked }, {
       onSpeechStart: () => {
         this.lastVoiceAt = Date.now();
         if (this.state === 'UNDERSTANDING' && !this.turnInFlight) this.setState('LISTENING');

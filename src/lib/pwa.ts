@@ -358,3 +358,35 @@ export function awaitInstallPrompt(timeoutMs = 2500): Promise<BeforeInstallPromp
     watchers.add(check);
   });
 }
+
+/**
+ * How long after load a Chromium browser is still deciding.
+ *
+ * Measured twice against the deployed site in a real Chrome:
+ * beforeinstallprompt arrived at 1668ms on one run and about 4000ms on
+ * another. The variance is the point -- it depends on when the manifest is
+ * parsed and the worker takes control, which depends on the network.
+ *
+ * Six seconds covers both with room, and is short enough that a browser which
+ * is genuinely never going to offer is not misdescribed for long.
+ */
+const CHECK_WINDOW_MS = 6000;
+const loadedAt = Date.now();
+
+/**
+ * Is the browser still making up its mind?
+ *
+ * The state this distinguishes is the one the control used to get wrong.
+ * "No prompt in hand" was being rendered as "this browser cannot install",
+ * which on Chromium is false for the first few seconds of every visit -- and
+ * pressing the control in that window produced Add to Home Screen
+ * instructions for somebody whose browser was about to offer a real install.
+ *
+ * CHECKING is not NATIVE and it is not MANUAL_ONLY. It is its own state, and
+ * a control that shows it is telling the truth about what it knows.
+ */
+export function isCheckingInstall(): boolean {
+  if (heldPrompt) return false;
+  if (!canInstall()) return false;
+  return Date.now() - loadedAt < CHECK_WINDOW_MS;
+}

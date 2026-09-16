@@ -5200,6 +5200,7 @@ const en = {
   pwa_iosbrowser_lead: 'On iPhone and iPad only Safari can add an app to the Home Screen. This browser cannot — the option is not in its menu.',
   pwa_iosbrowser_step1: 'Copy this page’s address, or tap Share then Open in Safari',
   pwa_iosbrowser_step2: 'In Safari, tap Install App again — it takes three taps from there',
+  pwa_preparing: 'Preparing install…',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -10318,6 +10319,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pwa_iosbrowser_lead: 'iPhone-სა და iPad-ზე მხოლოდ Safari-ს შეუძლია აპის მთავარ ეკრანზე დამატება. ამ ბრაუზერს არ შეუძლია — ეს პარამეტრი მის მენიუში არ არის.',
   pwa_iosbrowser_step1: 'დააკოპირეთ ამ გვერდის მისამართი, ან შეეხეთ Share → Safari-ში გახსნა',
   pwa_iosbrowser_step2: 'Safari-ში კვლავ შეეხეთ „აპლიკაციის დაყენება“ — იქიდან სამი შეხებაა',
+  pwa_preparing: 'ემზადება დასაყენებლად…',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -15427,6 +15429,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pwa_iosbrowser_lead: 'На iPhone и iPad добавить приложение на экран «Домой» может только Safari. Этот браузер не может — такого пункта в его меню нет.',
   pwa_iosbrowser_step1: 'Скопируйте адрес этой страницы или нажмите «Поделиться» → «Открыть в Safari»',
   pwa_iosbrowser_step2: 'В Safari снова нажмите «Установить приложение» — оттуда три нажатия',
+  pwa_preparing: 'Подготовка к установке…',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -20534,6 +20537,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pwa_iosbrowser_lead: 'iPhone ve iPad\'de bir uygulamayı Ana Ekrana yalnızca Safari ekleyebilir. Bu tarayıcı ekleyemez — bu seçenek menüsünde yok.',
   pwa_iosbrowser_step1: 'Bu sayfanın adresini kopyalayın veya Paylaş → Safari’de Aç seçin',
   pwa_iosbrowser_step2: 'Safari\'de yeniden Uygulamayı Yükle\'ye dokunun — oradan üç dokunuş sürer',
+  pwa_preparing: 'Yükleme hazırlanıyor…',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -25641,6 +25645,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pwa_iosbrowser_lead: 'على iPhone وiPad، يستطيع Safari وحده إضافة تطبيق إلى الشاشة الرئيسية. هذا المتصفح لا يستطيع — الخيار غير موجود في قائمته.',
   pwa_iosbrowser_step1: 'انسخ عنوان هذه الصفحة، أو اضغط مشاركة ثم "فتح في Safari"',
   pwa_iosbrowser_step2: 'في Safari اضغط "تثبيت التطبيق" مرة أخرى — ثلاث ضغطات من هناك',
+  pwa_preparing: 'جارٍ التحضير للتثبيت…',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -30748,6 +30753,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   pwa_iosbrowser_lead: 'ב־iPhone וב־iPad רק Safari יכול להוסיף אפליקציה למסך הבית. הדפדפן הזה לא — האפשרות אינה בתפריט שלו.',
   pwa_iosbrowser_step1: 'העתיקו את כתובת הדף, או הקישו שיתוף ואז "פתח ב־Safari"',
   pwa_iosbrowser_step2: 'ב־Safari הקישו שוב על "התקנת אפליקציה" — משם זה שלוש הקשות',
+  pwa_preparing: 'מכין התקנה…',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

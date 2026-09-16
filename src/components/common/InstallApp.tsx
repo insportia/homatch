@@ -5,7 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { recordPwaEvent } from '@/lib/engagement';
 import {
   type InstallMode,
-  awaitInstallPrompt,
+  awaitInstallPrompt, isCheckingInstall,
   canInstall, heldInstallPrompt, installedInThisTab, isIOSSafari, isIOSOtherBrowser,
   isIPad, isStandalone,
   rememberMuted, resolveInstallMode, showInstallPrompt, wasMuted, watchInstall,
@@ -138,6 +138,20 @@ export function InstallApp({
     restate();
     return watchInstall(restate);
   }, []);
+
+  /*
+   * The CHECKING window closes on a clock, not on an event, so nothing would
+   * otherwise re-render when it expires and the label would stay "Preparing"
+   * on a browser that has finished deciding. One second is far finer than a
+   * person notices and stops as soon as the answer is known.
+   */
+  const [, tick] = useReducer((n: number) => n + 1, 0);
+  const checking = isCheckingInstall();
+  useEffect(() => {
+    if (!checking) return undefined;
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [checking]);
 
   const prompt = heldInstallPrompt();
   const justInstalled = installedInThisTab();
@@ -358,7 +372,19 @@ export function InstallApp({
           : <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden="true" />}
         {!compact && (
           <span className="min-w-0 truncate">
-            {mode === 'installed' ? t('pwa_open') : t('pwa_install')}
+            {/*
+              * THE CONTROL SAYS WHAT IT KNOWS.
+              *
+              * While the browser is still deciding, this used to read
+              * "Install App" and then hand over Add to Home Screen
+              * instructions -- a label that promised something the control
+              * could not yet do. Naming the state instead costs a few
+              * seconds of a quieter word and never misdescribes what a press
+              * will produce.
+              */}
+            {mode === 'installed' ? t('pwa_open')
+              : (mode === 'pending' && checking) ? t('pwa_preparing')
+                : t('pwa_install')}
           </span>
         )}
       </button>

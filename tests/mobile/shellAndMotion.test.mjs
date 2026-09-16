@@ -317,8 +317,17 @@ test('refusing the browser dialog is "not now", never "never again"', opts, asyn
   await page.waitForTimeout(2500);
   await page.getByRole('button', { name: /open menu/i }).first().click();
   await page.waitForTimeout(700);
+  /*
+   * Either label. What this asserts is that the control SURVIVED the
+   * dismissal, not what it happens to say: within the first six seconds of a
+   * load the button truthfully reads "Preparing install…" while the browser
+   * is still deciding whether it can offer one, and only then settles to
+   * "Install app". Pinning the wording here would make an honest state
+   * change look like the regression this test exists to catch.
+   */
   assert.ok(
-    await page.locator('button:visible').filter({ hasText: /Install app/i }).count() > 0,
+    await page.locator('button:visible')
+      .filter({ hasText: /Install app|Preparing install/i }).count() > 0,
     'the install control disappeared after the dialog was dismissed once',
   );
 });

@@ -358,6 +358,14 @@ interface TalkRequest {
    * is free to disagree, and the script of what comes back has the last word.
    */
   languageHint?: string;
+  /**
+   * Which recogniser this session would like, if it is already enabled.
+   *
+   * A preference, not an authority: see the use site in listen(). It exists
+   * so two recognisers can be compared on identical audio, and so switching
+   * between them is a request rather than a deploy.
+   */
+  sttPreference?: string;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -603,6 +611,26 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
   const preferred = await preferredSttRoute(sb);
 
   /*
+   * ASKING FOR A PARTICULAR RECOGNISER, WITHIN WHAT IS ALREADY ALLOWED.
+   *
+   * Two recognisers are built and only one can be first, so comparing them on
+   * the same audio needs a way to say which -- and switching production
+   * between them needs a way back. This is that lever, and it is deliberately
+   * a PREFERENCE rather than an authority: it can only select a route an
+   * operator has already enabled, it cannot turn one on, and it cannot reach
+   * a provider the route table does not list. A caller naming something
+   * disabled, kill-switched or unknown is simply ignored.
+   *
+   * So it buys nothing a visitor could not already have, and it is what makes
+   * a rollback one request rather than a deploy.
+   */
+  const asked = String(body.sttPreference ?? '').toUpperCase();
+  const wantsScribe = asked === 'ELEVENLABS' && await sttRouteAvailable(sb, 'ELEVENLABS');
+  if (wantsScribe) {
+    logEvent('ai-talk', 'stt_preference_honoured', { provider: 'ELEVENLABS' });
+  }
+
+  /*
    * GOOGLE FIRST, WHEN AN OPERATOR HAS ENABLED IT AND IT IS ACTUALLY UP.
    *
    * Both halves matter. The route being enabled is a decision; the worker's
@@ -611,7 +639,7 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
    * through to Scribe and SAYS which — a silent second choice is how an
    * afternoon disappears.
    */
-  if (preferred?.provider === 'GOOGLE' && !preferred.reason.startsWith('missing')) {
+  if (!wantsScribe && preferred?.provider === 'GOOGLE' && !preferred.reason.startsWith('missing')) {
     const ready = await googleSpeechReady();
     const grant = ready ? await mintSpeechGrant(body.sessionId) : null;
     if (ready && grant) {
@@ -856,6 +884,21 @@ async function selectSessionKeyterms(sb: Sb, ctx: {
  * Never throws and never blocks: an unreachable preference must not stop a
  * visitor being heard.
  */
+/**
+ * Is this provider a route an operator has actually enabled?
+ *
+ * The question a preference is allowed to ask. It reads the same table the
+ * ordinary selection reads, so a preference can never reach further than the
+ * configuration already reaches.
+ */
+async function sttRouteAvailable(sb: Sb, provider: string): Promise<boolean> {
+  const { data } = await sb.from('comm_provider_routes')
+    .select('provider, enabled, kill_switch, credential_env_names')
+    .eq('role', 'STT').eq('provider', provider).maybeSingle();
+  if (!data || !data.enabled || data.kill_switch) return false;
+  return !(data.credential_env_names ?? []).some((n: string) => !hasSecret(n));
+}
+
 async function preferredSttRoute(
   sb: Sb,
 ): Promise<{ provider: string; reason: string } | null> {

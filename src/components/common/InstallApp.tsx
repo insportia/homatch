@@ -162,6 +162,31 @@ export function InstallApp({
     return () => window.clearInterval(id);
   }, [checking]);
 
+  /*
+   * ── THE TAP IS A FACT, EVEN BEFORE THE BROWSER IS READY ────────────
+   *
+   * The previous version made the control `disabled` while Chromium decided.
+   * That removed the wrong modal by removing the user's action, which is a
+   * worse trade: a primary CTA that looks pressable and ignores a press is
+   * indistinguishable from a broken app.
+   *
+   * So the press is RECORDED instead. `intent` says somebody asked to
+   * install before the browser could offer; when the event lands we spend it
+   * on their behalf. Chromium's transient user activation lasts five
+   * seconds, so a prompt arriving soon after the tap can still be raised
+   * from that gesture -- and if it arrives too late for that, the control
+   * says "Ready" and the second tap costs one more touch rather than a
+   * mystery.
+   *
+   * What never happens on Chromium, in any of these branches, is the manual
+   * modal. There is still no value that would open it.
+   */
+  const [intent, setIntent] = useState(false);
+  const [readyToPrompt, setReadyToPrompt] = useState(false);
+  const [gaveUp, setGaveUp] = useState(false);
+  const [prompting, setPrompting] = useState(false);
+  const tappedAt = React.useRef(0);
+
   const prompt = heldInstallPrompt();
   const justInstalled = installedInThisTab();
   const mode: InstallMode = resolveInstallMode({
@@ -192,6 +217,56 @@ export function InstallApp({
       void recordPwaEvent('PWA_NATIVE_PROMPT_AVAILABLE', 'DETECTED', { source });
     }
   }, [mode, prompt, source]);
+
+  /*
+   * ACTIVATION IS A CLOCK, AND IT IS THE BROWSER'S CLOCK.
+   *
+   * Chromium allows prompt() only while the gesture that triggered it is
+   * still "transiently active", which lasts five seconds. Awaiting does not
+   * consume that, so an event arriving a moment after the tap can still be
+   * raised from it. 3.5s leaves margin for the call itself rather than
+   * racing the limit.
+   *
+   * Beyond it we do NOT guess and we do not silently fail: the control turns
+   * into an explicit "Ready" that the next tap fulfils.
+   */
+  const ACTIVATION_SAFE_MS = 3500;
+  /*
+   * And a browser that never answers. Observed arrivals on the deployed site
+   * were 1668, 1791, 2145 and 3687ms; twelve seconds is more than three times
+   * the slowest, so reaching it means the answer is not coming rather than
+   * that we were impatient.
+   */
+  const GIVE_UP_MS = 12000;
+
+  useEffect(() => {
+    if (!intent || prompting) return undefined;
+    const held = heldInstallPrompt();
+
+    if (held) {
+      const withinGesture = Date.now() - tappedAt.current < ACTIVATION_SAFE_MS;
+      if (!withinGesture) { setIntent(false); setReadyToPrompt(true); return undefined; }
+      setPrompting(true);
+      void (async () => {
+        void recordPwaEvent('PWA_NATIVE_PROMPT_SHOWN', 'CONFIRMED', { source, once: false });
+        const outcome = await showInstallPrompt();
+        setIntent(false);
+        setPrompting(false);
+        /* The browser refused the delayed call -- the gesture had expired
+           after all. Say so with a control that works, not with silence. */
+        if (outcome === 'unavailable') setReadyToPrompt(true);
+        if (outcome === 'accepted') {
+          void recordPwaEvent('PWA_NATIVE_PROMPT_ACCEPTED', 'CONFIRMED', { source, once: false });
+        } else if (outcome === 'dismissed') {
+          void recordPwaEvent('PWA_NATIVE_PROMPT_DISMISSED', 'CONFIRMED', { source, once: false });
+        }
+      })();
+      return undefined;
+    }
+
+    const id = window.setTimeout(() => { setIntent(false); setGaveUp(true); }, GIVE_UP_MS);
+    return () => window.clearTimeout(id);
+  }, [intent, prompting, prompt, source]);
 
   const onClick = useCallback(async () => {
     void recordPwaEvent('PWA_INSTALL_CLICKED', 'CONFIRMED', { source: `${source}:${mode}`, once: false });
@@ -239,7 +314,20 @@ export function InstallApp({
      * response to that is nothing at all -- the control re-renders into its
      * real state on the next tick.
      */
-    if (!heldInstallPrompt()) return;
+    /*
+     * ── THE PRESS IS ALWAYS ANSWERED ──────────────────────────────────
+     *
+     * No prompt in hand means the browser has not offered YET, not that this
+     * press meant nothing. It is recorded, the control immediately shows it
+     * is working, and the effect above spends the event the moment it lands.
+     *
+     * The one thing that does not happen is the manual modal, on any branch.
+     */
+    if (!heldInstallPrompt()) {
+      tappedAt.current = Date.now();
+      setIntent(true);
+      return;
+    }
     /* The event is single-use — Chromium will not replay it. A dismissal is
        NOT a mute: the control stays, in its pending state, and explains
        itself if pressed again. */
@@ -247,6 +335,10 @@ export function InstallApp({
     /* Reads the store rather than the `prompt` captured when this callback
        was created: in the pending case it arrived after that. */
     const outcome = await showInstallPrompt();
+    /* Spent, whatever the answer: Chromium will not replay it. The control
+       goes back to its ordinary word rather than staying on "Ready", which
+       would promise a prompt that no longer exists. */
+    setReadyToPrompt(false);
     /* The browser's OWN answer, which is the only CONFIRMED install signal
        that exists outside `appinstalled`. A click is not an install and is
        never recorded as one. */
@@ -303,47 +395,49 @@ export function InstallApp({
    * the defect those gates exist for. A chip keeps the row's shape and still
    * cannot install anything, which is the property that matters.
    */
-  if (mode === 'checking' || mode === 'native-unavailable') {
+  /*
+   * ── WORKING, AND NOT-AVAILABLE, ARE DIFFERENT FROM DEAD ────────────
+   *
+   * Only two things here are non-interactive, and neither of them is an
+   * Install CTA that ignores you:
+   *
+   *   working    somebody has already pressed, and this is the progress of
+   *              that press. A spinner is the response to their tap, not a
+   *              refusal of it.
+   *   settled    the browser has said no, or never answered. A quiet chip
+   *              that states it. Styled as a chip rather than the gold
+   *              primary, so it does not read as an action on offer.
+   *
+   * The CHECKING state itself is NOT here -- it renders the ordinary active
+   * button below, because a person must be able to ask before the browser is
+   * ready, and their asking is what `intent` records.
+   */
+  const settled = mode === 'native-unavailable' || gaveUp;
+  const working = intent || prompting;
+
+  if (settled || working) {
     const quiet = tone === 'dark'
-      ? 'bg-white/[0.06] text-white/60 ring-1 ring-inset ring-white/15'
+      ? 'bg-white/[0.06] text-white/70 ring-1 ring-inset ring-white/15'
       : 'bg-secondary text-muted-foreground ring-1 ring-inset ring-border';
     const shape = variant === 'block'
       ? 'w-full min-h-[3rem] rounded-[0.9rem] px-4 text-[17px]'
       : `min-h-[2.5rem] rounded-full text-sm ${compact ? 'w-10 px-0' : 'px-3.5'}`;
     return (
-      /*
-       * A DISABLED BUTTON, not a span.
-       *
-       * The action exists and is not available yet, which is precisely what
-       * `disabled` means -- and it cannot be pressed, which is the guarantee.
-       * A span would have been equally unpressable and wrong twice over: the
-       * control disappears from the accessibility tree as an action, and the
-       * mobile gates that exist because this affordance kept vanishing look
-       * for a button and would have found a hole again.
-       */
-      <button
-        type="button"
-        disabled
+      <span
+        role="status"
         aria-live="polite"
-        /* Named for the action it WOULD perform, which is how a disabled
-           control is supposed to read: a greyed-out Save is still called
-           Save. It also keeps the affordance findable in the accessibility
-           tree, which the mobile strip gate relies on. */
-        aria-label={t('pwa_install_aria')}
-        className={`inline-flex items-center justify-center gap-2 font-medium ${shape} ${quiet} ${className} cursor-default`}
+        aria-label={working ? t('pwa_preparing') : t('pwa_unavailable')}
+        className={`inline-flex items-center justify-center gap-2 font-medium ${shape} ${quiet} ${className}`}
       >
-        {mode === 'checking'
+        {working
           ? <Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
           : <Download className="h-4 w-4 shrink-0 opacity-60" aria-hidden="true" />}
         {!compact && (
           <span className="min-w-0 truncate">
-            {/* Two different facts: still deciding, and decided against. Neither
-                of them is "install this by hand", which is the sentence a Chrome
-                user was being given. */}
-            {mode === 'checking' ? t('pwa_preparing') : t('pwa_unavailable')}
+            {working ? t('pwa_preparing') : t('pwa_unavailable')}
           </span>
         )}
-      </button>
+      </span>
     );
   }
 
@@ -457,7 +551,12 @@ export function InstallApp({
               * here means a prompt is held or the platform installs
               * manually -- never "we hope one turns up".
               */}
-            {mode === 'installed' ? t('pwa_open') : t('pwa_install')}
+            {mode === 'installed' ? t('pwa_open')
+              /* The event landed after the gesture expired, so the browser
+                 needs a fresh one. Saying so beats a press that quietly
+                 fails. */
+              : readyToPrompt ? t('pwa_ready_install')
+                : t('pwa_install')}
           </span>
         )}
       </button>

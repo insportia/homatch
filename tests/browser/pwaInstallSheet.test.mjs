@@ -325,7 +325,7 @@ test('each platform takes the shortest path it actually permits', opts, async (t
   const failures = [];
 
   /** Open the page as a given platform, click the install control, report. */
-  async function run({ name, ua, standalone, fireBip, lateBip, muted }) {
+  async function run({ name, ua, standalone, fireBip, lateBip, muted, captureAfterClick }) {
     const ctx = await browser.newContext({
       viewport: { width: 390, height: 844 },
       userAgent: ua, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
@@ -380,6 +380,13 @@ test('each platform takes the shortest path it actually permits', opts, async (t
     await page.goto(base, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1400);
 
+    const labelBeforeClick = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
+        const l = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
+        return /install|preparing|დაყენ/i.test(l);
+      });
+      return el ? (el.textContent || '').trim() : null;
+    });
     const clicked = await page.evaluate(() => {
       const target = [...document.querySelectorAll('button')].find((b) => {
         const l = (b.getAttribute('aria-label') || '').toLowerCase();
@@ -397,6 +404,26 @@ test('each platform takes the shortest path it actually permits', opts, async (t
       target.click();
       return true;
     });
+    /* Read the control the instant the press lands, before the event can
+       arrive. "Did anything happen" is the property, so it is a comparison
+       of the rendered label against the one that was there a moment ago. */
+    let changedAfterClick = null;
+    let dialogAfterClick = null;
+    if (captureAfterClick) {
+      await page.waitForTimeout(120);
+      const now = await page.evaluate(() => ({
+        label: (() => {
+          const el = [...document.querySelectorAll('button, span[role="status"]')].find((b) => {
+            const l = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
+            return /install|preparing|დაყენ/i.test(l);
+          });
+          return el ? (el.textContent || '').trim() : null;
+        })(),
+        dialog: !!document.querySelector('[role="dialog"][aria-modal="true"]'),
+      }));
+      changedAfterClick = now.label !== labelBeforeClick;
+      dialogAfterClick = now.dialog;
+    }
     if (lateBip) {
       await page.waitForTimeout(lateBip);
       await page.evaluate(() => window.__fireLate?.());
@@ -410,7 +437,7 @@ test('each platform takes the shortest path it actually permits', opts, async (t
       steps: [...document.querySelectorAll('[role="dialog"] ol li')].length,
     }));
     await ctx.close();
-    return { clicked, ...out };
+    return { clicked, changedAfterClick, dialogAfterClick, ...out };
   }
 
   // 1. Chromium holding a prompt: straight to the browser's own dialog.
@@ -445,23 +472,33 @@ test('each platform takes the shortest path it actually permits', opts, async (t
   if (installed.dialog) failures.push('standalone: an install modal opened inside the installed app');
 
   /*
-   * 5. CHROMIUM, STILL DECIDING.
+   * 5. A TAP BEFORE THE BROWSER IS READY.
    *
-   * The old architecture rendered an active "Install App" button here and
-   * raced: press it early and you got Add to Home Screen instructions on a
-   * Chrome browser. There is nothing to race now -- the control is not a
-   * button until a prompt is held, so the failure is unreachable rather than
-   * unlikely.
+   * The reported failure, in both of its forms. First the control opened iOS
+   * instructions on Chrome; then, after that was closed off, it became a
+   * disabled button that ignored the tap entirely -- which is worse, because
+   * a primary CTA that looks pressable and does nothing reads as a broken
+   * app.
    *
-   * Asserted as an ABSENCE of the clickable control, which is the property,
-   * not as the presence of a particular word.
+   * So this asserts three things about the same press: it was possible, it
+   * visibly changed something, and it did not open the modal.
    */
-  const checking = await run({ name: 'checking', ua: chromiumUA });
-  if (checking.clicked) {
-    failures.push('checking: an active install control existed with no prompt behind it');
-  }
-  if (checking.dialog) {
-    failures.push('checking: the manual modal opened on Chromium — the exact reported bug');
+  const early = await run({ name: 'early-tap', ua: chromiumUA, lateBip: 900, captureAfterClick: true });
+  if (!early.clicked) {
+    failures.push('early-tap: the install control was not pressable before the event — a dead CTA');
+  } else {
+    if (!early.changedAfterClick) {
+      failures.push('early-tap: the press produced no visible change — the tap was ignored');
+    }
+    if (early.dialogAfterClick) {
+      failures.push('early-tap: the manual modal opened on Chromium — the original bug');
+    }
+    if (early.dialog) {
+      failures.push('early-tap: the manual modal opened once the event arrived');
+    }
+    if (early.promptCalls !== 1) {
+      failures.push(`early-tap: the recorded intent was not fulfilled (prompt called ${early.promptCalls} times)`);
+    }
   }
 
   /*

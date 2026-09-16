@@ -4935,10 +4935,6 @@ const en = {
   pwa_ios_step3: 'Tap Add',
   pwa_dismiss: 'Not now',
   pwa_installed: 'Installed',
-  pwa_pending_title: 'Add Homatch to your device',
-  pwa_pending_lead: 'Your browser can install Homatch as an app. It has not offered yet, so use its own menu:',
-  pwa_pending_step1: 'Open the browser menu, then Install app or Add to Home screen.',
-  pwa_pending_step2: 'Confirm, and Homatch opens in its own window.',
   pwa_close: 'Close',
   doc_pick_to_read: 'Choose a document to read it here',
 
@@ -6419,6 +6415,7 @@ const en = {
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — Brand',
   dev_extract_schedule_mismatch: 'The payment plan still totals {total}, not {price}. Somebody has to decide how the difference is absorbed.',
   pwa_unavailable: 'Install not offered',
+  pwa_ready_install: 'Ready — Install App',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -11272,10 +11269,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'შეეხე Add-ს',
   pwa_dismiss: 'ახლა არა',
   pwa_installed: 'დაინსტალირებულია',
-  pwa_pending_title: 'დაამატეთ Homatch თქვენს მოწყობილობაზე',
-  pwa_pending_lead: 'თქვენს ბრაუზერს შეუძლია Homatch-ის აპად დაინსტალირება. ჯერ არ შემოგთავაზათ, ამიტომ გამოიყენეთ მისი მენიუ:',
-  pwa_pending_step1: 'გახსენით ბრაუზერის მენიუ, შემდეგ „აპის ინსტალაცია“ ან „მთავარ ეკრანზე დამატება“.',
-  pwa_pending_step2: 'დაადასტურეთ და Homatch ცალკე ფანჯარაში გაიხსნება.',
   pwa_close: 'დახურვა',
   doc_pick_to_read: 'აირჩიე დოკუმენტი წასაკითხად',
 
@@ -12756,6 +12749,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — ბრენდი',
   dev_extract_schedule_mismatch: 'გადახდის გეგმა ჯერ კვლავ {total}-ია, არა {price}. ვიღაცამ უნდა გადაწყვიტოს, როგორ დაეჿასება სხვაობა.',
   pwa_unavailable: 'დაყენება არ არის შემოთავაზებული',
+  pwa_ready_install: 'მზადაა — დააყენეთ',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -17600,10 +17594,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'Нажмите «Добавить»',
   pwa_dismiss: 'Не сейчас',
   pwa_installed: 'Установлено',
-  pwa_pending_title: 'Добавьте Homatch на устройство',
-  pwa_pending_lead: 'Ваш браузер может установить Homatch как приложение. Он ещё не предложил — воспользуйтесь его меню:',
-  pwa_pending_step1: 'Откройте меню браузера, затем «Установить приложение» или «На главный экран».',
-  pwa_pending_step2: 'Подтвердите — Homatch откроется в отдельном окне.',
   pwa_close: 'Закрыть',
   doc_pick_to_read: 'Выберите документ, чтобы прочитать его здесь',
 
@@ -19084,6 +19074,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — бренд',
   dev_extract_schedule_mismatch: 'План платежей по-прежнему даёт {total}, а не {price}. Кто-то должен решить, как покрыть разницу.',
   pwa_unavailable: 'Установка не предлагается',
+  pwa_ready_install: 'Готово — установить',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -23926,10 +23917,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'Ekle\'ye dokunun',
   pwa_dismiss: 'Şimdi değil',
   pwa_installed: 'Yüklendi',
-  pwa_pending_title: 'Homatch’i cihazınıza ekleyin',
-  pwa_pending_lead: 'Tarayıcınız Homatch’i uygulama olarak yükleyebilir. Henüz önermedi, bu yüzden kendi menüsünü kullanın:',
-  pwa_pending_step1: 'Tarayıcı menüsünü açın, ardından Uygulamayı yükle veya Ana ekrana ekle.',
-  pwa_pending_step2: 'Onaylayın; Homatch kendi penceresinde açılır.',
   pwa_close: 'Kapat',
   doc_pick_to_read: 'Burada okumak için bir belge seçin',
 
@@ -25410,6 +25397,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — marka',
   dev_extract_schedule_mismatch: 'Ödeme planı hâlâ {price} değil {total} ediyor. Aradaki farkın nasıl karşılanacağına birinin karar vermesi gerekiyor.',
   pwa_unavailable: 'Yükleme sunulmuyor',
+  pwa_ready_install: 'Hazır — Yükle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -30252,10 +30240,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'اضغط إضافة',
   pwa_dismiss: 'ليس الآن',
   pwa_installed: 'تم التثبيت',
-  pwa_pending_title: 'أضف Homatch إلى جهازك',
-  pwa_pending_lead: 'يستطيع متصفحك تثبيت Homatch كتطبيق. لم يعرض ذلك بعد، لذا استخدم قائمته:',
-  pwa_pending_step1: 'افتح قائمة المتصفح ثم «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».',
-  pwa_pending_step2: 'أكّد، وسيفتح Homatch في نافذة خاصة به.',
   pwa_close: 'إغلاق',
   doc_pick_to_read: 'اختر مستندًا لقراءته هنا',
 
@@ -31736,6 +31720,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — العلامة',
   dev_extract_schedule_mismatch: 'ما زال مجموع خطة السداد {total} وليس {price}. على أحدهم أن يقرر كيف يُستوعَب الفرق.',
   pwa_unavailable: 'التثبيت غير متاح',
+  pwa_ready_install: 'جاهز — ثبّت التطبيق',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -36578,10 +36563,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   pwa_ios_step3: 'הקישו הוספה',
   pwa_dismiss: 'לא עכשיו',
   pwa_installed: 'מותקן',
-  pwa_pending_title: 'הוסיפו את Homatch למכשיר',
-  pwa_pending_lead: 'הדפדפן שלכם יכול להתקין את Homatch כאפליקציה. הוא עדיין לא הציע, אז השתמשו בתפריט שלו:',
-  pwa_pending_step1: 'פתחו את תפריט הדפדפן ואז „התקנת אפליקציה” או „הוספה למסך הבית”.',
-  pwa_pending_step2: 'אשרו, ו-Homatch ייפתח בחלון משלו.',
   pwa_close: 'סגירה',
   doc_pick_to_read: 'בחרו מסמך כדי לקרוא אותו כאן',
 
@@ -38062,6 +38043,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   dev_ads_map_placeholder: 'meta_tower_a = Meta — Tower A\ngoogle_brand = Google — מותג',
   dev_extract_schedule_mismatch: 'תוכנית התשלומים עדיין מסתכמת ב-{total} ולא ב-{price}. מישהו צריך להחליט איך לגשר על הפער.',
   pwa_unavailable: 'התקנה לא מוצעת',
+  pwa_ready_install: 'מוכן — התקינו',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

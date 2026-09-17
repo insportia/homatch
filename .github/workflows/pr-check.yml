@@ -73,6 +73,14 @@ jobs:
       - name: Developer onboarding (real browser)
         run: pnpm run test:onboarding
 
+      # The 2D -> 3D pipeline, link by link: the overlay draws, the gate
+      # REFUSES while anything required is unverified, an operator confirms,
+      # the gate opens, geometry is generated and the shell renders it. It
+      # proves the chain, not extraction accuracy — the document it drives is
+      # a harness fixture, and no assertion in it treats that as a real plan.
+      - name: Floor plan pipeline (real browser)
+        run: pnpm run test:floorplan
+
       - name: Site Studio regression (real browser)
         run: pnpm run test:studio
 

@@ -82,6 +82,9 @@ const EXCLUDE = [
   // The same, for the journey before that one: an account with no
   // workspace at all. Own CI step (`test:onboarding`).
   /developerOnboarding\.test\.mjs$/,
+  // Drives the whole 2D -> 3D chain in Chrome, including a WebGL render.
+  // Its own CI step (`test:floorplan`).
+  /floorplanPipeline\.test\.mjs$/,
   /pwaInstallSheet\.test\.mjs$/,
 ];
 const files = [];

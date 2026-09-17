@@ -71,9 +71,21 @@ test('interruption resolves to a live state and cannot strand the session', () =
   }
   const block = c.slice(at, end);
   assert.ok(/setState\('INTERRUPTED'\)/.test(block));
-  // INTERRUPTED is a moment, not a resting place: something must take the
-  // session back to listening or the microphone never reopens.
-  assert.ok(/setState\('LISTENING'\)/.test(block), 'INTERRUPTED must resolve to LISTENING');
+  /*
+   * INTERRUPTED is a moment, not a resting place: something must take the
+   * session back to listening or the microphone never reopens.
+   *
+   * THIS TEST NAMED THE RIGHT INVARIANT AND CHECKED THE WRONG MECHANISM. It
+   * asserted setState('LISTENING'), and setState does not lower the
+   * microphone gate -- resumeListening is the only thing that does. So the
+   * assertion passed while the microphone never reopened, which is precisely
+   * what it was written to prevent: measured in a real browser, one barge-in
+   * ended the conversation, with the panel still reading LISTENING.
+   */
+  assert.ok(/this\.resumeListening\(\)/.test(block),
+    'INTERRUPTED must hand the floor back, which means ungating the microphone');
+  assert.ok(!/setState\('LISTENING'\)/.test(block),
+    'relabelling the state without ungating is the bug this test exists for');
 });
 
 test('being heard and interrupting are deliberately different thresholds', () => {

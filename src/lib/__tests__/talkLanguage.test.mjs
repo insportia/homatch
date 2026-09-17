@@ -290,23 +290,25 @@ test('a live socket that dies hands the session back rather than going quiet', (
 
 test('only one transcriber consumes the microphone at a time', () => {
   // Running both would pay for every sentence twice and answer it twice.
-  const src = read(CLIENT);
-  const at = src.indexOf('if (this.live?.isReady && this.liveResampler) {');
-  assert.ok(at > 0, 'the live branch is gone');
   /*
-   * The whole branch, by balanced braces, not a fixed number of characters.
-   * A window that size silently depends on how much code sits inside it, and
-   * adding the debug audio tap pushed the `return` out of the old one --
-   * failing a test about double transcription that had not changed.
+   * The router decides, and its three answers are exclusive.
+   *
+   * This used to scan the inline live branch for a `return`, first in a fixed
+   * 500-character window and then by balanced braces. Both were reading the
+   * shape of an implementation rather than its behaviour, which is how a
+   * build that completed no turns at all passed this file. The routing now
+   * lives in LiveAudioRouter and is driven for real by rotationGap.test.mjs;
+   * what belongs here is that the session honours the answer it is given.
    */
-  const open = src.indexOf('{', at);
-  let depth = 0, end = src.length;
-  for (let i = open; i < src.length; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}' && --depth === 0) { end = i + 1; break; }
-  }
-  const branch = src.slice(at, end);
-  assert.ok(/return;/.test(branch), 'the live branch must not fall through into batch capture');
+  const src = read(CLIENT);
+  const at = src.indexOf("const route = this.router.route(pcm, liveReady)");
+  assert.ok(at > 0, 'the session no longer routes through the router');
+  const window = src.slice(at, at + 1400);
+  assert.ok(/route\.kind === 'SEND'/.test(window), 'SEND must reach the socket');
+  assert.ok(/if \(route\.kind === 'HELD'\) return;/.test(window),
+    'HELD must not fall through into batch capture as well');
+  assert.ok(/route\.kind === 'BATCH'/.test(window),
+    'BATCH must be handled, or a failed socket silences the session');
 });
 
 test('our own voice is discarded rather than transcribed as theirs', () => {

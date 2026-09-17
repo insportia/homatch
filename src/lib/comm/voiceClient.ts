@@ -46,6 +46,7 @@ import {
   resolveTurnLanguage, normaliseLanguage, type TalkLanguage, type LanguageResolution,
 } from './talkLanguage.ts';
 import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
+import { LiveAudioRouter, type LivePhase } from './liveAudioRouter.ts';
 
 
 /**
@@ -209,6 +210,39 @@ export interface VoiceDiagnostics {
   languageSwitches: number;
   /** How many sockets asked the provider what language it heard. Should be 0. */
   languageProbes: number;
+  /*
+   * THE SOCKET'S LIFECYCLE, AND THE BYTES, IN ONE UNIT.
+   *
+   * Every byte count below is canonical outgoing PCM -- 16 kHz mono signed
+   * Int16 -- never 48 kHz Float32 input. `bufferFormat` says so in the trace
+   * itself so the next reader does not have to take it on trust.
+   */
+  livePhase: LivePhase;
+  socketReadyMs: number | null;
+  socketFailures: number;
+  socketReconnects: number;
+  postResampleBytes: number;
+  sentLiveBytes: number;
+  flushedBufferedBytes: number;
+  bufferedPcmBytes: number;
+  /** Bytes the batch path took because no socket was coming. */
+  batchedPcmBytes: number;
+  maxPreReadyBufferBytes: number;
+  bufferDurationMs: number;
+  bufferFormat: string;
+  /*
+   * WHY NOTHING IS CONSUMING THE MICROPHONE.
+   *
+   * "Listening" with a ready socket and a frozen byte count has exactly three
+   * causes, and from outside they look identical. Naming them is the
+   * difference between reading a trace and guessing at one.
+   */
+  micGated: boolean;
+  transcribing: boolean;
+  /** How often the gate had to be forced open. Should be 0. */
+  gateReleases: number;
+  /** postResample === sent + flushed + buffered + dropped. False is a bug. */
+  bytesAccountedFor: boolean;
   /** The language the recogniser was last reopened for, if ever. */
   lastRelisten: string | null;
   /** Milliseconds the assistant kept speaking after being interrupted. */
@@ -443,6 +477,28 @@ const SWITCH_PROBE_SPEECH_MS = 900;
 /** Consecutive sustained-but-unresolved turns before asking the provider. */
 const SWITCH_PROBE_AFTER_TURNS = 2;
 
+/*
+ * HOW LONG A SOCKET IS ALLOWED TO BE "COMING".
+ *
+ * Holding audio is only correct while a recogniser is moments away. Past
+ * that, a session that keeps holding is a session that has stopped taking
+ * turns -- which is exactly what shipped: three paths set `liveExpected` and
+ * returned without clearing it, and the hold branch then returned before the
+ * batch path could ever run. Twenty-one seconds of a real conversation went
+ * into a three-second ring and out the other side, and no turn completed.
+ *
+ * So patience is bounded in milliseconds, not only in bytes, and running out
+ * of it drops to the batch path rather than holding forever.
+ */
+/**
+ * The longest the assistant may hold the floor before the gate is forced.
+ * Longer than any reply this product produces; short enough that a stuck
+ * session recovers inside one conversation rather than never.
+ */
+const MIC_GATE_MAX_MS = 15_000;
+
+const PRE_READY_MAX_MS = 2500;
+/** Capacity of the hold buffer, in canonical 16 kHz PCM. */
 const PRE_READY_MAX_SECONDS = 3;
 
 /** How much of the sent audio a debug session keeps, in memory, at most. */
@@ -552,6 +608,18 @@ export class VoiceSession {
   private playbackTime = 0;
   /** True while the assistant is speaking: mic blocks are dropped, not kept. */
   private micGated = false;
+  /*
+   * WHEN THE GATE CLOSED, so it cannot stay closed forever.
+   *
+   * The gate is released by resumeListening(), which every reply path calls
+   * in a `finally`. That is only as reliable as the promise it is waiting on:
+   * measured in a real browser, a reply whose playback never settled left the
+   * microphone gated for the rest of the session while the panel still read
+   * LISTENING, and no further turn was possible. A session that cannot hear
+   * anybody must not look like one that can.
+   */
+  private micGatedAt = 0;
+  private gateReleases = 0;
   /** True while the visitor has muted themselves. Their choice, not ours. */
   private muted = false;
   /** Guards against two turns in flight. */
@@ -609,13 +677,43 @@ export class VoiceSession {
    * bound the OLDEST audio goes, since the newest speech is the speech the
    * visitor is still in the middle of.
    */
-  private preReady: Int16Array[] = [];
-  private preReadySamples = 0;
   private preReadyVoicedMs = 0;
-  private droppedPreReadyBytes = 0;
   private lastPreReadyFlush: { bytes: number; ms: number } | null = null;
-  /** True while a live socket exists or is being opened for this session. */
-  private liveExpected = false;
+  /** Where a block of audio goes, and every byte counter. See liveAudioRouter. */
+  private router = new LiveAudioRouter({
+    sampleRate: LIVE_SAMPLE_RATE,
+    maxBufferMs: PRE_READY_MAX_SECONDS * 1000,
+    maxWaitMs: PRE_READY_MAX_MS,
+  });
+
+  /*
+   * THE SOCKET'S LIFECYCLE, NAMED.
+   *
+   * `liveExpected` was one boolean standing for "a socket exists or is being
+   * opened", and three different paths could leave it true with nothing on
+   * the way: onUnavailable nulled the socket and fell back to batch without
+   * clearing it, and openLiveTranscription returned early -- on a failed
+   * grant, or a closed session -- after rotateLive had just set it. A phone
+   * whose grant request failed once then held every block for the rest of
+   * the session and completed no turns at all.
+   *
+   * A named phase makes each of those a state that has to be written down,
+   * and `liveExpectedSince` makes "coming" something that can expire.
+   */
+
+  /*
+   * BYTE ACCOUNTING, ALL IN ONE UNIT: canonical 16 kHz mono signed Int16.
+   *
+   * Nothing here counts 48 kHz Float32 input. Every counter below is the
+   * outgoing representation, so they can be added up and checked against
+   * each other:
+   *
+   *   postResampleBytes = sentLiveBytes + flushedBufferedBytes
+   *                     + currentBufferedBytes + droppedPcmBytes
+   *
+   * A byte belongs to exactly one of them, and none may disappear.
+   */
+  private socketConnectStartedAt = 0;
   /*
    * A COPY OF EXACTLY WHAT THE RECOGNISER WAS SENT, FOR A DEBUG SESSION ONLY.
    *
@@ -720,7 +818,10 @@ export class VoiceSession {
     blocks: 0, samplesCaptured: 0, bytesSent: 0, rms: 0, peakRms: 0,
     utterances: 0, lastUtteranceMs: null as number | null,
     lastUtteranceBytes: null as number | null,
-    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, languageProbes: 0, lastRelisten: null as string | null,
+    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, languageProbes: 0,
+    livePhase: 'IDLE' as LivePhase, socketReadyMs: null as number | null,
+    socketFailures: 0, socketReconnects: 0, gateReleases: 0,
+    lastRelisten: null as string | null,
     lastBargeStopMs: null as number | null,
     preReadyFlushBytes: 0, preReadyFlushMs: 0,
     turnsEndedLocally: 0,
@@ -846,6 +947,9 @@ export class VoiceSession {
 
     this.milestone('mic_open');
 
+    // The microphone is open before the socket is, so the session's very
+    // first syllable is held by the same mechanism that holds a rotation's.
+    this.expectLive('CONNECTING');
     await this.openLiveTranscription();
 
     this.startedAt = Date.now();
@@ -898,12 +1002,35 @@ export class VoiceSession {
       finalsDeferred: this.diag.finalsDeferred ?? 0,
       languageSwitches: this.diag.languageSwitches ?? 0,
       languageProbes: this.diag.languageProbes ?? 0,
+      livePhase: this.router.currentPhase,
+      socketReadyMs: this.diag.socketReadyMs ?? null,
+      socketFailures: this.router.socketFailures,
+      socketReconnects: this.router.socketReconnects,
+      postResampleBytes: this.router.postResampleBytes,
+      sentLiveBytes: this.router.sentLiveBytes,
+      flushedBufferedBytes: this.router.flushedBufferedBytes,
+      bufferedPcmBytes: this.router.bufferedBytes,
+      batchedPcmBytes: this.router.batchedPcmBytes,
+      maxPreReadyBufferBytes: this.router.maxBufferedBytes,
+      bufferDurationMs: Math.round(this.router.bufferedMs),
+      bufferFormat: this.router.bufferFormat,
+      micGated: this.micGated,
+      transcribing: this.transcribing,
+      gateReleases: this.gateReleases,
+      /*
+       * EVERY BYTE IS IN EXACTLY ONE CATEGORY.
+       *
+       * If this ever reads false, a byte was counted twice or vanished, and
+       * every other number here is suspect. It is computed rather than
+       * asserted so a real device reports it instead of crashing on it.
+       */
+      bytesAccountedFor: this.router.accountsBalance(),
       lastRelisten: this.diag.lastRelisten ?? null,
       lastBargeStopMs: this.diag.lastBargeStopMs ?? null,
       voicedBeforeReadyMs: Math.round(this.voicedBeforeReadyMs),
       preReadyFlushBytes: this.diag.preReadyFlushBytes ?? 0,
       preReadyFlushMs: this.diag.preReadyFlushMs ?? 0,
-      droppedPreReadyBytes: this.droppedPreReadyBytes,
+      droppedPreReadyBytes: this.router.droppedPcmBytes,
       turnTrace: this.turnTrace,
       turnsEndedLocally: this.diag.turnsEndedLocally ?? 0,
       lastEndTurnSilenceMs: this.diag.lastEndTurnSilenceMs ?? null,
@@ -1105,6 +1232,21 @@ export class VoiceSession {
     // The live socket is told about the assistant rather than starved of
     // audio: it has to discard what it already buffered, or our own voice
     // comes back as their next sentence.
+    /*
+     * THE GATE IS NOT ALLOWED TO OUTLIVE THE REPLY.
+     *
+     * Generous on purpose -- longer than any reply this product produces --
+     * so it never fires on a conversation that is merely slow, and always
+     * fires on one that is stuck. Counted, so a trace can say it happened.
+     */
+    if (this.micGated && this.micGatedAt && Date.now() - this.micGatedAt > MIC_GATE_MAX_MS) {
+      this.gateReleases += 1;
+      this.diag.gateReleases = this.gateReleases;
+      this.diag.lastError = this.diag.lastError ?? 'GATE_STUCK';
+      this.stopPlayback();
+      this.resumeListening();
+    }
+
     this.live?.setGated(this.micGated || this.muted);
 
     if (this.muted || this.micGated || this.transcribing) { this.dropCapture(); return; }
@@ -1139,38 +1281,46 @@ export class VoiceSession {
      * fallen back to the batch path there is nothing to flush into, and the
      * batch capture below is the right home for it.
      */
-    if (!this.live?.isReady && this.liveExpected && this.liveResampler
+    /*
+     * RESAMPLED ONCE, THEN ROUTED.
+     *
+     * The router owns where a block goes and every byte counter that goes
+     * with it, and it is driven directly by rotationGap.test.mjs -- which is
+     * the point. The version this replaces made its decision inline, so the
+     * only tests that could see it were reading its source, and they passed
+     * while the session was completing no turns at all.
+     */
+    const liveReady = Boolean(this.live?.isReady);
+    const expecting = this.router.currentPhase === 'CONNECTING'
+      || this.router.currentPhase === 'ROTATING';
+    if ((liveReady || expecting) && this.liveResampler
         && !this.micGated && !this.muted && !this.transcribing) {
-      const held = this.liveResampler.process(input);
-      if (held.length) {
-        this.preReady.push(floatToPcm16(held));
-        this.preReadySamples += held.length;
-        // Bounded at three seconds; the oldest goes first, because the newest
-        // is the sentence still being spoken.
-        const cap = PRE_READY_MAX_SECONDS * LIVE_SAMPLE_RATE;
-        while (this.preReadySamples > cap && this.preReady.length > 1) {
-          const gone = this.preReady.shift()!;
-          this.preReadySamples -= gone.length;
-          this.droppedPreReadyBytes += gone.length * 2;
+      const out = this.liveResampler.process(input);
+      if (out.length) {
+        // Canonical form, once: 16 kHz mono signed Int16, exactly the bytes
+        // the recogniser would be sent. Never re-resampled afterwards.
+        const pcm = floatToPcm16(out);
+        const route = this.router.route(pcm, liveReady);
+        if (route.kind === 'SEND') {
+          this.diag.samplesCaptured += out.length;
+          this.diag.bytesSent += pcm.byteLength;
+          this.live!.append(pcm);
+          // The same bytes, kept only for a debug session. See tapEnabled.
+          if (this.tapEnabled) this.recordTap(pcm);
+        } else if (route.kind === 'BATCH') {
+          // Patience ran out inside the router. Say so, then let the batch
+          // capture below take this block: the conversation keeps going.
+          this.noteLiveAbandoned();
         }
+        if (route.kind === 'HELD') return;
       }
-      return;
+      if (liveReady) {
+        if (level >= SPEECH_RMS) this.liveSpeechMs += blockMs;
+        this.maybeEndLiveTurn();
+        return;
+      }
     }
 
-    if (this.live?.isReady && this.liveResampler) {
-      const live = this.liveResampler.process(input);
-      if (live.length) {
-        this.diag.samplesCaptured += live.length;
-        this.diag.bytesSent += live.length * 2;
-        const pcm = floatToPcm16(live);
-        this.live.append(pcm);
-        // The same bytes, kept only for a debug session. See tapEnabled.
-        if (this.tapEnabled) this.recordTap(pcm);
-      }
-      if (level >= SPEECH_RMS) this.liveSpeechMs += blockMs;
-      this.maybeEndLiveTurn();
-      return;
-    }
 
     const block = this.resampler ? this.resampler.process(input) : input.slice();
     if (!block.length) return;
@@ -1288,8 +1438,18 @@ export class VoiceSession {
      */
     this.liveSpeechMs = 0;
     this.liveEnded = false;
-    // A socket is coming, so audio arriving now is held rather than dropped.
-    this.liveExpected = true;
+    /*
+     * A socket is coming, so audio arriving now is held rather than dropped
+     * -- and `expectLive` starts the clock that stops it being held forever.
+     *
+     * The old socket is closed first and deliberately. It has already been
+     * half-closed by finalize() and is draining Google's last transcript, so
+     * it cannot accept another byte: overlapping the two would not keep the
+     * microphone live, it would only keep a dead stream open. What the gap
+     * costs is the grant and the handshake, which is what the hold buffer is
+     * for and what socketReadyMs now measures.
+     */
+    this.expectLive('ROTATING');
     try { old?.close(); } catch { /* already gone */ }
     await this.openLiveTranscription();
   }
@@ -1302,11 +1462,23 @@ export class VoiceSession {
    * is recorded in the diagnostics, where somebody can act on it.
    */
   private async openLiveTranscription(): Promise<void> {
-    if (!this.cb.onListenGrant || !this.audioContext) return;
+    if (!this.cb.onListenGrant || !this.audioContext) { this.abandonLive('no grant source'); return; }
 
+    /*
+     * A GRANT THAT NEVER ARRIVES IS STILL AN ANSWER.
+     *
+     * rotateLive() arms the hold branch and then waits here. On a phone this
+     * request is a network round trip that can simply fail, and when it did,
+     * the shipped build returned from this function with the session still
+     * holding -- for the rest of the conversation. That is the state the
+     * Android trace was in: 688,128 bytes held and evicted, zero turns.
+     */
     let grant: LiveGrant | null = null;
     try { grant = await this.cb.onListenGrant(); } catch { grant = null; }
-    if (!grant?.token || this.closed) { this.diag.liveMode = 'batch'; return; }
+    if (!grant?.token || this.closed) {
+      this.abandonLive(this.closed ? 'session closed' : 'no grant');
+      return;
+    }
 
     // The provider decides the rate, because ElevenLabs mints its token for
     // 16 kHz and OpenAI's socket runs at 24. Resampling to the wrong one is
@@ -1339,7 +1511,14 @@ export class VoiceSession {
     const live = createTranscriber({ ...grant, detect: probing }, {
       onSpeechStart: () => {
         this.lastVoiceAt = Date.now();
-        if (this.state === 'UNDERSTANDING' && !this.turnInFlight) this.setState('LISTENING');
+        /*
+         * Not while the microphone is gated. Saying LISTENING then is how a
+         * session that could not hear a word still looked like it was
+         * waiting for one -- the exact thing the panel is for.
+         */
+        if (this.state === 'UNDERSTANDING' && !this.turnInFlight && !this.micGated) {
+          this.setState('LISTENING');
+        }
       },
       onSpeechEnd: () => {
         // The provider's endpointer, not ours. This is the moment the wait
@@ -1351,24 +1530,25 @@ export class VoiceSession {
       onPartial: (text) => this.showPartial(text),
       onFinal: (text, heard) => { void this.onLiveFinal(text, heard ?? null); },
       onUnavailable: (reason) => {
-        // Back to the batch path for the rest of the session, rather than a
-        // conversation that quietly stops hearing anybody.
+        /*
+         * Back to the batch path for the rest of the session, rather than a
+         * conversation that quietly stops hearing anybody.
+         *
+         * This used to null the socket and set the mode WITHOUT disarming the
+         * hold branch, so "fall back to batch" left the session holding every
+         * block and reaching no batch at all. abandonLive is the only way to
+         * say a socket is not coming, precisely so that cannot happen again.
+         */
         this.diag.lastError = this.diag.lastError ?? null;
-        this.diag.liveMode = 'batch';
-        this.diag.liveFellBack = reason;
-        this.live?.close();
-        this.live = null;
-        this.publishDiagnostics();
+        this.abandonLive(reason);
       },
     });
 
     const opened = await live.open();
     if (!opened || this.closed) {
       // Nothing is coming after all: the held audio has no home, and the
-      // batch path below is where the next utterance belongs.
-      this.liveExpected = false;
-      this.dropPreReady();
-      this.diag.liveMode = 'batch';
+      // batch path is where the next utterance belongs.
+      this.abandonLive('socket did not open');
       return;
     }
 
@@ -1394,16 +1574,27 @@ export class VoiceSession {
      * construction, and each buffer is sent exactly once.
      */
     this.live = live;
-    this.liveExpected = true;
-    if (this.preReady.length) {
-      const startedAt = Date.now();
+    this.diag.livePhase = 'READY';
+    this.diag.socketReadyMs = this.socketConnectStartedAt
+      ? Date.now() - this.socketConnectStartedAt : null;
+    /*
+     * THE HELD SPEECH GOES FIRST, IN ORDER, BEFORE ANYTHING NEW.
+     *
+     * `ready()` empties the buffer as it hands it over, so a chunk cannot be
+     * sent to a second recogniser, and the assignment and the flush happen in
+     * the same synchronous run -- an audio block cannot interleave here, so
+     * nothing the microphone produces during the flush can overtake what was
+     * recorded before it.
+     */
+    const startedAt = Date.now();
+    const held = this.router.ready();
+    this.diag.socketReconnects = this.router.socketReconnects;
+    if (held.length) {
       let bytes = 0;
-      for (const chunk of this.preReady) {
+      for (const chunk of held) {
         live.append(chunk);
         bytes += chunk.byteLength;
       }
-      this.preReady = [];
-      this.preReadySamples = 0;
       this.lastPreReadyFlush = { bytes, ms: Date.now() - startedAt };
       this.diag.preReadyFlushBytes = bytes;
       this.diag.preReadyFlushMs = this.lastPreReadyFlush.ms;
@@ -1536,7 +1727,7 @@ export class VoiceSession {
      * that earns a probe.
      */
     const sustained = (this.diag.lastEndTurnSpeechMs ?? 0) >= SWITCH_PROBE_SPEECH_MS;
-    const unresolved = resolution.reason === 'STICKY_HELD' || resolution.confidence < 0.5;
+    const unresolved = resolution.resolutionReason === 'STICKY_HELD' || resolution.confidence < 0.5;
     this.weakTurns = sustained && unresolved ? this.weakTurns + 1 : 0;
     if (this.weakTurns >= SWITCH_PROBE_AFTER_TURNS) {
       this.probeLanguageNext = true;
@@ -1606,10 +1797,38 @@ export class VoiceSession {
   }
 
   /** Let go of held audio when no socket is coming for it. */
-  private dropPreReady(): void {
-    for (const chunk of this.preReady) this.droppedPreReadyBytes += chunk.byteLength;
-    this.preReady = [];
-    this.preReadySamples = 0;
+  /**
+   * A socket is on its way. Audio arriving from here is held, but not forever.
+   */
+  private expectLive(phase: 'CONNECTING' | 'ROTATING'): void {
+    this.router.expect(phase);
+    this.socketConnectStartedAt = Date.now();
+    this.diag.livePhase = phase;
+  }
+
+  /** The router gave up on its own. Record it where a person can see it. */
+  private noteLiveAbandoned(): void {
+    try { this.live?.close(); } catch { /* already gone */ }
+    this.live = null;
+    this.diag.livePhase = 'FAILED';
+    this.diag.liveMode = 'batch';
+    this.diag.liveFellBack = this.router.lastFellBack;
+    this.diag.socketFailures = this.router.socketFailures;
+    this.publishDiagnostics();
+  }
+
+  /**
+   * NOTHING IS COMING. Stop holding audio and let the batch path take turns.
+   *
+   * Every early return that leaves a socket unopened has to come through
+   * here. The regression this replaces was three of them that did not: the
+   * hold branch stayed armed, it returned before the batch capture below it,
+   * and the session stopped completing turns entirely while still showing
+   * itself as listening.
+   */
+  private abandonLive(reason: string): void {
+    this.router.abandon(reason);
+    this.noteLiveAbandoned();
   }
 
   private dropCapture(): void {
@@ -1752,6 +1971,7 @@ export class VoiceSession {
     // Gate the microphone BEFORE anything can come back, so the first audio
     // of the reply cannot be transcribed as if the visitor said it.
     this.micGated = true;
+    this.micGatedAt = Date.now();
     this.setState('UNDERSTANDING');
     this.milestone('user_turn_sent', said.length);
 
@@ -1793,7 +2013,7 @@ export class VoiceSession {
       // on every rotation.
       voicedBeforeReadyMs: Math.round(this.preReadyVoicedMs),
       preReadyFlushBytes: this.diag.preReadyFlushBytes ?? 0,
-      droppedPreReadyBytes: this.droppedPreReadyBytes,
+      droppedPreReadyBytes: this.router.droppedPcmBytes,
       deferredFinals: this.diag.finalsDeferred ?? 0,
     });
     this.preReadyVoicedMs = 0;
@@ -2287,6 +2507,7 @@ export class VoiceSession {
     // back, so the first thing they say in the new language is heard in it.
     if (this.relistenLanguage) void this.relisten();
     this.micGated = false;
+    this.micGatedAt = 0;
     this.lastVoiceAt = 0;
     this.sustainedSpeechMs = 0;
     this.setState('LISTENING');
@@ -2338,8 +2559,19 @@ export class VoiceSession {
           this.diag.lastBargeStopMs = this.lastBargeStopMs;
           this.bargeSpeechAt = 0;
           this.setState('INTERRUPTED');
+          /*
+           * HAND THE FLOOR BACK, do not merely relabel the state.
+           *
+           * This used to setState('LISTENING') directly, and setState does
+           * not lower the microphone gate -- resumeListening is the only
+           * thing that does. So interrupting the assistant, which is the most
+           * natural thing a person does in a conversation, left the session
+           * gated for good: the panel read LISTENING, the socket stayed
+           * READY, blocks kept arriving, and not one of them reached a
+           * recogniser ever again.
+           */
           window.setTimeout(() => {
-            if (this.state === 'INTERRUPTED') this.setState('LISTENING');
+            if (this.state === 'INTERRUPTED') this.resumeListening();
           }, 150);
         }
       }

@@ -62,31 +62,41 @@ test('a real sentence still switches on its very first turn', () => {
   }).resolvedLanguage, 'ka');
 });
 
-// ── Speech during a socket rotation must be kept ──────────────────────────
+// -- Speech during a socket rotation must be kept -------------------------
+//
+// THESE TESTS USED TO READ THE SOURCE OF onAudioBlock AND PASS.
+//
+// They passed on f6c82c55, which held twenty-one seconds of a real Android
+// conversation and completed no turns at all. The branch was present and
+// spelled exactly the way these assertions expected; what was wrong was what
+// it DID, and no amount of reading it could show that.
+//
+// The behaviour now lives in LiveAudioRouter, which rotationGap.test.mjs
+// drives for real -- rotations, deadlines, ordering and byte accounting. What
+// is left here is the one thing source-reading is actually good for: proving
+// the session still delegates to it, so the tested code is the shipped code.
 
-test('audio with no socket yet is held, not dropped', () => {
+test('the session routes its audio through the tested router, not its own copy', () => {
   const fn = body('private onAudioBlock');
-  assert.ok(/this\.preReady\.push\(floatToPcm16\(held\)\)/.test(fn),
-    'a rotation takes half a second to a second; the visitor does not wait for it');
-  assert.ok(/this\.liveExpected/.test(fn), 'only while a socket is actually coming');
+  assert.match(fn, /this\.router\.route\(pcm, liveReady\)/,
+    'onAudioBlock must not make this decision inline again');
+  assert.doesNotMatch(fn, /this\.preReady\.push/,
+    'a second, untested buffer inside the session is how the last one shipped');
 });
 
-test('the held speech is bounded, and the OLDEST is what goes', () => {
+test('audio is resampled exactly once, then routed', () => {
   const fn = body('private onAudioBlock');
-  assert.ok(/PRE_READY_MAX_SECONDS \* LIVE_SAMPLE_RATE/.test(fn));
-  assert.ok(/this\.preReady\.shift\(\)/.test(fn),
-    'the newest audio is the sentence still being spoken; drop the oldest');
-  const cap = Number(/PRE_READY_MAX_SECONDS = (\d+)/.exec(client)[1]);
-  assert.ok(cap >= 2 && cap <= 6, `${cap}s is outside a sane bound`);
+  const converts = fn.match(/floatToPcm16\(/g) || [];
+  assert.equal(converts.length, 1,
+    'two conversion sites is two chances to send the same speech twice');
 });
 
-test('held speech is flushed in order, before anything new, exactly once', () => {
+test('the socket is assigned and drained in one synchronous run', () => {
   const fn = body('private async openLiveTranscription');
-  const flush = fn.indexOf('for (const chunk of this.preReady)');
   const assign = fn.indexOf('this.live = live;');
+  const flush = fn.indexOf('this.router.ready()');
   assert.ok(assign > 0 && flush > assign,
-    'the socket must be assigned and drained in one synchronous run');
-  assert.ok(/this\.preReady = \[\];/.test(fn), 'and emptied, so nothing is sent twice');
+    'so no block the microphone produces during the flush can overtake it');
 });
 
 test('the resampler survives a rotation', () => {
@@ -98,11 +108,23 @@ test('the resampler survives a rotation', () => {
   assert.ok(!/this\.liveResampler = null/.test(rot), 'rotation must not discard it');
 });
 
-test('a socket that never opens releases the held audio and says so', () => {
-  const fn = body('private async openLiveTranscription');
-  assert.ok(/this\.dropPreReady\(\)/.test(fn));
-  assert.ok(/droppedPreReadyBytes/.test(client),
-    'audio let go has to be countable, or the next trace cannot prove it was zero');
+test('every path that stops expecting a socket says so', () => {
+  /*
+   * The regression, named. `liveExpected` was set by rotateLive and then left
+   * true by three separate returns: a failed grant, a socket that never
+   * opened, and a provider that went away. Each one meant "fall back to
+   * batch" and none of them could, because the hold branch still matched and
+   * still returned first.
+   */
+  const open = body('private async openLiveTranscription');
+  const returns = (open.match(/\s+return;/g) || []).length;
+  const abandons = (open.match(/this\.abandonLive\(/g) || []).length;
+  assert.ok(abandons >= 3,
+    `openLiveTranscription has ${returns} early returns and only ${abandons} `
+    + 'abandonLive calls; every exit without a socket must disarm the hold');
+  const src = strip(client);
+  assert.ok(/onUnavailable/.test(src) && /abandonLive\(reason\)/.test(src),
+    'a provider that goes away mid-session must release the microphone too');
 });
 
 test('the per-turn trace measures the turn, not the session', () => {
@@ -159,4 +181,47 @@ test('the counter resets the moment a turn resolves', () => {
 test('every probe is counted where a real device can report it', () => {
   assert.match(strip(client), /languageProbes/,
     'a probe that cannot be seen in a trace cannot be ruled out from one');
+});
+
+// ── Interrupting the assistant must not end the conversation ──────────────
+//
+// Measured in a real browser against a local build, with a microphone that
+// talks over the reply the way a person does:
+//
+//   before   turn 1 completes, barge-in fires, and the session is gated for
+//            good: panel reads LISTENING, socket READY, blocks arriving,
+//            bytes sent frozen, no further turn ever
+//   after    turns 1, 2 and 3 complete, with a barge-in in the middle that
+//            the session recovers from
+//
+// setState does not lower the microphone gate. resumeListening is the only
+// thing that does, which is why the interrupt path must call it.
+
+test('barge-in hands the floor back, it does not merely relabel the state', () => {
+  const src = strip(client);
+  const at = src.indexOf("if (action === 'STOP')");
+  assert.ok(at > 0, 'the barge-in stop branch is gone');
+  const branch = src.slice(at, at + 700);
+  assert.match(branch, /this\.resumeListening\(\)/,
+    'stopping playback without ungating leaves the session deaf for ever');
+  assert.doesNotMatch(branch, /setState\('LISTENING'\)/,
+    'setState cannot lower the gate, so claiming LISTENING here is a lie');
+});
+
+test('a gate that outlives its reply is forced open and counted', () => {
+  const src = strip(client);
+  assert.match(src, /MIC_GATE_MAX_MS/,
+    'every release path is a promise that can fail to settle; there must be a floor');
+  assert.match(src, /gateReleases/,
+    'and forcing it must be visible in a trace, not silent');
+  const bound = Number(/const MIC_GATE_MAX_MS = ([0-9_]+)/.exec(src)?.[1]?.replace(/_/g, ''));
+  assert.ok(bound >= 8000 && bound <= 30000,
+    `${bound}ms is either short enough to cut people off or long enough to be useless`);
+});
+
+test('the session never reports LISTENING while nothing can consume audio', () => {
+  const src = strip(client);
+  assert.match(src, /micGated: this\.micGated/,
+    'a panel that cannot show why the microphone is idle cannot diagnose this');
+  assert.match(src, /transcribing: this\.transcribing/);
 });

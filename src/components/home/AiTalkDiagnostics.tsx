@@ -73,6 +73,21 @@ export function AiTalkDiagnostics(
       lastBargeStopMs: d.lastBargeStopMs ?? null,
       languageSwitches: d.languageSwitches ?? null,
       languageProbes: d.languageProbes ?? null,
+      // The socket's lifecycle, so the next trace diagnoses itself.
+      livePhase: d.livePhase ?? null,
+      socketReadyMs: d.socketReadyMs ?? null,
+      socketFailures: d.socketFailures ?? null,
+      socketReconnects: d.socketReconnects ?? null,
+      liveFellBack: d.liveFellBack ?? null,
+      // All canonical outgoing PCM. bufferFormat names the unit.
+      bufferFormat: d.bufferFormat ?? null,
+      postResampleBytes: d.postResampleBytes ?? null,
+      sentLiveBytes: d.sentLiveBytes ?? null,
+      flushedBufferedBytes: d.flushedBufferedBytes ?? null,
+      bufferedPcmBytes: d.bufferedPcmBytes ?? null,
+      maxPreReadyBufferBytes: d.maxPreReadyBufferBytes ?? null,
+      bufferDurationMs: d.bufferDurationMs ?? null,
+      bytesAccountedFor: d.bytesAccountedFor ?? null,
       turns: d.turnTrace ?? [],
     }, null, 1);
     void navigator.clipboard?.writeText(payload).catch(() => {});
@@ -222,7 +237,34 @@ export function AiTalkDiagnostics(
         />
       </div>
 
+      <Row
+        label="Socket"
+        value={`${d.livePhase ?? '—'}`
+          + `${d.socketReadyMs !== null && d.socketReadyMs !== undefined ? ` · ready in ${d.socketReadyMs} ms` : ''}`}
+        tone={d.livePhase === 'READY' ? 'good' : d.livePhase === 'FAILED' ? 'bad' : 'idle'}
+      />
+      <Row
+        label="  failures / reconnects"
+        value={`${d.socketFailures ?? 0} / ${d.socketReconnects ?? 0}`}
+        tone={(d.socketFailures ?? 0) > 0 ? 'bad' : 'good'}
+      />
       <Row label="Held across rotation" value={`${d.preReadyFlushBytes ?? 0} B in ${d.preReadyFlushMs ?? 0} ms`} />
+      <Row label="Buffer now" value={`${d.bufferedPcmBytes ?? 0} B (${d.bufferDurationMs ?? 0} ms), peak ${kb(d.maxPreReadyBufferBytes)}`} />
+      <Row label="Buffer format" value={d.bufferFormat ?? '—'} />
+      {/* A session that looks like it is listening and is consuming nothing. */}
+      <Row
+        label="Consumer blocked by"
+        value={d.micGated ? 'assistant speaking' : d.transcribing ? 'transcription in flight' : 'nothing'}
+        tone={d.micGated || d.transcribing ? 'bad' : 'good'}
+      />
+      {/* Every byte in exactly one category, or every number above is
+          suspect. Computed on the device, reported rather than asserted. */}
+      <Row
+        label="Bytes accounted for"
+        value={d.bytesAccountedFor === undefined || d.bytesAccountedFor === null
+          ? '—' : d.bytesAccountedFor ? 'YES' : 'NO — counter bug'}
+        tone={d.bytesAccountedFor === false ? 'bad' : 'good'}
+      />
       <Row
         label="Dropped pre-ready"
         value={`${d.droppedPreReadyBytes ?? 0} B`}

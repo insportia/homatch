@@ -104,6 +104,14 @@ export function AiTalkDiagnostics(
       playbackQueuedChunks: d.playbackQueuedChunks ?? null,
       playbackCompletedChunks: d.playbackCompletedChunks ?? null,
       gateReleases: d.gateReleases ?? null,
+      // The final that never came, and what was done about it.
+      noFinalCount: d.noFinalCount ?? null,
+      consecutiveNoFinals: d.consecutiveNoFinals ?? null,
+      noFinalRecoveries: d.noFinalRecoveries ?? null,
+      lastNoFinalReason: d.lastNoFinalReason ?? null,
+      lastNoFinalAt: d.lastNoFinalAt ?? null,
+      socketCloseReason: d.socketCloseReason ?? null,
+      socketCloseHadFinal: d.socketCloseHadFinal ?? null,
       turns: d.turnTrace ?? [],
     }, null, 1);
     void navigator.clipboard?.writeText(payload).catch(() => {});
@@ -267,6 +275,20 @@ export function AiTalkDiagnostics(
       <Row label="Held across rotation" value={`${d.preReadyFlushBytes ?? 0} B in ${d.preReadyFlushMs ?? 0} ms`} />
       <Row label="Buffer now" value={`${d.bufferedPcmBytes ?? 0} B (${d.bufferDurationMs ?? 0} ms), peak ${kb(d.maxPreReadyBufferBytes)}`} />
       <Row label="Buffer format" value={d.bufferFormat ?? '—'} />
+      {/* A socket that ended without a transcript used to end the session.
+          Now it is a counted, recovered event -- or an explicit failure. */}
+      <Row
+        label="No-final"
+        value={`${d.noFinalCount ?? 0} (${d.consecutiveNoFinals ?? 0} in a row), recovered ${d.noFinalRecoveries ?? 0}`
+          + `${d.lastNoFinalReason ? ` · last ${d.lastNoFinalReason}` : ''}`}
+        tone={(d.consecutiveNoFinals ?? 0) >= 3 ? 'bad' : (d.noFinalCount ?? 0) > 0 ? 'idle' : 'good'}
+      />
+      <Row
+        label="Last socket close"
+        value={d.socketCloseHadFinal === null || d.socketCloseHadFinal === undefined
+          ? '—' : `${d.socketCloseHadFinal ? 'after final' : 'WITHOUT final'}${d.socketCloseReason ? ` · ${d.socketCloseReason}` : ''}`}
+        tone={d.socketCloseHadFinal === false ? 'bad' : 'good'}
+      />
       {/* A session that looks like it is listening and is consuming nothing. */}
       <Row
         label="Consumer blocked by"

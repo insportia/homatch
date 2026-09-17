@@ -47,6 +47,7 @@ import {
 } from './talkLanguage.ts';
 import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
 import { LiveAudioRouter, type LivePhase } from './liveAudioRouter.ts';
+import { FinalWatch, type FinalDecision } from './finalWatch.ts';
 
 
 /**
@@ -247,6 +248,20 @@ export interface VoiceDiagnostics {
   /** How often the gate had to be forced open. Should be 0. */
   gateReleases: number;
   /*
+   * THE FINAL THAT NEVER CAME.
+   *
+   * The difference between "the visitor said nothing" and "the recogniser
+   * answered nothing" is invisible from the transcript, and the second one
+   * killed a real session. Counted, dated, and named.
+   */
+  noFinalCount: number;
+  consecutiveNoFinals: number;
+  noFinalRecoveries: number;
+  lastNoFinalReason: string | null;
+  lastNoFinalAt: number | null;
+  socketCloseReason: string | null;
+  socketCloseHadFinal: boolean | null;
+  /*
    * WHY THE SESSION IS NOT ANSWERING.
    *
    * A session that stops responding and cannot say why is indistinguishable
@@ -442,7 +457,8 @@ export interface VoiceMilestone {
     | 'first_input_audio' | 'first_speech' | 'first_utterance_sent'
     | 'first_transcript' | 'user_turn_sent'
     | 'assistant_text' | 'tts_audio_received' | 'playback_started'
-    | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition' | 'failed';
+    | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition'
+  | 'no_final_recovered' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
@@ -531,6 +547,19 @@ const MIC_GATE_MAX_MS = 15_000;
  * reply which never finishes cannot hold the session open.
  */
 const SESSION_LIMIT_GRACE_MS = 12_000;
+
+/*
+ * HOW LONG A REQUESTED FINAL MAY TAKE BEFORE ITS ABSENCE IS A FACT.
+ *
+ * The worker half-closes and waits FINAL_GRACE for Google to flush; measured,
+ * a final lands about 600ms after the close on a normal turn and never more
+ * than a couple of seconds. Six seconds is comfortably past that and still
+ * short enough that a visitor whose word was lost is listening again before
+ * they have finished wondering.
+ */
+const NO_FINAL_TIMEOUT_MS = 6_000;
+/** Consecutive misses before the session stops reconnecting and says so. */
+const MAX_CONSECUTIVE_NO_FINALS = 3;
 
 const PRE_READY_MAX_MS = 2500;
 /** Capacity of the hold buffer, in canonical 16 kHz PCM. */
@@ -779,6 +808,11 @@ export class VoiceSession {
   private liveSpeechMs = 0;
   /** True once this turn has been ended deliberately; reset on a new socket. */
   private liveEnded = false;
+  /** The final owed after every finalize(), and what to do if it never comes. */
+  private finalWatch = new FinalWatch({
+    timeoutMs: NO_FINAL_TIMEOUT_MS,
+    maxConsecutive: MAX_CONSECUTIVE_NO_FINALS,
+  });
   /** True while an utterance is being transcribed. */
   private transcribing = false;
   /** Sent to the server so each reply is in context. */
@@ -1006,6 +1040,10 @@ export class VoiceSession {
       // control; this stops an obviously-overrunning session before the next
       // heartbeat would.
       if (this.consumedSeconds >= this.grant.maxDurationSec) this.reachSessionLimit();
+      // A final owed for too long -- a socket that neither answers nor
+      // closes -- is the same miss as a socket that closed empty.
+      const owed = this.finalWatch.tick(Date.now());
+      if (owed) this.recoverFromNoFinal(owed);
     }, 250);
 
     // Diagnostics are published on their own clock, not on the audio
@@ -1066,6 +1104,13 @@ export class VoiceSession {
       micGated: this.micGated,
       transcribing: this.transcribing,
       gateReleases: this.gateReleases,
+      noFinalCount: this.finalWatch.noFinalCount,
+      consecutiveNoFinals: this.finalWatch.consecutiveNoFinals,
+      noFinalRecoveries: this.finalWatch.noFinalRecoveries,
+      lastNoFinalReason: this.finalWatch.lastNoFinalReason,
+      lastNoFinalAt: this.finalWatch.lastNoFinalAt,
+      socketCloseReason: this.finalWatch.socketCloseReason,
+      socketCloseHadFinal: this.finalWatch.socketCloseHadFinal,
       sessionElapsedMs: this.startedAt ? Date.now() - this.startedAt : 0,
       sessionMaxMs: this.grant.maxDurationSec * 1000,
       sessionRemainingMs: Math.max(
@@ -1485,7 +1530,38 @@ export class VoiceSession {
       this.liveEnded = false;
       return;
     }
+    // From here a final is owed. If it never comes, the watch says so.
+    this.finalWatch.requested(Date.now());
     if (this.state === 'LISTENING') this.setState('UNDERSTANDING');
+  }
+
+  /**
+   * NO FINAL CAME. Recover, or stop and say so -- never sit dead.
+   *
+   * The old socket is spent either way. On RECOVER the session rotates to a
+   * fresh one exactly as it does after a normal turn, clears the end-of-turn
+   * latch that was holding the microphone, and goes back to LISTENING; the
+   * visitor repeats one sentence instead of losing the conversation. Nothing
+   * is sent to the model: an empty utterance is not a turn.
+   */
+  private recoverFromNoFinal(decision: FinalDecision): void {
+    if (this.closed) return;
+    this.liveSpeechMs = 0;
+    this.liveEnded = false;
+    this.livePartialId = null;
+
+    if (decision.kind === 'GIVE_UP') {
+      // Bounded: three misses in a row is a provider that is not answering,
+      // and reconnecting to it for ever is the freeze wearing a new name.
+      this.diag.lastError = `NO_FINAL_REPEATED:${decision.reason}`;
+      this.abandonLive(`no final ${this.finalWatch.consecutiveNoFinals} times in a row`);
+      if (this.state === 'UNDERSTANDING') this.setState('LISTENING');
+      return;
+    }
+    this.milestone('no_final_recovered', decision.reason);
+    void this.rotateLive();
+    if (this.state === 'UNDERSTANDING') this.setState('LISTENING');
+    this.publishDiagnostics();
   }
 
   /**
@@ -1600,6 +1676,10 @@ export class VoiceSession {
       },
       onPartial: (text) => this.showPartial(text),
       onFinal: (text, heard) => { void this.onLiveFinal(text, heard ?? null); },
+      onNoFinal: (reason) => {
+        const decision = this.finalWatch.missed(reason, Date.now());
+        if (decision) this.recoverFromNoFinal(decision);
+      },
       onUnavailable: (reason) => {
         /*
          * Back to the batch path for the rest of the session, rather than a
@@ -1750,6 +1830,7 @@ export class VoiceSession {
      * when the floor comes back, so the grant round trip overlaps the reply
      * being written and spoken instead of the silence before the next one.
      */
+    if (said) this.finalWatch.arrived();
     if (this.live?.isFinalizing) void this.rotateLive();
     this.liveSpeechMs = 0;
     this.liveEnded = false;

@@ -10,7 +10,7 @@ import {
 } from './primitives';
 import { SectionHead, MoneyBar } from './visuals';
 import { getUnitReservation, getDealByUnit, listSchedule, listPayments } from '@/services/developer/sales';
-import { listLeads } from '@/services/developer/crm';
+import { listLeads, type LeadWithContact } from '@/services/developer/crm';
 import { listDocuments } from '@/services/developer/documents';
 import type {
   DevUnit, DevReservation, DevDeal, DevScheduleRow, DevPayment, DevDocument,
@@ -51,7 +51,10 @@ export function UnitSalesTab({ unit }: { unit: DevUnit }) {
         getUnitReservation(unit.id).catch(() => null),
         getDealByUnit(unit.id).catch(() => null),
         listDocuments(unit.workspace_id, { unitId: unit.id }).catch(() => [] as DevDocument[]),
-        listLeads(unit.workspace_id, { limit: 200 }).catch(() => []),
+        // Typed like the fallback above it: a bare `[]` is `never[]`, the
+        // union with LeadWithContact[] intersects .filter's parameter to
+        // `never`, and CI has refused every deploy since.
+        listLeads(unit.workspace_id, { limit: 200 }).catch(() => [] as LeadWithContact[]),
       ]);
       if (cancelled) return;
       setReservation(res);

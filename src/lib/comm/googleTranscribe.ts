@@ -80,6 +80,8 @@ export class GoogleTranscriber implements LiveSocket {
    * point of asking is the sentence that comes back afterwards.
    */
   private finalizing = false;
+  /** A non-empty final has been delivered on this socket. */
+  private deliveredFinal = false;
   /** Silence frames sent purely to stop the stream timing out. */
   private keepalives = 0;
 
@@ -179,6 +181,13 @@ export class GoogleTranscriber implements LiveSocket {
       const wasReady = this.ready;
       this.ready = false;
       if (!this.closed && !this.finalizing && wasReady) this.cb.onUnavailable('SOCKET_CLOSED');
+      /*
+       * Closed while a final was owed and none was delivered. This used to
+       * be silent on purpose -- a close after finalize is the normal end of
+       * a turn -- and the silence was only correct when a final had already
+       * arrived. Without one it left a real Android session dead.
+       */
+      if (!this.closed && this.finalizing && !this.deliveredFinal) this.cb.onNoFinal?.('CLOSED_WITHOUT_FINAL');
     };
 
     const opened = await new Promise<boolean>((resolve) => {
@@ -361,7 +370,14 @@ export class GoogleTranscriber implements LiveSocket {
         // wait a person feels begins.
         if (this.speaking) this.cb.onSpeechEnd();
         this.speaking = false;
-        if (text) this.cb.onFinal(text, heard);
+        if (text) {
+          this.deliveredFinal = true;
+          this.cb.onFinal(text, heard);
+        } else if (this.finalizing) {
+          // The recogniser's answer to the whole utterance was nothing.
+          // Reported, not swallowed: an empty final is a miss, not a turn.
+          this.cb.onNoFinal?.('EMPTY_FINAL');
+        }
         break;
       }
 

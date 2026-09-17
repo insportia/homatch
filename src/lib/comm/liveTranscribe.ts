@@ -124,6 +124,13 @@ export interface LiveCallbacks {
   onFinal: (text: string, language?: string | null) => void;
   /** The socket will not carry this session. The caller falls back. */
   onUnavailable: (reason: string) => void;
+  /**
+   * A final was owed and did not come: the socket answered empty, or closed
+   * while finalising with nothing delivered. Optional because only the
+   * Google path half-closes for its final; the session treats it as the
+   * start of recovery, never as a turn.
+   */
+  onNoFinal?: (reason: 'EMPTY_FINAL' | 'CLOSED_WITHOUT_FINAL') => void;
 }
 
 /**

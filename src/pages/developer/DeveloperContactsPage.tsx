@@ -27,7 +27,7 @@ import { LeadDrawer } from '@/components/developer/LeadDrawer';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import { listLeads, createLead, type LeadWithContact } from '@/services/developer/crm';
 import { listProjects, listUnits } from '@/services/developer/inventory';
-import { listLeadUnits } from '@/services/developer/crm';
+import { listLeadUnits, type LeadUnitLink } from '@/services/developer/crm';
 import { devErrorText } from '@/services/developer/client';
 import { PIPELINE_STAGES } from '@/services/developer/types';
 import type { LeadStage, DevProject } from '@/services/developer/types';
@@ -101,7 +101,7 @@ export default function DeveloperContactsPage() {
          inventory read above rather than a lookup each. */
       const numbers = new Map(unitRows.rows.map((u) => [u.id, u.unit_number]));
       const pairs = await Promise.all(rows.slice(0, 60).map(async (lead) => {
-        const links = await listLeadUnits(lead.id).catch(() => []);
+        const links = await listLeadUnits(lead.id).catch(() => [] as LeadUnitLink[]);
         const labels = links
           .filter((l) => l.interest !== 'REJECTED')
           .map((l) => numbers.get(l.unit_id))

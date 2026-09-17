@@ -12,6 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LeadRequirements } from './LeadRequirements';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -133,6 +134,7 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
           <Tabs defaultValue="timeline" className="flex min-h-0 flex-1 flex-col">
             <TabsList className="mx-4 mt-3 w-[calc(100%-2rem)] justify-start overflow-x-auto sm:mx-5 sm:w-[calc(100%-2.5rem)]">
               <TabsTrigger value="timeline">{t('dev_tab_timeline')}</TabsTrigger>
+              <TabsTrigger value="requirements">{t('dev_tab_requirements')}</TabsTrigger>
               <TabsTrigger value="details">{t('dev_tab_details')}</TabsTrigger>
               <TabsTrigger value="tasks">{t('dev_tab_tasks')}</TabsTrigger>
               <TabsTrigger value="viewings">{t('dev_tab_viewings')}</TabsTrigger>
@@ -141,6 +143,11 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
               <TabsContent value="timeline" className="mt-0">
                 <TimelineTab lead={lead} language={language} onChanged={() => { void load(); onChanged(); }} />
+              </TabsContent>
+              {/* What this buyer asked for, and the apartments they are on.
+                  All of it was already stored; none of it was ever shown. */}
+              <TabsContent value="requirements" className="mt-0">
+                <LeadRequirements lead={lead} />
               </TabsContent>
               <TabsContent value="details" className="mt-0">
                 <DetailsTab lead={lead} canEdit={can('crm')} canReassign={can('crm_all')}

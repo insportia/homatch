@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Box, ChevronLeft, Upload, ShieldAlert, Globe, Layers, Home,
-  CheckCircle2, ExternalLink, HardDrive, Sparkles, FileImage,
+  CheckCircle2, ExternalLink, HardDrive, Sparkles, FileImage, ScanLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
+import { createFloorPlan } from '@/services/developer/floorplanStore';
 import { useDeveloperWorkspace } from '@/contexts/DeveloperWorkspaceContext';
 import {
   Panel, PanelHeader, LoadingRows, ErrorState, EmptyState,
@@ -798,6 +799,7 @@ function Assets({
                   <Th>{t('studio_asset_kind')}</Th>
                   <Th>{t('studio_scope')}</Th>
                   <Th className="text-right">{t('studio_weight')}</Th>
+                  <Th />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -820,6 +822,15 @@ function Assets({
                     </Td>
                     <Td className="text-right text-muted-foreground">
                       {formatBytes(a.bytes, language)}
+                    </Td>
+                    {/* THE ENTRY POINT TO THE 2D -> 3D PIPELINE.
+                        Only a drawing gets it, because only a drawing can be
+                        read into structure. Everything else shows nothing
+                        rather than a button that would fail. */}
+                    <Td className="text-right">
+                      {a.kind === 'FLOOR_PLAN' && (
+                        <FloorPlanAction asset={a} project={project} />
+                      )}
                     </Td>
                   </tr>
                 ))}
@@ -1054,5 +1065,47 @@ function Costs({ costs }: { costs: StudioCosts | null }) {
         </TableScroll>
       )}
     </Panel>
+  );
+}
+
+
+/**
+ * READ THIS DRAWING.
+ *
+ * Creates the dt_floorplans row and opens the verification screen. It does not
+ * call the model here: the screen asks for the reading once it is showing, so
+ * a mis-click costs a row rather than a bill, and the operator watches the
+ * extraction arrive on the page they will verify it on.
+ */
+function FloorPlanAction({
+  asset, project,
+}: { asset: TwinAsset; project: StudioProject }) {
+  const { t } = useLanguage();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const row = await createFloorPlan({
+            workspaceId: project.project.workspace_id,
+            assetId: asset.id,
+            projectId: project.project.id,
+          });
+          navigate(`/studio/plan/${row.id}`);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : t('dev_err_generic'));
+          setBusy(false);
+        }
+      }}
+    >
+      <ScanLine className="mr-1.5 h-3.5 w-3.5" />
+      {t('dev_fp_read_drawing')}
+    </Button>
   );
 }

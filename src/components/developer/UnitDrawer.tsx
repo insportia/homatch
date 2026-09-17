@@ -33,6 +33,7 @@ import { listLeads, type LeadWithContact } from '@/services/developer/crm';
 import { devErrorText } from '@/services/developer/client';
 import { UnitTwinTab } from './UnitTwinTab';
 import { UnitSalesTab } from './UnitSalesTab';
+import { UnitMedia } from './UnitMedia';
 import type {
   DevUnit, UnitStatus, DevWalkthrough, DevShareLink, DevShareEventRow, DevReservation,
 } from '@/services/developer/types';
@@ -158,6 +159,7 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
           <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
             <TabsList className="mx-4 mt-3 w-[calc(100%-2rem)] justify-start overflow-x-auto sm:mx-5 sm:w-[calc(100%-2.5rem)]">
               <TabsTrigger value="overview">{t('dev_tab_overview')}</TabsTrigger>
+              <TabsTrigger value="media">{t('dev_tab_media')}</TabsTrigger>
               <TabsTrigger value="tour">{t('dev_tab_tour')}</TabsTrigger>
               <TabsTrigger value="sales">{t('dev_nav_sales')}</TabsTrigger>
               <TabsTrigger value="share">{t('dev_tab_share')}</TabsTrigger>
@@ -185,6 +187,12 @@ export function UnitDrawer({ unitId, onClose, onChanged }: UnitDrawerProps) {
                   }}
                   onSaved={async () => { await load(); onChanged(); }}
                 />
+              </TabsContent>
+
+              {/* The photographs and the plan, both stored since the schema
+                  was written and neither ever shown. */}
+              <TabsContent value="media" className="mt-0">
+                <UnitMedia unit={unit} />
               </TabsContent>
 
               <TabsContent value="tour" className="mt-0 space-y-6">

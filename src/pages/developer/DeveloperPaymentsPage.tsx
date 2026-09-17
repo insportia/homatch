@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DeveloperShell, SubNav } from '@/components/developer/DeveloperShell';
 import { SalesContext } from '@/components/developer/SalesContext';
+import { ReceivablesTable } from '@/components/developer/ReceivablesTable';
 import {
   Panel, PanelHeader, StatTile, EmptyState, LoadingRows, ErrorState,
   TableScroll, Th, Td, Money, PaymentStatusPill, formatDate,
@@ -206,6 +207,9 @@ export default function DeveloperPaymentsPage() {
               </TableScroll>
             </Panel>
           )}
+
+          {/* WHO OWES WHAT, per contract rather than per instalment. */}
+          <ReceivablesTable rows={deals} />
 
           {receivables.filter((s) => s.status === 'OVERDUE').length > 0 && (
             <Panel>

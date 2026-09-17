@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { SalesLedgerRow } from '@/services/developer/types';
+import { Metric } from './visuals';
 import {
   Panel, PanelHeader, TableScroll, Th, Td, formatDate, formatMoney, formatNumber,
 } from './primitives';
@@ -106,6 +107,20 @@ export function BrokerPanel({
     return map;
   }, [ledger]);
 
+  /** The channel as a whole: what came through any broker at all. */
+  const channel = useMemo(() => {
+    let sales = 0;
+    let revenue = 0;
+    let currency: string | null = null;
+    for (const sale of ledger) {
+      if (!sale.broker) continue;
+      sales += 1;
+      revenue += Number(sale.sale_price ?? 0);
+      currency = currency ?? sale.currency;
+    }
+    return { sales, revenue, currency };
+  }, [ledger]);
+
   async function copyLink(row: BrokerInviteRow) {
     try {
       await navigator.clipboard.writeText(brokerInviteUrl(row.token));
@@ -157,6 +172,23 @@ export function BrokerPanel({
           </p>
         </div>
       ) : (
+        <>
+          {/* WHAT THE CHANNEL IS WORTH.
+              Shared inventory and commission describe the arrangement; sales
+              and revenue describe the business. Both from rows: unit_ids on
+              the invitation, broker on the sale. */}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-b border-border px-4 py-4 sm:grid-cols-4 sm:px-5">
+            <Metric weight="quiet" label={t('dev_broker_active')}
+              value={formatNumber(rows.filter((r) => r.status === 'ACCEPTED').length, language)} />
+            <Metric weight="quiet" label={t('dev_broker_units')}
+              value={formatNumber(rows.reduce((n, r) => n + r.unit_count, 0), language)} />
+            <Metric weight="quiet" label={t('dev_funnel_sold')}
+              value={formatNumber(channel.sales, language)} />
+            <Metric weight="quiet" label={t('dev_mk_revenue')}
+              value={channel.revenue > 0
+                ? formatMoney(channel.revenue, channel.currency, language) : '—'} />
+          </div>
+
         <TableScroll>
           <table className="w-full text-sm" data-tabular>
             <thead className="border-b border-border bg-muted/40">
@@ -239,6 +271,14 @@ export function BrokerPanel({
             </tbody>
           </table>
         </TableScroll>
+
+          {/* THE HONEST LIMIT. A lead carries a source, not a broker id, so
+              the product can say a sale came through a broker and cannot say
+              which broker introduced a buyer who has not bought yet. */}
+          <p className="border-t border-border px-4 py-3 text-2xs text-muted-foreground sm:px-5">
+            {t('dev_broker_attribution_note')}
+          </p>
+        </>
       )}
 
       {adding && (

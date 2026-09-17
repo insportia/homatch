@@ -282,12 +282,18 @@ jobs:
             #                             given. The database decides whether
             #                             the token and the document belong
             #                             together; this only mints the URL.
+            #   developer-floorplan-extract  reads a floor plan and writes
+            #                             what it saw onto dt_floorplans as a
+            #                             PROPOSAL. It generates no geometry and
+            #                             publishes no scene; a person verifies
+            #                             the reading before any of that happens.
             #   developer-document-extract  reads a contract or receipt and
             #                             writes the reading onto the document
             #                             and nowhere else. It never touches
             #                             dev_deals or dev_payments.
             "developer-buyer-document"
             "developer-document-extract"
+            "developer-floorplan-extract"
             "atomic-unlock"
             "credits-topup"
             "import-property"

@@ -85,6 +85,9 @@ const BuyerRoomPage = lazy(() => import('./pages/developer/BuyerRoomPage'));
 const TwinViewerPage = lazy(() => import('./pages/developer/TwinViewerPage'));
 const StudioPage = lazy(() => import('./pages/developer/StudioPage'));
 const StudioProjectPage = lazy(() => import('./pages/developer/StudioProjectPage'));
+/* The verification screen for the 2D -> 3D pipeline. Lazy like its
+   siblings: it pulls the floor-plan renderer and nothing else does. */
+const StudioFloorPlanPage = lazy(() => import('./pages/developer/StudioFloorPlanPage'));
 // Outreach pages
 const OutreachHubPage = lazy(() => import('./pages/outreach/OutreachHubPage'));
 const CommunitiesPage = lazy(() => import('./pages/outreach/CommunitiesPage'));
@@ -214,6 +217,7 @@ export const routes: RouteConfig[] = [
      who is not on dt_studio_staff, and every function behind it refuses them
      again in SQL. */
   { name: 'Studio',            path: '/studio',                   element: <StudioPage />, visible: false },
+  { name: 'Studio floor plan', path: '/studio/plan/:id',          element: <StudioFloorPlanPage />, visible: false },
   { name: 'Studio project',    path: '/studio/:projectId',        element: <StudioProjectPage />, visible: false },
   /*
    * THE DEVELOPER WORKSPACE.

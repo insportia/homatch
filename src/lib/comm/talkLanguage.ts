@@ -233,10 +233,27 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
     let reason = resolutionReason;
     let score = confidence;
 
-    if (previous && language !== previous) {
+    /*
+     * THE PAGE IS A PRIOR ON THE FIRST TURN, NOT JUST THE PREVIOUS TURN.
+     *
+     * This only held a language once the session already had one, so the
+     * FIRST utterance could be redefined by a single weak token. Measured on
+     * a real Android phone, on the Georgian site: a clipped Georgian word
+     * came back as "Abba", labelled English, and the whole session switched
+     * to English on four letters.
+     *
+     * Somebody who opened the Georgian site is probably going to speak
+     * Georgian, which is weak evidence but not no evidence -- and it is
+     * certainly stronger than one four-letter hypothesis. It is a prior and
+     * not a lock: a real English sentence clears SWITCH_MIN_LETTERS easily
+     * and still switches on its first turn, which is how the six-language
+     * first-turn behaviour keeps working.
+     */
+    const prior = previous ?? locale;
+    if (prior && language !== prior) {
       const tooShort = evidence.letters < SWITCH_MIN_LETTERS;
       if (tooShort || confidence < SWITCH_MIN_CONFIDENCE) {
-        language = previous;
+        language = prior;
         reason = 'STICKY_HELD';
         score = 0.5;
       }
@@ -274,7 +291,10 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
          * such asymmetry and the label is taken at face value.
          */
         const words = transcript.trim().split(/\s+/).filter(Boolean).length;
-        const leavingNonLatin = Boolean(previous) && !LATIN_LANGUAGES.includes(previous!);
+        // Leaving a non-Latin language, whether the session had settled on one
+      // or the page simply is one. Both are reasons to want more evidence.
+      const anchor = previous ?? locale;
+      const leavingNonLatin = Boolean(anchor) && !LATIN_LANGUAGES.includes(anchor!);
         const substantial = words >= 4 || evidence.letters >= 15;
         return decide(provider, 'PROVIDER_LATIN', leavingNonLatin && !substantial ? 0.35 : 0.7);
       }

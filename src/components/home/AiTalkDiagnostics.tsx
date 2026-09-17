@@ -40,7 +40,9 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: 'goo
 const n = (v: number | null | undefined) => (v === null || v === undefined ? '—' : String(v));
 const ms = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v} ms`);
 
-export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
+export function AiTalkDiagnostics(
+  { d, onDownloadSentAudio }: { d: VoiceDiagnostics | null; onDownloadSentAudio?: () => void },
+) {
   if (!d) return null;
 
   /*
@@ -62,8 +64,15 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
       liveMode: d.liveMode ?? null,
       liveProvider: d.liveProvider ?? null,
       voicedBeforeReadyMs: d.voicedBeforeReadyMs ?? null,
+      droppedPreReadyBytes: d.droppedPreReadyBytes ?? null,
+      // The actual format, so the next trace proves what Android delivered
+      // rather than what a laptop did.
+      contextSampleRate: d.contextSampleRate ?? null,
+      sendSampleRate: d.sendSampleRate ?? null,
+      resampling: d.resampling ?? null,
       lastBargeStopMs: d.lastBargeStopMs ?? null,
       languageSwitches: d.languageSwitches ?? null,
+      languageProbes: d.languageProbes ?? null,
       turns: d.turnTrace ?? [],
     }, null, 1);
     void navigator.clipboard?.writeText(payload).catch(() => {});
@@ -203,7 +212,22 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
             ? 'not interrupted yet' : `${d.lastBargeStopMs} ms`}
         />
         <Row label="Turns traced" value={String(d.turnTrace?.length ?? 0)} />
+        {/* Every socket that asked Google to guess. The prior is the
+            configuration now, so this should stay at zero unless sustained
+            speech repeatedly failed to resolve against it. */}
+        <Row
+          label="Language probes"
+          value={String(d.languageProbes ?? 0)}
+          tone={(d.languageProbes ?? 0) > 0 ? 'bad' : 'good'}
+        />
       </div>
+
+      <Row label="Held across rotation" value={`${d.preReadyFlushBytes ?? 0} B in ${d.preReadyFlushMs ?? 0} ms`} />
+      <Row
+        label="Dropped pre-ready"
+        value={`${d.droppedPreReadyBytes ?? 0} B`}
+        tone={(d.droppedPreReadyBytes ?? 0) > 0 ? 'bad' : 'good'}
+      />
 
       <button
         type="button"
@@ -212,6 +236,16 @@ export function AiTalkDiagnostics({ d }: { d: VoiceDiagnostics | null }) {
       >
         Copy turn trace
       </button>
+      {onDownloadSentAudio ? (
+        /* The recording the ear needs: exactly what the recogniser was sent. */
+        <button
+          type="button"
+          onClick={onDownloadSentAudio}
+          className="mt-1 w-full rounded border border-white/20 bg-white/5 px-2 py-1 text-white/80"
+        >
+          Download audio sent to STT
+        </button>
+      ) : null}
     </div>
   );
 }

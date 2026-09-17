@@ -207,12 +207,19 @@ export interface VoiceDiagnostics {
   finalsDeferred: number;
   /** Times the conversation changed language because the visitor asked. */
   languageSwitches: number;
+  /** How many sockets asked the provider what language it heard. Should be 0. */
+  languageProbes: number;
   /** The language the recogniser was last reopened for, if ever. */
   lastRelisten: string | null;
   /** Milliseconds the assistant kept speaking after being interrupted. */
   lastBargeStopMs: number | null;
   /** Voiced audio that arrived with no socket ready to take it. */
   voicedBeforeReadyMs: number;
+  /** Speech held across a socket rotation and replayed into the new one. */
+  preReadyFlushBytes: number;
+  preReadyFlushMs: number;
+  /** Held audio that was let go because no socket came. Should stay at zero. */
+  droppedPreReadyBytes: number;
   /** One row per completed turn, for a real-device session. */
   turnTrace: Array<Record<string, unknown>>;
   /** Turns this session ended itself rather than waiting for the endpointer. */
@@ -419,6 +426,28 @@ const MIN_SPEECH_MS = 320;
  */
 const MIN_VOICED_MS = 260;
 
+/**
+ * How much speech is held while a recogniser socket is being replaced.
+ *
+ * Three seconds is longer than any rotation measured (a grant round trip and
+ * a handshake, about half a second to a second) and short enough that a
+ * socket which never returns cannot grow a buffer worth worrying about.
+ */
+/*
+ * How sustained speech has to be before a failure to resolve it counts as
+ * evidence about the LANGUAGE rather than evidence that somebody said "ok".
+ * Above the longest of the end-of-turn windows, so a one-word answer can
+ * never earn a probe no matter how often it is given.
+ */
+const SWITCH_PROBE_SPEECH_MS = 900;
+/** Consecutive sustained-but-unresolved turns before asking the provider. */
+const SWITCH_PROBE_AFTER_TURNS = 2;
+
+const PRE_READY_MAX_SECONDS = 3;
+
+/** How much of the sent audio a debug session keeps, in memory, at most. */
+const TAP_MAX_SECONDS = 30;
+
 /*
  * WHEN TO DECIDE A LIVE TURN IS OVER, RATHER THAN WAIT TO BE TOLD.
  *
@@ -558,6 +587,53 @@ export class VoiceSession {
    * and the transcript shown is the person's own words on their own screen.
    */
   private turnTrace: Array<Record<string, unknown>> = [];
+  /*
+   * SPEECH THAT ARRIVES WHILE THERE IS NO SOCKET TO SEND IT TO.
+   *
+   * Ending a turn deliberately spends its recogniser stream, so every turn is
+   * followed by a rotation: close, ask the server for a fresh grant, open a
+   * new socket. That is a round trip and a handshake -- half a second to a
+   * second -- and for that whole window the live path has nowhere to put
+   * audio.
+   *
+   * On synthetic fixtures the rotation always landed in the eleven seconds of
+   * silence between clips, so this measured zero and I believed it. The first
+   * real Android trace measured 853ms and then 1877ms of voiced audio
+   * arriving with no socket ready: a person answers straight away, and the
+   * front of every reply after the first was being lost. That is why the
+   * Georgian came back as fragments and why it got worse each turn.
+   *
+   * So it is held instead of dropped, in the rate the socket wants, and
+   * flushed in order the moment one exists. Bounded, because a socket that
+   * never comes back must not grow a buffer without limit -- and past the
+   * bound the OLDEST audio goes, since the newest speech is the speech the
+   * visitor is still in the middle of.
+   */
+  private preReady: Int16Array[] = [];
+  private preReadySamples = 0;
+  private preReadyVoicedMs = 0;
+  private droppedPreReadyBytes = 0;
+  private lastPreReadyFlush: { bytes: number; ms: number } | null = null;
+  /** True while a live socket exists or is being opened for this session. */
+  private liveExpected = false;
+  /*
+   * A COPY OF EXACTLY WHAT THE RECOGNISER WAS SENT, FOR A DEBUG SESSION ONLY.
+   *
+   * When a person says their Georgian was not understood there are two
+   * completely different faults behind it, and no amount of reading the
+   * transcript separates them: either the audio leaving this browser was
+   * already wrong -- clipped, resampled badly, missing its beginning -- or it
+   * was fine and the recogniser misheard it. The first is ours and the second
+   * is not.
+   *
+   * So the post-resample PCM can be kept and played back, bounded to the last
+   * thirty seconds, in memory, only while ?debugAiTalk=1 is on, and only
+   * handed over when somebody presses a button. It is never uploaded, never
+   * written to storage, and discarded with the session.
+   */
+  private tapEnabled = false;
+  private tap: Int16Array[] = [];
+  private tapSamples = 0;
   /** Voiced audio seen before the recogniser socket was ready to take it. */
   private voicedBeforeReadyMs = 0;
   /** When the visitor's speech interrupted the assistant, and when it stopped. */
@@ -625,13 +701,28 @@ export class VoiceSession {
   private preroll: Float32Array[] = [];
   private prerollSamples = 0;
 
+  /*
+   * EVIDENCE THAT THE PRIOR IS WRONG -- not evidence that one word was odd.
+   *
+   * A turn counts as weak only if the speaker was sustained about it: at
+   * least SWITCH_PROBE_SPEECH_MS above the speech floor, and still nothing
+   * the language decision could resolve against the prior. One short token
+   * never counts, which is the whole point -- "Abba" was one short token.
+   *
+   * Two such turns in a row, and the NEXT socket is allowed to ask the
+   * provider what it is hearing. One socket, then back to the prior.
+   */
+  private weakTurns = 0;
+  private probeLanguageNext = false;
+
   // ── Diagnostics. Every one of these is counted, never inferred. ─────────
   private diag = {
     blocks: 0, samplesCaptured: 0, bytesSent: 0, rms: 0, peakRms: 0,
     utterances: 0, lastUtteranceMs: null as number | null,
     lastUtteranceBytes: null as number | null,
-    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, lastRelisten: null as string | null,
+    sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, languageProbes: 0, lastRelisten: null as string | null,
     lastBargeStopMs: null as number | null,
+    preReadyFlushBytes: 0, preReadyFlushMs: 0,
     turnsEndedLocally: 0,
     lastEndTurnSilenceMs: null as number | null, lastEndTurnSpeechMs: null as number | null,
     lastSttMs: null as number | null, lastSttChars: null as number | null,
@@ -806,9 +897,13 @@ export class VoiceSession {
       sttFailed: this.diag.sttFailed,
       finalsDeferred: this.diag.finalsDeferred ?? 0,
       languageSwitches: this.diag.languageSwitches ?? 0,
+      languageProbes: this.diag.languageProbes ?? 0,
       lastRelisten: this.diag.lastRelisten ?? null,
       lastBargeStopMs: this.diag.lastBargeStopMs ?? null,
       voicedBeforeReadyMs: Math.round(this.voicedBeforeReadyMs),
+      preReadyFlushBytes: this.diag.preReadyFlushBytes ?? 0,
+      preReadyFlushMs: this.diag.preReadyFlushMs ?? 0,
+      droppedPreReadyBytes: this.droppedPreReadyBytes,
       turnTrace: this.turnTrace,
       turnsEndedLocally: this.diag.turnsEndedLocally ?? 0,
       lastEndTurnSilenceMs: this.diag.lastEndTurnSilenceMs ?? null,
@@ -1034,6 +1129,32 @@ export class VoiceSession {
      */
     if (level >= SPEECH_RMS && !this.live?.isReady && !this.micGated && !this.muted) {
       this.voicedBeforeReadyMs += blockMs;
+      this.preReadyVoicedMs += blockMs;
+    }
+
+    /*
+     * No socket yet, but one is coming: keep the audio rather than lose it.
+     *
+     * Only while a live socket is expected. When the session has genuinely
+     * fallen back to the batch path there is nothing to flush into, and the
+     * batch capture below is the right home for it.
+     */
+    if (!this.live?.isReady && this.liveExpected && this.liveResampler
+        && !this.micGated && !this.muted && !this.transcribing) {
+      const held = this.liveResampler.process(input);
+      if (held.length) {
+        this.preReady.push(floatToPcm16(held));
+        this.preReadySamples += held.length;
+        // Bounded at three seconds; the oldest goes first, because the newest
+        // is the sentence still being spoken.
+        const cap = PRE_READY_MAX_SECONDS * LIVE_SAMPLE_RATE;
+        while (this.preReadySamples > cap && this.preReady.length > 1) {
+          const gone = this.preReady.shift()!;
+          this.preReadySamples -= gone.length;
+          this.droppedPreReadyBytes += gone.length * 2;
+        }
+      }
+      return;
     }
 
     if (this.live?.isReady && this.liveResampler) {
@@ -1041,7 +1162,10 @@ export class VoiceSession {
       if (live.length) {
         this.diag.samplesCaptured += live.length;
         this.diag.bytesSent += live.length * 2;
-        this.live.append(floatToPcm16(live));
+        const pcm = floatToPcm16(live);
+        this.live.append(pcm);
+        // The same bytes, kept only for a debug session. See tapEnabled.
+        if (this.tapEnabled) this.recordTap(pcm);
       }
       if (level >= SPEECH_RMS) this.liveSpeechMs += blockMs;
       this.maybeEndLiveTurn();
@@ -1155,9 +1279,17 @@ export class VoiceSession {
     if (this.closed) return;
     const old = this.live;
     this.live = null;
-    this.liveResampler = null;
+    /*
+     * The resampler SURVIVES the rotation. It carries interpolation phase and
+     * the last sample across calls, so replacing it mid-conversation puts a
+     * discontinuity into the audio at exactly the moment the visitor is most
+     * likely to be speaking. It is also what converts the held audio, so it
+     * has to exist while there is no socket.
+     */
     this.liveSpeechMs = 0;
     this.liveEnded = false;
+    // A socket is coming, so audio arriving now is held rather than dropped.
+    this.liveExpected = true;
     try { old?.close(); } catch { /* already gone */ }
     await this.openLiveTranscription();
   }
@@ -1181,15 +1313,30 @@ export class VoiceSession {
     // silence with the right byte count.
     const rate = grant.sampleRate ?? LIVE_SAMPLE_RATE;
     /*
-     * Until the conversation has settled on a language, ask what it is.
+     * THE PRIOR IS THE CONFIGURATION. `auto` IS A PROBE.
      *
-     * The page locale is where somebody arrived, not what they speak, and a
-     * Georgian page answering an English speaker in Georgian letters is the
-     * whole of the multilingual complaint. Detection is on until the session
-     * locks a language and off afterwards, because a settled conversation is
-     * recognised far more accurately on one language than on `auto`.
+     * This used to send `detect` on every socket the session had not yet
+     * locked -- which is the FIRST turn of every conversation, the turn that
+     * decides the language for all the ones after it. On a real Android
+     * microphone that turn came back as the single token "Abba" from Georgian
+     * speech, and the whole session went to English behind it.
+     *
+     * Unrestricted detection is not a mode this service runs in: the gateway
+     * says so in its own comment, and the measurement behind it says `auto`
+     * damages short Georgian badly. Handing it the deciding turn was the
+     * regression against the known-good baseline, which configured one
+     * language code and never asked.
+     *
+     * So the recogniser is configured with the PRIOR -- the language this
+     * session is in, seeded from the page the visitor chose. Not a lock: a
+     * prior. `auto` is still reachable, but only as a bounded probe, only
+     * after sustained speech has repeatedly failed to resolve against that
+     * prior, and never on the strength of one weak token. See weakTurns.
      */
-    const live = createTranscriber({ ...grant, detect: !this.language.locked }, {
+    const probing = this.probeLanguageNext;
+    this.probeLanguageNext = false;
+    this.diag.languageProbes = (this.diag.languageProbes ?? 0) + (probing ? 1 : 0);
+    const live = createTranscriber({ ...grant, detect: probing }, {
       onSpeechStart: () => {
         this.lastVoiceAt = Date.now();
         if (this.state === 'UNDERSTANDING' && !this.turnInFlight) this.setState('LISTENING');
@@ -1216,10 +1363,52 @@ export class VoiceSession {
     });
 
     const opened = await live.open();
-    if (!opened || this.closed) { this.diag.liveMode = 'batch'; return; }
+    if (!opened || this.closed) {
+      // Nothing is coming after all: the held audio has no home, and the
+      // batch path below is where the next utterance belongs.
+      this.liveExpected = false;
+      this.dropPreReady();
+      this.diag.liveMode = 'batch';
+      return;
+    }
 
+    /*
+     * A resampler ONLY when there is not already one.
+     *
+     * It carries interpolation phase and the last sample across calls, so
+     * replacing it mid-conversation puts a step into the waveform at the
+     * join. Across a rotation the rate has not changed and the old one is
+     * still correct -- and it is the thing that converted the audio now
+     * waiting to be flushed.
+     */
+    if (!this.liveResampler) {
+      this.liveResampler = new Resampler(this.audioContext.sampleRate, rate);
+    }
+
+    /*
+     * THE HELD SPEECH GOES FIRST, IN ORDER, BEFORE ANYTHING NEW.
+     *
+     * Assigned and flushed in the same synchronous run: an audio block cannot
+     * interleave here, so nothing the microphone produces during the flush
+     * can overtake what was recorded before it. Chronological by
+     * construction, and each buffer is sent exactly once.
+     */
     this.live = live;
-    this.liveResampler = new Resampler(this.audioContext.sampleRate, rate);
+    this.liveExpected = true;
+    if (this.preReady.length) {
+      const startedAt = Date.now();
+      let bytes = 0;
+      for (const chunk of this.preReady) {
+        live.append(chunk);
+        bytes += chunk.byteLength;
+      }
+      this.preReady = [];
+      this.preReadySamples = 0;
+      this.lastPreReadyFlush = { bytes, ms: Date.now() - startedAt };
+      this.diag.preReadyFlushBytes = bytes;
+      this.diag.preReadyFlushMs = this.lastPreReadyFlush.ms;
+    }
+
     this.diag.liveMode = 'live';
     this.diag.liveModel = grant.model ?? null;
     this.diag.liveProvider = grant.provider ?? null;
@@ -1337,6 +1526,23 @@ export class VoiceSession {
     this.lastResolution = resolution;
     this.lastProviderLanguage = detected;
 
+    /*
+     * Did this turn resolve against the prior, or only survive it?
+     *
+     * STICKY_HELD means the decision kept the prior because the evidence for
+     * leaving it was too thin -- the right call for one token, and a signal
+     * worth counting when it keeps happening to somebody who is plainly
+     * talking. Sustained speech that still cannot resolve is the only thing
+     * that earns a probe.
+     */
+    const sustained = (this.diag.lastEndTurnSpeechMs ?? 0) >= SWITCH_PROBE_SPEECH_MS;
+    const unresolved = resolution.reason === 'STICKY_HELD' || resolution.confidence < 0.5;
+    this.weakTurns = sustained && unresolved ? this.weakTurns + 1 : 0;
+    if (this.weakTurns >= SWITCH_PROBE_AFTER_TURNS) {
+      this.probeLanguageNext = true;
+      this.weakTurns = 0;
+    }
+
     const before = this.language.current;
     this.language = {
       ...this.language,
@@ -1349,6 +1555,61 @@ export class VoiceSession {
 
     this.publishDiagnostics();
     await this.takeTurn(said);
+  }
+
+  /** Keep the last TAP_MAX_SECONDS of what was actually sent. */
+  private recordTap(pcm: Int16Array): void {
+    this.tap.push(pcm);
+    this.tapSamples += pcm.length;
+    const cap = TAP_MAX_SECONDS * LIVE_SAMPLE_RATE;
+    while (this.tapSamples > cap && this.tap.length > 1) {
+      this.tapSamples -= this.tap.shift()!.length;
+    }
+  }
+
+  /** Turn the tap on for this session. Debug surfaces only. */
+  enableAudioTap(): void { this.tapEnabled = true; }
+
+  /**
+   * What the recogniser was sent, as a WAV somebody can actually listen to.
+   *
+   * The whole point is the ear: a number cannot tell you that the first
+   * syllable is missing or that the voice sounds slowed down, and a person
+   * playing this back can tell in one second which side of Google the fault
+   * is on.
+   */
+  exportSentAudio(): Blob | null {
+    if (!this.tap.length) return null;
+    const total = this.tapSamples;
+    const pcm = new Int16Array(total);
+    let at = 0;
+    for (const chunk of this.tap) { pcm.set(chunk, at); at += chunk.length; }
+    const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+    const header = new DataView(new ArrayBuffer(44));
+    const ascii = (off: number, text: string) => {
+      for (let i = 0; i < text.length; i++) header.setUint8(off + i, text.charCodeAt(i));
+    };
+    ascii(0, 'RIFF');
+    header.setUint32(4, 36 + bytes.length, true);
+    ascii(8, 'WAVE');
+    ascii(12, 'fmt ');
+    header.setUint32(16, 16, true);
+    header.setUint16(20, 1, true);            // PCM
+    header.setUint16(22, 1, true);            // mono
+    header.setUint32(24, LIVE_SAMPLE_RATE, true);
+    header.setUint32(28, LIVE_SAMPLE_RATE * 2, true);
+    header.setUint16(32, 2, true);
+    header.setUint16(34, 16, true);
+    ascii(36, 'data');
+    header.setUint32(40, bytes.length, true);
+    return new Blob([header.buffer, bytes], { type: 'audio/wav' });
+  }
+
+  /** Let go of held audio when no socket is coming for it. */
+  private dropPreReady(): void {
+    for (const chunk of this.preReady) this.droppedPreReadyBytes += chunk.byteLength;
+    this.preReady = [];
+    this.preReadySamples = 0;
   }
 
   private dropCapture(): void {
@@ -1527,9 +1788,16 @@ export class VoiceSession {
       llmMs: this.diag.lastLlmMs ?? null,
       firstAudioMs: this.diag.lastPlaybackMs ?? null,
       bargeStopMs: this.lastBargeStopMs,
-      voicedBeforeReadyMs: Math.round(this.voicedBeforeReadyMs),
+      // Per turn, not cumulative: the first trace reported a running total
+      // and had to be differenced by hand to see that ~1000ms was being lost
+      // on every rotation.
+      voicedBeforeReadyMs: Math.round(this.preReadyVoicedMs),
+      preReadyFlushBytes: this.diag.preReadyFlushBytes ?? 0,
+      droppedPreReadyBytes: this.droppedPreReadyBytes,
       deferredFinals: this.diag.finalsDeferred ?? 0,
     });
+    this.preReadyVoicedMs = 0;
+    this.diag.preReadyFlushBytes = 0;
     if (this.turnTrace.length > 40) this.turnTrace.shift();
 
     const deferred = this.pendingFinal;

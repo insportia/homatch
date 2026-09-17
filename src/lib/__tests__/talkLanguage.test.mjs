@@ -293,7 +293,19 @@ test('only one transcriber consumes the microphone at a time', () => {
   const src = read(CLIENT);
   const at = src.indexOf('if (this.live?.isReady && this.liveResampler) {');
   assert.ok(at > 0, 'the live branch is gone');
-  const branch = src.slice(at, at + 500);
+  /*
+   * The whole branch, by balanced braces, not a fixed number of characters.
+   * A window that size silently depends on how much code sits inside it, and
+   * adding the debug audio tap pushed the `return` out of the old one --
+   * failing a test about double transcription that had not changed.
+   */
+  const open = src.indexOf('{', at);
+  let depth = 0, end = src.length;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) { end = i + 1; break; }
+  }
+  const branch = src.slice(at, end);
   assert.ok(/return;/.test(branch), 'the live branch must not fall through into batch capture');
 });
 

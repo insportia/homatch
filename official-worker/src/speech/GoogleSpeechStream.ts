@@ -599,14 +599,26 @@ export class GoogleSpeechStream {
            *   chirp_3  ['ka-GE','en-US',...]       INVALID_ARGUMENT
            *   chirp_2  anything                    not served in this region
            *
-           * GOOGLE_SPEECH_MULTILANG=1 selects `auto`. The candidate list is
-           * still carried and still bounds what the SESSION will act on;
-           * it is simply not what the recogniser is configured with.
-           * /health/speech-languages re-runs the measurement above.
+           * `auto` IS NOT A MODE THIS SERVICE RUNS IN.
+           *
+           * GOOGLE_SPEECH_MULTILANG=1 used to select it for every socket, on
+           * top of the per-socket flag. That made a global, invisible setting
+           * -- one whose value does not appear in any health output and which
+           * is redacted from the deploy API -- able to put every Georgian
+           * conversation into unrestricted detection, silently, and to defeat
+           * any caller that had carefully asked for one language.
+           *
+           * The measurement that matters is already recorded above: `auto`
+           * damages short Georgian. So the ONLY way to reach it is now the
+           * per-socket flag, which the browser earns from sustained speech
+           * that repeatedly failed to resolve against its prior.
+           *
+           * The candidate list is still carried and still bounds what the
+           * SESSION will act on; it is simply not what the recogniser is
+           * configured with. /health/speech-languages re-runs the matrix.
            */
-          // `auto` when this socket asked to identify the language, when an
-          // operator has turned detection on globally, or one language.
-          languageCodes: (cfg.detect || multiLanguageEnabled()) ? ['auto'] : [cfg.languageCode],
+          // `auto` only when THIS socket asked to identify the language.
+          languageCodes: cfg.detect ? ['auto'] : [cfg.languageCode],
           model: cfg.model,
           features: {
             enableAutomaticPunctuation: true,

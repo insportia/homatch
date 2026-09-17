@@ -245,7 +245,6 @@ export function AiTalkPanel({ className }: { className?: string }) {
    * to a guess.
    */
   const languageRef = useRef<string | null>(null);
-  const languageLockedRef = useRef(false);
   /** What the conversation already knows. Carried between turns, not re-derived. */
   const knownRef = useRef<unknown>(null);
   /** Sent with each turn so the reply is in context. Bounded to recent turns. */
@@ -421,10 +420,11 @@ export function AiTalkPanel({ className }: { className?: string }) {
       {
         onState: (s) => setState(s),
         onTranscript: publishTurns,
-        onLanguage: (lang, locked) => {
+        // `locked` is deliberately not kept: the session language is a prior
+        // that every grant now carries, so nothing is waiting on it to settle.
+        onLanguage: (lang) => {
           detectedRef.current = lang;
           languageRef.current = lang;
-          languageLockedRef.current = locked;
         },
         onLevel: (l) => { inputLevel.current = l; },
         onSecondsConsumed: (consumed) => setRemaining(Math.max(0, grantedRef.current - consumed)),
@@ -468,10 +468,24 @@ export function AiTalkPanel({ className }: { className?: string }) {
             body: {
               action: 'listen',
               sessionId: sessionIdRef.current,
-              // Only once the conversation has settled. Sending the page
-              // locale is how a Russian speaker reading a Georgian page gets
-              // Georgian letters back.
-              languageHint: languageLockedRef.current ? languageRef.current : null,
+              /*
+               * THE PRIOR, ALWAYS -- not only once the session has settled.
+               *
+               * This used to send null until the language locked, on the
+               * reasoning that a Russian speaker reading a Georgian page
+               * would otherwise get Georgian letters back. What it actually
+               * did was leave the recogniser with no language for the first
+               * turn, so the first turn was decided by `auto` -- and on a
+               * real Android microphone `auto` turned a Georgian word into
+               * "Abba" and took the session to English.
+               *
+               * The page somebody is reading is the best guess available
+               * before they have said anything, which is what a prior is. It
+               * is not a lock: the session can still leave it on evidence,
+               * and voiceClient earns a detection probe when sustained
+               * speech repeatedly fails to resolve against it.
+               */
+              languageHint: languageRef.current || language,
             },
           });
           const grant = ear as {
@@ -494,14 +508,26 @@ export function AiTalkPanel({ className }: { className?: string }) {
             // actually answered rather than by anything the browser assumes.
             provider: grant.provider,
             keyterms: grant.keyterms,
-            languageCode: languageLockedRef.current ? languageRef.current : null,
+            /*
+             * The prior reaches the socket, or the socket has no language.
+             *
+             * This is the line the recogniser's configuration comes from:
+             * googleTranscribe only sets `?language=` when languageCode is
+             * present, and the gateway falls back to a server-wide default
+             * when it is not. Nulling it until the session locked meant the
+             * first turn of every conversation was recognised against an
+             * environment variable instead of against the page the visitor
+             * had chosen -- and, with detection on, against `auto`.
+             */
+            languageCode: languageRef.current || language,
             /*
              * Every language the socket should be prepared to hear.
              *
-             * The visitor does not choose one first; the recogniser decides
-             * per utterance. `languageCode` above is still sent once the
-             * conversation has settled, and stays the primary candidate so a
-             * settled call is not re-decided at every pause.
+             * The recogniser is configured with one -- chirp_3 takes one code
+             * or `auto` and nothing between -- so this is what the SESSION
+             * will act on, not what the provider is set to. `languageCode`
+             * above stays the primary candidate so a settled call is not
+             * re-decided at every pause.
              */
             languages: grant.languages,
           };
@@ -569,6 +595,14 @@ export function AiTalkPanel({ className }: { className?: string }) {
     );
 
     sessionRef.current = session;
+    /*
+     * Only in a debug session, and only because the alternative is guessing.
+     * A person reporting "it did not understand my Georgian" cannot tell us
+     * whether the audio that left their phone was already wrong; this lets
+     * them hand over exactly what the recogniser was sent. In memory, last
+     * thirty seconds, never uploaded.
+     */
+    if (debug) session.enableAudioTap();
     await session.start();
 
     /*
@@ -816,7 +850,21 @@ export function AiTalkPanel({ className }: { className?: string }) {
         <span className="sr-only" {...fp('talk_badge')}>{sf('talk_badge', 'talk_badge')}</span>
       </section>
 
-      {debug ? <AiTalkDiagnostics d={diagnostics} /> : null}
+      {debug ? (
+        <AiTalkDiagnostics
+          d={diagnostics}
+          onDownloadSentAudio={() => {
+            const wav = sessionRef.current?.exportSentAudio();
+            if (!wav) return;
+            const url = URL.createObjectURL(wav);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ai-talk-sent-${Date.now()}.wav`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 10_000);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

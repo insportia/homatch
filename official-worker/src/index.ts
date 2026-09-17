@@ -13,7 +13,10 @@ import { localBrowserHealth, installProcessCleanup, closeAllJobBrowsers, logBrow
 import { challenge, scanCandidateInputs, visible } from './browser/BrowserSession.js';
 import { attachSpeechGateway } from './speech/SpeechGateway.js';
 import { runSpeechSelfTest } from './speech/SpeechSelfTest.js';
-import { lastRecogniserError, speechConfigFromEnv } from './speech/GoogleSpeechStream.js';
+import {
+  lastRecogniserError, speechConfigFromEnv,
+  multiLanguageEnabled, primaryLanguage, configuredLanguages,
+} from './speech/GoogleSpeechStream.js';
 import { probeRegions } from './speech/SpeechRegionProbe.js';
 import { probeRecognizers } from './speech/SpeechRecognizerProbe.js';
 import { probeLanguageConfigs } from './speech/SpeechLanguageProbe.js';
@@ -490,7 +493,19 @@ app.get('/health/speech-config', (_q: any, r: any) => {
     credentialEmailDomain,
     region: (process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase(),
     model: process.env.GOOGLE_SPEECH_MODEL || 'chirp_3',
-    language: process.env.GOOGLE_SPEECH_LANGUAGE || 'ka-GE',
+    language: primaryLanguage(),
+    languages: configuredLanguages(),
+    /*
+     * What the operator asked for, and what the recogniser will actually do.
+     *
+     * These disagreed in production and nothing said so: MULTILANG was set,
+     * its value is redacted from the deploy API, and no health output
+     * mentioned it -- so "every socket is in `auto`" was unfalsifiable from
+     * outside. It no longer forces anything; it is reported so a trace can
+     * prove that, rather than a reader having to take it on faith.
+     */
+    multiLangRequested: multiLanguageEnabled(),
+    autoDetectReachableGlobally: false,
     recognizerPathShape: `projects/<${declared.length} chars>/locations/${(process.env.GOOGLE_SPEECH_REGION || '').trim().toLowerCase()}/recognizers/_`,
   });
 });

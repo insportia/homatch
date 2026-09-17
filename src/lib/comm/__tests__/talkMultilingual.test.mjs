@@ -230,14 +230,28 @@ test('a mis-detected short greeting cannot hijack the session', () => {
   assert.ok(he.confidence < 0.6);
 });
 
-test('detection is asked for until the language is settled, and not after', () => {
+test('detection is earned by evidence, never spent on the deciding turn', () => {
+  /*
+   * THIS TEST USED TO ASSERT THE OPPOSITE, and the reason it gave was that
+   * detection is "a startup cost and not a running one" -- pay it while the
+   * session settles, stop once it locks.
+   *
+   * The first real Android trace disproved the premise. The startup turn IS
+   * the deciding turn: it is the one that sets the language every later turn
+   * inherits. Spending `auto` on it meant a clipped Georgian word came back
+   * as "Abba" and took the conversation to English with it. A cost paid on
+   * the deciding turn is not a startup cost.
+   *
+   * So the prior is the configuration, and `auto` has to be earned.
+   */
   const c = strip(client);
-  // A settled conversation is recognised far more accurately on one language
-  // than on auto, so detection is a startup cost and not a running one.
-  assert.ok(/detect: !this\.language\.locked/.test(c),
-    'detection must stop once the session has locked a language');
+  assert.ok(!/detect: !this\.language\.locked/.test(c),
+    'an unlocked session is a new session; it must not be handed to `auto`');
+  assert.ok(/detect: probing/.test(c),
+    'the socket asks for detection only when sustained speech earned a probe');
   const g = strip(readFileSync('src/lib/comm/googleTranscribe.ts', 'utf8'));
-  assert.ok(/if \(this\.grant\.detect\) query\.set\('detect', '1'\);/.test(g));
+  assert.ok(/if \(this\.grant\.detect\) query\.set\('detect', '1'\);/.test(g),
+    'and the per-socket flag still reaches the gateway when it is earned');
 });
 
 test('the gateway takes detection per socket, not as a global mode', () => {

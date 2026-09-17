@@ -134,6 +134,11 @@ export type ConverseEvent =
   | {
       type: 'done'; firstTextMs?: number; firstAudioMs?: number | null;
       totalMs?: number; ttsMs?: number;
+      /* Whether the answer finished, and how much of it there was. */
+      llmTextChars?: number; ttsTextChars?: number; ttsRequests?: number;
+      assistantResponseCompleted?: boolean | null;
+      responseInterruptReason?: string | null;
+      finalTextTail?: string | null;
       /**
        * The server's own stages, as offsets from the moment it began work.
        * Offsets rather than timestamps because the two machines do not share
@@ -241,6 +246,29 @@ export interface VoiceDiagnostics {
   transcribing: boolean;
   /** How often the gate had to be forced open. Should be 0. */
   gateReleases: number;
+  /*
+   * WHY THE SESSION IS NOT ANSWERING.
+   *
+   * A session that stops responding and cannot say why is indistinguishable
+   * from a crash, and that is exactly how a 90-second limit reached in the
+   * middle of a conversation presented itself: no answer, panel still
+   * reading LISTENING, nothing anywhere naming the clock.
+   */
+  sessionElapsedMs: number;
+  sessionRemainingMs: number;
+  sessionMaxMs: number;
+  turnCount: number;
+  newTurnsBlocked: boolean;
+  sessionEndReason: string | null;
+  /* Response completeness, end to end. */
+  llmTextChars: number | null;
+  ttsTextChars: number | null;
+  ttsRequests: number | null;
+  assistantResponseCompleted: boolean | null;
+  responseInterruptReason: string | null;
+  finalTextTail: string | null;
+  playbackQueuedChunks: number;
+  playbackCompletedChunks: number;
   /** postResample === sent + flushed + buffered + dropped. False is a bug. */
   bytesAccountedFor: boolean;
   /** The language the recogniser was last reopened for, if ever. */
@@ -497,6 +525,13 @@ const SWITCH_PROBE_AFTER_TURNS = 2;
  */
 const MIC_GATE_MAX_MS = 15_000;
 
+/**
+ * How long an already-started answer may keep speaking after the session's
+ * time is up. Long enough for a normal reply to land, short enough that a
+ * reply which never finishes cannot hold the session open.
+ */
+const SESSION_LIMIT_GRACE_MS = 12_000;
+
 const PRE_READY_MAX_MS = 2500;
 /** Capacity of the hold buffer, in canonical 16 kHz PCM. */
 const PRE_READY_MAX_SECONDS = 3;
@@ -619,6 +654,9 @@ export class VoiceSession {
    * anybody must not look like one that can.
    */
   private micGatedAt = 0;
+  /** True once the session's time is up: no new turn may begin. */
+  private newTurnsBlocked = false;
+  private sessionEndReason: string | null = null;
   private gateReleases = 0;
   /** True while the visitor has muted themselves. Their choice, not ours. */
   private muted = false;
@@ -821,6 +859,13 @@ export class VoiceSession {
     sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, languageProbes: 0,
     livePhase: 'IDLE' as LivePhase, socketReadyMs: null as number | null,
     socketFailures: 0, socketReconnects: 0, gateReleases: 0,
+    liveSendRate: null as number | null,
+    sessionEndReason: null as string | null,
+    llmTextChars: null as number | null, ttsTextChars: null as number | null,
+    ttsRequests: null as number | null,
+    assistantResponseCompleted: null as boolean | null,
+    responseInterruptReason: null as string | null,
+    finalTextTail: null as string | null,
     lastRelisten: null as string | null,
     lastBargeStopMs: null as number | null,
     preReadyFlushBytes: 0, preReadyFlushMs: 0,
@@ -960,10 +1005,7 @@ export class VoiceSession {
       // A local ceiling as well as the server's. The server grant is the
       // control; this stops an obviously-overrunning session before the next
       // heartbeat would.
-      if (this.consumedSeconds >= this.grant.maxDurationSec) {
-        void this.stop('allowance');
-        this.setState('LIMIT_REACHED');
-      }
+      if (this.consumedSeconds >= this.grant.maxDurationSec) this.reachSessionLimit();
     }, 250);
 
     // Diagnostics are published on their own clock, not on the audio
@@ -983,7 +1025,14 @@ export class VoiceSession {
       trackEnabled: track ? track.enabled : null,
       contextSampleRate: this.audioContext?.sampleRate ?? null,
       contextState: this.audioContext?.state ?? null,
-      sendSampleRate: TARGET_SAMPLE_RATE,
+      /*
+       * The rate the LIVE socket is carrying, not the batch path's constant.
+       *
+       * This reported TARGET_SAMPLE_RATE unconditionally -- a different
+       * pipeline's rate -- which happened to be 16,000 and so happened to be
+       * right. A number that is only accidentally correct is not evidence.
+       */
+      sendSampleRate: this.diag.liveSendRate ?? TARGET_SAMPLE_RATE,
       resampling: this.resampler ? !this.resampler.passthrough : false,
       rms: this.diag.rms,
       peakRms: this.diag.peakRms,
@@ -1017,6 +1066,22 @@ export class VoiceSession {
       micGated: this.micGated,
       transcribing: this.transcribing,
       gateReleases: this.gateReleases,
+      sessionElapsedMs: this.startedAt ? Date.now() - this.startedAt : 0,
+      sessionMaxMs: this.grant.maxDurationSec * 1000,
+      sessionRemainingMs: Math.max(
+        0, this.grant.maxDurationSec * 1000 - (this.startedAt ? Date.now() - this.startedAt : 0),
+      ),
+      turnCount: this.diag.turnsSent,
+      newTurnsBlocked: this.newTurnsBlocked,
+      sessionEndReason: this.diag.sessionEndReason ?? null,
+      llmTextChars: this.diag.llmTextChars ?? null,
+      ttsTextChars: this.diag.ttsTextChars ?? null,
+      ttsRequests: this.diag.ttsRequests ?? null,
+      assistantResponseCompleted: this.diag.assistantResponseCompleted ?? null,
+      responseInterruptReason: this.diag.responseInterruptReason ?? null,
+      finalTextTail: this.diag.finalTextTail ?? null,
+      playbackQueuedChunks: this.player?.queuedChunks ?? 0,
+      playbackCompletedChunks: this.player?.completedChunks ?? 0,
       /*
        * EVERY BYTE IS IN EXACTLY ONE CATEGORY.
        *
@@ -1385,6 +1450,12 @@ export class VoiceSession {
     // Not while the assistant holds the floor, and not while a turn it has
     // already been given is still being answered.
     if (this.micGated || this.muted || this.turnInFlight || this.closed) return;
+    /*
+     * The session's time is up: no NEW turn starts, but one already speaking
+     * is allowed to finish. Cutting the assistant off in the middle of a
+     * sentence to enforce a clock reads as a crash, not as an ending.
+     */
+    if (this.newTurnsBlocked) return;
     // Nothing was said. Background noise is not a turn.
     if (this.liveSpeechMs < END_TURN_MIN_SPEECH_MS) return;
 
@@ -1564,6 +1635,10 @@ export class VoiceSession {
     if (!this.liveResampler) {
       this.liveResampler = new Resampler(this.audioContext.sampleRate, rate);
     }
+    // The rate the grant actually negotiated, so every duration and label the
+    // router reports is in the unit the socket is really carrying.
+    this.router.configure(rate);
+    this.diag.liveSendRate = rate;
 
     /*
      * THE HELD SPEECH GOES FIRST, IN ORDER, BEFORE ANYTHING NEW.
@@ -1729,7 +1804,27 @@ export class VoiceSession {
     const sustained = (this.diag.lastEndTurnSpeechMs ?? 0) >= SWITCH_PROBE_SPEECH_MS;
     const unresolved = resolution.resolutionReason === 'STICKY_HELD' || resolution.confidence < 0.5;
     this.weakTurns = sustained && unresolved ? this.weakTurns + 1 : 0;
-    if (this.weakTurns >= SWITCH_PROBE_AFTER_TURNS) {
+    /*
+     * THE FIRST TURN IS THE ONE A VISITOR JUDGES US ON.
+     *
+     * Somebody who opens a Georgian page and speaks Arabic gets Arabic
+     * rendered in Georgian letters, and under the two-turn rule they have to
+     * sit through that twice before the session will even ask what language
+     * they are speaking. That was reported, accurately, as "Arabic does not
+     * work".
+     *
+     * One turn is enough HERE because the sustained-speech guard is doing the
+     * protective work, not the count: "Abba" was 4 letters of a clipped word
+     * and never reached SWITCH_PROBE_SPEECH_MS, so the case that started all
+     * of this still cannot earn a probe at any threshold. A whole sentence
+     * that the prior could not make sense of is different evidence.
+     *
+     * After a turn has resolved once, the session is established and the
+     * full two-turn rule applies again.
+     */
+    const firstTurn = this.diag.turnsSent <= 1;
+    const needed = firstTurn ? 1 : SWITCH_PROBE_AFTER_TURNS;
+    if (this.weakTurns >= needed) {
       this.probeLanguageNext = true;
       this.weakTurns = 0;
     }
@@ -2178,6 +2273,18 @@ export class VoiceSession {
              * These are offsets from T3 and are never subtracted from a
              * browser timestamp -- see LatencyMarks.
              */
+            /*
+             * A reply that ran out of room is not a short reply. Recorded
+             * here so the panel can say so, because from the audio alone a
+             * visitor can only tell that it stopped.
+             */
+            this.diag.llmTextChars = event.llmTextChars ?? null;
+            this.diag.ttsTextChars = event.ttsTextChars ?? null;
+            this.diag.ttsRequests = event.ttsRequests ?? null;
+            this.diag.assistantResponseCompleted = event.assistantResponseCompleted ?? null;
+            this.diag.responseInterruptReason = event.responseInterruptReason ?? null;
+            this.diag.finalTextTail = event.finalTextTail ?? null;
+
             const timing = event.timing;
             if (timing) {
               if (typeof timing.llmFirstTokenMs === 'number') {
@@ -2498,6 +2605,53 @@ export class VoiceSession {
     if (!target || this.closed || !this.live) return;
     await this.rotateLive();
     this.diag.lastRelisten = target;
+  }
+
+  /**
+   * THE TWO MINUTES ARE UP.
+   *
+   * Not a guillotine. The previous behaviour called stop() from inside a
+   * 250ms interval and set LIMIT_REACHED in the same breath -- so a session
+   * that reached its limit while the assistant was speaking cut the voice off
+   * mid-sentence, and a session that reached it at any other moment simply
+   * stopped answering with the panel still reading LISTENING. A visitor has
+   * no way to tell either of those from a crash.
+   *
+   * So: new turns stop being accepted, whatever is already being said is
+   * allowed to finish inside a bounded grace, and the session then ends with
+   * a reason somebody can read.
+   */
+  reachSessionLimit(): void {
+    if (this.newTurnsBlocked || this.closed) return;
+    this.newTurnsBlocked = true;
+    this.sessionEndReason = 'SESSION_TIME_LIMIT';
+    this.diag.sessionEndReason = this.sessionEndReason;
+    this.publishDiagnostics();
+
+    const speaking = this.turnInFlight || this.state === 'RESPONDING';
+    if (!speaking) { void this.endForLimit(); return; }
+
+    // Let the sentence land. Bounded, because a reply that never completes
+    // must not hold the session open for ever either.
+    this.setState('RESPONDING');
+    const deadline = Date.now() + SESSION_LIMIT_GRACE_MS;
+    const waitHandle = window.setInterval(() => {
+      const done = !this.turnInFlight && this.state !== 'RESPONDING';
+      if (done || Date.now() > deadline) {
+        window.clearInterval(waitHandle);
+        if (!done) this.diag.sessionEndReason = 'SESSION_TIME_LIMIT_GRACE_EXPIRED';
+        void this.endForLimit();
+      }
+    }, 120);
+  }
+
+  private async endForLimit(): Promise<void> {
+    if (this.closed) return;
+    await this.stop('allowance');
+    // After stop(), so nothing inside it can overwrite the state the visitor
+    // is left looking at.
+    this.setState('LIMIT_REACHED');
+    this.publishDiagnostics();
   }
 
   /** Hand the floor back. Only from here, so the mic cannot open mid-reply. */

@@ -88,6 +88,22 @@ export function AiTalkDiagnostics(
       maxPreReadyBufferBytes: d.maxPreReadyBufferBytes ?? null,
       bufferDurationMs: d.bufferDurationMs ?? null,
       bytesAccountedFor: d.bytesAccountedFor ?? null,
+      // Why a session stopped answering, and whether the last answer finished.
+      sessionElapsedMs: d.sessionElapsedMs ?? null,
+      sessionRemainingMs: d.sessionRemainingMs ?? null,
+      sessionMaxMs: d.sessionMaxMs ?? null,
+      turnCount: d.turnCount ?? null,
+      newTurnsBlocked: d.newTurnsBlocked ?? null,
+      sessionEndReason: d.sessionEndReason ?? null,
+      llmTextChars: d.llmTextChars ?? null,
+      ttsTextChars: d.ttsTextChars ?? null,
+      ttsRequests: d.ttsRequests ?? null,
+      assistantResponseCompleted: d.assistantResponseCompleted ?? null,
+      responseInterruptReason: d.responseInterruptReason ?? null,
+      finalTextTail: d.finalTextTail ?? null,
+      playbackQueuedChunks: d.playbackQueuedChunks ?? null,
+      playbackCompletedChunks: d.playbackCompletedChunks ?? null,
+      gateReleases: d.gateReleases ?? null,
       turns: d.turnTrace ?? [],
     }, null, 1);
     void navigator.clipboard?.writeText(payload).catch(() => {});
@@ -270,6 +286,41 @@ export function AiTalkDiagnostics(
         value={`${d.droppedPreReadyBytes ?? 0} B`}
         tone={(d.droppedPreReadyBytes ?? 0) > 0 ? 'bad' : 'good'}
       />
+
+      {/* THE SESSION'S CLOCK. A conversation that stops answering must be
+          able to say whether its two minutes ran out. */}
+      <div className="mt-1.5 border-t border-white/10 pt-1.5">
+        <Row
+          label="Session"
+          value={`${Math.round((d.sessionElapsedMs ?? 0) / 1000)}s of `
+            + `${Math.round((d.sessionMaxMs ?? 0) / 1000)}s · ${d.turnCount ?? 0} turns`}
+        />
+        <Row
+          label="Ended because"
+          value={d.sessionEndReason ?? (d.newTurnsBlocked ? 'time up, finishing reply' : '—')}
+          tone={d.sessionEndReason ? 'bad' : 'good'}
+        />
+        {/* A long answer that stopped early looks exactly like a short one
+            from the outside. This is the difference, stated. */}
+        <Row
+          label="Answer finished"
+          value={d.assistantResponseCompleted === null || d.assistantResponseCompleted === undefined
+            ? '—'
+            : d.assistantResponseCompleted ? 'YES' : `NO — ${d.responseInterruptReason ?? 'cut off'}`}
+          tone={d.assistantResponseCompleted === false ? 'bad' : 'good'}
+        />
+        <Row
+          label="  text → speech"
+          value={`${d.llmTextChars ?? 0} → ${d.ttsTextChars ?? 0} chars, ${d.ttsRequests ?? 0} req`}
+        />
+        <Row
+          label="  audio chunks"
+          value={`${d.playbackCompletedChunks ?? 0} / ${d.playbackQueuedChunks ?? 0} played`}
+          tone={(d.playbackQueuedChunks ?? 0) > 0
+            && d.playbackCompletedChunks === d.playbackQueuedChunks ? 'good' : 'idle'}
+        />
+        {d.finalTextTail ? <Row label="  last words" value={d.finalTextTail} /> : null}
+      </div>
 
       <button
         type="button"

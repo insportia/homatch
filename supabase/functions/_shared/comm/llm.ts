@@ -234,6 +234,21 @@ export interface LlmStreamEvent {
   text?: string;
   error?: string;
   status?: number | null;
+  /*
+   * DID THE MODEL FINISH ITS SENTENCE?
+   *
+   * The Responses API ends a truncated answer with `response.incomplete` and
+   * a reason, and this loop used to handle `completed`, `failed` and `error`
+   * and quietly ignore `incomplete`. So a reply that hit max_output_tokens
+   * arrived here as a shorter reply -- indistinguishable from a short one --
+   * and was synthesised and spoken with its last sentence unfinished. A
+   * visitor asked, in Georgian, why it had stopped talking.
+   *
+   * Long answers are the only ones that can hit the cap, and Georgian costs
+   * far more tokens per word than English, which is why it showed up there.
+   */
+  incomplete?: boolean;
+  incompleteReason?: string | null;
   /**
    * Where the wait before the first word actually went.
    *
@@ -384,6 +399,14 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
             }
             sawText = true;
             yield { type: 'delta', text: event.delta };
+          } else if (event.type === 'response.completed' && event.response?.status === 'incomplete') {
+            yield {
+              type: 'meta',
+              incomplete: true,
+              incompleteReason: event.response?.incomplete_details?.reason ?? 'unknown',
+              inputTokens: event.response.usage?.input_tokens ?? 0,
+              outputTokens: event.response.usage?.output_tokens ?? 0,
+            };
           } else if (event.type === 'response.completed' && event.response?.usage) {
             // How much prompt the model had to read. The only honest way to
             // answer "is the prompt too big", and it costs nothing to carry.
@@ -391,6 +414,19 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
               type: 'meta',
               inputTokens: event.response.usage.input_tokens ?? 0,
               outputTokens: event.response.usage.output_tokens ?? 0,
+            };
+          } else if (event.type === 'response.incomplete') {
+            /*
+             * Truncated, not failed. The text already yielded is real and
+             * worth speaking -- cutting it entirely would turn a clipped
+             * answer into no answer -- but the caller has to KNOW, so it can
+             * say so rather than let the silence read as the end of a
+             * thought.
+             */
+            yield {
+              type: 'meta',
+              incomplete: true,
+              incompleteReason: event.response?.incomplete_details?.reason ?? 'unknown',
             };
           } else if (event.type === 'response.failed' || event.type === 'error') {
             yield { type: 'error', error: 'response_failed' };

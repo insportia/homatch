@@ -654,8 +654,16 @@ export function AiTalkPanel({ className }: { className?: string }) {
       if (result?.intelligence) setIntelligence(result.intelligence);
       if (typeof result?.remainingSeconds === 'number') setRemaining(result.remainingSeconds);
       if (result?.ended) {
-        await endSession('allowance');
-        setState('LIMIT_REACHED');
+        /*
+         * The SERVER says the allowance is gone. Ended the same way the
+         * client's own clock ends it -- new turns refused, whatever is being
+         * spoken allowed to land, then a state the visitor can read. Calling
+         * endSession() straight from here was the other way to cut somebody
+         * off in the middle of an answer.
+         */
+        const live = sessionRef.current;
+        if (live) live.reachSessionLimit();
+        else { await endSession('allowance'); setState('LIMIT_REACHED'); }
       }
     }, 5000);
   }, [language, endSession, debug]);

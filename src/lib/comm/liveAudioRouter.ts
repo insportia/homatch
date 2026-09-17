@@ -74,13 +74,29 @@ export class LiveAudioRouter {
   /** Counts every flush, so "exactly once" is checkable rather than asserted. */
   flushes = 0;
 
-  private readonly opts: RouterOptions;
+  private opts: RouterOptions;
 
   constructor(opts: RouterOptions) {
     this.opts = opts;
     this.now = opts.now ?? Date.now;
   }
 
+  /**
+   * The rate the socket actually negotiated.
+   *
+   * The router is built before a grant exists, so it starts on a default --
+   * and that default is LIVE_SAMPLE_RATE, which is 24,000 because OpenAI's
+   * realtime socket runs at 24k. Google's grant asks for 16,000. Nothing
+   * about the audio was wrong (the resampler has always used the grant's
+   * rate), but every number in here that is expressed in TIME was computed
+   * against the wrong one, and `bufferFormat` told a real device it was
+   * sending 24 kHz when it was sending 16.
+   */
+  configure(sampleRate: number): void {
+    if (sampleRate > 0) this.opts = { ...this.opts, sampleRate };
+  }
+
+  get sampleRate(): number { return this.opts.sampleRate; }
   get currentPhase(): LivePhase { return this.phase; }
   get bufferedBytes(): number { return this.samples * 2; }
   get bufferedMs(): number { return (this.samples / this.opts.sampleRate) * 1000; }

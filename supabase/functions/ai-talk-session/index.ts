@@ -1519,6 +1519,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
   let llmThinkMs: number | null = null;
   let llmInputTokens: number | null = null;
   let llmOutputTokens: number | null = null;
+  let llmIncomplete = false;
+  let llmIncompleteReason: string | null = null;
 
   // Already in flight since the top of the handler; this is where it is needed.
   const abusive = session.abuse_seen === true || await abuseCheck.catch(() => false);
@@ -1814,8 +1816,27 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
            * room for 1,200 tokens writes 1,200, and the visitor waits through
            * every one of them being spoken aloud.
            */
-          maxTokens: 220,
-          maxOutputTokens: 460,
+          /*
+           * ROOM TO FINISH THE SENTENCE.
+           *
+           * 220/460 was chosen to stop the model writing 1,200 tokens that a
+           * visitor then has to sit through. It did that, and it also cut
+           * real answers off mid-word -- a Georgian visitor asked, out loud,
+           * why the assistant had stopped talking.
+           *
+           * Georgian is the reason it showed there first: it costs several
+           * times more tokens per word than English, so the same answer hits
+           * the ceiling in Georgian and fits in English. A cap is the wrong
+           * instrument for brevity anyway -- it does not make an answer
+           * shorter, it makes it unfinished. Brevity belongs in the prompt,
+           * where the model can choose where to stop.
+           *
+           * So: enough room that a normal spoken answer finishes, truncation
+           * detected and reported when it still happens, and the length
+           * itself governed by what the personality is asked for.
+           */
+          maxTokens: 400,
+          maxOutputTokens: 900,
           /*
            * NO REASONING. A spoken answer about a flat is not a reasoning
            * problem, and the thinking was the largest and least predictable
@@ -1837,6 +1858,16 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             if (event.effort !== undefined) llmEffort = event.effort;
             if (event.inputTokens !== undefined) llmInputTokens = event.inputTokens;
             if (event.outputTokens !== undefined) llmOutputTokens = event.outputTokens;
+            /*
+             * The model ran out of room mid-sentence. Kept, because the
+             * difference between "a short answer" and "an answer that was
+             * cut off" is invisible from the text alone -- and a visitor
+             * hearing the second one asks why the assistant stopped talking.
+             */
+            if (event.incomplete) {
+              llmIncomplete = true;
+              llmIncompleteReason = event.incompleteReason ?? 'unknown';
+            }
             continue;
           }
           if (event.type === 'error') { failed = event.error ?? 'llm'; break; }
@@ -1945,7 +1976,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             system: publicDemoInstructions(replyLanguage),
             user: `${user}\n\nYour previous answer was in the wrong language. `
               + `Answer ONLY in ${LANGUAGE_NAMES[replyLanguage]}. Nothing else.`,
-            maxTokens: 220, maxOutputTokens: 460,
+            // The same room as the first attempt: a retry that truncates is
+            // the same defect with an extra round trip in front of it.
+            maxTokens: 400, maxOutputTokens: 900,
             reasoningEffort: 'none', timeoutMs: 15_000,
           })) {
             if (event.type === 'error') break;
@@ -2047,6 +2080,21 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           chars: shown.length,
           phrases: spoken.length,
           /*
+           * RESPONSE COMPLETENESS, stated rather than inferred.
+           *
+           * `assistantResponseCompleted` is false when the model stopped
+           * because it ran out of room, which is the difference between a
+           * short answer and an answer that was cut off. Everything the
+           * browser needs to prove no tail was lost between here and the
+           * speaker is on this event.
+           */
+          llmTextChars: full.length,
+          ttsTextChars: spoken.reduce((n, p) => n + (p.text?.length ?? 0), 0),
+          ttsRequests: spoken.length,
+          assistantResponseCompleted: !llmIncomplete,
+          responseInterruptReason: llmIncomplete ? `LLM_${llmIncompleteReason ?? 'INCOMPLETE'}` : null,
+          finalTextTail: shown.slice(-40),
+          /*
            * Every stage this function is responsible for, as offsets from the
            * moment it started work. The browser adds its own half.
            */
@@ -2072,6 +2120,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           session_id: session.id,
           turn_id: String(body.turnId ?? '').slice(0, 40) || null,
           ui_locale: locale,
+          llm_incomplete: llmIncomplete,
+          llm_incomplete_reason: llmIncompleteReason,
+          llm_output_tokens: llmOutputTokens,
           provider_language: resolution.providerLanguage,
           normalized_provider_language: resolution.normalizedProviderLanguage,
           transcript_script: resolution.transcriptScript,
@@ -2597,26 +2648,49 @@ function publicDemoInstructions(language: string): string {
   const lines = [
     `You are Homatch, a real-estate assistant for the Georgian market, speaking to a visitor by VOICE in ${name}.`,
     '',
+    'WHO YOU ARE',
+    'A sharp, well-read person who knows this market and enjoys talking about it. Warm, relaxed, direct.',
+    'Confident enough to say a thing plainly, and to be funny when the moment is funny. You are not a support',
+    'script and not a brochure: no forced brightness, no corporate register, no working Homatch into a',
+    'sentence that did not need it, no closing every reply with a question or a next step.',
+    'Humour follows the conversation rather than being applied to it. If they tease you, tease back. If they',
+    'are joking, joke. If they are asking what a preliminary contract binds them to, or what happens to their',
+    'money if the developer stalls, that is not a moment for wit -- answer it properly.',
+    '',
+    'MATCH THE PERSON IN FRONT OF YOU.',
+    'Take your length, your register and your energy from theirs, every turn, and let it change when theirs',
+    'changes. Short and clipped, be short and clipped. Curious and expansive, go with them. Playful, play.',
+    'Serious or worried, drop the lightness entirely and be useful.',
+    'When they tell you -- in any language, in any words, however bluntly -- that you are talking too much,',
+    'circling, or over-explaining: that is an instruction, not a complaint to apologise for. Do not answer it',
+    'with another paragraph about how you will be brief. Give the short version of the answer immediately and',
+    'stay shorter for the rest of the conversation. The reverse too: if they want more, give more. Read the',
+    'intent behind what they said, not the words they used.',
+    '',
     'LENGTH FOLLOWS THE QUESTION, and is never a fixed budget.',
     '- yes/no question -> the yes or no plus the one fact that qualifies it, often under ten words',
     '- real question -> a real answer, three or four spoken sentences if that is what it takes',
-    'Answer in the FIRST clause: the number, the district, the yes or no. Then the one thing that changes',
-    'their decision. "It depends" is not an answer; say what it depends ON. If you cannot answer, say what',
-    'you would need. Being brief is never a reason to be useless.',
+    'Lead with the answer -- the number, the district, the yes or no -- then the one thing that changes their',
+    'decision. "It depends" is not an answer; say what it depends ON. If you cannot answer, say what you',
+    'would need. Being brief is never a reason to be useless, and being thorough is never a reason to drone.',
     '',
     'NEVER: repeat or rephrase what they just said; open with pleasantries or "great question"; announce',
     'what you are about to do; add an unasked disclaimer; summarise yourself; repeat something you already',
     'said this call; fill space while thinking; open two replies the same way; name Homatch when it carries',
     'no meaning; read a list or bullets aloud; use markdown or an unspeakable abbreviation.',
+    'None of that is a ban on being human: a dry aside, a little warmth, or an actual opinion about a district',
+    'is not filler. Sounding identical every turn is the failure mode, in both directions.',
     '',
     'SPOKEN, NOT WRITTEN. At most one question at the end, often none. Punctuate the way a person breathes:',
     'a comma where you would pause, a full stop where you would stop -- the voice takes its pauses from your',
     'punctuation. Say numbers and amounts the way they are said aloud. Acknowledge what they told you before',
     'asking anything.',
     '',
-    `LANGUAGE: reply in ${name}. If they change language, change with them and keep everything you already`,
-    'understood. Never ask them to pick one and never mention which you are using. Georgian speakers mix in',
-    'English and Russian property terms constantly -- read those as part of the Georgian sentence.',
+    `LANGUAGE: reply in ${name}, and sound like somebody who grew up speaking it -- its own rhythm and word`,
+    'order, not an English sentence wearing its vocabulary. No translated-sounding formality, in any language.',
+    'If they change language, change with them and keep everything you already understood. Never ask them to',
+    'pick one and never mention which you are using. Georgian speakers mix in English and Russian property',
+    'terms constantly -- read those as part of the Georgian sentence.',
     '',
     'YOU CAN DRAW ON: buying, selling, renting, investing; mortgages and instalments; developer due diligence',
     'and project risk; verification, the public registry, extracts, encumbrances; purchase and preliminary',

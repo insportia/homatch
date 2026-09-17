@@ -175,6 +175,21 @@ function toConverseEvent(name: string, data: Record<string, unknown>): ConverseE
         firstAudioMs: num(data.firstAudioMs),
         totalMs: num(data.totalMs),
         ttsMs: num(data.ttsMs),
+        /*
+         * WHETHER THE ANSWER ACTUALLY FINISHED.
+         *
+         * A reply that ran out of output tokens arrives looking exactly like
+         * a short reply, and is spoken with its last sentence unfinished.
+         * The server knows the difference and now says so.
+         */
+        llmTextChars: num(data.llmTextChars),
+        ttsTextChars: num(data.ttsTextChars),
+        ttsRequests: num(data.ttsRequests),
+        assistantResponseCompleted: typeof data.assistantResponseCompleted === 'boolean'
+          ? data.assistantResponseCompleted : null,
+        responseInterruptReason: typeof data.responseInterruptReason === 'string'
+          ? data.responseInterruptReason : null,
+        finalTextTail: typeof data.finalTextTail === 'string' ? data.finalTextTail : null,
         timing: t ? {
           llmFirstTokenMs: num(t.llmFirstTokenMs),
           ttsRequestMs: num(t.ttsRequestMs),

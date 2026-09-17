@@ -178,6 +178,14 @@ export class PcmStreamPlayer {
    * the assistant answering a question that was cancelled, over the top of the
    * one that replaced it.
    */
+  private completed = 0;
+
+  /** Pieces handed to the audio clock for this player's lifetime. */
+  get queuedChunks(): number { return this.stats.batches; }
+
+  /** Pieces the clock has finished playing. Equal to queued once drained. */
+  get completedChunks(): number { return this.completed; }
+
   push(pcmBase64: string, sampleRate: number, generation: number): void {
     if (generation !== this.generation) { this.stats.stale += 1; return; }
 
@@ -289,6 +297,9 @@ export class PcmStreamPlayer {
     source.onended = () => {
       const i = this.sources.indexOf(source);
       if (i !== -1) this.sources.splice(i, 1);
+      // Counted so "did the whole answer play" is answerable from a trace
+      // rather than from whether anybody was listening at the time.
+      this.completed += 1;
     };
   }
 

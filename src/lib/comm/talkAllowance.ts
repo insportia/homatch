@@ -32,7 +32,16 @@ export interface TalkLimits {
  * to unlimited.
  */
 export const DEFAULT_TALK_LIMITS: TalkLimits = {
-  sessionSeconds: 75,
+  /*
+   * ONE CONVERSATION IS TWO MINUTES.
+   *
+   * 75 here, and 90 in production, was the freeze: four unhurried Georgian
+   * turns reach it, and reaching it looked like the assistant had simply
+   * stopped answering. TIME is the only thing that governs a session -- there
+   * is deliberately no turn ceiling inside it, so twelve short exchanges are
+   * as valid as four long ones.
+   */
+  sessionSeconds: 120,
   dailySeconds: 240,
   globalConcurrent: 25,
   perVisitorConcurrent: 1,

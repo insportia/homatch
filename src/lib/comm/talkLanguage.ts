@@ -133,6 +133,7 @@ export type ResolutionReason =
   | 'STICKY_LATIN'        // Latin text, no usable label, session already settled
   | 'LOCALE_LATIN'        // Latin text, nothing else, the UI locale is Latin
   | 'STICKY_HELD'         // evidence too weak to move an established session
+  | 'LATIN_FROM_PINNED'   // substantial Latin text out of a non-Latin-pinned socket
   | 'STICKY'              // no evidence at all, session continues
   | 'LOCALE'              // no session yet, fall back to the interface language
   | 'DEFAULT';            // nothing at all to go on
@@ -309,6 +310,29 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
        * corruption: Georgian audio transcribed as "Wackisch" or "Karki".
        * Deliberately weak, so stickiness keeps the established language.
        */
+      /*
+       * ...UNLESS THE LATIN IS SUBSTANTIAL AND CAME OUT OF A SOCKET PINNED TO
+       * A NON-LATIN LANGUAGE. Then it is evidence, not corruption.
+       *
+       * The socket is pinned to the session's language, so the provider's
+       * label is its configuration, not a detection: a ru-RU socket says
+       * "ru" whatever it hears. On a real Windows session the visitor moved
+       * from Russian to a clear English sentence; the ru-RU socket wrote it
+       * in Latin letters, the label still said ru, and the line below held
+       * the session in Russian at 0.2. The reply came back in Russian, twice.
+       *
+       * The bar is the one PROVIDER_LATIN already uses to leave a non-Latin
+       * session -- four words or fifteen letters -- so "Wackisch", "Karki",
+       * or a Georgian speaker's "Homatch ROI" still cannot do this. Which
+       * Latin language is settled by the text (Turkish has letters English
+       * does not) and otherwise by English.
+       */
+      const anchorLang = previous ?? locale;
+      const latinWords = transcript.trim().split(/\s+/).filter(Boolean).length;
+      const substantialLatin = evidence.ratio >= 0.5 && (latinWords >= 4 || evidence.letters >= 15);
+      if (substantialLatin && anchorLang && !LATIN_LANGUAGES.includes(anchorLang)) {
+        return decide(looksTurkish(transcript) ? 'tr' : 'en', 'LATIN_FROM_PINNED', 0.7);
+      }
       return decide(previous ?? locale ?? fallback, 'STICKY_HELD', 0.2);
     }
   }
@@ -327,6 +351,12 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
  * which is honest: nothing cheap can tell those apart, and pretending
  * otherwise would reject correct answers.
  */
+/** Letters that exist in Turkish and not in English, in either case. */
+const TURKISH_LETTERS = /[çğıöşüÇĞİÖŞÜ]/;
+function looksTurkish(text: string): boolean {
+  return TURKISH_LETTERS.test(text);
+}
+
 export function textMatchesLanguage(text: string, language: TalkLanguage): boolean {
   const evidence = scriptEvidence(text);
   // Too little to judge. A three-word answer is not a language violation.

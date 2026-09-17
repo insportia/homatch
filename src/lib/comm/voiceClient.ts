@@ -1973,8 +1973,18 @@ export class VoiceSession {
      * After a turn has resolved once, the session is established and the
      * full two-turn rule applies again.
      */
-    const firstTurn = this.diag.turnsSent <= 1;
-    const needed = firstTurn ? 1 : SWITCH_PROBE_AFTER_TURNS;
+    /*
+     * ONE sustained turn the prior could not make sense of earns the probe
+     * -- on every turn, not only the first. Script evidence handles a move
+     * INTO a non-Latin language and LATIN_FROM_PINNED handles a move out of
+     * one; what neither can see is a non-Latin language spoken into a
+     * Latin-pinned socket, which comes back as Latin nonsense. The probe is
+     * the only instrument for that, it costs one socket, and a genuine turn
+     * in the session's own language resolves by SCRIPT at confidence 1 and
+     * never reaches here. The count was never the protection; the
+     * sustained-speech guard is.
+     */
+    const needed = 1;
     if (this.weakTurns >= needed) {
       this.probeLanguageNext = true;
       this.weakTurns = 0;

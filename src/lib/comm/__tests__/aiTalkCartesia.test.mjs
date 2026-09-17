@@ -625,7 +625,12 @@ test('every turn carries a generation and an id, and stale events are dropped', 
 test('a new session starts with no language, transcript, destination or queue from the last one', () => {
   const panel = read('src/components/home/AiTalkPanel.tsx');
   const at = panel.indexOf('const start = useCallback(async () => {');
-  const body = panel.slice(at, at + 900);
+  // The whole reset block -- up to the request that starts the session --
+  // rather than a fixed 900 characters, which an explanatory comment on
+  // one of the resets pushed the last reset out of.
+  const body = panel.slice(at, panel.indexOf("action: 'start'", at));
+  assert.ok(body.includes('languageRef.current = null'),
+    'start() must reset languageRef: it is what every grant languageCode is built from');
   for (const reset of ['setTurns([])', 'setDestination(null)', 'setFailure(null)',
                        'detectedRef.current = null', 'historyRef.current = []']) {
     assert.ok(body.includes(reset), `start() must reset: ${reset}`);

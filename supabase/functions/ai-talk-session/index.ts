@@ -1540,6 +1540,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
       ? `Still unknown, in order of usefulness: ${gaps.join('; ')}.\n`
       : 'Enough is known to stop interrogating. Be useful about what they already told you.\n',
     `Visitor just said: "${said}"`,
+    // The one fact the reply language rests on, stated with the turn rather
+    // than inferred from the history: answer in THIS utterance's language.
+    `Current turn language: ${LANGUAGE_NAMES[replyLanguage] ?? replyLanguage}. Reply in it, naturally, without saying so.`,
     '',
     // Said only when it is true, so an ordinary turn carries no instruction
     // about insults at all.

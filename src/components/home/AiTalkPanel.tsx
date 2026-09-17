@@ -388,6 +388,17 @@ export function AiTalkPanel({ className }: { className?: string }) {
     setMuted(false);
     setDestination(null);
     detectedRef.current = null;
+    /*
+     * A NEW SESSION STARTS FROM THE PAGE, NOT FROM THE LAST CONVERSATION.
+     *
+     * languageRef is what every grant's languageCode is built from, and it
+     * was the one ref this reset forgot. A real Windows session ended in
+     * Russian; the next Start, minutes later, opened every socket as ru-RU
+     * for a speaker who was no longer speaking Russian. Four sockets, 85-96
+     * frames each, not one usable final -- so each turn sat on "Thinking"
+     * for the no-final window, recovered, and did it again.
+     */
+    languageRef.current = null;
     knownRef.current = null;
     historyRef.current = [];
 

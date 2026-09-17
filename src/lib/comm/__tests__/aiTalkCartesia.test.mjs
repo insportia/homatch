@@ -376,7 +376,10 @@ test('the language the recogniser heard is carried back, not thrown away', () =>
     .replace(/^\s*\/\/.*$/gm, '');
   // It reaches the resolver as EVIDENCE now, not as an answer, which is the
   // distinction that stopped Korean entering a Georgian session.
-  assert.ok(/providerLanguage: detected/.test(client),
+  // Still the recogniser's answer -- carried as `heardBy`, which starts as
+  // `detected` and is replaced only when the SAME audio was re-heard in a
+  // named language because the pinned socket plainly heard the wrong one.
+  assert.ok(/let heardBy = detected/.test(client) && /providerLanguage: heardBy/.test(client),
     'the recogniser answer must reach the resolver');
   assert.ok(/resolveTurnLanguage\(/.test(client),
     'the turn language must come from the one resolver');

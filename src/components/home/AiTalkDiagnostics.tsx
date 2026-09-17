@@ -117,6 +117,9 @@ export function AiTalkDiagnostics(
       configuredSessionSeconds: d.configuredSessionSeconds ?? null,
       effectiveSessionSeconds: d.effectiveSessionSeconds ?? null,
       adminTechnicalCeilingSeconds: d.adminTechnicalCeilingSeconds ?? null,
+      // Same-turn language recovery: the audio was re-heard in a named language.
+      sameTurnRecoveries: d.sameTurnRecoveries ?? null,
+      lastRecovery: d.lastRecovery ?? null,
       gateReleases: d.gateReleases ?? null,
       // The final that never came, and what was done about it.
       noFinalCount: d.noFinalCount ?? null,
@@ -265,6 +268,15 @@ export function AiTalkDiagnostics(
             ? 'not interrupted yet' : `${d.lastBargeStopMs} ms`}
         />
         <Row label="Turns traced" value={String(d.turnTrace?.length ?? 0)} />
+        {/* The pinned recogniser heard the wrong language and the same audio
+            was heard again in a named one. Counted; never `auto`. */}
+        <Row
+          label="Same-turn recovery"
+          value={d.lastRecovery
+            ? `${d.sameTurnRecoveries ?? 0} · last → ${d.lastRecovery.hint} in ${d.lastRecovery.ms} ms, ${d.lastRecovery.used ? 'used' : 'not used'}`
+            : String(d.sameTurnRecoveries ?? 0)}
+          tone={(d.sameTurnRecoveries ?? 0) > 0 ? 'idle' : 'good'}
+        />
         {/* Every socket that asked Google to guess. The prior is the
             configuration now, so this should stay at zero unless sustained
             speech repeatedly failed to resolve against it. */}

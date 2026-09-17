@@ -49,6 +49,8 @@ import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } 
 import { LiveAudioRouter, type LivePhase } from './liveAudioRouter.ts';
 import { FinalWatch, type FinalDecision } from './finalWatch.ts';
 import { gateWatchdog } from './gateWatchdog.ts';
+import { planRecovery } from './sameTurnRecovery.ts';
+import { scriptEvidence } from './talkLanguage.ts';
 import { ADMIN_SESSION_SECONDS } from './talkAllowance.ts';
 
 
@@ -301,6 +303,9 @@ export interface VoiceDiagnostics {
   playbackInterruptReason: string | null;
   ttsCompletedRequests: number | null;
   ttsFinalTail: string | null;
+  /* Same-turn language recovery: the audio was re-heard, once, in a named language. */
+  sameTurnRecoveries: number;
+  lastRecovery: { from: string | null; hint: string; ms: number; used: boolean; ratio: number; words: number } | null;
   usageTier: string | null;
   configuredSessionSeconds: number | null;
   effectiveSessionSeconds: number;
@@ -480,7 +485,8 @@ export interface VoiceMilestone {
     | 'assistant_text' | 'tts_audio_received' | 'playback_started'
     | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition'
   | 'no_final_recovered'
-  | 'inaudible_tail' | 'failed';
+  | 'inaudible_tail'
+  | 'same_turn_recovered' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
@@ -568,6 +574,24 @@ const MIC_GATE_MAX_MS = 15_000;
  * legitimately busy is held for as long as the reply takes, up to this.
  */
 const MIC_GATE_HARD_MAX_MS = 120_000;
+
+/*
+ * How much of the current utterance is kept, in canonical 16 kHz PCM, so it
+ * can be transcribed a second time if the pinned recogniser plainly heard the
+ * wrong language. Twenty seconds is 640 kB and longer than any turn the
+ * endpointer lets through.
+ */
+const UTTERANCE_KEEP_MS = 20_000;
+
+/** Milliseconds between two stamps, or null when either is missing. */
+function gap(a: number | null | undefined, b: number | null | undefined): number | null {
+  return a && b ? b - a : null;
+}
+
+/** The script each recoverable language writes in; null means any. */
+const SCRIPT_FOR: Record<string, 'georgian' | 'cyrillic' | 'arabic' | 'hebrew' | null> = {
+  ka: 'georgian', ru: 'cyrillic', ar: 'arabic', he: 'hebrew', en: null, tr: null,
+};
 
 /**
  * How long an already-started answer may keep speaking after the session's
@@ -713,6 +737,12 @@ export class VoiceSession {
   private micGatedAt = 0;
   /** Who cut the current reply's audio, if anyone. Null on a normal finish. */
   private playbackInterruptReason: string | null = null;
+  /** The utterance being spoken right now, as sent to the socket. See UTTERANCE_KEEP_MS. */
+  private utterancePcm: Int16Array[] = [];
+  private utteranceSamples = 0;
+  private sameTurnRecoveries = 0;
+  /** The last non-Latin language this session actually resolved to. */
+  private lastNonLatin: string | null = null;
   /** The tier the server granted, so 900s is read as an admin ceiling, not a bug. */
   private grantInfo: { usageTier: string | null; configuredSessionSeconds: number | null } = {
     usageTier: null, configuredSessionSeconds: null,
@@ -936,6 +966,8 @@ export class VoiceSession {
     finalTextTail: null as string | null,
     ttsCompletedRequests: null as number | null, ttsFinalTail: null as string | null,
     responseId: null as string | null,
+    sameTurnRecoveries: 0,
+    lastRecovery: null as { from: string | null; hint: string; ms: number; used: boolean; ratio: number; words: number } | null,
     assistantAudibleResponseCompleted: null as boolean | null,
     playbackQueueDrained: null as boolean | null,
     playbackInterruptReason: null as string | null,
@@ -1176,6 +1208,8 @@ export class VoiceSession {
       playbackInterruptReason: this.diag.playbackInterruptReason ?? null,
       ttsCompletedRequests: this.diag.ttsCompletedRequests ?? null,
       ttsFinalTail: this.diag.ttsFinalTail ?? null,
+      sameTurnRecoveries: this.sameTurnRecoveries,
+      lastRecovery: this.diag.lastRecovery ?? null,
       usageTier: this.grantInfo.usageTier,
       configuredSessionSeconds: this.grantInfo.configuredSessionSeconds,
       effectiveSessionSeconds: this.grant.maxDurationSec,
@@ -1485,6 +1519,14 @@ export class VoiceSession {
           this.diag.samplesCaptured += out.length;
           this.diag.bytesSent += pcm.byteLength;
           this.live!.append(pcm);
+          // The same bytes, kept for THIS utterance only, so a mismatch can be
+          // recovered from the audio rather than from the visitor's patience.
+          this.utterancePcm.push(pcm);
+          this.utteranceSamples += pcm.length;
+          const keep = (UTTERANCE_KEEP_MS / 1000) * LIVE_SAMPLE_RATE;
+          while (this.utteranceSamples > keep && this.utterancePcm.length > 1) {
+            this.utteranceSamples -= this.utterancePcm.shift()!.length;
+          }
           // The same bytes, kept only for a debug session. See tapEnabled.
           if (this.tapEnabled) this.recordTap(pcm);
         } else if (route.kind === 'BATCH') {
@@ -1890,7 +1932,7 @@ export class VoiceSession {
       return;
     }
 
-    const said = text.trim();
+    let said = text.trim();
     const id = this.livePartialId ?? `u${++this.utteranceSeq}`;
     this.livePartialId = null;
 
@@ -1934,9 +1976,65 @@ export class VoiceSession {
      * unsupported label contributes nothing, and an established session only
      * moves on evidence strong enough to mean it.
      */
+    /*
+     * DID THE PINNED RECOGNISER HEAR THE WRONG LANGUAGE?
+     *
+     * Georgian spoken into an en-US socket comes back as Latin letters with
+     * the label "en-US": from the trace it is real English. The words say
+     * otherwise -- no "the", no "what", no "how much" -- and that earns ONE
+     * recovery of the SAME audio through the batch recogniser with an
+     * explicit language from the six this product speaks. Never `auto`.
+     * Sustained speech and several words are required, so "ok", "yes",
+     * "კი" and a brand name can never trigger it. See sameTurnRecovery.ts.
+     */
+    let heardBy = detected;
+    const googleFinalAt = Date.now();
+    const plan = planRecovery({
+      pinned: detected ? detected.toLowerCase().split('-')[0] : this.language.current,
+      transcript: said,
+      speechMs: this.diag.lastEndTurnSpeechMs ?? 0,
+      pageLocale: this.pageLocale,
+      lastOther: this.lastNonLatin,
+      spent: this.sameTurnRecoveries,
+    });
+    if (plan && this.utterancePcm.length && this.cb.onTranscribe) {
+      const startedAt = Date.now();
+      this.sameTurnRecoveries += 1;
+      const joined = new Int16Array(this.utteranceSamples);
+      let at = 0;
+      for (const part of this.utterancePcm) { joined.set(part, at); at += part.length; }
+      const wav = bytesToBase64(encodeWav(joined, LIVE_SAMPLE_RATE));
+      const again = await this.cb.onTranscribe(wav, plan.hint).catch(() => null);
+      const recovered = again?.text?.trim() ?? '';
+      const evidence = scriptEvidence(recovered);
+      const wantScript = SCRIPT_FOR[plan.hint];
+      const usable = recovered.length > 0 && evidence.letters >= 6
+        && (!wantScript || (evidence.script === wantScript && evidence.ratio >= 0.5));
+      this.diag.lastRecovery = {
+        from: plan.hint === 'ka' ? (heardBy ?? this.language.current) : (heardBy ?? null),
+        hint: plan.hint, ms: Date.now() - startedAt, used: usable,
+        ratio: Number(plan.ratio.toFixed(2)), words: plan.words,
+      };
+      this.diag.sameTurnRecoveries = this.sameTurnRecoveries;
+      if (usable) {
+        said = recovered;
+        heardBy = plan.hint;
+        this.diag.lastTranscript = said.slice(0, 160);
+        this.turns = reduceTranscript(this.turns, {
+          id, speaker: 'USER', text: said, final: true,
+          language: plan.hint, atMs: Date.now(),
+        });
+        this.cb.onTranscript(this.turns);
+        this.milestone('same_turn_recovered', plan.hint);
+      }
+    }
+    this.utterancePcm = [];
+    this.utteranceSamples = 0;
+    this.marks.googleFinalAtMs = googleFinalAt;
+
     const resolution = resolveTurnLanguage({
       transcript: said,
-      providerLanguage: detected,
+      providerLanguage: heardBy,
       previousSessionLanguage: this.language.current,
       pageLocale: this.pageLocale,
     });
@@ -1996,6 +2094,9 @@ export class VoiceSession {
       current: resolution.resolvedLanguage,
       locked: resolution.confidence >= 0.6,
     };
+    // The last non-Latin language this visitor actually used: the first
+    // candidate a same-turn recovery asks for.
+    if (!['en', 'tr'].includes(this.language.current)) this.lastNonLatin = this.language.current;
     if (this.language.current !== before || this.language.locked) {
       this.cb.onLanguage(this.language.current, this.language.locked);
     }
@@ -2222,6 +2323,9 @@ export class VoiceSession {
     this.turnInFlight = true;
     this.history.push({ role: 'user', content: said });
     const askedAt = Date.now();
+    this.marks.converseStartedAtMs = askedAt;
+    this.marks.lunaFirstTokenAtMs = null;
+    this.marks.firstAudibleAtMs = null;
     this.diag.turnsSent += 1;
 
     // Gate the microphone BEFORE anything can come back, so the first audio
@@ -2267,6 +2371,23 @@ export class VoiceSession {
       sttMs: this.diag.lastSttMs,
       llmMs: this.diag.lastLlmMs ?? null,
       firstAudioMs: this.diag.lastPlaybackMs ?? null,
+      /*
+       * THE WATERFALL, as absolute stamps and as the gaps between them, so a
+       * slow turn is blamed on the layer that was slow and not on "the LLM".
+       */
+      speechEndAt: this.marks.speechEndedAtMs ?? null,
+      googleFinalAt: this.marks.googleFinalAtMs ?? null,
+      converseStartedAt: this.marks.converseStartedAtMs ?? null,
+      lunaFirstTokenAt: this.marks.lunaFirstTokenAtMs ?? null,
+      firstAudioQueuedAt: this.marks.ttsFirstAudioAtMs ?? null,
+      firstAudibleAt: this.marks.firstAudibleAtMs ?? null,
+      vadToGoogleFinalMs: gap(this.marks.speechEndedAtMs, this.marks.googleFinalAtMs),
+      finalToConverseMs: gap(this.marks.googleFinalAtMs, this.marks.converseStartedAtMs),
+      converseToFirstTokenMs: gap(this.marks.converseStartedAtMs, this.marks.lunaFirstTokenAtMs),
+      firstTokenToAudioQueuedMs: gap(this.marks.lunaFirstTokenAtMs, this.marks.ttsFirstAudioAtMs),
+      queuedToAudibleMs: gap(this.marks.ttsFirstAudioAtMs, this.marks.firstAudibleAtMs),
+      speechEndToAudibleMs: gap(this.marks.speechEndedAtMs, this.marks.firstAudibleAtMs),
+      recovery: this.diag.lastRecovery ?? null,
       bargeStopMs: this.lastBargeStopMs,
       // Per turn, not cumulative: the first trace reported a running total
       // and had to be differenced by hand to see that ~1000ms was being lost
@@ -2456,6 +2577,9 @@ export class VoiceSession {
             if (timing) {
               if (typeof timing.llmFirstTokenMs === 'number') {
                 this.marks.serverLlmFirstTokenMs = timing.llmFirstTokenMs;
+                if (this.marks.converseStartedAtMs) {
+                  this.marks.lunaFirstTokenAtMs = this.marks.converseStartedAtMs + timing.llmFirstTokenMs;
+                }
               }
               if (typeof timing.ttsRequestMs === 'number') {
                 this.marks.serverTtsRequestMs = timing.ttsRequestMs;
@@ -2653,6 +2777,9 @@ export class VoiceSession {
     if (!ctx) return;
     const deadline = Date.now() + 60_000;
     while (!this.closed && Date.now() < deadline) {
+      if (!this.marks.firstAudibleAtMs && this.player?.snapshot().clockAdvanced) {
+        this.marks.firstAudibleAtMs = Date.now();
+      }
       const remaining = this.player ? this.player.pendingSeconds : (this.queueTime - ctx.currentTime);
       if (remaining <= 0.02 && !this.player?.playing && !this.playingSources.length) break;
       await new Promise((r) => setTimeout(r, Math.min(250, Math.max(40, remaining * 1000))));

@@ -549,6 +549,16 @@ export interface LatencyMarks {
   serverTtsFirstByteMs?: number;
   /** T7 — the browser actually started making a sound. */
   ttsFirstAudioAtMs?: number;
+  /*
+   * The rest of the waterfall, on this machine's clock, so a slow turn can be
+   * blamed on the layer that was slow: the recogniser's final arriving, the
+   * turn being sent, the model's first token (derived from the server's own
+   * offset), and the moment the audio clock actually passed the first sample.
+   */
+  googleFinalAtMs?: number | null;
+  converseStartedAtMs?: number | null;
+  lunaFirstTokenAtMs?: number | null;
+  firstAudibleAtMs?: number | null;
   /** Whether the first phrase arrived in pieces or as one finished clip. */
   streamed?: boolean | null;
 }

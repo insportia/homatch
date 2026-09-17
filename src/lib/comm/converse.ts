@@ -190,6 +190,8 @@ function toConverseEvent(name: string, data: Record<string, unknown>): ConverseE
         responseInterruptReason: typeof data.responseInterruptReason === 'string'
           ? data.responseInterruptReason : null,
         finalTextTail: typeof data.finalTextTail === 'string' ? data.finalTextTail : null,
+        ttsCompletedRequests: num(data.ttsCompletedRequests),
+        ttsFinalTail: typeof data.ttsFinalTail === 'string' ? data.ttsFinalTail : null,
         timing: t ? {
           llmFirstTokenMs: num(t.llmFirstTokenMs),
           ttsRequestMs: num(t.ttsRequestMs),

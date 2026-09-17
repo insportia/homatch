@@ -103,6 +103,20 @@ export function AiTalkDiagnostics(
       finalTextTail: d.finalTextTail ?? null,
       playbackQueuedChunks: d.playbackQueuedChunks ?? null,
       playbackCompletedChunks: d.playbackCompletedChunks ?? null,
+      // Per-response completeness: did the model, the voice and the speaker agree?
+      responseId: d.responseId ?? null,
+      playbackStartedChunks: d.playbackStartedChunks ?? null,
+      playbackStoppedChunks: d.playbackStoppedChunks ?? null,
+      playbackQueueDrained: d.playbackQueueDrained ?? null,
+      playbackLastChunkEndedAt: d.playbackLastChunkEndedAt ?? null,
+      assistantAudibleResponseCompleted: d.assistantAudibleResponseCompleted ?? null,
+      playbackInterruptReason: d.playbackInterruptReason ?? null,
+      ttsCompletedRequests: d.ttsCompletedRequests ?? null,
+      ttsFinalTail: d.ttsFinalTail ?? null,
+      usageTier: d.usageTier ?? null,
+      configuredSessionSeconds: d.configuredSessionSeconds ?? null,
+      effectiveSessionSeconds: d.effectiveSessionSeconds ?? null,
+      adminTechnicalCeilingSeconds: d.adminTechnicalCeilingSeconds ?? null,
       gateReleases: d.gateReleases ?? null,
       // The final that never came, and what was done about it.
       noFinalCount: d.noFinalCount ?? null,
@@ -318,6 +332,12 @@ export function AiTalkDiagnostics(
             + `${Math.round((d.sessionMaxMs ?? 0) / 1000)}s · ${d.turnCount ?? 0} turns`}
         />
         <Row
+          label="  tier"
+          value={`${d.usageTier ?? '—'} · configured ${d.configuredSessionSeconds ?? '—'}s`
+            + ` · effective ${d.effectiveSessionSeconds ?? '—'}s`
+            + `${d.usageTier === 'ADMIN_UNLIMITED' ? ` (admin ceiling ${d.adminTechnicalCeilingSeconds}s)` : ''}`}
+        />
+        <Row
           label="Ended because"
           value={d.sessionEndReason ?? (d.newTurnsBlocked ? 'time up, finishing reply' : '—')}
           tone={d.sessionEndReason ? 'bad' : 'good'}
@@ -335,9 +355,24 @@ export function AiTalkDiagnostics(
           label="  text → speech"
           value={`${d.llmTextChars ?? 0} → ${d.ttsTextChars ?? 0} chars, ${d.ttsRequests ?? 0} req`}
         />
+        {/* The verdict a person's ears give, computed instead of assumed. */}
+        <Row
+          label="Heard to the end"
+          value={d.assistantAudibleResponseCompleted === null || d.assistantAudibleResponseCompleted === undefined
+            ? '—'
+            : d.assistantAudibleResponseCompleted ? 'YES'
+              : `NO — ${d.playbackInterruptReason ?? (d.playbackQueueDrained === false ? 'not drained' : 'unknown')}`}
+          tone={d.assistantAudibleResponseCompleted === false ? 'bad'
+            : d.assistantAudibleResponseCompleted ? 'good' : 'idle'}
+        />
+        <Row
+          label="  tts requests"
+          value={`${d.ttsCompletedRequests ?? '—'} / ${d.ttsRequests ?? 0} completed`}
+        />
         <Row
           label="  audio chunks"
-          value={`${d.playbackCompletedChunks ?? 0} / ${d.playbackQueuedChunks ?? 0} played`}
+          value={`${d.playbackCompletedChunks ?? 0} / ${d.playbackQueuedChunks ?? 0} played`
+            + `${(d.playbackStoppedChunks ?? 0) > 0 ? `, ${d.playbackStoppedChunks} stopped` : ''}`}
           tone={(d.playbackQueuedChunks ?? 0) > 0
             && d.playbackCompletedChunks === d.playbackQueuedChunks ? 'good' : 'idle'}
         />

@@ -124,6 +124,11 @@ export class PcmStreamPlayer {
     this.phase = 0;
     this.hasTail = false;
     this.tail = 0;
+    this.turnQueued = 0;
+    this.turnCompleted = 0;
+    this.turnStopped = 0;
+    this.turnStopReason = null;
+    this.turnLastEndedAt = null;
   }
 
   get currentGeneration(): number { return this.generation; }
@@ -179,6 +184,40 @@ export class PcmStreamPlayer {
    * one that replaced it.
    */
   private completed = 0;
+
+  /*
+   * PER-RESPONSE ACCOUNTING. Reset by startTurn(), never across turns.
+   *
+   * `completed` counts natural endings only: stop() nulls onended before it
+   * stops a source, so a stopped source is counted under `stopped` and can
+   * never masquerade as one that finished. That is how 82 queued / 58
+   * completed on a real Windows session was read as what it was -- a stop --
+   * rather than as audio that never arrived.
+   */
+  private turnQueued = 0;
+  private turnCompleted = 0;
+  private turnStopped = 0;
+  private turnStopReason: string | null = null;
+  private turnLastEndedAt: number | null = null;
+
+  /** Everything a trace needs to say whether THIS response was heard to the end. */
+  turnStats(): {
+    queued: number; started: number; completed: number; stopped: number;
+    drained: boolean; stopReason: string | null; lastChunkEndedAt: number | null;
+  } {
+    return {
+      queued: this.turnQueued,
+      started: this.stats.started,
+      completed: this.turnCompleted,
+      stopped: this.turnStopped,
+      drained: this.turnQueued > 0
+        && this.turnCompleted === this.turnQueued
+        && this.turnStopped === 0
+        && this.pendingSeconds <= 0.02,
+      stopReason: this.turnStopReason,
+      lastChunkEndedAt: this.turnLastEndedAt,
+    };
+  }
 
   /** Pieces handed to the audio clock for this player's lifetime. */
   get queuedChunks(): number { return this.stats.batches; }
@@ -287,6 +326,7 @@ export class PcmStreamPlayer {
     this.cursor += buffer.duration;
     this.stats.batches += 1;
     this.stats.started += 1;
+    this.turnQueued += 1;
 
     // Silence is a real provider failure mode and answers 200 like any other.
     for (let i = 0; i < merged.length; i += 32) {
@@ -300,6 +340,8 @@ export class PcmStreamPlayer {
       // Counted so "did the whole answer play" is answerable from a trace
       // rather than from whether anybody was listening at the time.
       this.completed += 1;
+      this.turnCompleted += 1;
+      this.turnLastEndedAt = this.ctx.currentTime;
     };
   }
 
@@ -316,8 +358,15 @@ export class PcmStreamPlayer {
    * cursor is reset — a cursor left in the future would make the NEXT reply
    * wait for audio that will never play.
    */
-  stop(): void {
+  /**
+   * @param reason who is stopping, so the trace can tell a visitor's
+   *   interruption from a defect. Only a USER_BARGE_IN may discard a reply's
+   *   remaining audio on purpose; anything else is a cut the visitor heard.
+   */
+  stop(reason = 'UNSPECIFIED'): void {
+    if (this.sources.length) this.turnStopReason = reason;
     for (const source of this.sources) {
+      this.turnStopped += 1;
       try { source.onended = null; source.stop(); } catch { /* already finished */ }
       try { source.disconnect(); } catch { /* already detached */ }
     }

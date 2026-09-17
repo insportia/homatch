@@ -235,6 +235,9 @@ export function AiTalkPanel({ className }: { className?: string }) {
   const sessionRef = useRef<VoiceSession | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const grantedRef = useRef<number>(0);
+  const grantInfoRef = useRef<{ usageTier: string | null; configuredSessionSeconds: number | null }>({
+    usageTier: null, configuredSessionSeconds: null,
+  });
   const detectedRef = useRef<string | null>(null);
   /*
    * The language the session has SETTLED on, and whether it is settled.
@@ -394,6 +397,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
     const grant = data as {
       ok?: boolean; sessionId?: string; grantedSeconds?: number; userMessage?: string;
+      usageTier?: string; configuredSessionSeconds?: number;
     } | null;
 
     // The browser is handed no provider capability at all any more: a session
@@ -407,6 +411,10 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
     sessionIdRef.current = grant.sessionId;
     grantedRef.current = grant.grantedSeconds ?? 60;
+    grantInfoRef.current = {
+      usageTier: grant.usageTier ?? null,
+      configuredSessionSeconds: grant.configuredSessionSeconds ?? null,
+    };
     setRemaining(grantedRef.current);
 
     // Loaded on press, not on page load (§85).
@@ -595,6 +603,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
     );
 
     sessionRef.current = session;
+    session.noteGrant(grantInfoRef.current);
     /*
      * Only in a debug session, and only because the alternative is guessing.
      * A person reporting "it did not understand my Georgian" cannot tell us

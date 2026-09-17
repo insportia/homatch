@@ -32,9 +32,12 @@ const body = (name) => {
 };
 
 test('stopping an interrupted turn stops sound, generation and request together', () => {
-  const fn = body('private stopPlayback()');
+  // stopPlayback carries WHO is stopping: a real Windows session had 24 of 82
+  // audio sources stopped by a watchdog and nothing could say so. Only a
+  // USER_BARGE_IN may discard a reply on purpose; every other reason is a cut.
+  const fn = body('private stopPlayback(');
   assert.ok(/source\.stop\(\)/.test(fn), 'what is already sounding must stop');
-  assert.ok(/this\.player\?\.stop\(\)/.test(fn), 'and what is queued must be dropped');
+  assert.ok(/this\.player\?\.stop\(reason\)/.test(fn), 'and what is queued must be dropped, with the reason recorded');
   assert.ok(/this\.turnGeneration =/.test(fn), 'the generation must move, or stale audio is valid');
   assert.ok(/this\.turnAbort\?\.abort\(\)/.test(fn),
     'a request nobody cancelled keeps producing audio for an abandoned turn');

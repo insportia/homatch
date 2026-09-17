@@ -539,6 +539,14 @@ async function start(
     ok: true,
     sessionId: session.id,
     grantedSeconds: session.granted_seconds,
+    /*
+     * Which clock this session is on. A verified administrator gets the
+     * technical ceiling (ADMIN_SESSION_SECONDS) rather than the product
+     * limit, and a trace showing 900s must be readable as that, not as a
+     * broken setting.
+     */
+    usageTier,
+    configuredSessionSeconds: limits.sessionSeconds,
     expiresAt: session.expires_at,
     /*
      * The voice this session will ACTUALLY be spoken in.
@@ -1633,6 +1641,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
        * it, still strictly in order, while the rest is still being made.
        */
       interface Phrase {
+  /** Characters and tail of the text this request was given. */
+  textChars?: number;
+  textTail?: string;
         index: number;
         chunks: string[];
         done: boolean;
@@ -1667,6 +1678,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         const index = spoken.length;
         const slot: Phrase = {
           index, chunks: [], done: false,
+          // What was actually asked of the voice. ttsTextChars read a `text`
+          // field that never existed and reported 0 on a real turn with four
+          // requests -- telemetry that could not prove the one thing it was for.
+          textChars: phrase.length, textTail: phrase.slice(-40),
           sampleRate: outputSampleRate, provider: null, voiceId: null,
           firstByteMs: null, totalMs: 0, code: null, status: null, detail: null, model: null,
         };
@@ -2089,8 +2104,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
            * speaker is on this event.
            */
           llmTextChars: full.length,
-          ttsTextChars: spoken.reduce((n, p) => n + (p.text?.length ?? 0), 0),
+          ttsTextChars: spoken.reduce((n, p) => n + (p.textChars ?? 0), 0),
           ttsRequests: spoken.length,
+          ttsCompletedRequests: spoken.filter((p) => p.done && !p.code).length,
+          ttsFinalTail: spoken.length ? (spoken[spoken.length - 1].textTail ?? null) : null,
           assistantResponseCompleted: !llmIncomplete,
           responseInterruptReason: llmIncomplete ? `LLM_${llmIncompleteReason ?? 'INCOMPLETE'}` : null,
           finalTextTail: shown.slice(-40),

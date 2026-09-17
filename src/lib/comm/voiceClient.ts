@@ -48,6 +48,8 @@ import {
 import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
 import { LiveAudioRouter, type LivePhase } from './liveAudioRouter.ts';
 import { FinalWatch, type FinalDecision } from './finalWatch.ts';
+import { gateWatchdog } from './gateWatchdog.ts';
+import { ADMIN_SESSION_SECONDS } from './talkAllowance.ts';
 
 
 /**
@@ -140,6 +142,7 @@ export type ConverseEvent =
       assistantResponseCompleted?: boolean | null;
       responseInterruptReason?: string | null;
       finalTextTail?: string | null;
+      ttsCompletedRequests?: number; ttsFinalTail?: string | null;
       /**
        * The server's own stages, as offsets from the moment it began work.
        * Offsets rather than timestamps because the two machines do not share
@@ -284,6 +287,24 @@ export interface VoiceDiagnostics {
   finalTextTail: string | null;
   playbackQueuedChunks: number;
   playbackCompletedChunks: number;
+  /*
+   * PER-RESPONSE COMPLETENESS. The queued/completed pair above is per
+   * response too now; these say whether the pair AGREED, who stopped it if
+   * not, and which tier's clock the session is running on.
+   */
+  responseId: string | null;
+  playbackStartedChunks: number;
+  playbackStoppedChunks: number;
+  playbackQueueDrained: boolean | null;
+  playbackLastChunkEndedAt: number | null;
+  assistantAudibleResponseCompleted: boolean | null;
+  playbackInterruptReason: string | null;
+  ttsCompletedRequests: number | null;
+  ttsFinalTail: string | null;
+  usageTier: string | null;
+  configuredSessionSeconds: number | null;
+  effectiveSessionSeconds: number;
+  adminTechnicalCeilingSeconds: number;
   /** postResample === sent + flushed + buffered + dropped. False is a bug. */
   bytesAccountedFor: boolean;
   /** The language the recogniser was last reopened for, if ever. */
@@ -458,7 +479,8 @@ export interface VoiceMilestone {
     | 'first_transcript' | 'user_turn_sent'
     | 'assistant_text' | 'tts_audio_received' | 'playback_started'
     | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition'
-  | 'no_final_recovered' | 'failed';
+  | 'no_final_recovered'
+  | 'inaudible_tail' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
@@ -540,6 +562,12 @@ const SWITCH_PROBE_AFTER_TURNS = 2;
  * session recovers inside one conversation rather than never.
  */
 const MIC_GATE_MAX_MS = 15_000;
+/*
+ * The last resort. MIC_GATE_MAX_MS now only applies to a gate with NOTHING
+ * behind it -- no reply in flight, nothing on the audio clock. A gate that is
+ * legitimately busy is held for as long as the reply takes, up to this.
+ */
+const MIC_GATE_HARD_MAX_MS = 120_000;
 
 /**
  * How long an already-started answer may keep speaking after the session's
@@ -683,6 +711,12 @@ export class VoiceSession {
    * anybody must not look like one that can.
    */
   private micGatedAt = 0;
+  /** Who cut the current reply's audio, if anyone. Null on a normal finish. */
+  private playbackInterruptReason: string | null = null;
+  /** The tier the server granted, so 900s is read as an admin ceiling, not a bug. */
+  private grantInfo: { usageTier: string | null; configuredSessionSeconds: number | null } = {
+    usageTier: null, configuredSessionSeconds: null,
+  };
   /** True once the session's time is up: no new turn may begin. */
   private newTurnsBlocked = false;
   private sessionEndReason: string | null = null;
@@ -900,6 +934,11 @@ export class VoiceSession {
     assistantResponseCompleted: null as boolean | null,
     responseInterruptReason: null as string | null,
     finalTextTail: null as string | null,
+    ttsCompletedRequests: null as number | null, ttsFinalTail: null as string | null,
+    responseId: null as string | null,
+    assistantAudibleResponseCompleted: null as boolean | null,
+    playbackQueueDrained: null as boolean | null,
+    playbackInterruptReason: null as string | null,
     lastRelisten: null as string | null,
     lastBargeStopMs: null as number | null,
     preReadyFlushBytes: 0, preReadyFlushMs: 0,
@@ -1125,8 +1164,22 @@ export class VoiceSession {
       assistantResponseCompleted: this.diag.assistantResponseCompleted ?? null,
       responseInterruptReason: this.diag.responseInterruptReason ?? null,
       finalTextTail: this.diag.finalTextTail ?? null,
-      playbackQueuedChunks: this.player?.queuedChunks ?? 0,
-      playbackCompletedChunks: this.player?.completedChunks ?? 0,
+      // Per response, from startTurn(): the pair a normal finish makes equal.
+      playbackQueuedChunks: this.player?.turnStats().queued ?? 0,
+      playbackCompletedChunks: this.player?.turnStats().completed ?? 0,
+      playbackStartedChunks: this.player?.turnStats().started ?? 0,
+      playbackStoppedChunks: this.player?.turnStats().stopped ?? 0,
+      playbackLastChunkEndedAt: this.player?.turnStats().lastChunkEndedAt ?? null,
+      responseId: this.diag.responseId ?? null,
+      playbackQueueDrained: this.diag.playbackQueueDrained ?? null,
+      assistantAudibleResponseCompleted: this.diag.assistantAudibleResponseCompleted ?? null,
+      playbackInterruptReason: this.diag.playbackInterruptReason ?? null,
+      ttsCompletedRequests: this.diag.ttsCompletedRequests ?? null,
+      ttsFinalTail: this.diag.ttsFinalTail ?? null,
+      usageTier: this.grantInfo.usageTier,
+      configuredSessionSeconds: this.grantInfo.configuredSessionSeconds,
+      effectiveSessionSeconds: this.grant.maxDurationSec,
+      adminTechnicalCeilingSeconds: ADMIN_SESSION_SECONDS,
       /*
        * EVERY BYTE IS IN EXACTLY ONE CATEGORY.
        *
@@ -1181,7 +1234,7 @@ export class VoiceSession {
 
     if (this.tickHandle !== null) { clearInterval(this.tickHandle); this.tickHandle = null; }
     if (this.diagHandle !== null) { clearInterval(this.diagHandle); this.diagHandle = null; }
-    this.stopPlayback();
+    this.stopPlayback(reason === 'allowance' ? 'SESSION_END' : 'SESSION_STOP');
 
     this.dropCapture();
     this.live?.close();
@@ -1349,11 +1402,28 @@ export class VoiceSession {
      * so it never fires on a conversation that is merely slow, and always
      * fires on one that is stuck. Counted, so a trace can say it happened.
      */
-    if (this.micGated && this.micGatedAt && Date.now() - this.micGatedAt > MIC_GATE_MAX_MS) {
+    /*
+     * ...but a reply that is still being spoken is not a stuck gate.
+     *
+     * The first version measured only time since the gate closed, and on a
+     * real Windows session it stopped 15.9 seconds of Georgian audio at the
+     * 15-second mark -- 4.9 of which had been spent waiting for the first
+     * byte. The decision is a pure function now, driven by whether anything
+     * is actually happening behind the gate; see gateWatchdog.ts.
+     */
+    const verdict = gateWatchdog({
+      gated: this.micGated,
+      gatedForMs: this.micGatedAt ? Date.now() - this.micGatedAt : 0,
+      turnInFlight: this.turnInFlight,
+      pendingSeconds: this.player?.pendingSeconds ?? 0,
+      playing: this.player?.playing ?? false,
+    }, { idleMs: MIC_GATE_MAX_MS, hardMs: MIC_GATE_HARD_MAX_MS });
+    if (verdict !== 'HOLD') {
       this.gateReleases += 1;
       this.diag.gateReleases = this.gateReleases;
-      this.diag.lastError = this.diag.lastError ?? 'GATE_STUCK';
-      this.stopPlayback();
+      this.diag.lastError = this.diag.lastError ?? `GATE_STUCK_${verdict}`;
+      this.playbackInterruptReason = `GATE_WATCHDOG_${verdict}`;
+      this.stopPlayback('GATE_WATCHDOG');
       this.resumeListening();
     }
 
@@ -2148,6 +2218,10 @@ export class VoiceSession {
     // of the reply cannot be transcribed as if the visitor said it.
     this.micGated = true;
     this.micGatedAt = Date.now();
+    this.playbackInterruptReason = null;
+    this.diag.assistantAudibleResponseCompleted = null;
+    this.diag.playbackQueueDrained = null;
+    this.diag.playbackInterruptReason = null;
     this.setState('UNDERSTANDING');
     this.milestone('user_turn_sent', said.length);
 
@@ -2365,6 +2439,8 @@ export class VoiceSession {
             this.diag.assistantResponseCompleted = event.assistantResponseCompleted ?? null;
             this.diag.responseInterruptReason = event.responseInterruptReason ?? null;
             this.diag.finalTextTail = event.finalTextTail ?? null;
+            this.diag.ttsCompletedRequests = event.ttsCompletedRequests ?? null;
+            this.diag.ttsFinalTail = event.ttsFinalTail ?? null;
 
             const timing = event.timing;
             if (timing) {
@@ -2417,6 +2493,27 @@ export class VoiceSession {
     // Wait for the audio that is already scheduled, then hand the floor back.
     await this.awaitPlayback();
     if (this.closed || generation !== this.turnGeneration) return;
+
+    /*
+     * WAS THE WHOLE ANSWER HEARD?
+     *
+     * Three different facts have to agree: the model finished, every TTS
+     * request finished, and every source the player scheduled ended on its
+     * own. A stopped source is not an ended one. This is the verdict a real
+     * device reports, and it is computed, not assumed.
+     */
+    {
+      const t = this.player?.turnStats();
+      const ttsDone = this.diag.ttsRequests !== null && this.diag.ttsRequests !== undefined
+        && this.diag.ttsCompletedRequests === this.diag.ttsRequests;
+      const audible = this.diag.assistantResponseCompleted !== false
+        && ttsDone && Boolean(t?.drained) && !this.playbackInterruptReason;
+      this.diag.assistantAudibleResponseCompleted = audible;
+      this.diag.playbackQueueDrained = Boolean(t?.drained);
+      this.diag.playbackInterruptReason = this.playbackInterruptReason ?? t?.stopReason ?? null;
+      this.diag.responseId = this.turnId;
+      if (!audible) this.milestone('inaudible_tail', this.diag.playbackInterruptReason ?? 'NOT_DRAINED');
+    }
 
     /*
      * DID THIS TURN ACTUALLY MAKE A SOUND?
@@ -2702,6 +2799,14 @@ export class VoiceSession {
    * allowed to finish inside a bounded grace, and the session then ends with
    * a reason somebody can read.
    */
+  /** What the server granted and why, so the trace can name the tier. */
+  noteGrant(info: { usageTier?: string | null; configuredSessionSeconds?: number | null }): void {
+    this.grantInfo = {
+      usageTier: info.usageTier ?? null,
+      configuredSessionSeconds: info.configuredSessionSeconds ?? null,
+    };
+  }
+
   reachSessionLimit(): void {
     if (this.newTurnsBlocked || this.closed) return;
     this.newTurnsBlocked = true;
@@ -2789,7 +2894,8 @@ export class VoiceSession {
            * person feels starts when they start speaking.
            */
           const spokeAt = this.bargeSpeechAt || Date.now();
-          this.stopPlayback();
+          this.playbackInterruptReason = 'USER_BARGE_IN';
+          this.stopPlayback('USER_BARGE_IN');
           this.lastBargeStopMs = Date.now() - spokeAt;
           this.diag.lastBargeStopMs = this.lastBargeStopMs;
           this.bargeSpeechAt = 0;
@@ -2833,12 +2939,12 @@ export class VoiceSession {
    * too: a visitor who interrupted is not waiting for the rest of the answer,
    * and neither is the bill.
    */
-  private stopPlayback(): void {
+  private stopPlayback(reason = 'UNSPECIFIED'): void {
     for (const source of this.playingSources) {
       try { source.stop(); } catch { /* already stopped */ }
     }
     this.playingSources = [];
-    this.player?.stop();
+    this.player?.stop(reason);
     this.turnGeneration = this.player?.currentGeneration ?? this.turnGeneration + 1;
     this.queueTime = 0;
     this.playbackTime = this.audioContext?.currentTime ?? 0;

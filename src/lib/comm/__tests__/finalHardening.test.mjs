@@ -164,7 +164,9 @@ test('every registry language has a tag, a name, a script and a family', () => {
   assert.deepEqual([...TALK_LANGUAGES], LANGUAGE_CODES, 'the resolver runs on the same table');
   assert.ok(!LANGUAGE_CODES.includes('fa'), 'Persian can be heard but not spoken by the voice: honestly absent');
   for (const six of ['ka', 'en', 'ru', 'tr', 'ar', 'he']) assert.ok(LANGUAGE_CODES.includes(six));
-  for (const want of ['hi', 'ur', 'uk', 'es', 'fr', 'de', 'zh', 'ja', 'ko']) assert.ok(LANGUAGE_CODES.includes(want), want);
+  for (const want of ['hi', 'ur', 'uk', 'es', 'fr', 'de', 'ja', 'ko']) assert.ok(LANGUAGE_CODES.includes(want), want);
+  // Chinese and Filipino were removed: the live gateway forwards only xx-XX tags (see multilingualRepair).
+  assert.ok(!LANGUAGE_CODES.includes('zh') && !LANGUAGE_CODES.includes('tl'));
 });
 
 test('Hindi, Ukrainian, Spanish and Urdu resolve on their own script or letters', () => {
@@ -194,12 +196,12 @@ test('the Latin guess tells the major Latin languages apart and defaults to Engl
   assert.equal(guessLatinLanguage('Okay, and how much does a square metre cost in Vake right now?'), 'en');
 });
 
-test('same-turn recovery hints reach beyond the six', () => {
-  assert.equal(normaliseLanguage('cmn-Hans-CN'), 'zh');
-  assert.equal(normaliseLanguage('fil-PH'), 'tl');
-  const plan = planRecovery({ pinned: 'es', transcript: 'gamarjoba me minda ortotakhiani bina vakeshi ramdeni ghirs', speechMs: 2000, pageLocale: 'ka', lastOther: null, spent: 0 });
-  assert.ok(plan && plan.hint === 'ka', 'Georgian into a Spanish socket recovers toward Georgian');
-  assert.equal(planRecovery({ pinned: 'es', transcript: 'Hola, ¿cuánto cuesta un piso en Vake para comprar ahora?', speechMs: 2000, pageLocale: 'ka', lastOther: null, spent: 0 }), null, 'real Spanish stays');
+test('same-turn recovery reaches beyond the six, and asks for no language', () => {
+  assert.equal(normaliseLanguage('cmn-Hans-CN'), null, 'a tag the gateway cannot forward is not a language we claim');
+  assert.equal(normaliseLanguage('uk-UA'), 'uk');
+  const plan = planRecovery({ pinned: 'es', transcript: 'gamarjoba me minda ortotakhiani bina vakeshi ramdeni ghirs', speechMs: 2000, spent: 0 });
+  assert.ok(plan && plan.hint === null && plan.reason === 'NO_FUNCTION_WORDS', 'Georgian into a Spanish socket recovers, hint-free');
+  assert.equal(planRecovery({ pinned: 'es', transcript: 'Hola, ¿cuánto cuesta un piso en Vake para comprar ahora?', speechMs: 2000, spent: 0 }), null, 'real Spanish stays');
 });
 
 /* ── 6. The voice and the character ──────────────────────────────────── */

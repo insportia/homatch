@@ -6,7 +6,8 @@
 // fails the build if these drift.
 
 import {
-  LANGUAGE_CODES, LANGUAGE_NAMES, LATIN_CODES, SCRIPT_FAMILIES, SCRIPT_TESTS, guessLatinLanguage, type Script,
+  LANGUAGE_CODES, LANGUAGE_NAMES, LATIN_CODES, SCRIPT_FAMILIES, SCRIPT_TESTS, guessLatinLanguage,
+  latinLanguageAgainst, guessCyrillicLanguage, SCRIPT_OF, type Script,
 } from './languageRegistry.ts';
 // HOMATCH AI TALK — one place that decides what language a turn is in.
 //
@@ -67,8 +68,6 @@ const SUPPORTED = new Set<string>(TALK_LANGUAGES);
  */
 const ALIASES: Record<string, TalkLanguage> = {
   iw: 'he', heb: 'he',
-  cmn: 'zh', zho: 'zh', chi: 'zh',
-  fil: 'tl', tgl: 'tl',
   nb: 'no', nn: 'no', nor: 'no',
   hin: 'hi', urd: 'ur', ben: 'bn', tam: 'ta', tel: 'te', guj: 'gu', kan: 'kn', mal: 'ml',
   mar: 'mr', pan: 'pa', ori: 'or', msa: 'ms', may: 'ms',
@@ -158,7 +157,7 @@ const LATIN_LANGUAGES: readonly TalkLanguage[] = LATIN_CODES;
 
 export type ResolutionReason =
   | 'SCRIPT'              // the alphabet settles it
-  | 'PROVIDER_LATIN'      // Latin text, and the provider named one of ours
+  | 'PROVIDER_LATIN' | 'LATIN_LEXICAL'      // Latin text, and the provider named one of ours
   | 'STICKY_LATIN'        // Latin text, no usable label, session already settled
   | 'LOCALE_LATIN'        // Latin text, nothing else, the UI locale is Latin
   | 'STICKY_HELD'         // evidence too weak to move an established session
@@ -183,6 +182,13 @@ export interface LanguageResolution {
   confidence: number;
   /** True when the answer differs from the language the session was in. */
   switched: boolean;
+  /**
+   * True when this turn was too short to be evidence of anything: a word or
+   * two. The language above is then the prior, not a finding, and the model
+   * is told so -- "Shalom" after a Georgian conversation is answered like a
+   * greeting, not echoed as one.
+   */
+  weakEvidence: boolean;
 }
 
 /** Below this, a turn may not move an already-established session language. */
@@ -209,6 +215,18 @@ export interface ResolveInput {
   transcript: string;
   /** The recogniser's own label, in whatever spelling it used. */
   providerLanguage?: string | null;
+  /**
+   * TRUE WHEN THAT LABEL IS A DETECTION, FALSE WHEN IT IS A CONFIGURATION.
+   *
+   * A live socket pinned to ka-GE reports "ka-GE" for every utterance,
+   * including the Turkish one it just wrote in Arabic letters: that label is
+   * what it was told, not what it heard, and it carries no evidence at all.
+   * A label from the `auto` second opinion or from the batch recogniser is
+   * the opposite -- nothing configured it, so it is the provider's finding.
+   * The two used to be the same string, so the resolver had to discount both
+   * equally, and a short clear switch out of a non-Latin session was held.
+   */
+  providerDetected?: boolean;
   previousSessionLanguage?: string | null;
   pageLocale?: string | null;
   /** Used only when there is nothing else at all. */
@@ -278,6 +296,8 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
     let reason = resolutionReason;
     let score = confidence;
 
+    const words = transcript.trim().split(/\s+/).filter(Boolean).length;
+
     /*
      * THE PAGE IS A PRIOR ON THE FIRST TURN, NOT JUST THE PREVIOUS TURN.
      *
@@ -297,7 +317,16 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
     const prior = previous ?? locale;
     if (prior && language !== prior) {
       const minLetters = (evidence.script && SWITCH_MIN_LETTERS_BY_SCRIPT[evidence.script]) ?? SWITCH_MIN_LETTERS;
-      const tooShort = evidence.letters < minLetters;
+      /*
+       * THE LETTER FLOOR COUNTS LETTERS, AND A QUESTION ABOUT NUMBERS HAS FEW.
+       *
+       * Measured: "כמה זה 2 + 2?" is five Hebrew letters -- the digits and the
+       * plus are not letters -- so a plainly Hebrew question was held in
+       * Russian, and answered in Russian. Several words is the other way to
+       * be more than a one-word mis-hearing, and the confidence test below
+       * still guards every Latin case, which is where the corruptions live.
+       */
+      const tooShort = evidence.letters < minLetters && words < 3;
       if (tooShort || confidence < SWITCH_MIN_CONFIDENCE) {
         language = prior;
         reason = 'STICKY_HELD';
@@ -305,14 +334,18 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
       }
     }
 
-    return { ...base, resolvedLanguage: language, resolutionReason: reason, confidence: score, switched: Boolean(previous) && language !== previous };
+    const weakEvidence = evidence.letters < SWITCH_MIN_LETTERS || words <= 1;
+    return { ...base, resolvedLanguage: language, resolutionReason: reason, confidence: score, switched: Boolean(previous) && language !== previous, weakEvidence };
   };
 
   // 1. The alphabet, where it belongs to exactly one of ours.
   if (evidence.script && evidence.ratio >= 0.5) {
     const byScript = SCRIPT_LANGUAGE[evidence.script];
     if (byScript) {
-      const sibling = siblingIn(evidence.script!, provider) ?? siblingIn(evidence.script!, previous) ?? byScript;
+      const lettered = evidence.script === 'cyrillic' ? guessCyrillicLanguage(transcript, '') : '';
+      const sibling = siblingIn(evidence.script!, provider)
+        ?? (lettered ? siblingIn(evidence.script!, lettered) : null)
+        ?? siblingIn(evidence.script!, previous) ?? byScript;
       return decide(sibling, 'SCRIPT', 0.5 + evidence.ratio / 2);
     }
 
@@ -342,7 +375,17 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
       const anchor = previous ?? locale;
       const leavingNonLatin = Boolean(anchor) && !LATIN_LANGUAGES.includes(anchor!);
         const substantial = words >= 4 || evidence.letters >= 15;
-        return decide(provider, 'PROVIDER_LATIN', leavingNonLatin && !substantial ? 0.35 : 0.7);
+        // A DETECTED label needs less text than a configured one: "Benim adım
+        // ne?" is three words and twelve letters -- below the bar written for
+        // corrupted transcripts -- but a recogniser that was not told the
+        // language and answered "Turkish" has actually identified it.
+        const detectedEnough = Boolean(input.providerDetected) && words >= 2;
+        // The socket was configured for one Latin language and wrote another:
+        // "Hola, me llamo Tariel y busco un piso" labelled en-US. The words
+        // outrank the configuration, at the same bar a switch needs.
+        const lexical = substantial ? latinLanguageAgainst(transcript, provider) : null;
+        if (lexical && LATIN_LANGUAGES.includes(lexical)) return decide(lexical, 'LATIN_LEXICAL', 0.65);
+        return decide(provider, 'PROVIDER_LATIN', leavingNonLatin && !substantial && !detectedEnough ? 0.35 : 0.7);
       }
       if (previous && LATIN_LANGUAGES.includes(previous)) {
         return decide(previous, 'STICKY_LATIN', 0.55);
@@ -407,12 +450,16 @@ export function textMatchesLanguage(text: string, language: TalkLanguage): boole
   // Too little to judge. A three-word answer is not a language violation.
   if (evidence.letters < SWITCH_MIN_LETTERS) return true;
 
-  const expected: Partial<Record<TalkLanguage, TalkScript>> = {
-    ka: 'georgian', ru: 'cyrillic', ar: 'arabic', he: 'hebrew',
-  };
-  const want = expected[language];
-
-  if (want) return evidence.script === want && evidence.ratio >= 0.5;
+  /*
+   * The script each language is written in comes from the registry. The
+   * first version listed four and demanded LATIN for everything else, so a
+   * Hindi reply in Devanagari was judged "wrong language", retried, and cut
+   * -- measured on the first chain run, 2026-09-18. Cyrillic, Arabic and
+   * Devanagari siblings share a script and are accepted as each other here;
+   * telling Ukrainian from Russian is the resolver's job, not the guard's.
+   */
+  const want = SCRIPT_OF[language];
+  if (want && want !== 'latin') return evidence.script === want && evidence.ratio >= 0.5;
   // en and tr: any Latin-dominant answer is acceptable; a Georgian or Korean
   // one is not.
   return evidence.script === 'latin' && evidence.ratio >= 0.5;
@@ -520,7 +567,7 @@ const SWITCH_CUES = [
   // so გააგრძელე and გავაგრძელოთ share this and nothing longer.
   'ლაპარაკ', 'საუბრ', 'ესაუბრ', 'გადავიდეთ', 'აგრძელ', 'მელაპარაკ', 'მიპასუხ', 'მიპასუხე',
   // English
-  'speak', 'talk', 'switch', 'continue', 'answer', 'reply', 'in ', 'let us', "let's",
+  'speak', 'talk', 'switch', 'continue', 'answer', 'reply', 'in ', 'let us', "let's", 'please',
   // Russian
   'говор', 'перейд', 'продолж', 'ответ', 'давай', 'по-',
   // Turkish

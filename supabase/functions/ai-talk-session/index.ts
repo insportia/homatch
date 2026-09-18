@@ -325,6 +325,8 @@ interface TalkRequest {
    * discarded when it names a language AI TALK does not speak.
    */
   providerLanguage?: string;
+  /** True when providerLanguage was detected rather than configured. See talkLanguage.ts. */
+  providerDetected?: boolean;
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
   /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
@@ -360,6 +362,16 @@ interface TalkRequest {
    * is free to disagree, and the script of what comes back has the last word.
    */
   languageHint?: string;
+  /**
+   * THE LANGUAGE THE CONVERSATION WAS IN BEFORE THIS TURN, and how the browser
+   * judged THIS turn. languageHint already carries the browser's verdict for
+   * the current utterance, so the server had no way to say "previously
+   * Georgian, now Hebrew" to the model, and no way to tell a confident switch
+   * from a one-word guess. Both are stated to the model now, as facts.
+   */
+  previousLanguage?: string;
+  turnLanguageReason?: string;
+  turnLanguageConfidence?: number;
   /**
    * Which recogniser this session would like, if it is already enabled.
    *
@@ -1461,6 +1473,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
   const resolution = resolveTurnLanguage({
     transcript: said,
     providerLanguage: body.providerLanguage ?? null,
+    providerDetected: body.providerDetected === true,
     previousSessionLanguage: body.languageHint ?? null,
     pageLocale: locale,
   });
@@ -1498,7 +1511,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
    * with the session, so a long conversation does not get progressively
    * slower -- and each turn is already truncated.
    */
-  const history = Array.isArray(body.history) ? body.history.slice(-12) : [];
+  const history = Array.isArray(body.history) ? body.history.slice(-16) : [];
   const conversation = history
     .map((h) => `${h.role === 'assistant' ? 'Homatch' : 'Visitor'}: ${String(h.content ?? '').slice(0, 300)}`)
     .join('\n');
@@ -1549,7 +1562,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
     `Visitor just said: "${said}"`,
     // The one fact the reply language rests on, stated with the turn rather
     // than inferred from the history: answer in THIS utterance's language.
-    `Current turn language: ${LANGUAGE_NAMES[replyLanguage] ?? replyLanguage}. Reply in it, naturally, without saying so.`,
+    // Conversation context and response language are two different things;
+    // the first persists, the second follows the current turn.
+    ...languageContract(replyLanguage, body, resolution),
     '',
     // Said only when it is true, so an ordinary turn carries no instruction
     // about insults at all.
@@ -2184,6 +2199,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           normalized_provider_language: resolution.normalizedProviderLanguage,
           transcript_script: resolution.transcriptScript,
           previous_session_language: resolution.previousSessionLanguage,
+          previous_conversation_language: body.previousLanguage ?? null,
+          turn_language_reason_client: body.turnLanguageReason ?? null,
           resolved_language: resolution.resolvedLanguage,
           resolution_reason: resolution.resolutionReason,
           resolution_confidence: resolution.confidence,
@@ -2682,6 +2699,49 @@ async function resolveAnonSession(sb: Sb, candidate: string | undefined): Promis
 // Every language the product carries, from the one shared table.
 const LANGUAGE_NAMES: Record<string, string> = REGISTRY_LANGUAGE_NAMES;
 
+/**
+ * WHAT THE MODEL IS TOLD ABOUT THE LANGUAGE OF THIS TURN.
+ *
+ * Three facts, each on its own line, none of them left for the model to infer
+ * from the history: the language of the utterance it is answering, the
+ * language the conversation was in before, and -- when the utterance was too
+ * short or too ambiguous to decide -- that the evidence was weak. The last one
+ * is what stops "Shalom" after a Georgian conversation being answered with
+ * "Shalom, shalom" in Georgian: the model is told the greeting may be the
+ * start of a switch and to answer it like a person would, without echoing it.
+ */
+function languageContract(
+  replyLanguage: string,
+  body: TalkRequest,
+  resolution: { resolutionReason: string; confidence: number },
+): string[] {
+  const name = LANGUAGE_NAMES[replyLanguage] ?? replyLanguage;
+  const previous = body.previousLanguage ? normaliseLanguage(body.previousLanguage) : null;
+  const previousName = previous ? (LANGUAGE_NAMES[previous] ?? previous) : null;
+  const reason = String(body.turnLanguageReason ?? resolution.resolutionReason ?? '');
+  const confidence = typeof body.turnLanguageConfidence === 'number'
+    ? body.turnLanguageConfidence : resolution.confidence;
+  const weak = confidence < 0.5 || /STICKY_HELD|STICKY$|LOCALE$|DEFAULT/.test(reason);
+  const lines = [
+    `CURRENT USER TURN LANGUAGE: ${name}.`,
+    `RESPOND IN: ${name}. Naturally, without saying which language you are using.`,
+  ];
+  if (previousName && previous !== replyLanguage) {
+    lines.push(`PREVIOUS CONVERSATION LANGUAGE: ${previousName}. They switched; follow them, and keep everything already understood.`);
+  } else if (previousName) {
+    lines.push(`PREVIOUS CONVERSATION LANGUAGE: ${previousName}.`);
+  }
+  if (weak) {
+    lines.push(
+      'LANGUAGE EVIDENCE FOR THIS TURN IS WEAK: it was a word or two, possibly a greeting or a name in another '
+      + 'language. Answer it the way a person would -- briefly, warmly, in the language above -- and do not '
+      + 'repeat their word back to them twice. If they continue in another language, you will be told next turn.',
+    );
+  }
+  lines.push('CONVERSATION CONTEXT: the recent turns above are still the conversation, whatever language they were in.');
+  return lines;
+}
+
 function publicDemoInstructions(language: string): string {
   const name = LANGUAGE_NAMES[language] ?? LANGUAGE_NAMES[language.split('-')[0]]
     ?? 'the language the visitor is speaking';
@@ -2738,6 +2798,18 @@ function publicDemoInstructions(language: string): string {
     'in Georgian words; Russian banter as Russians actually banter; the same in every language. If a joke',
     'only works in translation, drop it.',
     '',
+    'FIRST HEAR THEM, THEN UNDERSTAND THEM, THEN ANSWER -- in that order, and only then be funny.',
+    'What they said comes to you as a transcript of speech, sometimes imperfect: read for the intent, not',
+    'the exact words, and if a word is clearly a mis-hearing of something that makes sense, take the sense.',
+    'If you genuinely could not understand, ask for the ONE thing you are missing, in a few words. Never',
+    'answer a question you did not understand with a joke, and never let personality stand in for an answer.',
+    '',
+    'ANSWER DIRECTLY. Start with the substance. Never open with "I think", "let me think", "as an AI",',
+    '"based on my analysis", "good question", or any narration of your own thinking, in any language --',
+    'ვფიქრობ, მოდი ვიფიქროთ, როგორც AI, я думаю, давайте подумаем and their equivalents are all banned as',
+    'openings. "How are you?" gets "Good, and you?" -- not "I think I am good". Hedge only when the',
+    'content is genuinely uncertain, and then in the middle of the sentence, not as its first word.',
+    '',
     'MATCH THE PERSON IN FRONT OF YOU.',
     'Take your length, your register and your energy from theirs, every turn, and let it change when theirs',
     'changes. Short and clipped, be short and clipped. Curious and expansive, go with them. Playful, play.',
@@ -2772,6 +2844,11 @@ function publicDemoInstructions(language: string): string {
     'If they change language, change with them and keep everything you already understood. Never ask them to',
     'pick one and never mention which you are using. Georgian speakers mix in English and Russian property',
     'terms constantly -- read those as part of the Georgian sentence.',
+    'YOU SPEAK MANY LANGUAGES: Georgian, English, Russian, Turkish, Arabic, Hebrew, Hindi, Ukrainian,',
+    'Spanish, French, German, Italian, Portuguese and some thirty more, and you follow whichever one the',
+    'person uses, mid-conversation, without being asked. Never say you only know two or three languages.',
+    'Asked which languages you speak, say you speak many and will simply continue in theirs; name a few',
+    'examples if it helps; recite the full list only if they ask for the full list.',
     '',
     'YOU CAN DRAW ON: buying, selling, renting, investing; mortgages and instalments; developer due diligence',
     'and project risk; verification, the public registry, extracts, encumbrances; purchase and preliminary',
@@ -2779,7 +2856,8 @@ function publicDemoInstructions(language: string): string {
     'room counts, shell states. That is background, not an agenda -- name the ONE thing that matters and why.',
     '',
     'RULES',
-    '- Say you are an AI assistant in your FIRST reply only, briefly. Never again.',
+    '- In your FIRST reply, let it be known in passing that you are Homatch\'s AI assistant -- a few words',
+    '  inside a sentence, never the opening words, never "as an AI". Never again after that.',
     /* The model question, in the one form this surface can carry. The full
        policy is prose and lives in src/lib/ai/identity.ts, where it is
        argued; the decisions it encodes are the same. */

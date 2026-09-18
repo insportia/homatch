@@ -22,6 +22,10 @@
  * it, and a language that can be heard and not answered is worse than one
  * that is honestly absent. Azerbaijani, Armenian and Kazakh are absent for the
  * same reason. Punjabi is absent because the recogniser refused pa-IN outright.
+ * Chinese and Filipino are absent because the live gateway only forwards a
+ * two-letter-dash-two-letter tag to the recogniser; cmn-Hans-CN and fil-PH
+ * silently fell back to the session default, so the first probe's "accepted"
+ * for them was vacuous. They return when the gateway learns longer tags.
  *
  * One table, so the client's socket tag, the resolver's script map, the
  * recovery hints and the server's reply-language names cannot drift apart.
@@ -63,7 +67,6 @@ export const LANGUAGE_REGISTRY: readonly LanguageEntry[] = [
   { code: 'el', sttTag: 'el-GR', name: 'Greek', script: 'greek' },
   { code: 'ro', sttTag: 'ro-RO', name: 'Romanian', script: 'latin' },
   { code: 'bg', sttTag: 'bg-BG', name: 'Bulgarian', script: 'cyrillic' },
-  { code: 'zh', sttTag: 'cmn-Hans-CN', name: 'Chinese', script: 'han' },
   { code: 'ja', sttTag: 'ja-JP', name: 'Japanese', script: 'kana' },
   { code: 'ko', sttTag: 'ko-KR', name: 'Korean', script: 'hangul' },
   { code: 'nl', sttTag: 'nl-NL', name: 'Dutch', script: 'latin' },
@@ -81,7 +84,6 @@ export const LANGUAGE_REGISTRY: readonly LanguageEntry[] = [
   { code: 'mr', sttTag: 'mr-IN', name: 'Marathi', script: 'devanagari' },
   { code: 'or', sttTag: 'or-IN', name: 'Odia', script: 'oriya' },
   { code: 'ms', sttTag: 'ms-MY', name: 'Malay', script: 'latin' },
-  { code: 'tl', sttTag: 'fil-PH', name: 'Filipino', script: 'latin' },
   { code: 'hu', sttTag: 'hu-HU', name: 'Hungarian', script: 'latin' },
   { code: 'no', sttTag: 'nb-NO', name: 'Norwegian', script: 'latin' },
   { code: 'da', sttTag: 'da-DK', name: 'Danish', script: 'latin' },
@@ -130,7 +132,7 @@ export const SCRIPT_FAMILIES: Partial<Record<Script, readonly string[]>> = {
   thai: ['th'],
   hangul: ['ko'],
   kana: ['ja'],
-  han: ['zh', 'ja'],
+  han: ['ja'],
 };
 
 /** Unicode script tests, in the order the evidence is scored. */
@@ -162,11 +164,14 @@ export const SCRIPT_TESTS: ReadonlyArray<readonly [Script, RegExp]> = [
  * default because it is the Latin language this product most often hears.
  */
 const LATIN_HINTS: ReadonlyArray<readonly [string, RegExp, readonly string[]]> = [
-  ['tr', /[çğıöşüÇĞİÖŞÜ]/, ['ve', 'bir', 'için', 'değil', 'nasıl', 'kaç']],
+  // English has no letters of its own, so it is identified by its function
+  // words alone; the empty class never matches.
+  ['en', /$^/, ['the', 'and', 'is', 'are', 'what', 'how', 'much', 'this', 'that', 'you', 'for', 'with', 'my', 'of', 'it', 'have', 'want', 'looking', 'hello', 'name', 'please', 'thanks', 'okay']],
+  ['tr', /[çğıöşüÇĞİÖŞÜ]/, ['ve', 'bir', 'için', 'değil', 'nasıl', 'kaç', 'benim', 'bu', 'evet', 'hayır']],
   ['es', /[ñ¿¡]/, ['que', 'de', 'el', 'la', 'los', 'para', 'con', 'cuánto', 'cuanto', 'está', 'hola', 'piso', 'cuesta', 'comprar', 'alquilar']],
-  ['fr', /[àâçéèêëîïôûùüÿœ]/i, ['le', 'la', 'les', 'des', 'est', 'pour', 'avec', 'combien', 'vous']],
-  ['de', /[äöüß]/i, ['und', 'ist', 'nicht', 'das', 'ich', 'wie', 'viel', 'eine', 'für']],
-  ['it', /[àèéìòù]/i, ['che', 'della', 'per', 'con', 'quanto', 'sono', 'una', 'gli']],
+  ['fr', /[àâçéèêëîïôûùüÿœ]/i, ['le', 'la', 'les', 'des', 'est', 'pour', 'avec', 'combien', 'vous', 'je', 'bonjour', 'cherche', 'deux', 'chambres', 'appartement', 'et', 'pas', 'dans']],
+  ['de', /[äöüß]/i, ['und', 'ist', 'nicht', 'das', 'ich', 'wie', 'viel', 'eine', 'für', 'hallo', 'suche', 'wohnung', 'mit', 'zwei', 'heiße', 'heisse']],
+  ['it', /[àèéìòù]/i, ['che', 'della', 'per', 'con', 'quanto', 'sono', 'una', 'gli', 'mi', 'chiamo', 'cerco', 'ciao', 'due', 'vorrei', 'camere', 'appartamento', 'non', 'anche', 'come', 'questo']],
   ['pt', /[ãõâê]/i, ['não', 'nao', 'para', 'com', 'quanto', 'uma', 'você', 'voce', 'olá', 'apartamento', 'alugar']],
   ['pl', /[ąćęłńóśźż]/i, ['jest', 'nie', 'jak', 'ile', 'dla', 'mieszkanie']],
   ['ro', /[ăâîșşțţ]/i, ['este', 'pentru', 'cât', 'cat', 'apartament']],
@@ -175,14 +180,38 @@ const LATIN_HINTS: ReadonlyArray<readonly [string, RegExp, readonly string[]]> =
   ['hu', /[őű]/i, ['hogy', 'mennyi', 'lakás', 'nem']],
 ];
 
-export function guessLatinLanguage(text: string, fallback = 'en'): string {
+export function scoreLatinLanguages(text: string): Array<{ code: string; score: number }> {
   const lower = text.toLowerCase();
-  const words = new Set(lower.split(/[^\p{L}']+/u).filter(Boolean));
-  let best: { code: string; score: number } | null = null;
+  const words = new Set(lower.split(/[^\p{L}\p{M}']+/u).filter(Boolean));
+  const out: Array<{ code: string; score: number }> = [];
   for (const [code, letters, fws] of LATIN_HINTS) {
     let score = letters.test(text) ? 2 : 0;
     for (const w of fws) if (words.has(w)) score += 1;
-    if (score >= 2 && (!best || score > best.score)) best = { code, score };
+    if (score >= 2) out.push({ code, score });
   }
-  return best?.code ?? fallback;
+  return out.sort((a, b) => b.score - a.score);
+}
+
+export function guessLatinLanguage(text: string, fallback = 'en'): string {
+  return scoreLatinLanguages(text)[0]?.code ?? fallback;
+}
+
+/**
+ * Which Latin language a transcript is in when it is NOT the one the socket
+ * was configured for: the best-scoring language, only when it clearly beats
+ * the configured one. An English socket hearing "Hola, me llamo Tariel y
+ * busco un piso" writes Spanish words and labels them en-US; the words win.
+ */
+export function latinLanguageAgainst(text: string, configured: string): string | null {
+  const scores = scoreLatinLanguages(text);
+  const best = scores[0];
+  if (!best || best.code === configured) return null;
+  const own = scores.find((s) => s.code === configured)?.score ?? 0;
+  return best.score >= 3 && best.score >= own + 2 ? best.code : null;
+}
+
+/** Cyrillic siblings, by the letters only one of them uses. */
+export function guessCyrillicLanguage(text: string, fallback = 'ru'): string {
+  if (/[іїєґІЇЄҐ]/.test(text)) return 'uk';
+  return fallback;
 }

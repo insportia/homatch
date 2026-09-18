@@ -123,9 +123,10 @@ test('a short Latin fragment from a ru socket is held, a sentence is not', () =>
 
 test('Luna is told the current turn language with the turn, and told not to announce it', () => {
   const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
-  assert.match(edge, /Current turn language: \$\{LANGUAGE_NAMES\[replyLanguage\]/,
+  assert.match(edge, /\.\.\.languageContract\(replyLanguage, body, resolution\)/,
     'the reply language must travel with the utterance, not be inferred from history');
-  assert.match(edge, /without saying so/, 'and must not become "I will answer in English"');
+  assert.match(edge, /CURRENT USER TURN LANGUAGE: \$\{name\}/, 'stated as a fact of THIS turn');
+  assert.match(edge, /without saying which language you are using/, 'and must not become "I will answer in English"');
 });
 
 /* ── BUG TWO ────────────────────────────────────────────────────────────── */

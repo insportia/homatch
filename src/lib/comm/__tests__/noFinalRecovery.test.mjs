@@ -140,7 +140,7 @@ const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm,
 test('the session watches every finalize and acts on every miss', () => {
   const c = strip(client);
   assert.match(c, /this\.finalWatch\.requested\(Date\.now\(\)\)/, 'finalize must start the watch');
-  assert.match(c, /if \(said\) this\.finalWatch\.arrived\(\)/, 'a usable final must settle it');
+  assert.match(c, /if \(said\) \{ this\.finalWatch\.arrived\(\)/, 'a usable final must settle it');
   assert.match(c, /onNoFinal: \(reason\) => \{/, 'the socket must be able to report a miss');
   assert.match(c, /this\.finalWatch\.tick\(Date\.now\(\)\)/, 'and the clock must catch the silent case');
   assert.match(c, /void this\.rotateLive\(\);\s*\n\s*if \(this\.state === 'UNDERSTANDING'\) this\.setState\('LISTENING'\)/,

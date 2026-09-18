@@ -25,28 +25,60 @@
 import type { TalkLanguage } from './talkLanguage.ts';
 
 /** Languages whose transcripts can be checked for function words. */
-export type CheckableLanguage = 'en' | 'tr' | 'ru' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'pl' | 'nl' | 'uk';
+export type CheckableLanguage = 'en' | 'tr' | 'ru' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'pl' | 'nl' | 'uk' | 'ka' | 'ar' | 'he' | 'hi';
 
 const FUNCTION_WORDS: Record<CheckableLanguage, string[]> = {
   // No one- or two-letter tokens: "me" is Georgian მე, "da" is და, and a
   // transliteration would otherwise pass as English on the strength of them.
   en: ['the', 'and', 'but', 'are', 'was', 'were', 'this', 'that', 'what', 'how', 'much', 'many', 'does',
     'can', 'could', 'would', 'should', 'you', 'they', 'your', 'not', 'yes', 'okay', 'about', 'there',
-    'here', 'have', 'has', 'want', 'need', 'price', 'cost', 'with', 'from', 'for', 'right', 'now'],
+    'here', 'have', 'has', 'want', 'need', 'price', 'cost', 'with', 'from', 'for', 'right', 'now',
+    'thank', 'thanks', 'bye', 'goodbye', 'sure', 'good', 'morning',
+    'i', 'my', 'is', 'am', 'a', 'in', 'to', 'of', 'it', 'looking', 'hello', 'hi', 'name', 'please',
+    'thanks', 'on', 'at', 'do', 'be', 'so', 'if', 'call', 'room', 'flat', 'apartment'],
   tr: ['ve', 'bir', 'bu', 'şu', 'o', 'ne', 'nasıl', 'kaç', 'için', 'ile', 'gibi', 'çok', 'daha', 'en',
     'mi', 'mı', 'mu', 'mü', 'var', 'yok', 'evet', 'hayır', 'ben', 'sen', 'biz', 'siz', 'da', 'de', 'ama',
-    'fiyat', 'kadar', 'istiyorum', 'lütfen', 'tamam', 'peki', 'şimdi', 'burada', 'orada'],
+    'fiyat', 'kadar', 'istiyorum', 'lütfen', 'tamam', 'peki', 'şimdi', 'burada', 'orada',
+    'merhaba', 'selam', 'teşekkür', 'teşekkürler', 'tesekkurler', 'sağol', 'sagol', 'görüşürüz'],
   ru: ['и', 'а', 'но', 'в', 'на', 'с', 'по', 'за', 'из', 'к', 'о', 'у', 'не', 'да', 'нет', 'что', 'как',
     'это', 'этот', 'эта', 'я', 'ты', 'мы', 'вы', 'он', 'она', 'они', 'мне', 'меня', 'хочу', 'нужно', 'можно',
-    'сколько', 'стоит', 'цена', 'квартира', 'есть', 'был', 'была', 'будет', 'если', 'или', 'же', 'ли'],
-  es: ['que', 'los', 'las', 'para', 'con', 'una', 'por', 'como', 'cuánto', 'cuanto', 'está', 'esta', 'pero', 'también'],
-  fr: ['les', 'des', 'est', 'pour', 'avec', 'une', 'dans', 'que', 'combien', 'vous', 'pas', 'sur', 'mais'],
-  de: ['und', 'ist', 'nicht', 'das', 'ich', 'wie', 'viel', 'eine', 'für', 'mit', 'auch', 'aber', 'sie'],
-  it: ['che', 'della', 'per', 'con', 'quanto', 'sono', 'una', 'gli', 'non', 'anche', 'come', 'questo'],
-  pt: ['não', 'nao', 'para', 'com', 'quanto', 'uma', 'você', 'voce', 'está', 'esta', 'mas', 'também', 'isso'],
-  pl: ['jest', 'nie', 'jak', 'ile', 'dla', 'ale', 'też', 'tez', 'czy', 'tak', 'to', 'się', 'sie'],
-  nl: ['het', 'een', 'niet', 'hoeveel', 'voor', 'van', 'maar', 'ook', 'dat', 'wat', 'is'],
-  uk: ['і', 'та', 'але', 'не', 'що', 'як', 'це', 'скільки', 'коштує', 'для', 'або', 'так', 'ні'],
+    'сколько', 'стоит', 'цена', 'квартира', 'есть', 'был', 'была', 'будет', 'если', 'или', 'же', 'ли',
+    'спасибо', 'привет', 'здравствуйте', 'пожалуйста', 'хорошо', 'свидания', 'добрый'],
+  es: ['que', 'los', 'las', 'para', 'con', 'una', 'por', 'como', 'cuánto', 'cuanto', 'está', 'esta', 'pero', 'también',
+    'gracias', 'hola', 'adiós', 'adios', 'favor', 'buenos', 'días', 'dias'],
+  fr: ['les', 'des', 'est', 'pour', 'avec', 'une', 'dans', 'que', 'combien', 'vous', 'pas', 'sur', 'mais',
+    'merci', 'bonjour', 'salut', 'revoir', 'bonsoir'],
+  de: ['und', 'ist', 'nicht', 'das', 'ich', 'wie', 'viel', 'eine', 'für', 'mit', 'auch', 'aber', 'sie',
+    'danke', 'hallo', 'tschüss', 'bitte', 'guten'],
+  it: ['che', 'della', 'per', 'con', 'quanto', 'sono', 'una', 'gli', 'non', 'anche', 'come', 'questo',
+    'grazie', 'ciao', 'arrivederci', 'prego', 'buongiorno'],
+  pt: ['não', 'nao', 'para', 'com', 'quanto', 'uma', 'você', 'voce', 'está', 'esta', 'mas', 'também', 'isso',
+    'obrigado', 'obrigada', 'olá', 'ola', 'tchau', 'bom'],
+  pl: ['jest', 'nie', 'jak', 'ile', 'dla', 'ale', 'też', 'tez', 'czy', 'tak', 'to', 'się', 'sie',
+    'dziękuję', 'dziekuje', 'cześć', 'czesc', 'proszę', 'prosze', 'dzień'],
+  nl: ['het', 'een', 'niet', 'hoeveel', 'voor', 'van', 'maar', 'ook', 'dat', 'wat', 'is',
+    'bedankt', 'hallo', 'dag', 'alstublieft', 'goedemorgen'],
+  uk: ['і', 'та', 'але', 'не', 'що', 'як', 'це', 'скільки', 'коштує', 'для', 'або', 'так', 'ні',
+    'дякую', 'привіт', 'будь', 'ласка', 'добрий'],
+  /*
+   * The non-Latin languages a socket can be pinned to. Not for recovery
+   * toward them -- script already decides those -- but for judging whether
+   * a transcript in their script is a sentence or a transliteration: a
+   * ka-GE socket writes Turkish speech in ARABIC letters, with none of the
+   * words Arabic sentences are made of.
+   */
+  ka: ['და', 'არის', 'რომ', 'მე', 'შენ', 'ეს', 'რა', 'არ', 'კი', 'ვარ', 'მინდა', 'უნდა', 'თუ', 'როგორ', 'სად',
+    'რამდენი', 'ბინა', 'ბინას', 'ღირს', 'ვეძებ', 'მქვია', 'გამარჯობა', 'დიახ', 'არა', 'კარგი', 'ხარ', 'ჩემი',
+    'შენი', 'ან', 'მაგრამ', 'იქ', 'აქ', 'ახლა', 'ძალიან', 'ერთი', 'ორი', 'სამი',
+    'მადლობა', 'გმადლობთ', 'მადლობთ', 'ნახვამდის', 'კარგად', 'გისმენთ', 'სალამი'],
+  ar: ['في', 'من', 'على', 'عن', 'إلى', 'الى', 'أنا', 'انا', 'هل', 'ما', 'لا', 'نعم', 'هذا', 'هذه', 'كم', 'شقة',
+    'شقه', 'أريد', 'اريد', 'أبحث', 'ابحث', 'اسمي', 'مرحبا', 'مع', 'أو', 'او', 'كيف', 'أين', 'اين',
+    'شكرا', 'السلام', 'عليكم', 'السلامة', 'فضلك', 'أهلا', 'اهلا'],
+  he: ['אני', 'את', 'של', 'זה', 'לא', 'כן', 'מה', 'איך', 'כמה', 'יש', 'עם', 'על', 'דירה', 'מחפש', 'מחפשת',
+    'רוצה', 'שלום', 'קוראים', 'לי', 'בבקשה', 'תודה', 'או', 'אבל', 'גם', 'להתראות', 'בוקר', 'טוב'],
+  hi: ['है', 'हैं', 'मैं', 'मुझे', 'मेरा', 'मेरी', 'और', 'का', 'की', 'के', 'में', 'को', 'से', 'यह', 'क्या', 'कैसे',
+    'कितना', 'नहीं', 'हाँ', 'हां', 'चाहिए', 'नमस्ते', 'नाम', 'फ्लैट', 'घर', 'एक', 'दो', 'पर', 'या',
+    'धन्यवाद', 'शुक्रिया', 'कृपया', 'नमस्कार', 'अलविदा'],
 };
 
 /** Which script a checkable language writes in. */
@@ -55,6 +87,7 @@ const CYRILLIC = /\p{Script=Cyrillic}/u;
 const SCRIPT_OF: Record<CheckableLanguage, RegExp> = {
   en: LATIN, tr: LATIN, es: LATIN, fr: LATIN, de: LATIN, it: LATIN, pt: LATIN, pl: LATIN, nl: LATIN,
   ru: CYRILLIC, uk: CYRILLIC,
+  ka: /\p{Script=Georgian}/u, ar: /\p{Script=Arabic}/u, he: /\p{Script=Hebrew}/u, hi: /\p{Script=Devanagari}/u,
 };
 
 export function isCheckable(lang: string | null | undefined): lang is CheckableLanguage {
@@ -68,7 +101,15 @@ export function isCheckable(lang: string | null | undefined): lang is CheckableL
  * together -- what a transliteration of another language looks like.
  */
 export function functionWordRatio(text: string, lang: CheckableLanguage): { ratio: number; words: number } {
-  const words = text.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean);
+  /*
+   * COMBINING MARKS ARE PART OF THE WORD.
+   *
+   * A Devanagari virama and a matra are marks, not letters, so a class of
+   * letters and digits alone SPLIT धन्यवाद into two pieces and no Hindi
+   * word could ever match its own list. The same shreds Arabic and Hebrew
+   * wherever diacritics are written.
+   */
+  const words = text.toLowerCase().split(/[^\p{L}\p{N}\p{M}']+/u).filter(Boolean);
   if (!words.length) return { ratio: 0, words: 0 };
   const set = new Set(FUNCTION_WORDS[lang]);
   const hits = words.filter((w) => set.has(w)).length;
@@ -82,18 +123,22 @@ export interface RecoveryInput {
   transcript: string;
   /** Voiced milliseconds in the utterance, from the local endpointer. */
   speechMs: number;
-  /** The page the visitor chose. */
-  pageLocale: string | null;
-  /** The last non-Latin language this session actually resolved to, if any. */
-  lastOther: string | null;
   /** Recoveries already spent this session. */
   spent: number;
 }
 
+export type RecoveryReason = 'NO_FUNCTION_WORDS' | 'SCRIPT_MISMATCH' | 'FRAGMENT' | 'NO_FINAL';
+
 export interface RecoveryPlan {
-  /** The explicit language the batch recogniser is asked for. Never `auto`. */
-  hint: TalkLanguage;
-  reason: 'NO_FUNCTION_WORDS';
+  /**
+   * Always null now. A hint was how the recovery went wrong: told "ka", the
+   * batch recogniser TRANSLATED English and Hindi speech into Georgian
+   * (measured 2026-09-18, six real utterances), and a session that had left
+   * Georgian was pulled back into it. The recogniser is asked with no
+   * language, and the script of what comes back says which one it was.
+   */
+  hint: TalkLanguage | null;
+  reason: RecoveryReason;
   ratio: number;
   words: number;
 }
@@ -105,32 +150,78 @@ export const RECOVERY_MIN_WORDS = 4;
 /** Below this share of function words the text is not in the pinned language. */
 export const RECOVERY_MAX_RATIO = 0.15;
 /** A ceiling per session, so a bad microphone cannot pay for this on every turn. */
-export const RECOVERY_MAX_PER_SESSION = 6;
+export const RECOVERY_MAX_PER_SESSION = 8;
 
 /**
- * Decide whether this turn earns one same-audio recovery, and in which
- * language to ask for it.
+ * Does a transcript look like the language the socket was configured for?
  *
- * Only a pinned language whose transcripts can be checked (en, tr, ru), only
- * when the transcript is in that language's script (otherwise the script
- * itself already told the resolver the truth), only with sustained speech and
- * several words, and only while the session has recoveries left.
+ * Empty is not consistent; a script the language is not written in is not
+ * (a ka-GE socket writing Arabic letters heard Turkish, measured); and, for a
+ * language whose function words are listed, several words with none of them
+ * is not. Anything this cannot judge is presumed consistent, so a language
+ * without a word list can never be overridden on this ground.
+ */
+/** Whether a checkable language's function words appear at all; true when the language cannot be judged. */
+export function hasAnyFunctionWord(text: string, lang: string | null | undefined): boolean {
+  if (!isCheckable(lang)) return true;
+  return functionWordRatio(text, lang).ratio > 0;
+}
+
+export function consistentWith(text: string, lang: string | null | undefined): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (!isCheckable(lang)) return true;
+  if (!SCRIPT_OF[lang].test(t)) return false;
+  const { ratio, words } = functionWordRatio(t, lang);
+  if (words < RECOVERY_MIN_WORDS) return true;
+  return ratio > RECOVERY_MAX_RATIO;
+}
+
+/**
+ * Decide whether this turn earns one same-audio recovery.
+ *
+ * Only a pinned language whose transcripts can be checked, only with
+ * sustained speech and several words, and only while the session has
+ * recoveries left. Two grounds: the transcript is not even in the pinned
+ * language's script, or it is but carries none of that language's function
+ * words. The recovery itself asks for no language.
  */
 export function planRecovery(input: RecoveryInput): RecoveryPlan | null {
   if (!isCheckable(input.pinned)) return null;
   if (input.spent >= RECOVERY_MAX_PER_SESSION) return null;
   if (input.speechMs < RECOVERY_MIN_SPEECH_MS) return null;
-  if (!SCRIPT_OF[input.pinned].test(input.transcript)) return null;
-
-  const { ratio, words } = functionWordRatio(input.transcript, input.pinned);
+  const words = input.transcript.trim().split(/\s+/).filter(Boolean).length;
+  /*
+   * A ka-GE socket writing Arabic letters, or a ru-RU socket writing Latin:
+   * it heard a language it was not configured for. That is a mismatch at any
+   * length worth transcribing, so it is judged BEFORE the word floor -- the
+   * floor exists for the function-word ratio, and "RAM x 6Y" out of a Russian
+   * socket is three words and as clear a mismatch as a sentence would be.
+   */
+  if (words >= 2 && !SCRIPT_OF[input.pinned].test(input.transcript)) {
+    return { hint: null, reason: 'SCRIPT_MISMATCH', ratio: 0, words };
+  }
   if (words < RECOVERY_MIN_WORDS) return null;
+  const { ratio } = functionWordRatio(input.transcript, input.pinned);
   if (ratio > RECOVERY_MAX_RATIO) return null;
+  return { hint: null, reason: 'NO_FUNCTION_WORDS', ratio, words };
+}
 
-  // Which language to ask for: the one this visitor has actually used that
-  // is not the pinned one, else the page they chose, else Georgian -- the
-  // language this product exists for.
-  const candidates = [input.lastOther, input.pageLocale, 'ka']
-    .filter((c): c is string => Boolean(c) && c !== input.pinned);
-  const hint = (candidates[0] ?? 'ka') as TalkLanguage;
-  return { hint, reason: 'NO_FUNCTION_WORDS', ratio, words };
+/**
+ * The same finding, for an utterance too short for the ratio to mean
+ * anything: two or three words, in the pinned language's own script, with not
+ * one of that language's function words in them. Measured: an ar-XA socket
+ * wrote Hebrew speech as "خرم كرميتال" -- Arabic letters, no Arabic. A real
+ * short answer ("კი, კარგი", "Okay, sure", "مرحبا، اسمي طارق") always carries
+ * one, so this cannot fire on them.
+ */
+export function planFragmentRecovery(input: RecoveryInput): RecoveryPlan | null {
+  if (!isCheckable(input.pinned)) return null;
+  if (input.spent >= RECOVERY_MAX_PER_SESSION) return null;
+  if (input.speechMs < RECOVERY_MIN_SPEECH_MS) return null;
+  const words = input.transcript.trim().split(/\s+/).filter(Boolean).length;
+  if (words < 2 || words >= RECOVERY_MIN_WORDS) return null;
+  if (!SCRIPT_OF[input.pinned].test(input.transcript)) return null;
+  if (hasAnyFunctionWord(input.transcript, input.pinned)) return null;
+  return { hint: null, reason: 'FRAGMENT', ratio: 0, words };
 }

@@ -276,9 +276,19 @@ export function AiTalkDiagnostics(
         {/* The pinned recogniser heard the wrong language and the same audio
             was heard again in a named one. Counted; never `auto`. */}
         <Row
+          label="Language state"
+          value={`socket ${d.languageState?.socket ?? '—'} · turn ${d.languageState?.turn ?? '—'} · prev ${d.languageState?.previous ?? '—'} · reply ${d.languageState?.response ?? '—'}${d.languageState?.recovery ? ` · recovered ${d.languageState.recovery}` : ''}`}
+        />
+        <Row
+          label="Second opinion"
+          value={d.secondOpinion
+            ? `${d.secondOpinion.language ?? '?'} · ${d.secondOpinion.used ? 'used' : 'not used'} (${d.secondOpinion.why}, ${d.secondOpinion.waitMs} ms, ${d.secondOpinion.chars} chars)${d.secondOpinionFailures ? ` · ${d.secondOpinionFailures} failed` : ''}${d.lateFinalsDropped ? ` · ${d.lateFinalsDropped} late finals dropped` : ''}`
+            : (d.secondOpinionFailures ? `${d.secondOpinionFailures} failed` : '—')}
+        />
+        <Row
           label="Same-turn recovery"
           value={d.lastRecovery
-            ? `${d.sameTurnRecoveries ?? 0} · last → ${d.lastRecovery.hint} in ${d.lastRecovery.ms} ms, ${d.lastRecovery.used ? 'used' : 'not used'}`
+            ? `${d.sameTurnRecoveries ?? 0} · last ${d.lastRecovery.reason} → ${d.lastRecovery.language ?? '?'} in ${d.lastRecovery.ms} ms, ${d.lastRecovery.used ? 'used' : 'not used'}`
             : String(d.sameTurnRecoveries ?? 0)}
           tone={(d.sameTurnRecoveries ?? 0) > 0 ? 'idle' : 'good'}
         />

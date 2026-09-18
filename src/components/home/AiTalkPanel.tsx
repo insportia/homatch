@@ -579,7 +579,14 @@ export function AiTalkPanel({ className }: { className?: string }) {
             locale: language,
             ...(detectedRef.current ? { languageHint: detectedRef.current } : {}),
             state: knownRef.current,
-            history: historyRef.current.slice(-6),
+            /*
+             * EIGHT TURNS, NOT THREE. Each turn is two entries, so the old
+             * slice(-6) gave the model three exchanges: in a nine-turn
+             * conversation the name somebody gave at the start was gone by
+             * the middle, and it answered "you did not tell me your name" to
+             * somebody who had. The server already accepts twelve.
+             */
+            history: historyRef.current.slice(-16),
             /*
              * The rate this device's audio hardware actually runs at, so the
              * provider synthesises at it and nothing has to be resampled.
@@ -596,7 +603,27 @@ export function AiTalkPanel({ className }: { className?: string }) {
              * that is not one of the six languages AI TALK speaks.
              */
             ...(sessionRef.current?.languageTrace.providerLanguage
-              ? { providerLanguage: sessionRef.current.languageTrace.providerLanguage }
+              ? {
+                providerLanguage: sessionRef.current.languageTrace.providerLanguage,
+                // Whether that label was detected or merely configured; the
+                // server re-resolves and must weigh it the same way.
+                providerDetected: sessionRef.current.languageTrace.providerDetected,
+              }
+              : {}),
+            // Conversation language BEFORE this turn, and how sure this turn's
+            // language is: the server states both to the model as facts.
+            ...(sessionRef.current?.languageTrace.previousLanguage
+              ? { previousLanguage: sessionRef.current.languageTrace.previousLanguage }
+              : {}),
+            ...(sessionRef.current?.languageTrace.resolution
+              ? {
+                turnLanguageReason: sessionRef.current.languageTrace.resolution.weakEvidence
+                  ? `${sessionRef.current.languageTrace.resolution.resolutionReason}_WEAK`
+                  : sessionRef.current.languageTrace.resolution.resolutionReason,
+                turnLanguageConfidence: sessionRef.current.languageTrace.resolution.weakEvidence
+                  ? Math.min(0.4, sessionRef.current.languageTrace.resolution.confidence)
+                  : sessionRef.current.languageTrace.resolution.confidence,
+              }
               : {}),
           },
           signal,

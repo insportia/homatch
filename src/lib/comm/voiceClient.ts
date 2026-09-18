@@ -49,7 +49,12 @@ import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } 
 import { LiveAudioRouter, type LivePhase } from './liveAudioRouter.ts';
 import { FinalWatch, type FinalDecision } from './finalWatch.ts';
 import { gateWatchdog } from './gateWatchdog.ts';
-import { planRecovery } from './sameTurnRecovery.ts';
+import {
+  planRecovery, planFragmentRecovery, consistentWith, hasAnyFunctionWord,
+  RECOVERY_MIN_WORDS, type RecoveryReason,
+} from './sameTurnRecovery.ts';
+import { LATIN_CODES } from './languageRegistry.ts';
+import { SWITCH_MIN_LETTERS, SWITCH_MIN_LETTERS_BY_SCRIPT } from './talkLanguage.ts';
 import { scriptEvidence } from './talkLanguage.ts';
 import { ADMIN_SESSION_SECONDS } from './talkAllowance.ts';
 
@@ -313,7 +318,26 @@ export interface VoiceDiagnostics {
   ttsFinalTail: string | null;
   /* Same-turn language recovery: the audio was re-heard, once, in a named language. */
   sameTurnRecoveries: number;
-  lastRecovery: { from: string | null; hint: string; ms: number; used: boolean; ratio: number; words: number } | null;
+  lastRecovery: {
+    from: string | null; hint: string | null; ms: number; used: boolean; ratio: number; words: number;
+    reason: string; originalLiveTranscript: string | null; recoveredTranscript: string | null; language: string | null;
+  } | null;
+  /** The `auto` socket's verdict on the last turn, and whether it carried the turn. */
+  secondOpinion: {
+    language: string | null; chars: number; waitMs: number; used: boolean; why: string; agreed: boolean;
+  } | null;
+  secondOpinionFailures: number;
+  lateFinalsDropped: number;
+  /** Times the live path was re-tried after a fallback to batch. */
+  liveRetries: number;
+  /**
+   * The language state, in its separate parts. A socket can stay pinned to
+   * one language while the turn proves another; these must never be the same
+   * variable wearing different names.
+   */
+  languageState: {
+    socket: string | null; turn: string | null; previous: string | null; response: string | null; recovery: string | null;
+  };
   usageTier: string | null;
   configuredSessionSeconds: number | null;
   effectiveSessionSeconds: number;
@@ -494,7 +518,7 @@ export interface VoiceMilestone {
     | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition'
   | 'no_final_recovered'
   | 'inaudible_tail'
-  | 'same_turn_recovered' | 'failed';
+  | 'same_turn_recovered' | 'second_opinion_used' | 'second_opinion_turn' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
@@ -596,10 +620,47 @@ function gap(a: number | null | undefined, b: number | null | undefined): number
   return a && b ? b - a : null;
 }
 
-/** The script each recoverable language writes in; null means any. */
-const SCRIPT_FOR: Record<string, 'georgian' | 'cyrillic' | 'arabic' | 'hebrew' | null> = {
-  ka: 'georgian', ru: 'cyrillic', ar: 'arabic', he: 'hebrew', en: null, tr: null,
-};
+/*
+ * THE SECOND OPINION.
+ *
+ * The live socket is pinned to the conversation's language, because that is
+ * what keeps Georgian accurate. Measured on 2026-09-18, one real socket per
+ * case, that pinned socket also does three things a multilingual product
+ * cannot live with: a ka-GE socket returns NOTHING for Hebrew or Ukrainian
+ * speech, writes Turkish speech in Arabic letters, and an en-US socket hands
+ * back Hebrew speech as an English TRANSLATION -- fluent, labelled en-US,
+ * and undetectable from the text. The same audio into a socket in `auto`
+ * came back correct, and correctly labelled, twelve languages out of twelve.
+ *
+ * So every turn is heard twice: by the pinned socket, which stays
+ * authoritative, and by one `auto` socket whose only job is to say what
+ * language this was. The pinned transcript is replaced ONLY when it is
+ * empty, or inconsistent with its own language (wrong script, or no
+ * function words), or when a Latin-pinned socket is contradicted by a
+ * substantial non-Latin opinion -- the translation case. A Georgian sentence
+ * heard by a Georgian socket is never overridden, whatever `auto` thought.
+ * Unrestricted `auto` as the ONLY recogniser stays off.
+ */
+const SECOND_OPINION = true;
+/*
+ * BACK TO LIVE AFTER A FALLBACK.
+ *
+ * One slow socket handshake at the start of a session (7 s, measured on a
+ * real run) ran the router out of patience, the session fell back to the
+ * batch recogniser, and STAYED there for its whole life: slower turns, no
+ * second opinion, no provider label. A fallback is a moment, not a verdict.
+ * The live path is retried a bounded number of times, between turns.
+ */
+const LIVE_RETRY_MAX = 3;
+const LIVE_RETRY_BASE_MS = 2500;
+/** How long a live final waits for the second opinion before deciding alone. */
+const SECOND_OPINION_WAIT_MS = 700;
+/** How long a second opinion waits for a live final before carrying the turn itself. */
+const SECOND_OPINION_LEAD_MS = 900;
+/** After a socket closed empty, how long an opinion may still arrive and count. */
+const SECOND_OPINION_GRACE_MS = 2500;
+/** Audio the second opinion may be handed after it opens (it opens a beat after the primary). */
+const SECOND_OPINION_HOLD_MS = 4000;
 
 /**
  * How long an already-started answer may keep speaking after the session's
@@ -687,6 +748,18 @@ const END_TURN_ACK_MS = 300;
 const END_TURN_SHORT_MS = 600;
 const END_TURN_LONG_MS = 900;
 /*
+ * A GREETING IS NOT A TURN.
+ *
+ * "გამარჯობა, [pause] მე ტარიელი მქვია..." -- the pause after the greeting
+ * is where the 600 ms window cut every chain run on 2026-09-18: the reply
+ * answered the greeting, and the actual question arrived while the reply was
+ * playing. When the recogniser's interim shows one or two words so far, the
+ * window waits as long as it does for a composed sentence. Bounded to that
+ * case, so a real one-word answer still gets the fast window once its
+ * interim is in, and the common mid-length utterance pays nothing.
+ */
+const END_TURN_GREETING_MS = 900;
+/*
  * Speech shorter than this is not an utterance, it is a noise.
  *
  * It was 240ms, which is within the measurement noise of "კი" at 260ms -- so
@@ -757,6 +830,26 @@ export class VoiceSession {
   private utterancePcm: Int16Array[] = [];
   private utteranceSamples = 0;
   private sameTurnRecoveries = 0;
+  /** The `auto` socket beside the pinned one. See SECOND_OPINION. */
+  private shadow: LiveSocket | null = null;
+  /** A shadow closed by a rotation whose final for the current utterance is still owed. */
+  private retiredShadow: LiveSocket | null = null;
+  private shadowHeld: Int16Array[] = [];
+  private shadowHeldSamples = 0;
+  private shadowResult: { epoch: number; text: string; language: string | null; at: number } | null = null;
+  private shadowWaiters: Array<() => void> = [];
+  /** Counts utterances whose final is owed; a turn is produced for each epoch at most once. */
+  private utteranceEpoch = 0;
+  private producedEpoch = -1;
+  private shadowGraceUntil = 0;
+  /** The conversation language before the turn being processed. */
+  private previousTurnLanguage: string | null = null;
+  private liveRetries = 0;
+  /** Whether the last turn's provider label was a detection rather than a pin. */
+  private lastProviderDetected = false;
+  /** Words in the latest interim of the utterance in progress; 0 before any. */
+  private livePartialWords = 0;
+  private liveRetryTimer: number | null = null;
   /** The last non-Latin language this session actually resolved to. */
   private lastNonLatin: string | null = null;
   /** The tier the server granted, so 900s is read as an admin ceiling, not a bug. */
@@ -986,7 +1079,12 @@ export class VoiceSession {
     segments: null as VoiceDiagnostics['segments'],
     overlap: null as VoiceDiagnostics['overlap'],
     sameTurnRecoveries: 0,
-    lastRecovery: null as { from: string | null; hint: string; ms: number; used: boolean; ratio: number; words: number } | null,
+    lastRecovery: null as VoiceDiagnostics['lastRecovery'],
+    secondOpinion: null as VoiceDiagnostics['secondOpinion'],
+    secondOpinionFailures: 0,
+    lateFinalsDropped: 0,
+    liveRetries: 0,
+    languageState: { socket: null, turn: null, previous: null, response: null, recovery: null } as VoiceDiagnostics['languageState'],
     assistantAudibleResponseCompleted: null as boolean | null,
     playbackQueueDrained: null as boolean | null,
     playbackInterruptReason: null as string | null,
@@ -1260,6 +1358,11 @@ export class VoiceSession {
       ttsFinalTail: this.diag.ttsFinalTail ?? null,
       sameTurnRecoveries: this.sameTurnRecoveries,
       lastRecovery: this.diag.lastRecovery ?? null,
+      secondOpinion: this.diag.secondOpinion ?? null,
+      secondOpinionFailures: this.diag.secondOpinionFailures ?? 0,
+      lateFinalsDropped: this.diag.lateFinalsDropped ?? 0,
+      liveRetries: this.liveRetries,
+      languageState: this.diag.languageState,
       usageTier: this.grantInfo.usageTier,
       configuredSessionSeconds: this.grantInfo.configuredSessionSeconds,
       effectiveSessionSeconds: this.grant.maxDurationSec,
@@ -1326,6 +1429,8 @@ export class VoiceSession {
     this.dropCapture();
     this.live?.close();
     this.live = null;
+    this.closeShadow();
+    if (this.liveRetryTimer !== null) { window.clearTimeout(this.liveRetryTimer); this.liveRetryTimer = null; }
     this.processor?.disconnect();
     this.processor = null;
     this.micStream?.getTracks().forEach((tr) => tr.stop());
@@ -1515,6 +1620,7 @@ export class VoiceSession {
     }
 
     this.live?.setGated(this.micGated || this.muted);
+    this.shadow?.setGated(this.micGated || this.muted);
 
     if (this.muted || this.micGated || this.transcribing) { this.dropCapture(); return; }
 
@@ -1572,6 +1678,7 @@ export class VoiceSession {
           this.diag.samplesCaptured += out.length;
           this.diag.bytesSent += pcm.byteLength;
           this.live!.append(pcm);
+          this.feedShadow(pcm);
           // The same bytes, kept for THIS utterance only, so a mismatch can be
           // recovered from the audio rather than from the visitor's patience.
           this.utterancePcm.push(pcm);
@@ -1676,11 +1783,16 @@ export class VoiceSession {
      * been, not how long the microphone has been open: a long pause before
      * "კი" is still a one-word answer.
      */
-    const window = this.liveSpeechMs < END_TURN_ACK_SPEECH_MS
+    let window = this.liveSpeechMs < END_TURN_ACK_SPEECH_MS
       ? END_TURN_ACK_MS
       : this.liveSpeechMs >= END_TURN_LONG_SPEECH_MS
         ? END_TURN_LONG_MS
         : END_TURN_SHORT_MS;
+    // One or two words so far and more than an ack's worth of speech: the
+    // pause is probably the one after "hello".
+    if (this.livePartialWords > 0 && this.livePartialWords <= 2 && this.liveSpeechMs >= END_TURN_ACK_SPEECH_MS) {
+      window = Math.max(window, END_TURN_GREETING_MS);
+    }
     if (silenceMs < window) return;
 
     this.liveEnded = true;
@@ -1697,6 +1809,9 @@ export class VoiceSession {
     }
     // From here a final is owed. If it never comes, the watch says so.
     this.finalWatch.requested(Date.now());
+    this.utteranceEpoch += 1;
+    this.shadowResult = null;
+    try { this.shadow?.finalize?.(); } catch { /* the opinion is optional */ }
     if (this.state === 'LISTENING') this.setState('UNDERSTANDING');
   }
 
@@ -1709,8 +1824,194 @@ export class VoiceSession {
    * visitor repeats one sentence instead of losing the conversation. Nothing
    * is sent to the model: an empty utterance is not a turn.
    */
+  /* ── The second opinion ─────────────────────────────────────────────── */
+
+  private openShadow(grant: LiveGrant): void {
+    this.closeShadow();
+    if (!SECOND_OPINION || grant.provider !== 'GOOGLE' || this.closed) return;
+    const shadow = createTranscriber({ ...grant, detect: true }, {
+      onSpeechStart: () => {},
+      onSpeechEnd: () => {},
+      onPartial: () => {},
+      onFinal: (text, heard) => this.onShadowFinal(shadow, text, heard ?? null),
+      onNoFinal: () => this.onShadowFinal(shadow, '', null),
+      onUnavailable: () => {
+        if (this.shadow !== shadow) return;
+        this.shadow = null;
+        this.diag.secondOpinionFailures = (this.diag.secondOpinionFailures ?? 0) + 1;
+      },
+    });
+    this.shadow = shadow;
+    void shadow.open().then((ok) => {
+      if (!ok || this.shadow !== shadow || this.closed) return;
+      for (const part of this.shadowHeld) shadow.append(part);
+      this.shadowHeld = [];
+      this.shadowHeldSamples = 0;
+      shadow.setGated(this.micGated || this.muted);
+    }).catch(() => { /* reported by onUnavailable */ });
+  }
+
+  private closeShadow(): void {
+    const s = this.shadow;
+    this.shadow = null;
+    this.shadowHeld = [];
+    this.shadowHeldSamples = 0;
+    if (!s) return;
+    // A rotation follows the primary's final by a few milliseconds and would
+    // close the opinion before it spoke. close() asks the socket for its
+    // final; the retired instance is still listened to for this utterance.
+    this.retiredShadow = s;
+    try { s.close(); } catch { /* already gone */ }
+  }
+
+  private feedShadow(pcm: Int16Array): void {
+    const s = this.shadow;
+    if (!s) return;
+    if (s.isReady) { s.append(pcm); return; }
+    // Not open yet: hold what the primary already has, bounded.
+    this.shadowHeld.push(pcm);
+    this.shadowHeldSamples += pcm.length;
+    const keep = (SECOND_OPINION_HOLD_MS / 1000) * LIVE_SAMPLE_RATE;
+    while (this.shadowHeldSamples > keep && this.shadowHeld.length > 1) {
+      this.shadowHeldSamples -= this.shadowHeld.shift()!.length;
+    }
+  }
+
+  private onShadowFinal(from: LiveSocket, text: string, language: string | null): void {
+    if (this.closed) return;
+    if (from !== this.shadow && from !== this.retiredShadow) return;
+    if (from === this.retiredShadow) this.retiredShadow = null;
+    this.shadowResult = { epoch: this.utteranceEpoch, text: text.trim(), language, at: Date.now() };
+    const waiters = this.shadowWaiters;
+    this.shadowWaiters = [];
+    for (const w of waiters) w();
+    if (this.shadowResult.text) void this.maybeCarryTurnFromShadow(this.shadowResult);
+  }
+
+  /** The opinion for THIS epoch, waiting a bounded moment for it if it is not in yet. */
+  private awaitSecondOpinion(): Promise<{ text: string; language: string | null } | null> {
+    const epoch = this.utteranceEpoch;
+    const have = () => (this.shadowResult && this.shadowResult.epoch === epoch ? this.shadowResult : null);
+    const now = have();
+    if (now) return Promise.resolve(now.text ? { text: now.text, language: now.language } : null);
+    if (!this.shadow && !this.retiredShadow) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => finish(), SECOND_OPINION_WAIT_MS);
+      const finish = () => {
+        window.clearTimeout(timer);
+        const r = have();
+        resolve(r && r.text ? { text: r.text, language: r.language } : null);
+      };
+      this.shadowWaiters.push(finish);
+    });
+  }
+
+  /**
+   * The pinned socket said nothing, or nothing yet, and the opinion is in:
+   * after a short lead the opinion carries the turn, so a Hebrew sentence
+   * into a Georgian socket is answered in about the time a Georgian one is.
+   */
+  private async maybeCarryTurnFromShadow(result: { epoch: number; text: string; language: string | null }): Promise<void> {
+    const owed = () => this.finalWatch.isPending || Date.now() < this.shadowGraceUntil;
+    if (!owed()) return;
+    await new Promise((r) => window.setTimeout(r, SECOND_OPINION_LEAD_MS));
+    if (this.closed || this.producedEpoch === result.epoch || result.epoch !== this.utteranceEpoch) return;
+    if (!owed()) return;
+    this.finalWatch.arrived();
+    this.producedEpoch = result.epoch;
+    this.diag.secondOpinion = {
+      language: result.language ? normaliseLanguage(result.language) : null, chars: result.text.length,
+      waitMs: SECOND_OPINION_LEAD_MS, used: true, why: 'NO_LIVE_FINAL', agreed: false,
+    };
+    this.diag.languageState.recovery = result.language ? normaliseLanguage(result.language) : null;
+    this.milestone('second_opinion_turn', result.language ?? 'unknown');
+    await this.onLiveFinal(result.text, result.language, 'SHADOW');
+  }
+
+  /**
+   * WHICH OF THE TWO TRANSCRIPTS IS EVIDENCE.
+   *
+   * In order, and the order is the whole point: the pinned socket's sentence
+   * is only defended once it has been shown to be a sentence. Measured on
+   * chain B, 2026-09-18, a ru-RU socket wrote a Georgian question as
+   * "RAM x 6Y" and a Hebrew one as "Камазы, штайм, в, от, штайм." -- and the
+   * opinion that had correctly identified both was thrown away first, for
+   * being short, so the visitor was told their question was not understood.
+   * Short is a reason to distrust an opinion against a CREDIBLE transcript,
+   * never against a discredited one.
+   */
+  private judgeSecondOpinion(
+    live: string, pinned: string | null, opinion: string, opinionLang: string | null,
+  ): { use: boolean; why: string } {
+    if (!opinion) return { use: false, why: 'EMPTY_OPINION' };
+    if (!live.trim()) return { use: true, why: 'LIVE_EMPTY' };
+    if (!opinionLang || opinionLang === pinned) return { use: false, why: 'AGREES' };
+
+    // 1. The pinned transcript is not even in its own language's script, or
+    //    carries none of its words across enough of them to judge.
+    if (!consistentWith(live, pinned)) return { use: true, why: 'LIVE_INCONSISTENT' };
+
+    /*
+     * 2. Too short for that ratio to mean anything, and carrying not one word
+     *    of the language it claims to be: "машин шили" from a ru-RU socket,
+     *    "خرم كرميتال" from an ar-XA one. A real short answer always carries
+     *    one -- "კი, კარგი", "Okay, sure", "مرحبا، اسمي طارق" -- and an
+     *    opinion that agrees never reaches here at all.
+     */
+    const liveWords = live.trim().split(/\s+/).filter(Boolean).length;
+    if (liveWords < RECOVERY_MIN_WORDS && !hasAnyFunctionWord(live, pinned)) {
+      return { use: true, why: 'LIVE_FRAGMENT' };
+    }
+
+    // 3. From here the pinned transcript is credible, so the opinion has to
+    //    be more than a word or two to overturn it.
+    const evidence = scriptEvidence(opinion);
+    const minLetters = (evidence.script && SWITCH_MIN_LETTERS_BY_SCRIPT[evidence.script]) ?? SWITCH_MIN_LETTERS;
+    const words = opinion.trim().split(/\s+/).filter(Boolean).length;
+    const spaced = !['han', 'kana', 'thai'].includes(String(evidence.script));
+    // Two words was the real case: "მადლობა, ნახვამდის." -- seventeen Georgian
+    // letters, which no Spanish socket could have mis-heard into existence.
+    // One word stays too little, which is what keeps "Shalom" from switching.
+    const substantial = evidence.letters >= minLetters && (!spaced || words >= 2);
+    if (!substantial) return { use: false, why: 'OPINION_TOO_SHORT' };
+
+    // 4. A Latin socket that "heard" a non-Latin language wrote a translation.
+    const pinnedLatin = Boolean(pinned) && LATIN_CODES.includes(pinned!);
+    const opinionLatin = LATIN_CODES.includes(opinionLang);
+    if (pinnedLatin && !opinionLatin) return { use: true, why: 'LATIN_SOCKET_TRANSLATED' };
+
+    return { use: false, why: 'LIVE_CONSISTENT' };
+  }
+
+  /** The retained utterance through the batch recogniser, with no language hint. */
+  private async recoverUtterance(
+    reason: RecoveryReason, pinned: string | null, liveTranscript: string,
+  ): Promise<{ text: string | null; language: string | null; ms: number; used: boolean }> {
+    const startedAt = Date.now();
+    this.sameTurnRecoveries += 1;
+    const joined = new Int16Array(this.utteranceSamples);
+    let at = 0;
+    for (const part of this.utterancePcm) { joined.set(part, at); at += part.length; }
+    const wav = bytesToBase64(encodeWav(joined, LIVE_SAMPLE_RATE));
+    const again = await this.cb.onTranscribe(wav, null).catch(() => null);
+    const text = again?.text?.trim() ?? '';
+    const evidence = scriptEvidence(text);
+    const language = text ? (again?.language ? normaliseLanguage(again.language) : null) : null;
+    const usable = text.length > 0 && evidence.letters >= SWITCH_MIN_LETTERS;
+    // Used when it says something the pinned socket could not have: a
+    // different language, or any words where there were none.
+    const used = usable && (reason === 'NO_FINAL' || !liveTranscript.trim() || (language !== null && language !== pinned)
+      || !consistentWith(liveTranscript, pinned));
+    return { text: text || null, language, ms: Date.now() - startedAt, used };
+  }
+
   private recoverFromNoFinal(decision: FinalDecision): void {
     if (this.closed) return;
+    // The opinion may still be on its way; give it a moment to carry the turn.
+    this.shadowGraceUntil = Date.now() + SECOND_OPINION_GRACE_MS;
+    if (this.shadowResult && this.shadowResult.epoch === this.utteranceEpoch && this.shadowResult.text) {
+      void this.maybeCarryTurnFromShadow(this.shadowResult);
+    }
     this.liveSpeechMs = 0;
     this.liveEnded = false;
     this.livePartialId = null;
@@ -1741,6 +2042,7 @@ export class VoiceSession {
     if (this.closed) return;
     const old = this.live;
     this.live = null;
+    this.closeShadow();
     /*
      * The resampler SURVIVES the rotation. It carries interpolation phase and
      * the last sample across calls, so replacing it mid-conversation puts a
@@ -1894,6 +2196,8 @@ export class VoiceSession {
      * construction, and each buffer is sent exactly once.
      */
     this.live = live;
+    this.diag.languageState.socket = grant.languageCode ?? this.language.current;
+    this.openShadow(grant);
     this.diag.livePhase = 'READY';
     this.diag.socketReadyMs = this.socketConnectStartedAt
       ? Date.now() - this.socketConnectStartedAt : null;
@@ -1949,6 +2253,7 @@ export class VoiceSession {
   /** Words that are still arriving. Shown, never committed. */
   private showPartial(text: string): void {
     if (!text.trim() || this.closed) return;
+    this.livePartialWords = text.trim().split(/\s+/).filter(Boolean).length;
     if (!this.livePartialId) {
       this.utteranceSeq += 1;
       this.livePartialId = `u${this.utteranceSeq}`;
@@ -1966,8 +2271,14 @@ export class VoiceSession {
   }
 
   /** The finished sentence, from the live socket. */
-  private async onLiveFinal(text: string, detected: string | null = null): Promise<void> {
+  private async onLiveFinal(text: string, detected: string | null = null, origin: 'LIVE' | 'SHADOW' = 'LIVE'): Promise<void> {
     if (this.closed) return;
+    if (origin === 'LIVE' && this.producedEpoch === this.utteranceEpoch) {
+      // The second opinion already carried this utterance; the socket that
+      // finally answered is answering a question that has been asked.
+      this.diag.lateFinalsDropped = (this.diag.lateFinalsDropped ?? 0) + 1;
+      return;
+    }
 
     /*
      * A REAL TRANSCRIPT IS NEVER THROWN AWAY, ONLY DELAYED.
@@ -1995,9 +2306,10 @@ export class VoiceSession {
      * when the floor comes back, so the grant round trip overlaps the reply
      * being written and spoken instead of the silence before the next one.
      */
-    if (said) this.finalWatch.arrived();
+    if (said) { this.finalWatch.arrived(); this.producedEpoch = this.utteranceEpoch; }
     if (this.live?.isFinalizing) void this.rotateLive();
     this.liveSpeechMs = 0;
+    this.livePartialWords = 0;
     this.liveEnded = false;
 
     if (!said) { this.resumeListening(); return; }
@@ -2041,58 +2353,113 @@ export class VoiceSession {
      * "კი" and a brand name can never trigger it. See sameTurnRecovery.ts.
      */
     let heardBy = detected;
+    let heardByDetected = false;
     const googleFinalAt = Date.now();
-    const plan = planRecovery({
-      pinned: detected ? detected.toLowerCase().split('-')[0] : this.language.current,
-      transcript: said,
-      speechMs: this.diag.lastEndTurnSpeechMs ?? 0,
-      pageLocale: this.pageLocale,
-      lastOther: this.lastNonLatin,
-      spent: this.sameTurnRecoveries,
-    });
-    if (plan && this.utterancePcm.length && this.cb.onTranscribe) {
-      const startedAt = Date.now();
-      this.sameTurnRecoveries += 1;
-      const joined = new Int16Array(this.utteranceSamples);
-      let at = 0;
-      for (const part of this.utterancePcm) { joined.set(part, at); at += part.length; }
-      const wav = bytesToBase64(encodeWav(joined, LIVE_SAMPLE_RATE));
-      const again = await this.cb.onTranscribe(wav, plan.hint).catch(() => null);
-      const recovered = again?.text?.trim() ?? '';
-      const evidence = scriptEvidence(recovered);
-      const wantScript = SCRIPT_FOR[plan.hint];
-      const usable = recovered.length > 0 && evidence.letters >= 6
-        && (!wantScript || (evidence.script === wantScript && evidence.ratio >= 0.5));
-      this.diag.lastRecovery = {
-        from: plan.hint === 'ka' ? (heardBy ?? this.language.current) : (heardBy ?? null),
-        hint: plan.hint, ms: Date.now() - startedAt, used: usable,
-        ratio: Number(plan.ratio.toFixed(2)), words: plan.words,
+    const pinned = detected ? normaliseLanguage(detected) ?? this.language.current : this.language.current;
+    const liveTranscript = said;
+
+    /*
+     * THE SECOND OPINION, WEIGHED.
+     *
+     * See SECOND_OPINION. The pinned socket's sentence stands unless it is
+     * empty, inconsistent with its own language, or -- a Latin socket only --
+     * contradicted by a substantial non-Latin opinion. `auto` mislabelling a
+     * short Georgian answer ("კი, კარგი" as hi-Latn "Ki, kargi", measured)
+     * fails every one of those tests and changes nothing.
+     */
+    const opinion = origin === 'SHADOW' ? null : await this.awaitSecondOpinion();
+    if (opinion) {
+      const opinionLang = opinion.language ? normaliseLanguage(opinion.language) : null;
+      const judged = this.judgeSecondOpinion(liveTranscript, pinned, opinion.text, opinionLang);
+      this.diag.secondOpinion = {
+        language: opinionLang, chars: opinion.text.length, waitMs: Date.now() - googleFinalAt,
+        used: judged.use, why: judged.why, agreed: opinionLang === pinned,
       };
-      this.diag.sameTurnRecoveries = this.sameTurnRecoveries;
-      if (usable) {
-        said = recovered;
-        heardBy = plan.hint;
+      if (judged.use) {
+        said = opinion.text;
+        heardBy = opinionLang ?? detected;
+        heardByDetected = Boolean(opinionLang);
         this.diag.lastTranscript = said.slice(0, 160);
+        this.diag.languageState.recovery = opinionLang;
         this.turns = reduceTranscript(this.turns, {
-          id, speaker: 'USER', text: said, final: true,
-          language: plan.hint, atMs: Date.now(),
+          id, speaker: 'USER', text: said, final: true, language: opinionLang, atMs: Date.now(),
         });
         this.cb.onTranscript(this.turns);
-        this.milestone('same_turn_recovered', plan.hint);
+        this.milestone('second_opinion_used', opinionLang ?? 'unknown');
+      }
+    } else if (origin === 'LIVE') {
+      this.diag.secondOpinion = null;
+    }
+
+    /*
+     * WITHOUT AN OPINION: the retained audio, once, with NO language hint.
+     * A hint made the batch recogniser translate (see RecoveryPlan.hint); the
+     * script of what comes back says what it was.
+     */
+    const recoveryInput = {
+      pinned,
+      transcript: said,
+      speechMs: this.diag.lastEndTurnSpeechMs ?? 0,
+      spent: this.sameTurnRecoveries,
+    };
+    /*
+     * NOT WHEN THE OPINION ALREADY CARRIED THE TURN.
+     *
+     * A turn that arrives through the `auto` socket has already been heard by
+     * a recogniser that was told nothing, which is exactly what a recovery
+     * asks for. Running one anyway spent a batch call on a corrected
+     * transcript and -- measured on chain B -- replaced a correct Hebrew
+     * sentence with Georgian, because by then the retained audio was no
+     * longer the audio that sentence came from.
+     */
+    const plan = (opinion || origin === 'SHADOW') ? null
+      : (planRecovery(recoveryInput) ?? planFragmentRecovery(recoveryInput));
+    if (plan && this.utterancePcm.length) {
+      const outcome = await this.recoverUtterance(plan.reason, pinned, liveTranscript);
+      this.diag.lastRecovery = {
+        from: pinned, hint: null, ms: outcome.ms, used: outcome.used,
+        ratio: Number(plan.ratio.toFixed(2)), words: plan.words, reason: plan.reason,
+        originalLiveTranscript: liveTranscript.slice(0, 120) || null,
+        recoveredTranscript: outcome.text ? outcome.text.slice(0, 120) : null,
+        language: outcome.language,
+      };
+      this.diag.sameTurnRecoveries = this.sameTurnRecoveries;
+      if (outcome.used && outcome.text) {
+        said = outcome.text;
+        heardBy = outcome.language ?? detected;
+        heardByDetected = Boolean(outcome.language);
+        this.diag.lastTranscript = said.slice(0, 160);
+        this.diag.languageState.recovery = outcome.language;
+        this.turns = reduceTranscript(this.turns, {
+          id, speaker: 'USER', text: said, final: true,
+          language: outcome.language, atMs: Date.now(),
+        });
+        this.cb.onTranscript(this.turns);
+        this.milestone('same_turn_recovered', outcome.language ?? 'unknown');
       }
     }
     this.utterancePcm = [];
     this.utteranceSamples = 0;
     this.marks.googleFinalAtMs = googleFinalAt;
 
+    this.previousTurnLanguage = this.language.current;
     const resolution = resolveTurnLanguage({
       transcript: said,
       providerLanguage: heardBy,
+      providerDetected: heardByDetected,
       previousSessionLanguage: this.language.current,
       pageLocale: this.pageLocale,
     });
     this.lastResolution = resolution;
-    this.lastProviderLanguage = detected;
+    this.lastProviderLanguage = heardBy ?? detected;
+    this.lastProviderDetected = heardByDetected;
+    this.diag.languageState = {
+      socket: this.diag.languageState.socket,
+      turn: resolution.resolvedLanguage,
+      previous: this.previousTurnLanguage,
+      response: resolution.resolvedLanguage,
+      recovery: this.diag.languageState.recovery,
+    };
 
     /*
      * Did this turn resolve against the prior, or only survive it?
@@ -2220,10 +2587,37 @@ export class VoiceSession {
   private noteLiveAbandoned(): void {
     try { this.live?.close(); } catch { /* already gone */ }
     this.live = null;
+    this.closeShadow();
     this.diag.livePhase = 'FAILED';
     this.diag.liveMode = 'batch';
     this.diag.liveFellBack = this.router.lastFellBack;
     this.diag.socketFailures = this.router.socketFailures;
+    this.publishDiagnostics();
+    this.scheduleLiveRetry();
+  }
+
+  private scheduleLiveRetry(): void {
+    if (this.closed || this.liveRetryTimer !== null) return;
+    if (this.liveRetries >= LIVE_RETRY_MAX) return;
+    const why = this.router.lastFellBack ?? '';
+    // Not for the reasons that will not change by trying again.
+    if (/no grant source|session closed/.test(why)) return;
+    const delay = LIVE_RETRY_BASE_MS * (this.liveRetries + 1);
+    this.liveRetryTimer = window.setTimeout(() => { this.liveRetryTimer = null; void this.retryLive(); }, delay);
+  }
+
+  private async retryLive(): Promise<void> {
+    if (this.closed || this.live) return;
+    // Between turns only: never under a turn in flight or a batch transcription.
+    if (this.turnInFlight || this.transcribing || this.state === 'RESPONDING') {
+      this.liveRetryTimer = window.setTimeout(() => { this.liveRetryTimer = null; void this.retryLive(); }, 1500);
+      return;
+    }
+    this.liveRetries += 1;
+    this.diag.liveRetries = this.liveRetries;
+    this.expectLive('CONNECTING');
+    await this.openLiveTranscription();
+    if (this.live) this.diag.liveFellBack = null;
     this.publishDiagnostics();
   }
 
@@ -2349,6 +2743,20 @@ export class VoiceSession {
     this.milestone('first_transcript', this.turns.length);
     this.cb.onTranscript(this.turns);
 
+    // The same language trace the live path keeps, so the server is told the
+    // previous language and the strength of the evidence on this path too.
+    this.previousTurnLanguage = this.language.current;
+    this.lastProviderLanguage = reply.language ?? null;
+    this.lastProviderDetected = Boolean(reply.language);
+    this.lastResolution = resolveTurnLanguage({
+      transcript: said, providerLanguage: reply.language ?? null,
+      providerDetected: this.lastProviderDetected,
+      previousSessionLanguage: this.language.current, pageLocale: this.pageLocale,
+    });
+    this.diag.languageState = {
+      socket: null, turn: this.lastResolution.resolvedLanguage, previous: this.previousTurnLanguage,
+      response: this.lastResolution.resolvedLanguage, recovery: null,
+    };
     const before = this.language.current;
     this.language = stabiliseLanguage(this.language, {
       text: said, detected: reply.language ?? null, confidence: 0.8,
@@ -2441,6 +2849,25 @@ export class VoiceSession {
       queuedToAudibleMs: gap(this.marks.ttsFirstAudioAtMs, this.marks.firstAudibleAtMs),
       speechEndToAudibleMs: gap(this.marks.speechEndedAtMs, this.marks.firstAudibleAtMs),
       recovery: this.diag.lastRecovery ?? null,
+      /*
+       * WHICH LANGUAGE, DECIDED BY WHAT. The trace used to carry only the
+       * language the session ended the turn in, which cannot tell a real
+       * switch from a mis-hearing. These five say who decided: the socket it
+       * was pinned to, what the `auto` second opinion said, what the resolver
+       * concluded and why, and whether the sentence came from the live path
+       * or the batch one.
+       */
+      socketLanguage: this.diag.languageState.socket,
+      previousLanguage: this.previousTurnLanguage,
+      resolvedLanguage: this.lastResolution?.resolvedLanguage ?? null,
+      resolutionReason: this.lastResolution?.resolutionReason ?? null,
+      resolutionConfidence: this.lastResolution?.confidence ?? null,
+      weakEvidence: this.lastResolution?.weakEvidence ?? null,
+      providerLanguage: this.lastProviderLanguage,
+      providerDetected: this.lastProviderDetected,
+      secondOpinion: this.diag.secondOpinion ?? null,
+      mode: this.diag.liveMode,
+      liveRetries: this.liveRetries,
       bargeStopMs: this.lastBargeStopMs,
       // Per turn, not cumulative: the first trace reported a running total
       // and had to be differenced by hand to see that ~1000ms was being lost
@@ -2858,8 +3285,14 @@ export class VoiceSession {
    * concluded, and a disagreement between the two sides is worth seeing in a
    * trace rather than discovering in a silent turn.
    */
-  get languageTrace(): { providerLanguage: string | null; resolution: LanguageResolution | null } {
-    return { providerLanguage: this.lastProviderLanguage, resolution: this.lastResolution };
+  get languageTrace(): {
+    providerLanguage: string | null; providerDetected: boolean;
+    resolution: LanguageResolution | null; previousLanguage: string | null;
+  } {
+    return {
+      providerLanguage: this.lastProviderLanguage, providerDetected: this.lastProviderDetected,
+      resolution: this.lastResolution, previousLanguage: this.previousTurnLanguage,
+    };
   }
 
   get outputSampleRate(): number | null {

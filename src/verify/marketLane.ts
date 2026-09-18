@@ -39,6 +39,15 @@ export interface ReportComparable {
   rooms: string | null;
   floor: string | null;
   condition: string | null;
+  /**
+   * ACTIVE / EXPIRED / REMOVED / SOLD / UNKNOWN.
+   *
+   * Only ACTIVE + RESIDENTIAL comparables may drive a CURRENT price range —
+   * `computeMarketRanges` filters on exactly this, so a comparable without it
+   * is silently excluded from the median and the market positioning.
+   */
+  listingStatus: 'ACTIVE' | 'EXPIRED' | 'REMOVED' | 'SOLD' | 'UNKNOWN';
+  propertyType: 'RESIDENTIAL' | 'COMMERCIAL' | 'LAND' | 'OTHER' | null;
   price: string | null;
   currency: string | null;
   pricePerSqm: string | null;
@@ -92,6 +101,23 @@ function tierFor(property: UniqueProperty, subjectProject: string | null): Repor
   return usedDistrict ? 'MICRO_LOCATION' : 'PEER_PROJECT';
 }
 
+/**
+ * The report's own property vocabulary, which is coarser than the portal's.
+ *
+ * A flat and a house are both RESIDENTIAL for the purpose of a price range;
+ * land and commercial space are not, and must not be averaged into one. An
+ * unknown type stays null, which the range filter treats as "do not exclude"
+ * — the same reading the model's own output has always had.
+ */
+function residentialClass(
+  propertyType: string | null,
+): 'RESIDENTIAL' | 'COMMERCIAL' | 'LAND' | 'OTHER' | null {
+  if (propertyType === 'APARTMENT' || propertyType === 'HOUSE') return 'RESIDENTIAL';
+  if (propertyType === 'COMMERCIAL') return 'COMMERCIAL';
+  if (propertyType === 'LAND') return 'LAND';
+  return null;
+}
+
 const numberText = (value: number | null | undefined): string | null =>
   typeof value === 'number' && Number.isFinite(value) ? String(Math.round(value * 100) / 100) : null;
 
@@ -124,6 +150,24 @@ function toReportComparable(
     rooms: numberText(l.rooms),
     floor: numberText(l.floor),
     condition: null,
+    /*
+     * ACTIVE, because of HOW this was obtained rather than what it says.
+     *
+     * The lane reads the portal's live search of currently-published adverts.
+     * Every record it returns is on the market at the moment it was read —
+     * that is a property of the endpoint, not a guess about the listing. A
+     * live search cannot surface an expired advert, and it equally cannot
+     * tell us one expired yesterday, which is why nothing here ever claims
+     * EXPIRED, REMOVED or SOLD.
+     *
+     * This matters concretely: computeMarketRanges only counts ACTIVE +
+     * RESIDENTIAL rows, so leaving it unset excluded all 36 comparables from
+     * the median and left the report's positioning UNKNOWN — measured on
+     * production job a7d09fef, which returned 36 comparables and no price
+     * range at all.
+     */
+    listingStatus: 'ACTIVE',
+    propertyType: residentialClass(l.propertyType),
     price: money ? String(Math.round(money.amount)) : null,
     currency: money?.currency ?? null,
     pricePerSqm: numberText(l.salePricePerSqm),

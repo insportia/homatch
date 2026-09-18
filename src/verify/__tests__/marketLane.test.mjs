@@ -220,3 +220,43 @@ test('deterministic price conflicts reach the list the report is built from', ()
     'the market lane conflicts must be part of the list the report is built from',
   );
 });
+
+test('deterministic comparables survive the price-range filter the report applies', async () => {
+  /*
+   * The regression this pins, measured on production job a7d09fef.
+   *
+   * computeMarketRanges counts only rows where
+   *   listingStatus === 'ACTIVE' && (!propertyType || propertyType === 'RESIDENTIAL')
+   * and the deterministic comparables set neither field. All 36 reached the
+   * report and every one was excluded from the median: activeComparablesUsed
+   * went 25 -> 0 and positioning PREMIUM -> UNKNOWN. More evidence, and no
+   * price range at all.
+   */
+  const { transport } = countingTransport();
+  const runtime = createPortalRuntime({ transport, documentCache: new Map() });
+  const lane = await runMarketLane(seedFor(), runtime.registry, runtime.context, { budgetMs: 8000 });
+
+  const isResidential = (c) => !c.propertyType || c.propertyType === 'RESIDENTIAL';
+  const active = lane.comparables.filter((c) => c.listingStatus === 'ACTIVE' && isResidential(c));
+  assert.equal(active.length, lane.comparables.length, 'every comparable counts toward the range');
+  assert.ok(active.length > 0);
+
+  // And the figure the range is actually computed from is present.
+  const priced = active.filter((c) => c.pricePerSqm !== null);
+  assert.ok(priced.length > 0, 'at least one carries a price per square metre');
+
+  // Nothing claims a status a live search cannot establish.
+  for (const c of lane.comparables) {
+    assert.ok(!['EXPIRED', 'REMOVED', 'SOLD'].includes(c.listingStatus));
+  }
+});
+
+test('the filter the report applies is the one this test asserts', () => {
+  // Read from the deployed source, so the two cannot drift apart.
+  const agent = readFileSync(
+    join(HERE, '..', '..', '..', 'supabase', 'functions', 'research-agent', 'index.ts'),
+    'utf8',
+  );
+  assert.match(agent, /c\?\.listingStatus === 'ACTIVE' && isResidential\(c\)/);
+  assert.match(agent, /!c\?\.propertyType \|\| c\.propertyType === 'RESIDENTIAL'/);
+});

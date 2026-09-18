@@ -11,6 +11,15 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // "Luna (OpenAI)" — the model's name and the vendor's, both proper nouns.
+  // The AI Talk cost panel names the three providers it bills against, and
+  // Google and Cartesia already read as brands in their own labels; this is
+  // the one whose entire value is two company names with nothing to translate.
+  'talk_cogs_leg_llm',
+  // "Model" — Turkish spells it identically. ka/ru/ar/he all carry their own
+  // real forms, so this is a single-locale collision on a technical column
+  // header, not a missing translation.
+  'talk_cogs_col_model',
   // The three advertising platforms, by their own names. Meta, Google and
   // TikTok are written identically in all six locales because they are
   // company names, not words — the same reason WhatsApp is allowlisted below.

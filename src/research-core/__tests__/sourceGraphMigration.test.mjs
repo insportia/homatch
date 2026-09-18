@@ -27,10 +27,18 @@ const STATEMENTS = SQL
   .filter((line) => !line.trim().startsWith('--'))
   .join('\n');
 
-test('it sorts after every migration that already exists', () => {
-  const others = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql') && f !== FILE).sort();
-  const last = others[others.length - 1];
+// It must not be inserted into the middle of the chain: a migration that
+// sorts before one already applied never runs. Migrations added AFTER this
+// one legitimately sort later, so the property is "nothing older than me runs
+// after me", not "I am permanently the newest file in the directory".
+test('it sorts after every migration that pre-dates it', () => {
+  const version = FILE.split('_')[0];
+  const older = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith('.sql') && f !== FILE && f.split('_')[0] < version)
+    .sort();
+  const last = older[older.length - 1];
   assert.ok(FILE > last, `${FILE} sorts before ${last}`);
+  assert.ok(older.length > 0, 'expected the source-graph migration to have predecessors');
 });
 
 test('nothing is dropped, renamed or rewritten', () => {

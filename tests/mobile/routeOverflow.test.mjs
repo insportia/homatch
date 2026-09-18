@@ -51,6 +51,7 @@ const ROUTES = [
   { path: '/about', name: 'about' },
   { path: '/verify', name: 'verify centre', auth: true },
   { path: '/mortgage', name: 'mortgage' },
+  { path: '/investment', name: 'investment' },
   { path: '/pricing', name: 'pricing' },
   { path: '/developers', name: 'developers' },
   { path: '/dashboard', name: 'dashboard', auth: true },

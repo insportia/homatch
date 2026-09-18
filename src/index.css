@@ -567,6 +567,106 @@
   :root[data-surface='light'] body {
     background-color: hsl(var(--background));
   }
+
+  /* ------------------------------------------------------------------
+   * THE INVESTMENT DESK
+   *
+   * Investment Intelligence is the one product that renders on a DARK
+   * ground while the rest of the app is light, and this block is why that
+   * is a scoped decision rather than a page full of one-off hex values.
+   *
+   * WHY A SCOPE AND NOT A THIRD data-surface
+   *
+   * data-surface lives on <html> so that Radix portals — dropdowns,
+   * dialogs, the language switcher — inherit it. That is exactly what this
+   * surface must NOT do: the app header, the mobile bottom nav and every
+   * portalled menu belong to the light shell and are styled for it. So the
+   * dark palette is scoped to the workspace element, and the workspace
+   * deliberately uses no portalled control inside it.
+   *
+   * WHY THESE VALUES
+   *
+   * A deeper, bluer near-black than the app's own dark root (222 25% 6%),
+   * because a financial workspace sits on screen for a long time and a
+   * flat black reads as an error state. Gold is the ONLY accent and it is
+   * used for the single most important figure on any given module — a
+   * second accent colour would turn an analysis into a dashboard.
+   * ------------------------------------------------------------------ */
+  .hm-invest {
+    --background: 218 32% 7%;    /* #0C1119 — deep navy ink            */
+    --foreground: 214 26% 93%;
+    --card: 218 28% 10%;
+    --card-foreground: 214 26% 93%;
+    --popover: 218 28% 10%;
+    --popover-foreground: 214 26% 93%;
+    --primary: 38 92% 56%;
+    --primary-foreground: 218 32% 7%;
+    --secondary: 218 24% 14%;
+    --secondary-foreground: 214 20% 78%;
+    --muted: 218 24% 13%;
+    /* 4.9:1 on the card ground. The app's dark root uses 48% here, which
+       fails on body copy; a page whose whole job is reading numbers cannot
+       afford a secondary text colour you have to lean in for. */
+    --muted-foreground: 215 16% 62%;
+    --accent: 218 24% 16%;
+    --accent-foreground: 214 26% 93%;
+    --destructive: 0 70% 58%;
+    --destructive-foreground: 214 26% 95%;
+    --border: 218 22% 18%;
+    --input: 218 24% 15%;
+    --ring: 38 92% 56%;
+    --success: 152 52% 48%;
+    --warning: 38 92% 58%;
+    --info: 199 70% 56%;
+    --gold: 38 92% 56%;
+    --gold-ink: 40 94% 66%;      /* 7.4:1 on the card. Type-safe here.  */
+    --gold-soft: 38 46% 15%;
+    --gold-hover: 40 94% 64%;
+    --gold-border: 38 60% 34%;
+    --sand: 218 24% 14%;
+    --ink-soft: 214 20% 80%;
+    --chart-1: 38 92% 56%;
+    --chart-2: 199 70% 56%;
+    --chart-3: 152 52% 48%;
+    --chart-4: 268 52% 66%;
+    --chart-5: 14 78% 62%;
+    --shadow-card: 0 1px 2px hsl(218 40% 3% / 0.5);
+    --shadow-hover: 0 18px 46px -22px hsl(218 40% 2% / 0.8);
+
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    /* Tabular figures everywhere on this surface. A column of prices whose
+       digits are different widths cannot be scanned, and scanning a column
+       of prices is most of what anybody does here. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* One faint warm wash from the top so the canvas has a light source
+     rather than reading as an unlit rectangle. Decorative, and the only
+     decorative gradient on the surface. */
+  .hm-invest-canvas {
+    background-image: radial-gradient(
+      ellipse 120% 60% at 50% -10%,
+      hsl(38 92% 56% / 0.07) 0%,
+      transparent 62%
+    );
+  }
+
+  /* The hairline that separates a module from the canvas. A rule rather
+     than a shadow: shadows on a near-black ground are invisible, and the
+     thing that actually reads as an edge is a one-pixel lift in value. */
+  .hm-invest-panel {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 1rem;
+  }
+
+  /* The gold hairline above a module that is currently the answer to the
+     question just asked. */
+  .hm-invest-focus {
+    box-shadow: inset 0 1px 0 0 hsl(var(--gold) / 0.55), var(--shadow-hover);
+    border-color: hsl(var(--gold-border));
+  }
 }
 
 @layer utilities {

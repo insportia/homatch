@@ -206,6 +206,27 @@ test('the core is consumed only through its deliberate integration points', () =
     'src/verify/__tests__/sourceHealth.test.mjs',
     // The one server that runs research.
     'supabase/functions/research-agent/index.ts',
+    /*
+     * HOMATCH INVESTMENT INTELLIGENCE — the second consumer, and a
+     * deliberate seam rather than an incidental one.
+     *
+     * lane.ts is the whole of it. It builds a ResearchSeed from an
+     * investment consultation, calls discoverComparables for a sale sweep
+     * and a rent sweep, and reduces what comes back with the core's OWN
+     * pooling, dedupe and independence functions. It implements no
+     * statistic, no cache, no fetch path and no source registry; it does
+     * not touch HttpClient, NetworkPolicy or any flow-control primitive
+     * directly. Every one of those reaches it through createPortalRuntime,
+     * which is the same single door Verify's market lane goes through.
+     *
+     * The edge function is listed for one reason: it calls
+     * createPortalRuntime to build that door. It holds no research logic.
+     *
+     * If a component ever appears in this list, that is the signal the seam
+     * has stopped being a seam.
+     */
+    'src/investment/evidence/lane.ts',
+    'supabase/functions/investment-research/index.ts',
   ]);
 
   const roots = ['src', 'supabase/functions', 'official-worker/src'];

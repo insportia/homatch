@@ -11,6 +11,12 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // "Net" — Turkish spells it identically to English, and it is the word a
+  // Turkish property investor actually uses for a net figure. The other four
+  // locales carry their own distinct forms of the same key (წმინდა, Чистая,
+  // الصافي, נטו), so this is a single-locale collision on a two-letter
+  // financial label rather than a missing translation.
+  'inv_vacancy_net',
   // "Luna (OpenAI)" — the model's name and the vendor's, both proper nouns.
   // The AI Talk cost panel names the three providers it bills against, and
   // Google and Cartesia already read as brands in their own labels; this is

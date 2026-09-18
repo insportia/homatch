@@ -233,3 +233,64 @@ test('a mixed set becomes several honest pools, never one dishonest one', () => 
   // And no pool contains anything from another basis.
   for (const p of pools) assert.ok(p.count > 0);
 });
+
+/*
+ * THE QUARTILES, WHICH NOTHING USED TO ASSERT.
+ *
+ * pool() passed 25 and 75 to percentile(), which takes a FRACTION and
+ * clamps to 1 — so p25 and p75 both returned the maximum of the set. Every
+ * pool reported a "range" whose low bound was the highest price in it.
+ *
+ * Nothing caught it because nothing read those two fields until the
+ * Investment market lane did, and nothing asserted them at all. It surfaced
+ * on live ss.ge data as a Vake asking range of $285,000–$285,000 around a
+ * $140,000 median. These three tests are the coverage that was missing.
+ */
+
+test('the quartiles are quartiles, not the maximum twice', () => {
+  const amounts = [100, 200, 300, 400, 500];
+  const result = pool(
+    amounts.map((amount) => ({ observation: obs(), value: money(amount, 'USD', 'ASKING_SALE_PRICE') })),
+    support,
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.pool.min, 100);
+  assert.equal(result.pool.max, 500);
+  assert.equal(result.pool.median, 300);
+  // Linear interpolation over rank 0.25*(5-1)=1 and 0.75*(5-1)=3.
+  assert.equal(result.pool.p25, 200);
+  assert.equal(result.pool.p75, 400);
+});
+
+test('p25 <= median <= p75 <= max, always', () => {
+  for (const amounts of [
+    [10, 20, 30, 40],
+    [1, 1, 1, 9999],
+    [125000, 130000, 140000, 165000, 189000, 285000],
+    [7],
+  ]) {
+    const result = pool(
+      amounts.map((amount) => ({ observation: obs(), value: money(amount, 'USD', 'ASKING_RENT') })),
+      support,
+    );
+    assert.equal(result.ok, true, `pool refused ${amounts.join(',')}`);
+    const p = result.pool;
+    assert.ok(p.min <= p.p25, `min ${p.min} > p25 ${p.p25}`);
+    assert.ok(p.p25 <= p.median, `p25 ${p.p25} > median ${p.median}`);
+    assert.ok(p.median <= p.p75, `median ${p.median} > p75 ${p.p75}`);
+    assert.ok(p.p75 <= p.max, `p75 ${p.p75} > max ${p.max}`);
+  }
+});
+
+test('a single observation pools to itself on every statistic', () => {
+  const result = pool(
+    [{ observation: obs(), value: money(142000, 'USD', 'ASKING_SALE_PRICE') }],
+    support,
+  );
+  assert.equal(result.ok, true);
+  const p = result.pool;
+  assert.deepEqual(
+    [p.min, p.p25, p.median, p.mean, p.p75, p.max],
+    [142000, 142000, 142000, 142000, 142000, 142000],
+  );
+});

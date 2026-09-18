@@ -40,6 +40,16 @@ const DeveloperProfilePage = lazy(() => import('./pages/DeveloperProfilePage'));
 const AIPage = lazy(() => import('./pages/AIPage'));
 const VerifyPage = lazy(() => import('./pages/VerifyPage'));
 const MortgagePage = lazy(() => import('./pages/MortgagePage'));
+/*
+ * HOMATCH INVESTMENT INTELLIGENCE.
+ *
+ * A first-class product alongside Verify and Mortgage, not a tool inside
+ * one of them. Lazy like its siblings and public like /mortgage: the whole
+ * deterministic workspace runs in the browser and works signed out, and
+ * only the AI Consultant and the market sweep need an account (both
+ * enforce that server-side, not by gating this route).
+ */
+const InvestmentPage = lazy(() => import('./pages/InvestmentPage'));
 const VerificationCasePage = lazy(() => import('./pages/VerificationCasePage'));
 const LegacyDealRoomRedirect = lazy(() => import('./pages/LegacyDealRoomRedirect'));
 // CasesPage import removed (2026-09-06 "REMOVE MY DEALS/CASES" mandate) —
@@ -181,6 +191,11 @@ export const routes: RouteConfig[] = [
   // / mortgage_offers RLS (auth_user_id()-based, see the migration), not by
   // gating this route.
   { name: 'Mortgage',          path: '/mortgage',                 element: <MortgagePage />,      public: true },
+  // Public for the same reason /mortgage is: every figure on the page is
+  // computed in the browser by src/investment/calculations, so a signed-out
+  // visitor gets the complete analytical product. The Consultant and the
+  // market sweep return 401 on their own and the page says so in place.
+  { name: 'Investment Intelligence', path: '/investment',         element: <InvestmentPage />,    public: true },
   // 'My Deals' / '/cases' route intentionally removed from the product
   // (2026-09-06 mandate) — see the CasesPage import comment above.
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },

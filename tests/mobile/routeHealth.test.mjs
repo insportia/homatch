@@ -39,7 +39,7 @@ const PORT = 4343;
 const BASE = `http://127.0.0.1:${PORT}`;
 
 const ROUTES = [
-  '/', '/about', '/pricing', '/developers', '/mortgage',
+  '/', '/about', '/pricing', '/developers', '/mortgage', '/investment',
   '/dashboard', '/ai', '/credits', '/profile', '/activity', '/notifications',
   '/viewings', '/active-search', '/verify', '/property/add',
   '/outreach', '/outreach/email', '/outreach/calls', '/outreach/sms',

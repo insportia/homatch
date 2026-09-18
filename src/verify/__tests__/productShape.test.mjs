@@ -34,11 +34,30 @@ test('no customer-facing string anywhere says "Deal Room"', () => {
   const offenders = [];
   for (const file of walk(join(ROOT, 'src'))) {
     const rel = file.slice(ROOT.length + 1).replace(/\\/g, '/');
-    // Strip what is legitimately allowed to say it: import specifiers (the
-    // module tree keeps its names), and comments — explaining why the product
-    // was removed is not the same as shipping the term to a customer.
+    /*
+     * Strip what is legitimately allowed to say it: import specifiers (the
+     * module tree keeps its names), and comments — explaining why the product
+     * was removed is not the same as shipping the term to a customer.
+     *
+     * DYNAMIC IMPORTS ARE STRIPPED TOO, AND THEY DID NOT USED TO BE.
+     *
+     * routes.tsx loads every page through `lazy(() => import('./pages/X'))`,
+     * which the static-import pattern above cannot match: there is no `from`.
+     * `./pages/LegacyDealRoomRedirect` was therefore always a candidate, and
+     * the suite passed only because the offender scan happens to consume
+     * quote characters as it walks the file — so whether that specifier was
+     * reachable depended on how many quotes preceded it. Adding an unrelated
+     * route flipped it and the guard failed on a module path its own header
+     * says is allowed.
+     *
+     * That is a hole in both directions: the same parity accident could hide
+     * a genuine customer-facing string. Stripping the dynamic form makes the
+     * check mean what it claims to mean instead of what the file length
+     * happens to make it mean.
+     */
     const src = readFileSync(file, 'utf8')
       .replace(/import\s*\{?[^;]*?\}?\s*from\s*['"][^'"]+['"];?/g, '')
+      .replace(/\bimport\s*\(\s*['"][^'"]+['"]\s*\)/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
     for (const m of src.matchAll(/['"`>]\s*([^'"`<>]{0,40}?Deal\s?Rooms?[^'"`<>]{0,40}?)\s*['"`<]/gi)) {

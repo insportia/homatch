@@ -46,7 +46,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
    routes, so they are the ones most likely to keep the public chrome by
    accident once somebody has signed in. */
 const APP_ROUTES = [
-  '/dashboard', '/verify', '/mortgage', '/credits', '/profile',
+  '/dashboard', '/verify', '/mortgage', '/investment', '/credits', '/profile',
   '/activity', '/chat', '/live-chat', '/outreach', '/outreach/calls',
   '/viewings', '/active-search', '/property/add',
 ];
@@ -259,7 +259,7 @@ test('the account block is separated from the product navigation', opts, async (
    * still resolves — it has been bookmarked — it is simply not somewhere the
    * navigation sends anybody.
    */
-  for (const product of ['/verify', '/mortgage', '/outreach/calls', '/outreach/whatsapp', '/outreach/email']) {
+  for (const product of ['/verify', '/mortgage', '/investment', '/outreach/calls', '/outreach/whatsapp', '/outreach/email']) {
     assert.ok(shape.navLinks.includes(product), `${product} is missing from the rail`);
   }
 

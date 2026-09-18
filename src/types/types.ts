@@ -58,7 +58,16 @@ export type ActivityEventType =
   | 'MORTGAGE_SUBSIDY_CHECKED'
   | 'MORTGAGE_OFFER_UPLOADED'
   | 'MORTGAGE_OFFERS_COMPARED'
-  | 'MORTGAGE_SCENARIO_SAVED';
+  | 'MORTGAGE_SCENARIO_SAVED'
+  // HOMATCH INVESTMENT INTELLIGENCE. Added to the enum in
+  // supabase/migrations/…_investment_intelligence_analytics.sql — this union
+  // mirrors public.activity_event_type exactly, so a value here that the
+  // database does not have is a runtime 22P02 on insert, not a type error.
+  | 'INVESTMENT_PAGE_OPENED'
+  | 'INVESTMENT_CONSULTATION_TURN'
+  | 'INVESTMENT_PROPERTY_ATTACHED'
+  | 'INVESTMENT_RESEARCH_REQUESTED'
+  | 'INVESTMENT_EVIDENCE_APPLIED';
 /**
  * Mirrors the public.notification_type Postgres enum exactly, in enum order.
  *

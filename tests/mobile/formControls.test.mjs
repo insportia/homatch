@@ -37,7 +37,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 /* Every customer route that carries, or can carry, a form. */
 const ROUTES = [
-  '/', '/about', '/pricing', '/mortgage',
+  '/', '/about', '/pricing', '/mortgage', '/investment',
   '/auth/login', '/auth/signup', '/auth/reset-password',
   '/dashboard', '/ai', '/credits', '/profile', '/activity', '/notifications',
   '/viewings', '/active-search', '/verify', '/property/add',

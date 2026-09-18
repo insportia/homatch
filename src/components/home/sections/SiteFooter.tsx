@@ -65,6 +65,7 @@ function FooterBody() {
         { key: 'link_verify', path: '/verify' },
         { key: 'link_contract', path: session ? '/verify' : '/auth/signup' },
         { key: 'link_mortgage', path: '/mortgage' },
+        { key: 'link_investment', path: '/investment' },
         { key: 'link_ai', path: session ? '/ai' : '/auth/signup' },
         { key: 'link_calls', path: session ? '/outreach/calls' : '/auth/signup' },
         { key: 'link_email', path: session ? '/outreach/email' : '/auth/signup' },

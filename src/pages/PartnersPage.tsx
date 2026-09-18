@@ -97,6 +97,7 @@ export default function PartnersPage() {
     { key: 'about', label: t('nav_about'), target: '/about' },
     { key: 'verify', label: t('nav_verify'), target: '/verify' },
     { key: 'mortgage', label: t('nav_mortgage'), target: '/mortgage' },
+    { key: 'investment', label: t('nav_investment'), target: '/investment' },
   ];
 
   return (

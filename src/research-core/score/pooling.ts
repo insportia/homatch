@@ -124,8 +124,21 @@ export function pool(
       mean: round(sum / amounts.length, 2),
       min: round(amounts[0] as number, 2),
       max: round(amounts[amounts.length - 1] as number, 2),
-      p25: round(percentile(amounts, 25) ?? (amounts[0] as number), 2),
-      p75: round(percentile(amounts, 75) ?? (amounts[amounts.length - 1] as number), 2),
+      /*
+       * FRACTIONS, NOT PERCENTAGES.
+       *
+       * percentile() takes p in 0..1 and clamps. Passing 25 and 75 clamped
+       * both to 1, so every pool reported p25 === p75 === max — a "range"
+       * whose low bound was the highest price in the set. On live ss.ge data
+       * that rendered as a Vake asking range of $285,000 to $285,000 around
+       * a median of $140,000, which is not a range and not a median of it.
+       *
+       * It survived because nothing asserted these two fields and nothing in
+       * production read them until the Investment lane did. Both are now
+       * covered in __tests__/priceBasis.test.mjs.
+       */
+      p25: round(percentile(amounts, 0.25) ?? (amounts[0] as number), 2),
+      p75: round(percentile(amounts, 0.75) ?? (amounts[amounts.length - 1] as number), 2),
       perSqmMedian: perSqm.length > 0 ? round(median(perSqm) ?? 0, 2) : null,
       perSqmCount: perSqm.length,
       observationIds: observations.map((observation) => observation.id),

@@ -378,6 +378,27 @@ jobs:
             "push-send"
             "billing"
             "homatch-research"
+            # HOMATCH INVESTMENT INTELLIGENCE. Both are browser-facing and
+            # keep the gateway JWT check on: each resolves the caller's own
+            # profile and then reads through that caller's RLS, so a valid JWT
+            # is a precondition rather than an optimisation.
+            #
+            #   investment-consultant  orchestrates one consultation turn.
+            #                          It imports the deterministic engine from
+            #                          src/investment by relative path and does
+            #                          the arithmetic itself; the model only
+            #                          extracts fields and explains the result.
+            #                          Free, with a per-user daily fair-use
+            #                          ceiling on rate_limit_events.
+            #   investment-research    runs the Research Core's comparable lane
+            #                          against the portal allowlist. No paid
+            #                          provider, so no reservation and no COGS
+            #                          row — bounded by the same table.
+            #
+            # Both pull src/ modules into the bundle, the way verify-synthesis
+            # and deal-room-ai already do; the CLI resolves that closure.
+            "investment-consultant"
+            "investment-research"
             # Communications. Each of these calls authenticate(req) or
             # requireAdmin(req) and then acts under the service role, so the
             # gateway's JWT check is the correct outer gate.

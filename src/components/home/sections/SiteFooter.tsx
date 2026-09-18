@@ -32,6 +32,17 @@ const FIELD: Readonly<Record<string, TranslationKey>> = {
   link_verify: 'nav_verify',
   link_contract: 'mp_contract_title',
   link_mortgage: 'nav_mortgage',
+  /*
+   * Without this the footer renders an UNLABELLED button.
+   *
+   * `columns` gained a link_investment entry and the six translations exist,
+   * but the FIELD map is what connects them: sf(field, fallbackKey) falls back
+   * to t(fallbackKey), and an undefined key resolves to the empty string. The
+   * control then has no accessible name — which is what the accessibility
+   * audit caught on the marketing and About pages, and that job gates the
+   * deploy for the whole repository.
+   */
+  link_investment: 'link_investment',
   link_ai: 'ai_title',
   link_calls: 'call_center_title',
   link_email: 'mp_email_title',

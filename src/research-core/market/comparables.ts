@@ -223,7 +223,10 @@ export function priceConflictFor(adverts: PortalListing[]): PriceConflict | null
   );
   if (comparable.length < 2) return null;
 
-  const amounts = comparable.map((x) => x.price.amount);
+  // Distinct amounts only: two adverts at the same price are one price, and
+  // listing it twice reads as a disagreement that is not there.
+  const amounts = Array.from(new Set(comparable.map((x) => x.price.amount)));
+  if (amounts.length < 2) return null;
   const min = Math.min(...amounts);
   const max = Math.max(...amounts);
   if (min <= 0) return null;
@@ -235,12 +238,16 @@ export function priceConflictFor(adverts: PortalListing[]): PriceConflict | null
     basis,
     currency,
     spreadPct: Math.round(spreadPct * 10) / 10,
-    values: comparable.map((x) => ({
-      amount: x.price.amount,
-      url: x.advert.url,
-      sourceFamily: x.advert.sourceFamily,
-      retrievedAt: x.advert.retrievedAt,
-    })),
+    values: amounts.map((amount) => {
+      const entry = comparable.find((x) => x.price.amount === amount);
+      const advert = (entry as NonNullable<typeof entry>).advert;
+      return {
+        amount,
+        url: advert.url,
+        sourceFamily: advert.sourceFamily,
+        retrievedAt: advert.retrievedAt,
+      };
+    }),
   };
 }
 
@@ -295,7 +302,18 @@ export function groupIntoProperties(adverts: readonly PortalListing[]): UniquePr
         crossPosted,
         uncertain,
         sourceFamilies: families,
-        priceConflict: priceConflictFor([...all, ...uncertain]),
+        /*
+         * CONFIRMED adverts only.
+         *
+         * An UNCERTAIN match is two adverts that MIGHT be one flat. Feeding
+         * those into a price conflict produces the sentence "the same
+         * property is advertised at two prices" about two properties that
+         * were never established to be the same one — a confident claim
+         * built on an explicitly unconfirmed premise, which is exactly the
+         * fabrication this lane exists to avoid. The uncertainty is already
+         * reported, as a count, where it belongs.
+         */
+        priceConflict: priceConflictFor(all),
         groupingReason: reasons.length ? reasons.join('; ') : 'no other advert matched this property',
       });
     }

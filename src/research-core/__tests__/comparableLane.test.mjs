@@ -221,6 +221,33 @@ test('a rent and a sale are never compared as two opinions about one number', ()
   assert.equal(conflict, null, 'different bases are a category error, not a conflict');
 });
 
+test('an UNCERTAIN duplicate never becomes "the same property at two prices"', () => {
+  // Found in production: 36 properties produced NINE price conflicts, because
+  // uncertain matches were being priced as confirmed ones. That sentence is a
+  // confident claim built on an explicitly unconfirmed premise — two similar
+  // flats in one district reported as one flat advertised twice.
+  const adverts = [
+    advert({ id: 'a', url: 'https://u.test/1', area: 97, bedrooms: 2, floor: 5, sale: 180000 }),
+    advert({ id: 'b', url: 'https://u.test/2', area: 97, bedrooms: 2, floor: 5, sale: 260000 }),
+  ];
+  const groups = groupIntoProperties(adverts);
+  assert.equal(groups[0].uncertain.length, 1, 'they are uncertain, not confirmed');
+  assert.equal(groups[0].priceConflict, null, 'and so they carry no price conflict');
+});
+
+test('two adverts at the same price are one price, not a disagreement', () => {
+  const conflict = priceConflictFor([
+    advert({ id: 'a', street: 'st 1', sale: 300000 }),
+    advert({ id: 'b', street: 'st 1', sale: 300000 }),
+    advert({ id: 'c', street: 'st 1', sale: 370000 }),
+  ]);
+  assert.ok(conflict);
+  // Three adverts, two distinct prices. Listing 300000 twice reads as a
+  // disagreement that is not there.
+  assert.equal(conflict.values.length, 2);
+  assert.deepEqual(conflict.values.map((v) => v.amount).sort((x, y) => x - y), [300000, 370000]);
+});
+
 test('identical prices are not a conflict', () => {
   assert.equal(
     priceConflictFor([advert({ id: 'a', sale: 200000 }), advert({ id: 'b', sale: 200000 })]),

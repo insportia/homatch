@@ -1009,6 +1009,81 @@ export async function toggleSourceActive(sourceId: string, active: boolean) {
   await supabase.from('source_registry').update({ active }).eq('id', sourceId);
 }
 
+/* ── Research Core: the source graph ──────────────────────────────────────
+ *
+ * Reads the research_source_health view rather than source_registry directly.
+ * The view already computes the two numbers an operator actually asks for —
+ * what a source produced, and whether anybody is waiting on access to it —
+ * and it reports useful_rate as NULL rather than 0 when nothing has been
+ * scanned, so "we have not looked" never renders as "it produces nothing".
+ *
+ * Every one of these is admin-gated by RLS on the underlying tables. There is
+ * no service-role key in the browser and these add none.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export async function getResearchSourceHealth(limit = 200, offset = 0) {
+  const { data } = await supabase
+    .from('research_source_health')
+    .select('*')
+    // Most useful first, then most recently productive. A source nothing is
+    // known about sorts below a proven one and above a proven-useless one.
+    .order('useful_signal_count', { ascending: false })
+    .order('last_useful_at', { ascending: false, nullsFirst: false })
+    .range(offset, offset + limit - 1);
+  return data ?? [];
+}
+
+/**
+ * Connected research sessions.
+ *
+ * `credential_ref` is deliberately NOT selected. It is the name of a platform
+ * secret, not the secret, and the browser still has no use for it — the admin
+ * area needs to know whether a credential exists and whether it works, which
+ * is what these columns say.
+ */
+export async function getResearchConnections() {
+  const { data } = await supabase
+    .from('research_access_connections')
+    .select(
+      'id, platform, label, status, status_detail, last_validated_at, expires_at, ' +
+      'last_failure_at, last_failure_reason, consecutive_failures, created_at, updated_at',
+    )
+    .order('platform', { ascending: true });
+  return data ?? [];
+}
+
+export async function getResearchAccessQueue(state?: string, limit = 100) {
+  let query = supabase
+    .from('research_access_requests')
+    .select('*')
+    .order('requested_at', { ascending: false });
+  if (state) query = query.eq('state', state);
+  const { data } = await query.limit(limit);
+  return data ?? [];
+}
+
+/**
+ * A human decides. There is no code path that joins a group, so the only way
+ * a source becomes reachable is an operator recording that they obtained
+ * access — which is what this writes.
+ */
+export async function decideResearchAccessRequest(
+  requestId: string,
+  state: 'IN_PROGRESS' | 'APPROVED' | 'REJECTED' | 'DENIED_BY_PLATFORM',
+  note?: string,
+) {
+  const { error } = await supabase
+    .from('research_access_requests')
+    .update({
+      state,
+      note: note ?? null,
+      decided_at: state === 'IN_PROGRESS' ? null : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', requestId);
+  if (error) throw error;
+}
+
 export async function getAdminSignals(limit = 50, offset = 0, status?: string) {
   let q = supabase.from('raw_signals').select('*').order('discovered_at', { ascending: false });
   if (status) q = q.eq('classification_status', status);

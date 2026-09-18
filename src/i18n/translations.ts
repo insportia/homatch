@@ -6627,6 +6627,34 @@ const en = {
   dev_room_unknown: 'Room',
 
   dev_fp_read_drawing: 'Read this drawing',
+
+  /* Research Sources admin: registry, health, access and the access queue. */
+  admin_sources_enabled: 'Source enabled',
+  admin_sources_disabled: 'Source disabled',
+  admin_sources_toggle_failed: 'Could not update that source.',
+  admin_sources_access_updated: 'Access request updated',
+  admin_sources_access_failed: 'Could not update that access request.',
+  admin_sources_tab_registry: 'Registry',
+  admin_sources_tab_health: 'Health',
+  admin_sources_tab_access: 'Access',
+  admin_sources_tab_queue: 'Access queue',
+  admin_sources_access: 'Access',
+  admin_sources_scanned: 'Scanned',
+  admin_sources_useful: 'Useful',
+  admin_sources_useful_rate: 'Useful rate',
+  admin_sources_last_useful: 'Last useful',
+  admin_sources_failures: 'Failures',
+  admin_sources_health_empty: 'Nothing has been scanned yet.',
+  admin_sources_not_scanned: 'Not scanned yet',
+  admin_sources_access_note: 'A connected session lets research read public content that a platform serves more reliably to a signed-in request. Homatch stores a reference to the credential, never the credential itself.',
+  admin_sources_access_empty: 'No research sessions are connected.',
+  admin_sources_last_validated: 'Last checked',
+  admin_sources_expires: 'Expires',
+  admin_sources_queue_note: 'Sources that need membership or approval. A person decides — nothing joins a group automatically.',
+  admin_sources_queue_empty: 'Nothing is waiting for access.',
+  admin_sources_queue_in_progress: 'Working on it',
+  admin_sources_queue_approve: 'Access obtained',
+  admin_sources_queue_reject: 'Skip this one',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -13172,6 +13200,34 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dev_room_unknown: 'ოთახი',
 
   dev_fp_read_drawing: 'წაიკითხე ეს ნახაზი',
+
+  /* Research Sources admin: registry, health, access and the access queue. */
+  admin_sources_enabled: 'წყარო ჩართულია',
+  admin_sources_disabled: 'წყარო გამორთულია',
+  admin_sources_toggle_failed: 'წყაროს განახლება ვერ მოხერხდა.',
+  admin_sources_access_updated: 'წვდომის მოთხოვნა განახლდა',
+  admin_sources_access_failed: 'წვდომის მოთხოვნის განახლება ვერ მოხერხდა.',
+  admin_sources_tab_registry: 'რეესტრი',
+  admin_sources_tab_health: 'მდგომარეობა',
+  admin_sources_tab_access: 'წვდომა',
+  admin_sources_tab_queue: 'წვდომის რიგი',
+  admin_sources_access: 'წვდომა',
+  admin_sources_scanned: 'დასკანერებული',
+  admin_sources_useful: 'სასარგებლო',
+  admin_sources_useful_rate: 'სასარგებლოს წილი',
+  admin_sources_last_useful: 'ბოლო სასარგებლო',
+  admin_sources_failures: 'შეცდომები',
+  admin_sources_health_empty: 'ჯერ არაფერია დასკანერებული.',
+  admin_sources_not_scanned: 'ჯერ არ დასკანერებულა',
+  admin_sources_access_note: 'დაკავშირებული სესია საშუალებას აძლევს კვლევას წაიკითხოს საჯარო შიგთავსი, რომელსაც პლატფორმა უფრო სანდოდ აწვდის ავტორიზებულ მოთხოვნას. Homatch ინახავს მხოლოდ მითითებას მონაცემზე და არასოდეს თავად მონაცემს.',
+  admin_sources_access_empty: 'დაკავშირებული სასესიო წვდომა არ არის.',
+  admin_sources_last_validated: 'ბოლო შემოწმება',
+  admin_sources_expires: 'ვადა იწურება',
+  admin_sources_queue_note: 'წყაროები, რომლებსაც წევრობა ან დამტკიცება სჭირდება. გადაწყვეტილებას იღებს ადამიანი — არაფერი უერთდება ჯგუფს ავტომატურად.',
+  admin_sources_queue_empty: 'წვდომას არაფერი ელოდება.',
+  admin_sources_queue_in_progress: 'მუშავდება',
+  admin_sources_queue_approve: 'წვდომა მიღებულია',
+  admin_sources_queue_reject: 'გამოტოვება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -19708,6 +19764,34 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dev_room_unknown: 'Помещение',
 
   dev_fp_read_drawing: 'Распознать чертёж',
+
+  /* Research Sources admin: registry, health, access and the access queue. */
+  admin_sources_enabled: 'Источник включён',
+  admin_sources_disabled: 'Источник отключён',
+  admin_sources_toggle_failed: 'Не удалось обновить источник.',
+  admin_sources_access_updated: 'Запрос на доступ обновлён',
+  admin_sources_access_failed: 'Не удалось обновить запрос на доступ.',
+  admin_sources_tab_registry: 'Реестр',
+  admin_sources_tab_health: 'Состояние',
+  admin_sources_tab_access: 'Доступ',
+  admin_sources_tab_queue: 'Очередь доступа',
+  admin_sources_access: 'Доступ',
+  admin_sources_scanned: 'Просмотрено',
+  admin_sources_useful: 'Полезных',
+  admin_sources_useful_rate: 'Доля полезных',
+  admin_sources_last_useful: 'Последний полезный',
+  admin_sources_failures: 'Сбои',
+  admin_sources_health_empty: 'Пока ничего не просмотрено.',
+  admin_sources_not_scanned: 'Ещё не просматривался',
+  admin_sources_access_note: 'Подключённая сессия позволяет исследованию читать публичный контент, который платформа надёжнее отдаёт авторизованному запросу. Homatch хранит только ссылку на учётные данные, но никогда сами данные.',
+  admin_sources_access_empty: 'Нет подключённых исследовательских сессий.',
+  admin_sources_last_validated: 'Последняя проверка',
+  admin_sources_expires: 'Истекает',
+  admin_sources_queue_note: 'Источники, требующие членства или одобрения. Решение принимает человек — ничто не вступает в группу автоматически.',
+  admin_sources_queue_empty: 'Доступа никто не ждёт.',
+  admin_sources_queue_in_progress: 'В работе',
+  admin_sources_queue_approve: 'Доступ получен',
+  admin_sources_queue_reject: 'Пропустить',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -26242,6 +26326,34 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dev_room_unknown: 'Oda',
 
   dev_fp_read_drawing: 'Bu çizimi oku',
+
+  /* Research Sources admin: registry, health, access and the access queue. */
+  admin_sources_enabled: 'Kaynak etkinleştirildi',
+  admin_sources_disabled: 'Kaynak devre dışı bırakıldı',
+  admin_sources_toggle_failed: 'Kaynak güncellenemedi.',
+  admin_sources_access_updated: 'Erişim talebi güncellendi',
+  admin_sources_access_failed: 'Erişim talebi güncellenemedi.',
+  admin_sources_tab_registry: 'Kayıt',
+  admin_sources_tab_health: 'Durum',
+  admin_sources_tab_access: 'Erişim',
+  admin_sources_tab_queue: 'Erişim kuyruğu',
+  admin_sources_access: 'Erişim',
+  admin_sources_scanned: 'Tarandı',
+  admin_sources_useful: 'Faydalı',
+  admin_sources_useful_rate: 'Faydalı oranı',
+  admin_sources_last_useful: 'Son faydalı',
+  admin_sources_failures: 'Hatalar',
+  admin_sources_health_empty: 'Henüz hiçbir şey taranmadı.',
+  admin_sources_not_scanned: 'Henüz taranmadı',
+  admin_sources_access_note: 'Bağlı bir oturum, platformun oturum açmış bir isteğe daha güvenilir şekilde sunduğu herkese açık içeriği araştırmanın okumasını sağlar. Homatch yalnızca kimlik bilgisine bir referans saklar, kimlik bilgisinin kendisini asla saklamaz.',
+  admin_sources_access_empty: 'Bağlı araştırma oturumu yok.',
+  admin_sources_last_validated: 'Son kontrol',
+  admin_sources_expires: 'Sona eriyor',
+  admin_sources_queue_note: 'Üyelik veya onay gerektiren kaynaklar. Kararı bir kişi verir — hiçbir şey otomatik olarak bir gruba katılmaz.',
+  admin_sources_queue_empty: 'Erişim bekleyen bir şey yok.',
+  admin_sources_queue_in_progress: 'Üzerinde çalışılıyor',
+  admin_sources_queue_approve: 'Erişim sağlandı',
+  admin_sources_queue_reject: 'Bunu atla',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -32776,6 +32888,34 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dev_room_unknown: 'غرفة',
 
   dev_fp_read_drawing: 'اقرأ هذا الرسم',
+
+  /* Research Sources admin: registry, health, access and the access queue. */
+  admin_sources_enabled: 'تم تفعيل المصدر',
+  admin_sources_disabled: 'تم تعطيل المصدر',
+  admin_sources_toggle_failed: 'تعذّر تحديث هذا المصدر.',
+  admin_sources_access_updated: 'تم تحديث طلب الوصول',
+  admin_sources_access_failed: 'تعذّر تحديث طلب الوصول.',
+  admin_sources_tab_registry: 'السجل',
+  admin_sources_tab_health: 'الحالة',
+  admin_sources_tab_access: 'الوصول',
+  admin_sources_tab_queue: 'قائمة انتظار الوصول',
+  admin_sources_access: 'الوصول',
+  admin_sources_scanned: 'تم فحصه',
+  admin_sources_useful: 'مفيد',
+  admin_sources_useful_rate: 'نسبة المفيد',
+  admin_sources_last_useful: 'آخر نتيجة مفيدة',
+  admin_sources_failures: 'الإخفاقات',
+  admin_sources_health_empty: 'لم يُفحص أي شيء بعد.',
+  admin_sources_not_scanned: 'لم يُفحص بعد',
+  admin_sources_access_note: 'تتيح الجلسة المتصلة للبحث قراءة المحتوى العام الذي تقدّمه المنصة بشكل أكثر موثوقية للطلبات المسجَّلة الدخول. يحتفظ Homatch بمرجع لبيانات الاعتماد فقط، ولا يحتفظ ببيانات الاعتماد نفسها أبداً.',
+  admin_sources_access_empty: 'لا توجد جلسات بحث متصلة.',
+  admin_sources_last_validated: 'آخر فحص',
+  admin_sources_expires: 'تنتهي الصلاحية',
+  admin_sources_queue_note: 'مصادر تحتاج إلى عضوية أو موافقة. القرار يتخذه شخص — لا شيء ينضم إلى مجموعة تلقائياً.',
+  admin_sources_queue_empty: 'لا شيء ينتظر الوصول.',
+  admin_sources_queue_in_progress: 'قيد العمل',
+  admin_sources_queue_approve: 'تم الحصول على الوصول',
+  admin_sources_queue_reject: 'تخطَّ هذا',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -39310,6 +39450,34 @@ const he: Partial<Record<TranslationKey, string>> = {
   dev_room_unknown: 'חדר',
 
   dev_fp_read_drawing: 'קראו את השרטוט',
+
+  /* Research Sources admin: registry, health, access and the access queue. */
+  admin_sources_enabled: 'המקור הופעל',
+  admin_sources_disabled: 'המקור הושבת',
+  admin_sources_toggle_failed: 'לא הצלחנו לעדכן את המקור.',
+  admin_sources_access_updated: 'בקשת הגישה עודכנה',
+  admin_sources_access_failed: 'לא הצלחנו לעדכן את בקשת הגישה.',
+  admin_sources_tab_registry: 'מרשם',
+  admin_sources_tab_health: 'מצב',
+  admin_sources_tab_access: 'גישה',
+  admin_sources_tab_queue: 'תור גישה',
+  admin_sources_access: 'גישה',
+  admin_sources_scanned: 'נסרק',
+  admin_sources_useful: 'מועיל',
+  admin_sources_useful_rate: 'שיעור מועיל',
+  admin_sources_last_useful: 'המועיל האחרון',
+  admin_sources_failures: 'כשלים',
+  admin_sources_health_empty: 'עדיין לא נסרק דבר.',
+  admin_sources_not_scanned: 'עדיין לא נסרק',
+  admin_sources_access_note: 'חיבור פעיל מאפשר למחקר לקרוא תוכן ציבורי שהפלטפורמה מגישה באופן אמין יותר לבקשה מחוברת. Homatch שומר הפניה לפרטי ההתחברות בלבד, ולעולם לא את פרטי ההתחברות עצמם.',
+  admin_sources_access_empty: 'אין חיבורי מחקר פעילים.',
+  admin_sources_last_validated: 'בדיקה אחרונה',
+  admin_sources_expires: 'פג תוקף',
+  admin_sources_queue_note: 'מקורות שדורשים חברות או אישור. אדם מחליט — שום דבר לא מצטרף לקבוצה אוטומטית.',
+  admin_sources_queue_empty: 'שום דבר לא ממתין לגישה.',
+  admin_sources_queue_in_progress: 'בטיפול',
+  admin_sources_queue_approve: 'הגישה הושגה',
+  admin_sources_queue_reject: 'דלג על זה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

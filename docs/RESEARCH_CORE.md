@@ -152,8 +152,12 @@ disabled. Do not unlock them as a side effect of adding something else.
 
 ## How to add an adapter (a parser for a new site shape)
 
-The core has no adapter registry, because it has no need of one yet. A "source
-adapter" today is a function of the form:
+> Superseded by Part 2, which introduced a real `SourceAdapter` interface and an
+> `AdapterRegistry` — see "Adding another platform" at the end of this document.
+> What follows still describes the parsing half correctly, and is the right
+> starting point for the body of an adapter's `extract` step.
+
+A "source adapter" in the Part 1 sense is a function of the form:
 
 ```ts
 (document: StoredDocument, options) => Observation
@@ -384,3 +388,194 @@ regression-proven piece of work.
 - **No source catalogue.** See "How to add a source".
 - **No Investment UI, and no `billable_products` rows.** Both are the next piece
   of work, not this one.
+
+---
+
+# Part 2 — the job-aware discovery engine
+
+Part 1 built the infrastructure. This part makes it a **shared, job-aware
+research and discovery engine**: one set of networking, caching, coalescing,
+scheduling, dedupe, provenance and evidence rules, and a *different* definition
+of a valid result for each job.
+
+## The distinction everything turns on
+
+```
+"Looking to buy a 2BR in Tbilisi"        BUYER_SEARCH: yes   PROPERTY_SEARCH: no
+"2BR for sale in Krtsanisi, $145,000"    BUYER_SEARCH: no    PROPERTY_SEARCH: yes
+```
+
+Getting this wrong does not degrade a result set, it **inverts** it — the buyer
+search returns estate agents and the property search returns people with no
+property. Both look plausible in a screenshot.
+
+So `ResearchDirection` (`DEMAND | SUPPLY | REFERENCE | UNKNOWN`) is a **type** in
+`core/types.ts`, a profile declares which direction satisfies it, and
+`signals/direction.ts` decides which direction a signal carries —
+deterministically, in seven languages, before any model is involved. The filter
+is a comparison of two enum values.
+
+`UNKNOWN` satisfies **no** job. An engine that resolves ambiguity in favour of
+whichever job is running is an engine that always finds something.
+
+Homatch already enforced half of this in SQL: `reject_non_demand_match()` refuses
+to attach a supply listing to a property as a demand match, in six languages.
+This is the same rule, generalised to both directions, stated once.
+
+## The jobs
+
+| Profile | Direction | Notes |
+|---|---|---|
+| `BUYER_SEARCH` | DEMAND / SALE | comments on, agency voice rejected, 14 days |
+| `RENTER_SEARCH` | DEMAND / RENT | 7 days — rental demand decays fastest |
+| `PROPERTY_SEARCH` | SUPPLY / ANY | comments off, agency voice **allowed** |
+| `LAND_SEARCH` | SUPPLY / SALE | `propertyTerms: ['land']` only; window `ANY` |
+| `INVESTOR_SEARCH` | DEMAND / SALE | higher confidence floor than a buyer |
+| `DEVELOPER_SEARCH` | SUPPLY / SALE | BACKGROUND class; catalogue-building |
+
+`MARKET_RESEARCH`, `VERIFY_RESEARCH` and `INVESTMENT_RESEARCH` are **not**
+declared as profiles — Homatch already has all three. `JOB_ALIASES` resolves the
+first to `MARKET_COMPARABLES`, the third to `INVESTMENT_DEEP_RESEARCH`, and the
+second to **null**, because Verify is the research-agent five-stage pipeline, it
+owns `research_jobs`, and it stays authoritative. Returning null is what stops
+somebody quietly reimplementing it here.
+
+Discovery jobs reuse the existing `FIND_CLIENTS` product code. No new
+`billable_products` row is created — that is a pricing decision and lives in SQL.
+
+## Multilingual planning
+
+A job typed in English is researched in every language its **market** is written
+in. `discovery/lexicon.ts` is a reviewable table of phrasings — semantic
+variants, not translations — in `ka en ru ar tr he hi`. Hindi is discovery-only
+and deliberately not a product locale; a test asserts that asymmetry.
+
+`planQueries(subject, direction)` is the cross product of
+`market languages × intent phrasings × property nouns × location terms`, ordered
+so a small budget survives the cut, **interleaved by language** so a seven-query
+budget still reaches seven languages, and **deterministic** — the previous
+discovery function rotated on `Date.now()` and could therefore be neither cached
+nor tested. Rotation survives as an explicit `rotationSeed`.
+
+Composition uses only the **noun-free** subset of each phrase bucket: Georgian
+`ბინა იყიდება` is literally "apartment is for sale" and is excellent for
+*recognising* a post, but appending a land noun to it produces "apartment for
+sale land". Classification keeps the full lists.
+
+Adding a language is adding a key. A test asserts the planner names none.
+
+## The discovery ladder
+
+```
+1. CACHE          research_cache, through the shared CachedFetcher
+2. FIRST_PARTY    Homatch's own consented demand and supply
+3. KNOWN_SOURCES  source_registry, best-first by productivity
+4. PUBLIC_WEB     deterministic discovery of sources we do not know
+5. BROWSER        the EXISTING official-worker, only where genuinely required
+6. UNAVAILABLE    say so
+```
+
+**There is no paid-provider rung.** DataForSEO and Apify are treated as
+non-existent — no adapter, no fallback, no config flag, no TODO. A test reads
+every core source file and fails if either name appears in code. The previous
+discovery function was built entirely on them, which is exactly why it has no
+capability today.
+
+Rung 6 is a real outcome. A source that cannot be reached must never be reported
+as a source that contained nothing.
+
+## The source graph
+
+`source_registry` and `raw_signals` already existed and are **extended, not
+replaced** — the migration is additive only, and `classify-signals-v2`,
+`intent_profiles`, `property_signal_candidates` and the matching engine keep
+reading them unchanged.
+
+Added to `source_registry`: `access_state`, `city`, `region`, `languages[]`,
+`compatible_profiles[]`, `property_terms[]`, `scan_cursor`, `chronological`,
+`last_useful_at`, `useful_signal_count`, `scanned_signal_count`,
+`last_failure_reason`. Added to `raw_signals`: `parent_url`, `parent_excerpt`,
+`content_type`, `access_class`, `research_direction`, `direction_confidence`.
+
+Productivity is **per (job, market, language)** — the same group is excellent for
+renters and useless for land, which one `quality_score` column cannot say. The
+score is a yield rate shrunk toward a realistic prior (0.15, not 0.5 — a half
+would rank every unproven source above every proven good one) and decayed on
+staleness.
+
+A cursor advances **only on success**. Advancing it after a failure would
+permanently skip the window the failed scan was supposed to cover.
+
+## Facebook and Instagram
+
+Source adapters behind the shared contract — `discover / fetch / extract /
+scanIncremental` — not separate research systems. Everything platform-specific
+lives in those files, so a layout change breaks one adapter and nothing else.
+
+**The wall detection is the most important part.** Meta answers a blocked request
+with HTTP 200 and a login interstitial. A scraper that does not recognise it
+reports "this group contained nothing", which is false: it contains plenty and we
+could not see it. `detectWall()` turns that into `LOGIN_WALL` (a session would
+help) or `JOIN_REQUIRED` (a human must ask) — different answers, acted on
+differently.
+
+A comment inherits its **subject** from its parent post and **never its
+direction**. The parent of almost every good buyer comment is a supply listing,
+and letting its "for sale" count would flip every one of those to the wrong side.
+
+Discovery without a search vendor comes from three places, all ours: links
+harvested from content we could already read, operator seeds, and the rows
+already in `community_directory` and `source_registry`. Slower to start than
+buying SERPs, and it compounds.
+
+## Authenticated access
+
+`research_access_connections` holds the **NAME** of a platform secret — the same
+`credential_ref` pattern `dev_ad_connections` already uses — plus status and
+health. A CHECK constraint refuses anything cookie- or token-shaped, so an
+application-code mistake is rejected by the database rather than stored forever.
+`redactConnection()` drops the reference entirely before anything leaves the
+server, and the service layer does not even select the column.
+
+**Never provisioned through the product.** An operator sets the secret value in
+the platform secret store, out of band. Nothing asks anybody to paste a
+credential into a browser or a chat.
+
+`research_access_requests` is the human access queue. There is no join, no bulk
+join, no account rotation, no challenge or CAPTCHA path, no stealth, no proxy
+rotation — and no request state meaning "joined automatically", because there is
+no code that joins. `APPROVED` moves a source to `AUTHENTICATED_ACCESS`, never to
+`PUBLIC`: a group behind a membership wall is not public just because we are now
+inside it.
+
+## Admin
+
+`/admin/sources` gains three tabs beside the existing registry list — Health,
+Access, Queue — using the existing shadcn primitives and the existing i18n
+system, not a second admin application. `useful_rate` renders as "not scanned
+yet" when it is NULL, never as 0%: a zero would state that the source produces
+nothing, which is a claim about the source rather than about us.
+
+## Adding another platform
+
+Implement `SourceAdapter` in `adapters/`. Telegram, Reddit, TikTok, a property
+portal and a forum all plug into the same engine — nothing else changes, and no
+new job engine is created. Navigate by URL, structured data and stable DOM
+semantics; a test rejects positional selectors. Adapters never reach the network
+themselves — they are handed a fetcher that is the shared `HttpClient` behind the
+SSRF policy, robots, rate limits, breakers, caching and coalescing.
+
+## Browser execution
+
+No new pool, no new Railway service. When deterministic HTTP genuinely cannot
+reach accessible content, an adapter asks for `renderDocument`, which the host
+implements over the **existing** `official-worker`. It is absent by default, and
+an adapter must degrade rather than fail — a browser failure is a `PARTIAL`
+result, never a poisoned one.
+
+## Cost
+
+Discovery consumes CPU, memory, network and browser time even when no invoice
+arrives. `bridge/cost.ts` (Part 1) still converts measured `ProviderUsage` into
+`cost_events` and `ActualUsage`; an unknown cost stays `null`, never a fabricated
+zero. No second ledger, and no rate lives in the core.

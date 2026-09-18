@@ -324,3 +324,147 @@ export {
   type ProviderDenied,
   type ProviderDenialReason,
 } from './bridge/provider-port.ts';
+
+/* ── Research direction: the buyer-vs-property distinction ────────────── */
+export {
+  RESEARCH_DIRECTIONS,
+  directionSatisfies,
+  type ResearchDirection,
+} from './core/types.ts';
+export {
+  classifyDirection,
+  satisfiesJob,
+  type DirectionVerdict,
+} from './signals/direction.ts';
+
+/* ── Multilingual planning and discovery ──────────────────────────────── */
+export {
+  RESEARCH_LANGUAGES,
+  PROPERTY_TERMS,
+  LEXICON,
+  isResearchLanguage,
+  languagesForMarket,
+  allPhrases,
+  allPropertyTerms,
+  type ResearchLanguage,
+  type PropertyTerm,
+  type LanguageLexicon,
+} from './discovery/lexicon.ts';
+export {
+  planQueries,
+  acceptancePhrases,
+  type ResearchSubject,
+  type PlannedQuery,
+  type QueryPlan,
+  type QueryIntent,
+  type PlanOptions,
+} from './discovery/query-plan.ts';
+export {
+  FRESHNESS_WINDOWS,
+  judgeFreshness,
+  windowStart,
+  canSkipOlderThanCursor,
+  type FreshnessWindow,
+  type FreshnessSpec,
+  type FreshnessVerdict,
+} from './discovery/freshness.ts';
+export {
+  selectSources,
+  productivityScore,
+  needsRescan,
+  shouldBackOff,
+  recordScan,
+  type SourceRecord,
+  type SourceProductivity,
+  type SourceAccessState,
+  type SourceSelection,
+  type SelectionOptions,
+  type SkipReason,
+} from './discovery/source-registry.ts';
+export {
+  AdapterRegistry,
+  supports,
+  type SourceAdapter,
+  type AdapterCapability,
+  type AdapterContext,
+  type AdapterDocument,
+  type AdapterOutcome,
+  type AdapterFailure,
+  type DiscoverRequest,
+  type DiscoveredSource,
+  type ScanRequest,
+  type ScanResult,
+  type FetchCapability,
+} from './discovery/adapter.ts';
+export {
+  climbLadder,
+  LADDER,
+  type LadderRung,
+  type LadderInput,
+  type LadderResult,
+  type RungOutcome,
+  type FirstPartyPort,
+} from './discovery/ladder.ts';
+
+/* ── Signals ──────────────────────────────────────────────────────────── */
+export type {
+  PublicSignal,
+  ScoredSignal,
+  SignalPlatform,
+  SignalAuthor,
+  ContentType,
+  AccessClass,
+} from './signals/types.ts';
+export {
+  filterSignals,
+  type FilterInput,
+  type FilterOutcome,
+  type Rejection,
+  type RejectionReason,
+} from './signals/filter.ts';
+
+/* ── Job profiles ─────────────────────────────────────────────────────── */
+export {
+  JOB_PROFILES,
+  JOB_ALIASES,
+  researchProfileRegistry,
+  resolveJob,
+  BUYER_SEARCH,
+  RENTER_SEARCH,
+  PROPERTY_SEARCH,
+  LAND_SEARCH,
+  INVESTOR_SEARCH,
+  DEVELOPER_SEARCH,
+} from './profiles/jobs.ts';
+export type { JobContract } from './profiles/types.ts';
+
+/* ── Platform adapters ────────────────────────────────────────────────── */
+export { FacebookAdapter, canonicalizeFacebookUrl, isFacebookSourceUrl } from './adapters/facebook.ts';
+export { InstagramAdapter, canonicalizeInstagramUrl, isInstagramSourceUrl } from './adapters/instagram.ts';
+export { detectWall, assessDocument, buildSignal, type WallKind } from './adapters/meta-platform.ts';
+
+/* ── Bridges for the source graph ─────────────────────────────────────── */
+export {
+  toRawSignalRow,
+  toSourceRegistryRow,
+  toSignalContextRow,
+  stripContactDetails,
+  type RawSignalRow,
+  type SourceRegistryRow,
+  type SignalContextRow,
+} from './bridge/signal.ts';
+export {
+  redactConnection,
+  connectionHealth,
+  isUsable,
+  scrub,
+  toAccessRequest,
+  sourceStateAfter,
+  type ResearchConnection,
+  type RedactedConnection,
+  type ConnectionStatus,
+  type ConnectionHealth,
+  type AccessRequest,
+  type AccessRequestState,
+  type ResearchPlatform,
+} from './bridge/research-access.ts';

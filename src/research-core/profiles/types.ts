@@ -17,16 +17,37 @@
 import type {
   EvidenceLevel,
   PriceBasis,
+  ResearchDirection,
   WorkClass,
 } from '../core/types.ts';
+import type { PropertyTerm } from '../discovery/lexicon.ts';
+import type { FreshnessSpec } from '../discovery/freshness.ts';
 
 export type ProfileId =
+  /* Investment and Verify research — declared in ./investment.ts. */
   | 'MARKET_COMPARABLES'
   | 'INVESTMENT_PRICE_CHECK'
   | 'INVESTMENT_RENT_CHECK'
   | 'INVESTMENT_MARKET_MOVEMENT'
   | 'INVESTMENT_LIQUIDITY'
-  | 'INVESTMENT_DEEP_RESEARCH';
+  | 'INVESTMENT_DEEP_RESEARCH'
+  /*
+   * Discovery jobs — declared in ./jobs.ts.
+   *
+   * MARKET_RESEARCH, VERIFY_RESEARCH and INVESTMENT_RESEARCH are deliberately
+   * NOT in this list. Homatch already has all three: market research is
+   * MARKET_COMPARABLES above, Verify is the research-agent five-stage
+   * pipeline, and investment research is INVESTMENT_DEEP_RESEARCH. Adding
+   * aliases would create two names for one thing and then two places to
+   * change it. See JOB_ALIASES in ./jobs.ts, which maps the vocabulary onto
+   * what already exists rather than duplicating it.
+   */
+  | 'BUYER_SEARCH'
+  | 'RENTER_SEARCH'
+  | 'PROPERTY_SEARCH'
+  | 'LAND_SEARCH'
+  | 'INVESTOR_SEARCH'
+  | 'DEVELOPER_SEARCH';
 
 export type ObjectiveId = string;
 
@@ -96,8 +117,56 @@ export interface ProfileLimits {
   maxSources: number;
 }
 
+/**
+ * What makes a result VALID for a discovery job.
+ *
+ * This is the structural answer to "a buyer-demand comment must not be
+ * classified as a property result". The direction is declared here, the
+ * classifier reports a direction per signal, and the filter compares two
+ * enum values. No prompt is involved and none can override it.
+ */
+export interface JobContract {
+  /** DEMAND finds people who want; SUPPLY finds what is offered. */
+  direction: ResearchDirection;
+  transaction: 'SALE' | 'RENT' | 'ANY';
+  /**
+   * Property nouns this job accepts. A land search that accepts 'apartment'
+   * is not a land search, so LAND_SEARCH lists only 'land'.
+   */
+  propertyTerms: PropertyTerm[];
+  /**
+   * How committed the text must be. "Anyone know about property here?" is
+   * not a lead, and treating every commenter as one is the failure this
+   * number exists to prevent.
+   */
+  minDirectionConfidence: number;
+  /**
+   * Reject posts written in an agency voice.
+   *
+   * True for demand jobs: "we have clients looking for 2BR flats" is a sales
+   * pitch, not a lead. False for supply jobs, where an agency posting real
+   * inventory is exactly what was wanted.
+   */
+  rejectAgencyVoice: boolean;
+  /** Default recency. A caller may narrow it; the profile sets the floor. */
+  defaultFreshness: FreshnessSpec;
+  /**
+   * Comments, not only top-level posts.
+   *
+   * True for demand jobs — the most valuable buyer signal in a Facebook
+   * housing group is usually a comment under somebody else's listing. False
+   * for supply jobs, where a comment is rarely the listing itself.
+   */
+  includeComments: boolean;
+}
+
 export interface ResearchProfile {
   id: ProfileId;
+  /**
+   * Set on discovery jobs; absent on Investment/Verify profiles, which are
+   * answered from objectives and evidence levels rather than from a direction.
+   */
+  job?: JobContract;
   /**
    * `billable_products.code` this profile runs under, when it costs money.
    *

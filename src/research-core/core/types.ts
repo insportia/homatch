@@ -354,3 +354,53 @@ export type ResearchStatus =
   | 'NO_EVIDENCE'
   | 'FAILED'
   | 'CANCELLED';
+
+/* ────────────────────────────────────────────────────────────────────────
+ * RESEARCH DIRECTION — the single most important distinction in this file
+ *
+ * "Looking to buy a 2BR in Tbilisi" and "2BR apartment for sale in Krtsanisi,
+ * $145,000" are both real, both about the same market, and both worthless to
+ * the job that wanted the other one. A buyer-demand comment is not a property
+ * result, and a sale listing is not a lead.
+ *
+ * Homatch already enforces half of this at the database level — the
+ * reject_non_demand_match() trigger refuses to attach a supply listing to a
+ * property as a demand match, in six languages. What was missing is the same
+ * rule in the other direction, and a place to state it once rather than
+ * hoping a final AI prompt remembers.
+ *
+ * So direction is a TYPE. A profile declares which direction satisfies it, a
+ * classifier decides which direction a signal carries, and the filter is
+ * arithmetic. There is no code path where a model's opinion decides this.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export type ResearchDirection =
+  /** Somebody WANTS something. A buyer, a renter, an investor looking. */
+  | 'DEMAND'
+  /** Somebody HAS something. A listing, an offering, inventory. */
+  | 'SUPPLY'
+  /** Neither — a market report, a registry record, a news article. */
+  | 'REFERENCE'
+  /** The text does not say clearly enough. Never treated as either. */
+  | 'UNKNOWN';
+
+export const RESEARCH_DIRECTIONS: readonly ResearchDirection[] = [
+  'DEMAND',
+  'SUPPLY',
+  'REFERENCE',
+  'UNKNOWN',
+];
+
+/**
+ * May a signal carrying `observed` satisfy a job that wants `wanted`?
+ *
+ * UNKNOWN satisfies nothing. That is the whole point: "we could not tell" is
+ * not a licence to use it for whichever job happens to be running.
+ */
+export function directionSatisfies(
+  observed: ResearchDirection,
+  wanted: ResearchDirection,
+): boolean {
+  if (observed === 'UNKNOWN') return false;
+  return observed === wanted;
+}

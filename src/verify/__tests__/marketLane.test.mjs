@@ -195,3 +195,28 @@ test('the deterministic set is written to the path the final report reads', () =
     'z.comparables is not read by the report and must not be the merge target',
   );
 });
+
+test('deterministic price conflicts reach the list the report is built from', () => {
+  /*
+   * Same class of bug as the comparables path, found the same way.
+   *
+   * The report's conflicts are assembled from OFFICIAL's list and SYNTHESIS's
+   * own. The market lane's price disagreements were merged into MARKET's
+   * output, which that assembly never reads — so a finding computed in code
+   * from structured evidence never reached the buyer.
+   */
+  const agent = readFileSync(
+    join(HERE, '..', '..', '..', 'supabase', 'functions', 'research-agent', 'index.ts'),
+    'utf8',
+  );
+  const assembly = agent.slice(
+    agent.indexOf('const conflictsAll = semanticDedupe('),
+    agent.indexOf('const materialConflicts'),
+  );
+  assert.ok(assembly.length > 0, 'found the conflicts assembly');
+  assert.match(
+    assembly,
+    /prior\._marketConflicts/,
+    'the market lane conflicts must be part of the list the report is built from',
+  );
+});

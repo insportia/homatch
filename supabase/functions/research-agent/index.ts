@@ -3153,8 +3153,28 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // model's own self-report.
   const companyProfile = rawCompanyProfile ? { ...rawCompanyProfile, sourceBasis: companyProfileSourceBasis(rawCompanyProfile, prior.browserOfficial) } : null;
   const unverifiedAll = semanticDedupe(dedupe([...(i.unverified || []), ...(o.unverified || []), ...(mr.unverified || []), ...(z.unverified || [])], (x: any) => x), (x: any) => String(x || ''));
+  /*
+   * THE DETERMINISTIC PRICE DISAGREEMENTS BELONG HERE TOO.
+   *
+   * This list is assembled from OFFICIAL's conflicts and SYNTHESIS's own. The
+   * market lane's are neither, so — like the comparables before them — they
+   * were being written somewhere nothing reads. Two adverts for one confirmed
+   * property at different prices is a finding a buyer can act on, and it was
+   * computed in code from structured evidence rather than noticed in prose.
+   *
+   * They arrive already shaped as {description, severity} and de-duplicate
+   * against the model's own by description, so a conflict both halves spotted
+   * is reported once.
+   */
   const conflictsAll = semanticDedupe(
-    dedupe([...normalizeConflicts(o.conflicts), ...zConflictsNorm], (x) => `${x.severity}:${x.description}`),
+    dedupe(
+      [
+        ...normalizeConflicts(o.conflicts),
+        ...normalizeConflicts(Array.isArray(prior._marketConflicts) ? prior._marketConflicts : []),
+        ...zConflictsNorm,
+      ],
+      (x) => `${x.severity}:${x.description}`,
+    ),
     (x) => x.description
   );
   const materialConflicts = conflictsAll.filter((c) => c.severity === 'MATERIAL');

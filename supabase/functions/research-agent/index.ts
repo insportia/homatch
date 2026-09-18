@@ -27,6 +27,7 @@ import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
 import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
 import { computeSections } from '../../../src/verify/sections.ts';
+import { portalHealthUpdates, mergeSourceRow } from '../../../src/verify/sourceHealth.ts';
 import {
   consumptionFromUsage,
   costOperationFor,
@@ -4176,6 +4177,37 @@ async function runVerifyMarketLane(db: any, job: any, result: any): Promise<Mark
     limit: 40,
   });
   if (lane) {
+    /*
+     * THE REGISTRY IS THE RESEARCH SYSTEM'S MEMORY.
+     *
+     * Without this the lane is amnesiac: every run treats a portal that has
+     * answered a hundred times and one that has never answered as equally
+     * promising, and a source that has started refusing is rediscovered as a
+     * surprise on every verification.
+     *
+     * One row per portal, counters accumulated, nothing invented — and
+     * wrapped, because a registry write is bookkeeping and must never be able
+     * to fail a customer's verification.
+     */
+    try {
+      const nowIso = now();
+      for (const update of portalHealthUpdates(lane.evidence)) {
+        const { data: existing } = await db
+          .from('source_registry')
+          .select('*')
+          .eq('url', update.url)
+          .maybeSingle();
+        const row = mergeSourceRow(existing ?? null, update, nowIso);
+        if (existing?.id) {
+          await db.from('source_registry').update(row).eq('id', existing.id);
+        } else {
+          await db.from('source_registry').insert(row);
+        }
+      }
+    } catch (e) {
+      console.error('research-agent: source registry health update failed', e);
+    }
+
     // Cache and coalescing counters travel with the lane so the external
     // requests we did NOT make are as measurable as the ones we did.
     const stats = runtime.stats();

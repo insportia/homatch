@@ -201,6 +201,9 @@ test('the core is consumed only through its deliberate integration points', () =
     'src/verify/researchSeed.ts',
     'src/verify/__tests__/marketLane.test.mjs',
     'src/verify/__tests__/researchSeed.test.mjs',
+    // What the lane learned about its sources, written back to the registry.
+    'src/verify/sourceHealth.ts',
+    'src/verify/__tests__/sourceHealth.test.mjs',
     // The one server that runs research.
     'supabase/functions/research-agent/index.ts',
   ]);

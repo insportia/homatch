@@ -1868,10 +1868,48 @@ function officialDocuments(browserOfficial: any): any[] {
   return dedupe(out, (x) => x.url);
 }
 
+/*
+ * THE MARKET LANE MUST NOT DEPEND ON WHAT THE BROWSER WORKER DID.
+ *
+ * It first lived inside the "worker still working" branch, which was the
+ * right PLACE for the timing and the wrong place for the guarantee: when the
+ * worker failed fast, pollBrowser took the FAILED branch straight to
+ * OFFICIAL_READY and the lane never ran at all. Production job b63279c4
+ * showed it exactly — browserOfficial.unavailable, _marketLaneAttempted
+ * false, zero comparables, and a customer with no market section.
+ *
+ * That is precisely the coupling this lane exists to remove. It now runs once
+ * per job from the top of pollBrowser, before any branch is chosen, so a
+ * registry that is slow, broken or unreachable changes WHEN the market
+ * evidence arrives and never WHETHER it does.
+ *
+ * Single-shot, bounded and non-fatal: guarded on _marketLaneAttempted, inside
+ * its own deadline, and any failure is recorded rather than raised. A market
+ * lane that breaks must never be able to fail a Verify.
+ */
+async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
+  if (p._marketLaneAttempted) return false;
+  p._marketLaneAttempted = true;
+  try {
+    const lane = await runVerifyMarketLane(sb, j, p);
+    if (lane) {
+      p._marketLane = lane.summary;
+      p._marketComparables = lane.comparables;
+      p._marketConflicts = lane.conflicts;
+    }
+  } catch (e) {
+    p._marketLaneError = String((e as any)?.message || e).slice(0, 200);
+  }
+  return true;
+}
+
 async function pollBrowser(sb: any, j: any): Promise<any> {
   const id = j.result_json?._worker?.jobId;
   if (!id) throw new Error('missing worker job');
   const w = (await wf(`/research/${id}`)).data;
+  // Before any branch is chosen, so every path out of here carries it.
+  if (!j.result_json) j.result_json = {};
+  await ensureMarketLane(sb, j, j.result_json);
   if (w.status === 'WAITING_HUMAN') {
     const p = j.result_json || {};
     p._captchaReturnStage = 'BROWSER_WAITING';
@@ -1983,30 +2021,13 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
      * failure leaves the verification exactly as it was. A market lane that
      * breaks must never be able to fail a Verify.
      */
-    const laneJob = j.result_json || {};
-    if (!laneJob._marketLaneAttempted) {
-      laneJob._marketLaneAttempted = true;
-      try {
-        const lane = await runVerifyMarketLane(sb, j, laneJob);
-        if (lane) {
-          laneJob._marketLane = lane.summary;
-          laneJob._marketComparables = lane.comparables;
-          laneJob._marketConflicts = lane.conflicts;
-        }
-      } catch (e) {
-        // Recorded, never raised. The registry work in flight is worth more
-        // than the comparables, and losing the job over a portal would be a
-        // strictly worse outcome than losing the market section.
-        laneJob._marketLaneError = String((e as any)?.message || e).slice(0, 200);
-      }
-      return sb.from('research_jobs').update({
-        result_json: laneJob,
-        progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total },
-        updated_at: now(),
-      }).eq('id', j.id);
-    }
-
-    return sb.from('research_jobs').update({ progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total }, updated_at: now() }).eq('id', j.id);
+    // result_json is written on every tick now, because the lane above may
+    // have just filled it in and this branch is the one that repeats.
+    return sb.from('research_jobs').update({
+      result_json: j.result_json,
+      progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total },
+      updated_at: now(),
+    }).eq('id', j.id);
   }
   const p = j.result_json || {};
   // discoveredEntities (2026-09-06 pipeline mandate item 4 — "merge
@@ -3473,7 +3494,20 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
       prior._financialReturnStage = 'MARKET_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
-    if (j.status === 'CREATED' && j.stage === 'MARKET_READY') return await launch(sb, k, m, j, 'MARKET', l);
+    if (j.status === 'CREATED' && j.stage === 'MARKET_READY') {
+      /*
+       * BACKSTOP. pollBrowser runs the lane for every job that reaches the
+       * browser step, which is all of them today — but MARKET is where the
+       * comparables are actually USED, and a stage that silently falls back
+       * to "go and search" because an earlier step was skipped would undo the
+       * whole change without saying so. One guarded call, already single-shot.
+       */
+      if (!j.result_json) j.result_json = {};
+      if (await ensureMarketLane(sb, j, j.result_json)) {
+        await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
+      }
+      return await launch(sb, k, m, j, 'MARKET', l);
+    }
     // v25 (enreg-only) / v28 (generalized): the reconciliation-driven
     // secondary financial-queue trigger (mandate section 6's "MARKET
     // discovers Millennio Group" example) — runs after MARKET's own

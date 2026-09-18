@@ -260,3 +260,37 @@ test('the filter the report applies is the one this test asserts', () => {
   assert.match(agent, /c\?\.listingStatus === 'ACTIVE' && isResidential\(c\)/);
   assert.match(agent, /!c\?\.propertyType \|\| c\.propertyType === 'RESIDENTIAL'/);
 });
+
+test('the market lane does not depend on what the browser worker did', () => {
+  /*
+   * Production job b63279c4: the official browser worker failed immediately,
+   * pollBrowser took the FAILED branch straight to OFFICIAL_READY, and the
+   * lane — which lived inside the "still waiting" branch — never ran.
+   * browserOfficial.unavailable was true, _marketLaneAttempted was false,
+   * and the customer got no market section at all.
+   *
+   * That is the exact coupling the lane exists to remove, so the trigger has
+   * to sit BEFORE the branch that inspects the worker's status.
+   */
+  const agent = readFileSync(
+    join(HERE, '..', '..', '..', 'supabase', 'functions', 'research-agent', 'index.ts'),
+    'utf8',
+  );
+  const poll = agent.slice(
+    agent.indexOf('async function pollBrowser('),
+    agent.indexOf("if (w.status === 'WAITING_HUMAN')"),
+  );
+  assert.ok(poll.length > 0, 'found the head of pollBrowser');
+  assert.match(
+    poll,
+    /ensureMarketLane\(/,
+    'the lane must run before any branch on worker status',
+  );
+
+  // And it is single-shot, so running it from more than one place is safe.
+  const helper = agent.slice(
+    agent.indexOf('async function ensureMarketLane('),
+    agent.indexOf('async function pollBrowser('),
+  );
+  assert.match(helper, /if \(p\._marketLaneAttempted\) return false;/);
+});

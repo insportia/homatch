@@ -72,9 +72,18 @@ export async function priceBook(sb: Sb): Promise<PriceRow[]> {
     })) as PriceRow[];
     cache = { rows, at: Date.now() };
     return rows;
-  } catch {
-    // A price book we cannot read is a price book with no rates in it, which
-    // produces NULL costs. It must never take a conversation down.
+  } catch (e) {
+    /*
+     * A price book we cannot read produces NULL costs, which is correct, and
+     * indistinguishable from a book that simply has no rate for this model --
+     * which is not. So it is said out loud. Silence here would look exactly
+     * like a successfully accounted event with nothing to account.
+     */
+    console.log(JSON.stringify({
+      scope: 'ai-talk', event: 'price_book_unavailable',
+      detail: String((e as Error)?.message ?? e).slice(0, 160),
+      stale_rows: cache?.rows.length ?? 0,
+    }));
     return cache?.rows ?? [];
   }
 }

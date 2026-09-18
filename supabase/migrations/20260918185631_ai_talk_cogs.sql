@@ -1,3 +1,17 @@
+-- LEDGER ALIGNMENT, NOT A NEW MIGRATION.
+--
+-- This file was authored as 20260918160000 and applied to production through
+-- the management API, which records its own version: the ledger holds
+-- 20260918185631 / ai_talk_cogs. The repository filename is renamed to match
+-- it rather than the other way round, because the ledger is what `supabase db
+-- push` compares against and a repository migration the ledger has never
+-- heard of is one it will replay. That replay is exactly the drift this
+-- project has already been bitten by once.
+--
+-- The SQL below is unchanged and is ALREADY APPLIED. Nothing here should run
+-- again; every statement in it is guarded so that running it twice is a
+-- no-op, but the rename is what stops the question arising.
+
 -- AI TALK COST OF GOODS: the middle of a chain whose two ends already existed.
 --
 -- voice_usage_events has carried cost_usd and cost_basis since it was written,

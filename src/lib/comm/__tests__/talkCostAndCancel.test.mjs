@@ -99,17 +99,18 @@ test('every provider call in a turn is now written to the ledger', () => {
   const e = strip(edge);
   // Synthesis was the only leg ever recorded, and it recorded a NULL cost.
   assert.match(e, /provider: 'CARTESIA', role: 'TTS'/);
-  assert.match(e, /costUsd: ttsCost\(await priceBook\(sb\), \{/);
+  assert.match(e, /const ttsCogs = ttsCost\(await priceBook\(sb\), \{/);
+  assert.match(e, /costUsd: ttsCogs,/);
   // The model's tokens reached a console log and stopped there.
   assert.match(e, /provider: 'OPENAI', role: 'LLM', model,/);
-  assert.match(e, /costUsd: llmCost\(book, \{/);
+  assert.match(e, /const cost = llmCost\(book, \{/);
   assert.match(e, /cachedInputTokens: llmCachedInputTokens,/);
   // Recognition was never recorded anywhere at all.
-  assert.match(e, /provider: 'GOOGLE', role: 'STT', model: `chirp_3:\$\{leg\.role\}`/);
-  assert.match(e, /costUsd: sttCost\(book, \{/);
+  assert.match(e, /provider: 'GOOGLE', role: 'STT', model: `\$\{GOOGLE_STT_MODEL\}:\$\{leg\.stream\}`/);
+  assert.match(e, /const cost = sttCost\(book, \{ provider: 'GOOGLE'/);
   // Both recogniser streams, because Google bills both.
-  assert.match(e, /\{ seconds: body\.sttAudioSeconds, role: 'PRIMARY' \}/);
-  assert.match(e, /\{ seconds: body\.sttShadowAudioSeconds, role: 'SECOND_OPINION' \}/);
+  assert.match(e, /\{ seconds: body\.sttAudioSeconds, stream: 'PRIMARY' \}/);
+  assert.match(e, /\{ seconds: body\.sttShadowAudioSeconds, stream: 'SECOND_OPINION' \}/);
   // And the columns that existed and were never filled.
   assert.match(e, /cost_usd: event\.costUsd \?\? null,/);
   assert.match(e, /cached_input_tokens: event\.cachedInputTokens \?\? null,/);
@@ -297,4 +298,88 @@ test('the prompt is still read on every turn, so it is still measured', () => {
    */
   assert.ok(chars < 9600, `the prompt is ${chars} characters`);
   assert.ok(chars < 10_383, 'still smaller than it was before any of this work');
+});
+
+/* ── 6. The failures the owner's live session actually exposed ──────────── */
+
+test('usage is recorded on every path out of a turn, not just the happy one', () => {
+  /*
+   * PRODUCTION, session e380ff84, 2026-09-18 19:12-19:14 UTC: 23 Cartesia
+   * rows, 1,017 characters, every cost NULL, no recognition row and no model
+   * row. The first cause was that the edge function carrying this code was
+   * never deployed -- its CI run failed at lint, which skips the deploy job.
+   *
+   * The second cause was mine and would have survived the deploy: the
+   * recorder was written inline just before converse_ok, which sits after
+   * three early returns and inside the try the catch escapes. A turn that
+   * failed its language check, produced no text, was cancelled or crashed
+   * recorded nothing -- having already spent the tokens and the seconds.
+   */
+  const e = strip(edge);
+  assert.match(e, /const recordTurnUsage = async \(outcome: \{ ok: boolean; error: string \| null \}\)/);
+  assert.match(e, /let usageRecorded = false;/);
+  assert.match(e, /if \(usageRecorded\) return;/, 'and never twice for one turn');
+  // Called from the finally, after the drain, so it cannot be skipped.
+  assert.match(e, /await recordTurnUsage\(\s*abandoned\s*\? \{ ok: false, error: 'CANCELLED' \}\s*: \{ ok: true, error: null \},\s*\)/);
+  const fin = e.slice(e.indexOf('await drain.catch('), e.indexOf('await drain.catch(') + 700);
+  assert.ok(fin.includes('recordTurnUsage'), 'it runs in the finally block');
+  assert.ok(fin.includes('controller.close()'), 'before the response is closed');
+  // The recorder must not be back inside the try it escaped from.
+  const okAt = e.indexOf("logEvent('ai-talk', 'converse_ok'");
+  assert.ok(e.indexOf('const recordTurnUsage') < okAt, 'declared before the happy path, not inside it');
+  assert.ok(!e.slice(okAt, okAt + 400).includes('recordVoiceUsage'), 'and not duplicated there');
+});
+
+test('a price that does not resolve is an event, not a silent null', () => {
+  /*
+   * A row with real characters and no cost looks exactly like a row that was
+   * priced at nothing. That is how 23 live rows sat unpriced without anything
+   * raising its hand, so every leg now says so when the book fails it.
+   */
+  const e = strip(edge);
+  const unpriced = e.match(/cogs_unpriced/g) ?? [];
+  assert.ok(unpriced.length >= 3, `all three legs report it (found ${unpriced.length})`);
+  assert.match(e, /provider: 'CARTESIA', role: 'TTS', model: out\.data\.model, characters: out\.data\.characters,\s*\}\);/);
+  assert.match(e, /provider: 'OPENAI', role: 'LLM', model, input_tokens: inTok, output_tokens: outTok,/);
+  assert.match(e, /provider: 'GOOGLE', role: 'STT', model: GOOGLE_STT_MODEL, audio_seconds: seconds,/);
+  // And a price book that cannot be read at all is louder still, because that
+  // failure would otherwise be indistinguishable from "no rate for this model".
+  const cogs = strip(read('supabase/functions/_shared/comm/voiceCogs.ts'));
+  assert.match(cogs, /event: 'price_book_unavailable'/);
+  assert.match(cogs, /stale_rows: cache\?\.rows\.length \?\? 0,/);
+});
+
+test('the two recogniser streams are stored apart, never summed first', () => {
+  // The whole point of measuring them is to know what the language-switching
+  // second opinion costs. Adding them before storage would destroy that.
+  const e = strip(edge);
+  assert.match(e, /\{ seconds: body\.sttAudioSeconds, stream: 'PRIMARY' \}/);
+  assert.match(e, /\{ seconds: body\.sttShadowAudioSeconds, stream: 'SECOND_OPINION' \}/);
+  assert.match(e, /model: `\$\{GOOGLE_STT_MODEL\}:\$\{leg\.stream\}`/);
+  // One row per stream per turn, and only for a stream that actually ran.
+  assert.match(e, /if \(typeof leg\.seconds !== 'number' \|\| !\(leg\.seconds > 0\)\) continue;/);
+  assert.ok(!/sttAudioSeconds \+ .*sttShadowAudioSeconds/.test(e), 'never added together');
+});
+
+test('the model priced is the model the provider said it ran', () => {
+  const e = strip(edge);
+  assert.match(e, /const LUNA_MODEL_FALLBACK = 'gpt-5\.6-luna';/);
+  assert.match(e, /const model = llmModel \?\? LUNA_MODEL_FALLBACK;/);
+  // llmModel is only set from the provider's own completed event.
+  assert.match(e, /if \(event\.model !== undefined\) llmModel = event\.model;/);
+  const l = strip(llm);
+  assert.match(l, /cachedInputTokens: event\.response\.usage\.input_tokens_details\?\.cached_tokens \?\? null,\s*outputTokens: event\.response\.usage\.output_tokens \?\? 0,\s*model,/);
+  // Nothing anywhere estimates tokens from text length.
+  assert.ok(!/inputTokens:.*length \/ 4/.test(e), 'tokens are never guessed from characters');
+});
+
+test('a cancelled turn still records what it actually spent', () => {
+  const e = strip(edge);
+  // The provider bills for work, not for work that pleased us.
+  assert.match(e, /\? \{ ok: false, error: 'CANCELLED' \}/);
+  // Synthesis never submitted costs nothing and says so; synthesis cut off
+  // mid-stream was submitted and is priced in full.
+  assert.match(e, /const neverSubmitted = out\.error\?\.code === 'CANCELLED'/);
+  assert.match(e, /characters: neverSubmitted \? 0 : params\.text\.length,/);
+  assert.match(e, /costUsd: neverSubmitted \? 0 : ttsCost\(/);
 });

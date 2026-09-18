@@ -87,6 +87,17 @@ import {
  * every recorded session refers to. The primary voice now comes from the
  * library an admin curates; this is what answers when that library is empty.
  */
+/**
+ * The model AI Talk answers with, when the stream did not name one.
+ *
+ * Only a fallback: the usage row is priced against what the provider SAID it
+ * ran, because a cost attributed to the wrong model is a wrong cost.
+ */
+const LUNA_MODEL_FALLBACK = 'gpt-5.6-luna';
+
+/** The recogniser the speech grant mints for. Priced per audio second, per stream. */
+const GOOGLE_STT_MODEL = 'chirp_3';
+
 const CARTESIA_FALLBACK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
 
 /** One piece of speech and who made it. */
@@ -1202,6 +1213,22 @@ async function speakPhraseStreaming(sb: Sb, params: {
   }, (chunk) => params.onChunk(chunk));
 
   if (out.ok && out.data) {
+    /*
+     * Priced before it is recorded, so a rate that does not resolve becomes a
+     * logged event rather than a quiet NULL. This is the leg that came back
+     * unpriced on every turn of the owner's live test -- because the writer
+     * running in production had no pricing call in it at all -- and a row
+     * carrying characters with no cost is indistinguishable from one that was
+     * priced at nothing.
+     */
+    const ttsCogs = ttsCost(await priceBook(sb), {
+      provider: 'CARTESIA', model: out.data.model, characters: out.data.characters,
+    });
+    if (ttsCogs === null) {
+      logEvent('ai-talk', 'cogs_unpriced', {
+        provider: 'CARTESIA', role: 'TTS', model: out.data.model, characters: out.data.characters,
+      });
+    }
     await recordVoiceUsage(sb, {
       sessionId: params.sessionId ?? null,
       surface: params.surface ?? 'AI_TALK',
@@ -1209,9 +1236,7 @@ async function speakPhraseStreaming(sb: Sb, params: {
       characters: out.data.characters,
       // What a person waited through, not what the whole clip cost.
       latencyMs: out.data.firstByteMs,
-      costUsd: ttsCost(await priceBook(sb), {
-        provider: 'CARTESIA', model: out.data.model, characters: out.data.characters,
-      }),
+      costUsd: ttsCogs,
       costBasis: 'CALCULATED',
       ok: true, errorCode: null, providerStatus: null,
     });
@@ -1613,6 +1638,99 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
   let llmModel: string | null = null;
   let llmIncomplete = false;
   let llmIncompleteReason: string | null = null;
+
+  /*
+   * THE TWO BILLS NOBODY WAS COUNTING, RECORDED ON EVERY PATH.
+   *
+   * Every provider call in an AI Talk turn costs money and, before this, one
+   * of the three was recorded. Synthesis had a row with a character count and
+   * a NULL cost; the model's tokens reached a console log and stopped there;
+   * recognition was never recorded at all, because microphone audio goes from
+   * the page to the Railway worker and never passes through this function.
+   *
+   * WHY THIS IS A FUNCTION AND NOT A FEW LINES IN THE HAPPY PATH.
+   *
+   * It was those lines, sitting just before converse_ok -- which is after
+   * three early returns and inside the try that the catch escapes. A turn
+   * that failed its language check, produced no text, was cancelled by the
+   * listener, or crashed recorded nothing at all, having already spent the
+   * tokens and the recognition seconds. The provider bills for work, not for
+   * work that pleased us. So this runs from the finally, once, whatever
+   * happened, and says honestly whether the turn succeeded.
+   */
+  let usageRecorded = false;
+  const recordTurnUsage = async (outcome: { ok: boolean; error: string | null }): Promise<void> => {
+    if (usageRecorded) return;
+    usageRecorded = true;
+    const book = await priceBook(sb);
+
+    if (llmInputTokens !== null || llmOutputTokens !== null) {
+      const model = llmModel ?? LUNA_MODEL_FALLBACK;
+      const inTok = llmInputTokens ?? 0;
+      const outTok = llmOutputTokens ?? 0;
+      const cost = llmCost(book, {
+        model, inputTokens: inTok, cachedInputTokens: llmCachedInputTokens, outputTokens: outTok,
+      });
+      if (cost === null) {
+        // A rate that did not resolve is a fact about our price book, not
+        // about the provider's invoice. Said out loud so it can be fixed,
+        // rather than left as a quiet NULL somebody notices in a quarter.
+        logEvent('ai-talk', 'cogs_unpriced', {
+          provider: 'OPENAI', role: 'LLM', model, input_tokens: inTok, output_tokens: outTok,
+        });
+      }
+      await recordVoiceUsage(sb, {
+        sessionId: session.id, surface: 'AI_TALK',
+        provider: 'OPENAI', role: 'LLM', model,
+        inputTokens: inTok,
+        cachedInputTokens: llmCachedInputTokens,
+        outputTokens: outTok,
+        latencyMs: llmHeadersMs !== null && llmThinkMs !== null ? llmHeadersMs + llmThinkMs : null,
+        costUsd: cost,
+        costBasis: 'CALCULATED',
+        ok: outcome.ok, errorCode: outcome.error, providerStatus: null,
+      });
+    }
+
+    /*
+     * RECOGNITION, MEASURED WHERE IT CAN BE.
+     *
+     * The browser is the only place that knows how many seconds of audio
+     * reached a recogniser, and it reports two figures because AI TALK OPENS
+     * TWO STREAMS: the pinned socket that answers, and the `auto` second
+     * opinion that catches language switches. Google bills per second PER
+     * STREAM, so the second one is a real and previously invisible line on
+     * this product's bill. The two are stored as separate rows, never summed
+     * before storage, because the whole question worth asking later is what
+     * the switching actually costs.
+     *
+     * An older browser sends neither and then there is no row: an unmeasured
+     * second must not become a zero-cost second.
+     */
+    for (const leg of [
+      { seconds: body.sttAudioSeconds, stream: 'PRIMARY' },
+      { seconds: body.sttShadowAudioSeconds, stream: 'SECOND_OPINION' },
+    ] as const) {
+      if (typeof leg.seconds !== 'number' || !(leg.seconds > 0)) continue;
+      const seconds = Math.round(leg.seconds * 1000) / 1000;
+      const cost = sttCost(book, { provider: 'GOOGLE', model: GOOGLE_STT_MODEL, audioSeconds: seconds });
+      if (cost === null) {
+        logEvent('ai-talk', 'cogs_unpriced', {
+          provider: 'GOOGLE', role: 'STT', model: GOOGLE_STT_MODEL, audio_seconds: seconds,
+        });
+      }
+      await recordVoiceUsage(sb, {
+        sessionId: session.id, surface: 'AI_TALK',
+        provider: 'GOOGLE', role: 'STT', model: `${GOOGLE_STT_MODEL}:${leg.stream}`,
+        audioSeconds: seconds,
+        latencyMs: null,
+        costUsd: cost,
+        costBasis: 'CALCULATED',
+        ok: true, errorCode: null, providerStatus: null,
+      });
+    }
+  };
+
 
   // Already in flight since the top of the handler; this is where it is needed.
   const abusive = session.abuse_seen === true || await abuseCheck.catch(() => false);
@@ -2357,75 +2475,6 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           auto_end_reason: action.end ? (action.endReason ?? 'OBJECTIVE_MET') : null,
         });
 
-        /*
-         * THE TWO BILLS NOBODY WAS COUNTING.
-         *
-         * Every provider call in an AI Talk turn costs money and, until this,
-         * exactly one of the three was recorded. Synthesis had a row with a
-         * character count and a NULL cost; the model's tokens reached the
-         * console log four lines above and stopped there; recognition was
-         * never recorded anywhere at all, because the microphone audio goes
-         * from the page straight to the Railway worker and never passes
-         * through this function.
-         *
-         * Both are written here, once per turn, priced from the same book, on
-         * the path that has already answered the visitor. A failure to record
-         * cannot affect the conversation: recordVoiceUsage swallows its own
-         * errors by design.
-         */
-        const book = await priceBook(sb);
-
-        if (llmInputTokens !== null || llmOutputTokens !== null) {
-          const model = llmModel ?? 'gpt-5.6-luna';
-          const inTok = llmInputTokens ?? 0;
-          const outTok = llmOutputTokens ?? 0;
-          await recordVoiceUsage(sb, {
-            sessionId: session.id, surface: 'AI_TALK',
-            provider: 'OPENAI', role: 'LLM', model,
-            inputTokens: inTok,
-            cachedInputTokens: llmCachedInputTokens,
-            outputTokens: outTok,
-            latencyMs: llmHeadersMs !== null && llmThinkMs !== null ? llmHeadersMs + llmThinkMs : null,
-            costUsd: llmCost(book, {
-              model, inputTokens: inTok, cachedInputTokens: llmCachedInputTokens, outputTokens: outTok,
-            }),
-            costBasis: 'CALCULATED',
-            ok: !failed, errorCode: failed ? 'ASSISTANT_FAILED' : null, providerStatus: null,
-          });
-        }
-
-        /*
-         * RECOGNITION, MEASURED WHERE IT CAN BE.
-         *
-         * The browser is the only place that knows how many seconds of audio
-         * reached a recogniser, and it reports two figures because AI TALK
-         * OPENS TWO STREAMS: the pinned socket that answers, and the `auto`
-         * second opinion that catches language switches. Google bills per
-         * second PER STREAM, so the second one is a real and previously
-         * invisible line on this product's bill -- roughly doubling its
-         * recognition cost. It is recorded as its own row rather than folded
-         * into the first, so the price of the switching can be seen and
-         * argued about rather than merely paid.
-         *
-         * An older browser sends neither, and then there is no row: an
-         * unmeasured second must not become a zero-cost second.
-         */
-        for (const leg of [
-          { seconds: body.sttAudioSeconds, role: 'PRIMARY' },
-          { seconds: body.sttShadowAudioSeconds, role: 'SECOND_OPINION' },
-        ] as const) {
-          if (typeof leg.seconds !== 'number' || !(leg.seconds > 0)) continue;
-          await recordVoiceUsage(sb, {
-            sessionId: session.id, surface: 'AI_TALK',
-            provider: 'GOOGLE', role: 'STT', model: `chirp_3:${leg.role}`,
-            audioSeconds: Math.round(leg.seconds * 1000) / 1000,
-            latencyMs: null,
-            costUsd: sttCost(book, { provider: 'GOOGLE', model: 'chirp_3', audioSeconds: leg.seconds }),
-            costBasis: 'CALCULATED',
-            ok: true, errorCode: null, providerStatus: null,
-          });
-        }
-
         logEvent('ai-talk', 'converse_ok', {
           sessionId: session.id, firstTextMs: firstTextAt, firstAudioMs: firstAudioAt || null,
           totalMs: Date.now() - startedAt, phrases: spoken.length, bytes: audioBytes,
@@ -2440,6 +2489,16 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
         llmFinished = true;
         nudge();
         await drain.catch(() => { /* already reported */ });
+        /*
+         * After the drain, so the synthesis rows this turn produced are
+         * already written and a reader sees one complete turn rather than a
+         * model row arriving before the audio it paid for.
+         */
+        await recordTurnUsage(
+          abandoned
+            ? { ok: false, error: 'CANCELLED' }
+            : { ok: true, error: null },
+        ).catch(() => { /* telemetry never takes a conversation down */ });
         try { controller.close(); } catch { /* already closed */ }
       }
     },

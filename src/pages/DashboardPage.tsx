@@ -52,6 +52,7 @@ import {
 } from '@/services/dashboardSummary';
 import type { DealRoomRecord } from '@/services/dealRooms';
 import type { ActivityEvent, Property } from '@/types/types';
+import { PrivateImage } from '@/components/common/PrivateImage';
 import { toast } from 'sonner';
 
 /* ------------------------------------------------------------------ *
@@ -241,13 +242,19 @@ function PropertyRow({ property, run, onOpen, onDelete }: {
         className="flex min-w-0 flex-1 items-center gap-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="h-11 w-14 shrink-0 overflow-hidden rounded-xl bg-sand">
-          {property.cover_photo_url ? (
-            <img src={property.cover_photo_url} alt="" className="h-full w-full object-cover" loading="lazy" />
-          ) : (
-            <span className="grid h-full w-full place-items-center text-muted-foreground" aria-hidden="true">
-              <Building2 className="h-4 w-4" />
-            </span>
-          )}
+          {/* The cover is either an imported listing's own URL or a path in
+              the private bucket. PrivateImage tells them apart and signs the
+              second kind, showing the placeholder until it has a URL. */}
+          <PrivateImage
+            src={property.cover_photo_url}
+            alt=""
+            className="h-full w-full object-cover"
+            fallback={(
+              <span className="grid h-full w-full place-items-center text-muted-foreground" aria-hidden="true">
+                <Building2 className="h-4 w-4" />
+              </span>
+            )}
+          />
         </span>
 
         <span className="min-w-0 flex-1">

@@ -276,28 +276,35 @@ function PrivateListingContent() {
       await upsertPropertyFacts({ ...facts, property_id: propId });
       await createSearchProfile(propId, homatchUser.id, facts);
 
-      // Upload photos
-      let coverUrl: string | undefined;
+      // Upload photos.
+      //
+      // What gets stored is the PATH. These photos live in a private bucket,
+      // so there is no durable URL to record: `public_url` stays empty and
+      // every display site signs the path when it renders. Writing a URL
+      // here is what produced three columns of permanently-403 links.
+      let coverPath: string | undefined;
       for (let i = 0; i < photos.length; i++) {
         const photo = photos[i];
         try {
-          const pubUrl = await uploadPropertyPhoto(homatchUser.id, propId, photo.file);
+          const storagePath = await uploadPropertyPhoto(homatchUser.id, propId, photo.file);
           await addPropertyPhoto({
             property_id: propId,
-            storage_path: pubUrl,
-            public_url: pubUrl,
+            storage_path: storagePath,
             display_order: i,
             is_cover: photo.isCover,
             visibility: form.photoVisibility as any,
             original_filename: photo.file.name,
             file_size: photo.file.size,
           });
-          if (photo.isCover) coverUrl = pubUrl;
+          if (photo.isCover) coverPath = storagePath;
         } catch (e) {
           console.error('Photo upload error:', e);
         }
       }
-      if (coverUrl) await updateProperty(propId, { cover_photo_url: coverUrl });
+      // `cover_photo_url` holds either an absolute URL (a property imported
+      // from a listing site) or a private storage path (one uploaded here).
+      // resolveImageSrc tells them apart, so a path is a valid value.
+      if (coverPath) await updateProperty(propId, { cover_photo_url: coverPath });
 
       await logActivity(homatchUser.id, 'PRIVATE_LISTING_CREATED', propId);
       toast.success(t('private_toast_created'));

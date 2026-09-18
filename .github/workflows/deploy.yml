@@ -311,6 +311,15 @@ jobs:
             "developer-buyer-document"
             "developer-document-extract"
             "developer-floorplan-extract"
+            # Object storage. storage-sign is the ONLY runtime anywhere that
+            # holds an R2 credential: it authorises the caller in Postgres
+            # under that caller's own token and hands back a short-lived
+            # presigned URL, so gateway JWT verification is required and the
+            # real decision happens inside the function. storage-selftest
+            # proves the bucket end to end and is gated by a single-use
+            # ticket row rather than by an account.
+            "storage-sign"
+            "storage-selftest"
             "atomic-unlock"
             "credits-topup"
             "import-property"

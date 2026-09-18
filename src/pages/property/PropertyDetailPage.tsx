@@ -24,6 +24,7 @@ import {
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
 import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
+import { PrivateImage } from '@/components/common/PrivateImage';
 
 function MatchabilityPanel({ score, improvements }: { score: number; improvements: string[] }) {
   const { t } = useLanguage();
@@ -374,17 +375,19 @@ function PropertyDetailContent() {
 
         {/* Cover photo */}
         <div className="aspect-[16/7] rounded-xl overflow-hidden bg-secondary relative">
-          {property.cover_photo_url ? (
-            <img
-              src={property.cover_photo_url}
-              alt={property.title ?? t('prop_alt_fallback')}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <Building2 className="h-12 w-12 text-muted-foreground/20" />
-            </div>
-          )}
+          {/* Either an imported listing's own URL or a path in the private
+              bucket. One component tells them apart and signs the second. */}
+          <PrivateImage
+            src={property.cover_photo_url}
+            alt={property.title ?? t('prop_alt_fallback')}
+            className="w-full h-full object-cover"
+            loading="eager"
+            fallback={(
+              <div className="w-full h-full flex items-center justify-center">
+                <Building2 className="h-12 w-12 text-muted-foreground/20" />
+              </div>
+            )}
+          />
           {isPrivate && (
             <div className={`absolute top-3 ${isRTL ? 'right-3' : 'left-3'}`}>
               <span className="status-private flex items-center gap-1.5">
@@ -400,7 +403,14 @@ function PropertyDetailContent() {
           <div className="flex gap-2 overflow-x-auto">
             {property.photos?.map(ph => (
               <div key={ph.id} className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-border">
-                <img src={ph.public_url ?? ''} alt="" className="w-full h-full object-cover" loading="lazy" />
+                {/* The photo's address is its storage path. `public_url` is
+                    only ever set for an object that really is public, which
+                    none of these are. */}
+                <PrivateImage
+                  src={ph.public_url ?? ph.storage_path}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
               </div>
             ))}
           </div>

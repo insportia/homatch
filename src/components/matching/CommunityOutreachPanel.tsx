@@ -12,6 +12,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '@/types/types';
 import { toast } from 'sonner';
+import { resolveImageSrc } from '@/services/storage/images';
 
 interface RankedCommunity {
   community_id: string;
@@ -68,7 +69,11 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
           .eq('id', propertyId)
           .maybeSingle();
         if (error) throw error;
-        setCoverPhotoUrl((data?.cover_photo_url as string | null) ?? null);
+        // The stored value is either an imported listing's own URL or a path
+        // in the private bucket. This one opens in a new tab rather than
+        // rendering, so it needs a real URL resolved up front — a raw path
+        // in an href navigates to a page that does not exist.
+        setCoverPhotoUrl(await resolveImageSrc(data?.cover_photo_url as string | null));
       } catch (err) {
         console.error('[CommunityOutreachPanel] failed to load cover photo:', err);
       }

@@ -74,7 +74,7 @@ export async function getProperties(userId: string, cursor?: string, limit = 20)
     .select(`
       *,
       facts:property_facts(*),
-      photos:property_photos(id, public_url, is_cover, display_order, visibility),
+      photos:property_photos(id, storage_path, public_url, is_cover, display_order, visibility),
       search_profile:search_profiles(*)
     `)
     .eq('user_id', userId)
@@ -233,6 +233,20 @@ export async function setCoverPhoto(propertyId: string, photoId: string) {
   if (!data || data.length === 0) throw new Error('That photo is no longer part of this property.');
 }
 
+/**
+ * Upload one photo and return WHERE IT IS, not a URL to it.
+ *
+ * `property-photos` is a PRIVATE bucket. This used to finish with
+ * `getPublicUrl()`, which asks the server nothing — it concatenates a string
+ * and always succeeds — so every upload produced a URL that answers 403 to
+ * everybody, and that same broken string was then written into three
+ * separate columns. The bucket has been empty since it was created, which is
+ * the only reason nobody had hit it.
+ *
+ * A private object has no durable URL, so the durable thing to record is the
+ * PATH. `PrivateImage` mints a short-lived signed URL at the moment somebody
+ * actually looks at the photo, and never writes it down.
+ */
 export async function uploadPropertyPhoto(
   userId: string,
   propertyId: string,
@@ -244,10 +258,9 @@ export async function uploadPropertyPhoto(
     .from('property-photos')
     .upload(filename, file, { contentType: file.type, upsert: false });
   if (error) throw new Error(error.message);
-  const { data: urlData } = supabase.storage
-    .from('property-photos')
-    .getPublicUrl(data.path);
-  return urlData.publicUrl;
+  // The path the bucket gives back, which is the one to store — it can
+  // differ from the one requested if storage normalised it.
+  return data.path;
 }
 
 // ============================================================

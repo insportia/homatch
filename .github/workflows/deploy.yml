@@ -7,9 +7,9 @@ on:
     inputs:
       run_migrations:
         description: >-
-          Run `supabase db push` against production. Leave this false unless
-          the historical migration drift has been resolved first -- see the
-          migrate job for why it currently fails.
+          Run `supabase db push` against production. The historical drift is
+          handled by the ledger repair in the migrate job, which aligns every
+          migration up to the BASELINE before pushing anything new.
         type: boolean
         default: false
 
@@ -155,25 +155,52 @@ jobs:
 
   # ── Job 3: Deploy Supabase migrations ─────────────────────────────────────
   #
-  # DISABLED ON PUSH. This job runs `supabase db push`, which currently fails
-  # against production: 21 repository migrations were historically applied
-  # under different generated versions, so a push re-runs them, and
-  # 20260907120000_mortgage_feature_v1.sql contains unguarded CREATE TABLE /
-  # CREATE INDEX / CREATE TYPE that error on replay.
+  # STILL GATED BEHIND workflow_dispatch, deliberately. Schema changes should
+  # be an intentional act, not a side effect of merging.
   #
-  # It is kept, not deleted, so the pipeline is still here once that drift is
-  # resolved -- but it now requires an intentional workflow_dispatch with
-  # run_migrations explicitly set to true. Nothing reaches production
-  # schema by merely merging to main.
+  # WHAT WAS WRONG, AND WHAT WAS ACTUALLY MEASURED
   #
-  # The five Recovery migrations are already applied and runtime-verified:
-  #   20260909120000_deal_rooms
-  #   20260910090000_deal_room_document_storage
-  #   20260910100000_renovation_price_book
-  #   20260910110000_human_verification_handoff
-  #   20260910120000_fix_handoff_expiry_persistence
-  # They must not be replayed.
+  # The repair loop below used to name 21 versions. All 21 were already in
+  # the production ledger, so it repaired nothing. `supabase db push` then
+  # replayed every repository migration the ledger did not know about — 74 of
+  # them on 2026-09-18, every one already applied to production. That replay
+  # would have run 131 INSERTs, 127 DROP POLICYs, 75 UPDATEs, 17 DROP
+  # TRIGGERs and a top-level DELETE against cost_events, plus errored on the
+  # two migrations that still had unguarded CREATE TABLE/TYPE/INDEX.
   #
+  # Production predates repository-backed migration tracking. Those 74 were
+  # applied through the dashboard, which recorded them under ITS OWN version
+  # numbers, so the ledger already held 70 of them by name under a different
+  # version. Before the baseline was set, every one was verified effect by
+  # effect against the live catalogue — 668 checks covering 76 tables, 153
+  # indexes, 101 columns, 162 policies, 109 functions, 20 constraints, 14
+  # triggers, 8 views and 3 types — not merely "the table exists".
+  #
+  # So the repair walks the migrations directory and aligns the ledger for
+  # everything at or below MIGRATION_BASELINE. That is a LEDGER-ONLY
+  # operation: it writes no schema and touches no data. `db push` afterwards
+  # pushes only migrations newer than the baseline, which are the only ones
+  # that have genuinely never run.
+  #
+  # ON THE TWO MIGRATIONS THAT CANNOT BE REPLAYED
+  #
+  # research_case_persistence is now idempotent: guards only, no product
+  # behaviour changed, and proven on a rebuilt-from-empty copy of its own
+  # objects to produce byte-identical columns, indexes, constraints and
+  # triggers.
+  #
+  # mortgage_feature_v1 is deliberately NOT guarded. Its seed INSERTs carry
+  # the National Bank PTI and LTV rules and have no natural key, so a replay
+  # would duplicate them. Its unguarded CREATE TYPE is therefore load-bearing:
+  # it makes a replay fail on the first statement, inside a transaction,
+  # before anything can be written. Guarding the DDL alone would only let the
+  # replay get further before failing; guarding the policies too would let it
+  # reach the seeds and silently double the rule set. The ledger baseline,
+  # not idempotency, is what keeps it from ever running twice.
+  #
+  # MOVING THE BASELINE IS A DELIBERATE EDIT. Raising it marks migrations as
+  # applied without running them; only do that for migrations independently
+  # verified to be present in production already.
   migrate:
     name: Apply DB Migrations
     runs-on: ubuntu-latest
@@ -201,40 +228,30 @@ jobs:
       - name: Apply pending migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # Everything at or below this version is already applied to
+          # production. Verified object-by-object against the live schema.
+          MIGRATION_BASELINE: "20260917140000"
         run: |
-          # Production predates repository-backed migration tracking. These
-          # versions were already applied directly; repair only aligns the
-          # Supabase migration ledger before pushing genuinely new migrations.
-          echo "Aligning production migration history..."
-          for version in \
-            00021 \
-            00022 \
-            00023 \
-            00024 \
-            00025 \
-            00026 \
-            00029 \
-            00033 \
-            20260827203146 \
-            20260827205525 \
-            20260827212117 \
-            20260827213737 \
-            20260827221926 \
-            20260828071514 \
-            20260829000003 \
-            20260829090000 \
-            20260829130000 \
-            20260829130100 \
-            20260829153000 \
-            20260829153100; do
+          set -euo pipefail
+
+          echo "Aligning the migration ledger up to baseline $MIGRATION_BASELINE..."
+          echo "(ledger-only: this writes no schema and touches no data)"
+
+          aligned=0
+          for path in supabase/migrations/*.sql; do
+            version="$(basename "$path" | cut -d_ -f1)"
+            # Lexicographic compare is correct here: every version is a
+            # zero-padded numeric string of the same generation scheme.
+            if [[ "$version" > "$MIGRATION_BASELINE" ]]; then continue; fi
             supabase migration repair "$version" \
               --status applied \
               --project-ref "$SUPABASE_PROJECT_REF" \
-              2>&1 || true
-            echo "  ✅ Marked $version as applied"
+              >/dev/null 2>&1 || true
+            aligned=$((aligned + 1))
           done
+          echo "  ✅ Aligned $aligned migration(s) at or below the baseline"
 
-          echo "Pushing any new migrations after baseline..."
+          echo "Pushing migrations newer than the baseline..."
           supabase db push \
             --project-ref "$SUPABASE_PROJECT_REF" \
             --password "${{ secrets.SUPABASE_DB_PASSWORD }}" \

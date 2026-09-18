@@ -24,28 +24,28 @@
 -- code that this sandbox cannot live-test against ENREG/TAS/MSMAP/My.gov.
 
 ALTER TABLE public.research_jobs
-  ADD COLUMN case_id uuid REFERENCES public.transaction_cases(id) ON DELETE SET NULL,
-  ADD COLUMN supersedes_job_id uuid REFERENCES public.research_jobs(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS case_id uuid REFERENCES public.transaction_cases(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS supersedes_job_id uuid REFERENCES public.research_jobs(id) ON DELETE SET NULL;
 
 COMMENT ON COLUMN public.research_jobs.case_id IS
   'Transaction case this research run belongs to. Set client-side once the case is known (found by dedupe_key) or created — never written by research-agent itself. Lets /cases list every research report ever run for a case and reopen any of them without re-running research.';
 COMMENT ON COLUMN public.research_jobs.supersedes_job_id IS
   'Previous research_jobs row this run replaces, set only when the user clicks "Refresh Research" on a case that already has a report. The old row and its result_json are never deleted or modified — this column is purely a forward pointer so the report history can be ordered/chained.';
 
-CREATE INDEX idx_research_jobs_case ON public.research_jobs(case_id, created_at DESC) WHERE case_id IS NOT NULL;
-CREATE INDEX idx_research_jobs_supersedes ON public.research_jobs(supersedes_job_id) WHERE supersedes_job_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_research_jobs_case ON public.research_jobs(case_id, created_at DESC) WHERE case_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_research_jobs_supersedes ON public.research_jobs(supersedes_job_id) WHERE supersedes_job_id IS NOT NULL;
 
 -- dedupe_key lets the client find-or-create exactly ONE case per
 -- property/entity per user (normalized cadastral code, or normalized
 -- entity name+type when no cadastral code was identified) instead of
 -- creating a duplicate case on every research run of the same property.
 ALTER TABLE public.transaction_cases
-  ADD COLUMN dedupe_key text;
+  ADD COLUMN IF NOT EXISTS dedupe_key text;
 
 COMMENT ON COLUMN public.transaction_cases.dedupe_key IS
   'Normalized identity of the property/entity this case tracks (e.g. "cad:01.18.06.019.055.03.01.603" or "name:project:some project"), computed client-side from a completed research report. Used to find-or-create one case per property per user rather than creating duplicates on every research run — see computeResearchDedupeKey() in src/services/transactionCases.ts.';
 
-CREATE INDEX idx_transaction_cases_user_dedupe ON public.transaction_cases(user_id, dedupe_key) WHERE dedupe_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_transaction_cases_user_dedupe ON public.transaction_cases(user_id, dedupe_key) WHERE dedupe_key IS NOT NULL;
 
 -- ── integrity guards (defense in depth) ──────────────────────────────────────
 -- RLS already prevents a user from reading/writing another user's
@@ -77,6 +77,7 @@ BEGIN
 END;
 $function$;
 
+DROP TRIGGER IF EXISTS trg_research_job_validate_case_link ON public.research_jobs;
 CREATE TRIGGER trg_research_job_validate_case_link
   BEFORE INSERT OR UPDATE OF case_id, supersedes_job_id ON public.research_jobs
   FOR EACH ROW EXECUTE FUNCTION public.research_job_validate_case_link();
@@ -96,6 +97,7 @@ BEGIN
 END;
 $function$;
 
+DROP TRIGGER IF EXISTS trg_transaction_case_validate_job_link ON public.transaction_cases;
 CREATE TRIGGER trg_transaction_case_validate_job_link
   BEFORE INSERT OR UPDATE OF research_job_id ON public.transaction_cases
   FOR EACH ROW EXECUTE FUNCTION public.transaction_case_validate_job_link();

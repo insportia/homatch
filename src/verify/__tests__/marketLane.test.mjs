@@ -160,3 +160,38 @@ test('the lane declines rather than sweeping a city it knows nothing about', asy
   assert.equal(lane, null);
   assert.equal(state.sends, 0, 'and made no request at all');
 });
+
+test('the deterministic set is written to the path the final report reads', () => {
+  /*
+   * The bug this pins, caught on the first production run.
+   *
+   * MARKET's schema nests its answer under `market`, and SYNTHESIS assembles
+   * the customer-facing report from `marketResearch.market.comparables`. The
+   * merge originally wrote a top-level `z.comparables`, so 36 code-gathered
+   * comparables landed in a field nothing reads and the report carried the 25
+   * the model had paraphrased back out of the brief instead. Both halves
+   * looked fine in isolation; only the path disagreed.
+   */
+  const agent = readFileSync(
+    join(HERE, '..', '..', '..', 'supabase', 'functions', 'research-agent', 'index.ts'),
+    'utf8',
+  );
+
+  // What the merge writes.
+  assert.match(
+    agent,
+    /z\.market\.comparables = \[\.\.\.prior\._marketComparables/,
+    'the deterministic comparables must be merged into z.market.comparables',
+  );
+  // What the report reads.
+  assert.match(
+    agent,
+    /sanitizeComparables\(mr\.market\?\.comparables \|\| \[\]\)/,
+    'the report assembles from marketResearch.market.comparables',
+  );
+  // And the dead path must not come back.
+  assert.ok(
+    !/z\.comparables = \[\.\.\.prior\._marketComparables/.test(agent),
+    'z.comparables is not read by the report and must not be the merge target',
+  );
+});

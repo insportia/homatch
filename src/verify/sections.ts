@@ -147,9 +147,27 @@ export function computeSections(input: SectionInput): SectionsSnapshot {
   // ── PROPERTY ────────────────────────────────────────────────────────────
   const identified = has(r.exactUnit?.code) || has(r.identifiedParent?.code) || has(r.identity?.entity?.name);
   const unitVerified = r.exactUnit?.verified === true;
+  /*
+   * A FINISHED RUN NEVER LEAVES A SECTION PENDING.
+   *
+   * Caught on the first production run: a free-text property query that never
+   * resolved to a cadastral unit left PROPERTY at PENDING after the job
+   * completed. PENDING renders as "not started", so a finished verification
+   * showed a section that looked like it was still loading and always would
+   * be. "We could not identify the exact unit" is a finding and has its own
+   * state.
+   */
   push(
     'PROPERTY',
-    !identified ? 'PENDING' : unitVerified ? 'VERIFIED' : finished ? 'PARTIAL' : 'ENRICHING',
+    !identified
+      ? finished
+        ? 'UNAVAILABLE'
+        : 'PENDING'
+      : unitVerified
+        ? 'VERIFIED'
+        : finished
+          ? 'PARTIAL'
+          : 'ENRICHING',
     {
       identifiers: (has(r.exactUnit?.code) ? 1 : 0) + (has(r.identifiedParent?.code) ? 1 : 0),
       independentSources: numberOrNull(r.reconciledIdentity?.independentSourceCount),
@@ -162,7 +180,15 @@ export function computeSections(input: SectionInput): SectionsSnapshot {
   const address = has(r.reconciledIdentity?.address) || has(r.projectProfile?.address) || has(r.identifiedParent?.address);
   push(
     'LOCATION',
-    !address && places === 0 ? 'PENDING' : places > 0 ? (finished ? 'VERIFIED' : 'ENRICHING') : 'PRELIMINARY',
+    !address && places === 0
+      ? finished
+        ? 'UNAVAILABLE'
+        : 'PENDING'
+      : places > 0
+        ? finished
+          ? 'VERIFIED'
+          : 'ENRICHING'
+        : 'PRELIMINARY',
     { nearbyPlaces: places, addressKnown: address ? 1 : 0 },
   );
 
@@ -218,7 +244,9 @@ export function computeSections(input: SectionInput): SectionsSnapshot {
   push(
     'OFFICIAL',
     !officialDone
-      ? 'PENDING'
+      ? finished
+        ? 'UNAVAILABLE'
+        : 'PENDING'
       : succeeded === 0
         ? 'UNAVAILABLE'
         : blocked > 0

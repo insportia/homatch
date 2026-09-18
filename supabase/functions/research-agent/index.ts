@@ -3022,7 +3022,19 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
      * never be counted twice just because both halves of the pipeline saw it.
      */
     if (Array.isArray(prior._marketComparables) && prior._marketComparables.length) {
-      const modelFound = Array.isArray(z?.comparables) ? z.comparables : [];
+      /*
+       * THE PATH MATTERS, AND IT IS NOT THE OBVIOUS ONE.
+       *
+       * MARKET's schema nests its answer under `market`, and the final report
+       * is assembled from `marketResearch.market.comparables` (see the
+       * `market:` block in the SYNTHESIS branch). Writing to a top-level
+       * `comparables` puts the deterministic set somewhere nothing reads:
+       * caught on the first production run, where 36 code-gathered
+       * comparables sat in an unused field while the report carried the 25
+       * the model had paraphrased back out of the brief.
+       */
+      if (!z.market || typeof z.market !== 'object') z.market = {};
+      const modelFound = Array.isArray(z.market.comparables) ? z.market.comparables : [];
       const seenUrls = new Set(
         prior._marketComparables.map((c: any) => String(c?.url || '').trim()).filter(Boolean),
       );
@@ -3030,7 +3042,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
         const url = String(c?.url || '').trim();
         return url && !seenUrls.has(url);
       });
-      z.comparables = [...prior._marketComparables, ...additional];
+      z.market.comparables = [...prior._marketComparables, ...additional];
       z.comparableDiscovery = {
         deterministic: prior._marketComparables.length,
         modelAdded: additional.length,

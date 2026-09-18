@@ -160,6 +160,23 @@ test('an unconfirmed unit is disclosed rather than presented as identified', () 
   assert.deepEqual(verified.notes, []);
 });
 
+test('a finished run never leaves a section looking like it is still loading', () => {
+  // Production, job 8dfff8f5: a free-text query that never resolved to a
+  // cadastral unit left PROPERTY at PENDING after COMPLETE. PENDING renders
+  // as "not started", so the finished report showed a section that appeared
+  // to be still loading and always would be.
+  const done = at({ exactUnit: { code: null, verified: false } }, { status: 'COMPLETE' });
+  for (const section of done.sections) {
+    assert.notEqual(section.maturity, 'PENDING', `${section.id} is PENDING on a finished run`);
+  }
+  const property = find(done, 'PROPERTY');
+  assert.equal(property.maturity, 'UNAVAILABLE');
+
+  // While still running, PENDING remains the honest answer.
+  const running = find(at({}), 'PROPERTY');
+  assert.equal(running.maturity, 'PENDING');
+});
+
 test('synthesis is complete only when a report actually exists', () => {
   // Research finishing is not the report being ready, and the state must
   // never say otherwise.

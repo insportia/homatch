@@ -653,6 +653,19 @@ export async function streamCartesiaPcm(
   let last: ProviderResult<never>['error'] | undefined;
 
   for (const model of TTS_MODELS) {
+    /*
+     * ASK BEFORE STARTING, NOT ONLY WHILE RUNNING.
+     *
+     * An abort listener attached to a signal that has ALREADY fired never
+     * runs -- that is the specified behaviour, not a bug in it. Phrases are
+     * queued as independent tasks, so a turn cancelled while three of them
+     * were still waiting their turn to start would attach three dead
+     * listeners and synthesise all three in full. Every one of those was
+     * billed for audio that could not reach anybody.
+     */
+    if (params.signal?.aborted) {
+      return { ok: false, error: { code: 'CANCELLED', message: 'caller cancelled before synthesis started', retryable: false } };
+    }
     const started = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 20_000);
@@ -768,10 +781,17 @@ export async function streamCartesiaPcm(
       };
     } catch (e) {
       const aborted = (e as Error)?.name === 'AbortError';
+      /*
+       * Our caller leaving is not the provider being slow, and calling both
+       * TIMEOUT made a healthy provider look unreliable every time somebody
+       * interrupted. They are also different money: a timeout bought nothing,
+       * a cancellation bought the characters already submitted.
+       */
+      const cancelled = aborted && params.signal?.aborted === true;
       last = {
-        code: aborted ? 'TIMEOUT' : 'TRANSIENT',
+        code: cancelled ? 'CANCELLED' : aborted ? 'TIMEOUT' : 'TRANSIENT',
         message: String((e as Error)?.message ?? e).slice(0, 200),
-        retryable: true,
+        retryable: !cancelled,
       };
       // A caller who cancelled does not want the next model tried.
       if (aborted) break;

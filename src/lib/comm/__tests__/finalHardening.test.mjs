@@ -213,9 +213,12 @@ test('the voice runs at its natural pace and the character grew without losing i
   // merged into one, because the model reads all of it on every turn. Every
   // rule they carried is still here, under the heading that replaced them.
   assert.match(edge, /WHO YOU ARE\. A sharp, well-read person/);
-  assert.match(edge, /If they/);
-  assert.match(edge, /swear casually, react like a person who likes them/);
-  assert.match(edge, /You do not swear at them and do not escalate/);
+  // Swearing is answered under its own heading now, and the rule grew rather
+  // than moved: a comeback, no lecture, and no call ended over language.
+  assert.match(edge, /WHEN THEY SWEAR, JOKE OR COME AT YOU/);
+  assert.match(edge, /Mild profanity of your/);
+  assert.match(edge, /NEVER a line about staying respectful/);
+  assert.match(edge, /ending a call because somebody swore/);
   assert.match(edge, /Never insult,\s*'?,?\s*'?belittle, threaten or abuse anyone/);
   assert.match(edge, /Humour must be native to the language/);
   assert.match(edge, /Do not perform emotion you do not have/, 'moods come from context, not a generator');

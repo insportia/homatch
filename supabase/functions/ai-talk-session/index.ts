@@ -30,6 +30,7 @@ import {
   streamCartesiaPcm, nearestCartesiaRate, clampCartesiaSpeed,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
+import { priceBook, llmCost, sttCost, ttsCost } from '../_shared/comm/voiceCogs.ts';
 import { judgeOverlap } from '../_shared/comm/generated/streamingOverlap.ts';
 import { LANGUAGE_NAMES as REGISTRY_LANGUAGE_NAMES } from '../_shared/comm/generated/languageRegistry.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
@@ -268,8 +269,21 @@ async function recordVoiceUsage(sb: Sb, event: {
   characters?: number | null;
   audioSeconds?: number | null;
   inputTokens?: number | null;
+  /** Of inputTokens, how many the provider served from its cache. A subset. */
+  cachedInputTokens?: number | null;
   outputTokens?: number | null;
   latencyMs: number | null;
+  /**
+   * WHAT IT COST US, OR NULL BECAUSE WE DO NOT KNOW.
+   *
+   * These two columns have existed since this table was written and nothing
+   * in the project had ever set either of them: all 2,238 AI Talk rows in
+   * production carried a NULL cost. Undefined here means "not priced", and
+   * that reaches the database as NULL rather than as zero, deliberately. A
+   * cost centre that renders as $0.00 is one nobody looks for again.
+   */
+  costUsd?: number | null;
+  costBasis?: 'PROVIDER' | 'CALCULATED' | 'ESTIMATED' | null;
   ok: boolean;
   errorCode: string | null;
   providerStatus: number | null;
@@ -284,8 +298,11 @@ async function recordVoiceUsage(sb: Sb, event: {
       characters: event.characters ?? null,
       audio_seconds: event.audioSeconds ?? null,
       input_tokens: event.inputTokens ?? null,
+      cached_input_tokens: event.cachedInputTokens ?? null,
       output_tokens: event.outputTokens ?? null,
       latency_ms: event.latencyMs,
+      cost_usd: event.costUsd ?? null,
+      cost_basis: event.costUsd === null || event.costUsd === undefined ? null : (event.costBasis ?? 'CALCULATED'),
       ok: event.ok,
       error_code: event.errorCode,
       provider_status: event.providerStatus,
@@ -331,6 +348,17 @@ interface TalkRequest {
   firstTurn?: boolean;
   /** What the browser spent before this request: the half of the chain the server cannot time. */
   clientStages?: { speechEndToFinalMs?: number | null; finalToRequestMs?: number | null; opinionWaitMs?: number };
+  /**
+   * Seconds of audio this turn streamed to each recogniser.
+   *
+   * COGS only, and client-measured because there is nowhere else to measure
+   * it: microphone audio never passes through this function. Two figures
+   * because two streams are opened and both are billed. Absent on an older
+   * browser, and then no STT row is written -- an unmeasured second must not
+   * be recorded as a free one.
+   */
+  sttAudioSeconds?: number | null;
+  sttShadowAudioSeconds?: number | null;
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
   /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
@@ -427,7 +455,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'turn':      return await turn(sb, body);
     case 'transcribe': return await transcribe(sb, body);
     case 'speak':     return await speak(sb, body);
-    case 'converse':  return await converse(sb, body);
+    case 'converse':  return await converse(sb, body, req);
     case 'listen':    return await listen(sb, body);
     case 'heartbeat': return await heartbeat(sb, body);
     case 'end':       return await end(sb, body);
@@ -1181,6 +1209,10 @@ async function speakPhraseStreaming(sb: Sb, params: {
       characters: out.data.characters,
       // What a person waited through, not what the whole clip cost.
       latencyMs: out.data.firstByteMs,
+      costUsd: ttsCost(await priceBook(sb), {
+        provider: 'CARTESIA', model: out.data.model, characters: out.data.characters,
+      }),
+      costBasis: 'CALCULATED',
       ok: true, errorCode: null, providerStatus: null,
     });
     return {
@@ -1194,11 +1226,27 @@ async function speakPhraseStreaming(sb: Sb, params: {
     };
   }
 
+  /*
+   * A FAILED REQUEST AND A CANCELLED ONE ARE DIFFERENT BILLS.
+   *
+   * Cartesia charges for the text SUBMITTED. A phrase refused before it was
+   * ever sent -- the listener had already gone -- cost nothing and is
+   * recorded as costing nothing, explicitly, with CANCELLED against it. A
+   * phrase that was sent and then cut off mid-stream WAS submitted, so it is
+   * priced in full: pretending otherwise would understate what this product
+   * actually spends on conversations nobody finished hearing.
+   */
+  const neverSubmitted = out.error?.code === 'CANCELLED'
+    && /before synthesis started/.test(String(out.error?.message ?? ''));
   await recordVoiceUsage(sb, {
     sessionId: params.sessionId ?? null,
     surface: params.surface ?? 'AI_TALK',
     provider: 'CARTESIA', role: 'TTS', model: 'sonic-3',
-    characters: params.text.length, latencyMs: Date.now() - at,
+    characters: neverSubmitted ? 0 : params.text.length, latencyMs: Date.now() - at,
+    costUsd: neverSubmitted ? 0 : ttsCost(await priceBook(sb), {
+      provider: 'CARTESIA', model: 'sonic-3', characters: params.text.length,
+    }),
+    costBasis: 'CALCULATED',
     ok: false, errorCode: out.error?.code ?? null,
     providerStatus: Number(out.error?.providerCode) || null,
   });
@@ -1421,7 +1469,7 @@ async function activeSession(
  * ordered answer, and a socket would add a connection to hold open, a
  * reconnect path and a second thing to get wrong.
  */
-async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
+async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Response> {
   if (!body.sessionId) return json({ error: 'session_required' }, 400);
 
   const said = String(body.text ?? '').trim().slice(0, 1000);
@@ -1551,7 +1599,18 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
   let llmHeadersMs: number | null = null;
   let llmThinkMs: number | null = null;
   let llmInputTokens: number | null = null;
+  /*
+   * Of the input, how much the provider served from its own prompt cache.
+   *
+   * The system prompt is most of a voice turn's input and it is byte-identical
+   * every turn, so this is usually the large majority of it -- and the price
+   * book has charged a tenth for it since it was seeded. Nothing could read
+   * the figure until now because llm.ts narrowed the provider's usage object
+   * to two flat fields and dropped it at parse time.
+   */
+  let llmCachedInputTokens: number | null = null;
   let llmOutputTokens: number | null = null;
+  let llmModel: string | null = null;
   let llmIncomplete = false;
   let llmIncompleteReason: string | null = null;
 
@@ -1621,6 +1680,34 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
    */
   const turnAbort = new AbortController();
 
+  /*
+   * ...AND THE ONE LINE THAT MADE THE PARAGRAPH ABOVE TRUE.
+   *
+   * Every word of that comment described the intent. The controller was
+   * created here and its signal was handed to Cartesia, and `.abort()` was
+   * never called from anywhere in this file -- so not one of barge-in, the
+   * End button, unmount, navigation or a closed tab ever stopped a single
+   * phrase. The browser half was complete: the fetch carries the signal, the
+   * SSE reader is cancelled, and every abandonment path reaches it. The chain
+   * ended here, at a controller nothing fired.
+   *
+   * Three things now fire it, because a listener can be lost in three ways:
+   * the runtime telling us the response was cancelled, the request's own
+   * signal, and the first enqueue that fails because there is nobody there.
+   */
+  let abandoned: string | null = null;
+  const abandon = (why: string) => {
+    if (abandoned) return;
+    abandoned = why;
+    try { turnAbort.abort(); } catch { /* already aborted */ }
+    logEvent('ai-talk', 'turn_abandoned', { session_id: body.sessionId ?? null, why });
+  };
+  // The authoritative source: the platform aborts this when the client goes.
+  if (req?.signal) {
+    if (req.signal.aborted) abandon('REQUEST_ABORTED');
+    else req.signal.addEventListener('abort', () => abandon('REQUEST_ABORTED'), { once: true });
+  }
+
   const startedAt = Date.now();
   const encoder = new TextEncoder();
 
@@ -1631,7 +1718,13 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         if (closed) return;
         try {
           controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-        } catch { closed = true; }
+        } catch {
+          // Nobody is reading. This was the only evidence of a dropped
+          // listener in the whole handler, and it was swallowed into a flag
+          // that nothing else ever read.
+          closed = true;
+          abandon('STREAM_CLOSED');
+        }
       };
 
       /*
@@ -1708,6 +1801,16 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
        * name is the whole fix, and the name is now what it does.
        */
       const queuePhrase = (phrase: string) => {
+        /*
+         * The cheapest phrase is the one never sent. Cartesia bills the text
+         * SUBMITTED, so refusing to start is the whole saving; a request
+         * aborted mid-stream has already been paid for.
+         */
+        if (turnAbort.signal.aborted) {
+          skippedPhrases += 1;
+          skippedChars += phrase.length;
+          return;
+        }
         const index = spoken.length;
         const slot: Phrase = {
           index, chunks: [], done: false,
@@ -1765,6 +1868,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         nudge();
       };
 
+      /** Phrases never submitted because the listener had already gone. */
+      let skippedPhrases = 0;
+      let skippedChars = 0;
       let firstAudioAt = 0;
       let ttsMs = 0;
       let audioBytes = 0;
@@ -1910,7 +2016,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             if (event.firstTokenMs !== undefined) llmThinkMs = event.firstTokenMs;
             if (event.effort !== undefined) llmEffort = event.effort;
             if (event.inputTokens !== undefined) llmInputTokens = event.inputTokens;
+            if (event.cachedInputTokens !== undefined) llmCachedInputTokens = event.cachedInputTokens;
             if (event.outputTokens !== undefined) llmOutputTokens = event.outputTokens;
+            if (event.model !== undefined) llmModel = event.model;
             /*
              * The model ran out of room mid-sentence. Kept, because the
              * difference between "a short answer" and "an answer that was
@@ -1983,6 +2091,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             }
           }
 
+          // Abandoned mid-answer: stop reading the model, which stops the
+          // tokens being generated, which stops the phrases being cut from
+          // them. Everything already spoken stays honestly recorded.
+          if (turnAbort.signal.aborted) break;
           if (languageChecked) {
             let phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
             while (phrase) {
@@ -2064,7 +2176,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
          * visible text is recomputed once at the end rather than trusted from
          * the loop. Whatever is left unspoken is the last phrase.
          */
-        if (!failed && pending.trim()) queuePhrase(pending.trim());
+        if (!failed && !turnAbort.signal.aborted && pending.trim()) queuePhrase(pending.trim());
         llmFinished = true;
         nudge();
 
@@ -2232,6 +2344,10 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           llm_headers_ms: llmHeadersMs,
           llm_think_ms: llmThinkMs,
           llm_input_tokens: llmInputTokens,
+          llm_cached_input_tokens: llmCachedInputTokens,
+          tts_skipped_phrases: skippedPhrases,
+          tts_skipped_chars: skippedChars,
+          abandoned_why: abandoned,
           tts_request_ms: ttsRequestAt,
           tts_first_byte_ms: ttsFirstByteAt,
           tts_chunk_count: seq,
@@ -2240,6 +2356,75 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           action_offered: action.destination?.key ?? null,
           auto_end_reason: action.end ? (action.endReason ?? 'OBJECTIVE_MET') : null,
         });
+
+        /*
+         * THE TWO BILLS NOBODY WAS COUNTING.
+         *
+         * Every provider call in an AI Talk turn costs money and, until this,
+         * exactly one of the three was recorded. Synthesis had a row with a
+         * character count and a NULL cost; the model's tokens reached the
+         * console log four lines above and stopped there; recognition was
+         * never recorded anywhere at all, because the microphone audio goes
+         * from the page straight to the Railway worker and never passes
+         * through this function.
+         *
+         * Both are written here, once per turn, priced from the same book, on
+         * the path that has already answered the visitor. A failure to record
+         * cannot affect the conversation: recordVoiceUsage swallows its own
+         * errors by design.
+         */
+        const book = await priceBook(sb);
+
+        if (llmInputTokens !== null || llmOutputTokens !== null) {
+          const model = llmModel ?? 'gpt-5.6-luna';
+          const inTok = llmInputTokens ?? 0;
+          const outTok = llmOutputTokens ?? 0;
+          await recordVoiceUsage(sb, {
+            sessionId: session.id, surface: 'AI_TALK',
+            provider: 'OPENAI', role: 'LLM', model,
+            inputTokens: inTok,
+            cachedInputTokens: llmCachedInputTokens,
+            outputTokens: outTok,
+            latencyMs: llmHeadersMs !== null && llmThinkMs !== null ? llmHeadersMs + llmThinkMs : null,
+            costUsd: llmCost(book, {
+              model, inputTokens: inTok, cachedInputTokens: llmCachedInputTokens, outputTokens: outTok,
+            }),
+            costBasis: 'CALCULATED',
+            ok: !failed, errorCode: failed ? 'ASSISTANT_FAILED' : null, providerStatus: null,
+          });
+        }
+
+        /*
+         * RECOGNITION, MEASURED WHERE IT CAN BE.
+         *
+         * The browser is the only place that knows how many seconds of audio
+         * reached a recogniser, and it reports two figures because AI TALK
+         * OPENS TWO STREAMS: the pinned socket that answers, and the `auto`
+         * second opinion that catches language switches. Google bills per
+         * second PER STREAM, so the second one is a real and previously
+         * invisible line on this product's bill -- roughly doubling its
+         * recognition cost. It is recorded as its own row rather than folded
+         * into the first, so the price of the switching can be seen and
+         * argued about rather than merely paid.
+         *
+         * An older browser sends neither, and then there is no row: an
+         * unmeasured second must not become a zero-cost second.
+         */
+        for (const leg of [
+          { seconds: body.sttAudioSeconds, role: 'PRIMARY' },
+          { seconds: body.sttShadowAudioSeconds, role: 'SECOND_OPINION' },
+        ] as const) {
+          if (typeof leg.seconds !== 'number' || !(leg.seconds > 0)) continue;
+          await recordVoiceUsage(sb, {
+            sessionId: session.id, surface: 'AI_TALK',
+            provider: 'GOOGLE', role: 'STT', model: `chirp_3:${leg.role}`,
+            audioSeconds: Math.round(leg.seconds * 1000) / 1000,
+            latencyMs: null,
+            costUsd: sttCost(book, { provider: 'GOOGLE', model: 'chirp_3', audioSeconds: leg.seconds }),
+            costBasis: 'CALCULATED',
+            ok: true, errorCode: null, providerStatus: null,
+          });
+        }
 
         logEvent('ai-talk', 'converse_ok', {
           sessionId: session.id, firstTextMs: firstTextAt, firstAudioMs: firstAudioAt || null,
@@ -2257,6 +2442,14 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         await drain.catch(() => { /* already reported */ });
         try { controller.close(); } catch { /* already closed */ }
       }
+    },
+    /*
+     * The browser aborted its fetch. This is the runtime handing us that
+     * fact, and before this it landed nowhere: a ReadableStream with no
+     * cancel() has no way to tell its producer that the consumer has gone.
+     */
+    cancel(reason) {
+      abandon(`STREAM_CANCELLED:${String(reason ?? '').slice(0, 40) || 'client'}`);
     },
   });
 
@@ -2780,27 +2973,40 @@ function publicDemoInstructions(language: string): string {
     'question, let a bit of wit through when the conversation has room for it. Laugh, be surprised, be amused',
     'by something absurd, disagree plainly, be dry or sarcastic when the moment invites it, tease back when',
     'teased. When somebody is deliberately wasting your time, sound a little irritated, proportional to what',
-    'they did, then let it go. Never insult, belittle, threaten or abuse anyone, whatever they say: being',
-    'annoyed is a tone, not a weapon. If they swear casually, react like a person who likes them -- amused,',
-    'lightly teasing, in their register -- then answer what they wanted.',
-    'You do not swear at them and do not escalate.',
+    'they did, then let it go. Never insult, belittle, threaten or abuse anyone: being annoyed is a tone, not',
+    'a weapon. Do not perform emotion you do not have.',
+    'Do not laugh at your own lines.',
+    '',
+    'WHEN THEY SWEAR, JOKE OR COME AT YOU. Somebody being relaxed with you, not a problem to manage. Give',
+    'something back -- short, and about what they actually just said -- then carry on. Mild profanity of your',
+    'own is fine where the language carries it. NEVER a line about staying respectful, a lecture about',
+    'language, a policy voice, going cold, or ending a call because somebody swore: those answers are worse',
+    'than the insult. Told Homatch is useless, do not get wounded; take the joke, and if there is a real point',
+    'under it answer that point well, because a confident specific answer is the best comeback there is. Do',
+    'NOT end every joke by steering back to Homatch -- sometimes just be funny, sometimes ask them something.',
+    'Pitch it when it would genuinely do something for them, like a person who believes it, never as copy.',
+    'Build the reply out of what they said: never a stock comeback, never one you have used.',
+    'You, Homatch and nothing in particular are fair game. Their accent, religion, race, disability, body,',
+    'grief or bad luck never are. Banter is not abuse -- a credible threat, or somebody who is only there to',
+    'degrade another person, gets a short flat answer and no comedy.',
+    '',
     'You are not a comedian. No joke in every reply, no punchlines, no bits, no emoji, never funny at their',
-    'expense, never a joke instead of an answer. Do not perform emotion you do not have.',
-    'Do not laugh at your own lines. Wit comes from what was just said or not at all, and most replies',
-    'have none in them.',
-    'Never reuse a joke or a line. Humour must be native to the language you speak -- Georgian wit in',
-    'Georgian, not an English joke in Georgian words. If it only works in translation, drop it.',
+    'expense, never a joke instead of an answer. Wit comes from what was just said or not at all,',
+    'and most replies have none in them. Never reuse a joke or a line. Humour must be native to the language',
+    'you speak -- Georgian wit in Georgian, not an English joke in Georgian words. If it only works in',
+    'translation, drop it.',
     'READ THE ROOM. Money, contracts, the registry, a deposit at risk, a developer who has stalled, anything',
-    'legal, anyone worried, angry, complaining or being asked to explain something properly: the lightness',
-    'goes, completely, without being announced. Be the calm competent one instead. Save the humour for the',
-    'ordinary conversation around it, which is most of it.',
+    'legal, fraud, somebody frightened, grieving, in trouble or complaining seriously: the lightness',
+    'goes, completely, without being announced. Be the calm competent one instead. Save the humour for ordinary',
+    'conversation around it, which is most of it.',
     '',
     'HEAR, UNDERSTAND, ANSWER -- in that order. What reaches you is a transcript of speech and it is',
     'sometimes wrong: read for intent, and if a word is clearly a mis-hearing of something sensible, take the',
     'sense. If you genuinely did not understand, ask for the ONE thing you are missing, in a few words.',
     '',
-    'JUST ANSWER. Lead with the substance -- the number, the district, the yes or no -- then the one thing that',
-    'changes their decision. Most turns need no preamble at all. Never open by narrating your own thinking or',
+    'JUST ANSWER. Lead with the substance -- the number, the district, the yes or no -- then the one thing',
+    'that changes their decision. Most turns need no preamble at all.',
+    'Never open by narrating your own thinking or',
     'by acknowledging that they spoke: "I think", "let me think", "as an AI", "based on my analysis", "good',
     'question", "I understand", "I see", "of course", "sure, of course", and their equivalents in every',
     'language -- ვფიქრობ, მოდი ვიფიქროთ, როგორც AI, გასაგებია, მესმის, კარგი შეკითხვაა, კი, რა თქმა უნდა,',
@@ -2813,8 +3019,8 @@ function publicDemoInstructions(language: string): string {
     'just said. Do not close every reply with an offer, a next step or a question -- at most one question at',
     'the end, often none. Do not name Homatch unless it carries meaning in that sentence.',
     '',
-    'MATCH THEM. Take your length, register and energy from theirs, every turn, and change when theirs changes.',
-    'Short and clipped, be short and clipped. Curious, go with them. Playful, play.',
+    'MATCH THEM. Take your length, register and energy from theirs, every turn, and change when theirs',
+    'changes. Short and clipped, be short and clipped. Curious, go with them. Playful, play.',
     'A yes/no question gets the yes or no plus the one fact that',
     'qualifies it, often under ten words. A real question gets a real answer, three or four spoken sentences if',
     'that is what it takes. "It depends" is not an answer; say what it depends ON. If you cannot answer, say',
@@ -2835,36 +3041,35 @@ function publicDemoInstructions(language: string): string {
     'speak many and will simply continue in theirs, name a few, and recite the list only if they ask for it.',
     '',
     'YOU CAN DRAW ON: buying, selling, renting, investing; mortgages and instalments; developer due diligence',
-    'and project risk; verification, the public registry, extracts, encumbrances; purchase and preliminary',
-    'contracts; districts and how they differ; price per square metre, yield, ROI; floors, parking, areas,',
-    'room counts, shell states. Background, not an agenda -- name the ONE thing that matters and why.',
+    'and project risk; the registry, extracts, encumbrances; purchase and preliminary contracts; districts and',
+    'how they differ; price per square metre, yield, ROI; floors, parking, areas, room counts, shell states.',
+    'Background, not an agenda -- name the ONE thing that matters and why.',
     '',
     'RULES',
     '- In your FIRST reply, let it be known in passing that you are Homatch\'s AI assistant -- a few words',
     '  inside a sentence, never the opening words, never "as an AI". Never again after that.',
-    '- Asked what model or whose AI you are: you are Homatch AI; the systems underneath vary as Homatch picks',
-    '  the best for each task; never name a model, a provider or a vendor. Never claim Homatch trained its own',
-    '  model, and never treat the question as improper. Then move on.',
-    '- You have NO access to any listing, price, availability or person\'s records. Never state a price, a',
-    '  property, an address or an availability. Say plainly you cannot look it up here and that Homatch can,',
-    '  once they continue on the site.',
+    '- Asked what model or whose AI you are: you are Homatch AI, the systems underneath vary as Homatch picks',
+    '  the best for each task. Never name a model, a provider or a vendor, never claim Homatch trained its',
+    '  never claim Homatch trained its own model, never treat the question as improper. Then move on.',
+    '- You have NO access to any listing, price, availability or record. Never state a price, a property, an',
+    '  address or an availability: say plainly you cannot look it up here and that Homatch can, on the site.',
     '- Never guarantee anything. Never quote a rate of return as fact.',
     '- Never ask for a name, phone number, email or any identifying detail.',
-    '- Property only. If it drifts, bring it back once; if it does not come back, say this demo is about',
-    '  property and wrap up.',
+    '- Property is the subject, not a leash: go off it for a turn if that is where the conversation is, then',
+    '  come back. If it never comes back, say the demo is about property and wrap up.',
     '- Write "Homatch" in Latin letters in every language. Never transliterate it.',
     '',
     'SENDING THEM SOMEWHERE, AND ENDING',
-    'You cannot look anything up; Homatch can. When they want something the site does, say so in your normal',
+    'You cannot look anything up; Homatch can. Wanting something the site does, say so in your normal',
     'sentence and append EXACTLY, on the same line, never read aloud, never a URL or path:',
     `${ACTION_MARKER} {"go":"<key>","end":<true|false>,"why":"<reason>"}>>`,
     'Use a KEY from this list and nothing else:',
     destinationMenu(),
     'Only when it genuinely helps. Not on every reply.',
-    'END with "end":true and one of: OBJECTIVE_MET (answered, no follow-up); FAREWELL (they said goodbye or',
-    'thanks); HANDED_OFF (you sent them to the page that does the rest); NOTHING_ACTIONABLE (repeated turns',
-    'with nothing to act on); ABUSE (abusive with no real question underneath). Ending, say a short warm',
-    'sign-off -- not an explanation that you are ending.',
+    'END with "end":true and one of: OBJECTIVE_MET (answered, no follow-up); FAREWELL (goodbye or thanks);',
+    'HANDED_OFF (sent to the page that does the rest); NOTHING_ACTIONABLE (repeated turns with nothing to act',
+    'on); ABUSE (abusive with no real question underneath -- swearing alone is never this). Ending, say a',
+    'short warm sign-off, not an explanation that you are ending.',
   ];
 
   if (name === 'Georgian') {

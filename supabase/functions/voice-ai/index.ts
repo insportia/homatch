@@ -110,6 +110,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'fallback-policy':      return await fallbackPolicyGet(sb);
     case 'fallback-policy-save': return await fallbackPolicySave(sb, body);
     case 'usage':                return await usage(sb, body);
+    case 'talk-cogs':            return await talkCogs(sb, body);
+    case 'talk-session-cogs':    return await talkSessionCogs(sb, body);
     case 'speech-probe':         return await speechProbe(body);
     case 'voice-languages':      return await voiceLanguageProbe(body);
     case 'cartesia-voices':      return await cartesiaVoiceCatalogue();
@@ -1483,4 +1485,239 @@ async function cartesiaVoiceCatalogue(): Promise<Response> {
     return json({ ok: false, reason: out.error?.code ?? 'UNKNOWN', detail: String(out.error?.message ?? '').slice(0, 300) }, 502);
   }
   return json({ ok: true, voices: out.data });
+}
+
+// ── AI Talk cost of goods ───────────────────────────────────────────────────
+
+/**
+ * WHAT A CONVERSATION COSTS US, AND WHAT WE STILL CANNOT SEE.
+ *
+ * COGS ONLY. Not a price, not a margin, not anything a customer is shown.
+ *
+ * Every figure here is either measured or explicitly absent. The one rule the
+ * finance surfaces in this project are built on applies without exception:
+ * a number that is not known renders as unknown, never as zero, because a
+ * cost centre that reports $0.00 is one nobody investigates again.
+ *
+ * Two kinds of cost, kept apart on purpose:
+ *
+ *   VARIABLE   what a provider billed for this conversation -- Cartesia by the
+ *              character, Google by the second, OpenAI by the token. Metered.
+ *   ALLOCATED  a share of a fixed monthly subscription. Railway and Supabase
+ *              charge by the month whether anybody talks or not, so there is
+ *              no per-call price to report and inventing one would be a lie
+ *              with a decimal point in it. See ai_talk_infra_allocation.
+ */
+async function talkCogs(sb: Sb, body: VoiceAiRequest): Promise<Response> {
+  const days = body.days === null || body.days === undefined ? 7 : Number(body.days);
+  // 0 means all time, which for this product is a handful of days anyway.
+  const allTime = !Number.isFinite(days) || days <= 0;
+  const from = allTime ? new Date(0) : new Date(Date.now() - Math.min(365, days) * 86_400_000);
+  const to = new Date();
+
+  const [sessionsRes, eventsRes, infraRes] = await Promise.all([
+    sb.from('comm_talk_sessions')
+      .select('id, created_at, consumed_seconds, turns')
+      .gte('created_at', from.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(5000),
+    sb.from('voice_usage_events')
+      .select('session_id, provider, role, model, characters, audio_seconds, input_tokens, cached_input_tokens, output_tokens, cost_usd, cost_basis, ok, error_code, occurred_at')
+      .eq('surface', 'AI_TALK')
+      .gte('occurred_at', from.toISOString())
+      .limit(20000),
+    sb.rpc('ai_talk_infra_allocation', { p_from: from.toISOString(), p_to: to.toISOString() }),
+  ]);
+
+  const sessions = sessionsRes.data ?? [];
+  const events = eventsRes.data ?? [];
+  const infra = (Array.isArray(infraRes.data) ? infraRes.data[0] : infraRes.data) ?? null;
+
+  const seconds = sessions.reduce((n: number, s: Record<string, unknown>) => n + Number(s.consumed_seconds ?? 0), 0);
+  const minutes = seconds / 60;
+  const turns = sessions.reduce((n: number, s: Record<string, unknown>) => n + Number(s.turns ?? 0), 0);
+
+  /*
+   * A leg of the chain, summed. `unknownCalls` is the number that matters
+   * most: it is how much of this product's cost is still invisible, and it is
+   * reported beside the cost rather than folded into it.
+   */
+  const leg = (role: string) => {
+    const mine = events.filter((e: Record<string, unknown>) => e.role === role);
+    let cost = 0;
+    let priced = 0;
+    let unknown = 0;
+    for (const e of mine) {
+      if (e.cost_usd === null || e.cost_usd === undefined) unknown += 1;
+      else { cost += Number(e.cost_usd); priced += 1; }
+    }
+    const sum = (f: string) => mine.reduce((n: number, e: Record<string, unknown>) =>
+      n + Number(e[f] ?? 0), 0);
+    return {
+      calls: mine.length,
+      failures: mine.filter((e: Record<string, unknown>) => e.ok === false).length,
+      cancelled: mine.filter((e: Record<string, unknown>) => e.error_code === 'CANCELLED').length,
+      characters: sum('characters'),
+      audioSeconds: Math.round(sum('audio_seconds') * 1000) / 1000,
+      inputTokens: sum('input_tokens'),
+      cachedInputTokens: sum('cached_input_tokens'),
+      outputTokens: sum('output_tokens'),
+      // Null, not zero, when nothing in this leg could be priced at all.
+      costUsd: priced ? Math.round(cost * 1e6) / 1e6 : null,
+      pricedCalls: priced,
+      unknownCalls: unknown,
+    };
+  };
+
+  const stt = leg('STT');
+  const tts = leg('TTS');
+  const llm = leg('LLM');
+
+  const variable = [stt.costUsd, tts.costUsd, llm.costUsd]
+    .filter((n): n is number => n !== null)
+    .reduce((a, b) => a + b, 0);
+  const allocated = infra?.period_usd === null || infra?.period_usd === undefined
+    ? null : Number(infra.period_usd);
+  const knownTotal = Math.round((variable + (allocated ?? 0)) * 1e6) / 1e6;
+
+  /*
+   * The honest denominator. Averages over a window with no conversations in
+   * it are not zero-cost conversations, they are no conversations, and the
+   * difference is the whole point of this panel.
+   */
+  const per = (total: number | null, n: number) =>
+    total === null || !(n > 0) ? null : Math.round((total / n) * 1e6) / 1e6;
+
+  return json({
+    window: { days: allTime ? null : Math.min(365, days), from: from.toISOString(), to: to.toISOString() },
+    sessions: sessions.length,
+    turns,
+    minutes: Math.round(minutes * 10) / 10,
+    stt, tts, llm,
+    infra: infra
+      ? {
+        monthlyUsd: Number(infra.monthly_usd),
+        months: Math.round(Number(infra.months) * 1e4) / 1e4,
+        periodUsd: allocated,
+        usdPerMinute: infra.usd_per_minute === null || infra.usd_per_minute === undefined
+          ? null : Number(infra.usd_per_minute),
+        // Stated, not implied: this is how the number was produced.
+        method: 'Fixed monthly subscriptions (Railway worker, Supabase share) pro-rated to '
+          + 'this window and divided by the AI Talk minutes actually served in it. '
+          + 'ALLOCATED, not metered.',
+      }
+      : null,
+    totals: {
+      variableUsd: Math.round(variable * 1e6) / 1e6,
+      allocatedUsd: allocated,
+      knownUsd: knownTotal,
+      // How much of the chain is still dark. Never presented as free.
+      unknownCalls: stt.unknownCalls + tts.unknownCalls + llm.unknownCalls,
+      // A session with no recognition row at all predates the measurement and
+      // is counted here rather than quietly averaged into a cheaper number.
+      sessionsWithoutStt: sessions.filter((s: Record<string, unknown>) =>
+        !events.some((e: Record<string, unknown>) => e.session_id === s.id && e.role === 'STT')).length,
+      sessionsWithoutLlm: sessions.filter((s: Record<string, unknown>) =>
+        !events.some((e: Record<string, unknown>) => e.session_id === s.id && e.role === 'LLM')).length,
+    },
+    averages: {
+      perSessionUsd: per(knownTotal, sessions.length),
+      perMinuteUsd: per(knownTotal, minutes),
+      perTurnUsd: per(knownTotal, turns),
+    },
+    note: 'Provider cost of goods only. Not customer pricing. Variable cost is metered; '
+      + 'infrastructure is allocated from fixed monthly subscriptions.',
+  });
+}
+
+/** One conversation, priced leg by leg, for when an average is not enough. */
+async function talkSessionCogs(sb: Sb, body: VoiceAiRequest): Promise<Response> {
+  const id = String(body.sessionId ?? '').trim();
+  if (!id) return json({ error: 'session_required' }, 400);
+
+  const [sessionRes, eventsRes] = await Promise.all([
+    sb.from('comm_talk_sessions')
+      .select('id, created_at, ended_at, state, consumed_seconds, granted_seconds, turns, locale, ended_reason')
+      .eq('id', id).maybeSingle(),
+    sb.from('voice_usage_events')
+      .select('provider, role, model, characters, audio_seconds, input_tokens, cached_input_tokens, output_tokens, latency_ms, cost_usd, cost_basis, ok, error_code, occurred_at')
+      .eq('session_id', id)
+      .order('occurred_at', { ascending: true })
+      .limit(2000),
+  ]);
+
+  const session = sessionRes.data;
+  if (!session) return json({ error: 'not_found' }, 404);
+  const events = eventsRes.data ?? [];
+
+  const minutes = Number(session.consumed_seconds ?? 0) / 60;
+  const infraRes = await sb.rpc('ai_talk_infra_allocation', {
+    p_from: new Date(new Date(session.created_at).getTime() - 1000).toISOString(),
+    p_to: new Date(new Date(session.ended_at ?? session.created_at).getTime() + 86_400_000).toISOString(),
+  });
+  const infra = (Array.isArray(infraRes.data) ? infraRes.data[0] : infraRes.data) ?? null;
+  const perMinute = infra?.usd_per_minute === null || infra?.usd_per_minute === undefined
+    ? null : Number(infra.usd_per_minute);
+  const allocated = perMinute === null ? null : Math.round(perMinute * minutes * 1e6) / 1e6;
+
+  const byRole = (role: string) => {
+    const mine = events.filter((e: Record<string, unknown>) => e.role === role);
+    const priced = mine.filter((e: Record<string, unknown>) => e.cost_usd !== null && e.cost_usd !== undefined);
+    const sum = (f: string) => mine.reduce((n: number, e: Record<string, unknown>) => n + Number(e[f] ?? 0), 0);
+    return {
+      calls: mine.length,
+      failures: mine.filter((e: Record<string, unknown>) => e.ok === false).length,
+      cancelled: mine.filter((e: Record<string, unknown>) => e.error_code === 'CANCELLED').length,
+      characters: sum('characters'),
+      audioSeconds: Math.round(sum('audio_seconds') * 1000) / 1000,
+      inputTokens: sum('input_tokens'),
+      cachedInputTokens: sum('cached_input_tokens'),
+      outputTokens: sum('output_tokens'),
+      costUsd: priced.length
+        ? Math.round(priced.reduce((n: number, e: Record<string, unknown>) => n + Number(e.cost_usd), 0) * 1e6) / 1e6
+        : null,
+      unknownCalls: mine.length - priced.length,
+    };
+  };
+
+  const stt = byRole('STT');
+  const tts = byRole('TTS');
+  const llm = byRole('LLM');
+  const variable = [stt.costUsd, tts.costUsd, llm.costUsd]
+    .filter((n): n is number => n !== null).reduce((a, b) => a + b, 0);
+  const known = Math.round((variable + (allocated ?? 0)) * 1e6) / 1e6;
+
+  return json({
+    session: {
+      id: session.id, createdAt: session.created_at, endedAt: session.ended_at,
+      state: session.state, endedReason: session.ended_reason, locale: session.locale,
+      seconds: session.consumed_seconds, minutes: Math.round(minutes * 100) / 100,
+      turns: session.turns,
+    },
+    stt, tts, llm,
+    infra: { allocatedUsd: allocated, usdPerMinute: perMinute },
+    totals: {
+      variableUsd: Math.round(variable * 1e6) / 1e6,
+      knownUsd: known,
+      unknownCalls: stt.unknownCalls + tts.unknownCalls + llm.unknownCalls,
+      // Named plainly: a conversation from before a leg was measured has a
+      // hole in it, and the hole is the answer, not a zero.
+      missingLegs: [
+        stt.calls ? null : 'STT',
+        llm.calls ? null : 'LLM',
+        tts.calls ? null : 'TTS',
+      ].filter(Boolean),
+    },
+    averages: {
+      perMinuteUsd: minutes > 0 ? Math.round((known / minutes) * 1e6) / 1e6 : null,
+      perTurnUsd: Number(session.turns) > 0 ? Math.round((known / Number(session.turns)) * 1e6) / 1e6 : null,
+    },
+    events: events.map((e: Record<string, unknown>) => ({
+      at: e.occurred_at, provider: e.provider, role: e.role, model: e.model,
+      characters: e.characters, audioSeconds: e.audio_seconds,
+      inputTokens: e.input_tokens, cachedInputTokens: e.cached_input_tokens, outputTokens: e.output_tokens,
+      latencyMs: e.latency_ms, costUsd: e.cost_usd, costBasis: e.cost_basis,
+      ok: e.ok, errorCode: e.error_code,
+    })),
+  });
 }

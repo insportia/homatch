@@ -82,6 +82,16 @@ interface LlmCallOptions {
   model?: string;
   temperature?: number;
   timeoutMs?: number;
+  /**
+   * The CALLER's cancellation, distinct from this module's own timeout.
+   *
+   * A visitor who interrupts or closes the panel ends the turn, and until
+   * this existed the model carried on writing into it for up to twenty
+   * seconds -- paid for, and read by nobody. Aborting is reported as
+   * 'cancelled' rather than 'timeout' so the two are never confused in
+   * telemetry: one is our caller leaving, the other is the provider failing.
+   */
+  signal?: AbortSignal;
 }
 
 interface LlmResult {
@@ -89,6 +99,18 @@ interface LlmResult {
   text: string | null;
   parsed: unknown;
   inputTokens: number;
+  /**
+   * Of inputTokens, how many the provider served from its prompt cache.
+   *
+   * A SUBSET of inputTokens, never an addition to them. The price book has
+   * carried a cached rate for this model since it was seeded -- one tenth of
+   * fresh input -- and nothing could ever use it, because the usage type here
+   * named two fields and threw this one away at parse time. On a voice turn
+   * the system prompt is most of the input and it is identical every turn,
+   * so this is the difference between a real cost and one inflated tenfold.
+   * Null when the provider did not say, which is not the same as zero.
+   */
+  cachedInputTokens: number | null;
   outputTokens: number;
   model: string;
   error?: string;
@@ -107,7 +129,7 @@ interface LlmResult {
  */
 export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
   const model = opts.model ?? DEFAULT_MODEL;
-  const empty: LlmResult = { ok: false, text: null, parsed: null, inputTokens: 0, outputTokens: 0, model };
+  const empty: LlmResult = { ok: false, text: null, parsed: null, inputTokens: 0, cachedInputTokens: null, outputTokens: 0, model };
 
   if (!llmAvailable()) return { ...empty, error: 'no_api_key' };
 
@@ -167,7 +189,8 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
     output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
     status?: string;
     incomplete_details?: { reason?: string };
-    usage?: { input_tokens?: number; output_tokens?: number };
+    usage?: { input_tokens?: number; output_tokens?: number;
+    input_tokens_details?: { cached_tokens?: number } };
   };
 
   const text = responseText(payload);
@@ -186,6 +209,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmResult> {
     text: text || null,
     parsed,
     inputTokens: payload?.usage?.input_tokens ?? 0,
+    cachedInputTokens: payload?.usage?.input_tokens_details?.cached_tokens ?? null,
     outputTokens: payload?.usage?.output_tokens ?? 0,
     model,
   };
@@ -265,7 +289,11 @@ export interface LlmStreamEvent {
   headersMs?: number;
   firstTokenMs?: number;
   inputTokens?: number;
+  /** Of inputTokens, how many came from the provider's prompt cache. */
+  cachedInputTokens?: number | null;
   outputTokens?: number;
+  /** Which model actually answered, so the cost is priced against the right row. */
+  model?: string;
   /**
    * The reasoning level the provider was ACTUALLY asked for.
    *
@@ -295,6 +323,18 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
   const budget = opts.maxTokens ?? 600;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
+  /*
+   * The caller's cancellation, joined to this module's timeout.
+   *
+   * Checked before subscribing, because an abort listener attached to a
+   * signal that has ALREADY fired never runs -- so a turn cancelled while
+   * this function was starting up would otherwise generate its full answer.
+   */
+  let cancelled = false;
+  const onCallerAbort = () => { cancelled = true; controller.abort(); };
+  if (opts.signal?.aborted) onCallerAbort();
+  else opts.signal?.addEventListener('abort', onCallerAbort, { once: true });
+  let body: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
   const wanted = opts.reasoningEffort ?? 'low';
   // 'minimal' is not served by every model and 'none' is; a caller asking for
@@ -355,6 +395,7 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
     }
 
     const reader = res.body.getReader();
+    body = reader;
     const decoder = new TextDecoder();
     let buffer = '';
     let sawText = false;
@@ -379,7 +420,12 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
           let event: { type?: string; delta?: string; text?: string;
             response?: {
               status?: string; incomplete_details?: { reason?: string };
-              usage?: { input_tokens?: number; output_tokens?: number };
+              usage?: {
+                input_tokens?: number; output_tokens?: number;
+                // The cached count lives one level down, and narrowing the
+                // type to the two flat fields was what discarded it.
+                input_tokens_details?: { cached_tokens?: number };
+              };
             } };
           try { event = JSON.parse(raw); } catch { continue; }
 
@@ -405,7 +451,9 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
               incomplete: true,
               incompleteReason: event.response?.incomplete_details?.reason ?? 'unknown',
               inputTokens: event.response.usage?.input_tokens ?? 0,
+              cachedInputTokens: event.response.usage?.input_tokens_details?.cached_tokens ?? null,
               outputTokens: event.response.usage?.output_tokens ?? 0,
+              model,
             };
           } else if (event.type === 'response.completed' && event.response?.usage) {
             // How much prompt the model had to read. The only honest way to
@@ -413,7 +461,9 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
             yield {
               type: 'meta',
               inputTokens: event.response.usage.input_tokens ?? 0,
+              cachedInputTokens: event.response.usage.input_tokens_details?.cached_tokens ?? null,
               outputTokens: event.response.usage.output_tokens ?? 0,
+              model,
             };
           } else if (event.type === 'response.incomplete') {
             /*
@@ -445,9 +495,21 @@ export async function* streamLlm(opts: LlmCallOptions): AsyncGenerator<LlmStream
     yield { type: 'done' };
   } catch (e) {
     const aborted = (e as Error)?.name === 'AbortError';
-    yield { type: 'error', error: aborted ? 'timeout' : String((e as Error)?.message ?? e).slice(0, 160) };
+    // Our caller leaving and the provider timing out are different events and
+    // were reported as the same word. They are not the same bill either.
+    const why = aborted ? (cancelled ? 'cancelled' : 'timeout') : String((e as Error)?.message ?? e).slice(0, 160);
+    yield { type: 'error', error: why };
   } finally {
     clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', onCallerAbort);
+    /*
+     * LET GO OF THE PROVIDER'S BODY.
+     *
+     * Returning early out of the caller's `for await` ran this block and left
+     * the response stream open, so an abandoned turn kept a socket -- and the
+     * generation behind it -- alive until the provider gave up on its own.
+     */
+    try { await body?.cancel(); } catch { /* the stream is over either way */ }
   }
 }
 

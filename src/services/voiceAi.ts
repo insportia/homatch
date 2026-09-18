@@ -410,3 +410,94 @@ export const getFallbackPolicy = () =>
 
 export const setFallbackPolicy = (allowForeign: boolean) =>
   call<{ ok: boolean; policy?: string; reason?: string }>('fallback-policy-save', { allowForeign });
+
+// ── AI Talk cost of goods ───────────────────────────────────────────────────
+//
+// COGS ONLY. Never a price, never a margin, never anything a customer sees.
+//
+// Every money field here is `number | null`, and the null is load-bearing: a
+// leg of the chain that could not be priced must arrive as unknown and render
+// as unknown. Widening these to `number` would let a missing cost become
+// zero at the type level, which is how a cost centre disappears.
+
+/** One provider's leg of a conversation: what it did, and what it cost us. */
+export interface TalkCogsLeg {
+  calls: number;
+  failures: number;
+  /** Calls the listener abandoned. Cartesia bills the text it was sent. */
+  cancelled: number;
+  characters: number;
+  audioSeconds: number;
+  inputTokens: number;
+  /** Of inputTokens, served from the provider's prompt cache at a tenth the rate. */
+  cachedInputTokens: number;
+  outputTokens: number;
+  costUsd: number | null;
+  pricedCalls: number;
+  /** Calls with no rate on file. The size of the hole, stated. */
+  unknownCalls: number;
+}
+
+export interface TalkCogs {
+  window: { days: number | null; from: string; to: string };
+  sessions: number;
+  turns: number;
+  minutes: number;
+  stt: TalkCogsLeg;
+  tts: TalkCogsLeg;
+  llm: TalkCogsLeg;
+  /** Fixed monthly subscriptions, allocated. Never presented as metered. */
+  infra: {
+    monthlyUsd: number;
+    months: number;
+    periodUsd: number | null;
+    usdPerMinute: number | null;
+    method: string;
+  } | null;
+  totals: {
+    variableUsd: number;
+    allocatedUsd: number | null;
+    knownUsd: number;
+    unknownCalls: number;
+    sessionsWithoutStt: number;
+    sessionsWithoutLlm: number;
+  };
+  averages: {
+    perSessionUsd: number | null;
+    perMinuteUsd: number | null;
+    perTurnUsd: number | null;
+  };
+  note: string;
+}
+
+export interface TalkSessionCogs {
+  session: {
+    id: string; createdAt: string; endedAt: string | null; state: string;
+    endedReason: string | null; locale: string | null;
+    seconds: number; minutes: number; turns: number;
+  };
+  stt: TalkCogsLeg;
+  tts: TalkCogsLeg;
+  llm: TalkCogsLeg;
+  infra: { allocatedUsd: number | null; usdPerMinute: number | null };
+  totals: {
+    variableUsd: number; knownUsd: number; unknownCalls: number;
+    /** Legs with no row at all: a conversation from before they were measured. */
+    missingLegs: string[];
+  };
+  averages: { perMinuteUsd: number | null; perTurnUsd: number | null };
+  events: Array<{
+    at: string; provider: string; role: string; model: string | null;
+    characters: number | null; audioSeconds: number | null;
+    inputTokens: number | null; cachedInputTokens: number | null; outputTokens: number | null;
+    latencyMs: number | null; costUsd: number | null; costBasis: string | null;
+    ok: boolean; errorCode: string | null;
+  }>;
+}
+
+/** `days` of 0 means all time. */
+export const getTalkCogs = (days: number) =>
+  call<TalkCogs>('talk-cogs', { days });
+
+export const getTalkSessionCogs = (sessionId: string) =>
+  call<TalkSessionCogs>('talk-session-cogs', { sessionId });

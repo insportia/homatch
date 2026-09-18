@@ -566,7 +566,8 @@ export function AiTalkPanel({ className }: { className?: string }) {
          * phrase by phrase while it is still being spoken, so nothing waits
          * for a stage that has already produced something usable.
          */
-        onConverse: (text, signal, turnId) => converseStream({
+        onConverse: (text, signal, turnId) => {
+          const stream = converseStream({
           url: FUNCTIONS_URL,
           anonKey: ANON_KEY,
           accessToken: accessTokenRef.current,
@@ -614,6 +615,21 @@ export function AiTalkPanel({ className }: { className?: string }) {
             // What the device spent before this request existed, so the whole
             // chain is measurable from the server's own trace.
             ...(sessionRef.current ? { clientStages: sessionRef.current.stageStamps } : {}),
+            /*
+             * Seconds of audio each recogniser was sent, for COGS.
+             *
+             * Only the browser can know this: microphone audio goes straight
+             * from here to the speech worker and never reaches the server that
+             * does the accounting, which is why speech recognition has never
+             * appeared on this product's cost ledger at all. Two figures
+             * because two streams are opened and Google bills both.
+             */
+            ...(sessionRef.current
+              ? {
+                sttAudioSeconds: sessionRef.current.sttSeconds.primary,
+                sttShadowAudioSeconds: sessionRef.current.sttSeconds.shadow,
+              }
+              : {}),
             // Conversation language BEFORE this turn, and how sure this turn's
             // language is: the server states both to the model as facts.
             ...(sessionRef.current?.languageTrace.previousLanguage
@@ -630,8 +646,17 @@ export function AiTalkPanel({ className }: { className?: string }) {
               }
               : {}),
           },
-          signal,
-        }),
+            signal,
+          });
+          /*
+           * The seconds just reported belong to THIS turn. Clearing the
+           * counters here, after the body is built and before the next
+           * utterance can add to them, is what stops one turn's audio being
+           * billed again by the next.
+           */
+          sessionRef.current?.clearSttSeconds();
+          return stream;
+        },
 
         /*
          * A destination the assistant chose. Offered, never taken: being

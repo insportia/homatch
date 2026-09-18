@@ -40,6 +40,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VoiceAudition } from '@/components/admin/VoiceAudition';
+import { TalkCostPanel } from '@/components/admin/TalkCostPanel';
 import {
   approvePronunciation, audioUrlFromBase64, deletePronunciation, deleteVocabularyTerm,
   exportVocabulary, getPersonality, getVoiceModels, getVoiceOverview, getVoiceUsage,
@@ -82,6 +83,7 @@ export default function AdminVoiceAiPage() {
             <TabsTrigger value="personality" className="text-xs">{t(k('voice_ai_tab_personality'))}</TabsTrigger>
             <TabsTrigger value="failover" className="text-xs">{t(k('voice_ai_tab_failover'))}</TabsTrigger>
             <TabsTrigger value="usage" className="text-xs">{t(k('voice_ai_tab_usage'))}</TabsTrigger>
+            <TabsTrigger value="cost" className="text-xs">{t(k('voice_ai_tab_cost'))}</TabsTrigger>
           </TabsList>
         </div>
 
@@ -95,6 +97,7 @@ export default function AdminVoiceAiPage() {
         <TabsContent value="personality" className="mt-3"><PersonalityTab /></TabsContent>
         <TabsContent value="failover" className="mt-3"><FailoverTab /></TabsContent>
         <TabsContent value="usage" className="mt-3"><UsageTab /></TabsContent>
+        <TabsContent value="cost" className="mt-3"><TalkCostPanel /></TabsContent>
       </Tabs>
     </div>
   );

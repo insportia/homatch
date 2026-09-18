@@ -857,6 +857,22 @@ export class VoiceSession {
   private retiredShadow: LiveSocket | null = null;
   private shadowHeld: Int16Array[] = [];
   private shadowHeldSamples = 0;
+  /*
+   * SECONDS OF AUDIO EACH RECOGNISER WAS SENT, FOR THIS TURN.
+   *
+   * Google bills streaming recognition per second PER STREAM, and this
+   * product opens two: the pinned socket that answers and the `auto` second
+   * opinion that catches language switches. That second stream roughly
+   * doubles the recognition bill and nothing had ever counted it, or the
+   * first -- there was no STT usage row in production at all, because the
+   * microphone audio goes from here straight to the Railway worker and never
+   * passes through the server that does the accounting.
+   *
+   * Bytes, because that is what is actually handed to a socket. Converted to
+   * seconds once, where they are reported.
+   */
+  private sttPrimaryReported = 0;
+  private sttShadowBytes = 0;
   private shadowResult: { epoch: number; text: string; language: string | null; at: number } | null = null;
   private shadowWaiters: Array<() => void> = [];
   /** Counts utterances whose final is owed; a turn is produced for each epoch at most once. */
@@ -1903,7 +1919,7 @@ export class VoiceSession {
   private feedShadow(pcm: Int16Array): void {
     const s = this.shadow;
     if (!s) return;
-    if (s.isReady) { s.append(pcm); return; }
+    if (s.isReady) { s.append(pcm); this.sttShadowBytes += pcm.byteLength; return; }
     // Not open yet: hold what the primary already has, bounded.
     this.shadowHeld.push(pcm);
     this.shadowHeldSamples += pcm.length;
@@ -3417,6 +3433,28 @@ export class VoiceSession {
    * half unmeasurable. These three go with the request and are written into
    * the turn trace, so the next physical session answers it from the logs.
    */
+  get sttSeconds(): { primary: number; shadow: number } {
+    // 16 kHz signed 16-bit mono is what a live socket is fed: two bytes a
+    // sample, sixteen thousand samples a second.
+    const perSecond = LIVE_SAMPLE_RATE * 2;
+    // Everything the router actually put on the wire: what it sent live, plus
+    // the pre-ready buffer it flushed in one go when the socket opened. Both
+    // are audio the recogniser received and billed for. The router counts for
+    // the whole session, so a turn is the delta since the last report.
+    const sentNow = this.router.sentLiveBytes + this.router.flushedBufferedBytes;
+    const primaryBytes = Math.max(0, sentNow - this.sttPrimaryReported);
+    return {
+      primary: Math.round((primaryBytes / perSecond) * 1000) / 1000,
+      shadow: Math.round((this.sttShadowBytes / perSecond) * 1000) / 1000,
+    };
+  }
+
+  /** Called once the turn's usage has been reported, so turns do not double-count. */
+  clearSttSeconds(): void {
+    this.sttPrimaryReported = this.router.sentLiveBytes + this.router.flushedBufferedBytes;
+    this.sttShadowBytes = 0;
+  }
+
   get stageStamps(): { speechEndToFinalMs: number | null; finalToRequestMs: number | null; opinionWaitMs: number } {
     const speechEnd = this.marks.speechEndedAtMs;
     const final = this.marks.googleFinalAtMs;

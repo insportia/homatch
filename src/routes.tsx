@@ -142,6 +142,7 @@ const AdminVoiceAiPage = lazy(() => import('./pages/admin/AdminVoiceAiPage'));
 const AdminPricingPage = lazy(() => import('./pages/admin/AdminPricingPage'));
 const AdminSpendCapsPage = lazy(() => import('./pages/admin/AdminSpendCapsPage'));
 const AdminDiagnosticsPage = lazy(() => import('./pages/admin/AdminDiagnosticsPage'));
+const AdminStoragePage = lazy(() => import('./pages/admin/AdminStoragePage'));
 const AdminSponsoredPage = lazy(() => import('./pages/admin/AdminSponsoredPage'));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 const AdminHealthPage = lazy(() => import('./pages/admin/AdminHealthPage'));
@@ -387,6 +388,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },
+  { name: 'Admin Storage',     path: '/admin/storage',            element: adminWrap(<AdminStoragePage />),     adminOnly: true },
   { name: 'Admin Sponsored',   path: '/admin/sponsored',          element: adminWrap(<AdminSponsoredPage />),   adminOnly: true },
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },

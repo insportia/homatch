@@ -74,7 +74,8 @@ is loose in the same direction today:
 ## What has been proven
 
 Against the real `homatch-storage` bucket, on 2026-09-18, by
-`storage-selftest`. Ten checks, all green:
+`storage-selftest`. Fifteen checks, all green — the first ten on a throwaway
+diagnostics object:
 
 1. All five secrets present (booleans only; no value printed or logged).
 2. A real private upload — 82 bytes, etag returned by R2.
@@ -88,15 +89,109 @@ Against the real `homatch-storage` bucket, on 2026-09-18, by
 9. Delete.
 10. Gone: `HEAD` says it does not exist, `GET` returns `404`.
 
+and five on real data:
+
+11. A migrated deal-room document read back out of R2 hashes identically to
+    the Supabase original, which is still present.
+12. The same for a migrated voice audition.
+13. A new account-scoped private object — written, found in R2, read back
+    byte-identical through a signed URL, refused without the signature, and
+    present in the index with the right owner and category.
+14. That object removed, and confirmed gone.
+15. The bucket inventory measured from R2's own listing: 14 objects,
+    1,569,425 bytes, no diagnostic object left behind, and the ledger's
+    active-row count agreeing.
+
+### The migration
+
+14 source objects, 14 copied, 14 verified identical, 0 failed, 0 conflicted,
+14 retained in Supabase. Each object was checked four ways and all four had
+to agree: size, md5 (Supabase's etag against R2's — two services, neither
+told the other's answer), sha256 of the source against the bytes read back
+out of R2, and R2's own HEAD. Re-running copied nothing and re-verified all
+14, which is what idempotent means here.
+
+Ownership was resolved from the database, never guessed: 12 from a domain row
+(`deal_room_documents.user_id`, `voice_audition_samples.created_by`), 2 from a
+key prefix that matches a real account, 0 unresolved.
+
 And against `storage-sign` from outside, with no user session: every private
 namespace answers `401 UNAUTHENTICATED`, traversal and unknown namespaces answer
 `400 INVALID_KEY`, and only `site-assets` — which is public today — signs.
 
+## The account-scoped key
+
+Everything a person owns, from now on:
+
+```
+users/<users.id>/<category>/<entity uuid>/<object uuid>.<ext>
+users/<users.id>/<category>/<object uuid>.<ext>
+```
+
+A uuid rather than an email, because an address changes and is personal
+information, and a key ends up in logs, in the Cloudflare dashboard and
+inside a URL. The object is a uuid rather than the uploaded filename for the
+same reason; the display name lives in `storage_objects.original_filename`
+and is reunited with the object only in a `Content-Disposition` header.
+
+Categories: `property-photos`, `deal-room-documents`, `developer-documents`,
+`developer-media`, `mortgage-documents`, `expat-attachments`,
+`generated-reports`. An unlisted one is refused, not defaulted.
+
+**Registering creates nothing.** A prefix in object storage is a substring of
+a key, not a directory, so there is nothing to make until the first upload.
+The Storage Explorer still finds a new account with 0 files and 0 bytes,
+because it starts from `users` and LEFT JOINs the objects.
+
+**Developer files are workspace-owned, not account-owned.** Under
+`users/<uploader>/developer-documents/<workspace>/…` the account segment
+records who uploaded it; `dev_can(workspace, 'documents')` decides who may
+read it. Somebody who leaves the workspace loses the file and their
+colleagues keep it, which is correct and is the opposite of what a prefix
+check would do.
+
+## The searchable index
+
+`public.storage_objects` is the authoritative record: provider, namespace,
+category, object key, owner (`public.users.id`), entity type and id, purpose,
+original filename, content type, byte size, sha256 and md5, visibility,
+lifecycle, and — for anything copied out of Supabase — the source bucket and
+path, when it was copied and when it was proven identical.
+
+Email and registration date are NOT copied onto storage rows. They are joined
+from `users`, because an address duplicated in a thousand places is an address
+that is wrong in a thousand places the day somebody changes it.
+
+`lifecycle` is the orphan detector: a write is recorded PENDING before a byte
+moves and becomes ACTIVE only when `commit` has asked R2 what arrived. A
+PENDING row older than an hour is an abandoned upload, and is one query away.
+
+## The Storage Explorer
+
+`/admin/storage`. Three SECURITY DEFINER functions back it, each checking
+`is_admin()` inside itself under the caller's own token:
+
+| Function | Answers |
+|---|---|
+| `storage_admin_accounts` | who is there, how much they have, when they registered |
+| `storage_admin_objects` | the objects, filtered by email, account, category, entity, type, visibility, lifecycle, provider, upload date, registration date and size |
+| `storage_account_summary` | one account's totals and per-category breakdown |
+
+A non-admin calling them directly gets zero rows and a null summary — proven
+in production, not assumed. Opening a private file goes through the ordinary
+short-lived signed-read flow, and an admin reading somebody else's object is
+written to `admin_audit_log` before the URL is returned.
+
 ## What has NOT happened
 
-**No production object has been migrated.** All 14 objects are still in
-Supabase Storage and every product read and write still goes there.
-`images.ts` carries a single constant, `PHOTO_PROVIDER`, which is the switch.
+**No Supabase original has been deleted.** All 14 are still there, byte for
+byte, and they are the rollback.
+
+Reads now prefer R2 (`PRIMARY` in `images.ts`) and fall back to Supabase for
+exactly one reason: the object is not in R2 yet. A 403 never falls back —
+routing around an authorisation answer with a different mechanism is the
+precise shape of a bypass, and `storageReadStats` counts refusals separately
+from fallbacks so the difference is visible.
 
 ## A note on what a presigned URL discloses
 

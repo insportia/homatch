@@ -43,6 +43,13 @@ export interface SigV4Input {
   now?: Date;
   /** Extra query parameters to sign, e.g. response-content-disposition. */
   query?: Record<string, string>;
+  /**
+   * Sign the BUCKET rather than an object, which is what a listing
+   * addresses. Opt-in and never implied: a bucket-scoped signature is a far
+   * broader capability than an object-scoped one, and must not be what a
+   * caller gets for forgetting to pass a key.
+   */
+  bucketScope?: boolean;
 }
 
 const ALGORITHM = 'AWS4-HMAC-SHA256';
@@ -165,7 +172,8 @@ export interface PresignResult {
  * exactly one.
  */
 export async function presign(input: SigV4Input): Promise<PresignResult> {
-  if (!input.endpoint || !input.bucket || !input.key) {
+  const bucketScoped = input.key === '' && input.bucketScope === true;
+  if (!input.endpoint || !input.bucket || (!input.key && !bucketScoped)) {
     throw new Error('presign: endpoint, bucket and key are all required');
   }
   if (!input.accessKeyId || !input.secretAccessKey) {
@@ -196,8 +204,10 @@ export async function presign(input: SigV4Input): Promise<PresignResult> {
   };
 
   // Each path segment is encoded, the separators are not.
-  const canonicalUri = `/${uriEncode(input.bucket, false)}/${input.key
-    .split('/').map((seg) => uriEncode(seg)).join('/')}`;
+  const canonicalUri = bucketScoped
+    ? `/${uriEncode(input.bucket, false)}`
+    : `/${uriEncode(input.bucket, false)}/${input.key
+      .split('/').map((seg) => uriEncode(seg)).join('/')}`;
   const canonicalQuery = canonicalQueryString(params);
 
   const request = canonicalRequest({

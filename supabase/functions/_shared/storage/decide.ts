@@ -1,28 +1,31 @@
 /**
- * THE AUTHORISATION DECISION, WITH THE DATABASE TAKEN OUT OF IT.
+ * THE LOCAL HALF OF THE DECISION.
  *
- * This is the rule that replaces twenty-two RLS policies, and it is the one
- * piece of the object-storage layer whose mistakes are invisible: a signer
- * that is wrong returns 403 from R2 and you find out immediately, but an
- * authoriser that is wrong hands somebody a working URL to a contract and
- * nothing anywhere reports a problem.
+ * Authorisation for object storage is answered twice, and an object is
+ * reachable only if both answers are yes.
  *
- * So the decision takes its two database answers as FUNCTIONS instead of
- * reaching for a client. Every branch — anonymous, signed in but not the
- * owner, signed in but not an admin, in the workspace without the
- * capability, a database that is down — can then be exercised in the
- * ordinary test suite, in milliseconds, with no Deno and no network. The
- * wiring that turns those functions into real queries is in storageAuth.ts
- * and is four lines long.
+ *   here      the key is well formed, the namespace and category exist, the
+ *             caller is at least the right KIND of person, and the file
+ *             being written is a type and size this category accepts.
+ *   Postgres  `storage_authorize` — is this object actually theirs.
  *
- * WHAT A DENIAL IS ALLOWED TO SAY
+ * WHY TWICE
  *
- * Enough for the caller to know what to do — sign in, or ask for access —
- * and nothing about what exists. A refused key and a key that was never
- * written must be indistinguishable from outside.
+ * The two halves fail differently. This one is pure, runs in the ordinary
+ * test suite, and can be exhausted: every malformed key, every unknown
+ * category, every oversized upload. It cannot see a single row, so it can
+ * never answer "is this yours". The other half can only be checked against a
+ * live database, and does not run in CI at all. Neither is sufficient; the
+ * conjunction is, and it fails closed in both directions.
+ *
+ * The rule this file must never break: IT MAY ONLY DENY. Every ALLOW it
+ * returns is provisional and still has to survive the database.
  */
 
-import { KeyError, parseKey, type ParsedKey, type StorageAction } from './keys.ts';
+import {
+  KeyError, checkContent, parseKey, requirementFor,
+  type ParsedKey, type StorageAction,
+} from './keys.ts';
 
 export type DenyReason =
   | 'UNAUTHENTICATED'
@@ -30,33 +33,45 @@ export type DenyReason =
   | 'NOT_ADMIN'
   | 'NO_CAPABILITY'
   | 'INVALID_KEY'
+  | 'MIME_NOT_ALLOWED'
+  | 'TOO_LARGE'
   | 'UNAVAILABLE';
 
 export interface CallerFacts {
-  /** The auth uid — what every owner-scoped policy compares against. */
+  /** The auth uid — what every ownership rule compares against. */
   authUid: string | null;
   authenticated: boolean;
+  /** Whether `is_admin()` said yes. Null when it was never asked. */
+  isAdmin: boolean | null;
 }
 
 export type Decision =
   | { allowed: true; caller: CallerFacts; parsed: ParsedKey }
   | { allowed: false; reason: DenyReason; caller: CallerFacts; parsed: ParsedKey | null };
 
-export interface DecideInput {
+export interface LocalGateInput {
   key: unknown;
   action: StorageAction;
-  /** Null when the caller presented no user token. */
   authUid: string | null;
-  /** `public.is_admin()` as the caller. Null means the query failed. */
+  /** `public.is_admin()` for this caller. Null means the query failed. */
   isAdmin: () => Promise<boolean | null>;
-  /** `public.dev_can(ws, cap)` as the caller. Null means the query failed. */
-  devCan: (workspace: string, capability: string) => Promise<boolean | null>;
+  /** Declared by the caller; only meaningful for a WRITE. */
+  contentType?: string;
+  byteSize?: number;
 }
 
-export async function decide(input: DecideInput): Promise<Decision> {
+/**
+ * The coarse gate, run before the database is asked anything expensive.
+ *
+ * It answers the questions that need no rows, and it is the only place the
+ * content policy is enforced — a presigned PUT is a capability, and once it
+ * exists nothing can refuse what gets sent to it.
+ */
+export async function localGate(input: LocalGateInput): Promise<Decision> {
   const caller: CallerFacts = {
     authUid: input.authUid,
     authenticated: input.authUid !== null && input.authUid !== '',
+    isAdmin: null,
   };
 
   let parsed: ParsedKey;
@@ -69,48 +84,55 @@ export async function decide(input: DecideInput): Promise<Decision> {
     throw err;
   }
 
-  const allow = (): Decision => ({ allowed: true, caller, parsed });
   const deny = (reason: DenyReason): Decision =>
     ({ allowed: false, reason, caller, parsed });
 
-  const requirement = parsed.rules[input.action];
+  // ── The coarse person check, BEFORE the content policy ────────────────
+  // Order matters. A stranger who is refused with MIME_NOT_ALLOWED has just
+  // been told what this namespace accepts; a stranger refused with
+  // UNAUTHENTICATED has been told only that they are a stranger.
+  const requirement = requirementFor(parsed, input.action);
 
-  switch (requirement.kind) {
-    case 'ANYONE':
-      return allow();
+  if (requirement.kind !== 'ANYONE') {
+    if (!caller.authenticated) return deny('UNAUTHENTICATED');
 
-    case 'AUTHENTICATED':
-      return caller.authenticated ? allow() : deny('UNAUTHENTICATED');
-
-    case 'OWNER': {
-      if (!caller.authenticated) return deny('UNAUTHENTICATED');
-      // The live policy compares `(storage.foldername(name))[1]` with
-      // `auth.uid()::text`. Same two values, same comparison.
-      const owner = (parsed.scopeSegment ?? '').toLowerCase();
-      return owner === (caller.authUid ?? '').toLowerCase() ? allow() : deny('NOT_OWNER');
-    }
-
-    case 'ADMIN': {
-      if (!caller.authenticated) return deny('UNAUTHENTICATED');
+    if (requirement.kind === 'ADMIN') {
+      // Asked here as well as in SQL, because an admin-only namespace should
+      // not cost a signing attempt to refuse.
       const isAdmin = await input.isAdmin();
-      // A database that could not answer is not a yes. This branch is the
-      // reason the helpers return `boolean | null` rather than throwing:
-      // "unknown" has to be representable, or it becomes "true".
+      caller.isAdmin = isAdmin;
+      // A database that could not answer is not a yes. This is why the
+      // helper returns `boolean | null` rather than throwing: "unknown" has
+      // to be representable, or it silently becomes "true".
       if (isAdmin === null) return deny('UNAVAILABLE');
-      return isAdmin ? allow() : deny('NOT_ADMIN');
+      if (!isAdmin) return deny('NOT_ADMIN');
     }
+  }
 
-    case 'WORKSPACE': {
-      if (!caller.authenticated) return deny('UNAUTHENTICATED');
-      const can = await input.devCan(parsed.scopeSegment ?? '', requirement.capability);
-      if (can === null) return deny('UNAVAILABLE');
-      return can ? allow() : deny('NO_CAPABILITY');
+  // ── Content policy, on writes only ────────────────────────────────────
+  if (input.action === 'WRITE') {
+    const verdict = checkContent(parsed, input.contentType, input.byteSize);
+    if (!verdict.ok) {
+      return deny(verdict.reason === 'TOO_LARGE' ? 'TOO_LARGE' : 'MIME_NOT_ALLOWED');
     }
+  }
 
-    default:
-      // Unreachable while Requirement has five members — and a denial
-      // anyway, because the alternative to an exhaustive switch is a silent
-      // allow the day a sixth is added.
-      return deny('UNAVAILABLE');
+  // Provisional. Postgres decides whose object this actually is.
+  return { allowed: true, caller, parsed };
+}
+
+/** Every reason Postgres can return, mapped onto this module's vocabulary. */
+export function reasonFromSql(verdict: unknown): DenyReason | 'ALLOW' {
+  switch (verdict) {
+    case 'ALLOW': return 'ALLOW';
+    case 'UNAUTHENTICATED':
+    case 'NOT_OWNER':
+    case 'NOT_ADMIN':
+    case 'NO_CAPABILITY':
+    case 'INVALID_KEY':
+      return verdict;
+    // Anything unrecognised — including null, which is what a failed RPC
+    // looks like — is a refusal. There is no "probably fine" here.
+    default: return 'UNAVAILABLE';
   }
 }

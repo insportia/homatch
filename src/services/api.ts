@@ -234,33 +234,50 @@ export async function setCoverPhoto(propertyId: string, photoId: string) {
 }
 
 /**
- * Upload one photo and return WHERE IT IS, not a URL to it.
+ * Upload one photo to R2 and return WHERE IT IS, not a URL to it.
  *
- * `property-photos` is a PRIVATE bucket. This used to finish with
- * `getPublicUrl()`, which asks the server nothing — it concatenates a string
- * and always succeeds — so every upload produced a URL that answers 403 to
- * everybody, and that same broken string was then written into three
- * separate columns. The bucket has been empty since it was created, which is
- * the only reason nobody had hit it.
+ * TWO THINGS CHANGED HERE, AND BOTH WERE BUGS
+ *
+ * 1. This used to finish with `getPublicUrl()` on a PRIVATE bucket. That
+ *    call asks the server nothing — it concatenates a string and always
+ *    succeeds — so every upload produced a URL that answers 403 to
+ *    everybody, and the same broken string went into three separate columns.
+ *    The bucket had been empty since it was created, which is the only
+ *    reason nobody had hit it.
+ *
+ * 2. The key was `<user>/<property>/<timestamp>_<random>.<ext from the
+ *    filename>`. The extension came from whatever the person had called the
+ *    file, and the whole path was accepted on trust. Now the key is
+ *    `users/<account>/property-photos/<property>/<uuid>.<ext from the
+ *    declared type>`, the server re-derives who owns that PROPERTY before
+ *    signing anything, and the name the file had is kept as metadata.
  *
  * A private object has no durable URL, so the durable thing to record is the
- * PATH. `PrivateImage` mints a short-lived signed URL at the moment somebody
- * actually looks at the photo, and never writes it down.
+ * KEY. `PrivateImage` mints a short-lived signed URL when somebody actually
+ * looks at the photo, and never writes it down.
  */
 export async function uploadPropertyPhoto(
   userId: string,
   propertyId: string,
   file: File
 ): Promise<string> {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const filename = `${userId}/${propertyId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-  const { data, error } = await supabase.storage
-    .from('property-photos')
-    .upload(filename, file, { contentType: file.type, upsert: false });
-  if (error) throw new Error(error.message);
-  // The path the bucket gives back, which is the one to store — it can
-  // differ from the one requested if storage normalised it.
-  return data.path;
+  const { accountObjectKey, uploadObject } = await import('@/services/storage/objectStore');
+  const contentType = file.type || 'image/jpeg';
+  const key = accountObjectKey({
+    accountId: userId,
+    category: 'property-photos',
+    entityId: propertyId,
+    contentType,
+  });
+  const result = await uploadObject(key, file, {
+    contentType,
+    originalFilename: file.name,
+    // The photo's own visibility is the `property_photos.visibility` column,
+    // which the authoriser reads once the row exists. Until it does, closed.
+    visibility: 'PRIVATE',
+    purpose: 'PROPERTY_PHOTO',
+  });
+  return result.key;
 }
 
 // ============================================================

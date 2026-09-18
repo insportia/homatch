@@ -299,4 +299,71 @@ export async function deleteObject(key: string): Promise<{ deleted: boolean }> {
 }
 
 /** Only for tests: forget the memoised configuration. */
+export interface BucketEntry { key: string; size: number; etag: string | null }
+
+/**
+ * Everything actually in the bucket.
+ *
+ * The one operation in this module that is bucket-scoped rather than
+ * object-scoped, and it exists for one reason: an inventory derived from the
+ * metadata index proves what the index believes, not what R2 holds. A stray
+ * object nothing wrote a row for is precisely what such a count would miss,
+ * so the count comes from the service.
+ *
+ * Paginated, because ListObjectsV2 returns a thousand keys at a time and a
+ * loop that ignores the continuation token reports a partial inventory as a
+ * complete one.
+ */
+export async function listObjects(prefix = ''): Promise<BucketEntry[]> {
+  const cfg = r2Config();
+  const out: BucketEntry[] = [];
+  let token: string | undefined;
+
+  for (let page = 0; page < 100; page += 1) {
+    const query: Record<string, string> = { 'list-type': '2', 'max-keys': '1000' };
+    if (prefix) query.prefix = prefix;
+    if (token) query['continuation-token'] = token;
+
+    const { url } = await presign({
+      method: 'GET',
+      endpoint: cfg.endpoint,
+      bucket: cfg.bucket,
+      key: '',
+      bucketScope: true,
+      region: cfg.region,
+      accessKeyId: cfg.accessKeyId,
+      secretAccessKey: cfg.secretAccessKey,
+      expiresIn: 60,
+      query,
+    });
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error('objectStore.list failed', res.status);
+      throw new StorageUnavailable(`list failed: ${res.status}`);
+    }
+    const xml = await res.text();
+
+    for (const block of xml.split('<Contents>').slice(1)) {
+      const key = /<Key>([\s\S]*?)<\/Key>/.exec(block)?.[1];
+      const size = /<Size>(\d+)<\/Size>/.exec(block)?.[1];
+      const etag = /<ETag>([\s\S]*?)<\/ETag>/.exec(block)?.[1] ?? null;
+      if (key) {
+        out.push({
+          key: key.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'),
+          size: Number(size ?? '0'),
+          etag: normaliseEtag(etag),
+        });
+      }
+    }
+
+    const truncated = /<IsTruncated>true<\/IsTruncated>/.test(xml);
+    token = /<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/.exec(xml)?.[1];
+    if (!truncated || !token) return out;
+  }
+  // A hundred pages is a hundred thousand objects. Reporting a truncated
+  // inventory as complete is the failure this refuses to commit.
+  throw new StorageUnavailable('list did not terminate');
+}
+
 export function resetConfigForTests(): void { cached = null; }

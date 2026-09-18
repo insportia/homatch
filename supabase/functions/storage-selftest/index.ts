@@ -1,17 +1,19 @@
 // storage-selftest — the proof, not a claim.
 //
-// This function writes a real object into the real bucket, reads it back
-// through a real signed URL, shows that the same object is unreachable
-// without that signature and after it expires, deletes it, and confirms the
-// deletion. It reports what each step ACTUALLY returned, including the HTTP
-// status codes, so the answer to "does R2 work" is evidence rather than an
-// assertion.
+// It writes real objects into the real bucket, reads them back through real
+// signed URLs, shows that the same objects are unreachable without those
+// signatures, checks that the metadata index knows about them, deletes them,
+// and confirms the deletions. It reports what each step ACTUALLY returned,
+// including HTTP status codes, so "does R2 work" is answered with evidence.
 //
 // IT TOUCHES NOTHING THAT BELONGS TO ANYONE
 //
-// Every object it creates lives under `diagnostics/`, a namespace that maps
-// to no bucket and that no product code may write to. The key carries the
-// run id, so two runs never collide and a leftover object is identifiable.
+// The diagnostics cycle lives under `diagnostics/`, a namespace that maps to
+// no bucket and that no product code may write to. The account-scoped cycle
+// writes one object under a REAL account's prefix — because the only way to
+// prove account-scoped storage works is to write an account-scoped object —
+// and deletes it in the same run, having touched no existing object and no
+// business row.
 //
 // AUTHORISED BY A SINGLE-USE TICKET
 //
@@ -21,8 +23,8 @@
 // doing any work. Replaying the same token gets nothing.
 //
 // NOTHING IT RETURNS IS A CREDENTIAL. Signed URLs are reported as host and
-// path with the signature stripped, because a URL with the signature on it
-// is a working key to the object and this report is meant to be pasted
+// path with the signature stripped, because a URL with a signature on it is
+// a working key to the object and this report is meant to be pasted
 // somewhere.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -35,7 +37,8 @@ declare const Deno: { env: { get(k: string): string | undefined } };
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-proof-ticket',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-proof-ticket',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -70,6 +73,9 @@ function redactUrl(url: string): string {
 
 interface Step { step: string; ok: boolean; detail: Record<string, unknown> }
 
+/** Only objects this function itself created may be cleaned up through it. */
+const CLEANABLE = /^(site-assets\/proof\/|diagnostics\/)/;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405);
@@ -78,6 +84,9 @@ serve(async (req) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !serviceKey) return json({ error: 'UNAVAILABLE' }, 503);
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+
+  let body: Record<string, unknown> = {};
+  try { body = await req.json(); } catch { /* an empty body is the usual case */ }
 
   // ── The ticket, spent before any work is done ──────────────────────────
   const token = req.headers.get('x-proof-ticket') ?? '';
@@ -100,6 +109,17 @@ serve(async (req) => {
   // Expired, already spent and never existed all answer identically.
   if (!ticket) return json({ error: 'FORBIDDEN' }, 403);
 
+  // ── Cleanup mode: remove an object an earlier run left for inspection ──
+  if (typeof body.cleanupKey === 'string') {
+    if (!CLEANABLE.test(body.cleanupKey)) return json({ error: 'FORBIDDEN' }, 403);
+    await deleteObject(body.cleanupKey);
+    const after = await headObject(body.cleanupKey);
+    await admin.from('storage_objects')
+      .update({ lifecycle: 'DELETED', deleted_at: new Date().toISOString() })
+      .eq('object_key', body.cleanupKey);
+    return json({ cleaned: body.cleanupKey, still_exists: after.exists }, after.exists ? 500 : 200);
+  }
+
   const steps: Step[] = [];
   const runId = crypto.randomUUID();
   const key = `diagnostics/selftest/${runId}.txt`;
@@ -113,7 +133,7 @@ serve(async (req) => {
   };
 
   try {
-    // ── 1. The five secrets are present. Names and booleans only. ────────
+    // ── 1. The five secrets are present. Names and booleans only. ───────
     const env = envReport();
     record('1_secrets_present', env.allPresent, {
       present: env.present,
@@ -124,15 +144,12 @@ serve(async (req) => {
     });
     if (!env.allPresent) return json({ ok: false, runId, steps }, 503);
 
-    // ── 2. A real authenticated private upload ───────────────────────────
+    // ── 2. A real authenticated private upload ──────────────────────────
     const put = await putObject(key, payload, 'text/plain; charset=utf-8');
     cleanupNeeded = true;
     record('2_private_upload', true, { key, bytes: payload.length, etag: put.etag });
 
-    // ── 3. The object really exists, according to R2 itself ──────────────
-    // Three independent facts, because "exists" alone would also be true of
-    // an empty object written by a half-finished upload: it is there, it is
-    // the right length, and its md5 is the one the PUT was acknowledged with.
+    // ── 3. The object really exists, according to R2 itself ─────────────
     const facts = await headObject(key);
     record(
       '3_object_exists_in_r2',
@@ -140,7 +157,7 @@ serve(async (req) => {
       { key, ...facts, expected_bytes: payload.length, expected_etag: put.etag },
     );
 
-    // ── 4. A short-lived signed read returns the same bytes ──────────────
+    // ── 4. A short-lived signed read returns the same bytes ─────────────
     const read = await signedUrl({ action: 'READ', key, expiresIn: 120 });
     const readRes = await fetch(read.url);
     const readBody = await readRes.text();
@@ -153,17 +170,11 @@ serve(async (req) => {
       url: redactUrl(read.url),
     });
 
-    // ── 5a. The same object, unsigned, is refused ────────────────────────
-    // This is what "the bucket is private" MEANS, and the only way to know
-    // it is to ask for the object with no credential at all.
+    // ── 5a. The same object, unsigned, is refused ───────────────────────
     const bare = new URL(read.url);
     bare.search = '';
     const unsignedRes = await fetch(bare.toString());
     const unsignedBody = await unsignedRes.text();
-    // The question is NOT which status code R2 chooses — it answers an
-    // unsigned S3 request with 400 InvalidArgument rather than 403, which is
-    // still a refusal. The question is whether the bytes came back. So the
-    // test is: not a success, and the response does not contain the object.
     const leaked = unsignedBody.includes(runId);
     record('5a_unsigned_read_refused', !unsignedRes.ok && !leaked, {
       status: unsignedRes.status,
@@ -173,9 +184,7 @@ serve(async (req) => {
       meaning: 'public bucket access is disabled; the object is not served without a signature',
     });
 
-    // ── 5b. A tampered signature is refused ──────────────────────────────
-    // A URL whose signature has been altered by one character must fail, or
-    // the signature is decorative.
+    // ── 5b. A tampered signature is refused ─────────────────────────────
     const tampered = new URL(read.url);
     const sig = tampered.searchParams.get('X-Amz-Signature') ?? '';
     tampered.searchParams.set('X-Amz-Signature', (sig[0] === 'a' ? 'b' : 'a') + sig.slice(1));
@@ -185,12 +194,11 @@ serve(async (req) => {
       status: tamperedRes.status,
     });
 
-    // ── 5c. A signed URL for a DIFFERENT key does not open this one ──────
+    // ── 5c. A signed URL for a DIFFERENT key does not open this one ─────
     const otherSigned = await signedUrl({
       action: 'READ', key: `diagnostics/selftest/${crypto.randomUUID()}.txt`, expiresIn: 60,
     });
     const swapped = new URL(otherSigned.url);
-    // Point the other key's signature at our object.
     swapped.pathname = new URL(read.url).pathname;
     const swappedRes = await fetch(swapped.toString());
     await swappedRes.body?.cancel();
@@ -198,7 +206,7 @@ serve(async (req) => {
       status: swappedRes.status,
     });
 
-    // ── 5d. Expiry is real, measured by waiting for it ───────────────────
+    // ── 5d. Expiry is real, measured by waiting for it ──────────────────
     const shortLived = await signedUrl({ action: 'READ', key, expiresIn: 15 });
     const beforeRes = await fetch(shortLived.url);
     await beforeRes.body?.cancel();
@@ -212,12 +220,12 @@ serve(async (req) => {
       requested_lifetime_seconds: 15,
     });
 
-    // ── 6. Delete the test object ────────────────────────────────────────
+    // ── 6. Delete the test object ───────────────────────────────────────
     await deleteObject(key);
     cleanupNeeded = false;
     record('6_delete', true, { key });
 
-    // ── 7. It is really gone ─────────────────────────────────────────────
+    // ── 7. It is really gone ────────────────────────────────────────────
     const after = await headObject(key);
     const goneRes = await getObject(key);
     await goneRes.body?.cancel();
@@ -225,8 +233,129 @@ serve(async (req) => {
       key, head_exists: after.exists, get_status: goneRes.status,
     });
 
+    // ── 8. A MIGRATED object is byte-identical, read back from R2 ───────
+    // Not a test object: two of the fourteen real ones, chosen from the
+    // ledger, read out of R2 and compared with the Supabase original that
+    // is still sitting there untouched.
+    for (const bucket of ['deal-room-documents', 'voice-auditions']) {
+      const { data: rows } = await admin.from('storage_objects')
+        .select('object_key, source_bucket, source_path, byte_size, checksum_sha256')
+        .eq('source_bucket', bucket).limit(1);
+      const row = rows?.[0];
+      if (!row) { record(`8_${bucket}_migrated_read`, false, { reason: 'no ledger row' }); continue; }
+
+      const src = await admin.storage.from(row.source_bucket!).download(row.source_path!);
+      const srcSha = src.data
+        ? await sha256Hex(new Uint8Array(await src.data.arrayBuffer())) : null;
+
+      const signedRead = await signedUrl({ action: 'READ', key: row.object_key, expiresIn: 60 });
+      const r2Res = await fetch(signedRead.url);
+      const r2Bytes = r2Res.ok ? new Uint8Array(await r2Res.arrayBuffer()) : null;
+      const r2Sha = r2Bytes ? await sha256Hex(r2Bytes) : null;
+
+      record(`8_${bucket}_migrated_read`,
+        r2Res.ok && !!srcSha && srcSha === r2Sha && r2Bytes?.byteLength === Number(row.byte_size),
+        {
+          r2_key: row.object_key,
+          supabase_source: `${row.source_bucket}/${row.source_path}`,
+          status: r2Res.status,
+          bytes: r2Bytes?.byteLength ?? null,
+          ledger_bytes: Number(row.byte_size),
+          supabase_sha256_equals_r2_sha256: srcSha === r2Sha,
+          ledger_sha256_matches: row.checksum_sha256 === r2Sha,
+          supabase_original_still_present: !!src.data,
+        });
+    }
+
+    // ── 9. A NEW account-scoped private object, end to end ──────────────
+    // The key shape the product now writes: users/<account>/<category>/...
+    // It is created, proven, indexed, and removed inside this one run.
+    const accountId = typeof body.accountId === 'string' ? body.accountId : null;
+    if (accountId) {
+      const objectId = crypto.randomUUID();
+      const acctKey = `users/${accountId}/generated-reports/${objectId}.txt`;
+      const acctPayload = `homatch account-scoped proof ${objectId}\n`;
+      const acctSha = await sha256Hex(acctPayload);
+
+      const acctPut = await putObject(acctKey, acctPayload, 'text/plain; charset=utf-8');
+      await admin.from('storage_objects').upsert({
+        provider: 'R2', namespace: 'users', category: 'generated-reports',
+        object_key: acctKey, owner_user_id: accountId,
+        entity_type: 'report', purpose: 'STORAGE_PROOF',
+        original_filename: 'account-scoped-proof.txt',
+        content_type: 'text/plain', byte_size: acctPayload.length,
+        checksum_sha256: acctSha, checksum_md5: acctPut.etag,
+        visibility: 'PRIVATE', lifecycle: 'ACTIVE',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'object_key' });
+
+      const acctFacts = await headObject(acctKey);
+      const acctSigned = await signedUrl({ action: 'READ', key: acctKey, expiresIn: 60 });
+      const acctRes = await fetch(acctSigned.url);
+      const acctBack = await acctRes.text();
+
+      const acctBare = new URL(acctSigned.url);
+      acctBare.search = '';
+      const acctUnsigned = await fetch(acctBare.toString());
+      const acctUnsignedBody = await acctUnsigned.text();
+
+      // The index must be able to find it, by owner.
+      const { data: indexed } = await admin.from('storage_objects')
+        .select('object_key, owner_user_id, category, byte_size, lifecycle')
+        .eq('object_key', acctKey).maybeSingle();
+
+      record('9_account_scoped_object', Boolean(
+        acctFacts.exists
+        && acctRes.ok
+        && acctBack === acctPayload
+        && !acctUnsigned.ok
+        && !acctUnsignedBody.includes(objectId)
+        && indexed?.owner_user_id === accountId,
+      ), {
+        key: acctKey,
+        exists_in_r2: acctFacts.exists,
+        signed_read_status: acctRes.status,
+        bytes_match: acctBack === acctPayload,
+        unsigned_read_status: acctUnsigned.status,
+        indexed_owner: indexed?.owner_user_id ?? null,
+        indexed_category: indexed?.category ?? null,
+        indexed_lifecycle: indexed?.lifecycle ?? null,
+      });
+
+      await deleteObject(acctKey);
+      const acctGone = await headObject(acctKey);
+      await admin.from('storage_objects').update({
+        lifecycle: 'DELETED', deleted_at: new Date().toISOString(),
+      }).eq('object_key', acctKey);
+      record('10_account_scoped_object_removed', !acctGone.exists, {
+        key: acctKey, still_exists: acctGone.exists,
+      });
+    }
+
+    // ── 11. One object left behind for a LIVE anonymous read ────────────
+    // site-assets is the only namespace whose READ is genuinely public
+    // today, so it is the only one whose whole chain — browser, edge
+    // function, Postgres decision, presigned URL, R2 — can be exercised
+    // over HTTP with no privileged caller at all. It is deleted afterwards
+    // through this function's cleanup mode.
+    let liveKey: string | null = null;
+    if (body.leaveLiveReadObject === true) {
+      liveKey = `site-assets/proof/${crypto.randomUUID()}.txt`;
+      const liveBody = `homatch live read proof ${liveKey}\n`;
+      await putObject(liveKey, liveBody, 'text/plain; charset=utf-8');
+      await admin.from('storage_objects').upsert({
+        provider: 'R2', namespace: 'site-assets', category: 'site-assets',
+        object_key: liveKey, purpose: 'STORAGE_PROOF',
+        content_type: 'text/plain', byte_size: liveBody.length,
+        checksum_sha256: await sha256Hex(liveBody),
+        visibility: 'PUBLIC', lifecycle: 'ACTIVE',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'object_key' });
+      record('11_live_read_object_placed', true, { key: liveKey, expected_body: liveBody });
+    }
+
     const ok = steps.every((s) => s.ok);
-    const report = { ok, runId, key, steps, finishedAt: new Date().toISOString() };
+    const report = { ok, runId, key, liveKey, steps, finishedAt: new Date().toISOString() };
     await admin.from('storage_proof_tickets').update({ result: report }).eq('id', ticket.id);
     return json(report, ok ? 200 : 500);
   } catch (err) {

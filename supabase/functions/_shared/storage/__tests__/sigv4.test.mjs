@@ -183,6 +183,30 @@ test('expiry is bounded, and a missing credential is refused without naming it',
   );
 });
 
+test('a bucket-scoped signature is opt-in, never the result of a missing key', async () => {
+  // A listing signs the BUCKET, which is a far broader capability than one
+  // object. Forgetting the key must be an error, not a promotion.
+  await assert.rejects(presign({ ...R2, method: 'GET', key: '' }), /required/);
+
+  const listing = await presign({
+    ...R2, method: 'GET', key: '', bucketScope: true,
+    query: { 'list-type': '2', 'max-keys': '1000' },
+  });
+  const url = new URL(listing.url);
+  // The bucket itself, with no trailing object path.
+  assert.equal(url.pathname, '/homatch-storage');
+  assert.equal(url.searchParams.get('list-type'), '2');
+  assert.match(url.searchParams.get('X-Amz-Signature'), /^[0-9a-f]{64}$/);
+
+  // And it is a DIFFERENT signature from any object under it, so a listing
+  // URL cannot be edited into an object URL.
+  const object = await presign({ ...R2, method: 'GET', key: 'dev/a.pdf' });
+  assert.notEqual(
+    url.searchParams.get('X-Amz-Signature'),
+    new URL(object.url).searchParams.get('X-Amz-Signature'),
+  );
+});
+
 test('the secret never appears in the signed URL', async () => {
   const { url } = await presign({
     ...R2, method: 'PUT', key: 'dev/a.pdf',

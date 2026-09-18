@@ -320,6 +320,12 @@ jobs:
             # ticket row rather than by an account.
             "storage-sign"
             "storage-selftest"
+            # The migration copier and the bucket inventory. Both are
+            # ticket-gated proof tools rather than product endpoints, and
+            # both are registered here so a repository fix to them actually
+            # reaches production.
+            "storage-migrate"
+            "storage-inventory"
             "atomic-unlock"
             "credits-topup"
             "import-property"

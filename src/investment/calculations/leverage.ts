@@ -138,16 +138,20 @@ export function sliceSchedule(
   monthsCounted: number;
 } {
   const n = Math.max(0, Math.min(schedule.length, Math.round(months)));
-  const window = schedule.slice(0, n);
-  const interest = money(window.reduce((s, r) => s + r.interestPortion, 0));
-  const principal = money(window.reduce((s, r) => s + r.principalPortion, 0));
-  const payments = money(window.reduce((s, r) => s + r.totalPayment, 0));
+  // `rows`, not `window`. This file is bundled into a Deno Edge Function and
+  // also runs under the Node test runner; shadowing a browser global in code
+  // that lives in three runtimes is confusing to read and trips any check
+  // that greps for DOM access — which is how this was noticed.
+  const rows = schedule.slice(0, n);
+  const interest = money(rows.reduce((sum, row) => sum + row.interestPortion, 0));
+  const principal = money(rows.reduce((sum, row) => sum + row.principalPortion, 0));
+  const payments = money(rows.reduce((sum, row) => sum + row.totalPayment, 0));
   const remainingPrincipal =
     n === 0
       ? schedule.length
         ? schedule[0].openingPrincipal
         : 0
-      : window[window.length - 1].remainingPrincipal;
+      : rows[rows.length - 1].remainingPrincipal;
   return { interest, principal, payments, remainingPrincipal, monthsCounted: n };
 }
 

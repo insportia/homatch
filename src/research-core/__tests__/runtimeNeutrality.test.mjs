@@ -247,8 +247,24 @@ test('the core is consumed only through its deliberate integration points', () =
         continue;
       }
       if (!/\.(ts|tsx|mjs)$/.test(entry)) continue;
-      const body = readFileSync(full, 'utf8');
-      if (!/research-core/.test(body)) continue;
+      /*
+       * AN IMPORT, NOT A MENTION.
+       *
+       * This used to test the raw file text for the string "research-core",
+       * which flags any file that so much as NAMES the core in a comment —
+       * including a test whose entire subject is explaining which files are
+       * allowed to reach it. Prose is not a dependency, and a guard that
+       * cannot tell the difference teaches people to stop writing the
+       * comment rather than to stop writing the import.
+       *
+       * Comments are stripped and only a real module specifier counts, so
+       * the check now means what its name says. Everything in ALLOWED is
+       * still caught: each one genuinely imports.
+       */
+      const body = code(readFileSync(full, 'utf8'));
+      const importsCore =
+        /(?:from|import)\s*\(?\s*['"][^'"]*research-core\/[^'"]*['"]/.test(body);
+      if (!importsCore) continue;
       // rel() is relative to the CORE; these files are outside it, so the
       // comparison is made against the repository root instead.
       const relative = full

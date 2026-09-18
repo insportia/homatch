@@ -76,7 +76,11 @@ test('the prompt is smaller and still carries every rule', () => {
     'Never guarantee anything',
     'Never ask for a name, phone number, email',
     'Write "Homatch" in Latin letters',
-    'LENGTH FOLLOWS THE QUESTION',
+    // Was 'LENGTH FOLLOWS THE QUESTION'. The rule did not go; the heading did,
+    // when the prompt was cut from 2,595 tokens to about 2,000 because the
+    // model's first token was 84% of the latency on a real phone.
+    'MATCH THEM',
+    'Take your length, register and energy from theirs',
   ]) {
     // Compared lowercased rather than as a pattern: these are sentences, not
     // regexes, and a rule that survived compression as "Never claim..."

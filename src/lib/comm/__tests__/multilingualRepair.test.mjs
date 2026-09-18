@@ -187,12 +187,14 @@ test('the previous language and the strength of the evidence reach the server, a
 
 test('the prompt answers directly, bans the narrated-thinking openers and stops claiming three languages', () => {
   const e = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
-  assert.match(e, /FIRST HEAR THEM, THEN UNDERSTAND THEM, THEN ANSWER/);
-  assert.match(e, /ANSWER DIRECTLY\. Start with the substance/);
+  // Same rules, shorter headings: the prompt was compressed for latency.
+  assert.match(e, /HEAR, UNDERSTAND, ANSWER -- in that order/);
+  assert.match(e, /JUST ANSWER\. Lead with the substance/);
   for (const banned of ['ვფიქრობ', 'მოდი ვიფიქროთ', 'როგორც AI', 'я думаю', '"I think"', '"as an AI"', '"based on my analysis"']) {
     assert.ok(e.includes(banned), `${banned} is named as a banned opening`);
   }
-  assert.match(e, /YOU SPEAK MANY LANGUAGES/);
+  assert.match(e, /You speak Georgian, English, Russian, Turkish, Arabic, Hebrew, Hindi/);
+  assert.match(e, /and some thirty more, and you follow whichever one the person uses/);
   assert.match(e, /Never say you only know two or three languages/);
   assert.match(e, /never the opening words, never "as an AI"/, 'the AI mention is no longer an opener');
   assert.doesNotMatch(e, /Say you are an AI assistant in your FIRST reply only, briefly/);

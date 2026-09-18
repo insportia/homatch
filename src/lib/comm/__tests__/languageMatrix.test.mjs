@@ -356,7 +356,7 @@ test('an opinion that names a language its own letters contradict is not evidenc
 
 test('a phone does not wait for an opinion that would not be allowed to change anything', () => {
   const c = strip(client);
-  assert.match(c, /const opinionCouldDecide = !said\.trim\(\) \|\| pinnedLatin \|\| !consistentWith\(said, pinned\)/);
+  assert.match(c, /const opinionCouldDecide = !said\.trim\(\)\s*\|\| saidScript === 'latin'\s*\|\| !consistentWith\(said, pinned\);/);
   assert.match(c, /await this\.awaitSecondOpinion\(opinionCouldDecide\)/);
   assert.match(c, /if \(!mayWait\) return Promise\.resolve\(null\);/);
   // The wait still exists where it can decide the turn.
@@ -381,4 +381,140 @@ test('the Georgian session in that trace keeps its turn now', () => {
   assert.equal(r.resolvedLanguage, 'ka');
   assert.equal(r.resolutionReason, 'SCRIPT');
   assert.equal(r.confidence, 1);
+});
+
+/* ── 5. Going back to Georgian, on the utterance it is spoken ─────────── */
+
+test('KA -> X -> KA comes back to Georgian on the returning utterance, for every X', () => {
+  // The hard version of the round trip: the pinned socket is still configured
+  // for the language they just left, so it labels the Georgian sentence with
+  // the OLD language and does not mark it detected. The alphabet has to carry
+  // the switch on its own. This is exactly the turn that felt slow on a phone.
+  for (const other of ['en', 'ru', 'ar', 'tr', 'he']) {
+    const r = session({ turns: [
+      { ...SAY.ka, detected: true },
+      { ...SAY[other], detected: true },
+      { text: SAY.ka.text, label: SAY[other].label, detected: false },
+    ] });
+    assert.equal(r[0].resolvedLanguage, 'ka', `ka->${other}->ka: opening`);
+    assert.equal(r[1].resolvedLanguage, other, `ka->${other}->ka: out (${r[1].resolutionReason})`);
+    assert.equal(r[2].resolvedLanguage, 'ka', `ka->${other}->ka: BACK (${r[2].resolutionReason})`);
+    assert.equal(r[2].switched, true, `ka->${other}->ka: the return is a switch on that turn`);
+    assert.equal(r[2].resolutionReason, 'SCRIPT', 'and the alphabet is what settles it');
+    assert.equal(r[2].confidence, 1, 'at full confidence, not a held prior');
+    assert.equal(r[2].weakEvidence, false);
+  }
+});
+
+test('a SHORT Georgian sentence still returns, straight after another language', () => {
+  // Nobody says a full sentence when switching back. They say two words.
+  for (const other of ['en', 'ru', 'ar', 'tr', 'he']) {
+    for (const short of ['კი, ვაკეში მინდა.', 'რამდენი ღირს?', 'ხო, კარგი.']) {
+      const r = session({ turns: [
+        { ...SAY[other], detected: true },
+        { text: short, label: SAY[other].label, detected: false },
+      ] });
+      assert.equal(r[1].resolvedLanguage, 'ka', `${other} -> ${short} (${r[1].resolutionReason})`);
+      assert.equal(r[1].switched, true);
+    }
+  }
+});
+
+/* ── 6. The wait the phone used to pay on every Georgian turn ─────────── */
+
+test('a transcript credible in its own script does not hold the turn open', () => {
+  const c = strip(client);
+  assert.match(c, /const saidScript = scriptEvidence\(said\)\.script;/);
+  assert.match(c, /const opinionCouldDecide = !said\.trim\(\)\s*\|\| saidScript === 'latin'\s*\|\| !consistentWith\(said, pinned\);/);
+  assert.match(c, /if \(!mayWait\) return Promise\.resolve\(null\);/);
+  // Credible and written in its own script: nothing to wait for, because the
+  // opinion would only ever come back LIVE_CONSISTENT.
+  for (const [text, lang] of [
+    ['გამარჯობა, ვაკეში ორსაძინებლიან ბინას ვეძებ.', 'ka'],
+    ['კი, კარგი.', 'ka'],
+    ['ხო, მერე?', 'ka'],
+    ['Здравствуйте, я ищу двухкомнатную квартиру.', 'ru'],
+    ['مرحبا، أبحث عن شقة.', 'ar'],
+    ['שלום, אני מחפש דירה.', 'he'],
+  ]) assert.equal(consistentWith(text, lang), true, `${text} (${lang}) is credible on its own`);
+  // Ambiguous or discredited: the opinion can still decide, so it is consulted.
+  assert.equal(consistentWith('gamarjoba me minda bina vakeshi', 'en'), false, 'Latin over a mis-hearing');
+  assert.equal(consistentWith('RAM x 6Y', 'ru'), false, 'Latin from a Cyrillic socket');
+  assert.equal(consistentWith('', 'ka'), false, 'nothing heard at all');
+});
+
+test('spoken Georgian reads as Georgian, not as a fragment to be second-guessed', () => {
+  // Ordinary spoken Georgian that carried none of the listed words before, so
+  // it looked discredited and bought a second opinion it did not need.
+  for (const text of ['ხო, მერე?', 'კაი, გასაგებია.', 'ალბათ ცოტა უფრო იაფი.',
+    'რამდენი ღირს კვადრატი?', 'მომწონს ეს უბანი.', 'მითხარი ფასი.',
+    'ორ ოთახიანი მინდა.', 'დღეს შეიძლება?', 'რომელი სართულზე?']) {
+    assert.equal(hasAnyFunctionWord(text, 'ka'), true, text);
+    assert.equal(isDiscreditedTurn(text, 'ka'), false, text);
+    assert.equal(consistentWith(text, 'ka'), true, text);
+  }
+});
+
+test('what the phone spent before the request is sent with it, and logged', () => {
+  const c = strip(client);
+  assert.match(c, /get stageStamps\(\)/);
+  assert.match(c, /speechEndToFinalMs: speechEnd && final \? Math\.round\(final - speechEnd\) : null/);
+  assert.match(c, /opinionWaitMs: this\.lastOpinionWaitMs/);
+  const panel = strip(readFileSync('src/components/home/AiTalkPanel.tsx', 'utf8'));
+  assert.match(panel, /clientStages: sessionRef\.current\.stageStamps/);
+  const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+  assert.match(edge, /client_speech_end_to_final_ms: body\.clientStages\?\.speechEndToFinalMs \?\? null/);
+  assert.match(edge, /client_final_to_request_ms:/);
+  assert.match(edge, /client_opinion_wait_ms:/);
+});
+
+/* ── 7. The reply itself: human, varied, and cheaper to read ──────────── */
+
+test('the prompt bans the acknowledgement openers and demands variation', () => {
+  const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+  for (const banned of ['ვფიქრობ', 'გასაგებია', 'მესმის', 'კარგი შეკითხვაა',
+    'რა თქმა უნდა', 'კი, რა თქმა უნდა', 'я думаю', 'конечно', 'понятно',
+    'good', 'question', 'I understand', 'let me think']) {
+    assert.ok(edge.includes(banned), `${banned} is named as a banned opening`);
+  }
+  assert.match(edge, /DO NOT SOUND LIKE THE LAST TURN/);
+  assert.match(edge, /Vary the opener, the sentence shape, the length and the ending/);
+  assert.match(edge, /If the last reply began with a verb, do not begin with a verb/);
+  assert.match(edge, /Do not acknowledge, summarise or repeat what they/);
+  assert.match(edge, /Do not close every reply with an offer, a next step or a question/);
+  assert.match(edge, /Do not name Homatch unless it carries meaning in that sentence/);
+  assert.match(edge, /Most turns need no preamble at all/);
+  assert.match(edge, /Never open by narrating your own thinking/);
+  // One personality section now, not three restating it.
+  assert.match(edge, /WHO YOU ARE\. A sharp, well-read person/);
+  assert.ok(!edge.includes('EMOTIONAL RANGE'), 'the duplicated personality sections are gone');
+  assert.ok(!edge.includes('CHARACTER. You have one'), 'and so is the third one');
+  // Nothing that made her a person was dropped with them.
+  for (const kept of ['tease back', 'sarcastic', 'Never insult', 'swear casually',
+    'Humour must be native', 'MATCH THEM', 'Do not perform emotion you do not have']) {
+    assert.ok(edge.includes(kept), kept);
+  }
+});
+
+test('the Georgian she speaks is asked for as spoken Georgian', () => {
+  const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+  assert.match(edge, /GEORGIAN\. Speak the Georgian a sharp Tbilisi broker speaks out loud/);
+  assert.match(edge, /not written Georgian, not/);
+  assert.match(edge, /Do NOT compose in English and/);
+  assert.match(edge, /if they are casual with you, be/);
+  assert.ok(edge.includes('მწვანე კარკასი'), 'the market vocabulary is kept');
+  assert.ok(edge.includes('საჯარო რეესტრი'), 'and so is the legal vocabulary');
+});
+
+test('the prompt got smaller, because the model reads all of it every turn', () => {
+  const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+  const i = edge.indexOf('function publicDemoInstructions');
+  const j = edge.indexOf('\n}\n', i);
+  const lines = (edge.slice(i, j).match(/^\s*[`'].*[`'],\s*$/gm) ?? [])
+    .map((line) => line.trim().replace(/^[`']/, '').replace(/[`'],$/, ''));
+  const chars = lines.join('\n').length;
+  // It was 10383 characters, about 2595 tokens, when the owner measured
+  // 1027 ms to the model's first token on a real Android phone.
+  assert.ok(chars < 9000, `the prompt is ${chars} characters`);
+  assert.ok(lines.length > 60, 'and it still says everything it has to say');
 });

@@ -136,9 +136,13 @@ test('every stage of a turn is stamped, so a slow one can be blamed on a layer',
 
 test('the personality gained emotional range and kept its manners', () => {
   const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
-  assert.match(edge, /EMOTIONAL RANGE/, 'laugh, tease, be surprised, be irritated when it is earned');
+  // The range is now stated inside WHO YOU ARE rather than under its own
+  // heading, which is a shorter prompt and the same instruction.
+  assert.match(edge, /You are allowed to laugh, be surprised, be amused by something absurd/);
+  assert.match(edge, /tease back/, 'and to give it back when it is given');
+  assert.match(edge, /sound a little irritated/, 'irritation is allowed when it is earned');
   assert.match(edge, /Never insult/, 'and the boundary is stated, not implied');
   assert.match(edge, /proportional/, 'anger is contextual and proportional');
   assert.match(edge, /WHO YOU ARE/, 'the existing personality is extended, not replaced');
-  assert.match(edge, /MATCH THE PERSON/, 'energy matching remains');
+  assert.match(edge, /MATCH THEM/, 'energy matching remains');
 });

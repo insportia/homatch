@@ -611,6 +611,9 @@ export function AiTalkPanel({ className }: { className?: string }) {
               }
               : {}),
             ...(sessionRef.current?.languageTrace.firstTurn ? { firstTurn: true } : {}),
+            // What the device spent before this request existed, so the whole
+            // chain is measurable from the server's own trace.
+            ...(sessionRef.current ? { clientStages: sessionRef.current.stageStamps } : {}),
             // Conversation language BEFORE this turn, and how sure this turn's
             // language is: the server states both to the model as facts.
             ...(sessionRef.current?.languageTrace.previousLanguage

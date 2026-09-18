@@ -209,11 +209,17 @@ test('same-turn recovery reaches beyond the six, and asks for no language', () =
 test('the voice runs at its natural pace and the character grew without losing its manners', () => {
   const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
   assert.match(edge, /const CARTESIA_DEFAULT_SPEED = 1\.0;/);
-  assert.match(edge, /'CHARACTER\. You have one\./);
-  assert.match(edge, /If they swear casually, do not turn into a moderation notice/);
-  assert.match(edge, /You yourself do not swear at them, do not insult them/);
+  // The three sections that described this character in different words were
+  // merged into one, because the model reads all of it on every turn. Every
+  // rule they carried is still here, under the heading that replaced them.
+  assert.match(edge, /WHO YOU ARE\. A sharp, well-read person/);
+  assert.match(edge, /If they/);
+  assert.match(edge, /swear casually, react like a person who likes them/);
+  assert.match(edge, /You do not swear at them and do not escalate/);
+  assert.match(edge, /Never insult,\s*'?,?\s*'?belittle, threaten or abuse anyone/);
   assert.match(edge, /Humour must be native to the language/);
-  assert.match(edge, /never announced and never random/, 'moods emerge from context; no mood generator');
+  assert.match(edge, /Do not perform emotion you do not have/, 'moods come from context, not a generator');
+  assert.match(edge, /Do not laugh at your own lines/);
   assert.match(edge, /LANGUAGE_NAMES: Record<string, string> = REGISTRY_LANGUAGE_NAMES/, 'reply names come from the shared registry');
   assert.match(edge, /overlap: judgeOverlap\(/, 'the done event carries the overlap verdict');
 });

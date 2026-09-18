@@ -868,6 +868,8 @@ export class VoiceSession {
   private liveRetries = 0;
   /** Whether the last turn's provider label was a detection rather than a pin. */
   private lastProviderDetected = false;
+  /** How long THIS turn actually waited for the second opinion. */
+  private lastOpinionWaitMs = 0;
   /** Turns that have actually resolved a language. Zero means the page is the only prior. */
   private resolvedTurns = 0;
   private discreditedDrops = 0;
@@ -2420,12 +2422,26 @@ export class VoiceSession {
      * exactly where it can still decide the turn: an empty or discredited
      * transcript, or a Latin-pinned socket, which is the one that translates.
      */
-    const pinnedLatin = Boolean(pinned) && LATIN_CODES.includes(pinned);
-    const opinionCouldDecide = !said.trim() || pinnedLatin || !consistentWith(said, pinned)
-      || (said.trim().split(/\s+/).filter(Boolean).length < RECOVERY_MIN_WORDS
-        && !hasAnyFunctionWord(said, pinned));
+    /*
+     * THE SCRIPT ALREADY DECIDED, SO THERE IS NOTHING TO WAIT FOR.
+     *
+     * A Georgian sentence out of a Georgian socket cannot be a switch and
+     * cannot be overturned -- the opinion would come back LIVE_CONSISTENT --
+     * so holding the turn open for it was pure delay on the commonest turn
+     * this product has. The wait is kept exactly where the script CANNOT
+     * decide: nothing was heard, or the letters are Latin (the one script
+     * several of our languages share, and the one a mis-hearing of Georgian
+     * comes back in), or the transcript is not in the pinned language's own
+     * script at all. Those are the turns where a switch is in question.
+     */
+    const saidScript = scriptEvidence(said).script;
+    const opinionCouldDecide = !said.trim()
+      || saidScript === 'latin'
+      || !consistentWith(said, pinned);
+    const opinionAskedAt = Date.now();
     const opinion = origin === 'SHADOW' ? null
       : await this.awaitSecondOpinion(opinionCouldDecide);
+    this.lastOpinionWaitMs = opinionCouldDecide ? Date.now() - opinionAskedAt : 0;
     if (opinion) {
       const opinionLang = opinion.language ? normaliseLanguage(opinion.language) : null;
       const judged = this.judgeSecondOpinion(liveTranscript, pinned, opinion.text, opinionLang);
@@ -2960,6 +2976,7 @@ export class VoiceSession {
       providerLanguage: this.lastProviderLanguage,
       providerDetected: this.lastProviderDetected,
       resolvedTurns: this.resolvedTurns,
+      opinionWaitMs: this.lastOpinionWaitMs,
       secondOpinion: this.diag.secondOpinion ?? null,
       mode: this.diag.liveMode,
       liveRetries: this.liveRetries,
@@ -3380,6 +3397,25 @@ export class VoiceSession {
    * concluded, and a disagreement between the two sides is worth seeing in a
    * trace rather than discovering in a silent turn.
    */
+  /**
+   * WHAT THE PHONE SPENT, BEFORE THE QUESTION EVEN LEFT IT.
+   *
+   * The server can time everything from the request arriving onwards, and did
+   * -- 1224 ms at p50 on the owner's 16-turn Android session. It could time
+   * nothing before that, so "I wait far too long after I finish speaking" was
+   * half unmeasurable. These three go with the request and are written into
+   * the turn trace, so the next physical session answers it from the logs.
+   */
+  get stageStamps(): { speechEndToFinalMs: number | null; finalToRequestMs: number | null; opinionWaitMs: number } {
+    const speechEnd = this.marks.speechEndedAtMs;
+    const final = this.marks.googleFinalAtMs;
+    return {
+      speechEndToFinalMs: speechEnd && final ? Math.round(final - speechEnd) : null,
+      finalToRequestMs: final ? Math.round(Date.now() - final) : null,
+      opinionWaitMs: this.lastOpinionWaitMs,
+    };
+  }
+
   get languageTrace(): {
     providerLanguage: string | null; providerDetected: boolean;
     resolution: LanguageResolution | null; previousLanguage: string | null; firstTurn: boolean;

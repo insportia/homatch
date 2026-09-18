@@ -173,7 +173,12 @@ test('the reply length is not a fixed budget any more', () => {
   // A hard "two sentences, thirty words, every time" is what made every
   // answer the same size and made the assistant sound like a recording.
   assert.ok(!/at most two sentences and at most 30 words/.test(edge));
-  assert.ok(/LENGTH FOLLOWS THE QUESTION/.test(edge));
+  // The heading became MATCH THEM when the prompt was compressed; the rule it
+  // carries is unchanged, and now says explicitly what varies from turn to turn.
+  assert.ok(/MATCH THEM/.test(edge));
+  assert.ok(/Take your length, register and energy from theirs, every turn/.test(edge));
+  assert.ok(/A yes\/no question gets the yes or no/.test(edge));
+  assert.ok(/three or four spoken sentences if/.test(edge));
 });
 
 // ── Somebody simply starts talking ────────────────────────────────────────

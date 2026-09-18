@@ -130,7 +130,7 @@ test('Georgian gets its own instructions, not a translation brief', () => {
   const src = read(SESSION);
   const at = src.indexOf("if (name === 'Georgian')");
   assert.ok(at > 0, 'the Georgian-specific instructions are gone');
-  const block = src.slice(at, at + 1800);
+  const block = src.slice(at, at + 2000);
   assert.ok(/Do NOT compose in English and translate/.test(block));
   // The frame states are the terms that cost real money to get wrong.
   for (const term of ['მწვანე კარკასი', 'საკადასტრო კოდი', 'იპოთეკა']) {

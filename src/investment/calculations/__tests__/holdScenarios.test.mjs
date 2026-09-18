@@ -62,6 +62,46 @@ test('the profit splits into a capital part and an income part that sum exactly'
   assert.equal(h.incomeComponent.value, 4900);
 });
 
+test('the income component is rent after costs and INTEREST, not after the whole payment', () => {
+  /*
+   * The two halves of the profit are taken as a residual so they always
+   * reconcile exactly. That makes the income half identically
+   *
+   *     rent collected - operating costs - interest - lender fees
+   *
+   * which is the cash flow with the PRINCIPAL ADDED BACK: principal is not a
+   * cost, it returns at the exit as a smaller debt payoff, and subtracting it
+   * here would count it twice.
+   *
+   * This is pinned because the label on that figure depends on it. "After
+   * interest" is true; "after the bank" would read as after the whole
+   * mortgage payment, which is a different number — and the copy said the
+   * second one until this identity was checked.
+   */
+  const model = runInvestmentModel(leveredDeal());
+  const h = model.holdAndExit;
+  const l = model.leverage;
+
+  const rentLessCostsLessInterest =
+    h.rentCollectedOverHold.value - h.operatingCostsOverHold.value - l.interestPaidOverHold.value;
+  assert.ok(
+    Math.abs(h.incomeComponent.value - rentLessCostsLessInterest) < 0.02,
+    `income component ${h.incomeComponent.value} should equal ${rentLessCostsLessInterest}`,
+  );
+
+  // And the gap to the cash flow is exactly the principal repaid.
+  assert.ok(
+    Math.abs(
+      h.incomeComponent.value - h.netCashFlowOverHold.value - l.principalRepaidOverHold.value,
+    ) < 0.02,
+  );
+
+  // Both halves still sum to the profit.
+  assert.ok(
+    Math.abs(h.capitalGainComponent.value + h.incomeComponent.value - h.profit.value) < 0.02,
+  );
+});
+
 test('with no exit price the hold is still modelled and the exit is a named gap', () => {
   const model = runInvestmentModel(cashDeal({ exitPriceAssumption: undefined }));
   const h = model.holdAndExit;

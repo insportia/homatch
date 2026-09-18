@@ -206,10 +206,28 @@ export function buildHoldAndExitModel(args: HoldInputs): HoldAndExitModel | null
     capitalGainComponent: figure(
       money(exitPrice - sellingCosts - capital.totalPropertyCapital),
     ),
+    /*
+     * THE INCOME COMPONENT IS NOT THE CASH FLOW, AND THE DIFFERENCE IS THE
+     * PRINCIPAL.
+     *
+     * Taken as the residual so the two halves always reconcile to the profit
+     * exactly rather than to the profit plus a rounding artefact. Doing that
+     * makes it identically equal to:
+     *
+     *     rent collected - operating costs - interest - lender fees
+     *
+     * which is cash flow with the PRINCIPAL REPAYMENT ADDED BACK — verified
+     * on the worked scenario: cash flow -4,128.52, income component
+     * -3,295.16, difference 833.36, which is exactly the principal repaid.
+     *
+     * That is correct rather than a discrepancy. Principal is not a cost: it
+     * comes back at the exit as a smaller debt payoff, and counting it as a
+     * cost here would be counting it twice. But it does mean the label on
+     * this figure must say "after interest", never "after the bank" — the
+     * first is true and the second reads as after the whole payment.
+     */
     incomeComponent: (() => {
       if (operatingCashFlow === null) return unavailable('MISSING_INPUT', 'operating cash flow');
-      // The residual, so the two components always reconcile to the profit
-      // exactly rather than to the profit plus a rounding artefact.
       const capitalPart = money(exitPrice - sellingCosts - capital.totalPropertyCapital);
       const p = profit.value;
       return p === null ? figure(operatingCashFlow) : figure(money(p - capitalPart));

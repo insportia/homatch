@@ -101,6 +101,27 @@ export const SCRIPT_OF: Record<string, Script> = Object.fromEntries(
 );
 
 /** Languages written in Latin letters: script alone cannot tell them apart. */
+/*
+ * THE LANGUAGES THIS PRODUCT CAN ACTUALLY LISTEN IN.
+ *
+ * The live recogniser is PINNED, and these six tags are the only things it
+ * can be pinned to. Everything else in the registry is a language the
+ * assistant can REPLY in, recognised only by the `auto` second opinion --
+ * which, running unrestricted, can name any language on earth and on a real
+ * device sometimes does. A Georgian session was carried into TELUGU by one
+ * such transcript on 2026-09-18.
+ *
+ * So this set is not a preference, it is a fact about the microphone, and the
+ * resolver uses it as one: a switch INTO one of these is the product working
+ * as designed and is believed at once. A detected language from outside it is
+ * believed on the second turn that asks for it.
+ */
+export const SPEECH_TAGS: Record<string, string> = {
+  ka: 'ka-GE', en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', ar: 'ar-XA', he: 'iw-IL',
+};
+
+export const LISTENING_LANGUAGES: readonly string[] = Object.keys(SPEECH_TAGS);
+
 export const LATIN_CODES: readonly string[] = LANGUAGE_REGISTRY
   .filter((l) => l.script === 'latin').map((l) => l.code);
 

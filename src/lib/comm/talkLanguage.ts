@@ -1,7 +1,7 @@
 import {
   LANGUAGE_CODES, LANGUAGE_NAMES, LATIN_CODES, SCRIPT_FAMILIES, SCRIPT_TESTS, guessLatinLanguage,
   latinLanguageAgainst, guessCyrillicLanguage, isGreeting, SCRIPT_OF, type Script,
-  hasAnyFunctionWord, isCheckable, scoreLatinLanguages,
+  hasAnyFunctionWord, isCheckable, scoreLatinLanguages, LISTENING_LANGUAGES,
 } from './languageRegistry.ts';
 // HOMATCH AI TALK — one place that decides what language a turn is in.
 //
@@ -156,6 +156,7 @@ export type ResolutionReason =
   | 'LEXICAL_GREETING'    // a genuine greeting, on a session's first turn
   | 'STICKY_LATIN'        // Latin text, no usable label, session already settled
   | 'LOCALE_LATIN'        // Latin text, nothing else, the UI locale is Latin
+  | 'UNCONFIRMED_LANGUAGE' // a language this conversation has never spoken, on one turn's evidence
   | 'STICKY_HELD'         // evidence too weak to move an established session
   | 'LATIN_FROM_PINNED'   // substantial Latin text out of a non-Latin-pinned socket
   | 'STICKY'              // no evidence at all, session continues
@@ -178,6 +179,15 @@ export interface LanguageResolution {
   confidence: number;
   /** True when the answer differs from the language the session was in. */
   switched: boolean;
+  /**
+   * The language this turn's evidence asked for and did not get.
+   *
+   * Non-null only when a switch was held. The caller feeds it back as
+   * `unconfirmedLanguage` on the next turn, which is the whole of the
+   * hysteresis: asked twice, a new language is believed; asked once, it
+   * waits. Null on every ordinary turn.
+   */
+  proposedLanguage: TalkLanguage | null;
   /**
    * True when this turn was too short to be evidence of anything: a word or
    * two. The language above is then the prior, not a finding, and the model
@@ -236,6 +246,17 @@ export interface ResolveInput {
    * arrival and is held to the full evidence bar. See `ownScriptReturn`.
    */
   sessionLanguages?: readonly string[] | null;
+  /**
+   * The language the PREVIOUS turn's evidence asked for and did not get.
+   *
+   * Hysteresis, in one field. A recogniser running in automatic mode can name
+   * any language on earth, and on a real device it sometimes does: a Georgian
+   * session was taken to TELUGU by one hallucinated transcript. Asking twice
+   * costs a genuine speaker of an unlisted language one turn and costs a
+   * hallucination everything, because the second turn is never the same
+   * mistake.
+   */
+  unconfirmedLanguage?: string | null;
   pageLocale?: string | null;
   /** Used only when there is nothing else at all. */
   fallback?: TalkLanguage;
@@ -303,6 +324,8 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
     let language = resolvedLanguage;
     let reason = resolutionReason;
     let score = confidence;
+    /** What the evidence asked for, when this turn would not give it. */
+    let proposed: TalkLanguage | null = null;
 
     const words = transcript.trim().split(/\s+/).filter(Boolean).length;
 
@@ -387,14 +410,71 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
        * positive piece of lexical evidence, and it needs a DETECTED label --
        * the pinned socket's own configuration can never supply it.
        */
+      /*
+       * A LANGUAGE THIS CONVERSATION HAS NEVER SPOKEN NEEDS MORE THAN ONE TURN.
+       *
+       * MEASURED, physical session 053fc5ef, 2026-09-18 20:02:41 UTC: the
+       * `auto` socket returned a transcript in TELUGU SCRIPT for a Georgian
+       * conversation on the Georgian site. Telugu script belongs to exactly
+       * one language, so SCRIPT resolved it at confidence 1 and the session
+       * switched -- then the pinned recogniser became te-IN, which can never
+       * emit Georgian letters again, and the conversation could not get home.
+       * It ended in Telugu. The visitor was speaking Georgian and English.
+       *
+       * Script is strong evidence about WHICH language, and no evidence at
+       * all about whether that language belongs in this conversation. So:
+       * a language already spoken here, or the language of the page, switches
+       * instantly on script as before -- that is the whole of returning to
+       * Georgian, and of every KA -> X -> KA round trip.
+       *
+       * A language arriving for the FIRST time needs one corroboration:
+       * either its own words appear in the text, which is what a real
+       * Russian, Arabic, Hebrew or Hindi sentence carries, or the previous
+       * turn asked for the same language and was told to wait. A genuine
+       * speaker of a language we cannot check lexically pays exactly one
+       * turn for that. A hallucination pays everything, because the next
+       * turn is a different hallucination or the real language returning.
+       */
+      const spokenHere = input.sessionLanguages ?? [];
+      const belongsHere = language === locale
+        || language === previous
+        || spokenHere.includes(language);
+      /*
+       * Only a DETECTED label is gated. A configured label is the socket
+       * repeating what it was told, and what it was told is always one of the
+       * six this product listens in; a detection is the `auto` opinion, which
+       * is the only thing that can name a language from nowhere.
+       */
+      if (!belongsHere && Boolean(input.providerDetected)) {
+        const corroborated =
+          // One of the six the microphone can actually be pinned to: this is
+          // the product switching, not a recogniser wandering.
+          LISTENING_LANGUAGES.includes(language)
+          // Its own words, for a language whose words we can check.
+          || (isCheckable(language) && hasAnyFunctionWord(transcript, language))
+          // Or its own letters: Turkish and Spanish carry characters no other
+          // language here uses, which is evidence a word list cannot give for
+          // an agglutinative language whose function words wear suffixes.
+          || scoreLatinLanguages(transcript).some((hit) => hit.code === language)
+          // Or the previous turn asked for exactly this and was told to wait.
+          || (input.unconfirmedLanguage != null && input.unconfirmedLanguage === language);
+        if (!corroborated) {
+          proposed = language;
+          language = prior;
+          reason = 'UNCONFIRMED_LANGUAGE';
+          score = 0.4;
+        }
+      }
+
       const genuineGreeting = Boolean(input.firstTurn)
         && Boolean(input.providerDetected)
         && isGreeting(transcript, language);
-      if (tooShort || confidence < SWITCH_MIN_CONFIDENCE) {
+      if (reason !== 'UNCONFIRMED_LANGUAGE' && (tooShort || confidence < SWITCH_MIN_CONFIDENCE)) {
         if (genuineGreeting) {
           reason = 'LEXICAL_GREETING';
           score = 0.65;
         } else {
+          proposed = language === prior ? proposed : language;
           language = prior;
           reason = 'STICKY_HELD';
           score = 0.5;
@@ -403,7 +483,13 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
     }
 
     const weakEvidence = evidence.letters < SWITCH_MIN_LETTERS || words <= 1;
-    return { ...base, resolvedLanguage: language, resolutionReason: reason, confidence: score, switched: Boolean(previous) && language !== previous, weakEvidence };
+    return {
+      ...base, resolvedLanguage: language, resolutionReason: reason, confidence: score,
+      switched: Boolean(previous) && language !== previous, weakEvidence,
+      // What this turn asked for and did not get, so the next turn can count
+      // it as a second opinion rather than a first one.
+      proposedLanguage: proposed && proposed !== language ? proposed : null,
+    };
   };
 
   // 1. The alphabet, where it belongs to exactly one of ours.

@@ -894,6 +894,14 @@ export class VoiceSession {
    * language appearing for the first time. See ownScriptReturn.
    */
   private spokenLanguages = new Set<string>();
+  /** What the last ACCEPTED turn's evidence asked for and did not get. */
+  private unconfirmedLanguage: string | null = null;
+  /** Turns refused as gibberish since the last one that reached the model. */
+  private refusedSinceLastTurn = 0;
+  /** The transcript of the turn being sent, for its shape only. */
+  private lastTranscriptForShape = '';
+  /** Refusals in the gap before the turn now being sent. */
+  private refusedForThisTurn = 0;
   private discreditedDrops = 0;
   /** Words in the latest interim of the utterance in progress; 0 before any. */
   private livePartialWords = 0;
@@ -1864,7 +1872,21 @@ export class VoiceSession {
     this.utteranceEpoch += 1;
     this.shadowResult = null;
     try { this.shadow?.finalize?.(); } catch { /* the opinion is optional */ }
-    if (this.state === 'LISTENING') this.setState('UNDERSTANDING');
+    /*
+     * DELIBERATELY NOT setState('UNDERSTANDING') HERE.
+     *
+     * This point is "the endpointer thinks the speech stopped". No transcript
+     * exists yet, nothing has been qualified, and most of what arrives next
+     * is a fragment this session will refuse. Announcing "thinking" here told
+     * the visitor the assistant was working on an answer, then produced
+     * nothing for two seconds and went back to listening -- or sent the
+     * fragment on and got "I'm listening" back, which is the model's honest
+     * answer to being handed nothing.
+     *
+     * The microphone is still open and we are still listening, so LISTENING
+     * is the true state. UNDERSTANDING is set in takeTurn, at the moment a
+     * turn is actually committed to the model.
+     */
   }
 
   /**
@@ -2207,7 +2229,8 @@ export class VoiceSession {
         // a person actually feels begins.
         this.marks.speechEndedAtMs = Date.now();
         this.marks.endpointConfirmedAtMs = Date.now();
-        if (!this.turnInFlight) this.setState('UNDERSTANDING');
+        // Not UNDERSTANDING: see maybeEndLiveTurn. The provider's endpointer
+        // firing is not a turn, and half of them here were never one.
       },
       onPartial: (text) => this.showPartial(text),
       onFinal: (text, heard) => { void this.onLiveFinal(text, heard ?? null); },
@@ -2547,6 +2570,7 @@ export class VoiceSession {
       providerDetected: heardByDetected,
       firstTurn: this.resolvedTurns === 0,
       sessionLanguages: [...this.spokenLanguages],
+      unconfirmedLanguage: this.unconfirmedLanguage,
       previousSessionLanguage: this.language.current,
       pageLocale: this.pageLocale,
     });
@@ -2608,27 +2632,29 @@ export class VoiceSession {
       this.weakTurns = 0;
     }
 
-    const before = this.language.current;
-    this.language = {
-      ...this.language,
-      current: resolution.resolvedLanguage,
-      locked: resolution.confidence >= 0.6,
-    };
-    // The last non-Latin language this visitor actually used: the first
-    // candidate a same-turn recovery asks for.
-    if (!['en', 'tr'].includes(this.language.current)) this.lastNonLatin = this.language.current;
-    if (this.language.current !== before || this.language.locked) {
-      this.cb.onLanguage(this.language.current, this.language.locked);
-    }
-
     /*
-     * EVERY RECOGNISER HAS SPOKEN AND NONE OF THEM PRODUCED THIS LANGUAGE.
-     * See MAX_CONSECUTIVE_DISCREDITED_DROPS. The visitor's line is taken back
-     * off the screen because it was never their line.
+     * REFUSE FIRST, THEN PIN. THIS ORDER IS THE WHOLE BUG.
+     *
+     * MEASURED, physical session 053fc5ef: eighteen turn ids were issued and
+     * ten reached the server. The eight that did not were refused here as
+     * gibberish -- and had ALREADY repinned the session language on the line
+     * above, because the assignment came first. Repinning the session
+     * repoints the recogniser socket, so the next utterance was heard by a
+     * recogniser configured from a transcript we had just declared unusable.
+     * That turn then produced more gibberish, which repinned again.
+     *
+     * The trace shows the ratchet plainly: every turn that reached the server
+     * arrived with previous_session_language ALREADY set to a language no
+     * accepted turn had ever resolved to. ka -> ru -> ar -> en -> TELUGU, on
+     * the Georgian site, from somebody speaking Georgian and English.
+     *
+     * A turn we will not send to the model is a turn we did not understand.
+     * It cannot be allowed to decide what language we listen in next.
      */
     if (this.shouldRefuse(said, resolution.resolvedLanguage)) {
       this.discreditedDrops += 1;
       this.diag.discreditedTurnsDropped = (this.diag.discreditedTurnsDropped ?? 0) + 1;
+      this.refusedSinceLastTurn += 1;
       this.turns = this.turns.filter((t) => t.id !== id);
       this.cb.onTranscript(this.turns);
       this.milestone('turn_refused', resolution.resolvedLanguage);
@@ -2636,8 +2662,37 @@ export class VoiceSession {
       this.resumeListening();
       return;
     }
+
+    const before = this.language.current;
+    this.language = {
+      ...this.language,
+      current: resolution.resolvedLanguage,
+      locked: resolution.confidence >= 0.6,
+    };
+    /*
+     * What this turn asked for and did not get. Fed back to the resolver on
+     * the next turn, where a second identical request is believed: that is
+     * the hysteresis that costs a real speaker of an unlisted language one
+     * turn and costs a hallucinated language everything. Only turns we
+     * ACCEPTED count -- a refused turn is evidence against a language, not
+     * for it, and must never accumulate toward adopting one.
+     */
+    this.unconfirmedLanguage = resolution.proposedLanguage;
+    this.spokenLanguages.add(resolution.resolvedLanguage);
+    // The last non-Latin language this visitor actually used: the first
+    // candidate a same-turn recovery asks for.
+    if (!['en', 'tr'].includes(this.language.current)) this.lastNonLatin = this.language.current;
+    if (this.language.current !== before || this.language.locked) {
+      this.cb.onLanguage(this.language.current, this.language.locked);
+    }
+
     this.discreditedDrops = 0;
     this.resolvedTurns += 1;
+    this.lastTranscriptForShape = said;
+    // Reported with THIS turn, then cleared: the count belongs to the gap
+    // that preceded it, not to the session.
+    this.refusedForThisTurn = this.refusedSinceLastTurn;
+    this.refusedSinceLastTurn = 0;
     this.spokenLanguages.add(resolution.resolvedLanguage);
 
     this.publishDiagnostics();
@@ -2887,6 +2942,7 @@ export class VoiceSession {
       providerDetected: this.lastProviderDetected,
       firstTurn: this.resolvedTurns === 0,
       sessionLanguages: [...this.spokenLanguages],
+      unconfirmedLanguage: this.unconfirmedLanguage,
       previousSessionLanguage: this.language.current, pageLocale: this.pageLocale,
     });
     this.diag.languageState = {
@@ -3453,6 +3509,31 @@ export class VoiceSession {
   clearSttSeconds(): void {
     this.sttPrimaryReported = this.router.sentLiveBytes + this.router.flushedBufferedBytes;
     this.sttShadowBytes = 0;
+  }
+
+  /**
+   * What the server cannot see about a turn, without storing a word of it.
+   *
+   * The forensics of session 053fc5ef needed the shape of each transcript and
+   * the count of turns that never became one, and neither was recorded
+   * anywhere: refused turns produce no server event at all, because they
+   * never reach the server. These are lengths, scripts and counts only. No
+   * transcript text leaves the browser that did not already leave it.
+   */
+  get turnShape(): {
+    transcriptChars: number; transcriptWords: number;
+    shadowLanguage: string | null; shadowChars: number;
+    proposedLanguage: string | null; refusedBefore: number;
+  } {
+    const said = this.lastTranscriptForShape;
+    return {
+      transcriptChars: said.length,
+      transcriptWords: said.trim().split(/\s+/).filter(Boolean).length,
+      shadowLanguage: this.shadowResult?.language ?? null,
+      shadowChars: this.shadowResult?.text.length ?? 0,
+      proposedLanguage: this.lastResolution?.proposedLanguage ?? null,
+      refusedBefore: this.refusedForThisTurn,
+    };
   }
 
   get stageStamps(): { speechEndToFinalMs: number | null; finalToRequestMs: number | null; opinionWaitMs: number } {

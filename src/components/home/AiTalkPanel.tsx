@@ -630,6 +630,16 @@ export function AiTalkPanel({ className }: { className?: string }) {
                 sttShadowAudioSeconds: sessionRef.current.sttSeconds.shadow,
               }
               : {}),
+            /*
+             * The shape of this turn, and of the ones that never became turns.
+             *
+             * Reconstructing the Telugu session needed both and neither was
+             * recorded: a refused turn produces no server event at all,
+             * because it never reaches the server. Lengths, scripts and
+             * counts only -- no transcript text leaves the browser that was
+             * not already leaving it.
+             */
+            ...(sessionRef.current ? { turnShape: sessionRef.current.turnShape } : {}),
             // Conversation language BEFORE this turn, and how sure this turn's
             // language is: the server states both to the model as facts.
             ...(sessionRef.current?.languageTrace.previousLanguage

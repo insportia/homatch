@@ -32,7 +32,7 @@ import {
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { priceBook, llmCost, sttCost, ttsCost } from '../_shared/comm/voiceCogs.ts';
 import { judgeOverlap } from '../_shared/comm/generated/streamingOverlap.ts';
-import { LANGUAGE_NAMES as REGISTRY_LANGUAGE_NAMES } from '../_shared/comm/generated/languageRegistry.ts';
+import { LANGUAGE_NAMES as REGISTRY_LANGUAGE_NAMES, SPEECH_TAGS } from '../_shared/comm/generated/languageRegistry.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
 import {
   /*
@@ -370,6 +370,16 @@ interface TalkRequest {
    */
   sttAudioSeconds?: number | null;
   sttShadowAudioSeconds?: number | null;
+  /**
+   * The shape of this turn and of the gap before it. Diagnostics only: no
+   * transcript text, only its length, and how many utterances the browser
+   * refused as gibberish before this one was accepted.
+   */
+  turnShape?: {
+    transcriptChars?: number; transcriptWords?: number;
+    shadowLanguage?: string | null; shadowChars?: number;
+    proposedLanguage?: string | null; refusedBefore?: number;
+  };
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
   /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
@@ -1094,9 +1104,13 @@ async function aiTalkVoice(
  */
 
 /** The BCP-47 tags the recogniser wants, for the languages above. */
-const SPEECH_TAGS: Record<string, string> = {
-  ka: 'ka-GE', en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', ar: 'ar-XA', he: 'iw-IL',
-};
+/*
+ * Moved to languageRegistry.ts, where the resolver also needs it: these six
+ * tags are the only things the live recogniser can be pinned to, and that
+ * fact now decides both which socket is granted AND whether a detected
+ * language is believed on its first turn. One copy, or the two drift and the
+ * browser and the server disagree about what the product can hear.
+ */
 
 /**
  * The candidates for this conversation, most likely first.
@@ -2463,6 +2477,15 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           llm_think_ms: llmThinkMs,
           llm_input_tokens: llmInputTokens,
           llm_cached_input_tokens: llmCachedInputTokens,
+          transcript_chars: body.turnShape?.transcriptChars ?? null,
+          transcript_words: body.turnShape?.transcriptWords ?? null,
+          shadow_language: body.turnShape?.shadowLanguage ?? null,
+          shadow_chars: body.turnShape?.shadowChars ?? null,
+          // The language this turn's evidence asked for and did not get.
+          proposed_language: body.turnShape?.proposedLanguage ?? null,
+          // Utterances refused as gibberish in the gap before this turn: the
+          // measure of how much of a conversation is being thrown away.
+          refused_before: body.turnShape?.refusedBefore ?? null,
           tts_skipped_phrases: skippedPhrases,
           tts_skipped_chars: skippedChars,
           abandoned_why: abandoned,

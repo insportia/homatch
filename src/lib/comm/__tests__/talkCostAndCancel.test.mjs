@@ -10,12 +10,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { resolveTurnLanguage } from '../talkLanguage.ts';
+import { LISTENING_LANGUAGES } from '../languageRegistry.ts';
 import {
   rateFor, charge, llmCost, sttCost, ttsCost, audioSecondsFromBytes, LIVE_BYTES_PER_SECOND,
 } from '../../../../supabase/functions/_shared/comm/voiceCogs.ts';
 
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-const read = (p) => readFileSync(p, 'utf8');
+/*
+ * Line endings are normalised because these assertions read SOURCE, and a
+ * Windows working copy and a fresh CI checkout disagree about them. A test
+ * that passes on one machine and fails on another is worse than no test: it
+ * teaches people to ignore the result. Caught by running this suite in a
+ * clean worktree rather than trusting the tree it was written in.
+ */
+const CR = String.fromCharCode(13);
+const read = (p) => readFileSync(p, 'utf8').split(CR).join('');
+
 const edge = read('supabase/functions/ai-talk-session/index.ts');
 const client = read('src/lib/comm/voiceClient.ts');
 const cartesia = read('supabase/functions/_shared/comm/cartesia.ts');
@@ -382,4 +393,209 @@ test('a cancelled turn still records what it actually spent', () => {
   assert.match(e, /const neverSubmitted = out\.error\?\.code === 'CANCELLED'/);
   assert.match(e, /characters: neverSubmitted \? 0 : params\.text\.length,/);
   assert.match(e, /costUsd: neverSubmitted \? 0 : ttsCost\(/);
+});
+
+/* ── 12. The session that ended up in Telugu ────────────────────────────── */
+
+const TELUGU = 'నేను తెలుగు మాట్లాడుతున్నాను ఇక్కడ చాలా బాగుంది';
+
+test('a language this conversation has never spoken waits one turn', () => {
+  /*
+   * PRODUCTION, session 053fc5ef, 2026-09-18 20:02:41 UTC. The `auto` socket
+   * returned a transcript in TELUGU SCRIPT during a Georgian conversation on
+   * the Georgian site. Telugu script belongs to exactly one language, so
+   * SCRIPT resolved it at confidence 1 and the session switched. The pinned
+   * recogniser then became te-IN, which can never emit Georgian letters, so
+   * no later turn could bring the conversation home. It ended in Telugu.
+   * The visitor had been speaking Georgian and English.
+   *
+   * Script says WHICH language with great authority and says nothing at all
+   * about whether that language belongs in this conversation.
+   */
+  const first = resolveTurnLanguage({
+    transcript: TELUGU, providerLanguage: 'te', providerDetected: true,
+    previousSessionLanguage: 'en', pageLocale: 'ka', sessionLanguages: ['ka', 'ru', 'ar', 'en'],
+  });
+  assert.equal(first.resolvedLanguage, 'en', 'the session is not carried off on one turn');
+  assert.equal(first.resolutionReason, 'UNCONFIRMED_LANGUAGE');
+  assert.equal(first.proposedLanguage, 'te', 'but what it asked for is remembered');
+  assert.ok(first.confidence < 0.6, 'and never becomes a settled fact');
+
+  // Asked twice, it is believed: a real speaker of a language we cannot check
+  // lexically pays exactly one turn, and no more.
+  const second = resolveTurnLanguage({
+    transcript: TELUGU, providerLanguage: 'te', providerDetected: true, unconfirmedLanguage: 'te',
+    previousSessionLanguage: 'en', pageLocale: 'ka', sessionLanguages: ['ka', 'ru', 'ar', 'en'],
+  });
+  assert.equal(second.resolvedLanguage, 'te', 'hysteresis, not a wall');
+  assert.equal(second.resolutionReason, 'SCRIPT');
+});
+
+test('the six the microphone can be pinned to still switch on the first turn', () => {
+  // These are not a favoured list, they are what the recogniser can be
+  // configured to hear. A switch into one of them is the product working.
+  const cases = [
+    ['ru', 'Здравствуйте, я ищу двухкомнатную квартиру в Ваке.'],
+    ['ar', 'مرحبا، أبحث عن شقة بغرفتي نوم في تبليسي.'],
+    ['he', 'שלום, אני מחפש דירת שני חדרים בתל אביב.'],
+    ['en', 'Hello, I am looking for a two bedroom flat in Vake.'],
+    ['tr', "Vake'de metrekare fiyatı nedir?"],
+  ];
+  for (const [lang, said] of cases) {
+    const r = resolveTurnLanguage({
+      transcript: said, providerLanguage: lang, providerDetected: true,
+      previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
+    });
+    assert.equal(r.resolvedLanguage, lang, `ka -> ${lang}: "${said}" (${r.resolutionReason})`);
+    assert.equal(r.switched, true);
+  }
+  assert.deepEqual([...LISTENING_LANGUAGES].sort(), ['ar', 'en', 'he', 'ka', 'ru', 'tr']);
+});
+
+test('a reply language outside the six is believed on its own letters or words', () => {
+  // Spanish, French and German are languages the assistant answers in but
+  // cannot listen in. Their own alphabets and words still speak for them, so
+  // a genuine sentence does not wait.
+  for (const [lang, said] of [
+    ['es', 'Hola, ¿cuánto cuesta un piso de dos habitaciones?'],
+    ['fr', 'Bonjour, je cherche un appartement avec deux chambres.'],
+    ['de', 'Hallo, ich suche eine Wohnung mit zwei Zimmern.'],
+  ]) {
+    const r = resolveTurnLanguage({
+      transcript: said, providerLanguage: lang, providerDetected: true,
+      previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
+    });
+    assert.equal(r.resolvedLanguage, lang, `${lang}: ${r.resolutionReason}`);
+  }
+});
+
+test('returning home is untouched, from every language including the one that captured it', () => {
+  for (const from of ['en', 'ru', 'ar', 'tr', 'he', 'te', 'es']) {
+    for (const said of ['კარგი, მაშინ მითხარი რამდენი ღირს ვაკეში.', 'კი', 'ხო, მერე?', 'არა']) {
+      const r = resolveTurnLanguage({
+        transcript: said, providerLanguage: from, providerDetected: false,
+        previousSessionLanguage: from, pageLocale: 'ka', sessionLanguages: ['ka', from],
+      });
+      assert.equal(r.resolvedLanguage, 'ka', `${from} -> "${said}" (${r.resolutionReason})`);
+    }
+  }
+});
+
+test('a language already spoken here comes straight back, with no second asking', () => {
+  // The gate is about arriving somewhere new, never about going back.
+  for (const lang of ['ru', 'ar', 'he', 'en', 'te']) {
+    const r = resolveTurnLanguage({
+      transcript: lang === 'ru' ? 'Да, сколько это стоит?'
+        : lang === 'ar' ? 'نعم، كم سعر الشقة؟'
+          : lang === 'he' ? 'כן, כמה זה עולה?'
+            : lang === 'te' ? TELUGU : 'Yes, how much does it cost?',
+      providerLanguage: lang, providerDetected: true,
+      previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka', lang],
+    });
+    assert.equal(r.resolvedLanguage, lang, `back to ${lang} (${r.resolutionReason})`);
+  }
+});
+
+test('a single foreign word, a proper noun or a fragment still moves nothing', () => {
+  for (const [said, label] of [
+    ['developer', 'en'], ['Tbilisi', 'en'], ['Abba', 'en'], ['Karki', 'en'],
+    ['रामाखूया', 'hi'], ['RAM x 6Y', 'en'],
+    ['Madoba, ratom ar mitxari es adre, me minda vnaxo bina', 'es'],
+  ]) {
+    const r = resolveTurnLanguage({
+      transcript: said, providerLanguage: label, providerDetected: true,
+      previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
+    });
+    assert.equal(r.resolvedLanguage, 'ka', `"${said}" moved it to ${r.resolvedLanguage}`);
+  }
+});
+
+/* ── 13. The ratchet: a refused turn used to repin the microphone ───────── */
+
+test('a turn we refuse to send cannot decide what we listen in next', () => {
+  /*
+   * The same session issued eighteen turn ids and sent ten. The eight that
+   * were refused as gibberish had ALREADY repinned the session language,
+   * because the assignment ran before the refusal. Repinning the session
+   * repoints the recogniser socket, so the next utterance was heard by a
+   * recogniser configured from a transcript we had just declared unusable --
+   * which produced more gibberish, which repinned again.
+   *
+   * The trace shows it: every turn that reached the server arrived with
+   * previous_session_language already set to a language no accepted turn had
+   * ever resolved to. ka -> ru -> ar -> en -> te.
+   */
+  const c = strip(client);
+  const refuseAt = c.indexOf('if (this.shouldRefuse(said, resolution.resolvedLanguage))');
+  const pinAt = c.indexOf('const before = this.language.current;');
+  assert.ok(refuseAt > 0 && pinAt > 0);
+  assert.ok(refuseAt < pinAt, 'the refusal decides before the session is repinned');
+  // And the refusal path leaves before reaching the pin.
+  const block = c.slice(refuseAt, pinAt);
+  assert.match(block, /this\.resumeListening\(\);\s*return;/);
+  assert.match(block, /this\.refusedSinceLastTurn \+= 1;/, 'and is counted for the next trace');
+  // Only an accepted turn teaches the session a language or a candidate.
+  assert.match(c, /this\.unconfirmedLanguage = resolution\.proposedLanguage;/);
+  assert.match(c, /this\.spokenLanguages\.add\(resolution\.resolvedLanguage\);/);
+  assert.ok(c.indexOf('this.spokenLanguages.add') > refuseAt, 'after the refusal, not before');
+});
+
+/* ── 14. Thinking must mean thinking ────────────────────────────────────── */
+
+test('the assistant does not claim to be thinking because a silence was detected', () => {
+  /*
+   * UNDERSTANDING -- "ვფიქრობ..." on screen -- was entered the moment an
+   * endpointer decided speech had stopped, before any transcript existed and
+   * before anything had been qualified. On the owner's session most of those
+   * became nothing: a fragment refused two seconds later, and the state went
+   * back to listening having promised an answer that was never coming. The
+   * ones that were not refused reached the model as fragments and came back
+   * as "I'm listening", which is the only honest answer to being handed
+   * nothing.
+   */
+  const c = strip(client);
+  // Neither endpointer announces thinking any more.
+  const endTurn = c.slice(c.indexOf('private maybeEndLiveTurn'), c.indexOf('private maybeEndLiveTurn') + 2600);
+  assert.ok(!endTurn.includes("setState('UNDERSTANDING')"), 'the local endpointer does not');
+  // The primary socket's handler, not the shadow's empty one beside it.
+  const at = c.indexOf('this.marks.endpointConfirmedAtMs = Date.now();');
+  assert.ok(at > 0, 'the moment is still stamped');
+  const onSpeechEnd = c.slice(at - 300, at + 300);
+  assert.ok(!onSpeechEnd.includes("setState('UNDERSTANDING')"), "the provider's endpointer does not");
+  // It is set where a turn is actually committed to the model.
+  const take = c.slice(c.indexOf("this.setState('UNDERSTANDING');\n    this.milestone('user_turn_sent'"));
+  assert.ok(take.startsWith("this.setState('UNDERSTANDING');"), 'immediately before the turn is sent');
+});
+
+test('the shape of a turn, and of the turns that never were, reaches the trace', () => {
+  // Reconstructing the Telugu session needed both and neither was recorded:
+  // a refused turn produces no server event, because it never reaches one.
+  const c = strip(client);
+  assert.match(c, /get turnShape\(\)/);
+  assert.match(c, /refusedBefore: this\.refusedForThisTurn,/);
+  assert.match(c, /shadowLanguage: this\.shadowResult\?\.language \?\? null,/);
+  assert.match(c, /proposedLanguage: this\.lastResolution\?\.proposedLanguage \?\? null,/);
+  const panel = strip(read('src/components/home/AiTalkPanel.tsx'));
+  assert.match(panel, /turnShape: sessionRef\.current\.turnShape/);
+  const e = strip(edge);
+  for (const field of ['transcript_chars', 'transcript_words', 'shadow_language',
+    'proposed_language', 'refused_before']) {
+    assert.ok(e.includes(field), `${field} is logged`);
+  }
+  // Lengths and counts, never the words themselves.
+  assert.ok(!/transcript_text|said_text|transcript_body/.test(e), 'no transcript content is logged');
+  // What IS logged about the words is their count and their alphabet.
+  assert.match(e, /transcript_chars: body\.turnShape\?\.transcriptChars \?\? null,/);
+  assert.match(e, /transcript_script:/);
+});
+
+test('the six listening languages are declared once, not in two places', () => {
+  // The edge granted sockets from its own copy while the resolver judged
+  // switches from another; two copies of "what can this product hear" drift.
+  const e = strip(edge);
+  assert.match(e, /import \{ LANGUAGE_NAMES as REGISTRY_LANGUAGE_NAMES, SPEECH_TAGS \}/);
+  assert.ok(!/const SPEECH_TAGS: Record<string, string> = \{/.test(e), 'the edge no longer defines its own');
+  const reg = read('src/lib/comm/languageRegistry.ts');
+  assert.match(reg, /export const SPEECH_TAGS: Record<string, string> = \{/);
+  assert.match(reg, /export const LISTENING_LANGUAGES: readonly string\[\] = Object\.keys\(SPEECH_TAGS\);/);
 });

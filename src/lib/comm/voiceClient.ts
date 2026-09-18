@@ -50,10 +50,10 @@ import { LiveAudioRouter, type LivePhase } from './liveAudioRouter.ts';
 import { FinalWatch, type FinalDecision } from './finalWatch.ts';
 import { gateWatchdog } from './gateWatchdog.ts';
 import {
-  planRecovery, planFragmentRecovery, consistentWith, hasAnyFunctionWord,
+  planRecovery, planFragmentRecovery, consistentWith, hasAnyFunctionWord, isDiscreditedTurn,
   RECOVERY_MIN_WORDS, type RecoveryReason,
 } from './sameTurnRecovery.ts';
-import { LATIN_CODES } from './languageRegistry.ts';
+import { LATIN_CODES, SCRIPT_OF } from './languageRegistry.ts';
 import { SWITCH_MIN_LETTERS, SWITCH_MIN_LETTERS_BY_SCRIPT } from './talkLanguage.ts';
 import { scriptEvidence } from './talkLanguage.ts';
 import { ADMIN_SESSION_SECONDS } from './talkAllowance.ts';
@@ -328,6 +328,8 @@ export interface VoiceDiagnostics {
   } | null;
   secondOpinionFailures: number;
   lateFinalsDropped: number;
+  /** Turns refused because every recogniser produced text of the wrong language. */
+  discreditedTurnsDropped: number;
   /** Times the live path was re-tried after a fallback to batch. */
   liveRetries: number;
   /**
@@ -518,7 +520,7 @@ export interface VoiceMilestone {
     | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition'
   | 'no_final_recovered'
   | 'inaudible_tail'
-  | 'same_turn_recovered' | 'second_opinion_used' | 'second_opinion_turn' | 'failed';
+  | 'same_turn_recovered' | 'second_opinion_used' | 'second_opinion_turn' | 'turn_refused' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
@@ -651,6 +653,24 @@ const SECOND_OPINION = true;
  * second opinion, no provider label. A fallback is a moment, not a verdict.
  * The live path is retried a bounded number of times, between turns.
  */
+/*
+ * REFUSING TO GUESS, WITHOUT GOING QUIET.
+ *
+ * A one-second utterance in a language the socket is not pinned to can come
+ * back as letters of the pinned language that spell nothing -- "RAM x 6Y" for
+ * a Georgian question, "रामाखूया" for the same one. Every recogniser has had
+ * its turn by then: the pinned one, the `auto` opinion and the batch
+ * recovery. Sending that to the model is how a conversation gets a confused
+ * answer it then has to carry in its history.
+ *
+ * So a turn whose text is not even in a script the resolved language is
+ * written in, and which carries none of that language's words, is dropped:
+ * nothing is sent, nothing is remembered, the microphone keeps listening.
+ * Bounded, because a systematic mismatch must never become silence -- after
+ * two in a row the third goes through and the assistant can say it did not
+ * understand.
+ */
+const MAX_CONSECUTIVE_DISCREDITED_DROPS = 2;
 const LIVE_RETRY_MAX = 3;
 const LIVE_RETRY_BASE_MS = 2500;
 /** How long a live final waits for the second opinion before deciding alone. */
@@ -847,6 +867,9 @@ export class VoiceSession {
   private liveRetries = 0;
   /** Whether the last turn's provider label was a detection rather than a pin. */
   private lastProviderDetected = false;
+  /** Turns that have actually resolved a language. Zero means the page is the only prior. */
+  private resolvedTurns = 0;
+  private discreditedDrops = 0;
   /** Words in the latest interim of the utterance in progress; 0 before any. */
   private livePartialWords = 0;
   private liveRetryTimer: number | null = null;
@@ -1083,6 +1106,7 @@ export class VoiceSession {
     secondOpinion: null as VoiceDiagnostics['secondOpinion'],
     secondOpinionFailures: 0,
     lateFinalsDropped: 0,
+    discreditedTurnsDropped: 0,
     liveRetries: 0,
     languageState: { socket: null, turn: null, previous: null, response: null, recovery: null } as VoiceDiagnostics['languageState'],
     assistantAudibleResponseCompleted: null as boolean | null,
@@ -1361,6 +1385,7 @@ export class VoiceSession {
       secondOpinion: this.diag.secondOpinion ?? null,
       secondOpinionFailures: this.diag.secondOpinionFailures ?? 0,
       lateFinalsDropped: this.diag.lateFinalsDropped ?? 0,
+      discreditedTurnsDropped: this.diag.discreditedTurnsDropped ?? 0,
       liveRetries: this.liveRetries,
       languageState: this.diag.languageState,
       usageTier: this.grantInfo.usageTier,
@@ -2447,6 +2472,7 @@ export class VoiceSession {
       transcript: said,
       providerLanguage: heardBy,
       providerDetected: heardByDetected,
+      firstTurn: this.resolvedTurns === 0,
       previousSessionLanguage: this.language.current,
       pageLocale: this.pageLocale,
     });
@@ -2521,8 +2547,41 @@ export class VoiceSession {
       this.cb.onLanguage(this.language.current, this.language.locked);
     }
 
+    /*
+     * EVERY RECOGNISER HAS SPOKEN AND NONE OF THEM PRODUCED THIS LANGUAGE.
+     * See MAX_CONSECUTIVE_DISCREDITED_DROPS. The visitor's line is taken back
+     * off the screen because it was never their line.
+     */
+    if (this.shouldRefuse(said, resolution.resolvedLanguage)) {
+      this.discreditedDrops += 1;
+      this.diag.discreditedTurnsDropped = (this.diag.discreditedTurnsDropped ?? 0) + 1;
+      this.turns = this.turns.filter((t) => t.id !== id);
+      this.cb.onTranscript(this.turns);
+      this.milestone('turn_refused', resolution.resolvedLanguage);
+      this.publishDiagnostics();
+      this.resumeListening();
+      return;
+    }
+    this.discreditedDrops = 0;
+    this.resolvedTurns += 1;
+
     this.publishDiagnostics();
     await this.takeTurn(said);
+  }
+
+  /**
+   * Is this text provably not the language the turn resolved to?
+   *
+   * Not "unlikely" -- provably: a different script from the one that language
+   * is written in, short enough to be a fragment rather than a sentence, and
+   * carrying none of that language's own words. A Georgian speaker dropping
+   * one English term into a Georgian session writes mostly Georgian letters
+   * and never reaches here; a recogniser inventing "RAM x 6Y" reaches here
+   * every time.
+   */
+  private shouldRefuse(said: string, resolved: string): boolean {
+    if (this.discreditedDrops >= MAX_CONSECUTIVE_DISCREDITED_DROPS) return false;
+    return isDiscreditedTurn(said, resolved);
   }
 
   /** Keep the last TAP_MAX_SECONDS of what was actually sent. */
@@ -2751,6 +2810,7 @@ export class VoiceSession {
     this.lastResolution = resolveTurnLanguage({
       transcript: said, providerLanguage: reply.language ?? null,
       providerDetected: this.lastProviderDetected,
+      firstTurn: this.resolvedTurns === 0,
       previousSessionLanguage: this.language.current, pageLocale: this.pageLocale,
     });
     this.diag.languageState = {
@@ -2766,6 +2826,7 @@ export class VoiceSession {
     }
 
     this.transcribing = false;
+    this.resolvedTurns += 1;
     this.publishDiagnostics();
     await this.takeTurn(said);
   }
@@ -2865,6 +2926,7 @@ export class VoiceSession {
       weakEvidence: this.lastResolution?.weakEvidence ?? null,
       providerLanguage: this.lastProviderLanguage,
       providerDetected: this.lastProviderDetected,
+      resolvedTurns: this.resolvedTurns,
       secondOpinion: this.diag.secondOpinion ?? null,
       mode: this.diag.liveMode,
       liveRetries: this.liveRetries,
@@ -3287,11 +3349,12 @@ export class VoiceSession {
    */
   get languageTrace(): {
     providerLanguage: string | null; providerDetected: boolean;
-    resolution: LanguageResolution | null; previousLanguage: string | null;
+    resolution: LanguageResolution | null; previousLanguage: string | null; firstTurn: boolean;
   } {
     return {
       providerLanguage: this.lastProviderLanguage, providerDetected: this.lastProviderDetected,
       resolution: this.lastResolution, previousLanguage: this.previousTurnLanguage,
+      firstTurn: this.resolvedTurns === 0,
     };
   }
 

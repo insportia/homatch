@@ -1,6 +1,6 @@
 import {
   LANGUAGE_CODES, LANGUAGE_NAMES, LATIN_CODES, SCRIPT_FAMILIES, SCRIPT_TESTS, guessLatinLanguage,
-  latinLanguageAgainst, guessCyrillicLanguage, SCRIPT_OF, type Script,
+  latinLanguageAgainst, guessCyrillicLanguage, isGreeting, SCRIPT_OF, type Script,
 } from './languageRegistry.ts';
 // HOMATCH AI TALK — one place that decides what language a turn is in.
 //
@@ -150,7 +150,9 @@ const LATIN_LANGUAGES: readonly TalkLanguage[] = LATIN_CODES;
 
 export type ResolutionReason =
   | 'SCRIPT'              // the alphabet settles it
-  | 'PROVIDER_LATIN' | 'LATIN_LEXICAL'      // Latin text, and the provider named one of ours
+  | 'PROVIDER_LATIN'      // Latin text, and the provider named one of ours
+  | 'LATIN_LEXICAL'       // Latin text whose WORDS are another Latin language
+  | 'LEXICAL_GREETING'    // a genuine greeting, on a session's first turn
   | 'STICKY_LATIN'        // Latin text, no usable label, session already settled
   | 'LOCALE_LATIN'        // Latin text, nothing else, the UI locale is Latin
   | 'STICKY_HELD'         // evidence too weak to move an established session
@@ -220,6 +222,12 @@ export interface ResolveInput {
    * equally, and a short clear switch out of a non-Latin session was held.
    */
   providerDetected?: boolean;
+  /**
+   * True while no turn of this session has resolved a language yet. The page
+   * is the only prior then, and it is a much weaker one than a conversation
+   * somebody has actually been having.
+   */
+  firstTurn?: boolean;
   previousSessionLanguage?: string | null;
   pageLocale?: string | null;
   /** Used only when there is nothing else at all. */
@@ -320,10 +328,30 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
        * still guards every Latin case, which is where the corruptions live.
        */
       const tooShort = evidence.letters < minLetters && words < 3;
+      /*
+       * ONE WORD CAN BE EVIDENCE IF IT IS A WORD.
+       *
+       * The floor above exists for what a recogniser INVENTS out of a syllable
+       * it could not place -- "Abba", "Karki", "dir", "Wackisch". A greeting is
+       * the opposite: a closed list of things people actually say, matched
+       * whole. On a session's first turn the only prior is the page somebody
+       * happened to open, and holding "Hello." to it answered an English
+       * speaker in Georgian. The threshold is not lowered; this is a separate,
+       * positive piece of lexical evidence, and it needs a DETECTED label --
+       * the pinned socket's own configuration can never supply it.
+       */
+      const genuineGreeting = Boolean(input.firstTurn)
+        && Boolean(input.providerDetected)
+        && isGreeting(transcript, language);
       if (tooShort || confidence < SWITCH_MIN_CONFIDENCE) {
-        language = prior;
-        reason = 'STICKY_HELD';
-        score = 0.5;
+        if (genuineGreeting) {
+          reason = 'LEXICAL_GREETING';
+          score = 0.65;
+        } else {
+          language = prior;
+          reason = 'STICKY_HELD';
+          score = 0.5;
+        }
       }
     }
 

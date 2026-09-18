@@ -22,7 +22,8 @@
  * trigger this: it needs sustained speech and several words.
  */
 
-import type { TalkLanguage } from './talkLanguage.ts';
+import { scriptEvidence, type TalkLanguage } from './talkLanguage.ts';
+import { SCRIPT_OF as SCRIPT_OF_LANGUAGE } from './languageRegistry.ts';
 
 /** Languages whose transcripts can be checked for function words. */
 export type CheckableLanguage = 'en' | 'tr' | 'ru' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'pl' | 'nl' | 'uk' | 'ka' | 'ar' | 'he' | 'hi';
@@ -215,6 +216,29 @@ export function planRecovery(input: RecoveryInput): RecoveryPlan | null {
  * short answer ("კი, კარგი", "Okay, sure", "مرحبا، اسمي طارق") always carries
  * one, so this cannot fire on them.
  */
+/**
+ * IS THIS TEXT PROVABLY NOT THE LANGUAGE THE TURN RESOLVED TO?
+ *
+ * Not "unlikely" -- provably: written in a different script from the one that
+ * language uses, short enough to be a fragment rather than a sentence, and
+ * carrying none of that language's own words. Every recogniser has already had
+ * its turn by the time this is asked, so there is nothing left to try.
+ *
+ * A Georgian speaker dropping one English term into a Georgian sentence writes
+ * mostly Georgian letters and never reaches here. "RAM x 6Y" out of a Russian
+ * socket, or "रामाखूया", reaches here every time.
+ */
+export function isDiscreditedTurn(text: string, language: string): boolean {
+  const want = SCRIPT_OF_LANGUAGE[language];
+  if (!want) return false;
+  const evidence = scriptEvidence(text);
+  if (!evidence.script || evidence.letters < 3) return false;
+  if (evidence.script === want) return false;
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  if (words >= 4) return false;
+  return !hasAnyFunctionWord(text, language);
+}
+
 export function planFragmentRecovery(input: RecoveryInput): RecoveryPlan | null {
   if (!isCheckable(input.pinned)) return null;
   if (input.spent >= RECOVERY_MAX_PER_SESSION) return null;

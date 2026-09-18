@@ -327,6 +327,8 @@ interface TalkRequest {
   providerLanguage?: string;
   /** True when providerLanguage was detected rather than configured. See talkLanguage.ts. */
   providerDetected?: boolean;
+  /** True while no turn of this session has resolved a language. See talkLanguage.ts. */
+  firstTurn?: boolean;
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
   /** transcribe: one finished utterance, base64 WAV, 16 kHz mono PCM. */
@@ -1474,6 +1476,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
     transcript: said,
     providerLanguage: body.providerLanguage ?? null,
     providerDetected: body.providerDetected === true,
+    firstTurn: body.firstTurn === true,
     previousSessionLanguage: body.languageHint ?? null,
     pageLocale: locale,
   });

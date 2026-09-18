@@ -286,6 +286,12 @@ export function AiTalkDiagnostics(
             : (d.secondOpinionFailures ? `${d.secondOpinionFailures} failed` : '—')}
         />
         <Row
+          label="Turns refused"
+          value={d.discreditedTurnsDropped
+            ? `${d.discreditedTurnsDropped} · wrong script for the resolved language, nothing sent`
+            : '0'}
+        />
+        <Row
           label="Same-turn recovery"
           value={d.lastRecovery
             ? `${d.sameTurnRecoveries ?? 0} · last ${d.lastRecovery.reason} → ${d.lastRecovery.language ?? '?'} in ${d.lastRecovery.ms} ms, ${d.lastRecovery.used ? 'used' : 'not used'}`

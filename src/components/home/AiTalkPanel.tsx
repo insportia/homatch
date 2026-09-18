@@ -610,6 +610,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
                 providerDetected: sessionRef.current.languageTrace.providerDetected,
               }
               : {}),
+            ...(sessionRef.current?.languageTrace.firstTurn ? { firstTurn: true } : {}),
             // Conversation language BEFORE this turn, and how sure this turn's
             // language is: the server states both to the model as facts.
             ...(sessionRef.current?.languageTrace.previousLanguage

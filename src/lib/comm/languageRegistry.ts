@@ -185,6 +185,82 @@ export function scoreLatinLanguages(text: string): Array<{ code: string; score: 
   return out.sort((a, b) => b.score - a.score);
 }
 
+/**
+ * HOW EACH LANGUAGE SAYS HELLO.
+ *
+ * The one piece of evidence a single word can carry. A session's first
+ * utterance is often exactly one word, and the floor that protects a settled
+ * conversation from a mis-hearing was holding real greetings too: somebody
+ * opened the Georgian page, said "Hello.", and was answered in Georgian.
+ *
+ * This is a closed list of words people actually greet with, so it separates
+ * a greeting from the thing the floor exists for -- "Abba", "Karki", "dir",
+ * "Wackisch", the phonetic fragments a recogniser invents. Those are in no
+ * list and never will be.
+ */
+export const GREETINGS: Record<string, readonly string[]> = {
+  ka: ['გამარჯობა', 'გამარჯობათ', 'სალამი', 'ჰაი', 'გაუმარჯოს', 'დილა მშვიდობისა'],
+  en: ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening'],
+  ru: ['привет', 'здравствуйте', 'здравствуй', 'добрый день', 'доброе утро', 'добрый вечер'],
+  tr: ['merhaba', 'selam', 'günaydın', 'gunaydin', 'iyi günler', 'iyi gunler', 'iyi akşamlar'],
+  ar: ['مرحبا', 'مرحباً', 'السلام عليكم', 'أهلا', 'اهلا', 'أهلاً', 'صباح الخير', 'مساء الخير'],
+  he: ['שלום', 'היי', 'בוקר טוב', 'ערב טוב', 'אהלן'],
+  hi: ['नमस्ते', 'नमस्कार', 'हैलो', 'सुप्रभात'],
+  ur: ['السلام علیکم', 'ہیلو'],
+  es: ['hola', 'buenos días', 'buenos dias', 'buenas tardes', 'buenas noches'],
+  fr: ['bonjour', 'salut', 'bonsoir', 'coucou'],
+  de: ['hallo', 'guten tag', 'guten morgen', 'guten abend', 'servus'],
+  it: ['ciao', 'buongiorno', 'buonasera', 'salve'],
+  pt: ['olá', 'ola', 'oi', 'bom dia', 'boa tarde', 'boa noite'],
+  uk: ['привіт', 'вітаю', 'доброго дня', 'добрий день'],
+  pl: ['cześć', 'czesc', 'dzień dobry', 'dzien dobry', 'witam'],
+  nl: ['hallo', 'hoi', 'goedemorgen', 'goedendag'],
+  el: ['γεια', 'γεια σου', 'καλημέρα', 'καλησπέρα'],
+  ro: ['bună', 'buna', 'salut', 'bună ziua'],
+  bg: ['здравей', 'здравейте', 'добър ден'],
+  cs: ['ahoj', 'dobrý den', 'dobry den'],
+  sk: ['ahoj', 'dobrý deň', 'dobry den'],
+  hr: ['bok', 'dobar dan'],
+  hu: ['szia', 'jó napot', 'jo napot'],
+  sv: ['hej', 'god morgon'],
+  da: ['hej', 'goddag'],
+  no: ['hei', 'god dag'],
+  fi: ['hei', 'moi', 'hyvää päivää'],
+  id: ['halo', 'selamat pagi', 'selamat siang'],
+  ms: ['helo', 'selamat pagi'],
+  vi: ['xin chào', 'chào'],
+  th: ['สวัสดี', 'สวัสดีครับ', 'สวัสดีค่ะ'],
+  ja: ['こんにちは', 'おはよう', 'おはようございます', 'こんばんは'],
+  ko: ['안녕하세요', '안녕'],
+  bn: ['নমস্কার', 'হ্যালো'],
+  ta: ['வணக்கம்'],
+  te: ['నమస్కారం'],
+  gu: ['નમસ્તે'],
+  kn: ['ನಮಸ್ಕಾರ'],
+  ml: ['നമസ്കാരം'],
+  mr: ['नमस्कार'],
+  or: ['ନମସ୍କାର'],
+};
+
+/**
+ * Is this whole utterance a greeting in that language, and nothing else?
+ *
+ * Whole, because the evidence is the utterance being a greeting -- not a
+ * sentence that happens to open with one, which is judged on its own words.
+ * Three tokens at most, so "good morning" and "السلام عليكم" fit and a
+ * question does not.
+ */
+export function isGreeting(text: string, language: string): boolean {
+  const list = GREETINGS[language];
+  if (!list) return false;
+  const norm = String(text ?? '').toLowerCase()
+    .replace(/[^\p{L}\p{M}\s]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  if (!norm) return false;
+  const words = norm.split(' ');
+  if (words.length > 3) return false;
+  return list.some((g) => (g.includes(' ') ? norm.includes(g) : words.includes(g)));
+}
+
 export function guessLatinLanguage(text: string, fallback = 'en'): string {
   return scoreLatinLanguages(text)[0]?.code ?? fallback;
 }

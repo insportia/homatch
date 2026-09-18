@@ -22,6 +22,7 @@
 // so that choosing a provider is a factory call and nothing else changes —
 // this file is the reason that interface was worth having.
 
+import { STT_TAGS } from './languageRegistry.ts';
 import type { LiveCallbacks, LiveGrant, LiveSocket } from './liveTranscribe.ts';
 
 /**
@@ -404,11 +405,5 @@ export class GoogleTranscriber implements LiveSocket {
  * A map rather than `${code}-${code.toUpperCase()}`: that trick produces
  * en-EN and he-HE, neither of which exists.
  */
-const TAGS: Record<string, string> = {
-  ka: 'ka-GE',
-  en: 'en-US',
-  ru: 'ru-RU',
-  tr: 'tr-TR',
-  ar: 'ar-XA',
-  he: 'iw-IL',
-};
+// One table for every language the product carries. See languageRegistry.ts.
+const TAGS: Record<string, string> = STT_TAGS;

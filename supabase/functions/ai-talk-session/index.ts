@@ -30,6 +30,8 @@ import {
   streamCartesiaPcm, nearestCartesiaRate, clampCartesiaSpeed,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
+import { judgeOverlap } from '../_shared/comm/generated/streamingOverlap.ts';
+import { LANGUAGE_NAMES as REGISTRY_LANGUAGE_NAMES } from '../_shared/comm/generated/languageRegistry.ts';
 import { hasSecret, requireSecret } from '../_shared/comm/contracts.ts';
 import {
   /*
@@ -1088,7 +1090,12 @@ function ttsSpeed(): number | null {
  * was never the reason a reply felt late; what "slow" describes is delivery,
  * and a large jump there reads as rushed rather than competent.
  */
-const CARTESIA_DEFAULT_SPEED = 1.1;
+/*
+ * 1.0 is the voice's own pace. 1.1 was chosen to trim a little dead air and
+ * it read, on a real device, as slightly hurried; the cure for dead air is
+ * the streaming pipeline, not a faster mouth.
+ */
+const CARTESIA_DEFAULT_SPEED = 1.0;
 
 async function speakPhraseStreaming(sb: Sb, params: {
   text: string;
@@ -1647,6 +1654,9 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
   /** Characters and tail of the text this request was given. */
   textChars?: number;
   textTail?: string;
+  /** ms after the turn started: when this phrase was asked for, and when its audio finished. */
+  requestMs?: number;
+  doneMs?: number | null;
         index: number;
         chunks: string[];
         done: boolean;
@@ -1681,6 +1691,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
         const index = spoken.length;
         const slot: Phrase = {
           index, chunks: [], done: false,
+          requestMs: Date.now() - startedAt, doneMs: null,
           // What was actually asked of the voice. ttsTextChars read a `text`
           // field that never existed and reported 0 on a real turn with four
           // requests -- telemetry that could not prove the one thing it was for.
@@ -1720,11 +1731,13 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             slot.voiceId = out.voiceId;
             slot.model = out.model;
             slot.totalMs = out.totalMs;
+            slot.doneMs = Date.now() - startedAt;
           } else {
             slot.code = out.failures[0]?.code ?? null;
             slot.status = out.failures[0]?.status ?? null;
             slot.detail = out.failures[0]?.detail ?? null;
             slot.totalMs = Date.now() - at;
+            slot.doneMs = Date.now() - startedAt;
           }
           slot.done = true;
           nudge();
@@ -1746,6 +1759,8 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
        * having to trust the other's clock.
        */
       let llmFirstTokenAt: number | null = null;
+      /** When the model stopped writing -- the fact the overlap verdict is judged against. */
+      let llmFinalAt: number | null = null;
       let ttsRequestAt: number | null = null;
       let ttsFirstByteAt: number | null = null;
 
@@ -1963,6 +1978,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
          * visible text is recomputed once at the end rather than trusted from
          * the loop. Whatever is left unspoken is the last phrase.
          */
+        llmFinalAt = Date.now() - startedAt;
         const finalVisible = spokenPart(full);
         if (finalVisible.length > shown.length) {
           const tail = finalVisible.slice(shown.length);
@@ -2004,6 +2020,7 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
             if (event.type === 'delta' && event.text) retry += event.text;
           }
 
+          llmFinalAt = Date.now() - startedAt;
           const retryVisible = spokenPart(retry);
           if (retryVisible.trim() && textMatchesLanguage(retryVisible, replyLanguage)) {
             shown = retryVisible;
@@ -2112,6 +2129,26 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           ttsCompletedRequests: spoken.filter((p) => p.done && !p.code).length,
           ttsFinalTail: spoken.length ? (spoken[spoken.length - 1].textTail ?? null) : null,
           assistantResponseCompleted: !llmIncomplete,
+          /*
+           * Proof that the pipeline overlapped rather than waited: every
+           * phrase's stamps, and the three yes/no facts computed from them.
+           */
+          segments: spoken.map((p) => ({
+            index: p.index, requestMs: p.requestMs ?? null,
+            firstByteMs: p.firstByteMs === null || p.firstByteMs === undefined || p.requestMs === undefined
+              ? null : (p.requestMs ?? 0) + p.firstByteMs,
+            doneMs: p.doneMs ?? null, textChars: p.textChars ?? 0,
+          })),
+          overlap: judgeOverlap({
+            llmFirstTokenMs: llmFirstTokenAt,
+            llmFinalMs: llmFinalAt,
+            firstAudioSentMs: firstAudioAt || null,
+            segments: spoken.map((p) => ({
+              index: p.index, requestMs: p.requestMs ?? null,
+              firstByteMs: p.firstByteMs === null || p.firstByteMs === undefined ? null : (p.requestMs ?? 0) + p.firstByteMs,
+              doneMs: p.doneMs ?? null, textChars: p.textChars ?? 0,
+            })),
+          }),
           responseInterruptReason: llmIncomplete ? `LLM_${llmIncompleteReason ?? 'INCOMPLETE'}` : null,
           finalTextTail: shown.slice(-40),
           /*
@@ -2168,7 +2205,6 @@ async function converse(sb: Sb, body: TalkRequest): Promise<Response> {
           llm_headers_ms: llmHeadersMs,
           llm_think_ms: llmThinkMs,
           llm_input_tokens: llmInputTokens,
-          llm_output_tokens: llmOutputTokens,
           tts_request_ms: ttsRequestAt,
           tts_first_byte_ms: ttsFirstByteAt,
           tts_chunk_count: seq,
@@ -2643,9 +2679,8 @@ async function resolveAnonSession(sb: Sb, candidate: string | undefined): Promis
  * resolves to nothing instead of to a 404 in front of a customer.
  */
 /** What each of the six is called, for the instruction the model reads. */
-const LANGUAGE_NAMES: Record<string, string> = {
-  ka: 'Georgian', en: 'English', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew',
-};
+// Every language the product carries, from the one shared table.
+const LANGUAGE_NAMES: Record<string, string> = REGISTRY_LANGUAGE_NAMES;
 
 function publicDemoInstructions(language: string): string {
   const name = LANGUAGE_NAMES[language] ?? LANGUAGE_NAMES[language.split('-')[0]]
@@ -2687,6 +2722,21 @@ function publicDemoInstructions(language: string): string {
     'weapon. Do not perform emotion you do not have, do not laugh at your own lines, and do not turn every',
     'answer into a bit -- humour and heat come from what was just said, or not at all. None of this is a',
     'licence to be careless with facts: an amused answer is still a correct one.',
+    '',
+    'CHARACTER. You have one. Quick, curious, a little wry; you notice the funny thing in what somebody said',
+    'and you are allowed to say it. Banter is welcome when they start it. Mock disbelief, a raised eyebrow,',
+    'genuine enthusiasm about a good flat, a sigh at a bad idea -- these are yours to use when the moment',
+    'hands them to you. Aim to make a person smile now and then; never aim to make every line a joke. A',
+    'reply with no joke in it is fine. A canned joke is not. Never repeat a line you have already used.',
+    'Your mood follows the conversation and can change during it -- neutral, warm, amused, playful, curious,',
+    'sceptical, mildly annoyed, serious, empathetic -- but it is never announced and never random.',
+    'If they swear casually, do not turn into a moderation notice. React the way a person who likes them',
+    'would: amused, a little surprised, lightly teasing, in their language and their register -- then',
+    'carry on with what they actually wanted. You yourself do not swear at them, do not insult them, and',
+    'do not escalate; their heat is something to play with or defuse, never to match.',
+    'Humour must be native to the language you are speaking. Georgian wit in Georgian, not an English joke',
+    'in Georgian words; Russian banter as Russians actually banter; the same in every language. If a joke',
+    'only works in translation, drop it.',
     '',
     'MATCH THE PERSON IN FRONT OF YOU.',
     'Take your length, your register and your energy from theirs, every turn, and let it change when theirs',

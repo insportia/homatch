@@ -192,6 +192,19 @@ function toConverseEvent(name: string, data: Record<string, unknown>): ConverseE
         finalTextTail: typeof data.finalTextTail === 'string' ? data.finalTextTail : null,
         ttsCompletedRequests: num(data.ttsCompletedRequests),
         ttsFinalTail: typeof data.ttsFinalTail === 'string' ? data.ttsFinalTail : null,
+        segments: Array.isArray(data.segments) ? data.segments : null,
+        overlap: (() => {
+          // The server's verdict on whether the stages overlapped: read field
+          // by field, so a partial object is null and not a lie.
+          const o = data.overlap && typeof data.overlap === 'object' ? data.overlap as Record<string, unknown> : null;
+          return o && typeof o.lunaAndTts === 'boolean' && typeof o.lunaAndPlayback === 'boolean'
+            && typeof o.ttsAndPlayback === 'boolean'
+            ? {
+              lunaAndTts: o.lunaAndTts, lunaAndPlayback: o.lunaAndPlayback, ttsAndPlayback: o.ttsAndPlayback,
+              firstSpeakablePhraseMs: num(o.firstSpeakablePhraseMs) ?? null, segments: num(o.segments) ?? 0,
+            }
+            : null;
+        })(),
         timing: t ? {
           llmFirstTokenMs: num(t.llmFirstTokenMs),
           ttsRequestMs: num(t.ttsRequestMs),

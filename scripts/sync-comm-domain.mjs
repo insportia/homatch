@@ -58,6 +58,11 @@ const FILES = [
   'talkActions.ts',
   // The one place a turn's language is decided. Mirrored because the edge
   // function must re-check what the browser resolved rather than trust it.
+  // The one table of languages the product carries end to end, and the
+  // pure judge of whether a turn's generation, voice and playback actually
+  // overlapped. Both are read on the edge, so both must be the same file.
+  'languageRegistry.ts',
+  'streamingOverlap.ts',
   'talkLanguage.ts',
   // How the brand is SAID, per language. Mirrored because the edge function
   // is what hands text to the voice provider, so the edge copy is the one

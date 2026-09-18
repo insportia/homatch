@@ -129,6 +129,7 @@ export class PcmStreamPlayer {
     this.turnStopped = 0;
     this.turnStopReason = null;
     this.turnLastEndedAt = null;
+    this.turnGapsMs = [];
   }
 
   get currentGeneration(): number { return this.generation; }
@@ -199,11 +200,13 @@ export class PcmStreamPlayer {
   private turnStopped = 0;
   private turnStopReason: string | null = null;
   private turnLastEndedAt: number | null = null;
+  /** Technical silences between scheduled pieces, in ms, for THIS response. */
+  private turnGapsMs: number[] = [];
 
   /** Everything a trace needs to say whether THIS response was heard to the end. */
   turnStats(): {
     queued: number; started: number; completed: number; stopped: number;
-    drained: boolean; stopReason: string | null; lastChunkEndedAt: number | null;
+    drained: boolean; stopReason: string | null; lastChunkEndedAt: number | null; gapsMs: number[];
   } {
     return {
       queued: this.turnQueued,
@@ -216,6 +219,7 @@ export class PcmStreamPlayer {
         && this.pendingSeconds <= 0.02,
       stopReason: this.turnStopReason,
       lastChunkEndedAt: this.turnLastEndedAt,
+      gapsMs: [...this.turnGapsMs],
     };
   }
 
@@ -318,7 +322,12 @@ export class PcmStreamPlayer {
       // Either the first piece of a reply, or the stream starved. Both want a
       // fresh cursor slightly ahead of the clock.
       if (this.cursor !== 0 && now - this.cursor > RESYNC_SECONDS) this.stats.underruns += 1;
-      this.cursor = now + LEAD_SECONDS;
+      // Not the first piece of the reply: the stream starved and the listener
+      // heard a technical silence of exactly this length. Recorded per turn
+      // so "multiple TTS requests sound like one answer" is measured, not hoped.
+      const resumeAt = now + LEAD_SECONDS;
+      if (this.cursor !== 0 && this.turnQueued > 0) this.turnGapsMs.push(Math.round((resumeAt - this.cursor) * 1000));
+      this.cursor = resumeAt;
     }
 
     source.start(this.cursor);

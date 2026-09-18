@@ -145,6 +145,7 @@ export type ConverseEvent =
       responseInterruptReason?: string | null;
       finalTextTail?: string | null;
       ttsCompletedRequests?: number; ttsFinalTail?: string | null;
+      segments?: VoiceDiagnostics['segments']; overlap?: VoiceDiagnostics['overlap'];
       /**
        * The server's own stages, as offsets from the moment it began work.
        * Offsets rather than timestamps because the two machines do not share
@@ -252,6 +253,8 @@ export interface VoiceDiagnostics {
   transcribing: boolean;
   /** How often the gate had to be forced open. Should be 0. */
   gateReleases: number;
+  /** Whether the browser applied echo cancellation to the microphone track. */
+  echoCancellation: boolean | null;
   /*
    * THE FINAL THAT NEVER CAME.
    *
@@ -289,6 +292,11 @@ export interface VoiceDiagnostics {
   finalTextTail: string | null;
   playbackQueuedChunks: number;
   playbackCompletedChunks: number;
+  /** Technical silences between scheduled pieces of the current reply, ms. */
+  playbackGapsMs: number[];
+  /** The server's per-phrase stamps and its overlap verdict for the last reply. */
+  segments: Array<{ index: number; requestMs: number | null; firstByteMs: number | null; doneMs: number | null; textChars: number }> | null;
+  overlap: { lunaAndTts: boolean; lunaAndPlayback: boolean; ttsAndPlayback: boolean; firstSpeakablePhraseMs: number | null; segments: number } | null;
   /*
    * PER-RESPONSE COMPLETENESS. The queued/completed pair above is per
    * response too now; these say whether the pair AGREED, who stopped it if
@@ -735,6 +743,14 @@ export class VoiceSession {
    * anybody must not look like one that can.
    */
   private micGatedAt = 0;
+  /*
+   * Whether the browser actually applied echo cancellation to the microphone
+   * track. This was hard-coded `true` at the barge-in decision, which turned
+   * the echo guard off unconditionally -- on a laptop with speakers the
+   * assistant's own voice is the loudest thing the microphone hears.
+   */
+  private echoCancelled = false;
+  private onVisibility: (() => void) | null = null;
   /** Who cut the current reply's audio, if anyone. Null on a normal finish. */
   private playbackInterruptReason: string | null = null;
   /** The utterance being spoken right now, as sent to the socket. See UTTERANCE_KEEP_MS. */
@@ -958,6 +974,7 @@ export class VoiceSession {
     livePhase: 'IDLE' as LivePhase, socketReadyMs: null as number | null,
     socketFailures: 0, socketReconnects: 0, gateReleases: 0,
     liveSendRate: null as number | null,
+    echoCancellation: null as boolean | null,
     sessionEndReason: null as string | null,
     llmTextChars: null as number | null, ttsTextChars: null as number | null,
     ttsRequests: null as number | null,
@@ -966,6 +983,8 @@ export class VoiceSession {
     finalTextTail: null as string | null,
     ttsCompletedRequests: null as number | null, ttsFinalTail: null as string | null,
     responseId: null as string | null,
+    segments: null as VoiceDiagnostics['segments'],
+    overlap: null as VoiceDiagnostics['overlap'],
     sameTurnRecoveries: 0,
     lastRecovery: null as { from: string | null; hint: string; ms: number; used: boolean; ratio: number; words: number } | null,
     assistantAudibleResponseCompleted: null as boolean | null,
@@ -1096,6 +1115,21 @@ export class VoiceSession {
     }
 
     this.milestone('mic_open');
+    try {
+      const track = this.micStream?.getAudioTracks()[0];
+      this.echoCancelled = Boolean(track?.getSettings?.().echoCancellation);
+      this.diag.echoCancellation = this.echoCancelled;
+    } catch { this.echoCancelled = false; }
+    /*
+     * A tab that goes to the background suspends its AudioContext on some
+     * mobile browsers; coming back must not leave the reply silent.
+     */
+    this.onVisibility = () => {
+      if (document.visibilityState === 'visible' && this.audioContext?.state === 'suspended') {
+        void this.audioContext.resume().catch(() => { /* diagnostics show it */ });
+      }
+    };
+    document.addEventListener('visibilitychange', this.onVisibility);
 
     // The microphone is open before the socket is, so the session's very
     // first syllable is held by the same mechanism that holds a rotation's.
@@ -1115,6 +1149,15 @@ export class VoiceSession {
       // closes -- is the same miss as a socket that closed empty.
       const owed = this.finalWatch.tick(Date.now());
       if (owed) this.recoverFromNoFinal(owed);
+      /*
+       * The moment the audio clock actually passed the first scheduled sample
+       * -- stamped HERE, on the session's clock. It used to be stamped only
+       * once the reply stream had finished, which reported 1.8 s of
+       * "queued -> audible" on a real turn that was, in fact, 170 ms.
+       */
+      if (this.marks.ttsFirstAudioAtMs && !this.marks.firstAudibleAtMs && this.player?.snapshot().clockAdvanced) {
+        this.marks.firstAudibleAtMs = Date.now();
+      }
     }, 250);
 
     // Diagnostics are published on their own clock, not on the audio
@@ -1175,6 +1218,7 @@ export class VoiceSession {
       micGated: this.micGated,
       transcribing: this.transcribing,
       gateReleases: this.gateReleases,
+      echoCancellation: this.diag.echoCancellation ?? null,
       noFinalCount: this.finalWatch.noFinalCount,
       consecutiveNoFinals: this.finalWatch.consecutiveNoFinals,
       noFinalRecoveries: this.finalWatch.noFinalRecoveries,
@@ -1205,7 +1249,13 @@ export class VoiceSession {
       responseId: this.diag.responseId ?? null,
       playbackQueueDrained: this.diag.playbackQueueDrained ?? null,
       assistantAudibleResponseCompleted: this.diag.assistantAudibleResponseCompleted ?? null,
-      playbackInterruptReason: this.diag.playbackInterruptReason ?? null,
+      // Even when the verdict never ran -- the session was stopped mid-reply --
+      // the player still knows who stopped it. 30 of 53 chunks on a real turn
+      // read as "null" because this fell back to nothing.
+      playbackInterruptReason: this.diag.playbackInterruptReason ?? this.player?.turnStats().stopReason ?? null,
+      playbackGapsMs: this.player?.turnStats().gapsMs ?? [],
+      segments: this.diag.segments ?? null,
+      overlap: this.diag.overlap ?? null,
       ttsCompletedRequests: this.diag.ttsCompletedRequests ?? null,
       ttsFinalTail: this.diag.ttsFinalTail ?? null,
       sameTurnRecoveries: this.sameTurnRecoveries,
@@ -1269,6 +1319,9 @@ export class VoiceSession {
     if (this.tickHandle !== null) { clearInterval(this.tickHandle); this.tickHandle = null; }
     if (this.diagHandle !== null) { clearInterval(this.diagHandle); this.diagHandle = null; }
     this.stopPlayback(reason === 'allowance' ? 'SESSION_END' : 'SESSION_STOP');
+    if (this.onVisibility) { document.removeEventListener('visibilitychange', this.onVisibility); this.onVisibility = null; }
+    this.utterancePcm = [];
+    this.utteranceSamples = 0;
 
     this.dropCapture();
     this.live?.close();
@@ -2572,6 +2625,8 @@ export class VoiceSession {
             this.diag.finalTextTail = event.finalTextTail ?? null;
             this.diag.ttsCompletedRequests = event.ttsCompletedRequests ?? null;
             this.diag.ttsFinalTail = event.ttsFinalTail ?? null;
+            this.diag.segments = event.segments ?? null;
+            this.diag.overlap = event.overlap ?? null;
 
             const timing = event.timing;
             if (timing) {
@@ -3020,7 +3075,7 @@ export class VoiceSession {
           inputEnergy: level,
           sustainedMs: this.sustainedSpeechMs,
           agentAudioElapsedMs: Date.now() - this.agentAudioStartedAt,
-          echoCancelled: true,
+          echoCancelled: this.echoCancelled,
         });
         if (action === 'DUCK') this.duckPlayback();
         if (action === 'STOP') {

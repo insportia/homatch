@@ -176,12 +176,19 @@ interface Intelligence {
 function debugRequested(): boolean {
   if (typeof window === 'undefined') return false;
   try {
+    /*
+     * THE URL, AND ONLY THE URL, ON THIS LOAD.
+     *
+     * This used to remember the flag in sessionStorage "for that tab" -- and
+     * a tab that had once opened ?debugAiTalk=1 then showed the engineering
+     * panel on the plain production address for as long as it lived. A
+     * normal visitor must never see socket states, sample rates or latency
+     * numbers; whoever wants them types the flag. Anything an older build
+     * left behind is cleared.
+     */
+    try { window.sessionStorage?.removeItem('homatch_debug_ai_talk'); } catch { /* fine */ }
     const flag = new URLSearchParams(window.location.search).get('debugAiTalk');
-    if (flag === '1' || flag === 'true') {
-      window.sessionStorage?.setItem('homatch_debug_ai_talk', '1');
-      return true;
-    }
-    return window.sessionStorage?.getItem('homatch_debug_ai_talk') === '1';
+    return flag === '1' || flag === 'true';
   } catch {
     return false;
   }

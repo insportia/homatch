@@ -14,10 +14,12 @@ import {
   textMatchesLanguage, SWITCH_MIN_CONFIDENCE,
 } from '../talkLanguage.ts';
 
-// ── Nothing outside the six may exist ──────────────────────────────────────
+// ── Nothing outside the registry may exist ──────────────────────────────────────
 
 test('an unsupported provider label does not resolve to anything', () => {
-  for (const tag of ['ko', 'hi', 'zh', 'lb', 'ha', 'lt', 'ja', 'th', 'de', 'fr']) {
+  // Persian, Azerbaijani, Armenian and Kazakh are what the voice cannot speak;
+  // the rest are labels the recogniser has actually hallucinated.
+  for (const tag of ['fa', 'az', 'hy', 'kk', 'lb', 'ha', 'lt', 'pa', 'am', 'sw']) {
     assert.equal(normaliseLanguage(tag), null, `${tag} must not be a language AI TALK speaks`);
   }
 });
@@ -79,10 +81,12 @@ test('the captured production corruptions all stay Georgian', () => {
   }
 });
 
-test('Korean text cannot enter session state even when the provider insists', () => {
+test('Armenian text cannot enter session state even when the provider insists', () => {
+  // Korean used to play this part; it is supported now. Armenian is what the
+  // voice still cannot speak, so it is what must still bounce.
   const r = resolveTurnLanguage({
-    transcript: '아, 고맙습니다. 잘 부탁드립니다.',
-    providerLanguage: 'ko',
+    transcript: 'Այո, շնորհակալություն, խնդրում եմ շարունակեք։',
+    providerLanguage: 'hy',
     previousSessionLanguage: 'ka',
     pageLocale: 'ka',
   });
@@ -94,8 +98,8 @@ test('with no session yet, an unsupported label still cannot win', () => {
   // The first turn of a call is the one with the least to go on, and it is
   // where a bad label would do the most damage.
   const r = resolveTurnLanguage({
-    transcript: '아, 고맙습니다.',
-    providerLanguage: 'ko',
+    transcript: 'Այո, շնորհակալություն։',
+    providerLanguage: 'hy',
     previousSessionLanguage: null,
     pageLocale: 'ka',
   });

@@ -5,6 +5,9 @@
 // re-run `node scripts/sync-comm-domain.mjs`; scripts/check-comm-sync.mjs
 // fails the build if these drift.
 
+import {
+  LANGUAGE_CODES, LANGUAGE_NAMES, LATIN_CODES, SCRIPT_FAMILIES, SCRIPT_TESTS, guessLatinLanguage, type Script,
+} from './languageRegistry.ts';
 // HOMATCH AI TALK — one place that decides what language a turn is in.
 //
 // WHY THIS FILE EXISTS
@@ -42,8 +45,15 @@
 // provider, not from a locale, not from a cached session. The resolver is
 // pure and total: same inputs, same answer, always one of the six.
 
-export const TALK_LANGUAGES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'] as const;
-export type TalkLanguage = (typeof TALK_LANGUAGES)[number];
+/*
+ * The languages this product can carry end to end. Six became forty-four on
+ * 2026-09-18, each one checked against the live recogniser and the voice's
+ * own language list; see languageRegistry.ts, which is the single table the
+ * socket tag, the script map, the recovery hints and the reply names all
+ * come from.
+ */
+export const TALK_LANGUAGES = LANGUAGE_CODES as readonly string[];
+export type TalkLanguage = string;
 
 const SUPPORTED = new Set<string>(TALK_LANGUAGES);
 
@@ -57,6 +67,15 @@ const SUPPORTED = new Set<string>(TALK_LANGUAGES);
  */
 const ALIASES: Record<string, TalkLanguage> = {
   iw: 'he', heb: 'he',
+  cmn: 'zh', zho: 'zh', chi: 'zh',
+  fil: 'tl', tgl: 'tl',
+  nb: 'no', nn: 'no', nor: 'no',
+  hin: 'hi', urd: 'ur', ben: 'bn', tam: 'ta', tel: 'te', guj: 'gu', kan: 'kn', mal: 'ml',
+  mar: 'mr', pan: 'pa', ori: 'or', msa: 'ms', may: 'ms',
+  spa: 'es', fra: 'fr', fre: 'fr', deu: 'de', ger: 'de', ita: 'it', por: 'pt', ukr: 'uk',
+  pol: 'pl', ell: 'el', gre: 'el', ron: 'ro', rum: 'ro', bul: 'bg', jpn: 'ja', kor: 'ko',
+  nld: 'nl', dut: 'nl', swe: 'sv', ces: 'cs', cze: 'cs', ind: 'id', vie: 'vi', tha: 'th',
+  hun: 'hu', dan: 'da', fin: 'fi', hrv: 'hr', slk: 'sk', slo: 'sk',
   kat: 'ka', geo: 'ka',
   rus: 'ru',
   tur: 'tr',
@@ -78,7 +97,7 @@ export function normaliseLanguage(tag: unknown): TalkLanguage | null {
   return ALIASES[base] ?? null;
 }
 
-export type TalkScript = 'georgian' | 'cyrillic' | 'arabic' | 'hebrew' | 'latin' | 'other';
+export type TalkScript = Script;
 
 /** Which script a transcript is written in, and how dominant it is. */
 export interface ScriptEvidence {
@@ -87,13 +106,7 @@ export interface ScriptEvidence {
   letters: number;
 }
 
-const SCRIPTS: Array<[TalkScript, RegExp]> = [
-  ['georgian', /\p{Script=Georgian}/u],
-  ['cyrillic', /\p{Script=Cyrillic}/u],
-  ['arabic', /\p{Script=Arabic}/u],
-  ['hebrew', /\p{Script=Hebrew}/u],
-  ['latin', /\p{Script=Latin}/u],
-];
+const SCRIPTS: ReadonlyArray<readonly [TalkScript, RegExp]> = SCRIPT_TESTS;
 
 /**
  * The dominant script, counted over letters only.
@@ -124,15 +137,24 @@ export function scriptEvidence(text: string): ScriptEvidence {
  * Georgian. Among the six we support, Cyrillic means Russian — which is a
  * statement about this product's languages, not about Cyrillic.
  */
-const SCRIPT_LANGUAGE: Partial<Record<TalkScript, TalkLanguage>> = {
-  georgian: 'ka',
-  cyrillic: 'ru',
-  arabic: 'ar',
-  hebrew: 'he',
-};
+/*
+ * A script names a family, and the first member is the default. Where a
+ * family has siblings (Cyrillic: ru/uk/bg; Arabic: ar/ur; Devanagari: hi/mr;
+ * Han: zh/ja) the provider's label or the established session picks the
+ * sibling, because the letters alone cannot.
+ */
+const SCRIPT_LANGUAGE: Partial<Record<TalkScript, TalkLanguage>> = Object.fromEntries(
+  Object.entries(SCRIPT_FAMILIES).map(([script, family]) => [script, family[0]]),
+) as Partial<Record<TalkScript, TalkLanguage>>;
+
+function siblingIn(script: TalkScript, candidate: TalkLanguage | null | undefined): TalkLanguage | null {
+  if (!candidate) return null;
+  const family = SCRIPT_FAMILIES[script];
+  return family && family.includes(candidate) ? candidate : null;
+}
 
 /** The two of our six that share the Latin alphabet and cannot be told apart by it. */
-const LATIN_LANGUAGES: TalkLanguage[] = ['en', 'tr'];
+const LATIN_LANGUAGES: readonly TalkLanguage[] = LATIN_CODES;
 
 export type ResolutionReason =
   | 'SCRIPT'              // the alphabet settles it
@@ -167,6 +189,21 @@ export interface LanguageResolution {
 export const SWITCH_MIN_CONFIDENCE = 0.6;
 /** Below this many letters, a turn is not evidence of anything. */
 export const SWITCH_MIN_LETTERS = 6;
+/*
+ * WHAT SIX LETTERS MEAN IN A SYLLABARY.
+ *
+ * Six was calibrated on alphabets, where six letters is one short word.
+ * A Hangul block or a kana is a whole syllable, so six of them is "no,
+ * thanks" -- and "no, thanks" is exactly the kind of utterance that must not
+ * move a session. The capture that proved it: a Georgian speaker's
+ * "არა, გმადლობთ" came back from an auto-language socket as "아, 고맙습니다",
+ * six blocks, labelled Korean. Two words of a language that is now supported
+ * must not weigh more than two words of one that never was.
+ */
+export const SWITCH_MIN_LETTERS_BY_SCRIPT: Partial<Record<TalkScript, number>> = {
+  hangul: 8,
+  kana: 10,
+};
 
 export interface ResolveInput {
   transcript: string;
@@ -259,7 +296,8 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
      */
     const prior = previous ?? locale;
     if (prior && language !== prior) {
-      const tooShort = evidence.letters < SWITCH_MIN_LETTERS;
+      const minLetters = (evidence.script && SWITCH_MIN_LETTERS_BY_SCRIPT[evidence.script]) ?? SWITCH_MIN_LETTERS;
+      const tooShort = evidence.letters < minLetters;
       if (tooShort || confidence < SWITCH_MIN_CONFIDENCE) {
         language = prior;
         reason = 'STICKY_HELD';
@@ -274,8 +312,8 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
   if (evidence.script && evidence.ratio >= 0.5) {
     const byScript = SCRIPT_LANGUAGE[evidence.script];
     if (byScript) {
-      // Strong and unambiguous: this is allowed to switch a session.
-      return decide(byScript, 'SCRIPT', 0.5 + evidence.ratio / 2);
+      const sibling = siblingIn(evidence.script!, provider) ?? siblingIn(evidence.script!, previous) ?? byScript;
+      return decide(sibling, 'SCRIPT', 0.5 + evidence.ratio / 2);
     }
 
     // 2. Latin: English and Turkish, which the alphabet cannot separate.
@@ -338,7 +376,7 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
       const latinWords = transcript.trim().split(/\s+/).filter(Boolean).length;
       const substantialLatin = evidence.ratio >= 0.5 && (latinWords >= 4 || evidence.letters >= 15);
       if (substantialLatin && anchorLang && !LATIN_LANGUAGES.includes(anchorLang)) {
-        return decide(looksTurkish(transcript) ? 'tr' : 'en', 'LATIN_FROM_PINNED', 0.7);
+        return decide(guessLatinLanguage(transcript, 'en'), 'LATIN_FROM_PINNED', 0.7);
       }
       return decide(previous ?? locale ?? fallback, 'STICKY_HELD', 0.2);
     }
@@ -403,14 +441,69 @@ export function textMatchesLanguage(text: string, language: TalkLanguage): boole
  */
 
 /** What each language is called, in each language somebody might ask in. */
-const LANGUAGE_REQUEST_TERMS: Record<TalkLanguage, string[]> = {
+const HAND_WRITTEN_REQUEST_TERMS: Record<string, string[]> = {
   ka: ['ქართულ', 'georgian', 'грузинс', 'gürcüce', 'gurcuce', 'جورجي', 'גאורגי'],
   en: ['ინგლისურ', 'english', 'английск', 'ingilizce', 'إنجليزي', 'انجليزي', 'אנגלית'],
   ru: ['რუსულ', 'russian', 'русск', 'rusça', 'rusca', 'روسي', 'רוסית'],
   tr: ['თურქულ', 'turkish', 'турецк', 'türkçe', 'turkce', 'تركي', 'טורקית'],
   ar: ['არაბულ', 'arabic', 'арабск', 'arapça', 'arapca', 'عربي', 'ערבית'],
   he: ['ებრაულ', 'hebrew', 'иврит', 'еврейск', 'ibranice', 'عبري', 'עברית'],
+  /*
+   * The languages that arrived on 2026-09-18: named in English, in the
+   * language itself, and -- for the ones a Georgian or Russian speaker is
+   * likely to ask for -- in Georgian and Russian. Stems, not whole words,
+   * for the same reason as above: "ესპანურად" and "испанском" both inflect.
+   */
+  hi: ['hindi', 'हिंदी', 'हिन्दी', 'ჰინდი', 'хинди'],
+  ur: ['urdu', 'اردو', 'ურდუ', 'урду'],
+  es: ['spanish', 'español', 'espanol', 'castellano', 'ესპანურ', 'испанск'],
+  fr: ['french', 'français', 'francais', 'ფრანგულ', 'французск'],
+  de: ['german', 'deutsch', 'გერმანულ', 'немецк'],
+  it: ['italian', 'italiano', 'იტალიურ', 'итальянск'],
+  pt: ['portuguese', 'português', 'portugues', 'პორტუგალიურ', 'португальск'],
+  uk: ['ukrainian', 'українськ', 'უკრაინულ', 'украинск'],
+  pl: ['polish', 'polsk', 'პოლონურ', 'польск'],
+  el: ['greek', 'ελληνικ', 'ბერძნულ', 'греческ'],
+  ro: ['romanian', 'român', 'romana', 'რუმინულ', 'румынск'],
+  bg: ['bulgarian', 'българск', 'ბულგარულ', 'болгарск'],
+  zh: ['chinese', 'mandarin', '中文', '汉语', '漢語', '普通话', 'ჩინურ', 'китайск'],
+  ja: ['japanese', '日本語', 'იაპონურ', 'японск'],
+  ko: ['korean', '한국어', '한국말', 'კორეულ', 'корейск'],
+  nl: ['dutch', 'nederlands', 'ჰოლანდიურ', 'голландск', 'нидерландск'],
+  sv: ['swedish', 'svenska', 'შვედურ', 'шведск'],
+  cs: ['czech', 'čeština', 'cestina', 'česky', 'ჩეხურ', 'чешск'],
+  id: ['indonesian', 'bahasa indonesia', 'ინდონეზიურ', 'индонезийск'],
+  vi: ['vietnamese', 'tiếng việt', 'tieng viet', 'ვიეტნამურ', 'вьетнамск'],
+  th: ['thai', 'ไทย', 'ტაილანდურ', 'тайск'],
+  bn: ['bengali', 'bangla', 'বাংলা', 'ბენგალურ', 'бенгальск'],
+  ta: ['tamil', 'தமிழ்', 'ტამილურ', 'тамильск'],
+  te: ['telugu', 'తెలుగు', 'ტელუგუ', 'телугу'],
+  gu: ['gujarati', 'ગુજરાતી', 'გუჯარათ', 'гуджарати'],
+  kn: ['kannada', 'ಕನ್ನಡ', 'კანადა ენ', 'каннада'],
+  ml: ['malayalam', 'മലയാളം', 'მალაიალამ', 'малаялам'],
+  mr: ['marathi', 'मराठी', 'მარათჰი', 'маратхи'],
+  or: ['odia', 'oriya', 'ଓଡ଼ିଆ', 'ორია', 'ория'],
+  ms: ['malay', 'bahasa melayu', 'melayu', 'მალაიურ', 'малайск'],
+  tl: ['filipino', 'tagalog', 'ფილიპინურ', 'филиппинск', 'тагальск'],
+  hu: ['hungarian', 'magyar', 'უნგრულ', 'венгерск'],
+  no: ['norwegian', 'norsk', 'ნორვეგიულ', 'норвежск'],
+  da: ['danish', 'dansk', 'დანიურ', 'датск'],
+  fi: ['finnish', 'suomi', 'suomea', 'ფინურ', 'финск'],
+  hr: ['croatian', 'hrvatski', 'ხორვატიულ', 'хорватск'],
+  sk: ['slovak', 'slovenčina', 'slovencina', 'slovensky', 'სლოვაკურ', 'словацк'],
 };
+
+/**
+ * Every language in the registry can be asked for. One without a hand-written
+ * entry is still reachable by its English name, so adding a row to the
+ * registry cannot silently create a language nobody can request.
+ */
+const LANGUAGE_REQUEST_TERMS: Record<string, string[]> = Object.fromEntries(
+  TALK_LANGUAGES.map((code) => [
+    code,
+    HAND_WRITTEN_REQUEST_TERMS[code] ?? [LANGUAGE_NAMES[code]?.toLowerCase() ?? code],
+  ]),
+);
 
 /**
  * Words that make a mention of a language into a REQUEST to use it.
@@ -456,7 +549,7 @@ export function detectLanguageRequest(
 
   let found: TalkLanguage | null = null;
   for (const language of TALK_LANGUAGES) {
-    if (!LANGUAGE_REQUEST_TERMS[language].some((term) => text.includes(term))) continue;
+    if (!(LANGUAGE_REQUEST_TERMS[language] ?? []).some((term) => text.includes(term))) continue;
     // Two different languages named in one breath is a comparison, not an
     // instruction: "is it in English or Russian?" gets no switch.
     if (found && found !== language) return null;

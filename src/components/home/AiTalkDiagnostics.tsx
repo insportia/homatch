@@ -120,6 +120,11 @@ export function AiTalkDiagnostics(
       // Same-turn language recovery: the audio was re-heard in a named language.
       sameTurnRecoveries: d.sameTurnRecoveries ?? null,
       lastRecovery: d.lastRecovery ?? null,
+      // Streaming overlap and the technical silences between segments.
+      echoCancellation: d.echoCancellation ?? null,
+      playbackGapsMs: d.playbackGapsMs ?? [],
+      segments: d.segments ?? null,
+      overlap: d.overlap ?? null,
       gateReleases: d.gateReleases ?? null,
       // The final that never came, and what was done about it.
       noFinalCount: d.noFinalCount ?? null,
@@ -389,6 +394,21 @@ export function AiTalkDiagnostics(
             && d.playbackCompletedChunks === d.playbackQueuedChunks ? 'good' : 'idle'}
         />
         {d.finalTextTail ? <Row label="  last words" value={d.finalTextTail} /> : null}
+        {/* Did the model, the voice and the speaker overlap, or wait for each other? */}
+        <Row
+          label="  overlap"
+          value={d.overlap
+            ? `luna+tts ${d.overlap.lunaAndTts ? 'YES' : 'no'} · luna+play ${d.overlap.lunaAndPlayback ? 'YES' : 'no'} · tts+play ${d.overlap.ttsAndPlayback ? 'YES' : 'no'} · first phrase ${d.overlap.firstSpeakablePhraseMs ?? '—'} ms · ${d.overlap.segments} seg`
+            : '—'}
+          tone={d.overlap ? (d.overlap.lunaAndTts && d.overlap.lunaAndPlayback ? 'good' : 'bad') : 'idle'}
+        />
+        <Row
+          label="  segment gaps"
+          value={(d.playbackGapsMs ?? []).length
+            ? `${d.playbackGapsMs.length} · max ${Math.max(...d.playbackGapsMs)} ms`
+            : 'none'}
+          tone={(d.playbackGapsMs ?? []).some((g) => g > 250) ? 'bad' : 'good'}
+        />
       </div>
 
       <button

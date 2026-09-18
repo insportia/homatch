@@ -25,7 +25,7 @@
 import type { TalkLanguage } from './talkLanguage.ts';
 
 /** Languages whose transcripts can be checked for function words. */
-export type CheckableLanguage = 'en' | 'tr' | 'ru';
+export type CheckableLanguage = 'en' | 'tr' | 'ru' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'pl' | 'nl' | 'uk';
 
 const FUNCTION_WORDS: Record<CheckableLanguage, string[]> = {
   // No one- or two-letter tokens: "me" is Georgian მე, "da" is და, and a
@@ -39,17 +39,26 @@ const FUNCTION_WORDS: Record<CheckableLanguage, string[]> = {
   ru: ['и', 'а', 'но', 'в', 'на', 'с', 'по', 'за', 'из', 'к', 'о', 'у', 'не', 'да', 'нет', 'что', 'как',
     'это', 'этот', 'эта', 'я', 'ты', 'мы', 'вы', 'он', 'она', 'они', 'мне', 'меня', 'хочу', 'нужно', 'можно',
     'сколько', 'стоит', 'цена', 'квартира', 'есть', 'был', 'была', 'будет', 'если', 'или', 'же', 'ли'],
+  es: ['que', 'los', 'las', 'para', 'con', 'una', 'por', 'como', 'cuánto', 'cuanto', 'está', 'esta', 'pero', 'también'],
+  fr: ['les', 'des', 'est', 'pour', 'avec', 'une', 'dans', 'que', 'combien', 'vous', 'pas', 'sur', 'mais'],
+  de: ['und', 'ist', 'nicht', 'das', 'ich', 'wie', 'viel', 'eine', 'für', 'mit', 'auch', 'aber', 'sie'],
+  it: ['che', 'della', 'per', 'con', 'quanto', 'sono', 'una', 'gli', 'non', 'anche', 'come', 'questo'],
+  pt: ['não', 'nao', 'para', 'com', 'quanto', 'uma', 'você', 'voce', 'está', 'esta', 'mas', 'também', 'isso'],
+  pl: ['jest', 'nie', 'jak', 'ile', 'dla', 'ale', 'też', 'tez', 'czy', 'tak', 'to', 'się', 'sie'],
+  nl: ['het', 'een', 'niet', 'hoeveel', 'voor', 'van', 'maar', 'ook', 'dat', 'wat', 'is'],
+  uk: ['і', 'та', 'але', 'не', 'що', 'як', 'це', 'скільки', 'коштує', 'для', 'або', 'так', 'ні'],
 };
 
 /** Which script a checkable language writes in. */
+const LATIN = /\p{Script=Latin}/u;
+const CYRILLIC = /\p{Script=Cyrillic}/u;
 const SCRIPT_OF: Record<CheckableLanguage, RegExp> = {
-  en: /\p{Script=Latin}/u,
-  tr: /\p{Script=Latin}/u,
-  ru: /\p{Script=Cyrillic}/u,
+  en: LATIN, tr: LATIN, es: LATIN, fr: LATIN, de: LATIN, it: LATIN, pt: LATIN, pl: LATIN, nl: LATIN,
+  ru: CYRILLIC, uk: CYRILLIC,
 };
 
 export function isCheckable(lang: string | null | undefined): lang is CheckableLanguage {
-  return lang === 'en' || lang === 'tr' || lang === 'ru';
+  return typeof lang === 'string' && Object.prototype.hasOwnProperty.call(FUNCTION_WORDS, lang);
 }
 
 /**

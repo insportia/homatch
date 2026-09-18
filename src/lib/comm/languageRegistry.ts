@@ -284,3 +284,132 @@ export function guessCyrillicLanguage(text: string, fallback = 'ru'): string {
   if (/[іїєґІЇЄҐ]/.test(text)) return 'uk';
   return fallback;
 }
+
+
+/* ── THE WORDS A LANGUAGE IS HELD TOGETHER WITH ───────────────────────────
+ *
+ * Moved here from sameTurnRecovery.ts, unchanged, because the RESOLVER needs
+ * it too and cannot import that file without a cycle. It is a language fact,
+ * so it belongs beside GREETINGS and LATIN_HINTS rather than beside the
+ * recovery that happened to need it first.
+ *
+ * What it is for: real English, Turkish or Russian is full of function words
+ * -- the, and, what, ve, bir, и, что -- and a transliteration of Georgian
+ * into Latin or Cyrillic letters has none of them. "Madoba, najuandis."
+ * carries no Spanish. That is the difference between somebody switching
+ * language and a recogniser writing down a language it was not given.
+ */
+/** Languages whose transcripts can be checked for function words. */
+export type CheckableLanguage = 'en' | 'tr' | 'ru' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'pl' | 'nl' | 'uk' | 'ka' | 'ar' | 'he' | 'hi';
+
+export const FUNCTION_WORDS: Record<CheckableLanguage, string[]> = {
+  // No one- or two-letter tokens: "me" is Georgian მე, "da" is და, and a
+  // transliteration would otherwise pass as English on the strength of them.
+  en: ['the', 'and', 'but', 'are', 'was', 'were', 'this', 'that', 'what', 'how', 'much', 'many', 'does',
+    'can', 'could', 'would', 'should', 'you', 'they', 'your', 'not', 'yes', 'okay', 'about', 'there',
+    'here', 'have', 'has', 'want', 'need', 'price', 'cost', 'with', 'from', 'for', 'right', 'now',
+    'thank', 'thanks', 'bye', 'goodbye', 'sure', 'good', 'morning',
+    'i', 'my', 'is', 'am', 'a', 'in', 'to', 'of', 'it', 'looking', 'hello', 'hi', 'name', 'please',
+    'thanks', 'on', 'at', 'do', 'be', 'so', 'if', 'call', 'room', 'flat', 'apartment'],
+  tr: ['ve', 'bir', 'bu', 'şu', 'o', 'ne', 'nasıl', 'kaç', 'için', 'ile', 'gibi', 'çok', 'daha', 'en',
+    'mi', 'mı', 'mu', 'mü', 'var', 'yok', 'evet', 'hayır', 'ben', 'sen', 'biz', 'siz', 'da', 'de', 'ama',
+    'fiyat', 'kadar', 'istiyorum', 'lütfen', 'tamam', 'peki', 'şimdi', 'burada', 'orada',
+    'merhaba', 'selam', 'teşekkür', 'teşekkürler', 'tesekkurler', 'sağol', 'sagol', 'görüşürüz'],
+  ru: ['и', 'а', 'но', 'в', 'на', 'с', 'по', 'за', 'из', 'к', 'о', 'у', 'не', 'да', 'нет', 'что', 'как',
+    'это', 'этот', 'эта', 'я', 'ты', 'мы', 'вы', 'он', 'она', 'они', 'мне', 'меня', 'хочу', 'нужно', 'можно',
+    'сколько', 'стоит', 'цена', 'квартира', 'есть', 'был', 'была', 'будет', 'если', 'или', 'же', 'ли',
+    'спасибо', 'привет', 'здравствуйте', 'пожалуйста', 'хорошо', 'свидания', 'добрый'],
+  es: ['que', 'los', 'las', 'para', 'con', 'una', 'por', 'como', 'cuánto', 'cuanto', 'está', 'esta', 'pero', 'también',
+    'gracias', 'hola', 'adiós', 'adios', 'favor', 'buenos', 'días', 'dias'],
+  fr: ['les', 'des', 'est', 'pour', 'avec', 'une', 'dans', 'que', 'combien', 'vous', 'pas', 'sur', 'mais',
+    'merci', 'bonjour', 'salut', 'revoir', 'bonsoir'],
+  de: ['und', 'ist', 'nicht', 'das', 'ich', 'wie', 'viel', 'eine', 'für', 'mit', 'auch', 'aber', 'sie',
+    'danke', 'hallo', 'tschüss', 'bitte', 'guten'],
+  it: ['che', 'della', 'per', 'con', 'quanto', 'sono', 'una', 'gli', 'non', 'anche', 'come', 'questo',
+    'grazie', 'ciao', 'arrivederci', 'prego', 'buongiorno'],
+  pt: ['não', 'nao', 'para', 'com', 'quanto', 'uma', 'você', 'voce', 'está', 'esta', 'mas', 'também', 'isso',
+    'obrigado', 'obrigada', 'olá', 'ola', 'tchau', 'bom'],
+  pl: ['jest', 'nie', 'jak', 'ile', 'dla', 'ale', 'też', 'tez', 'czy', 'tak', 'to', 'się', 'sie',
+    'dziękuję', 'dziekuje', 'cześć', 'czesc', 'proszę', 'prosze', 'dzień'],
+  nl: ['het', 'een', 'niet', 'hoeveel', 'voor', 'van', 'maar', 'ook', 'dat', 'wat', 'is',
+    'bedankt', 'hallo', 'dag', 'alstublieft', 'goedemorgen'],
+  uk: ['і', 'та', 'але', 'не', 'що', 'як', 'це', 'скільки', 'коштує', 'для', 'або', 'так', 'ні',
+    'дякую', 'привіт', 'будь', 'ласка', 'добрий'],
+  /*
+   * The non-Latin languages a socket can be pinned to. Not for recovery
+   * toward them -- script already decides those -- but for judging whether
+   * a transcript in their script is a sentence or a transliteration: a
+   * ka-GE socket writes Turkish speech in ARABIC letters, with none of the
+   * words Arabic sentences are made of.
+   */
+  ka: ['და', 'არის', 'რომ', 'მე', 'შენ', 'ეს', 'რა', 'არ', 'კი', 'ვარ', 'მინდა', 'უნდა', 'თუ', 'როგორ', 'სად',
+    'რამდენი', 'ბინა', 'ბინას', 'ღირს', 'ვეძებ', 'მქვია', 'გამარჯობა', 'დიახ', 'არა', 'კარგი', 'ხარ', 'ჩემი',
+    'შენი', 'ან', 'მაგრამ', 'იქ', 'აქ', 'ახლა', 'ძალიან', 'ერთი', 'ორი', 'სამი',
+    'მადლობა', 'გმადლობთ', 'მადლობთ', 'ნახვამდის', 'კარგად', 'გისმენთ', 'სალამი',
+    /*
+     * SPOKEN GEORGIAN, NOT WRITTEN GEORGIAN. These are what a person actually
+     * says out loud, and their absence was making ordinary short Georgian
+     * turns look like fragments -- which cost them a second opinion they did
+     * not need and a wait they should never have paid.
+     */
+    'ხო', 'ჰო', 'აბა', 'მერე', 'ხომ', 'ცოტა', 'ბევრი', 'უფრო', 'ალბათ', 'იქნებ', 'შეიძლება',
+    'მგონი', 'ვიცი', 'კაი', 'რავი', 'აი', 'ის', 'ვინ', 'როდის', 'რატომ', 'რამდენად', 'რომელი',
+    'ფასი', 'ფული', 'ლარი', 'დოლარი', 'თვე', 'წელი', 'დღეს', 'ხვალ', 'გუშინ', 'ახლავე',
+    'შემიძლია', 'მომწონს', 'არაუშავს', 'კითხვა', 'პასუხი', 'გავიგე', 'მითხარი', 'მაჩვენე',
+    'უბანი', 'ქუჩა', 'სახლი', 'ეზო', 'სართულზე', 'ოთახი', 'ოთახიანი', 'კვადრატი', 'ფართი',
+    // The whole-sentence answers somebody returns to Georgian with, named
+    // from the owner's own physical session. One of these IS the turn.
+    'მოკლედ', 'გასაგებია', 'რას', 'ამბობ', 'გაჩერდი', 'მოიცა', 'ნამდვილად', 'აუცილებლად',
+    'სხვა', 'იგივე', 'უკეთესი', 'იაფი', 'ძვირი', 'გინდა', 'გირჩევ', 'მართლა'],
+  ar: ['في', 'من', 'على', 'عن', 'إلى', 'الى', 'أنا', 'انا', 'هل', 'ما', 'لا', 'نعم', 'هذا', 'هذه', 'كم', 'شقة',
+    'شقه', 'أريد', 'اريد', 'أبحث', 'ابحث', 'اسمي', 'مرحبا', 'مع', 'أو', 'او', 'كيف', 'أين', 'اين',
+    'شكرا', 'السلام', 'عليكم', 'السلامة', 'فضلك', 'أهلا', 'اهلا'],
+  he: ['אני', 'את', 'של', 'זה', 'לא', 'כן', 'מה', 'איך', 'כמה', 'יש', 'עם', 'על', 'דירה', 'מחפש', 'מחפשת',
+    'רוצה', 'שלום', 'קוראים', 'לי', 'בבקשה', 'תודה', 'או', 'אבל', 'גם', 'להתראות', 'בוקר', 'טוב'],
+  hi: ['है', 'हैं', 'मैं', 'मुझे', 'मेरा', 'मेरी', 'और', 'का', 'की', 'के', 'में', 'को', 'से', 'यह', 'क्या', 'कैसे',
+    'कितना', 'नहीं', 'हाँ', 'हां', 'चाहिए', 'नमस्ते', 'नाम', 'फ्लैट', 'घर', 'एक', 'दो', 'पर', 'या',
+    'धन्यवाद', 'शुक्रिया', 'कृपया', 'नमस्कार', 'अलविदा'],
+};
+
+/** Which script a checkable language writes in. */
+const LATIN = /\p{Script=Latin}/u;
+const CYRILLIC = /\p{Script=Cyrillic}/u;
+export const SCRIPT_PATTERN: Record<CheckableLanguage, RegExp> = {
+  en: LATIN, tr: LATIN, es: LATIN, fr: LATIN, de: LATIN, it: LATIN, pt: LATIN, pl: LATIN, nl: LATIN,
+  ru: CYRILLIC, uk: CYRILLIC,
+  ka: /\p{Script=Georgian}/u, ar: /\p{Script=Arabic}/u, he: /\p{Script=Hebrew}/u, hi: /\p{Script=Devanagari}/u,
+};
+
+export function isCheckable(lang: string | null | undefined): lang is CheckableLanguage {
+  return typeof lang === 'string' && Object.prototype.hasOwnProperty.call(FUNCTION_WORDS, lang);
+}
+
+/**
+ * How much of the text is made of the language's own function words.
+ *
+ * 0 means none of the words are ones this language uses to hold a sentence
+ * together -- what a transliteration of another language looks like.
+ */
+export function functionWordRatio(text: string, lang: CheckableLanguage): { ratio: number; words: number } {
+  /*
+   * COMBINING MARKS ARE PART OF THE WORD.
+   *
+   * A Devanagari virama and a matra are marks, not letters, so a class of
+   * letters and digits alone SPLIT धन्यवाद into two pieces and no Hindi
+   * word could ever match its own list. The same shreds Arabic and Hebrew
+   * wherever diacritics are written.
+   */
+  const words = text.toLowerCase().split(/[^\p{L}\p{N}\p{M}']+/u).filter(Boolean);
+  if (!words.length) return { ratio: 0, words: 0 };
+  const set = new Set(FUNCTION_WORDS[lang]);
+  const hits = words.filter((w) => set.has(w)).length;
+  return { ratio: hits / words.length, words: words.length };
+}
+
+
+/** Whether a checkable language's function words appear at all; true when the language cannot be judged. */
+export function hasAnyFunctionWord(text: string, lang: string | null | undefined): boolean {
+  if (!isCheckable(lang)) return true;
+  return functionWordRatio(text, lang).ratio > 0;
+}
+

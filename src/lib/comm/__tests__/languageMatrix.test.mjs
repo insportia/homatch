@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolveTurnLanguage, normaliseLanguage } from '../talkLanguage.ts';
 import { isGreeting, GREETINGS, SCRIPT_OF } from '../languageRegistry.ts';
+import { decideBargeIn, DEFAULT_BARGE_IN } from '../transcript.ts';
 import {
   isDiscreditedTurn, consistentWith, hasAnyFunctionWord, planRecovery, labelMatchesScript,
 } from '../sameTurnRecovery.ts';
@@ -517,4 +518,257 @@ test('the prompt got smaller, because the model reads all of it every turn', () 
   // 1027 ms to the model's first token on a real Android phone.
   assert.ok(chars < 9000, `the prompt is ${chars} characters`);
   assert.ok(lines.length > 60, 'and it still says everything it has to say');
+});
+
+/* ── 8. The session that was captured by a language nobody spoke ───────── */
+
+test('the physical Spanish capture: session 0ef8c2ff, turns 11 and 12', () => {
+  /*
+   * PRODUCTION, 2026-09-18 18:09 UTC, the owner's own Android session, on the
+   * Georgian site. Turns 1 to 9 resolved ka by SCRIPT. Then:
+   *
+   *   t11  provider "es"     latin  previous es  PROVIDER_LATIN  0.7  -> es
+   *   t12  provider "es-ES"  latin  previous es  PROVIDER_LATIN  0.7  -> es
+   *
+   * A bare label is the `auto` socket: it heard Georgian, wrote it in LATIN
+   * letters and called it Spanish. The sentence was long, length was the only
+   * thing being asked for, and the session left Georgian. By t12 the pinned
+   * socket itself was es-ES, which can never emit Georgian letters, so SCRIPT
+   * evidence could not come back. The visitor was speaking Georgian the whole
+   * time. THAT is why returning to Georgian "sometimes struggles".
+   */
+  const heard = 'Madoba, ratom ar mitxari es adre, me minda vnaxo bina vakeshi';
+  assert.equal(hasAnyFunctionWord(heard, 'es'), false, 'it carries no Spanish');
+  const t11 = resolveTurnLanguage({
+    transcript: heard, providerLanguage: 'es', providerDetected: true,
+    previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
+  });
+  assert.equal(t11.resolvedLanguage, 'ka', `the session stays Georgian (${t11.resolutionReason})`);
+  assert.equal(t11.switched, false);
+  assert.ok(t11.confidence < 0.6, 'and the label never becomes a settled fact');
+
+  // The same shape out of the pinned socket rather than the shadow.
+  const pinned = resolveTurnLanguage({
+    transcript: heard, providerLanguage: 'ka-GE', providerDetected: false,
+    previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
+  });
+  assert.equal(pinned.resolvedLanguage, 'ka', 'LATIN_FROM_PINNED is held to the same standard');
+});
+
+test('a real switch out of Georgian is not made harder by that', () => {
+  const cases = [
+    ['en', 'Hello, I am looking for a two bedroom flat in Vake.'],
+    ['tr', 'Merhaba, Vake semtinde iki yatak odali bir daire ariyorum.'],
+    // Agglutinative, so its function words wear suffixes and the letters have
+    // to carry it: fiyat -> fiyatı, ne -> nedir.
+    ['tr', "Vake'de metrekare fiyatı nedir?"],
+    ['es', 'Hola, busco un piso de dos habitaciones, cuanto cuesta?'],
+    ['fr', 'Bonjour, je cherche un appartement avec deux chambres.'],
+    ['de', 'Hallo, ich suche eine Wohnung mit zwei Zimmern.'],
+  ];
+  for (const [lang, said] of cases) {
+    const r = resolveTurnLanguage({
+      transcript: said, providerLanguage: lang, providerDetected: true,
+      previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
+    });
+    assert.equal(r.resolvedLanguage, lang, `${lang}: "${said}" (${r.resolutionReason})`);
+    assert.equal(r.switched, true);
+  }
+  // The non-Latin ones never went through that branch at all.
+  for (const [lang, said] of [['ru', 'Здравствуйте, я ищу двухкомнатную квартиру.'],
+    ['he', 'שלום, אני מחפש דירת שני חדרים.'], ['ar', 'مرحبا، أبحث عن شقة بغرفتي نوم.']]) {
+    const r = resolveTurnLanguage({
+      transcript: said, providerLanguage: lang, providerDetected: true,
+      previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
+    });
+    assert.equal(r.resolvedLanguage, lang, `${lang} is decided by its alphabet`);
+    assert.equal(r.resolutionReason, 'SCRIPT');
+  }
+});
+
+/* ── 9. Coming home, in the words people actually use ──────────────────── */
+
+test('a STRONG Georgian sentence returns from every language, on that turn', () => {
+  const said = 'კარგი, მაშინ მითხარი რამდენი ღირს ვაკეში კვადრატული მეტრი.';
+  for (const from of ['en', 'ru', 'tr', 'he', 'ar', 'es']) {
+    const r = resolveTurnLanguage({
+      transcript: said, providerLanguage: from, providerDetected: false,
+      previousSessionLanguage: from, pageLocale: 'ka', sessionLanguages: ['ka', from],
+    });
+    assert.equal(r.resolvedLanguage, 'ka', `${from} -> ka (${r.resolutionReason})`);
+    assert.equal(r.resolutionReason, 'SCRIPT');
+    assert.equal(r.confidence, 1);
+    assert.equal(r.switched, true);
+  }
+});
+
+test('a SHORT Georgian answer returns too, which is how people actually do it', () => {
+  // Named by the owner. Every one of these is a complete turn.
+  const shorts = ['კი', 'არა', 'კარგი', 'ხო', 'მოკლედ', 'გასაგებია', 'აბა', 'რატომ?', 'რას ამბობ?'];
+  for (const from of ['en', 'ru', 'tr', 'he', 'ar', 'es']) {
+    for (const said of shorts) {
+      const r = resolveTurnLanguage({
+        transcript: said, providerLanguage: from, providerDetected: false,
+        previousSessionLanguage: from, pageLocale: 'ka', sessionLanguages: ['ka', from],
+      });
+      assert.equal(r.resolvedLanguage, 'ka', `${from} -> "${said}" (${r.resolutionReason})`);
+      assert.equal(r.switched, true);
+    }
+  }
+});
+
+test('and the things that are not a return are still refused', () => {
+  const held = [
+    // Self-consistent Devanagari the shadow produced for Georgian speech.
+    ['रामाखूया', 'hi'],
+    // The fragments this floor was built for.
+    ['Abba', 'en'], ['Wackisch', 'en'], ['Karki', 'en'], ['RAM x 6Y', 'en'],
+  ];
+  for (const [said, label] of held) {
+    const r = resolveTurnLanguage({
+      transcript: said, providerLanguage: label, providerDetected: true,
+      previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
+    });
+    assert.equal(r.resolvedLanguage, 'ka', `"${said}" moved the session to ${r.resolvedLanguage}`);
+  }
+  // A language this conversation has never spoken does not arrive on one word,
+  // however real that word is in it.
+  const da = resolveTurnLanguage({
+    transcript: 'да', providerLanguage: 'ru', providerDetected: true,
+    previousSessionLanguage: 'en', pageLocale: 'ka', sessionLanguages: ['en'],
+  });
+  assert.equal(da.resolvedLanguage, 'en', 'one Cyrillic token is not a Russian conversation');
+  // The same word IS a return once Russian has actually been spoken.
+  const back = resolveTurnLanguage({
+    transcript: 'да', providerLanguage: 'en', providerDetected: false,
+    previousSessionLanguage: 'en', pageLocale: 'ka', sessionLanguages: ['ka', 'ru', 'en'],
+  });
+  assert.equal(back.resolvedLanguage, 'ru', 'coming back to it is a different claim');
+});
+
+test('the client tells the resolver what this conversation has spoken', () => {
+  const c = strip(client);
+  assert.match(c, /private spokenLanguages = new Set<string>\(\);/);
+  assert.match(c, /sessionLanguages: \[\.\.\.this\.spokenLanguages\]/);
+  assert.match(c, /this\.spokenLanguages\.add\(resolution\.resolvedLanguage\);/);
+});
+
+/* ── 10. Interrupting, and not interrupting ────────────────────────────── */
+
+test('a weak overlap lets the assistant finish its thought', () => {
+  const near = { agentSpeaking: true, inputEnergy: 0.21, agentAudioElapsedMs: 4000, echoCancelled: true };
+  // A tiny "ჰმ", an acknowledging "კი", a knock, a voice in the next room:
+  // all of them cross the energy threshold, none of them lasts.
+  for (const ms of [40, 100, 180, 240]) {
+    assert.equal(decideBargeIn({ ...near, sustainedMs: ms }), 'NONE', `${ms} ms of small sound`);
+  }
+  // 180 ms is exactly what used to stop the reply outright.
+  assert.equal(DEFAULT_BARGE_IN.sustainMs, 180);
+  assert.ok(DEFAULT_BARGE_IN.confirmMs >= 400);
+});
+
+test('a deliberate sustained interruption still takes the floor', () => {
+  // Somebody saying "გაჩერდი" into the phone: loud, and immediately so.
+  const firm = { agentSpeaking: true, inputEnergy: 0.55, agentAudioElapsedMs: 3000, echoCancelled: true };
+  assert.equal(decideBargeIn({ ...firm, sustainedMs: 180, pendingSeconds: 6 }), 'STOP');
+  assert.equal(decideBargeIn({ ...firm, sustainedMs: 180, pendingSeconds: 0.1 }), 'STOP',
+    'and it does not have to wait for the tail');
+  // Somebody starting a whole question over the answer, at ordinary volume.
+  const talking = { agentSpeaking: true, inputEnergy: 0.24, agentAudioElapsedMs: 3000, echoCancelled: true };
+  assert.equal(decideBargeIn({ ...talking, sustainedMs: 500, pendingSeconds: 6 }), 'STOP');
+});
+
+test('a gap between two words does not erase the interruption', () => {
+  const c = strip(client);
+  assert.match(c, /this\.quietRunMs \+= blockMs;/);
+  assert.match(c, /if \(this\.quietRunMs >= DEFAULT_BARGE_IN\.graceMs\) \{/);
+  assert.match(c, /this\.quietRunMs = 0;/);
+  assert.ok(DEFAULT_BARGE_IN.graceMs > 0 && DEFAULT_BARGE_IN.graceMs < 400);
+});
+
+test('the echo guard finally has a clock', () => {
+  // agentAudioStartedAt was declared and read and never assigned, so the
+  // elapsed time it produced was the whole Unix epoch and the guard could not
+  // fire on any device without echo cancellation.
+  const c = strip(client);
+  assert.match(c, /if \(state === 'RESPONDING'\) this\.agentAudioStartedAt = Date\.now\(\);/);
+  assert.equal(decideBargeIn({
+    agentSpeaking: true, inputEnergy: 0.9, sustainedMs: 900,
+    agentAudioElapsedMs: 50, echoCancelled: false,
+  }), 'NONE', "the assistant's own first syllable through a speaker");
+});
+
+test('interrupting cannot duplicate audio, duplicate a turn, or strand the session', () => {
+  const c = strip(client);
+  // One stop takes the sound, the generation and the request together, so no
+  // chunk of the abandoned reply can ever be scheduled afterwards.
+  assert.match(c, /this\.playbackInterruptReason = 'USER_BARGE_IN';/);
+  assert.match(c, /this\.stopPlayback\('USER_BARGE_IN'\);/);
+  assert.match(c, /this\.turnGeneration = this\.player\?\.currentGeneration \?\? this\.turnGeneration \+ 1;/);
+  assert.match(c, /this\.turnAbort\?\.abort\(\);/);
+  // And the floor is actually handed back, not merely relabelled.
+  assert.match(c, /if \(this\.state === 'INTERRUPTED'\) this\.resumeListening\(\);/);
+});
+
+test('noise is not a user turn, whatever else it does', () => {
+  // Barge-in stops playback; it does not invent a transcript. What reaches
+  // Luna is still governed by the refusal, which is unchanged.
+  const c = strip(client);
+  assert.match(c, /if \(this\.shouldRefuse\(said, resolution\.resolvedLanguage\)\)/);
+  assert.match(c, /this\.turns = this\.turns\.filter\(\(t\) => t\.id !== id\);/);
+  assert.match(c, /MAX_CONSECUTIVE_DISCREDITED_DROPS/);
+  for (const junk of ['RAM x 6Y', 'Wackisch', 'Karki']) {
+    assert.equal(isDiscreditedTurn(junk, 'ka'), true, junk);
+  }
+});
+
+/* ── 11. A person, not a comedian ──────────────────────────────────────── */
+
+test('the assistant is allowed to be funny, and told not to be a comedian', () => {
+  const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+  for (const invited of ['notice the funny thing', 'make the small dry observation',
+    'let a bit of wit through when the conversation has room for it',
+    'Laugh, be surprised, be amused', 'be dry or sarcastic', 'tease back']) {
+    assert.ok(edge.includes(invited), `the warmth this pass asked for: ${invited}`);
+  }
+  for (const restrained of ['You are not a comedian', 'No joke in every reply', 'no punchlines',
+    'no bits', 'no emoji', 'never funny at their', 'never a joke instead of an answer',
+    'and most replies', 'have none in them', 'Never reuse a joke']) {
+    assert.ok(edge.includes(restrained), `and the limit on it: ${restrained}`);
+  }
+});
+
+test('humour gets out of the way when the subject is serious', () => {
+  const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+  assert.match(edge, /READ THE ROOM\./);
+  assert.match(edge, /Money, contracts, the registry, a deposit at risk/);
+  assert.match(edge, /anyone worried, angry, complaining/);
+  assert.match(edge, /the lightness/);
+  assert.match(edge, /goes, completely, without being announced/);
+  assert.match(edge, /Be the calm competent one instead/);
+});
+
+test('the variation rules from the last pass are all still here', () => {
+  const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+  assert.match(edge, /DO NOT SOUND LIKE THE LAST TURN/);
+  assert.match(edge, /Vary the opener, the sentence shape, the length and the ending/);
+  assert.match(edge, /If the last reply began with a verb, do not begin with a verb/);
+  assert.match(edge, /Do not acknowledge, summarise or repeat what they/);
+  assert.match(edge, /Do not close every reply with an offer, a next step or a question/);
+  for (const banned of ['ვფიქრობ', 'გასაგებია', 'კარგი შეკითხვაა', 'კი, რა თქმა უნდა', 'конечно']) {
+    assert.ok(edge.includes(banned), banned);
+  }
+});
+
+test('the personality stayed compact, because the model reads it every turn', () => {
+  const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
+  const i = edge.indexOf('function publicDemoInstructions');
+  const j = edge.indexOf('\n}\n', i);
+  const lines = (edge.slice(i, j).match(/^\s*[`'].*[`'],\s*$/gm) ?? [])
+    .map((line) => line.trim().replace(/^[`']/, '').replace(/[`'],$/, ''));
+  const chars = lines.join('\n').length;
+  // 10,383 before the latency pass, 8,098 after it. The warmth this pass adds
+  // is paid for out of the same section, not appended to it.
+  assert.ok(chars < 8700, `the prompt is ${chars} characters`);
+  assert.ok(chars > 7000, 'and it still says everything it has to say');
 });

@@ -104,14 +104,39 @@ test('EN -> a clear Russian sentence -> Russian, on the same turn', () => {
 });
 
 test('weak tokens still cannot move an established session, in either direction', () => {
-  for (const [session, token] of [['ru', 'ok'], ['ru', 'yes'], ['ka', 'no'], ['en', 'да'], ['en', 'კი'], ['ru', 'არა']]) {
+  /*
+   * "კი" AND "არა" MOVED OUT OF THIS LIST DELIBERATELY.
+   *
+   * They were here because the letter floor could not tell a short real word
+   * from a short invented one. The owner's physical test found the cost: a
+   * session that had drifted to another language would not come back until a
+   * whole Georgian sentence was spoken, because every natural way of
+   * returning -- "კი", "ხო", "არა", "მოკლედ" -- was too short to be heard.
+   *
+   * What replaced the floor for these is not a lower bar, it is a different
+   * question: the letters must be an alphabet nobody else in this product
+   * writes in, the session must not already be in that alphabet, the word
+   * must be one that language actually uses, and it must be a RETURN -- to
+   * the page's own language or to one this conversation has already spoken.
+   * "да" arriving in an English session on a Georgian page is none of those
+   * things, and is still held, which is what the rest of this list checks.
+   */
+  for (const [session, token] of [['ru', 'ok'], ['ru', 'yes'], ['ka', 'no'], ['en', 'да'], ['ru', 'ok so']]) {
     const r = resolveTurnLanguage({
       transcript: token, providerLanguage: PROVIDER_TAG[session],
       previousSessionLanguage: session, pageLocale: 'ka',
     });
     assert.equal(r.resolvedLanguage, session, `"${token}" moved a ${session} session to ${r.resolvedLanguage}`);
   }
-  assert.ok(SWITCH_MIN_LETTERS >= 6, 'the guard that keeps this true');
+  // And the two that changed, stated as the behaviour they now have.
+  for (const [session, token] of [['en', 'კი'], ['ru', 'არა'], ['tr', 'ხო'], ['he', 'მოკლედ']]) {
+    const r = resolveTurnLanguage({
+      transcript: token, providerLanguage: PROVIDER_TAG[session] ?? session,
+      previousSessionLanguage: session, pageLocale: 'ka',
+    });
+    assert.equal(r.resolvedLanguage, 'ka', `"${token}" did not bring a ${session} session home`);
+  }
+  assert.ok(SWITCH_MIN_LETTERS >= 6, 'the floor itself is unchanged');
 });
 
 test('a short Latin fragment from a ru socket is held, a sentence is not', () => {

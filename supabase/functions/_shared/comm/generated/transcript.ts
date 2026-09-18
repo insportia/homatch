@@ -458,7 +458,7 @@ export function decideEndpoint(input: EndpointInput): EndpointDecision {
 export interface BargeInConfig {
   /** Sustained speech energy above this fraction of the calibrated floor counts. */
   energyThreshold: number;
-  /** How long that energy must persist before the agent yields. */
+  /** How long CLEARLY LOUD speech must persist before the agent yields. */
   sustainMs: number;
   /**
    * Speech arriving within this long of the agent's own audio starting is
@@ -466,12 +466,66 @@ export interface BargeInConfig {
    * a laptop speaker triggers a barge-in on the agent's own first syllable.
    */
   echoGuardMs: number;
+  /**
+   * The energy at which speech is unambiguously somebody talking INTO the
+   * phone rather than a sound near it. Above this, `sustainMs` is the bar.
+   */
+  assertiveEnergy: number;
+  /**
+   * How long merely-above-threshold speech must persist. One syllable does
+   * not reach it; a person actually starting a sentence passes it mid-word.
+   */
+  confirmMs: number;
+  /**
+   * When ordinary overlap has lasted this long the agent starts getting out
+   * of the way. Deliberately close to `confirmMs`: ducking is not free on
+   * every playback path, so a small sound must not reach it either.
+   */
+  duckMs: number;
+  /**
+   * A dip shorter than this does not erase the evidence already gathered, so
+   * the ordinary gap between two words does not restart the clock.
+   */
+  graceMs: number;
+  /**
+   * When less than this much of the reply is still to play, weak overlap
+   * lets it finish instead of cutting it off a syllable from the end.
+   */
+  tailSeconds: number;
 }
 
+/*
+ * WHY THERE ARE TWO BARS RATHER THAN ONE.
+ *
+ * Reported from a real device: the assistant was interrupted far too easily.
+ * The old rule was one bar -- 180 ms above 0.18 -- and 180 ms is a cough, a
+ * chair, a word from the next room, or "ჰმ". Everything that crossed it
+ * killed the reply outright, and a stop is irreversible: the scheduled audio
+ * is discarded, the generation is bumped and the request is aborted. There
+ * is no way to take it back.
+ *
+ * A person does not stop talking because the listener made the smallest
+ * sound, and they also do not carry on when somebody is plainly talking over
+ * them. So the evidence is graded by the two things actually measurable
+ * while the assistant holds the floor -- how loud, and for how long:
+ *
+ *   loud and deliberate (>= assertiveEnergy)   180 ms, as immediate as before
+ *   ordinary overlap    (>= energyThreshold)   450 ms, about one real word
+ *   a syllable, a cough, a knock               never
+ *
+ * 450 ms is not a delay added to an interruption: it is time the interrupter
+ * spends still speaking. "გაჩერდი" is about 700 ms and is loud, so it takes
+ * the fast path and stops the assistant well before the word is finished.
+ */
 export const DEFAULT_BARGE_IN: BargeInConfig = {
   energyThreshold: 0.18,
   sustainMs: 180,
   echoGuardMs: 320,
+  assertiveEnergy: 0.34,
+  confirmMs: 450,
+  duckMs: 350,
+  graceMs: 200,
+  tailSeconds: 0.35,
 };
 
 export interface BargeInInput {
@@ -484,6 +538,11 @@ export interface BargeInInput {
   agentAudioElapsedMs: number;
   /** True when the platform gives us acoustic echo cancellation we can trust. */
   echoCancelled?: boolean;
+  /**
+   * How much of the reply is still scheduled to play. The assistant is
+   * allowed to finish a thought it has all but finished already.
+   */
+  pendingSeconds?: number;
   config?: BargeInConfig;
 }
 
@@ -507,8 +566,25 @@ export function decideBargeIn(input: BargeInInput): BargeInAction {
   // window — that energy is almost certainly the agent's own voice.
   if (!input.echoCancelled && input.agentAudioElapsedMs < cfg.echoGuardMs) return 'NONE';
 
-  if (input.sustainedMs >= cfg.sustainMs) return 'STOP';
-  if (input.sustainedMs >= cfg.sustainMs / 2) return 'DUCK';
+  // Somebody talking into the phone, not near it: the original bar, unchanged.
+  const assertive = input.inputEnergy >= cfg.assertiveEnergy;
+  if (assertive && input.sustainedMs >= cfg.sustainMs) return 'STOP';
+
+  /*
+   * ALMOST DONE ANYWAY, SO FINISH THE THOUGHT.
+   *
+   * The player has no sentence boundary to stop at -- the whole reply is one
+   * continuous stream -- but it does know how much is left. With a fraction
+   * of a second to go, cutting on weak evidence is the thing that sounds
+   * wrong; letting it land does not delay the visitor by anything they can
+   * hear, because the microphone opens when the audio ends either way. A
+   * deliberate interruption still passes above, on the assertive path.
+   */
+  const pending = input.pendingSeconds;
+  if (typeof pending === 'number' && pending <= cfg.tailSeconds) return 'NONE';
+
+  if (input.sustainedMs >= cfg.confirmMs) return 'STOP';
+  if (input.sustainedMs >= cfg.duckMs) return 'DUCK';
   return 'NONE';
 }
 

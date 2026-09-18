@@ -184,10 +184,40 @@ test('the defaults are the tuned ones, not a provider generic', () => {
 // ── §24: barge-in ───────────────────────────────────────────────────────────
 
 test('the agent yields only to sustained speech, not to a cough', () => {
-  const base = { agentSpeaking: true, inputEnergy: 0.5, agentAudioElapsedMs: 2000, echoCancelled: true };
-  assert.equal(decideBargeIn({ ...base, sustainedMs: 20 }), 'NONE');
-  assert.equal(decideBargeIn({ ...base, sustainedMs: 100 }), 'DUCK');
-  assert.equal(decideBargeIn({ ...base, sustainedMs: 200 }), 'STOP');
+  // Loud and deliberate: the original bar, unchanged, so a real interruption
+  // is as immediate as it ever was.
+  const loud = { agentSpeaking: true, inputEnergy: 0.5, agentAudioElapsedMs: 2000, echoCancelled: true };
+  assert.equal(decideBargeIn({ ...loud, sustainedMs: 20 }), 'NONE');
+  assert.equal(decideBargeIn({ ...loud, sustainedMs: 200 }), 'STOP');
+  assert.ok(DEFAULT_BARGE_IN.sustainMs <= 200, 'a deliberate interruption still stops it inside a syllable');
+});
+
+test('a small sound over the assistant is not an interruption', () => {
+  /*
+   * Reported from a real device: it interrupted far too easily. Anything
+   * that crossed 0.18 for 180 ms killed the reply, and a stop cannot be
+   * undone. Ordinary overlap now has to last about one spoken word.
+   */
+  const near = { agentSpeaking: true, inputEnergy: 0.22, agentAudioElapsedMs: 4000, echoCancelled: true };
+  assert.equal(decideBargeIn({ ...near, sustainedMs: 120 }), 'NONE', 'a syllable');
+  assert.equal(decideBargeIn({ ...near, sustainedMs: 200 }), 'NONE', 'a short "hm" that used to stop it');
+  assert.equal(decideBargeIn({ ...near, sustainedMs: 300 }), 'NONE', 'a short phrase from the next room');
+  assert.equal(decideBargeIn({ ...near, sustainedMs: 400 }), 'DUCK', 'still listening, not yet convinced');
+  assert.equal(decideBargeIn({ ...near, sustainedMs: 500 }), 'STOP', 'somebody is genuinely talking');
+  assert.ok(DEFAULT_BARGE_IN.confirmMs > DEFAULT_BARGE_IN.sustainMs,
+    'ordinary overlap needs more evidence than a raised voice');
+  assert.ok(DEFAULT_BARGE_IN.confirmMs <= 600, 'and not so much that interrupting feels ignored');
+});
+
+test('a thought that is nearly finished is allowed to finish', () => {
+  const weak = {
+    agentSpeaking: true, inputEnergy: 0.2, sustainedMs: 5000,
+    agentAudioElapsedMs: 4000, echoCancelled: true,
+  };
+  assert.equal(decideBargeIn({ ...weak, pendingSeconds: 0.2 }), 'NONE', 'a syllable of audio left');
+  assert.equal(decideBargeIn({ ...weak, pendingSeconds: 3 }), 'STOP', 'most of the reply left');
+  // A deliberate interruption does not wait for the tail either way.
+  assert.equal(decideBargeIn({ ...weak, inputEnergy: 0.6, sustainedMs: 200, pendingSeconds: 0.1 }), 'STOP');
 });
 
 test('the agent’s own first syllable does not interrupt it', () => {

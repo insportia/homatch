@@ -1,6 +1,7 @@
 import {
   LANGUAGE_CODES, LANGUAGE_NAMES, LATIN_CODES, SCRIPT_FAMILIES, SCRIPT_TESTS, guessLatinLanguage,
   latinLanguageAgainst, guessCyrillicLanguage, isGreeting, SCRIPT_OF, type Script,
+  hasAnyFunctionWord, isCheckable, scoreLatinLanguages,
 } from './languageRegistry.ts';
 // HOMATCH AI TALK — one place that decides what language a turn is in.
 //
@@ -229,6 +230,12 @@ export interface ResolveInput {
    */
   firstTurn?: boolean;
   previousSessionLanguage?: string | null;
+  /**
+   * Every language this session has already resolved to. A RETURN is to one
+   * of these, or to the page's own language; anything else is a first
+   * arrival and is held to the full evidence bar. See `ownScriptReturn`.
+   */
+  sessionLanguages?: readonly string[] | null;
   pageLocale?: string | null;
   /** Used only when there is nothing else at all. */
   fallback?: TalkLanguage;
@@ -327,7 +334,47 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
        * be more than a one-word mis-hearing, and the confidence test below
        * still guards every Latin case, which is where the corruptions live.
        */
-      const tooShort = evidence.letters < minLetters && words < 3;
+      /*
+       * "კი" IS A WHOLE ANSWER, AND NO OTHER LANGUAGE WRITES IT.
+       *
+       * The floor exists for what a recogniser INVENTS out of a syllable --
+       * "Abba", "Karki", "Wackisch" -- and every one of those is LATIN. Latin
+       * is the shared alphabet and the one a mis-hearing comes back in.
+       *
+       * Georgian is not shared. Neither is Hebrew, Arabic or Devanagari. A
+       * socket pinned to Spanish cannot emit Georgian letters at all, so
+       * Georgian arriving in a Spanish session was not produced by the
+       * configuration -- somebody said it. Holding "კი", "ხო", "არა",
+       * "მოკლედ" to the foreign language is what made returning to Georgian
+       * need a second sentence.
+       *
+       * Positive evidence, not a lowered bar: the letters must be that
+       * language's own script, the script must not be the one the session is
+       * already in, and the text must carry a word that language actually
+       * uses. "रामाखूया" is Devanagari and is in no Hindi list, so it still
+       * moves nothing.
+       */
+      /*
+       * ...AND IT HAS TO BE A RETURN.
+       *
+       * Without this, one Cyrillic token -- "да", which is a real Russian
+       * word and also what a recogniser writes for a Georgian "დიახ" -- took
+       * a Georgian session to Russian, and the rule that a single weak token
+       * never moves an established conversation is one this product needs.
+       * Coming BACK to a language this conversation has already spoken, or to
+       * the language of the page itself, is a different claim from arriving
+       * at a new one on two letters. Only the first is allowed here.
+       */
+      const spoken = input.sessionLanguages ?? [];
+      const returning = language === locale || spoken.includes(language);
+      const ownScriptReturn = returning
+        && Boolean(evidence.script)
+        && evidence.script !== 'latin'
+        && evidence.script !== SCRIPT_OF[prior]
+        && SCRIPT_OF[language] === evidence.script
+        && isCheckable(language)
+        && hasAnyFunctionWord(transcript, language);
+      const tooShort = evidence.letters < minLetters && words < 3 && !ownScriptReturn;
       /*
        * ONE WORD CAN BE EVIDENCE IF IT IS A WORD.
        *
@@ -406,7 +453,44 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
         // outrank the configuration, at the same bar a switch needs.
         const lexical = substantial ? latinLanguageAgainst(transcript, provider) : null;
         if (lexical && LATIN_LANGUAGES.includes(lexical)) return decide(lexical, 'LATIN_LEXICAL', 0.65);
-        return decide(provider, 'PROVIDER_LATIN', leavingNonLatin && !substantial && !detectedEnough ? 0.35 : 0.7);
+        /*
+         * A LABEL IS NOT EVIDENCE THAT THE WORDS ARE THAT LANGUAGE.
+         *
+         * Measured, physical Android session 0ef8c2ff, turn 11, on the
+         * Georgian site: the `auto` socket heard Georgian, wrote it in LATIN
+         * letters and labelled it SPANISH. It was a whole sentence, so it
+         * cleared `substantial`, and PROVIDER_LATIN took it at 0.7 and moved
+         * a settled Georgian conversation to Spanish. From there the pinned
+         * socket became es-ES, which can never emit Georgian letters again --
+         * so SCRIPT evidence could not come back and the session was captured.
+         * Turn 12 was Spanish too. The visitor was speaking Georgian throughout.
+         *
+         * Length was the only thing being asked for, and a transliteration is
+         * long. So ask the question length cannot answer: does the text
+         * contain any of the words that language is actually made of?
+         * "Madoba, najuandis." carries no Spanish. A real English or Turkish
+         * sentence carries its own function words easily, which is why this
+         * does not make switching harder for anyone genuinely switching.
+         *
+         * Only when LEAVING a non-Latin session, because that is the only
+         * direction a transliteration can corrupt, and only for languages
+         * whose words are listed: anything unjudgeable is unaffected.
+         */
+        /*
+         * TWO WAYS TO BE RECOGNISABLY SOME LANGUAGE, BECAUSE ONE WAS NOT ENOUGH.
+         *
+         * Function words alone rejected "Vake'de metrekare fiyatı nedir?" --
+         * real Turkish, but agglutinative, so `fiyat` arrives as `fiyatı` and
+         * `ne` as `nedir` and the list matches none of it. Letters answer what
+         * word lists cannot: `ı` is Turkish and belongs to no other language
+         * here. So the text counts as a language if EITHER its words or its
+         * alphabet say so. Transliterated Georgian is plain ASCII with neither.
+         */
+        const speaksIt = hasAnyFunctionWord(transcript, provider)
+          || scoreLatinLanguages(transcript).length > 0;
+        const unbacked = leavingNonLatin && !speaksIt;
+        return decide(provider, 'PROVIDER_LATIN',
+          leavingNonLatin && (unbacked || (!substantial && !detectedEnough)) ? 0.35 : 0.7);
       }
       if (previous && LATIN_LANGUAGES.includes(previous)) {
         return decide(previous, 'STICKY_LATIN', 0.55);
@@ -440,7 +524,13 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
       const latinWords = transcript.trim().split(/\s+/).filter(Boolean).length;
       const substantialLatin = evidence.ratio >= 0.5 && (latinWords >= 4 || evidence.letters >= 15);
       if (substantialLatin && anchorLang && !LATIN_LANGUAGES.includes(anchorLang)) {
-        return decide(guessLatinLanguage(transcript, 'en'), 'LATIN_FROM_PINNED', 0.7);
+        // Held to the same standard as PROVIDER_LATIN above: a Georgian
+        // sentence transliterated by its own ka-GE socket is long, Latin and
+        // English-shaped, and must not take the session on that alone.
+        const guessed = guessLatinLanguage(transcript, 'en');
+        if (hasAnyFunctionWord(transcript, guessed)) {
+          return decide(guessed, 'LATIN_FROM_PINNED', 0.7);
+        }
       }
       return decide(previous ?? locale ?? fallback, 'STICKY_HELD', 0.2);
     }

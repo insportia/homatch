@@ -138,7 +138,8 @@ test('the personality gained emotional range and kept its manners', () => {
   const edge = readFileSync('supabase/functions/ai-talk-session/index.ts', 'utf8');
   // The range is now stated inside WHO YOU ARE rather than under its own
   // heading, which is a shorter prompt and the same instruction.
-  assert.match(edge, /You are allowed to laugh, be surprised, be amused by something absurd/);
+  assert.match(edge, /Laugh, be surprised, be amused/);
+  assert.match(edge, /by something absurd, disagree plainly, be dry or sarcastic/);
   assert.match(edge, /tease back/, 'and to give it back when it is given');
   assert.match(edge, /sound a little irritated/, 'irritation is allowed when it is earned');
   assert.match(edge, /Never insult/, 'and the boundary is stated, not implied');

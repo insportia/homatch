@@ -872,6 +872,12 @@ export class VoiceSession {
   private lastOpinionWaitMs = 0;
   /** Turns that have actually resolved a language. Zero means the page is the only prior. */
   private resolvedTurns = 0;
+  /**
+   * Every language this conversation has actually spoken. Coming back to one
+   * of them is a return, and a return is believed on less evidence than a
+   * language appearing for the first time. See ownScriptReturn.
+   */
+  private spokenLanguages = new Set<string>();
   private discreditedDrops = 0;
   /** Words in the latest interim of the utterance in progress; 0 before any. */
   private livePartialWords = 0;
@@ -1155,6 +1161,8 @@ export class VoiceSession {
   private lastVoiceAt = 0;
   private sustainedSpeechMs = 0;
   private agentAudioStartedAt = 0;
+  /** Unbroken quiet since the last voiced block, for the barge-in grace window. */
+  private quietRunMs = 0;
   private marks: LatencyMarks = {};
   private tickHandle: number | null = null;
   private utteranceSeq = 0;
@@ -2522,6 +2530,7 @@ export class VoiceSession {
       providerLanguage: heardBy,
       providerDetected: heardByDetected,
       firstTurn: this.resolvedTurns === 0,
+      sessionLanguages: [...this.spokenLanguages],
       previousSessionLanguage: this.language.current,
       pageLocale: this.pageLocale,
     });
@@ -2613,6 +2622,7 @@ export class VoiceSession {
     }
     this.discreditedDrops = 0;
     this.resolvedTurns += 1;
+    this.spokenLanguages.add(resolution.resolvedLanguage);
 
     this.publishDiagnostics();
     await this.takeTurn(said);
@@ -2860,6 +2870,7 @@ export class VoiceSession {
       transcript: said, providerLanguage: reply.language ?? null,
       providerDetected: this.lastProviderDetected,
       firstTurn: this.resolvedTurns === 0,
+      sessionLanguages: [...this.spokenLanguages],
       previousSessionLanguage: this.language.current, pageLocale: this.pageLocale,
     });
     this.diag.languageState = {
@@ -3607,6 +3618,8 @@ export class VoiceSession {
     this.micGatedAt = 0;
     this.lastVoiceAt = 0;
     this.sustainedSpeechMs = 0;
+    this.quietRunMs = 0;
+    this.bargeSpeechAt = 0;
     this.setState('LISTENING');
     this.milestone('listening_resumed');
   }
@@ -3626,6 +3639,7 @@ export class VoiceSession {
   private trackVoiceActivity(level: number, blockMs: number): void {
     const speaking = level >= DEFAULT_BARGE_IN.energyThreshold;
     if (speaking) {
+      this.quietRunMs = 0;
       // The first loud block of an interruption is what the stop is measured
       // against; it is cleared when the assistant is no longer speaking.
       if (!this.bargeSpeechAt && this.state === 'RESPONDING') this.bargeSpeechAt = Date.now();
@@ -3641,6 +3655,9 @@ export class VoiceSession {
           sustainedMs: this.sustainedSpeechMs,
           agentAudioElapsedMs: Date.now() - this.agentAudioStartedAt,
           echoCancelled: this.echoCancelled,
+          // How much of the reply is left to play, so a thought that is all
+          // but finished is not cut off on weak evidence.
+          pendingSeconds: this.player?.pendingSeconds,
         });
         if (action === 'DUCK') this.duckPlayback();
         if (action === 'STOP') {
@@ -3674,7 +3691,20 @@ export class VoiceSession {
         }
       }
     } else {
-      this.sustainedSpeechMs = 0;
+      /*
+       * A REAL SENTENCE HAS GAPS IN IT.
+       *
+       * One block below the threshold used to erase every millisecond
+       * gathered so far, so the pause between two words restarted the
+       * evidence and a genuine interruption had to fight for its stop.
+       * Silence shorter than the grace window is part of the speech; longer
+       * than it, the interruption was not one, and the count goes.
+       */
+      this.quietRunMs += blockMs;
+      if (this.quietRunMs >= DEFAULT_BARGE_IN.graceMs) {
+        this.sustainedSpeechMs = 0;
+        this.bargeSpeechAt = 0;
+      }
     }
   }
 
@@ -3721,6 +3751,15 @@ export class VoiceSession {
    */
   private setState(state: VoiceState, detail?: string): void {
     if (this.state === state) return;
+    /*
+     * THE ECHO GUARD HAD NO CLOCK.
+     *
+     * `agentAudioStartedAt` was declared and read and never once assigned, so
+     * the elapsed time it produced was the whole Unix epoch and the guard it
+     * feeds could not fire on any device. It is stamped here, where the
+     * assistant actually takes the floor.
+     */
+    if (state === 'RESPONDING') this.agentAudioStartedAt = Date.now();
     const allowed = ALLOWED_TRANSITIONS[this.state];
     if (allowed && !allowed.includes(state)) {
       this.milestone('illegal_transition', `${this.state}->${state}`);

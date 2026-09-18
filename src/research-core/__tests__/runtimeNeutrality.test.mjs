@@ -179,11 +179,32 @@ test('every relative import carries an explicit .ts extension', () => {
   }
 });
 
-test('nothing outside src/research-core imports it yet', () => {
-  // Step 1 is additive by definition: the core is vendored and tested, and no
-  // existing consumer has been migrated onto it. When that changes
-  // deliberately, this assertion is the thing that has to be updated
-  // deliberately too — which is the point.
+test('the core is consumed only through its deliberate integration points', () => {
+  /*
+   * This assertion used to read "nothing outside the core imports it yet",
+   * which was right while the core was vendored and unwired. It is now wired
+   * into Verify deliberately, so the property worth guarding has changed: the
+   * core must be reached from a SMALL, NAMED set of seams, not from wherever
+   * a feature happened to need a helper.
+   *
+   * The distinction matters because the core's value is that it is runtime
+   * neutral and has one way in. A component importing a fetch primitive
+   * directly would bypass the network policy, the rate limits and the cost
+   * accounting, and nothing would notice until production.
+   *
+   * Adding a seam here is meant to be a deliberate edit, the same way the old
+   * assertion was.
+   */
+  const ALLOWED = new Set([
+    // The Verify market lane and the seed it is built from.
+    'src/verify/marketLane.ts',
+    'src/verify/researchSeed.ts',
+    'src/verify/__tests__/marketLane.test.mjs',
+    'src/verify/__tests__/researchSeed.test.mjs',
+    // The one server that runs research.
+    'supabase/functions/research-agent/index.ts',
+  ]);
+
   const roots = ['src', 'supabase/functions', 'official-worker/src'];
   const offenders = [];
 
@@ -203,12 +224,23 @@ test('nothing outside src/research-core imports it yet', () => {
       }
       if (!/\.(ts|tsx|mjs)$/.test(entry)) continue;
       const body = readFileSync(full, 'utf8');
-      if (/research-core/.test(body)) offenders.push(full);
+      if (!/research-core/.test(body)) continue;
+      // rel() is relative to the CORE; these files are outside it, so the
+      // comparison is made against the repository root instead.
+      const relative = full
+        .slice(process.cwd().length + 1)
+        .split(String.fromCharCode(92))
+        .join('/');
+      if (!ALLOWED.has(relative)) offenders.push(relative);
     }
   };
 
   for (const root of roots) walk(join(process.cwd(), root));
-  assert.deepEqual(offenders, [], `unexpected importers of research-core: ${offenders.join(', ')}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    `research-core reached from outside its integration seams: ${offenders.join(', ')}`,
+  );
 });
 
 test('the public surface exports the bridge, not a second research system', () => {

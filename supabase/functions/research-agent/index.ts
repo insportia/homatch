@@ -14,6 +14,19 @@ import { findSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts'
 import { districtOfAddress, cityOfAddress } from '../../../src/verify/intelligence/locationIntelligence.ts';
 import { planEscalation, searchBudgetInstruction } from '../../../src/verify/intelligence/escalation.ts';
 import { summariseSources } from '../../../src/verify/intelligence/sourceVersion.ts';
+/*
+ * THE DETERMINISTIC MARKET LANE (Research Core).
+ *
+ * Comparable discovery used to be a MARKET-stage instruction to a model with
+ * a web_search tool. It is now a portal query executed in code, and these are
+ * the four pieces of that: the seed built from what this run already knows,
+ * the lane that executes it, the brief the MARKET stage receives instead of
+ * "go and search", and the section states the progressive UI reads.
+ */
+import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
+import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
+import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
+import { computeSections } from '../../../src/verify/sections.ts';
 import {
   consumptionFromUsage,
   costOperationFor,
@@ -1660,8 +1673,29 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
   }
 
   if (s === 'MARKET') {
+    /*
+     * WHERE AI STOPS DOING BROAD RESEARCH.
+     *
+     * When the deterministic lane ran, the comparables already exist: gathered
+     * from a real portal query, normalized, deduplicated, priced and traced.
+     * Handing them over with an explicit "do not re-find these" is the whole
+     * change — the model's job becomes reading evidence rather than hunting
+     * for it, and the searches it does spend go to what the portal could not
+     * answer.
+     *
+     * When the lane did NOT run — no city, no district, no area, or every
+     * portal blocked — this is empty and the stage behaves exactly as it
+     * always did. The fallback is the previous behaviour, not a gap.
+     */
+    const laneBrief = p._marketComparables && p._marketLane
+      ? marketLaneBrief({
+          comparables: p._marketComparables,
+          summary: p._marketLane,
+          conflicts: p._marketConflicts || [],
+        } as any) + '\n\n'
+      : '';
     return (
-      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
+      known + laneBrief + `${BASE}\nAnswer strings in ${L}. Query=${q}. Identity=${JSON.stringify(p.identity || {}).slice(0, 9000)}. Official=${JSON.stringify(p.official || {}).slice(0, 16000)}. PublicResearch=${JSON.stringify(p.publicResearch || {}).slice(0, 9000)}. ` +
       // SEARCH THE WHOLE HIERARCHY, NOT JUST THE BUILDING.
       // A live report compared five units in one project to each other and
       // stopped. That answers "what do flats in this building cost", not
@@ -1934,6 +1968,43 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
     const total = Array.isArray(w.steps) && w.steps.length ? w.steps.length : null;
     const done = Array.isArray(w.results) ? w.results.length : 0;
     const percent = total ? Math.min(43, 34 + Math.round((done / total) * 9)) : 34;
+
+    /*
+     * THE OFFICIAL REGISTRY IS NO LONGER A MUTEX.
+     *
+     * This branch is the browser worker still working — a wait measured in
+     * minutes, during which nothing else used to happen. The market question
+     * does not depend on the registry answer, so it is answered here, in the
+     * time that was already being spent waiting.
+     *
+     * Bounded, single-shot and non-fatal by construction: it runs once per job
+     * (guarded on _marketLaneAttempted), inside its own deadline, and any
+     * failure leaves the verification exactly as it was. A market lane that
+     * breaks must never be able to fail a Verify.
+     */
+    const laneJob = j.result_json || {};
+    if (!laneJob._marketLaneAttempted) {
+      laneJob._marketLaneAttempted = true;
+      try {
+        const lane = await runVerifyMarketLane(sb, j, laneJob);
+        if (lane) {
+          laneJob._marketLane = lane.summary;
+          laneJob._marketComparables = lane.comparables;
+          laneJob._marketConflicts = lane.conflicts;
+        }
+      } catch (e) {
+        // Recorded, never raised. The registry work in flight is worth more
+        // than the comparables, and losing the job over a portal would be a
+        // strictly worse outcome than losing the market section.
+        laneJob._marketLaneError = String((e as any)?.message || e).slice(0, 200);
+      }
+      return sb.from('research_jobs').update({
+        result_json: laneJob,
+        progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total },
+        updated_at: now(),
+      }).eq('id', j.id);
+    }
+
     return sb.from('research_jobs').update({ progress: { phase: 'official_browser', percent, provider: 'playwright', sourcesCompleted: done, sourcesTotal: total }, updated_at: now() }).eq('id', j.id);
   }
   const p = j.result_json || {};
@@ -2938,6 +3009,41 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   }
   if (s === 'MARKET') {
     prior.marketResearch = z;
+    /*
+     * THE DETERMINISTIC COMPARABLES SURVIVE WHATEVER THE MODEL RESTATES.
+     *
+     * They were gathered in code, with a URL, a price basis, a portal
+     * publication date and a recorded reason for being considered relevant.
+     * A model paraphrasing them can only lose fields, so the code-gathered
+     * set is the base and anything the model found that is genuinely NEW —
+     * a listing at a URL the lane did not reach — is added on top.
+     *
+     * De-duplicated by URL, deterministic set first, so the same listing can
+     * never be counted twice just because both halves of the pipeline saw it.
+     */
+    if (Array.isArray(prior._marketComparables) && prior._marketComparables.length) {
+      const modelFound = Array.isArray(z?.comparables) ? z.comparables : [];
+      const seenUrls = new Set(
+        prior._marketComparables.map((c: any) => String(c?.url || '').trim()).filter(Boolean),
+      );
+      const additional = modelFound.filter((c: any) => {
+        const url = String(c?.url || '').trim();
+        return url && !seenUrls.has(url);
+      });
+      z.comparables = [...prior._marketComparables, ...additional];
+      z.comparableDiscovery = {
+        deterministic: prior._marketComparables.length,
+        modelAdded: additional.length,
+        independentSourceCount: prior._marketLane?.independentSourceCount ?? null,
+        uniqueProperties: prior._marketLane?.uniqueProperties ?? null,
+        advertisementsRead: prior._marketLane?.advertisements ?? null,
+      };
+    }
+    // Price disagreements found in code are conflicts of the same standing as
+    // any the model reports, and are merged rather than replaced.
+    if (Array.isArray(prior._marketConflicts) && prior._marketConflicts.length) {
+      z.conflicts = [...(Array.isArray(z?.conflicts) ? z.conflicts : []), ...prior._marketConflicts];
+    }
     // v25: run cross-stage reconciliation as soon as MARKET's own evidence
     // is in (see reconcileIdentity() above) — this is what lets a
     // project/developer that only became clear from market comparables
@@ -3990,6 +4096,64 @@ async function planMarketFor(db: any, known: any, plan: any): Promise<any | null
   }
 }
 
+/*
+ * THE DETERMINISTIC MARKET LANE.
+ *
+ * Builds the seed from what this run has already established, then executes a
+ * real portal query in code. No model is involved and no web_search is spent.
+ *
+ * ONE PORTAL REQUEST BUDGET, ONE DEADLINE. The lane is given 20 seconds; what
+ * it has by then is what the report gets, marked honestly. A portal that hangs
+ * costs its own slot and nothing else.
+ */
+async function runVerifyMarketLane(db: any, job: any, result: any): Promise<MarketLaneResult | null> {
+  /*
+   * Everything already known about this subject, as fact_key -> value.
+   *
+   * Registry families are deliberately NOT read here — ownership and
+   * encumbrances say nothing about which flats are comparable, and carrying
+   * them into a portal query would be both useless and wrong.
+   */
+  const knownFacts: Record<string, string | number | null> = {};
+  try {
+    const code = normalizeCadastral(job.query);
+    if (code) {
+      const known = await loadKnownIntelligence(db, 'CADASTRAL_CODE', code);
+      for (const fact of [...(known.facts ?? []), ...(known.relatedFacts ?? [])]) {
+        const key = (fact as any)?.fact_key;
+        if (typeof key !== 'string' || key in knownFacts) continue;
+        knownFacts[key] = (fact as any)?.value_text ?? (fact as any)?.value_number ?? null;
+      }
+    }
+  } catch {
+    // The graph is an optimisation here, not a dependency. A seed built from
+    // the run's own evidence is still a valid seed.
+  }
+
+  const seed = buildResearchSeed({
+    jobId: String(job.id),
+    query: job.query,
+    mode: job.type === 'cadastral' ? 'cadastral' : 'property',
+    result,
+    knownFacts,
+  });
+
+  const runtime = createPortalRuntime();
+  const lane = await runMarketLane(seed, runtime.registry, runtime.context, {
+    budgetMs: 20_000,
+    limit: 40,
+  });
+  if (lane) {
+    // Cache and coalescing counters travel with the lane so the external
+    // requests we did NOT make are as measurable as the ones we did.
+    const stats = runtime.stats();
+    (lane.summary as any).cacheHits = stats.cacheHits;
+    (lane.summary as any).cacheMisses = stats.cacheMisses;
+    (lane.summary as any).coalescedJoins = stats.coalescedJoins;
+  }
+  return lane;
+}
+
 async function shadowReusePlan(db: any, query: string): Promise<any | null> {
   try {
     const code = normalizeCadastral(query);
@@ -4425,6 +4589,20 @@ function sanitizeForCustomer(job: any): any {
   delete r._worker;
   delete r._cost;
   delete r._searches;
+  /*
+   * The deterministic market lane's own bookkeeping.
+   *
+   * Its OUTPUT is customer-facing — the comparables were merged into
+   * market.comparables in finish(), with their URLs, prices and reasons. What
+   * goes here is the machinery: portal states, request counts, cache hits,
+   * the widened-envelope flag. The progressive UI reads those through the
+   * `sections` block, which is computed from the row and carries no internals.
+   */
+  delete r._marketLane;
+  delete r._marketComparables;
+  delete r._marketConflicts;
+  delete r._marketLaneAttempted;
+  delete r._marketLaneError;
   delete r._enregEntityRequestedFor;
   // v28: the generalized financial-queue bookkeeping (enreg/rstax/debtor) —
   // same reasoning as _enregEntityRequestedFor above, kept alongside it
@@ -4826,8 +5004,37 @@ Deno.serve(async (req) => {
     const ownedBy = (q: any) =>
       anonSession ? q.eq('anon_session_id', anonSession.id) : q.eq('user_id', user!.id);
     /** The last thing every job response passes through. */
-    const forCaller = (j: any) =>
-      anonSession ? withholdReportUntilSignIn(sanitizeForCustomer(j)) : sanitizeForCustomer(j);
+    /*
+     * SECTIONS TRAVEL WITH EVERY STATUS READ.
+     *
+     * Computed from the row rather than stored on it, so there is exactly one
+     * definition of "is the market section usable yet" and every tab, device
+     * and reopened case derives the same answer from the same evidence.
+     *
+     * Derived BEFORE sanitising, because maturity is counted from the full
+     * result — including the lane's internal counters — while what ships is
+     * only the counts themselves.
+     */
+    const withSections = (j: any) => {
+      const sanitized = anonSession
+        ? withholdReportUntilSignIn(sanitizeForCustomer(j))
+        : sanitizeForCustomer(j);
+      try {
+        return {
+          ...sanitized,
+          sections: computeSections({
+            result: j?.result_json ?? null,
+            stage: j?.stage ?? null,
+            status: j?.status ?? null,
+          }),
+        };
+      } catch {
+        // A section-state failure must never break a status poll. The report
+        // itself is unaffected; the UI simply falls back to the stage view.
+        return sanitized;
+      }
+    };
+    const forCaller = (j: any) => withSections(j);
     const action = String(b.action || 'start');
     const lang = LANG[String(b.locale || b.language)] ? String(b.locale || b.language) : 'en';
     // v30: Gemini removed entirely — OpenAI Responses API only, per the

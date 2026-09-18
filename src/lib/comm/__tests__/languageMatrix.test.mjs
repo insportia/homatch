@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { resolveTurnLanguage, normaliseLanguage } from '../talkLanguage.ts';
 import { isGreeting, GREETINGS, SCRIPT_OF } from '../languageRegistry.ts';
 import {
-  isDiscreditedTurn, consistentWith, hasAnyFunctionWord, planRecovery,
+  isDiscreditedTurn, consistentWith, hasAnyFunctionWord, planRecovery, labelMatchesScript,
 } from '../sameTurnRecovery.ts';
 
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -272,7 +272,7 @@ test('the auto socket is a second opinion only, and one that fails cannot end th
   assert.ok(opener.length > 0);
   // A failed opinion nulls itself and is counted; nothing else happens.
   assert.match(c, /this\.shadow = null;\s*\n\s*this\.diag\.secondOpinionFailures = \(this\.diag\.secondOpinionFailures \?\? 0\) \+ 1;/);
-  assert.match(c, /const opinion = origin === 'SHADOW' \? null : await this\.awaitSecondOpinion\(\);/);
+  assert.match(c, /await this\.awaitSecondOpinion\(opinionCouldDecide\)/, 'the opinion is consulted, bounded by whether it could decide');
   assert.match(c, /SECOND_OPINION_WAIT_MS/, 'and waiting for it is bounded');
 });
 
@@ -316,4 +316,69 @@ test('the settled architecture is untouched', () => {
   assert.match(worker, /chirp_3/, 'the speech model');
   assert.match(worker, /languageCodes: cfg\.detect \? \['auto'\] : \[cfg\.languageCode\]/,
     'unrestricted auto is reachable only when a socket explicitly asks to detect');
+});
+
+/* ── The physical Android failure, session f90b91aa, turn 7 ───────────── */
+
+test('an opinion that names a language its own letters contradict is not evidence', () => {
+  // THE REAL ONE. Owner's Android session f90b91aa-c902-4437-98e7-6f299f0a2d89,
+  // 2026-09-18 16:51:08Z, edge v89. The `auto` socket heard Georgian speech,
+  // wrote LATIN letters and labelled them "ar". The pinned socket for that
+  // session could only ever answer ka-GE, en-US, ru-RU or tr-TR, and no batch
+  // recovery ran (zero transcribe events), so that label came from `auto` --
+  // and its text replaced a correct Georgian transcript. The turn was then
+  // held as Georgian at 0.2 confidence and the Latin garbage went to Luna.
+  assert.equal(labelMatchesScript('gamarjoba me minda bina', 'ar'), false);
+  assert.equal(labelMatchesScript('Ki, kargi.', 'hi'), false, 'the same shape as the hi-Latn mislabel');
+  assert.equal(labelMatchesScript('Shalom', 'he'), false, 'Hebrew is not written in Latin');
+  // An opinion that agrees with itself is still evidence.
+  assert.equal(labelMatchesScript('שלום, קוראים לי טל', 'he'), true);
+  assert.equal(labelMatchesScript('مرحبا، اسمي طارق', 'ar'), true);
+  assert.equal(labelMatchesScript('Hello, my name is Tariel', 'en'), true);
+  assert.equal(labelMatchesScript('გამარჯობა, ვაკეში ბინას ვეძებ', 'ka'), true);
+  assert.equal(labelMatchesScript('रामाखूया', 'mr'), true, 'Marathi IS Devanagari, however wrong the words');
+  // Too little to judge is not a contradiction.
+  assert.equal(labelMatchesScript('2 + 2', 'ru'), true);
+  assert.equal(labelMatchesScript('', 'ka'), true);
+  assert.equal(labelMatchesScript('anything', null), false, 'no label is no evidence');
+
+  const c = strip(client);
+  assert.match(c, /if \(!labelMatchesScript\(opinion, opinionLang\)\) \{/);
+  assert.match(c, /why: 'OPINION_SELF_CONTRADICTORY'/);
+  // It is asked BEFORE the transcript is ever put at risk.
+  const judge = c.slice(c.indexOf('private judgeSecondOpinion('), c.indexOf('private async recoverUtterance('));
+  assert.ok(judge.indexOf("OPINION_SELF_CONTRADICTORY") < judge.indexOf("why: 'LIVE_INCONSISTENT'"),
+    'a self-contradictory opinion is discarded before it can replace anything');
+  assert.ok(judge.indexOf("OPINION_SELF_CONTRADICTORY") < judge.indexOf("why: 'LIVE_FRAGMENT'"));
+  // And the batch recovery is held to the same standard.
+  assert.match(c, /&& \(language === null \|\| labelMatchesScript\(text, language\)\)/);
+});
+
+test('a phone does not wait for an opinion that would not be allowed to change anything', () => {
+  const c = strip(client);
+  assert.match(c, /const opinionCouldDecide = !said\.trim\(\) \|\| pinnedLatin \|\| !consistentWith\(said, pinned\)/);
+  assert.match(c, /await this\.awaitSecondOpinion\(opinionCouldDecide\)/);
+  assert.match(c, /if \(!mayWait\) return Promise\.resolve\(null\);/);
+  // The wait still exists where it can decide the turn.
+  assert.match(c, /SECOND_OPINION_WAIT_MS/);
+  // A credible Georgian sentence out of a Georgian socket is exactly the case
+  // that should not pay for it.
+  assert.equal(consistentWith('გამარჯობა, ვაკეში ორსაძინებლიან ბინას ვეძებ.', 'ka'), true);
+  assert.equal(hasAnyFunctionWord('გამარჯობა, ვაკეში ორსაძინებლიან ბინას ვეძებ.', 'ka'), true);
+});
+
+test('the Georgian session in that trace keeps its turn now', () => {
+  // The pinned ka-GE socket wrote Georgian; `auto` said "ar" over Latin text.
+  // Before: the opinion replaced it and the turn resolved STICKY_HELD at 0.2.
+  // After: the opinion is discarded and the Georgian transcript is the turn.
+  const opinionLang = 'ar';
+  const opinionText = 'gamarjoba me minda ortotakhiani bina';
+  assert.equal(labelMatchesScript(opinionText, opinionLang), false);
+  const r = resolveTurnLanguage({
+    transcript: 'გამარჯობა, მინდა ორთოთახიანი ბინა.', providerLanguage: 'ka-GE',
+    providerDetected: false, previousSessionLanguage: 'ka', pageLocale: 'ka',
+  });
+  assert.equal(r.resolvedLanguage, 'ka');
+  assert.equal(r.resolutionReason, 'SCRIPT');
+  assert.equal(r.confidence, 1);
 });

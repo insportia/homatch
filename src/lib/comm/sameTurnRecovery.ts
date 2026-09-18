@@ -228,6 +228,30 @@ export function planRecovery(input: RecoveryInput): RecoveryPlan | null {
  * mostly Georgian letters and never reaches here. "RAM x 6Y" out of a Russian
  * socket, or "रामाखूया", reaches here every time.
  */
+/**
+ * DOES THIS OPINION AGREE WITH ITSELF?
+ *
+ * Measured on the owner's physical Android session f90b91aa, turn 7: the
+ * `auto` socket heard Georgian speech, wrote it in LATIN letters, and labelled
+ * it ARABIC. Arabic is not written in Latin. A recogniser that contradicts
+ * itself that badly has not identified anything, and on a real phone it does
+ * this to Georgian often -- which is the entire reason this product pins the
+ * language instead of running `auto` as its primary.
+ *
+ * So: a label is only evidence when the text it came with is written in a
+ * script that language actually uses. This can only ever REJECT an opinion,
+ * never promote one, so nothing that was already right changes.
+ */
+export function labelMatchesScript(text: string, language: string | null | undefined): boolean {
+  if (!language) return false;
+  const want = SCRIPT_OF_LANGUAGE[language];
+  if (!want) return false;
+  const evidence = scriptEvidence(text);
+  // Nothing to judge: digits, punctuation, or too little to be sure.
+  if (!evidence.script || evidence.letters < 2) return true;
+  return evidence.script === want;
+}
+
 export function isDiscreditedTurn(text: string, language: string): boolean {
   const want = SCRIPT_OF_LANGUAGE[language];
   if (!want) return false;

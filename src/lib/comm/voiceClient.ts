@@ -51,6 +51,7 @@ import { FinalWatch, type FinalDecision } from './finalWatch.ts';
 import { gateWatchdog } from './gateWatchdog.ts';
 import {
   planRecovery, planFragmentRecovery, consistentWith, hasAnyFunctionWord, isDiscreditedTurn,
+  labelMatchesScript,
   RECOVERY_MIN_WORDS, type RecoveryReason,
 } from './sameTurnRecovery.ts';
 import { LATIN_CODES, SCRIPT_OF } from './languageRegistry.ts';
@@ -1914,11 +1915,14 @@ export class VoiceSession {
   }
 
   /** The opinion for THIS epoch, waiting a bounded moment for it if it is not in yet. */
-  private awaitSecondOpinion(): Promise<{ text: string; language: string | null } | null> {
+  private awaitSecondOpinion(mayWait: boolean): Promise<{ text: string; language: string | null } | null> {
     const epoch = this.utteranceEpoch;
     const have = () => (this.shadowResult && this.shadowResult.epoch === epoch ? this.shadowResult : null);
     const now = have();
     if (now) return Promise.resolve(now.text ? { text: now.text, language: now.language } : null);
+    // Already credible, and nothing the opinion could say would be allowed to
+    // change it: take whatever has arrived and do not hold the turn open.
+    if (!mayWait) return Promise.resolve(null);
     if (!this.shadow && !this.retiredShadow) return Promise.resolve(null);
     return new Promise((resolve) => {
       const timer = window.setTimeout(() => finish(), SECOND_OPINION_WAIT_MS);
@@ -1971,6 +1975,16 @@ export class VoiceSession {
     if (!opinion) return { use: false, why: 'EMPTY_OPINION' };
     if (!live.trim()) return { use: true, why: 'LIVE_EMPTY' };
     if (!opinionLang || opinionLang === pinned) return { use: false, why: 'AGREES' };
+    /*
+     * IT HAS TO AGREE WITH ITSELF FIRST. See labelMatchesScript. The physical
+     * failure was `auto` answering "Arabic" with a line of Latin letters for
+     * Georgian speech, and that opinion replacing a correct Georgian
+     * transcript. An opinion this confused is discarded before anything else
+     * is asked of it, so the pinned socket keeps the turn.
+     */
+    if (!labelMatchesScript(opinion, opinionLang)) {
+      return { use: false, why: 'OPINION_SELF_CONTRADICTORY' };
+    }
 
     // 1. The pinned transcript is not even in its own language's script, or
     //    carries none of its words across enough of them to judge.
@@ -2022,7 +2036,10 @@ export class VoiceSession {
     const text = again?.text?.trim() ?? '';
     const evidence = scriptEvidence(text);
     const language = text ? (again?.language ? normaliseLanguage(again.language) : null) : null;
-    const usable = text.length > 0 && evidence.letters >= SWITCH_MIN_LETTERS;
+    // A recovery that names a language its own letters contradict is no more
+    // evidence than an opinion that does. See labelMatchesScript.
+    const usable = text.length > 0 && evidence.letters >= SWITCH_MIN_LETTERS
+      && (language === null || labelMatchesScript(text, language));
     // Used when it says something the pinned socket could not have: a
     // different language, or any words where there were none.
     const used = usable && (reason === 'NO_FINAL' || !liveTranscript.trim() || (language !== null && language !== pinned)
@@ -2392,7 +2409,23 @@ export class VoiceSession {
      * short Georgian answer ("კი, კარგი" as hi-Latn "Ki, kargi", measured)
      * fails every one of those tests and changes nothing.
      */
-    const opinion = origin === 'SHADOW' ? null : await this.awaitSecondOpinion();
+    /*
+     * WAITING FOR AN OPINION THAT CANNOT CHANGE ANYTHING IS JUST DELAY.
+     *
+     * Every turn used to pause up to SECOND_OPINION_WAIT_MS for the `auto`
+     * socket, on a phone, before the question was even sent. But a credible
+     * transcript out of a NON-Latin socket can only ever come back
+     * LIVE_CONSISTENT -- the opinion is not allowed to overturn it -- so the
+     * wait buys nothing and costs the visitor most of a second. It is kept
+     * exactly where it can still decide the turn: an empty or discredited
+     * transcript, or a Latin-pinned socket, which is the one that translates.
+     */
+    const pinnedLatin = Boolean(pinned) && LATIN_CODES.includes(pinned);
+    const opinionCouldDecide = !said.trim() || pinnedLatin || !consistentWith(said, pinned)
+      || (said.trim().split(/\s+/).filter(Boolean).length < RECOVERY_MIN_WORDS
+        && !hasAnyFunctionWord(said, pinned));
+    const opinion = origin === 'SHADOW' ? null
+      : await this.awaitSecondOpinion(opinionCouldDecide);
     if (opinion) {
       const opinionLang = opinion.language ? normaliseLanguage(opinion.language) : null;
       const judged = this.judgeSecondOpinion(liveTranscript, pinned, opinion.text, opinionLang);

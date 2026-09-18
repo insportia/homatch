@@ -351,9 +351,27 @@ export function Segmented<T extends string | number>({
   onChange,
   ariaLabelKey,
 }: {
-  options: Array<{ value: T; label: string }>;
+  /*
+   * NoInfer, so the VALUE decides the type and the options only have to fit.
+   *
+   * Both other props are inference-blocked so that `value` alone decides it.
+   *
+   * `onChange` was the real culprit. Given a React setter, inferring T from
+   * `(value: T) => void` against `Dispatch<SetStateAction<M>>` yields
+   * `M | ((prev: M) => M)` — a union containing a FUNCTION, which fails the
+   * `string | number` constraint. TypeScript then discards the candidate and
+   * falls back to the constraint itself, so the call site was offered
+   * `(value: string | number) => void`, which no narrowly-typed setter is
+   * assignable to. `options` widens it the same way via .map().
+   *
+   * Three such errors were failing CI's type-check, and that job gates
+   * Deploy Edge Functions for the whole repository.
+   *
+   * Type-level only: nothing about the rendered control changes.
+   */
+  options: ReadonlyArray<{ value: NoInfer<T>; label: string }>;
   value: T;
-  onChange: (value: T) => void;
+  onChange: (value: NoInfer<T>) => void;
   ariaLabelKey: string;
 }) {
   const { t } = useLanguage();

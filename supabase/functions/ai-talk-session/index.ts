@@ -114,7 +114,7 @@ const GOOGLE_STT_MODEL = 'chirp_3';
  * and the same Mariam the table holds, which is the only state in which two
  * copies of a value are survivable.
  */
-const MARIAM_VOICE_ID = '58a675e6-915e-4266-9690-e193c5e2d7a7';
+const MARIAM_VOICE_ID = 'eb629e3f-3223-4e71-9d46-72637532270b';
 
 /** One piece of speech and who made it. */
 interface SpokenPhrase {
@@ -340,7 +340,10 @@ async function recordVoiceUsage(sb: Sb, event: {
 }
 
 interface TalkRequest {
-  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak' | 'converse' | 'listen';
+  action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak' | 'converse' | 'listen'
+    | 'voicePreview';
+  /** Auditioned, never saved: only the voicePreview action reads this. */
+  voiceId?: string;
   sessionId?: string;
   anonSessionId?: string;
   consumedSeconds?: number;
@@ -498,6 +501,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'speak':     return await speak(sb, body);
     case 'converse':  return await converse(sb, body, req);
     case 'listen':    return await listen(sb, body);
+    case 'voicePreview': return await voicePreview(sb, body, usageTier);
     case 'heartbeat': return await heartbeat(sb, body);
     case 'end':       return await end(sb, body);
     default:          return json({ error: 'unknown_action' }, 400);
@@ -1130,13 +1134,51 @@ function bytesToBase64(bytes: Uint8Array): string {
  * for the highest-priority enabled TTS route and uses that one. There is no
  * second provider tried underneath it.
  */
+/** A Cartesia voice id is a uuid. Anything else is a typo, not a voice. */
+const VOICE_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * THE VOICE AN ADMINISTRATOR CONFIGURED, IF THEY HAVE CONFIGURED ONE.
+ *
+ * One value for the whole assistant, because Mariam is one person. Changing
+ * her voice used to mean editing a constant, editing a migration and waiting
+ * for a deployment -- for a value that is a uuid somebody pastes out of the
+ * Cartesia dashboard. It is a setting now, in the admin_settings table every
+ * other AI Talk setting already lives in.
+ *
+ * Returns null rather than a bad value on anything malformed: the caller then
+ * falls back to the per-language table, so a mistyped setting degrades to the
+ * previous behaviour instead of making the product silent. The Admin screen
+ * refuses to save a malformed id in the first place; this is the second line.
+ */
+async function configuredVoiceId(sb: Sb): Promise<string | null> {
+  const { data } = await sb.from('admin_settings')
+    .select('value').eq('key', 'ai_talk_voice').maybeSingle();
+  const raw = (data?.value ?? null) as { voice_id?: unknown } | null;
+  const id = typeof raw?.voice_id === 'string' ? raw.voice_id.trim() : '';
+  if (!id) return null;
+  if (!VOICE_ID_SHAPE.test(id)) {
+    // Loud, because a visitor will hear the old voice and nobody would know why.
+    logEvent('ai-talk', 'voice_setting_invalid', { length: id.length });
+    return null;
+  }
+  return id;
+}
+
 async function aiTalkVoice(
   sb: Sb, language: string | null,
 ): Promise<{ provider: string; voiceId: string } | null> {
-  const { data: routes } = await sb.from('comm_provider_routes')
-    .select('provider, enabled, kill_switch')
-    .eq('role', 'TTS')
-    .order('priority');
+  /*
+   * Both reads at once. This runs on the way to every spoken phrase, and a
+   * second round trip in series here would be latency a visitor can hear.
+   */
+  const [{ data: routes }, configured] = await Promise.all([
+    sb.from('comm_provider_routes')
+      .select('provider, enabled, kill_switch')
+      .eq('role', 'TTS')
+      .order('priority'),
+    configuredVoiceId(sb),
+  ]);
 
   const route = (routes ?? []).find((r) => r.enabled && !r.kill_switch);
   if (!route) return null;
@@ -1144,6 +1186,21 @@ async function aiTalkVoice(
 
   const code = String(language ?? '').toLowerCase().split('-')[0];
   if (!code) return null;
+
+  /*
+   * THE CONFIGURED VOICE WINS, FOR EVERY LANGUAGE.
+   *
+   * Mariam is one voice speaking six languages; which language she is
+   * speaking is decided per turn, upstream of here, and has never been a
+   * reason to change WHO is speaking. So one setting answers for all of them,
+   * and an administrator changes her voice by pasting a uuid rather than by
+   * editing forty-three rows.
+   *
+   * Only for the provider AI TALK can actually stream. A route pointed
+   * somewhere else still falls through to that provider's approved rows,
+   * because a Cartesia voice id means nothing to another provider.
+   */
+  if (configured && provider === 'CARTESIA') return { provider, voiceId: configured };
 
   /*
    * The voice somebody approved for THIS language on THIS provider.
@@ -2889,6 +2946,106 @@ async function speakLegacy(sb: Sb, body: TalkRequest): Promise<Response> {
     mime: spoken.data.mime,
     voiceId: MARIAM_VOICE_ID,
     ttsMs: Date.now() - spokeAt,
+  });
+}
+
+/**
+ * Hear a voice before making it the product's voice.
+ *
+ * WHY THIS IS NOT THE EXISTING PREVIEW
+ *
+ * cartesia-access-token already previews a voice, and it asks for mp3 at
+ * 44.1kHz over /tts/bytes. That is not what AI TALK sounds like: production
+ * streams raw PCM over /tts/sse at the browser's own rate, and the whole
+ * point of an audition is to hear the thing that will actually speak. The
+ * bytes path also refuses Georgian outright today, which would make a
+ * Georgian preview useless.
+ *
+ * So this takes the SAME function production takes, with an explicit voice id
+ * instead of the configured one. It writes nothing: the active voice is
+ * whatever the setting says until somebody presses Save.
+ */
+/**
+ * What a voice says when it is being auditioned.
+ *
+ * Short, and about a flat in Tbilisi rather than "the quick brown fox": the
+ * question is whether this voice can say the words AI TALK actually says, and
+ * numbers and place names are where a wrong voice falls apart first.
+ */
+const PREVIEW_LINES: Record<string, string> = {
+  ka: 'გამარჯობა, მე მარიამი ვარ. ვაკეში ორსართულიანი ბინა ას ორმოცი ათასი დოლარი ღირს.',
+  en: 'Hello, I am Mariam. A two-bedroom flat in Vake is about a hundred and forty thousand dollars.',
+  ru: 'Здравствуйте, я Мариам. Двухкомнатная квартира в Ваке стоит около ста сорока тысяч долларов.',
+  tr: 'Merhaba, ben Mariam. Vake’de iki odalı bir daire yaklaşık yüz kırk bin dolar.',
+  ar: 'مرحبا، أنا مريم. شقة بغرفتين في فاكي تكلف حوالي مئة وأربعين ألف دولار.',
+  he: 'שלום, אני מרים. דירת שני חדרים בוואקה עולה כמאה וארבעים אלף דולר.',
+};
+
+async function voicePreview(sb: Sb, body: TalkRequest, usageTier: UsageTier): Promise<Response> {
+  // Server-side, from the caller's own verified token. There is no field in
+  // this request that can make somebody an administrator.
+  if (usageTier !== 'ADMIN_UNLIMITED') return json({ ok: false, reason: 'FORBIDDEN' }, 403);
+
+  const voiceId = String(body.voiceId ?? '').trim();
+  if (!VOICE_ID_SHAPE.test(voiceId)) return json({ ok: false, reason: 'VOICE_ID_INVALID' }, 400);
+
+  const language = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
+
+  /*
+   * THE SAME FUNCTION A REAL REPLY GOES THROUGH.
+   *
+   * speakPhraseStreaming is what converse calls for every phrase it speaks,
+   * and it is handed the same things here -- the same respelling, the same
+   * model ladder, the same speed setting, the same raw PCM over /tts/sse --
+   * with one difference: the voice is the one being auditioned rather than
+   * the one that is configured. Pricing and the usage row come with it,
+   * because they live inside that function and an audition is billable audio
+   * like any other.
+   *
+   * Nothing here writes a setting. The active voice is whatever the setting
+   * says until somebody presses Save.
+   */
+  const chunks: Uint8Array[] = [];
+  const out = await speakPhraseStreaming(sb, {
+    text: PREVIEW_LINES[language] ?? PREVIEW_LINES.en,
+    language,
+    voice: { provider: 'CARTESIA', voiceId },
+    sessionId: null,
+    // Its own surface: a preview is not a conversation and must not land in
+    // AI TALK's cost per session.
+    surface: 'AI_TALK_VOICE_PREVIEW',
+    onChunk: (chunk) => { chunks.push(chunk); },
+  });
+
+  if (!out.ok) {
+    logEvent('ai-talk', 'voice_preview_failed', {
+      code: out.failures[0]?.code ?? null,
+      status: out.failures[0]?.status ?? null,
+    });
+    return json({
+      ok: false,
+      reason: 'VOICE_UNAVAILABLE',
+      providerCode: out.failures[0]?.code ?? null,
+      providerStatus: out.failures[0]?.status ?? null,
+    }, 502);
+  }
+
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const merged = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { merged.set(c, at); at += c.length; }
+  let binary = '';
+  for (let i = 0; i < merged.length; i += 8192) {
+    binary += String.fromCharCode(...merged.subarray(i, i + 8192));
+  }
+
+  logEvent('ai-talk', 'voice_preview_ok', { model: out.model, firstByteMs: out.firstByteMs });
+  return json({
+    ok: true,
+    pcmBase64: btoa(binary),
+    sampleRate: out.sampleRate,
+    model: out.model,
+    firstByteMs: out.firstByteMs,
   });
 }
 

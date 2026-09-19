@@ -12,7 +12,7 @@
 -- 6247621a-5365-4227-8c03-5fd970d59918 was the first. It was a valid voice and
 -- the pipeline carried it -- Georgian streamed at 142ms and priced correctly --
 -- and it was rejected on a real iPhone, which is the only test of a voice that
--- counts. 58a675e6-915e-4266-9690-e193c5e2d7a7 replaces it acoustically: same
+-- counts. eb629e3f-3223-4e71-9d46-72637532270b replaces it acoustically: same
 -- assistant, same name, same model, same streaming settings, same everything
 -- else.
 --
@@ -61,11 +61,11 @@
 -- Only rows that exist are moved: this replaces a voice, it does not widen
 -- the set of languages the product will speak.
 update public.voice_language_defaults
-   set voice_id    = '58a675e6-915e-4266-9690-e193c5e2d7a7',
+   set voice_id    = 'eb629e3f-3223-4e71-9d46-72637532270b',
        model_id    = coalesce(model_id, 'sonic-3'),
        approved_at = now()
  where provider = 'CARTESIA'
-   and voice_id is distinct from '58a675e6-915e-4266-9690-e193c5e2d7a7';
+   and voice_id is distinct from 'eb629e3f-3223-4e71-9d46-72637532270b';
 
 -- The six AI TALK actually pins its recogniser to, guaranteed present.
 --
@@ -74,7 +74,7 @@ update public.voice_language_defaults
 -- row is missing here the product goes silent in that language, so this is an
 -- upsert rather than an assumption that the update above found everything.
 insert into public.voice_language_defaults (provider, language, voice_id, model_id, send_language)
-select 'CARTESIA', lang, '58a675e6-915e-4266-9690-e193c5e2d7a7', 'sonic-3', true
+select 'CARTESIA', lang, 'eb629e3f-3223-4e71-9d46-72637532270b', 'sonic-3', true
   from unnest(array['ka', 'en', 'ru', 'tr', 'ar', 'he']) as lang
 on conflict (provider, language) do update
   set voice_id      = excluded.voice_id,
@@ -86,3 +86,26 @@ on conflict (provider, language) do update
 -- library, the audition harness and the admin screens still read it, and the
 -- row records what was approved and when. It is unreachable from AI TALK
 -- because its route is disabled, not because its rows were deleted.
+
+-- THE SETTING THAT MAKES THE NEXT SWAP NOT A MIGRATION AT ALL.
+--
+-- aiTalkVoice() reads this key first, for every language, and only falls back
+-- to the per-language rows above when it is unset or malformed. So this row is
+-- now the source of truth, and changing Mariam's voice is an administrator
+-- pasting a uuid into Admin > Communications > Voice > AI Talk -- no code, no
+-- migration, no deployment.
+--
+-- The rows above stay exactly as they are. They are what the product
+-- falls back to if this setting is ever cleared, and they are still what
+-- decides that AI TALK does not speak a language nobody has approved a voice
+-- for. A setting that replaces a safety net is not an improvement.
+insert into public.admin_settings (key, value, description)
+values (
+  'ai_talk_voice',
+  jsonb_build_object('voice_id', 'eb629e3f-3223-4e71-9d46-72637532270b'),
+  'The Cartesia voice AI Talk speaks with, for every language. Read by ai-talk-session aiTalkVoice().'
+)
+on conflict (key) do update
+  set value       = excluded.value,
+      description = excluded.description,
+      updated_at  = now();

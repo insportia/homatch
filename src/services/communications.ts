@@ -21,7 +21,7 @@ import type {
   CommChannelAccount, CommContact, CommConversation, CommExtraction, CommMessage,
   CommOverviewStats, CommSend, CommTemplate, LaunchPreview, RiskAssessmentRow, TrustSummary,
   AnalyticsFilter, AnalyticsResult, CommunicationsSpend,
-  ProviderRouteRow, ProviderReportRow, CommVoiceTuning, AiTalkLimits,
+  ProviderRouteRow, ProviderReportRow, CommVoiceTuning, AiTalkLimits, AiTalkVoice,
   ChannelReadinessRow,
 } from '@/types/communications';
 import { customerFacingComplianceLabel } from '@/lib/comm/vocabulary';
@@ -1508,6 +1508,78 @@ export function saveCommVoiceTuning(value: CommVoiceTuning): Promise<boolean> {
     'comm_voice_tuning', value,
     'Endpointing, interruption and recording defaults read by _shared/comm/agentPrompt.ts loadVoiceTuning().',
   );
+}
+
+/** A Cartesia voice id is a uuid. Anything else is a typo, not a voice. */
+export const VOICE_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function getAiTalkVoice(): Promise<Partial<AiTalkVoice> | null> {
+  return readSetting<Partial<AiTalkVoice>>('ai_talk_voice');
+}
+
+/**
+ * Change the voice the assistant speaks with, and say who did it.
+ *
+ * The setting is the whole change -- ai-talk-session reads this key on the way
+ * to every spoken phrase -- so there is no migration and no deployment behind
+ * it. The audit row goes to admin_audit_log, the table that already records
+ * admin actions, and carries the id that was replaced so the change can be
+ * read backwards. No provider secret is ever in it: a voice id is a public
+ * identifier from the Cartesia dashboard, and the API key is server-side and
+ * never leaves it.
+ */
+export async function saveAiTalkVoice(voiceId: string, previousVoiceId: string | null): Promise<boolean> {
+  const id = voiceId.trim();
+  if (!VOICE_ID_SHAPE.test(id)) return false;
+
+  const ok = await writeSetting(
+    'ai_talk_voice', { voice_id: id },
+    'The Cartesia voice AI Talk speaks with, for every language. Read by ai-talk-session aiTalkVoice().',
+  );
+  if (!ok) return false;
+
+  const { data: auth } = await supabase.auth.getUser();
+  const adminId = auth?.user?.id ?? null;
+  if (adminId) {
+    // Best effort: the voice HAS changed by this point, and failing the save
+    // because the note about it could not be written would be the wrong way
+    // round. A missing audit row is visible; a refused save is confusing.
+    await supabase.rpc('log_admin_audit', {
+      p_admin_id: adminId,
+      p_target_id: null,
+      p_action: 'AI_TALK_VOICE_CHANGED',
+      p_entity_type: 'ai_talk_voice',
+      p_entity_id: null,
+      p_metadata: {
+        old_voice_id: previousVoiceId,
+        new_voice_id: id,
+        model: 'sonic-3',
+        changed_at: new Date().toISOString(),
+      },
+    }).then(() => undefined, () => undefined);
+  }
+  return true;
+}
+
+/**
+ * Hear a voice before it becomes the product's voice.
+ *
+ * Goes to ai-talk-session, which synthesises it through the same function a
+ * real reply goes through, and returns raw PCM. Nothing is written: the active
+ * voice is whatever the setting says until Save.
+ */
+export async function previewAiTalkVoice(
+  voiceId: string, locale: string,
+): Promise<{ ok: true; pcmBase64: string; sampleRate: number } | { ok: false; reason: string }> {
+  if (!VOICE_ID_SHAPE.test(voiceId.trim())) return { ok: false, reason: 'VOICE_ID_INVALID' };
+  const { data, error } = await supabase.functions.invoke('ai-talk-session', {
+    body: { action: 'voicePreview', voiceId: voiceId.trim(), locale },
+  });
+  const res = data as { ok?: boolean; pcmBase64?: string; sampleRate?: number; reason?: string } | null;
+  if (res?.ok && res.pcmBase64 && res.sampleRate) {
+    return { ok: true, pcmBase64: res.pcmBase64, sampleRate: res.sampleRate };
+  }
+  return { ok: false, reason: res?.reason ?? (error ? 'UNAVAILABLE' : 'UNKNOWN') };
 }
 
 export function getAiTalkLimits(): Promise<Partial<AiTalkLimits> | null> {

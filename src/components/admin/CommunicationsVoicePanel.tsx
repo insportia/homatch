@@ -19,6 +19,8 @@
 //   max_call_duration_sec    Vapi's maxDurationSeconds, capped per agent
 //   recording_default        whether a call is recorded at all (§73)
 //
+//   ai_talk_voice            aiTalkVoice() in ai-talk-session, read on the
+//                            way to every spoken phrase, for every language
 //   ai_talk_* keys           ai-talk-session's allowance (§28, §59)
 //   authenticated_daily_*    loadLimits() in ai-talk-session, read on every
 //                            grant, so an edit here changes what a signed-in
@@ -31,7 +33,7 @@
 // one is fully functional before the communications migration is applied.
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Save, RotateCcw, AudioLines, Mic, Radio } from 'lucide-react';
+import { Loader2, Save, RotateCcw, AudioLines, Mic, Radio, Play } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +43,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
-import { getCommVoiceTuning, saveCommVoiceTuning, getAiTalkLimits, saveAiTalkLimits } from '@/services/communications';
+import {
+  getCommVoiceTuning, saveCommVoiceTuning, getAiTalkLimits, saveAiTalkLimits,
+  getAiTalkVoice, saveAiTalkVoice, previewAiTalkVoice, VOICE_ID_SHAPE,
+} from '@/services/communications';
 import type { CommVoiceTuning, AiTalkLimits } from '@/types/communications';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -89,14 +94,30 @@ export function CommunicationsVoicePanel() {
 
   const [tuning, setTuning] = useState<CommVoiceTuning>(DEFAULT_TUNING);
   const [limits, setLimits] = useState<AiTalkLimits>(DEFAULT_LIMITS);
+  /*
+   * MARIAM'S VOICE, AS A VALUE SOMEBODY CAN PASTE.
+   *
+   * `saved` is what the runtime is using; `voiceId` is what is in the box.
+   * Keeping them apart is what makes Test mean "hear this one" and Save mean
+   * "use this one", and what lets the panel say which is which.
+   */
+  const [voiceId, setVoiceId] = useState('');
+  const [savedVoiceId, setSavedVoiceId] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [savingVoice, setSavingVoice] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingTuning, setSavingTuning] = useState(false);
   const [savingLimits, setSavingLimits] = useState(false);
 
   const load = useCallback(async () => {
-    const [storedTuning, storedLimits] = await Promise.all([getCommVoiceTuning(), getAiTalkLimits()]);
+    const [storedTuning, storedLimits, storedVoice] = await Promise.all([
+      getCommVoiceTuning(), getAiTalkLimits(), getAiTalkVoice(),
+    ]);
     setTuning({ ...DEFAULT_TUNING, ...(storedTuning ?? {}) });
     setLimits({ ...DEFAULT_LIMITS, ...(storedLimits ?? {}) });
+    const active = typeof storedVoice?.voice_id === 'string' ? storedVoice.voice_id : null;
+    setSavedVoiceId(active);
+    setVoiceId(active ?? '');
     setLoading(false);
   }, []);
 
@@ -120,6 +141,70 @@ export function CommunicationsVoicePanel() {
       setSavingTuning(false);
     }
   }, [tuning, t]);
+
+  /*
+   * PLAY RAW PCM, BECAUSE RAW PCM IS WHAT THE PRODUCT PLAYS.
+   *
+   * The preview comes back as signed 16-bit samples at the rate the
+   * synthesiser produced, which is what AI TALK streams to a visitor. An mp3
+   * would be easier to play here and would be a different thing to listen to.
+   */
+  const playPcm = useCallback(async (pcmBase64: string, sampleRate: number) => {
+    const binary = atob(pcmBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const samples = new Int16Array(bytes.buffer);
+    const AudioCtx = window.AudioContext
+      ?? (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) throw new Error('no audio');
+    const ctx = new AudioCtx();
+    const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) channel[i] = samples[i] / 32768;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start();
+    await new Promise<void>((resolve) => { source.onended = () => resolve(); });
+    await ctx.close().catch(() => undefined);
+  }, []);
+
+  const onTestVoice = useCallback(async () => {
+    const id = voiceId.trim();
+    if (!VOICE_ID_SHAPE.test(id)) {
+      toast.error(t('admin_talk_voice_invalid'));
+      return;
+    }
+    setPreviewing(true);
+    try {
+      // Georgian, because Georgian is the language this product lives or dies
+      // on and the one a wrong voice mangles first.
+      const out = await previewAiTalkVoice(id, 'ka');
+      if (!out.ok) { toast.error(t('admin_talk_voice_test_failed')); return; }
+      await playPcm(out.pcmBase64, out.sampleRate);
+      toast.success(t('admin_talk_voice_test_ok'));
+    } catch {
+      toast.error(t('admin_talk_voice_test_failed'));
+    } finally {
+      setPreviewing(false);
+    }
+  }, [voiceId, playPcm, t]);
+
+  const onSaveVoice = useCallback(async () => {
+    const id = voiceId.trim();
+    if (!VOICE_ID_SHAPE.test(id)) {
+      toast.error(t('admin_talk_voice_invalid'));
+      return;
+    }
+    setSavingVoice(true);
+    try {
+      const ok = await saveAiTalkVoice(id, savedVoiceId);
+      if (ok) setSavedVoiceId(id);
+      toast[ok ? 'success' : 'error'](t(ok ? 'admin_talk_voice_saved' : 'comm_save_failed'));
+    } finally {
+      setSavingVoice(false);
+    }
+  }, [voiceId, savedVoiceId, t]);
 
   const onSaveLimits = useCallback(async () => {
     /*
@@ -268,6 +353,72 @@ export function CommunicationsVoicePanel() {
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {/*
+            * MARIAM'S VOICE.
+            *
+            * A uuid pasted out of the Cartesia dashboard, heard before it is
+            * kept, and saved with its own button -- separate from the
+            * allowance's Save, because changing what the assistant sounds
+            * like and changing how long she may talk are different decisions
+            * and should not travel together.
+            */}
+          <div className="space-y-3 rounded-lg border p-3">
+            <div>
+              <p className="text-xs font-medium">{t('admin_talk_voice_title')}</p>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">{t('admin_talk_voice_hint')}</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="mariam-voice-id">{t('admin_talk_voice_id')}</Label>
+                <Input
+                  id="mariam-voice-id"
+                  value={voiceId}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="00000000-0000-0000-0000-000000000000"
+                  onChange={(e) => setVoiceId(e.target.value)}
+                  className="h-8 font-mono text-xs"
+                />
+                {/* Said plainly, because a box that looks saved and is not is
+                    how somebody walks away believing the voice changed. */}
+                <p className="text-[13px] leading-snug text-muted-foreground">
+                  {savedVoiceId
+                    ? (savedVoiceId === voiceId.trim()
+                      ? t('admin_talk_voice_active')
+                      : t('admin_talk_voice_unsaved'))
+                    : t('admin_talk_voice_unset')}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="mariam-voice-model">{t('admin_talk_voice_model')}</Label>
+                {/* Read-only on purpose. The model comes from the TTS route's
+                    own config and the synthesiser walks its own ladder; an
+                    editable box here would write a value nothing reads. */}
+                <Input id="mariam-voice-model" value="sonic-3" readOnly disabled className="h-8 font-mono text-xs" />
+                <p className="text-[13px] leading-snug text-muted-foreground">
+                  {t('admin_talk_voice_model_hint')}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => void onTestVoice()} disabled={previewing}>
+                {previewing
+                  ? <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" />
+                  : <Play className="me-1.5 h-3.5 w-3.5" />}
+                {t('admin_talk_voice_test')}
+              </Button>
+              <Button size="sm" onClick={() => void onSaveVoice()} disabled={savingVoice}>
+                {savingVoice
+                  ? <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" />
+                  : <Save className="me-1.5 h-3.5 w-3.5" />}
+                {t('admin_talk_voice_save')}
+              </Button>
+            </div>
+          </div>
+
           <ToggleRow
             labelKey="admin_talk_enabled" hintKey="admin_talk_enabled_hint"
             checked={limits.enabled}

@@ -486,6 +486,19 @@ export interface CommVoiceTuning {
   recording_default: boolean;
 }
 
+/**
+ * Mariam's voice, as one value an operator can change without a deployment.
+ *
+ * One voice for all six languages, because Mariam is one person: which
+ * language she is speaking is decided per turn and has never been a reason to
+ * change who is speaking. The model is NOT here -- it comes from the TTS
+ * route's own config and is shown read-only, because a control that writes a
+ * value the runtime does not read is a placebo (§55).
+ */
+export interface AiTalkVoice {
+  voice_id: string;
+}
+
 export interface AiTalkLimits {
   session_seconds: number;
   /**

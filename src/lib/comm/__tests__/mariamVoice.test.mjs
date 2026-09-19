@@ -21,7 +21,7 @@ const CR = String.fromCharCode(13);
 const read = (p) => readFileSync(p, 'utf8').split(CR).join('');
 const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-const MARIAM = '58a675e6-915e-4266-9690-e193c5e2d7a7';
+const MARIAM = 'eb629e3f-3223-4e71-9d46-72637532270b';
 /** The id the constant held, and the one the repository's migration seeded. */
 const RETIRED = [
   '6833940c-ed06-4b62-8a51-94b6c46c13ad',
@@ -30,6 +30,10 @@ const RETIRED = [
   // it was rejected on a real iPhone, which is the only test of a voice
   // that counts. Replaced acoustically -- same name, same everything else.
   '6247621a-5365-4227-8c03-5fd970d59918',
+  // The second. Compatible, streamed, priced -- and not the one the owner
+  // wanted to hear. A voice is replaced on how it sounds, not on whether
+  // it works, and every one of these worked.
+  '58a675e6-915e-4266-9690-e193c5e2d7a7',
 ];
 
 const EDGE_SRC = read('supabase/functions/ai-talk-session/index.ts');

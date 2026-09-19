@@ -218,3 +218,44 @@ test('the amount is configuration, not a constant in code', () => {
     assert.ok(!/50 credits/i.test(read(file)), `${file} hardcodes the welcome amount`);
   }
 });
+
+/* ── The chat price ─────────────────────────────────────────────── */
+
+const PRICING = 'supabase/migrations/20260919161304_ai_chat_measured_pricing.sql';
+
+test('the chat price is a measurement, not a number somebody picked', () => {
+  const pricing = read(PRICING);
+
+  // The reference COGS has to be traceable to real production usage, and
+  // the sample behind it has to travel with the price. A price whose
+  // provenance is a sentence in a pull request is still a guess.
+  assert.ok(pricing.includes('cogs_sample'), 'the price carries no measurement behind it');
+  for (const field of ['min_landed_cents', 'median_landed_cents', 'max_landed_cents', 'measured_at', 'model']) {
+    assert.ok(pricing.includes(field), `the sample does not record ${field}`);
+  }
+
+  // The markup is the house multiple, written AS the ratio so it cannot
+  // drift away from the other products through a rounding.
+  assert.ok(pricing.includes('50.0 / 11.8'), 'the markup is not the existing house multiple');
+
+  /* No CHARGE is fixed anywhere: every one comes out of
+     billing_price_quote against the measured cost of the answer that
+     ran. min_viable_budget_credits is deliberately not covered by this
+     — it is the balance below which the product declines to run at all,
+     which is a refusal threshold rather than a price. */
+  assert.ok(!/charged_credits\s*=\s*[0-9]/i.test(pricing), 'a charge is hardcoded in the migration');
+  assert.ok(!/\bcredits\s*(:?=)\s*[0-9]/i.test(pricing.replace(/min_viable_budget_credits\s*=\s*[0-9.]+/gi, '')),
+    'a credit price is hardcoded in the migration');
+  assert.ok(!/0\.0[0-9]\s*credit/i.test(read(CHAT_FN)), 'a credit price is hardcoded in the edge function');
+});
+
+test('widening the retail column did not disturb the other products', () => {
+  const pricing = read(PRICING);
+  // A sub-cent retail price cannot live in an integer column — 0.90c
+  // would store as 1 and silently raise this product's markup by 15%.
+  // The cast is the narrowest fix, and it must touch nobody else's row.
+  assert.ok(/alter column standard_retail_cents type numeric/i.test(pricing));
+  const updates = pricing.match(/update public\.billable_products/gi) ?? [];
+  assert.equal(updates.length, 1, 'more than one product row is being rewritten');
+  assert.ok(pricing.includes("where code = 'AI_CHAT_RESPONSE'"), 'the update is not scoped to one product');
+});

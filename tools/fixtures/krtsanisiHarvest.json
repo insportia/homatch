@@ -1,0 +1,102 @@
+{
+  "_what": "Raw search-engine output for Villion / Krtsanisi Street 6, Tbilisi.",
+  "_recordedOn": "2026-09-20",
+  "_how": [
+    "Staged multilingual queries were run against the public index in a real browser.",
+    "The live harvest returned 166 rows across 39 domains in ka / en / ru.",
+    "THIS FILE IS THE SUBSET RECORDED VERBATIM. Rows were kept only where the title",
+    "and snippet could be reproduced exactly as the engine returned them; a row that",
+    "could not be quoted was dropped rather than reconstructed from memory, so the",
+    "counts this file replays are smaller than the counts the live harvest produced.",
+    "Nothing here is paraphrased, translated, corrected or completed."
+  ],
+  "_urls": [
+    "Deep links are recorded where the harvest captured them. Where only the domain",
+    "and the result text were captured, the url is the domain with a positional",
+    "fragment (#result-N) rather than an invented listing id."
+  ],
+  "queries": [
+    { "text": "\"Villion\" კრწანისი ბინა", "language": "ka", "precision": "BUILDING", "key": "q1" },
+    { "text": "\"Villion\" Krtsanisi Tbilisi", "language": "en", "precision": "BUILDING", "key": "q2" },
+    { "text": "\"Крцаниси улица 6\" квартира", "language": "ru", "precision": "BUILDING", "key": "q3" },
+    { "text": "\"Krtsanisi Street 6\" apartment", "language": "en", "precision": "BUILDING", "key": "q4" },
+    { "text": "site:myhome.ge крцаниси улица", "language": "ru", "precision": "STREET", "key": "q5" },
+    { "text": "\"улица Крцаниси\" квартира продажа", "language": "ru", "precision": "STREET", "key": "q6" },
+    { "text": "კრწანისის ქუჩა ბინა იყიდება", "language": "ka", "precision": "STREET", "key": "q7" },
+    { "text": "\"მილენიო გრუპი\" ბინები", "language": "ka", "precision": "DEVELOPER", "key": "q8" }
+  ],
+  "results": [
+    {
+      "query": "\"Villion\" კრწანისი ბინა",
+      "url": "https://korter.ge/house-on-krtsanisi-6-tbilisi",
+      "title": "ბინები და გეგმები Villion თბილისში",
+      "snippet": "ბინების გაყიდვა Villion-ში · 3 ოთახიანი ბინა, 471 285 ₾-დან, 82.2 მ², Villion, კრწანისის ქუჩა 6"
+    },
+    {
+      "query": "\"Villion\" Krtsanisi Tbilisi",
+      "url": "https://www.facebook.com/#result-1",
+      "title": "Villion Krtsanisi",
+      "snippet": "ბინები კრწანისის ქუჩა 6 — ფოტოები"
+    },
+    {
+      "query": "\"Villion\" Krtsanisi Tbilisi",
+      "url": "https://villion.ge/",
+      "title": "VILLION — Krtsanisi",
+      "snippet": "VILLION, კრწანისის ქუჩა 6, თბილისი. Millennio Group"
+    },
+    {
+      "query": "\"Крцаниси улица 6\" квартира",
+      "url": "https://www.myhome.ge/ru/s/#result-2",
+      "title": "Продается 3 комнатная квартира в крцаниси",
+      "snippet": "Продается 3 комнатная квартира, Крцаниси улица 6 ; 97.2 м². Площадь ; 7/8 этаж ; 3 Комнаты"
+    },
+    {
+      "query": "\"Krtsanisi Street 6\" apartment",
+      "url": "https://estatehub.ge/#result-1",
+      "title": "Apartment for sale in Krtsanisi",
+      "snippet": "Krtsanisi Street 6, Tbilisi — 97.2 m², 3 rooms, floor 7/8"
+    },
+    {
+      "query": "site:myhome.ge крцаниси улица",
+      "url": "https://www.myhome.ge/ru/s/#result-1",
+      "title": "Квартиры В Крцаниси",
+      "snippet": "201,447 · 3,919₾ /м² · 51.4 · Крцаниси улица. 7 сент., 18:45 ; 1,045 · 17₾ /м² · 60 · Крцаниси улица 16."
+    },
+    {
+      "query": "\"улица Крцаниси\" квартира продажа",
+      "url": "https://home.ss.ge/ka/udzravi-qoneba/30233493",
+      "title": "Продаются квартиры, Ортачала, ул. Крцаниси",
+      "snippet": "Посмотрите квартиры, Ортачала, ул. Крцаниси на ss.ge ... 6. 146,000 $ m² - 1,446 $. Продается"
+    },
+    {
+      "query": "\"улица Крцаниси\" квартира продажа",
+      "url": "https://korter.ge/#result-2",
+      "title": "Продается 6-комнатная квартира площадью 150 м² в Тбилиси",
+      "snippet": "Продается 6-комнатная квартира площадью 150 м² в Тбилиси, ул. Крцаниси 25. Цена — $375,000"
+    },
+    {
+      "query": "\"улица Крцаниси\" квартира продажа",
+      "url": "https://www.myhome.ge/ru/s/#result-3",
+      "title": "Продается 4 комнатная квартира в крцаниси",
+      "snippet": "Крцаниси улица 14 ; 108 м². Площадь ; 4 Комнаты"
+    },
+    {
+      "query": "\"улица Крцаниси\" квартира продажа",
+      "url": "https://tranio.ru/georgia/tbilisi/#result-1",
+      "title": "Недвижимость на улице Крцаниси",
+      "snippet": "327 предложений на улице Крцаниси"
+    },
+    {
+      "query": "კრწანისის ქუჩა ბინა იყიდება",
+      "url": "https://www.myhome.ge/en/real-estate/3-room-apartment-for-sale-in-krtsanisi-20592132/",
+      "title": "3 room apartment for sale in Krtsanisi",
+      "snippet": "For sale 90 m² $ 2,056 per m² Krtsanisi St, Tbilisi 3 rooms"
+    },
+    {
+      "query": "\"მილენიო გრუპი\" ბინები",
+      "url": "https://korter.ge/#result-3",
+      "title": "Millennio Group — დეველოპერი",
+      "snippet": "Villion, კრწანისის ქუჩა 6, თბილისი — 82.2 მ²-დან"
+    }
+  ]
+}

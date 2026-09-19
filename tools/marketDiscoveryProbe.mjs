@@ -1,95 +1,61 @@
 /*
  * THE VILLION MARKET-DISCOVERY PROBE.
  *
- * Runs the discovery plan against the sources that were technically verified,
- * over real HTTP, and reports what actually came back. It exists so that a
- * claim about discovery breadth can be checked rather than believed.
+ * Runs the real discovery engine — the same runDiscovery() the Verify market
+ * lane calls — and prints what it found, what it failed to find, and why. It
+ * exists so a claim about discovery breadth can be checked rather than
+ * believed.
  *
  * It deliberately does NOT invoke the paid Verify pipeline: no research-agent,
- * no synthesis, no credits. It is the market-discovery path only.
+ * no synthesis, no credits, no model. It is the market-discovery path only.
  *
- * Run: node --experimental-strip-types tools/marketDiscoveryProbe.mjs
+ *   node --experimental-strip-types tools/marketDiscoveryProbe.mjs
+ *   node --experimental-strip-types tools/marketDiscoveryProbe.mjs --live
+ *
+ * ── WHAT --live MEANS, AND WHY IT IS NOT THE DEFAULT ─────────────────
+ *
+ * --live routes the search lane at supabase/functions/dataforseo-search, which
+ * is currently held behind a deliberate kill switch and answers HTTP 423. The
+ * probe reports that lock as PROVIDER_LOCKED. It does not bypass it, does not
+ * read vendor credentials, and has no override flag.
+ *
+ * The default runs the engine over `tools/fixtures/krtsanisiHarvest.json` —
+ * raw search-engine output recorded on 2026-09-20 across Georgian, English and
+ * Russian formulations. The rows are evidence; every piece of discovery,
+ * extraction, address resolution, project identity and tiering below is the
+ * production code doing the work.
  */
+import { readFileSync } from 'node:fs';
 import { buildDiscoveryPlan, localQueries } from '../src/research-core/market/discoveryPlan.ts';
-import {
-  classifyTier, dedupeSyndicated, statsByTier, headlineTier, TIER_ORDER,
-} from '../src/research-core/market/geoTier.ts';
+import { runDiscovery } from '../src/research-core/market/discoveryRun.ts';
+import { harvestProvider } from '../src/research-core/market/searchProviders.ts';
+import { dataForSeoProvider } from './providers/dataForSeoSearch.ts';
+import { classifyDomain } from '../src/research-core/market/discoverySources.ts';
+import { TIER_ORDER, LOCAL_TIERS } from '../src/research-core/market/geoTier.ts';
 
-const UA = 'Mozilla/5.0 (compatible; HomatchResearch/1.0; +https://homatch.live)';
-const TIMEOUT_MS = 20_000;
+const LIVE = process.argv.includes('--live');
 
 const SUBJECT = {
   project: 'Villion',
-  street: 'კრწანისის',
+  street: 'კრწანისის ქუჩა',
   streetNumber: '6',
   district: 'კრწანისი',
   city: 'თბილისი',
   developer: 'შპს მილენიო გრუპი',
 };
 
-const SUBJECT_LOCATION = {
-  project: 'Villion',
-  street: 'კრწანისის ქუჩა',
-  streetNumber: '6',
+/** The subject as the resolver needs it: names, an address, and coordinates. */
+const SUBJECT_GEO = {
+  names: ['Villion', 'ვილიონ', 'Вилион'],
+  address: 'კრწანისის ქუჩა 6',
+  developer: 'შპს მილენიო გრუპი',
+  // Published by korter.ge on the building's own page.
+  lat: 41.67653101,
+  lon: 44.82462376,
   district: 'კრწანისი',
   city: 'თბილისი',
-  adjacentStreets: ['გორგასლის ქუჩა', 'ორთაჭალის ქუჩა'],
+  streetHints: ['Krtsanisi', 'Крцаниси', 'კრწანისი', 'krcanisi', 'krwanisi'],
 };
-
-async function get(url) {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { headers: { 'user-agent': UA }, signal: ctl.signal });
-    if (!res.ok) return { ok: false, status: res.status, body: '' };
-    return { ok: true, status: res.status, body: await res.text() };
-  } catch (e) {
-    return { ok: false, status: 0, body: '', error: String(e).slice(0, 80) };
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-/*
- * realting.com — verified server-rendered.
- *
- * robots.txt disallows `/*?`, so only clean paths may be fetched; the listing
- * cards carry data-object-id and data-price-USD attributes.
- */
-function parseRealting(html, sourceLabel) {
-  const out = [];
-  const seen = new Set();
-  const re = /data-object-id="(\d+)"/g;
-  let m;
-  while ((m = re.exec(html))) {
-    const id = m[1];
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const around = html.slice(Math.max(0, m.index - 4000), m.index + 2500);
-    const price = around.match(/data-price-USD="\$?\s*([0-9\s, ]+)"/);
-    const area = around.match(/([0-9]+(?:[.,][0-9]+)?)\s*(?:m²|м²|кв\.м)/);
-    const addr = around.match(/>\s*([^<>{}]{8,90}(?:Tbilisi|Тбилиси|თბილისი)[^<>{}]{0,40})\s*</i);
-    const priceNum = price ? Number(price[1].replace(/[\s, ]/g, '')) : null;
-    const areaNum = area ? Number(area[1].replace(',', '.')) : null;
-    out.push({
-      source: sourceLabel,
-      url: `https://realting.com/#${id}`,
-      address: addr ? addr[1].trim() : null,
-      title: null,
-      price: Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null,
-      area: Number.isFinite(areaNum) && areaNum > 0 ? areaNum : null,
-      pricePerSqm: Number.isFinite(priceNum) && Number.isFinite(areaNum) && areaNum > 0
-        ? Math.round(priceNum / areaNum) : null,
-      rooms: null, floor: null, condition: null, sellerType: 'UNKNOWN',
-    });
-  }
-  return out;
-}
-
-/* Sources reachable over plain HTTP with a clean path. */
-const SOURCES = [
-  { id: 'realting.com', lang: 'en', url: 'https://realting.com/property-for-sale/georgia/tbilisi', parse: parseRealting },
-];
 
 const plan = buildDiscoveryPlan(SUBJECT, { international: true });
 
@@ -98,47 +64,113 @@ console.log('formulations      :', plan.length);
 console.log('local (<= micro)  :', localQueries(plan).length);
 console.log('languages         :', [...new Set(plan.map((q) => q.language))].join(', '));
 console.log('precision bands   :', [...new Set(plan.map((q) => q.precision))].join(', '));
-console.log('first five        :');
-for (const q of plan.slice(0, 5)) console.log(`   [${q.precision}/${q.language}] ${q.text}`);
+for (const q of plan.slice(0, 6)) console.log(`   [${q.precision}/${q.language}] ${q.text}`);
 
-console.log('\n=== SOURCE FETCH ===');
-let raw = [];
-let queried = 0;
-let withResults = 0;
-for (const src of SOURCES) {
-  queried += 1;
-  const res = await get(src.url);
-  const items = res.ok ? src.parse(res.body, src.id) : [];
-  if (items.length) withResults += 1;
-  console.log(
-    `${src.id.padEnd(18)} http=${String(res.status).padEnd(4)} listings=${String(items.length).padEnd(4)}`
-    + (res.error ? ` (${res.error})` : '')
+/* ------------------------------------------------------------------ *
+ * The provider                                                        *
+ * ------------------------------------------------------------------ */
+
+let provider;
+let executedPlan = plan;
+
+if (LIVE) {
+  const functionsUrl = process.env.SUPABASE_FUNCTIONS_URL ?? '';
+  if (!functionsUrl) {
+    console.error('\n--live needs SUPABASE_FUNCTIONS_URL. Refusing to guess a host.');
+    process.exit(2);
+  }
+  provider = dataForSeoProvider({
+    functionsUrl,
+    authorization: process.env.SUPABASE_ANON_KEY ? `Bearer ${process.env.SUPABASE_ANON_KEY}` : null,
+  });
+} else {
+  const harvest = JSON.parse(
+    readFileSync(new URL('./fixtures/krtsanisiHarvest.json', import.meta.url), 'utf8'),
   );
-  raw = raw.concat(items);
+  provider = harvestProvider(harvest.results, 'HARVEST_2026-09-20');
+  /*
+   * The formulations that were actually executed against the index, in the
+   * order they were run. Replaying the full generated plan against a recorded
+   * harvest would count queries nobody asked as queries that returned nothing,
+   * and NOT_DISCOVERED must mean "asked, and empty".
+   */
+  executedPlan = harvest.queries;
 }
 
-const { unique, duplicatesRemoved } = dedupeSyndicated(raw);
-const tiered = unique.map((l) => ({ ...l, tier: classifyTier(l, SUBJECT_LOCATION) }));
-const counts = Object.fromEntries(TIER_ORDER.map((t) => [t, 0]));
-for (const l of tiered) counts[l.tier] += 1;
-const seller = { OWNER: 0, BROKER: 0, DEVELOPER: 0, UNKNOWN: 0 };
-for (const l of tiered) seller[l.sellerType ?? 'UNKNOWN'] += 1;
+const report = await runDiscovery({
+  plan: executedPlan,
+  subject: SUBJECT_GEO,
+  search: provider,
+});
 
-const stats = statsByTier(tiered, (l) => l.tier);
-const head = headlineTier(stats);
+/* ------------------------------------------------------------------ *
+ * The result                                                          *
+ * ------------------------------------------------------------------ */
 
-console.log('\n=== VILLION / KRTSANISI RESULT ===');
-console.log('TOTAL_RAW_RESULTS      =', raw.length);
-console.log('TOTAL_UNIQUE_RESULTS   =', unique.length);
-console.log('DUPLICATES_REMOVED     =', duplicatesRemoved);
-console.log('SOURCES_QUERIED        =', queried);
-console.log('SOURCES_WITH_RESULTS   =', withResults);
-console.log('LANGUAGES_QUERIED      =', [...new Set(plan.map((q) => q.language))].length);
-for (const t of TIER_ORDER) console.log(`${t.padEnd(30)} =`, counts[t]);
-console.log('OWNER / BROKER / DEV / UNKNOWN =',
-  seller.OWNER, '/', seller.BROKER, '/', seller.DEVELOPER, '/', seller.UNKNOWN);
-console.log('\nPER-TIER STATS (never merged):');
-for (const s of stats) {
-  console.log(`  ${s.tier.padEnd(30)} n=${String(s.sample).padEnd(4)} median=${s.median} range=${s.min}-${s.max}`);
+const pad = (k) => String(k).padEnd(38);
+
+console.log('\n=== DISCOVERY EXECUTION ===');
+console.log(pad('PROVIDER'), '=', report.provider);
+console.log(pad('PROVIDER_STATUS'), '=', report.providerStatus);
+console.log(pad('QUERIES_PLANNED'), '=', plan.length);
+console.log(pad('QUERIES_EXECUTED'), '=', report.queriesExecuted);
+console.log(pad('QUERIES_WITH_RESULTS'), '=', report.queriesWithResults);
+console.log(pad('LANGUAGES_SEARCHED'), '=', report.languages.join(', ') || 'none');
+
+console.log('\n=== DOMAINS ===');
+console.log(pad('RAW_URLS_DISCOVERED'), '=', report.rawUrlsDiscovered);
+console.log(pad('DOMAINS_DISCOVERED'), '=', report.domainsDiscovered.length);
+console.log(pad('DOMAINS_NEW_UNSEEDED'), '=', report.domainsNew.length,
+  report.domainsNew.length ? `(${report.domainsNew.join(', ')})` : '');
+console.log(pad('DOMAINS_PRODUCING_EVIDENCE'), '=', report.domainsProducingEvidence.length);
+console.log('\nper domain:');
+for (const d of report.perDomain) {
+  console.log(
+    `  ${d.domain.padEnd(22)} ${String(classifyDomain(d.domain)).padEnd(24)}`
+    + ` urls=${String(d.urlsSeen).padEnd(3)} extracted=${String(d.extracted).padEnd(3)}`
+    + ` failed=${String(d.failed).padEnd(3)} local=${d.localResults}`,
+  );
 }
-console.log('HEADLINE_TIER          =', head ? head.tier : 'none (no local tier qualifies)');
+
+console.log('\n=== WHY EACH URL DID OR DID NOT BECOME EVIDENCE ===');
+for (const [outcome, n] of Object.entries(report.outcomes)) {
+  if (n) console.log(pad(outcome), '=', n);
+}
+
+console.log('\n=== GEOGRAPHIC TIERS (never merged) ===');
+console.log('   located   = records this run placed on the street or in the building');
+console.log('   measurable = of those, the ones stating an area or a price');
+for (const t of TIER_ORDER) {
+  console.log(`${pad(t)} = ${report.tierCounts[t]} located, ${report.tierCountsMeasurable[t]} measurable`);
+}
+const local = LOCAL_TIERS.reduce((n, t) => n + report.tierCounts[t], 0);
+const localMeasurable = LOCAL_TIERS.reduce((n, t) => n + report.tierCountsMeasurable[t], 0);
+console.log(pad('LOCAL_TOTAL (tiers 1-3)'), '=', local, `(${localMeasurable} measurable)`);
+console.log(pad('UNIQUE_LISTINGS'), '=', report.listings.length);
+console.log(pad('DUPLICATES_REMOVED'), '=', report.duplicatesRemoved);
+
+console.log('\nper-tier statistics:');
+for (const s of report.tierStats) {
+  console.log(`  ${s.tier.padEnd(30)} n=${String(s.sample).padEnd(3)} median=${s.median} range=${s.min}-${s.max}`);
+}
+console.log(pad('HEADLINE_TIER'), '=',
+  report.headline ? `${report.headline.tier} (n=${report.headline.sample})`
+    : 'none - no local tier has enough priced observations, and the city may not stand in');
+
+console.log('\n=== LOCAL EVIDENCE, ITEMISED ===');
+for (const l of report.listings.filter((x) => LOCAL_TIERS.includes(x.tier))) {
+  console.log(
+    `  ${l.measurable ? '[listing] ' : '[locator] '}[${l.tier}] ${l.sourceDomain.padEnd(15)}`
+    + ` ${String(l.area ?? '-').padEnd(6)}m2 ${String(l.rooms ?? '-')} rooms`
+    + `  ${String(l.pricePerSqm ?? '-').padEnd(6)}/m2  ${l.address ?? ''}`,
+  );
+}
+
+console.log('\n=== ACCEPTANCE ===');
+console.log(pad('KNOWN_PUBLIC_LOCAL_EVIDENCE_DISCOVERED'), '=',
+  report.knownPublicLocalEvidenceDiscovered ? 'YES' : 'NO');
+const subjectFlat = report.listings.find((l) => l.area === 97.2);
+console.log(pad('SUBJECT_BUILDING_LISTING'), '=',
+  subjectFlat
+    ? `${subjectFlat.area} m2, ${subjectFlat.rooms} rooms, ${subjectFlat.address} [${subjectFlat.tier}]`
+    : 'not recovered');

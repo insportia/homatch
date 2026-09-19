@@ -17,6 +17,8 @@
  * number across all of them.
  */
 
+import { addressKey } from './geoResolve.ts';
+
 export type GeoTier =
   | 'TIER_1_SAME_PROJECT'
   | 'TIER_2_SAME_STREET'
@@ -77,12 +79,19 @@ const norm = (v: unknown): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
-/** The street word and number, as a comparable key. Shared with contractMatch. */
+/*
+ * THE STREET AND NUMBER, IN ONE ALPHABET.
+ *
+ * This matched the written text, so „Крцаниси улица 6" and „Krtsanisi Street 6"
+ * produced two different keys — and the same 97.2 m² flat, carried by a Russian
+ * portal and an English one, counted twice. A syndicated copy inflating the
+ * sample is the one way a wider discovery layer makes the report WORSE than the
+ * narrow one it replaces, so identity is taken from the resolver that already
+ * reconciles the three scripts and both word orders.
+ */
 export function streetKey(text: string): string {
-  const m = norm(text).match(
-    /([\p{L}]+)\s*(?:ქუჩა|street|st|улица|ул)\s*[,\s]*(?:№|#|n)?\s*(\d+)?/u
-  );
-  return m ? `${m[1]}|${m[2] ?? ''}` : '';
+  const { street, number } = addressKey(text);
+  return street ? `${street}|${number}` : '';
 }
 
 const streetName = (text: string): string => streetKey(text).split('|')[0] ?? '';

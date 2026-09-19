@@ -27,6 +27,14 @@ import { discoverComparables, type MarketEvidence, type UniqueProperty } from '.
 import type { PortalRegistry } from '../research-core/adapters/portal/types.ts';
 import type { AdapterContext } from '../research-core/discovery/adapter.ts';
 import { seedSupportsMarketSearch, type ResearchSeed } from '../research-core/plan/seed.ts';
+import { buildDiscoveryPlan } from '../research-core/market/discoveryPlan.ts';
+import {
+  runDiscovery,
+  type DiscoverySubjectGeo,
+  type SearchProvider,
+  type SearchStatus,
+} from '../research-core/market/discoveryRun.ts';
+import type { GeoTier } from '../research-core/market/geoTier.ts';
 
 /** The report's own comparable shape. Strings, because that is what it uses. */
 export interface ReportComparable {
@@ -79,6 +87,31 @@ export interface MarketLaneSummary {
   startedAt: string;
   finishedAt: string;
   durationMs: number;
+  /*
+   * WHAT THE SEARCH-ENGINE DISCOVERY LANE DID, OR WHY IT DID NOT RUN.
+   *
+   * The Villion report said 0 same-project, 0 same-street, 0 microlocation for
+   * a street the public index carries hundreds of listings on. The portal lane
+   * above asks portals it already knows, by district id; it cannot find a
+   * source nobody registered, and a source that answers 403 to a crawler looks
+   * to it exactly like a source with no inventory.
+   *
+   * This carries the second lane's ledger so the difference is legible:
+   * a provider that was locked is `providerStatus: 'PROVIDER_LOCKED'`, which is
+   * a statement about us, and must never be rendered as a statement about the
+   * market. Internal only — section 15 forbids any of it reaching a buyer.
+   */
+  discovery?: {
+    provider: string;
+    providerStatus: SearchStatus;
+    queriesExecuted: number;
+    rawUrlsDiscovered: number;
+    domainsDiscovered: number;
+    domainsNew: number;
+    tierCounts: Record<GeoTier, number>;
+    outcomes: Record<string, number>;
+    localEvidenceFound: boolean;
+  } | null;
 }
 
 export interface MarketLaneResult {
@@ -185,6 +218,18 @@ export interface RunMarketLaneOptions {
   budgetMs?: number;
   limit?: number;
   now?: () => number;
+  /*
+   * The search-engine discovery lane, when the caller has one to give.
+   *
+   * Passed in rather than constructed here, because every provider worth
+   * having bills per request and that is not a decision a library makes. When
+   * it is absent the lane behaves exactly as before.
+   */
+  search?: SearchProvider | null;
+  /** Where the subject actually is, for tiering discovered results. */
+  subjectGeo?: DiscoverySubjectGeo | null;
+  /** Discovery query ceiling, since each one has a price. */
+  maxDiscoveryQueries?: number;
 }
 
 /**
@@ -265,7 +310,68 @@ export async function runMarketLane(
     startedAt: evidence.startedAt,
     finishedAt: evidence.finishedAt,
     durationMs: now() - began,
+    discovery: null,
   };
+
+  /*
+   * THE SECOND LANE.
+   *
+   * Additive: the portal lane's comparables are untouched, and discovery runs
+   * beside it to answer the question the portal lane structurally cannot —
+   * "what is on this street, anywhere, in any language". A failure here can
+   * never take the portal results down with it, because a report with 30
+   * city-wide comparables is worse than one with local evidence and better
+   * than none at all.
+   */
+  if (options.search && options.subjectGeo) {
+    try {
+      const plan = buildDiscoveryPlan(
+        {
+          project: subjectProject,
+          street: options.subjectGeo.address ?? null,
+          streetNumber: null,
+          district: options.subjectGeo.district ?? null,
+          city: options.subjectGeo.city ?? null,
+          developer: options.subjectGeo.developer ?? null,
+        },
+        { international: true },
+      );
+      const report = await runDiscovery({
+        plan,
+        subject: options.subjectGeo,
+        search: options.search,
+        maxQueries: options.maxDiscoveryQueries ?? 24,
+      });
+      summary.discovery = {
+        provider: report.provider,
+        providerStatus: report.providerStatus,
+        queriesExecuted: report.queriesExecuted,
+        rawUrlsDiscovered: report.rawUrlsDiscovered,
+        domainsDiscovered: report.domainsDiscovered.length,
+        domainsNew: report.domainsNew.length,
+        tierCounts: report.tierCounts,
+        outcomes: report.outcomes,
+        localEvidenceFound: report.knownPublicLocalEvidenceDiscovered,
+      };
+    } catch (e) {
+      // Recorded as a lane that did not run, never as a market that is empty.
+      summary.discovery = {
+        provider: options.search.id,
+        providerStatus: 'PROVIDER_ERROR',
+        queriesExecuted: 0,
+        rawUrlsDiscovered: 0,
+        domainsDiscovered: 0,
+        domainsNew: 0,
+        tierCounts: {
+          TIER_1_SAME_PROJECT: 0, TIER_2_SAME_STREET: 0, TIER_3_NEARBY_MICROLOCATION: 0,
+          TIER_4_DISTRICT: 0, TIER_5_CITY: 0,
+        },
+        outcomes: {},
+        localEvidenceFound: false,
+      };
+      console.error('marketLane: discovery lane failed', e);
+    }
+  }
 
   return { comparables, summary, conflicts, evidence };
 }

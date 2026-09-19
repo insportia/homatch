@@ -37,9 +37,13 @@ import {
 } from '../calculations/construction.ts';
 import {
   constructionAcquisitionValue,
+  constructionValueSensitivity,
   renovationAcquisitionValue,
+  renovationValueSensitivity,
   rentalAcquisitionValue,
+  rentalValueSensitivity,
   type AcquisitionValueResult,
+  type ValueSensitivityRow,
 } from '../calculations/acquisitionValue.ts';
 import type { StrategyId } from './definitions.ts';
 import {
@@ -65,6 +69,8 @@ export interface StrategyRun {
   delays: ConstructionDelayRow[];
   priceScenarios: CompletedPriceScenario[];
   value: AcquisitionValueResult | null;
+  /** What a different required return would let the investor pay. */
+  valueSensitivity: ValueSensitivityRow[];
 }
 
 const EMPTY: Omit<StrategyRun, 'strategy'> = {
@@ -76,6 +82,7 @@ const EMPTY: Omit<StrategyRun, 'strategy'> = {
   delays: [],
   priceScenarios: [],
   value: null,
+  valueSensitivity: [],
 };
 
 const num = (context: InvestmentContext, field: string): number | undefined =>
@@ -150,6 +157,7 @@ export function runStrategy(strategy: StrategyId, context: InvestmentContext): S
           strategy,
           ...EMPTY,
           value: input ? renovationAcquisitionValue(input) : null,
+          valueSensitivity: input ? renovationValueSensitivity(input) : [],
         };
       }
 
@@ -159,6 +167,7 @@ export function runStrategy(strategy: StrategyId, context: InvestmentContext): S
           strategy,
           ...EMPTY,
           value: input ? constructionAcquisitionValue(input) : null,
+          valueSensitivity: input ? constructionValueSensitivity(input) : [],
         };
       }
 
@@ -183,10 +192,12 @@ export function runStrategy(strategy: StrategyId, context: InvestmentContext): S
       const model = safeModel(probe);
       const noi = model?.income.netOperatingIncome.value ?? null;
       if (noi === null) return { strategy, ...EMPTY };
+      const rentalInput = resolveRentalValueInput(context, noi);
       return {
         strategy,
         ...EMPTY,
-        value: rentalAcquisitionValue(resolveRentalValueInput(context, noi)),
+        value: rentalAcquisitionValue(rentalInput),
+        valueSensitivity: rentalValueSensitivity(rentalInput),
       };
     }
 

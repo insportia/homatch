@@ -23,6 +23,7 @@ import { INVESTMENT_STRINGS_6 } from './investment-i18n-data6.mjs';
 import { INVESTMENT_STRINGS_7 } from './investment-i18n-data7.mjs';
 import { INVESTMENT_STRINGS_8 } from './investment-i18n-data8.mjs';
 import { INVESTMENT_STRINGS_9, INVESTMENT_STRINGS_9B } from './investment-i18n-data9.mjs';
+import { INVESTMENT_STRINGS_10 } from './investment-i18n-data10.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(__dirname, '..', 'src', 'i18n', 'translations.ts');
@@ -39,6 +40,7 @@ const TABLE = {
   ...INVESTMENT_STRINGS_8,
   ...INVESTMENT_STRINGS_9,
   ...INVESTMENT_STRINGS_9B,
+  ...INVESTMENT_STRINGS_10,
 };
 
 /** Single-quoted TS literal, escaping only what must be escaped. */

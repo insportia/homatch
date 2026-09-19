@@ -22,9 +22,12 @@
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import type { AcquisitionValueResult } from '@/investment/calculations/acquisitionValue';
+import type {
+  AcquisitionValueResult,
+  ValueSensitivityRow,
+} from '@/investment/calculations/acquisitionValue';
 import type { MarketComparableRange } from '@/investment/calculations/valuation';
-import { Metric, Module, formatMoney, intlLocaleFor } from '../primitives';
+import { FigureValue, Metric, Module, formatMoney, formatPercent, intlLocaleFor } from '../primitives';
 
 const VERDICT_TONE: Record<AcquisitionValueResult['verdictKey'], string> = {
   inv_value_verdict_comfortable:
@@ -40,11 +43,13 @@ const VERDICT_TONE: Record<AcquisitionValueResult['verdictKey'], string> = {
 
 export function ValueResults({
   result,
+  sensitivity,
   proposedPrice,
   areaSqm,
   comparableRange,
 }: {
   result: AcquisitionValueResult;
+  sensitivity: ValueSensitivityRow[];
   proposedPrice: number | null;
   areaSqm: number | null;
   comparableRange: MarketComparableRange | null;
@@ -169,6 +174,67 @@ export function ValueResults({
           </p>
         )}
       </Module>
+
+      {sensitivity.length > 1 ? (
+        <Module
+          id="requirement"
+          eyebrowKey="inv_mod_requirement_eyebrow"
+          titleKey="inv_mod_requirement_title"
+          subtitleKey="inv_mod_requirement_sub"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[26rem] text-sm">
+              <caption className="sr-only">{t('inv_requirement_caption')}</caption>
+              <thead>
+                <tr className="text-2xs uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="py-2 text-start font-medium">
+                    {t(
+                      result.strategy === 'RENTAL_INVESTMENT'
+                        ? 'inv_col_required_yield'
+                        : 'inv_col_required_return',
+                    )}
+                  </th>
+                  <th scope="col" className="py-2 text-end font-medium">
+                    {t('inv_sum_maximum_price')}
+                  </th>
+                  <th scope="col" className="py-2 text-end font-medium">
+                    {t('inv_sum_target_entry')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sensitivity.map((row) => (
+                  <tr
+                    key={row.requirementPercent}
+                    className={cn(
+                      'border-t border-border',
+                      row.current && 'bg-[hsl(var(--gold-soft))]',
+                    )}
+                  >
+                    <td className="py-2.5 tabular-nums text-foreground">
+                      {formatPercent(row.requirementPercent, locale, 0)}
+                      {row.current ? (
+                        <span className="ms-2 text-2xs text-muted-foreground">
+                          {t('inv_requirement_yours')}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="py-2.5 text-end tabular-nums text-foreground">
+                      <FigureValue figure={row.maximumPrice} kind="money" currency={currency} />
+                    </td>
+                    <td className="py-2.5 text-end tabular-nums text-muted-foreground">
+                      <FigureValue figure={row.targetEntryPrice} kind="money" currency={currency} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-4 max-w-[64ch] text-2xs leading-relaxed text-muted-foreground">
+            {t('inv_requirement_note')}
+          </p>
+        </Module>
+      ) : null}
 
       {comparableRange ? (
         <Module

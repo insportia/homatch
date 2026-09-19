@@ -461,3 +461,84 @@ function verdictFor(args: {
   if (args.target !== null && proposed <= args.target) return 'inv_value_verdict_comfortable';
   return 'inv_value_verdict_tight';
 }
+
+/* ── How much the requirement is costing ────────────────────────────── */
+
+/**
+ * The same property at a different required return.
+ *
+ * THE SENSITIVITY THAT MATTERS IN A BACKSOLVE
+ *
+ * Every other strategy is sensitive to things outside the investor's
+ * control — the resale, the rent, the completion date. This one is not.
+ * Its inputs are the plan and the requirement, and the requirement is a
+ * CHOICE. "Insisting on 20% costs you $12,000 of buying power against
+ * 15%" is the question this view exists to answer, and it is invisible in
+ * a single row of boundaries.
+ *
+ * Each row is a complete re-solve, not an interpolation: the acquisition
+ * costs scale with the price, so the relationship is not linear and an
+ * approximation would be wrong by more at the ends than in the middle.
+ */
+export interface ValueSensitivityRow {
+  /** The required yield (rental) or required return (resale), as entered. */
+  requirementPercent: number;
+  maximumPrice: Figure;
+  targetEntryPrice: Figure;
+  /** True for the row the investor actually asked for. */
+  current: boolean;
+}
+
+/** Requirements to show around whatever the investor chose. */
+export function requirementLadder(current: number, step: number): number[] {
+  const out = new Set<number>();
+  for (const offset of [-2, -1, 0, 1, 2]) {
+    const value = round2(current + offset * step);
+    if (value > 0) out.add(value);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+function rowsFrom(
+  current: number,
+  ladder: readonly number[],
+  solve: (percent: number) => AcquisitionValueResult,
+): ValueSensitivityRow[] {
+  return ladder.map((requirementPercent) => {
+    const result = solve(requirementPercent);
+    return {
+      requirementPercent,
+      maximumPrice: result.maximumPrice,
+      targetEntryPrice: result.targetEntryPrice,
+      current: requirementPercent === current,
+    };
+  });
+}
+
+export function rentalValueSensitivity(input: RentalValueInput): ValueSensitivityRow[] {
+  if (!isPositive(input.targetYieldPercent)) return [];
+  const ladder = requirementLadder(input.targetYieldPercent, 1);
+  return rowsFrom(input.targetYieldPercent, ladder, (targetYieldPercent) =>
+    rentalAcquisitionValue({ ...input, targetYieldPercent }),
+  );
+}
+
+export function renovationValueSensitivity(input: RenovationValueInput): ValueSensitivityRow[] {
+  if (!isPositive(input.targetReturnPercent)) return [];
+  const ladder = requirementLadder(input.targetReturnPercent, 5);
+  return rowsFrom(input.targetReturnPercent, ladder, (targetReturnPercent) =>
+    renovationAcquisitionValue({ ...input, targetReturnPercent }),
+  );
+}
+
+export function constructionValueSensitivity(
+  input: ConstructionValueInput,
+): ValueSensitivityRow[] {
+  if (!isPositive(input.targetReturnPercent)) return [];
+  const ladder = requirementLadder(input.targetReturnPercent, 5);
+  return rowsFrom(input.targetReturnPercent, ladder, (targetReturnPercent) =>
+    constructionAcquisitionValue({ ...input, targetReturnPercent }),
+  );
+}

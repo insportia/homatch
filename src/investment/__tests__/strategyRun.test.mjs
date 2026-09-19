@@ -255,6 +255,66 @@ test('a strategy with nothing entered produces an empty run, not a crash', () =>
   }
 });
 
+test('the value flow shows what a different requirement would buy', () => {
+  const run = runStrategy(
+    'INVESTMENT_VALUE',
+    ctx({
+      currency: 'USD',
+      valueStrategy: 'RENOVATE_RESELL',
+      targetReturnPercent: 20,
+      exitPriceAssumption: 190_000,
+      renovationCost: 31_500,
+      acquisitionCostPercent: 3,
+      sellingCostPercent: 3,
+      areaSqm: 70,
+    }),
+  );
+
+  const rows = run.valueSensitivity;
+  assert.ok(rows.length > 1, 'a ladder of requirements is produced');
+
+  const current = rows.filter((row) => row.current);
+  assert.equal(current.length, 1, 'exactly one row is the one the investor asked for');
+  assert.equal(current[0].requirementPercent, 20);
+  assert.equal(current[0].maximumPrice.value, run.value.maximumPrice.value,
+    'the current row must agree with the headline, or the table contradicts it');
+
+  // Demanding more can only mean paying less. If this ever inverts, the
+  // backsolve has its sign the wrong way round.
+  for (let i = 1; i < rows.length; i += 1) {
+    assert.ok(rows[i].requirementPercent > rows[i - 1].requirementPercent);
+    assert.ok(
+      rows[i].maximumPrice.value < rows[i - 1].maximumPrice.value,
+      `requiring ${rows[i].requirementPercent}% did not lower the maximum price`,
+    );
+  }
+});
+
+test('a rental requirement ladder steps in yield, not in whole returns', () => {
+  const run = runStrategy(
+    'INVESTMENT_VALUE',
+    ctx({
+      currency: 'USD',
+      valueStrategy: 'RENTAL_INVESTMENT',
+      benchmarkYieldPercent: 8,
+      monthlyRent: 700,
+      vacantMonthsPerYear: 0.6,
+      maintenanceAnnual: 600,
+      acquisitionCostPercent: 4,
+    }),
+  );
+  const steps = run.valueSensitivity.map((row) => row.requirementPercent);
+  assert.deepEqual(steps, [6, 7, 8, 9, 10]);
+});
+
+test('no requirement ladder without a requirement', () => {
+  const run = runStrategy(
+    'INVESTMENT_VALUE',
+    ctx({ currency: 'USD', valueStrategy: 'RENOVATE_RESELL', exitPriceAssumption: 190_000 }),
+  );
+  assert.deepEqual(run.valueSensitivity, []);
+});
+
 /* ── The summary contract ────────────────────────────────────────── */
 
 const RUNS = {

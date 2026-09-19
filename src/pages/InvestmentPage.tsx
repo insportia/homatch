@@ -252,6 +252,7 @@ export default function InvestmentPage() {
               {strategy === 'INVESTMENT_VALUE' && run.value ? (
                 <ValueResults
                   result={run.value}
+                  sensitivity={run.valueSensitivity}
                   proposedPrice={proposedPrice}
                   areaSqm={areaSqm}
                   comparableRange={comparableRange}

@@ -4885,6 +4885,12 @@ const en = {
   talk_idle_body: 'Say what you are looking for and Homatch will work out the rest.',
   talk_ended_body: 'That is the demo. Homatch can do the same with your own properties and contacts.',
   talk_limit_body: 'The demo is over for now. Continue inside Homatch to keep going.',
+  talk_quota_daily_body: 'This network has used today\'s free demo time. It resets within a day, and the assistant itself is working fine.',
+  talk_quota_sessions_body: 'This network has used today\'s free demo conversations. It resets within a day.',
+  talk_browser_unsupported_body: 'This browser will not let a page use the microphone. Open homatch.live in Safari or Chrome directly, not inside another app.',
+  talk_mic_busy_body: 'Another app is using the microphone. Close it and try again.',
+  talk_mic_timeout_body: 'The microphone did not answer. Check the permission prompt and try again.',
+  talk_audio_unavailable_body: 'The microphone could not be started. Try again, or use another browser.',
   talk_mic_denied_body: 'Homatch needs microphone access for this. Allow it in your browser and try again.',
   talk_unavailable_body: 'The voice demo is temporarily unavailable.',
   talk_busy_body: 'Homatch is already listening in another tab, or is busy for a moment. Try again shortly.',
@@ -7456,6 +7462,16 @@ const en = {
   inv_location_city_placeholder: 'e.g. Tbilisi',
   inv_location_district_placeholder: 'optional, narrows the search',
   inv_location_needed: 'Add a city and Homatch will look up what similar homes are asking. Nothing you have entered changes.',
+
+  /* ── HOMATCH INVESTMENT INTELLIGENCE ─────────────────────────────── */
+  inv_mod_requirement_eyebrow: 'Your requirement',
+  inv_mod_requirement_title: 'What the requirement costs you',
+  inv_mod_requirement_sub: 'The same property at a different required return. Insisting on more means paying less, and this is exactly how much less.',
+  inv_requirement_caption: 'Maximum and target entry price at each required return',
+  inv_requirement_note: 'Each row is a full re-solve, not a straight line through the middle: the cost of buying scales with the price, so the relationship bends.',
+  inv_requirement_yours: 'yours',
+  inv_col_required_return: 'Required return',
+  inv_col_required_yield: 'Required yield',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -12259,6 +12275,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   talk_idle_body: 'თქვით რას ეძებთ და დანარჩენს Homatch გაარკვევს.',
   talk_ended_body: 'ეს იყო დემო. Homatch იგივეს გააკეთებს თქვენს ქონებასა და კონტაქტებთან.',
   talk_limit_body: 'დემო ამჯერად დასრულდა. გასაგრძელებლად შედით Homatch-ში.',
+  talk_quota_daily_body: 'ამ ქსელმა დღევანდელი უფასო დემო დრო უკვე გამოიყენა. ერთ დღეში განახლდება — ასისტენტი მუშაობს.',
+  talk_quota_sessions_body: 'ამ ქსელმა დღევანდელი უფასო დემო საუბრები უკვე გამოიყენა. ერთ დღეში განახლდება.',
+  talk_browser_unsupported_body: 'ეს ბრაუზერი გვერდს მიკროფონთან წვდომას არ აძლევს. გახსენით homatch.live პირდაპირ Safari-ში ან Chrome-ში, სხვა აპლიკაციის შიგნით არა.',
+  talk_mic_busy_body: 'მიკროფონს სხვა აპლიკაცია იყენებს. დახურეთ და სცადეთ ხელახლა.',
+  talk_mic_timeout_body: 'მიკროფონმა არ უპასუხა. შეამოწმეთ ნებართვის მოთხოვნა და სცადეთ ხელახლა.',
+  talk_audio_unavailable_body: 'მიკროფონის ჩართვა ვერ მოხერხდა. სცადეთ ხელახლა ან სხვა ბრაუზერით.',
   talk_mic_denied_body: 'ამისთვის Homatch-ს მიკროფონზე წვდომა სჭირდება. დართეთ ნება ბრაუზერში და სცადეთ ხელახლა.',
   talk_unavailable_body: 'ხმოვანი დემო დროებით მიუწვდომელია.',
   talk_busy_body: 'Homatch უკვე გისმენთ სხვა ჩანართში, ან წამით დაკავებულია. სცადეთ მალე ხელახლა.',
@@ -14830,6 +14852,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   inv_location_city_placeholder: 'მაგ. თბილისი',
   inv_location_district_placeholder: 'არასავალდებულო, ავიწროებს ძიებას',
   inv_location_needed: 'მიუთითეთ ქალაქი და Homatch მოძებნის, რას ითხოვენ მსგავს ბინებზე. თქვენ მიერ შეყვანილი არაფერი შეიცვლება.',
+
+  /* ── HOMATCH INVESTMENT INTELLIGENCE ─────────────────────────────── */
+  inv_mod_requirement_eyebrow: 'თქვენი მოთხოვნა',
+  inv_mod_requirement_title: 'რა გიჯდებათ ეს მოთხოვნა',
+  inv_mod_requirement_sub: 'იგივე ქონება სხვა მოთხოვნილ უკუგებაზე. მეტის მოთხოვნა ნაკლების გადახდას ნიშნავს, და აი, ზუსტად რამდენით ნაკლების.',
+  inv_requirement_caption: 'მაქსიმალური და სამიზნე შესვლის ფასი თითოეულ მოთხოვნილ უკუგებაზე',
+  inv_requirement_note: 'ყოველი სტრიქონი სრული ხელახალი ამოხსნაა და არა სწორი ხაზი შუაში: ყიდვის ხარჯი ფასთან ერთად იზრდება, ამიტომ დამოკიდებულება იღუნება.',
+  inv_requirement_yours: 'თქვენი',
+  inv_col_required_return: 'მოთხოვნილი უკუგება',
+  inv_col_required_yield: 'მოთხოვნილი სარგებელი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -19624,6 +19656,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   talk_idle_body: 'Скажите, что вы ищете, а Homatch разберётся с остальным.',
   talk_ended_body: 'Это была демонстрация. То же самое Homatch делает с вашими объектами и контактами.',
   talk_limit_body: 'Демонстрация окончена. Продолжите внутри Homatch.',
+  talk_quota_daily_body: 'Эта сеть уже израсходовала сегодняшнее бесплатное время демо. Оно обновится в течение суток — сам ассистент работает.',
+  talk_quota_sessions_body: 'Эта сеть уже израсходовала сегодняшние бесплатные демо-разговоры. Обновится в течение суток.',
+  talk_browser_unsupported_body: 'Этот браузер не даёт странице доступ к микрофону. Откройте homatch.live прямо в Safari или Chrome, а не внутри другого приложения.',
+  talk_mic_busy_body: 'Микрофон занят другим приложением. Закройте его и попробуйте снова.',
+  talk_mic_timeout_body: 'Микрофон не ответил. Проверьте запрос разрешения и попробуйте снова.',
+  talk_audio_unavailable_body: 'Не удалось включить микрофон. Попробуйте снова или другой браузер.',
   talk_mic_denied_body: 'Для этого нужен доступ к микрофону. Разрешите его в браузере и повторите.',
   talk_unavailable_body: 'Голосовая демонстрация временно недоступна.',
   talk_busy_body: 'Homatch уже слушает в другой вкладке или на минуту занят. Попробуйте ещё раз.',
@@ -22195,6 +22233,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   inv_location_city_placeholder: 'напр. Тбилиси',
   inv_location_district_placeholder: 'необязательно, сужает поиск',
   inv_location_needed: 'Укажите город, и Homatch посмотрит, сколько просят за похожие объекты. Ничего из введённого вами не изменится.',
+
+  /* ── HOMATCH INVESTMENT INTELLIGENCE ─────────────────────────────── */
+  inv_mod_requirement_eyebrow: 'Ваше требование',
+  inv_mod_requirement_title: 'Во что обходится ваше требование',
+  inv_mod_requirement_sub: 'Тот же объект при другой требуемой доходности. Требовать больше — значит платить меньше, и вот ровно насколько меньше.',
+  inv_requirement_caption: 'Максимальная и целевая цена входа при каждой требуемой доходности',
+  inv_requirement_note: 'Каждая строка — полный пересчёт, а не прямая через середину: расходы на покупку растут вместе с ценой, поэтому зависимость нелинейна.',
+  inv_requirement_yours: 'ваше',
+  inv_col_required_return: 'Требуемая доходность',
+  inv_col_required_yield: 'Требуемая доходность',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -26987,6 +27035,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   talk_idle_body: 'Ne aradığınızı söyleyin, gerisini Homatch çözsün.',
   talk_ended_body: 'Demo bu kadardı. Homatch aynısını kendi mülkleriniz ve kişilerinizle de yapabilir.',
   talk_limit_body: 'Demo şimdilik bitti. Devam etmek için Homatch’e geçin.',
+  talk_quota_daily_body: 'Bu ağ bugünkü ücretsiz demo süresini kullandı. Bir gün içinde yenilenir; asistanın kendisi çalışıyor.',
+  talk_quota_sessions_body: 'Bu ağ bugünkü ücretsiz demo görüşmelerini kullandı. Bir gün içinde yenilenir.',
+  talk_browser_unsupported_body: 'Bu tarayıcı sayfaya mikrofon erişimi vermiyor. homatch.live adresini doğrudan Safari veya Chrome ile açın, başka bir uygulamanın içinden değil.',
+  talk_mic_busy_body: 'Mikrofonu başka bir uygulama kullanıyor. Kapatıp tekrar deneyin.',
+  talk_mic_timeout_body: 'Mikrofon yanıt vermedi. İzin penceresini kontrol edip tekrar deneyin.',
+  talk_audio_unavailable_body: 'Mikrofon başlatılamadı. Tekrar deneyin veya başka bir tarayıcı kullanın.',
   talk_mic_denied_body: 'Bunun için mikrofon erişimi gerekiyor. Tarayıcınızda izin verip tekrar deneyin.',
   talk_unavailable_body: 'Sesli demo geçici olarak kullanılamıyor.',
   talk_busy_body: 'Homatch başka bir sekmede zaten dinliyor ya da kısa süre meşgul. Birazdan tekrar deneyin.',
@@ -29558,6 +29612,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   inv_location_city_placeholder: 'örn. Tiflis',
   inv_location_district_placeholder: 'isteğe bağlı, aramayı daraltır',
   inv_location_needed: 'Bir şehir girin; Homatch benzer evlerin ne istediğine baksın. Girdiğiniz hiçbir şey değişmez.',
+
+  /* ── HOMATCH INVESTMENT INTELLIGENCE ─────────────────────────────── */
+  inv_mod_requirement_eyebrow: 'Sizin şartınız',
+  inv_mod_requirement_title: 'Bu şart size neye mal oluyor',
+  inv_mod_requirement_sub: 'Aynı mülk, farklı bir hedef getiriyle. Daha fazlasında ısrar etmek daha azını ödemek demektir; işte tam olarak ne kadar azı.',
+  inv_requirement_caption: 'Her hedef getiride azami ve hedef giriş fiyatı',
+  inv_requirement_note: 'Her satır tam bir yeniden çözümdür, ortadan geçen bir doğru değil: alım maliyeti fiyatla birlikte arttığı için ilişki eğrilir.',
+  inv_requirement_yours: 'sizinki',
+  inv_col_required_return: 'Hedef getiri',
+  inv_col_required_yield: 'Hedef getiri oranı',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -34350,6 +34414,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   talk_idle_body: 'قل ما تبحث عنه وسيتولى Homatch الباقي.',
   talk_ended_body: 'هذا هو العرض التجريبي. يمكن لـ Homatch فعل الشيء نفسه مع عقاراتك وجهات اتصالك.',
   talk_limit_body: 'انتهى العرض التجريبي الآن. تابع داخل Homatch للاستمرار.',
+  talk_quota_daily_body: 'استهلكت هذه الشبكة وقت العرض التجريبي المجاني لليوم. يتجدد خلال يوم، والمساعد نفسه يعمل.',
+  talk_quota_sessions_body: 'استهلكت هذه الشبكة محادثات العرض التجريبي المجانية لليوم. تتجدد خلال يوم.',
+  talk_browser_unsupported_body: 'هذا المتصفح لا يسمح للصفحة باستخدام الميكروفون. افتح homatch.live مباشرة في Safari أو Chrome، لا داخل تطبيق آخر.',
+  talk_mic_busy_body: 'تطبيق آخر يستخدم الميكروفون. أغلقه وحاول مرة أخرى.',
+  talk_mic_timeout_body: 'لم يستجب الميكروفون. تحقق من طلب الإذن وحاول مرة أخرى.',
+  talk_audio_unavailable_body: 'تعذّر تشغيل الميكروفون. حاول مرة أخرى أو استخدم متصفحًا آخر.',
   talk_mic_denied_body: 'يحتاج Homatch إلى إذن الميكروفون لهذا. اسمح به في المتصفح وحاول مجددا.',
   talk_unavailable_body: 'العرض الصوتي غير متاح مؤقتا.',
   talk_busy_body: '‏Homatch يستمع بالفعل في علامة تبويب أخرى أو مشغول للحظة. حاول مرة أخرى بعد قليل.',
@@ -36921,6 +36991,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   inv_location_city_placeholder: 'مثال: تبليسي',
   inv_location_district_placeholder: 'اختياري، يضيّق نطاق البحث',
   inv_location_needed: 'أضف مدينة ليبحث Homatch عمّا تُطلب به المنازل المشابهة. لن يتغير أي شيء أدخلته.',
+
+  /* ── HOMATCH INVESTMENT INTELLIGENCE ─────────────────────────────── */
+  inv_mod_requirement_eyebrow: 'شرطك',
+  inv_mod_requirement_title: 'كم يكلفك هذا الشرط',
+  inv_mod_requirement_sub: 'العقار نفسه بعائد مطلوب مختلف. الإصرار على عائد أعلى يعني دفع سعر أقل، وهذا هو مقدار الفرق بالضبط.',
+  inv_requirement_caption: 'الحد الأقصى وسعر الدخول المستهدف عند كل عائد مطلوب',
+  inv_requirement_note: 'كل صف إعادة حل كاملة لا خطًا مستقيمًا في المنتصف: تكلفة الشراء تزداد مع السعر، فتنحني العلاقة.',
+  inv_requirement_yours: 'شرطك',
+  inv_col_required_return: 'العائد المطلوب',
+  inv_col_required_yield: 'العائد المشترط',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -41713,6 +41793,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   talk_idle_body: 'אמרו מה אתם מחפשים ו-Homatch יבין את השאר.',
   talk_ended_body: 'זו הייתה ההדגמה. Homatch יכול לעשות את אותו הדבר עם הנכסים ואנשי הקשר שלכם.',
   talk_limit_body: 'ההדגמה הסתיימה לעת עתה. המשיכו בתוך Homatch.',
+  talk_quota_daily_body: 'הרשת הזו ניצלה את זמן ההדגמה החינמי של היום. הוא מתחדש תוך יום, והעוזר עצמו עובד.',
+  talk_quota_sessions_body: 'הרשת הזו ניצלה את שיחות ההדגמה החינמיות של היום. הן מתחדשות תוך יום.',
+  talk_browser_unsupported_body: 'הדפדפן הזה לא מאפשר לדף להשתמש במיקרופון. פתחו את homatch.live ישירות ב-Safari או ב-Chrome, לא בתוך אפליקציה אחרת.',
+  talk_mic_busy_body: 'אפליקציה אחרת משתמשת במיקרופון. סגרו אותה ונסו שוב.',
+  talk_mic_timeout_body: 'המיקרופון לא הגיב. בדקו את בקשת ההרשאה ונסו שוב.',
+  talk_audio_unavailable_body: 'לא הצלחנו להפעיל את המיקרופון. נסו שוב או השתמשו בדפדפן אחר.',
   talk_mic_denied_body: 'נדרשת גישה למיקרופון. אפשרו אותה בדפדפן ונסו שוב.',
   talk_unavailable_body: 'ההדגמה הקולית אינה זמינה כרגע.',
   talk_busy_body: '‏Homatch כבר מאזין בלשונית אחרת או עסוק לרגע. נסו שוב בעוד רגע.',
@@ -44284,6 +44370,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   inv_location_city_placeholder: 'לדוגמה: טביליסי',
   inv_location_district_placeholder: 'רשות, מצמצם את החיפוש',
   inv_location_needed: 'הוסיפו עיר ו-Homatch יבדוק מה מבקשים על דירות דומות. שום דבר שהזנתם לא ישתנה.',
+
+  /* ── HOMATCH INVESTMENT INTELLIGENCE ─────────────────────────────── */
+  inv_mod_requirement_eyebrow: 'הדרישה שלכם',
+  inv_mod_requirement_title: 'כמה הדרישה הזו עולה לכם',
+  inv_mod_requirement_sub: 'אותו נכס בתשואה נדרשת אחרת. להתעקש על יותר פירושו לשלם פחות, וזה בדיוק כמה פחות.',
+  inv_requirement_caption: 'מחיר מרבי ומחיר כניסה מטרה בכל תשואה נדרשת',
+  inv_requirement_note: 'כל שורה היא פתרון מלא מחדש, לא קו ישר באמצע: עלות הרכישה גדלה עם המחיר, ולכן היחס מתעקם.',
+  inv_requirement_yours: 'שלכם',
+  inv_col_required_return: 'תשואה נדרשת',
+  inv_col_required_yield: 'תשואה נדרשת',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

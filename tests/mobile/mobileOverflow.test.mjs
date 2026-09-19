@@ -499,6 +499,32 @@ test('the verification report has no horizontal overflow at real phone widths', 
         clientWidth: de.clientWidth,
         // Only the innermost offenders: a wide parent is usually a symptom.
         offenders: offenders.slice(0, 8),
+        /*
+         * THE MOBILE PRODUCT BAR.
+         *
+         * Measured in this pass rather than a suite of its own: it is fixed
+         * chrome on every page swept here, so it costs one more evaluate and
+         * gets the whole width × font × language matrix for free.
+         *
+         * `shown` is the fraction of each label that survives its container.
+         * That single number is what a sixth item, a longer product name or a
+         * padding change all show up as — it falls.
+         */
+        nav: (() => {
+          const bar = document.querySelector('[data-mobile-nav]');
+          if (!bar) return null;
+          return [...bar.querySelectorAll('a')].map((a) => {
+            const r = a.getBoundingClientRect();
+            const span = a.querySelector('span:last-of-type');
+            return {
+              w: r.width,
+              h: r.height,
+              lineH: span ? span.getBoundingClientRect().height : 0,
+              fontSize: span ? parseFloat(getComputedStyle(span).fontSize) || 16 : 16,
+              shown: span ? span.clientWidth / Math.max(1, span.scrollWidth) : 1,
+            };
+          });
+        })(),
       };
     }, [width, view.selector]);
 
@@ -508,6 +534,54 @@ test('the verification report has no horizontal overflow at real phone widths', 
     assert.ok(result.reportPresent, `${view.name} @ ${width}px: the view never rendered — the harness stubs are wrong`);
     assert.equal(result.clientWidth, width, `${view.name} @ ${width}px: the viewport was not actually applied`);
     if (fontMode === 'product' && !lang) measured.push({ view: view.name, width });
+
+    /* ------------------------------------------------------------------ *
+     * THE MOBILE PRODUCT BAR — FIVE SLOTS, AND WHAT THAT COSTS.           *
+     *                                                                     *
+     * Contracts became a product and needed a place on a phone. There was  *
+     * no free slot, so the bar's own rule applied: five and no more, and   *
+     * the lowest-ranked Communications item moved to the drawer. These     *
+     * numbers are what makes that a decision rather than a hope.           *
+     *                                                                     *
+     * Measured before they were written, at 320-430px in all six           *
+     * languages: 5 items, 64px wide and 64px tall at the narrowest, every  *
+     * label on one line, no overflow anywhere, and the worst label         *
+     * (Georgian „ხელშეკრულებები") showing 51% of itself.                   *
+     *                                                                     *
+     * A sixth item takes each slot from 64px to 53px and drags the worst   *
+     * label under 45%, so the thresholds below are what a crushed bar      *
+     * actually looks like — not a guess at one.                           *
+     * ------------------------------------------------------------------ */
+    if (width <= 430 && result.nav) {
+      const where = `${view.name} @ ${width}px${lang ? ` (${lang})` : ''}`;
+
+      assert.equal(result.nav.length, 5, `${where}: the bar must hold exactly five slots`);
+
+      for (const item of result.nav) {
+        // A thumb is about 44px. Anything less is a target you miss.
+        assert.ok(
+          item.h >= 44,
+          `${where}: a slot is only ${Math.round(item.h)}px tall — under a thumb`
+        );
+        assert.ok(
+          item.w >= 60,
+          `${where}: a slot is only ${Math.round(item.w)}px wide — a sixth item would do this`
+        );
+        // One line. A label that wraps inside a 64px slot is the
+        // one-character column defect wearing a different hat.
+        assert.ok(
+          item.lineH > 0 && item.lineH <= item.fontSize * 1.8,
+          `${where}: a label wrapped to ${Math.round(item.lineH)}px on a ${Math.round(item.fontSize)}px font`
+        );
+      }
+
+      const worst = Math.min(...result.nav.map((i) => i.shown));
+      assert.ok(
+        worst >= 0.45,
+        `${where}: only ${Math.round(worst * 100)}% of the narrowest label is visible ` +
+        '— below this a truncation stops being a word'
+      );
+    }
 
     /* The font actually in use, read back rather than assumed — an
        override that silently failed to apply would make this half of the

@@ -77,6 +77,10 @@ export interface ResolvableJob {
 const ROUTE_PATTERNS: readonly string[] = [
   '/verify',
   '/verify/:id',
+  // Contracts is a product of its own, so a contract analysis resolves to the
+  // contract's own page and a document id is a complete address.
+  '/contracts',
+  '/contracts/:id',
   '/investment',
   '/mortgage',
   '/property/:id',
@@ -101,13 +105,25 @@ const ROUTE_PATTERNS: readonly string[] = [
 const LEGACY_REWRITES: readonly (readonly [RegExp, string])[] = [
   // `/properties/<id>/matches` — the registered route is singular.
   [/^\/properties\/([^/?#]+)\/matches\b/, '/property/$1/matches'],
+  /*
+   * `/verify/<case>?tab=documents&doc=<id>` — the Deal Room Documents tab.
+   *
+   * Every contract analysis ever queued wrote this shape, so the refs are
+   * already in the database: 2 of the 7 jobs in production carry it, and both
+   * are contract analyses. Fixing the producer alone would leave every
+   * existing contract task opening a workspace the customer no longer sees.
+   * The document id is the whole address now — a contract has its own page.
+   */
+  [/^\/verify\/[^/?#]+\?(?=[^#]*\btab=documents\b)[^#]*\bdoc=([^&#]+).*$/, '/contracts/$1'],
 ];
 
 /** The product's own home, used when no exact destination can be built. */
 const SERVICE_HOME: Record<string, string> = {
   VERIFY: '/verify',
-  DOCUMENT_ANALYSIS: '/verify',
-  CONTRACT_ANALYSIS: '/verify',
+  // Contracts is its own product; a contract job that cannot name its exact
+  // result belongs at that product's front door, not at Verify's.
+  DOCUMENT_ANALYSIS: '/contracts',
+  CONTRACT_ANALYSIS: '/contracts',
   MARKET_RESEARCH: '/verify',
   LOCATION_RESEARCH: '/verify',
   FIND_CLIENTS: '/dashboard',
@@ -172,12 +188,18 @@ function fromSubject(job: ResolvableJob): string | null {
       // Verify reads its running job from the query string, not the path.
       return job.productType === 'VERIFY' ? `/verify?job=${encodeURIComponent(id)}` : null;
     case 'DEAL_ROOM':
-      return `/verify/${encodeURIComponent(id)}`;
+      // The storage container, which stopped being a destination. Nothing
+      // writes this subject type — 0 rows in production — but a historical
+      // one must still not open the retired workspace.
+      return '/verify';
     case 'PROPERTY':
       return `/property/${encodeURIComponent(id)}/matches`;
-    // DOCUMENT is deliberately absent: a document id alone cannot address a
-    // page, because the reader is opened inside its verification case and
-    // the case id lives only on the stored ref.
+    case 'DOCUMENT':
+      // This was once impossible: the reader opened inside a verification
+      // case, so a document id alone could not address a page and the case id
+      // lived only on the stored ref. A contract has its own page now, which
+      // makes the subject id a complete address and a lost ref recoverable.
+      return `/contracts/${encodeURIComponent(id)}`;
     default:
       return null;
   }

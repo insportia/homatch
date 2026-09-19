@@ -138,6 +138,40 @@ test('a cadastral code that genuinely differs is a mismatch with advice', () => 
   assert.equal(cadastral.noteKey, 'cm_note_cadastral_mismatch');
 });
 
+test('the production pair: same parent parcel, different unit, stays a mismatch', () => {
+  /*
+   * THE REAL ONE, FROM THE DEPLOYED PAGE.
+   *
+   * A parking space at 01.18.06.019.055.01.04.003 was filed against the flat
+   * verified as 01.18.06.019.055.03.01.601. They share the parent parcel
+   * 01.18.06.019.055 and they share a street, and they are two different
+   * properties. Neither is a prefix of the other, so the prefix rule that
+   * makes a parcel and its unit the same property must NOT reach across
+   * them — a buyer told "same property" here would be told something false
+   * about the thing they are about to sign for.
+   */
+  // The code is ADDED to the real analysis rather than replacing it, so the
+  // corpus still contains the address the document genuinely states. Swapping
+  // the summary out would remove the address too and prove nothing about it.
+  const parking = {
+    ...REAL_ANALYSIS,
+    summary: [
+      ...REAL_ANALYSIS.summary,
+      'საკადასტრო კოდი 01.18.06.019.055.01.04.003, ავტოსადგომი',
+    ],
+  };
+  const rows = compareContractToVerify(parking, VILLION);
+  const cadastral = rowFor(rows, 'CADASTRAL');
+  assert.equal(cadastral.state, 'MISMATCH', 'a different unit is not the same property');
+  assert.equal(cadastral.contractValue, '01.18.06.019.055.01.04.003');
+  assert.equal(cadastral.verifyValue, '01.18.06.019.055.03.01.601');
+  assert.equal(cadastral.noteKey, 'cm_note_cadastral_mismatch');
+
+  // And the address still matches, because it genuinely does: same building.
+  // Both facts are true at once and the buyer needs both.
+  assert.equal(rowFor(rows, 'ADDRESS').state, 'MATCH');
+});
+
 test('the parent parcel of the verified unit is the same property, not a different one', () => {
   const parent = { ...REAL_ANALYSIS, summary: ['ნაკვეთი 01.18.06.019.055'] };
   assert.equal(rowFor(compareContractToVerify(parent, VILLION), 'CADASTRAL').state, 'MATCH');

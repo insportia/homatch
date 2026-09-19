@@ -50,7 +50,8 @@ import {
   EMPTY_DASHBOARD_SUMMARY, loadDashboardSummary,
   type DashboardMatch, type DashboardSummary,
 } from '@/services/dashboardSummary';
-import type { DealRoomRecord } from '@/services/dealRooms';
+import type { ResearchJobRecord } from '@/types/types';
+import { checkLabel } from '@/components/verify/VerifyCheckList';
 import type { ActivityEvent, Property } from '@/types/types';
 import { PrivateImage } from '@/components/common/PrivateImage';
 import { toast } from 'sonner';
@@ -296,23 +297,27 @@ function PropertyRow({ property, run, onOpen, onDelete }: {
   );
 }
 
-const VERDICT_KEY: Record<string, string> = {
-  POSITIVE: 'dr_verdict_positive',
-  MODERATELY_POSITIVE: 'dr_verdict_moderate',
-  NEGATIVE: 'dr_verdict_negative',
-};
 
-const VERDICT_CLASS: Record<string, string> = {
-  POSITIVE: 'status-active',
-  MODERATELY_POSITIVE: 'status-low-balance',
-  NEGATIVE: 'status-private',
-};
 
-function VerificationRow({ record, onOpen }: { record: DealRoomRecord; onOpen: () => void }) {
-  const { t } = useLanguage();
-  const verdict = (record.verify_snapshot as { verdict?: string } | undefined)?.verdict;
-  const label = verdict && VERDICT_KEY[verdict] ? t(VERDICT_KEY[verdict]) : t('db_verify_no_verdict');
-  const pill = (verdict && VERDICT_CLASS[verdict]) || 'status-paused';
+function VerificationRow({ record, onOpen }: { record: ResearchJobRecord; onOpen: () => void }) {
+  const { t, lang } = useLanguage();
+
+  /*
+   * A VERIFICATION IS A RESEARCH RUN.
+   *
+   * This row used to take a DealRoomRecord and show its stored verdict — so
+   * the dashboard listed storage containers, counted 8 of them as the
+   * customer's verifications while the account held 67 completed runs, and
+   * opened the retired workspace on click. Named and stated the same way the
+   * Verification Center's own list does, so one thing is not described two
+   * ways in two places.
+   */
+  const status = String(record.status ?? '').toUpperCase();
+  const running = status === 'QUEUED' || status === 'RUNNING' || status === 'PENDING' || status === 'IN_PROGRESS';
+  const failed = status === 'FAILED' || status === 'ERROR';
+  const label = running ? t('vh_state_running') : failed ? t('vh_state_failed') : t('db_verify_done');
+  const pill = running ? 'status-low' : failed ? 'status-paused' : 'status-active';
+  const when = record.created_at ? new Date(record.created_at).toLocaleDateString(lang) : '';
 
   return (
     <button
@@ -323,11 +328,9 @@ function VerificationRow({ record, onOpen }: { record: DealRoomRecord; onOpen: (
       <CheckCircle2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm text-foreground">
-          {record.title || record.address || record.cadastral_code || t('vc_untitled_case')}
+          {checkLabel(record, t('verify_untitled_case_title'))}
         </span>
-        <span className="block truncate text-xs text-muted-foreground">
-          {t('dr_updated')} {new Date(record.updated_at).toLocaleDateString()}
-        </span>
+        <span className="block truncate text-xs text-muted-foreground">{when}</span>
       </span>
       <span className={`${pill} shrink-0`}>{label}</span>
     </button>
@@ -660,11 +663,11 @@ function DashboardContent() {
               {loading ? (
                 <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
               ) : data.verifications.length === 0 ? (
-                <EmptyState icon={ShieldCheck} title={t('dr_list_empty')} />
+                <EmptyState icon={ShieldCheck} title={t('vh_empty_title')} />
               ) : (
                 <div className="divide-y divide-foreground/[0.12]">
                   {data.verifications.slice(0, 4).map(record => (
-                    <VerificationRow key={record.id} record={record} onOpen={() => navigate(`/verify/${record.id}`)} />
+                    <VerificationRow key={record.id} record={record} onOpen={() => navigate(`/verify?job=${encodeURIComponent(record.id)}`)} />
                   ))}
                 </div>
               )}

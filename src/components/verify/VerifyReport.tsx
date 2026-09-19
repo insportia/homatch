@@ -51,6 +51,7 @@ import { EvidenceSources, BuyerChecklist } from './EvidenceSources';
 import type { EvidenceGroup } from '@/verify/intelligence/evidenceGroups';
 import type { ChecklistItem } from '@/verify/intelligence/buyerChecklist';
 import { ContractUpload } from './ContractUpload';
+import { VerifyLinkedContracts } from './VerifyLinkedContracts';
 import { Button } from '@/components/ui/button';
 import { FileText, Copy, Check, ExternalLink, MapPin, Users } from 'lucide-react';
 import { readable } from '@/verify/readableText';
@@ -465,6 +466,14 @@ export function VerifyReport({
             * component the Verification Center uses is mounted inline
             * instead, so choosing the file is the whole interaction.
             */}
+          {/* What has already been read for this property, then the way to
+              add one. Question first, action second — the reverse offers a
+              customer an upload they may not need. */}
+          <VerifyLinkedContracts
+            roomId={contractCaseId ?? null}
+            cadastralCode={synthesis.snapshot?.cadastralCode ?? null}
+            address={synthesis.snapshot?.address ?? null}
+          />
           <ContractUpload caseId={contractCaseId ?? null} variant="inline" />
         </section>
       ) : null}

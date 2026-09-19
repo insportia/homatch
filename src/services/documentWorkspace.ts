@@ -362,7 +362,12 @@ export async function requestAnalysis(
     subjectId: doc.id,
     subjectLabel: doc.name,
     idempotencyKey: `document:${doc.id}`,
-    resultRef: `/verify/${doc.caseId}?tab=documents&doc=${doc.id}`,
+    // The contract's own page. This wrote `/verify/<case>?tab=documents&doc=`
+    // until Contracts became a product of its own, which sent every finished
+    // contract task from Current Tasks into the retired Deal Room workspace.
+    // Refs already stored in that shape are repaired on read — see
+    // normalizeResultRef in src/jobs/destination.ts.
+    resultRef: `/contracts/${doc.id}`,
     metadata: { reanalyze: opts?.reanalyze === true },
   });
 

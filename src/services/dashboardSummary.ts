@@ -13,8 +13,8 @@
 // a dashboard starts costing real money.
 import { getActivityEvents, getMatches, getProperties } from '@/services/api';
 import { getLatestProgressForProperties, getUserMatchSummary, type LiveMatchingJob } from '@/services/matchingProgress';
-import { listDealRooms, type DealRoomRecord } from '@/services/dealRooms';
-import type { ActivityEvent, Match, Property } from '@/types/types';
+import { listVerifyHistory } from '@/services/researchJobs';
+import type { ActivityEvent, Match, Property, ResearchJobRecord } from '@/types/types';
 
 /** A match plus the property it belongs to, so the card can link to both. */
 export interface DashboardMatch {
@@ -29,7 +29,14 @@ export interface DashboardSummary {
   matchTotals: { total: number; newCount: number; bestScore: number; topPropertyId: string | null };
   /** Highest-scoring matches across every property the user owns. */
   topMatches: DashboardMatch[];
-  verifications: DealRoomRecord[];
+  /*
+   * The customer's VERIFICATIONS — research runs.
+   *
+   * This read deal rooms, which are storage containers: the dashboard showed
+   * 8 of them and called them verifications while the same account had 67
+   * completed research runs, and each row opened the retired workspace.
+   */
+  verifications: ResearchJobRecord[];
   activity: ActivityEvent[];
   /** Real 7-day deltas, computed from created_at — not a decorative "+3". */
   propertiesThisWeek: number;
@@ -98,10 +105,10 @@ export async function loadDashboardSummary(userId: string): Promise<DashboardSum
   const [progress, matchTotals, verifications, activity] = await Promise.all([
     getLatestProgressForProperties(ids),
     getUserMatchSummary(ids),
-    // A verification case is owner-only under RLS, but a read can still fail
-    // (offline, a transient 5xx). One failing card must not blank the whole
-    // dashboard, so each optional read degrades to empty on its own.
-    listDealRooms().catch(() => [] as DealRoomRecord[]),
+    // Owner-only under RLS, and a read can still fail (offline, a transient
+    // 5xx). One failing card must not blank the whole dashboard, so each
+    // optional read degrades to empty on its own.
+    listVerifyHistory(userId).catch(() => [] as ResearchJobRecord[]),
     getActivityEvents(userId, 8).catch(() => [] as ActivityEvent[]),
   ]);
 

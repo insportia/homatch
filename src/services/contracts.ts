@@ -182,3 +182,52 @@ export async function startContractAnalysis(args: {
     return { documentId, state: 'QUEUED' };
   }
 }
+
+/**
+ * The contracts already read for ONE verification.
+ *
+ * Scoped to the verification's own container, which is precise: re-verifying
+ * a property reuses the same container (one live room per user and cadastral
+ * code), so every contract ever uploaded against this property is here and
+ * nothing belonging to another property is.
+ *
+ * This is the one read that fetches `analysis`, because the caller has to
+ * know whether a contract disagrees with the verification before it can say
+ * so — and a disagreement is the single most useful thing this section can
+ * report. It is affordable precisely because it is scoped: a property has a
+ * handful of contracts, not a history of them. The unscoped list() above
+ * deliberately does not select it.
+ */
+export async function listContractsForRoom(
+  roomId: string
+): Promise<(ContractSummary & { analysis: unknown })[]> {
+  const { data, error } = await supabase
+    .from('deal_room_documents')
+    .select(`${DOC_COLUMNS},analysis,deal_rooms(cadastral_code,address,verify_job_id)`)
+    .eq('deal_room_id', roomId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  return (data ?? []).map((raw) => {
+    const r = raw as unknown as DocRow & { analysis?: unknown; deal_rooms?: unknown };
+    const roomRaw = r.deal_rooms;
+    const room = (Array.isArray(roomRaw) ? roomRaw[0] : roomRaw) as
+      | { cadastral_code: string | null; address: string | null; verify_job_id: string | null }
+      | null
+      | undefined;
+    return {
+      id: r.id,
+      label: r.label || r.original_filename || '',
+      originalFilename: r.original_filename,
+      mimeType: r.mime_type,
+      sizeBytes: r.size_bytes,
+      uploadedAt: r.uploaded_at ?? r.created_at,
+      analysisState: (r.analysis_state ?? 'NONE') as AnalysisState,
+      roomId: r.deal_room_id,
+      cadastralCode: room?.cadastral_code ?? null,
+      address: room?.address ?? null,
+      verifyJobId: room?.verify_job_id ?? null,
+      analysis: r.analysis ?? null,
+    };
+  });
+}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { LayoutDashboard, MessageSquare, Shield, Sparkles, Bot } from 'lucide-react';
+import { LayoutDashboard, FileSignature, Shield, Sparkles, Bot } from 'lucide-react';
 
 /*
  * FIVE SLOTS, ORDERED BY WHAT A PHONE IS ACTUALLY FOR.
@@ -17,13 +17,30 @@ import { LayoutDashboard, MessageSquare, Shield, Sparkles, Bot } from 'lucide-re
  *
  * Five and no more. A sixth at 320px gives each item 53px, which is under a
  * thumb and under any label in Georgian.
+ *
+ * ── WHY CONTRACTS IS HERE AND CHAT IS NOT ────────────────────────────
+ *
+ * Contracts became a product of its own, alongside Verify, Mortgage and
+ * Investment. It was reachable on a phone only through the drawer, which is
+ * access without discovery: nobody opens a hamburger looking for a product
+ * they have not been told exists.
+ *
+ * The ceiling above is real, so something had to leave. Chat did, and it
+ * left by the rule this bar already follows — the rail's own Communications
+ * group lists Chat LAST, below Calls, WhatsApp, Email and Live Chat, so it
+ * is that group's lowest-ranked member, and Communications still holds a
+ * slot here through Live Chat. Chat is exactly as far away as Alerts is:
+ * one tap on the drawer, under Communications.
+ *
+ * The result reads as a product bar rather than a feature bar — the two
+ * intelligence products a buyer actually came for, flanking the assistant.
  */
 const items = [
   { key: 'nav_dashboard',  path: '/dashboard',  icon: LayoutDashboard },
-  { key: 'nav_chat',       path: '/chat',       icon: MessageSquare },
-  { key: 'nav_ai',         path: '/ai',         icon: Bot, highlight: true },
-  { key: 'nav_live_chat',  path: '/live-chat',  icon: Sparkles },
   { key: 'nav_verify',     path: '/verify',     icon: Shield },
+  { key: 'nav_ai',         path: '/ai',         icon: Bot, highlight: true },
+  { key: 'nav_contracts',  path: '/contracts',  icon: FileSignature },
+  { key: 'nav_live_chat',  path: '/live-chat',  icon: Sparkles },
 ];
 
 export function MobileBottomNav() {
@@ -34,7 +51,13 @@ export function MobileBottomNav() {
     location.pathname === path || location.pathname.startsWith(path + '/');
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-card border-t border-border" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <nav
+      /* The mobile sweep measures this bar at every width, font and
+         language: item widths, touch heights and how much of each label
+         survives. A stable hook, because a Tailwind class is a styling
+         decision and a test should not break when one changes. */
+      data-mobile-nav
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-card border-t border-border" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="flex items-center justify-around h-16">
         {items.map(item => {
           const active = isActive(item.path);

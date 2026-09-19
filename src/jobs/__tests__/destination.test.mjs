@@ -87,10 +87,31 @@ test('the legacy plural client-search path is rewritten, not followed', () => {
 });
 
 test('a query string on a valid ref is preserved', () => {
+  // Verify reads its stored report from the query string, so losing it would
+  // land the customer on the search box instead of their report.
+  assert.equal(normalizeResultRef('/verify?job=job-9'), '/verify?job=job-9');
+});
+
+test('the retired Documents-tab ref is repaired into the contract it names', () => {
+  /*
+   * Every contract analysis ever queued wrote `/verify/<case>?tab=documents
+   * &doc=<id>`, and those refs are in the database — 2 of the 7 production
+   * jobs carry one, both contract analyses. Rewriting only the producer
+   * would leave every existing contract task opening the retired workspace,
+   * so history is repaired on read.
+   */
   assert.equal(
     normalizeResultRef('/verify/case-9?tab=documents&doc=d1'),
-    '/verify/case-9?tab=documents&doc=d1'
+    '/contracts/d1'
   );
+  // Order of the query parameters is not something a stored ref guarantees.
+  assert.equal(
+    normalizeResultRef('/verify/case-9?doc=d2&tab=documents'),
+    '/contracts/d2'
+  );
+  // A case ref that is NOT a document ref still opens the case: the route
+  // survives for compatibility and old links must not break.
+  assert.equal(normalizeResultRef('/verify/case-9'), '/verify/case-9');
 });
 
 test('an off-site or protocol-relative ref can never reach navigate()', () => {
@@ -132,13 +153,16 @@ test('a running job with no stored ref is rebuilt from its own subject', () => {
   assert.equal(d.kind, 'WORKSPACE');
 });
 
-test('a document job rebuilds to its case, and a property job to its matches', () => {
+test('a container subject never reopens the workspace, and a property job goes to its matches', () => {
+  // DEAL_ROOM is a storage container, not a destination. Nothing writes this
+  // subject type (0 rows in production), but a historical row must still not
+  // send a customer into the retired workspace.
   assert.equal(
     resolveJobDestination(job({
       productType: 'CONTRACT_ANALYSIS', subjectType: 'DEAL_ROOM', subjectId: 'case-3',
       state: 'PROCESSING', resultRef: null,
     })).to,
-    '/verify/case-3'
+    '/verify'
   );
   assert.equal(
     resolveJobDestination(job({
@@ -149,15 +173,34 @@ test('a document job rebuilds to its case, and a property job to its matches', (
   );
 });
 
-test('a document id alone is never turned into a path', () => {
-  // DOCUMENT cannot address a page without its case id; the resolver must
-  // fall through to the owning service rather than invent /document/<id>.
+test('a document id alone IS an address now, because a contract has its own page', () => {
+  /*
+   * THIS ASSERTION IS THE REVERSE OF WHAT IT USED TO BE, ON PURPOSE.
+   *
+   * It read "a document id alone is never turned into a path", because the
+   * reader opened inside a verification case and the case id lived only on
+   * the stored ref — so a document id could not name a page and inventing
+   * /document/<id> would have been a guess.
+   *
+   * Contracts is a product now and /contracts/:id is a real route, so the
+   * subject id is a complete address and a job whose ref was lost is
+   * recoverable instead of being dumped at a product's front door.
+   */
   const d = resolveJobDestination(job({
     productType: 'DOCUMENT_ANALYSIS', subjectType: 'DOCUMENT', subjectId: 'doc-1',
     state: 'PROCESSING', resultRef: null,
   }));
-  assert.equal(d.to, '/verify');
-  assert.equal(d.kind, 'SERVICE');
+  assert.equal(d.to, '/contracts/doc-1');
+  assert.equal(d.kind, 'WORKSPACE');
+
+  // Still never a guess: an id that cannot be encoded is still an id.
+  assert.equal(
+    resolveJobDestination(job({
+      productType: 'DOCUMENT_ANALYSIS', subjectType: 'DOCUMENT', subjectId: '  ',
+      state: 'PROCESSING', resultRef: null,
+    })).to,
+    '/contracts'
+  );
 });
 
 /* ------------------------------------------------------------------ *
@@ -167,8 +210,10 @@ test('a document id alone is never turned into a path', () => {
 test('each product type falls back to its own service, never to another product', () => {
   const expected = {
     VERIFY: '/verify',
-    DOCUMENT_ANALYSIS: '/verify',
-    CONTRACT_ANALYSIS: '/verify',
+    // Contracts owns contract analysis. These pointed at Verify when a
+    // contract was something that happened inside a verification case.
+    DOCUMENT_ANALYSIS: '/contracts',
+    CONTRACT_ANALYSIS: '/contracts',
     MARKET_RESEARCH: '/verify',
     LOCATION_RESEARCH: '/verify',
     FIND_CLIENTS: '/dashboard',
@@ -247,20 +292,33 @@ test('the Villion cadastral verification is one click from the drawer', () => {
 });
 
 test('a contract analysis is one click while running and when finished', () => {
-  const ref = '/verify/case-1?tab=documents&doc=doc-1';
+  // The ref as it is stored in the database today — the retired shape — so
+  // this exercises the repair a real production job depends on.
+  const stored = '/verify/case-1?tab=documents&doc=doc-1';
+  const expected = '/contracts/doc-1';
+
   const running = resolveJobDestination({
     productType: 'CONTRACT_ANALYSIS', subjectType: 'DOCUMENT', subjectId: 'doc-1',
-    state: 'PROCESSING', resultRef: ref,
+    state: 'PROCESSING', resultRef: stored,
   });
-  assert.equal(running.to, ref);
+  assert.equal(running.to, expected, 'a running contract opens where it will finish');
   assert.equal(running.labelKey, 'job_open_workspace');
 
   const done = resolveJobDestination({
     productType: 'CONTRACT_ANALYSIS', subjectType: 'DOCUMENT', subjectId: 'doc-1',
-    state: 'COMPLETED', resultRef: ref,
+    state: 'COMPLETED', resultRef: stored,
   });
-  assert.equal(done.to, ref, 'the CTA must return to this exact contract');
+  assert.equal(done.to, expected, 'the CTA must return to this exact contract');
   assert.equal(done.labelKey, 'job_open_result');
+
+  // And a ref written since the change needs no repair at all.
+  assert.equal(
+    resolveJobDestination({
+      productType: 'CONTRACT_ANALYSIS', subjectType: 'DOCUMENT', subjectId: 'doc-1',
+      state: 'COMPLETED', resultRef: expected,
+    }).to,
+    expected
+  );
 });
 
 /* ------------------------------------------------------------------ *

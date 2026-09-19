@@ -198,7 +198,19 @@ export interface OfferComparisonResult {
 // ─── Versioned Mortgage Knowledge Base ───────────────────────────────────
 
 export type MortgageRuleStatus = 'CANDIDATE' | 'ACTIVE' | 'SUPERSEDED' | 'REJECTED';
-export type MortgageRuleType = 'PTI_LIMIT' | 'LTV_LIMIT' | 'EFFECTIVE_RATE_METHODOLOGY' | 'DEFINITION' | 'SUBSIDY_PROGRAM' | 'FOREIGN_BUYER_BANK_RULE' | 'CLOSING_COST';
+export type MortgageRuleType =
+  | 'PTI_LIMIT'
+  | 'LTV_LIMIT'
+  | 'EFFECTIVE_RATE_METHODOLOGY'
+  | 'DEFINITION'
+  | 'SUBSIDY_PROGRAM'
+  | 'FOREIGN_BUYER_BANK_RULE'
+  | 'CLOSING_COST'
+  /* A published rate a programme's benefit is expressed against — today
+     the National Bank's refinancing rate, which Decree 388's subsidy
+     formula subtracts from. Its own type because it is re-verified on
+     the central bank's six-week cadence, not the decree's. */
+  | 'REFERENCE_RATE';
 
 /** One row of the mortgage_rules table (see supabase migration). `data` is
  * the structured, machine-evaluable payload whose shape depends on `type`
@@ -236,15 +248,54 @@ export interface LtvLimitRuleData {
   propertyUse?: 'RESIDENTIAL' | 'COMMERCIAL' | 'LAND' | 'AGRICULTURAL';
 }
 
+/**
+ * One eligibility condition, and — when the source states it precisely
+ * enough — a way to actually check it.
+ *
+ * WHY THE QUESTION IS OPTIONAL
+ *
+ * A condition this product can evaluate and a condition it can only
+ * quote are different things, and collapsing them would let the UI imply
+ * it had checked something it had not. A criterion with no `question` is
+ * displayed and explicitly reported as unchecked; only criteria carrying
+ * one contribute to a match verdict.
+ */
+export interface SubsidyEligibilityCriterion {
+  key: string;
+  /** i18n key for the condition as the source states it. */
+  description: string;
+  question?: {
+    /** Stable id used as the answer key; unique within the program. */
+    id: string;
+    type: 'YES_NO' | 'NUMBER';
+    promptKey: string;
+    /** YES_NO: the answer that satisfies it. */
+    satisfiedWhenYes?: boolean;
+    /** NUMBER: inclusive bounds the answer must fall within. */
+    satisfiedWhenAtLeast?: number;
+    satisfiedWhenAtMost?: number;
+  };
+  /**
+   * When true, failing this condition rules the program out entirely.
+   * When false or absent it is one of several alternative routes in, and
+   * satisfying ANY of them is enough.
+   */
+  mandatory?: boolean;
+}
+
 export interface SubsidyProgramRuleData {
   programName: string;
   administrator: string;
   maxLoanAmount: number | null;
   currency: string;
-  eligibilityCriteria: { key: string; description: string }[];
+  eligibilityCriteria: SubsidyEligibilityCriterion[];
   subsidyDescription: string;
   durationMonths: number | null;
   citizenshipRequired: boolean;
+  /** Per-household-shape benefit, as the decree expresses it. */
+  subsidyRateFormula?: Record<string, string>;
+  /** i18n key naming the property the program applies to, when limited. */
+  propertyConditionKey?: string;
 }
 
 // ─── Saved scenarios ──────────────────────────────────────────────────────

@@ -210,9 +210,17 @@ test('there is no Calculate button, because there is nothing to submit', () => {
 });
 
 test('a market figure and an illustration never wear the same label', () => {
-  const controls = read('src/components/investment/controls.tsx');
+  // The vocabulary moved to src/components/workspace/sources.ts when Home
+  // Financing needed the same badges, and Investment's controls.tsx became
+  // a re-export. The guarantee is unchanged — five distinct sources, five
+  // distinct labels — so the test follows the code rather than pinning it.
+  assert.ok(
+    read('src/components/investment/controls.tsx').includes('@/components/workspace/controls'),
+    'Investment no longer shares the workspace controls',
+  );
+  const sources = read('src/components/workspace/sources.ts');
   for (const kind of ['MARKET', 'CALCULATED', 'CONVENTION', 'EXAMPLE', 'USER']) {
-    assert.ok(controls.includes(kind), `the ${kind} source has no badge of its own`);
+    assert.ok(sources.includes(kind), `the ${kind} source has no badge of its own`);
   }
   const labels = new Set();
   for (const [key, value] of englishInvestmentStrings()) {

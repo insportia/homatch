@@ -676,7 +676,18 @@
    * used for the single most important figure on any given module — a
    * second accent colour would turn an analysis into a dashboard.
    * ------------------------------------------------------------------ */
-  .hm-invest {
+  /* ------------------------------------------------------------------
+   * ONE ANALYTICAL SURFACE, THREE PRODUCTS.
+   *
+   * `.hm-workspace` is the name; `.hm-invest` is the name it was born
+   * with and is kept as an exact alias because Investment and Verify both
+   * already carry it in their markup. Aliasing costs one selector;
+   * renaming would mean touching two shipped products to change a string
+   * nobody sees, and a single missed one would silently drop a page back
+   * onto the light palette mid-scroll.
+   * ------------------------------------------------------------------ */
+  .hm-invest,
+  .hm-workspace {
     --background: 218 32% 7%;    /* #0C1119 — deep navy ink            */
     --foreground: 214 26% 93%;
     --card: 218 28% 10%;
@@ -728,7 +739,8 @@
   /* One faint warm wash from the top so the canvas has a light source
      rather than reading as an unlit rectangle. Decorative, and the only
      decorative gradient on the surface. */
-  .hm-invest-canvas {
+  .hm-invest-canvas,
+  .hm-workspace-canvas {
     background-image: radial-gradient(
       ellipse 120% 60% at 50% -10%,
       hsl(38 92% 56% / 0.07) 0%,
@@ -739,7 +751,8 @@
   /* The hairline that separates a module from the canvas. A rule rather
      than a shadow: shadows on a near-black ground are invisible, and the
      thing that actually reads as an edge is a one-pixel lift in value. */
-  .hm-invest-panel {
+  .hm-invest-panel,
+  .hm-workspace-panel {
     background-color: hsl(var(--card));
     border: 1px solid hsl(var(--border));
     border-radius: 1rem;
@@ -747,7 +760,8 @@
 
   /* The gold hairline above a module that is currently the answer to the
      question just asked. */
-  .hm-invest-focus {
+  .hm-invest-focus,
+  .hm-workspace-focus {
     box-shadow: inset 0 1px 0 0 hsl(var(--gold) / 0.55), var(--shadow-hover);
     border-color: hsl(var(--gold-border));
   }

@@ -5,6 +5,7 @@
 // Supabase; every number shown to a user is produced by
 // src/mortgage/calculations (DETERMINISTIC MATH ONLY, see that folder).
 import { supabase } from '@/db/supabase';
+import type { ReferenceRateRuleData } from '@/mortgage/rules/subsidy';
 import type {
   MortgageRule,
   MortgageRuleType,
@@ -86,6 +87,13 @@ async function fetchActiveRules<T>(type: MortgageRuleType, country = 'GE'): Prom
 export const getActivePtiRules = () => fetchActiveRules<PtiLimitRuleData>('PTI_LIMIT');
 export const getActiveLtvRules = () => fetchActiveRules<LtvLimitRuleData>('LTV_LIMIT');
 export const getActiveSubsidyPrograms = () => fetchActiveRules<SubsidyProgramRuleData>('SUBSIDY_PROGRAM');
+/** The published rate a subsidy formula is expressed against. At most one
+ *  is ACTIVE at a time; null when the knowledge base has not been
+ *  re-verified, which the UI must say rather than quoting a stale rate. */
+export const getActiveReferenceRate = async () => {
+  const rows = await fetchActiveRules<ReferenceRateRuleData>('REFERENCE_RATE');
+  return rows[0] ?? null;
+};
 export const getEffectiveRateMethodologyRule = async () => {
   const rows = await fetchActiveRules<Record<string, unknown>>('EFFECTIVE_RATE_METHODOLOGY');
   return rows[0] ?? null;

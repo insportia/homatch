@@ -59,6 +59,10 @@ export type ActivityEventType =
   | 'MORTGAGE_OFFER_UPLOADED'
   | 'MORTGAGE_OFFERS_COMPARED'
   | 'MORTGAGE_SCENARIO_SAVED'
+  /* Which of the nine financing questions people actually open. The
+     workspace replaced one long calculator page, so "did they reach the
+     early-repayment simulator" is no longer answerable from page views. */
+  | 'MORTGAGE_TOPIC_OPENED'
   // HOMATCH INVESTMENT INTELLIGENCE. Added to the enum in
   // supabase/migrations/…_investment_intelligence_analytics.sql — this union
   // mirrors public.activity_event_type exactly, so a value here that the

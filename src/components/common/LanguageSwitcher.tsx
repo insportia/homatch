@@ -49,7 +49,11 @@ export function LanguageSwitcher({ compact = false, showGlobe = false, triggerCl
         >
           {showGlobe && <Globe className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />}
           <span className="uppercase tracking-wide">{lang}</span>
-          {!compact && <ChevronDown className="h-3 w-3 opacity-60" />}
+          {/* The caret is decorative — the trigger reads as a menu without
+              it — and below sm those 18px are the difference between the
+              signed-out call to action fitting a 320px header and being
+              pushed off the edge of it. */}
+          {!compact && <ChevronDown className="hidden h-3 w-3 opacity-60 sm:block" />}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[140px] bg-card border-border z-[60]">

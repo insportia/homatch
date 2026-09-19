@@ -30,6 +30,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
+import { MORTGAGE_TOPIC_KEY } from './mortgageFixture.mjs';
+
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
 const PORT = 4337;
@@ -127,10 +129,17 @@ test('every form control is typeable, tappable, labelled and asks for the right 
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2, isMobile: true, hasTouch: true,
   });
-  await ctx.addInitScript(([k, s]) => {
+  await ctx.addInitScript(([k, s, topicKey, topic]) => {
     window.localStorage.setItem(k, JSON.stringify(s));
     window.localStorage.setItem('homatch_lang', 'en');
-  }, ['sb-stubproj-auth-token', fakeSession()]);
+    /* Home Financing opens on a list of questions rather than on a form,
+       and its form is one topic in — which is where every numeric
+       control on that product lives. Choosing a topic is what a visitor
+       does within seconds of arriving; the scenario is deliberately left
+       EMPTY so the builder renders expanded, the way a first-time
+       visitor sees it. */
+    window.localStorage.setItem(topicKey, topic);
+  }, ['sb-stubproj-auth-token', fakeSession(), MORTGAGE_TOPIC_KEY, 'MONTHLY_PAYMENT']);
 
   const page = await ctx.newPage();
   const json = (b) => ({
@@ -162,6 +171,29 @@ test('every form control is typeable, tappable, labelled and asks for the right 
   for (const route of ROUTES) {
     await page.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
+
+    /*
+     * THE CLICK-FIRST WORKSPACES HIDE THEIR TEXT INPUTS BEHIND A TAP.
+     *
+     * Home Financing and Investment ask their questions with presets
+     * rather than empty boxes, so on arrival they have almost no
+     * <input> on screen and this gate had nothing to measure. The
+     * typing path still exists — every value row ends with a "Custom"
+     * toggle — and it is the one that most needs checking, because a
+     * number field with the wrong inputmode shows an iOS user letters.
+     *
+     * The toggle is the last button of a value row's chip strip, which
+     * is a selector rather than a caption: this suite runs in English
+     * but the control has a different label in each of six languages.
+     */
+    if (route === '/mortgage' || route === '/investment') {
+      const toggles = page.locator('div[role="group"] > div:first-child > button:last-child');
+      const count = Math.min(await toggles.count(), 8);
+      for (let i = 0; i < count; i += 1) {
+        await toggles.nth(i).click({ timeout: 3000 }).catch(() => {});
+      }
+      await page.waitForTimeout(400);
+    }
 
     const controls = await page.evaluate(() => {
       const out = [];

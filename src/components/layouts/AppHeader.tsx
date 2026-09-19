@@ -87,8 +87,21 @@ export function AppHeader() {
       */}
       <div className="flex items-center h-14 px-2 sm:px-4 md:px-6 gap-1 sm:gap-4 max-w-full">
         {/* Logo — always goes to the public home page, regardless of auth state */}
-        <Link to="/" className="shrink-0">
-          <HomatchLogo size="sm" />
+        <Link to="/" className="shrink-0" aria-label="Homatch">
+          {/*
+            THE WORDMARK IS DROPPED BELOW sm, AND HERE IS WHY.
+
+            At 320px the lockup measures 122px of a 320px row. The
+            signed-out cluster beside it — language, Sign In, and the
+            primary call to action — needs 279px in Georgian, so the CTA
+            ended up off the right edge. body{overflow-x:hidden} then hid
+            the evidence: no scrollbar, no visible defect, and a Get
+            Started button that simply could not be reached on the
+            narrowest phones. The mark alone still identifies the brand
+            and still goes home.
+          */}
+          <span className="sm:hidden"><HomatchLogo size="sm" iconOnly /></span>
+          <span className="hidden sm:block"><HomatchLogo size="sm" /></span>
         </Link>
 
         {/* Desktop Nav */}

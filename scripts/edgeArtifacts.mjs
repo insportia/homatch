@@ -7,21 +7,18 @@
  * version 107, updated_at 17:22:55, while refs/deployed/edge advanced to two
  * later commits and the manifest called production current.
  *
- * A deploy is proven by the artifact or it is not proven. This file reads the
- * version and updated_at that production reports; edgeEquivalence.mjs decides
- * what they mean, because the counter alone turned out to be the wrong rule.
- * It said PROVEN if and only if the version advanced, and run #676 failed with
- * nothing wrong: four functions were already identical to the revision being
- * deployed, so the CLI skipped their uploads and the counter correctly stood
- * still. A bump says something was uploaded; equivalence says what is running
- * is this, which is the question actually being asked.
+ * A deploy is proven by the artifact or it is not proven. `version` is the
+ * proof: the platform increments it on every successful upload, so
+ * post > pre is something a no-op loop cannot fake. updated_at is the
+ * corroborating timestamp, and is checked second because clock skew between a
+ * runner and the API should never be the thing that fails a real deploy.
  *
  *   node scripts/edgeArtifacts.mjs snapshot ai-talk-session comm-agent
- *   node scripts/edgeArtifacts.mjs verify pre.json post.json --since <ms> --downloads <dir>
+ *   node scripts/edgeArtifacts.mjs verify pre.json post.json --since <ms>
  *
- * Needs SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF. The rules themselves
- * are pure functions in edgeEquivalence.mjs, so every one of them is tested
- * without touching production.
+ * Needs SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF for `snapshot`.
+ * `verify` is pure: two files and a number, no network, so the rule it
+ * enforces can be tested without touching production.
  */
 
 /** A function that does not exist yet. Any real upload beats this. */
@@ -46,6 +43,49 @@ export async function snapshot(names, opts) {
   const out = {};
   for (const name of names) out[name] = await fetchArtifact(name, opts);
   return out;
+}
+
+/*
+ * THE RULE, AS A PURE FUNCTION.
+ *
+ * Per function, not per job. The old check asked one question about one
+ * function (ai-talk-session) and only when a cross-job output said to, so a
+ * run that uploaded comm-agent and silently dropped ai-talk-session passed —
+ * which is exactly what run 8618f244 did. Every name that was owed is now
+ * answered for by name.
+ */
+export function compareArtifacts(pre, post, sinceMs) {
+  const rows = [];
+  for (const name of Object.keys(pre)) {
+    const a = pre[name] ?? { ...ABSENT };
+    const b = post[name];
+    if (!b) {
+      rows.push({ name, ok: false, reason: 'no post-deploy reading was taken' });
+      continue;
+    }
+    if (!(b.version > a.version)) {
+      rows.push({
+        name,
+        ok: false,
+        reason: `version did not advance (${a.version} -> ${b.version})`,
+        pre: a,
+        post: b,
+      });
+      continue;
+    }
+    if (Number.isFinite(sinceMs) && b.updated_at < sinceMs) {
+      rows.push({
+        name,
+        ok: false,
+        reason: `version advanced but updated_at ${b.updated_at} predates this run (${sinceMs})`,
+        pre: a,
+        post: b,
+      });
+      continue;
+    }
+    rows.push({ name, ok: true, from: a.version, to: b.version, at: b.updated_at });
+  }
+  return { ok: rows.every((r) => r.ok), rows };
 }
 
 /*
@@ -89,64 +129,24 @@ if (isMain) {
     });
     console.log(JSON.stringify(out, null, 2));
   } else if (mode === 'verify') {
-    /*
-     * THE ARTIFACT DECIDES, PER FUNCTION, BY NAME.
-     *
-     * pre/post versions are read back for evidence, but the verdict comes
-     * from comparing what production stores against the revision in this
-     * checkout. A function whose bundle did not change needs no upload and
-     * must still be proven; a function whose version moved must still be the
-     * right source. Both are the same question asked of the artifact.
-     */
     const [preFile, postFile] = rest.filter((a) => !a.startsWith('-'));
-    const arg = (flag) => { const i = rest.indexOf(flag); return i < 0 ? null : rest[i + 1]; };
-    const since = Number(arg('--since'));
-    const downloads = arg('--downloads');
-    const { evaluateAll, compareSources, expectedSources, readDownloaded } =
-      await import('./edgeEquivalence.mjs');
-    const { existsSync } = await import('node:fs');
-
-    const pre = JSON.parse(readFileSync(preFile, 'utf8'));
-    const post = JSON.parse(readFileSync(postFile, 'utf8'));
-    const found = {};
-    const entries = Object.keys(pre).map((name) => {
-      const dir = downloads ? `${downloads}/${name}` : null;
-      let equivalence;
-      // An artifact nobody could read is UNVERIFIABLE, never "fine". The
-      // download writes its own directory layout and an empty one means the
-      // retrieval failed, not that the function has no files.
-      const files = dir && existsSync(dir) ? readDownloaded(dir) : null;
-      if (!files || Object.keys(files).length === 0) {
-        equivalence = { checked: false, reason: `nothing was downloaded to ${dir}` };
-      } else {
-        found[name] = Object.keys(files);
-        equivalence = { checked: true, ...compareSources(expectedSources(name), files) };
-      }
-      return { name, pre: pre[name] ?? { ...ABSENT }, post: post[name] ?? { ...ABSENT }, equivalence, sinceMs: since };
-    });
-
-    const result = evaluateAll(entries);
+    const sinceIdx = rest.indexOf('--since');
+    const since = sinceIdx >= 0 ? Number(rest[sinceIdx + 1]) : NaN;
+    const result = compareArtifacts(
+      JSON.parse(readFileSync(preFile, 'utf8')),
+      JSON.parse(readFileSync(postFile, 'utf8')),
+      since,
+    );
     for (const row of result.rows) {
-      if (row.ok) {
-        const moved = row.mode === 'UPLOADED' ? `v${row.from} -> v${row.to}` : `v${row.to} unchanged`;
-        console.log(`  proven   ${row.name}  ${row.mode}  ${moved}  ${row.files} file(s)  ${row.digest.slice(0, 12)}`);
-      } else {
-        console.log(`  UNPROVEN ${row.name}  ${row.mode}  ${row.reason}`);
-      }
+      console.log(row.ok ? `  proven  ${row.name}  v${row.from} -> v${row.to}` : `  UNPROVEN ${row.name}  ${row.reason}`);
     }
     if (!result.ok) {
-      // Say what WAS found, so a layout surprise is diagnosable from the log
-      // rather than from a second failed run.
-      for (const row of result.rows.filter((r) => !r.ok)) {
-        const paths = found[row.name];
-        if (paths) console.log(`  ${row.name} downloaded ${paths.length} file(s): ${paths.slice(0, 12).join(', ')}`);
-      }
-      console.log(`::error::the deployed artifact is not this revision: ${result.rows.filter((r) => !r.ok).map((r) => r.name).join(', ')}`);
+      console.log(`::error::the edge deploy reported success but production does not show it: ${result.rows.filter((r) => !r.ok).map((r) => r.name).join(', ')}`);
       process.exit(1);
     }
-    console.log(`all ${result.rows.length} owed function(s) proven equivalent to this revision`);
+    console.log(`all ${result.rows.length} owed function(s) proven in production`);
   } else {
-    console.error('usage: edgeArtifacts.mjs snapshot <fn...> | verify <pre.json> <post.json> --since <ms> --downloads <dir>');
+    console.error('usage: edgeArtifacts.mjs snapshot <fn...> | verify <pre.json> <post.json> --since <ms>');
     process.exit(2);
   }
 }

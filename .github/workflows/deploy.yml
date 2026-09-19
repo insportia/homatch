@@ -818,36 +818,73 @@ jobs:
             console.log('accounting: every owed function reached a deploy command');
           "
 
+          # D. Then the platform's own version counter, per function, by name.
+          # Unconditional and exhaustive: the old check asked about
+          # ai-talk-session alone and only when a cross-job output told it to,
+          # so run 8618f244 -- which uploaded comm-agent and silently dropped
+          # ai-talk-session -- had nothing to fail against.
+          #
+          # ─────────────────────────────────────────────────────────────────
+          # KNOWN LIMITATION: THIS REF CAN LAG PRODUCTION, AND THAT IS THE
+          # SAFE DIRECTION.
+          #
+          # `supabase functions deploy` DEDUPLICATES. When the bundle it
+          # builds from this checkout is identical to what production already
+          # runs it prints
+          #
+          #   No change found in Function: comm-agent
+          #   Deployed Functions on project <ref>: comm-agent
+          #
+          # ...skips the upload and exits 0, so the version counter correctly
+          # does not move. Run #676 hit exactly this: five functions owed, one
+          # genuinely changed and uploaded, four already byte-identical. The
+          # check below called those four unproven and refused the ref, which
+          # is WRONG about the artifact and RIGHT about what it can prove.
+          #
+          # Proving them would need the deployed ORIGINAL TypeScript, and CI
+          # cannot get it. All three available sources were examined, and all
+          # three were ruled out by looking rather than by assuming:
+          #
+          #   supabase functions download   reconstructs a working TREE, not
+          #       the stored artifact. It relocates imported source under the
+          #       function's own directory (src/investment/calculations/
+          #       breakEven.ts arrives as supabase/functions/
+          #       investment-consultant/calculations/breakEven.ts), rewrites
+          #       the import specifiers inside the files to match, and adds
+          #       its own scratch files. Nothing byte-compares against it.
+          #
+          #   GET .../functions/<slug>/body   returns an ESZIP2.3 container
+          #       (1,342,230 bytes for ai-talk-session, hash verified CI to
+          #       laptop). It parses cleanly -- header exactly 2774/2774
+          #       bytes, 38 entries, closing exactly at EOF -- but it stores
+          #       TYPE-STRIPPED EMITTED JAVASCRIPT:
+          #         deployed  import { createClient } from '...'
+          #         repo      import { createClient, type SupabaseClient }...
+          #       7,231 chars against the repo's 7,891. Comparing it would
+          #       mean reimplementing the transpiler.
+          #
+          #   GET .../functions/<slug>       metadata only. Confirmed against
+          #       production: created_at, entrypoint_path, ezbr_sha256, id,
+          #       import_map, name, slug, status, updated_at, verify_jwt,
+          #       version. No files[].
+          #
+          # So refs/deployed/edge MAY CONSERVATIVELY LAG what production runs
+          # when every owed function was deduplicated. That is an
+          # infrastructure-recording limitation, NOT a production runtime
+          # failure: the artifacts themselves were verified byte-identical to
+          # their revision out of band. A lagging ref costs one redundant
+          # scope calculation on the next push. A ref that advanced on an
+          # unprovable claim costs the work, which is what this whole
+          # mechanism exists to prevent -- so it stays conservative.
+          #
+          # DO NOT "fix" this by accepting the CLI's own "No change found" as
+          # proof. That is a tool reporting on its own work, and trusting such
+          # a report is precisely the habit that produced three false refs on
+          # 2026-09-19.
+          # ─────────────────────────────────────────────────────────────────
           node scripts/edgeArtifacts.mjs snapshot $(cat "$RUNNER_TEMP/owed.txt") > "$RUNNER_TEMP/post.json"
-
-          # D. THE ARTIFACT ITSELF, PULLED BACK OUT OF PRODUCTION.
-          #
-          # The version counter alone was the rule here once, and run #676
-          # failed with nothing wrong because of it: four of five functions
-          # were already byte-identical to this revision, so the CLI printed
-          # "No change found", skipped the upload and exited 0, and the
-          # counter correctly did not move. Chasing those numbers would have
-          # meant re-uploading unchanged code to move an integer.
-          #
-          # "No change found" is the CLI reporting on its own work, though,
-          # and trusting a tool's self-report is the habit this whole repair
-          # exists to break. So the deployed source is downloaded and compared
-          # to the checkout, file by file. That is strictly stronger than a
-          # version bump: a bump says something was uploaded, equivalence says
-          # what is running is THIS.
-          #
-          # Each download runs in its own directory because the CLI writes
-          # into ./supabase/functions -- never into the checkout it is being
-          # compared against.
-          DL="$RUNNER_TEMP/deployed"
-          for fn in $(cat "$RUNNER_TEMP/owed.txt"); do
-            mkdir -p "$DL/$fn"
-            ( cd "$DL/$fn" && supabase functions download "$fn" --project-ref "$SUPABASE_PROJECT_REF" ) \
-              || echo "::warning::could not download $fn — it will be reported UNVERIFIABLE below"
-          done
-
           node scripts/edgeArtifacts.mjs verify "$RUNNER_TEMP/pre.json" "$RUNNER_TEMP/post.json" \
-            --since "$(cat "$RUNNER_TEMP/started-at-ms")" --downloads "$DL"
+            --since "$(cat "$RUNNER_TEMP/started-at-ms")"
 
       # ── E. The ref advances here, downstream of the proof, or not at all ─
       #

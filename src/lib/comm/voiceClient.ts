@@ -3106,10 +3106,40 @@ export class VoiceSession {
       socket: null, turn: this.lastResolution.resolvedLanguage, previous: this.previousTurnLanguage,
       response: this.lastResolution.resolvedLanguage, recovery: null,
     };
+    /*
+     * TWO LANGUAGE AUTHORITIES, AND THE SECOND ONE HAD NO ALLOWLIST.
+     *
+     * MEASURED, production session fd811a22, 2026-09-19 17:22-17:24, GEORGIAN
+     * page, owner speaking Georgian. Turns t1-t4 all resolved `ka` cleanly by
+     * SCRIPT at confidence 1. Then:
+     *
+     *   t7   previous_session_language ALREADY `en`
+     *   t8   previous_session_language ALREADY `ru`
+     *   t10  Korean arrives, is correctly refused -- and held at `ru`
+     *   t12  still `ru`, confidence 0.2
+     *
+     * The session changed language TWICE between committed turns, and
+     * refused_before was 0 on every one of them, so no refusal did it.
+     *
+     * This line did it. The batch path computed a properly clamped resolution
+     * two statements above -- and then threw it away and set the session
+     * language from stabiliseLanguage(), which reads the provider's raw label
+     * and knows nothing about the six. `ko`, `hi-Latn` and a mislabelled `en`
+     * all became conversational state through here, under a guard that only
+     * looks at ka/ru/ar/he script ratios.
+     *
+     * So the resolution that was already computed is the one that is used.
+     * This is a deletion, not a new rule: the allowlist, the stickiness and
+     * the unsupported-language guard all live in resolveTurnLanguage, and
+     * this path now goes through them like every other.
+     */
     const before = this.language.current;
-    this.language = stabiliseLanguage(this.language, {
-      text: said, detected: reply.language ?? null, confidence: 0.8,
-    });
+    this.language = {
+      ...this.language,
+      current: this.lastResolution.resolvedLanguage,
+      locked: this.lastResolution.confidence >= 0.6,
+    };
+    this.unconfirmedLanguage = this.lastResolution.proposedLanguage;
     if (this.language.current !== before || this.language.locked) {
       this.cb.onLanguage(this.language.current, this.language.locked);
     }

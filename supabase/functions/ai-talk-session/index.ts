@@ -1345,7 +1345,12 @@ async function speakPhraseStreaming(sb: Sb, params: {
   signal?: AbortSignal;
   onChunk: (chunk: Uint8Array) => void;
 }): Promise<
-  | { ok: true; firstByteMs: number; totalMs: number; sampleRate: number; provider: string; voiceId: string; model: string; streamed: true }
+  | {
+    ok: true; firstByteMs: number; totalMs: number; sampleRate: number;
+    provider: string; voiceId: string; model: string; streamed: true;
+    /** How unevenly the provider's own chunks arrived, in ms. */
+    maxChunkGapMs: number; p95ChunkGapMs: number;
+  }
   | { ok: false; failures: Array<{ provider: string; code: string | null; status: number | null; detail?: string | null }> }
 > {
   const voice = params.voice ?? await aiTalkVoice(sb, params.language || null);
@@ -1374,6 +1379,10 @@ async function speakPhraseStreaming(sb: Sb, params: {
     return { ok: false, failures: [{ provider: 'CARTESIA', code: 'MISSING_CREDENTIALS', status: null }] };
   }
 
+  let lastChunkAt = 0;
+  let maxChunkGapMs = 0;
+  const chunkGaps: number[] = [];
+
   const at = Date.now();
   const out = await streamCartesiaPcm({
     voiceId: voice.voiceId,
@@ -1386,7 +1395,31 @@ async function speakPhraseStreaming(sb: Sb, params: {
     // variable stays as the fallback for a deployment with no setting.
     speed: voice.speed ?? ttsSpeed(),
     signal: params.signal,
-  }, (chunk) => params.onChunk(chunk));
+  }, (chunk) => {
+    /*
+     * HOW EVENLY THE AUDIO ACTUALLY ARRIVES, WHICH NOTHING MEASURED.
+     *
+     * The owner reports Mariam sounding choppy on a real iPhone, and the
+     * existing trace can only say how many chunks a turn produced and how
+     * many bytes -- never whether they arrived steadily. Without that, every
+     * explanation is a guess: a provider stalling mid-sentence, our own
+     * phrase boundaries, the SSE hop, or the browser's own queue all produce
+     * the same chunk count.
+     *
+     * This is the cheapest cut that separates them. A chunk carries about
+     * 0.17s of audio, so a gap materially longer than that means the stream
+     * starved BEFORE it reached the browser; gaps that stay small mean it
+     * did not, and the fault is downstream of here.
+     */
+    const at = Date.now();
+    if (lastChunkAt !== 0) {
+      const gap = at - lastChunkAt;
+      if (gap > maxChunkGapMs) maxChunkGapMs = gap;
+      chunkGaps.push(gap);
+    }
+    lastChunkAt = at;
+    params.onChunk(chunk);
+  });
 
   if (out.ok && out.data) {
     /*
@@ -1416,8 +1449,12 @@ async function speakPhraseStreaming(sb: Sb, params: {
       costBasis: 'CALCULATED',
       ok: true, errorCode: null, providerStatus: null,
     });
+    const sorted = [...chunkGaps].sort((a, b) => a - b);
+    const p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : 0;
     return {
       ok: true, streamed: true,
+      maxChunkGapMs,
+      p95ChunkGapMs: p95,
       firstByteMs: out.data.firstByteMs,
       totalMs: out.data.totalMs,
       sampleRate: out.data.sampleRate,
@@ -2143,6 +2180,21 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           }
 
           if (out.ok) {
+            if (out.maxChunkGapMs > worstChunkGapMs) worstChunkGapMs = out.maxChunkGapMs;
+            if (out.p95ChunkGapMs > worstP95ChunkGapMs) worstP95ChunkGapMs = out.p95ChunkGapMs;
+            /*
+             * THE SEAM. Phrase N+1's first byte against phrase N's last.
+             *
+             * Phrases are synthesised as separate requests, so every boundary
+             * is a place the voice can stop. One reply of two sentences has
+             * one seam; if that seam is long enough to hear, "choppy" is our
+             * segmentation rather than the provider's stream.
+             */
+            if (lastPhraseDoneMs !== null && slot.firstByteMs !== null) {
+              const seam = ((at - startedAt) + slot.firstByteMs) - lastPhraseDoneMs;
+              if (seam > worstPhraseSeamMs) worstPhraseSeamMs = seam;
+            }
+            lastPhraseDoneMs = Date.now() - startedAt;
             slot.sampleRate = out.sampleRate;
             slot.provider = out.provider;
             slot.voiceId = out.voiceId;
@@ -2181,6 +2233,10 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
       let llmFirstTokenAt: number | null = null;
       /** When the model stopped writing -- the fact the overlap verdict is judged against. */
       let llmFinalAt: number | null = null;
+    let worstChunkGapMs = 0;
+    let worstP95ChunkGapMs = 0;
+    let worstPhraseSeamMs = 0;
+    let lastPhraseDoneMs: number | null = null;
       let ttsRequestAt: number | null = null;
       let ttsFirstByteAt: number | null = null;
 
@@ -2658,6 +2714,12 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           tts_request_ms: ttsRequestAt,
           tts_first_byte_ms: ttsFirstByteAt,
           tts_chunk_count: seq,
+          // Evenness, not volume. A chunk is about 0.17s of audio, so a gap
+          // far past that means the stream starved before the browser saw it.
+          tts_max_chunk_gap_ms: worstChunkGapMs || null,
+          tts_p95_chunk_gap_ms: worstP95ChunkGapMs || null,
+          // The silence a listener hears between one sentence and the next.
+          tts_phrase_seam_ms: worstPhraseSeamMs || null,
           tts_bytes: audioBytes,
           tts_failure: voiceFailure?.code ?? null,
           action_offered: action.destination?.key ?? null,

@@ -117,6 +117,8 @@ export interface LanguageVote {
   chars: number;
 }
 
+import { SPOKEN_LANGUAGES } from './talkLanguage.ts';
+
 export interface LanguageState {
   /** What the session is currently treated as. */
   current: string;
@@ -243,7 +245,18 @@ export function stabiliseLanguage(
    * passed as null, which left a Latin-script conversation permanently on
    * whatever the page locale happened to be.
    */
-  let language = (contradicted ? null : claimed) ?? state.current;
+  /*
+   * AND IT MAY ONLY EVER NAME ONE OF THE SIX.
+   *
+   * This helper predates the allowlist and reads the provider's raw label, so
+   * `ko`, `hi-Latn` and `jv` could all become conversational state through it.
+   * resolveTurnLanguage is the authority now and this is no longer on the
+   * deciding path, but a function that CAN return a seventh language is a
+   * function somebody will call again.
+   */
+  const named = contradicted ? null : claimed;
+  const allowed = named && SPOKEN_LANGUAGES.includes(named) ? named : null;
+  let language = allowed ?? state.current;
   // A contradicted label is not merely ignored; it must not carry its
   // confidence into the vote it no longer supports.
   let confidence = contradicted ? 0.3 : (sample.confidence ?? 0.4);

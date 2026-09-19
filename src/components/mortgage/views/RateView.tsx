@@ -28,7 +28,9 @@ import { SourceBadge } from '@/components/workspace/controls';
 import { fig, StatRow } from '../fields';
 import type { RateBreakdown, RateComponentKey } from '@/mortgage/calculations/rateBreakdown';
 
-const COMPONENT_LABELS: Record<RateComponentKey, string> = {
+/* Exported so the Details summary can NAME the costs nobody entered
+   rather than only counting them. */
+export const COMPONENT_LABELS: Record<RateComponentKey, string> = {
   INTEREST: 'mortgage_rate_component_interest',
   ORIGINATION_FEE: 'mortgage_rate_component_origination',
   VALUATION_FEE: 'mortgage_rate_component_valuation',

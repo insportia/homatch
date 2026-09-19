@@ -16,7 +16,7 @@ import { ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { formatPercent, intlLocaleFor } from '@/components/workspace/primitives';
-import { RateView, CostStack } from './views/RateView';
+import { RateView, CostStack, COMPONENT_LABELS } from './views/RateView';
 import { TermsView } from './views/TermsView';
 import { ScheduleView } from './views/ScheduleView';
 import { ChecklistView } from './views/GuidanceViews';
@@ -110,7 +110,10 @@ export function DetailsSection({
               about these", which is a different statement. */}
           {breakdown.unknownCosts.length ? (
             <p className="mt-3 max-w-[62ch] text-xs leading-relaxed text-muted-foreground">
-              {t('mortgage_details_missing_costs', { n: breakdown.unknownCosts.length })}
+              {t('mortgage_details_missing_costs', {
+                n: breakdown.unknownCosts.length,
+                list: breakdown.unknownCosts.map((key) => t(COMPONENT_LABELS[key])).join(', '),
+              })}
             </p>
           ) : null}
 

@@ -304,12 +304,12 @@ export const MORTGAGE_STRINGS_6 = {
     'הריבית האפקטיבית כוללת את העלויות המחייבות הידועות לנו, ולכן היא משקפת את העלות האמיתית של ההלוואה מדויק יותר מהריבית המפורסמת.',
   ],
   mortgage_details_missing_costs: [
-    '{{n}} kinds of cost have not been entered. If this loan has them, the real rate is higher than shown.',
-    'ხარჯის {{n}} სახეობა არ არის შეყვანილი. თუ ამ სესხს ისინი აქვს, რეალური განაკვეთი ნაჩვენებზე მაღალია.',
-    'Не введено {{n}} видов расходов. Если они у этого кредита есть, реальная ставка выше показанной.',
-    '{{n}} tür maliyet girilmedi. Bu kredide varsa gerçek faiz gösterilenden yüksektir.',
-    'لم تُدخل {{n}} أنواع من التكاليف. إذا كان هذا القرض يتضمنها، فالفائدة الحقيقية أعلى مما هو معروض.',
-    'לא הוזנו {{n}} סוגי עלויות. אם הן קיימות בהלוואה הזו, הריבית האמיתית גבוהה מהמוצג.',
+    '{{n}} kinds of cost have not been entered — {{list}}. If this loan has any of them, the real rate is higher than shown.',
+    'შეყვანილი არ არის ხარჯის {{n}} სახეობა — {{list}}. თუ ამ სესხს რომელიმე მათგანი აქვს, რეალური განაკვეთი ნაჩვენებზე მაღალია.',
+    'Не введено {{n}} видов расходов — {{list}}. Если они у этого кредита есть, реальная ставка выше показанной.',
+    '{{n}} tür maliyet girilmedi — {{list}}. Bu kredide bunlardan biri varsa gerçek faiz gösterilenden yüksektir.',
+    'لم تُدخل {{n}} أنواع من التكاليف — {{list}}. إذا كان هذا القرض يتضمن أيًا منها، فالفائدة الحقيقية أعلى مما هو معروض.',
+    'לא הוזנו {{n}} סוגי עלויות — {{list}}. אם אחת מהן קיימת בהלוואה הזו, הריבית האמיתית גבוהה מהמוצג.',
   ],
   mortgage_details_see_breakdown: [
     'See where the difference comes from',

@@ -1357,7 +1357,7 @@ function Invitation(
    * Neither sentence promises a clock. The window is a rolling day, so the
    * only honest thing to say is that it comes back within one.
    */
-  const key = named === 'talk_quota_daily_body' && tier === 'STANDARD'
+  const key = tier === 'STANDARD' && (named === 'talk_quota_daily_body' || named === 'talk_quota_sessions_body')
     ? 'talk_quota_account_body'
     : named;
 

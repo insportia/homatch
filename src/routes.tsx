@@ -51,6 +51,10 @@ const MortgagePage = lazy(() => import('./pages/MortgagePage'));
  */
 const InvestmentPage = lazy(() => import('./pages/InvestmentPage'));
 const VerificationCasePage = lazy(() => import('./pages/VerificationCasePage'));
+const ContractsPage = lazy(() => import('./pages/ContractsPage'));
+const ContractResultPage = lazy(() => import('./pages/ContractResultPage'));
+const ContractsHistoryPage = lazy(() => import('./pages/ContractsHistoryPage'));
+const VerifyHistoryPage = lazy(() => import('./pages/VerifyHistoryPage'));
 const LegacyDealRoomRedirect = lazy(() => import('./pages/LegacyDealRoomRedirect'));
 // CasesPage import removed (2026-09-06 "REMOVE MY DEALS/CASES" mandate) —
 // the /cases route below is intentionally not registered. The file itself
@@ -183,10 +187,26 @@ export const routes: RouteConfig[] = [
   // run a check; the saved-case list below only renders for a signed-in user
   // and is owner-only under RLS regardless.
   { name: 'Verification Center', path: '/verify',                 element: <VerifyPage />,        public: true },
+  // Every verification this customer has run. The Center itself shows the
+  // recent few; this is the rest, with search. Declared before the dynamic
+  // route below so the literal path is never read as a case id.
+  { name: 'Verification History', path: '/verify/history',        element: <VerifyHistoryPage /> },
   // One property = one persistent Verification Case. Authenticated only: a
   // case is a customer's private due-diligence work, and every table behind
-  // it is owner-only under RLS.
+  // it is owner-only under RLS. No longer reachable from the customer
+  // journey — Verify results now open in the Center itself and contracts
+  // have their own product — but kept so existing links never go dead.
   { name: 'Verification Case', path: '/verify/:id',               element: <VerificationCasePage /> },
+
+  // CONTRACTS. A first-class product, not a feature inside a workspace: a
+  // customer with a contract to understand comes straight here, uploads it,
+  // and reads the result on its own page. Authenticated, because a contract
+  // is the most sensitive thing anyone hands Homatch and every row behind
+  // these screens is owner-only under RLS.
+  { name: 'Contracts',         path: '/contracts',                element: <ContractsPage /> },
+  // Before /contracts/:id, so the literal path is never captured as an id.
+  { name: 'Contract History',  path: '/contracts/history',        element: <ContractsHistoryPage /> },
+  { name: 'Contract',          path: '/contracts/:id',            element: <ContractResultPage /> },
   // Public like Verify: the calculator + educational explanations must work
   // for a signed-out visitor (mandate requirement); saving a scenario or
   // uploading a bank offer still requires auth, enforced by mortgage_scenarios

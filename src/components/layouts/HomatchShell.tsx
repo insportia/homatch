@@ -29,6 +29,7 @@ import {
   LogOut, Mail, Menu, MessageCircle, MessageSquare, PhoneCall, Radio, Search,
   Settings, ShieldCheck, Sparkles, User as UserIcon, UserSearch, X, Activity,
   CircleDollarSign, Coins as CoinsIcon, TrendingUp,
+  FileSignature,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -107,6 +108,7 @@ export const NAV: NavGroup[] = [
     key: 'nav_group_intelligence',
     items: [
       { key: 'nav_verify', path: '/verify', icon: ShieldCheck },
+      { key: 'nav_contracts', path: '/contracts', icon: FileSignature },
       { key: 'nav_mortgage', path: '/mortgage', icon: CircleDollarSign },
       { key: 'nav_investment', path: '/investment', icon: TrendingUp },
     ],

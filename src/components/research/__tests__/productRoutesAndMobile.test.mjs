@@ -37,7 +37,14 @@ const COMPONENTS = {
   'src/components/dealroom/DocumentsPanel.tsx': read('src/components/dealroom/DocumentsPanel.tsx'),
   'src/components/dealroom/VerdictBanner.tsx': read('src/components/dealroom/VerdictBanner.tsx'),
   'src/components/research/HumanVerificationHandoff.tsx': read('src/components/research/HumanVerificationHandoff.tsx'),
-  'src/components/verify/VerificationCaseList.tsx': read('src/components/verify/VerificationCaseList.tsx'),
+  'src/components/verify/VerifyCheckList.tsx': read('src/components/verify/VerifyCheckList.tsx'),
+  'src/components/verify/VerifyRecentChecks.tsx': read('src/components/verify/VerifyRecentChecks.tsx'),
+  // CONTRACTS. A first-class product now, so its screens are held to the
+  // same mobile rules as every other customer surface — these are the
+  // screens a buyer reads a contract on, frequently on a phone.
+  'src/components/contracts/ContractList.tsx': read('src/components/contracts/ContractList.tsx'),
+  'src/components/contracts/ContractResult.tsx': read('src/components/contracts/ContractResult.tsx'),
+  'src/components/contracts/ContractProgress.tsx': read('src/components/contracts/ContractProgress.tsx'),
   'src/components/verify/StartFromDocument.tsx': read('src/components/verify/StartFromDocument.tsx'),
   // The shared contract action every entry point renders. It carries the
   // mobile rules that used to live in StartFromDocument, so it has to be in
@@ -131,7 +138,9 @@ test('long values are allowed to wrap rather than forcing horizontal scroll', ()
   // Cadastral codes, Georgian company names and file names are all long and
   // unbreakable; without break-words they push the page sideways at 320px.
   for (const file of [
-    'src/components/verify/VerificationCaseList.tsx',
+    'src/components/verify/VerifyCheckList.tsx',
+    'src/components/contracts/ContractList.tsx',
+    'src/components/contracts/ContractResult.tsx',
     'src/pages/VerificationCasePage.tsx',
     'src/components/verify/VerifyResultView.tsx',
     'src/components/dealroom/DocumentsPanel.tsx',
@@ -356,12 +365,29 @@ test('no customer-facing string calls a verification a deal room', () => {
 test('a completed verification persists itself instead of asking for a second product', () => {
   const src = PAGES['src/pages/VerifyPage.tsx'];
   assert.ok(src.includes('void saveCase('), 'a finished report must save itself');
-  assert.ok(src.includes("t('verify_continue_case')"), 'the CTA must continue the verification, not create something new');
+  // The next step is no longer "file this somewhere": a verification saves
+  // itself, so the CTA now hands the verified property to Contracts, which is
+  // what a buyer actually does next.
+  assert.ok(
+    src.includes("t('verify_contract_handoff_cta')"),
+    'the finished report must offer a real next step'
+  );
   assert.ok(!src.includes("t('verify_create_deal_room')"), 'the create-a-deal-room CTA is back');
 });
 
 test('the Verification Center offers both ways in and lists what already exists', () => {
   const src = PAGES['src/pages/VerifyPage.tsx'];
   assert.ok(src.includes('<StartFromDocument/>'), 'contract upload is not offered from the Center');
-  assert.ok(src.includes('<VerificationCaseList/>'), 'existing verifications are not listed in the Center');
+  // Verifications are research runs, so the Center's own list must read them
+  // from research_jobs. The list it replaced was backed by deal rooms, which
+  // is why uploaded documents used to appear among a customer's property
+  // checks — the defect this assertion exists to prevent returning.
+  assert.ok(
+    src.includes('<VerifyRecentChecks'),
+    'existing verifications are not listed in the Center'
+  );
+  assert.ok(
+    !src.includes('VerificationCaseList'),
+    'the Center must not list storage containers as verifications'
+  );
 });

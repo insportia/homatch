@@ -309,7 +309,9 @@ test('saving a verification can never fail silently', () => {
 
   const start = code.indexOf('const saveCase=');
   assert.notEqual(start, -1, 'saveCase must exist');
-  const body = code.slice(start, code.indexOf('const continueCase=', start));
+  // Bounded by the next top-level declaration, so removing any one
+  // neighbouring function cannot silently empty this slice.
+  const body = code.slice(start, code.indexOf('\nconst ', start + 1));
 
   // The exact shape of the defect: a catch that does nothing at all.
   assert.equal(
@@ -323,22 +325,46 @@ test('saving a verification can never fail silently', () => {
   assert.match(body, /savingRef\.current/, 'a double press must not create two cases');
 });
 
-test('the continue action always produces a visible outcome', () => {
+test('a finished verification always offers a next step, and never fails silently', () => {
   const page = fs.readFileSync(path.resolve(here, '../../pages/VerifyPage.tsx'), 'utf8');
   const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-  const start = code.indexOf('const continueCase=');
-  assert.notEqual(start, -1, 'continueCase must exist');
-  const body = code.slice(start, start + 400);
-  // Existing case → go there. No case → create it, then go.
-  assert.match(body, /if\(caseId\)\{nav\(`\/verify\/\$\{caseId\}`\)/);
-  assert.match(body, /await saveCase\(undefined,undefined,\{silent:false\}\)/);
-  assert.match(body, /if\(id\)nav\(`\/verify\/\$\{id\}`\)/);
+  /* ------------------------------------------------------------------ *
+   * WHAT THIS TEST USED TO GUARD, AND WHY IT MOVED.                     *
+   *                                                                     *
+   * It asserted a "Continue Verification" button that navigated to      *
+   * /verify/:id — the Verification Case, the customer-facing Deal Room. *
+   * That workspace is no longer part of the customer journey: a         *
+   * verification persists by itself, so there was never anything for    *
+   * the customer to file, and contracts are their own product now.      *
+   *                                                                     *
+   * The REQUIREMENT behind the old assertion is unchanged and is        *
+   * asserted below in its new home: a completed report must end with a  *
+   * concrete next step, and a failed save must still reach the screen   *
+   * rather than dying in a silent catch.                                *
+   * ------------------------------------------------------------------ */
 
-  // The button is bound to it, is disabled while busy, and renders the error.
-  assert.match(code, /onClick=\{\(\)=>\{void continueCase\(\)\}\}/);
-  assert.match(code, /disabled=\{savingCase\}/);
-  assert.match(code, /\{caseErr\?<p role="alert"/);
-  // And the automatic save is the silent one.
-  assert.match(code, /void saveCase\(id,data\.result_json,\{silent:true\}\)/);
+  // The next step is the contract for the property just verified, and it
+  // carries the property with it — a handoff that dropped the context would
+  // make Contracts read the document in isolation, which is the whole point
+  // of connecting the two products.
+  assert.match(code, /nav\('\/contracts',\{state:\{roomId:caseId/,
+    'the finished report must hand the verified property to Contracts');
+  assert.match(code, /cadastralCode:report\?\.exactUnit\?\.code/,
+    'the handoff must carry the cadastral code');
+
+  // A save that fails still says so, in the same place it always did.
+  assert.match(code, /\{caseErr\?<p role="alert"/,
+    'a save failure must remain visible');
+
+  // And the automatic save stays the silent one: the customer is not asked
+  // to file anything, so it must never interrupt them.
+  assert.match(code, /void saveCase\(id,data\.result_json,\{silent:true\}\)/,
+    'the background save must stay silent');
+
+  // The retired destination must not come back by accident.
+  assert.equal(
+    /continueCase/.test(code), false,
+    'the Verification Case button belonged to a surface the customer no longer sees'
+  );
 });

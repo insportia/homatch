@@ -151,6 +151,12 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // "v{{n}}" — a version-number format ("v1", "v2"…), not natural language;
   // identical in every locale the same way a date or percentage format is.
   'cases_version_badge',
+  // "Homatch" — the product's own name, used as the label of one side of the
+  // contract/verification comparison ("Document" vs "Homatch"). A brand name
+  // is not translated, same rule as 'ai_title' and 'admin_health_api_label'
+  // below; every other key in that comparison block carries a real
+  // translation in all six languages, so this cannot hide a missing one.
+  'cm_side_verify',
   // Russian real-estate/M&A usage commonly keeps "due diligence" in Latin
   // script rather than translating it (same pattern as Turkish "Villa"/
   // "Platform" above) — ka/tr/ar/he all carry their own real translations

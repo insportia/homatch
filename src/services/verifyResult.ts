@@ -13,6 +13,7 @@
 // could be reached" or a progress bar.
 
 import { supabase } from '@/db/supabase';
+import type { CompanyIntelligence } from '@/verify/intelligence/companyIntelligence';
 import {
   normalizeVerifyResult,
   type NormalizedVerifyResult,
@@ -28,6 +29,30 @@ export interface VerifyJobFacts {
   createdAt: string | null;
   completedAt: string | null;
   synthesisState: string;
+}
+
+/**
+ * The company the verification established, for the document comparison.
+ *
+ * A narrow read of one field on a row the caller already owns —
+ * research_jobs.SELECT is `auth.uid() = user_id`, so this can only ever
+ * return the caller's own verification. It exists because the normalised
+ * result deliberately does not carry companyProfile, and the contract
+ * cross-check needs the registered directors and the representation rule to
+ * say anything useful about who may sign.
+ *
+ * Reads the PERSISTED synthesis rather than invoking the function: this is a
+ * comparison, not a reason to rebuild a report.
+ */
+export async function getVerifyCompany(jobId: string): Promise<CompanyIntelligence | null> {
+  const { data, error } = await supabase
+    .from('research_jobs')
+    .select('synthesis_json')
+    .eq('id', jobId)
+    .maybeSingle();
+  if (error) throw error;
+  const synthesis = (data?.synthesis_json ?? null) as Record<string, unknown> | null;
+  return (synthesis?.company ?? null) as CompanyIntelligence | null;
 }
 
 export async function getVerifyJobFacts(jobId: string): Promise<VerifyJobFacts | null> {

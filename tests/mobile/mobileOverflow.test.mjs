@@ -110,6 +110,78 @@ function haveDeps() {
   return null;
 }
 
+/*
+ * A REAL CONTRACT, IN GEORGIAN, FOR THE CONTRACTS SWEEP.
+ *
+ * Taken from the persisted analysis of production document d4a86b9c — a
+ * parking-space purchase agreement. Real text matters here: the defect this
+ * suite exists to catch was a Georgian label squeezed into a one-character
+ * column, and Georgian has no spaces to break on in a long legal phrase.
+ * Invented Latin placeholder text would pass while the shipped screen failed.
+ */
+const CONTRACT_ANALYSIS = {
+  documentType: 'ნასყიდობის ხელშეკრულება (უძრავი ქონების შესახებ)',
+  summary: [
+    'მყიდველი ყიდულობს მშენებარე ავტოსადგომს თბილისში, კრწანისის ქუჩა №6-ში, ბლოკ „ა“-ში, მე-2 სართულზე, 24.30 კვ.მ. ფართობით.',
+    'ხელშეკრულებაში წერია, რომ 15 000 აშშ დოლარის ღირებულება სრულად გადახდილია ხელმოწერის დროისთვის.',
+    'ქონება ხელშეკრულების გაფორმების დროს იპოთეკითაა დატვირთული სს „საქართველოს ბანკის“ სასარგებლოდ.',
+  ],
+  clauses: [
+    {
+      label: 'იპოთეკით დატვირთვა',
+      plain: 'ქონება ხელმოწერის მომენტისთვის იპოთეკითაა დატვირთული ბანკის სასარგებლოდ.',
+      quote: 'ნასყიდობის საგანი დატვირთულია იპოთეკით სს „საქართველოს ბანკის“ სასარგებლოდ',
+      page: null,
+      attention: 'MISSING_PROTECTION',
+    },
+  ],
+  obligations: [
+    {
+      party: 'SELLER',
+      label: 'იპოთეკის მოხსნა',
+      plain: 'გამყიდველმა რეგისტრაციიდან ათი საბანკო დღის ვადაში იპოთეკა უნდა მოხსნას.',
+      quote: 'ათი საბანკო დღის ვადაში გამყიდველი ვალდებულია მოხსნას რეგისტრირებული იპოთეკა',
+      page: null,
+    },
+  ],
+  deadlines: [
+    { label: 'იპოთეკის მოხსნის ვადა', value: 'რეგისტრაციიდან 10 საბანკო დღე', quote: 'ათი საბანკო დღის ვადაში', page: null },
+  ],
+  financial: [
+    { label: 'ქონების ჯამური ღირებულება', value: '15 000 აშშ დოლარი', quote: 'ნასყიდობის საგნის ჯამური ღირებულება შეადგენს 15 000 (თხუთმეტი ათასი) აშშ დოლარს', page: null },
+    { label: 'გადახდის ანგარიში', value: 'GE50BG0000000545803196GEL', quote: 'ა/ა: GE50BG0000000545803196GEL', page: null },
+  ],
+  missingProtections: [
+    { label: 'ჯარიმა ვადის დარღვევისთვის', plain: 'ხელშეკრულება არ ითვალისწინებს სანქციას, თუ გამყიდველი ვადას დაარღვევს.' },
+  ],
+  questions: [
+    'აქვს თუ არა გამყიდველის წარმომადგენელს ხელშეკრულების ხელმოწერისთვის მოქმედი წარმომადგენლობითი უფლებამოსილება?',
+  ],
+  pages: 4,
+  containsInstructionLikeText: false,
+  analysedAt: '2026-09-18T14:51:49.828Z',
+};
+
+/** The row the Contracts pages read, with its container's property context. */
+const CONTRACT_ROW = {
+  id: 'fixture-doc',
+  deal_room_id: 'fixture-room',
+  label: 'გარაჟი ციალა მელაძე.docx',
+  original_filename: 'გარაჟი ციალა მელაძე.docx',
+  mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  size_bytes: 25576,
+  uploaded_at: '2026-09-18T14:51:21.869Z',
+  created_at: '2026-09-18T14:51:21.869Z',
+  analysis_state: 'DONE',
+  analysis: CONTRACT_ANALYSIS,
+  analysis_error: null,
+  deal_rooms: {
+    cadastral_code: '01.18.06.019.055.03.01.601',
+    address: 'საქართველო, თბილისი, კრწანისის რაიონი, კრწანისის ქუჩა, N6',
+    verify_job_id: 'fixture-job',
+  },
+};
+
 const skipReason = haveDeps();
 
 /*
@@ -230,12 +302,26 @@ test('the verification report has no horizontal overflow at real phone widths', 
    * differently.
    */
   const LANGS = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
-  const CASES = [
-    ...FONT_MODES.flatMap((fontMode) => WIDTHS.map((width) => ({ fontMode, width, lang: null }))),
-    ...LANGS.map((lang) => ({ fontMode: 'product', width: 320, lang })),
+  /*
+   * THE TWO SCREENS A CUSTOMER READS LONG GEORGIAN TEXT ON.
+   *
+   * `verify` is the report. `contract` is the Contracts result page, which
+   * did not exist when this harness was written and carries exactly the same
+   * risk: legal prose, quoted passages, and labelled two-sided rows, on a
+   * phone, in an alphabet with no convenient break points. Both are swept at
+   * every width, in both font modes, and in all six languages at 320px.
+   */
+  const VIEWS = [
+    { name: 'verify', path: '/verify?job=fixture-job', selector: '.verify-report' },
+    { name: 'contract', path: '/contracts/fixture-doc', selector: '[data-contract-result]' },
   ];
 
-  for (const { fontMode, width, lang } of CASES) {
+  const CASES = VIEWS.flatMap((view) => [
+    ...FONT_MODES.flatMap((fontMode) => WIDTHS.map((width) => ({ view, fontMode, width, lang: null }))),
+    ...LANGS.map((lang) => ({ view, fontMode: 'product', width: 320, lang })),
+  ]);
+
+  for (const { view, fontMode, width, lang } of CASES) {
     const ctx = await browser.newContext({
       viewport: { width, height: 900 },
       deviceScaleFactor: 2,
@@ -306,13 +392,24 @@ test('the verification report has no horizontal overflow at real phone widths', 
       if (url.includes('/functions/v1/research-agent')) return route.fulfill(json(STATUS_RESPONSE));
       if (url.includes('/auth/v1/user')) return route.fulfill(json(fakeSession().user));
       if (url.includes('/auth/v1/token')) return route.fulfill(json(fakeSession()));
+      // The Contracts screens read this table three ways: a list, a single
+      // row, and the analysis columns alone. All three are the same fixture.
+      if (url.includes('/rest/v1/deal_room_documents')) {
+        // maybeSingle() does not reliably set the PostgREST object Accept
+        // header across supabase-js versions, so the QUERY is what decides:
+        // a filter on a single id is a single-row read.
+        const single = /[?&]id=eq\./.test(url)
+          || (route.request().headers().accept || '').includes('vnd.pgrst.object');
+        return route.fulfill(json(single ? CONTRACT_ROW : [CONTRACT_ROW]));
+      }
+      if (url.includes('/rest/v1/research_jobs')) return route.fulfill(json([]));
       if (url.includes('/rest/v1/')) return route.fulfill(json([]));
       // Anything unanticipated is answered emptily rather than reaching the
       // network, so the test can never depend on the outside world.
       return route.fulfill(json({}));
     });
 
-    await page.goto(`${BASE}/verify?job=fixture-job`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${BASE}${view.path}`, { waitUntil: 'domcontentloaded' });
     /*
      * A VERIFY-SPECIFIC SELECTOR, NOT `article`.
      *
@@ -321,7 +418,7 @@ test('the verification report has no horizontal overflow at real phone widths', 
      * measures a page that contains none of the report it exists to check.
      * `.verify-report` only exists once a report is on screen.
      */
-    await page.waitForSelector('.verify-report', { timeout: 20000 }).catch(() => {});
+    await page.waitForSelector(view.selector, { timeout: 20000 }).catch(() => {});
 
     // Open the evidence drawer — the reported offender lives inside it.
     await page.evaluate(() => {
@@ -329,7 +426,7 @@ test('the verification report has no horizontal overflow at real phone widths', 
     });
     await page.waitForTimeout(600);
 
-    const result = await page.evaluate((vw) => {
+    const result = await page.evaluate(([vw, sel]) => {
       const de = document.documentElement;
       const offenders = [];
       for (const el of document.querySelectorAll('body *')) {
@@ -394,7 +491,7 @@ test('the verification report has no horizontal overflow at real phone widths', 
 
       return {
         crushed: crushed.slice(0, 8),
-        reportPresent: !!document.querySelector('.verify-report'),
+        reportPresent: !!document.querySelector(sel),
         font: getComputedStyle(document.body).fontFamily.split(',')[0].replace(/['"]/g, ''),
         hasArticle: !!document.querySelector('article'),
         pageOverflow: de.scrollWidth > de.clientWidth,
@@ -403,14 +500,14 @@ test('the verification report has no horizontal overflow at real phone widths', 
         // Only the innermost offenders: a wide parent is usually a symptom.
         offenders: offenders.slice(0, 8),
       };
-    }, width);
+    }, [width, view.selector]);
 
     await ctx.close();
 
     // The REPORT, specifically — not merely some <article> on some screen.
-    assert.ok(result.reportPresent, `${width}px: the report never rendered — the harness stubs are wrong`);
-    assert.equal(result.clientWidth, width, `${width}px: the viewport was not actually applied`);
-    if (fontMode === 'product' && !lang) measured.push(width);
+    assert.ok(result.reportPresent, `${view.name} @ ${width}px: the view never rendered — the harness stubs are wrong`);
+    assert.equal(result.clientWidth, width, `${view.name} @ ${width}px: the viewport was not actually applied`);
+    if (fontMode === 'product' && !lang) measured.push({ view: view.name, width });
 
     /* The font actually in use, read back rather than assumed — an
        override that silently failed to apply would make this half of the
@@ -448,8 +545,18 @@ test('the verification report has no horizontal overflow at real phone widths', 
   // deliberate edit here. 412 is the common Android width (Pixel class) and
   // was added with the COMPANY & OWNERSHIP section, whose ownership rows and
   // encumbrance card are the narrowest new content in the report.
-  assert.deepEqual(measured, [320, 360, 375, 390, 412, 430, 768, 1280],
-    `the suite did not measure every supported width, it covered ${JSON.stringify(measured)}`);
+  // Each VIEW must cover every width, not merely the union of them: a sweep
+  // that measured Verify eight times and the contract once would otherwise
+  // satisfy a flat comparison while leaving a whole screen unmeasured.
+  const SUPPORTED = [320, 360, 375, 390, 412, 430, 768, 1280];
+  for (const view of VIEWS) {
+    assert.deepEqual(
+      measured.filter((m) => m.view === view.name).map((m) => m.width),
+      SUPPORTED,
+      `${view.name} did not measure every supported width, it covered ${
+        JSON.stringify(measured.filter((m) => m.view === view.name).map((m) => m.width))}`
+    );
+  }
 
   assert.deepEqual(failures, [], `horizontal overflow at real phone widths:\n${failures.join('\n')}`);
 });

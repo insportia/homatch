@@ -976,7 +976,9 @@ export function itemsDef(type: string): ItemGroupDef | undefined {
  *  routes.tsx so the validator does not drag every page component into the
  *  editor bundle. */
 export const PUBLIC_ROUTES: readonly string[] = [
-  '/', '/about', '/verify', '/verify/:id', '/mortgage', '/partners',
+  '/', '/about', '/verify', '/verify/:id', '/verify/history', '/mortgage', '/partners',
+  // Contracts is a product of its own, so a site page may link straight to it.
+  '/contracts',
   '/privacy', '/terms', '/ai', '/auth/login', '/auth/signup',
   '/dashboard', '/property/add', '/outreach/calls', '/outreach/email', '/credits',
 ];

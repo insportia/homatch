@@ -32,6 +32,7 @@ import {
   Radio,
   Landmark,
   TrendingUp,
+  FileSignature,
 } from 'lucide-react';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
 import { UnreadBadge } from '@/components/common/UnreadBadge';
@@ -45,6 +46,10 @@ const navItems = [
   { key: 'nav_live_chat',     path: '/live-chat',      icon: Radio },
   { key: 'nav_active_search', path: '/active-search',  icon: Search },
   { key: 'nav_verify',        path: '/verify',         icon: Shield },
+  // CONTRACTS sits next to Verify because that is the pair a buyer uses:
+  // check the property, then read the contract for it. It is a product of
+  // its own, not a tab inside a workspace.
+  { key: 'nav_contracts',     path: '/contracts',      icon: FileSignature },
   // nav_cases ('ჩემი გარიგებები' / My Deals) removed from product navigation
   // per the "REMOVE MY DEALS / CASES FROM VERIFY AND FROM PRODUCT
   // NAVIGATION" mandate (2026-09-06) — the CRM/case-attachment flow is no

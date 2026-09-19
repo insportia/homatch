@@ -69,6 +69,23 @@ test('the exact sentences from the live report are recognised', () => {
   }
 });
 
+test('a sentence about the input we were handed is also a coverage gap', () => {
+  /*
+   * FOUND ON THE LIVE PAGE AFTER THE FIRST FIX. These carry no research actor
+   * — no ჩვენ, no წყარო, no კვლევა — so every actor-based pattern missed
+   * them, and the model's own market paragraph kept saying it.
+   */
+  for (const s of [
+    'კონკრეტული ბინის ფართობი და მოთხოვნილი ფასი მოწოდებულ მასალაში არ ჩანს, ამიტომ ვერ ვიტყვი.',
+    'ამ ბინის ფართობი არ მოგვეწოდა.',
+    'The asking price was not provided to us.',
+    'Площадь не предоставлена.',
+  ]) {
+    assert.equal(isCoverageLanguage(s), true, `not recognised: ${s}`);
+    assert.equal(scrubCoverageLanguage(s), '', `not scrubbed: ${s}`);
+  }
+});
+
 test('a verified negative fact is never mistaken for a coverage gap', () => {
   /*
    * THE ASSERTION THAT MATTERS MOST.

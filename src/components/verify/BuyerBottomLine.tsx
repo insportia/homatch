@@ -32,6 +32,7 @@ import { ThumbsUp, HelpCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection } from '@/components/verify/ui';
 import type { UnconfirmedItem } from '@/verify/intelligence/buyerSummary';
+import { customerFacingGaps } from '@/verify/intelligence/coverageGap';
 
 export interface BottomLineHighlight {
   headline?: unknown;
@@ -72,9 +73,17 @@ export function BuyerBottomLine({
   // The things to go and check: what the model flagged, plus what the run
   // could not establish. Deduplicated, because a reader does not care which
   // half of the system noticed.
+  /*
+   * FILTERED HERE TOO.
+   *
+   * The unconfirmed card dropped coverage gaps and this did not, so „ამ
+   * კონკრეტული ბინის ფართობი და მოთხოვნილი ფასი არ მოგვეწოდა" disappeared
+   * from the section it belonged to and survived in the closing summary —
+   * which is the more prominent of the two. One filter, both places.
+   */
   const toVerify = [
     ...attention,
-    ...openQuestions.map((q) => t(q.key)),
+    ...customerFacingGaps(openQuestions).map((q) => t(q.key)),
   ].filter((v, i, all) => v && all.indexOf(v) === i).slice(0, COLUMN_LIMIT);
 
   const material = openQuestions.filter((q) => q.weight === 'MATERIAL').length;

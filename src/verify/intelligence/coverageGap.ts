@@ -94,6 +94,14 @@ const COVERAGE_SENTENCE: readonly RegExp[] = [
   // research subject (წყარო, კვლევა, შემოწმება, ჩვენ).
   /[^.!?]*(?:ჩვენ|წყარო|კვლევ|შემოწმებ|მოძიებ)[^.!?]*(?:ვერ (?:მოიძებნ|დადასტურ|ვიპოვ|გადავამოწმ)|არ (?:გადამოწმ|მოგვეწოდ))[^.!?]*[.!?]/gu,
   /[^.!?]*(?:ვერ მოიძებნა|ვერ ვიპოვეთ|ვერ გადავამოწმეთ|მონაცემი არ გვაქვს)[^.!?]*[.!?]/gu,
+  /*
+   * THE INPUT WE WERE HANDED, not the property.
+   *
+   * These describe what arrived with the request rather than what is true of
+   * the flat, and they survived on the live page because they carry no
+   * research ACTOR word — every pattern above requires one.
+   */
+  /[^.!?]*(?:მოწოდებულ მასალაში არ ჩანს|არ მოგვეწოდა|not (?:supplied|provided to us)|не (?:предоставлен|указан))[^.!?]*[.!?]/gu,
   // English
   /[^.!?]*(?:we|our (?:sources|research|search|crawler))[^.!?]*(?:could not|couldn't|did not|didn't|were unable)[^.!?]*(?:find|verify|confirm|reach)[^.!?]*[.!?]/gi,
   /[^.!?]*(?:no (?:listings?|data|sources?) (?:were |was )?(?:found|available))[^.!?]*[.!?]/gi,

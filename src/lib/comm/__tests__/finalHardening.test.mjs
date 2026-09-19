@@ -169,21 +169,41 @@ test('every registry language has a tag, a name, a script and a family', () => {
   assert.ok(!LANGUAGE_CODES.includes('zh') && !LANGUAGE_CODES.includes('tl'));
 });
 
-test('Hindi, Ukrainian, Spanish and Urdu resolve on their own script or letters', () => {
+/*
+ * THE SIX SUPERSEDED THE FORTY-FOUR ON 2026-09-19.
+ *
+ * These cases were written when any of the registry's forty-four languages
+ * could become the language of a conversation. Production session caeddb62
+ * showed what that costs: a Georgian speaker on an English page, a recogniser
+ * pinned ka-GE, and a Devanagari transcript labelled `hi` that resolved at
+ * confidence 1 and was answered in Hindi, by voice.
+ *
+ * The registry still knows forty-four languages -- for their scripts, their
+ * names and their words -- and that part of these tests is unchanged. What
+ * changed is that only the six the microphone can be pinned to may CARRY a
+ * conversation, so the cases naming Hindi, Ukrainian, Spanish or Urdu as a
+ * session language now assert the allowlist instead.
+ */
+test('Hindi, Ukrainian, Spanish and Urdu are read but never become the conversation', () => {
   const r = (transcript, providerLanguage, previous) => resolveTurnLanguage({ transcript, providerLanguage, previousSessionLanguage: previous, pageLocale: 'ka' });
-  assert.equal(r('नमस्ते, मुझे त्बिलिसी में एक फ्लैट चाहिए।', 'hi-IN', 'ka').resolvedLanguage, 'hi');
-  assert.equal(r('Привіт, скільки коштує квартира у Ваке?', 'uk-UA', 'ka').resolvedLanguage, 'uk', 'the provider picks the Cyrillic sibling');
+  // Held, every one of them, whatever the label and however clear the script.
+  assert.equal(r('नमस्ते, मुझे त्बिलिसी में एक फ्लैट चाहिए।', 'hi-IN', 'ka').resolvedLanguage, 'ka');
+  assert.equal(r('Привіт, скільки коштує квартира у Ваке?', 'uk-UA', 'ka').resolvedLanguage, 'ka');
+  assert.equal(r('Hola, ¿cuánto cuesta un piso en Vake?', 'es-ES', 'ka').resolvedLanguage, 'ka');
+  assert.equal(r('مجھے تبلیسی میں ایک فلیٹ چاہیے', 'ur-PK', 'ka').resolvedLanguage, 'ka');
+  assert.equal(
+    r('नमस्ते, मुझे त्बिलिसी में एक फ्लैट चाहिए।', 'hi-IN', 'ka').resolutionReason,
+    'UNSUPPORTED_LANGUAGE', 'the refusal has to say what it refused',
+  );
+  // The two of these that ARE ours still resolve exactly as before.
   assert.equal(r('Привет, сколько стоит квартира в Ваке?', 'ru-RU', 'ka').resolvedLanguage, 'ru');
-  assert.equal(r('Hola, ¿cuánto cuesta un piso en Vake?', 'es-ES', 'ka').resolvedLanguage, 'es');
-  assert.equal(r('Hola, cuánto cuesta un piso en Vake para comprar', 'ru-RU', 'ru').resolvedLanguage, 'es',
-    'a substantial Spanish sentence out of a ru socket is Spanish, not English');
-  assert.equal(r('مجھے تبلیسی میں ایک فلیٹ چاہیے', 'ur-PK', 'ka').resolvedLanguage, 'ur', 'Urdu by its own label within the Arabic family');
   assert.equal(r('مرحبا، أبحث عن شقة في تبليسي', 'ar-XA', 'ka').resolvedLanguage, 'ar');
 });
 
 test('short answers in any of the new languages do not flip a session', () => {
-  for (const [session, token, label] of [['hi', 'हाँ', 'hi-IN'], ['hi', 'नहीं', 'hi-IN'], ['ar', 'نعم', 'ar-XA'], ['ar', 'لا', 'ar-XA'],
-    ['ka', 'ok', 'en-US'], ['es', 'no', 'en-US'], ['uk', 'так', 'uk-UA'], ['ru', 'да', 'ru-RU']]) {
+  // Sessions are one of the six now, so the short-token cases are too.
+  for (const [session, token, label] of [['ar', 'نعم', 'ar-XA'], ['ar', 'لا', 'ar-XA'],
+    ['ka', 'ok', 'en-US'], ['he', 'כן', 'iw-IL'], ['tr', 'evet', 'tr-TR'], ['ru', 'да', 'ru-RU']]) {
     const r = resolveTurnLanguage({ transcript: token, providerLanguage: label, previousSessionLanguage: session, pageLocale: 'ka' });
     assert.equal(r.resolvedLanguage, session, `"${token}" moved a ${session} session to ${r.resolvedLanguage}`);
   }

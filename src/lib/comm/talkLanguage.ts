@@ -52,6 +52,37 @@ export type TalkLanguage = string;
 
 const SUPPORTED = new Set<string>(TALK_LANGUAGES);
 
+/*
+ * THE SIX LANGUAGES A CONVERSATION MAY BE IN. A HARD ALLOWLIST.
+ *
+ * MEASURED, production session caeddb62, 2026-09-19 16:01:07 UTC. The page
+ * was English, the visitor spoke Georgian, the recogniser was pinned ka-GE --
+ * and Google returned a DEVANAGARI transcript labelled `hi`. Hindi is in the
+ * forty-four-language registry, so it was a supported language; Devanagari
+ * belongs to one language, so SCRIPT resolved it at confidence 1; and from
+ * there Luna was instructed to answer in Hindi and Cartesia was sent
+ * `language: hi`. Every layer behaved correctly. The allowlist was wrong.
+ *
+ * The registry's forty-four are what the assistant can READ and name. These
+ * six are what a conversation can BE in, and they are exactly the six the
+ * microphone can be pinned to -- which is the point: a language the recogniser
+ * cannot be configured for can only ever arrive as a guess, and a guess must
+ * never be able to take a conversation somewhere it can never come back from.
+ *
+ * Nothing outside this set becomes session language, response language or TTS
+ * language. It may still be observed, and it is reported in the trace as
+ * `proposed`, because knowing the recogniser said "hi" is how this was found.
+ */
+export const SPOKEN_LANGUAGES: readonly TalkLanguage[] = LISTENING_LANGUAGES;
+
+const SPOKEN = new Set<string>(SPOKEN_LANGUAGES);
+
+/** That code if a conversation may be held in it, otherwise nothing. */
+export function spokenLanguageOrNull(code: string | null | undefined): TalkLanguage | null {
+  const c = code ? String(code) : '';
+  return c && SPOKEN.has(c) ? c : null;
+}
+
 /**
  * Provider spellings that mean one of our six.
  *
@@ -157,6 +188,7 @@ export type ResolutionReason =
   | 'STICKY_LATIN'        // Latin text, no usable label, session already settled
   | 'LOCALE_LATIN'        // Latin text, nothing else, the UI locale is Latin
   | 'UNCONFIRMED_LANGUAGE' // a language this conversation has never spoken, on one turn's evidence
+  | 'UNSUPPORTED_LANGUAGE' // evidence for a language this product does not converse in
   | 'STICKY_HELD'         // evidence too weak to move an established session
   | 'LATIN_FROM_PINNED'   // substantial Latin text out of a non-Latin-pinned socket
   | 'STICKY'              // no evidence at all, session continues
@@ -290,9 +322,19 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
   const transcript = String(input.transcript ?? '');
   const providerRaw = input.providerLanguage ? String(input.providerLanguage) : null;
   const provider = normaliseLanguage(providerRaw);
-  const previous = normaliseLanguage(input.previousSessionLanguage);
-  const locale = normaliseLanguage(input.pageLocale);
-  const fallback: TalkLanguage = input.fallback && SUPPORTED.has(input.fallback)
+  /*
+   * CLAMPED ON THE WAY IN, NOT ONLY ON THE WAY OUT.
+   *
+   * previousSessionLanguage arrives from the browser and the session row, and
+   * in the incident it arrived as `hi` -- a session already captured. If the
+   * previous language were trusted unclamped, every later turn would find
+   * Hindi "already spoken here" and switch to it instantly, which is exactly
+   * what the trace shows happening on turns 1 and 3. A captured session has
+   * to be able to come home.
+   */
+  const previous = spokenLanguageOrNull(normaliseLanguage(input.previousSessionLanguage));
+  const locale = spokenLanguageOrNull(normaliseLanguage(input.pageLocale));
+  const fallback: TalkLanguage = input.fallback && SPOKEN.has(input.fallback)
     ? input.fallback
     : (previous ?? locale ?? 'ka');
 
@@ -326,6 +368,22 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
     let score = confidence;
     /** What the evidence asked for, when this turn would not give it. */
     let proposed: TalkLanguage | null = null;
+
+    /*
+     * FIRST, AND ABOVE EVERY OTHER RULE BELOW.
+     *
+     * Strength of evidence is irrelevant here. A perfect Devanagari sentence
+     * at confidence 1 is still not a language this product holds
+     * conversations in, and the only safe answer is the one the conversation
+     * was already in. Recorded as `proposed` rather than discarded, so the
+     * trace still says what the recogniser claimed.
+     */
+    if (!SPOKEN.has(language)) {
+      proposed = language;
+      language = previous ?? locale ?? 'ka';
+      reason = 'UNSUPPORTED_LANGUAGE';
+      score = 0.3;
+    }
 
     const words = transcript.trim().split(/\s+/).filter(Boolean).length;
 
@@ -792,7 +850,9 @@ export function detectLanguageRequest(
   if (!SWITCH_CUES.some((cue) => text.includes(cue))) return null;
 
   let found: TalkLanguage | null = null;
-  for (const language of TALK_LANGUAGES) {
+  // The six, not the registry: a visitor may ask for a language this product
+  // speaks, and asking for one it does not is not an instruction it can obey.
+  for (const language of SPOKEN_LANGUAGES) {
     if (!(LANGUAGE_REQUEST_TERMS[language] ?? []).some((term) => text.includes(term))) continue;
     // Two different languages named in one breath is a comparison, not an
     // instruction: "is it in English or Russian?" gets no switch.

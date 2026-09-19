@@ -573,10 +573,15 @@ test('a real switch out of Georgian is not made harder by that', () => {
     // Agglutinative, so its function words wear suffixes and the letters have
     // to carry it: fiyat -> fiyatı, ne -> nedir.
     ['tr', "Vake'de metrekare fiyatı nedir?"],
-    ['es', 'Hola, busco un piso de dos habitaciones, cuanto cuesta?'],
-    ['fr', 'Bonjour, je cherche un appartement avec deux chambres.'],
-    ['de', 'Hallo, ich suche eine Wohnung mit zwei Zimmern.'],
+    ['ru', 'Здравствуйте, я ищу двухкомнатную квартиру в Ваке, сколько она стоит?'],
+    ['ar', 'مرحبا، أبحث عن شقة بغرفتين في فاكي، كم سعرها؟'],
+    ['he', 'שלום, אני מחפש דירת שני חדרים בוואקה, כמה היא עולה?'],
   ];
+  /*
+   * Spanish, French and German left this list on 2026-09-19. They are still
+   * read and still named; they are no longer languages a conversation can be
+   * in. See spokenLanguageAuthority.test.mjs and production session caeddb62.
+   */
   for (const [lang, said] of cases) {
     const r = resolveTurnLanguage({
       transcript: said, providerLanguage: lang, providerDetected: true,
@@ -601,7 +606,7 @@ test('a real switch out of Georgian is not made harder by that', () => {
 
 test('a STRONG Georgian sentence returns from every language, on that turn', () => {
   const said = 'კარგი, მაშინ მითხარი რამდენი ღირს ვაკეში კვადრატული მეტრი.';
-  for (const from of ['en', 'ru', 'tr', 'he', 'ar', 'es']) {
+  for (const from of ['en', 'ru', 'tr', 'he', 'ar']) {
     const r = resolveTurnLanguage({
       transcript: said, providerLanguage: from, providerDetected: false,
       previousSessionLanguage: from, pageLocale: 'ka', sessionLanguages: ['ka', from],
@@ -616,7 +621,7 @@ test('a STRONG Georgian sentence returns from every language, on that turn', () 
 test('a SHORT Georgian answer returns too, which is how people actually do it', () => {
   // Named by the owner. Every one of these is a complete turn.
   const shorts = ['კი', 'არა', 'კარგი', 'ხო', 'მოკლედ', 'გასაგებია', 'აბა', 'რატომ?', 'რას ამბობ?'];
-  for (const from of ['en', 'ru', 'tr', 'he', 'ar', 'es']) {
+  for (const from of ['en', 'ru', 'tr', 'he', 'ar']) {
     for (const said of shorts) {
       const r = resolveTurnLanguage({
         transcript: said, providerLanguage: from, providerDetected: false,

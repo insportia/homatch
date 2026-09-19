@@ -51,30 +51,43 @@ test('Shalom after Georgian: held as Georgian but flagged weak, never a switch, 
 
 /* ── Clear switches, same turn, from what the sockets really wrote ────── */
 
-test('every clear utterance resolves to its own language on the same turn', () => {
+/*
+ * THE SIX, AND WHAT HAPPENS TO THE REST.
+ *
+ * Every transcript and every label below is exactly what it was. What changed
+ * on 2026-09-19 is the expected SESSION language: only the six the recogniser
+ * can be pinned to may carry a conversation, so Hindi, Spanish, French,
+ * German, Italian and Ukrainian are now held rather than adopted. They are
+ * still read, still named, and still reported in the trace as `proposed`.
+ *
+ * Production session caeddb62 is why: a Devanagari transcript labelled `hi`,
+ * out of a socket pinned ka-GE, from somebody speaking Georgian -- answered
+ * in Hindi, by voice.
+ */
+test('every clear utterance resolves to its own language when it is one of ours', () => {
   const cases = [
     // [transcript as the socket wrote it, label, previous, expected]
     ['Hello, my name is Tarieli and I am looking for a two-bedroom flat in Wake.', 'ka-GE', 'ka', 'en'],
     ['Здравствуйте, меня зовут Тариэль, я ищу двухкомнатную квартиру в Ваке.', 'ka-GE', 'ka', 'ru'],
     ['مرحبا اسمي طارق وابحث عن شقه بغرفه نوم في تبليسي.', 'ka-GE', 'ka', 'ar'],
-    ['नमस्ते, मेरा नाम राहुल है और मुझे त्बिलिसी में दो बेडरूम वाला फ्लैट चाहिए।', 'ka-GE', 'ka', 'hi'],
-    ['Hola, me llamo Tariel y busco un piso de dos habitaciones en Vake.', 'ka-GE', 'ka', 'es'],
-    ["Bonjour, je m'appelle Tariel et je cherche un appartement de deux chambres à vac.", 'ka-GE', 'ka', 'fr'],
-    ['Hallo, ich heiße Tariel und suche eine Wohnung mit zwei Schlafzimmern in Wacke.', 'ka-GE', 'ka', 'de'],
-    ['Ciao, mi chiamo Tariel e cerco un appartamento con due camere da letto a Vec.', 'ka-GE', 'ka', 'it'],
+    ['नमस्ते, मेरा नाम राहुल है और मुझे त्बिलिसी में दो बेडरूम वाला फ्लैट चाहिए।', 'ka-GE', 'ka', 'ka'],
+    ['Hola, me llamo Tariel y busco un piso de dos habitaciones en Vake.', 'ka-GE', 'ka', 'ka'],
+    ["Bonjour, je m'appelle Tariel et je cherche un appartement de deux chambres à vac.", 'ka-GE', 'ka', 'ka'],
+    ['Hallo, ich heiße Tariel und suche eine Wohnung mit zwei Schlafzimmern in Wacke.', 'ka-GE', 'ka', 'ka'],
+    ['Ciao, mi chiamo Tariel e cerco un appartamento con due camere da letto a Vec.', 'ka-GE', 'ka', 'ka'],
     // the second opinion's label carries the ones the pinned socket could not write
     ['שלום, קוראים לי טל ואני מחפש דירת שני חדרים בתל אביב.', 'iw', 'ka', 'he'],
-    ['Привіт, мене звати Таріел, я шукаю двокімнатну квартиру у Ваке.', 'uk', 'ka', 'uk'],
+    ['Привіт, мене звати Таріел, я шукаю двокімнатну квартиру у Ваке.', 'uk', 'ka', 'ka'],
     ['Merhaba, benim adım Tarık ve Vake semtinde iki yatak odalı bir daire arıyorum.', 'tr', 'ka', 'tr'],
     // an English session: what an en-US socket wrote, labelled en-US every time
-    ['Hola, me llamo Tariel y busco un piso de dos habitaciones en Vake.', 'en-US', 'en', 'es'],
-    ["Bonjour, je m'appelle Tariel et je cherche un appartement de deux chambres à Vake.", 'en-US', 'en', 'fr'],
-    ['Hallo, ich heiße Tarjan und suche eine Wohnung mit zwei Schlafzimmern in Wacke.', 'en-US', 'en', 'de'],
-    ['Ciao, mi chiamo Tariel e cerco un appartamento con due camere da letto a Vake.', 'en-US', 'en', 'it'],
+    ['Hola, me llamo Tariel y busco un piso de dos habitaciones en Vake.', 'en-US', 'en', 'en'],
+    ["Bonjour, je m'appelle Tariel et je cherche un appartement de deux chambres à Vake.", 'en-US', 'en', 'en'],
+    ['Hallo, ich heiße Tarjan und suche eine Wohnung mit zwei Schlafzimmern in Wacke.', 'en-US', 'en', 'en'],
+    ['Ciao, mi chiamo Tariel e cerco un appartamento con due camere da letto a Vake.', 'en-US', 'en', 'en'],
     ['Merhaba, benim adım Tarık ve Vake semtinde iki yatak odalı bir daire arıyorum.', 'en-US', 'en', 'tr'],
     ['Здравствуйте, меня зовут Тариэль, я ищу двухкомнатную квартиру в Ваке.', 'en-US', 'en', 'ru'],
     ['مرحبا, اسمي طارق وابحث عن شقه بغرفه نوم في تبليسي.', 'en-US', 'en', 'ar'],
-    ['नमस्ते, मेरा नाम राहुल है और मुझे त्बिलिसी में दो बेडरूम वाला फ्लैट चाहिए।', 'en-US', 'en', 'hi'],
+    ['नमस्ते, मेरा नाम राहुल है और मुझे त्बिलिसी में दो बेडरूम वाला फ्लैट चाहिए।', 'en-US', 'en', 'en'],
     ['გამარჯობა, მე ტარიელი მქვია და ვაკეში ორსაძინებლიან ბინას ვეძებ.', 'ka', 'en', 'ka'],
     // and English itself, in an English session, must not be pushed anywhere by the words
     ['Hello, my name is Tarieli and I am looking for a two-bedroom flat in Wake.', 'en-US', 'en', 'en'],
@@ -89,7 +102,10 @@ test('every clear utterance resolves to its own language on the same turn', () =
 test('Ukrainian is told from Russian by its own letters when the label is no help', () => {
   assert.equal(guessCyrillicLanguage('Привіт, мене звати Таріел'), 'uk');
   assert.equal(guessCyrillicLanguage('Привет, меня зовут Тариэль'), 'ru');
-  assert.equal(r('Привіт, мене звати Таріел, я шукаю двокімнатну квартиру у Ваке.', 'en-US', 'en').resolvedLanguage, 'uk');
+  // Still told apart -- guessCyrillicLanguage above is unchanged and is what
+  // keeps a Ukrainian sentence from being read as Russian. It simply cannot
+  // become the conversation any more, so an English session stays English.
+  assert.equal(r('Привіт, мене звати Таріел, я шукаю двокімнатну квартиру у Ваке.', 'en-US', 'en').resolvedLanguage, 'en');
   assert.equal(r('Здравствуйте, меня зовут Тариэль, я ищу квартиру.', 'ru-RU', 'ru').resolvedLanguage, 'ru');
 });
 

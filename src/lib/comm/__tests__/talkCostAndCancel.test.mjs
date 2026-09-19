@@ -452,18 +452,25 @@ test('a language this conversation has never spoken waits one turn', () => {
     previousSessionLanguage: 'en', pageLocale: 'ka', sessionLanguages: ['ka', 'ru', 'ar', 'en'],
   });
   assert.equal(first.resolvedLanguage, 'en', 'the session is not carried off on one turn');
-  assert.equal(first.resolutionReason, 'UNCONFIRMED_LANGUAGE');
+  assert.equal(first.resolutionReason, 'UNSUPPORTED_LANGUAGE');
   assert.equal(first.proposedLanguage, 'te', 'but what it asked for is remembered');
   assert.ok(first.confidence < 0.6, 'and never becomes a settled fact');
 
-  // Asked twice, it is believed: a real speaker of a language we cannot check
-  // lexically pays exactly one turn, and no more.
+  /*
+   * AND ON 2026-09-19 THE CURE BECAME STRONGER: NEVER, NOT "NOT YET".
+   *
+   * One turn of hysteresis was the right answer while any of forty-four
+   * languages could carry a conversation. Production session caeddb62 showed
+   * the cost of that premise -- Hindi, out of a socket pinned ka-GE, from
+   * somebody speaking Georgian, answered aloud in Hindi. Telugu is not a
+   * language this product converses in, so asking twice changes nothing.
+   */
   const second = resolveTurnLanguage({
     transcript: TELUGU, providerLanguage: 'te', providerDetected: true, unconfirmedLanguage: 'te',
     previousSessionLanguage: 'en', pageLocale: 'ka', sessionLanguages: ['ka', 'ru', 'ar', 'en'],
   });
-  assert.equal(second.resolvedLanguage, 'te', 'hysteresis, not a wall');
-  assert.equal(second.resolutionReason, 'SCRIPT');
+  assert.equal(second.resolvedLanguage, 'en', 'asking twice is still not a supported language');
+  assert.equal(second.resolutionReason, 'UNSUPPORTED_LANGUAGE');
 });
 
 test('the six the microphone can be pinned to still switch on the first turn', () => {
@@ -487,10 +494,15 @@ test('the six the microphone can be pinned to still switch on the first turn', (
   assert.deepEqual([...LISTENING_LANGUAGES].sort(), ['ar', 'en', 'he', 'ka', 'ru', 'tr']);
 });
 
-test('a reply language outside the six is believed on its own letters or words', () => {
-  // Spanish, French and German are languages the assistant answers in but
-  // cannot listen in. Their own alphabets and words still speak for them, so
-  // a genuine sentence does not wait.
+test('a language outside the six is read, and never becomes the conversation', () => {
+  /*
+   * This asserted the opposite until 2026-09-19: Spanish, French and German
+   * were languages the assistant could answer in, believed on their own
+   * letters. Production session caeddb62 retired that idea. A language the
+   * microphone cannot be pinned to can only ever arrive as somebody's guess,
+   * and a guess must not be able to take a conversation somewhere it cannot
+   * come back from. They are still read and still named; the session holds.
+   */
   for (const [lang, said] of [
     ['es', 'Hola, ¿cuánto cuesta un piso de dos habitaciones?'],
     ['fr', 'Bonjour, je cherche un appartement avec deux chambres.'],
@@ -500,7 +512,7 @@ test('a reply language outside the six is believed on its own letters or words',
       transcript: said, providerLanguage: lang, providerDetected: true,
       previousSessionLanguage: 'ka', pageLocale: 'ka', sessionLanguages: ['ka'],
     });
-    assert.equal(r.resolvedLanguage, lang, `${lang}: ${r.resolutionReason}`);
+    assert.equal(r.resolvedLanguage, 'ka', `${lang}: ${r.resolutionReason}`);
   }
 });
 
@@ -517,8 +529,13 @@ test('returning home is untouched, from every language including the one that ca
 });
 
 test('a language already spoken here comes straight back, with no second asking', () => {
-  // The gate is about arriving somewhere new, never about going back.
-  for (const lang of ['ru', 'ar', 'he', 'en', 'te']) {
+  /*
+   * The gate is about arriving somewhere new, never about going back -- but
+   * only among the six a conversation may be in. Telugu left this list on
+   * 2026-09-19: "already spoken here" cannot make a language supported, or
+   * one bad transcript would grant itself permanent residency.
+   */
+  for (const lang of ['ru', 'ar', 'he', 'en']) {
     const r = resolveTurnLanguage({
       transcript: lang === 'ru' ? 'Да, сколько это стоит?'
         : lang === 'ar' ? 'نعم، كم سعر الشقة؟'

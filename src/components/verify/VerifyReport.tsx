@@ -393,7 +393,7 @@ export function VerifyReport({
                   {i + 1}
                 </span>
                 <div className="space-y-1 min-w-0">
-                  <p className="text-[15px] leading-7 font-medium break-words">{clean(s.step)}</p>
+                  <p className="text-[15px] leading-7 font-medium break-words">{stripLeadingOrdinal(clean(s.step))}</p>
                   {s.why ? (
                     <p className="text-sm leading-6 text-muted-foreground break-words">{clean(s.why)}</p>
                   ) : null}
@@ -560,6 +560,23 @@ const KeyFindings: React.FC<{ findings: KeyFinding[] }> = ({ findings }) => {
  * tends to emphasise the wrong half of a sentence. The model names the
  * numbers that matter; this renders exactly those.
  */
+/*
+ * A STEP THAT NUMBERS ITSELF, BESIDE A BADGE THAT ALSO NUMBERS IT.
+ *
+ * The list renders its own position in a circular badge, and the model
+ * frequently writes "1." at the front of the step text as well — so the live
+ * report showed "1. 1", "2. 2" down the whole checklist. Neither half is
+ * wrong on its own; printing both is.
+ *
+ * The badge wins, because it is the one that stays correct when a step is
+ * filtered out. Only a leading ordinal is removed — Arabic-Indic digits
+ * included, since the same model writes those for ar — and a sentence that
+ * merely begins with a number ("2 ბინა ერთ სართულზე") keeps it, because the
+ * separator is what marks an enumeration.
+ */
+const stripLeadingOrdinal = (text: string): string =>
+  text.replace(/^\s*[0-9٠-٩۰-۹]{1,2}\s*[.)؛:-]\s+/, '');
+
 const Metrics: React.FC<{ metrics: { label: string; value: string }[] }> = ({ metrics }) => (
   <div className="flex flex-wrap gap-2">
     {metrics.slice(0, 4).map((m, i) => (

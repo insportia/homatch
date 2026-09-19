@@ -159,6 +159,68 @@ const VerificationCasePage: React.FC = () => {
   }, [reload]);
 
   /*
+   * THE DOCUMENT ROW HAS TO BE RE-READ, OR THE RESULT IS NEVER SEEN.
+   *
+   * Measured on the live case 36f05c8f, document d4a86b9c (a 25 KB DOCX):
+   *
+   *   14:51:21.869  uploaded
+   *   14:51:49.828  analysis_state DONE, text and analysis persisted
+   *   14:52:15.230  background job COMPLETED
+   *
+   * The processor was never slow. `reload()` depends on [id] alone and runs
+   * once, so the page kept the row it fetched at 14:51:21 — where
+   * analysis_state was still QUEUED — and documentStatus() therefore returned
+   * QUEUED indefinitely. The customer watched "რიგშია წასაკითხად" on a
+   * document that had been ready for minutes.
+   *
+   * Two triggers, because either alone leaves a gap:
+   *
+   *   the job list   already polls every four seconds and is the fastest
+   *                  signal that something finished; a document whose job
+   *                  turned terminal is re-read immediately
+   *   the timer      covers the case the job list cannot see — a run started
+   *                  by another tab, or a row moved by the worker's own
+   *                  sweep — and stops as soon as nothing is in flight
+   */
+  const reloadDocuments = useCallback(async () => {
+    if (!id) return;
+    try {
+      setDocuments(await listWorkspaceDocuments(id));
+    } catch {
+      /* A failed refresh keeps the previous list rather than blanking it. */
+    }
+  }, [id]);
+
+  /** Documents whose own row says the work is not finished. */
+  const documentsInFlight = useMemo(
+    () => documents.some((d) => d.analysisState === 'QUEUED' || d.analysisState === 'RUNNING'),
+    [documents]
+  );
+
+  /** Terminal signatures of this case's document jobs, so the effect below
+   *  fires exactly when one of them lands rather than on every poll. */
+  const terminalDocumentJobs = useMemo(
+    () =>
+      allJobs
+        .filter((j) => j.subjectType === 'DOCUMENT' && isTerminal(j.state))
+        .map((j) => `${j.subjectId}:${j.state}`)
+        .sort()
+        .join(','),
+    [allJobs]
+  );
+
+  useEffect(() => {
+    if (!terminalDocumentJobs) return;
+    void reloadDocuments();
+  }, [terminalDocumentJobs, reloadDocuments]);
+
+  useEffect(() => {
+    if (!documentsInFlight) return;
+    const timer = setInterval(() => { void reloadDocuments(); }, 4000);
+    return () => clearInterval(timer);
+  }, [documentsInFlight, reloadDocuments]);
+
+  /*
    * The verification result.
    *
    * Separate from reload() because it may involve a model round-trip and the

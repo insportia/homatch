@@ -68,6 +68,27 @@ const directorName = (d: DirectorLike): string =>
 const directorRole = (d: DirectorLike): string =>
   typeof d === 'string' ? '' : str((d as { representation?: unknown })?.representation);
 
+/**
+ * Collapses entries naming the same person, preferring the one with a role.
+ *
+ * Matching is on the trimmed, case-folded name because the two shapes differ
+ * only in structure, never in spelling.
+ */
+function dedupeByName(list: DirectorLike[]): DirectorLike[] {
+  const seen = new Map<string, DirectorLike>();
+  for (const entry of list) {
+    const name = directorName(entry);
+    if (!name) continue;
+    const key = name.toLocaleLowerCase();
+    const existing = seen.get(key);
+    // A later entry replaces an earlier one only if it adds the role.
+    if (!existing || (!directorRole(existing) && directorRole(entry))) {
+      seen.set(key, entry);
+    }
+  }
+  return [...seen.values()];
+}
+
 /** One labelled fact. Wraps rather than truncates: names here are long. */
 function Fact({ icon: Icon, label, value }: {
   icon: typeof Building2; label: string; value: string;
@@ -99,7 +120,17 @@ export function CompanyIntelligenceCard({
   const idCode = str(company.idCode);
   if (!name && !idCode) return null;
 
-  const directors = arr(company.directors) as DirectorLike[];
+  /*
+   * ONE ROW PER PERSON.
+   *
+   * The stored profile holds two directors. The customer-facing copy of it
+   * reached this card carrying four entries — the same two people once as
+   * objects with a representation role and once as bare strings — so the card
+   * listed „კობა კვანტალიანი" twice and a reader could reasonably conclude the
+   * company has four directors. Deduplicated by name, keeping whichever entry
+   * actually states a role.
+   */
+  const directors = dedupeByName(arr(company.directors) as DirectorLike[]);
   const shareholders = arr(company.shareholders) as {
     name?: unknown; percentage?: unknown;
   }[];

@@ -254,6 +254,11 @@ export interface FinancingSession {
 
   ptiRule: MortgageRule<PtiLimitRuleData> | null;
   ltvRule: MortgageRule<LtvLimitRuleData> | null;
+  /* The full ACTIVE rule sets, for callers that re-run affordability
+     themselves — the consultant brief does, so that what the model is
+     told and what the screen shows come from one selection pass. */
+  ptiRules: MortgageRule<PtiLimitRuleData>[];
+  ltvRules: MortgageRule<LtvLimitRuleData>[];
   workspaceState: WorkspaceState;
 }
 
@@ -548,6 +553,8 @@ export function useFinancingSession(prefill?: { price?: number; currency?: strin
     referenceRate,
     ptiRule,
     ltvRule,
+    ptiRules,
+    ltvRules,
     workspaceState,
   };
 }

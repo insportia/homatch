@@ -1,30 +1,28 @@
-// HOMATCH HOME FINANCING — entering the loan, mostly by clicking.
+// THE INPUTS THAT ARE NOT THE CALCULATION.
 //
-// Three collapsing sections, only one of which is required: the loan
-// itself, then the bank's cost sheet, then income. They collapse into a
-// one-line summary once answered, and the topic beside them updates on
-// every click — there is nothing to submit.
+// The five fields anybody arrives with — price, deposit, term, rate,
+// currency — moved to the calculator at the top of the page, where
+// nothing stands in front of them. What is left here is everything a
+// bank's own paperwork adds: the origination fee, the monthly service
+// charge, mandatory insurance, valuation, a grace period, the rate
+// type, and the effective rate the bank itself quotes. Plus income,
+// which only the affordability tool needs.
 //
-// THE ONE FIELD THAT IS STILL TYPED
+// All of it is optional and all of it is COLLAPSED by default. Nobody
+// should have to decline seven questions to get a monthly payment.
 //
-// The nominal rate. See the note at the top of src/mortgage/presets.ts:
-// every other number here can be suggested from something already known
-// or from ordinary practice, but an interest rate is quoted by one bank
-// to one borrower on one day, and offering "12%" as a chip would be this
-// product putting a figure in somebody's head and then calculating with
-// it. So it is typed, and it says where to find the real one.
+// Entering any of it makes the effective rate more truthful, which is
+// why the section says what its absence costs rather than pretending
+// the loan has no fees.
 
 import React, { useMemo, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { formatMoney, formatPercent, intlLocaleFor } from '@/components/workspace/primitives';
+import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { ChipField } from '@/components/workspace/controls';
 import { NumberField, OptionField } from './fields';
-import { mortgageDerivedPercent } from '@/mortgage/presets';
 import type { DraftField, FinancingDraft } from './useFinancingSession';
-
-const CURRENCIES = ['GEL', 'USD', 'EUR'];
 
 const RATE_TYPES = [
   { value: 'FIXED', labelKey: 'mortgage_rate_type_fixed' },
@@ -88,18 +86,16 @@ function Section({ id, titleKey, descriptionKey, summary, complete, open, onTogg
   );
 }
 
-export function LoanBuilder({
+export function AdvancedInputs({
   draft,
   set,
   loanAmount,
   monthlyPayment,
-  errors,
 }: {
   draft: FinancingDraft;
   set: (field: DraftField, value: number | string | null) => void;
   loanAmount: number | null;
   monthlyPayment: number | null;
-  errors: string[];
 }) {
   const { t, lang } = useLanguage();
   const locale = intlLocaleFor(lang);
@@ -116,12 +112,6 @@ export function LoanBuilder({
     [draft.propertyPrice, draft.termMonths, loanAmount, monthlyPayment, currency],
   );
 
-  const loanComplete =
-    draft.propertyPrice !== null &&
-    draft.downPayment !== null &&
-    draft.termMonths !== null &&
-    draft.nominalAnnualRatePercent !== null;
-
   const costsComplete =
     draft.originationFeePercent !== null ||
     draft.monthlyFeeFlat !== null ||
@@ -132,126 +122,8 @@ export function LoanBuilder({
   const toggle = (id: string, fallback: boolean) =>
     setOpen((current) => ({ ...current, [id]: !isOpen(id, fallback) }));
 
-  const downPaymentPercent = mortgageDerivedPercent({
-    propertyPrice: draft.propertyPrice ?? undefined,
-    downPayment: draft.downPayment ?? undefined,
-  });
-
-  const loanSummary = loanComplete
-    ? [
-        formatMoney(draft.propertyPrice as number, currency, locale),
-        downPaymentPercent !== null ? `${formatPercent(downPaymentPercent, locale, 0)} ${t('mortgage_down')}` : null,
-        t('mortgage_years_value', { years: (draft.termMonths as number) / 12 }),
-        formatPercent(draft.nominalAnnualRatePercent as number, locale, 2),
-      ]
-        .filter(Boolean)
-        .join(' · ')
-    : null;
-
   return (
     <div className="space-y-3">
-      <Section
-        id="loan"
-        titleKey="mortgage_section_loan"
-        descriptionKey="mortgage_section_loan_desc"
-        summary={loanSummary}
-        complete={loanComplete}
-        open={isOpen('loan', !loanComplete)}
-        onToggle={() => toggle('loan', !loanComplete)}
-      >
-        <div>
-          <span className="mb-2.5 block text-sm font-medium text-foreground">{t('mortgage_label_currency')}</span>
-          <div className="inline-flex flex-wrap gap-1 rounded-xl border border-border bg-[hsl(var(--secondary))] p-1">
-            {CURRENCIES.map((code) => (
-              <button
-                key={code}
-                type="button"
-                onClick={() => set('currency', code)}
-                aria-pressed={currency === code}
-                className={cn(
-                  'min-h-[40px] rounded-lg px-4 text-sm font-medium transition-colors',
-                  currency === code
-                    ? 'bg-[hsl(var(--gold))] text-[hsl(var(--primary-foreground))]'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {code}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <NumberField
-          field="propertyPrice"
-          labelKey="mortgage_label_property_price"
-          kind="money"
-          currency={currency}
-          value={draft.propertyPrice}
-          onChange={(v) => set('propertyPrice', v)}
-          context={context}
-          required
-        />
-
-        <NumberField
-          field="downPayment"
-          labelKey="mortgage_label_down_payment"
-          kind="money"
-          currency={currency}
-          value={draft.downPayment}
-          onChange={(v) => set('downPayment', v)}
-          context={context}
-          required
-        >
-          {downPaymentPercent !== null ? (
-            <p className="mt-2 text-2xs text-muted-foreground">
-              {t('mortgage_down_payment_percent_preview', { pct: downPaymentPercent.toFixed(1) })}
-            </p>
-          ) : null}
-        </NumberField>
-
-        <NumberField
-          field="termMonths"
-          labelKey="mortgage_label_term"
-          kind="months"
-          currency={currency}
-          value={draft.termMonths}
-          onChange={(v) => set('termMonths', v)}
-          context={context}
-          required
-        />
-
-        {/* Typed, deliberately. See the file header. */}
-        <div>
-          <div className="mb-2.5 flex flex-wrap items-center gap-2">
-            <span id="mtg-rate" className="text-sm font-medium text-foreground">
-              {t('mortgage_label_nominal_rate')}
-            </span>
-            <span className="text-2xs text-muted-foreground">{t('mortgage_required')}</span>
-          </div>
-          <p className="mb-2.5 max-w-[60ch] text-2xs leading-relaxed text-muted-foreground">
-            {t('mortgage_label_nominal_rate_hint')}
-          </p>
-          <ChipField
-            presets={[]}
-            value={draft.nominalAnnualRatePercent ?? undefined}
-            onChange={(v) => set('nominalAnnualRatePercent', v)}
-            kind="percent"
-            currency={currency}
-            labelledBy="mtg-rate"
-          />
-        </div>
-
-        {errors.length ? (
-          <ul className="space-y-1 rounded-lg border border-[hsl(var(--destructive)/0.4)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3">
-            {errors.map((key) => (
-              <li key={key} className="text-sm text-[hsl(var(--destructive))]">
-                {t(key)}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </Section>
-
       <Section
         id="costs"
         titleKey="mortgage_section_costs"

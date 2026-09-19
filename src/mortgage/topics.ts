@@ -164,6 +164,24 @@ export const TOPIC_ORDER: TopicId[] = [
   'BEFORE_YOU_SIGN',
 ];
 
+/**
+ * The optional tools, in the order the shelf offers them.
+ *
+ * FIVE, NOT NINE. Four of the topics are no longer things a person
+ * chooses between: the monthly payment IS the result, the effective
+ * rate and the term ladder sit under Details, and "before you sign" is
+ * reading rather than a workflow. What is left here is the set that
+ * genuinely asks for more input before it can say anything, which is
+ * exactly the set worth putting behind a deliberate tap.
+ */
+export const TOOL_ORDER: TopicId[] = [
+  'EARLY_REPAYMENT',
+  'COMPARE_OFFERS',
+  'AFFORDABILITY',
+  'REFINANCING',
+  'GOVERNMENT_PROGRAMS',
+];
+
 /* ── Readiness ──────────────────────────────────────────────────────── */
 
 export interface WorkspaceState {

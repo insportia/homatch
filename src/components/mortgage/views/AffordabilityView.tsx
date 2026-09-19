@@ -34,6 +34,7 @@ import type {
 function RatioCard({
   titleKey,
   explainKey,
+  acronymKey,
   value,
   limit,
   within,
@@ -42,6 +43,8 @@ function RatioCard({
 }: {
   titleKey: string;
   explainKey: string;
+  /** The industry's name for the same thing, said after the plain one. */
+  acronymKey: string;
   value: number | null;
   limit: number | null;
   within: boolean | null;
@@ -54,6 +57,10 @@ function RatioCard({
     <div className="rounded-xl border border-border bg-[hsl(var(--secondary))] p-4 sm:p-5">
       <h3 className="font-display text-base font-semibold text-foreground">{t(titleKey)}</h3>
       <p className="mt-1.5 max-w-[48ch] text-sm leading-relaxed text-muted-foreground">{t(explainKey)}</p>
+      {/* THE PLAIN SENTENCE LEADS AND THE ACRONYM FOLLOWS. A borrower
+          who has never met "PTI" learns nothing from a heading that
+          opens with it; one who has still recognises it here. */}
+      <p className="mt-1 text-2xs text-muted-foreground">{t(acronymKey)}</p>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <div>
@@ -163,6 +170,7 @@ export function AffordabilityView({
         <RatioCard
           titleKey="mortgage_afford_pti_title"
           explainKey="mortgage_afford_pti_explain"
+          acronymKey="mortgage_afford_pti_acronym"
           value={affordability.ptiPercent}
           limit={ptiRule?.data.maxPtiPercent ?? null}
           within={affordability.ptiWithinPublishedLimit}
@@ -172,6 +180,7 @@ export function AffordabilityView({
         <RatioCard
           titleKey="mortgage_afford_ltv_title"
           explainKey="mortgage_afford_ltv_explain"
+          acronymKey="mortgage_afford_ltv_acronym"
           value={affordability.ltvPercent}
           limit={ltvRule?.data.maxLtvPercent ?? null}
           within={affordability.ltvWithinPublishedLimit}

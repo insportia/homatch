@@ -15,7 +15,7 @@
     "i18n:keys": "node scripts/i18n-keys-check.mjs",
     "i18n:all": "node scripts/i18n-check.mjs && node scripts/i18n-keys-check.mjs && node scripts/i18n-audit.mjs && node scripts/investment-i18n-coverage.mjs && node scripts/mortgage-i18n-coverage.mjs",
     "build:harness": "vite build --mode harness",
-    "test:mobile": "node --test tests/mobile/mobileOverflow.test.mjs tests/mobile/routeOverflow.test.mjs tests/mobile/chatComposer.test.mjs tests/mobile/formControls.test.mjs tests/mobile/routeHealth.test.mjs tests/mobile/textContrast.test.mjs tests/mobile/shellAndMotion.test.mjs tests/mobile/appShell.test.mjs tests/mobile/tasksAndContracts.test.mjs tests/mobile/mortgageWorkspace.test.mjs",
+    "test:mobile": "node --test tests/mobile/mobileOverflow.test.mjs tests/mobile/routeOverflow.test.mjs tests/mobile/chatComposer.test.mjs tests/mobile/formControls.test.mjs tests/mobile/routeHealth.test.mjs tests/mobile/textContrast.test.mjs tests/mobile/shellAndMotion.test.mjs tests/mobile/appShell.test.mjs tests/mobile/tasksAndContracts.test.mjs tests/mobile/mortgageConsultant.test.mjs",
     "test:developer": "node --test tests/browser/developerAcceptance.test.mjs",
     "test:onboarding": "node --test tests/browser/developerOnboarding.test.mjs",
     "test:floorplan": "node --test tests/browser/floorplanPipeline.test.mjs",

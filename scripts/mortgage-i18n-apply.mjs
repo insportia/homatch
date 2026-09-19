@@ -16,6 +16,7 @@ import { MORTGAGE_STRINGS_2 } from './mortgage-i18n-data2.mjs';
 import { MORTGAGE_STRINGS_3 } from './mortgage-i18n-data3.mjs';
 import { MORTGAGE_STRINGS_4 } from './mortgage-i18n-data4.mjs';
 import { MORTGAGE_STRINGS_5 } from './mortgage-i18n-data5.mjs';
+import { MORTGAGE_STRINGS_6 } from './mortgage-i18n-data6.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(__dirname, '..', 'src', 'i18n', 'translations.ts');
@@ -27,6 +28,7 @@ const TABLE = {
   ...MORTGAGE_STRINGS_3,
   ...MORTGAGE_STRINGS_4,
   ...MORTGAGE_STRINGS_5,
+  ...MORTGAGE_STRINGS_6,
 };
 
 function literal(value) {

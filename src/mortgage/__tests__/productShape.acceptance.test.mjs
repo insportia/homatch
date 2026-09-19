@@ -237,3 +237,127 @@ test('the knowledge base cannot reference a key that does not exist', () => {
   const missing = [...referenced].filter((key) => !new RegExp(`^\\s+${key}:`, 'm').test(english));
   assert.deepEqual(missing, [], `knowledge-base keys with no translation: ${missing.join(', ')}`);
 });
+
+/* ── Simple on the surface ──────────────────────────────────────── */
+
+test('the nine-topic chooser is not the way in any more', () => {
+  // The screen that stood between a person and a monthly payment. Its
+  // capabilities all survive; the toll gate does not.
+  assert.ok(!exists('src/components/mortgage/TopicHome.tsx'), 'the topic chooser came back');
+  const page = read('src/pages/MortgagePage.tsx');
+  assert.ok(!page.includes('TopicHome'));
+  assert.ok(page.includes('SimpleCalculator'), 'the calculator is not on the page');
+
+  // The calculator is rendered unconditionally; everything else waits
+  // for a result. A regression here would put the form behind a state.
+  const calculatorAt = page.indexOf('<SimpleCalculator');
+  const gateAt = page.indexOf('{showResult && result ? (');
+  assert.ok(calculatorAt > 0 && gateAt > calculatorAt, 'the calculator is inside the result gate');
+});
+
+test('the calculator asks five things and nothing else', () => {
+  const src = read('src/components/mortgage/SimpleCalculator.tsx');
+  for (const label of [
+    'mortgage_label_currency',
+    'mortgage_label_property_price',
+    'mortgage_label_down_payment',
+    'mortgage_label_term_years',
+    'mortgage_label_nominal_rate',
+  ]) {
+    assert.ok(src.includes(label), `the calculator does not ask for ${label}`);
+  }
+  // Bank costs and income belong to the advanced section, one scroll down.
+  for (const advanced of [
+    'originationFeePercent', 'monthlyFeeFlat', 'mandatoryInsuranceAnnualFlat',
+    'valuationFeeFlat', 'gracePeriodMonths', 'monthlyNetIncome',
+  ]) {
+    assert.ok(!src.includes(advanced), `${advanced} is an advanced input, not a primary one`);
+  }
+});
+
+test('the Calculate button can always be pressed', () => {
+  const src = read('src/components/mortgage/SimpleCalculator.tsx');
+  assert.ok(src.includes("t('mortgage_calculate')"), 'there is no Calculate action');
+  assert.ok(!/disabled=/.test(src), 'a disabled button cannot say what is missing');
+  assert.ok(src.includes('firstProblem'), 'nothing names the field that is missing');
+  // Placeholders that read as values were the original defect.
+  assert.ok(!/placeholder="\d/.test(src) && !/placeholder={`?\d/.test(src));
+});
+
+test('the three headline figures come before any explanation', () => {
+  const src = read('src/components/mortgage/ResultHeadline.tsx');
+  const monthly = src.indexOf('result.monthlyPayment');
+  const interest = src.indexOf('result.totalInterest');
+  const repayment = src.indexOf('result.totalRepayment');
+  for (const [name, at] of [['monthly payment', monthly], ['total interest', interest], ['total repayment', repayment]]) {
+    assert.ok(at > 0, `${name} is missing from the result`);
+  }
+  assert.ok(monthly < interest, 'the monthly payment is not first');
+  // The sentence explains the figures; it must not precede them.
+  assert.ok(src.indexOf('mortgage_result_sentence') > repayment);
+});
+
+test('the consultant is handed engine output, and never asked to compute', () => {
+  const brief = read('src/mortgage/consultantBrief.ts');
+  for (const engine of [
+    'runFullMortgageCalculation', 'compareTerms', 'calculateEarlyRepayment',
+    'computeAffordability', 'compareOffers', 'calculateRefinancing', 'buildRateBreakdown',
+  ]) {
+    assert.ok(brief.includes(engine), `the brief does not use ${engine}`);
+  }
+  // Every what-if goes through variant(), which calls the real engine.
+  assert.ok(!/Math\.pow\(/.test(brief), 'the brief computes something itself');
+  assert.ok(brief.includes('unknown'), 'the brief does not say what it is missing');
+
+  const panel = read('src/components/mortgage/ConsultantPanel.tsx');
+  assert.ok(panel.includes('setPageContext'), 'the scenario never reaches the model');
+  assert.ok(panel.includes('mortgage: brief'), 'the brief is not what is sent');
+  assert.ok(panel.includes('useAIChat'), 'the panel does not use the shared assistant');
+
+  // And the edge function is told the figures are authoritative.
+  const fn = read('supabase/functions/homatch-ai/index.ts');
+  assert.ok(fn.includes('MORTGAGE NUMBERS ARE NOT YOURS TO COMPUTE'));
+});
+
+test('every tool the shelf dropped is still reachable', () => {
+  const page = read('src/pages/MortgagePage.tsx');
+  for (const view of [
+    'EarlyRepaymentView', 'OffersView', 'AffordabilityView', 'RefinancingView',
+    'ProgramsView', 'BeforeYouSignView', 'ChecklistView', 'RateView', 'TermsView', 'ScheduleView',
+  ]) {
+    const reachable = page.includes(view) || read('src/components/mortgage/DetailsSection.tsx').includes(view);
+    assert.ok(reachable, `${view} has no call site`);
+  }
+});
+
+/* ── Currency ───────────────────────────────────────────────────── */
+
+test('six currencies, offered from one registry', () => {
+  const registry = read('src/mortgage/currencies.ts');
+  for (const code of ['GEL', 'USD', 'EUR', 'GBP', 'TRY', 'AED']) {
+    assert.ok(registry.includes(`'${code}'`), `${code} is not in the registry`);
+  }
+  // The UI reads the registry rather than carrying its own list, so a
+  // seventh currency is one line in one file.
+  const calculator = read('src/components/mortgage/SimpleCalculator.tsx');
+  assert.ok(calculator.includes('MORTGAGE_CURRENCIES'));
+  assert.ok(!/\['GEL',\s*'USD'/.test(calculator), 'the calculator hardcodes a currency list');
+});
+
+test('no mortgage component formats money in a fixed currency', () => {
+  // One scenario, one currency, end to end: a literal here is how a USD
+  // loan ends up quoting a lari payment.
+  for (const file of UI_FILES) {
+    const src = read(file);
+    assert.ok(!/formatMoney\([^)]*,\s*'(?:GEL|USD|EUR|GBP|TRY|AED)'/.test(src), `${file} pins a currency`);
+  }
+});
+
+test('nothing in the mortgage product converts between currencies', () => {
+  // The calculation never needs a rate, and inventing one would put an
+  // unquoted number into somebody's repayment total.
+  for (const file of [...UI_FILES, ...walk('src/mortgage')]) {
+    const src = read(file).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '');
+    assert.ok(!/exchangeRate|fxRate|convertCurrency/i.test(src), `${file} looks like it converts currency`);
+  }
+});

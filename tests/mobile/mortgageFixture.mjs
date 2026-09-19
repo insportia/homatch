@@ -234,15 +234,27 @@ export const MORTGAGE_DRAFT = {
 export const MORTGAGE_DRAFT_KEY = 'homatch.mortgage.draft.v1';
 export const MORTGAGE_TOPIC_KEY = 'homatch.mortgage.topic.v1';
 
-/** Every topic the workspace can open, in the order the home lists them. */
-export const MORTGAGE_TOPICS = [
-  'MONTHLY_PAYMENT',
-  'AFFORDABILITY',
-  'UNDERSTAND_RATE',
-  'COMPARE_TERMS',
-  'COMPARE_OFFERS',
-  'EARLY_REPAYMENT',
-  'REFINANCING',
-  'GOVERNMENT_PROGRAMS',
-  'BEFORE_YOU_SIGN',
+/**
+ * The optional tools, and the module each one must produce.
+ *
+ * Five, not the nine the page used to open with: the monthly payment is
+ * now the result, the effective rate and the term ladder live under
+ * Details, and "before you sign" is reading rather than a workflow.
+ */
+export const MORTGAGE_TOOLS = [
+  { id: 'EARLY_REPAYMENT', anchor: '#early-input' },
+  { id: 'COMPARE_OFFERS', anchor: '#offers-input' },
+  { id: 'AFFORDABILITY', anchor: '#affordability, #income' },
+  { id: 'REFINANCING', anchor: '#refi-input' },
+  { id: 'GOVERNMENT_PROGRAMS', anchor: '[id^="program-"]' },
 ];
+
+/** What a result rendered in each currency must and must not contain. */
+export const CURRENCY_MARKERS = {
+  GEL: { present: ['₾', 'GEL'], absent: ['₺', '£', '€', 'AED'] },
+  USD: { present: ['$', 'USD'], absent: ['₾', '₺', '£', '€', 'AED'] },
+  EUR: { present: ['€', 'EUR'], absent: ['₾', '₺', '£', 'AED'] },
+  GBP: { present: ['£', 'GBP'], absent: ['₾', '₺', '€', 'AED'] },
+  TRY: { present: ['₺', 'TRY'], absent: ['₾', '£', '€', 'AED'] },
+  AED: { present: ['AED', 'د.إ'], absent: ['₾', '₺', '£', '€'] },
+};

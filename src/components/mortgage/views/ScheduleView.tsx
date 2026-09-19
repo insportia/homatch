@@ -1,5 +1,9 @@
-// HOMATCH HOME FINANCING — what it costs a month, and where each month
-// actually goes.
+// WHERE EACH MONTH ACTUALLY GOES.
+//
+// The four headline figures used to live here too. They moved to the
+// top of the page, where the answer belongs; what is left is the part
+// somebody opens deliberately — the split of the first payment, and the
+// schedule behind it.
 //
 // WHY THE SCHEDULE IS NOT A TABLE ON A PHONE
 //
@@ -16,8 +20,7 @@
 import React, { useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { Metric, Module, formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
-import { fig } from '../fields';
+import { Module, formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import type { AmortizationRow, MortgageCalculationResult } from '@/mortgage/types';
 
 /**
@@ -40,7 +43,7 @@ export function scheduleHighlights(schedule: AmortizationRow[]): AmortizationRow
   return [...picked.values()].sort((a, b) => a.month - b.month);
 }
 
-export function PaymentView({
+export function ScheduleView({
   result,
   currency,
 }: {
@@ -61,43 +64,16 @@ export function PaymentView({
   return (
     <>
       <Module
-        id="payment"
-        eyebrowKey="mortgage_mod_payment_eyebrow"
-        titleKey="mortgage_mod_payment_title"
-        subtitleKey="mortgage_mod_payment_sub"
+        id="schedule"
+        eyebrowKey="mortgage_mod_schedule_eyebrow"
+        titleKey="mortgage_schedule_title"
+        subtitleKey="mortgage_schedule_explainer"
       >
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <Metric
-            labelKey="mortgage_metric_monthly_payment"
-            figure={fig(result.monthlyPayment)}
-            kind="money"
-            currency={currency}
-            emphasis
-            noteKey="mortgage_metric_monthly_payment_note"
-          />
-          <Metric
-            labelKey="mortgage_metric_loan_amount"
-            figure={fig(result.loanAmount)}
-            kind="money"
-            currency={currency}
-          />
-          <Metric
-            labelKey="mortgage_metric_total_repayment"
-            figure={fig(result.totalRepayment)}
-            kind="money"
-            currency={currency}
-          />
-          <Metric
-            labelKey="mortgage_metric_total_interest"
-            figure={fig(result.totalInterest)}
-            kind="money"
-            currency={currency}
-            noteKey="mortgage_metric_total_interest_note"
-          />
-        </div>
-
+        {/* Where the first payment actually goes. The single most
+            useful thing about an amortizing loan, and the one nobody is
+            told: early on, most of it is interest. */}
         {firstRow && firstRow.totalPayment > 0 ? (
-          <div className="mt-8">
+          <div className="mb-8">
             <p className="mb-2.5 text-sm text-muted-foreground">{t('mortgage_first_payment_split')}</p>
             <div className="flex h-9 w-full overflow-hidden rounded-lg" dir="ltr">
               <div
@@ -129,14 +105,7 @@ export function PaymentView({
             </p>
           </div>
         ) : null}
-      </Module>
 
-      <Module
-        id="schedule"
-        eyebrowKey="mortgage_mod_schedule_eyebrow"
-        titleKey="mortgage_schedule_title"
-        subtitleKey="mortgage_schedule_explainer"
-      >
         {/* Cards on a phone, a table from `sm` up. Two renderings of the
             same rows rather than one rendering that scrolls sideways. */}
         <ul className="space-y-2 sm:hidden">

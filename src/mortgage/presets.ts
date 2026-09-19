@@ -17,6 +17,7 @@
 // Plain data, no React, so the tests can import it directly.
 
 import type { MortgageInput } from './types.ts';
+import { mortgageCurrency } from './currencies.ts';
 import type { ValueSource } from '../components/workspace/sources.ts';
 
 export interface MortgagePreset {
@@ -34,16 +35,29 @@ const positive = (value: number | undefined): value is number =>
 const plain = (values: readonly number[], kind: ValueSource = 'EXAMPLE'): MortgagePreset[] =>
   values.map((value) => ({ value, kind }));
 
-/** Round property prices, in whichever currency. Illustrations only. */
-const PRICE_POINTS = [60_000, 100_000, 150_000, 250_000, 400_000];
 const DOWN_PAYMENT_PCT = [10, 20, 30, 50];
 const TERM_YEARS = [10, 15, 20, 25, 30];
 const GRACE_MONTHS = [0, 3, 6, 12];
 /* Origination fees are quoted as a share of the loan and cluster tightly
    in this market; these are CONVENTION, not measurements. */
 const ORIGINATION_PCT = [0, 0.5, 1, 1.5, 2];
-const MONTHLY_FEE = [0, 5, 10, 20];
 const EXTRA_PAYMENT_MONTHS = [12, 24, 36, 60];
+
+/*
+ * FLAT MONEY IS A MULTIPLE OF THE CURRENCY'S OWN SMALL STEP.
+ *
+ * "0, 5, 10, 20" is a sensible set of monthly service fees in lari and a
+ * meaningless one in Turkish lira. These multipliers reproduce the
+ * original GEL/USD/EUR figures exactly (their step is 5) and stay in
+ * proportion everywhere else. No exchange rate is involved: see the note
+ * at the top of ./currencies.ts.
+ */
+const MONTHLY_FEE_STEPS = [0, 1, 2, 4];
+const VALUATION_STEPS = [0, 20, 30, 50];
+const INSURANCE_STEPS = [0, 30, 60, 120];
+const EXISTING_DEBT_STEPS = [0, 20, 50, 100];
+const REFINANCING_FEE_STEPS = [0, 40, 100, 200];
+const RECURRING_EXTRA_STEPS = [0, 10, 20, 50];
 
 export interface PresetContext {
   propertyPrice?: number;
@@ -64,10 +78,14 @@ export function mortgagePresetsFor(field: string, context: PresetContext): Mortg
   const price = context.propertyPrice;
   const loan = context.loanAmount;
   const payment = context.monthlyPayment;
+  const money = mortgageCurrency(context.currency);
+  /** Flat amounts in the chosen currency's own units. */
+  const steps = (multipliers: readonly number[], kind: ValueSource = 'CONVENTION') =>
+    plain(multipliers.map((m) => m * money.smallStep), kind);
 
   switch (field) {
     case 'propertyPrice':
-      return plain(PRICE_POINTS);
+      return plain(money.pricePoints);
 
     case 'downPayment': {
       // The one field where the percentage IS the decision: nobody
@@ -96,15 +114,15 @@ export function mortgagePresetsFor(field: string, context: PresetContext): Mortg
       return plain(ORIGINATION_PCT, 'CONVENTION');
 
     case 'monthlyFeeFlat':
-      return plain(MONTHLY_FEE, 'CONVENTION');
+      return steps(MONTHLY_FEE_STEPS);
 
     case 'valuationFeeFlat':
       // A one-off valuation is a flat professional fee, not a share of
       // anything, so these are round money amounts rather than percentages.
-      return plain([0, 100, 150, 250], 'CONVENTION');
+      return steps(VALUATION_STEPS);
 
     case 'mandatoryInsuranceAnnualFlat': {
-      if (!positive(loan)) return plain([0, 150, 300, 600], 'CONVENTION');
+      if (!positive(loan)) return steps(INSURANCE_STEPS);
       return [0.1, 0.2, 0.35].map((pct) => ({
         value: round((loan * pct) / 100),
         kind: 'CONVENTION' as const,
@@ -126,7 +144,7 @@ export function mortgagePresetsFor(field: string, context: PresetContext): Mortg
     }
 
     case 'existingMonthlyDebtObligations':
-      return plain([0, 100, 250, 500], 'EXAMPLE');
+      return steps(EXISTING_DEBT_STEPS, 'EXAMPLE');
 
     case 'extraPaymentAmount': {
       if (positive(payment)) {
@@ -158,7 +176,7 @@ export function mortgagePresetsFor(field: string, context: PresetContext): Mortg
     }
 
     case 'recurringMonthlyExtra': {
-      if (!positive(payment)) return plain([0, 50, 100, 250], 'EXAMPLE');
+      if (!positive(payment)) return steps(RECURRING_EXTRA_STEPS, 'EXAMPLE');
       return [0, 0.1, 0.25, 0.5].map((share) => ({
         value: round(payment * share),
         kind: 'EXAMPLE' as const,
@@ -166,7 +184,7 @@ export function mortgagePresetsFor(field: string, context: PresetContext): Mortg
     }
 
     case 'refinancingFeesFlat':
-      return plain([0, 200, 500, 1000], 'CONVENTION');
+      return steps(REFINANCING_FEE_STEPS);
 
     default:
       return [];

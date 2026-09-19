@@ -147,6 +147,40 @@ export function deployedRef(component) {
   }
 }
 
+/**
+ * Is `head` an ancestor of `base` -- that is, has this run been overtaken?
+ *
+ * THE DOWNGRADE THIS PREVENTS.
+ *
+ * `git diff A..B --name-only` names the files that DIFFER. It does not care
+ * which way round they are, so a run whose deployed-edge base is a descendant
+ * of its own HEAD sees a long list of "changes" and would happily upload the
+ * older code over the newer, reporting success for a downgrade.
+ *
+ * Runs queue rather than cancel, so the ordinary case is safe by ordering.
+ * This covers the ones that are not ordinary: a re-run of an old commit, a
+ * pending run discarded and revived, and a deployed ref that is falsely ahead
+ * -- which is not hypothetical, because refs/deployed/edge was falsely ahead
+ * twice on 2026-09-19 and this is what a third occurrence would meet.
+ *
+ * Reported as SUPERSEDED, never as UP_TO_DATE. The two are opposite facts:
+ * one means production already has this, the other means production has
+ * something NEWER than this and the run should keep its hands off. Collapsing
+ * them would hide precisely the situation that needs a person to look.
+ */
+export function isSuperseded(base, head = 'HEAD') {
+  if (!base) return false;
+  try {
+    const a = git('rev-parse', `${head}^{commit}`);
+    const b = git('rev-parse', `${base}^{commit}`);
+    if (a === b) return false;
+    git('merge-base', '--is-ancestor', a, b);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function changedSince(base, head = 'HEAD') {
   if (!base) return null;
   try {
@@ -169,6 +203,10 @@ export function deploymentScope({ head = 'HEAD', root = ROOT } = {}) {
 
   for (const component of COMPONENTS) {
     const base = deployedRef(component);
+    if (isSuperseded(base, head)) {
+      scope.components[component] = { deploy: false, reason: 'SUPERSEDED', base };
+      continue;
+    }
     const changed = changedSince(base, head);
     if (base === null || changed === null) {
       scope.components[component] = { deploy: true, reason: base === null ? 'NEVER_RECORDED' : 'BASE_UNREACHABLE', base };

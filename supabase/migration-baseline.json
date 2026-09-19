@@ -1,0 +1,807 @@
+{
+  "$comment": [
+    "A FROZEN BASELINE, not a mirror of production.",
+    "",
+    "The migration-history reconciliation of 2026-09-19 established which",
+    "migrations had been applied up to baselineThrough, and what the anomalies",
+    "among them were. That is history, and history does not change: nothing",
+    "anybody does tomorrow can add a migration to yesterday. So this file is",
+    "closed at a version and never needs refreshing.",
+    "",
+    "It deliberately does NOT record how many rows production holds. The first",
+    "version of this file did, and the number was wrong within hours because",
+    "another workstream applied a migration — a fact with a shelf life of",
+    "minutes is not a safety invariant, and a test built on one teaches people",
+    "to edit numbers until it passes.",
+    "",
+    "The invariant it supports: every repo migration at or below",
+    "baselineThrough must appear in appliedVersions. A newer migration is",
+    "ordinary work and is out of scope by construction.",
+    "",
+    "scripts/migration-baseline.mjs is the audit; tests/matrix/",
+    "migrationHistory.test.mjs runs it against this repository and against",
+    "synthetic drift. Regenerate ONLY as part of a fresh, deliberate",
+    "reconciliation — never to make a test pass."
+  ],
+  "reconciledAt": "2026-09-19",
+  "projectRef": "ptxajsjhobhvsfhmutjn",
+  "baselineThrough": "20260919180000",
+  "appliedVersions": [
+    "00021",
+    "00022",
+    "00023",
+    "00024",
+    "00025",
+    "00026",
+    "00029",
+    "00033",
+    "20260827203146",
+    "20260827205525",
+    "20260827212117",
+    "20260827213737",
+    "20260827221926",
+    "20260828071514",
+    "20260828155942",
+    "20260828155957",
+    "20260828161522",
+    "20260828172330",
+    "20260828175628",
+    "20260828181249",
+    "20260828181343",
+    "20260828184724",
+    "20260828192215",
+    "20260828193424",
+    "20260828194650",
+    "20260828194913",
+    "20260828195119",
+    "20260829000001",
+    "20260829000002",
+    "20260829000003",
+    "20260829042406",
+    "20260829073846",
+    "20260829090000",
+    "20260829094528",
+    "20260829094636",
+    "20260829110613",
+    "20260829120232",
+    "20260829120240",
+    "20260829125931",
+    "20260829130000",
+    "20260829130009",
+    "20260829130100",
+    "20260829133614",
+    "20260829133636",
+    "20260829133650",
+    "20260829134919",
+    "20260829135414",
+    "20260829135706",
+    "20260829140000",
+    "20260829140217",
+    "20260829150950",
+    "20260829153000",
+    "20260829153100",
+    "20260829160444",
+    "20260829160545",
+    "20260829162835",
+    "20260829163238",
+    "20260829170000",
+    "20260829180000",
+    "20260829181000",
+    "20260829190000",
+    "20260829190727",
+    "20260829190955",
+    "20260829192537",
+    "20260829193806",
+    "20260829200000",
+    "20260830041907",
+    "20260830041944",
+    "20260830042243",
+    "20260830063217",
+    "20260830063240",
+    "20260830120000",
+    "20260830120100",
+    "20260830120200",
+    "20260830130000",
+    "20260830130100",
+    "20260831095901",
+    "20260831100108",
+    "20260831100126",
+    "20260831100404",
+    "20260831100500",
+    "20260831100545",
+    "20260831120000",
+    "20260831120100",
+    "20260831120200",
+    "20260831130000",
+    "20260901111039",
+    "20260901120000",
+    "20260902072337",
+    "20260902132906",
+    "20260903171214",
+    "20260903171328",
+    "20260903174151",
+    "20260903182004",
+    "20260903185408",
+    "20260903185557",
+    "20260904060259",
+    "20260904060610",
+    "20260904064202",
+    "20260904065639",
+    "20260904071500",
+    "20260904071557",
+    "20260904105319",
+    "20260904110000",
+    "20260905222421",
+    "20260905222923",
+    "20260906041157",
+    "20260906061932",
+    "20260906071901",
+    "20260906120000",
+    "20260906130000",
+    "20260906140000",
+    "20260907120000",
+    "20260907173116",
+    "20260907173141",
+    "20260909120000",
+    "20260909213130",
+    "20260909213430",
+    "20260910054824",
+    "20260910060642",
+    "20260910061500",
+    "20260910090000",
+    "20260910100000",
+    "20260910110000",
+    "20260910120000",
+    "20260911090000",
+    "20260911091000",
+    "20260911092112",
+    "20260911092127",
+    "20260911092323",
+    "20260911100000",
+    "20260911102832",
+    "20260911103343",
+    "20260911110000",
+    "20260911120000",
+    "20260911122150",
+    "20260911130000",
+    "20260911135522",
+    "20260911140000",
+    "20260911150000",
+    "20260911160000",
+    "20260911170000",
+    "20260911171259",
+    "20260911171339",
+    "20260911171348",
+    "20260911171428",
+    "20260911171533",
+    "20260911180000",
+    "20260911190000",
+    "20260911192914",
+    "20260911193205",
+    "20260911193306",
+    "20260911193358",
+    "20260911193401",
+    "20260911193422",
+    "20260911193543",
+    "20260911193725",
+    "20260911193839",
+    "20260911193914",
+    "20260911194005",
+    "20260911194022",
+    "20260911194500",
+    "20260911194635",
+    "20260911194742",
+    "20260911194806",
+    "20260911195000",
+    "20260911195100",
+    "20260911195200",
+    "20260911195357",
+    "20260911200000",
+    "20260911200040",
+    "20260911200206",
+    "20260911200253",
+    "20260911202010",
+    "20260911202247",
+    "20260911202302",
+    "20260911202334",
+    "20260911203629",
+    "20260911203717",
+    "20260911203804",
+    "20260911204005",
+    "20260911204020",
+    "20260911204108",
+    "20260911204157",
+    "20260911204211",
+    "20260911204338",
+    "20260911204536",
+    "20260911204617",
+    "20260911204633",
+    "20260911204714",
+    "20260911204845",
+    "20260911205021",
+    "20260911205757",
+    "20260911210000",
+    "20260911210343",
+    "20260911210500",
+    "20260911211516",
+    "20260911211715",
+    "20260911212114",
+    "20260911212154",
+    "20260911212232",
+    "20260911212617",
+    "20260911212850",
+    "20260911212914",
+    "20260911212930",
+    "20260911213259",
+    "20260911213331",
+    "20260911213408",
+    "20260911213453",
+    "20260911213925",
+    "20260911220000",
+    "20260911221552",
+    "20260911225000",
+    "20260911230000",
+    "20260911240000",
+    "20260911250000",
+    "20260911260000",
+    "20260911265000",
+    "20260911270000",
+    "20260911280000",
+    "20260911290000",
+    "20260912090000",
+    "20260912100000",
+    "20260912110000",
+    "20260912110500",
+    "20260912203600",
+    "20260912203630",
+    "20260912203644",
+    "20260912203659",
+    "20260912203724",
+    "20260912203738",
+    "20260912203809",
+    "20260912203825",
+    "20260912203838",
+    "20260912203852",
+    "20260912203931",
+    "20260912203946",
+    "20260912204013",
+    "20260913045842",
+    "20260913062018",
+    "20260913071104",
+    "20260913071231",
+    "20260913090000",
+    "20260913093746",
+    "20260913120000",
+    "20260913130000",
+    "20260914084152",
+    "20260914090000",
+    "20260914094405",
+    "20260914102732",
+    "20260914104737",
+    "20260914110207",
+    "20260914110314",
+    "20260914115745",
+    "20260914115846",
+    "20260914120015",
+    "20260914125943",
+    "20260914130207",
+    "20260914134531",
+    "20260914140000",
+    "20260914150000",
+    "20260914160000",
+    "20260914170000",
+    "20260914174653",
+    "20260914184530",
+    "20260914185037",
+    "20260914185402",
+    "20260914185414",
+    "20260914190000",
+    "20260914200000",
+    "20260914200659",
+    "20260914210000",
+    "20260914210900",
+    "20260914220000",
+    "20260914230000",
+    "20260914234500",
+    "20260914235500",
+    "20260915043212",
+    "20260915043423",
+    "20260915043646",
+    "20260915043816",
+    "20260915044013",
+    "20260915044135",
+    "20260915044254",
+    "20260915044315",
+    "20260915044559",
+    "20260915053416",
+    "20260915053458",
+    "20260915053735",
+    "20260915054025",
+    "20260915055439",
+    "20260915055450",
+    "20260915055707",
+    "20260915060605",
+    "20260915061218",
+    "20260915083412",
+    "20260915090000",
+    "20260915100000",
+    "20260915110000",
+    "20260915120000",
+    "20260915130000",
+    "20260915140000",
+    "20260915150000",
+    "20260915160000",
+    "20260915170000",
+    "20260915180000",
+    "20260915190000",
+    "20260915200000",
+    "20260915210000",
+    "20260915220000",
+    "20260915230000",
+    "20260915240000",
+    "20260915250000",
+    "20260915260000",
+    "20260916100000",
+    "20260916171837",
+    "20260916211837",
+    "20260917035356",
+    "20260917120000",
+    "20260917140000",
+    "20260918120000",
+    "20260918130000",
+    "20260918185631",
+    "20260918202239",
+    "20260918205420",
+    "20260918213214",
+    "20260918213458",
+    "20260918214127",
+    "20260919120000",
+    "20260919160000",
+    "20260919170000",
+    "20260919180000"
+  ],
+  "unversionedProductionChanges": [
+    {
+      "version": "20260831100126",
+      "name": "pricing_wallet_foundation_lock_down_service_only_rpcs"
+    },
+    {
+      "version": "20260831100500",
+      "name": "lock_down_wallet_and_trigger_functions_from_public"
+    },
+    {
+      "version": "20260831100545",
+      "name": "lock_down_live_chat_trigger_functions"
+    },
+    {
+      "version": "20260907173141",
+      "name": "mortgage_feature_v1_seed_rules"
+    },
+    {
+      "version": "20260911171259",
+      "name": "site_studio_tables_rls_grants"
+    },
+    {
+      "version": "20260911171339",
+      "name": "site_studio_storage_bucket"
+    },
+    {
+      "version": "20260911171348",
+      "name": "site_studio_read_functions"
+    },
+    {
+      "version": "20260911171428",
+      "name": "site_studio_write_functions_grants"
+    },
+    {
+      "version": "20260911194742",
+      "name": "billing_ai_cost_from_price_book"
+    },
+    {
+      "version": "20260911213259",
+      "name": "background_job_cancel_releases_reservation"
+    },
+    {
+      "version": "20260911213331",
+      "name": "background_job_cancel_defers_release_to_worker"
+    },
+    {
+      "version": "20260911221552",
+      "name": "background_job_claim_is_a_compare_and_swap"
+    },
+    {
+      "version": "20260912203600",
+      "name": "communications_hub_part1_agents_channels_templates"
+    },
+    {
+      "version": "20260912203630",
+      "name": "communications_hub_part2_conversations_messages_events"
+    },
+    {
+      "version": "20260912203644",
+      "name": "communications_hub_part3_trust_risk_talk_routes"
+    },
+    {
+      "version": "20260912203659",
+      "name": "communications_hub_part4_widen_outreach_and_jobs"
+    },
+    {
+      "version": "20260912203724",
+      "name": "communications_hub_part5_rls_policies_triggers"
+    },
+    {
+      "version": "20260912203738",
+      "name": "communications_hub_part6_seed_products_routes_account"
+    },
+    {
+      "version": "20260912203809",
+      "name": "communications_functions_part1_audience_enqueue_claim"
+    },
+    {
+      "version": "20260912203825",
+      "name": "communications_functions_part2_reclaim_webhook_inbound"
+    },
+    {
+      "version": "20260912203838",
+      "name": "communications_functions_part3_status_mode_publish_pause"
+    },
+    {
+      "version": "20260912203852",
+      "name": "communications_functions_part4_resume_notifications_purge"
+    },
+    {
+      "version": "20260912203931",
+      "name": "communications_revoke_anon_execute_on_functions"
+    },
+    {
+      "version": "20260912203946",
+      "name": "communications_least_privilege_function_grants"
+    },
+    {
+      "version": "20260912204013",
+      "name": "communications_ledger_repair_canonical_versions"
+    },
+    {
+      "version": "20260913071231",
+      "name": "billing_plans_writes_are_column_scoped"
+    },
+    {
+      "version": "20260913093746",
+      "name": "ai_talk_limits_for_owner_testing"
+    },
+    {
+      "version": "20260914185414",
+      "name": "outreach_sends_allow_complained"
+    },
+    {
+      "version": "20260915044315",
+      "name": "developer_os_rpc_lockdown_public_grant"
+    },
+    {
+      "version": "20260915055450",
+      "name": "developer_os_buyer_room_surface"
+    }
+  ],
+  "duplicateLedgerRows": [
+    {
+      "version": "20260829190727",
+      "name": "outreach_schema_reconciliation"
+    },
+    {
+      "version": "20260829190955",
+      "name": "outreach_helper_functions"
+    },
+    {
+      "version": "20260829192537",
+      "name": "fix_get_eligible_contact_count_security_invoker"
+    },
+    {
+      "version": "20260829193806",
+      "name": "admin_audit_and_impersonation_tables"
+    },
+    {
+      "version": "20260830041907",
+      "name": "add_user_plan_and_protect_privileged_columns"
+    },
+    {
+      "version": "20260830041944",
+      "name": "lock_down_protect_privileged_columns_rpc"
+    },
+    {
+      "version": "20260830042243",
+      "name": "seed_verified_georgia_real_estate_communities"
+    },
+    {
+      "version": "20260830063217",
+      "name": "expand_community_platforms_and_focus"
+    },
+    {
+      "version": "20260830063240",
+      "name": "seed_more_communities_ru_expat"
+    },
+    {
+      "version": "20260831095901",
+      "name": "pricing_wallet_foundation_part1"
+    },
+    {
+      "version": "20260831100108",
+      "name": "pricing_wallet_foundation_part2"
+    },
+    {
+      "version": "20260831100404",
+      "name": "live_chat_v1"
+    },
+    {
+      "version": "20260901111039",
+      "name": "fix_live_chat_insert_recursion"
+    },
+    {
+      "version": "20260903171328",
+      "name": "ai_chat_rate_limit_and_lead_capture"
+    },
+    {
+      "version": "20260904071557",
+      "name": "drop_matching_run_progress"
+    },
+    {
+      "version": "20260904105319",
+      "name": "scope_rls_policies_to_specific_roles"
+    },
+    {
+      "version": "20260906041157",
+      "name": "research_case_persistence"
+    },
+    {
+      "version": "20260906061932",
+      "name": "research_jobs_verify_history"
+    },
+    {
+      "version": "20260906071901",
+      "name": "fix_research_case_user_id_space"
+    },
+    {
+      "version": "20260907173116",
+      "name": "mortgage_feature_v1"
+    },
+    {
+      "version": "20260910060642",
+      "name": "force_rls_on_research_jobs"
+    },
+    {
+      "version": "20260911102832",
+      "name": "provider_price_book"
+    },
+    {
+      "version": "20260911103343",
+      "name": "intelligence_graph"
+    },
+    {
+      "version": "20260911122150",
+      "name": "cover_every_harvested_fact"
+    },
+    {
+      "version": "20260911135522",
+      "name": "verify_cost_recorded_once"
+    },
+    {
+      "version": "20260911171533",
+      "name": "merge_intelligence_entities"
+    },
+    {
+      "version": "20260911192914",
+      "name": "verify_cogs_view"
+    },
+    {
+      "version": "20260911193401",
+      "name": "project_alias_resolution"
+    },
+    {
+      "version": "20260911194635",
+      "name": "billing_v2_notification_and_activity_types"
+    },
+    {
+      "version": "20260911194806",
+      "name": "verify_billing_metering"
+    },
+    {
+      "version": "20260911200040",
+      "name": "live_chat_escalating_burst_guard"
+    },
+    {
+      "version": "20260911200206",
+      "name": "user_username_handles"
+    },
+    {
+      "version": "20260911200253",
+      "name": "billing_pricing_simulator"
+    },
+    {
+      "version": "20260911202010",
+      "name": "market_snapshots"
+    },
+    {
+      "version": "20260911210343",
+      "name": "finance_pin_search_path_on_remaining_functions"
+    },
+    {
+      "version": "20260911212914",
+      "name": "finance_registry_credential_names_match_the_code"
+    },
+    {
+      "version": "20260913045842",
+      "name": "outreach_owner_identity"
+    },
+    {
+      "version": "20260913062018",
+      "name": "voice_consent"
+    },
+    {
+      "version": "20260913071104",
+      "name": "billing_plans_admin_can_edit_the_price_card"
+    },
+    {
+      "version": "20260914084152",
+      "name": "voice_ai_intelligence"
+    },
+    {
+      "version": "20260914094405",
+      "name": "voice_abuse_context_is_server_side"
+    },
+    {
+      "version": "20260914102732",
+      "name": "engagement_push_notifications_pwa"
+    },
+    {
+      "version": "20260914104737",
+      "name": "voice_audition"
+    },
+    {
+      "version": "20260914110314",
+      "name": "voice_language_defaults"
+    },
+    {
+      "version": "20260914115745",
+      "name": "pwa_events_rate_limited_ingestion"
+    },
+    {
+      "version": "20260914115846",
+      "name": "notification_emit_and_aggregate"
+    },
+    {
+      "version": "20260914125943",
+      "name": "app_content_overrides"
+    },
+    {
+      "version": "20260914134531",
+      "name": "notify_emit_resolves_owner_identity"
+    },
+    {
+      "version": "20260914174653",
+      "name": "inbound_email"
+    },
+    {
+      "version": "20260914185037",
+      "name": "email_scheduling_and_mock_quarantine"
+    },
+    {
+      "version": "20260914185402",
+      "name": "outreach_delivery_counters"
+    },
+    {
+      "version": "20260914210900",
+      "name": "ai_talk_speaks_through_cartesia"
+    },
+    {
+      "version": "20260915043212",
+      "name": "developer_os_foundation"
+    },
+    {
+      "version": "20260915043423",
+      "name": "developer_os_sales"
+    },
+    {
+      "version": "20260915043646",
+      "name": "developer_os_workflows"
+    },
+    {
+      "version": "20260915043816",
+      "name": "developer_os_contact_boundary"
+    },
+    {
+      "version": "20260915044013",
+      "name": "developer_os_team"
+    },
+    {
+      "version": "20260915044135",
+      "name": "developer_os_ledger_names"
+    },
+    {
+      "version": "20260915044254",
+      "name": "developer_os_rpc_lockdown"
+    },
+    {
+      "version": "20260915044559",
+      "name": "developer_os_storage"
+    },
+    {
+      "version": "20260915053416",
+      "name": "developer_os_digital_twin"
+    },
+    {
+      "version": "20260915053458",
+      "name": "developer_os_twin_public"
+    },
+    {
+      "version": "20260915053735",
+      "name": "developer_os_import_unit_types"
+    },
+    {
+      "version": "20260915054025",
+      "name": "developer_os_rpc_surface_sweep"
+    },
+    {
+      "version": "20260915055439",
+      "name": "developer_os_completion"
+    },
+    {
+      "version": "20260915055707",
+      "name": "developer_os_offers_extraction"
+    },
+    {
+      "version": "20260915060605",
+      "name": "developer_os_twin_scene_public"
+    },
+    {
+      "version": "20260915061218",
+      "name": "developer_os_studio"
+    },
+    {
+      "version": "20260915083412",
+      "name": "developer_os_extraction_warnings"
+    },
+    {
+      "version": "20260916171837",
+      "name": "developer_os_offer_no_discount"
+    },
+    {
+      "version": "20260916211837",
+      "name": "developer_os_buyer_room_unit_id"
+    },
+    {
+      "version": "20260917035356",
+      "name": "developer_os_floorplans"
+    },
+    {
+      "version": "20260919120000",
+      "name": "storage_proof_tickets"
+    },
+    {
+      "version": "20260919160000",
+      "name": "storage_objects_and_authorize"
+    },
+    {
+      "version": "20260919170000",
+      "name": "storage_account_scope_and_explorer"
+    },
+    {
+      "version": "20260919180000",
+      "name": "storage_migration_manifest"
+    }
+  ],
+  "grandfatheredDuplicateNames": [
+    {
+      "name": "security_hardening",
+      "versions": [
+        "00021",
+        "20260829000002"
+      ]
+    },
+    {
+      "name": "intent_profile_persistence_fix",
+      "versions": [
+        "00025",
+        "20260829000003"
+      ]
+    }
+  ]
+}

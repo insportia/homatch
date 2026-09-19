@@ -225,14 +225,32 @@ jobs:
           version: 2.117.0
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The repository's own history must be coherent before anything is
+      # pushed at it. This needs no credentials and reads no database: it is
+      # the same audit the test suite runs, repeated here because the moment
+      # just before `db push` is the last one where a drifted history can
+      # still be stopped cheaply.
+      - name: Audit migration history
+        run: node scripts/migration-baseline.mjs
+
       - name: Apply pending migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          # Everything at or below this version is already applied to
-          # production. Verified object-by-object against the live schema.
-          MIGRATION_BASELINE: "20260917140000"
         run: |
           set -euo pipefail
+
+          # THE BASELINE IS READ, NOT RETYPED.
+          #
+          # This step used to carry its own hard-coded MIGRATION_BASELINE,
+          # a second copy of a fact that also lives in the reconciliation
+          # artefact — and it had already fallen behind it, which would have
+          # left the four reconciled storage migrations out of the alignment
+          # loop. One source, read at run time, cannot drift from itself.
+          MIGRATION_BASELINE="$(jq -r .baselineThrough supabase/migration-baseline.json)"
+          if [[ -z "$MIGRATION_BASELINE" || "$MIGRATION_BASELINE" == "null" ]]; then
+            echo "::error::supabase/migration-baseline.json has no baselineThrough"
+            exit 1
+          fi
 
           echo "Aligning the migration ledger up to baseline $MIGRATION_BASELINE..."
           echo "(ledger-only: this writes no schema and touches no data)"

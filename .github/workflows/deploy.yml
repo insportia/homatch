@@ -818,14 +818,36 @@ jobs:
             console.log('accounting: every owed function reached a deploy command');
           "
 
-          # D. Then the platform's own version counter, per function, by name.
-          # Unconditional and exhaustive: the old check asked about
-          # ai-talk-session alone and only when a cross-job output told it to,
-          # so run 8618f244 -- which uploaded comm-agent and silently dropped
-          # ai-talk-session -- had nothing to fail against.
           node scripts/edgeArtifacts.mjs snapshot $(cat "$RUNNER_TEMP/owed.txt") > "$RUNNER_TEMP/post.json"
+
+          # D. THE ARTIFACT ITSELF, PULLED BACK OUT OF PRODUCTION.
+          #
+          # The version counter alone was the rule here once, and run #676
+          # failed with nothing wrong because of it: four of five functions
+          # were already byte-identical to this revision, so the CLI printed
+          # "No change found", skipped the upload and exited 0, and the
+          # counter correctly did not move. Chasing those numbers would have
+          # meant re-uploading unchanged code to move an integer.
+          #
+          # "No change found" is the CLI reporting on its own work, though,
+          # and trusting a tool's self-report is the habit this whole repair
+          # exists to break. So the deployed source is downloaded and compared
+          # to the checkout, file by file. That is strictly stronger than a
+          # version bump: a bump says something was uploaded, equivalence says
+          # what is running is THIS.
+          #
+          # Each download runs in its own directory because the CLI writes
+          # into ./supabase/functions -- never into the checkout it is being
+          # compared against.
+          DL="$RUNNER_TEMP/deployed"
+          for fn in $(cat "$RUNNER_TEMP/owed.txt"); do
+            mkdir -p "$DL/$fn"
+            ( cd "$DL/$fn" && supabase functions download "$fn" --project-ref "$SUPABASE_PROJECT_REF" ) \
+              || echo "::warning::could not download $fn — it will be reported UNVERIFIABLE below"
+          done
+
           node scripts/edgeArtifacts.mjs verify "$RUNNER_TEMP/pre.json" "$RUNNER_TEMP/post.json" \
-            --since "$(cat "$RUNNER_TEMP/started-at-ms")"
+            --since "$(cat "$RUNNER_TEMP/started-at-ms")" --downloads "$DL"
 
       # ── E. The ref advances here, downstream of the proof, or not at all ─
       #

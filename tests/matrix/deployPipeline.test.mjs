@@ -25,7 +25,20 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { compareArtifacts, uploadAccounting, ABSENT } from '../../scripts/edgeArtifacts.mjs';
+import { uploadAccounting, ABSENT } from '../../scripts/edgeArtifacts.mjs';
+import { compareSources, evaluate, evaluateAll } from '../../scripts/edgeEquivalence.mjs';
+
+/*
+ * A function's expected sources and what production stores for it. The
+ * deployed names carry an unstable prefix, which is real: comm-agent stores
+ * `homatch/supabase/functions/...` and ai-talk-session stores
+ * `homatch/functions/...`.
+ */
+const SRC = { 'supabase/functions/f/index.ts': 'export const a = 1;\n' };
+const PROD = { 'homatch/supabase/functions/f/index.ts': 'export const a = 1;\n' };
+const OLD = { 'homatch/supabase/functions/f/index.ts': 'export const a = 0;\n' };
+const eq = (deployed) => ({ checked: true, ...compareSources(SRC, deployed) });
+const at = (version, updated_at = 1_000) => ({ version, updated_at });
 
 const WORKFLOW = readFileSync('.github/workflows/deploy.yml', 'utf8');
 const SCOPE_URL = pathToFileURL(resolve('scripts/deploy-scope.mjs')).href;
@@ -146,33 +159,35 @@ test('3: owed > 0 and uploaded = 0 is a failure, not a green run', () => {
 
 /* ── 4. The upload exits 0 and the artifact does not move ────────────────*/
 
-test('4: a CLI exit code is not deployment proof — the version has to advance', () => {
-  const pre = { 'ai-talk-session': { version: 107, updated_at: 1_000 } };
-  const post = { 'ai-talk-session': { version: 107, updated_at: 1_000 } };
-  const r = compareArtifacts(pre, post, 2_000);
-  assert.equal(r.ok, false);
-  assert.match(r.rows[0].reason, /version did not advance \(107 -> 107\)/);
+test('4: a CLI exit code is not deployment proof — the artifact has to be this revision', () => {
+  /*
+   * The rule used to be "the version must advance", and run #676 showed both
+   * of its edges. It could not pass a function that legitimately needed no
+   * upload, and it could not fail one whose version moved for the wrong
+   * reason. The artifact answers both.
+   */
+  const stale = evaluate({ name: 'ai-talk-session', pre: at(107), post: at(107), equivalence: eq(OLD), sinceMs: 2_000 });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.mode, 'STALE');
 
-  const moved = compareArtifacts(pre, { 'ai-talk-session': { version: 108, updated_at: 3_000 } }, 2_000);
-  assert.equal(moved.ok, true);
+  const uploaded = evaluate({ name: 'ai-talk-session', pre: at(107, 1_000), post: at(108, 3_000), equivalence: eq(PROD), sinceMs: 2_000 });
+  assert.equal(uploaded.ok, true);
+  assert.equal(uploaded.mode, 'UPLOADED');
 });
 
 /* ── 5. One function out of several ──────────────────────────────────────*/
 
-test('5: one unmoved function fails the run and is named', () => {
-  const pre = {
-    'ai-talk-session': { version: 107, updated_at: 1_000 },
-    'comm-agent': { version: 31, updated_at: 1_000 },
-    'investment-consultant': { version: 4, updated_at: 1_000 },
-  };
-  const post = {
-    'ai-talk-session': { version: 107, updated_at: 1_000 }, // the one run 8618f244 dropped
-    'comm-agent': { version: 32, updated_at: 3_000 },
-    'investment-consultant': { version: 5, updated_at: 3_000 },
-  };
-  const r = compareArtifacts(pre, post, 2_000);
+test('5: one function left on the old source fails the run and is named', () => {
+  // Run 8618f244: comm-agent uploaded, ai-talk-session silently dropped.
+  const r = evaluateAll([
+    { name: 'ai-talk-session', pre: at(107), post: at(107), equivalence: eq(OLD), sinceMs: 2_000 },
+    { name: 'comm-agent', pre: at(31, 1_000), post: at(32, 3_000), equivalence: eq(PROD), sinceMs: 2_000 },
+    { name: 'investment-consultant', pre: at(4), post: at(4), equivalence: eq(PROD), sinceMs: 2_000 },
+  ]);
   assert.equal(r.ok, false);
   assert.deepEqual(r.rows.filter((x) => !x.ok).map((x) => x.name), ['ai-talk-session']);
+  // ...and the one that needed no upload is not punished for it.
+  assert.equal(r.rows[2].mode, 'ALREADY_CURRENT');
 
   // And a failed upload names itself rather than being averaged away by the
   // parallel loop's exit code.
@@ -184,29 +199,26 @@ test('5: one unmoved function fails the run and is named', () => {
 /* ── 6. Stale updated_at ─────────────────────────────────────────────────*/
 
 test('6: a version that advanced before this run started does not count', () => {
-  // Another run's upload, landing in the window. The version moved; it was
-  // not this run that moved it.
-  const r = compareArtifacts(
-    { 'ai-talk-session': { version: 107, updated_at: 1_000 } },
-    { 'ai-talk-session': { version: 108, updated_at: 1_500 } },
-    2_000,
-  );
+  // Another run's upload landing in the window. The version moved; it was not
+  // this run that moved it, so this run cannot claim it.
+  const r = evaluate({ name: 'ai-talk-session', pre: at(107, 1_000), post: at(108, 1_500), equivalence: eq(PROD), sinceMs: 2_000 });
   assert.equal(r.ok, false);
-  assert.match(r.rows[0].reason, /predates this run/);
+  assert.equal(r.mode, 'FOREIGN_UPLOAD');
+  assert.match(r.reason, /predates this run/);
 });
 
 /* ── 7. The expected artifact is missing entirely ────────────────────────*/
 
 test('7: a function that production has never heard of cannot pass verification', () => {
-  const r = compareArtifacts({ 'active-search-notify': { ...ABSENT } }, { 'active-search-notify': { ...ABSENT } }, 1);
+  // Nothing deployed means nothing to compare, and nothing to compare is not
+  // proof. An empty artifact must never read as "equivalent".
+  const r = evaluate({ name: 'active-search-notify', pre: { ...ABSENT }, post: { ...ABSENT }, equivalence: eq({}), sinceMs: 1 });
   assert.equal(r.ok, false);
-  assert.match(r.rows[0].reason, /version did not advance \(0 -> 0\)/);
 
   // A first deploy of a genuinely new function is the same rule, passing.
-  assert.equal(
-    compareArtifacts({ 'active-search-notify': { ...ABSENT } }, { 'active-search-notify': { version: 1, updated_at: 9 } }, 5).ok,
-    true,
-  );
+  const first = evaluate({ name: 'active-search-notify', pre: { ...ABSENT }, post: at(1, 9), equivalence: eq(PROD), sinceMs: 5 });
+  assert.equal(first.ok, true);
+  assert.equal(first.mode, 'UPLOADED');
 
   /*
    * And the check runs whatever the deploy step thought of itself. The old

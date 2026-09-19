@@ -68,7 +68,18 @@ test('the snapshot describes itself honestly', () => {
   // The reconciliation found 72 duplicates and 30 genuinely unversioned
   // production changes. Those numbers are the finding; if they move, the
   // reconciliation has to be redone rather than the number edited.
-  assert.equal(snapshot.totals.ledger_only_duplicate, 72);
+  //
+  // 72 became 76 the same day, and the reconciliation WAS redone rather than
+  // the number edited. A concurrent repair had taken the other route through
+  // the storage drift -- recording the repo's own versions as applied instead
+  // of renaming the files down to the versions production already had. The
+  // rename is what shipped, so those four extra ledger rows now name nothing
+  // in this repository. Each was re-verified before being counted here: its
+  // complete SQL matches the row it duplicates, normalized only for comments,
+  // the dollar-quote tag and whitespace, and every object it creates was
+  // confirmed live. They are inert, and they are counted because production
+  // holds them.
+  assert.equal(snapshot.totals.ledger_only_duplicate, 76);
   assert.equal(snapshot.totals.ledger_only_unversioned, 30);
   assert.equal(
     snapshot.ledger_only.filter((r) => r.kind === 'UNVERSIONED').length,

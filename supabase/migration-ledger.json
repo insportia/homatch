@@ -4,7 +4,15 @@
     "the migration-history reconciliation. It exists so that drift between the",
     "production ledger and this repository is a failing test rather than a",
     "discovery. tests/matrix/migrationHistory.test.mjs is what reads it.",
-    "Regenerate only alongside a fresh, deliberate reconciliation."
+    "Regenerate only alongside a fresh, deliberate reconciliation.",
+    "Updated the same day, after four rows were added to the production ledger by a",
+    "concurrent repair that took the other route through this drift: it recorded the",
+    "repo's own versions (20260919120000/160000/170000/180000) as applied rather than",
+    "renaming the files down to the versions production had. The rename won, so those",
+    "four rows now describe nothing in this repository. They are inert -- every one of",
+    "them duplicates a change already applied and already reconciled -- but production",
+    "holds 332 rows and a snapshot that said 328 would be a file claiming something",
+    "about production that is not true. Hence 72 duplicates became 76."
   ],
   "captured_at": "2026-09-19",
   "project_ref": "ptxajsjhobhvsfhmutjn",
@@ -336,7 +344,11 @@
     "20260918205420",
     "20260918213214",
     "20260918213458",
-    "20260918214127"
+    "20260918214127",
+    "20260919120000",
+    "20260919160000",
+    "20260919170000",
+    "20260919180000"
   ],
   "ledger_only": [
     {
@@ -848,12 +860,32 @@
       "version": "20260917035356",
       "name": "developer_os_floorplans",
       "kind": "DUPLICATE_OF_A_REPO_FILE"
+    },
+    {
+      "version": "20260919120000",
+      "name": "storage_proof_tickets",
+      "kind": "DUPLICATE_OF_A_REPO_FILE"
+    },
+    {
+      "version": "20260919160000",
+      "name": "storage_objects_and_authorize",
+      "kind": "DUPLICATE_OF_A_REPO_FILE"
+    },
+    {
+      "version": "20260919170000",
+      "name": "storage_account_scope_and_explorer",
+      "kind": "DUPLICATE_OF_A_REPO_FILE"
+    },
+    {
+      "version": "20260919180000",
+      "name": "storage_migration_manifest",
+      "kind": "DUPLICATE_OF_A_REPO_FILE"
     }
   ],
   "totals": {
-    "applied": 328,
-    "ledger_only": 102,
-    "ledger_only_duplicate": 72,
+    "applied": 332,
+    "ledger_only": 106,
+    "ledger_only_duplicate": 76,
     "ledger_only_unversioned": 30
   }
 }

@@ -61,8 +61,11 @@ function Section({ id, titleKey, descriptionKey, summary, complete, open, onTogg
               <Check className="h-4 w-4 shrink-0 text-[hsl(var(--success))]" aria-hidden="true" />
             ) : null}
           </span>
+          {/* Wraps rather than truncates: at 390px a one-line clamp drops
+              the interest rate off the end of the summary, which is the
+              one number in it a reader is looking for. */}
           {!open && summary ? (
-            <span className="mt-1 block truncate text-2xs text-muted-foreground">{summary}</span>
+            <span className="mt-1 block text-2xs leading-relaxed text-muted-foreground">{summary}</span>
           ) : null}
           {!open && !summary && descriptionKey ? (
             <span className="mt-1 block truncate text-2xs text-muted-foreground">{t(descriptionKey)}</span>

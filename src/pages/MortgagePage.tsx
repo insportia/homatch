@@ -155,7 +155,9 @@ export default function MortgagePage() {
                 <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
                   {t('mortgage_product_eyebrow')}
                 </p>
-                <h1 className="truncate font-display text-xl font-semibold text-foreground sm:text-2xl">
+                {/* Not truncated: eliding the page's own name is the one label a
+                    reader cannot recover from context. */}
+                <h1 className="font-display text-xl font-semibold leading-tight text-foreground sm:text-2xl">
                   {t(definition.titleKey)}
                 </h1>
               </div>

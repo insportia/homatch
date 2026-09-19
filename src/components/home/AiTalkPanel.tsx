@@ -352,6 +352,15 @@ export function AiTalkPanel({ className }: { className?: string }) {
    * change Wi-Fi for no reason. Null until a refusal says otherwise.
    */
   const [refusedTier, setRefusedTier] = useState<string | null>(null);
+  /*
+   * The tier this session was GRANTED on, so its ending can be named.
+   *
+   * An administrator's session ends at a technical ceiling on one socket,
+   * not because an allowance ran out -- they have none to run out. The panel
+   * said "The demo is over for now", which is the sentence for a spent
+   * allowance, and it is the one thing that must not be implied here.
+   */
+  const [grantedTier, setGrantedTier] = useState<string | null>(null);
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
   /**
    * The last thing that went wrong mid-conversation.
@@ -644,6 +653,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
     sessionIdRef.current = grant.sessionId;
     grantedRef.current = grant.grantedSeconds ?? 60;
+    setGrantedTier(grant.usageTier ?? null);
     grantInfoRef.current = {
       usageTier: grant.usageTier ?? null,
       configuredSessionSeconds: grant.configuredSessionSeconds ?? null,
@@ -1082,7 +1092,14 @@ export function AiTalkPanel({ className }: { className?: string }) {
         <div className="flex min-h-0 flex-1 flex-col px-4">
           {turns.length
             ? <Transcript turns={turns} />
-            : <Invitation state={state} failure={failure} tier={refusedTier} />}
+            : (
+              <Invitation
+                state={state}
+                failure={failure}
+                tier={refusedTier}
+                grantedTier={grantedTier}
+              />
+            )}
         </div>
 
         {intelligence && live ? <IntelligenceStrip data={intelligence} /> : null}
@@ -1317,7 +1334,8 @@ function TranscriptView({ turns }: { turns: TranscriptTurn[] }) {
  * recognition, the other says nothing at all. Neither ever names a provider.
  */
 function Invitation(
-  { state, failure, tier }: { state: PanelState; failure: string | null; tier: string | null },
+  { state, failure, tier, grantedTier }:
+  { state: PanelState; failure: string | null; tier: string | null; grantedTier: string | null },
 ) {
   const { t } = useLanguage();
   const sf = useSectionField();
@@ -1357,9 +1375,20 @@ function Invitation(
    * Neither sentence promises a clock. The window is a rolling day, so the
    * only honest thing to say is that it comes back within one.
    */
-  const key = tier === 'STANDARD' && (named === 'talk_quota_daily_body' || named === 'talk_quota_sessions_body')
-    ? 'talk_quota_account_body'
-    : named;
+  const account = tier === 'STANDARD'
+    && (named === 'talk_quota_daily_body' || named === 'talk_quota_sessions_body');
+
+  /*
+   * A CEILING IS NOT AN ALLOWANCE.
+   *
+   * LIMIT_REACHED is reached two ways: a visitor's granted seconds are spent,
+   * or an administrator's session hit its technical length ceiling. Only the
+   * first is an allowance ending, and only the first should read like one --
+   * the second renews the instant they press Start again.
+   */
+  const ceiling = state === 'LIMIT_REACHED' && grantedTier === 'ADMIN_UNLIMITED';
+
+  const key = ceiling ? 'talk_session_ceiling_body' : account ? 'talk_quota_account_body' : named;
 
   /*
    * ONE ELEMENT, TWO KINDS OF SENTENCE.

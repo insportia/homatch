@@ -488,9 +488,24 @@ export interface CommVoiceTuning {
 
 export interface AiTalkLimits {
   session_seconds: number;
+  /**
+   * The ANONYMOUS rolling-day allowance, counted against a hashed network
+   * address. Shared by everyone behind one address, because an anonymous
+   * visitor has no other durable identity: this is abuse protection.
+   */
   daily_seconds: number;
   global_concurrent: number;
   per_visitor_concurrent: number;
   daily_sessions: number;
+  /**
+   * The SIGNED-IN rolling-day allowance, counted against the account itself.
+   *
+   * Read by ai-talk-session's loadLimits() as authenticated_daily_seconds and
+   * authenticated_daily_sessions, so changing either here changes what the
+   * server grants without a deployment. Both are held at or above the
+   * anonymous figures on save: signing in must never take time away.
+   */
+  authenticated_daily_seconds: number;
+  authenticated_daily_sessions: number;
   enabled: boolean;
 }

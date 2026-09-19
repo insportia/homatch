@@ -105,13 +105,26 @@ export type TalkDenyReason =
 export type UsageTier = 'ANONYMOUS' | 'STANDARD' | 'ADMIN_UNLIMITED';
 
 /**
- * How long an administrator's testing session may run.
+ * How long ONE administrator session may run. Not a daily budget.
  *
  * The ordinary session cap is a product decision about a demo. This is the
  * TECHNICAL ceiling underneath it: the same fifteen minutes the speech worker
  * enforces on its own socket, after which a session is a leak rather than a
  * conversation. Product allowance is bypassed for an administrator; this is
  * not, because it is not an allowance.
+ *
+ * WHAT REACHING IT COSTS: NOTHING.
+ *
+ * It is a lifecycle limit on a single socket, and it spends no budget,
+ * because an administrator has no budget to spend. The seconds are still
+ * measured and still recorded -- an administrator's cost appears in
+ * voice_usage_events exactly like anybody else's -- but decideGrant never
+ * weighs them, at any total. The session row is marked ENDED the moment the
+ * ceiling is reached, so the next Start is granted immediately: no cooldown,
+ * no residue, and no accumulation that could ever produce DAILY_LIMIT_REACHED
+ * for an administrator. The only things that can still refuse one are the
+ * three that are not quotas at all -- the kill switch, their own concurrent
+ * session, and platform capacity.
  */
 export const ADMIN_SESSION_SECONDS = 900;
 
@@ -179,6 +192,13 @@ export function decideGrant(input: GrantInput): GrantDecision {
    * verified token; there is no field in any request that can set it.
    */
   if (admin) {
+    /*
+     * Returned BEFORE the two daily caps are read, and that ordering is the
+     * whole guarantee. sessionsStartedToday and consumedTodaySeconds are
+     * still passed in, still true, and still logged; they are simply never
+     * consulted on this path, so there is no quantity of past usage that can
+     * turn this into a refusal.
+     */
     return {
       granted: true,
       seconds: ADMIN_SESSION_SECONDS,

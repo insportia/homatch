@@ -20,6 +20,9 @@
 //   recording_default        whether a call is recorded at all (§73)
 //
 //   ai_talk_* keys           ai-talk-session's allowance (§28, §59)
+//   authenticated_daily_*    loadLimits() in ai-talk-session, read on every
+//                            grant, so an edit here changes what a signed-in
+//                            person is granted without a deployment
 //
 // Anything a provider does not expose is absent from this file. There is no
 // "voice warmth" slider and no "AI creativity" dial.
@@ -61,12 +64,23 @@ const DEFAULT_TUNING: CommVoiceTuning = {
   recording_default: false,
 };
 
+/*
+ * These must equal DEFAULT_TALK_LIMITS, because Reset WRITES them.
+ *
+ * session_seconds sat at 75 here long after the shipped default became 120,
+ * so the button labelled Reset would have quietly halved a live session
+ * length -- a control that does something other than what it says. The two
+ * authenticated figures are the shipped defaults for the same reason: an
+ * operator who has never opened this screen is already being granted them.
+ */
 const DEFAULT_LIMITS: AiTalkLimits = {
-  session_seconds: 75,
+  session_seconds: 120,
   daily_seconds: 240,
   global_concurrent: 25,
   per_visitor_concurrent: 1,
   daily_sessions: 6,
+  authenticated_daily_seconds: 600,
+  authenticated_daily_sessions: 12,
   enabled: true,
 };
 
@@ -108,6 +122,22 @@ export function CommunicationsVoicePanel() {
   }, [tuning, t]);
 
   const onSaveLimits = useCallback(async () => {
+    /*
+     * SIGNING IN MUST NEVER TAKE TIME AWAY.
+     *
+     * The anonymous figures are abuse protection on a shared network address;
+     * the authenticated ones are an entitlement attached to an account. An
+     * authenticated allowance BELOW the anonymous one inverts that -- a
+     * person would be punished for identifying themselves, and would have no
+     * way to understand why the demo got shorter after they signed in. The
+     * fields are clamped to their own range as they are typed; this is the
+     * relationship between them, which only a save can check.
+     */
+    if (limits.authenticated_daily_seconds < limits.daily_seconds
+      || limits.authenticated_daily_sessions < limits.daily_sessions) {
+      toast.error(t('admin_talk_auth_below_anon'));
+      return;
+    }
     setSavingLimits(true);
     try {
       const ok = await saveAiTalkLimits(limits);
@@ -260,6 +290,31 @@ export function CommunicationsVoicePanel() {
             />
           </div>
 
+          {/*
+            * The signed-in allowance, kept visibly apart from the anonymous
+            * one above. They are different things -- one is counted against a
+            * hashed network address and is shared with strangers, the other
+            * against the account and follows the person between devices --
+            * and putting them in one undifferentiated grid of numbers is how
+            * an operator ends up tuning the wrong limit.
+            */}
+          <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs font-medium">{t('admin_talk_auth_group')}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <NumberField
+                labelKey="admin_talk_auth_seconds" hintKey="admin_talk_auth_seconds_hint"
+                value={limits.authenticated_daily_seconds} min={60} max={7200} step={30}
+                note={t('admin_talk_minutes', { minutes: minutesOf(limits.authenticated_daily_seconds) })}
+                onChange={(v) => setLimits((s) => ({ ...s, authenticated_daily_seconds: v }))}
+              />
+              <NumberField
+                labelKey="admin_talk_auth_sessions" hintKey="admin_talk_auth_sessions_hint"
+                value={limits.authenticated_daily_sessions} min={1} max={100} step={1}
+                onChange={(v) => setLimits((s) => ({ ...s, authenticated_daily_sessions: v }))}
+              />
+            </div>
+          </div>
+
           <p className="flex items-start gap-1.5 text-[13px] text-muted-foreground">
             <Radio className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
             {t('admin_talk_note')}
@@ -270,11 +325,26 @@ export function CommunicationsVoicePanel() {
   );
 }
 
+/**
+ * Seconds, read back as minutes.
+ *
+ * The stored value is seconds and stays seconds -- it is what decideGrant
+ * subtracts and what every telemetry row is denominated in, and rounding a
+ * setting to whole minutes on the way to the database would make the number
+ * an operator typed and the number the server enforces two different things.
+ * One decimal, so 90 reads as 1.5 rather than as 2.
+ */
+function minutesOf(seconds: number): string {
+  return String(Math.round((seconds / 60) * 10) / 10);
+}
+
 function NumberField({
-  labelKey, hintKey, value, min, max, step, disabled, onChange,
+  labelKey, hintKey, value, min, max, step, disabled, note, onChange,
 }: {
   labelKey: string; hintKey: string; value: number;
   min: number; max: number; step: number; disabled?: boolean;
+  /** A read-only restatement of the same value in friendlier units. */
+  note?: string;
   onChange: (v: number) => void;
 }) {
   const { t } = useLanguage();
@@ -289,7 +359,10 @@ function NumberField({
         }}
         className="h-8 text-xs"
       />
-      <p className="text-[13px] leading-snug text-muted-foreground">{t(hintKey as TKey)}</p>
+      <p className="text-[13px] leading-snug text-muted-foreground">
+        {t(hintKey as TKey)}
+        {note ? <span className="ms-1 font-medium text-foreground">{note}</span> : null}
+      </p>
     </div>
   );
 }

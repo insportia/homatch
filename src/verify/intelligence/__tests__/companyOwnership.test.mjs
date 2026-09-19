@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { parseRegistryExtract } from '../../../../official-worker/src/evidence/RegistryExtractParser.ts';
 import { registryExtractFor, applyRegistryExtract } from '../registryOverlay.ts';
-import { buildCompanyIntelligence, representationRule, officialSourceUnavailable } from '../companyIntelligence.ts';
+import { buildCompanyIntelligence, representationRule, officialSourceUnavailable, uniqueText } from '../companyIntelligence.ts';
 import { buildEvidencePackage } from '../evidencePackage.ts';
 import { buildIntelligenceBundle } from '../bundle.ts';
 
@@ -301,4 +301,66 @@ test('the overlay carries names and shares, never personal id numbers', () => {
     directors: profile.directors, shareholders: profile.shareholders,
   });
   assert.equal(/\b\d{11}\b/.test(serialized), false, 'no 11-digit personal id may reach the profile');
+});
+
+/* ------------------------------------------------------------------ *
+ * NO FACT TWICE — the live Villion report, 2026-09-19.               *
+ *                                                                     *
+ * The owner's real run showed each director twice. The stored data    *
+ * was clean and peopleIntelligence was clean; the duplication was in  *
+ * RENDERING — CompanyOwnershipCard and the older CompanyProfileCard   *
+ * both drew `companyProfile.directors` into the same column. Removing *
+ * the older card is the fix, and carrying its remaining fields into   *
+ * this section is what keeps the fix from deleting information.       *
+ * ------------------------------------------------------------------ */
+
+test('each director and shareholder appears exactly once', () => {
+  const extract = parseRegistryExtract(fixture('MILENIO'));
+  const profile = applyRegistryExtract({ idCode: '404670272' }, registryExtractFor({ idCode: '404670272' }, enregJob(extract)));
+  const company = buildCompanyIntelligence({ companyProfile: profile, browserOfficial: enregJob(extract) });
+
+  const directors = company.directors.map((d) => d.name);
+  const holders = company.ownership.map((o) => o.name);
+
+  assert.equal(directors.length, 2, 'exactly two directors');
+  assert.equal(new Set(directors).size, 2, 'and no repeated name');
+  for (const name of ['კობა კვანტალიანი', 'ლევან ჩაჩუა']) {
+    assert.equal(
+      directors.filter((d) => d === name).length, 1,
+      `${name} must appear exactly once as a director`
+    );
+    assert.equal(holders.filter((h) => h === name).length, 1, `${name} must hold one stake`);
+  }
+});
+
+test('only one component renders the company facts', () => {
+  const page = fs.readFileSync(
+    path.resolve(here, '../../../pages/VerifyPage.tsx'), 'utf8'
+  );
+  const code = page.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.equal(
+    /<CompanyProfileCard\b/.test(code), false,
+    'the legacy company card must not render alongside COMPANY & OWNERSHIP'
+  );
+  assert.match(code, /<CompanyOwnershipCard report=\{report\}\/>/);
+});
+
+test('the fields only the old card showed are carried, not dropped', () => {
+  const company = buildCompanyIntelligence({
+    companyProfile: {
+      name: 'შპს მილენიო გრუპი',
+      representatives: ['ნინო ბერიძე', 'ნინო ბერიძე'],
+      historicalChanges: ['სახელის ცვლილება 2024', 'სახელის ცვლილება 2024.'],
+      relatedProjects: ['Villion', '«Villion»'],
+      registryFields: ['name'],
+    },
+    browserOfficial: { unavailable: false, results: [{ source: 'enreg', documents: [] }] },
+  });
+  // Present…
+  assert.deepEqual(company.representatives, ['ნინო ბერიძე']);
+  assert.deepEqual(company.relatedProjects, ['Villion']);
+  assert.equal(company.historicalChanges.length, 1);
+  // …and deduplicated on harmless differences only.
+  assert.equal(uniqueText(['A', 'a', ' A ', 'A.']).length, 1);
+  assert.equal(uniqueText(['Villion', 'Villion Two']).length, 2, 'genuinely different entries survive');
 });

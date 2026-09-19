@@ -292,3 +292,53 @@ test('no producer writes the plural client-search path any more', () => {
     );
   }
 });
+
+/* ------------------------------------------------------------------ *
+ * CONTINUE VERIFICATION — P0 from the live Villion report.            *
+ *                                                                     *
+ * The customer pressed it and nothing happened. saveCase()'s catch    *
+ * block was empty apart from a comment claiming the failure was       *
+ * "left to the explicit button below" — but that button calls the     *
+ * same function, so the explicit press failed identically and just as *
+ * silently. No error, no state change, the button re-enabled itself.  *
+ * ------------------------------------------------------------------ */
+
+test('saving a verification can never fail silently', () => {
+  const page = fs.readFileSync(path.resolve(here, '../../pages/VerifyPage.tsx'), 'utf8');
+  const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  const start = code.indexOf('const saveCase=');
+  assert.notEqual(start, -1, 'saveCase must exist');
+  const body = code.slice(start, code.indexOf('const continueCase=', start));
+
+  // The exact shape of the defect: a catch that does nothing at all.
+  assert.equal(
+    /catch\s*\{\s*\}/.test(body), false,
+    'an empty catch is what produced the silent click'
+  );
+  assert.match(body, /setCaseErr\(/, 'a failure must reach the screen');
+  // A background save stays quiet; an explicit one reports.
+  assert.match(body, /opts\?\.silent/, 'the automatic save must be distinguishable');
+  // One press, one case.
+  assert.match(body, /savingRef\.current/, 'a double press must not create two cases');
+});
+
+test('the continue action always produces a visible outcome', () => {
+  const page = fs.readFileSync(path.resolve(here, '../../pages/VerifyPage.tsx'), 'utf8');
+  const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  const start = code.indexOf('const continueCase=');
+  assert.notEqual(start, -1, 'continueCase must exist');
+  const body = code.slice(start, start + 400);
+  // Existing case → go there. No case → create it, then go.
+  assert.match(body, /if\(caseId\)\{nav\(`\/verify\/\$\{caseId\}`\)/);
+  assert.match(body, /await saveCase\(undefined,undefined,\{silent:false\}\)/);
+  assert.match(body, /if\(id\)nav\(`\/verify\/\$\{id\}`\)/);
+
+  // The button is bound to it, is disabled while busy, and renders the error.
+  assert.match(code, /onClick=\{\(\)=>\{void continueCase\(\)\}\}/);
+  assert.match(code, /disabled=\{savingCase\}/);
+  assert.match(code, /\{caseErr\?<p role="alert"/);
+  // And the automatic save is the silent one.
+  assert.match(code, /void saveCase\(id,data\.result_json,\{silent:true\}\)/);
+});

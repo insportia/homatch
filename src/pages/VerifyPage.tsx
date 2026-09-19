@@ -607,7 +607,7 @@ const[partial,setPartial]=useState<any>(null);/* Section maturity is computed SE
 const[handoff,setHandoff]=useState<HandoffOffer|null>(null);
 const[handoffBusy,setHandoffBusy]=useState(false);
 const[handoffErr,setHandoffErr]=useState<string|null>(null);
-const[savingCase,setSavingCase]=useState(false);
+const[savingCase,setSavingCase]=useState(false);const[caseErr,setCaseErr]=useState<string|null>(null);
 const[caseId,setCaseId]=useState<string|null>(null);
 // pollNotice (v33, P0 incident 2026-09-07): a calm, non-alarming status-line
 // shown ONLY while a transient status-poll error is being silently retried
@@ -659,7 +659,7 @@ if(data?.status==='COMPLETE'&&data.result_json){again=false;stop();setCaptcha(nu
      yet — a success state with nothing in it. Loading now stays true until
      loadSynthesis() settles, and the stream switches to its synthesis row so
      the wait is described honestly rather than looking stuck. */
-  void loadSynthesis(id).finally(()=>setLoading(false));/* The verification persists BY ITSELF. A finished check is not a thing the customer then has to file somewhere else: createDealRoomFromVerify() is idempotent and reuses the existing case for this property, so the run simply becomes — or continues — that property's Verification Case. Failure is silent on purpose: the report on screen is still complete and correct, and the button below offers the save again. */void saveCase(id,data.result_json);return}}catch(e:any){const{message,category}=await classifyFunctionInvokeError(e,t('verify_err_status_fetch_failed'));if(category==='TRANSIENT'&&transientRetryCount.current<MAX_TRANSIENT_POLL_RETRIES){
+  void loadSynthesis(id).finally(()=>setLoading(false));/* The verification persists BY ITSELF. A finished check is not a thing the customer then has to file somewhere else: createDealRoomFromVerify() is idempotent and reuses the existing case for this property, so the run simply becomes — or continues — that property's Verification Case. Failure is silent on purpose: the report on screen is still complete and correct, and the button below offers the save again. */void saveCase(id,data.result_json,{silent:true});return}}catch(e:any){const{message,category}=await classifyFunctionInvokeError(e,t('verify_err_status_fetch_failed'));if(category==='TRANSIENT'&&transientRetryCount.current<MAX_TRANSIENT_POLL_RETRIES){
   // The core P0 fix: keep the existing progress UI exactly as it is, show a
   // calm notice instead of the red error box, and keep polling with
   // backoff — never stop(), never setLoading(false), never touch jobId/
@@ -795,7 +795,49 @@ const cancelHandoff=async()=>{if(!handoff)return;setHandoffBusy(true);try{await 
 // the moment it finishes is exactly the 'now a different app starts'
 // hand-off this product no longer has. Called automatically on completion,
 // and again from the button if that automatic attempt failed.
-const saveCase=async(jid?:string,rep?:Report)=>{const id=jid||jobId||report?.jobId;const r=rep||report;if(!id||!r)return;setSavingCase(true);try{const{room}=await createDealRoomFromVerify({jobId:id,report:r});setCaseId(room.id)}catch{/* left to the explicit button below; the report itself is unaffected */}finally{setSavingCase(false)}};
+/*
+ * SAVE / CONTINUE THIS VERIFICATION.
+ *
+ * P0, reported on the live Villion report: the customer pressed the action
+ * and NOTHING happened. The cause was this function's catch block, which was
+ * empty except for a comment saying the failure was "left to the explicit
+ * button below". It was not: the explicit button calls THIS function, so a
+ * failing save failed silently on the automatic attempt, left caseId null,
+ * and then failed silently again — identically — every time the customer
+ * pressed the button. No error, no toast, no state change; the button simply
+ * re-enabled itself.
+ *
+ * A failure now says so, in the customer's language, and stays on screen
+ * until the next attempt. `opts.silent` keeps the AUTOMATIC save quiet — a
+ * background attempt nobody asked for should not raise an error banner — but
+ * an explicit press always reports its outcome.
+ *
+ * The ref guard is what makes a double press safe: `savingCase` drives
+ * rendering and therefore lags a second synchronous click by a render, and
+ * two presses would otherwise create two cases for one job.
+ */
+const savingRef=useRef(false);
+const saveCase=async(jid?:string,rep?:Report,opts?:{silent?:boolean})=>{
+  const id=jid||jobId||report?.jobId;const r=rep||report;
+  if(!id||!r||savingRef.current)return null;
+  savingRef.current=true;setSavingCase(true);if(!opts?.silent)setCaseErr(null);
+  try{
+    const{room}=await createDealRoomFromVerify({jobId:id,report:r});
+    setCaseId(room.id);setCaseErr(null);
+    return room.id;
+  }catch(e){
+    // Never swallowed. A background attempt stays quiet; an explicit one
+    // tells the customer what happened and leaves the button usable.
+    if(!opts?.silent)setCaseErr(await resolveFunctionErrorMessage(e,t('verify_case_save_failed')));
+    return null;
+  }finally{savingRef.current=false;setSavingCase(false)}
+};
+/* One click, one outcome: continue an existing case, or create it and go. */
+const continueCase=async()=>{
+  if(caseId){nav(`/verify/${caseId}`);return}
+  const id=await saveCase(undefined,undefined,{silent:false});
+  if(id)nav(`/verify/${id}`);
+};
 // The report closes by inviting the customer to upload their contract. It
 // must land in the SAME place a document uploaded from the Verification
 // Center lands -- the case's Documents tab -- so there is one document
@@ -862,7 +904,11 @@ return <AppLayout noPadding>{homatchUser&&<VerifyHistorySidebar open={sidebarOpe
     report.manualVerificationActions/technicalFacts/publicResearch/
     discoveredEntities are still computed and persisted server-side for
     internal/admin diagnostics per that file's own header comment — only the
-    customer-facing render is removed here. */}<OfficialDocumentsCard docs={report.officialDocumentsRetrieved}/><RevisionTimelineCard timeline={report.revisionTimeline}/><HistoricalComparisonCard hc={report.historicalComparison}/><CompanyProfileCard c={report.companyProfile}/><EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/></div>}/>:<div className="space-y-4"><OverallAssessmentCard oa={report.overallAssessment} r={report}/><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><PropertyTypeBadge report={report} mode={mode}/></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile} report={report}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesReadinessCard report={report}/><CompanyOwnershipCard report={report}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions} report={report}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
+    customer-facing render is removed here. */}<OfficialDocumentsCard docs={report.officialDocumentsRetrieved}/><RevisionTimelineCard timeline={report.revisionTimeline}/><HistoricalComparisonCard hc={report.historicalComparison}/>{/* CompanyProfileCard removed: CompanyOwnershipCard renders the same
+    company facts with official provenance, and rendering BOTH in this
+    column is why every director appeared twice on the live report. Its
+    remaining fields (representatives, history, related projects) moved
+    into that section rather than being dropped. */}<EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/></div>}/>:<div className="space-y-4"><OverallAssessmentCard oa={report.overallAssessment} r={report}/><Card><CardContent className="pt-5 space-y-3"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-lg font-semibold">{clean(report.entityName)||query}</h2><PropertyTypeBadge report={report} mode={mode}/></div><p className="text-sm text-muted-foreground leading-relaxed">{clean(report.summary)}</p><CoverageNote note={report.coverageNote}/></CardContent></Card>{(report.identifiedParent||report.exactUnit)&&<IdentifiedPropertyCard identifiedParent={report.identifiedParent} exactUnit={report.exactUnit} projectProfile={report.projectProfile} report={report}/>}<ReconciledIdentityCard ri={report.reconciledIdentity}/><ProjectProfileCard p={report.projectProfile}/><UtilitiesReadinessCard report={report}/><CompanyOwnershipCard report={report}/><LandProfileCard lp={report.landProfile}/><RightsAndRestrictionsCard rr={report.rightsAndRestrictions} report={report}/><LegalStatusMatrixCard ls={report.legalStatus}/>{/* v31: ManualVerificationActionsCard/TechnicalFactsCard/PublicResearchCard/
     DiscoveredEntitiesCard permanently removed from the customer report (Verify
     mandate: no technical/audit-trail clutter in the customer-facing view).
     This used to be done post-build by scripts/apply-verify-ux-patch.mjs
@@ -872,4 +918,8 @@ return <AppLayout noPadding>{homatchUser&&<VerifyHistorySidebar open={sidebarOpe
     report.manualVerificationActions/technicalFacts/publicResearch/
     discoveredEntities are still computed and persisted server-side for
     internal/admin diagnostics per that file's own header comment — only the
-    customer-facing render is removed here. */}<OfficialDocumentsCard docs={report.officialDocumentsRetrieved}/><RevisionTimelineCard timeline={report.revisionTimeline}/><HistoricalComparisonCard hc={report.historicalComparison}/><CompanyProfileCard c={report.companyProfile}/><EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/></div>}{homatchUser&&<Card><CardContent className="pt-5 flex flex-col sm:flex-row sm:items-center gap-3"><p className="text-sm text-muted-foreground min-w-0 flex-1 break-words">{caseId?t('verify_case_saved'):t('verify_case_saving')}</p><Button onClick={caseId?()=>nav(`/verify/${caseId}`):()=>{void saveCase()}} disabled={savingCase} className="shrink-0 w-full sm:w-auto">{caseId?t('verify_continue_case'):t('verify_save_case')}</Button></CardContent></Card>}<Button variant="outline" className="w-full sm:w-auto" onClick={()=>nav('/ai',{state:{prompt:`${t('verify_ai_prompt_prefix')}: ${query}`,context:{type:'verify',data:customerSafeReportForAi(report)}}})}><Bot className="h-4 w-4 mr-2"/>{t('verify_ask_ai_button')}</Button></div>}<NextStepsCard cadastralCode={report?.exactUnit?.code||report?.identifiedParent?.code||null}/>{noticeAtBottom&&<ResearchDepthNotice/>}</div></div><PageBlocks slug="verify"/></AppLayout>}
+    customer-facing render is removed here. */}<OfficialDocumentsCard docs={report.officialDocumentsRetrieved}/><RevisionTimelineCard timeline={report.revisionTimeline}/><HistoricalComparisonCard hc={report.historicalComparison}/>{/* CompanyProfileCard removed: CompanyOwnershipCard renders the same
+    company facts with official provenance, and rendering BOTH in this
+    column is why every director appeared twice on the live report. Its
+    remaining fields (representatives, history, related projects) moved
+    into that section rather than being dropped. */}<EvidenceCard title={t('verify_official_evidence_title')} items={report.officialEvidence}/><MarketRangeCard m={report.market}/><ComparablesCard comparables={report.market?.comparables}/><PriceDriversCard pd={report.market?.priceDrivers}/><EvidenceCard title={t('verify_market_extra_info_title')} items={report.market?.priceEvidence}/><EvidenceCard title={t('verify_public_evidence_title')} items={report.publicEvidence}/><EvidenceCard title={t('verify_positive_reviews_title')} items={report.reviews?.positive}/><EvidenceCard title={t('verify_negative_reviews_title')} items={report.reviews?.negative}/></div>}{homatchUser&&<Card><CardContent className="pt-5 space-y-3"><div className="flex flex-col sm:flex-row sm:items-center gap-3"><p className="text-sm text-muted-foreground min-w-0 flex-1 break-words">{caseId?t('verify_case_saved'):t('verify_case_saving')}</p><Button onClick={()=>{void continueCase()}} disabled={savingCase} className="h-auto min-h-11 shrink-0 w-full whitespace-normal py-2.5 text-start leading-snug sm:w-auto">{savingCase?<Loader2 className="h-4 w-4 animate-spin"/>:null}<span className="min-w-0 break-words">{caseId?t('verify_continue_case'):t('verify_save_case')}</span></Button></div>{caseErr?<p role="alert" className="text-sm text-destructive break-words">{caseErr}</p>:null}</CardContent></Card>}<Button variant="outline" className="w-full sm:w-auto" onClick={()=>nav('/ai',{state:{prompt:`${t('verify_ai_prompt_prefix')}: ${query}`,context:{type:'verify',data:customerSafeReportForAi(report)}}})}><Bot className="h-4 w-4 mr-2"/>{t('verify_ask_ai_button')}</Button></div>}<NextStepsCard cadastralCode={report?.exactUnit?.code||report?.identifiedParent?.code||null}/>{noticeAtBottom&&<ResearchDepthNotice/>}</div></div><PageBlocks slug="verify"/></AppLayout>}

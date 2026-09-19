@@ -36,6 +36,31 @@ const nonEmpty = (v: unknown): string | null => str(v) || null;
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+/**
+ * Collapses a list of free text to its distinct entries.
+ *
+ * Case, quotes, punctuation and whitespace differ between sources for what is
+ * plainly the same sentence; none of those differences is a different fact.
+ */
+export function uniqueText(values: unknown[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    const text = str(v);
+    if (!text) continue;
+    const key = text
+      .toLowerCase()
+      .replace(/[«»„“”"'`]/g, '')
+      .replace(/[.,;:!?()\[\]{}]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /**
@@ -100,6 +125,12 @@ export interface CompanyIntelligence {
   /** Extract number and preparation date — the evidence and its date. */
   extractNumber: string | null;
   extractPreparedAt: string | null;
+  /** People who may act for the company without being directors. */
+  representatives: string[];
+  /** Ownership/name changes the research layer recorded, newest first as given. */
+  historicalChanges: string[];
+  /** Other projects evidenced for this developer — the buyer's track-record question. */
+  relatedProjects: string[];
   /** Precisely which fields the registry supplied. Provenance, not a claim. */
   registryFields: string[];
   /** True when at least one field above came from the official extract. */
@@ -197,6 +228,22 @@ export function buildCompanyIntelligence(report: unknown): CompanyIntelligence |
     };
   });
 
+  /*
+   * CARRIED OVER FROM THE CARD THIS SECTION REPLACED.
+   *
+   * The legacy company card rendered representatives, historical changes and
+   * related projects. It also rendered the directors, in the same column as
+   * this section — which is why every director appeared twice on the live
+   * report. Removing that card is the fix; carrying its remaining fields here
+   * first is what keeps the fix from deleting information.
+   *
+   * De-duplicated on normalised text, because the same change or project
+   * routinely arrives from two sources with different spacing or quotes.
+   */
+  const representatives = uniqueText(arr<unknown>(c.representatives));
+  const historicalChanges = uniqueText(arr<unknown>(c.historicalChanges));
+  const relatedProjects = uniqueText(arr<unknown>(c.relatedProjects));
+
   const registryFields = arr<unknown>(c.registryFields).map(str).filter(Boolean);
   const registryBacked =
     registryFields.length > 0 || str(c.sourceBasis).toUpperCase() === 'REGISTRY_CONFIRMED';
@@ -225,6 +272,9 @@ export function buildCompanyIntelligence(report: unknown): CompanyIntelligence |
     liquidationRegistered: typeof c.liquidationRegistered === 'boolean' ? c.liquidationRegistered : null,
     extractNumber: nonEmpty(c.extractNumber),
     extractPreparedAt: nonEmpty(c.extractPreparedAt),
+    representatives,
+    historicalChanges,
+    relatedProjects,
     registryFields,
     registryBacked,
   };
@@ -248,6 +298,9 @@ function emptyProfile(status: CompanyEvidenceStatus, legalName: string | null): 
     liquidationRegistered: null,
     extractNumber: null,
     extractPreparedAt: null,
+    representatives: [],
+    historicalChanges: [],
+    relatedProjects: [],
     registryFields: [],
     registryBacked: false,
   };

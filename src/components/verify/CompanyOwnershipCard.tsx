@@ -193,6 +193,44 @@ export function CompanyOwnershipCard({ report }: { report: unknown }) {
           </Group>
         ) : null}
 
+        {/*
+          * ---- track record and history ----
+          *
+          * Carried over from the card this section replaced, which rendered
+          * these AND the directors in the same column — the reason every
+          * director appeared twice on the live report. Compact on purpose:
+          * useful supporting detail, not a second company section.
+          */}
+        {company.relatedProjects.length ? (
+          <Group title={t('co_related_projects')}>
+            <ul className="space-y-1">
+              {company.relatedProjects.map((x, i) => (
+                <li key={`${x}-${i}`} className="min-w-0 break-words text-sm text-foreground">{x}</li>
+              ))}
+            </ul>
+          </Group>
+        ) : null}
+
+        {company.representatives.length ? (
+          <Group title={t('co_representatives')}>
+            <ul className="space-y-1">
+              {company.representatives.map((x, i) => (
+                <li key={`${x}-${i}`} className="min-w-0 break-words text-sm text-foreground">{x}</li>
+              ))}
+            </ul>
+          </Group>
+        ) : null}
+
+        {company.historicalChanges.length ? (
+          <Group title={t('co_history')}>
+            <ul className="space-y-1">
+              {company.historicalChanges.map((x, i) => (
+                <li key={`${x}-${i}`} className="min-w-0 break-words text-sm leading-relaxed text-muted-foreground">{x}</li>
+              ))}
+            </ul>
+          </Group>
+        ) : null}
+
         {/* ---- the document this came from, and when it was issued ---- */}
         {registry && (company.extractNumber || company.extractPreparedAt) ? (
           <p className="min-w-0 break-words border-t border-border pt-3 text-2xs leading-relaxed text-muted-foreground">

@@ -48,13 +48,19 @@
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { EvidenceSources, BuyerChecklist } from './EvidenceSources';
-import type { EvidenceGroup } from '@/verify/intelligence/evidenceGroups';
+import { buyerFacingGroups, type EvidenceGroup } from '@/verify/intelligence/evidenceGroups';
 import type { ChecklistItem } from '@/verify/intelligence/buyerChecklist';
 import { ContractUpload } from './ContractUpload';
 import { VerifyLinkedContracts } from './VerifyLinkedContracts';
 import { Button } from '@/components/ui/button';
 import { FileText, Copy, Check, ExternalLink, MapPin, Users } from 'lucide-react';
 import { readable } from '@/verify/readableText';
+import { buyerOpening, unconfirmedItems } from '@/verify/intelligence/buyerSummary';
+import { stripInternalTerms, marketShape, TIER_LABEL_KEY } from '@/verify/intelligence/marketNarrative';
+import { CompanyIntelligenceCard, type CompanyProfileLike } from './CompanyIntelligenceCard';
+import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
+import { UnconfirmedCard } from './UnconfirmedCard';
+import { BuyerBottomLine } from './BuyerBottomLine';
 
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
 export type Sentiment = 'POSITIVE' | 'BALANCED' | 'ATTENTION';
@@ -238,7 +244,19 @@ const stripEvidenceIds = (text: string): string =>
     .replace(/\s+([.,;:!?])/g, '$1')
     .trim();
 
-const clean = (s: unknown): string => stripEvidenceIds(readable(typeof s === 'string' ? s : ''));
+/*
+ * THE ONE GATE EVERY CUSTOMER-FACING STRING PASSES THROUGH.
+ *
+ * Evidence ids are stripped here for exactly the reason internal vocabulary
+ * now is: the prompt asks the model not to emit them, a live report emitted
+ * them anyway, and a model instruction is a request while this is a control.
+ *
+ * „37 აქტიური განცხადების peer-project შედარებაში..." is in the stored Villion
+ * report in production today. Scrubbing at render repairs every report already
+ * in the database, which no prompt change can reach.
+ */
+const clean = (s: unknown): string =>
+  stripInternalTerms(stripEvidenceIds(readable(typeof s === 'string' ? s : '')));
 
 const paragraphs = (text: string): string[] =>
   clean(text).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
@@ -255,8 +273,24 @@ export function VerifyReport({
   synthesis,
   evidence,
   contractCaseId,
+  company,
+  rights,
+  utilities,
 }: {
   synthesis: VerifySynthesis;
+  /*
+   * THE REGISTRY-GRADE BLOCKS, PASSED IN FROM THE RAW RESULT.
+   *
+   * companyProfile, rightsAndRestrictions and utilitiesMatrix are produced by
+   * the research core and persisted in result_json. The synthesis carries no
+   * `company` key at all, so for the stored Villion report every one of these
+   * facts existed and none of them could reach the page. Taking them as props
+   * means the improvement applies to reports stored months ago, which is the
+   * requirement: the acceptance fixture is a report nobody may re-run.
+   */
+  company?: CompanyProfileLike | null;
+  rights?: { status?: unknown; items?: unknown; statement?: unknown } | null;
+  utilities?: UtilitiesLike | null;
   /** The full research detail, rendered inside the collapsed control. */
   evidence?: React.ReactNode;
   /*
@@ -313,6 +347,20 @@ export function VerifyReport({
   const locationHost =
     (['LOCATION', 'INFRASTRUCTURE'] as const).find((k) => sections.some((s) => s.key === k)) ?? null;
   const findings = (r.keyFindings ?? []).filter((f) => clean(f.finding));
+
+  /*
+   * THE OPEN QUESTIONS, GATHERED ONCE.
+   *
+   * Built from what the run stored rather than from what the model wrote
+   * about it, so the missing asking price appears here exactly when it is
+   * genuinely missing — and stops being the first thing anyone reads.
+   */
+  const openQuestions = unconfirmedItems({
+    market: synthesis.market as never,
+    snapshot: synthesis.snapshot as never,
+    rights: rights as never,
+    utilities,
+  });
 
   return (
     <article className="mx-auto max-w-[68ch] space-y-8">
@@ -425,14 +473,33 @@ export function VerifyReport({
         </section>
       ) : null}
 
-      {r.finalView ? (
-        <section className="space-y-3 border-t border-border pt-6">
-          <h2 className="text-base font-semibold tracking-tight break-words">
-            {t('verify_ir_final_title')}
-          </h2>
-          <Prose text={r.finalView} />
-        </section>
-      ) : null}
+      {/* ── 6. WHO IS SELLING IT ────────────────────────────────────────
+          Registry-grade and visually distinct, because it is the most
+          trustworthy thing the run produces. It also holds the one
+          distinction this report must never blur: a pledge against the
+          COMPANY is not a mortgage on the FLAT. */}
+      <CompanyIntelligenceCard company={company} rights={rights} />
+
+      {/* ── 8. UTILITIES ───────────────────────────────────────────────
+          Rendered even when the run established nothing, because a missing
+          section reads as "does not apply" while a row saying "not yet
+          verified" reads as the question it actually is. */}
+      <UtilitiesCard utilities={utilities} />
+
+      {/* ── 10. WHAT REMAINS UNCONFIRMED ───────────────────────────────
+          Where the missing price and area live now. */}
+      <UnconfirmedCard items={openQuestions} />
+
+      {/* ── 11. WHAT THIS MEANS FOR THE BUYER ──────────────────────────
+          The model's closing sentence, and then the three questions a reader
+          is actually left with, answered from what the run established rather
+          than from a second paragraph of generated prose. */}
+      <BuyerBottomLine
+        finalView={clean(r.finalView)}
+        highlights={r.summary?.highlights ?? []}
+        openQuestions={openQuestions}
+        clean={clean}
+      />
 
       {synthesis.selfChecks?.length ? <SelfChecks checks={synthesis.selfChecks} /> : null}
 
@@ -447,7 +514,7 @@ export function VerifyReport({
         * bundle now and merely rendered here.
         */}
       <BuyerChecklist items={synthesis.checklist ?? []} />
-      <EvidenceSources groups={synthesis.evidenceGroups ?? []} />
+      <EvidenceSources groups={buyerFacingGroups(synthesis.evidenceGroups ?? [])} />
 
       {r.contractUpload?.recommend !== false ? (
         <section className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-3">
@@ -499,6 +566,7 @@ export function VerifyReport({
 const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ summary }) => {
   const { t } = useLanguage();
   if (!summary) return null;
+  const opening = buyerOpening(summary);
   const label = (['POSITIVE', 'BALANCED', 'NEEDS_ATTENTION'] as OverallLabel[]).includes(summary.label)
     ? summary.label
     : 'BALANCED';
@@ -512,9 +580,29 @@ const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ sum
         <p className="text-xl sm:text-2xl font-semibold leading-tight break-words">
           {t(OVERALL_KEY[label])}
         </p>
-        {summary.statement ? (
-          <p className="text-[15px] leading-7 text-foreground/85 break-words">
-            {clean(summary.statement)}
+        {/*
+          * THE FIRST SENTENCE, AND WHY IT IS NOT ALWAYS THE MODEL'S.
+          *
+          * Verify runs from a cadastral code, so it usually has no asking
+          * price and no floor area — nobody gave it any. The stored Villion
+          * report therefore opened with „ფასის შეფასება ჯერ ვერ კეთდება,
+          * რადგან ბინის ფართობი და მოთხოვნილი ფასი... არ ჩანს", which
+          * describes the INPUT rather than the property and buries the eight
+          * things the run did establish.
+          *
+          * The verdict above is the model's and is never touched. Only the
+          * sentence changes, and only when it is about a gap — the gap itself
+          * reappears under „რა რჩება დასადასტურებელი" further down.
+          */}
+        <p className="text-[15px] leading-7 text-foreground/85 break-words">
+          {opening.replaced ? t(opening.fallbackKey!) : clean(opening.statement)}
+        </p>
+
+        {/* A very short second line, built only from what the run actually
+            evidenced. No positives found means no line at all. */}
+        {opening.support.length ? (
+          <p className="text-sm leading-6 text-muted-foreground break-words">
+            {opening.support.map((h) => clean(h)).join(' · ')}
           </p>
         ) : null}
       </div>
@@ -810,6 +898,16 @@ const LocationLiving: React.FC<{ l: LocationBlock }> = ({ l }) => {
  *  imply a measurement we never made. */
 const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
   const { t } = useLanguage();
+  /*
+   * MICROLOCATION FIRST.
+   *
+   * marketShape reads the tier counts the research core stored and decides
+   * how local the headline figure actually is. For the stored Villion report
+   * the answer is "not local at all" — nothing in the building, nothing on
+   * the street, and a median computed from 37 named developments across the
+   * city. The number still shows; it stops pretending to measure this address.
+   */
+  const shape = marketShape(m);
   if (!m.count) return null;
 
   const span = Math.max(1, m.max - m.min);
@@ -823,10 +921,26 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
         <p className="text-xs uppercase tracking-wide text-muted-foreground">
           {t('verify_ir_market_title')}
         </p>
-        <p className="text-xs text-muted-foreground">
-          {t(`verify_basis_${m.basis.toLowerCase()}`)} · {m.count}
+        {/*
+          * WHAT THIS NUMBER IS MEASURING, SAID HONESTLY.
+          *
+          * This built its key by lower-casing the basis, which for the stored
+          * Villion report produces `verify_basis_peer_project` — a key that is
+          * defined in NO language, so the buyer was shown that literal string.
+          * The label now comes from the tier table, which has an entry for
+          * every band, and the frame sentence below says whether the figure
+          * describes this building or the city.
+          */}
+        <p className="text-xs text-muted-foreground break-words min-w-0">
+          {shape?.basis ? t(TIER_LABEL_KEY[shape.basis]) : t('verify_mkt_wider_market')} · {m.count}
         </p>
       </div>
+
+      {shape ? (
+        <p className="min-w-0 break-words text-sm leading-relaxed text-ink-soft">
+          {t(shape.headlineKey)}
+        </p>
+      ) : null}
 
       <div className="relative h-2 rounded-full bg-muted">
         <div
@@ -867,7 +981,7 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
           {m.tiers.map((tr) => (
             <div key={tr.tier} className="flex items-baseline justify-between gap-3 py-1.5 min-w-0">
               <dt className="text-2xs text-muted-foreground break-words min-w-0">
-                {t(`verify_mkt_${tr.tier.toLowerCase()}`)}
+                {t(TIER_LABEL_KEY[tr.tier as keyof typeof TIER_LABEL_KEY] ?? 'verify_mkt_wider_market')}
                 <span className="ms-1 opacity-70">
                   {tr.count} {t('verify_mkt_listings')}
                 </span>

@@ -233,6 +233,35 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
     });
   };
 
+  /*
+   * THE PORTALS THE DETERMINISTIC MARKET LANE ACTUALLY QUERIES.
+   *
+   * One. Everything else that looks like portal support is URL CLASSIFICATION,
+   * not discovery: PROPERTY_PORTAL_HOST_RE in research-agent recognises
+   * myhome.ge, ss.ge, korter.ge, mymarket.ge, livo.ge and place.ge so a link
+   * the model or web_search returns is filed correctly. None of them is
+   * queried here; only ss.ge can be asked a question.
+   *
+   * SURVEYED 2026-09-20, WHILE LOOKING TO BROADEN MARKET COVERAGE:
+   *
+   *   korter.ge   robots.txt Disallows /api/, /pyapi/ and /node-api/ — the
+   *               endpoints carrying the data. The rendered pages are a JS
+   *               shell: the homepage returns 200 with no prices and no
+   *               ld+json, and the obvious search paths 404. A compliant
+   *               adapter therefore cannot read it over plain HTTP. It would
+   *               need the browser lane, which is a different architecture and
+   *               far larger than "a new file plus one register call".
+   *   myhome.ge   not surveyed
+   *   livo.ge     not surveyed
+   *   place.ge    not surveyed
+   *
+   * Recorded rather than acted on, deliberately. Adding an adapter here is
+   * cheap by design — see the contract in adapters/portal/types.ts — but one
+   * written against a guessed page shape cannot be verified without spending a
+   * real research run, and an unverified scraper is worse than a single portal
+   * that works. The next person to widen this starts from the survey above
+   * instead of repeating it.
+   */
   const registry = new PortalRegistry().register(new SsGeAdapter());
 
   const context: AdapterContext = {

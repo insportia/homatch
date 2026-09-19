@@ -89,7 +89,7 @@ const ANALYST_RULES: string[] = [
   'Prefer how a person actually speaks: "აქ ერთი მნიშვნელოვანი დეტალია…",',
   '"ეს თავისთავად პრობლემას არ ნიშნავს, თუმცა…", "თქვენთვის პრაქტიკულად ეს ნიშნავს…".',
   '',
-  '── THE FOUR RULES THAT MATTER MOST ──────────────────────────────────',
+  '── THE FIVE RULES THAT MATTER MOST ──────────────────────────────────',
   '',
   '1. NOT FOUND IS NOT ABSENT.',
   'If our research did not find something, that is a fact about OUR SEARCH, never about the world.',
@@ -117,6 +117,16 @@ const ANALYST_RULES: string[] = [
   'elsewhere if you must. Do not restate the mortgage, the registry date, the commissioning status',
   'or the asking-price caveat in five places. Repetition was the single biggest complaint about the',
   'report you are replacing, and length is what it cost.',
+  '',
+  '5. WRITE FOR THE BUYER, NOT FROM THE FIELD NAMES.',
+  'peer-project, peer set, comparable universe, research lane, source family, wider-market,',
+  'same-project, same-street, same-district and tier count are INTERNAL names. A buyer has no idea',
+  'what they mean, and one of them reached a real customer: "37 aqtiuri gancxadebis peer-project',
+  'shedarebashi...". Say WHERE the listings are instead — in this building, on this street, in this',
+  'district, or elsewhere in the city.',
+  'And do not call listings similar unless similarity was actually established. A listing that merely',
+  'carries a project name is another development in the city, not a comparable one. Never present a',
+  'figure computed from across the city as though it measured this building.',
   '',
   '4. PROVENANCE IS NOT A PREFIX.',
   'Do NOT open paragraphs with "საჯაროდ გამოქვეყნებულ პროექტის მასალებში" or "დეველოპერის მიერ',
@@ -263,7 +273,11 @@ export function buildIntelligencePrompt(
     '{',
     '  "summary": {',
     '    "label": "<POSITIVE|BALANCED|NEEDS_ATTENTION>",',
-    '    "statement": "<1-2 natural Georgian sentences a buyer can read in ten seconds>",',
+    '    "statement": "<1-2 natural Georgian sentences a buyer can read in ten seconds. '
+      + 'This sentence describes the PROPERTY, never the inputs you were given. '
+      + 'Verify usually runs from a cadastral code alone, so a missing asking price or floor '
+      + 'area is the NORMAL case and must never be the opening line — put it in the section '
+      + 'about what is still unconfirmed instead.>",',
     '    "highlights": [ { "dimension": "<PROJECT_QUALITY|MARKET_POSITION|LEGAL_CONTEXT|LOCATION|DEVELOPER|TRANSACTION_READINESS>",',
     '                      "sentiment": "<POSITIVE|BALANCED|ATTENTION>",',
     '                      "headline": "<a few words — this is what a scanning reader reads>",',

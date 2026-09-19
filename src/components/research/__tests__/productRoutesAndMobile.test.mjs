@@ -42,6 +42,12 @@ const COMPONENTS = {
   // CONTRACTS. A first-class product now, so its screens are held to the
   // same mobile rules as every other customer surface — these are the
   // screens a buyer reads a contract on, frequently on a phone.
+  // THE BUYER INTELLIGENCE SECTIONS. Georgian legal prose, long company
+  // names and two-sided rows — the narrowest new content in the report.
+  'src/components/verify/CompanyIntelligenceCard.tsx': read('src/components/verify/CompanyIntelligenceCard.tsx'),
+  'src/components/verify/UtilitiesCard.tsx': read('src/components/verify/UtilitiesCard.tsx'),
+  'src/components/verify/UnconfirmedCard.tsx': read('src/components/verify/UnconfirmedCard.tsx'),
+  'src/components/verify/BuyerBottomLine.tsx': read('src/components/verify/BuyerBottomLine.tsx'),
   'src/components/contracts/ContractList.tsx': read('src/components/contracts/ContractList.tsx'),
   'src/components/contracts/ContractResult.tsx': read('src/components/contracts/ContractResult.tsx'),
   'src/components/contracts/ContractProgress.tsx': read('src/components/contracts/ContractProgress.tsx'),
@@ -139,6 +145,9 @@ test('long values are allowed to wrap rather than forcing horizontal scroll', ()
   // unbreakable; without break-words they push the page sideways at 320px.
   for (const file of [
     'src/components/verify/VerifyCheckList.tsx',
+    'src/components/verify/CompanyIntelligenceCard.tsx',
+    'src/components/verify/UtilitiesCard.tsx',
+    'src/components/verify/BuyerBottomLine.tsx',
     'src/components/contracts/ContractList.tsx',
     'src/components/contracts/ContractResult.tsx',
     'src/pages/VerificationCasePage.tsx',

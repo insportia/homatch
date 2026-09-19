@@ -77,10 +77,25 @@ test('no evidence at all is not a negative verdict', () => {
 });
 
 test('an incomplete check is advice, never a warning', () => {
-  // v2 removed the dedicated "could not confirm" block entirely: incomplete
-  // checks now arrive as buyerActions and as the buyer's own official
-  // self-checks. Neither may borrow risk styling.
-  assert.ok(!/unconfirmed/i.test(reportCode), 'the deficit block is back');
+  /*
+   * THE DEFICIT BLOCK CAME BACK, DELIBERATELY, AND LOWER DOWN.
+   *
+   * v2 removed it because it made our pipeline's gaps a HEADLINE section of
+   * the customer's report. The owner has since reinstated it (mandate 10),
+   * because a buyer does need to know what was not established — the defect
+   * was never that it existed, it was where it sat.
+   *
+   * So the rule is now about position, which is what the original reasoning
+   * was actually protecting: the gaps must come after the findings, never
+   * before them.
+   */
+  const unconfAt = reportCode.indexOf('<UnconfirmedCard');
+  const findingsAt = reportCode.indexOf('<KeyFindings');
+  assert.ok(unconfAt > 0, 'what remains unconfirmed must be stated somewhere');
+  assert.ok(
+    unconfAt > findingsAt,
+    'the gaps must not open the report — that is the defect v2 removed'
+  );
 
   const actions = reportCode.slice(reportCode.indexOf('r.buyerActions?.length'));
   const actionsBlock = actions.slice(0, actions.indexOf('</section>'));
@@ -118,7 +133,12 @@ test('the summary is a verdict WITH its reasons, not a traffic light', () => {
   // the findings rendered beneath it and opened the report a second time, so
   // it was removed — the requirement that the verdict come WITH its reasons
   // is unchanged and is asserted against the block that now carries them.
-  assert.match(reportCode, /summary\.statement/);
+  // The statement now arrives through buyerOpening(), which keeps the
+  // model's sentence when it is about the property and replaces it when it
+  // is about missing input. Either way the verdict still comes WITH a
+  // sentence — a bare label would be the traffic light this test forbids.
+  assert.match(reportCode, /buyerOpening\(summary\)/);
+  assert.match(reportCode, /opening\.replaced \? t\(opening\.fallbackKey/);
   assert.match(reportCode, /f\.finding/);
   assert.match(reportCode, /f\.whyItMatters/);
   assert.ok(!/ShieldCheck|ShieldX|traffic/.test(reportCode), 'the verdict chip is back');
@@ -222,14 +242,21 @@ test('every customer-visible string is cleaned before it renders', () => {
   // v2 routes every string through clean(), which is readable() — the
   // mis-decoded-text guard — composed with the leaked-id strip. One helper,
   // so a new field cannot accidentally skip one of the two.
-  assert.match(reportCode, /const clean = \(s: unknown\): string => stripEvidenceIds\(readable\(/);
+  // THREE guards now, not two. Internal vocabulary joined the composition
+  // after „37 aqtiuri gancxadebis peer-project shedarebashi" shipped to a
+  // real customer: the prompt forbids it, the model wrote it anyway, and
+  // only a render-time gate repairs the reports already in the database.
+  assert.match(
+    reportCode,
+    /const clean = \(s: unknown\): string =>\s*stripInternalTerms\(stripEvidenceIds\(readable\(/,
+    'clean() must compose every guard, so a new field cannot skip one'
+  );
   for (const call of [
     'clean(s.title)', 'clean(a.point)', 'clean(a.why)',
     'clean(f.finding)', 'clean(f.whyItMatters)',
-    // h.headline / h.detail are absent because the highlight grid they
-    // belonged to is gone — see the introduction test above. A field that no
-    // longer renders cannot render raw.
-    'clean(summary.statement)',
+    // The opening sentence — the model's own only when it is genuinely about
+    // the property rather than about absent input. See buyerSummary.ts.
+    'clean(opening.statement)',
   ]) {
     assert.ok(reportCode.includes(call), `${call} is missing — that string can render raw`);
   }

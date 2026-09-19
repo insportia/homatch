@@ -61,9 +61,18 @@ test('the verdict block no longer restates the findings as cards', () => {
     /highlights\.map\(/.test(hero), false,
     'the highlight grid duplicated the findings and must not return'
   );
-  // The verdict and the statement — the actual introduction — remain.
+  // The verdict and a sentence — the actual introduction — remain.
   assert.match(hero, /OVERALL_KEY\[label\]/);
-  assert.match(hero, /summary\.statement/);
+  /*
+   * The sentence now comes through buyerOpening(). Verify runs from a
+   * cadastral code, so it rarely has an asking price, and the stored
+   * Villion report opened with „ფასის შეფასება ჯერ ვერ კეთდება..." — a
+   * description of the INPUT, not of the property. The model's own
+   * sentence is kept whenever it is genuinely about the flat.
+   */
+  assert.match(hero, /buyerOpening\(summary\)/);
+  assert.match(hero, /opening\.statement/);
+  assert.match(hero, /opening\.fallbackKey/);
 });
 
 test('the duplicate snapshot section is dropped, but only when the snapshot exists', () => {

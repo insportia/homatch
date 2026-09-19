@@ -184,3 +184,31 @@ export function buildEvidenceGroups(
 export function evidenceRowCount(groups: EvidenceGroup[]): number {
   return groups.reduce((n, g) => n + g.rows.length, 0);
 }
+
+/*
+ * THE SOURCES A BUYER SEES, WHICH ARE NOT ALL THE SOURCES.
+ *
+ * The MARKET group is a list of individual property advertisements. For the
+ * stored Villion report it holds eight of them, and the run found NOTHING in
+ * the same project and NOTHING on the same street — so every one of those
+ * eight is an advert for a different building somewhere else in the city.
+ *
+ * Printed under a buyer's due-diligence report they do two unhelpful things:
+ * they turn the closing section into a classifieds list, and they imply a
+ * relevance to this address that the tier counts explicitly deny.
+ *
+ * NOTHING IS DESTROYED. The rows stay in synthesis_json exactly as stored,
+ * the research core keeps every URL as provenance, and the full research
+ * drawer still renders them. This decides one thing only: which sources the
+ * BUYER REPORT lists. The market block above already summarises what those
+ * adverts collectively say, with its sample size and how local it is stated
+ * honestly — which is the useful half of the same information.
+ */
+export function buyerFacingGroups(groups: EvidenceGroup[]): EvidenceGroup[] {
+  return groups.filter((g) => g.key !== 'MARKET' && g.rows.length > 0);
+}
+
+/** How many source rows the buyer report actually lists. */
+export function buyerFacingRowCount(groups: EvidenceGroup[]): number {
+  return buyerFacingGroups(groups).reduce((n, g) => n + g.rows.length, 0);
+}

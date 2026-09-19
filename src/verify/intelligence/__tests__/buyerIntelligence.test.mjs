@@ -586,9 +586,14 @@ test('the UI strips evidence ids the model writes into prose anyway', () => {
   // Every customer-visible string must go through it, not just paragraphs.
   // v2 composes the strip with readable() in one helper, so every call site
   // gets both and a new field cannot skip one.
-  assert.ok(/const clean = \(s: unknown\): string => stripEvidenceIds\(readable\(/.test(cmp));
+  // Composed with stripInternalTerms as well, for the same reason the id
+  // strip exists: a model instruction is a request, this is the control.
+  assert.ok(
+    /const clean = \(s: unknown\): string =>\s*stripInternalTerms\(stripEvidenceIds\(readable\(/.test(cmp),
+    'clean() no longer composes every guard'
+  );
   for (const call of [
-    'clean(summary.statement)', 'clean(s.title)',
+    'clean(opening.statement)', 'clean(s.title)',
     // `clean(h.headline)` is absent because the summary highlight grid it
     // belonged to was removed: it restated the key findings below it and
     // opened the report a second time. A field that no longer renders cannot

@@ -1,8 +1,25 @@
 // src/mortgage/calculations/financingPicture.ts — DETERMINISTIC MATH ONLY.
 //
-// §12's "Your financing picture": one compact summary assembled from
-// outputs that already exist, plus three lists — what looks comfortable,
-// what deserves attention, and what is still missing.
+// "Your financing picture": one compact summary assembled from outputs
+// that already exist, plus three lists — what we already know, what is
+// worth attention, and what is still missing.
+//
+// THE FIRST LIST USED TO BE CALLED "LOOKS COMFORTABLE"
+//
+// And the effective rate sitting 0.8 points above the advertised one
+// was filed under it. That is not comfort, it is arithmetic: monthly
+// compounding produces roughly that much on its own at Georgian
+// mortgage rates, and it says nothing whatever about whether the loan
+// is a good one. A fixed rate was filed there too, as though certainty
+// and value were the same thing.
+//
+// Calling either of them good is the product handing out an opinion it
+// has no basis for, which is exactly what the no-score rule below
+// forbids in the same breath. So the list is now what it always
+// actually held: the things this page can already say for certain.
+// Only the two findings measured against a PUBLISHED REGULATORY LIMIT
+// keep their reassurance, and even they state the limit rather than a
+// verdict.
 //
 // THE RULE THAT SHAPES THIS WHOLE FILE
 //
@@ -61,17 +78,18 @@ export interface FinancingPicture {
   ptiPercent: number | null;
   ltvPercent: number | null;
 
-  comfortable: PictureNote[];
+  /** Facts the scenario establishes. Not endorsements. See the header. */
+  known: PictureNote[];
   attention: PictureNote[];
   missing: PictureNote[];
 }
 
 /**
- * How much headroom counts as comfortable against a published limit.
+ * How much headroom a published limit needs before it stops being tight.
  *
  * Five percentage points, and it is a DISPLAY threshold, not a rule: a
  * scenario one point inside the PTI ceiling is within the limit and this
- * product says so, but calling it "comfortable" would be the product
+ * product says so, but presenting it as roomy would be the product
  * adding a reassurance the regulator did not. Anything between the limit
  * and the limit minus this margin is reported as within the limit and
  * also as deserving attention.
@@ -99,7 +117,7 @@ export interface PictureInputs {
 export function buildFinancingPicture(args: PictureInputs): FinancingPicture {
   const { input, result, breakdown, affordability, ptiRule, ltvRule } = args;
 
-  const comfortable: PictureNote[] = [];
+  const known: PictureNote[] = [];
   const attention: PictureNote[] = [];
   const missing: PictureNote[] = [];
 
@@ -113,7 +131,7 @@ export function buildFinancingPicture(args: PictureInputs): FinancingPicture {
     } else if (pti > limit - COMFORT_MARGIN_POINTS) {
       attention.push({ key: 'mortgage_picture_pti_near', criterionKey: 'mortgage_picture_crit_pti', vars });
     } else {
-      comfortable.push({ key: 'mortgage_picture_pti_under', criterionKey: 'mortgage_picture_crit_pti', vars });
+      known.push({ key: 'mortgage_picture_pti_under', criterionKey: 'mortgage_picture_crit_pti', vars });
     }
   } else if (!affordability) {
     missing.push({ key: 'mortgage_picture_missing_income', criterionKey: 'mortgage_picture_crit_pti' });
@@ -131,7 +149,7 @@ export function buildFinancingPicture(args: PictureInputs): FinancingPicture {
     } else if (ltv > limit - COMFORT_MARGIN_POINTS) {
       attention.push({ key: 'mortgage_picture_ltv_near', criterionKey: 'mortgage_picture_crit_ltv', vars });
     } else {
-      comfortable.push({ key: 'mortgage_picture_ltv_under', criterionKey: 'mortgage_picture_crit_ltv', vars });
+      known.push({ key: 'mortgage_picture_ltv_under', criterionKey: 'mortgage_picture_crit_ltv', vars });
     }
   } else if (result.ltvPercent !== null) {
     missing.push({ key: 'mortgage_picture_missing_ltv_rule', criterionKey: 'mortgage_picture_crit_ltv' });
@@ -150,7 +168,7 @@ export function buildFinancingPicture(args: PictureInputs): FinancingPicture {
     if (breakdown.gapPoints >= 1) {
       attention.push({ key: 'mortgage_picture_rate_gap', criterionKey: 'mortgage_picture_crit_rate_gap', vars });
     } else {
-      comfortable.push({ key: 'mortgage_picture_rate_close', criterionKey: 'mortgage_picture_crit_rate_gap', vars });
+      known.push({ key: 'mortgage_picture_rate_close', criterionKey: 'mortgage_picture_crit_rate_gap', vars });
     }
   }
 
@@ -173,7 +191,7 @@ export function buildFinancingPicture(args: PictureInputs): FinancingPicture {
       varKeys: { type: RATE_TYPE_LABEL_KEYS[input.rateType] },
     });
   } else {
-    comfortable.push({ key: 'mortgage_picture_rate_fixed', criterionKey: 'mortgage_picture_crit_rate_type' });
+    known.push({ key: 'mortgage_picture_rate_fixed', criterionKey: 'mortgage_picture_crit_rate_type' });
   }
 
   /* ── Borrowing in a currency you are not paid in ── */
@@ -204,7 +222,7 @@ export function buildFinancingPicture(args: PictureInputs): FinancingPicture {
     totalFinancingCost: roundCurrency(result.totalRepayment - result.loanAmount),
     ptiPercent: affordability?.ptiPercent ?? null,
     ltvPercent: result.ltvPercent,
-    comfortable,
+    known,
     attention,
     missing,
   };

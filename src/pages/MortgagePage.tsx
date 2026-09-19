@@ -45,6 +45,7 @@ import { useFinancingSession } from '@/components/mortgage/useFinancingSession';
 import { SimpleCalculator } from '@/components/mortgage/SimpleCalculator';
 import { ResultHeadline } from '@/components/mortgage/ResultHeadline';
 import { ConsultantPanel } from '@/components/mortgage/ConsultantPanel';
+import { MortgageAskProvider } from '@/components/mortgage/askConsultant';
 import { ToolShelf } from '@/components/mortgage/ToolShelf';
 import { AdvancedInputs } from '@/components/mortgage/AdvancedInputs';
 import { DetailsSection } from '@/components/mortgage/DetailsSection';
@@ -92,6 +93,7 @@ export default function MortgagePage() {
     subsidyAnswers,
     answerSubsidy,
     subsidyMatches,
+    rulesReady,
     referenceRate,
     ptiRule,
     ltvRule,
@@ -177,165 +179,177 @@ export default function MortgagePage() {
     ],
   );
 
+  /*
+   * ONE CONSULTANT, REACHED FROM THE WHOLE PAGE.
+   *
+   * The checklist cards, the findings in the financing picture and the
+   * contract topics all end in a question. The provider is what lets
+   * them put that question to the conversation that is already running
+   * further up, instead of printing it and hoping somebody retypes it.
+   * See components/mortgage/askConsultant.tsx.
+   */
   return (
     <AppLayout noPadding>
       <PageMeta title={t('mortgage_page_title')} description={t('mortgage_page_subtitle')} />
-      <div className="hm-workspace hm-workspace-canvas min-h-[calc(100vh-4rem)]">
-        <div className="mx-auto w-full max-w-[64rem] space-y-8 px-4 py-8 sm:px-6 sm:py-10">
-          {/* ── A. The name ── */}
-          <header>
-            <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
-              {t('mortgage_product_eyebrow')}
-            </p>
-            <h1 className="mt-1.5 font-display text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
-              {t('mortgage_page_title')}
-            </h1>
-            {/* THE PROMISE, NOT A DESCRIPTION.
-                Five fields is a small ask, and somebody looking at them
-                should already know they are about to get more back than
-                a payment figure. Two lines, and then the form. */}
-            <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
-              {t('mortgage_opening_promise')}
-            </p>
-          </header>
+      <MortgageAskProvider>
+        <div className="hm-workspace hm-workspace-canvas min-h-[calc(100vh-4rem)]">
+          <div className="mx-auto w-full max-w-[64rem] space-y-8 px-4 py-8 sm:px-6 sm:py-10">
+            {/* ── A. The name ── */}
+            <header>
+              <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
+                {t('mortgage_product_eyebrow')}
+              </p>
+              <h1 className="mt-1.5 font-display text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
+                {t('mortgage_page_title')}
+              </h1>
+              {/* THE PROMISE, NOT A DESCRIPTION.
+                  Five fields is a small ask, and somebody looking at them
+                  should already know they are about to get more back than
+                  a payment figure. Two lines, and then the form. */}
+              <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
+                {t('mortgage_opening_promise')}
+              </p>
+            </header>
 
-          {/* ── B. The calculator ── */}
-          <SimpleCalculator
-            draft={draft}
-            set={set}
-            calculated={showResult}
-            onCalculate={() => {
-              setPressed(true);
-              requestAnimationFrame(() => {
-                document.getElementById('result')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              });
-            }}
-          />
+            {/* ── B. The calculator ── */}
+            <SimpleCalculator
+              draft={draft}
+              set={set}
+              calculated={showResult}
+              onCalculate={() => {
+                setPressed(true);
+                requestAnimationFrame(() => {
+                  document.getElementById('result')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+              }}
+            />
 
-          {showResult && result ? (
-            <>
-              {/* ── C. The answer ── */}
-              <ResultHeadline result={result} currency={currency} />
+            {showResult && result ? (
+              <>
+                {/* ── C. The answer ── */}
+                <ResultHeadline result={result} currency={currency} />
 
-              {/* ── D. The consultant ── */}
-              <ConsultantPanel brief={brief} />
+                {/* ── D. The consultant ── */}
+                <ConsultantPanel brief={brief} />
 
-              {/* ── E. Optional tools ── */}
-              <ToolShelf open={topic} onOpen={selectTopic} state={workspaceState}>
-                {topic === 'EARLY_REPAYMENT' && input ? (
-                  <EarlyRepaymentView
-                    draft={draft}
-                    set={set}
-                    result={earlyRepayment}
-                    currency={currency}
-                    context={presetContext}
-                    termMonths={input.termMonths}
-                  />
-                ) : null}
-
-                {topic === 'COMPARE_OFFERS' ? (
-                  <OffersView
-                    offers={offers}
-                    comparison={offerComparison}
-                    onAdd={addOffer}
-                    onUpdate={updateOffer}
-                    onRemove={removeOffer}
-                    loanAmount={result.loanAmount}
-                    termMonths={draft.termMonths ?? 240}
-                    currency={currency}
-                    context={presetContext}
-                  />
-                ) : null}
-
-                {topic === 'AFFORDABILITY' ? (
-                  affordability ? (
-                    <AffordabilityView affordability={affordability} ptiRule={ptiRule} ltvRule={ltvRule} />
-                  ) : (
-                    <AdvancedInputs
+                {/* ── E. Optional tools ── */}
+                <ToolShelf open={topic} onOpen={selectTopic} state={workspaceState}>
+                  {topic === 'EARLY_REPAYMENT' && input ? (
+                    <EarlyRepaymentView
                       draft={draft}
                       set={set}
-                      loanAmount={result.loanAmount}
-                      monthlyPayment={result.monthlyPayment}
+                      result={earlyRepayment}
+                      currency={currency}
+                      context={presetContext}
+                      termMonths={input.termMonths}
                     />
-                  )
-                ) : null}
+                  ) : null}
 
-                {topic === 'REFINANCING' ? (
-                  <RefinancingView
-                    draft={draft}
-                    set={set}
-                    result={refinancing}
-                    currency={currency}
-                    context={presetContext}
-                  />
-                ) : null}
+                  {topic === 'COMPARE_OFFERS' ? (
+                    <OffersView
+                      offers={offers}
+                      comparison={offerComparison}
+                      onAdd={addOffer}
+                      onUpdate={updateOffer}
+                      onRemove={removeOffer}
+                      loanAmount={result.loanAmount}
+                      termMonths={draft.termMonths ?? 240}
+                      currency={currency}
+                      context={presetContext}
+                    />
+                  ) : null}
 
-                {topic === 'GOVERNMENT_PROGRAMS' ? (
-                  <ProgramsView
-                    programs={subsidyPrograms}
-                    matches={subsidyMatches}
-                    answers={subsidyAnswers}
-                    onAnswer={answerSubsidy}
-                    referenceRate={referenceRate}
-                    nominalRatePercent={draft.nominalAnnualRatePercent}
-                    currency={currency}
-                  />
-                ) : null}
-              </ToolShelf>
+                  {topic === 'AFFORDABILITY' ? (
+                    affordability ? (
+                      <AffordabilityView affordability={affordability} ptiRule={ptiRule} ltvRule={ltvRule} />
+                    ) : (
+                      <AdvancedInputs
+                        draft={draft}
+                        set={set}
+                        loanAmount={result.loanAmount}
+                        monthlyPayment={result.monthlyPayment}
+                      />
+                    )
+                  ) : null}
 
-              {/* ── F. Before you sign ── */}
-              <BeforeYouSignView />
+                  {topic === 'REFINANCING' ? (
+                    <RefinancingView
+                      draft={draft}
+                      set={set}
+                      result={refinancing}
+                      currency={currency}
+                      context={presetContext}
+                    />
+                  ) : null}
 
-              {/* ── G. Details and methodology ── */}
-              <DetailsSection
-                input={input}
-                result={result}
-                breakdown={breakdown}
-                termRows={termRows}
-                currency={currency}
-                onSelectTerm={(months) => set('termMonths', months)}
-              />
+                  {topic === 'GOVERNMENT_PROGRAMS' ? (
+                    <ProgramsView
+                      programs={subsidyPrograms}
+                      matches={subsidyMatches}
+                      answers={subsidyAnswers}
+                      onAnswer={answerSubsidy}
+                      referenceRate={referenceRate}
+                      nominalRatePercent={draft.nominalAnnualRatePercent}
+                      currency={currency}
+                      loading={!rulesReady}
+                    />
+                  ) : null}
+                </ToolShelf>
 
-              {/* The bank's own cost sheet, and income. Optional, closed,
-                  and the only thing that makes the effective rate exact. */}
-              <AdvancedInputs
-                draft={draft}
-                set={set}
-                loanAmount={result.loanAmount}
-                monthlyPayment={result.monthlyPayment}
-              />
+                {/* ── F. Before you sign ── */}
+                <BeforeYouSignView />
 
-              {picture ? <FinancingPictureView picture={picture} /> : null}
+                {/* ── G. Details and methodology ── */}
+                <DetailsSection
+                  input={input}
+                  result={result}
+                  breakdown={breakdown}
+                  termRows={termRows}
+                  currency={currency}
+                  onSelectTerm={(months) => set('termMonths', months)}
+                />
 
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => { reset(); setPressed(false); }}
-                  className="flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-xs text-muted-foreground transition-colors hover:border-[hsl(var(--gold-border))] hover:text-foreground"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                  {t('mortgage_start_over')}
-                </button>
-                {!homatchUser ? (
+                {/* The bank's own cost sheet, and income. Optional, closed,
+                    and the only thing that makes the effective rate exact. */}
+                <AdvancedInputs
+                  draft={draft}
+                  set={set}
+                  loanAmount={result.loanAmount}
+                  monthlyPayment={result.monthlyPayment}
+                />
+
+                {picture ? <FinancingPictureView picture={picture} /> : null}
+
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    className="min-h-11 text-2xs text-muted-foreground underline decoration-dotted underline-offset-2"
-                    onClick={() => navigate('/auth/login')}
+                    onClick={() => { reset(); setPressed(false); }}
+                    className="flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-xs text-muted-foreground transition-colors hover:border-[hsl(var(--gold-border))] hover:text-foreground"
                   >
-                    {t('mortgage_sign_in_to_save')}
+                    <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                    {t('mortgage_start_over')}
                   </button>
-                ) : null}
-              </div>
-            </>
-          ) : null}
+                  {!homatchUser ? (
+                    <button
+                      type="button"
+                      className="min-h-11 text-2xs text-muted-foreground underline decoration-dotted underline-offset-2"
+                      onClick={() => navigate('/auth/login')}
+                    >
+                      {t('mortgage_sign_in_to_save')}
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
 
-          <p className="rounded-xl border border-dashed border-border px-5 py-4 text-2xs leading-relaxed text-muted-foreground">
-            {t('mortgage_global_disclaimer')}
-          </p>
+            <p className="rounded-xl border border-dashed border-border px-5 py-4 text-2xs leading-relaxed text-muted-foreground">
+              {t('mortgage_global_disclaimer')}
+            </p>
 
-          <PageBlocks slug="mortgage" />
+            <PageBlocks slug="mortgage" />
+          </div>
         </div>
-      </div>
+      </MortgageAskProvider>
     </AppLayout>
   );
 }

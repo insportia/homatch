@@ -250,6 +250,8 @@ export interface FinancingSession {
   subsidyAnswers: SubsidyAnswers;
   answerSubsidy: (questionId: string, answer: boolean | number | undefined) => void;
   subsidyMatches: SubsidyMatch[];
+  /** False until the knowledge-base rows have arrived (or failed to). */
+  rulesReady: boolean;
   referenceRate: MortgageRule<ReferenceRateRuleData> | null;
 
   ptiRule: MortgageRule<PtiLimitRuleData> | null;
@@ -280,6 +282,17 @@ export function useFinancingSession(prefill?: { price?: number; currency?: strin
   const [ltvRules, setLtvRules] = useState<MortgageRule<LtvLimitRuleData>[]>([]);
   const [subsidyPrograms, setSubsidyPrograms] = useState<MortgageRule<SubsidyProgramRuleData>[]>([]);
   const [referenceRate, setReferenceRate] = useState<MortgageRule<ReferenceRateRuleData> | null>(null);
+  /*
+   * WHETHER THE KNOWLEDGE BASE HAS ANSWERED YET.
+   *
+   * fetchActiveRules fails closed, so a query that errors and a country
+   * with no published programme both arrive as an empty array. That is
+   * the right call for the maths — a calculator must never invent a
+   * limit — but it left the programmes panel saying "there is no state
+   * programme" during the second before the rows arrive. This says
+   * "checking" until they have.
+   */
+  const [rulesReady, setRulesReady] = useState(false);
 
   useEffect(() => {
     store(STORAGE_KEY, JSON.stringify(draft));
@@ -292,10 +305,12 @@ export function useFinancingSession(prefill?: { price?: number; currency?: strin
   useEffect(() => {
     // ACTIVE knowledge-base rows are public under RLS, so these load for a
     // signed-out visitor too and every topic works before sign-in.
-    getActivePtiRules().then(setPtiRules).catch(() => {});
-    getActiveLtvRules().then(setLtvRules).catch(() => {});
-    getActiveSubsidyPrograms().then(setSubsidyPrograms).catch(() => {});
-    getActiveReferenceRate().then(setReferenceRate).catch(() => {});
+    void Promise.allSettled([
+      getActivePtiRules().then(setPtiRules),
+      getActiveLtvRules().then(setLtvRules),
+      getActiveSubsidyPrograms().then(setSubsidyPrograms),
+      getActiveReferenceRate().then(setReferenceRate),
+    ]).then(() => setRulesReady(true));
   }, []);
 
   const track = useCallback(
@@ -550,6 +565,7 @@ export function useFinancingSession(prefill?: { price?: number; currency?: strin
     subsidyAnswers,
     answerSubsidy,
     subsidyMatches,
+    rulesReady,
     referenceRate,
     ptiRule,
     ltvRule,

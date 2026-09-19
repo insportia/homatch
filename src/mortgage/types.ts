@@ -260,10 +260,37 @@ export interface LtvLimitRuleData {
  * displayed and explicitly reported as unchecked; only criteria carrying
  * one contribute to a match verdict.
  */
+/**
+ * What a condition DOES, which is not the same as whether it is required.
+ *
+ *   MANDATORY  failing it rules the programme out. Citizenship.
+ *   ROUTE      one of several ways in; satisfying ANY one is enough.
+ *   CONTEXT    neither. It shapes the benefit or describes the household,
+ *              and on its own it opens nothing.
+ *
+ * CONTEXT exists because the old two-state model had no room for it and
+ * got two conditions of Decree 388 wrong in the same direction. Being a
+ * single parent was treated as a way in, when the decree lists single
+ * parents INSIDE each child condition rather than beside them. Having
+ * three children was treated as a live way in, when that route closed for
+ * loans taken after 1 September 2022 and now only chooses which subsidy
+ * formula applies. Both told families they likely matched when they did
+ * not, which is the one error a programme checker must not make.
+ */
+export type CriterionRole = 'MANDATORY' | 'ROUTE' | 'CONTEXT';
+
 export interface SubsidyEligibilityCriterion {
   key: string;
   /** i18n key for the condition as the source states it. */
   description: string;
+  /** Absent means MANDATORY when `mandatory` is set, ROUTE otherwise. */
+  role?: CriterionRole;
+  /** i18n key: this condition, stated as something the scenario satisfies. */
+  metKey?: string;
+  /** i18n key: this condition, stated as the reason it does not. */
+  failureKey?: string;
+  /** ISO date after which this route no longer admits a new loan. */
+  routeClosedOn?: string;
   question?: {
     /** Stable id used as the answer key; unique within the program. */
     id: string;
@@ -285,6 +312,17 @@ export interface SubsidyEligibilityCriterion {
 
 export interface SubsidyProgramRuleData {
   programName: string;
+  /** i18n key for the administrator's name as a customer reads it. */
+  administratorKey?: string;
+  /**
+   * i18n key for the programme's name as a customer reads it.
+   *
+   * `MortgageRule.title` is administrative prose in English, with the
+   * decree number in it, written for the people who maintain the
+   * knowledge base. It reached a Georgian page verbatim. This is the
+   * customer-facing name; the row keeps both.
+   */
+  titleKey?: string;
   administrator: string;
   maxLoanAmount: number | null;
   currency: string;

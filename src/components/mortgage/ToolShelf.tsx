@@ -14,6 +14,22 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { TOOL_ORDER, TOPICS, missingRequirements, type TopicId, type WorkspaceState } from '@/mortgage/topics';
 
+/*
+ * ONE SENTENCE BEFORE THE FORM.
+ *
+ * A panel that opens straight into three empty fields makes somebody
+ * work out what they are being asked for and why, which is how a tool
+ * gets closed again unread. Each of these names the question its tool
+ * answers. See §21 of the brief: no dead panel, no unexplained form.
+ */
+const INTRO_KEYS: Partial<Record<TopicId, string>> = {
+  AFFORDABILITY: 'mortgage_tool_intro_affordability',
+  COMPARE_OFFERS: 'mortgage_tool_intro_compare_offers',
+  EARLY_REPAYMENT: 'mortgage_tool_intro_early_repayment',
+  REFINANCING: 'mortgage_tool_intro_refinancing',
+  GOVERNMENT_PROGRAMS: 'mortgage_tool_intro_programs',
+};
+
 const ICONS: Record<string, React.ElementType> = {
   'fast-forward': FastForward,
   columns: Columns3,
@@ -75,6 +91,12 @@ export function ToolShelf({
 
       {open ? (
         <div id="tool-panel" className="mt-4 space-y-4">
+          {INTRO_KEYS[open] ? (
+            <p className="max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
+              {t(INTRO_KEYS[open])}
+            </p>
+          ) : null}
+
           {/* What this tool still needs, by name. A tool that opens and
               shows nothing is worse than one that says what is missing. */}
           {missingRequirements(TOPICS[open], state).length ? (

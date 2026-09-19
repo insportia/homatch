@@ -144,7 +144,7 @@ function picture(overrides = {}) {
 
 test('every finding names the criterion that produced it', () => {
   const p = picture();
-  for (const note of [...p.comfortable, ...p.attention, ...p.missing]) {
+  for (const note of [...p.known, ...p.attention, ...p.missing]) {
     assert.match(note.key, /^mortgage_picture_/);
     assert.match(note.criterionKey, /^mortgage_picture_crit_/);
   }
@@ -163,23 +163,23 @@ test('the picture never grades the loan', () => {
 test('an unstated rate type is reported as unknown, not assumed fixed', () => {
   const unknown = picture();
   assert.ok(unknown.missing.some((n) => n.key === 'mortgage_picture_missing_rate_type'));
-  assert.ok(!unknown.comfortable.some((n) => n.key === 'mortgage_picture_rate_fixed'));
+  assert.ok(!unknown.known.some((n) => n.key === 'mortgage_picture_rate_fixed'));
 
   const fixed = picture({ input: { rateType: 'FIXED' } });
-  assert.ok(fixed.comfortable.some((n) => n.key === 'mortgage_picture_rate_fixed'));
+  assert.ok(fixed.known.some((n) => n.key === 'mortgage_picture_rate_fixed'));
 
   const variable = picture({ input: { rateType: 'VARIABLE' } });
   assert.ok(variable.attention.some((n) => n.key === 'mortgage_picture_rate_not_fixed'));
 });
 
-test('a PTI inside the limit but near it is reported as attention, not comfort', () => {
+test('a PTI inside the limit but near it is attention, and a clear one is only a fact', () => {
   const ptiRule = { id: 'r', data: { maxPtiPercent: 50, currencyClass: 'LOCAL', incomeTierMaxMonthlyNet: null } };
 
   const near = picture({ affordability: { ptiPercent: 47, ltvPercent: 80, ptiWithinPublishedLimit: true, ltvWithinPublishedLimit: true, matchedPtiRuleId: 'r', matchedLtvRuleId: null }, ptiRule });
   assert.ok(near.attention.some((n) => n.key === 'mortgage_picture_pti_near'));
 
   const clear = picture({ affordability: { ptiPercent: 30, ltvPercent: 80, ptiWithinPublishedLimit: true, ltvWithinPublishedLimit: true, matchedPtiRuleId: 'r', matchedLtvRuleId: null }, ptiRule });
-  assert.ok(clear.comfortable.some((n) => n.key === 'mortgage_picture_pti_under'));
+  assert.ok(clear.known.some((n) => n.key === 'mortgage_picture_pti_under'));
 
   const over = picture({ affordability: { ptiPercent: 60, ltvPercent: 80, ptiWithinPublishedLimit: false, ltvWithinPublishedLimit: true, matchedPtiRuleId: 'r', matchedLtvRuleId: null }, ptiRule });
   assert.ok(over.attention.some((n) => n.key === 'mortgage_picture_pti_over'));
@@ -282,7 +282,8 @@ test('nothing answered is never a match and never a rejection', () => {
 test('a failed mandatory condition rules the programme out', () => {
   const match = matchSubsidyProgram(PROGRAM, { citizenship: false, child_after_2021: true }, loan);
   assert.equal(match.verdict, 'NOT_A_MATCH');
-  assert.ok(match.reasons.includes('mortgage_subsidy_reason_mandatory_failed'));
+  assert.ok(match.reasons.some((r) => r.key === 'mortgage_kb_subsidy_failed_citizenship'
+    || r.key === 'mortgage_subsidy_reason_mandatory_failed'));
 });
 
 test('any one qualifying route is enough', () => {
@@ -304,7 +305,7 @@ test('every route answered no, and none satisfied, is a rejection', () => {
     loan,
   );
   assert.equal(match.verdict, 'NOT_A_MATCH');
-  assert.ok(match.reasons.includes('mortgage_subsidy_reason_no_route'));
+  assert.ok(match.reasons.some((r) => r.key === 'mortgage_subsidy_reason_no_route'));
 });
 
 test('a condition the rule cannot express is always reported as unchecked', () => {
@@ -312,7 +313,7 @@ test('a condition the rule cannot express is always reported as unchecked', () =
   const opaque = match.outcomes.find((o) => o.criterion.key === 'opaque');
   assert.equal(opaque.checkable, false);
   assert.equal(opaque.satisfied, null);
-  assert.ok(match.reasons.includes('mortgage_subsidy_reason_uncheckable'));
+  assert.ok(match.reasons.some((r) => r.key === 'mortgage_subsidy_reason_uncheckable'));
 });
 
 test('the strongest verdict available is LIKELY_MATCH', () => {

@@ -16,7 +16,7 @@ import { ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { formatPercent, intlLocaleFor } from '@/components/workspace/primitives';
-import { RateView, CostStack, COMPONENT_LABELS } from './views/RateView';
+import { RateView, CostStack } from './views/RateView';
 import { TermsView } from './views/TermsView';
 import { ScheduleView } from './views/ScheduleView';
 import { ChecklistView } from './views/GuidanceViews';
@@ -106,14 +106,14 @@ export function DetailsSection({
             {t('mortgage_details_effective_explain')}
           </p>
 
-          {/* Never "there are no other costs" — only "you have not told us
-              about these", which is a different statement. */}
+          {/* Never "there are no other costs" — only "you have not told
+              us about these", which is a different statement. The names
+              of the cost classes used to follow this sentence after a
+              dash; they are listed as chips inside the breakdown below,
+              where they have room to be read. */}
           {breakdown.unknownCosts.length ? (
             <p className="mt-3 max-w-[62ch] text-xs leading-relaxed text-muted-foreground">
-              {t('mortgage_details_missing_costs', {
-                n: breakdown.unknownCosts.length,
-                list: breakdown.unknownCosts.map((key) => t(COMPONENT_LABELS[key])).join(', '),
-              })}
+              {t('mortgage_details_missing_costs')}
             </p>
           ) : null}
 
@@ -147,7 +147,7 @@ export function DetailsSection({
       </Drawer>
 
       <Drawer id="details-checklist" title={t('mortgage_details_checklist')}>
-        <ChecklistView input={input} />
+        <ChecklistView input={input} result={result} breakdown={breakdown} />
       </Drawer>
     </section>
   );

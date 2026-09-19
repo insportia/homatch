@@ -1,18 +1,34 @@
-// HOMATCH HOME FINANCING — the summary that sits above every topic.
+// HOMATCH HOME FINANCING — the summary that sits under the answer.
 //
-// Eight figures, then three lists. The figures are the shared six-slot
-// header idea from the Investment workspace, widened to eight because a
-// mortgage genuinely has two more numbers a borrower checks first (the
-// down payment and the loan amount are not derivable from each other
-// without the price).
+// Eight figures, then three lists.
 //
-// WHY EVERY FINDING PRINTS ITS OWN CRITERION
+// WHY THE CRITERION IN BRACKETS IS GONE
 //
-// "Deserves attention: your PTI is 34.2% against a 30% limit" is a
-// fact. "Deserves attention" on its own is an opinion, and a product
-// that hands out opinions about somebody's mortgage without saying what
-// produced them is asking to be believed rather than checked. Each line
-// carries the rule that generated it, in the same breath.
+// Every finding used to print the rule that produced it, in brackets,
+// immediately after the sentence. The intent was right: a product that
+// hands out observations about somebody's mortgage without saying what
+// produced them is asking to be believed rather than checked. The
+// execution put this in front of a customer:
+//
+//   "სესხი ქონების ღირებულების 87.5%-ს ფარავს. ეს 70%-იან ზღვარზე
+//    მეტია.(სესხი ღირებულებასთან გამოქვეყნებულ ზღვართან)"
+//
+// That bracket is an internal label. It names the criterion in the
+// vocabulary of the rule engine, it is attached with no space, and it
+// tells a first-time borrower nothing they did not just read in plainer
+// words. Seven of them appeared on the live Georgian page at once.
+//
+// The criterion has not been deleted. It is still on every note, still
+// asserted by the tests, and it is now where a reason belongs: inside
+// the sentence itself. "The payment takes 30% of your income, above the
+// published limit of 30%" carries its own rule.
+//
+// WHY PTI AND LTV ARE WORDS FIRST
+//
+// Two acronyms stood alone over two numbers. Somebody who does not know
+// them learns nothing, and somebody who does loses nothing by reading
+// the words. The acronym survives as the small second line, because it
+// is what a bank will say back to them.
 //
 // There is no score. See the header of financingPicture.ts for why.
 
@@ -22,7 +38,28 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { FigureValue } from '@/components/workspace/primitives';
 import { fig } from './fields';
+import { AskHomatch } from './askConsultant';
 import type { FinancingPicture, PictureNote } from '@/mortgage/calculations/financingPicture';
+
+/**
+ * The question worth asking about each finding.
+ *
+ * Only for the ones where a conversation genuinely helps. A missing
+ * valuation fee does not need an AI to explain it; why a rate comes out
+ * 0.8 points higher than advertised does. See §23 of the brief: a
+ * button after every sentence is noise.
+ */
+const ASK_FOR_NOTE: Readonly<Record<string, string>> = {
+  mortgage_picture_rate_gap: 'mortgage_check_effective_rate_ask',
+  mortgage_picture_rate_close: 'mortgage_check_effective_rate_ask',
+  mortgage_picture_pti_near: 'mortgage_check_monthly_payment_ask',
+  mortgage_picture_pti_over: 'mortgage_check_monthly_payment_ask',
+  mortgage_picture_ltv_near: 'mortgage_ask_more_down',
+  mortgage_picture_ltv_over: 'mortgage_ask_more_down',
+  mortgage_picture_fx: 'mortgage_check_currency_risk_ask',
+  mortgage_picture_missing_rate_type: 'mortgage_check_rate_type_ask',
+  mortgage_picture_missing_early_fee: 'mortgage_check_early_repayment_ask',
+};
 
 function NoteList({
   notes,
@@ -43,21 +80,26 @@ function NoteList({
         <Icon className="h-3.5 w-3.5" aria-hidden="true" />
         {t(titleKey)}
       </h3>
-      <ul className="mt-2 space-y-2">
-        {notes.map((note) => (
-          <li key={note.key} className="text-sm leading-relaxed text-foreground">
-            {/* A note's variables may themselves be translation keys — a
-                rate type is an enum in the engine and a word on the
-                screen — so those are resolved before interpolation. */}
-            {t(note.key, {
-              ...note.vars,
-              ...Object.fromEntries(
-                Object.entries(note.varKeys ?? {}).map(([name, key]) => [name, t(key)]),
-              ),
-            })}
-            <span className="ms-1.5 text-2xs text-muted-foreground">({t(note.criterionKey)})</span>
-          </li>
-        ))}
+      <ul className="mt-2 space-y-3">
+        {notes.map((note) => {
+          const askKey = ASK_FOR_NOTE[note.key];
+          return (
+            <li key={note.key} className="text-sm leading-relaxed text-foreground">
+              {/* A note's variables may themselves be translation keys — a
+                  rate type is an enum in the engine and a word on the
+                  screen — so those are resolved before interpolation. */}
+              <span className="block">
+                {t(note.key, {
+                  ...note.vars,
+                  ...Object.fromEntries(
+                    Object.entries(note.varKeys ?? {}).map(([name, key]) => [name, t(key)]),
+                  ),
+                })}
+              </span>
+              {askKey ? <AskHomatch question={t(askKey)} className="mt-2" /> : null}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -67,15 +109,22 @@ export function FinancingPictureView({ picture }: { picture: FinancingPicture })
   const { t } = useLanguage();
   const currency = picture.currency;
 
-  const slots: { labelKey: string; value: number | null; kind: 'money' | 'percent'; decimals?: number; emphasis?: boolean }[] = [
+  const slots: {
+    labelKey: string;
+    subKey?: string;
+    value: number | null;
+    kind: 'money' | 'percent';
+    decimals?: number;
+    emphasis?: boolean;
+  }[] = [
     { labelKey: 'mortgage_pic_price', value: picture.propertyPrice, kind: 'money' },
     { labelKey: 'mortgage_pic_down', value: picture.downPayment, kind: 'money' },
     { labelKey: 'mortgage_pic_loan', value: picture.loanAmount, kind: 'money' },
     { labelKey: 'mortgage_pic_payment', value: picture.monthlyPayment, kind: 'money', emphasis: true },
     { labelKey: 'mortgage_pic_effective', value: picture.effectiveAnnualRatePercent, kind: 'percent', decimals: 2 },
     { labelKey: 'mortgage_pic_total_cost', value: picture.totalFinancingCost, kind: 'money' },
-    { labelKey: 'mortgage_pic_pti', value: picture.ptiPercent, kind: 'percent', decimals: 1 },
-    { labelKey: 'mortgage_pic_ltv', value: picture.ltvPercent, kind: 'percent', decimals: 1 },
+    { labelKey: 'mortgage_pic_pti', subKey: 'mortgage_pic_pti_sub', value: picture.ptiPercent, kind: 'percent', decimals: 1 },
+    { labelKey: 'mortgage_pic_ltv', subKey: 'mortgage_pic_ltv_sub', value: picture.ltvPercent, kind: 'percent', decimals: 1 },
   ];
 
   return (
@@ -111,15 +160,18 @@ export function FinancingPictureView({ picture }: { picture: FinancingPicture })
                 decimals={slot.decimals}
               />
             </p>
+            {slot.subKey ? (
+              <p className="mt-1 text-2xs leading-tight text-muted-foreground">{t(slot.subKey)}</p>
+            ) : null}
           </div>
         ))}
       </div>
 
-      {picture.comfortable.length || picture.attention.length || picture.missing.length ? (
+      {picture.known.length || picture.attention.length || picture.missing.length ? (
         <div className="grid gap-6 border-t border-border px-5 py-5 lg:grid-cols-3">
           <NoteList
-            notes={picture.comfortable}
-            titleKey="mortgage_pic_comfortable"
+            notes={picture.known}
+            titleKey="mortgage_pic_known"
             Icon={CheckCircle2}
             tone="text-[hsl(var(--success))]"
           />

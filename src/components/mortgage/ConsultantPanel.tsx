@@ -28,10 +28,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAIChat } from '@/hooks/useAIChat';
 import { cn } from '@/lib/utils';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
+import { useMortgageAsk } from './askConsultant';
 import type { ConsultantBrief } from '@/mortgage/consultantBrief';
 
 /**
- * THE FOUR OPENERS, WHICH ARE DELIBERATELY NOT FROM THE MODEL.
+ * THE OPENERS, WHICH ARE DELIBERATELY NOT FROM THE MODEL.
  *
  * Everything after the first answer is generated: the model reads the
  * conversation and proposes what the person might say next. These four
@@ -40,9 +41,17 @@ import type { ConsultantBrief } from '@/mortgage/consultantBrief';
  * what to ask. They are the four things the scenario makes worth
  * asking, in the person's own words, and they hand over to the dynamic
  * chips as soon as one of them is pressed.
+ *
+ * THE TERM ONE IS COMPUTED, BECAUSE IT WAS WRONG.
+ *
+ * "What changes if I choose 15 years?" was a constant, and the owner's
+ * own scenario is an eight-year loan. Offering somebody a LONGER term
+ * under the heading of saving money is worse than offering nothing: it
+ * is a suggestion that does not know what they typed. It now names the
+ * next shorter rung of the ladder the engines already computed, and is
+ * simply not offered when there is no shorter rung.
  */
 const STARTERS = [
-  'mortgage_ask_shorter_term',
   'mortgage_ask_more_down',
   'mortgage_ask_pay_extra',
   'mortgage_ask_explain_effective',
@@ -53,6 +62,8 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
   const navigate = useNavigate();
   const [value, setValue] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLInputElement>(null);
+  const { register } = useMortgageAsk();
   const {
     messages, streaming, streamContent, sendMessage, cancelStream, setPageContext, anonLimitReached,
     suggestedReplies, insufficientCredits,
@@ -80,14 +91,42 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
     void sendMessage(question);
   };
 
+  /*
+   * THE REST OF THE PAGE ASKS THROUGH HERE.
+   *
+   * A checklist card, a finding in the financing picture, a government
+   * condition — each ends in a question, and pressing it fills THIS
+   * composer rather than opening a second conversation somewhere else.
+   * See askConsultant.tsx for why it fills instead of sending.
+   */
+  useEffect(() => register((question: string) => {
+    setValue(question);
+    const panel = document.getElementById('consultant');
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    /* After the scroll, not during it: focusing first makes the browser
+       jump the field into view and fight the smooth scroll. */
+    window.setTimeout(() => composerRef.current?.focus({ preventScroll: true }), 400);
+  }), [register]);
+
   /* Only offered once there is a scenario to ask about: "shorten the
      term" means nothing before a term exists. */
-  const starters = useMemo(
-    () => (brief
-      ? STARTERS.map((key, i) => ({ id: `starter${i}`, label: t(key), value: t(key) }))
-      : []),
-    [brief, t],
-  );
+  const starters = useMemo(() => {
+    if (!brief) return [];
+    const current = brief.scenario.termMonths;
+    const shorterRungs = brief.ifTermWere
+      .map((row) => row.termMonths)
+      .filter((months): months is number => typeof months === 'number' && months < current)
+      .sort((a, b) => b - a);
+    const shorter = shorterRungs.length ? shorterRungs[0] : null;
+
+    const keys = shorter === null ? STARTERS : ['mortgage_ask_shorter_term', ...STARTERS];
+    return keys.map((key, i) => {
+      const text = key === 'mortgage_ask_shorter_term' && shorter !== null
+        ? t(key, { years: Math.round(shorter / 12) })
+        : t(key);
+      return { id: `starter${i}`, label: text, value: text };
+    });
+  }, [brief, t]);
 
   return (
     <section id="consultant" className="hm-workspace-panel p-5 sm:p-7">
@@ -162,6 +201,7 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
         onSubmit={(event) => { event.preventDefault(); ask(value); }}
       >
         <input
+          ref={composerRef}
           type="text"
           value={value}
           onChange={(event) => setValue(event.target.value)}

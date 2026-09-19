@@ -3,6 +3,7 @@ import type { SupportedLanguage } from '@/types/types';
 import { RTL_LANGUAGES } from '@/types/types';
 import { translations } from '@/i18n/translations';
 import type { ContentLocale, OverrideMap } from '@/i18n/appContent';
+import { hasUnfilledHole, interpolate, resolveCopy } from '@/i18n/interpolate';
 import { fetchOverrides } from '@/services/appContent';
 
 const LANG_STORAGE_KEY = 'homatch_lang';
@@ -20,15 +21,11 @@ function warnOnce(msg: string) {
   console.warn(`[i18n] ${msg}`);
 }
 
-// Simple, safe {{placeholder}} interpolation — plain string substitution
-// only (no HTML parsing/eval), so it carries no injection risk whether the
-// result lands in JSX text or an attribute.
-function interpolate(template: string, vars?: Record<string, string | number>): string {
-  if (!vars) return template;
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, name) =>
-    Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : match
-  );
-}
+/* Interpolation, and the guarantee that no `{{hole}}` ever reaches a
+   customer, live in src/i18n/interpolate.ts — a module with no React in it,
+   so the guarantee can be tested without a browser. The header there is the
+   incident that produced it. */
+
 
 interface LanguageContextValue {
   lang: SupportedLanguage;
@@ -160,7 +157,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
      * database write, and rendering it would be a heading with nothing in it.
      */
     const written = overrides[lang as ContentLocale]?.[key];
-    if (typeof written === 'string' && written.trim()) return interpolate(written, vars);
     const value = bundle?.[key];
     if (value === undefined) {
       if (english[key] === undefined) {
@@ -169,8 +165,16 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         warnOnce(`"${key}" missing in "${lang}" — falling back to English`);
       }
     }
-    const resolved = value ?? english[key] ?? key;
-    return interpolate(resolved, vars);
+    /*
+     * An override only wins if it comes out WHOLE. One that names a hole
+     * this call site cannot fill is not a preference an admin expressed —
+     * it is a typo that would print braces — so the shipped string, which
+     * the placeholder gate guards, is used instead. See i18n/interpolate.ts.
+     */
+    if (typeof written === 'string' && written.trim() && hasUnfilledHole(interpolate(written, vars))) {
+      warnOnce(`app_content override for "${key}" (${lang}) names a placeholder this call site cannot fill — using the shipped string`);
+    }
+    return resolveCopy([written?.trim() ? written : undefined, value, english[key]], vars) ?? key;
   }, [lang, overrides]);
 
   return (
@@ -213,9 +217,11 @@ export function LanguageOverride({
        would show an admin the copy they have already replaced, which is the
        one thing a preview must not do. */
     const written = overrides?.[lang as ContentLocale]?.[key];
-    if (typeof written === 'string' && written.trim()) return interpolate(written, vars);
-    const resolved = bundle?.[key] ?? english[key] ?? key;
-    return interpolate(resolved, vars);
+    /* Same contract as the real provider, including the part where an
+       override that cannot be completed loses to the shipped string. A
+       preview that rendered braces the live page will not would be lying
+       about the change the admin is looking at. */
+    return resolveCopy([written?.trim() ? written : undefined, bundle?.[key], english[key]], vars) ?? key;
   }, [lang, overrides]);
 
   const value: LanguageContextValue = {

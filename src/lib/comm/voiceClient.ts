@@ -254,6 +254,14 @@ export interface VoiceDiagnostics {
   languageSwitches: number;
   /** How many sockets asked the provider what language it heard. Should be 0. */
   languageProbes: number;
+  /**
+   * How many times `auto` named a language this product does not speak.
+   *
+   * The number that explains a session where Georgian kept arriving as
+   * Devanagari: the probe answering with something outside the six is the
+   * instrument failing on this speaker, and after two it is retired.
+   */
+  unsupportedProbeResults: number;
   /*
    * THE SOCKET'S LIFECYCLE, AND THE BYTES, IN ONE UNIT.
    *
@@ -1422,6 +1430,7 @@ export class VoiceSession {
       finalsDeferred: this.diag.finalsDeferred ?? 0,
       languageSwitches: this.diag.languageSwitches ?? 0,
       languageProbes: this.diag.languageProbes ?? 0,
+      unsupportedProbeResults: this.diag.unsupportedProbeResults ?? 0,
       livePhase: this.router.currentPhase,
       socketReadyMs: this.diag.socketReadyMs ?? null,
       socketFailures: this.router.socketFailures,

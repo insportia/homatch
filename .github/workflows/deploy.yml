@@ -736,8 +736,13 @@ jobs:
   record-deployment:
     name: Record deployed revisions
     runs-on: ubuntu-latest
-    needs: [scope, build-frontend, deploy-functions]
-    if: always() && github.event_name == 'push'
+    needs: [scope, validate, build-frontend, deploy-functions]
+    # Only when the gate itself passed. On the first run of this job a failing
+    # type-check skipped the edge deploy, and "skipped" was read as "nothing
+    # was owed" -- so the ref advanced and the manifest claimed production was
+    # current when the deploy had never run. That is the precise failure this
+    # whole mechanism exists to prevent, committed by the mechanism itself.
+    if: always() && github.event_name == 'push' && needs.validate.result == 'success'
     permissions:
       contents: write
     steps:
@@ -760,12 +765,26 @@ jobs:
             echo "✅ $component now at ${SHA:0:8}"
           }
 
-          # Skipped means "nothing was owed", which is as current as deployed.
+          # A job is skipped for two very different reasons: nothing was owed,
+          # or something upstream failed. Only the first is as current as
+          # deployed, and the scope job is the one that knows which.
           edge_outcome='${{ needs.deploy-functions.result }}'
-          [[ "$edge_outcome" == "skipped" ]] && edge_outcome=success
+          if [[ "$edge_outcome" == "skipped" ]]; then
+            if [[ '${{ needs.scope.outputs.edge }}' == 'true' ]]; then
+              edge_outcome="skipped although it was owed"
+            else
+              edge_outcome=success
+            fi
+          fi
           advance edge "$edge_outcome"
 
           frontend_outcome='${{ needs.build-frontend.result }}'
-          [[ "$frontend_outcome" == "skipped" ]] && frontend_outcome=success
+          if [[ "$frontend_outcome" == "skipped" ]]; then
+            if [[ '${{ needs.scope.outputs.frontend }}' == 'true' ]]; then
+              frontend_outcome="skipped although it was owed"
+            else
+              frontend_outcome=success
+            fi
+          fi
           advance frontend "$frontend_outcome"
 

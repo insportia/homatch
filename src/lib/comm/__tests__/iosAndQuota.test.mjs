@@ -77,9 +77,16 @@ test('each refusal reason is a different thing to be told', () => {
   assert.equal(ask({ visitorActiveSessions: 1 }).reason, 'ALREADY_IN_SESSION');
   assert.equal(ask({ globalActiveSessions: LIVE.globalConcurrent }).reason, 'PLATFORM_AT_CAPACITY');
   assert.equal(ask({ enabled: false }).reason, 'DISABLED');
-  // And the server has always sent it. The panel simply never read it.
+  /*
+   * And the server has always sent it -- but it sent it with a 429, and
+   * supabase-js discards the body of a non-2xx response, so the panel could
+   * not have read it even once it tried to. A refusal is this function
+   * ANSWERING, not failing, so it answers 200 and the reason arrives.
+   */
   const edge = read('supabase/functions/ai-talk-session/index.ts');
-  assert.match(edge, /return json\(\{ ok: false, reason: decision\.reason, userMessage: decision\.userMessage \}, 429\);/);
+  assert.match(edge, /reason: decision\.reason,/);
+  assert.match(edge, /userMessage: decision\.userMessage,/);
+  assert.match(edge, /window: 'ROLLING_24H',[^;]*\}, 200\);/);
 });
 
 /* ── A: a quota is not an outage, a microphone or a browser ─────────────── */
@@ -87,7 +94,10 @@ test('each refusal reason is a different thing to be told', () => {
 test('a used-up daily allowance says so, and says it is temporary', () => {
   assert.match(panel, /DAILY_LIMIT_REACHED: 'talk_quota_daily_body',/);
   assert.match(panel, /TOO_MANY_SESSIONS_TODAY: 'talk_quota_sessions_body',/);
-  assert.match(panel, /if \(grant\?\.reason\) setFailure\(grant\.reason\);/);
+  // Read off the response, whether it arrived as a 200 body or as the
+  // unconsumed Response an older runtime's 429 leaves on error.context.
+  assert.match(panel, /if \(reason\) setFailure\(reason\);/);
+  assert.match(panel, /await readStartResponse\(data, error\)/);
 
   const body = translations.match(/talk_quota_daily_body: '([^']*)'/)[1];
   // It must name the cause, and say it comes back.
@@ -219,9 +229,17 @@ test('a denied permission is still its own state, not a quota or an outage', () 
 });
 
 test('a real backend failure is still a backend failure', () => {
-  // No reason from the server, or a transport error, still reads as an outage
-  // rather than being mistaken for a quota.
-  assert.match(panel, /setState\(grant\?\.userMessage === 'LIMIT_REACHED' \? 'LIMIT_REACHED' : 'PROVIDER_ERROR'\);/);
+  /*
+   * No reason from the server still reads as an outage rather than being
+   * mistaken for a quota. What changed since this was written is what comes
+   * FIRST: a named reason now picks its own state (talkQuotaTiers covers
+   * that), and this asserts the tail it falls through to when there is no
+   * name to go on -- which is the case this test has always been about.
+   */
+  const p = strip(panel);
+  assert.match(p, /const mapped = reason \? REFUSAL_STATE\[reason\] : undefined;/);
+  assert.match(p, /grant\?\.userMessage === 'LIMIT_REACHED' \? 'LIMIT_REACHED'/);
+  assert.match(p, /: 'PROVIDER_ERROR'\),/, 'the last resort is no longer an outage');
   assert.match(panel, /PROVIDER_ERROR: 'talk_unavailable_body',/);
   assert.match(panel, /DISABLED: 'talk_unavailable_body',/);
 });

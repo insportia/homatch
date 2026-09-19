@@ -50,6 +50,26 @@ type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
  * carries the state; this is for anybody who cannot see it, and for anybody
  * who wants it named.
  */
+/*
+ * STATES THE PANEL REACHES THAT A VOICE SESSION NEVER DOES.
+ *
+ * A refusal happens BEFORE any session exists, so VoiceState has no word for
+ * one, and every refusal was therefore rendered as PROVIDER_ERROR -- whose
+ * status line is the single word "Unavailable". That is how an exhausted
+ * free allowance, a second tab, and a provider outage all reached the
+ * visitor as the same sentence about the product being broken.
+ *
+ * Giving the refusals their own states is what lets a known reason beat the
+ * generic one everywhere the state is read: the status word, the colour of
+ * the dot, the orb, the sentence, and which button is offered.
+ */
+export type PanelState =
+  | VoiceState
+  | 'DAILY_LIMIT_REACHED'
+  | 'SESSION_ALREADY_ACTIVE'
+  | 'BROWSER_UNSUPPORTED'
+  | 'NETWORK_ERROR';
+
 const STATE_KEY = {
   IDLE: 'talk_state_idle',
   CONNECTING: 'talk_state_connecting',
@@ -63,7 +83,17 @@ const STATE_KEY = {
   MIC_DENIED: 'talk_state_mic_denied',
   MIC_UNAVAILABLE: 'talk_state_mic_unavailable',
   PROVIDER_ERROR: 'talk_state_provider_error',
-} satisfies Record<VoiceState, string>;
+  /*
+   * None of these four is an outage, and none of them says "Unavailable".
+   * A spent allowance renews, a live session is the visitor's own, a browser
+   * that cannot reach a microphone is a browser, and a dropped connection is
+   * a connection.
+   */
+  DAILY_LIMIT_REACHED: 'talk_state_daily_limit',
+  SESSION_ALREADY_ACTIVE: 'talk_state_session_active',
+  BROWSER_UNSUPPORTED: 'talk_state_browser_unsupported',
+  NETWORK_ERROR: 'talk_state_network_error',
+} satisfies Record<PanelState, string>;
 
 /**
  * The indicator colour, per state family.
@@ -72,7 +102,7 @@ const STATE_KEY = {
  * share one: the dot is what tells somebody at a glance WHICH thing is
  * happening, and a shared colour reduces it to "something is".
  */
-function toneOf(state: VoiceState): { dot: string; beat: boolean } {
+function toneOf(state: PanelState): { dot: string; beat: boolean } {
   switch (state) {
     case 'LISTENING':
     case 'INTERRUPTED':
@@ -86,17 +116,35 @@ function toneOf(state: VoiceState): { dot: string; beat: boolean } {
       return { dot: 'bg-amber-300', beat: true };
     case 'MIC_DENIED':
     case 'MIC_UNAVAILABLE':
+    case 'BROWSER_UNSUPPORTED':
     case 'PROVIDER_ERROR':
       return { dot: 'bg-rose-300', beat: false };
+    /*
+     * Its own colour, and not amber.
+     *
+     * Amber is CONNECTING, and a dropped connection resting is the one thing
+     * that must not look like a connection still being attempted -- somebody
+     * would sit and wait for it. The dot is the at-a-glance signal, so no two
+     * families may share one.
+     */
+    case 'NETWORK_ERROR':
+      return { dot: 'bg-sky-300', beat: false };
+    /*
+     * Deliberately NOT red. Red says something is broken, and nothing is:
+     * the allowance is spent and renews, or the visitor is already talking
+     * somewhere. These rest the same way a finished call rests.
+     */
     case 'ENDED':
     case 'LIMIT_REACHED':
+    case 'DAILY_LIMIT_REACHED':
+    case 'SESSION_ALREADY_ACTIVE':
       return { dot: 'bg-white/40', beat: false };
     default:
       return { dot: 'bg-white/25', beat: false };
   }
 }
 
-const ORB_MODE: Record<VoiceState, OrbMode> = {
+const ORB_MODE: Record<PanelState, OrbMode> = {
   IDLE: 'IDLE',
   CONNECTING: 'THINKING',
   RECONNECTING: 'THINKING',
@@ -109,6 +157,11 @@ const ORB_MODE: Record<VoiceState, OrbMode> = {
   MIC_DENIED: 'ERROR',
   MIC_UNAVAILABLE: 'ERROR',
   PROVIDER_ERROR: 'ERROR',
+  // At rest, not in error: an allowance renews and a live session is theirs.
+  DAILY_LIMIT_REACHED: 'IDLE',
+  SESSION_ALREADY_ACTIVE: 'IDLE',
+  BROWSER_UNSUPPORTED: 'ERROR',
+  NETWORK_ERROR: 'ERROR',
 };
 
 /**
@@ -183,6 +236,67 @@ const FAILURE_KEY: Record<string, string> = {
   BUSY: 'talk_busy_body',
 };
 
+/*
+ * WHICH REFUSAL BECAME WHICH STATE. THE RULE IS: KNOWN BEATS GENERIC.
+ *
+ * decideGrant names exactly why it said no, and that name has always been in
+ * the response. It is mapped here rather than being collapsed into one
+ * failure state, because the state decides more than a sentence -- it decides
+ * the status word, the colour, and, below, whether "Try again" is offered at
+ * all. A reason that is not in this map keeps the generic state, which is
+ * what a genuinely unknown refusal deserves.
+ */
+const REFUSAL_STATE: Record<string, PanelState> = {
+  DAILY_LIMIT_REACHED: 'DAILY_LIMIT_REACHED',
+  // Same thing to a visitor: today's free allowance is spent. The SENTENCE
+  // still differs, because one ran out of minutes and one ran out of calls.
+  TOO_MANY_SESSIONS_TODAY: 'DAILY_LIMIT_REACHED',
+  ALREADY_IN_SESSION: 'SESSION_ALREADY_ACTIVE',
+  // The platform, not this visitor, is at its limit -- but from where they
+  // are standing it is the same instruction: wait a moment, then start again.
+  PLATFORM_AT_CAPACITY: 'SESSION_ALREADY_ACTIVE',
+  BROWSER_UNSUPPORTED: 'BROWSER_UNSUPPORTED',
+  // An operator switched the demo off. That IS unavailable, truthfully.
+  DISABLED: 'PROVIDER_ERROR',
+};
+
+/** What `start` answers with, refused or granted. */
+type StartResponse = {
+  ok?: boolean;
+  sessionId?: string;
+  grantedSeconds?: number;
+  userMessage?: string;
+  /** Which rule refused this, when one did. */
+  reason?: string;
+  usageTier?: string;
+  configuredSessionSeconds?: number;
+  /** Over what period a spent allowance is measured, so the copy can be true. */
+  window?: string;
+};
+
+/*
+ * READING A REFUSAL THAT ARRIVED AS AN ERROR.
+ *
+ * supabase-js does not read the body of a non-2xx response: it throws a
+ * FunctionsHttpError with a fixed message and leaves the Response unconsumed
+ * on `error.context`. The edge function now answers a refusal with 200 for
+ * exactly that reason, so `data` is normally the whole story -- but a build
+ * of this page can outlive a deployment of that function, and older runtimes
+ * still answer 429. Both are read, so a visitor on a stale tab is told the
+ * truth rather than "temporarily unavailable".
+ *
+ * Same convention as readFunctionErrorBody in VerifyPage.tsx.
+ */
+async function readStartResponse(data: unknown, error: unknown): Promise<StartResponse | null> {
+  const direct = data as StartResponse | null;
+  if (direct && typeof direct === 'object' && ('ok' in direct || 'reason' in direct)) return direct;
+  const context = (error as { context?: unknown } | null)?.context as Response | undefined;
+  if (context && typeof context.json === 'function') {
+    try { return await context.json() as StartResponse; } catch { /* not JSON, not a refusal */ }
+  }
+  return null;
+}
+
 interface Intelligence {
   transactionType?: string | null;
   locations?: string[] | null;
@@ -227,7 +341,17 @@ export function AiTalkPanel({ className }: { className?: string }) {
   const { t, lang: language } = useLanguage();
   const navigate = useNavigate();
 
-  const [state, setState] = useState<VoiceState>('IDLE');
+  const [state, setState] = useState<PanelState>('IDLE');
+  /*
+   * Which allowance was spent, so the sentence can say whose it was.
+   *
+   * An anonymous visitor's allowance belongs to the NETWORK they are on and
+   * is shared with everyone behind it; a signed-in person's belongs to their
+   * account and follows them between devices. Telling a signed-in person
+   * that "this network" ran out would be a lie, and would send them to
+   * change Wi-Fi for no reason. Null until a refusal says otherwise.
+   */
+  const [refusedTier, setRefusedTier] = useState<string | null>(null);
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
   /**
    * The last thing that went wrong mid-conversation.
@@ -361,7 +485,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
     window.cancelAnimationFrame(transcriptFrame.current);
     window.clearTimeout(transcriptFrame.current);
   }, []);
-  const liveState = useRef<VoiceState>('IDLE');
+  const liveState = useRef<PanelState>('IDLE');
   liveState.current = state;
 
   useEffect(() => { turnsRef.current = turns; }, [turns]);
@@ -442,7 +566,8 @@ export function AiTalkPanel({ className }: { className?: string }) {
     if (microphoneCapability() !== 'OK') {
       try { await primed?.close(); } catch { /* nothing to release */ }
       setFailure('BROWSER_UNSUPPORTED');
-      setState('MIC_UNAVAILABLE');
+      // Not MIC_UNAVAILABLE: the microphone is fine and probably untouched.
+      setState('BROWSER_UNSUPPORTED');
       return;
     }
 
@@ -459,6 +584,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
     setTurns([]);
     setIntelligence(null);
     setFailure(null);
+    setRefusedTier(null);
     setDiagnostics(null);
     setMuted(false);
     setDestination(null);
@@ -481,26 +607,35 @@ export function AiTalkPanel({ className }: { className?: string }) {
       body: { action: 'start', locale: language },
     });
 
-    const grant = data as {
-      ok?: boolean; sessionId?: string; grantedSeconds?: number; userMessage?: string;
-      // Which rule refused this, when one did. The server has always sent it
-      // and the panel has never read it, so every refusal looked alike.
-      reason?: string;
-      usageTier?: string; configuredSessionSeconds?: number;
-    } | null;
+    const grant = await readStartResponse(data, error);
 
     // The browser is handed no provider capability at all any more: a session
     // id is the whole of what it needs.
     if (error || !grant?.ok || !grant.sessionId) {
-      setState(grant?.userMessage === 'LIMIT_REACHED' ? 'LIMIT_REACHED' : 'PROVIDER_ERROR');
       /*
-       * The REASON, not the category. A quota that renews tomorrow, a second
-       * tab already talking, and a provider that is down are three different
-       * things to be told, and only the last one is an outage. `reason` comes
-       * straight from decideGrant; a transport error has none, and then the
-       * state's own sentence still applies.
+       * THE REASON, NOT THE CATEGORY -- ALL THE WAY TO THE SCREEN.
+       *
+       * A quota that renews within the day, a conversation already open, and
+       * a provider that is down are three different things to be told, and
+       * only the last is an outage. `reason` comes straight from decideGrant
+       * and now decides the STATE, not just the sentence, so the status line
+       * can stop saying "Unavailable" over a demo that is working perfectly.
+       *
+       * A refusal with no reason at all, and a request that never arrived,
+       * are the only two things left that can reach the generic states.
        */
-      if (grant?.reason) setFailure(grant.reason);
+      const reason = grant?.reason ?? null;
+      setRefusedTier(grant?.usageTier ?? null);
+      const mapped = reason ? REFUSAL_STATE[reason] : undefined;
+      setState(
+        mapped
+          ?? (grant?.userMessage === 'LIMIT_REACHED' ? 'LIMIT_REACHED'
+            // Nothing came back at all: this is the network between the
+            // phone and Homatch, and it is worth trying again immediately.
+            : (error && !grant) ? 'NETWORK_ERROR'
+              : 'PROVIDER_ERROR'),
+      );
+      if (reason) setFailure(reason);
       else if (grant?.userMessage === 'BUSY') setFailure('BUSY');
       // Nothing will use it now, and an abandoned context holds hardware open.
       try { await primed?.close(); } catch { /* already gone */ }
@@ -947,7 +1082,7 @@ export function AiTalkPanel({ className }: { className?: string }) {
         <div className="flex min-h-0 flex-1 flex-col px-4">
           {turns.length
             ? <Transcript turns={turns} />
-            : <Invitation state={state} failure={failure} />}
+            : <Invitation state={state} failure={failure} tier={refusedTier} />}
         </div>
 
         {intelligence && live ? <IntelligenceStrip data={intelligence} /> : null}
@@ -999,6 +1134,30 @@ export function AiTalkPanel({ className }: { className?: string }) {
             </>
           ) : connecting ? (
             <span className="text-[13px] text-white/40">{t('talk_state_connecting')}</span>
+          ) : state === 'DAILY_LIMIT_REACHED' ? (
+            /*
+             * A SPENT ALLOWANCE CANNOT BE RETRIED, SO IT IS NOT OFFERED.
+             *
+             * "Try again" here is a button that is guaranteed to fail: the
+             * allowance is measured over a rolling day and pressing it a
+             * second later re-runs the same arithmetic. Offering it makes
+             * the product look broken and teaches people to distrust it.
+             *
+             * This is not a dead end -- it is the only resting state whose
+             * way back is forward. An anonymous visitor is offered the thing
+             * that actually gives them more time, which is an account of
+             * their own; somebody already signed in is offered the full
+             * assistant, which is not on the demo allowance at all.
+             */
+            <button
+              type="button"
+              onClick={() => navigate(refusedTier === 'STANDARD' ? '/ai' : '/auth/login')}
+              className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[13px] font-semibold text-black transition-transform hover:scale-[1.02] active:scale-[0.99]"
+              {...notEditable('SYSTEM_GENERATED')}
+            >
+              {t(refusedTier === 'STANDARD' ? 'talk_continue' : 'talk_quota_signin')}
+              <ArrowRight className="h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
+            </button>
           ) : (
             <>
               <button
@@ -1157,7 +1316,9 @@ function TranscriptView({ turns }: { turns: TranscriptTurn[] }) {
  * A named failure is more use than "temporarily unavailable": one says speech
  * recognition, the other says nothing at all. Neither ever names a provider.
  */
-function Invitation({ state, failure }: { state: VoiceState; failure: string | null }) {
+function Invitation(
+  { state, failure, tier }: { state: PanelState; failure: string | null; tier: string | null },
+) {
   const { t } = useLanguage();
   const sf = useSectionField();
   const fp = useFieldProps();
@@ -1176,9 +1337,29 @@ function Invitation({ state, failure }: { state: VoiceState; failure: string | n
     MIC_DENIED: 'talk_mic_denied_body',
     MIC_UNAVAILABLE: 'talk_mic_unavailable_body',
     PROVIDER_ERROR: 'talk_unavailable_body',
+    DAILY_LIMIT_REACHED: 'talk_quota_daily_body',
+    SESSION_ALREADY_ACTIVE: 'talk_busy_body',
+    BROWSER_UNSUPPORTED: 'talk_browser_unsupported_body',
+    NETWORK_ERROR: 'talk_network_body',
   };
 
-  const key = failure && FAILURE_KEY[failure] ? FAILURE_KEY[failure] : messageKey[state];
+  const named = failure && FAILURE_KEY[failure] ? FAILURE_KEY[failure] : messageKey[state];
+
+  /*
+   * WHOSE ALLOWANCE RAN OUT.
+   *
+   * The free demo is counted against the NETWORK for an anonymous visitor --
+   * it has to be, because there is nothing else to count it against, and it
+   * is shared with everybody behind that address. A signed-in person is
+   * counted against their own account instead, and telling them "this
+   * network" would be false and would send them to change Wi-Fi for nothing.
+   *
+   * Neither sentence promises a clock. The window is a rolling day, so the
+   * only honest thing to say is that it comes back within one.
+   */
+  const key = named === 'talk_quota_daily_body' && tier === 'STANDARD'
+    ? 'talk_quota_account_body'
+    : named;
 
   /*
    * ONE ELEMENT, TWO KINDS OF SENTENCE.

@@ -5011,6 +5011,13 @@ const en = {
   talk_state_limit_reached: 'Demo finished',
   talk_state_mic_denied: 'Microphone blocked',
   talk_state_provider_error: 'Unavailable',
+  talk_state_daily_limit: 'Daily limit reached',
+  talk_state_session_active: 'Already in a conversation',
+  talk_state_browser_unsupported: 'Browser not supported',
+  talk_state_network_error: 'No connection',
+  talk_quota_account_body: 'You have used your free demo time for today. It renews within a day, and the full assistant is waiting inside Homatch.',
+  talk_network_body: 'Homatch could not be reached. Check your connection and try again.',
+  talk_quota_signin: 'Sign in for more time',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   comm_calls_title: 'Calls',
@@ -12480,6 +12487,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   talk_state_limit_reached: 'დემო დასრულდა',
   talk_state_mic_denied: 'მიკროფონი დაბლოკილია',
   talk_state_provider_error: 'მიუწვდომელია',
+  talk_state_daily_limit: 'დღიური ლიმიტი ამოიწურა',
+  talk_state_session_active: 'საუბარი უკვე მიმდინარეობს',
+  talk_state_browser_unsupported: 'ბრაუზერი არ არის მხარდაჭერილი',
+  talk_state_network_error: 'კავშირი არ არის',
+  talk_quota_account_body: 'დღევანდელი უფასო დემო დრო უკვე გამოიყენეთ. ერთ დღეში განახლდება, სრული ასისტენტი კი Homatch-ის შიგნით გელოდებათ.',
+  talk_network_body: 'Homatch-თან დაკავშირება ვერ მოხერხდა. შეამოწმეთ ინტერნეტი და სცადეთ ხელახლა.',
+  talk_quota_signin: 'შედით მეტი დროისთვის',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   comm_calls_title: 'ზარები',
@@ -19940,6 +19954,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   talk_state_limit_reached: 'Демонстрация окончена',
   talk_state_mic_denied: 'Микрофон заблокирован',
   talk_state_provider_error: 'Недоступно',
+  talk_state_daily_limit: 'Дневной лимит исчерпан',
+  talk_state_session_active: 'Разговор уже идёт',
+  talk_state_browser_unsupported: 'Браузер не поддерживается',
+  talk_state_network_error: 'Нет соединения',
+  talk_quota_account_body: 'Вы израсходовали сегодняшнее бесплатное время демо. Оно обновится в течение суток, а полный ассистент ждёт внутри Homatch.',
+  talk_network_body: 'Не удалось связаться с Homatch. Проверьте соединение и попробуйте снова.',
+  talk_quota_signin: 'Войдите, чтобы получить больше времени',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   comm_calls_title: 'Звонки',
@@ -27398,6 +27419,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   talk_state_limit_reached: 'Demo bitti',
   talk_state_mic_denied: 'Mikrofon engellendi',
   talk_state_provider_error: 'Kullanılamıyor',
+  talk_state_daily_limit: 'Günlük sınıra ulaşıldı',
+  talk_state_session_active: 'Görüşme zaten sürüyor',
+  talk_state_browser_unsupported: 'Tarayıcı desteklenmiyor',
+  talk_state_network_error: 'Bağlantı yok',
+  talk_quota_account_body: 'Bugünkü ücretsiz demo sürenizi kullandınız. Bir gün içinde yenilenir; tam asistan Homatch içinde sizi bekliyor.',
+  talk_network_body: 'Homatch’e ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.',
+  talk_quota_signin: 'Daha fazla süre için giriş yapın',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   comm_calls_title: 'Aramalar',
@@ -34856,6 +34884,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   talk_state_limit_reached: 'انتهى العرض',
   talk_state_mic_denied: 'الميكروفون محظور',
   talk_state_provider_error: 'غير متاح',
+  talk_state_daily_limit: 'تم بلوغ الحد اليومي',
+  talk_state_session_active: 'هناك محادثة جارية بالفعل',
+  talk_state_browser_unsupported: 'المتصفح غير مدعوم',
+  talk_state_network_error: 'لا يوجد اتصال',
+  talk_quota_account_body: 'لقد استخدمت وقت العرض التجريبي المجاني لليوم. يتجدد خلال يوم، والمساعد الكامل بانتظارك داخل Homatch.',
+  talk_network_body: 'تعذّر الوصول إلى Homatch. تحقق من اتصالك وحاول مرة أخرى.',
+  talk_quota_signin: 'سجّل الدخول للحصول على وقت أطول',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   comm_calls_title: 'المكالمات',
@@ -42314,6 +42349,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   talk_state_limit_reached: 'ההדגמה הסתיימה',
   talk_state_mic_denied: 'המיקרופון חסום',
   talk_state_provider_error: 'לא זמין',
+  talk_state_daily_limit: 'הגעת למגבלה היומית',
+  talk_state_session_active: 'שיחה כבר פעילה',
+  talk_state_browser_unsupported: 'הדפדפן אינו נתמך',
+  talk_state_network_error: 'אין חיבור',
+  talk_quota_account_body: 'ניצלת את זמן ההדגמה החינמי של היום. הוא מתחדש תוך יום, והעוזר המלא מחכה בתוך Homatch.',
+  talk_network_body: 'לא הצלחנו להגיע ל-Homatch. בדקו את החיבור ונסו שוב.',
+  talk_quota_signin: 'התחברו לזמן נוסף',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   comm_calls_title: 'שיחות',

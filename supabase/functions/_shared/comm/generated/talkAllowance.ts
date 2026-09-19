@@ -31,6 +31,23 @@ export interface TalkLimits {
   perVisitorConcurrent: number;
   /** Sessions one visitor may start in a rolling day, however short. */
   dailySessions: number;
+  /**
+   * Seconds a SIGNED-IN person may use in a rolling day, counted against
+   * their account rather than their network. Optional so an operator who has
+   * not set it falls back to the anonymous figure rather than to no limit.
+   */
+  authenticatedDailySeconds?: number;
+  /**
+   * Sessions a SIGNED-IN person may start in a rolling day.
+   *
+   * Separate from dailySessions because the two caps must not contradict each
+   * other. Six starts against a ten-minute allowance means somebody whose
+   * calls run thirty seconds is refused having spent three minutes of the ten
+   * they were promised -- an allowance that is not what it says it is. This
+   * is set so the SECONDS are what run out first for any realistic call,
+   * while still bounding how often one account may open a socket.
+   */
+  authenticatedDailySessions?: number;
 }
 
 /**
@@ -50,6 +67,22 @@ export const DEFAULT_TALK_LIMITS: TalkLimits = {
    */
   sessionSeconds: 120,
   dailySeconds: 240,
+  /*
+   * A SIGNED-IN PERSON GETS THEIR OWN TEN MINUTES, AND OWNS THEM.
+   *
+   * dailySeconds above is an ANONYMOUS allowance and it is keyed on the
+   * network, because an anonymous visitor has no other durable identity: it
+   * is abuse protection, and it is deliberately shared by everyone behind one
+   * address. Applying it to accounts made two colleagues on one office Wi-Fi
+   * eat each other's demo, and made a phone on that Wi-Fi and the same phone
+   * on mobile data two different visitors.
+   *
+   * An account IS a durable identity, so this one is keyed on the user and
+   * follows them: same allowance on two devices, on two networks, after a
+   * reload, and independent of whoever else is on that router.
+   */
+  authenticatedDailySeconds: 600,
+  authenticatedDailySessions: 12,
   globalConcurrent: 25,
   perVisitorConcurrent: 1,
   dailySessions: 6,
@@ -67,7 +100,8 @@ export type TalkDenyReason =
  * Who is asking, as far as the SERVER has verified.
  *
  *   ANONYMOUS        no token, or one that did not verify
- *   STANDARD         a verified account, held to exactly the anonymous rules
+ *   STANDARD         a verified account, spending its OWN daily allowance,
+ *                    counted against the user id rather than the network
  *   ADMIN_UNLIMITED  a verified account whose identity Postgres reports as an
  *                    administrator — public.is_admin() evaluated for the
  *                    token's own auth.uid(), never a claim in a request body
@@ -161,9 +195,22 @@ export function decideGrant(input: GrantInput): GrantDecision {
     };
   }
 
-  if (input.sessionsStartedToday >= L.dailySessions) return refuse('TOO_MANY_SESSIONS_TODAY', 'LIMIT_REACHED');
+  /*
+   * WHICH ALLOWANCE THIS CALLER IS SPENDING.
+   *
+   * The tier decides both the size of the budget and, in the caller above,
+   * what the budget is counted against: a verified account against its own
+   * user id, an anonymous visitor against the network. They are different
+   * numbers because they are protecting different things -- one is a product
+   * entitlement, the other is abuse control.
+   */
+  const standard = tier === 'STANDARD';
+  const dailySeconds = standard ? (L.authenticatedDailySeconds ?? L.dailySeconds) : L.dailySeconds;
+  const dailySessions = standard ? (L.authenticatedDailySessions ?? L.dailySessions) : L.dailySessions;
 
-  const remainingToday = L.dailySeconds - Math.max(0, input.consumedTodaySeconds);
+  if (input.sessionsStartedToday >= dailySessions) return refuse('TOO_MANY_SESSIONS_TODAY', 'LIMIT_REACHED');
+
+  const remainingToday = dailySeconds - Math.max(0, input.consumedTodaySeconds);
   if (remainingToday <= 0) return refuse('DAILY_LIMIT_REACHED', 'LIMIT_REACHED');
 
   const seconds = Math.min(L.sessionSeconds, remainingToday);

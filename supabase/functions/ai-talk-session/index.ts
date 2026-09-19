@@ -462,8 +462,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
    * an `email`, `admin` or `unlimited` field is simply never read, so it
    * cannot be spoofed because it cannot be said.
    *
-   * A verified account that is not an administrator is STANDARD, which is
-   * held to exactly the anonymous rules. Signing in buys nothing here.
+   * A verified account that is not an administrator is STANDARD: it spends
+   * its OWN allowance, counted against its user id, on every device and
+   * every network it signs in from. That is not a privilege escalation --
+   * it is the only tier where "your allowance" can mean anything at all,
+   * because an anonymous visitor has no identity to attach one to and is
+   * necessarily counted against the address they share with strangers.
    */
   const usageTier: UsageTier = caller
     ? ((await caller.sb.rpc('is_admin').then((r) => r.data === true).catch(() => false))
@@ -512,6 +516,43 @@ async function start(
   // reversed into an address or joined to anything else Homatch holds.
   const day = new Date(Date.now() - 86_400_000).toISOString();
 
+  /*
+   * WHOSE ALLOWANCE IS BEING SPENT.
+   *
+   * A verified account is a durable identity and is counted against ITSELF;
+   * an anonymous visitor has no such thing, so it is counted against the
+   * network, which is abuse control rather than an entitlement.
+   *
+   * Keying a signed-in person on the network was wrong in both directions:
+   * two colleagues on one office Wi-Fi ate each other's allowance, and one
+   * person's phone was a different visitor on Wi-Fi and on mobile data. The
+   * userId comes from a JWT this function verified; nothing in the body is
+   * read, so the key cannot be chosen by the caller.
+   */
+  const countedAgainst: { column: 'user_id' | 'ip_hash'; value: string } = userId
+    ? { column: 'user_id', value: userId }
+    : { column: 'ip_hash', value: ipHash };
+
+  /*
+   * A VISITOR'S OWN STALE SESSION MUST NOT LOCK THEM OUT.
+   *
+   * perVisitorConcurrent is 1, and a session stays ACTIVE until it expires.
+   * A reload, a closed tab, a crashed page or a second Start four seconds
+   * later therefore met ALREADY_IN_SESSION and stayed locked out for as long
+   * as the previous grant had left -- measured in production at 07:56:57
+   * UTC, on an administrator with unlimited entitlement, who was refused
+   * four seconds after being granted 900 seconds.
+   *
+   * Superseding does not weaken the limit: there is still never more than one
+   * live session per visitor, and the seconds already consumed are already
+   * recorded by the heartbeat. It only decides WHICH of the two survives, and
+   * the one the person is looking at is the right answer.
+   */
+  await sb.from('comm_talk_sessions')
+    .update({ state: 'ENDED', ended_at: new Date().toISOString(), ended_reason: 'superseded' })
+    .eq(countedAgainst.column, countedAgainst.value)
+    .eq('state', 'ACTIVE');
+
   const [{ data: todays }, { count: activeForVisitor }, { count: activeGlobal }] = await Promise.all([
     /*
      * A SESSION THAT NEVER HAPPENED MUST NOT COST SOMEBODY THEIR ALLOWANCE.
@@ -527,12 +568,13 @@ async function start(
      */
     sb.from('comm_talk_sessions')
       .select('consumed_seconds')
-      .eq('ip_hash', ipHash).gte('created_at', day)
+      .eq(countedAgainst.column, countedAgainst.value).gte('created_at', day)
       .neq('state', 'ABORTED')
-      .limit(100),
+      .limit(200),
     sb.from('comm_talk_sessions')
       .select('*', { count: 'exact', head: true })
-      .eq('ip_hash', ipHash).eq('state', 'ACTIVE').gt('expires_at', new Date().toISOString()),
+      .eq(countedAgainst.column, countedAgainst.value)
+      .eq('state', 'ACTIVE').gt('expires_at', new Date().toISOString()),
     sb.from('comm_talk_sessions')
       .select('*', { count: 'exact', head: true })
       .eq('state', 'ACTIVE').gt('expires_at', new Date().toISOString()),
@@ -564,7 +606,29 @@ async function start(
 
   if (!decision.granted) {
     logEvent('ai-talk', 'grant_refused', { reason: decision.reason ?? null, usageTier: decision.usageTier });
-    return json({ ok: false, reason: decision.reason, userMessage: decision.userMessage }, 429);
+    /*
+     * 200, AND THE REASON SURVIVES. THIS IS THE BUG FROM THE SCREENSHOT.
+     *
+     * This returned 429 with a perfectly good body naming the reason, and
+     * supabase-js's functions.invoke() does not read the body of a non-2xx
+     * response: it raises a FunctionsHttpError whose message is a fixed
+     * string and leaves the body unconsumed on `error.context`. So `data` was
+     * null, the panel's `grant?.reason` was undefined, and EVERY refusal --
+     * an exhausted allowance, a second tab, an operator kill switch --
+     * arrived at the visitor as "The voice demo is temporarily unavailable."
+     *
+     * A quota decision is not a transport failure. It is this function
+     * answering the question it was asked, so it answers 200 and says no.
+     * The `window` tells the panel what "daily" means here, so it can be
+     * truthful about renewal without inventing a clock.
+     */
+    return json({
+      ok: false,
+      reason: decision.reason,
+      userMessage: decision.userMessage,
+      usageTier: decision.usageTier,
+      window: 'ROLLING_24H',
+    }, 200);
   }
 
   const expiresAt = grantExpiry(decision.seconds);
@@ -2913,6 +2977,23 @@ async function loadLimits(sb: Sb): Promise<TalkLimits> {
     globalConcurrent: num('global_concurrent', DEFAULT_TALK_LIMITS.globalConcurrent),
     perVisitorConcurrent: num('per_visitor_concurrent', DEFAULT_TALK_LIMITS.perVisitorConcurrent),
     dailySessions: num('daily_sessions', DEFAULT_TALK_LIMITS.dailySessions),
+    /*
+     * THE AUTHENTICATED CAPS HAVE TO BE READ HERE OR THEY DO NOT EXIST.
+     *
+     * This function is what production actually runs, and a field it does not
+     * copy out is a field decideGrant never sees: a signed-in person would
+     * have fallen back to the anonymous allowance with nothing to show for
+     * the tier at all. Both fall back to the anonymous figure rather than to
+     * something unbounded, so a malformed settings row cannot widen a limit.
+     */
+    authenticatedDailySeconds: num(
+      'authenticated_daily_seconds',
+      DEFAULT_TALK_LIMITS.authenticatedDailySeconds ?? DEFAULT_TALK_LIMITS.dailySeconds,
+    ),
+    authenticatedDailySessions: num(
+      'authenticated_daily_sessions',
+      DEFAULT_TALK_LIMITS.authenticatedDailySessions ?? DEFAULT_TALK_LIMITS.dailySessions,
+    ),
   };
 }
 

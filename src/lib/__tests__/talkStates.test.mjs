@@ -67,7 +67,10 @@ test('every word it uses exists in all six languages', () => {
 
 test('each state family looks different, so the panel is never ambiguous', () => {
   const src = read('../../components/home/AiTalkPanel.tsx');
-  const body = src.match(/function toneOf\(state: VoiceState\)[\s\S]*?\n\}/);
+  // PanelState since the refusals became states of their own: a spent
+  // allowance and a dropped connection are things the panel is in, and they
+  // need a colour as much as LISTENING does.
+  const body = src.match(/function toneOf\(state: PanelState\)[\s\S]*?\n\}/);
   assert.ok(body, 'toneOf is no longer declared the way this test reads it');
 
   // Listening, thinking, answering, connecting, failed and finished must not

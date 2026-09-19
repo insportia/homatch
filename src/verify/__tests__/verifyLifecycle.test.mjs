@@ -444,7 +444,11 @@ test('the report fetch always settles, so loading can never stick', () => {
   const page = code('src/pages/VerifyPage.tsx').replace(/\s+/g, ' ');
   assert.ok(/SYNTHESIS_FETCH_TIMEOUT_MS/.test(page), 'the report fetch is unbounded again');
   assert.ok(/Promise\.race\(\[/.test(page), 'nothing guarantees the fetch settles');
-  assert.ok(/finally\{setSynthesisLoading\(false\)\}/.test(page), 'the loading flag is not released');
+  assert.ok(/finally\{setSynthesisLoading\(false\)/.test(page), 'the loading flag is not released');
+  // And the fetch records that it SETTLED, whatever it returned. Without
+  // that, "not fetched yet" and "fetched, and there is none" are the same
+  // value and the finalizing state could never end. See verify/completion.ts.
+  assert.ok(/setSynthesisSettled\(true\)/.test(page), 'a settled fetch is not recorded');
 });
 
 test('there is nothing to stop once research has finished', () => {

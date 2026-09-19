@@ -269,13 +269,31 @@ test('CASE 6: against the ledger, historical migrations to replay is 0', () => {
 test('CASE 6: a new unapplied migration is pending, NOT a replay risk', () => {
   // The distinction the whole design rests on: written-but-not-yet-applied
   // is ordinary, settled-history-missing-from-production is the emergency.
+  /*
+   * Asserted as a DELTA rather than as the whole list.
+   *
+   * The repository gains migrations, and every one of them is legitimately
+   * pendingNew against a frozen baseline until the baseline moves. Comparing
+   * the full list made this test fail the moment anybody added a migration --
+   * which says nothing about the property under test and everything about the
+   * date. What must hold is that adding one file adds exactly that file.
+   */
+  const before = auditAgainstLiveLedger({
+    files,
+    appliedVersions: baseline.appliedVersions,
+    baseline,
+  });
   const live = auditAgainstLiveLedger({
     files: [...files, file('20260925090000', 'written_today')],
     appliedVersions: baseline.appliedVersions,
     baseline,
   });
-  assert.deepEqual(live.pendingNew, ['20260925090000_written_today.sql']);
+  assert.deepEqual(
+    live.pendingNew.filter((f) => !before.pendingNew.includes(f)),
+    ['20260925090000_written_today.sql'],
+  );
   assert.equal(live.historicalMigrationsToReplay, 0);
+  assert.equal(before.historicalMigrationsToReplay, 0);
 });
 
 test('CASE 6: a historical migration missing from the live ledger IS a replay risk', () => {

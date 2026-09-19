@@ -6,8 +6,7 @@ import {
   Activity, Puzzle, CreditCard, Receipt, Server, Settings2,
   ShieldAlert, Wrench, ChevronLeft, Menu, X, AlertTriangle,
   SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send, Paintbrush, BadgeDollarSign,
-  AudioLines, Bell, Type, HardDrive,
-} from 'lucide-react';
+  AudioLines, Bell, Type, HardDrive, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -34,6 +33,7 @@ const NAV = [
   { path: '/admin/live-chat-reports', labelKey: 'admin_livechat_title', icon: MessageSquareWarning },
   { path: '/admin/providers',    labelKey: 'admin_nav_providers',  icon: Server },
   { path: '/admin/voice-ai',     labelKey: 'voice_ai_title',       icon: AudioLines },
+  { path: '/admin/verify-cogs', labelKey: 'admin_nav_verify_cogs', icon: ShieldCheck },
   { path: '/admin/pricing',      labelKey: 'admin_nav_pricing',    icon: Settings2 },
   { path: '/admin/spend-caps',   labelKey: 'admin_nav_spend_caps', icon: ShieldAlert },
   { path: '/admin/diagnostics',  labelKey: 'admin_nav_diagnostics', icon: Wrench },

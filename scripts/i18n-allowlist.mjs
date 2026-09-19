@@ -34,6 +34,11 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // real forms, so this is a single-locale collision on a technical column
   // header, not a missing translation.
   'talk_cogs_col_model',
+  // "Model" again, for the Verify COGS stage table. Turkish spells it
+  // identically to English for the same reason it does in the AI Talk panel
+  // above; ka/ru/ar/he all carry their own real forms. Same collision, same
+  // single locale, same admin-only technical column header.
+  'vcogs_stage_model',
   // The three advertising platforms, by their own names. Meta, Google and
   // TikTok are written identically in all six locales because they are
   // company names, not words — the same reason WhatsApp is allowlisted below.

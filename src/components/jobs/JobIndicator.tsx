@@ -14,7 +14,7 @@
 // same state and must appear wherever the customer happens to be standing.
 
 import React, { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useJobs } from '@/contexts/JobsContext';
 import { JobCenter } from './JobCenter';
@@ -38,8 +38,35 @@ export const JobIndicator: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const { jobs, completions, dismissCompletion, setOpen } = useJobs();
+  const location = useLocation();
 
-  const active = jobs.filter((j) => !isTerminal(j.state));
+  /*
+   * A JOB THE CUSTOMER IS ALREADY WATCHING NEEDS NO FLOATING BADGE.
+   *
+   * Every job carries a resultRef -- the screen its result lives on, e.g.
+   * `/verify?job=<id>`. Standing on that screen, the page itself is the
+   * status: Verify draws a live progress bar, a stage and a percentage. The
+   * pill then adds nothing and costs a great deal, because it is fixed to the
+   * bottom-right where the AI assistant button already sits. Measured on a
+   * real 320-430px Chrome it overlapped that button at every width, and sat
+   * across the content above the tab bar.
+   *
+   * Matching on the resultRef's PATHNAME rather than a hardcoded route keeps
+   * this true for every product that gains a result screen later, and keeps
+   * the indicator's real job intact: anything running somewhere else is still
+   * announced, which is the whole reason it exists.
+   */
+  const presentedHere = (job: { resultRef?: string | null }): boolean => {
+    if (!job.resultRef) return false;
+    try {
+      // A relative ref needs a base; the origin is irrelevant to the compare.
+      return new URL(job.resultRef, window.location.origin).pathname === location.pathname;
+    } catch {
+      return false;
+    }
+  };
+
+  const active = jobs.filter((j) => !isTerminal(j.state) && !presentedHere(j));
 
   /*
    * COMPLETION NOTIFICATIONS.
@@ -66,6 +93,26 @@ export const JobIndicator: React.FC = () => {
         continue;
       }
 
+      /*
+       * THE FALSE-EARLY "COMPLETED".
+       *
+       * background_jobs goes terminal when the PIPELINE finishes. The report
+       * the customer actually reads is a separate fetch the result screen
+       * makes, and that takes a second or three longer. Announcing here meant
+       * the customer was told "Verification complete" while the page in front
+       * of them was still finalising -- the backend's truth, delivered as if
+       * it were the customer's.
+       *
+       * On the job's own result screen the announcement is redundant anyway:
+       * the page shows the state, and src/verify/completion.ts decides when
+       * that state is COMPLETE. So it is dismissed rather than raised, and
+       * every job finishing ANYWHERE ELSE is announced exactly as before.
+       */
+      if (presentedHere(job)) {
+        dismissCompletion(job.id);
+        continue;
+      }
+
       const label = job.subjectLabel ?? '';
       if (job.state === 'FAILED') {
         toast.error(t(job.userSafeError ?? 'job_failed_generic'), {
@@ -84,7 +131,8 @@ export const JobIndicator: React.FC = () => {
       }
       dismissCompletion(job.id);
     }
-  }, [completions, dismissCompletion, navigate, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completions, dismissCompletion, navigate, t, location.pathname]);
 
   return (
     <>
@@ -92,9 +140,17 @@ export const JobIndicator: React.FC = () => {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          // bottom-24 clears the mobile tab bar; inset-x gives a long label
-          // room to sit without ever reaching the edge of a 320px screen.
-          className="fixed bottom-24 sm:bottom-6 end-4 z-40 max-w-[calc(100vw-2rem)] inline-flex items-center gap-2 rounded-full border border-border bg-card/95 px-4 py-2.5 shadow-lg backdrop-blur transition-colors hover:bg-accent"
+          /*
+           * STACKED ABOVE THE ASSISTANT BUTTON, NOT ON TOP OF IT.
+           *
+           * AIFloatingButton sits at `bottom-20 md:bottom-6` on the same
+           * corner. This used to sit at `bottom-24 sm:bottom-6`, so the two
+           * overlapped on every phone width -- and the breakpoints disagreed
+           * as well (sm vs md), giving a second, different overlap between
+           * 640 and 768px. These clear it at both sizes and follow the same
+           * breakpoint, so the two controls stack instead of colliding.
+           */
+          className="fixed bottom-32 md:bottom-24 end-4 z-40 max-w-[calc(100vw-2rem)] inline-flex items-center gap-2 rounded-full border border-border bg-card/95 px-4 py-2.5 shadow-lg backdrop-blur transition-colors hover:bg-accent"
           aria-label={t('job_center_title')}
         >
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />

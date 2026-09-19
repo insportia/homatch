@@ -102,8 +102,13 @@ test('the NOTE sits directly under the Verify action area — above progress, re
 
 test('the Verify header and primary action fit narrow screens without horizontal overflow', () => {
   // Header row wraps instead of squeezing the title against two buttons.
-  assert.match(verifySource, /className="flex flex-wrap items-start justify-between gap-2"/);
-  assert.match(verifySource, /className="min-w-0 flex-1"/);
+  // The header still wraps; what changed is that the TITLE now owns the row
+  // on a phone. `min-w-0 flex-1` let the title column shrink to 114px instead
+  // of letting the action wrap, which broke "gadamowmebis centri" mid-word
+  // across five lines at 320px. basis-full makes the actions wrap first.
+  assert.match(verifySource, /className="flex flex-wrap items-start justify-between gap-x-3 gap-y-3"/);
+  assert.match(verifySource, /className="min-w-0 basis-full sm:basis-auto sm:flex-1"/);
+  assert.match(verifySource, /className="min-w-0 basis-full sm:basis-auto sm:flex-1"/);
   // The desktop step grew with the readability pass (2xl -> 3xl) and the
   // weight moved to semibold with the display face. The MOBILE step is the
   // part this test is actually guarding — it shares a row with two buttons
@@ -125,7 +130,9 @@ test('the Verify header and primary action fit narrow screens without horizontal
 });
 
 test('long cadastral codes, evidence text and errors wrap instead of overflowing', () => {
-  assert.match(verifySource, /text-sm font-medium break-all">\{exactUnit\.code\}/);
+  // Still break-all so a 26-character code cannot overflow; `fact` is the
+  // report's own weight for an established figure, replacing font-medium.
+  assert.match(verifySource, /className="fact text-sm break-all">\{exactUnit\.code\}/);
   assert.match(verifySource, /text-xs text-muted-foreground leading-relaxed break-words">• \{clean\(x\)\}/);
   assert.match(verifySource, /text-sm text-destructive break-words">\{err\}/);
   // The retrieved-documents card lists dates as chips rather than one long

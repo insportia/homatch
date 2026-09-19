@@ -138,6 +138,7 @@ const AdminCreditsPage = lazy(() => import('./pages/admin/AdminCreditsPage'));
 const AdminPaymentsPage = lazy(() => import('./pages/admin/AdminPaymentsPage'));
 const AdminFinancePage = lazy(() => import('./pages/admin/AdminFinancePage'));
 const AdminProvidersPage = lazy(() => import('./pages/admin/AdminProvidersPage'));
+const AdminVerifyCogsPage = lazy(() => import('./pages/admin/AdminVerifyCogsPage'));
 const AdminVoiceAiPage = lazy(() => import('./pages/admin/AdminVoiceAiPage'));
 const AdminPricingPage = lazy(() => import('./pages/admin/AdminPricingPage'));
 const AdminSpendCapsPage = lazy(() => import('./pages/admin/AdminSpendCapsPage'));
@@ -384,6 +385,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Finance',     path: '/admin/finance',            element: adminWrap(<AdminFinancePage />),     adminOnly: true },
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
+  { name: 'Admin Verify COGS', path: '/admin/verify-cogs',        element: adminWrap(<AdminVerifyCogsPage />),  adminOnly: true },
   { name: 'Admin Voice AI',    path: '/admin/voice-ai',           element: adminWrap(<AdminVoiceAiPage />),     adminOnly: true },
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },

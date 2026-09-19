@@ -176,14 +176,30 @@ export function ResearchStream({
 
       <p className="text-xs leading-relaxed text-muted-foreground break-words">{t('verify_stream_note')}</p>
 
+      {/*
+        * THE CONTROL AREA, CONTAINED.
+        *
+        * This was a ghost button with px-0 — text the same size and weight as
+        * the paragraph above it, with no border, no background and no padding
+        * to click. The only thing marking it as an action was the cursor, and
+        * a customer looking for "how do I stop this" had to guess.
+        *
+        * It is a real button in a real container now. Outline rather than a
+        * filled destructive: stopping a verification is a legitimate choice
+        * and must be findable, but it is not the primary thing to do on this
+        * screen and should not be the loudest element on it.
+        */}
       {onStop && (
-        <div className="pt-1">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-background/60 p-3 sm:p-4">
+          <p className="min-w-0 basis-full text-xs leading-relaxed text-muted-foreground sm:flex-1 sm:basis-auto">
+            {t('verify_controls_hint')}
+          </p>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={onStop}
             disabled={stopping}
-            className="text-muted-foreground hover:text-destructive px-0"
+            className="h-9 shrink-0 border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             {t(stopping ? 'verify_stop_pending' : 'verify_stop_research')}
           </Button>

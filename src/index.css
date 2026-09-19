@@ -221,6 +221,90 @@
   .measure { max-width: var(--measure); }
   .measure-wide { max-width: 82ch; }
 
+  /* ------------------------------------------------------------------
+   * THE VERIFICATION REPORT
+   *
+   * Scoped to .verify-report deliberately. The typography below is right
+   * for a long, dense intelligence document and would be wrong applied to
+   * the whole product, and other workstreams own their own surfaces.
+   * ------------------------------------------------------------------ */
+
+  /* Georgian is not Latin set in a different alphabet.
+   *
+   * mkhedruli has no capitals and almost no ascenders or descenders, so a
+   * line of it is a flat band: the eye has fewer landmarks to find the next
+   * line with, and the -0.018em tracking the display face carries for Latin
+   * headings pushes the letterforms into each other. At the 320px widths a
+   * verification is actually read on, that is the difference between a
+   * scannable heading and a grey brick.
+   *
+   * So headings lose the negative tracking and gain a little leading, and
+   * body copy gains a little more. Latin, Cyrillic, Arabic and Hebrew are
+   * untouched — each already reads correctly with the product defaults. */
+  html[lang='ka'] .verify-report :is(h1, h2, h3, h4) {
+    letter-spacing: 0;
+    line-height: 1.35;
+  }
+  html[lang='ka'] .verify-report :is(p, li, dd) {
+    line-height: 1.78;
+  }
+
+  /* A FACT AND A CAVEAT SHOULD NOT LOOK THE SAME.
+   *
+   * The report's weight was flat: an established figure and the sentence
+   * explaining its limits were both 14px grey, so scanning it meant reading
+   * all of it. These two classes are the whole hierarchy — what was found,
+   * and what qualifies it. */
+  .verify-report .fact {
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    font-variant-numeric: tabular-nums;
+  }
+  .verify-report .caveat {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.8125rem;
+    line-height: 1.6;
+  }
+
+  /* Cards in a long report need separation without a ruled grid. A touch
+     more air between them reads as deliberate; a border on everything reads
+     as a spreadsheet. */
+  .verify-report > * + * { margin-block-start: 0.875rem; }
+
+  /* BLACK, WHITE AND GOLD — and colour that still means something.
+   *
+   * The report read as grey on grey: cards a shade off the page, borders a
+   * shade off the cards, and half the type in --muted-foreground whether it
+   * was a finding or a footnote. Nothing was decorative on purpose; it had
+   * simply all drifted to the middle.
+   *
+   * These rules pull it back to the identity — white cards on a white-ish
+   * ground, near-black type, a gold rule where something is premium or
+   * selected — WITHOUT touching the shared surface tokens, because
+   * :root[data-surface='light'] is also Dashboard, auth, Developer and the
+   * marketing shell, and none of those asked for this.
+   *
+   * Semantic colour is deliberately left alone. Green still means a state
+   * that was positively established, destructive still means a real problem,
+   * amber still means incomplete. Recolouring those gold would make the page
+   * prettier and the report less true. */
+  .verify-report [class*='rounded-'][class*='border'] {
+    background-color: hsl(var(--card));
+  }
+  /* A border you can actually see, rather than one you infer. */
+  .verify-report :is([class*='border-border']) {
+    border-color: hsl(0 0% 7% / 0.14);
+  }
+  /* The gold is a rule and an accent, never a fill: at this size on white it
+     has nowhere near the contrast to carry text. */
+  .verify-report .premium-rule {
+    border-inline-start: 3px solid hsl(var(--primary));
+    padding-inline-start: 0.75rem;
+  }
+  /* Section labels earn their prominence from spacing and tracking, not from
+     another shade of grey. */
+  .verify-report :is(h2, h3) { color: hsl(var(--foreground)); }
+
   /* Vertical rhythm inside a block of prose. Paragraph spacing is what
      makes a report feel considered rather than dumped; borders between
      everything is what makes it feel like an admin panel. */

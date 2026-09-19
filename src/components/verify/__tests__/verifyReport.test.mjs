@@ -276,7 +276,7 @@ test('the report has no fixed width that breaks a 320px screen', () => {
   assert.match(reportCode, /break-words/);
   // The cadastral code is the one string with no spaces to wrap on, so it is
   // rendered with break-all where it actually appears: the identity line.
-  assert.match(page, /text-sm font-medium break-all">\{report\.exactUnit\.code\}/);
+  assert.match(page, /className="fact text-sm break-all">\{report\.exactUnit\.code\}/);
 });
 
 /* ---------------- the pre-purchase checklist is gone ---------------- */

@@ -6,6 +6,10 @@ import { harvestReport, normalizeCadastral } from '../../../src/verify/intellige
 import { persistHarvest, loadKnownIntelligence, loadComparables } from '../../../src/verify/intelligence/graphStore.ts';
 import { planVerification } from '../../../src/verify/intelligence/stagePlan.ts';
 import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
+import {
+  assessFinancialEntityWait, beginWait, unavailableEntityResult,
+  type WatchdogState,
+} from '../_shared/verifyWatchdog.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
@@ -2212,7 +2216,9 @@ function pickFinancialCandidate(prior: any, source: 'enreg' | 'rstax' | 'debtor'
 async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' | 'debtor', name: string, idCode: string | null, returnStage: 'PUBLIC_RESEARCH_READY' | 'MARKET_READY' | 'SYNTHESIS_READY'): Promise<any> {
   const r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode });
   const p = j.result_json || {};
-  p._worker = { jobId: r.data.jobId };
+  // The watchdog's clock starts with the job, not with the first poll: a
+  // worker that never reports anything at all must still time out.
+  p._worker = { jobId: r.data.jobId, wait: beginWait(Date.now()) };
   p._financialEntityRequestedFor = { source, name, idCode };
   p._financialReturnStage = returnStage;
   return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'PUBLIC_RESEARCH_READY' ? 50 : returnStage === 'MARKET_READY' ? 70 : 86, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
@@ -2251,7 +2257,56 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
     prior._captchaReturnStage = 'FINANCIAL_ENTITY_WAITING';
     return sb.from('research_jobs').update({ status: 'WAITING_HUMAN', stage: 'CAPTCHA_REQUIRED', result_json: prior, captcha: w.humanVerification || {}, progress: { phase: 'captcha_required', percent: 60, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
   }
-  if (w.status !== 'COMPLETE' && w.status !== 'FAILED') return; // still running
+  if (w.status !== 'COMPLETE' && w.status !== 'FAILED') {
+    /*
+     * BOUNDED WAIT. This used to be `return;` -- still running, come back
+     * later, forever. A production job sat here for 2,307 seconds because
+     * the worker's entity job stopped progressing and nothing was counting.
+     *
+     * The watchdog compares a signature built from what the worker says it
+     * is doing (stage, source index, results, steps, updatedAt). While that
+     * keeps changing we keep waiting; when it stops changing for three
+     * minutes, or ten minutes pass in total, we stop waiting for THIS
+     * SOURCE ONLY.
+     */
+    const assessment = assessFinancialEntityWait(
+      prior._worker?.wait as WatchdogState | undefined, w, Date.now(),
+    );
+    if (!assessment.giveUp) {
+      // Persist the clock so the next tick can tell movement from stillness.
+      prior._worker = { ...(prior._worker || {}), jobId: id, wait: assessment.next };
+      await sb.from('research_jobs')
+        .update({ result_json: prior, updated_at: now() }).eq('id', j.id);
+      return;
+    }
+
+    const requested = prior._financialEntityRequestedFor || {};
+    console.error('research-agent: financial entity abandoned',
+      assessment.verdict, requested.source ?? 'unknown', assessment.waitedMs);
+
+    // Everything already collected is kept. Only this one lookup is lost,
+    // and it is RECORDED as lost rather than quietly omitted.
+    prior.browserOfficial = prior.browserOfficial || { results: [] };
+    prior.browserOfficial.results = [
+      ...(prior.browserOfficial.results || []),
+      unavailableEntityResult({
+        source: requested.source || 'enreg',
+        name: requested.name ?? null,
+        idCode: requested.idCode ?? null,
+        reason: assessment.verdict,
+        waitedMs: assessment.waitedMs,
+        workerJobId: id,
+        atIso: new Date().toISOString(),
+      }),
+    ];
+    // Clearing _worker is what prevents a second job for the same source:
+    // the queue already consumed it, so processFinancialQueue moves on to
+    // whatever is left and then to the chain's return stage.
+    delete prior._worker;
+    await sb.from('research_jobs')
+      .update({ result_json: prior, captcha: {}, updated_at: now() }).eq('id', j.id);
+    return processFinancialQueue(sb, { ...j, result_json: prior });
+  }
   // A single financial-entity lookup (enreg/rstax/debtor) is a best-effort
   // enrichment step, never a reason to fail the whole job — on FAILED, just
   // move on to whatever else remains in the queue.

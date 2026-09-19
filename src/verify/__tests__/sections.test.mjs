@@ -222,3 +222,65 @@ test('no internal machinery leaks into the customer-visible metrics', () => {
   assert.ok(!rendered.includes('ss-ge'));
   assert.ok(!rendered.includes('cacheHits'));
 });
+
+/*
+ * DEGRADED MODE: the report a stalled worker leaves behind.
+ *
+ * Production held a job in FINANCIAL_ENTITY_WAITING for 2,307 seconds
+ * because one official-source lookup stopped progressing. The job never
+ * finished, so `finished` stayed false and EVERY section stayed PENDING —
+ * which renders as "not started". A customer looking at that saw a report
+ * that was permanently about to begin.
+ *
+ * The watchdog (supabase/functions/_shared/verifyWatchdog.ts) now abandons
+ * the individual source and lets the run complete. These two tests pin the
+ * consequence: the run reaches a terminal status, the abandoned source is
+ * disclosed as unreadable, and NOTHING is left saying "not started".
+ */
+test('a run that completes after abandoning a source has no PENDING section', () => {
+  const snapshot = at(
+    {
+      // What survived: the unit, the company, market comparables.
+      exactUnit: { code: '01.10.01.001.01', verified: true },
+      companyProfile: { name: 'Example LLC', idCode: '405068386', sourceBasis: 'REGISTRY_CONFIRMED' },
+      marketComparables: [{ id: 1 }, { id: 2 }],
+      publicResearch: { directorsRepresentatives: [{ name: 'A' }] },
+      publicSignals: [{ url: 'https://x.test/1' }],
+      summary: { headline: 'done' },
+      // What did not: one registry lookup the watchdog gave up on. TIMEOUT
+      // maps to TECHNICAL_FAILED for the customer.
+      officialSourceCoverage: [
+        { source: 'enreg', customerStatus: 'SUCCESS' },
+        { source: 'rstax', customerStatus: 'TECHNICAL_FAILED' },
+      ],
+      officialDocumentsRetrieved: [{ url: 'https://o.test/1' }],
+    },
+    { status: 'COMPLETE', stage: 'COMPLETE' },
+  );
+
+  const pending = snapshot.sections.filter((x) => x.maturity === 'PENDING');
+  assert.deepEqual(pending.map((x) => x.id), [],
+    'a terminal report must never show a section as "not started"');
+});
+
+test('the abandoned source is disclosed, and does not fail the verification', () => {
+  const snapshot = at(
+    {
+      officialSourceCoverage: [
+        { source: 'enreg', customerStatus: 'SUCCESS' },
+        { source: 'rstax', customerStatus: 'TECHNICAL_FAILED' },
+      ],
+      officialDocumentsRetrieved: [{ url: 'https://o.test/1' }],
+    },
+    { status: 'COMPLETE', stage: 'COMPLETE' },
+  );
+  const official = find(snapshot, 'OFFICIAL');
+  // PARTIAL, not UNAVAILABLE and not a failed job: one source was read and
+  // one was not, and the report says exactly that.
+  assert.equal(official.maturity, 'PARTIAL');
+  assert.equal(isUsable(official.maturity), true);
+  assert.ok(official.notes.includes('OFFICIAL_SOURCE_NOT_READABLE'));
+  assert.equal(official.metrics.sourcesChecked, 2);
+  assert.equal(official.metrics.sourcesConfirmed, 1);
+  assert.equal(official.metrics.sourcesBlocked, 1);
+});

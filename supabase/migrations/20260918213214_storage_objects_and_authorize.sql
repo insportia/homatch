@@ -150,7 +150,7 @@ language plpgsql
 stable
 security definer
 set search_path to ''
-as $$
+as $fn$
 declare
   v_uid     uuid := auth.uid();
   v_me      uuid;          -- public.users.id for this caller
@@ -316,7 +316,7 @@ exception when others then
   -- a reason to sign something.
   return 'UNAVAILABLE';
 end;
-$$;
+$fn$;
 
 comment on function public.storage_authorize(text, text) is
   'The single authority for object storage. Returns ALLOW or a refusal word. Resolves ownership from rows, not from the key.';

@@ -348,13 +348,23 @@ test('a finished verification always offers a next step, and never fails silentl
   // carries the property with it — a handoff that dropped the context would
   // make Contracts read the document in isolation, which is the whole point
   // of connecting the two products.
-  assert.match(code, /nav\('\/contracts',\{state:\{roomId:caseId/,
-    'the finished report must hand the verified property to Contracts');
-  assert.match(code, /cadastralCode:report\?\.exactUnit\?\.code/,
-    'the handoff must carry the cadastral code');
+  // The report's next step is the contract for this property, and it is
+  // offered ONCE: the report's own upload card, which attaches the document
+  // to this verification's container and opens it in Contracts. A second
+  // button beside it was the duplication this product keeps growing back.
+  const upload = fs.readFileSync(
+    path.resolve(here, '../../components/verify/ContractUpload.tsx'), 'utf8');
+  assert.match(upload, /navigate\(`\/contracts\/\$\{documentId\}`/,
+    'a contract must open in Contracts, not in the retired workspace');
+  assert.equal(
+    /\/verify\/\$\{targetCase\}\?tab=documents/.test(upload), false,
+    'the Documents tab is a surface the customer no longer sees'
+  );
 
   // A save that fails still says so, in the same place it always did.
-  assert.match(code, /\{caseErr\?<p role="alert"/,
+  // Matched on the requirement, not the punctuation around it: the
+  // condition in front of this has changed twice already.
+  assert.match(code, /caseErr\?<p role="alert"/,
     'a save failure must remain visible');
 
   // And the automatic save stays the silent one: the customer is not asked

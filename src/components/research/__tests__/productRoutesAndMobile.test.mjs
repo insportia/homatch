@@ -366,11 +366,14 @@ test('a completed verification persists itself instead of asking for a second pr
   const src = PAGES['src/pages/VerifyPage.tsx'];
   assert.ok(src.includes('void saveCase('), 'a finished report must save itself');
   // The next step is no longer "file this somewhere": a verification saves
-  // itself, so the CTA now hands the verified property to Contracts, which is
-  // what a buyer actually does next.
+  // itself, so what the report offers is the contract for this property —
+  // ONCE, through the report's own upload card, which attaches the document
+  // to this verification and opens it in Contracts.
+  const report = read('src/components/verify/VerifyReport.tsx');
+  assert.ok(report.includes('<ContractUpload'), 'the report must offer the contract action');
   assert.ok(
-    src.includes("t('verify_contract_handoff_cta')"),
-    'the finished report must offer a real next step'
+    !src.includes('verify_contract_handoff'),
+    'a second contract button beside the first is the duplication that keeps returning'
   );
   assert.ok(!src.includes("t('verify_create_deal_room')"), 'the create-a-deal-room CTA is back');
 });

@@ -514,7 +514,7 @@ test('verify-synthesis uses the evidence package, not the starved plan', () => {
   assert.ok(!fn.includes('buildRenderPrompt'), 'the starved prompt is still wired in');
 });
 
-test('the contract CTA reuses the Verification Case documents tab, not a second upload path', () => {
+test('the contract CTA opens the Contracts product, and there is only one uploader', () => {
   /*
    * The invariant is unchanged — ONE upload path, landing on the case's
    * documents tab — but it is no longer expressed as a navigation callback.
@@ -534,9 +534,11 @@ test('the contract CTA reuses the Verification Case documents tab, not a second 
     'the navigate-only callback must not come back'
   );
 
-  // Still the case documents tab, and now the exact document within it.
+  // The exact document, on its own page in Contracts. The case documents
+  // tab this used to require is the retired Deal Room workspace.
   const upload = read('src/components/verify/ContractUpload.tsx');
-  assert.ok(/\?tab=documents&doc=/.test(upload), 'the CTA does not land on the case documents tab');
+  assert.ok(/\/contracts\/\$\{documentId\}/.test(upload),
+    'the CTA does not open the contract in Contracts');
 
   // And exactly one component performs a contract upload.
   const center = read('src/components/verify/StartFromDocument.tsx');

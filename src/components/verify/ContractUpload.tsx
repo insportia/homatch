@@ -146,10 +146,17 @@ export const ContractUpload: React.FC<{
        */
       await requestAnalysis({ id: documentId, caseId: targetCase, name: picked.name });
 
-      // Straight to the document, not merely to the case: progress and the
-      // finished result both live on this exact deep link, and it is the same
-      // path the task CTA resolves to.
-      navigate(`/verify/${targetCase}?tab=documents&doc=${documentId}`);
+      /*
+       * Straight to the contract's own page.
+       *
+       * This used to land on /verify/:id?tab=documents — the Verification
+       * Case's Documents tab, which is the Deal Room workspace the customer
+       * no longer sees. Contracts is a product now, and its result page is
+       * where a contract's progress and result live. `startedAt` is passed
+       * because this call KNOWS when the upload finished; a deep link later
+       * cannot, and falls back to the row's own timestamp.
+       */
+      navigate(`/contracts/${documentId}`, { state: { startedAt: Date.now() } });
     } catch {
       if (createdCaseId) {
         // An empty case is worse than no case — it would sit in the list

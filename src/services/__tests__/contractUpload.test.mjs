@@ -128,8 +128,12 @@ test('choosing a file queues the analysis and opens that exact document', () => 
 
   // The step that was missing everywhere except the case workspace.
   assert.match(code, /requestAnalysis\(\{\s*id: documentId/, 'the upload must queue the analysis');
-  // Straight to the document — the same deep link the task CTA resolves to.
-  assert.match(code, /\/verify\/\$\{targetCase\}\?tab=documents&doc=\$\{documentId\}/);
+  // Straight to the contract's own page. This used to assert the
+  // Verification Case's Documents tab; Contracts is a product now and
+  // that workspace is no longer part of the customer journey. The
+  // requirement is unchanged: the upload opens THAT document, not a list.
+  assert.match(code, /navigate\(`\/contracts\/\$\{documentId\}`/,
+    'the upload must open the contract it just created');
   // No metadata is asked for.
   assert.equal(/category|docKey|label:/.test(code), false, 'no metadata form may be introduced');
 });

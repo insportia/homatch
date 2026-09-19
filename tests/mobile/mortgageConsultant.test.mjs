@@ -343,6 +343,28 @@ test('the mortgage page is a simple calculator on a phone', opts, async (t) => {
     const r = await settle(page, width);
     checked.push(where);
     judge(where, r, { expectResult: true });
+
+    /* THE CHIPS, IN EVERY LANGUAGE AND AT EVERY WIDTH.
+       Four of them in Georgian at 320px is the case that breaks a chip
+       row: the labels are long and unhyphenated, and they have to wrap
+       inside the pill rather than push the page sideways. */
+    const chips = await page.evaluate(() => {
+      const group = document.querySelector('#consultant [role="group"]');
+      if (!group) return null;
+      return [...group.querySelectorAll('button')].map((b) => ({
+        h: Math.round(b.getBoundingClientRect().height),
+        right: Math.round(b.getBoundingClientRect().right),
+        text: (b.textContent || '').trim().slice(0, 30),
+      }));
+    });
+    if (!chips || chips.length < 2) {
+      failures.push(`${where}: the consultant offered ${chips ? chips.length : 0} suggested replies`);
+    } else {
+      for (const chip of chips) {
+        if (chip.h < 44) failures.push(`${where}: a ${chip.h}px chip ("${chip.text}")`);
+        if (chip.right > width + 1) failures.push(`${where}: a chip overflows ("${chip.text}")`);
+      }
+    }
     await ctx.close();
   }
 

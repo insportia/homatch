@@ -4,6 +4,7 @@ import { sendStreamRequest } from '@/lib/sse';
 import { supabase } from '@/db/supabase';
 import { ensureAnonymousSession } from '@/services/anonymousSession';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { parseSuggestedReplies, type SuggestedReply } from '@/lib/ai/suggestedReplies';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -26,6 +27,12 @@ export interface PageContext {
   data?: Record<string, unknown>;
 }
 
+/** What the server says a response cost. Display only — see AJ. */
+export interface ChatBilling {
+  chargedCredits: number;
+  remainingCredits: number;
+}
+
 export function useAIChat() {
   const { lang, t } = useLanguage();
   const [messages, setMessages] = useState<AIMessage[]>([]);
@@ -37,6 +44,17 @@ export function useAIChat() {
   const [conversations, setConversations] = useState<AIConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [pageContext, setPageContext] = useState<PageContext>({ type: 'general' });
+  /* WHAT THE PERSON MIGHT SAY NEXT.
+   *
+   * Cleared the moment a turn starts, so a chip from the previous
+   * answer can never be pressed against the next one — the answer it
+   * belonged to is already scrolling away. Repopulated only when the
+   * new answer is complete. */
+  const [suggestedReplies, setSuggestedReplies] = useState<SuggestedReply[]>([]);
+  /* What the last answer cost, when the server chose to say. Never
+     computed here: the browser is not allowed an opinion about money. */
+  const [lastBilling, setLastBilling] = useState<ChatBilling | null>(null);
+  const [insufficientCredits, setInsufficientCredits] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const loadConversations = useCallback(async () => {
@@ -100,14 +118,31 @@ export function useAIChat() {
     }
 
     const userMsg: AIMessage = { id: crypto.randomUUID(), role: 'user', content: userText.trim(), createdAt: new Date() };
+    /*
+     * ONE TURN, ONE ID, ONE POSSIBLE CHARGE.
+     *
+     * Minted here and sent with the request, so a network-level retry
+     * of the same POST carries the same key and the server recognises
+     * the reservation it already holds. Deliberately NOT derived from
+     * the message text: asking the same question twice on purpose is
+     * two turns and should be billed twice.
+     */
+    const interactionId = crypto.randomUUID();
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
     setStreamContent('');
+    // The previous answer's chips belong to the previous answer.
+    setSuggestedReplies([]);
+    setInsufficientCredits(false);
     abortRef.current = new AbortController();
 
     const allMessages = [...messages, userMsg];
     const efMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
     let accumulated = '';
+    /* Held until the answer is finished. Chips that appear beside a
+       half-written sentence are chips for an answer nobody has read. */
+    let pendingReplies: SuggestedReply[] = [];
+    let pendingBilling: ChatBilling | null = null;
 
     await sendStreamRequest({
       functionUrl: `${SUPABASE_URL}/functions/v1/homatch-ai`,
@@ -122,6 +157,8 @@ export function useAIChat() {
         // user's currently selected UI language, independent of whatever
         // language the message text itself happens to be typed in.
         locale: lang,
+        // The idempotency key for this turn's reservation and settlement.
+        interactionId,
       },
       supabaseAnonKey: SUPABASE_ANON_KEY,
       accessToken,
@@ -141,6 +178,21 @@ export function useAIChat() {
           convId = id;
           setActiveConvId(id);
         }
+
+        /* The chips, already validated server-side. Parsed again here
+           only because the meta payload is `unknown` at this boundary
+           and the parser is the one definition of the shape — it is a
+           cheap no-op on a list that is already clean. */
+        const replies = parseSuggestedReplies(payload?.suggestedReplies);
+        if (replies.length) pendingReplies = replies;
+
+        const billing = payload?.billing as ChatBilling | undefined;
+        if (billing && typeof billing.chargedCredits === 'number') {
+          pendingBilling = {
+            chargedCredits: billing.chargedCredits,
+            remainingCredits: Number(billing.remainingCredits ?? 0),
+          };
+        }
       },
       onData: (raw) => {
         try {
@@ -154,6 +206,9 @@ export function useAIChat() {
         setMessages(prev => [...prev, assistantMsg]);
         setStreamContent('');
         setStreaming(false);
+        // Only now: the answer they belong to is on screen and finished.
+        setSuggestedReplies(pendingReplies);
+        if (pendingBilling) setLastBilling(pendingBilling);
         if (convId && convId !== 'guest' && allMessages.length === 1) {
           await supabase.from('ai_conversations').update({ title: userText.slice(0, 60) }).eq('id', convId);
           await loadConversations();
@@ -174,6 +229,17 @@ export function useAIChat() {
           try {
             const data = await httpErr.response.clone().json();
             if (data?.error && typeof data.error === 'string') message = data.error;
+            if (data?.code === 'INSUFFICIENT_CREDITS') {
+              /* Not an error either, and emphatically not a toast that
+                 throws away what they typed. The turn is rolled back,
+                 the conversation stays exactly where it was, and the
+                 panel shows a way to carry on. */
+              setInsufficientCredits(true);
+              setMessages(prev =>
+                (prev.length && prev[prev.length - 1].id === userMsg.id) ? prev.slice(0, -1) : prev
+              );
+              return;
+            }
             if (data?.code === 'ANON_LIMIT_REACHED') {
               // Not a failure. They have had what was offered, and signing in
               // continues the SAME conversation rather than starting one.
@@ -208,7 +274,15 @@ export function useAIChat() {
     return () => window.removeEventListener('homatch:anon-claimed', onClaimed);
   }, [loadConversations]);
 
-  const resetChat = useCallback(() => { setMessages([]); setActiveConvId(null); setStreamContent(''); setPageContext({ type: 'general' }); }, []);
+  const resetChat = useCallback(() => {
+    setMessages([]); setActiveConvId(null); setStreamContent('');
+    setPageContext({ type: 'general' }); setSuggestedReplies([]);
+    setInsufficientCredits(false);
+  }, []);
 
-  return { messages, streaming, streamContent, conversations, activeConvId, pageContext, setPageContext, sendMessage, cancelStream, resetChat, loadConversations, loadConversation, newConversation, anonLimitReached };
+  return {
+    messages, streaming, streamContent, conversations, activeConvId, pageContext, setPageContext,
+    sendMessage, cancelStream, resetChat, loadConversations, loadConversation, newConversation,
+    anonLimitReached, suggestedReplies, lastBilling, insufficientCredits,
+  };
 }

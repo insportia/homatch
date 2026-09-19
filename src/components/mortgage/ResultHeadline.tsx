@@ -59,6 +59,14 @@ export function ResultHeadline({
           years: Math.round((result.amortizationSchedule.length / 12) * 10) / 10,
         })}
       </p>
+
+      {/* The handoff. Four numbers and a sentence is where a calculator
+          stops; this is the line that says the rest of the product is a
+          conversation, and it sits with the result rather than as the
+          heading of the next box so it reads as one thought. */}
+      <p className="mt-3 max-w-[60ch] text-sm font-medium leading-relaxed text-[hsl(var(--gold-ink))]">
+        {t('mortgage_result_handoff')}
+      </p>
     </section>
   );
 }

@@ -634,13 +634,30 @@ test('the products that actually charge all go through the billing gateway', () 
   }
 });
 
-test('the free products never reach the wallet', () => {
-  // Mortgage is pure deterministic maths; AI Chat is fair-use limited, not
-  // metered. Neither may ever charge a credit.
+test('AI Chat bills through the gateway, and only ever for an account', () => {
+  /*
+   * THIS TEST USED TO ASSERT THE OPPOSITE.
+   *
+   * It said AI Chat was fair-use limited and never metered, which was
+   * true when it was written and is not any more: a response is a
+   * registered product with measured COGS. What has NOT changed is how
+   * it must reach the wallet — through beginExecution/settleExecution
+   * like every other product, never by touching a balance itself.
+   *
+   * Fair use survives alongside it, doing a different job: the wallet
+   * decides whether somebody can afford the next answer, the daily
+   * ceiling decides whether the caller is behaving like a person.
+   */
   const ai = strip(fn('homatch-ai/index.ts'));
-  assert.ok(!/wallet_reserve|wallet_settle|beginExecution/.test(ai),
-    'AI Chat must never reserve or settle credits');
+  assert.match(ai, /beginExecution/, 'AI Chat must reserve through the gateway');
+  assert.match(ai, /settleExecution/, 'AI Chat must settle through the gateway');
+  assert.match(ai, /releaseExecution/, 'a failed response must release its hold');
+  assert.ok(!/wallet_reserve|wallet_settle|from\('credit_accounts'\).*update/.test(ai),
+    'AI Chat must not reach past the gateway into the wallet');
+  // The rate ceiling is still there.
   assert.match(ai, /ai_fair_use_daily/);
+  // And an anonymous visitor still has no wallet to charge.
+  assert.match(ai, /if \(uid && billingEnabled/);
 
   const mortgageDir = path.join(SRC, 'mortgage');
   if (fs.existsSync(mortgageDir)) {

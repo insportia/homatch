@@ -18,6 +18,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAIChat } from '@/hooks/useAIChat';
 import { useAssistant } from './AssistantContext';
+import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
 import { cn } from '@/lib/utils';
 
 export function AssistantDrawer() {
@@ -30,7 +31,7 @@ export function AssistantDrawer() {
 
   const {
     messages, streaming, streamContent, sendMessage, cancelStream, setPageContext,
-    anonLimitReached,
+    anonLimitReached, suggestedReplies,
   } = useAIChat();
 
   /* The page description travels with the question, so "what should I write
@@ -159,6 +160,14 @@ export function AssistantDrawer() {
                 </Button>
               ))}
             </div>
+          ) : null}
+
+          {/* The same chips as every other Homatch conversation. */}
+          {!streaming && suggestedReplies.length > 0 ? (
+            <SuggestedReplies
+              replies={suggestedReplies}
+              onSelect={(text) => { void sendMessage(text); }}
+            />
           ) : null}
 
           <div ref={bottomRef} />

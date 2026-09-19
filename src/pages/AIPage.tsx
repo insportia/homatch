@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
 
 /*
  * The composer sits at the bottom of the window, which on a modern phone
@@ -250,7 +251,7 @@ function AIPageInner() {
     messages, streaming, streamContent, conversations, activeConvId,
     sendMessage, cancelStream, resetChat, loadConversations,
     loadConversation, newConversation, setPageContext,
-    anonLimitReached,
+    anonLimitReached, suggestedReplies, insufficientCredits,
   } = useAIChat();
 
   // Inject page context and auto-send prompt when navigated with state
@@ -477,10 +478,36 @@ function AIPageInner() {
                   </div>
                 </div>
               )}
+              {/* What the person might say next. Under the answer,
+                  quieter than it, and only once it is finished — a chip
+                  beside a half-written sentence belongs to an answer
+                  nobody has read yet. */}
+              {!streaming && suggestedReplies.length > 0 && (
+                <SuggestedReplies
+                  replies={suggestedReplies}
+                  onSelect={(text) => { void sendMessage(text); }}
+                  className="ps-10"
+                />
+              )}
               <div ref={bottomRef} />
             </div>
           )}
         </div>
+
+        {insufficientCredits && (
+          <div className="mx-auto w-full max-w-2xl px-4 pb-2">
+            <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3.5">
+              <p className="text-sm leading-relaxed text-foreground">{t('ai_out_of_credits')}</p>
+              <button
+                type="button"
+                onClick={() => navigate('/credits')}
+                className="mt-3 min-h-11 rounded-full bg-primary px-4 text-xs font-medium text-primary-foreground"
+              >
+                {t('ai_out_of_credits_action')}
+              </button>
+            </div>
+          </div>
+        )}
 
         <Separator />
 

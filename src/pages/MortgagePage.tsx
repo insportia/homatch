@@ -190,8 +190,12 @@ export default function MortgagePage() {
             <h1 className="mt-1.5 font-display text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
               {t('mortgage_page_title')}
             </h1>
-            <p className="mt-2 max-w-[56ch] text-sm leading-relaxed text-muted-foreground">
-              {t('mortgage_page_subtitle')}
+            {/* THE PROMISE, NOT A DESCRIPTION.
+                Five fields is a small ask, and somebody looking at them
+                should already know they are about to get more back than
+                a payment figure. Two lines, and then the form. */}
+            <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
+              {t('mortgage_opening_promise')}
             </p>
           </header>
 

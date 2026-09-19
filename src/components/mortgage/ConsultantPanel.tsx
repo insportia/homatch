@@ -21,27 +21,41 @@
 // the drawer and /ai use, anonymous sessions included — this is a
 // surface for it, not a second assistant.
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Send, Sparkles, Square } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAIChat } from '@/hooks/useAIChat';
 import { cn } from '@/lib/utils';
+import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
 import type { ConsultantBrief } from '@/mortgage/consultantBrief';
 
-/** The questions the product was designed around, in the user's language. */
-const SUGGESTIONS = [
-  'mortgage_ask_more_down',
+/**
+ * THE FOUR OPENERS, WHICH ARE DELIBERATELY NOT FROM THE MODEL.
+ *
+ * Everything after the first answer is generated: the model reads the
+ * conversation and proposes what the person might say next. These four
+ * cannot be, because there is no conversation yet — and the moment
+ * after a calculation is exactly the moment somebody does not know
+ * what to ask. They are the four things the scenario makes worth
+ * asking, in the person's own words, and they hand over to the dynamic
+ * chips as soon as one of them is pressed.
+ */
+const STARTERS = [
   'mortgage_ask_shorter_term',
+  'mortgage_ask_more_down',
   'mortgage_ask_pay_extra',
   'mortgage_ask_explain_effective',
 ];
 
 export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const [value, setValue] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const {
     messages, streaming, streamContent, sendMessage, cancelStream, setPageContext, anonLimitReached,
+    suggestedReplies, insufficientCredits,
   } = useAIChat();
 
   /* The scenario travels with every question. Re-registered whenever a
@@ -65,6 +79,15 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
     setValue('');
     void sendMessage(question);
   };
+
+  /* Only offered once there is a scenario to ask about: "shorten the
+     term" means nothing before a term exists. */
+  const starters = useMemo(
+    () => (brief
+      ? STARTERS.map((key, i) => ({ id: `starter${i}`, label: t(key), value: t(key) }))
+      : []),
+    [brief, t],
+  );
 
   return (
     <section id="consultant" className="hm-workspace-panel p-5 sm:p-7">
@@ -100,20 +123,33 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
           ) : null}
           <div ref={bottomRef} />
         </div>
-      ) : (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {SUGGESTIONS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => ask(t(key))}
-              className="min-h-11 rounded-full border border-border px-4 text-start text-xs text-muted-foreground transition-colors hover:border-[hsl(var(--gold-border))] hover:text-foreground"
-            >
-              {t(key)}
-            </button>
-          ))}
+      ) : null}
+
+      {/* The chips. Deterministic openers until the first answer, then
+          whatever the model thinks this person would say next — the same
+          component either way, so they look and behave identically and
+          nobody has to learn that one kind is special. */}
+      <SuggestedReplies
+        replies={messages.length ? suggestedReplies : starters}
+        onSelect={(text) => ask(text)}
+        disabled={streaming}
+        className="mt-5"
+      />
+
+      {insufficientCredits ? (
+        <div className="mt-4 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-3.5">
+          <p className="text-sm leading-relaxed text-[hsl(var(--gold-ink))]">
+            {t('ai_out_of_credits')}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/credits')}
+            className="mt-3 min-h-11 rounded-full bg-[hsl(var(--gold))] px-4 text-xs font-medium text-[hsl(var(--primary-foreground))]"
+          >
+            {t('ai_out_of_credits_action')}
+          </button>
         </div>
-      )}
+      ) : null}
 
       {anonLimitReached ? (
         <p className="mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">

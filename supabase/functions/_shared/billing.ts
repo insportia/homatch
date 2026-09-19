@@ -484,5 +484,59 @@ async function recordAllowanceUsage(
   });
 }
 
+/**
+ * WHAT A RUN COST US WHEN IT COST THE CUSTOMER NOTHING.
+ *
+ * A product cannot be priced until somebody knows the distribution of
+ * its real COGS, and for a per-response product that distribution only
+ * exists in production. So a turn that is deliberately not billed —
+ * because billing is still switched off, or because the product has no
+ * approved pricing yet — still writes what it consumed.
+ *
+ * `billable: false` and `charged_credits: 0` are the honest labels: it
+ * is a measurement, not a sale, and no reconciliation should ever read
+ * it as revenue. It lives here rather than in the worker for the same
+ * reason everything else does — a product that writes usage_events
+ * itself is a product the integrity tooling cannot trust.
+ */
+export async function recordUnbilledUsage(
+  sb: SupabaseClient,
+  ctx: { userId: string; productCode: string; planCode: string; jobRef?: string | null },
+  usage: ActualUsage,
+): Promise<void> {
+  const { data: landed } = await sb.rpc('billing_landed_cogs_cents', {
+    p_raw_provider_cents: usage.rawProviderCostCents ?? 0,
+    p_ai_cents: usage.aiCostCents ?? 0,
+    p_enrichment_cents: usage.enrichmentCostCents ?? 0,
+    p_infra_cents: 0,
+  });
+  await sb.from('usage_events').insert({
+    user_id: ctx.userId,
+    reservation_id: null,
+    product_code: ctx.productCode,
+    plan_code: ctx.planCode,
+    quality_tier: 'STANDARD',
+    provider: usage.provider ?? null,
+    provider_operation: usage.providerOperation ?? null,
+    model: usage.model ?? null,
+    input_tokens: usage.inputTokens ?? null,
+    cached_tokens: usage.cachedTokens ?? null,
+    output_tokens: usage.outputTokens ?? null,
+    search_count: usage.searchCount ?? null,
+    duration_ms: usage.durationMs ?? null,
+    raw_provider_cost_cents: usage.rawProviderCostCents ?? 0,
+    ai_cost_cents: usage.aiCostCents ?? 0,
+    landed_cogs_cents: n(landed),
+    charged_credits: 0,
+    reserved_credits: 0,
+    released_credits: 0,
+    allowance_funded: false,
+    billable: false,
+    outcome: 'SUCCESS',
+    job_ref: ctx.jobRef ?? null,
+    metadata: { ...(usage.metadata ?? {}), shadow_metered: true },
+  });
+}
+
 function round2(v: number): number { return Math.round(v * 100) / 100; }
 function round4(v: number): number { return Math.round(v * 10000) / 10000; }

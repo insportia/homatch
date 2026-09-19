@@ -8051,10 +8051,10 @@ const en = {
   mortgage_result_total_interest: 'Total interest',
   mortgage_result_total_repayment: 'Total repayment',
   mortgage_result_sentence: 'If nothing changes, this scenario costs about {{amount}} a month for {{years}} years.',
-  mortgage_consultant_title: 'Ask the consultant',
-  mortgage_consultant_sub: 'It already has your scenario. Every figure it quotes is calculated here, not guessed.',
-  mortgage_consultant_sub_no_scenario: 'Fill in the calculator above and the consultant can answer about your own numbers.',
-  mortgage_consultant_placeholder: 'Ask about this loan…',
+  mortgage_consultant_title: 'Let\'s go through it together',
+  mortgage_consultant_sub: 'I already have your numbers. Ask anything — every figure I quote is calculated here, not guessed.',
+  mortgage_consultant_sub_no_scenario: 'Fill in the calculator above and I can answer about your own numbers.',
+  mortgage_consultant_placeholder: 'Ask me anything about this loan…',
   mortgage_consultant_thinking: 'Working on it…',
   mortgage_consultant_send: 'Send',
   mortgage_consultant_stop: 'Stop',
@@ -8077,6 +8077,15 @@ const en = {
   mortgage_details_checklist: 'What to check in an offer',
   mortgage_afford_pti_acronym: 'Lenders call this PTI — payment to income.',
   mortgage_afford_ltv_acronym: 'Lenders call this LTV — loan to value.',
+
+  /* ── HOMATCH CONVERSATION ────────────────────────────────────────── */
+  ai_suggested_replies_label: 'Suggested replies',
+  ai_out_of_credits: 'Your credits have almost run out. The conversation stays right here — top up and we carry on from exactly this point.',
+  ai_out_of_credits_action: 'Add credits',
+  credits_welcome_title: 'We have added 50 Credits to get you started',
+  credits_welcome_body: 'Use them for research and for help from Homatch AI. Credits are service value, not cash.',
+  mortgage_opening_promise: 'Enter your terms and in a few seconds you will see more than a monthly payment: what it means for you, where you could save, and which scenario might suit you better.',
+  mortgage_result_handoff: 'That is the real picture. Shall we go through it together?',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -16046,10 +16055,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mortgage_result_total_interest: 'მთლიანი პროცენტი',
   mortgage_result_total_repayment: 'მთლიანი დასაბრუნებელი',
   mortgage_result_sentence: 'თუ პირობები არ შეიცვლება, ამ სცენარით თვეში დაახლოებით {{amount}} გექნებათ გადასახდელი {{years}} წლის განმავლობაში.',
-  mortgage_consultant_title: 'ჰკითხეთ კონსულტანტს',
-  mortgage_consultant_sub: 'მას უკვე აქვს თქვენი სცენარი. ყველა ციფრი, რომელსაც ის მოიყვანს, აქ არის გამოთვლილი და არა მიხვედრილი.',
-  mortgage_consultant_sub_no_scenario: 'შეავსეთ ზემოთ მოცემული კალკულატორი და კონსულტანტი თქვენივე ციფრებზე გიპასუხებთ.',
-  mortgage_consultant_placeholder: 'იკითხეთ ამ სესხზე…',
+  mortgage_consultant_title: 'მოდი, ერთად გავარჩიოთ',
+  mortgage_consultant_sub: 'შენი ციფრები უკვე ჩემთანაა. ჰკითხე რაც გინდა — ყველა რიცხვი, რასაც ვიტყვი, აქ არის გამოთვლილი და არა მიხვედრილი.',
+  mortgage_consultant_sub_no_scenario: 'შეავსე ზემოთ კალკულატორი და შენსავე ციფრებზე გიპასუხებ.',
+  mortgage_consultant_placeholder: 'მკითხე რაც გინდა ამ სესხზე…',
   mortgage_consultant_thinking: 'ვმუშაობ…',
   mortgage_consultant_send: 'გაგზავნა',
   mortgage_consultant_stop: 'შეჩერება',
@@ -16072,6 +16081,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mortgage_details_checklist: 'რა უნდა შეამოწმოთ შეთავაზებაში',
   mortgage_afford_pti_acronym: 'გამსესხებლები ამას PTI-ს უწოდებენ — გადასახადი შემოსავალთან.',
   mortgage_afford_ltv_acronym: 'გამსესხებლები ამას LTV-ს უწოდებენ — სესხი ღირებულებასთან.',
+
+  /* ── HOMATCH CONVERSATION ────────────────────────────────────────── */
+  ai_suggested_replies_label: 'შესაძლო პასუხები',
+  ai_out_of_credits: 'კრედიტები თითქმის ამოგეწურა 😄 საუბარი აქვე რჩება — შეავსე და ზუსტად აქედან გავაგრძელოთ.',
+  ai_out_of_credits_action: 'კრედიტების დამატება',
+  credits_welcome_title: 'საწყისად 50 კრედიტი დაგიმატეთ',
+  credits_welcome_body: 'გამოიყენე Homatch-ის კვლევებსა და AI დახმარებაში. კრედიტი სერვისის ღირებულებაა და არა ნაღდი ფული.',
+  mortgage_opening_promise: 'შეიყვანე შენი პირობები — რამდენიმე წამში ნახავ არა მხოლოდ თვიურ გადასახადს, არამედ იმასაც, რას ნიშნავს ეს შენთვის, სად შეგიძლია დაზოგო და რომელი სცენარი შეიძლება უკეთ მოგერგოს.',
+  mortgage_result_handoff: 'აი, ახლა უკვე რეალური სურათი გვაქვს 👌 მოდი, ერთად გავარჩიოთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -24032,10 +24050,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mortgage_result_total_interest: 'Всего процентов',
   mortgage_result_total_repayment: 'Всего к возврату',
   mortgage_result_sentence: 'Если ничего не изменится, по этому сценарию вы будете платить около {{amount}} в месяц в течение {{years}} лет.',
-  mortgage_consultant_title: 'Спросите консультанта',
-  mortgage_consultant_sub: 'Ваш сценарий у него уже есть. Каждая цифра, которую он называет, рассчитана здесь, а не угадана.',
-  mortgage_consultant_sub_no_scenario: 'Заполните калькулятор выше — и консультант ответит по вашим собственным цифрам.',
-  mortgage_consultant_placeholder: 'Спросите об этом кредите…',
+  mortgage_consultant_title: 'Давайте разберём вместе',
+  mortgage_consultant_sub: 'Ваши цифры уже у меня. Спрашивайте что угодно — всё, что я называю, посчитано здесь, а не угадано.',
+  mortgage_consultant_sub_no_scenario: 'Заполните калькулятор выше — и я отвечу по вашим собственным цифрам.',
+  mortgage_consultant_placeholder: 'Спросите меня об этом кредите…',
   mortgage_consultant_thinking: 'Считаю…',
   mortgage_consultant_send: 'Отправить',
   mortgage_consultant_stop: 'Остановить',
@@ -24058,6 +24076,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mortgage_details_checklist: 'Что проверить в предложении',
   mortgage_afford_pti_acronym: 'Кредиторы называют это PTI — платёж к доходу.',
   mortgage_afford_ltv_acronym: 'Кредиторы называют это LTV — кредит к стоимости.',
+
+  /* ── HOMATCH CONVERSATION ────────────────────────────────────────── */
+  ai_suggested_replies_label: 'Возможные ответы',
+  ai_out_of_credits: 'Кредиты почти закончились. Разговор никуда не денется — пополните, и продолжим ровно отсюда.',
+  ai_out_of_credits_action: 'Пополнить кредиты',
+  credits_welcome_title: 'Мы начислили вам 50 кредитов для начала',
+  credits_welcome_body: 'Используйте их для исследований и помощи Homatch AI. Кредиты — это стоимость услуг, а не наличные.',
+  mortgage_opening_promise: 'Введите свои условия — через несколько секунд увидите не только ежемесячный платёж, но и что он означает для вас, где можно сэкономить и какой сценарий подойдёт вам лучше.',
+  mortgage_result_handoff: 'Вот теперь картина реальная. Давайте разберём её вместе?',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -32016,10 +32043,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mortgage_result_total_interest: 'Toplam faiz',
   mortgage_result_total_repayment: 'Toplam geri ödeme',
   mortgage_result_sentence: 'Koşullar değişmezse bu senaryoda {{years}} yıl boyunca ayda yaklaşık {{amount}} ödersiniz.',
-  mortgage_consultant_title: 'Danışmana sorun',
-  mortgage_consultant_sub: 'Senaryonuz zaten onda. Söylediği her rakam burada hesaplanmıştır, tahmin edilmemiştir.',
-  mortgage_consultant_sub_no_scenario: 'Yukarıdaki hesaplayıcıyı doldurun; danışman kendi rakamlarınız üzerinden yanıt versin.',
-  mortgage_consultant_placeholder: 'Bu kredi hakkında sorun…',
+  mortgage_consultant_title: 'Hadi birlikte bakalım',
+  mortgage_consultant_sub: 'Rakamlarınız zaten bende. Ne isterseniz sorun — söylediğim her sayı burada hesaplandı, tahmin edilmedi.',
+  mortgage_consultant_sub_no_scenario: 'Yukarıdaki hesaplayıcıyı doldurun, kendi rakamlarınız üzerinden yanıtlayayım.',
+  mortgage_consultant_placeholder: 'Bu kredi hakkında ne isterseniz sorun…',
   mortgage_consultant_thinking: 'Üzerinde çalışıyorum…',
   mortgage_consultant_send: 'Gönder',
   mortgage_consultant_stop: 'Durdur',
@@ -32042,6 +32069,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mortgage_details_checklist: 'Bir teklifte nelere bakmalı',
   mortgage_afford_pti_acronym: 'Kredi verenler buna PTI der — ödemenin gelire oranı.',
   mortgage_afford_ltv_acronym: 'Kredi verenler buna LTV der — kredinin değere oranı.',
+
+  /* ── HOMATCH CONVERSATION ────────────────────────────────────────── */
+  ai_suggested_replies_label: 'Olası yanıtlar',
+  ai_out_of_credits: 'Krediniz neredeyse bitti. Sohbet olduğu yerde kalıyor — yükleyin, tam buradan devam edelim.',
+  ai_out_of_credits_action: 'Kredi ekle',
+  credits_welcome_title: 'Başlangıç için hesabınıza 50 Kredi ekledik',
+  credits_welcome_body: 'Homatch araştırmalarında ve AI yardımında kullanın. Krediler hizmet değeridir, nakit değildir.',
+  mortgage_opening_promise: 'Koşullarınızı girin — birkaç saniye içinde yalnızca aylık ödemeyi değil, bunun sizin için ne anlama geldiğini, nerede tasarruf edebileceğinizi ve hangi senaryonun size daha çok yakışacağını göreceksiniz.',
+  mortgage_result_handoff: 'İşte gerçek tablo. İsterseniz birlikte bakalım.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -40000,10 +40036,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mortgage_result_total_interest: 'إجمالي الفائدة',
   mortgage_result_total_repayment: 'إجمالي السداد',
   mortgage_result_sentence: 'إذا لم يتغير شيء، فستدفع في هذا السيناريو نحو {{amount}} شهريًا لمدة {{years}} سنة.',
-  mortgage_consultant_title: 'اسأل المستشار',
-  mortgage_consultant_sub: 'لديه سيناريوك بالفعل. كل رقم يذكره محسوب هنا وليس تخمينًا.',
-  mortgage_consultant_sub_no_scenario: 'املأ الحاسبة أعلاه ليتمكن المستشار من الإجابة بناءً على أرقامك أنت.',
-  mortgage_consultant_placeholder: 'اسأل عن هذا القرض…',
+  mortgage_consultant_title: 'لنراجعها معًا',
+  mortgage_consultant_sub: 'أرقامك موجودة عندي بالفعل. اسأل ما تشاء — كل رقم أذكره محسوب هنا وليس تخمينًا.',
+  mortgage_consultant_sub_no_scenario: 'املأ الحاسبة أعلاه وسأجيبك بناءً على أرقامك أنت.',
+  mortgage_consultant_placeholder: 'اسألني أي شيء عن هذا القرض…',
   mortgage_consultant_thinking: 'جارٍ العمل…',
   mortgage_consultant_send: 'إرسال',
   mortgage_consultant_stop: 'إيقاف',
@@ -40026,6 +40062,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mortgage_details_checklist: 'ما الذي يجب فحصه في العرض',
   mortgage_afford_pti_acronym: 'يسمّي المقرضون هذا PTI — نسبة القسط إلى الدخل.',
   mortgage_afford_ltv_acronym: 'يسمّي المقرضون هذا LTV — نسبة القرض إلى القيمة.',
+
+  /* ── HOMATCH CONVERSATION ────────────────────────────────────────── */
+  ai_suggested_replies_label: 'ردود مقترحة',
+  ai_out_of_credits: 'أوشكت أرصدتك على النفاد. المحادثة باقية كما هي — اشحن رصيدك ونكمل من هذه النقطة بالضبط.',
+  ai_out_of_credits_action: 'إضافة رصيد',
+  credits_welcome_title: 'أضفنا إلى حسابك 50 رصيدًا للبداية',
+  credits_welcome_body: 'استخدمها في أبحاث Homatch وفي مساعدة الذكاء الاصطناعي. الأرصدة قيمة خدمات وليست نقودًا.',
+  mortgage_opening_promise: 'أدخل شروطك، وخلال ثوانٍ سترى أكثر من مجرد قسط شهري: ماذا يعني لك، وأين يمكنك التوفير، وأي سيناريو قد يناسبك أكثر.',
+  mortgage_result_handoff: 'هذه هي الصورة الحقيقية. نراجعها معًا؟',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -47984,10 +48029,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   mortgage_result_total_interest: 'סך הריבית',
   mortgage_result_total_repayment: 'סך ההחזר',
   mortgage_result_sentence: 'אם דבר לא ישתנה, בתרחיש הזה תשלמו כ-{{amount}} בחודש במשך {{years}} שנים.',
-  mortgage_consultant_title: 'שאלו את היועץ',
-  mortgage_consultant_sub: 'התרחיש שלכם כבר אצלו. כל מספר שהוא מציין מחושב כאן, לא מנוחש.',
-  mortgage_consultant_sub_no_scenario: 'מלאו את המחשבון למעלה והיועץ יוכל לענות על המספרים שלכם.',
-  mortgage_consultant_placeholder: 'שאלו על ההלוואה הזו…',
+  mortgage_consultant_title: 'בואו נעבור על זה יחד',
+  mortgage_consultant_sub: 'המספרים שלכם כבר אצלי. שאלו כל דבר — כל מספר שאני מציין מחושב כאן, לא מנוחש.',
+  mortgage_consultant_sub_no_scenario: 'מלאו את המחשבון למעלה ואוכל לענות על המספרים שלכם.',
+  mortgage_consultant_placeholder: 'שאלו אותי כל דבר על ההלוואה הזו…',
   mortgage_consultant_thinking: 'עובד על זה…',
   mortgage_consultant_send: 'שליחה',
   mortgage_consultant_stop: 'עצירה',
@@ -48010,6 +48055,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   mortgage_details_checklist: 'מה לבדוק בהצעה',
   mortgage_afford_pti_acronym: 'המלווים קוראים לזה PTI — יחס התשלום להכנסה.',
   mortgage_afford_ltv_acronym: 'המלווים קוראים לזה LTV — יחס ההלוואה לשווי.',
+
+  /* ── HOMATCH CONVERSATION ────────────────────────────────────────── */
+  ai_suggested_replies_label: 'תשובות אפשריות',
+  ai_out_of_credits: 'הקרדיטים כמעט נגמרו. השיחה נשארת בדיוק כאן — טענו עוד ונמשיך מהנקודה הזו.',
+  ai_out_of_credits_action: 'הוספת קרדיטים',
+  credits_welcome_title: 'הוספנו לכם 50 קרדיטים להתחלה',
+  credits_welcome_body: 'השתמשו בהם למחקרים ולעזרה מ-Homatch AI. קרדיטים הם שווי שירות, לא מזומן.',
+  mortgage_opening_promise: 'הזינו את התנאים שלכם ותוך שניות תראו יותר מתשלום חודשי: מה זה אומר עבורכם, איפה אפשר לחסוך, ואיזה תרחיש אולי מתאים לכם יותר.',
+  mortgage_result_handoff: 'זו התמונה האמיתית. נעבור עליה יחד?',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

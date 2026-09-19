@@ -98,7 +98,23 @@ const LUNA_MODEL_FALLBACK = 'gpt-5.6-luna';
 /** The recogniser the speech grant mints for. Priced per audio second, per stream. */
 const GOOGLE_STT_MODEL = 'chirp_3';
 
-const CARTESIA_FALLBACK_VOICE_ID = '6833940c-ed06-4b62-8a51-94b6c46c13ad';
+/**
+ * MARIAM. The voice AI TALK speaks with.
+ *
+ * THIS IS NOT WHERE THE VOICE IS CHOSEN. aiTalkVoice() is, and it reads the
+ * highest-priority enabled TTS route and the approved voice for the language
+ * out of voice_language_defaults -- so swapping a voice is an UPDATE, not a
+ * deploy, and an operator can revoke one without waiting for anybody.
+ *
+ * This constant is what the non-streaming legacy actions (`turn`,
+ * `speakLegacy`) synthesise with, and the id reported back on `start` for
+ * support logs. It held a voice that production stopped using long ago:
+ * voice_language_defaults said one thing and every response said another, so
+ * a support log naming a voice was naming the wrong one. It is Mariam now,
+ * and the same Mariam the table holds, which is the only state in which two
+ * copies of a value are survivable.
+ */
+const MARIAM_VOICE_ID = '6247621a-5365-4227-8c03-5fd970d59918';
 
 /** One piece of speech and who made it. */
 interface SpokenPhrase {
@@ -692,7 +708,7 @@ async function start(
      * The client does not read it; a person reading a support log does.
      */
     voiceId: (await aiTalkVoice(sb, String(body.locale ?? 'ka')))?.voiceId
-      ?? (hasSecret('CARTESIA_API_KEY') ? CARTESIA_FALLBACK_VOICE_ID : null),
+      ?? (hasSecret('CARTESIA_API_KEY') ? MARIAM_VOICE_ID : null),
     // §29: the public demo gets general Homatch capability and no private
     // context whatsoever. This instruction is assembled here, server-side, so
     // the browser cannot widen it.
@@ -1669,7 +1685,7 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
    */
   const history = Array.isArray(body.history) ? body.history.slice(-16) : [];
   const conversation = history
-    .map((h) => `${h.role === 'assistant' ? 'Homatch' : 'Visitor'}: ${String(h.content ?? '').slice(0, 300)}`)
+    .map((h) => `${h.role === 'assistant' ? 'Mariam' : 'Visitor'}: ${String(h.content ?? '').slice(0, 300)}`)
     .join('\n');
 
   const known = describeState(state);
@@ -2710,7 +2726,7 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
   // would grow the prompt without bound on a path anyone can call.
   const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
   const conversation = history
-    .map((h) => `${h.role === 'assistant' ? 'Homatch' : 'Visitor'}: ${String(h.content ?? '').slice(0, 500)}`)
+    .map((h) => `${h.role === 'assistant' ? 'Mariam' : 'Visitor'}: ${String(h.content ?? '').slice(0, 500)}`)
     .join('\n');
 
   const thoughtAt = Date.now();
@@ -2745,13 +2761,13 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     // The caller will ask for the voice next. Counted as a turn here, so a
     // caller that never asks cannot get free turns by omitting the second half.
     logEvent('ai-talk', 'turn_text_ok', { sessionId: session.id, llmMs });
-    return json({ ok: true, text, audioBase64: null, voiceId: CARTESIA_FALLBACK_VOICE_ID, spoken: false, llmMs });
+    return json({ ok: true, text, audioBase64: null, voiceId: MARIAM_VOICE_ID, spoken: false, llmMs });
   }
 
   const spokeAt = Date.now();
 
   const spoken = await synthesizeSpeech({
-    voiceId: CARTESIA_FALLBACK_VOICE_ID,
+    voiceId: MARIAM_VOICE_ID,
     // The language the reply was WRITTEN in, not the page it will be read on.
     // Georgian text announced as English is how a voice ends up spelling its
     // way through a Georgian sentence.
@@ -2768,7 +2784,7 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     // The sentence still exists and is still worth showing. A silent reply is
     // a degraded conversation; a blank one is a broken product.
     return json({
-      ok: true, text, audioBase64: null, voiceId: CARTESIA_FALLBACK_VOICE_ID, spoken: false,
+      ok: true, text, audioBase64: null, voiceId: MARIAM_VOICE_ID, spoken: false,
       llmMs, ttsMs: Date.now() - spokeAt,
     });
   }
@@ -2780,7 +2796,7 @@ async function turn(sb: Sb, body: TalkRequest): Promise<Response> {
     text,
     audioBase64: spoken.data.audioBase64,
     mime: spoken.data.mime,
-    voiceId: CARTESIA_FALLBACK_VOICE_ID,
+    voiceId: MARIAM_VOICE_ID,
     spoken: true,
     // Where the time actually went, so a slow turn can be attributed to the
     // half that was slow instead of guessed at.
@@ -2846,7 +2862,7 @@ async function speakLegacy(sb: Sb, body: TalkRequest): Promise<Response> {
   if (!text) return json({ ok: false, reason: 'EMPTY' }, 400);
   const language = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
   const spokeAt = Date.now();
-  const spoken = await synthesizeSpeech({ voiceId: CARTESIA_FALLBACK_VOICE_ID, language, text });
+  const spoken = await synthesizeSpeech({ voiceId: MARIAM_VOICE_ID, language, text });
 
   if (!spoken.ok || !spoken.data) {
     logEvent('ai-talk', 'speak_failed', {
@@ -2871,7 +2887,7 @@ async function speakLegacy(sb: Sb, body: TalkRequest): Promise<Response> {
     ok: true,
     audioBase64: spoken.data.audioBase64,
     mime: spoken.data.mime,
-    voiceId: CARTESIA_FALLBACK_VOICE_ID,
+    voiceId: MARIAM_VOICE_ID,
     ttsMs: Date.now() - spokeAt,
   });
 }
@@ -3128,7 +3144,7 @@ function publicDemoInstructions(language: string): string {
    * survived every other fix was that replies felt generated from a template.
    */
   const lines = [
-    `You are Homatch, a real-estate assistant for the Georgian market, speaking to a visitor by VOICE in ${name}.`,
+    `You are Mariam, Homatch's AI assistant for the Georgian property market, speaking by VOICE in ${name}.`,
     '',
     'WHO YOU ARE. A sharp, well-read person who knows this market and enjoys talking about it. Warm, relaxed,',
     'direct, good company, and genuinely fun to talk to. Not a support script and not a brochure. You have',
@@ -3221,8 +3237,10 @@ function publicDemoInstructions(language: string): string {
     '   said, never the same line twice. Then carry on as if nothing happened.',
     '',
     'RULES',
-    '- In your FIRST reply, let it be known in passing that you are Homatch\'s AI assistant -- a few words',
-    '  inside a sentence, never the opening words, never "as an AI". Never again after that.',
+    '- In your FIRST reply, let it be known in passing that you are Mariam, Homatch\'s AI assistant -- a few',
+    '  words inside a sentence, never the opening words, never "as an AI". Never again after that.',
+    '- Asked your name or who you are: Mariam, Homatch\'s assistant, in a few words, then carry on.',
+    '  Never announce it unprompted, never open or sign off with it, never repeat it. Write it in their script.',
     '- Asked what model or whose AI you are: you are Homatch AI, the systems underneath vary as Homatch picks',
     '  the best for each task. Never name a model, a provider or a vendor.',
     '  Never claim Homatch trained its own model, never treat the question as improper. Then move on.',

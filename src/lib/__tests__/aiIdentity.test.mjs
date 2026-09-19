@@ -93,11 +93,28 @@ test('every first-party surface carries the answer to "what model are you"', () 
 });
 
 test('every first-party surface says it is Homatch AI, by that name', () => {
+  /*
+   * A NAME IS ALLOWED. A DIFFERENT OWNER IS NOT.
+   *
+   * This matched "You are Homatch" literally, which was right while every
+   * surface was the company speaking in the first person. AI TALK's voice is
+   * now Mariam, Homatch's AI assistant -- a named assistant, still Homatch's,
+   * and the thing this test exists to prevent is unchanged: a surface that
+   * introduces itself as somebody else's, or as a model.
+   *
+   * So either shape passes, and both have to put Homatch in the same
+   * sentence. "You are Aria, a helpful assistant" does not, and neither does
+   * "You are Claude" -- which is the failure worth catching.
+   */
+  const OWNED_BY_HOMATCH = [
+    /You are Homatch/,
+    /You are [A-Z][a-z]+, Homatch's AI assistant/,
+  ];
   const wrong = [];
   for (const surface of FIRST_PARTY) {
     const src = read(surface.file);
     if (surface.expects !== 'inline' && src.includes(surface.expects)) continue;
-    if (!/You are Homatch/.test(src)) wrong.push(surface.file);
+    if (!OWNED_BY_HOMATCH.some((shape) => shape.test(src))) wrong.push(surface.file);
   }
   assert.deepEqual(wrong, [], `these introduce themselves as something else:\n${wrong.join('\n')}`);
 });

@@ -107,7 +107,7 @@ test('the home page hero has no horizontal overflow at real phone widths', async
 
         const hero = document.querySelector('main section');
         const talk = [...document.querySelectorAll('div')]
-          .find((d) => String(d.className).includes('aspect-') && /Talk to Homatch/.test(d.textContent || ''));
+          .find((d) => String(d.className).includes('aspect-') && /Talk to Mariam/.test(d.textContent || ''));
 
         return {
           vw,

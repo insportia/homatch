@@ -323,8 +323,27 @@ test('the prompt is still read on every turn, so it is still measured', () => {
    * when last measured. The canonical ceiling and the reasoning live in
    * talkCostAndCancel.test.mjs; this only checks it still says everything.
    */
+  /*
+   * 10,383 WAS A HISTORICAL CLAIM, AND IT IS NO LONGER TRUE.
+   *
+   * It said the prompt was still smaller than before the latency pass. Naming
+   * the assistant cost 187 characters net: the identity line, one rule for
+   * answering "what is your name" without introducing herself every turn, and
+   * the label the conversation history gives her turns. 10,570 today.
+   *
+   * It was 347 before that rule was condensed to two lines. It was briefly
+   * 152 as well, by merging two instructions about never reusing a line --
+   * which are pinned by name in the personality tests below, because an
+   * earlier pass wrote them to stop exactly that kind of tidying. They went
+   * back word for word and the name is paid for out of its own rule instead.
+   *
+   * Asserting the old number would mean asserting something false, so this
+   * defers to the canonical ceiling, unchanged at 10,600 and stated with its
+   * reasoning in 'the prompt grew, and by how much is stated rather than
+   * discovered' below. The budget is not raised here; its duplicate is gone.
+   */
   assert.ok(chars > 9_000, `the prompt is ${chars} characters`);
-  assert.ok(chars < 10_383, 'still smaller than it was before any of this work');
+  assert.ok(chars < 10_600, `the prompt is ${chars} characters, past the canonical ceiling`);
 });
 
 /* ── 6. The failures the owner's live session actually exposed ──────────── */
@@ -778,6 +797,12 @@ test('the prompt grew, and by how much is stated rather than discovered', () => 
    * and paid for with a duplicated clause, an overlap between two sections
    * and a repeated language list. The number is asserted so the next person
    * to add a paragraph has to look at it.
+   *
+   * Naming the assistant Mariam added 187 net on top of that -- 10,570 -- and
+   * the ceiling has NOT moved to absorb it: the identity rule was condensed
+   * from four lines to two to pay for most of it. Thirty characters of
+   * headroom left, which is the point of asserting the measured number rather
+   * than a bound nobody ever approaches.
    */
   assert.ok(chars < 10_600, `the prompt is ${chars} characters`);
   assert.ok(chars > 9_000, 'and it still says everything it has to say');

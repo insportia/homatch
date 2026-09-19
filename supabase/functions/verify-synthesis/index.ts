@@ -434,6 +434,18 @@ serve(async (req) => {
         propertyType: projection.propertyType,
         snapshot: bundle.snapshot,
         selfChecks: bundle.selfChecks,
+      /*
+       * DETERMINISTIC, SO A QUIET MODEL CANNOT DELETE THEM.
+       *
+       * The live Villion synthesis returned evidenceUsed: [] and
+       * nextSteps: [] while the report displayed a company id, two
+       * shareholders and a registered pledge. These three are computed from
+       * the evidence package and the market scoring, so they exist whenever
+       * the underlying evidence does.
+       */
+      evidenceGroups: bundle.evidenceGroups,
+      checklist: bundle.checklist,
+      comparableSelection: bundle.comparables,
         empty: true,
       };
       // "No evidence at all" is a real, final answer, not a failure to retry.
@@ -512,6 +524,18 @@ serve(async (req) => {
       // Official checks the BUYER can run. These replace the old inventory of
       // what our own pipeline could not retrieve.
       selfChecks: bundle.selfChecks,
+      /*
+       * DETERMINISTIC, SO A QUIET MODEL CANNOT DELETE THEM.
+       *
+       * The live Villion synthesis returned evidenceUsed: [] and
+       * nextSteps: [] while the report displayed a company id, two
+       * shareholders and a registered pledge. These three are computed from
+       * the evidence package and the market scoring, so they exist whenever
+       * the underlying evidence does.
+       */
+      evidenceGroups: bundle.evidenceGroups,
+      checklist: bundle.checklist,
+      comparableSelection: bundle.comparables,
       // Reusable by Contract Intelligence when a signatory must be compared
       // against the register.
       participants: bundle.participants,

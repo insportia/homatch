@@ -240,9 +240,14 @@ export const DocumentWorkspace: React.FC<{
 
       {/* ── The list ──────────────────────────────────────── */}
       {documents.length === 0 ? (
+        /* One card, one sentence about what belongs here, one about why it
+           is worth doing. The upload control itself sits directly above. */
         <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground break-words">{t('dr_docs_empty')}</p>
+          <CardContent className="space-y-1.5 pt-6">
+            <p className="break-words text-sm font-medium text-foreground">{t('dr_docs_empty')}</p>
+            <p className="measure break-words text-sm leading-relaxed text-muted-foreground">
+              {t('doc_empty_why')}
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -335,6 +340,20 @@ export const DocumentWorkspace: React.FC<{
   if (!isDesktop) return library;
 
   /*
+   * NOTHING UPLOADED YET: ONE COLUMN.
+   *
+   * The two-pane grid below is for reading a document beside the list. With
+   * no documents there is nothing to read, so the second pane rendered a
+   * dashed box repeating the very sentence the library had just shown — the
+   * large dead area on the right of the live Documents tab, with "ჯერ
+   * არაფერია ატვირთული" printed twice on one screen.
+   *
+   * An empty workspace is a single column whose job is the upload action.
+   * The detail pane appears when there is finally something to put in it.
+   */
+  if (documents.length === 0) return <div className="mx-auto w-full max-w-2xl">{library}</div>;
+
+  /*
    * FROM lg: the document is the main surface and the library sits beside
    * it, permanently. The complaint this answers is that reading happened in
    * a drawer hanging off the right edge, which made the contract a footnote
@@ -366,8 +385,10 @@ export const DocumentWorkspace: React.FC<{
              empty workspace reads as "choose one" rather than as a bug. */
           <div className="flex min-h-[24rem] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/60 p-10 text-center">
             <FileText className="h-10 w-10 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
+            {/* Reachable only with documents present — the empty case
+                returns a single column above. */}
             <p className="mt-4 max-w-sm text-base leading-relaxed text-ink-soft">
-              {documents.length === 0 ? t('dr_docs_empty') : t('doc_pick_to_read')}
+              {t('doc_pick_to_read')}
             </p>
           </div>
         )}

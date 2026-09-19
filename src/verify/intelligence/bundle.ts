@@ -24,6 +24,12 @@ import type { PeopleIntelligence, ParticipantModel } from './peopleIntelligence.
 import type { FxContext } from './fx.ts';
 import { buildCompanyIntelligence } from './companyIntelligence.ts';
 import type { CompanyIntelligence } from './companyIntelligence.ts';
+import { buildEvidenceGroups } from './evidenceGroups.ts';
+import type { EvidenceGroup } from './evidenceGroups.ts';
+import { buildBuyerChecklist } from './buyerChecklist.ts';
+import type { ChecklistItem } from './buyerChecklist.ts';
+import { selectComparables } from './comparableSelection.ts';
+import type { ComparableSelection } from './comparableSelection.ts';
 
 export interface PropertySnapshot {
   cadastralCode?: string;
@@ -54,6 +60,20 @@ export interface IntelligenceBundle {
    * "we could not look" must never render as "we found nothing".
    */
   company: CompanyIntelligence | null;
+  /*
+   * DETERMINISTIC, BECAUSE THE MODEL KEPT LOSING THEM.
+   *
+   * The live Villion synthesis returned `evidenceUsed: []` and
+   * `nextSteps: []` while the same report displayed a company id, two
+   * shareholders and a registered pledge. A model that forgets to write
+   * citations must not be able to erase the customer's view of evidence that
+   * demonstrably exists, and a closing checklist is not an optional flourish.
+   * Both are computed here; synthesis may phrase them, never gate them.
+   */
+  evidenceGroups: EvidenceGroup[];
+  checklist: ChecklistItem[];
+  /** What a buyer may read as comparable, kept apart from wider-city context. */
+  comparables: ComparableSelection | null;
   location: LocationIntelligence;
   people: PeopleIntelligence;
   participants: ParticipantModel;
@@ -222,6 +242,20 @@ export function buildIntelligenceBundle(
 
   const companyIntel = buildCompanyIntelligence(report);
 
+  /* ---- evidence, checklist and the comparable split ---- */
+
+  const evidenceGroups = buildEvidenceGroups(pkg.items ?? []);
+
+  const comparables = market ? selectComparables(market.closest ?? []) : null;
+
+  const checklist = buildBuyerChecklist({
+    cadastralCode: snapshot.cadastralCode ?? null,
+    company: companyIntel,
+    market,
+    parkingMentioned: !!snapshot.parking,
+    subjectPriceKnown: typeof market?.subjectPricePerSqm === 'number',
+  });
+
   /* ---- self-checks ---- */
 
   const selfChecks: SelfCheck[] = [];
@@ -244,5 +278,8 @@ export function buildIntelligenceBundle(
     });
   }
 
-  return { snapshot, market, company: companyIntel, location, people, participants, fx, selfChecks };
+  return {
+    snapshot, market, company: companyIntel, location, people, participants, fx, selfChecks,
+    evidenceGroups, checklist, comparables,
+  };
 }

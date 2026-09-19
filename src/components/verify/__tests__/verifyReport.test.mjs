@@ -44,6 +44,14 @@ test('no card invents a conclusion of its own', () => {
     // opinion: the component displays the places a source named and the
     // district context, and reaches no conclusion of its own about either.
     'report', 'evidence', 'snapshot', 'market', 'location', 'people', 'selfChecks', 'mode', 'empty',
+    // Same standing as `selfChecks` and for the same reason: both are
+    // computed in the intelligence bundle from evidence that already exists,
+    // not produced by the model. They were added because the live Villion
+    // synthesis returned `evidenceUsed: []` and `nextSteps: []` while the
+    // report displayed a company id, two shareholders and a registered
+    // pledge — a model that writes no citations must not be able to erase
+    // the customer's view of evidence Homatch demonstrably holds.
+    'evidenceGroups', 'checklist',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);

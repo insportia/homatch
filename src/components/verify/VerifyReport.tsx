@@ -47,6 +47,9 @@
 
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { EvidenceSources, BuyerChecklist } from './EvidenceSources';
+import type { EvidenceGroup } from '@/verify/intelligence/evidenceGroups';
+import type { ChecklistItem } from '@/verify/intelligence/buyerChecklist';
 import { ContractUpload } from './ContractUpload';
 import { Button } from '@/components/ui/button';
 import { FileText, Copy, Check, ExternalLink, MapPin, Users } from 'lucide-react';
@@ -173,6 +176,11 @@ export interface VerifySynthesis {
   location?: LocationBlock | null;
   people?: { people?: PersonBlock[]; representationNote?: string };
   selfChecks?: SelfCheck[];
+  /* Computed deterministically in the bundle — see evidenceGroups.ts and
+     buyerChecklist.ts. Present whenever the underlying evidence is, whatever
+     the model chose to cite. */
+  evidenceGroups?: EvidenceGroup[];
+  checklist?: ChecklistItem[];
   mode?: 'MODEL' | 'DETERMINISTIC';
   empty?: boolean;
 }
@@ -303,8 +311,6 @@ export function VerifyReport({
           not after. It stays a closed drawer: the summary line is the promise,
           the detail is still a deliberate click, and the page above it is
           unchanged. */}
-      {evidence ? <EvidenceDrawer>{evidence}</EvidenceDrawer> : null}
-
       {sections.map((s) => (
         <section key={s.key} className="space-y-3">
           <h2 className="text-base font-semibold tracking-tight break-words">{clean(s.title)}</h2>
@@ -408,6 +414,19 @@ export function VerifyReport({
       ) : null}
 
       {synthesis.selfChecks?.length ? <SelfChecks checks={synthesis.selfChecks} /> : null}
+
+      {/*
+        * THE TWO SECTIONS THAT CLOSE THE REPORT.
+        *
+        * The checklist is what the reader does next; the evidence is what it
+        * all rested on. Both used to depend on the model filling an optional
+        * array — `nextSteps` and `evidenceUsed` were both empty on the live
+        * Villion report, so both sections silently vanished from a report
+        * that demonstrably held the evidence. They are computed in the
+        * bundle now and merely rendered here.
+        */}
+      <BuyerChecklist items={synthesis.checklist ?? []} />
+      <EvidenceSources groups={synthesis.evidenceGroups ?? []} />
 
       {r.contractUpload?.recommend !== false ? (
         <section className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-3">

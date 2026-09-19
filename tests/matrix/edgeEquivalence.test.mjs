@@ -18,10 +18,13 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 
 import {
-  compareSources, evaluate, evaluateAll, locate, normalise,
+  compareSources, evaluate, evaluateAll, expectedSources, locate, normalise,
 } from '../../scripts/edgeEquivalence.mjs';
 
 const WORKFLOW = readFileSync('.github/workflows/deploy.yml', 'utf8');
@@ -200,4 +203,68 @@ test('10: path normalisation cannot hide a real source difference', () => {
   const c = compareSources(SRC, { ...PROD, 'homatch/supabase/functions/comm-agent/index.ts': 'export const a = 2;\n' }).digest;
   assert.equal(a, b);
   assert.notEqual(a, c);
+});
+
+/* ── 11. The wiring, not just the rules ──────────────────────────────────*/
+
+test('11: the verify CLI itself runs end to end', () => {
+  /*
+   * Every rule above passed while the CLI that uses them was broken: the
+   * call site still handed `expectedSources` an import-closure function where
+   * a root directory belonged, and run #678 died on
+   * ERR_INVALID_ARG_TYPE after doing all five downloads.
+   *
+   * Pure-function tests cannot see that. This one runs the actual command the
+   * workflow runs, against a real function in this repository, with a
+   * "download" built from the repository itself -- so an equivalent artifact
+   * must pass and a single changed byte must fail.
+   */
+  const dir = mkdtempSync(join(tmpdir(), 'verify-cli-'));
+  try {
+    const fn = 'anon-session';
+    const expected = expectedSources(fn);
+    const paths = Object.keys(expected);
+    assert.ok(paths.length > 0, `${fn} has no runtime closure to test with`);
+
+    // Lay the files out the way a download does: under the function's dir.
+    const plant = (root, mutate) => {
+      for (const p of paths) {
+        const full = join(root, p);
+        mkdirSync(dirname(full), { recursive: true });
+        writeFileSync(full, mutate && p === paths[0] ? `${expected[p]}// drift\n` : expected[p]);
+      }
+    };
+    const dl = join(dir, 'deployed');
+    plant(join(dl, fn), false);
+
+    const pre = join(dir, 'pre.json');
+    const post = join(dir, 'post.json');
+    writeFileSync(pre, JSON.stringify({ [fn]: { version: 16, updated_at: 1 } }));
+    writeFileSync(post, JSON.stringify({ [fn]: { version: 16, updated_at: 1 } }));
+
+    const verify = (extra = []) => {
+      const r = spawnSync(process.execPath,
+        ['scripts/edgeArtifacts.mjs', 'verify', pre, post, '--since', '2', '--downloads', dl, ...extra],
+        { encoding: 'utf8' });
+      return { code: r.status, out: `${r.stdout}${r.stderr}` };
+    };
+
+    const ok = verify();
+    assert.equal(ok.code, 0, `an equivalent artifact was rejected:\n${ok.out}`);
+    assert.match(ok.out, /ALREADY_CURRENT/);
+
+    // One changed byte in one file, and the whole thing must fail.
+    rmSync(dl, { recursive: true, force: true });
+    plant(join(dl, fn), true);
+    const bad = verify();
+    assert.equal(bad.code, 1, `drift in the deployed artifact was accepted:\n${bad.out}`);
+    assert.match(bad.out, /UNPROVEN/);
+
+    // And an empty download is UNVERIFIABLE rather than quietly fine.
+    rmSync(dl, { recursive: true, force: true });
+    mkdirSync(join(dl, fn), { recursive: true });
+    const empty = verify();
+    assert.equal(empty.code, 1);
+    assert.match(empty.out, /UNVERIFIABLE/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

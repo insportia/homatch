@@ -104,19 +104,23 @@ if (isMain) {
     const downloads = arg('--downloads');
     const { evaluateAll, compareSources, expectedSources, readDownloaded } =
       await import('./edgeEquivalence.mjs');
-    const { importClosure } = await import('./deploy-scope.mjs');
     const { existsSync } = await import('node:fs');
 
     const pre = JSON.parse(readFileSync(preFile, 'utf8'));
     const post = JSON.parse(readFileSync(postFile, 'utf8'));
+    const found = {};
     const entries = Object.keys(pre).map((name) => {
       const dir = downloads ? `${downloads}/${name}` : null;
       let equivalence;
-      if (!dir || !existsSync(dir)) {
-        equivalence = { checked: false, reason: `no downloaded artifact at ${dir}` };
+      // An artifact nobody could read is UNVERIFIABLE, never "fine". The
+      // download writes its own directory layout and an empty one means the
+      // retrieval failed, not that the function has no files.
+      const files = dir && existsSync(dir) ? readDownloaded(dir) : null;
+      if (!files || Object.keys(files).length === 0) {
+        equivalence = { checked: false, reason: `nothing was downloaded to ${dir}` };
       } else {
-        const expected = expectedSources(name, importClosure);
-        equivalence = { checked: true, ...compareSources(expected, readDownloaded(dir)) };
+        found[name] = Object.keys(files);
+        equivalence = { checked: true, ...compareSources(expectedSources(name), files) };
       }
       return { name, pre: pre[name] ?? { ...ABSENT }, post: post[name] ?? { ...ABSENT }, equivalence, sinceMs: since };
     });
@@ -131,6 +135,12 @@ if (isMain) {
       }
     }
     if (!result.ok) {
+      // Say what WAS found, so a layout surprise is diagnosable from the log
+      // rather than from a second failed run.
+      for (const row of result.rows.filter((r) => !r.ok)) {
+        const paths = found[row.name];
+        if (paths) console.log(`  ${row.name} downloaded ${paths.length} file(s): ${paths.slice(0, 12).join(', ')}`);
+      }
       console.log(`::error::the deployed artifact is not this revision: ${result.rows.filter((r) => !r.ok).map((r) => r.name).join(', ')}`);
       process.exit(1);
     }

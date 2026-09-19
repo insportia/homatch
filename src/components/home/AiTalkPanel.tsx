@@ -131,6 +131,32 @@ const FAILURE_KEY: Record<string, string> = {
   PLAYBACK_FAILED: 'talk_err_playback',
   PLAYBACK_BLOCKED: 'talk_err_playback',
   /*
+   * WHY A QUOTA IS NOT AN OUTAGE.
+   *
+   * Measured: an iPhone showed the demo as unusable while an Android on
+   * another network worked. Neither was a browser problem. The phone's
+   * network had spent 2,386 of its 2,400 daily seconds across 50 sessions,
+   * and decideGrant refuses a grant shorter than fifteen seconds because a
+   * demo that stops mid-sentence reads as broken. Fourteen were left.
+   *
+   * The visitor was told the demo was over, which is what a FINISHED session
+   * is told, so there was nothing to distinguish "you have used today's time"
+   * from "this is broken" or from "come back never". Each refusal reason now
+   * says which one it is, and all of them say it is temporary.
+   */
+  DAILY_LIMIT_REACHED: 'talk_quota_daily_body',
+  TOO_MANY_SESSIONS_TODAY: 'talk_quota_sessions_body',
+  ALREADY_IN_SESSION: 'talk_busy_body',
+  PLATFORM_AT_CAPACITY: 'talk_busy_body',
+  DISABLED: 'talk_unavailable_body',
+  // The browser cannot capture audio at all: not a refusal, not a device.
+  BROWSER_UNSUPPORTED: 'talk_browser_unsupported_body',
+  // Every microphone outcome has its own sentence; they used to share one.
+  MIC_MISSING: 'talk_mic_unavailable_body',
+  MIC_BUSY: 'talk_mic_busy_body',
+  MIC_TIMEOUT: 'talk_mic_timeout_body',
+  AUDIO_UNAVAILABLE: 'talk_audio_unavailable_body',
+  /*
    * The reply was produced and nothing was heard: a suspended context, a
    * graph that was never connected, or a provider that answered with
    * silence. Same sentence as a playback failure, because from the visitor's
@@ -378,6 +404,48 @@ export function AiTalkPanel({ className }: { className?: string }) {
   }, [endSession, navigate]);
 
   const start = useCallback(async () => {
+    /*
+     * EVERYTHING THAT NEEDS THE GESTURE HAPPENS BEFORE THE FIRST await.
+     *
+     * WebKit lets a page make sound only when it can attribute the
+     * AudioContext to a user gesture, and the gesture does not survive what
+     * comes next: a token read, an edge round trip and a 174 KB dynamic
+     * import. A context built after those starts suspended and its resume()
+     * is refused -- silently, because the session still reaches LISTENING and
+     * simply never makes a sound.
+     *
+     * So it is constructed here, synchronously, in the handler the visitor's
+     * tap is still on, and handed to the session below. The module import is
+     * started here too and awaited later, which takes the largest single wait
+     * off the path between the tap and the microphone.
+     */
+    const AudioCtx = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    let primed: AudioContext | null = null;
+    if (typeof AudioCtx === 'function') {
+      try {
+        primed = new AudioCtx();
+        // Resuming inside the gesture is the whole point; a rejection here is
+        // not fatal, and the session reports the context state either way.
+        if (primed.state === 'suspended') void primed.resume().catch(() => {});
+      } catch { primed = null; }
+    }
+    const modulePromise = import('@/lib/comm/voiceClient');
+
+    /*
+     * A browser that cannot capture audio is not a broken microphone and not
+     * a backend outage. Answered before anything is asked of the network, so
+     * nobody is told to check a microphone they were never going to be able
+     * to use.
+     */
+    const { microphoneCapability } = await modulePromise;
+    if (microphoneCapability() !== 'OK') {
+      try { await primed?.close(); } catch { /* nothing to release */ }
+      setFailure('BROWSER_UNSUPPORTED');
+      setState('MIC_UNAVAILABLE');
+      return;
+    }
+
     setState('CONNECTING');
     /*
      * Whose session this is, if anyone's. getSession() reads the token the
@@ -415,6 +483,9 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
     const grant = data as {
       ok?: boolean; sessionId?: string; grantedSeconds?: number; userMessage?: string;
+      // Which rule refused this, when one did. The server has always sent it
+      // and the panel has never read it, so every refusal looked alike.
+      reason?: string;
       usageTier?: string; configuredSessionSeconds?: number;
     } | null;
 
@@ -422,8 +493,17 @@ export function AiTalkPanel({ className }: { className?: string }) {
     // id is the whole of what it needs.
     if (error || !grant?.ok || !grant.sessionId) {
       setState(grant?.userMessage === 'LIMIT_REACHED' ? 'LIMIT_REACHED' : 'PROVIDER_ERROR');
-      // BUSY is not an outage and must not read as one.
-      if (grant?.userMessage === 'BUSY') setFailure('BUSY');
+      /*
+       * The REASON, not the category. A quota that renews tomorrow, a second
+       * tab already talking, and a provider that is down are three different
+       * things to be told, and only the last one is an outage. `reason` comes
+       * straight from decideGrant; a transport error has none, and then the
+       * state's own sentence still applies.
+       */
+      if (grant?.reason) setFailure(grant.reason);
+      else if (grant?.userMessage === 'BUSY') setFailure('BUSY');
+      // Nothing will use it now, and an abandoned context holds hardware open.
+      try { await primed?.close(); } catch { /* already gone */ }
       return;
     }
 
@@ -435,8 +515,9 @@ export function AiTalkPanel({ className }: { className?: string }) {
     };
     setRemaining(grantedRef.current);
 
-    // Loaded on press, not on page load (§85).
-    const { VoiceSession: Session } = await import('@/lib/comm/voiceClient');
+    // Started inside the gesture above, awaited here: on press, never on page
+    // load, and no longer between the tap and the microphone.
+    const { VoiceSession: Session } = await modulePromise;
 
     const session = new Session(
       {
@@ -687,6 +768,9 @@ export function AiTalkPanel({ className }: { className?: string }) {
     );
 
     sessionRef.current = session;
+    // Built inside the tap, above. The session adopts it instead of
+    // constructing its own three awaits too late to be allowed to sound.
+    session.adoptAudioContext(primed);
     session.noteGrant(grantInfoRef.current);
     /*
      * Only in a debug session, and only because the alternative is guessing.

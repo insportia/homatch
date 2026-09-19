@@ -67,11 +67,37 @@ import { ADMIN_SESSION_SECONDS } from './talkAllowance.ts';
  * NotAllowed means "say yes", NotFound means "there is no microphone",
  * NotReadable means "something else is holding it, close it".
  */
-export type MicFailure = 'MIC_DENIED' | 'MIC_MISSING' | 'MIC_BUSY' | 'MIC_TIMEOUT' | 'AUDIO_UNAVAILABLE';
+export type MicFailure =
+  | 'MIC_DENIED' | 'MIC_MISSING' | 'MIC_BUSY' | 'MIC_TIMEOUT' | 'AUDIO_UNAVAILABLE'
+  /**
+   * The browser does not offer microphone capture to this page AT ALL.
+   *
+   * Not a refusal and not a missing device: `navigator.mediaDevices` is
+   * undefined, which is what Safari does on a page that is not a secure
+   * context, and what several in-app browsers do everywhere. Reaching through
+   * it threw a TypeError, whose name matches nothing in the table below, so
+   * it fell to AUDIO_UNAVAILABLE and the visitor was told "No working
+   * microphone was found" -- on a phone that plainly has one, with no action
+   * they could take. The cause and the advice are both different.
+   */
+  | 'BROWSER_UNSUPPORTED';
+
+/** Whether this page can ask for a microphone at all, before it tries. */
+export function microphoneCapability(): 'OK' | 'BROWSER_UNSUPPORTED' {
+  if (typeof navigator === 'undefined') return 'BROWSER_UNSUPPORTED';
+  const devices = (navigator as Navigator & { mediaDevices?: MediaDevices }).mediaDevices;
+  if (!devices || typeof devices.getUserMedia !== 'function') return 'BROWSER_UNSUPPORTED';
+  const Ctx = typeof window === 'undefined'
+    ? undefined
+    : window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (typeof Ctx !== 'function') return 'BROWSER_UNSUPPORTED';
+  return 'OK';
+}
 
 function classifyMicError(e: unknown): MicFailure {
   const err = e as { name?: string; message?: string } | null;
   if (err?.message === 'MIC_TIMEOUT') return 'MIC_TIMEOUT';
+  if (err?.message === 'BROWSER_UNSUPPORTED' || err?.name === 'TypeError') return 'BROWSER_UNSUPPORTED';
   switch (err?.name) {
     case 'NotAllowedError':
     case 'SecurityError':
@@ -1193,6 +1219,23 @@ export class VoiceSession {
   private currentUtteranceId: string | null = null;
   private closed = false;
 
+  /**
+   * An AudioContext the CALLER built inside the click, if it managed to.
+   *
+   * WebKit grants a context permission to make sound only when it can
+   * attribute the construction to a user gesture, and the gesture does not
+   * survive the three awaits between the Start button and here -- a token
+   * read, an edge round trip and a 174 KB dynamic import. A context built
+   * that late starts suspended and its resume() is refused, which is not an
+   * error anybody sees: the session says LISTENING and makes no sound.
+   *
+   * So the panel constructs one synchronously in the handler and hands it
+   * over. Null when it could not, and then this class builds its own exactly
+   * as before -- which is what every Chromium browser has always done and
+   * what the tests still exercise.
+   */
+  private primedContext: AudioContext | null = null;
+
   constructor(
     private grant: VoiceGrant,
     private cb: VoiceCallbacks,
@@ -1506,19 +1549,47 @@ export class VoiceSession {
 
   // ── Microphone ────────────────────────────────────────────────────────────
 
+  /**
+   * Adopt the context the caller built inside the user gesture.
+   *
+   * Named `adopt` and not `use` on purpose: the rules-of-hooks lint reads any
+   * `useX(` call site as a React hook, and this one is called from inside a
+   * component callback.
+   */
+  adoptAudioContext(ctx: AudioContext | null): void {
+    this.primedContext = ctx;
+  }
+
   private async openMicrophone(): Promise<void> {
+    /*
+     * ASK WHETHER THIS IS POSSIBLE BEFORE REACHING THROUGH IT.
+     *
+     * navigator.mediaDevices is undefined on a page that is not a secure
+     * context and in several in-app browsers. `navigator.mediaDevices.get...`
+     * is then a TypeError, which classified as a broken microphone.
+     */
+    if (microphoneCapability() !== 'OK') throw new Error('BROWSER_UNSUPPORTED');
     this.micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        // Echo cancellation is what makes barge-in work on a laptop speaker.
-        // Without it the agent's own voice comes back in and reads as the user
-        // interrupting on every single utterance.
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 1,
-        // A REQUEST, and a request the device is free to refuse. Nothing below
-        // this line assumes it was granted.
-        sampleRate: TARGET_SAMPLE_RATE,
+        /*
+         * EVERY ONE OF THESE IS `ideal`, AND THAT IS NOT A STYLE CHOICE.
+         *
+         * A bare value in a MediaTrackConstraints is permitted to be treated
+         * as a requirement, and WebKit is stricter about it than Chromium is:
+         * a device that cannot do 16 kHz or single-channel capture answers
+         * OverconstrainedError rather than doing its best. That error's name
+         * matches nothing in classifyMicError, so it became AUDIO_UNAVAILABLE
+         * and read as a broken microphone.
+         *
+         * Nothing below this line assumes any of them was granted: the
+         * resampler takes the rate the context actually reports, and the
+         * echo-cancellation flag is read back from the track.
+         */
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: TARGET_SAMPLE_RATE },
       },
     });
 
@@ -1536,7 +1607,11 @@ export class VoiceSession {
      * Take whatever rate the device gives and convert it below, where the
      * conversion is deterministic and has tests.
      */
-    this.audioContext = new Ctx();
+    // The one the caller built inside the click, if there is one. See
+    // primedContext: on WebKit this is the difference between a session that
+    // makes sound and one that silently does not.
+    this.audioContext = this.primedContext ?? new Ctx();
+    this.primedContext = null;
 
     /*
      * A CONSTRUCTED AudioContext IS NOT A RUNNING ONE.

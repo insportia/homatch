@@ -372,3 +372,19 @@ test('nothing in the mortgage product converts between currencies', () => {
     assert.ok(!/exchangeRate|fxRate|convertCurrency/i.test(src), `${file} looks like it converts currency`);
   }
 });
+
+test('a signed-out visitor can actually reach the consultant', () => {
+  // The consultant is the product and /mortgage is a public page, so the
+  // path that matters most is the one with no account. It was broken in
+  // a place no mortgage file could see: the shared stream helper sent
+  // only `apikey` when there was no user token, and Supabase's gateway
+  // answers 401 to that before the function runs. homatch-ai's own
+  // anonymous branch had therefore never executed from a browser.
+  const sse = read('src/lib/sse.ts');
+  assert.ok(
+    /Authorization:`Bearer \$\{accessToken\?\?supabaseAnonKey\}`/.test(sse),
+    'a signed-out stream request carries no Authorization header',
+  );
+  const fn = read('supabase/functions/homatch-ai/index.ts');
+  assert.ok(fn.includes('anonSessionFor'), 'the function lost its anonymous branch');
+});

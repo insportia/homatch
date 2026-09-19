@@ -377,6 +377,28 @@ test('the mortgage page is a simple calculator on a phone', opts, async (t) => {
     await ctx.close();
   }
 
+  /* ── 5. A TOOL THAT CANNOT ANSWER YET STILL ASKS. ── */
+  {
+    /* Affordability needs income, and the common case is not having
+       entered any. Opening it must produce the question, not a blank
+       panel — which is what shipped once, because the section that
+       holds the question took an id and never rendered it. */
+    const where = 'affordability without income @390 en';
+    const { monthlyNetIncome, existingMonthlyDebtObligations, ...noIncome } = MORTGAGE_DRAFT;
+    const { ctx, page } = await open({ width: 390, lang: 'en', seed: noIncome });
+    await page.waitForSelector('#tools', { timeout: 15000 }).catch(() => {});
+    checked.push(where);
+    const affordability = page.locator('#tools button[aria-controls="tool-panel"]').nth(2);
+    await affordability.click().catch(() => {});
+    await page.waitForTimeout(800);
+    if (!(await page.locator('#income').count())) {
+      failures.push(`${where}: the tool opened without asking for income`);
+    }
+    const r = await settle(page, 390);
+    judge(where, r, { expectResult: true });
+    await ctx.close();
+  }
+
   assert.ok(checked.length >= 18, `the gate covered only ${checked.length} combinations`);
   assert.deepEqual(failures, [], `mortgage on a phone:\n${failures.join('\n')}`);
 });

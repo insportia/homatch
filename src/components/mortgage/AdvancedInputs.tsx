@@ -44,7 +44,10 @@ interface SectionProps {
 function Section({ id, titleKey, descriptionKey, summary, complete, open, onToggle, children }: SectionProps) {
   const { t } = useLanguage();
   return (
-    <section className="hm-workspace-panel overflow-hidden">
+    /* The id was taken as a prop and never applied, so `aria-controls`
+       pointed at nothing and no link could reach a section. Found by
+       opening the deployed page rather than by reading this file. */
+    <section id={id} className="hm-workspace-panel overflow-hidden">
       <button
         type="button"
         onClick={onToggle}

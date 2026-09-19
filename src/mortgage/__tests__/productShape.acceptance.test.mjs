@@ -319,6 +319,17 @@ test('the consultant is handed engine output, and never asked to compute', () =>
   assert.ok(fn.includes('MORTGAGE NUMBERS ARE NOT YOURS TO COMPUTE'));
 });
 
+test('a section that is given an id renders it', () => {
+  // The advanced sections took an `id` prop, pointed `aria-controls` at
+  // it, and never put it on an element. Nothing linked to a section and
+  // no test looked, because every OTHER module gets its id from the
+  // shared Module primitive, which does apply it.
+  const src = read('src/components/mortgage/AdvancedInputs.tsx');
+  assert.ok(/<section id={id}/.test(src), 'the advanced sections drop their id again');
+  assert.ok(src.includes('aria-controls={`${id}-body`}'));
+  assert.ok(src.includes('id={`${id}-body`}'), 'aria-controls points at nothing');
+});
+
 test('every tool the shelf dropped is still reachable', () => {
   const page = read('src/pages/MortgagePage.tsx');
   for (const view of [

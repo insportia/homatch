@@ -764,7 +764,24 @@ export function buildMarketIntelligence(
   const conditionMismatch =
     !!subjectGrade && !!mix.dominant && subjectGrade !== mix.dominant;
 
+  /*
+   * MARKET CONTEXT AND SUBJECT VALUATION, ANSWERED SEPARATELY.
+   *
+   * Set here rather than patched onto `out` afterwards, so the type carries
+   * them: a report that cannot say where THIS unit sits can still say what
+   * the market looks like, and the two answers must not collapse into one
+   * sentence about insufficient data.
+   */
+  const contextAvailable = basisSet.length > 0 && med > 0;
+  const subjectValuation: SubjectValuationState = !contextAvailable
+    ? 'NO_COMPARABLE_BASIS'
+    : subject.pricePerSqm
+      ? 'AVAILABLE'
+      : 'NO_SUBJECT_PRICE';
+
   const out: MarketIntelligence = {
+    contextAvailable,
+    subjectValuation,
     currency: basisSet[0]?.currency ?? subject.currency ?? 'USD',
     subjectPricePerSqm: subject.pricePerSqm,
     subjectTotalPrice: subject.totalPrice,
@@ -813,17 +830,6 @@ export function buildMarketIntelligence(
   // runs from a cadastral code, so most of the time it does not — and
   // inventing one from the comparables would be exactly the fabrication this
   // product refuses.
-  /*
-   * The market half of the answer: a basis with a real median means context
-   * exists, whatever is or is not known about the subject.
-   */
-  out.contextAvailable = basisSet.length > 0 && med > 0;
-  out.subjectValuation = !out.contextAvailable
-    ? 'NO_COMPARABLE_BASIS'
-    : subject.pricePerSqm
-      ? 'AVAILABLE'
-      : 'NO_SUBJECT_PRICE';
-
   if (subject.pricePerSqm && med > 0) {
     const delta = ((subject.pricePerSqm - med) / med) * 100;
     out.deltaFromMedianPct = round1(delta);

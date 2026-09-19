@@ -44,7 +44,7 @@ test('CTA_MIN_TOUCH_TARGET: at least 48px, with real padding', () => {
   const src = CTA();
   // min-h-12 is 3rem = 48px, inside the 44-48px comfortable range.
   assert.match(src, /min-h-12/);
-  assert.match(src, /px-4 py-3/);
+  assert.match(src, /px-5 py-3/);
 });
 
 test('CTA_TEXT_TRUNCATION = NONE: long labels wrap, they are not cut', () => {
@@ -81,6 +81,19 @@ test('full width on a phone, side by side once there is room', () => {
   const src = CTA();
   assert.match(src, /w-full min-w-0/);
   assert.match(src, /sm:w-auto sm:flex-1/);
+});
+
+test('CTA_INVESTMENT_MORTGAGE_VISUAL_PARITY: siblings, not a primary and a secondary', () => {
+  const src = CTA();
+  // One treatment for both. The component no longer takes a variant at all,
+  // so the two cannot drift apart or imply an order of preference.
+  assert.ok(!/variant\?:/.test(src), 'a variant prop is how they diverged');
+  assert.match(src, /variant="outline"/);
+  assert.match(src, /rounded-full border-border bg-transparent/);
+  assert.match(src, /hover:border-\[hsl\(var\(--gold-border\)\)\]/);
+
+  const next = read('src', 'components', 'verify', 'NextStepsCard.tsx');
+  assert.ok(!/variant=/.test(next), 'neither call to action may be styled differently');
 });
 
 test('VERIFY_CTA_COMPONENT: both calls to action come from the one component', () => {

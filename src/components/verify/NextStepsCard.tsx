@@ -48,7 +48,6 @@ export function NextStepsCard({ cadastralCode }: { cadastralCode?: string | null
             to={`/mortgage${suffix}`}
             icon={<Landmark className="h-5 w-5" />}
             label={t('verify_next_mortgage')}
-            variant="outline"
           />
         </div>
       </CardContent>

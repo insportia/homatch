@@ -102,37 +102,36 @@ const CORS = {
  * outcome an experiment must never produce.
  */
 /*
- * VERIFIED, NOT GUESSED.
+ * THE FINAL SYNTHESIS MODEL.
  *
- * `gpt-6-astra` was read from GET https://api.openai.com/v1/models using the
- * project's existing OPENAI_API_KEY, from the server-side environment that
- * already holds it: HTTP 200, 130 models, exactly one matching candidate. The
- * id is written here rather than left to a secret so that what the final
- * synthesis runs on is visible in the repository and in review, and so the
- * deployed artifact can be checked for it.
+ * gpt-5.6-luna. The GPT-6 Astra experiment ran on this stage and was ended:
+ * the reports it produced were not an improvement on the ones this model
+ * writes, so the stage is back on the model that was already proven for it.
+ * Nothing else about the experiment is kept — there is no second model, no
+ * A/B, and no dormant switch waiting to be flipped.
  *
- * OPENAI_SYNTHESIS_MODEL still overrides it, for moving this one stage
- * without a deploy. OPENAI_MODEL deliberately does NOT: it is shared with
- * research-agent, and changing it would move two things at once.
+ * OPENAI_SYNTHESIS_MODEL still overrides it, for moving THIS stage without a
+ * deploy. OPENAI_MODEL deliberately does not: it is shared with
+ * research-agent's report accounting, and changing it would move two things
+ * at once.
  */
-const VERIFY_SYNTHESIS_MODEL = 'gpt-6-astra';
+const VERIFY_SYNTHESIS_MODEL = 'gpt-5.6-luna';
 const SYNTHESIS_MODEL_OVERRIDE = (Deno.env.get('OPENAI_SYNTHESIS_MODEL') ?? '').trim();
 const MODEL = SYNTHESIS_MODEL_OVERRIDE || VERIFY_SYNTHESIS_MODEL;
 
 /*
- * WHICH FAILURES ARE ALLOWED TO DEGRADE QUIETLY, AND WHICH ARE NOT.
+ * WHICH FAILURES DEGRADE QUIETLY, AND WHICH DO NOT.
  *
- * A refusal that means "this model is not available to you" — an unknown id,
- * an unauthorised project, a malformed request — must never be absorbed. It
- * used to be: `if (res.ok)` and nothing else, so a 404 produced a
- * deterministic report that was indistinguishable from a successful one. An
- * experiment about a model cannot report success when that model never ran.
+ * KEPT from the experiment, deliberately. Before it, a non-ok response was
+ * dropped on the floor — `if (res.ok)` and nothing else — so an unknown model
+ * id or an unauthorised project produced a deterministic report that looked
+ * exactly like a successful one. That was a real defect independent of which
+ * model is configured, and restoring Luna is no reason to restore it.
  *
- * A transient failure is different in kind. A single 429 or a 503 says
- * nothing about whether the model is the right one, and turning a blip into
- * "no report" for a paying customer is a worse outcome than prose assembled
- * deterministically from the same evidence. Those still degrade, and still
- * say so in the log.
+ * A refusal meaning "this model is not available to you" is reported. A
+ * transient 429 or 503 still degrades the prose, because a blip says nothing
+ * about whether the model is the right one and a customer would rather have
+ * the deterministic report than none.
  */
 const MODEL_UNAVAILABLE_STATUSES = new Set([400, 401, 403, 404]);
 

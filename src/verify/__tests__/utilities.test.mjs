@@ -168,23 +168,53 @@ test('nothing aggregates one utility into a verdict about the site', () => {
 
 test('UTILITIES_MOBILE_LAYOUT: the label never shares a row it can be crushed in', () => {
   const src = read('src', 'components', 'verify', 'UtilitiesReadinessCard.tsx');
-  // One block per utility, stacked — not a flex row of label against badge,
+  // One block per utility, stacked. The name and its status sit in a WRAPPING
+  // row, so the status drops to its own line rather than squeezing the name —
   // which is what crushed "ელექტროენერგია" to 65px across three lines.
-  assert.match(src, /grid grid-cols-1 gap-2/);
-  assert.match(src, /flex flex-wrap items-center gap-x-3/);
-  assert.match(src, /className="fact min-w-0 break-words text-sm"/);
+  assert.match(src, /grid grid-cols-1 gap-3/);
+  assert.match(src, /flex flex-wrap items-center gap-x-3 gap-y-2/);
+  assert.match(src, /className="min-w-0 break-words font-display/);
   assert.ok(!/items-center justify-between/.test(src),
     'a justify-between row is the shape that crushed the label');
+
+  // And a detail row gives its label a full line below sm, so at 320px there
+  // is nothing beside it that could compete for width at all.
+  const ui = read('src', 'components', 'verify', 'ui.tsx');
+  assert.match(ui, /flex flex-wrap items-baseline gap-x-4 gap-y-1/);
+  assert.match(ui, /basis-full break-words text-xs font-medium uppercase/);
+  assert.match(ui, /sm:shrink-0/);
+});
+
+test('unknown utilities are stated once, not once per utility', () => {
+  /*
+   * The card read as a list of things Homatch had failed to find: six
+   * equal-weight blocks, one finding and five absences. Established findings
+   * lead now, and the unknowns are named ONCE, together, in a single quiet
+   * line — still present, still truthful, no longer the loudest thing here.
+   */
+  const src = read('src', 'components', 'verify', 'UtilitiesReadinessCard.tsx');
+  assert.match(src, /const established = findings\.filter/);
+  assert.match(src, /const unknown = findings\.filter/);
+  assert.match(src, /established\.map\(\(f\) => <Established/);
+  assert.ok(!/unknown\.map\(\(f\) => <Established/.test(src),
+    'an unknown utility must not get a block of its own');
+  assert.match(src, /util_unknown_note/);
 });
 
 test('ACTIVE_SUBSCRIPTION_SIGNAL_PRESERVED and SEMANTIC_GREEN_PRESERVED', () => {
   const src = read('src', 'components', 'verify', 'UtilitiesReadinessCard.tsx');
-  // Green is kept for states positively established on the ground, and is
-  // NOT recoloured gold for the sake of the palette.
-  assert.match(src, /case 'ACTIVE_OR_SUBSCRIBED':\s*\n\s*case 'CONNECTED':\s*\n\s*return 'border-emerald/);
+  // Green is kept for states positively established ON THE GROUND, and is not
+  // recoloured gold for the sake of the palette: gold means emphasis, green
+  // means something was actually found.
+  assert.match(src, /case 'ACTIVE_OR_SUBSCRIBED':[\s\S]{0,40}?case 'CONNECTED':[\s\S]{0,40}?return 'confirmed'/);
+  assert.match(src, /case 'NOT_CONNECTED':[\s\S]{0,40}?return 'risk'/);
+  assert.match(src, /default:[\s\S]{0,40}?return 'quiet'/);
   assert.match(src, /util_verified/);
-  // UNKNOWN stays quiet rather than competing with findings.
-  assert.match(src, /default:\s*\n\s*return 'border-border bg-muted/);
+
+  const ui = read('src', 'components', 'verify', 'ui.tsx');
+  assert.match(ui, /confirmed: 'border-emerald-500\/40/);
+  assert.match(ui, /risk: 'border-destructive/);
+  assert.match(ui, /quiet: 'border-border bg-muted/);
 });
 
 test('an unestablished utility is still rendered', () => {

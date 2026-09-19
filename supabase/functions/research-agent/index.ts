@@ -4574,7 +4574,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
      * stage to a model that never ran — and prices it at that model's rate.
      */
     const reportModel = Deno.env.get('OPENAI_SYNTHESIS_MODEL')?.trim()
-      || 'gpt-6-astra';
+      || 'gpt-5.6-luna';
 
     /*
      * RATES COME FROM THE PRICE BOOK, AND FROM THE RIGHT DATE.

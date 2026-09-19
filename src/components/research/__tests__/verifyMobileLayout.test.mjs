@@ -93,7 +93,12 @@ test('the NOTE sits directly under the Verify action area — above progress, re
 
   // It is a direct child of the page's space-y-5 column, so it always has
   // vertical separation above and below, in every state.
-  assert.match(verifySource, /space-y-5 pb-16/);
+  // The page now sits on the Investment workspace surface, so the container
+  // carries Investment's padding scale rather than a bare bottom pad. The
+  // property under test is unchanged: real breathing room on a phone, and
+  // clearance at the bottom for the tab bar and the assistant.
+  assert.match(verifySource, /hm-invest hm-invest-canvas/);
+  assert.match(verifySource, /space-y-5 px-4 py-6 pb-24 sm:px-6 lg:px-8/);
 });
 
 /* ------------------------------------------------------------------ *

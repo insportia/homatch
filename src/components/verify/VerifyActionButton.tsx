@@ -43,22 +43,37 @@ export interface VerifyActionButtonProps {
   to: string;
   icon: ReactNode;
   label: string;
-  /** The primary action of the pair; the other is an outline. */
-  variant?: 'default' | 'outline';
 }
 
-export function VerifyActionButton({ to, icon, label, variant = 'default' }: VerifyActionButtonProps) {
+/*
+ * SIBLINGS, NOT A PRIMARY AND A SECONDARY.
+ *
+ * These were a filled button and an outline one, which said the Investment
+ * consultation was the thing to do and the Mortgage one was the alternative.
+ * Neither is true: they answer two different questions a buyer has at the
+ * same moment, and whichever they need is the primary one. Identical
+ * treatment, identical size, identical weight.
+ *
+ * The treatment is Investment's own — a rounded-full hairline control that
+ * warms to gold on hover — so the end of a verification looks like the rest
+ * of the product rather than like a landing page.
+ */
+export function VerifyActionButton({ to, icon, label }: VerifyActionButtonProps) {
   return (
     <Button
       asChild
-      variant={variant}
+      variant="outline"
       className={[
         // Grows with the label; never shorter than a comfortable target.
-        'h-auto min-h-12 w-full min-w-0 whitespace-normal px-4 py-3',
+        'h-auto min-h-12 w-full min-w-0 whitespace-normal px-5 py-3',
         // Full width on a phone: two half-width buttons with two-line labels
         // read worse than two full-width ones. Side by side from sm upward.
         'sm:w-auto sm:flex-1',
-        variant === 'outline' ? 'border-2' : '',
+        // Investment's control language, and the gold is a hover edge rather
+        // than a fill — on this ground a gold fill has nowhere near the
+        // contrast to carry text.
+        'rounded-full border-border bg-transparent',
+        'transition-colors hover:border-[hsl(var(--gold-border))] hover:bg-transparent hover:text-foreground',
       ].join(' ')}
     >
       <Link to={to} className="flex min-w-0 items-center gap-3 text-start">

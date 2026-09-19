@@ -497,6 +497,15 @@ export interface CommVoiceTuning {
  */
 export interface AiTalkVoice {
   voice_id: string;
+  /**
+   * How fast she speaks, as the PROVIDER understands it: 1.0 is the voice's
+   * own pace, 0.6 to 1.5 is the range Cartesia accepts.
+   *
+   * Not playback rate. Speeding audio up in the browser shortens it and
+   * raises the pitch with it, which is the chipmunk the move to Cartesia was
+   * meant to end; this asks the synthesiser to deliver faster instead.
+   */
+  speed?: number;
 }
 
 export interface AiTalkLimits {

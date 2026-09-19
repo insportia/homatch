@@ -1151,23 +1151,44 @@ const VOICE_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  * previous behaviour instead of making the product silent. The Admin screen
  * refuses to save a malformed id in the first place; this is the second line.
  */
-async function configuredVoiceId(sb: Sb): Promise<string | null> {
+async function configuredVoice(sb: Sb): Promise<{ voiceId: string | null; speed: number | null }> {
   const { data } = await sb.from('admin_settings')
     .select('value').eq('key', 'ai_talk_voice').maybeSingle();
-  const raw = (data?.value ?? null) as { voice_id?: unknown } | null;
+  const raw = (data?.value ?? null) as { voice_id?: unknown; speed?: unknown } | null;
+
   const id = typeof raw?.voice_id === 'string' ? raw.voice_id.trim() : '';
-  if (!id) return null;
-  if (!VOICE_ID_SHAPE.test(id)) {
+  let voiceId: string | null = null;
+  if (id && !VOICE_ID_SHAPE.test(id)) {
     // Loud, because a visitor will hear the old voice and nobody would know why.
     logEvent('ai-talk', 'voice_setting_invalid', { length: id.length });
-    return null;
+  } else if (id) {
+    voiceId = id;
   }
-  return id;
+
+  /*
+   * HOW FAST SHE TALKS, AS AN OPERATOR SETTING RATHER THAN A DEPLOYMENT.
+   *
+   * This was AI_TALK_TTS_SPEED, an environment variable, which meant "the
+   * voice is a bit slow" was a secret change and a redeploy. It is a number
+   * between 0.6 and 1.5 that the provider understands, and the person who can
+   * hear the problem should be the person who can turn the dial.
+   *
+   * Out of range is ignored rather than clamped silently: a 3 in this box is
+   * a typo, and speaking at 1.5 because somebody meant 1.05 is worse than
+   * speaking at the default.
+   */
+  const rawSpeed = Number(raw?.speed);
+  const speed = Number.isFinite(rawSpeed) && rawSpeed >= 0.6 && rawSpeed <= 1.5 ? rawSpeed : null;
+  if (raw?.speed !== undefined && speed === null) {
+    logEvent('ai-talk', 'voice_speed_setting_invalid', {});
+  }
+
+  return { voiceId, speed };
 }
 
 async function aiTalkVoice(
   sb: Sb, language: string | null,
-): Promise<{ provider: string; voiceId: string } | null> {
+): Promise<{ provider: string; voiceId: string; speed?: number | null } | null> {
   /*
    * Both reads at once. This runs on the way to every spoken phrase, and a
    * second round trip in series here would be latency a visitor can hear.
@@ -1177,7 +1198,7 @@ async function aiTalkVoice(
       .select('provider, enabled, kill_switch')
       .eq('role', 'TTS')
       .order('priority'),
-    configuredVoiceId(sb),
+    configuredVoice(sb),
   ]);
 
   const route = (routes ?? []).find((r) => r.enabled && !r.kill_switch);
@@ -1200,7 +1221,9 @@ async function aiTalkVoice(
    * somewhere else still falls through to that provider's approved rows,
    * because a Cartesia voice id means nothing to another provider.
    */
-  if (configured && provider === 'CARTESIA') return { provider, voiceId: configured };
+  if (configured.voiceId && provider === 'CARTESIA') {
+    return { provider, voiceId: configured.voiceId, speed: configured.speed };
+  }
 
   /*
    * The voice somebody approved for THIS language on THIS provider.
@@ -1216,7 +1239,7 @@ async function aiTalkVoice(
     .maybeSingle();
 
   if (!approved?.voice_id) return null;
-  return { provider, voiceId: String(approved.voice_id) };
+  return { provider, voiceId: String(approved.voice_id), speed: configured.speed };
 }
 
 /**
@@ -1315,7 +1338,7 @@ async function speakPhraseStreaming(sb: Sb, params: {
    * The caller resolves it once, while the model is still being asked, and
    * hands it in. Absent, it is looked up as before.
    */
-  voice?: { provider: string; voiceId: string } | null;
+  voice?: { provider: string; voiceId: string; speed?: number | null } | null;
   sessionId?: string | null;
   surface?: string;
   outputSampleRate?: number | null;
@@ -1359,7 +1382,9 @@ async function speakPhraseStreaming(sb: Sb, params: {
     text: speechText(params.text, params.language),
     language: params.language || 'ka',
     sampleRate: params.outputSampleRate ?? undefined,
-    speed: ttsSpeed(),
+    // The configured pace, resolved once with the voice; the environment
+    // variable stays as the fallback for a deployment with no setting.
+    speed: voice.speed ?? ttsSpeed(),
     signal: params.signal,
   }, (chunk) => params.onChunk(chunk));
 

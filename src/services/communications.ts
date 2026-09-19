@@ -1528,13 +1528,19 @@ export function getAiTalkVoice(): Promise<Partial<AiTalkVoice> | null> {
  * identifier from the Cartesia dashboard, and the API key is server-side and
  * never leaves it.
  */
-export async function saveAiTalkVoice(voiceId: string, previousVoiceId: string | null): Promise<boolean> {
+export async function saveAiTalkVoice(
+  voiceId: string, previousVoiceId: string | null, speed?: number,
+): Promise<boolean> {
   const id = voiceId.trim();
   if (!VOICE_ID_SHAPE.test(id)) return false;
+  // Out of range is refused rather than clamped: a 3 in that box is a typo,
+  // and speaking at the maximum because somebody meant 1.05 is worse than
+  // refusing the save and saying so.
+  if (speed !== undefined && !(Number.isFinite(speed) && speed >= 0.6 && speed <= 1.5)) return false;
 
   const ok = await writeSetting(
-    'ai_talk_voice', { voice_id: id },
-    'The Cartesia voice AI Talk speaks with, for every language. Read by ai-talk-session aiTalkVoice().',
+    'ai_talk_voice', speed === undefined ? { voice_id: id } : { voice_id: id, speed },
+    'The Cartesia voice AI Talk speaks with, and how fast, for every language. Read by ai-talk-session aiTalkVoice().',
   );
   if (!ok) return false;
 
@@ -1554,6 +1560,7 @@ export async function saveAiTalkVoice(voiceId: string, previousVoiceId: string |
         old_voice_id: previousVoiceId,
         new_voice_id: id,
         model: 'sonic-3',
+        speed: speed ?? null,
         changed_at: new Date().toISOString(),
       },
     }).then(() => undefined, () => undefined);

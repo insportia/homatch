@@ -34,13 +34,13 @@ const ACTIVE = 'eb629e3f-3223-4e71-9d46-72637532270b';
 /* ── The source of truth ─────────────────────────────────────────────────*/
 
 test('the runtime asks the setting before it asks anything else', () => {
-  assert.match(EDGE, /async function configuredVoiceId\(sb: Sb\)/);
+  assert.match(EDGE, /async function configuredVoice\(sb: Sb\)/);
   assert.match(EDGE, /\.eq\('key', 'ai_talk_voice'\)/);
   // Read alongside the route, not after it: this runs before every phrase.
-  assert.match(EDGE, /Promise\.all\(\[[\s\S]{0,400}configuredVoiceId\(sb\),/);
+  assert.match(EDGE, /Promise\.all\(\[[\s\S]{0,400}configuredVoice\(sb\),/);
   // And it wins, for every language, before the per-language lookup.
   const fn = EDGE.slice(EDGE.indexOf('async function aiTalkVoice'));
-  const decide = fn.indexOf("if (configured && provider === 'CARTESIA') return");
+  const decide = fn.indexOf("if (configured.voiceId && provider === 'CARTESIA')");
   const perLanguage = fn.indexOf("from('voice_language_defaults')");
   assert.ok(decide > 0, 'the configured voice is no longer preferred');
   assert.ok(decide < perLanguage, 'the per-language rows now outrank the setting');
@@ -54,12 +54,12 @@ test('one setting answers for all six languages', () => {
     !/configured[\s\S]{0,120}(code === '|language === ')/.test(fn),
     'the configured voice is being applied to only some languages',
   );
-  assert.match(fn, /if \(configured && provider === 'CARTESIA'\) return \{ provider, voiceId: configured \};/);
+  assert.match(fn, /if \(configured.voiceId && provider === 'CARTESIA'\) \{/);
 });
 
 test('an unusable setting falls back rather than silencing the product', () => {
-  const fn = EDGE.slice(EDGE.indexOf('async function configuredVoiceId'), EDGE.indexOf('async function aiTalkVoice'));
-  assert.match(fn, /if \(!id\) return null;/);
+  const fn = EDGE.slice(EDGE.indexOf('async function configuredVoice'), EDGE.indexOf('async function aiTalkVoice'));
+  assert.match(fn, /let voiceId: string \| null = null;/);
   assert.match(fn, /VOICE_ID_SHAPE\.test\(id\)/);
   assert.match(fn, /voice_setting_invalid/, 'a malformed setting is swallowed silently');
   // The per-language rows are still there to fall back to, and still
@@ -152,6 +152,26 @@ test('the change is recorded, and carries no secret', () => {
   }
   assert.match(save, /auth\.getUser\(\)/, 'changed_by is not the caller');
   assert.ok(!/CARTESIA_API_KEY|apiKey|secret/i.test(save), 'a provider secret is in the audit path');
+});
+
+test('how fast she talks is a dial, not a deployment', () => {
+  // It was AI_TALK_TTS_SPEED, an environment variable, so "a bit slow" was a
+  // secret change and a redeploy.
+  assert.match(EDGE, /const rawSpeed = Number\(raw\?\.speed\);/);
+  assert.match(EDGE, /rawSpeed >= 0\.6 && rawSpeed <= 1\.5/);
+  assert.match(EDGE, /voice_speed_setting_invalid/, 'an out-of-range speed is swallowed');
+  // Resolved once with the voice, not read per phrase: this runs before every
+  // spoken phrase and a second round trip would be audible.
+  assert.match(EDGE, /speed: voice\.speed \?\? ttsSpeed\(\)/);
+  // The environment variable stays as the fallback for a deployment with no
+  // setting, so nothing breaks where the row does not exist.
+  assert.match(EDGE, /AI_TALK_TTS_SPEED/);
+
+  // Refused rather than clamped on the way in.
+  const save = SERVICE_CODE.slice(SERVICE_CODE.indexOf('export async function saveAiTalkVoice'));
+  assert.match(save.slice(0, 600), /speed >= 0\.6 && speed <= 1\.5/);
+  const rows = I18N.match(/^  admin_talk_voice_speed: '/gm) ?? [];
+  assert.equal(rows.length, 6, 'the speed label is not in six locales');
 });
 
 /* ── What must not have moved ────────────────────────────────────────────*/

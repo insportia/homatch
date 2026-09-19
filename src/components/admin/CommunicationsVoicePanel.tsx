@@ -103,6 +103,14 @@ export function CommunicationsVoicePanel() {
    */
   const [voiceId, setVoiceId] = useState('');
   const [savedVoiceId, setSavedVoiceId] = useState<string | null>(null);
+  /*
+   * 1.0 is the voice's own pace, and it was the default because 1.1 read as
+   * hurried on a real device. The owner then found 1.0 slow enough to lose
+   * attention, which is the same measurement from the other side: the right
+   * number is somewhere in between and only listening can find it. So it is
+   * a dial rather than a decision taken here.
+   */
+  const [speed, setSpeed] = useState(1);
   const [previewing, setPreviewing] = useState(false);
   const [savingVoice, setSavingVoice] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -118,6 +126,7 @@ export function CommunicationsVoicePanel() {
     const active = typeof storedVoice?.voice_id === 'string' ? storedVoice.voice_id : null;
     setSavedVoiceId(active);
     setVoiceId(active ?? '');
+    setSpeed(typeof storedVoice?.speed === 'number' ? storedVoice.speed : 1);
     setLoading(false);
   }, []);
 
@@ -198,13 +207,13 @@ export function CommunicationsVoicePanel() {
     }
     setSavingVoice(true);
     try {
-      const ok = await saveAiTalkVoice(id, savedVoiceId);
+      const ok = await saveAiTalkVoice(id, savedVoiceId, speed);
       if (ok) setSavedVoiceId(id);
       toast[ok ? 'success' : 'error'](t(ok ? 'admin_talk_voice_saved' : 'comm_save_failed'));
     } finally {
       setSavingVoice(false);
     }
-  }, [voiceId, savedVoiceId, t]);
+  }, [voiceId, savedVoiceId, speed, t]);
 
   const onSaveLimits = useCallback(async () => {
     /*
@@ -403,6 +412,16 @@ export function CommunicationsVoicePanel() {
               </div>
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+              <NumberField
+                labelKey="admin_talk_voice_speed" hintKey="admin_talk_voice_speed_hint"
+                value={speed} min={0.6} max={1.5} step={0.01}
+                note={speed === 1 ? t('admin_talk_voice_speed_default') : null}
+                onChange={setSpeed}
+              />
+              <div />
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" onClick={() => void onTestVoice()} disabled={previewing}>
                 {previewing
@@ -512,7 +531,7 @@ function NumberField({
   labelKey: string; hintKey: string; value: number;
   min: number; max: number; step: number; disabled?: boolean;
   /** A read-only restatement of the same value in friendlier units. */
-  note?: string;
+  note?: string | null;
   onChange: (v: number) => void;
 }) {
   const { t } = useLanguage();

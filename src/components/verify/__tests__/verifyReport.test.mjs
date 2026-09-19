@@ -110,11 +110,17 @@ test('the overall view is one of the three permitted readings and nothing else',
 });
 
 test('the summary is a verdict WITH its reasons, not a traffic light', () => {
-  // The label names the state; the statement carries the judgement; the
-  // highlights carry what it rests on. A coloured chip alone would be exactly
+  // The label names the state; the statement carries the judgement; the key
+  // findings carry what it rests on. A coloured chip alone would be exactly
   // the compliance-robot output this report replaced.
+  //
+  // The reasons used to be a separate `summary.highlights` grid. It restated
+  // the findings rendered beneath it and opened the report a second time, so
+  // it was removed — the requirement that the verdict come WITH its reasons
+  // is unchanged and is asserted against the block that now carries them.
   assert.match(reportCode, /summary\.statement/);
-  assert.match(reportCode, /summary\.highlights/);
+  assert.match(reportCode, /f\.finding/);
+  assert.match(reportCode, /f\.whyItMatters/);
   assert.ok(!/ShieldCheck|ShieldX|traffic/.test(reportCode), 'the verdict chip is back');
   // Restraint: the whole thing must not turn green because the news is good.
   assert.ok(/SENTIMENT_STYLE/.test(reportCode), 'sentiment styling is not centralised');
@@ -130,10 +136,26 @@ test('the summary is a verdict WITH its reasons, not a traffic light', () => {
     'sentiment colour leaked outside the one place that owns it');
 });
 
-test('a summary highlight is scannable: dimension, headline, then detail', () => {
-  for (const bit of ['h.dimension', 'h.headline', 'h.detail', 'verify_dim_']) {
-    assert.ok(reportCode.includes(bit), `${bit} is missing from the summary`);
+test('the introduction is scannable: a claim and its consequence, once', () => {
+  /*
+   * This used to assert the summary's highlight GRID — dimension, headline,
+   * detail. That grid is gone, and its removal is the point rather than a
+   * regression: it restated the key findings rendered directly beneath it,
+   * so the report opened twice before any detail. The findings carry the
+   * same claims and, unlike the cards, each carries why it matters.
+   *
+   * The requirement is unchanged — the opening must be scannable — so it is
+   * asserted where the opening now lives.
+   */
+  for (const bit of ['f.finding', 'f.whyItMatters']) {
+    assert.ok(reportCode.includes(bit), `${bit} is missing from the introduction`);
   }
+  assert.ok(
+    !/highlights\.map\(/.test(reportCode),
+    'the duplicate highlight grid must not come back'
+  );
+  // The verdict itself still opens the report.
+  assert.ok(reportCode.includes('OVERALL_KEY[label]'), 'the verdict must still open the report');
 });
 
 test('key findings each carry why they matter', () => {
@@ -204,7 +226,10 @@ test('every customer-visible string is cleaned before it renders', () => {
   for (const call of [
     'clean(s.title)', 'clean(a.point)', 'clean(a.why)',
     'clean(f.finding)', 'clean(f.whyItMatters)',
-    'clean(h.headline)', 'clean(h.detail)', 'clean(summary.statement)',
+    // h.headline / h.detail are absent because the highlight grid they
+    // belonged to is gone — see the introduction test above. A field that no
+    // longer renders cannot render raw.
+    'clean(summary.statement)',
   ]) {
     assert.ok(reportCode.includes(call), `${call} is missing — that string can render raw`);
   }

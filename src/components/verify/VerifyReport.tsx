@@ -286,7 +286,25 @@ export function VerifyReport({
    * given, so they are shown rather than dropped: sorted to the end, under
    * the heading they had. A renderer that silently loses part of an existing
    * report is worse than one that shows it in a new place. */
-  const sections = orderForReading((r.sections ?? []).filter((s) => clean(s.body)));
+  /*
+   * THE THIRD OPENING.
+   *
+   * The model writes a SNAPSHOT section — "დღევანდელი სურათი" — restating
+   * the property facts the Snapshot component renders directly above it as
+   * structured rows. With the verdict and the key findings before that, the
+   * live report introduced itself three times before a reader reached a
+   * single detail.
+   *
+   * Its METRICS are kept: they move into the snapshot block where numbers
+   * belong. Only the repeated prose section is dropped, and only when the
+   * structured snapshot is actually present to carry those facts.
+   */
+  const allSections = (r.sections ?? []).filter((s) => clean(s.body));
+  const snapshotSection = allSections.find((s) => s.key === 'SNAPSHOT');
+  const sections = orderForReading(
+    synthesis.snapshot ? allSections.filter((s) => s.key !== 'SNAPSHOT') : allSections
+  );
+  const snapshotMetrics = synthesis.snapshot ? (snapshotSection?.metrics ?? []) : [];
   const people = (synthesis.people?.people ?? []).slice(0, 6);
   /* Which section the evidenced places belong under. LOCATION when the model
      wrote one, otherwise INFRASTRUCTURE, otherwise neither and the block
@@ -300,6 +318,8 @@ export function VerifyReport({
       <SummaryHero summary={r.summary} />
 
       {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
+      {/* The dropped section's own figures, kept where figures belong. */}
+      {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
 
       {findings.length ? <KeyFindings findings={findings} /> : null}
 
@@ -473,7 +493,6 @@ const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ sum
   const label = (['POSITIVE', 'BALANCED', 'NEEDS_ATTENTION'] as OverallLabel[]).includes(summary.label)
     ? summary.label
     : 'BALANCED';
-  const highlights = (summary.highlights ?? []).filter((h) => clean(h.headline)).slice(0, 6);
 
   return (
     <header className="rounded-2xl border border-border bg-card/50 p-5 sm:p-6 space-y-5">
@@ -491,29 +510,16 @@ const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ sum
         ) : null}
       </div>
 
-      {highlights.length ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {highlights.map((h, i) => {
-            const st = SENTIMENT_STYLE[sentimentOf(h.sentiment)];
-            return (
-              <div key={i} className={`rounded-lg border border-border border-s-2 ${st.edge} bg-background/50 p-3 min-w-0`}>
-                <div className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${st.dot}`} aria-hidden="true" />
-                  <p className="text-2xs uppercase tracking-wide text-muted-foreground break-words">
-                    {t(`verify_dim_${String(h.dimension || '').toLowerCase()}`)}
-                  </p>
-                </div>
-                <p className="mt-1 text-sm font-semibold break-words">{clean(h.headline)}</p>
-                {h.detail ? (
-                  <p className="mt-0.5 text-xs leading-5 text-muted-foreground break-words">
-                    {clean(h.detail)}
-                  </p>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
+      {/*
+        * THE HIGHLIGHT GRID IS GONE, DELIBERATELY.
+        *
+        * It restated the key findings rendered immediately below it, so the
+        * report opened twice before the reader reached a single detail: a
+        * verdict with six highlight cards, then "რა აღმოაჩინა Homatch-მა"
+        * with seven findings saying the same things in longer form. The
+        * findings win because each one carries WHY it matters; the cards
+        * carried only a label.
+        */}
     </header>
   );
 };
@@ -526,10 +532,9 @@ const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ sum
 const KeyFindings: React.FC<{ findings: KeyFinding[] }> = ({ findings }) => {
   const { t } = useLanguage();
   return (
+    /* No heading: this IS the introduction begun by SummaryHero above. A
+       second title here is what made the report start for a second time. */
     <section className="space-y-3">
-      <h2 className="text-base font-semibold tracking-tight break-words">
-        {t('verify_ir_findings_title')}
-      </h2>
       <ul className="space-y-3">
         {findings.slice(0, 7).map((f, i) => {
           const st = SENTIMENT_STYLE[sentimentOf(f.sentiment)];

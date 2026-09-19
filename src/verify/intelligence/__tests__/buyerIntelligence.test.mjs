@@ -587,7 +587,11 @@ test('the UI strips evidence ids the model writes into prose anyway', () => {
   assert.ok(/const clean = \(s: unknown\): string => stripEvidenceIds\(readable\(/.test(cmp));
   for (const call of [
     'clean(summary.statement)', 'clean(s.title)',
-    'clean(a.point)', 'clean(f.finding)', 'clean(h.headline)',
+    // `clean(h.headline)` is absent because the summary highlight grid it
+    // belonged to was removed: it restated the key findings below it and
+    // opened the report a second time. A field that no longer renders cannot
+    // leak an id.
+    'clean(a.point)', 'clean(f.finding)',
   ]) {
     assert.ok(cmp.includes(call), `${call} is missing — ids can still render there`);
   }

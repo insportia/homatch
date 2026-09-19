@@ -197,7 +197,7 @@ export const PART_5 = {
   ],
   mortgage_details_missing_costs: [
     'Some extra costs have not been entered yet. If the bank charges them, the real cost of the loan goes up.',
-    'ზოგი დამატებითი ხარჯი ჯერ არ შეგიყვანიათ. თუ ბანკი მათ ითხოვს, სესხის რეალური ღირებულება გაიზრდება.',
+    'ზოგი დამატებითი ხარჯი ჯერ არ შეგიყვანია. თუ ბანკი მათ ითხოვს, სესხის რეალური ღირებულება გაიზრდება.',
     'Некоторые дополнительные расходы ещё не внесены. Если банк их берёт, реальная стоимость кредита вырастет.',
     'Bazı ek masraflar henüz girilmedi. Banka bunları alıyorsa kredinin gerçek maliyeti artar.',
     'بعض التكاليف الإضافية لم تُدخل بعد. إن كان البنك يتقاضاها، فسترتفع التكلفة الحقيقية للقرض.',

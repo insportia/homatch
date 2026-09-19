@@ -42,14 +42,15 @@ import type { ConsultantBrief } from '@/mortgage/consultantBrief';
  * asking, in the person's own words, and they hand over to the dynamic
  * chips as soon as one of them is pressed.
  *
- * THE TERM ONE IS COMPUTED, BECAUSE IT WAS WRONG.
+ * THE TERM ONE IS COMPUTED, BECAUSE IT WAS A CONSTANT.
  *
- * "What changes if I choose 15 years?" was a constant, and the owner's
- * own scenario is an eight-year loan. Offering somebody a LONGER term
- * under the heading of saving money is worse than offering nothing: it
- * is a suggestion that does not know what they typed. It now names the
- * next shorter rung of the ladder the engines already computed, and is
- * simply not offered when there is no shorter rung.
+ * "What changes if I choose 15 years?" was hard-coded, and somebody who
+ * has already typed 15 years is being offered their own scenario back.
+ * It names a rung of the term ladder the engines already computed,
+ * preferring a shorter one and falling back to the next longer, and the
+ * wording claims nothing about which direction saves money — a longer
+ * term lowers the monthly payment and raises the total, and which of
+ * those a person wants is not something this page knows.
  */
 const STARTERS = [
   'mortgage_ask_more_down',
@@ -113,16 +114,17 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
   const starters = useMemo(() => {
     if (!brief) return [];
     const current = brief.scenario.termMonths;
-    const shorterRungs = brief.ifTermWere
+    const rungs = brief.ifTermWere
       .map((row) => row.termMonths)
-      .filter((months): months is number => typeof months === 'number' && months < current)
-      .sort((a, b) => b - a);
-    const shorter = shorterRungs.length ? shorterRungs[0] : null;
+      .filter((months): months is number => typeof months === 'number' && months !== current);
+    const shorter = rungs.filter((m) => m < current).sort((a, b) => b - a);
+    const longer = rungs.filter((m) => m > current).sort((a, b) => a - b);
+    const other = shorter.length ? shorter[0] : (longer.length ? longer[0] : null);
 
-    const keys = shorter === null ? STARTERS : ['mortgage_ask_shorter_term', ...STARTERS];
+    const keys = other === null ? STARTERS : ['mortgage_ask_shorter_term', ...STARTERS];
     return keys.map((key, i) => {
-      const text = key === 'mortgage_ask_shorter_term' && shorter !== null
-        ? t(key, { years: Math.round(shorter / 12) })
+      const text = key === 'mortgage_ask_shorter_term' && other !== null
+        ? t(key, { years: Math.round(other / 12) })
         : t(key);
       return { id: `starter${i}`, label: text, value: text };
     });

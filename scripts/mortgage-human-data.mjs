@@ -31,8 +31,11 @@ import { PART_3 } from './mortgage-human-data-3.mjs';
 import { PART_4 } from './mortgage-human-data-4.mjs';
 import { PART_5 } from './mortgage-human-data-5.mjs';
 import { PART_6 } from './mortgage-human-data-6.mjs';
+import { PART_7 } from './mortgage-human-data-7.mjs';
 
-const PARTS = [PART_1, PART_2, PART_3, PART_4, PART_5, PART_6];
+export { KEEP } from './mortgage-human-keep.mjs';
+
+const PARTS = [PART_1, PART_2, PART_3, PART_4, PART_5, PART_6, PART_7];
 
 /* A key written twice in two parts would silently take whichever came
    last, and the two authors would each believe theirs was live. */

@@ -32,7 +32,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MORTGAGE_HUMAN_STRINGS } from './mortgage-human-data.mjs';
+import { MORTGAGE_HUMAN_STRINGS, KEEP } from './mortgage-human-data.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(__dirname, '..', 'src', 'i18n', 'translations.ts');
@@ -58,6 +58,15 @@ function main() {
     const expected = holes(values[0]);
     for (let i = 0; i < LANGS.length; i += 1) {
       const value = values[i];
+      /*
+       * KEEP means "this language already says it correctly; do not
+       * retype it". Several of these keys are a Georgian register fix
+       * and an English punctuation fix on copy whose Russian, Turkish,
+       * Arabic and Hebrew were reviewed when it shipped. Rewriting four
+       * languages blind to change a dash is how a translation acquires
+       * a mistake it did not have.
+       */
+      if (value === KEEP) continue;
       if (typeof value !== 'string' || !value.trim()) {
         console.error(`[mortgage-human] FATAL: ${key} has an empty ${LANGS[i]} value`);
         process.exit(1);
@@ -94,6 +103,7 @@ function main() {
     const fresh = [];
 
     for (const [key, values] of entries) {
+      if (values[langIndex] === KEEP) { unchanged += 1; continue; }
       const next = `  ${key}: ${literal(values[langIndex])},`;
       /* The whole line, anchored: `  key: '…',` on one line, which is how
          every applier in this repo writes them and how the parser in

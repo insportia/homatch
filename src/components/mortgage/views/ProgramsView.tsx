@@ -221,13 +221,10 @@ export function ProgramsView({
                   </p>
                 ) : null}
 
-                <p className="mt-3 font-display text-xl font-semibold leading-none text-[hsl(var(--gold-ink))]">
-                  {/* A plain number: the sentence already says "percentage
-                      points", and formatPercent would make it read
-                      "4.75% percentage points". */}
-                  {t('mortgage_subsidy_worth_points', { points: benefit.reductionPoints })}
-                </p>
-
+                {/* The reduction itself is the "what the state covers"
+                    fact above. Repeating it here put the same sentence on
+                    screen twice, three lines apart. What belongs in this
+                    block is what it does to the rate they entered. */}
                 <p className="mt-2 max-w-[60ch] text-2xs leading-relaxed text-[hsl(var(--gold-ink))]">
                   {t('mortgage_subsidy_not_bank_rate')}
                 </p>
@@ -277,14 +274,21 @@ export function ProgramsView({
                         />
                       ) : null}
                     </div>
+                    {/*
+                      A condition that cannot open the programme says so,
+                      rather than letting a "yes" read as a qualification.
+                      A route that CLOSED says it once: its description is
+                      the decree's own wording of the same fact, and both
+                      together were two sentences about one date.
+                    */}
                     <p className="mb-2.5 max-w-[60ch] text-2xs leading-relaxed text-muted-foreground">
-                      {t(criterion.description)}
+                      {criterion.routeClosedOn
+                        ? t('mortgage_subsidy_route_closed')
+                        : t(criterion.description)}
                     </p>
-                    {/* A condition that cannot open the programme says so
-                        rather than letting a "yes" read as a qualification. */}
-                    {role === 'CONTEXT' ? (
+                    {role === 'CONTEXT' && !criterion.routeClosedOn ? (
                       <p className="mb-2.5 max-w-[60ch] text-2xs leading-relaxed text-muted-foreground">
-                        {t(criterion.routeClosedOn ? 'mortgage_subsidy_route_closed' : 'mortgage_subsidy_context_note')}
+                        {t('mortgage_subsidy_context_note')}
                       </p>
                     ) : null}
                     {!question ? (

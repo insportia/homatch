@@ -34,12 +34,20 @@ import { runFullMortgageCalculation } from '../calculations/index.ts';
 import { buildRateBreakdown } from '../calculations/rateBreakdown.ts';
 import { buildFinancingPicture } from '../calculations/financingPicture.ts';
 import { MORTGAGE_HUMAN_STRINGS } from '../../../scripts/mortgage-human-data.mjs';
+import { parseSourceFile, extractStringRecordLiterals } from '../../../scripts/i18n-lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..', '..');
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 
 const LANGS = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
+
+/* The shipped Georgian, so the sweeps can read every mortgage_ key and
+   not only the ones this change curated. */
+const KA_BUNDLE = extractStringRecordLiterals(
+  parseSourceFile(path.join(ROOT, 'src', 'i18n', 'translations.ts')),
+  ['ka'],
+).ka.values;
 
 /* ── The owner's scenario, which is also the acceptance fixture ────── */
 
@@ -56,11 +64,21 @@ const OWNER_SCENARIO = {
 const HOLE = /\{\{\s*(\w+)\s*\}\}/g;
 const holesOf = (value) => [...String(value).matchAll(HOLE)].map((m) => m[1]).sort().join(',');
 
+/*
+ * KEEP is a Symbol, not a string: it means "this language already says
+ * it correctly, do not retype it" (see scripts/mortgage-human-keep.mjs).
+ * Every sweep below reads only the languages this change actually
+ * wrote, because a KEEP entry is by definition unchanged copy that the
+ * bundle-wide sweeps at the end of this file cover anyway.
+ */
+const written = (value) => typeof value === 'string';
+
 test('every curated Mortgage string names the same placeholders as its English', () => {
   const offenders = [];
   for (const [key, values] of Object.entries(MORTGAGE_HUMAN_STRINGS)) {
     const expected = holesOf(values[0]);
     values.forEach((value, i) => {
+      if (!written(value)) return;
       if (holesOf(value) !== expected) offenders.push(`${LANGS[i]}.${key}: [${holesOf(value)}] vs [${expected}]`);
     });
   }
@@ -72,7 +90,9 @@ test('no curated Mortgage string uses a single-brace placeholder', () => {
   const SINGLE = /(?<!\{)\{\s*\w+\s*\}(?!\})/;
   const offenders = [];
   for (const [key, values] of Object.entries(MORTGAGE_HUMAN_STRINGS)) {
-    values.forEach((value, i) => { if (SINGLE.test(value)) offenders.push(`${LANGS[i]}.${key}`); });
+    values.forEach((value, i) => {
+      if (written(value) && SINGLE.test(value)) offenders.push(`${LANGS[i]}.${key}`);
+    });
   }
   assert.deepEqual(offenders, []);
 });
@@ -157,7 +177,7 @@ test('no heading ends with a full stop', () => {
   for (const [key, values] of Object.entries(MORTGAGE_HUMAN_STRINGS)) {
     if (!isHeading(key)) continue;
     values.forEach((value, i) => {
-      if (/[.。]$/.test(value.trim())) offenders.push(`${LANGS[i]}.${key}: ${value}`);
+      if (written(value) && /[.。]$/.test(value.trim())) offenders.push(`${LANGS[i]}.${key}: ${value}`);
     });
   }
   assert.deepEqual(offenders, [], offenders.join('\n'));
@@ -183,7 +203,7 @@ test('no Georgian or English Mortgage sentence carries a semicolon or an em dash
   const offenders = [];
   for (const [key, values] of Object.entries(MORTGAGE_HUMAN_STRINGS)) {
     values.forEach((value, i) => {
-      if (!GUARDED.includes(LANGS[i])) return;
+      if (!GUARDED.includes(LANGS[i]) || !written(value)) return;
       if (/[;؛]/.test(value)) offenders.push(`${LANGS[i]}.${key}: semicolon`);
       if (/[—–]/.test(value)) offenders.push(`${LANGS[i]}.${key}: dash in ${value}`);
     });
@@ -198,6 +218,7 @@ test('no curated Mortgage sentence carries a parenthesis holding an explanation'
   const offenders = [];
   for (const [key, values] of Object.entries(MORTGAGE_HUMAN_STRINGS)) {
     values.forEach((value, i) => {
+      if (!written(value)) return;
       const long = value.match(/\([^)]{16,}\)/g);
       if (long) offenders.push(`${LANGS[i]}.${key}: ${long.join(' ')}`);
     });
@@ -205,19 +226,76 @@ test('no curated Mortgage sentence carries a parenthesis holding an explanation'
   assert.deepEqual(offenders, [], offenders.join('\n'));
 });
 
+/*
+ * THE FIRST VERSION OF THIS TEST COULD NOT FAIL.
+ *
+ * It was `/\b\w*(ეთ|თქვენი|თქვენ)\b/`. In JavaScript `\w` and `\b` are
+ * ASCII-only unless the `u` flag and a Unicode property are used, so
+ * over Georgian text that pattern matches nothing at all and reports a
+ * clean sweep. It passed on a bundle holding seventy-four strings in
+ * the formal plural. A gate that cannot fail is worse than no gate, so
+ * this one names the Georgian block.
+ */
+const GE = '\\u10A0-\\u10FF';
+const POLITE_PRONOUN = new RegExp(`(?:^|[^${GE}])(თქვენ|თქვენი|თქვენს|თქვენთვის|თქვენმა)(?![${GE}])`);
+const POLITE_IMPERATIVE = new RegExp(
+  `(?:^|[^${GE}])(შეავსეთ|შეიყვანეთ|მოითხოვეთ|ჰკითხეთ|იპოვეთ|გადაამოწმეთ|დაამატეთ|სთხოვეთ`
+  + `|ნახეთ|გახსენით|აირჩიეთ|იკითხეთ|შედით|დაადასტურეთ|გთხოვთ|შეამოწმეთ|მიუთითეთ|ჩაწერეთ)(?![${GE}])`,
+);
+
+test('the regex that guards the Georgian voice can actually match Georgian', () => {
+  // The bug above, asserted directly, so it cannot come back quietly.
+  assert.ok(POLITE_PRONOUN.test('ეს თქვენი სესხია'), 'the pronoun pattern matches nothing');
+  assert.ok(POLITE_IMPERATIVE.test('შეიყვანეთ ფასი'), 'the imperative pattern matches nothing');
+  assert.ok(!POLITE_PRONOUN.test('ეს შენი სესხია'), 'the pronoun pattern matches the singular too');
+  assert.ok(!POLITE_IMPERATIVE.test('შეიყვანე ფასი'), 'the imperative pattern matches the singular too');
+});
+
 test('the Georgian is written in one voice, not two', () => {
-  // The live page mixed შეავსე with შეავსეთ inside one screen. The
-  // polite plural survives in exactly one place by decision: the
-  // subsidy questions, which address a household.
-  const POLITE = /\b\w*(ეთ|თქვენი|თქვენ)\b/;
+  /*
+   * The live page mixed შეავსე with შეავსეთ inside one screen. The
+   * polite plural survives in exactly two places, by decision:
+   *
+   *   the subsidy questions, which address a household rather than a
+   *   person, and which the owner wrote in the plural;
+   *
+   *   mortgage_sign_insurance_ask, where "თქვენი პირობა" is addressed
+   *   to the BANK — it is the question a borrower puts to a clerk.
+   */
   const allowed = (key) => key.startsWith('mortgage_kb_subsidy_')
-    || key === 'mortgage_subsidy_context_note';
+    || key === 'mortgage_subsidy_context_note'
+    || key === 'mortgage_sign_insurance_ask';
   const offenders = [];
   for (const [key, values] of Object.entries(MORTGAGE_HUMAN_STRINGS)) {
     if (allowed(key)) continue;
-    if (POLITE.test(values[1])) offenders.push(`ka.${key}: ${values[1]}`);
+    const ka = values[1];
+    if (typeof ka !== 'string') continue; // KEEP: this language was not rewritten
+    if (POLITE_PRONOUN.test(ka) || POLITE_IMPERATIVE.test(ka)) offenders.push(`ka.${key}: ${ka}`);
   }
   assert.deepEqual(offenders, [], `polite plural outside the subsidy questions:\n${offenders.join('\n')}`);
+});
+
+test('no Georgian Mortgage string in the whole bundle is left in the old voice', () => {
+  // Not only the curated ones: the sweep that found the seventy-four
+  // read every mortgage_ key, and so does this.
+  const allowed = (key) => key.startsWith('mortgage_kb_subsidy_')
+    || key === 'mortgage_subsidy_context_note'
+    || key === 'mortgage_sign_insurance_ask';
+  const offenders = [];
+  for (const [key, value] of Object.entries(KA_BUNDLE)) {
+    if (!key.startsWith('mortgage_') || allowed(key)) continue;
+    if (POLITE_PRONOUN.test(value) || POLITE_IMPERATIVE.test(value)) offenders.push(`${key}: ${value}`);
+  }
+  assert.deepEqual(offenders, [], offenders.join('\n'));
+});
+
+test('no Georgian Mortgage string in the whole bundle carries a semicolon or an em dash', () => {
+  const offenders = [];
+  for (const [key, value] of Object.entries(KA_BUNDLE)) {
+    if (!key.startsWith('mortgage_')) continue;
+    if (/[;—–]/.test(value)) offenders.push(`${key}: ${value}`);
+  }
+  assert.deepEqual(offenders, [], offenders.join('\n'));
 });
 
 /* ── 4. The government programme ───────────────────────────────────── */
@@ -557,6 +635,7 @@ test('every checklist item offers a question, and it is a question', () => {
     const values = MORTGAGE_HUMAN_STRINGS[item.askKey];
     assert.ok(values, `${item.id} has no curated question`);
     for (let i = 0; i < LANGS.length; i += 1) {
+      if (!written(values[i])) continue;
       assert.ok(/[?؟]$/.test(values[i].trim()), `${LANGS[i]}.${item.askKey} is not a question: ${values[i]}`);
       assert.ok(!/^["“„«]/.test(values[i].trim()), `${LANGS[i]}.${item.askKey} still carries its quote marks`);
     }

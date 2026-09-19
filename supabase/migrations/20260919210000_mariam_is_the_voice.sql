@@ -7,6 +7,21 @@
 -- language switching and the metering are all untouched -- a voice id is a
 -- value in this table, which is exactly why replacing one is an UPDATE.
 --
+-- THE SECOND MARIAM, AND WHY THIS FILE CHANGED RATHER THAN GAINING A SIBLING
+--
+-- 6247621a-5365-4227-8c03-5fd970d59918 was the first. It was a valid voice and
+-- the pipeline carried it -- Georgian streamed at 142ms and priced correctly --
+-- and it was rejected on a real iPhone, which is the only test of a voice that
+-- counts. 58a675e6-915e-4266-9690-e193c5e2d7a7 replaces it acoustically: same
+-- assistant, same name, same model, same streaming settings, same everything
+-- else.
+--
+-- Edited in place because this file has never run. The ledger recorded the
+-- first swap under 20260919100650, applied directly; this version has never
+-- been pushed, so a sibling migration would only mean two unapplied files
+-- fighting over one row. What matters is that a fresh environment and
+-- production resolve to the same voice, and after this edit they do.
+--
 -- WHY THIS MIGRATION EXISTS AT ALL, GIVEN IT IS DATA
 --
 -- Because the table had already drifted from the repository, and silently.
@@ -46,11 +61,11 @@
 -- Only rows that exist are moved: this replaces a voice, it does not widen
 -- the set of languages the product will speak.
 update public.voice_language_defaults
-   set voice_id    = '6247621a-5365-4227-8c03-5fd970d59918',
+   set voice_id    = '58a675e6-915e-4266-9690-e193c5e2d7a7',
        model_id    = coalesce(model_id, 'sonic-3'),
        approved_at = now()
  where provider = 'CARTESIA'
-   and voice_id is distinct from '6247621a-5365-4227-8c03-5fd970d59918';
+   and voice_id is distinct from '58a675e6-915e-4266-9690-e193c5e2d7a7';
 
 -- The six AI TALK actually pins its recogniser to, guaranteed present.
 --
@@ -59,7 +74,7 @@ update public.voice_language_defaults
 -- row is missing here the product goes silent in that language, so this is an
 -- upsert rather than an assumption that the update above found everything.
 insert into public.voice_language_defaults (provider, language, voice_id, model_id, send_language)
-select 'CARTESIA', lang, '6247621a-5365-4227-8c03-5fd970d59918', 'sonic-3', true
+select 'CARTESIA', lang, '58a675e6-915e-4266-9690-e193c5e2d7a7', 'sonic-3', true
   from unnest(array['ka', 'en', 'ru', 'tr', 'ar', 'he']) as lang
 on conflict (provider, language) do update
   set voice_id      = excluded.voice_id,

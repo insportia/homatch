@@ -21,9 +21,16 @@ const CR = String.fromCharCode(13);
 const read = (p) => readFileSync(p, 'utf8').split(CR).join('');
 const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-const MARIAM = '6247621a-5365-4227-8c03-5fd970d59918';
+const MARIAM = '58a675e6-915e-4266-9690-e193c5e2d7a7';
 /** The id the constant held, and the one the repository's migration seeded. */
-const RETIRED = ['6833940c-ed06-4b62-8a51-94b6c46c13ad', '0bfbea6c-2f8f-4f86-b411-aa2316561e36'];
+const RETIRED = [
+  '6833940c-ed06-4b62-8a51-94b6c46c13ad',
+  '0bfbea6c-2f8f-4f86-b411-aa2316561e36',
+  // The first Mariam. The voice was valid and the pipeline carried it;
+  // it was rejected on a real iPhone, which is the only test of a voice
+  // that counts. Replaced acoustically -- same name, same everything else.
+  '6247621a-5365-4227-8c03-5fd970d59918',
+];
 
 const EDGE_SRC = read('supabase/functions/ai-talk-session/index.ts');
 const EDGE = code(EDGE_SRC);
@@ -165,6 +172,31 @@ test('the Cartesia pipeline is the same pipeline', () => {
   // Raw PCM at the browser's own rate, so nothing is resampled at a join.
   assert.match(EDGE_SRC, /outputSampleRate/);
   assert.match(EDGE, /sonic-3|CARTESIA_MODEL|model/, 'the model selection is still made here');
+});
+
+test('the synthesis settings the new voice runs under are the old ones', () => {
+  /*
+   * A VOICE SWAP THAT MOVES A SETTING IS NOT A VOICE SWAP.
+   *
+   * The second Mariam replaced the first acoustically and nothing else was
+   * allowed to move with it -- not the model, not the ladder beneath it, not
+   * the container, not the sample rate, and not the decision to omit
+   * generation_config entirely at the default so an unset speed stays the
+   * model's own pacing rather than us asserting 1.0 at it.
+   */
+  const cartesia = read('supabase/functions/_shared/comm/cartesia.ts');
+  assert.match(cartesia, /const TTS_MODELS = \['sonic-3', 'sonic-2', 'sonic-english', 'sonic'\];/);
+  assert.match(cartesia, /export const PCM_SAMPLE_RATE = 24_000;/);
+  // The streaming request, field for field.
+  const sse = cartesia.slice(cartesia.indexOf('/tts/sse'), cartesia.indexOf('/tts/sse') + 900);
+  assert.match(sse, /model_id: model,/);
+  assert.match(sse, /voice: \{ mode: 'id', id: params\.voiceId \},/);
+  assert.match(sse, /language: String\(params\.language \?\? 'en'\)\.toLowerCase\(\)\.slice\(0, 2\),/);
+  assert.match(sse, /container: 'raw', encoding: 'pcm_s16le'/);
+  assert.match(sse, /speed === null \? \{\} : \{ generation_config: \{ speed \} \}/);
+  // And the row that carries the voice still carries the same model with it.
+  assert.match(SWAP, /'sonic-3'/);
+  assert.ok(!/sonic-2|sonic-turbo|generation_config/.test(SWAP), 'the swap is tuning synthesis');
 });
 
 test('the recognisers, the languages and the switching contract are untouched', () => {

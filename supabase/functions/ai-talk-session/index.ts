@@ -114,7 +114,7 @@ const GOOGLE_STT_MODEL = 'chirp_3';
  * and the same Mariam the table holds, which is the only state in which two
  * copies of a value are survivable.
  */
-const MARIAM_VOICE_ID = '6247621a-5365-4227-8c03-5fd970d59918';
+const MARIAM_VOICE_ID = '58a675e6-915e-4266-9690-e193c5e2d7a7';
 
 /** One piece of speech and who made it. */
 interface SpokenPhrase {

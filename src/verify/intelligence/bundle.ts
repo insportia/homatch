@@ -246,7 +246,15 @@ export function buildIntelligenceBundle(
 
   const evidenceGroups = buildEvidenceGroups(pkg.items ?? []);
 
-  const comparables = market ? selectComparables(market.closest ?? []) : null;
+  /*
+   * Selection reads the FULL ranked pool, not the five-item shortlist.
+   *
+   * The shortlist is correctly ordered — band first, then relevance — so it
+   * never hid a stronger local listing. But it also never contained anything
+   * to label as wider-city context once the top five were all local, which
+   * is why that bucket read as empty on a report with 39 candidates.
+   */
+  const comparables = market ? selectComparables(market.ranked ?? market.closest ?? []) : null;
 
   const checklist = buildBuyerChecklist({
     cadastralCode: snapshot.cadastralCode ?? null,

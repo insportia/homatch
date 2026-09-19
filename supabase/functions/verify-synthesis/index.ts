@@ -381,11 +381,49 @@ serve(async (req) => {
 
     const { data: job, error } = await supabase
       .from('research_jobs')
-      .select('id,result_json,status,synthesis_json,synthesis_state')
+      .select('id,result_json,status,synthesis_json,synthesis_state,synthesis_at')
       .eq('id', jobId)
       .maybeSingle();
     if (error) throw error;
     if (!job) return json({ error: 'not found' }, 404);
+
+    /* ============================================================== *
+     * WHAT `force` IS, AND WHAT IT MUST NOT BECOME.
+     *
+     * `force: true` skips the persisted report and rebuilds it — which
+     * means a model call, and therefore provider cost, on demand.
+     *
+     * Cross-user abuse is already impossible and stays that way through
+     * RLS rather than through a check here: research_jobs.SELECT is
+     * `auth.uid() = user_id`, so the read above returns nothing for
+     * somebody else's job and this function answers 404. That is the right
+     * place for it — a policy cannot be forgotten by a later caller.
+     *
+     * What RLS cannot see is repetition. Nothing stopped the OWNER of a job
+     * from calling force in a loop, each iteration buying another synthesis.
+     * The report is persisted precisely so that returning to a case is a
+     * read; a rebuild is only ever legitimate when the code that builds it
+     * has changed, which is not something that happens twice a minute.
+     *
+     * So a forced rebuild is refused while a recent one exists. The service
+     * role is exempt — internal reassembly after a deploy is exactly the
+     * legitimate use, and it is already authenticated by full comparison
+     * against the service key above.
+     *
+     * 429 rather than 403: nothing is forbidden, it is simply too soon, and
+     * the caller is told when it will not be.
+     * ============================================================== */
+    const FORCE_COOLDOWN_MS = 10 * 60 * 1000;
+    if (body?.force && !internal) {
+      const lastBuilt = Date.parse(String(job.synthesis_at ?? ''));
+      const age = Number.isFinite(lastBuilt) ? Date.now() - lastBuilt : Number.POSITIVE_INFINITY;
+      if (job.synthesis_state === 'READY' && job.synthesis_json && age < FORCE_COOLDOWN_MS) {
+        return json({
+          error: 'rebuild_too_soon',
+          retryAfterSeconds: Math.ceil((FORCE_COOLDOWN_MS - age) / 1000),
+        }, 429);
+      }
+    }
 
     /* BUILT ONCE.
      *

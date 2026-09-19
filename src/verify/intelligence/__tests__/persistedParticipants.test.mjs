@@ -63,7 +63,11 @@ test('a persisted report is re-checked on the way out', () => {
 
   // It must be wired into the READ branch, which is the one that never
   // rebuilds the report.
-  const readBranch = fn.slice(fn.indexOf("job.synthesis_state === 'READY'"));
+  //
+  // Anchored on `!body?.force` rather than on the state test alone: the
+  // force-cooldown guard added above also inspects synthesis_state, and
+  // matching the first occurrence would slice from the wrong branch.
+  const readBranch = fn.slice(fn.indexOf("job.synthesis_json && !body?.force"));
   assert.ok(/withCredibleParticipants\(job\.synthesis_json/.test(readBranch.slice(0, 300)),
     'the persisted branch still returns the payload unfiltered');
 });

@@ -184,6 +184,20 @@ export interface MarketIntelligence {
 
   /** Best few, already ordered. Kept for the model to reason over. */
   closest: ScoredComparable[];
+  /*
+   * THE WHOLE RANKED POOL, not just the shortlist.
+   *
+   * `closest` is `scored.slice(0, 5)` and that truncation is safe — the sort
+   * is band-first, then relevance within the band, so a stronger
+   * same-project or same-street listing can never be cut in favour of a
+   * weaker one. What the shortlist CANNOT do is describe the wider market:
+   * with five strong local listings there is nothing left in it to label as
+   * city context, so that bucket was always empty.
+   *
+   * Customer selection therefore reads this, and the five-item shortlist
+   * stays exactly what it was for the model's prose.
+   */
+  ranked: ScoredComparable[];
   tierCounts: Record<ComparableTier, number>;
   /** Every band that actually has listings, narrowest first. */
   tiers: TierStats[];
@@ -751,6 +765,9 @@ export function buildMarketIntelligence(
   const values = basisSet.map((c) => c.pricePerSqm);
   const med = median(values);
   const closest = scored.slice(0, 5);
+  // Same ordering, no truncation: selection needs the bands the shortlist
+  // cannot reach.
+  const ranked = scored;
 
   const mix = conditionMix(basisSet.map((c) => c.condition));
   const subjectGrade = conditionGrade(subject.condition);
@@ -794,6 +811,7 @@ export function buildMarketIntelligence(
     basis,
     basisCount: basisSet.length,
     closest,
+    ranked,
     tierCounts,
     // Every populated band, narrowest first. A single listing is still worth
     // showing as context — it is only barred from CARRYING the analysis,

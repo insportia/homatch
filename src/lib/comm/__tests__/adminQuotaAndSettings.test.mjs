@@ -183,21 +183,85 @@ test('production values are unchanged, and Reset would write exactly them', () =
   }
 });
 
-test('signing in can never be made to take time away', () => {
+test('a daily allowance that cannot fit one session is refused', () => {
   const guard = ADMIN_PANEL.slice(
     ADMIN_PANEL.indexOf('const onSaveLimits'),
     ADMIN_PANEL.indexOf('setSavingLimits(true)'),
   );
   assert.ok(
-    /limits\.authenticated_daily_seconds < limits\.daily_seconds/.test(guard),
-    'a signed-in allowance below the anonymous one can be saved',
+    /limits\.authenticated_daily_seconds < limits\.session_seconds/.test(guard),
+    'an allowance shorter than one session can be saved, and nobody could ever be granted one',
+  );
+  assert.ok(/admin_talk_auth_too_small/.test(guard), 'the refusal is silent');
+  assert.ok(/return;/.test(guard), 'the invalid value is reported and then saved anyway');
+
+  // The rule has to hold against the arithmetic it is protecting.
+  const limits = { ...DEFAULT_TALK_LIMITS, authenticatedDailySeconds: DEFAULT_TALK_LIMITS.sessionSeconds };
+  const d = decideGrant({
+    limits, usageTier: 'STANDARD', enabled: true, consumedTodaySeconds: 0,
+    sessionsStartedToday: 0, visitorActiveSessions: 0, globalActiveSessions: 0,
+  });
+  assert.equal(d.granted, true, 'exactly one session long must still grant a session');
+  assert.equal(d.seconds, DEFAULT_TALK_LIMITS.sessionSeconds);
+});
+
+test('the save rule cannot jam the card against real production settings', () => {
+  /*
+   * THE BUG THIS TEST EXISTS FOR.
+   *
+   * The first version of the guard refused any save where the authenticated
+   * allowance was below the anonymous one. Production deliberately runs a
+   * generous anonymous allowance -- admin_settings.ai_talk_limits holds
+   * daily_seconds 2400 and daily_sessions 60 for demonstrations -- so with
+   * the shipped 600/12 that rule refused EVERY save on this card, including
+   * the enabled toggle, which is the kill switch and shares its Save button.
+   *
+   * An operator disagreeing with a default is not an invalid value.
+   */
+  const guard = ADMIN_PANEL.slice(
+    ADMIN_PANEL.indexOf('const onSaveLimits'),
+    ADMIN_PANEL.indexOf('setSavingLimits(true)'),
   );
   assert.ok(
-    /limits\.authenticated_daily_sessions < limits\.daily_sessions/.test(guard),
-    'a signed-in session cap below the anonymous one can be saved',
+    !/authenticated_daily_seconds < limits\.daily_seconds/.test(guard),
+    'a generous anonymous allowance blocks the kill switch again',
   );
-  assert.ok(/admin_talk_auth_below_anon/.test(guard), 'the refusal is silent');
-  assert.ok(/return;/.test(guard), 'the invalid value is reported and then saved anyway');
+  assert.ok(
+    !/authenticated_daily_sessions < limits\.daily_sessions/.test(guard),
+    'a generous anonymous session cap blocks the kill switch again',
+  );
+
+  // Production's real numbers must pass the rule that remains.
+  const live = { session_seconds: 120, daily_seconds: 2400, daily_sessions: 60 };
+  assert.ok(
+    DEFAULT_TALK_LIMITS.authenticatedDailySeconds >= live.session_seconds,
+    'the shipped authenticated allowance would be refused by its own validation',
+  );
+});
+
+test('a smaller signed-in allowance is allowed, and said out loud', () => {
+  // Permitted -- it is a real operator choice -- but never silent.
+  assert.ok(
+    /limits\.authenticated_daily_seconds < limits\.daily_seconds/.test(ADMIN_PANEL),
+    'the advisory comparison is gone',
+  );
+  assert.ok(
+    /admin_talk_auth_below_anon[\s\S]{0,200}<\/p>/.test(ADMIN_PANEL)
+    || /\{t\('admin_talk_auth_below_anon'\)\}/.test(ADMIN_PANEL),
+    'the warning is no longer rendered anywhere',
+  );
+  const toastArea = ADMIN_PANEL.slice(
+    ADMIN_PANEL.indexOf('const onSaveLimits'),
+    ADMIN_PANEL.indexOf('setSavingLimits(true)'),
+  );
+  assert.ok(
+    !/toast\.error\(t\('admin_talk_auth_below_anon'\)\)/.test(toastArea),
+    'the advisory became a refusal again',
+  );
+  for (const key of ['admin_talk_auth_below_anon', 'admin_talk_auth_too_small']) {
+    const rows = I18N.match(new RegExp(`^  ${key}: '`, 'gm')) ?? [];
+    assert.equal(rows.length, 6, `${key} is in ${rows.length} locales, not six`);
+  }
 });
 
 test('negative and out-of-range values cannot be typed in, let alone saved', () => {

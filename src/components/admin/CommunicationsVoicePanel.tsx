@@ -123,19 +123,26 @@ export function CommunicationsVoicePanel() {
 
   const onSaveLimits = useCallback(async () => {
     /*
-     * SIGNING IN MUST NEVER TAKE TIME AWAY.
+     * A DAILY ALLOWANCE THAT CANNOT FIT ONE SESSION IS BROKEN.
      *
-     * The anonymous figures are abuse protection on a shared network address;
-     * the authenticated ones are an entitlement attached to an account. An
-     * authenticated allowance BELOW the anonymous one inverts that -- a
-     * person would be punished for identifying themselves, and would have no
-     * way to understand why the demo got shorter after they signed in. The
-     * fields are clamped to their own range as they are typed; this is the
-     * relationship between them, which only a save can check.
+     * decideGrant hands out min(session_seconds, whatever is left) and
+     * refuses anything under fifteen seconds, so an authenticated daily
+     * figure below the session length means a signed-in person can never be
+     * granted a full conversation, and one below fifteen means they are
+     * refused outright on their first attempt. Neither is a policy choice; it
+     * is a setting that contradicts itself. The fields are clamped to their
+     * own range as they are typed -- this is the relationship between them,
+     * which only a save can check.
+     *
+     * Deliberately NOT a rule that the authenticated figure must exceed the
+     * anonymous one. Production runs a generous anonymous allowance on
+     * purpose (2,400 seconds today, for demonstrations), and making that a
+     * save-time error would have jammed this card completely -- including the
+     * kill switch that shares its Save button. It is worth SAYING, so the
+     * panel says it, in a line underneath rather than a refusal.
      */
-    if (limits.authenticated_daily_seconds < limits.daily_seconds
-      || limits.authenticated_daily_sessions < limits.daily_sessions) {
-      toast.error(t('admin_talk_auth_below_anon'));
+    if (limits.authenticated_daily_seconds < limits.session_seconds) {
+      toast.error(t('admin_talk_auth_too_small'));
       return;
     }
     setSavingLimits(true);
@@ -313,6 +320,16 @@ export function CommunicationsVoicePanel() {
                 onChange={(v) => setLimits((s) => ({ ...s, authenticated_daily_sessions: v }))}
               />
             </div>
+            {/* Allowed, and worth knowing: below the anonymous figure, signing
+                in buys a person less than staying anonymous did. */}
+            {limits.authenticated_daily_seconds < limits.daily_seconds
+              || limits.authenticated_daily_sessions < limits.daily_sessions
+              ? (
+                <p className="text-[13px] leading-snug text-amber-600 dark:text-amber-500">
+                  {t('admin_talk_auth_below_anon')}
+                </p>
+              )
+              : null}
           </div>
 
           <p className="flex items-start gap-1.5 text-[13px] text-muted-foreground">

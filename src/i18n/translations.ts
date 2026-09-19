@@ -5154,6 +5154,7 @@ const en = {
   admin_talk_auth_sessions_hint: 'How many conversations one account may start in a rolling 24 hours.',
   admin_talk_minutes: '= {{minutes}} min',
   admin_talk_auth_below_anon: 'A signed-in allowance cannot be lower than the anonymous one. Signing in would take time away.',
+  admin_talk_auth_too_small: 'The signed-in daily allowance must be at least one full session long, or nobody signed in can ever be granted one.',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   general_menu: 'Menu',
@@ -12638,6 +12639,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_talk_auth_sessions_hint: 'რამდენი საუბრის დაწყება შეუძლია ერთ ანგარიშს 24 საათში.',
   admin_talk_minutes: '= {{minutes}} წუთი',
   admin_talk_auth_below_anon: 'ავტორიზებულის ლიმიტი ანონიმურზე ნაკლები ვერ იქნება — შესვლა დროს წაართმევდა.',
+  admin_talk_auth_too_small: 'ავტორიზებულის დღიური ლიმიტი მინიმუმ ერთი სრული სესიის ტოლი უნდა იყოს, თორემ ვერავინ მიიღებს სესიას.',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   general_menu: 'მენიუ',
@@ -20113,6 +20115,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_talk_auth_sessions_hint: 'Сколько разговоров один аккаунт может начать за скользящие 24 часа.',
   admin_talk_minutes: '= {{minutes}} мин',
   admin_talk_auth_below_anon: 'Лимит для авторизованных не может быть ниже анонимного: вход отнимал бы время.',
+  admin_talk_auth_too_small: 'Дневной лимит для авторизованных должен вмещать хотя бы один полный сеанс, иначе его никто не получит.',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   general_menu: 'Меню',
@@ -27586,6 +27589,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_talk_auth_sessions_hint: 'Bir hesabın 24 saat içinde kaç görüşme başlatabileceği.',
   admin_talk_minutes: '= {{minutes}} dk',
   admin_talk_auth_below_anon: 'Oturum açmış limiti anonim limitin altında olamaz; giriş yapmak süreyi azaltırdı.',
+  admin_talk_auth_too_small: 'Oturum açmış günlük limiti en az bir tam oturum kadar olmalı; yoksa kimseye oturum verilemez.',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   general_menu: 'Menü',
@@ -35059,6 +35063,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_talk_auth_sessions_hint: 'عدد المحادثات التي يمكن لحساب واحد بدؤها خلال 24 ساعة متحركة.',
   admin_talk_minutes: '= {{minutes}} دقيقة',
   admin_talk_auth_below_anon: 'لا يمكن أن يقل حد المسجّلين عن حد المجهولين، فتسجيل الدخول سيقلّل الوقت.',
+  admin_talk_auth_too_small: 'يجب أن يتسع الحد اليومي للمسجّلين لجلسة كاملة واحدة على الأقل، وإلا فلن تُمنح أي جلسة.',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   general_menu: 'القائمة',
@@ -42532,6 +42537,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_talk_auth_sessions_hint: 'כמה שיחות חשבון אחד יכול להתחיל ב-24 שעות נעות.',
   admin_talk_minutes: '= {{minutes}} דק׳',
   admin_talk_auth_below_anon: 'מגבלת המחוברים לא יכולה להיות נמוכה מזו של האנונימיים; התחברות הייתה גורעת זמן.',
+  admin_talk_auth_too_small: 'המכסה היומית למחוברים חייבת להכיל לפחות שיחה מלאה אחת, אחרת איש לא יקבל שיחה.',
 
   // ── HOMATCH AI COMMUNICATIONS HUB ─────────────────────────────────────
   general_menu: 'תפריט',

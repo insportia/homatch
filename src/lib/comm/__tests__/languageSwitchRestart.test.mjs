@@ -158,7 +158,10 @@ test('Luna is told the current turn language with the turn, and told not to anno
 
 test('a new session starts from the page language, never from the last conversation', () => {
   const panel = readFileSync('src/components/home/AiTalkPanel.tsx', 'utf8');
-  const start = panel.slice(panel.indexOf('const start = useCallback('), panel.indexOf("action: 'start'"));
+  // `startOnce` is the gesture handler; `start` became the wrapper that keeps
+  // one activation from creating two sessions. The language reset lives in
+  // the handler, unchanged.
+  const start = panel.slice(panel.indexOf('const startOnce = useCallback('), panel.indexOf("action: 'start'"));
   assert.match(start, /languageRef\.current = null;/,
     'start() must reset languageRef -- it is what every grant languageCode comes from');
   assert.match(start, /detectedRef\.current = null;/);

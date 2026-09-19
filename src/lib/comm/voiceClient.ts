@@ -57,6 +57,7 @@ import {
 import { LATIN_CODES, SCRIPT_OF } from './languageRegistry.ts';
 import { SWITCH_MIN_LETTERS, SWITCH_MIN_LETTERS_BY_SCRIPT } from './talkLanguage.ts';
 import { scriptEvidence } from './talkLanguage.ts';
+import { chooseTranscript, type TranscriptChoice } from './transcriptChoice.ts';
 import { ADMIN_SESSION_SECONDS } from './talkAllowance.ts';
 
 
@@ -977,6 +978,17 @@ export class VoiceSession {
   private newTurnsBlocked = false;
   private sessionEndReason: string | null = null;
   private gateReleases = 0;
+
+  /** Router phase when this utterance's first voiced block arrived. */
+  private routerPhaseAtSpeechStart: string | null = null;
+  /** AudioContext state when this utterance's first voiced block arrived. */
+  private ctxStateAtSpeechStart: string | null = null;
+  /** Live sockets opened for this session: a rotation is a suspect. */
+  private socketRotations = 0;
+
+  /** How the last utterance's words were chosen between live and batch. */
+  private lastTranscriptChoice: TranscriptChoice | null = null;
+
   /** True while the visitor has muted themselves. Their choice, not ours. */
   private muted = false;
   /** Guards against two turns in flight. */
@@ -1827,6 +1839,13 @@ export class VoiceSession {
       this.preReadyVoicedMs += blockMs;
     }
 
+    // The state of the world at the first voiced block of this utterance,
+    // which is the moment a lost first syllable is lost at.
+    if (level >= SPEECH_RMS && this.routerPhaseAtSpeechStart === null) {
+      this.routerPhaseAtSpeechStart = this.router.currentPhase;
+      this.ctxStateAtSpeechStart = this.audioContext?.state ?? null;
+    }
+
     /*
      * No socket yet, but one is coming: keep the audio rather than lose it.
      *
@@ -2208,10 +2227,27 @@ export class VoiceSession {
     // evidence than an opinion that does. See labelMatchesScript.
     const usable = text.length > 0 && evidence.letters >= SWITCH_MIN_LETTERS
       && (language === null || labelMatchesScript(text, language));
-    // Used when it says something the pinned socket could not have: a
-    // different language, or any words where there were none.
+    /*
+     * WHAT THE PINNED SOCKET COULD NOT HAVE SAID -- AND WHAT IT MERELY
+     * DID NOT SAY.
+     *
+     * The first three clauses are unchanged and still carry the cases they
+     * were written for: no final at all, nothing heard live, or a language
+     * the live socket contradicts. What they could not see is a live final
+     * that is present, same-language, consistent -- and far poorer than what
+     * the batch heard of the same breath. Session 6a16165f turn t5: 8.2
+     * seconds of audio, 76 characters from the batch, 16 committed.
+     *
+     * chooseTranscript answers only that last question, and answers it by
+     * containment rather than by length: the batch wins when it carries what
+     * the live socket heard and adds materially to it, never merely because
+     * it is longer. Language is untouched -- the resolver still owns it.
+     */
+    const choice = chooseTranscript(liveTranscript, text);
+    this.lastTranscriptChoice = choice;
     const used = usable && (reason === 'NO_FINAL' || !liveTranscript.trim() || (language !== null && language !== pinned)
-      || !consistentWith(liveTranscript, pinned));
+      || !consistentWith(liveTranscript, pinned)
+      || choice.source === 'BATCH');
     return { text: text || null, language, ms: Date.now() - startedAt, used };
   }
 
@@ -2332,6 +2368,9 @@ export class VoiceSession {
     const probing = this.probeLanguageNext;
     this.probeLanguageNext = false;
     this.diag.languageProbes = (this.diag.languageProbes ?? 0) + (probing ? 1 : 0);
+    // Each live socket this session opens. Session 6a16165f opened one at
+    // 20:56:12.455 and another at 20:56:19.022 -- mid first utterance.
+    this.socketRotations += 1;
     const live = createTranscriber({ ...grant, detect: probing }, {
       onSpeechStart: () => {
         this.lastVoiceAt = Date.now();
@@ -3260,6 +3299,8 @@ export class VoiceSession {
       deferredFinals: this.diag.finalsDeferred ?? 0,
     });
     this.preReadyVoicedMs = 0;
+    this.routerPhaseAtSpeechStart = null;
+    this.ctxStateAtSpeechStart = null;
     this.diag.preReadyFlushBytes = 0;
     if (this.turnTrace.length > 40) this.turnTrace.shift();
 
@@ -3711,11 +3752,66 @@ export class VoiceSession {
     transcriptChars: number; transcriptWords: number;
     shadowLanguage: string | null; shadowChars: number;
     proposedLanguage: string | null; refusedBefore: number; refusedShapes: string;
+    liveFinalChars: number; batchFinalChars: number;
+    selectedChars: number; selectedSource: string; selectionReason: string;
+    samplesCaptured: number; bytesSent: number;
+    voicedBeforeReadyMs: number; preReadyVoicedMs: number;
+    routerPhaseAtSpeechStart: string | null; socketRotations: number;
+    audioContextStateAtSpeechStart: string | null; audioContextStateAtSpeechEnd: string | null;
+    gateReleases: number; utteranceMs: number;
+    playback: {
+      receivedChunks: number; receivedBytes: number; scheduled: number;
+      startDelayMs: number | null; minAheadMs: number | null;
+      p50AheadMs: number | null; p95AheadMs: number | null;
+      underruns: number; maxUnderrunMs: number;
+      contextStateAtStart: string | null; contextStateChanges: number;
+      queueResets: number; scheduleCorrections: number;
+    };
   } {
     const said = this.lastTranscriptForShape;
+    const choice = this.lastTranscriptChoice;
     return {
       transcriptChars: said.length,
       transcriptWords: said.trim().split(/\s+/).filter(Boolean).length,
+      /*
+       * WHICH RECOGNISER'S WORDS THESE ARE.
+       *
+       * t5 was only diagnosable because the batch call logged its own
+       * character count server-side and it disagreed with the committed
+       * turn. That was luck. These five say it directly.
+       */
+      liveFinalChars: choice?.liveChars ?? said.length,
+      batchFinalChars: choice?.batchChars ?? 0,
+      selectedChars: said.length,
+      selectedSource: choice?.source ?? 'LIVE',
+      selectionReason: choice?.reason ?? 'LIVE_ONLY',
+      /*
+       * CAPTURE CONTINUITY, WHICH NOTHING COULD PROVE BEFORE.
+       *
+       * Every one of these was already being counted on this object and none
+       * of it ever left the browser, so the forensic answer to "did Google
+       * receive the whole utterance" had to be NOT PROVEN. Aggregates only,
+       * once per turn: no raw audio, no per-frame events.
+       */
+      samplesCaptured: this.diag.samplesCaptured,
+      bytesSent: this.diag.bytesSent,
+      voicedBeforeReadyMs: Math.round(this.voicedBeforeReadyMs),
+      preReadyVoicedMs: Math.round(this.preReadyVoicedMs),
+      routerPhaseAtSpeechStart: this.routerPhaseAtSpeechStart,
+      socketRotations: this.socketRotations,
+      audioContextStateAtSpeechStart: this.ctxStateAtSpeechStart,
+      audioContextStateAtSpeechEnd: this.audioContext?.state ?? null,
+      gateReleases: this.gateReleases,
+      utteranceMs: Math.round((this.utteranceSamples / LIVE_SAMPLE_RATE) * 1000),
+      // The server proved its own cadence healthy on every turn of 6a16165f,
+      // so the next place to look for choppiness is the scheduler here.
+      playback: this.player?.playbackStats() ?? {
+        receivedChunks: 0, receivedBytes: 0, scheduled: 0,
+        startDelayMs: null, minAheadMs: null, p50AheadMs: null, p95AheadMs: null,
+        underruns: 0, maxUnderrunMs: 0,
+        contextStateAtStart: null, contextStateChanges: 0,
+        queueResets: 0, scheduleCorrections: 0,
+      },
       shadowLanguage: this.shadowResult?.language ?? null,
       shadowChars: this.shadowResult?.text.length ?? 0,
       proposedLanguage: this.lastResolution?.proposedLanguage ?? null,

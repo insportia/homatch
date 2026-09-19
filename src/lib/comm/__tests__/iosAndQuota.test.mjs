@@ -179,7 +179,14 @@ test('the audio context is built inside the tap, before any await', () => {
    * session still reaches LISTENING and simply never makes a sound.
    */
   const p = strip(panel);
-  const startAt = p.indexOf('const start = useCallback(async () => {');
+  /*
+   * `startOnce`, not `start`. The gesture handler was renamed when start()
+   * gained its one-activation-one-session guard: `start` is now the thin
+   * wrapper that de-duplicates re-entrant calls, and the gesture work lives
+   * in the function it wraps. The invariant is unchanged -- the context must
+   * still be built in the handler the tap is on, before any await.
+   */
+  const startAt = p.indexOf('const startOnce = useCallback(async () => {');
   const ctxAt = p.indexOf('new AudioCtx()', startAt);
   const firstAwait = p.indexOf('await ', startAt);
   assert.ok(ctxAt > startAt, 'a context is constructed in the handler');

@@ -398,6 +398,17 @@ interface TalkRequest {
     transcriptChars?: number; transcriptWords?: number;
     shadowLanguage?: string | null; shadowChars?: number;
     proposedLanguage?: string | null; refusedBefore?: number; refusedShapes?: string;
+    /* Which recogniser's words these are, and why. */
+    liveFinalChars?: number; batchFinalChars?: number;
+    selectedChars?: number; selectedSource?: string; selectionReason?: string;
+    /* Capture continuity: counted in the browser, never sent until now. */
+    samplesCaptured?: number; bytesSent?: number;
+    voicedBeforeReadyMs?: number; preReadyVoicedMs?: number;
+    routerPhaseAtSpeechStart?: string | null; socketRotations?: number;
+    audioContextStateAtSpeechStart?: string | null; audioContextStateAtSpeechEnd?: string | null;
+    gateReleases?: number; utteranceMs?: number;
+    /* What the playback scheduler did with the audio we sent it. */
+    playback?: Record<string, unknown> | null;
   };
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
@@ -2708,6 +2719,40 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           // Session 28556daf changed conversational language inside a gap
           // of refused turns and the record could not say which one did it.
           refused_shapes: body.turnShape?.refusedShapes || null,
+          /*
+           * WHICH RECOGNISER SAID IT.
+           *
+           * Session 6a16165f turn t5 committed 16 characters while the batch
+           * recogniser had returned 76 for the same 8.2 seconds. That was
+           * only visible because the batch call logged its own count
+           * separately and the two disagreed. These state it directly.
+           */
+          live_final_chars: body.turnShape?.liveFinalChars ?? null,
+          batch_final_chars: body.turnShape?.batchFinalChars ?? null,
+          selected_chars: body.turnShape?.selectedChars ?? null,
+          selected_source: body.turnShape?.selectedSource ?? null,
+          selection_reason: body.turnShape?.selectionReason ?? null,
+          /*
+           * CAPTURE CONTINUITY. Every one of these was already counted in the
+           * browser and none of it left, so "did Google receive the whole
+           * utterance" could only be answered NOT PROVEN.
+           */
+          capture_samples: body.turnShape?.samplesCaptured ?? null,
+          capture_bytes_sent: body.turnShape?.bytesSent ?? null,
+          voiced_before_ready_ms: body.turnShape?.voicedBeforeReadyMs ?? null,
+          pre_ready_voiced_ms: body.turnShape?.preReadyVoicedMs ?? null,
+          router_phase_at_speech_start: body.turnShape?.routerPhaseAtSpeechStart ?? null,
+          socket_rotations: body.turnShape?.socketRotations ?? null,
+          audio_context_at_speech_start: body.turnShape?.audioContextStateAtSpeechStart ?? null,
+          audio_context_at_speech_end: body.turnShape?.audioContextStateAtSpeechEnd ?? null,
+          gate_releases: body.turnShape?.gateReleases ?? null,
+          utterance_ms: body.turnShape?.utteranceMs ?? null,
+          /*
+           * THE PLAYBACK SCHEDULER. Server cadence was healthy on every turn
+           * of 6a16165f and the audio was still choppy, so the next place to
+           * look is where the browser puts the audio on the clock.
+           */
+          playback: body.turnShape?.playback ?? null,
           tts_skipped_phrases: skippedPhrases,
           tts_skipped_chars: skippedChars,
           abandoned_why: abandoned,

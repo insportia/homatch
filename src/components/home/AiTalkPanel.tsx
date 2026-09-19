@@ -536,7 +536,29 @@ export function AiTalkPanel({ className }: { className?: string }) {
     navigate(path);
   }, [endSession, navigate]);
 
-  const start = useCallback(async () => {
+  /*
+   * ONE ACTIVATION, ONE SESSION.
+   *
+   * Production session 6a16165f: two `start` actions 1.56 seconds apart. The
+   * server granted the first one a Google STT socket at 20:56:11.474 and
+   * superseded that whole session 316ms later, then granted the second one
+   * its own socket at 20:56:12.455. The first utterance survived as FOUR
+   * CHARACTERS -- one word -- and took 8,634ms from speech end to final,
+   * against ~1,500ms for every later turn in the same call.
+   *
+   * start() had no re-entrancy guard, so a second entry while the first was
+   * still in flight -- a double tap on a phone, a re-render, a duplicated
+   * handler, an effect firing twice -- created a second server session and
+   * orphaned the first, along with whatever audio had already been captured
+   * into it.
+   *
+   * The guard is the PROMISE, not a boolean. A boolean tells a second caller
+   * to go away; this makes it await the same activation the first one
+   * started, so the caller still gets a session and there is still only one.
+   */
+  const startInFlight = useRef<Promise<void> | null>(null);
+
+  const startOnce = useCallback(async () => {
     /*
      * EVERYTHING THAT NEEDS THE GESTURE HAPPENS BEFORE THE FIRST await.
      *
@@ -989,6 +1011,21 @@ export function AiTalkPanel({ className }: { className?: string }) {
       }
     }, 5000);
   }, [language, endSession, debug]);
+
+  /**
+   * The activation the visitor asked for, however many times they asked.
+   *
+   * A second tap while the first is still opening joins that attempt instead
+   * of starting a rival one. The ref is cleared in `finally` so a LATER, and
+   * genuinely separate, activation still gets its own session -- this
+   * de-duplicates one activation, it does not permanently latch.
+   */
+  const start = useCallback(async () => {
+    if (startInFlight.current) return startInFlight.current;
+    const attempt = startOnce().finally(() => { startInFlight.current = null; });
+    startInFlight.current = attempt;
+    return attempt;
+  }, [startOnce]);
 
   // The history a turn carries is what was actually said, taken from what is
   // on screen, so it cannot drift from the transcript the visitor can read.

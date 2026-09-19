@@ -130,6 +130,19 @@ export class PcmStreamPlayer {
     this.turnStopReason = null;
     this.turnLastEndedAt = null;
     this.turnGapsMs = [];
+    this.turnReceivedChunks = 0;
+    this.turnReceivedBytes = 0;
+    this.turnScheduled = 0;
+    this.turnAheadMs = [];
+    this.turnStartDelayMs = null;
+    this.turnMaxUnderrunMs = 0;
+    this.turnUnderruns = 0;
+    this.turnQueueResets = 0;
+    this.turnScheduleCorrections = 0;
+    this.turnContextStateAtStart = this.ctx.state;
+    this.lastContextState = this.ctx.state;
+    this.turnContextStateChanges = 0;
+    this.turnFirstPushAt = null;
   }
 
   get currentGeneration(): number { return this.generation; }
@@ -203,6 +216,34 @@ export class PcmStreamPlayer {
   /** Technical silences between scheduled pieces, in ms, for THIS response. */
   private turnGapsMs: number[] = [];
 
+  /*
+   * WHAT THE SCHEDULER DID, PER TURN.
+   *
+   * Session 6a16165f reported healthy SERVER cadence on all four turns --
+   * every chunk carried 167-179ms of audio and the worst gap between chunks
+   * was 129-143ms, so the stream always arrived faster than it plays. The
+   * owner still heard choppy audio. That leaves this scheduler, and nothing
+   * here was measured, so the forensic answer had to be UNKNOWN.
+   *
+   * `aheadMs` is the headroom at each flush: how far the write cursor sits
+   * in front of the audio clock. Healthy playback keeps it comfortably
+   * positive. A value at or near zero is the queue catching up with the
+   * listener, which is what starvation sounds like.
+   */
+  private turnReceivedChunks = 0;
+  private turnReceivedBytes = 0;
+  private turnScheduled = 0;
+  private turnAheadMs: number[] = [];
+  private turnStartDelayMs: number | null = null;
+  private turnMaxUnderrunMs = 0;
+  private turnUnderruns = 0;
+  private turnQueueResets = 0;
+  private turnScheduleCorrections = 0;
+  private turnContextStateAtStart: string | null = null;
+  private turnContextStateChanges = 0;
+  private lastContextState: string | null = null;
+  private turnFirstPushAt: number | null = null;
+
   /** Everything a trace needs to say whether THIS response was heard to the end. */
   turnStats(): {
     queued: number; started: number; completed: number; stopped: number;
@@ -226,11 +267,54 @@ export class PcmStreamPlayer {
   /** Pieces handed to the audio clock for this player's lifetime. */
   get queuedChunks(): number { return this.stats.batches; }
 
+  /**
+   * One turn's scheduler behaviour, for the trace.
+   *
+   * Aggregates only: percentiles and counts, never a per-chunk event stream.
+   * A playback log that fires per chunk would be forty lines a sentence and
+   * would be switched off within a day.
+   */
+  playbackStats(): {
+    receivedChunks: number; receivedBytes: number; scheduled: number;
+    startDelayMs: number | null; minAheadMs: number | null;
+    p50AheadMs: number | null; p95AheadMs: number | null;
+    underruns: number; maxUnderrunMs: number;
+    contextStateAtStart: string | null; contextStateChanges: number;
+    queueResets: number; scheduleCorrections: number;
+  } {
+    const ahead = [...this.turnAheadMs].sort((a, b) => a - b);
+    const at = (q: number) => (ahead.length ? ahead[Math.min(ahead.length - 1, Math.floor(ahead.length * q))] : null);
+    return {
+      receivedChunks: this.turnReceivedChunks,
+      receivedBytes: this.turnReceivedBytes,
+      scheduled: this.turnScheduled,
+      startDelayMs: this.turnStartDelayMs,
+      minAheadMs: ahead.length ? ahead[0] : null,
+      p50AheadMs: at(0.5),
+      p95AheadMs: at(0.95),
+      underruns: this.turnUnderruns,
+      maxUnderrunMs: this.turnMaxUnderrunMs,
+      contextStateAtStart: this.turnContextStateAtStart,
+      contextStateChanges: this.turnContextStateChanges,
+      queueResets: this.turnQueueResets,
+      scheduleCorrections: this.turnScheduleCorrections,
+    };
+  }
+
   /** Pieces the clock has finished playing. Equal to queued once drained. */
   get completedChunks(): number { return this.completed; }
 
   push(pcmBase64: string, sampleRate: number, generation: number): void {
     if (generation !== this.generation) { this.stats.stale += 1; return; }
+    this.turnReceivedChunks += 1;
+    // base64 is 4 characters per 3 bytes; exact enough to compare against the
+    // server's own tts_bytes without decoding twice to find out.
+    this.turnReceivedBytes += Math.floor((pcmBase64.length * 3) / 4);
+    if (this.turnFirstPushAt === null) this.turnFirstPushAt = this.ctx.currentTime;
+    if (this.ctx.state !== this.lastContextState) {
+      this.turnContextStateChanges += 1;
+      this.lastContextState = this.ctx.state;
+    }
 
     const bytes = decodeBase64(pcmBase64);
     // Two bytes to a sample. An odd length means the stream was cut through
@@ -318,7 +402,22 @@ export class PcmStreamPlayer {
     source.connect(this.destination);
 
     const now = this.ctx.currentTime;
+    this.turnScheduled += 1;
+    // Headroom before this piece is placed: negative means the clock has
+    // already passed where the audio was going to go.
+    this.turnAheadMs.push(Math.round((this.cursor - now) * 1000));
+    if (this.turnStartDelayMs === null && this.turnFirstPushAt !== null) {
+      this.turnStartDelayMs = Math.round((now - this.turnFirstPushAt) * 1000);
+    }
     if (this.cursor < now + 0.001) {
+      this.turnScheduleCorrections += 1;
+      if (this.cursor !== 0) {
+        const lateMs = Math.round((now - this.cursor) * 1000);
+        if (lateMs > this.turnMaxUnderrunMs) this.turnMaxUnderrunMs = lateMs;
+        this.turnUnderruns += 1;
+      } else {
+        this.turnQueueResets += 1;
+      }
       // Either the first piece of a reply, or the stream starved. Both want a
       // fresh cursor slightly ahead of the clock.
       if (this.cursor !== 0 && now - this.cursor > RESYNC_SECONDS) this.stats.underruns += 1;

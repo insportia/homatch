@@ -627,7 +627,10 @@ test('every turn carries a generation and an id, and stale events are dropped', 
 
 test('a new session starts with no language, transcript, destination or queue from the last one', () => {
   const panel = read('src/components/home/AiTalkPanel.tsx');
-  const at = panel.indexOf('const start = useCallback(async () => {');
+  // `startOnce` is the gesture handler; `start` is now the wrapper that
+  // stops one activation becoming two sessions. The resets live in the
+  // handler, which is what this is about.
+  const at = panel.indexOf('const startOnce = useCallback(async () => {');
   // The whole reset block -- up to the request that starts the session --
   // rather than a fixed 900 characters, which an explanatory comment on
   // one of the resets pushed the last reset out of.

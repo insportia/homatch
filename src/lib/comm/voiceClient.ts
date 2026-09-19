@@ -607,6 +607,16 @@ const MIN_VOICED_MS = 260;
  * never earn a probe no matter how often it is given.
  */
 const SWITCH_PROBE_SPEECH_MS = 900;
+
+/*
+ * HOW OFTEN `auto` MAY NAME A LANGUAGE WE DO NOT SPEAK BEFORE IT IS RETIRED.
+ *
+ * The probe exists to answer "what is this person speaking" when the prior
+ * cannot make sense of sustained speech. An answer outside the six is not an
+ * answer to that question -- it is the instrument failing on this speaker,
+ * and production session a266de0d shows what asking it twice more costs.
+ */
+const MAX_UNSUPPORTED_PROBES = 2;
 /** Consecutive sustained-but-unresolved turns before asking the provider. */
 const SWITCH_PROBE_AFTER_TURNS = 2;
 
@@ -1139,6 +1149,14 @@ export class VoiceSession {
    */
   private weakTurns = 0;
   private probeLanguageNext = false;
+  /*
+   * How many times `auto` has answered with a language this product does not
+   * speak. Two is generous: on the second the instrument has told us it
+   * cannot read this speaker, and the pinned prior -- which is at least one
+   * of the six -- is the better of the two bad options for the rest of the
+   * session.
+   */
+  private unsupportedProbeResults = 0;
 
   // ── Diagnostics. Every one of these is counted, never inferred. ─────────
   private diag = {
@@ -2670,7 +2688,36 @@ export class VoiceSession {
      * that earns a probe.
      */
     const sustained = (this.diag.lastEndTurnSpeechMs ?? 0) >= SWITCH_PROBE_SPEECH_MS;
-    const unresolved = resolution.resolutionReason === 'STICKY_HELD' || resolution.confidence < 0.5;
+
+    /*
+     * A TURN THE PROBE RUINED IS NOT EVIDENCE THAT THE PROBE IS NEEDED.
+     *
+     * MEASURED, production session a266de0d, 2026-09-19 16:22, GEORGIAN page,
+     * Georgian speaker:
+     *
+     *   t1  3 chars, provider `und`   -> weak turn -> probe armed
+     *   t3  20 chars, probe running   -> DEVANAGARI, provider `hi`
+     *
+     * `auto` is measured, in googleTranscribe.ts, to damage short supported
+     * speech: a bare "გამარჯობა" comes back as Javanese in Latin letters and
+     * a bare "שלום" as hi-Latn. So the probe turned four words of Georgian
+     * into Hindi -- and the Hindi then resolved at confidence 0.3 as
+     * UNSUPPORTED_LANGUAGE, which is below the 0.5 floor, which counted the
+     * turn as unresolved, which armed the probe AGAIN.
+     *
+     * That is a loop, and the six-language allowlist made it tighter rather
+     * than looser: every unsupported label now lands under the floor. The
+     * loop is broken here, where it starts. An unsupported result says the
+     * PROBE failed, not that the prior did, and the cure for a bad probe is
+     * never another one.
+     */
+    const unsupported = resolution.resolutionReason === 'UNSUPPORTED_LANGUAGE';
+    if (unsupported) {
+      this.unsupportedProbeResults += 1;
+      this.diag.unsupportedProbeResults = this.unsupportedProbeResults;
+    }
+    const unresolved = !unsupported
+      && (resolution.resolutionReason === 'STICKY_HELD' || resolution.confidence < 0.5);
     this.weakTurns = sustained && unresolved ? this.weakTurns + 1 : 0;
     /*
      * THE FIRST TURN IS THE ONE A VISITOR JUDGES US ON.
@@ -2702,7 +2749,7 @@ export class VoiceSession {
      * sustained-speech guard is.
      */
     const needed = 1;
-    if (this.weakTurns >= needed) {
+    if (this.weakTurns >= needed && this.unsupportedProbeResults < MAX_UNSUPPORTED_PROBES) {
       this.probeLanguageNext = true;
       this.weakTurns = 0;
     }

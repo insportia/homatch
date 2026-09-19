@@ -12,16 +12,95 @@ on:
           migration up to the BASELINE before pushing anything new.
         type: boolean
         default: false
+      redeploy:
+        description: >-
+          Redeploy from current main even if nothing changed. `edge` for every
+          edge function, a single function name such as `ai-talk-session`, or
+          blank for the normal change-detected path. This exists so that
+          "production is behind" is never answered by pushing a no-op commit:
+          that is a lie in the history and it triggers every other component too.
+        type: string
+        default: ''
 
-# Prevent concurrent deployments
+# ONE DEPLOYMENT AT A TIME, AND NONE OF THEM THROWN AWAY.
+#
+# This was `cancel-in-progress: true`, and on 2026-09-19 it cost a P0. A
+# Georgian speaker was being answered in Hindi; dafdebd2 fixed it, reached
+# main, and its run was cancelled by two commits from parallel sessions that
+# landed during the fifteen minutes this workflow spends deploying every edge
+# function in the repository one at a time. `ai-talk-session` is late in that
+# sequence, so it is the most likely thing to be cut. Production kept the old
+# resolver for hours while main and the frontend had the fix, and the owner
+# tested the half-deployed result and reported the bug as still present.
+#
+# Cancelling made sense when every run did the same fifteen minutes of work:
+# superseding it was the only way to converge. It does not make sense now that
+# a run deploys only what is actually owed -- usually one function, usually
+# under two minutes -- so runs QUEUE instead. A superseded run still starts,
+# finds its components already current, and exits in seconds.
+#
+# The safety net underneath is scripts/deploy-scope.mjs: scope is the diff from
+# refs/deployed/<component> to HEAD, and that ref only advances after a
+# successful deploy. Even if a run dies, the work stays owed.
 concurrency:
   group: deploy-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   SUPABASE_PROJECT_REF: ptxajsjhobhvsfhmutjn
 
 jobs:
+  # ── Job 0: What does production actually need? ─────────────────────────────
+  #
+  # Answered against refs/deployed/<component>, never against HEAD~1. The
+  # difference is the whole incident: at a2f2a91b the previous commit touched
+  # no edge function, so a HEAD~1 reading queued nothing and the language fix
+  # two commits back stayed unshipped.
+  scope:
+    name: Deployment scope
+    runs-on: ubuntu-latest
+    outputs:
+      edge: ${{ steps.scope.outputs.edge }}
+      functions: ${{ steps.scope.outputs.functions }}
+      frontend: ${{ steps.scope.outputs.frontend }}
+      worker: ${{ steps.scope.outputs.worker }}
+    steps:
+      # Full history: a diff against a ref several commits back is the point.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch deployment refs
+        run: git fetch origin '+refs/deployed/*:refs/deployed/*' || echo "no deployment refs yet — first run"
+
+      - name: Compute scope
+        id: scope
+        run: |
+          REDEPLOY='${{ github.event.inputs.redeploy }}'
+          if [[ -n "$REDEPLOY" ]]; then
+            echo "Manual redeploy requested: $REDEPLOY"
+            if [[ "$REDEPLOY" == "edge" ]]; then
+              FNS=$(node -e "import('./scripts/deploy-scope.mjs').then(m=>console.log(m.edgeFunctionNames().join(' ')))")
+            else
+              FNS="$REDEPLOY"
+            fi
+            echo "edge=true" >> $GITHUB_OUTPUT
+            echo "functions=$FNS" >> $GITHUB_OUTPUT
+            echo "frontend=false" >> $GITHUB_OUTPUT
+            echo "worker=false" >> $GITHUB_OUTPUT
+          else
+            node scripts/deploy-scope.mjs
+            SCOPE=$(node scripts/deploy-scope.mjs --json)
+            echo "edge=$(echo "$SCOPE" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).components.edge.deploy))")" >> $GITHUB_OUTPUT
+            echo "functions=$(echo "$SCOPE" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).functions.join(' ')))")" >> $GITHUB_OUTPUT
+            echo "frontend=$(echo "$SCOPE" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).components.frontend.deploy))")" >> $GITHUB_OUTPUT
+            echo "worker=$(echo "$SCOPE" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).components.worker.deploy))")" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report
+        run: |
+          node scripts/deploy-scope.mjs >> $GITHUB_STEP_SUMMARY || true
+
   # ── Job 1: Validate ────────────────────────────────────────────────────────
   validate:
     name: Validate
@@ -283,9 +362,12 @@ jobs:
   deploy-functions:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [scope, validate]
+    if: ${{ needs.scope.outputs.edge == 'true' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # PINNED, and the lookup is authenticated.
       #
@@ -471,17 +553,41 @@ jobs:
             "viewing-request"
             "research-purchase"
           )
+          # ONLY WHAT IS OWED, AND IN PARALLEL.
+          #
+          # This walked all forty-one of these serially on every push, whether
+          # or not a single one had changed -- roughly fifteen minutes of
+          # uploads for a one-line fix, and fifteen minutes in which any other
+          # push cancelled the lot. `OWED` comes from the scope job, which
+          # diffs against what is actually deployed rather than against the
+          # last commit.
+          #
+          # Eight at a time: the work is upload-bound rather than CPU-bound,
+          # and a failure still names the function that failed because each
+          # writes its own marker file.
+          read -ra OWED <<< "${{ needs.scope.outputs.functions }}"
+          declare -A WANTED=()
+          for fn in "${OWED[@]}"; do [[ -n "$fn" ]] && WANTED["$fn"]=1; done
+
           FAILED=()
+          TMP=$(mktemp -d)
+          RUNNING=0
           for fn in "${JWT_FUNCTIONS[@]}"; do
-            echo "→ Deploying $fn (JWT required) ..."
-            if supabase functions deploy "$fn" \
-                --project-ref "$SUPABASE_PROJECT_REF" \
-                2>&1; then
-              echo "  ✅ $fn"
-            else
-              echo "  ❌ $fn FAILED"
-              FAILED+=("$fn")
-            fi
+            [[ -z "${WANTED[$fn]:-}" ]] && continue
+            (
+              if supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" 2>&1; then
+                echo "  ✅ $fn"
+              else
+                echo "  ❌ $fn FAILED"; touch "$TMP/$fn.failed"
+              fi
+            ) &
+            RUNNING=$((RUNNING + 1))
+            if (( RUNNING >= 8 )); then wait -n || true; RUNNING=$((RUNNING - 1)); fi
+          done
+          wait
+          for f in "$TMP"/*.failed; do
+            [[ -e "$f" ]] || continue
+            FAILED+=("$(basename "$f" .failed)")
           done
           if [[ ${#FAILED[@]} -gt 0 ]]; then
             echo "::error::Failed to deploy: ${FAILED[*]}"
@@ -557,17 +663,28 @@ jobs:
             "active-search-notify"
           )
           FAILED=()
+          read -ra OWED <<< "${{ needs.scope.outputs.functions }}"
+          declare -A WANTED=()
+          for fn in "${OWED[@]}"; do [[ -n "$fn" ]] && WANTED["$fn"]=1; done
+
+          TMP=$(mktemp -d)
+          RUNNING=0
           for fn in "${NO_JWT_FUNCTIONS[@]}"; do
-            echo "→ Deploying $fn (--no-verify-jwt) ..."
-            if supabase functions deploy "$fn" \
-                --project-ref "$SUPABASE_PROJECT_REF" \
-                --no-verify-jwt \
-                2>&1; then
-              echo "  ✅ $fn"
-            else
-              echo "  ❌ $fn FAILED"
-              FAILED+=("$fn")
-            fi
+            [[ -z "${WANTED[$fn]:-}" ]] && continue
+            (
+              if supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt 2>&1; then
+                echo "  ✅ $fn"
+              else
+                echo "  ❌ $fn FAILED"; touch "$TMP/$fn.failed"
+              fi
+            ) &
+            RUNNING=$((RUNNING + 1))
+            if (( RUNNING >= 8 )); then wait -n || true; RUNNING=$((RUNNING - 1)); fi
+          done
+          wait
+          for f in "$TMP"/*.failed; do
+            [[ -e "$f" ]] || continue
+            FAILED+=("$(basename "$f" .failed)")
           done
           if [[ ${#FAILED[@]} -gt 0 ]]; then
             echo "::error::Failed to deploy: ${FAILED[*]}"
@@ -603,4 +720,52 @@ jobs:
             echo "::error::One or more deployment steps failed — see above"
             exit 1
           fi
+
+  # ── Job 5: Record what production is actually running ──────────────────────
+  #
+  # THIS IS THE SAFETY NET, AND IT IS DELIBERATELY LAST.
+  #
+  # refs/deployed/<component> is the base every future scope calculation is
+  # measured from, so it advances only when that component's deploy SUCCEEDED.
+  # A cancelled run, a failed upload or a job that never started all leave the
+  # ref where it was, which leaves the work owed to the next run. That is the
+  # whole mechanism by which a fix cannot be lost between two pushes.
+  #
+  # Written with the workflow token to a ref under refs/deployed/, which is not
+  # a branch and cannot be checked out by accident.
+  record-deployment:
+    name: Record deployed revisions
+    runs-on: ubuntu-latest
+    needs: [scope, build-frontend, deploy-functions]
+    if: always() && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Advance the refs that earned it
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          SHA='${{ github.sha }}'
+
+          advance() {
+            local component="$1" outcome="$2"
+            if [[ "$outcome" != "success" ]]; then
+              echo "· $component: $outcome — ref stays put, the work stays owed"
+              return
+            fi
+            git update-ref "refs/deployed/$component" "$SHA"
+            git push origin "refs/deployed/$component" --force
+            echo "✅ $component now at ${SHA:0:8}"
+          }
+
+          # Skipped means "nothing was owed", which is as current as deployed.
+          edge_outcome='${{ needs.deploy-functions.result }}'
+          [[ "$edge_outcome" == "skipped" ]] && edge_outcome=success
+          advance edge "$edge_outcome"
+
+          frontend_outcome='${{ needs.build-frontend.result }}'
+          [[ "$frontend_outcome" == "skipped" ]] && frontend_outcome=success
+          advance frontend "$frontend_outcome"
 

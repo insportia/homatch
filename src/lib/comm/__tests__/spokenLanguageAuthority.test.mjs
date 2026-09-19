@@ -268,3 +268,50 @@ test('a correct answer in each of the six passes the guard', () => {
     assert.equal(textMatchesLanguage(SAID[code], code), true, `a real ${code} answer was rejected`);
   }
 });
+
+/* ── The probe that corrupted Georgian, and the loop it ran in ───────────*/
+
+import { readFileSync } from 'node:fs';
+const CLIENT = readFileSync('src/lib/comm/voiceClient.ts', 'utf8')
+  .split(String.fromCharCode(13)).join('');
+const CLIENT_CODE = CLIENT.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+test('an unsupported probe result is not evidence that the probe is needed', () => {
+  /*
+   * Production session a266de0d, 2026-09-19 16:22, Georgian page, Georgian
+   * speaker: t1 three characters and provider `und` armed the probe; t3 ran
+   * with `auto` and came back DEVANAGARI, provider `hi`.
+   *
+   * The allowlist then resolved that at 0.3 -- below the 0.5 floor -- which
+   * counted the turn as unresolved and armed the probe again. Every fix to
+   * the resolver made this tighter, because every unsupported label lands
+   * under the floor.
+   */
+  assert.match(CLIENT_CODE, /const unsupported = resolution\.resolutionReason === 'UNSUPPORTED_LANGUAGE';/);
+  assert.match(
+    CLIENT_CODE,
+    /const unresolved = !unsupported\s*&&\s*\(resolution\.resolutionReason === 'STICKY_HELD' \|\| resolution\.confidence < 0\.5\);/,
+    'an unsupported result counts as a weak turn again, which re-arms the probe',
+  );
+});
+
+test('the probe is retired once it has named a language we do not speak', () => {
+  assert.match(CLIENT_CODE, /const MAX_UNSUPPORTED_PROBES = 2;/);
+  assert.match(
+    CLIENT_CODE,
+    /this\.weakTurns >= needed && this\.unsupportedProbeResults < MAX_UNSUPPORTED_PROBES/,
+    'the probe can be armed forever regardless of how often auto fails',
+  );
+  assert.match(CLIENT_CODE, /this\.unsupportedProbeResults \+= 1;/);
+});
+
+test('the pinned prior, not auto, configures the deciding socket', () => {
+  // `auto` is measured in googleTranscribe.ts to damage short supported
+  // speech. It stays a bounded probe rather than the default configuration.
+  assert.match(CLIENT_CODE, /const probing = this\.probeLanguageNext;/);
+  assert.match(CLIENT_CODE, /detect: probing/);
+  const google = readFileSync('src/lib/comm/googleTranscribe.ts', 'utf8');
+  assert.match(google, /if \(this\.grant\.detect\) query\.set\('detect', '1'\);/);
+  // And the established language is still sent as its own parameter.
+  assert.match(google, /query\.set\('language', tag\)/);
+});

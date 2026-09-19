@@ -3,29 +3,7 @@
 // shape is identical: key -> [en, ka, ru, tr, ar, he].
 
 export const INVESTMENT_STRINGS_2 = {
-  /* ── Snapshot ─────────────────────────────────────────────────── */
-  inv_snap_gross_yield: ['Gross yield', 'მთლიანი სარგებელი', 'Валовая доходность', 'Brüt getiri', 'العائد الإجمالي', 'תשואה ברוטו'],
-  inv_snap_gross_yield_sub: ['on the purchase price', 'შესყიდვის ფასზე', 'на цену покупки', 'alış fiyatı üzerinden', 'على سعر الشراء', 'על מחיר הרכישה'],
-  inv_snap_cash_flow: ['Annual cash flow', 'წლიური ფულადი ნაკადი', 'Годовой денежный поток', 'Yıllık nakit akışı', 'التدفق النقدي السنوي', 'תזרים מזומנים שנתי'],
-  inv_snap_cash_flow_sub: ['after costs and the bank', 'ხარჯებისა და ბანკის შემდეგ', 'после расходов и банка', 'giderler ve banka sonrası', 'بعد المصاريف والبنك', 'אחרי הוצאות והבנק'],
-  inv_snap_payback: ['Money back in', 'ფული დაბრუნდება', 'Окупаемость', 'Geri dönüş', 'استرداد المال خلال', 'החזר הכסף בתוך'],
-  inv_snap_payback_sub: ['the property, unlevered', 'ქონება, სესხის გარეშე', 'объект, без кредита', 'mülk, kredisiz', 'العقار، بدون رافعة', 'הנכס, ללא מינוף'],
-  inv_snap_deal_return: ['Deal return', 'გარიგების უკუგება', 'Доход по сделке', 'Anlaşma getirisi', 'عائد الصفقة', 'תשואת העסקה'],
-  inv_snap_deal_return_sub: ['on your own cash, over the hold', 'თქვენს ფულზე, ფლობის პერიოდში', 'на ваши деньги за срок владения', 'kendi nakdinize, elde tutma boyunca', 'على نقدك، خلال فترة الاحتفاظ', 'על ההון שלכם, לאורך ההחזקה'],
-  inv_snap_capital: ['Your cash in', 'თქვენი შეტანილი ფული', 'Ваши вложения', 'Koyduğunuz nakit', 'نقدك المستثمر', 'ההון שהכנסתם'],
-  inv_snap_capital_sub: ['deposit plus every cost', 'თავდაპირველი შენატანი პლუს ყველა ხარჯი', 'взнос плюс все расходы', 'peşinat artı tüm maliyetler', 'الدفعة الأولى وكل التكاليف', 'המקדמה ועוד כל העלויות'],
-
-  /* ── Module headers ───────────────────────────────────────────── */
-  inv_mod_income_eyebrow: ['Income', 'შემოსავალი', 'Доход', 'Gelir', 'الدخل', 'הכנסה'],
-  inv_mod_income_title: ['What this property earns', 'რას გამოიმუშავებს ეს ქონება', 'Сколько приносит объект', 'Bu mülk ne kazandırıyor', 'ما الذي يدرّه هذا العقار', 'מה הנכס הזה מרוויח'],
-  inv_mod_income_sub: [
-    'Gross is what twelve full months would pay. Net is what is left after the months it stands empty and the costs of owning it.',
-    'მთლიანი არის ის, რასაც სრული თორმეტი თვე მოიტანდა. წმინდა არის ის, რაც რჩება ცარიელი თვეებისა და ფლობის ხარჯების შემდეგ.',
-    'Валовой — это то, что дали бы полные двенадцать месяцев. Чистый — то, что остаётся после простоя и расходов на владение.',
-    'Brüt, on iki dolu ayın getireceğidir. Net, boş kalan aylar ve sahip olma maliyetlerinden sonra kalandır.',
-    'الإجمالي هو ما تدفعه اثنا عشر شهرًا كاملة. الصافي هو ما يتبقى بعد أشهر الشغور وتكاليف التملّك.',
-    'ברוטו הוא מה ששנים־עשר חודשים מלאים היו מניבים. נטו הוא מה שנשאר אחרי חודשי הריקנות ועלויות הבעלות.',
-  ],
+  /* ── Snapshot ─────────────────────────────────────────────────── */
   inv_mod_implied_eyebrow: ['Valuation lens', 'შეფასების პრიზმა', 'Оценочная призма', 'Değerleme merceği', 'عدسة التقييم', 'עדשת הערכה'],
   inv_mod_implied_title: ['What this income implies about value', 'რას გულისხმობს ეს შემოსავალი ღირებულებაზე', 'Какую стоимость подразумевает этот доход', 'Bu gelir değere dair ne ima ediyor', 'ما تشير إليه هذه الدخول عن القيمة', 'מה ההכנסה הזו מרמזת על השווי'],
   inv_mod_implied_sub: [
@@ -89,12 +67,12 @@ export const INVESTMENT_STRINGS_2 = {
   inv_mod_lab_eyebrow: ['Stress test', 'სტრეს-ტესტი', 'Стресс-тест', 'Stres testi', 'اختبار الضغط', 'מבחן קיצון'],
   inv_mod_lab_title: ['What actually drives this deal', 'რა განსაზღვრავს ამ გარიგებას', 'Что на самом деле определяет сделку', 'Bu anlaşmayı gerçekte ne belirliyor', 'ما الذي يحرّك هذه الصفقة فعلًا', 'מה באמת מניע את העסקה'],
   inv_mod_lab_sub: [
-    'Every cell is a complete re-run of the model, not an approximation. The shape tells you which assumption you should worry about.',
-    'ყოველი უჯრა მოდელის სრული ხელახალი გაშვებაა და არა მიახლოება. ფორმა გეუბნებათ, რომელ დაშვებაზე უნდა ინერვიულოთ.',
-    'Каждая ячейка — полный пересчёт модели, а не приближение. Форма показывает, о каком допущении стоит беспокоиться.',
-    'Her hücre modelin tam bir yeniden çalıştırılmasıdır, yaklaşık değer değil. Şekil, hangi varsayıma dikkat etmeniz gerektiğini söyler.',
-    'كل خلية إعادة تشغيل كاملة للنموذج، لا تقريبًا. الشكل يخبرك بأي افتراض ينبغي أن تقلق.',
-    'כל תא הוא הרצה מלאה מחדש של המודל, לא קירוב. הצורה מראה על איזו הנחה כדאי לדאוג.',
+    'Every cell is a full recalculation, not an approximation. The shape tells you which assumption you should worry about.',
+    'ყოველი უჯრა სრული გადაანგარიშებაა და არა მიახლოება. ფორმა გეუბნებათ, რომელ დაშვებაზე უნდა იფიქროთ.',
+    'Каждая ячейка — полный пересчёт, а не приближение. Форма показывает, какое допущение должно вас беспокоить.',
+    'Her hücre tam bir yeniden hesaplamadır, yaklaşık değer değil. Şekil, hangi varsayım için endişelenmeniz gerektiğini söyler.',
+    'كل خلية إعادة حساب كاملة وليست تقريبًا. والشكل يخبرك أي افتراض ينبغي أن يقلقك.',
+    'כל תא הוא חישוב מלא מחדש, לא קירוב. הצורה אומרת לכם על איזו הנחה כדאי לדאוג.',
   ],
   inv_mod_breakeven_eyebrow: ['Break-even', 'ზღვარი', 'Точка безубыточности', 'Başabaş', 'نقطة التعادل', 'נקודת איזון'],
   inv_mod_breakeven_title: ['Where this stops working', 'სად წყვეტს ეს მუშაობას', 'Где это перестаёт работать', 'Bu nerede işlemez hale gelir', 'أين يتوقف هذا عن النجاح', 'איפה זה מפסיק לעבוד'],
@@ -119,12 +97,12 @@ export const INVESTMENT_STRINGS_2 = {
   inv_mod_evidence_eyebrow: ['Market evidence', 'საბაზრო მტკიცებულება', 'Рыночные данные', 'Piyasa kanıtı', 'أدلة السوق', 'ראיות שוק'],
   inv_mod_evidence_title: ['What the market is actually asking', 'რას ითხოვს ბაზარი სინამდვილეში', 'Что рынок реально просит', 'Piyasa gerçekte ne istiyor', 'ما الذي يطلبه السوق فعلًا', 'מה השוק באמת מבקש'],
   inv_mod_evidence_sub: [
-    'Real listings, read from public portals, deduplicated and counted by independent source. Your assumptions are never overwritten.',
-    'რეალური განცხადებები საჯარო პორტალებიდან, დუბლიკატებგასუფთავებული და დათვლილი დამოუკიდებელი წყაროებით. თქვენი დაშვებები არასდროს იცვლება ავტომატურად.',
-    'Реальные объявления с публичных порталов, без дублей, с подсчётом независимых источников. Ваши допущения никогда не перезаписываются.',
-    'Kamuya açık portallardan okunan gerçek ilanlar, tekilleştirilmiş ve bağımsız kaynağa göre sayılmış. Varsayımlarınızın üzerine asla yazılmaz.',
-    'إعلانات حقيقية من بوابات عامة، منزوعة التكرار ومعدودة بمصادر مستقلة. لا يُستبدل أي افتراض لك أبدًا.',
-    'מודעות אמיתיות מפורטלים ציבוריים, ללא כפילויות ונספרות לפי מקור עצמאי. ההנחות שלכם לעולם לא נדרסות.',
+    'Real listings from public property sites, with repeat adverts for the same home counted once. Nothing you entered is overwritten.',
+    'რეალური განცხადებები საჯარო უძრავი ქონების საიტებიდან, სადაც ერთი და იმავე ბინის განმეორებული განცხადება ერთხელ ითვლება. თქვენ მიერ შეყვანილი არაფერი იცვლება.',
+    'Реальные объявления с публичных сайтов недвижимости, где повторные объявления об одной квартире считаются один раз. Ничего из введённого вами не перезаписывается.',
+    'Kamuya açık emlak sitelerinden gerçek ilanlar; aynı ev için tekrarlanan ilanlar bir kez sayılır. Girdiğiniz hiçbir şeyin üzerine yazılmaz.',
+    'إعلانات حقيقية من مواقع عقارية عامة، مع احتساب الإعلانات المكررة للمنزل نفسه مرة واحدة. لا يُستبدل أي شيء أدخلته.',
+    'מודעות אמיתיות מאתרי נדל״ן ציבוריים, כשמודעות חוזרות על אותה דירה נספרות פעם אחת. שום דבר שהזנתם לא נדרס.',
   ],
 
   /* ── Income module ────────────────────────────────────────────── */

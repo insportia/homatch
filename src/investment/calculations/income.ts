@@ -48,6 +48,8 @@ export const OPERATING_COST_KEYS = [
   'insurance',
   'propertyTax',
   'utilities',
+  'hoa',
+  'repairsReserve',
   'lettingFee',
   'other',
 ] as const;
@@ -131,6 +133,8 @@ export function operatingExpenses(
     ['insurance', costs.insuranceAnnual],
     ['propertyTax', costs.propertyTaxAnnual],
     ['utilities', costs.utilitiesPaidByOwnerAnnual],
+    ['hoa', costs.hoaAnnual],
+    ['repairsReserve', costs.repairsReserveAnnual],
     ['other', costs.otherOperatingAnnual],
   ];
   for (const [key, value] of simple) {

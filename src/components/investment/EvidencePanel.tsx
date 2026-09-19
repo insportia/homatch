@@ -22,6 +22,16 @@
 // The drawer lists the actual adverts: the URL, the source, the price, the
 // area, when we read it, and which other adverts appear to be the same
 // property. A range nobody can check is a rumour with a decimal point.
+//
+// WHY THE LOCATION IS ASKED HERE AND NOT IN THE DEAL FORM
+//
+// A city changes no arithmetic. Every strategy computes its whole answer
+// without one, and putting "City" among the purchase price and the
+// renovation budget would imply it was an input to the result. It is an
+// input to the SEARCH — the only thing on this page that needs to know
+// where the property is — so it is asked at the moment it is needed and
+// nowhere else. Before it existed here, this panel would say "To answer
+// this I need: City" on a page with no way to give it one.
 
 import React, { useState } from 'react';
 import { ChevronDown, ExternalLink, Loader2, Search } from 'lucide-react';
@@ -40,7 +50,9 @@ export function EvidenceModule({
   error,
   currency,
   canResearch,
-  missing,
+  city,
+  district,
+  onLocationChange,
   onResearch,
   onApply,
   focused,
@@ -52,7 +64,9 @@ export function EvidenceModule({
   error: string | null;
   currency: string;
   canResearch: boolean;
-  missing: string[];
+  city: string;
+  district: string;
+  onLocationChange: (field: 'city' | 'district', value: string) => void;
   onResearch: () => void;
   onApply: (comparison: AssumptionComparison, kind: OfferKind) => void;
   focused: boolean;
@@ -91,11 +105,35 @@ export function EvidenceModule({
         {t('inv_research_free_note')}
       </p>
 
-      {!canResearch && missing.length ? (
-        <p className="mb-5 text-sm text-muted-foreground">
-          {t('inv_needs_input_prefix')}{' '}
-          <span className="text-foreground">{missing.map((key) => t(key)).join(', ')}</span>
-        </p>
+      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1.5 block text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('inv_field_city')}
+          </span>
+          <input
+            type="text"
+            value={city}
+            onChange={(event) => onLocationChange('city', event.target.value)}
+            placeholder={t('inv_location_city_placeholder')}
+            className="min-h-11 w-full rounded-xl border border-border bg-[hsl(var(--input))] px-4 text-base text-foreground outline-none focus:border-[hsl(var(--gold-border))]"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('inv_field_district')}
+          </span>
+          <input
+            type="text"
+            value={district}
+            onChange={(event) => onLocationChange('district', event.target.value)}
+            placeholder={t('inv_location_district_placeholder')}
+            className="min-h-11 w-full rounded-xl border border-border bg-[hsl(var(--input))] px-4 text-base text-foreground outline-none focus:border-[hsl(var(--gold-border))]"
+          />
+        </label>
+      </div>
+
+      {!canResearch ? (
+        <p className="mb-5 text-sm text-muted-foreground">{t('inv_location_needed')}</p>
       ) : null}
 
       {phase === 'RUNNING' ? (

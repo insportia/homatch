@@ -67,7 +67,11 @@ export type ActivityEventType =
   | 'INVESTMENT_CONSULTATION_TURN'
   | 'INVESTMENT_PROPERTY_ATTACHED'
   | 'INVESTMENT_RESEARCH_REQUESTED'
-  | 'INVESTMENT_EVIDENCE_APPLIED';
+  | 'INVESTMENT_EVIDENCE_APPLIED'
+  // The strategy workspace: which of the four business models an investor
+  // actually chose, and whether they got a finished analysis out of it.
+  | 'INVESTMENT_STRATEGY_SELECTED'
+  | 'INVESTMENT_ANALYSIS_COMPLETED';
 /**
  * Mirrors the public.notification_type Postgres enum exactly, in enum order.
  *

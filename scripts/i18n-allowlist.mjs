@@ -11,6 +11,14 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // "Premium" — Turkish uses the same word for a renovation standard, and it
+  // is what a Turkish buyer reads on a spec sheet. ka/ru/ar/he all carry
+  // their own forms (პრემიუმი, Премиум, ممتاز, פרימיום).
+  'inv_quality_premium',
+  // "{{rate}} × {{area}} m²" — two placeholders, a multiplication sign and a
+  // unit. There is nothing in the Turkish string to translate; the four
+  // other locales differ only because they spell the unit differently.
+  'inv_preset_rate_times_area',
   // "Net" — Turkish spells it identically to English, and it is the word a
   // Turkish property investor actually uses for a net figure. The other four
   // locales carry their own distinct forms of the same key (წმინდა, Чистая,

@@ -85,6 +85,29 @@ export const CONTEXT_NUMERIC_FIELDS = [
   'rooms',
   'bedrooms',
   'floor',
+  /* Renovate and resell. */
+  'renovationCostPerSqm',
+  'renovationDurationMonths',
+  'otherRenovationCosts',
+  'monthlyHoldingCosts',
+  'expectedResalePricePerSqm',
+  'targetReturnPercent',
+  /* Construction resale. */
+  'purchasePricePerSqm',
+  'upfrontPayment',
+  'installmentMonthly',
+  'installmentCount',
+  'remainingDeveloperBalance',
+  'financingCosts',
+  'monthsToCompletion',
+  'additionalMonthsToSale',
+  'expectedCompletedPrice',
+  'expectedCompletedPricePerSqm',
+  /* Rental. */
+  'hoaMonthly',
+  'repairsReserveAnnual',
+  /* Investment value. */
+  'proposedPrice',
 ] as const;
 
 export type ContextNumericField = (typeof CONTEXT_NUMERIC_FIELDS)[number];
@@ -98,6 +121,23 @@ export const CONTEXT_TEXT_FIELDS = [
   'propertyType',
   'condition',
   'propertyId',
+  'constructionStage',
+  'valueStrategy',
+  /*
+   * CHOICE GATES.
+   *
+   * These are answers, not settings: "am I borrowing", "does it need work",
+   * "when do I sell". They carry no money and no arithmetic — what they do
+   * is decide which questions are worth asking next, so somebody buying for
+   * cash is never shown a mortgage rate. Stored in the same provenanced
+   * context as everything else so a strategy can be reloaded exactly as it
+   * was left.
+   */
+  'financingMode',
+  'renovationNeeded',
+  'renovationQuality',
+  'exitTiming',
+  'includeExitScenario',
 ] as const;
 
 export type ContextTextField = (typeof CONTEXT_TEXT_FIELDS)[number];
@@ -145,6 +185,25 @@ const NUMERIC_BOUNDS: Record<ContextNumericField, { min: number; max: number }> 
   rooms: { min: 1, max: 60 },
   bedrooms: { min: 0, max: 60 },
   floor: { min: -10, max: 300 },
+  renovationCostPerSqm: { min: 0, max: 100_000 },
+  renovationDurationMonths: { min: 0, max: 120 },
+  otherRenovationCosts: { min: 0, max: 100_000_000 },
+  monthlyHoldingCosts: { min: 0, max: 1_000_000 },
+  expectedResalePricePerSqm: { min: 0, max: 1_000_000 },
+  targetReturnPercent: { min: 0, max: 1000 },
+  purchasePricePerSqm: { min: 0, max: 1_000_000 },
+  upfrontPayment: { min: 0, max: 1_000_000_000 },
+  installmentMonthly: { min: 0, max: 10_000_000 },
+  installmentCount: { min: 0, max: 600 },
+  remainingDeveloperBalance: { min: 0, max: 1_000_000_000 },
+  financingCosts: { min: 0, max: 100_000_000 },
+  monthsToCompletion: { min: 0, max: 240 },
+  additionalMonthsToSale: { min: 0, max: 240 },
+  expectedCompletedPrice: { min: 0, max: 1_000_000_000 },
+  expectedCompletedPricePerSqm: { min: 0, max: 1_000_000 },
+  hoaMonthly: { min: 0, max: 1_000_000 },
+  repairsReserveAnnual: { min: 0, max: 10_000_000 },
+  proposedPrice: { min: 0, max: 1_000_000_000 },
 };
 
 const TEXT_MAX_LENGTH = 200;
@@ -307,6 +366,7 @@ export function toInvestmentInput(context: InvestmentContext): InvestmentInput |
     ['insuranceAnnual', 'insuranceAnnual'],
     ['propertyTaxAnnual', 'propertyTaxAnnual'],
     ['utilitiesPaidByOwnerAnnual', 'utilitiesPaidByOwnerAnnual'],
+    ['repairsReserveAnnual', 'repairsReserveAnnual'],
     ['otherOperatingAnnual', 'otherOperatingAnnual'],
     ['lettingFeePerTenancy', 'lettingFeePerTenancy'],
     ['tenanciesPerYear', 'tenanciesPerYear'],

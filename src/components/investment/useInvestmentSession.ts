@@ -2,52 +2,53 @@
 //
 // WHERE THE NUMBERS COME FROM ON THIS SCREEN
 //
-// The SAME engine the server runs, in the browser, on every keystroke.
-// That is the reason a slider feels instantaneous and costs nothing: no
-// round trip, no credit, no spinner. The server re-runs it independently
-// for the Consultant's brief — see the edge function's own note on why the
-// model must be handed numbers the client did not choose — but the screen
-// is never waiting for it.
+// The SAME engine the server runs, in the browser, on every click. That is
+// why there is no Calculate button and no spinner: there is nothing to
+// wait for. No round trip, no credit, no network at all.
 //
 // WHAT THE SERVER IS FOR
 //
-// Two things, both optional, both additive:
-//   the Consultant   turns a sentence into fields and explains the result
-//   research         asks the Research Core what the market is asking
+// One thing, and it is optional: asking what the market is currently
+// asking. It feeds the input controls better starting points and gives the
+// result something to be measured against. Every strategy produces its
+// full answer with the server switched off.
 //
-// Neither is on the path between the investor moving a control and the
-// screen updating. Both can fail without taking the workspace with them.
-//
-// WHY THE CONTEXT IS THE STATE AND THE MODEL IS DERIVED
+// WHY THE CONTEXT IS THE STATE AND EVERYTHING ELSE IS DERIVED
 //
 // A scenario is a set of established values with provenance; the model is
 // what arithmetic makes of them. Keeping the model in state as well would
 // create two sources of truth that drift the first time somebody updates
 // one and forgets the other. useMemo is enough: the whole engine, including
-// the break-even solvers, runs in single-digit milliseconds.
+// the break-even solvers and the backsolves, runs in single-digit
+// milliseconds.
+//
+// WHY THE STRATEGY IS STORED NEXT TO THE CONTEXT
+//
+// The chosen strategy decides which questions are asked and which engine
+// runs, so it is part of the scenario, not part of the routing. Somebody
+// who reloads mid-analysis lands back inside their analysis.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getProperty } from '@/services/api';
-import { logActivity } from '@/services/api';
+import { getProperty, logActivity } from '@/services/api';
 import type { ActivityEventType } from '@/types/types';
-import { runInvestmentModel } from '@/investment/calculations';
-import type { InvestmentModel } from '@/investment/types';
 import {
   applyPatch,
-  isModellable,
-  toInvestmentInput,
   type ContextPatch,
   type InvestmentContext,
 } from '@/investment/consultant/context';
 import {
-  capabilityStatuses,
-  nextQuestions,
-  type CapabilityId,
-  type CapabilityStatus,
-} from '@/investment/consultant/capabilities';
+  STRATEGIES,
+  analysisState,
+  missingRequiredFields,
+  type AnalysisState,
+  type StrategyId,
+} from '@/investment/strategies/definitions';
+import { runStrategy, type StrategyRun } from '@/investment/strategies/run';
+import { summarySlots, type SummarySlot } from '@/investment/strategies/summary';
+import type { MarketComparableRange } from '@/investment/calculations/valuation';
 import {
   compareAssumption,
   offerToPatch,
@@ -55,15 +56,6 @@ import {
   type EvidenceRange,
   type OfferKind,
 } from '@/investment/evidence/compare';
-
-export interface ConsultantMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  /** Fields the Consultant understood from this turn. */
-  applied?: string[];
-  at: string;
-}
 
 export interface LaneResult {
   transaction: 'SALE' | 'RENT';
@@ -98,27 +90,36 @@ export interface LaneResult {
 
 export type ResearchPhase = 'IDLE' | 'RUNNING' | 'DONE' | 'FAILED' | 'RATE_LIMITED' | 'UNAUTHENTICATED';
 
-export interface InvestmentSession {
-  context: InvestmentContext;
-  model: InvestmentModel | null;
-  capabilities: CapabilityStatus[];
-  questions: string[];
-  focus: CapabilityId[];
+/** A starting point taken from real listings, offered on an input control. */
+export interface MarketPreset {
+  value: number;
+  labelKey: string;
+}
 
-  messages: ConsultantMessage[];
-  consultantBusy: boolean;
-  consultantError: string | null;
+export interface InvestmentSession {
+  strategy: StrategyId | null;
+  selectStrategy: (strategy: StrategyId | null) => void;
+  /** A strategy with work already in it, for the "continue" badge on the home. */
+  resumable: StrategyId | null;
+
+  context: InvestmentContext;
+  run: StrategyRun | null;
+  summary: SummarySlot[];
+  state: AnalysisState;
+  /** Labels of the required answers still outstanding. */
+  missingLabels: string[];
 
   researchPhase: ResearchPhase;
   researchError: string | null;
   lanes: LaneResult[];
   comparisons: AssumptionComparison[];
+  comparableRange: MarketComparableRange | null;
+  marketPresets: Record<string, MarketPreset[]>;
   /** Live progress lines while a sweep runs. Real stages, not a fake bar. */
   researchSteps: string[];
 
   setField: (field: string, value: number | string | null) => void;
   setFields: (patch: ContextPatch) => void;
-  send: (message: string) => Promise<void>;
   research: () => Promise<void>;
   applyEvidenceOffer: (comparison: AssumptionComparison, kind: OfferKind) => void;
   reset: () => void;
@@ -128,6 +129,7 @@ export interface InvestmentSession {
 }
 
 const STORAGE_KEY = 'homatch.investment.context.v1';
+const STRATEGY_KEY = 'homatch.investment.strategy.v1';
 
 /**
  * A scenario survives a reload.
@@ -135,9 +137,9 @@ const STORAGE_KEY = 'homatch.investment.context.v1';
  * Somebody who has spent ten minutes describing a deal and then refreshes
  * should not lose it, and the alternative — a table — would mean a schema,
  * a migration and an RLS review for something that is genuinely local
- * working state. Nothing here is personal beyond what the person typed
- * about their own property, and it never leaves the device except in the
- * Consultant request they explicitly send.
+ * working state. Nothing here is personal beyond what the person entered
+ * about their own property, and it never leaves the device except in a
+ * market request they explicitly start.
  */
 function loadStoredContext(): InvestmentContext {
   if (typeof window === 'undefined') return {};
@@ -166,27 +168,32 @@ function loadStoredContext(): InvestmentContext {
   }
 }
 
-function storeContext(context: InvestmentContext): void {
+function loadStoredStrategy(): StrategyId | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(STRATEGY_KEY);
+    return raw && raw in STRATEGIES ? (raw as StrategyId) : null;
+  } catch {
+    return null;
+  }
+}
+
+function store(key: string, value: string | null): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(context));
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
   } catch {
     /* A full or disabled storage must never break the workspace. */
   }
 }
 
-let messageSeq = 0;
-const nextMessageId = () => `m${Date.now().toString(36)}${(messageSeq += 1).toString(36)}`;
-
 export function useInvestmentSession(): InvestmentSession {
   const { homatchUser, session } = useAuth();
-  const { lang } = useLanguage();
+  const { t, lang } = useLanguage();
 
   const [context, setContext] = useState<InvestmentContext>(loadStoredContext);
-  const [messages, setMessages] = useState<ConsultantMessage[]>([]);
-  const [focus, setFocus] = useState<CapabilityId[]>([]);
-  const [consultantBusy, setConsultantBusy] = useState(false);
-  const [consultantError, setConsultantError] = useState<string | null>(null);
+  const [strategy, setStrategy] = useState<StrategyId | null>(loadStoredStrategy);
 
   const [researchPhase, setResearchPhase] = useState<ResearchPhase>('IDLE');
   const [researchError, setResearchError] = useState<string | null>(null);
@@ -196,14 +203,16 @@ export function useInvestmentSession(): InvestmentSession {
   const [propertyBusy, setPropertyBusy] = useState(false);
   const [propertyError, setPropertyError] = useState<string | null>(null);
 
-  // The context the in-flight request should send, without making every
-  // callback depend on it and re-create itself on each keystroke.
   const contextRef = useRef(context);
   contextRef.current = context;
 
   useEffect(() => {
-    storeContext(context);
+    store(STORAGE_KEY, JSON.stringify(context));
   }, [context]);
+
+  useEffect(() => {
+    store(STRATEGY_KEY, strategy);
+  }, [strategy]);
 
   const track = useCallback(
     (eventType: ActivityEventType, metadata?: Record<string, unknown>) => {
@@ -216,30 +225,56 @@ export function useInvestmentSession(): InvestmentSession {
     [homatchUser],
   );
 
-  const model = useMemo<InvestmentModel | null>(() => {
-    if (!isModellable(context)) return null;
-    const input = toInvestmentInput(context);
-    if (!input) return null;
-    try {
-      return runInvestmentModel(input);
-    } catch {
-      // validateInvestmentInput threw on something the context door should
-      // have caught. Showing no model is correct; showing a partial one
-      // built from a rejected input would be worse.
-      return null;
-    }
-  }, [context]);
+  const valueOf = useCallback(
+    (field: string) =>
+      (context as Record<string, { value?: string | number } | undefined>)[field]?.value,
+    [context],
+  );
 
-  const capabilities = useMemo(() => capabilityStatuses(context, model), [context, model]);
-  const questions = useMemo(() => nextQuestions(capabilities), [capabilities]);
+  const run = useMemo<StrategyRun | null>(
+    () => (strategy ? runStrategy(strategy, context) : null),
+    [strategy, context],
+  );
 
-  const comparisons = useMemo<AssumptionComparison[]>(() => {
-    const out: AssumptionComparison[] = [];
-    for (const lane of lanes) {
-      if (lane.range) out.push(compareAssumption(context, lane.range));
-    }
-    return out;
-  }, [lanes, context]);
+  const summary = useMemo(() => (run ? summarySlots(run) : []), [run]);
+
+  const state = useMemo<AnalysisState>(
+    () => (strategy ? analysisState(strategy, valueOf) : 'MISSING_INPUT'),
+    [strategy, valueOf],
+  );
+
+  const missingLabels = useMemo(
+    () =>
+      strategy
+        ? missingRequiredFields(strategy, valueOf).map((field) => t(field.labelKey))
+        : [],
+    [strategy, valueOf, t],
+  );
+
+  /*
+   * Recorded once per strategy, the first time every question it asks has
+   * an answer. The product question this exists to answer is which of the
+   * four business models people actually finish, and firing on every
+   * keystroke after that would answer a different question badly.
+   */
+  const completed = useRef(new Set<StrategyId>());
+  useEffect(() => {
+    if (!strategy || state !== 'COMPLETE' || completed.current.has(strategy)) return;
+    completed.current.add(strategy);
+    track('INVESTMENT_ANALYSIS_COMPLETED', { strategy });
+  }, [strategy, state, track]);
+
+  /**
+   * The strategy worth offering to continue.
+   *
+   * The context is shared across strategies by design — an area is an area
+   * — so "has work in it" means the last strategy the investor chose, not
+   * whichever one happens to have fields filled.
+   */
+  const resumable = useMemo(
+    () => (strategy && Object.keys(context).length > 0 ? strategy : null),
+    [strategy, context],
+  );
 
   const setFields = useCallback((patch: ContextPatch) => {
     setContext((current) => applyPatch(current, patch, 'USER', { source: 'workspace' }).context);
@@ -250,91 +285,104 @@ export function useInvestmentSession(): InvestmentSession {
     [setFields],
   );
 
-  const reset = useCallback(() => {
-    setContext({});
-    setMessages([]);
-    setLanes([]);
-    setFocus([]);
-    setResearchPhase('IDLE');
-    setResearchError(null);
-    setConsultantError(null);
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem(STORAGE_KEY);
-      } catch {
-        /* nothing to do */
-      }
-    }
-  }, []);
-
-  /* ── The Consultant ────────────────────────────────────────────── */
-
-  const send = useCallback(
-    async (raw: string) => {
-      const message = raw.trim();
-      if (!message || consultantBusy) return;
-
-      setMessages((current) => [
-        ...current,
-        { id: nextMessageId(), role: 'user', content: message, at: new Date().toISOString() },
-      ]);
-      setConsultantError(null);
-
-      if (!session) {
-        // The workspace stays fully usable signed out; only the Consultant
-        // needs an account, because fair use is counted per person.
-        setConsultantError('inv_consultant_sign_in');
-        return;
-      }
-
-      setConsultantBusy(true);
-      try {
-        const history = messages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
-        const { data, error } = await supabase.functions.invoke('investment-consultant', {
-          body: { message, context: contextRef.current, history, locale: lang },
-        });
-        if (error) throw error;
-        if (data?.error) {
-          setConsultantError(
-            data.code === 'RATE_LIMIT_EXCEEDED' ? 'inv_consultant_rate_limited' : 'inv_consultant_failed',
-          );
-          return;
-        }
-        if (data?.context && typeof data.context === 'object') {
-          setContext(data.context as InvestmentContext);
-        }
-        if (Array.isArray(data?.focus)) setFocus(data.focus as CapabilityId[]);
-        if (typeof data?.reply === 'string' && data.reply.trim()) {
-          setMessages((current) => [
-            ...current,
-            {
-              id: nextMessageId(),
-              role: 'assistant',
-              content: data.reply as string,
-              applied: Array.isArray(data.applied) ? (data.applied as string[]) : undefined,
-              at: new Date().toISOString(),
-            },
-          ]);
-        } else if (data?.replyUnavailable) {
-          // The arithmetic succeeded and the explanation did not. Say that,
-          // rather than discarding a correct analysis over a provider blip.
-          setConsultantError('inv_consultant_reply_unavailable');
-        }
-        track('INVESTMENT_CONSULTATION_TURN');
-      } catch {
-        setConsultantError('inv_consultant_failed');
-      } finally {
-        setConsultantBusy(false);
-      }
+  const selectStrategy = useCallback(
+    (next: StrategyId | null) => {
+      setStrategy(next);
+      if (next) track('INVESTMENT_STRATEGY_SELECTED', { strategy: next });
     },
-    [consultantBusy, lang, messages, session, track],
+    [track],
   );
 
-  /* ── Research ──────────────────────────────────────────────────── */
+  const reset = useCallback(() => {
+    setContext({});
+    setStrategy(null);
+    setLanes([]);
+    setResearchPhase('IDLE');
+    setResearchError(null);
+    setResearchSteps([]);
+    store(STORAGE_KEY, null);
+    store(STRATEGY_KEY, null);
+  }, []);
+
+  /* ── Market evidence ───────────────────────────────────────────── */
+
+  const comparisons = useMemo<AssumptionComparison[]>(() => {
+    const out: AssumptionComparison[] = [];
+    for (const lane of lanes) {
+      if (lane.range) out.push(compareAssumption(context, lane.range));
+    }
+    return out;
+  }, [lanes, context]);
+
+  /**
+   * The asking range for the subject, for the price scale and the position
+   * module. Asking, and labelled as asking: a portal publishes what sellers
+   * want, and calling that a market value would be the product telling its
+   * first lie.
+   */
+  const comparableRange = useMemo<MarketComparableRange | null>(() => {
+    const sale = lanes.find((lane) => lane.transaction === 'SALE' && lane.range);
+    if (!sale?.range) return null;
+    return {
+      low: sale.range.low,
+      median: sale.range.median,
+      high: sale.range.high,
+      currency: sale.range.currency,
+      independentSourceCount: sale.range.independentSourceCount,
+      observationCount: sale.range.observationCount,
+      basis: 'ASKING',
+    };
+  }, [lanes]);
+
+  /**
+   * Observed figures offered directly on the input controls.
+   *
+   * These REPLACE the generic illustrations for the same field rather than
+   * joining them — see DealBuilder's own note. A market chip and an example
+   * chip sitting side by side look identical at a glance, and the investor
+   * would have no way to tell which of the two came from anywhere real.
+   */
+  const marketPresets = useMemo<Record<string, MarketPreset[]>>(() => {
+    const out: Record<string, MarketPreset[]> = {};
+    const spread = (range: EvidenceRange): MarketPreset[] => [
+      { value: Math.round(range.low), labelKey: 'inv_preset_market_low' },
+      { value: Math.round(range.median), labelKey: 'inv_preset_market_typical' },
+      { value: Math.round(range.high), labelKey: 'inv_preset_market_high' },
+    ];
+
+    for (const lane of lanes) {
+      if (!lane.range) continue;
+      if (lane.transaction === 'RENT') {
+        out.monthlyRent = spread(lane.range);
+        continue;
+      }
+      const sale = spread(lane.range);
+      out.purchasePrice = sale;
+      out.askingPrice = sale;
+      out.proposedPrice = sale;
+      // A resale or a completed price is a FUTURE price and the sweep only
+      // ever saw today's. Offered as a starting point, never as the answer.
+      out.exitPriceAssumption = sale;
+      out.expectedCompletedPrice = sale;
+
+      if (lane.pricePerSqm) {
+        const median = Math.round(lane.pricePerSqm.median);
+        const perSqm: MarketPreset[] = [
+          { value: Math.round(median * 0.9), labelKey: 'inv_preset_market_low' },
+          { value: median, labelKey: 'inv_preset_market_typical' },
+          { value: Math.round(median * 1.1), labelKey: 'inv_preset_market_high' },
+        ];
+        out.purchasePricePerSqm = perSqm;
+        out.expectedResalePricePerSqm = perSqm;
+        out.expectedCompletedPricePerSqm = perSqm;
+      }
+    }
+    return out;
+  }, [lanes]);
 
   const research = useCallback(async () => {
     if (researchPhase === 'RUNNING') return;
-    const city = context.city?.value;
+    const city = contextRef.current.city?.value;
     if (!city) {
       setResearchError('inv_research_needs_city');
       return;
@@ -359,15 +407,16 @@ export function useInvestmentSession(): InvestmentSession {
     ];
 
     try {
+      const current = contextRef.current;
       const { data, error } = await supabase.functions.invoke('investment-research', {
         body: {
           city,
-          district: context.district?.value ?? null,
-          areaSqm: context.areaSqm?.value ?? null,
-          rooms: context.rooms?.value ?? null,
-          bedrooms: context.bedrooms?.value ?? null,
-          propertyType: context.propertyType?.value ?? null,
-          projectName: context.projectName?.value ?? null,
+          district: current.district?.value ?? null,
+          areaSqm: current.areaSqm?.value ?? null,
+          rooms: current.rooms?.value ?? null,
+          bedrooms: current.bedrooms?.value ?? null,
+          propertyType: current.propertyType?.value ?? null,
+          projectName: current.projectName?.value ?? null,
           locale: lang,
         },
       });
@@ -383,7 +432,7 @@ export function useInvestmentSession(): InvestmentSession {
           return;
         }
         setResearchPhase('FAILED');
-        setResearchError('inv_research_failed');
+        setResearchError('inv_research_none_found');
         return;
       }
       setLanes(Array.isArray(data?.lanes) ? (data.lanes as LaneResult[]) : []);
@@ -391,11 +440,11 @@ export function useInvestmentSession(): InvestmentSession {
       track('INVESTMENT_RESEARCH_REQUESTED');
     } catch {
       setResearchPhase('FAILED');
-      setResearchError('inv_research_failed');
+      setResearchError('inv_research_none_found');
     } finally {
       for (const timer of timers) window.clearTimeout(timer);
     }
-  }, [context, lang, researchPhase, session, track]);
+  }, [lang, researchPhase, session, track]);
 
   const applyEvidenceOffer = useCallback(
     (comparison: AssumptionComparison, kind: OfferKind) => {
@@ -428,8 +477,8 @@ export function useInvestmentSession(): InvestmentSession {
         /*
          * ONLY WHAT THE RECORD ACTUALLY CARRIES.
          *
-         * Origin PROPERTY, so the provenance panel distinguishes it from
-         * something the investor typed — they can then disagree with it,
+         * Origin PROPERTY, so the provenance chip distinguishes it from
+         * something the investor entered — they can then disagree with it,
          * which they often should: a listing price is the seller's number,
          * not the buyer's.
          */
@@ -464,22 +513,23 @@ export function useInvestmentSession(): InvestmentSession {
   );
 
   return {
+    strategy,
+    selectStrategy,
+    resumable,
     context,
-    model,
-    capabilities,
-    questions,
-    focus,
-    messages,
-    consultantBusy,
-    consultantError,
+    run,
+    summary,
+    state,
+    missingLabels,
     researchPhase,
     researchError,
     lanes,
     comparisons,
+    comparableRange,
+    marketPresets,
     researchSteps,
     setField,
     setFields,
-    send,
     research,
     applyEvidenceOffer,
     reset,

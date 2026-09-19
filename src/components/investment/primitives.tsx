@@ -294,7 +294,10 @@ export function Metric({
   return (
     <div className="min-w-0">
       <div className="flex items-center gap-2">
-        <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {/* Wraps rather than truncates: a metric whose label reads
+            "Completion value for your target r…" has stopped being a
+            label. Two lines of small caps costs less than the meaning. */}
+        <p className="text-xs font-medium uppercase leading-tight tracking-wide text-muted-foreground">
           {t(labelKey)}
         </p>
         {origin ? <OriginChip origin={origin} /> : null}

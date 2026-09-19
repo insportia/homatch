@@ -1,0 +1,43 @@
+-- HOMATCH INVESTMENT INTELLIGENCE — the strategy workspace's two events.
+--
+-- ADDITIVE AND NOTHING ELSE. Two values on an existing enum. No table, no
+-- column, no policy, no grant, no data — the same shape as
+-- 20260918202239_investment_intelligence_analytics.sql, and for the same
+-- reason: the scenario is local working state, the market lane reuses
+-- rate_limit_events, and the only thing the database has to learn is the
+-- name of an event that already has a call site in src/components/investment.
+--
+-- WHY THESE TWO
+--
+-- The product became four business models rather than one conversation, and
+-- the question that now matters is which of the four people actually choose
+-- and which of them they finish. STRATEGY_SELECTED answers the first;
+-- ANALYSIS_COMPLETED fires once per strategy, the moment every question it
+-- asks has an answer, and answers the second. Neither carries anything about
+-- the property or the numbers — the metadata is the strategy id and nothing
+-- else.
+--
+-- INVESTMENT_CONSULTATION_TURN, added by the migration above, now has no
+-- call site: the conversational entry screen it counted is gone. The value
+-- is left in place. Removing a value from a Postgres enum means rewriting
+-- the type and every column that uses it, and activity_events already holds
+-- rows carrying it — rows that are true statements about what happened.
+--
+-- Each ALTER TYPE ... ADD VALUE is its own statement and neither is
+-- referenced later in this file, which is what Postgres requires: a value
+-- added in a transaction cannot be used inside that same transaction.
+--
+-- src/types/types.ts mirrors public.activity_event_type exactly; the union
+-- there was extended in the same change. A value in one and not the other is
+-- either a type error TypeScript will catch or a 22P02 at insert time, which
+-- is why they move together.
+--
+-- APPLIED-AND-RECORDED, NOT PENDING. This file's version prefix is the
+-- version supabase_migrations.schema_migrations actually holds for it, and
+-- supabase/migration-ledger.json was extended in the same change. The
+-- deploy workflow only runs `db push` on a deliberate dispatch, so a file
+-- written with a fresh timestamp here would sit unapplied while the code
+-- that needs it was already live.
+
+alter type public.activity_event_type add value if not exists 'INVESTMENT_STRATEGY_SELECTED';
+alter type public.activity_event_type add value if not exists 'INVESTMENT_ANALYSIS_COMPLETED';

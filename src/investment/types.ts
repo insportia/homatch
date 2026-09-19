@@ -115,6 +115,17 @@ export interface InvestmentOperatingCosts {
   insuranceAnnual?: number;
   propertyTaxAnnual?: number;
   utilitiesPaidByOwnerAnnual?: number;
+  /** Building service charge / HOA, as an annual figure. */
+  hoaAnnual?: number;
+  /**
+   * Money set aside each year against the repair that has not happened yet.
+   *
+   * Separate from `repairsAnnual`, which is repairs actually expected. A
+   * reserve is a deliberate provision and an investor who keeps one is
+   * running a different, more honest set of numbers than one who does not —
+   * so it is its own line rather than folded into maintenance.
+   */
+  repairsReserveAnnual?: number;
   otherOperatingAnnual?: number;
   /** Agency/letting fee charged once per new tenancy. */
   lettingFeePerTenancy?: number;

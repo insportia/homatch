@@ -178,7 +178,20 @@ test('the reply length is not a fixed budget any more', () => {
   assert.ok(/MATCH THEM/.test(edge));
   assert.ok(/Take your length, register and energy from theirs, every turn/.test(edge));
   assert.ok(/A yes\/no question gets the yes or no/.test(edge));
-  assert.ok(/three or four spoken sentences if/.test(edge));
+  /*
+   * The ceiling came DOWN on 2026-09-19, and the reason is a measurement
+   * rather than a preference. Production session 28556daf: the owner reported
+   * 13-23 second gaps and a product that felt collapsed. Speech-end to
+   * Mariam's first word was 2.9-4.2s on every turn -- the gaps were her own
+   * replies. 1,355,337 bytes of PCM at 48kHz 16-bit is 14.1 seconds of
+   * talking; another turn ran 17.2. Georgian is about 0.076s per character,
+   * so "three or four sentences" IS a fifteen-second monologue.
+   *
+   * Still not a fixed budget: a yes/no answer is still under ten words and
+   * length still comes from theirs. What changed is the top of the range.
+   */
+  assert.ok(/A real question gets TWO spoken sentences, three at the most/.test(edge));
+  assert.ok(!/three or four spoken sentences/.test(edge), 'the monologue ceiling came back');
 });
 
 // ── Somebody simply starts talking ────────────────────────────────────────

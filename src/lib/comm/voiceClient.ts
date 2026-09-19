@@ -942,10 +942,27 @@ export class VoiceSession {
   private unconfirmedLanguage: string | null = null;
   /** Turns refused as gibberish since the last one that reached the model. */
   private refusedSinceLastTurn = 0;
+  /*
+   * WHAT THE REFUSED TURNS ACTUALLY WERE.
+   *
+   * A refused turn calls milestone('turn_refused'), and nothing subscribes to
+   * onMilestone -- so it reaches no server, no log and no trace. Production
+   * session 28556daf ended up answering a Georgian speaker in Russian, and
+   * the turn that moved the session language was one of the refused ones:
+   * turn ids t2, t4 and t7 simply do not exist in the telemetry. The
+   * conversation's language changed and the record cannot say why.
+   *
+   * A refused turn makes no server call of its own and should not start one.
+   * So the facts ride along with the next committed turn, where a count
+   * already travels: the script and the language each refusal resolved to,
+   * bounded, with no transcript text in it.
+   */
+  private refusedDetail: Array<{ script: string | null; language: string }> = [];
   /** The transcript of the turn being sent, for its shape only. */
   private lastTranscriptForShape = '';
   /** Refusals in the gap before the turn now being sent. */
   private refusedForThisTurn = 0;
+  private refusedDetailForThisTurn: Array<{ script: string | null; language: string }> = [];
   private discreditedDrops = 0;
   /** Words in the latest interim of the utterance in progress; 0 before any. */
   private livePartialWords = 0;
@@ -2787,6 +2804,12 @@ export class VoiceSession {
       this.discreditedDrops += 1;
       this.diag.discreditedTurnsDropped = (this.diag.discreditedTurnsDropped ?? 0) + 1;
       this.refusedSinceLastTurn += 1;
+      if (this.refusedDetail.length < 6) {
+        this.refusedDetail.push({
+          script: scriptEvidence(said).script,
+          language: resolution.resolvedLanguage,
+        });
+      }
       this.turns = this.turns.filter((t) => t.id !== id);
       this.cb.onTranscript(this.turns);
       this.milestone('turn_refused', resolution.resolvedLanguage);
@@ -2825,6 +2848,8 @@ export class VoiceSession {
     // that preceded it, not to the session.
     this.refusedForThisTurn = this.refusedSinceLastTurn;
     this.refusedSinceLastTurn = 0;
+    this.refusedDetailForThisTurn = this.refusedDetail;
+    this.refusedDetail = [];
     this.spokenLanguages.add(resolution.resolvedLanguage);
 
     this.publishDiagnostics();
@@ -3655,7 +3680,7 @@ export class VoiceSession {
   get turnShape(): {
     transcriptChars: number; transcriptWords: number;
     shadowLanguage: string | null; shadowChars: number;
-    proposedLanguage: string | null; refusedBefore: number;
+    proposedLanguage: string | null; refusedBefore: number; refusedShapes: string;
   } {
     const said = this.lastTranscriptForShape;
     return {
@@ -3665,6 +3690,10 @@ export class VoiceSession {
       shadowChars: this.shadowResult?.text.length ?? 0,
       proposedLanguage: this.lastResolution?.proposedLanguage ?? null,
       refusedBefore: this.refusedForThisTurn,
+      // Compact and text-free: "two refusals, both Devanagari, both held at
+      // ru" is the sentence that would have explained 28556daf.
+      refusedShapes: this.refusedDetailForThisTurn
+        .map((r) => `${r.script ?? '?'}:${r.language}`).join(','),
     };
   }
 

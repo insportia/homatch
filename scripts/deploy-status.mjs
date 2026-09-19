@@ -27,6 +27,18 @@ const git = (...args) => execFileSync('git', args,
 const short = (sha) => (sha ? sha.slice(0, 8) : '—');
 
 function status() {
+  /*
+   * The refs live on the remote, because CI is what writes them. Reading a
+   * stale local copy is how this command reports BEHIND for something that
+   * was deployed ten minutes ago, which is exactly the kind of false alarm
+   * that teaches people to stop trusting a status command.
+   */
+  try {
+    git('fetch', 'origin', '+refs/deployed/*:refs/deployed/*');
+  } catch {
+    // Offline, or no refs yet. The local copy is then the best answer there
+    // is, and every row still says which commit it is talking about.
+  }
   const head = git('rev-parse', 'HEAD');
   const rows = [];
 

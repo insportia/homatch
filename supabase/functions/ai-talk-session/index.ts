@@ -397,7 +397,7 @@ interface TalkRequest {
   turnShape?: {
     transcriptChars?: number; transcriptWords?: number;
     shadowLanguage?: string | null; shadowChars?: number;
-    proposedLanguage?: string | null; refusedBefore?: number;
+    proposedLanguage?: string | null; refusedBefore?: number; refusedShapes?: string;
   };
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
@@ -2648,6 +2648,10 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           // Utterances refused as gibberish in the gap before this turn: the
           // measure of how much of a conversation is being thrown away.
           refused_before: body.turnShape?.refusedBefore ?? null,
+          // What those refusals WERE, script and held language, no text.
+          // Session 28556daf changed conversational language inside a gap
+          // of refused turns and the record could not say which one did it.
+          refused_shapes: body.turnShape?.refusedShapes || null,
           tts_skipped_phrases: skippedPhrases,
           tts_skipped_chars: skippedChars,
           abandoned_why: abandoned,
@@ -3382,8 +3386,26 @@ function publicDemoInstructions(language: string): string {
     'MATCH THEM. Take your length, register and energy from theirs, every turn, and change when theirs',
     'changes. Short and clipped, be short and clipped. Curious, go with them. Playful, play. Formal, be',
     'professional. A yes/no question gets the yes or no plus the one fact that',
-    'qualifies it, often under ten words. A real question gets a real answer,',
-    'three or four spoken sentences if that is what it takes. "It depends" is not an answer; say what it',
+    'qualifies it, often under ten words. A real question gets TWO spoken sentences, three at the most.',
+    /*
+     * MEASURED, and it is the whole of what "AI Talk feels slow" turned out
+     * to be. Production session 28556daf, 2026-09-19 17:03-17:05, five turns:
+     * the owner reported 13-23 second gaps between replies and said the
+     * product had collapsed.
+     *
+     * The latency was not there. Speech-end to Mariam's first audible word
+     * was 2.9-4.2 seconds across every turn -- 1.3-2.0s of endpointer, then
+     * Luna's first token at 1.3-1.9s. What filled the rest of those gaps was
+     * MARIAM HERSELF: 1,355,337 bytes of PCM on turn one at 48kHz 16-bit, and
+     * 1,654,044 on turn three. That is 14.1 and 17.2 SECONDS of her talking.
+     *
+     * Georgian runs about 0.076 seconds per character, so a 200-character
+     * answer -- three or four sentences, exactly what this prompt used to ask
+     * for -- is a fifteen-second monologue. Nobody experiences that as a
+     * conversation, and no latency work can fix it, because the time is not
+     * latency. It is the answer.
+     */
+    'Four is fifteen seconds of Georgian: a monologue. "It depends" is not an answer; say what it',
     'depends ON. If you cannot answer, say what you would need. Told -- in any words, however blunt --',
     'that you are talking too',
     'much, give the short version immediately and stay shorter, with no paragraph apologising for it.',

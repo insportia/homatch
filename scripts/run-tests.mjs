@@ -112,5 +112,65 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-const res = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' });
+/*
+ * NODE_TEST_CONTEXT MUST NOT REACH THE CHILD.
+ *
+ * node:test sets NODE_TEST_CONTEXT for every test file it runs, and anything
+ * spawned from inside a test inherits it. A `node --test` that sees it starts
+ * in child mode: it reports its results to a supervising runner over the v8
+ * serialization channel and EXITS 0 WHATEVER HAPPENS, because the status is
+ * supposed to be the parent's to decide.
+ *
+ * With no supervising runner listening, that status goes nowhere. Measured
+ * here against a suite containing one deliberately failing test:
+ *
+ *   npm test                              exit 1
+ *   NODE_TEST_CONTEXT=child-v8 npm test   exit 0     <-- a real failure, green
+ *
+ * So the canonical command's verdict depended on an environment variable it
+ * never set and nobody looks at. Deleting it makes this run a top-level run
+ * every time, which is the only kind whose exit code means anything.
+ */
+const childEnv = { ...process.env };
+delete childEnv.NODE_TEST_CONTEXT;
+
+const res = spawnSync(process.execPath, ['--test', ...files], {
+  stdio: 'inherit',
+  env: childEnv,
+});
+
+/*
+ * THE VERDICT IS PRINTED, NOT ONLY RETURNED.
+ *
+ * This runner already propagates the child's status correctly, and so does
+ * `npm test` above it and CI above that — measured layer by layer, a single
+ * failing test gives exit 1 at every one of them.
+ *
+ * It stops being true the moment the command is put on the left of a shell
+ * pipe. `npm test | tail`, `| tee`, `| grep`, `| cat` — a POSIX shell reports
+ * the status of the LAST command in a pipeline, so all of them return 0 no
+ * matter what happened to the left of the `|`. That is how a run with a real
+ * failure in it got read as green here: the failure was in the output, and
+ * the exit code that was looked at belonged to `tail`.
+ *
+ * Nothing this file can do makes a pipeline report the right status. What it
+ * can do is make the LAST LINE of its own output state the verdict, so a
+ * truncated or piped view ends with the answer rather than with the tail of
+ * whichever error dump happened to print last. node:test prints its failure
+ * details AFTER the summary counts, which is exactly why `| tail -10` showed
+ * an assertion dump and no `fail` line at all.
+ *
+ * The line below is derived from the child's exit status — the same value
+ * this process exits with — never from scraping the output for a word like
+ * "fail". If you are reading a piped run, this line and the exit code cannot
+ * disagree; if you are reading a bare run, use the exit code.
+ */
+const failed = res.status !== 0;
+if (res.signal) {
+  console.error(`TEST GATE: FAIL — the test process was killed by ${res.signal}`);
+} else if (failed) {
+  console.error(`TEST GATE: FAIL — the test process exited ${res.status ?? 'without a status'}`);
+} else {
+  console.log(`TEST GATE: PASS — ${files.length} files, exit 0`);
+}
 process.exit(res.status ?? 1);

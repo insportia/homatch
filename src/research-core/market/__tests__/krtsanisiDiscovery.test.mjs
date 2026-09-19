@@ -416,3 +416,64 @@ test('a category page proves the street has inventory and is not a listing', asy
   assert.equal(report.listings[0].measurable, false);
   assert.equal(report.tierStats.length, 0, 'nothing measurable means no statistic');
 });
+
+test('a page is only fetched where the source permits that kind of fetch', async () => {
+  /*
+   * myhome.ge answers 403 to every non-browser client; korter.ge is
+   * server-rendered. A plain HTTP fetcher pointed at the first would earn a
+   * 403 and record a portal with no inventory — which is how a blocked read
+   * became "the market is thin" in the first place. So access is a property of
+   * the source and the fetcher has to match it.
+   */
+  const tried = [];
+  const plainHttp = {
+    id: 'HTTP',
+    async fetch(url) { tried.push(url); return { ok: false, status: 403, body: '' }; },
+  };
+  const browser = {
+    id: 'BROWSER',
+    canDriveBrowser: true,
+    async fetch(url) { tried.push(url); return { ok: false, status: 403, body: '' }; },
+  };
+
+  const rows = HARVEST.map((h) => ({ ...h }));
+  await runDiscovery({
+    plan: PLAN, subject: SUBJECT_GEO, search: harvestProvider(rows), fetchPage: plainHttp,
+  });
+  assert.ok(
+    !tried.some((u) => u.includes('myhome.ge')),
+    'a non-browser fetcher must never be pointed at a browser-only source'
+  );
+  assert.ok(
+    tried.some((u) => u.includes('estatehub.ge')),
+    'an unregistered domain must still be tried — this is the one that carried the listing'
+  );
+  assert.ok(
+    !tried.some((u) => u.includes('tranio')),
+    'a source recorded as index-only is not fetched at all'
+  );
+
+  tried.length = 0;
+  await runDiscovery({
+    plan: PLAN, subject: SUBJECT_GEO, search: harvestProvider(rows), fetchPage: browser,
+  });
+  assert.ok(tried.some((u) => u.includes('myhome.ge')), 'a browser fetcher may read it');
+});
+
+test('a failed page read never erases what the index already stated', async () => {
+  // The snippet is read first, always. A fetch that then fails must leave the
+  // index evidence standing rather than turning a known flat into nothing.
+  const report = await runDiscovery({
+    plan: PLAN,
+    subject: SUBJECT_GEO,
+    search: harvestProvider(HARVEST.map((h) => ({ ...h }))),
+    fetchPage: {
+      id: 'BROKEN',
+      canDriveBrowser: true,
+      async fetch() { return { ok: false, status: 500, body: '' }; },
+    },
+  });
+  const flat = report.listings.find((l) => l.area === 97.2);
+  assert.ok(flat, 'the index evidence was lost when the page read failed');
+  assert.equal(flat.confidence, 'INDEX');
+});

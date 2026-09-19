@@ -107,9 +107,19 @@ export interface SearchProvider {
   search(query: DiscoveryQuery): Promise<SearchResponse>;
 }
 
-/** Anything that can read a page we are permitted to read directly. */
+/**
+ * Anything that can read a page we are permitted to read.
+ *
+ * `canDriveBrowser` is what separates the two access classes in practice.
+ * myhome.ge answers 403 to every non-browser client and renders normally in a
+ * real one, so its pages are reachable only by a fetcher that says it is a
+ * browser — and a plain HTTP fetcher must never be pointed at them, because
+ * the 403 it earns would be recorded as a source with no inventory.
+ */
 export interface PageFetcher {
   id: string;
+  /** True when this fetcher renders pages as a real browser does. */
+  canDriveBrowser?: boolean;
   fetch(url: string): Promise<{ ok: boolean; status: number; body: string }>;
 }
 
@@ -395,14 +405,37 @@ export async function runDiscovery(options: RunDiscoveryOptions): Promise<Discov
        * every non-browser client, and hammering it would be both useless and
        * a control we were asked not to work around.
        */
+      /*
+       * WHAT MAY BE READ, AND BY WHAT.
+       *
+       * A registered source states its access and that is obeyed: INDEX_ONLY is
+       * not fetched, and a BROWSER source is fetched only by a fetcher that is
+       * one — pointing plain HTTP at myhome.ge earns a 403 that would then be
+       * recorded as a portal with no inventory.
+       *
+       * An UNKNOWN domain is tried over plain HTTP, because that is how a
+       * discovery layer learns. estatehub.ge was on no list of ours and carried
+       * the acceptance listing; a rule that refused to read anything unregistered
+       * would have made the registry a gate again, which is the ceiling this
+       * whole layer exists to remove. What comes back is an observation, and a
+       * refusal is recorded rather than held against the street.
+       */
       const source = sourceForUrl(hit.url);
-      if (options.fetchPage && source?.access === 'DIRECT') {
+      const readable = source
+        ? (source.access === 'DIRECT'
+          || (source.access === 'BROWSER' && options.fetchPage?.canDriveBrowser === true))
+        : true;
+      if (options.fetchPage && readable) {
         const page = await options.fetchPage.fetch(hit.url);
         if (page.ok && page.body) {
           const ctx = { url: hit.url, sourceDomain: domain, streetHints: subject.streetHints };
           const richer = fromLdJson(ldBlocks(page.body), ctx)
             ?? fromPageText(visibleText(page.body), ctx);
-          if (richer) { listing = richer; confidence = 'PAGE'; via = 'DIRECT_PAGE'; }
+          if (richer) {
+            listing = richer;
+            confidence = 'PAGE';
+            via = source?.access === 'BROWSER' ? 'BROWSER_PAGE' : 'DIRECT_PAGE';
+          }
         }
       }
 

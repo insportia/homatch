@@ -565,15 +565,40 @@ jobs:
           # Eight at a time: the work is upload-bound rather than CPU-bound,
           # and a failure still names the function that failed because each
           # writes its own marker file.
-          read -ra OWED <<< "${{ needs.scope.outputs.functions }}"
+          # COMPUTED HERE, NOT CARRIED ACROSS A JOB BOUNDARY.
+          #
+          # This read the scope job's output, and on 2026-09-19 that output
+          # arrived empty while `edge` arrived as `true`. The loop matched
+          # nothing, deployed nothing, exited 0 -- and record-deployment then
+          # advanced refs/deployed/edge to a commit whose functions had never
+          # been uploaded. ai-talk-session stayed on its 17:22:55 build while
+          # the ref claimed 17:53, so the next run saw nothing owed and the
+          # work disappeared. A silent no-op that also erases the evidence of
+          # itself is worse than the serial deploy it replaced.
+          #
+          # So the script that decides scope now runs where the work happens:
+          # one source of truth and no serialisation between jobs. An empty
+          # list is a FAILURE rather than a quiet success -- this step only
+          # runs when scope said something was owed, so nothing owed is a
+          # contradiction, not an outcome.
+          SCOPE_JSON=$(node scripts/deploy-scope.mjs --json)
+          OWED_LIST=$(echo "$SCOPE_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).functions.join(' ')))")
+          echo "owed: [$OWED_LIST]"
+          if [[ -z "${OWED_LIST// /}" ]]; then
+            echo "::error::scope said edge was owed and then named no functions - refusing to report success without deploying"
+            exit 1
+          fi
+          read -ra OWED <<< "$OWED_LIST"
           declare -A WANTED=()
           for fn in "${OWED[@]}"; do [[ -n "$fn" ]] && WANTED["$fn"]=1; done
 
           FAILED=()
+          DEPLOYED_ANY=0
           TMP=$(mktemp -d)
           RUNNING=0
           for fn in "${JWT_FUNCTIONS[@]}"; do
             [[ -z "${WANTED[$fn]:-}" ]] && continue
+            DEPLOYED_ANY=$((DEPLOYED_ANY + 1))
             (
               if supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" 2>&1; then
                 echo "  ✅ $fn"
@@ -663,14 +688,39 @@ jobs:
             "active-search-notify"
           )
           FAILED=()
-          read -ra OWED <<< "${{ needs.scope.outputs.functions }}"
+          # COMPUTED HERE, NOT CARRIED ACROSS A JOB BOUNDARY.
+          #
+          # This read the scope job's output, and on 2026-09-19 that output
+          # arrived empty while `edge` arrived as `true`. The loop matched
+          # nothing, deployed nothing, exited 0 -- and record-deployment then
+          # advanced refs/deployed/edge to a commit whose functions had never
+          # been uploaded. ai-talk-session stayed on its 17:22:55 build while
+          # the ref claimed 17:53, so the next run saw nothing owed and the
+          # work disappeared. A silent no-op that also erases the evidence of
+          # itself is worse than the serial deploy it replaced.
+          #
+          # So the script that decides scope now runs where the work happens:
+          # one source of truth and no serialisation between jobs. An empty
+          # list is a FAILURE rather than a quiet success -- this step only
+          # runs when scope said something was owed, so nothing owed is a
+          # contradiction, not an outcome.
+          SCOPE_JSON=$(node scripts/deploy-scope.mjs --json)
+          OWED_LIST=$(echo "$SCOPE_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).functions.join(' ')))")
+          echo "owed: [$OWED_LIST]"
+          if [[ -z "${OWED_LIST// /}" ]]; then
+            echo "::error::scope said edge was owed and then named no functions - refusing to report success without deploying"
+            exit 1
+          fi
+          read -ra OWED <<< "$OWED_LIST"
           declare -A WANTED=()
           for fn in "${OWED[@]}"; do [[ -n "$fn" ]] && WANTED["$fn"]=1; done
 
+          DEPLOYED_ANY=0
           TMP=$(mktemp -d)
           RUNNING=0
           for fn in "${NO_JWT_FUNCTIONS[@]}"; do
             [[ -z "${WANTED[$fn]:-}" ]] && continue
+            DEPLOYED_ANY=$((DEPLOYED_ANY + 1))
             (
               if supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt 2>&1; then
                 echo "  ✅ $fn"
@@ -749,10 +799,33 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Advance the refs that earned it
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
+          # Anything this run rebuilt is newer than an hour ago. Generous on
+          # purpose: the question is "was it uploaded at all", and a long
+          # Validate stage must not turn a real deploy into a false alarm.
+          STARTED_AT_MS=$(( $(date -u +%s) * 1000 - 3600000 ))
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           SHA='${{ github.sha }}'
+
+          # The artifact, not the job's exit code.
+          #
+          # "Deploy Edge Functions: success" was true and meaningless on
+          # 2026-09-19: the step matched no functions and exited 0. A ref that
+          # advances on a green job rather than on an upload is a ref that
+          # lies, and this one lied within an hour of being written to stop
+          # exactly that.
+          verify_edge() {
+            local live
+            live=$(curl -s -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"               "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/functions/ai-talk-session"               | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).updated_at||0)}catch{console.log(0)}})")
+            echo "ai-talk-session updated_at: $live"
+            if [[ "${live:-0}" -lt "$STARTED_AT_MS" ]]; then
+              echo "::error::the edge deploy reported success but ai-talk-session was not rebuilt - ref not advanced"
+              return 1
+            fi
+          }
 
           advance() {
             local component="$1" outcome="$2"
@@ -775,6 +848,12 @@ jobs:
             else
               edge_outcome=success
             fi
+          fi
+          # Only ai-talk-session is checked by name: it is the function this
+          # pipeline has lost twice, and a cheap check that catches the known
+          # failure beats an exhaustive one nobody runs.
+          if [[ "$edge_outcome" == "success" && '${{ needs.scope.outputs.edge }}' == 'true' ]]; then
+            verify_edge || edge_outcome="deployed nothing"
           fi
           advance edge "$edge_outcome"
 

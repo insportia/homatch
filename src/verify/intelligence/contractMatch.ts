@@ -142,10 +142,22 @@ const bareName = (s: string): string =>
  * INSUFFICIENT rather than a false mismatch.
  */
 export function streetKey(text: string): string {
+  return streetMention(text).key;
+}
+
+/**
+ * The street mention, as both a comparable key and the words it came from.
+ *
+ * THE KEY IS FOR COMPARING; THE TEXT IS FOR READING. An earlier version
+ * returned only the key and the UI printed it, so a buyer was shown
+ * `კრწანისი|6` — an internal normalisation artefact — where an
+ * address belonged. Found by reading the deployed page, not the file.
+ */
+export function streetMention(text: string): { key: string; text: string } {
   const m = normalise(text).match(
     /([\p{L}]+)\s*(?:ქუჩა|street|st)\s*[,\s]*(?:№|#|n)?\s*(\d+)/u
   );
-  return m ? `${m[1]}|${m[2]}` : '';
+  return m ? { key: `${m[1]}|${m[2]}`, text: m[0].trim() } : { key: '', text: '' };
 }
 
 function compare(
@@ -195,9 +207,21 @@ export function compareContractToVerify(
 
   const address = str(context.address).trim();
   if (address) {
-    const wanted = streetKey(address);
-    const found = wanted && streetKey(corpus) === wanted ? streetKey(corpus) : undefined;
-    rows.push(compare('ADDRESS', found, wanted || undefined, (a, b) => a === b, 'cm_note_address_mismatch'));
+    const subjectAddress = streetMention(address);
+    const contractAddress = streetMention(corpus);
+    // Compared on the KEY, displayed as the WORDS: the buyer sees the
+    // address each side actually states, while the match still ignores
+    // punctuation and №-versus-N.
+    const matched = !!subjectAddress.key && contractAddress.key === subjectAddress.key;
+    rows.push(
+      compare(
+        'ADDRESS',
+        matched ? contractAddress.text : undefined,
+        subjectAddress.key ? address : undefined,
+        () => true,
+        'cm_note_address_mismatch'
+      )
+    );
   }
 
   /* ---- who is selling ---- */

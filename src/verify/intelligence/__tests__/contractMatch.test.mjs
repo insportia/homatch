@@ -89,6 +89,25 @@ test('the same street address is recognised despite different formatting', () =>
   assert.equal(address.state, 'MATCH', 'punctuation and № vs N are not a different address');
 });
 
+test('the address rows show words, never the internal comparison key', () => {
+  /*
+   * FOUND ON THE DEPLOYED PAGE, NOT IN THE FILE.
+   *
+   * The comparison normalises an address to `street|number` so that
+   * "…კრწანისის ქუჩა, N6" and "კრწანისის ქუჩა №6-ში" compare equal. That key
+   * was also what got rendered, so a buyer opening a real contract in
+   * production was shown `კრწანისის|6` where an address belonged.
+   */
+  const address = rowFor(compareContractToVerify(REAL_ANALYSIS, VILLION), 'ADDRESS');
+  assert.equal(address.state, 'MATCH');
+  for (const side of [address.contractValue, address.verifyValue]) {
+    assert.ok(side, 'a matched address must show both sides');
+    assert.ok(!side.includes('|'), `the comparison key leaked into the UI: ${side}`);
+  }
+  assert.match(address.verifyValue, /კრწანისის/, 'the verified side shows the registry address');
+  assert.match(address.contractValue, /კრწანისის/, 'the document side shows what the document says');
+});
+
 test('a company the contract never names is INSUFFICIENT, not a mismatch', () => {
   const rows = compareContractToVerify(REAL_ANALYSIS, VILLION);
   // This contract is between private parties; it does not name the developer.

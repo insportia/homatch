@@ -25,6 +25,7 @@
 import { Zap, Droplets, Flame, Waves, Wifi, Check, Minus, AlertTriangle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection } from '@/components/verify/ui';
+import { meaningful } from '@/verify/intelligence/coverageGap';
 
 export type UtilityConfidence = 'CONFIRMED' | 'REPORTED' | 'NOT_VERIFIED' | 'CONFLICTING';
 
@@ -83,10 +84,27 @@ export function UtilitiesCard({ utilities }: { utilities?: UtilitiesLike | null 
    * every row saying "not yet verified" reads as what it is — a question this
    * run did not answer, which the buyer can then go and ask.
    */
-  const rows = UTILITIES.map((u) => ({
+  const all = UTILITIES.map((u) => ({
     ...u,
     ...utilityConfidence(utilities ? utilities[u.key] : null),
   }));
+
+  /*
+   * ONLY THE ROWS THAT SAY SOMETHING — AND NOTHING AT ALL WHEN NONE DO.
+   *
+   * This used to render all five unconditionally, on the reasoning that a
+   * missing section reads as "does not apply" while a row saying „ჯერ არ
+   * გადამოწმებულა" reads as an open question. Seeing it live settled the
+   * argument the other way: five rows of that is not an open question, it is
+   * a list of things Homatch does not know, printed inside the customer's
+   * due-diligence report. A buyer cannot act on it and it makes the property
+   * look worse than the evidence says.
+   *
+   * So the block earns its place row by row. Two known connections render two
+   * rows; five unknowns render no section.
+   */
+  const rows = meaningful(all, (r) => r.level !== 'NOT_VERIFIED');
+  if (!rows.length) return null;
 
   return (
     <VerifySection
@@ -123,9 +141,6 @@ export function UtilitiesCard({ utilities }: { utilities?: UtilitiesLike | null 
         })}
       </ul>
 
-      <p className="mt-3 min-w-0 break-words text-2xs leading-relaxed text-muted-foreground">
-        {t('verify_util_footnote')}
-      </p>
     </VerifySection>
   );
 }

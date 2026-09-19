@@ -57,6 +57,8 @@ import { FileText, Copy, Check, ExternalLink, MapPin, Users } from 'lucide-react
 import { readable } from '@/verify/readableText';
 import { buyerOpening, unconfirmedItems } from '@/verify/intelligence/buyerSummary';
 import { stripInternalTerms, marketShape, TIER_LABEL_KEY } from '@/verify/intelligence/marketNarrative';
+import { scrubCoverageLanguage } from '@/verify/intelligence/coverageGap';
+import { severitySignals, weighVerdict } from '@/verify/intelligence/severity';
 import { CompanyIntelligenceCard, type CompanyProfileLike } from './CompanyIntelligenceCard';
 import { UtilitiesCard, type UtilitiesLike } from './UtilitiesCard';
 import { UnconfirmedCard } from './UnconfirmedCard';
@@ -256,7 +258,9 @@ const stripEvidenceIds = (text: string): string =>
  * in the database, which no prompt change can reach.
  */
 const clean = (s: unknown): string =>
-  stripInternalTerms(stripEvidenceIds(readable(typeof s === 'string' ? s : '')));
+  scrubCoverageLanguage(
+    stripInternalTerms(stripEvidenceIds(readable(typeof s === 'string' ? s : '')))
+  );
 
 const paragraphs = (text: string): string[] =>
   clean(text).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
@@ -355,6 +359,19 @@ export function VerifyReport({
    * about it, so the missing asking price appears here exactly when it is
    * genuinely missing — and stops being the first thing anyone reads.
    */
+  /*
+   * THE VERDICT, WEIGHED RATHER THAN COUNTED.
+   *
+   * Driven by the structured evidence the research core persists, so the same
+   * property scores the same twice and a thin crawl scores nothing at all.
+   */
+  const weighed = weighVerdict(severitySignals({
+    rights: rights as never,
+    company: company as never,
+    snapshot: synthesis.snapshot as never,
+    highlights: r.summary?.highlights ?? [],
+  }));
+
   const openQuestions = unconfirmedItems({
     market: synthesis.market as never,
     snapshot: synthesis.snapshot as never,
@@ -364,7 +381,7 @@ export function VerifyReport({
 
   return (
     <article className="mx-auto max-w-[68ch] space-y-8">
-      <SummaryHero summary={r.summary} />
+      <SummaryHero summary={r.summary} weighed={weighed} />
 
       {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
       {/* The dropped section's own figures, kept where figures belong. */}
@@ -563,10 +580,13 @@ export function VerifyReport({
  * them was hundreds of words further down. This carries the verdict, the
  * reason, and the three-to-six dimensions it rests on, in one screen.
  */
-const SummaryHero: React.FC<{ summary?: BuyerIntelligence['summary'] }> = ({ summary }) => {
+const SummaryHero: React.FC<{
+  summary?: BuyerIntelligence['summary'];
+  weighed?: { label: OverallLabel } | null;
+}> = ({ summary, weighed }) => {
   const { t } = useLanguage();
   if (!summary) return null;
-  const opening = buyerOpening(summary);
+  const opening = buyerOpening(summary, weighed);
   const label = (['POSITIVE', 'BALANCED', 'NEEDS_ATTENTION'] as OverallLabel[]).includes(summary.label)
     ? summary.label
     : 'BALANCED';
@@ -936,7 +956,7 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
         </p>
       </div>
 
-      {shape ? (
+      {shape?.headlineKey ? (
         <p className="min-w-0 break-words text-sm leading-relaxed text-ink-soft">
           {t(shape.headlineKey)}
         </p>

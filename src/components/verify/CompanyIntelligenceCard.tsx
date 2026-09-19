@@ -220,26 +220,22 @@ export function CompanyIntelligenceCard({
           </div>
         ) : null}
 
-        {/* ---- other projects, or the honest absence of them ---- */}
-        <div className="min-w-0 space-y-1.5">
-          <p className="text-2xs uppercase tracking-wide text-muted-foreground">
-            {t('verify_co_projects')}
-          </p>
-          {projects.length ? (
+        {/* ---- other projects, when any were established ----
+            „ჩვენს მოძიებულ წყაროებში სხვა პროექტი ვერ დადასტურდა" described
+            our search, not the developer, and a reader took it as evidence of
+            inexperience. An empty result is now simply absent. */}
+        {projects.length ? (
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-2xs uppercase tracking-wide text-muted-foreground">
+              {t('verify_co_projects')}
+            </p>
             <ul className="space-y-1">
               {projects.map((p, i) => (
                 <li key={i} className="min-w-0 break-words text-sm text-foreground">{p}</li>
               ))}
             </ul>
-          ) : (
-            /* A statement about the SEARCH, not about the company. "This is
-               their first project" is an inference the reader may draw and
-               Homatch may not assert. */
-            <p className="min-w-0 break-words text-sm leading-relaxed text-ink-soft">
-              {t('verify_co_no_other_projects')}
-            </p>
-          )}
-        </div>
+          </div>
+        ) : null}
 
         {/* ---- COMPANY-LEVEL obligations ---- */}
         {encumbrances.length ? (

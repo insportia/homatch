@@ -63,7 +63,7 @@ export const TIER_LABEL_KEY: Record<MarketTier, string> = {
   SAME_PROJECT: 'verify_mkt_same_project',
   SAME_STREET: 'verify_mkt_same_street',
   SAME_DISTRICT: 'verify_mkt_same_district',
-  PEER_PROJECT: 'verify_mkt_other_projects',
+  PEER_PROJECT: 'verify_mkt_wider_supply',
   WIDER_MARKET: 'verify_mkt_wider_market',
 };
 
@@ -92,8 +92,8 @@ export interface MarketShape {
   basisIsLocal: boolean;
   /** True when nothing was found in the same project or the same street. */
   noLocalEvidence: boolean;
-  /** i18n key for the one sentence that frames the whole block. */
-  headlineKey: string;
+  /** i18n key framing the figures, or null when there are none to frame. */
+  headlineKey: string | null;
 }
 
 const tierOf = (v: unknown): MarketTier | null => {
@@ -147,13 +147,24 @@ export function marketShape(market: unknown): MarketShape | null {
    * its median from the 37 — so a single local row must not let the block
    * describe itself as local.
    */
+  /*
+   * WHAT THE NUMBERS DESCRIBE — NEVER WHAT WE DID NOT FIND.
+   *
+   * This used to resolve to „ამ შენობაში ან ამ ქუჩაზე გასაყიდი განცხადება ვერ
+   * მოიძებნა…" whenever the local bands were empty. True, and a diagnostic
+   * about our crawler printed inside a due-diligence report: a buyer reads it
+   * as a fact about the building.
+   *
+   * The frame now names the scope of the figures and stops there. An absent
+   * band is simply a band that is not shown.
+   */
   const headlineKey = !tiers.length
-    ? 'verify_mkt_frame_none'
+    ? null
     : basisIsLocal
       ? 'verify_mkt_frame_local'
       : basis === 'SAME_DISTRICT'
         ? 'verify_mkt_frame_surrounding'
-        : 'verify_mkt_frame_citywide';
+        : 'verify_mkt_frame_wider';
 
   return { tiers, basis, basisCount, basisIsLocal, noLocalEvidence, headlineKey };
 }

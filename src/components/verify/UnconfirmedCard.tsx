@@ -21,13 +21,25 @@ import { HelpCircle, AlertTriangle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection } from '@/components/verify/ui';
 import type { UnconfirmedItem } from '@/verify/intelligence/buyerSummary';
+import { customerFacingGaps } from '@/verify/intelligence/coverageGap';
 
 export function UnconfirmedCard({ items }: { items: UnconfirmedItem[] }) {
   const { t } = useLanguage();
-  if (!items.length) return null;
+
+  /*
+   * ONLY GAPS THAT ARE ABOUT THE PROPERTY.
+   *
+   * „კომუნიკაციების მიერთება ამ შემოწმებისას არ გადამოწმებულა" and „ფართობი
+   * და მოთხოვნილი ფასი არ მოგვეწოდა" are statements about our search. They
+   * lower internal confidence; they are not things a buyer can act on, and
+   * printed here they read as defects of the flat. What survives is what an
+   * authoritative source left genuinely open.
+   */
+  const shown = customerFacingGaps(items);
+  if (!shown.length) return null;
 
   // Material first: the ones worth a phone call before the ones worth a shrug.
-  const ordered = [...items].sort((a, b) =>
+  const ordered = [...shown].sort((a, b) =>
     a.weight === b.weight ? 0 : a.weight === 'MATERIAL' ? -1 : 1
   );
   const material = ordered.filter((i) => i.weight === 'MATERIAL').length;

@@ -61,7 +61,22 @@ test('a company-level obligation is never presented as a charge on the flat', ()
 test('an empty project list is a statement about our search, never about the company', () => {
   // "This is their first project" is an inference the reader may draw and
   // Homatch may not assert.
-  assert.match(SRC, /verify_co_no_other_projects/);
+  /*
+   * STRONGER THAN IT WAS. The card used to say „ჩვენს მოძიებულ წყაროებში სხვა
+   * დასრულებული პროექტი ვერ დადასტურდა" — carefully hedged, and still a report
+   * on OUR SEARCH printed inside the customer's due diligence, which readers
+   * took as evidence of an inexperienced developer. An empty result now
+   * renders nothing at all.
+   */
+  assert.ok(
+    !/verify_co_no_other_projects/.test(SRC),
+    'an empty project list must not explain our search'
+  );
+  assert.match(
+    SRC,
+    /\{projects\.length \? \(/,
+    'the projects block must be conditional on there being projects'
+  );
   /*
    * Comments explain what the card refuses to say and necessarily quote the
    * claim; only executable code can put it in front of a customer. Checking

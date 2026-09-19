@@ -137,7 +137,11 @@ test('the summary is a verdict WITH its reasons, not a traffic light', () => {
   // model's sentence when it is about the property and replaces it when it
   // is about missing input. Either way the verdict still comes WITH a
   // sentence — a bare label would be the traffic light this test forbids.
-  assert.match(reportCode, /buyerOpening\(summary\)/);
+  // The verdict itself is now WEIGHED rather than counted — two open
+  // questions no longer outvote five verified positives — and the sentence
+  // still arrives with it. A bare label would be the traffic light.
+  assert.match(reportCode, /buyerOpening\(summary, weighed\)/);
+  assert.match(reportCode, /weighVerdict\(severitySignals\(/);
   assert.match(reportCode, /opening\.replaced \? t\(opening\.fallbackKey/);
   assert.match(reportCode, /f\.finding/);
   assert.match(reportCode, /f\.whyItMatters/);
@@ -248,7 +252,7 @@ test('every customer-visible string is cleaned before it renders', () => {
   // only a render-time gate repairs the reports already in the database.
   assert.match(
     reportCode,
-    /const clean = \(s: unknown\): string =>\s*stripInternalTerms\(stripEvidenceIds\(readable\(/,
+    /const clean = \(s: unknown\): string =>\s*scrubCoverageLanguage\s*\(\s*stripInternalTerms\(stripEvidenceIds\(readable\(/,
     'clean() must compose every guard, so a new field cannot skip one'
   );
   for (const call of [

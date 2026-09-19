@@ -70,7 +70,9 @@ test('the verdict block no longer restates the findings as cards', () => {
    * description of the INPUT, not of the property. The model's own
    * sentence is kept whenever it is genuinely about the flat.
    */
-  assert.match(hero, /buyerOpening\(summary\)/);
+  // Takes the weighed verdict too: the label is derived from what the
+  // evidence weighs, not from how many things remain unfinished.
+  assert.match(hero, /buyerOpening\(summary, weighed\)/);
   assert.match(hero, /opening\.statement/);
   assert.match(hero, /opening\.fallbackKey/);
 });

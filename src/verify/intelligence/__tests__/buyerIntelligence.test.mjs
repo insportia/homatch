@@ -589,7 +589,7 @@ test('the UI strips evidence ids the model writes into prose anyway', () => {
   // Composed with stripInternalTerms as well, for the same reason the id
   // strip exists: a model instruction is a request, this is the control.
   assert.ok(
-    /const clean = \(s: unknown\): string =>\s*stripInternalTerms\(stripEvidenceIds\(readable\(/.test(cmp),
+    /const clean = \(s: unknown\): string =>\s*scrubCoverageLanguage\s*\(\s*stripInternalTerms\(stripEvidenceIds\(readable\(/.test(cmp),
     'clean() no longer composes every guard'
   );
   for (const call of [

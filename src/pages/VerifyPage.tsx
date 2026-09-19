@@ -486,7 +486,7 @@ function LegalStatusMatrixCard({ls}:{ls?:LegalStatusMatrix|null}){const{t}=useLa
 // renders the three tiers as their own labeled groups, most-relevant
 // first, and only for groups that actually have entries.
 const COMPARABLE_TIER_ORDER=['SAME_PROJECT','MICRO_LOCATION','PEER_PROJECT'] as const;
-const COMPARABLE_TIER_LABEL_KEYS:Record<string,string>={SAME_PROJECT:'verify_comparable_tier_same_project',MICRO_LOCATION:'verify_comparable_tier_micro_location',PEER_PROJECT:'verify_mkt_other_projects'};
+const COMPARABLE_TIER_LABEL_KEYS:Record<string,string>={SAME_PROJECT:'verify_comparable_tier_same_project',MICRO_LOCATION:'verify_comparable_tier_micro_location',PEER_PROJECT:'verify_mkt_wider_supply'};
 // Mirrors research-agent/index.ts's normalizeComparableTier(): a report
 // generated before comparableType existed only carries the old boolean
 // `sameProject`. Reopening that report (mandate item 5: "old reports open

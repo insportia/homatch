@@ -64,7 +64,13 @@ test('the real report’s headline is correctly judged NOT local', () => {
   assert.equal(shape.basisCount, 37);
   assert.equal(shape.basisIsLocal, false, '37 listings across the city do not measure this building');
   assert.equal(shape.noLocalEvidence, true);
-  assert.equal(shape.headlineKey, 'verify_mkt_frame_citywide');
+  /*
+   * The frame used to read „ამ შენობაში ან ამ ქუჩაზე გასაყიდი განცხადება ვერ
+   * მოიძებნა…" — true, and a report on our crawler printed in a buyer's due
+   * diligence. It now names the SCOPE of the figures and says nothing about
+   * what we did not reach.
+   */
+  assert.equal(shape.headlineKey, 'verify_mkt_frame_wider');
 });
 
 test('a building or street sample IS allowed to headline', () => {
@@ -86,10 +92,16 @@ test('a district-only sample is framed as the surrounding area, not as this buil
   assert.equal(shape.headlineKey, 'verify_mkt_frame_surrounding');
 });
 
-test('no listings at all says so, and invents no number', () => {
+test('no listings at all says nothing at all', () => {
+  /*
+   * THIS TEST'S NAME USED TO BE "says so". That was the defect: an empty
+   * market produced „შესადარებელი განცხადებები ვერ მოიძებნა", which tells a
+   * buyer about our reach and nothing about their flat. A frame with nothing
+   * to frame is now absent, and the caller renders no sentence.
+   */
   const shape = marketShape({ tierCounts: {}, basis: null, basisCount: 0 });
   assert.deepEqual(shape.tiers, []);
-  assert.equal(shape.headlineKey, 'verify_mkt_frame_none');
+  assert.equal(shape.headlineKey, null);
   assert.equal(marketShape(null), null);
 });
 
@@ -103,8 +115,16 @@ test('the band of named developments no longer claims similarity', () => {
    * project name, anywhere in the city. The old label „მსგავსი პროექტები"
    * asserted a likeness that was never established.
    */
-  assert.equal(TIER_LABEL_KEY.PEER_PROJECT, 'verify_mkt_other_projects');
+  /*
+   * Renamed twice, for two different reasons. „მსგავსი პროექტები" claimed a
+   * similarity nothing established; „სხვა პროექტები ქალაქში" replaced it and
+   * was itself called out — counting other projects in the city is a statement
+   * about the breadth of our search. The band is now named for what it is:
+   * the wider market.
+   */
+  assert.equal(TIER_LABEL_KEY.PEER_PROJECT, 'verify_mkt_wider_supply');
   assert.notEqual(TIER_LABEL_KEY.PEER_PROJECT, 'verify_mkt_peer_project');
+  assert.notEqual(TIER_LABEL_KEY.PEER_PROJECT, 'verify_mkt_other_projects');
   // Every band still has a label; none was dropped.
   for (const tier of TIER_LOCALITY) {
     assert.ok(TIER_LABEL_KEY[tier], `${tier} has no label`);

@@ -112,8 +112,20 @@ const FALLBACK_KEY: Record<OverallLabel, string> = {
 /** How many supporting headlines the opening may carry. */
 const SUPPORT_LIMIT = 2;
 
-export function buyerOpening(summary: SummaryLike | null | undefined): Opening {
-  const label = labelOf(summary);
+export function buyerOpening(
+  summary: SummaryLike | null | undefined,
+  /*
+   * The deterministic verdict, when the caller can compute one.
+   *
+   * The model's own label counts unfinished things; this one weighs them. The
+   * stored Villion report is the case: two open questions outvoted five
+   * verified positives and produced an alarming headline for a sound property.
+   * Absent, the model's label is used unchanged — a report with no structured
+   * evidence to weigh should not be re-judged on nothing.
+   */
+  weighed?: { label: OverallLabel } | null
+): Opening {
+  const label = weighed?.label ?? labelOf(summary);
   const statement = str(summary?.statement);
   const replaced = !statement || isMissingInputStatement(statement);
 

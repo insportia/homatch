@@ -21,7 +21,7 @@
 // model the current orchestrator already uses and that production has
 // exercised: the job owns the context, each source owns only its Page.
 import { chromium } from 'playwright';
-import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +47,103 @@ export function logBrowserLifecycle(event: string, fields: Record<string, unknow
   } catch {
     // Diagnostics must never be able to break the research flow.
   }
+}
+
+/* ============================================================== *
+ * PROCESS PRESSURE
+ *
+ * Production incident 2026-09-19. Chromium died at launch with
+ *
+ *   FATAL:...browser_task_executor.cc:299] Failed to start BrowserThread:IO
+ *
+ * which means clone() refused — the container was out of PID slots, having
+ * accumulated zombie Chromium grandchildren that Node, as a non-reaping
+ * PID 1, could never wait() for. Playwright reports that as "Target page,
+ * context or browser has been closed", memory looked healthy at 1.6 GB of
+ * 8 GB, and the worker answered /health normally throughout. Nothing in the
+ * system said "you are out of processes", so the real cause took two days
+ * and a live probe to find.
+ *
+ * These counters are read at the moment a launch fails, so the next
+ * occurrence states its own cause in the log line. They are pure counts plus
+ * PID 1's command name — no argv, no environment, no path, nothing that can
+ * carry a credential. Every read is best-effort: diagnostics may never be
+ * able to break or slow a research job, and /proc is absent on non-Linux
+ * developer machines.
+ * ============================================================== */
+
+export interface ProcessPressure {
+  /** Live processes in this PID namespace. */
+  processes: number | null;
+  /** Of those, processes in state Z — reaped by nobody. */
+  zombies: number | null;
+  /** cgroup pids.current / pids.max, when the controller is mounted. */
+  pidsCurrent: number | null;
+  pidsMax: number | null;
+  /** PID 1's command. `tini` (or any real init) means orphans get reaped;
+   * `node` means they do not. Proves in production whether the fix is live. */
+  pid1: string | null;
+}
+
+const UNKNOWN_PRESSURE: ProcessPressure = {
+  processes: null, zombies: null, pidsCurrent: null, pidsMax: null, pid1: null,
+};
+
+async function readCount(file: string): Promise<number | null> {
+  try {
+    const raw = (await readFile(file, 'utf8')).trim();
+    if (raw === 'max') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Never throws, never blocks meaningfully, never logs a secret. */
+export async function processPressure(procRoot = '/proc'): Promise<ProcessPressure> {
+  let entries: string[];
+  try {
+    entries = await readdir(procRoot);
+  } catch {
+    return { ...UNKNOWN_PRESSURE };
+  }
+
+  const pids = entries.filter((e) => /^\d+$/.test(e));
+  let zombies = 0;
+  // Bounded: during exhaustion there can be thousands of entries, and a
+  // diagnostic must not become the slow thing in the failure path.
+  for (const pid of pids.slice(0, 2000)) {
+    try {
+      const stat = await readFile(`${procRoot}/${pid}/stat`, 'utf8');
+      // `pid (comm) state ...` — comm may contain spaces and parentheses, so
+      // the state is the first field after the LAST ')'.
+      const state = stat.slice(stat.lastIndexOf(')') + 1).trim().split(/\s+/)[0];
+      if (state === 'Z') zombies += 1;
+    } catch {
+      // The process exited between readdir and read. Normal.
+    }
+  }
+
+  let pid1: string | null = null;
+  try {
+    pid1 = (await readFile(`${procRoot}/1/comm`, 'utf8')).trim() || null;
+  } catch {
+    pid1 = null;
+  }
+
+  return {
+    processes: pids.length,
+    zombies,
+    // cgroup v2 first, then v1.
+    pidsCurrent:
+      (await readCount('/sys/fs/cgroup/pids.current')) ??
+      (await readCount('/sys/fs/cgroup/pids/pids.current')),
+    pidsMax:
+      (await readCount('/sys/fs/cgroup/pids.max')) ??
+      (await readCount('/sys/fs/cgroup/pids/pids.max')),
+    pid1,
+  };
 }
 
 /**
@@ -333,6 +430,17 @@ export async function launchJobBrowser(jobId: string): Promise<JobBrowser> {
     });
   } catch (e) {
     await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
+    // The launch failure that matters most is the one that looks like
+    // something else. Chromium reports PID exhaustion as a closed browser,
+    // so the counts go in the SAME line as the error — never a separate
+    // lookup somebody has to think to make. See processPressure()'s header.
+    logBrowserLifecycle('job_browser_launch_failed', {
+      jobId,
+      headed: HEADED,
+      openJobBrowsers: OPEN_JOB_BROWSERS.size,
+      error: redactSecrets(e),
+      ...(await processPressure()),
+    });
     throw e;
   }
 
@@ -462,6 +570,11 @@ export interface LocalBrowserHealth {
   humanAssistReady: boolean;
   pageOpened: boolean;
   scriptExecuted: boolean;
+  /** Counts only (see processPressure). Present on BOTH outcomes: a healthy
+   * probe with a rising zombie count is the early warning that the previous
+   * incident never got, and `pid1` states plainly whether orphans are being
+   * reaped in the container that is actually running. */
+  pressure: ProcessPressure;
   error?: string;
 }
 
@@ -490,6 +603,7 @@ export async function localBrowserHealth(): Promise<LocalBrowserHealth> {
       humanAssistReady: jobBrowser.humanAssistReady,
       pageOpened: true,
       scriptExecuted,
+      pressure: await processPressure(),
     };
   } catch (e) {
     // Server-side only: the message can name local paths.
@@ -503,6 +617,7 @@ export async function localBrowserHealth(): Promise<LocalBrowserHealth> {
       humanAssistReady: false,
       pageOpened: false,
       scriptExecuted: false,
+      pressure: await processPressure(),
       error: 'local_browser_unavailable',
     };
   } finally {

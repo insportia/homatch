@@ -11,6 +11,7 @@ import {
   type WatchdogState,
 } from '../_shared/verifyWatchdog.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
+import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/intelligence/registryOverlay.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
 import { planMarket, segmentsFor, snapshotBrief } from '../../../src/verify/intelligence/marketSnapshot.ts';
@@ -2138,8 +2139,23 @@ function companyProfileSourceBasis(companyProfile: any, browserOfficial: any): '
     return false;
   });
   if (!match) return 'WEB_RESEARCH_ONLY';
-  return (match.documents || []).some((d: any) => d.parsed) ? 'REGISTRY_CONFIRMED' : 'WEB_RESEARCH_ONLY';
+  // A document carrying a structured registry extract is parsed by
+  // definition — the extract IS the parse (see registryExtractFor below).
+  return (match.documents || []).some((d: any) => d.parsed || d.registryExtract)
+    ? 'REGISTRY_CONFIRMED'
+    : 'WEB_RESEARCH_ONLY';
 }
+
+/*
+ * THE REGISTRY EXTRACT WINS — see src/verify/intelligence/registryOverlay.ts.
+ *
+ * The overlay lives in shared code rather than here because the deterministic
+ * chain it completes has to be PROVABLE from a test: registry text -> parsed
+ * extract -> overlaid companyProfile -> report input. While it sat inside
+ * this Deno function, the only reachable proof was the parser's own unit
+ * test, which is precisely the gap that let the parser stay wired to nothing.
+ */
+
 // companyLiquidationSuspected() (v36): a deterministic, keyword-based check
 // over a REGISTRY_CONFIRMED companyProfile.status only (never a
 // web-research-only status, which is not authoritative enough to drive an
@@ -3228,7 +3244,13 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // distinguish registry-confirmed company facts from web-research-derived
   // ones (see companyProfileSourceBasis above) — never inferred from the
   // model's own self-report.
-  const companyProfile = rawCompanyProfile ? { ...rawCompanyProfile, sourceBasis: companyProfileSourceBasis(rawCompanyProfile, prior.browserOfficial) } : null;
+  // The official extract overwrites the model's reading BEFORE provenance is
+  // stamped, so sourceBasis describes the profile that actually ships. This
+  // is also the only path by which shareholders and ownership percentages
+  // exist at all — see registryExtractFor above.
+  const officialExtract = registryExtractFor(rawCompanyProfile, prior.browserOfficial);
+  const registryBackedProfile = applyRegistryExtract(rawCompanyProfile, officialExtract);
+  const companyProfile = registryBackedProfile ? { ...registryBackedProfile, sourceBasis: companyProfileSourceBasis(registryBackedProfile, prior.browserOfficial) } : null;
   const unverifiedAll = semanticDedupe(dedupe([...(i.unverified || []), ...(o.unverified || []), ...(mr.unverified || []), ...(z.unverified || [])], (x: any) => x), (x: any) => String(x || ''));
   /*
    * THE DETERMINISTIC PRICE DISAGREEMENTS BELONG HERE TOO.

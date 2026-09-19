@@ -46,6 +46,7 @@ import type { EvidencePackage, EvidenceItem } from './evidencePackage.ts';
 import { dedupeBlock, isParkingConfirmationPrompt, type TopicKey } from './dedupe.ts';
 import { SECTION_KEYS } from './prompt.ts';
 import type { SectionKey } from './prompt.ts';
+import type { IntelligenceBundle } from './bundle.ts';
 
 /** Restrained, and deliberately three. "Attention" is not "bad". */
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -535,9 +536,105 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
  * The gate                                                            *
  * ------------------------------------------------------------------ */
 
+/* ============================================================== *
+ * FALSE SCARCITY.
+ *
+ * A real production report carried 43 comparables, 32 of them active and a
+ * median of about $1,700/m^2, and still told the reader there was not enough
+ * data to assess the market. A different real report said no shareholder
+ * information was found on a run where the official registry check never
+ * executed at all — nobody had looked.
+ *
+ * Both are the same error: a statement about what the PIPELINE could do,
+ * printed as a finding about the property or the company. Prompt wording asks
+ * the model not to do it. This removes it when the model does it anyway,
+ * which is the only version of the rule that holds.
+ *
+ * DELIBERATELY NARROW. A claim is dropped only when a deterministic fact
+ * CONTRADICTS it — comparables that demonstrably exist, or a source known not
+ * to have run. Genuine scarcity is left completely alone, because "we could
+ * not establish this" is often the single most useful line in a report.
+ *
+ * The patterns cover the languages this wording has actually been observed
+ * in. A phrase in a language not listed here survives; that is the safe
+ * direction to fail, and the structural rendering (a market card that shows
+ * the real median, a company section that states the check did not run)
+ * carries the truth regardless of the prose.
+ * ============================================================== */
+
+const MARKET_SCARCITY = [
+  /საკმარისი\s+(?:მონაცემი|ინფორმაცია)\s*(?:არ\s+არის|ვერ)/i,
+  /(?:not|in)sufficient\s+(?:market\s+)?data/i,
+  /not\s+enough\s+(?:market\s+)?data/i,
+  /недостаточно\s+данных/i,
+];
+
+const COMPANY_ABSENCE = [
+  /(?:წილის\s+მფლობელ|მესაკუთრ|დირექტორ)[^.]{0,40}(?:ვერ\s+მოიძებნა|არ\s+მოიძებნა|ვერ\s+დადგინდა)/i,
+  /no\s+(?:shareholder|ownership|director)[^.]{0,40}(?:was|were)?\s*(?:found|identified|available)/i,
+  /(?:сведени|информаци)[^.]{0,40}(?:о\s+)?(?:владельц|учредител|директор)[^.]{0,40}не\s+(?:найден|обнаружен)/i,
+];
+
+const hits = (text: string, patterns: RegExp[]): boolean =>
+  patterns.some((re) => re.test(text));
+
+/**
+ * Drops model statements that a deterministic fact contradicts.
+ *
+ * Whole blocks are removed rather than edited: a half-rewritten sentence
+ * reads worse than an absent one, and the evidence it cited is still in the
+ * package for another block to use.
+ */
+export function stripFalseScarcity(
+  report: BuyerIntelligenceReport,
+  bundle: IntelligenceBundle | null | undefined
+): BuyerIntelligenceReport {
+  if (!bundle) return report;
+
+  const marketContradicted = bundle.market?.contextAvailable === true;
+  const sourceDidNotRun = bundle.company?.status === 'SOURCE_UNAVAILABLE';
+  if (!marketContradicted && !sourceDidNotRun) return report;
+
+  const offending = (text: string): boolean =>
+    (marketContradicted && hits(text, MARKET_SCARCITY)) ||
+    (sourceDidNotRun && hits(text, COMPANY_ABSENCE));
+
+  const removed: string[] = [];
+  const keep = <T,>(items: T[], textOf: (x: T) => string): T[] =>
+    items.filter((x) => {
+      if (!offending(textOf(x))) return true;
+      removed.push(textOf(x).slice(0, 120));
+      return false;
+    });
+
+  const keyFindings = keep(report.keyFindings ?? [], (f) => `${f.finding} ${f.whyItMatters}`);
+  const attentionPoints = keep(report.attentionPoints ?? [], (a: any) => `${a.point ?? ''} ${a.detail ?? ''}`);
+  const sections = (report.sections ?? []).map((sec) =>
+    offending(sec.body) ? { ...sec, body: '' } : sec
+  ).filter((sec) => sec.body.trim() || (sec.metrics ?? []).length);
+
+  const summary = report.summary && offending(report.summary.statement)
+    ? { ...report.summary, statement: '' }
+    : report.summary;
+
+  return {
+    ...report,
+    summary,
+    keyFindings,
+    attentionPoints,
+    sections,
+    // Kept, not hidden: a report that had to drop a claim should say so in
+    // its own machine-readable record.
+    rejectedBecause: removed.length
+      ? [...(report.rejectedBecause ?? []), ...removed.map((r) => `contradicted by evidence: ${r}`)]
+      : report.rejectedBecause ?? [],
+  };
+}
+
 export function finalizeReport(
   pkg: EvidencePackage,
-  raw: string | null | undefined
+  raw: string | null | undefined,
+  bundle?: IntelligenceBundle | null
 ): BuyerIntelligenceReport {
   const parsed = parseReport(raw);
   const check = validateReport(pkg, parsed);
@@ -554,7 +651,7 @@ export function finalizeReport(
     ...(parsed.nextSteps ?? []).flatMap((s) => s.cites),
   ]);
 
-  return applyFactOwnership({
+  return stripFalseScarcity(applyFactOwnership({
     summary: parsed.summary ?? { label: 'BALANCED', statement: '', highlights: [] },
     keyFindings: parsed.keyFindings ?? [],
     sections: parsed.sections ?? [],
@@ -565,7 +662,7 @@ export function finalizeReport(
     mode: 'MODEL',
     rejectedBecause: [],
     evidenceUsed: packageItems(pkg).filter((i) => cited.has(i.id)),
-  });
+  }), bundle);
 }
 
 /*

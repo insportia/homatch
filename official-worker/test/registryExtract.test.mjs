@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   parseRegistryExtract, parseShareholders, parseDirectors,
   parseEncumbrances, verifyClaimedIdentity,
@@ -284,4 +285,31 @@ test('a truncated extract yields what is present and nulls for what is not', () 
   assert.equal(e.idCode, '404670272');
   assert.equal(e.shareholders.length, 0);
   assert.equal(e.shareholdingConsistent, null, 'no shareholders means no consistency claim');
+});
+
+/* ------------------------------------------------------------------ *
+ * THE PARSER MUST BE WIRED — production incident 2026-09-19.          *
+ *                                                                     *
+ * Everything above passed for months while the module's ONLY importer *
+ * was this test file. parseRegistryExtract was never called by any    *
+ * workflow, so company id, directors, and shareholders with exact     *
+ * percentages were parsed by nobody and reached no report. Ownership  *
+ * was left to be inferred from prose instead, which is precisely the  *
+ * inversion this parser exists to prevent.                            *
+ *                                                                     *
+ * A green parser test is not evidence that the parse happens.         *
+ * ------------------------------------------------------------------ */
+
+test('the registry extract parser is actually called on retrieved documents', () => {
+  const workflow = readFileSync(
+    new URL('../src/workflows/enreg/EnregWorkflow.ts', import.meta.url),
+    'utf8'
+  );
+  assert.match(workflow, /import \{ parseRegistryExtract \}/, 'EnregWorkflow must import the parser');
+  assert.match(workflow, /parseRegistryExtract\(/, 'EnregWorkflow must call the parser');
+  // The structured parse must travel WITH the document, or it is lost the
+  // moment the workflow returns.
+  assert.match(workflow, /registryExtract:/, 'the parse must be attached to the retrieved document');
+  // And it may never cost a document that was successfully retrieved.
+  assert.match(workflow, /registry_extract_parse_failed/, 'a parser fault must degrade, not throw');
 });

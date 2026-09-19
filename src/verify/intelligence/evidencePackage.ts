@@ -324,16 +324,82 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
       add({ tier: 2, category: 'DEVELOPER', claim: clean(v), provenance: 'DERIVED', certainty: 'REPORTED' });
     }
   }
-  for (const [k, label] of [['name', 'კომპანია'], ['status', 'სტატუსი'], ['registrationDate', 'რეგისტრაცია'], ['address', 'მისამართი']] as const) {
+  /*
+   * COMPANY FACTS CARRY THEIR OWN RANK.
+   *
+   * These four fields used to be the ENTIRE company contribution to the
+   * evidence package, emitted at tier 2 whatever their source — so an
+   * identification code, an ownership percentage and a registered pledge
+   * read out of an official extract had no way into the package at all,
+   * and the fields that did arrive sat below partner marketing.
+   *
+   * A fact the entrepreneur registry states is official evidence and is
+   * ranked as such. Everything else about the same company keeps the rank it
+   * earned. The two are never averaged into one certainty.
+   */
+  const registryBacked =
+    str(company.sourceBasis).toUpperCase() === 'REGISTRY_CONFIRMED' ||
+    arr<unknown>(company.registryFields).length > 0;
+  const companyProvenance = registryBacked ? 'OFFICIAL_REGISTRY' : 'DERIVED';
+  const companyCertainty = registryBacked ? 'CONFIRMED' : 'REPORTED';
+  const companyTier = registryBacked ? 1 : 2;
+
+  for (const [k, label] of [
+    ['name', 'კომპანია'],
+    ['idCode', 'საიდენტიფიკაციო კოდი'],
+    ['legalForm', 'სამართლებრივი ფორმა'],
+    ['status', 'სტატუსი'],
+    ['registrationDate', 'რეგისტრაცია'],
+    ['registeredAddress', 'იურიდიული მისამართი'],
+    ['address', 'მისამართი'],
+  ] as const) {
+    // registeredAddress supersedes the legacy `address` on the same profile.
+    if (k === 'address' && nonEmpty(company.registeredAddress)) continue;
     const v = nonEmpty(company[k]);
     if (v) {
       add({
-        tier: 2, category: 'DEVELOPER', claim: `${label}: ${v}`,
-        provenance: str(company.sourceBasis).toUpperCase() === 'REGISTRY_CONFIRMED' ? 'OFFICIAL_REGISTRY' : 'DERIVED',
-        certainty: str(company.sourceBasis).toUpperCase() === 'REGISTRY_CONFIRMED' ? 'CONFIRMED' : 'REPORTED',
+        tier: companyTier, category: 'DEVELOPER', claim: `${label}: ${v}`,
+        provenance: companyProvenance, certainty: companyCertainty,
         entity: subject.legalCompany,
       });
     }
+  }
+
+  // Ownership, with the percentage attached to the holder that registered it.
+  for (const raw of arr<Record<string, unknown>>(company.shareholders)) {
+    const name = nonEmpty(raw?.name);
+    if (!name) continue;
+    const pct = typeof raw?.percentage === 'number' ? raw.percentage : null;
+    add({
+      tier: companyTier, category: 'DEVELOPER',
+      claim: pct === null ? `წილის მფლობელი: ${name}` : `წილის მფლობელი: ${name} — ${pct}%`,
+      provenance: companyProvenance, certainty: companyCertainty,
+      entity: subject.legalCompany,
+    });
+  }
+
+  /*
+   * A REGISTERED CHARGE IS A FINDING. Its SCOPE is part of the finding.
+   *
+   * This comes out of the entrepreneur registry, so it is a charge over the
+   * COMPANY. Saying so in the claim itself is the only way the distinction
+   * survives into a model's prose — an encumbrance quoted without its scope
+   * is exactly how a company pledge becomes, three paragraphs later, a
+   * sentence about the buyer's apartment.
+   */
+  for (const raw of arr<Record<string, unknown>>(company.encumbrances)) {
+    const parts = [
+      nonEmpty(raw?.reference),
+      nonEmpty(raw?.creditor),
+      nonEmpty(raw?.registeredAt),
+    ].filter(Boolean);
+    if (!parts.length) continue;
+    add({
+      tier: 1, category: 'DEVELOPER',
+      claim: `კომპანიის დონეზე რეგისტრირებული ვალდებულება/გირავნობა: ${parts.join(' · ')}`,
+      provenance: companyProvenance, certainty: companyCertainty,
+      entity: subject.legalCompany,
+    });
   }
 
   /* ---- TIER 3: market ---- */

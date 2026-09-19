@@ -31,7 +31,7 @@ const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
 
 /** Real devices, narrowest first. 320 is the floor we support. */
-const WIDTHS = [320, 360, 375, 390, 430];
+const WIDTHS = [320, 360, 375, 390, 412, 430];
 /**
  * Chrome is DISCOVERED, not hardcoded to one machine's install path.
  * playwright-core downloads no browsers; it drives the Chrome already here.
@@ -207,8 +207,26 @@ test('the verification report has no horizontal overflow at real phone widths', 
    */
   const FONT_MODES = ['product', 'fallback'];
 
-  for (const fontMode of FONT_MODES) {
-  for (const width of WIDTHS) {
+  /*
+   * EVERY LANGUAGE, AT THE WIDTH THAT BREAKS THINGS.
+   *
+   * The layout rule this report relies on is language-independent by
+   * construction — a label owns its own line below `sm`, so nothing can
+   * squeeze it to one character. That is a claim, and claims about six
+   * alphabets are worth measuring rather than asserting.
+   *
+   * The full width sweep runs in the default language; every OTHER language
+   * is measured at 320, which is where a long label first has nowhere to go.
+   * Arabic and Hebrew also exercise RTL, where an unguarded flex row fails
+   * differently.
+   */
+  const LANGS = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
+  const CASES = [
+    ...FONT_MODES.flatMap((fontMode) => WIDTHS.map((width) => ({ fontMode, width, lang: null }))),
+    ...LANGS.map((lang) => ({ fontMode: 'product', width: 320, lang })),
+  ];
+
+  for (const { fontMode, width, lang } of CASES) {
     const ctx = await browser.newContext({
       viewport: { width, height: 900 },
       deviceScaleFactor: 2,
@@ -237,6 +255,10 @@ test('the verification report has no horizontal overflow at real phone widths', 
         if (document.readyState === 'loading') addEventListener('DOMContentLoaded', put);
         else put();
       });
+    }
+
+    if (lang) {
+      await ctx.addInitScript((l) => { window.localStorage.setItem('homatch_lang', l); }, lang);
     }
 
     await ctx.addInitScript(
@@ -282,7 +304,15 @@ test('the verification report has no horizontal overflow at real phone widths', 
     });
 
     await page.goto(`${BASE}/verify?job=fixture-job`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('article', { timeout: 20000 }).catch(() => {});
+    /*
+     * A VERIFY-SPECIFIC SELECTOR, NOT `article`.
+     *
+     * The Verify LANDING view renders an <article> too, so waiting on the
+     * generic tag is satisfied by the search screen and the suite then
+     * measures a page that contains none of the report it exists to check.
+     * `.verify-report` only exists once a report is on screen.
+     */
+    await page.waitForSelector('.verify-report', { timeout: 20000 }).catch(() => {});
 
     // Open the evidence drawer — the reported offender lives inside it.
     await page.evaluate(() => {
@@ -309,7 +339,43 @@ test('the verification report has no horizontal overflow at real phone widths', 
           });
         }
       }
+      /*
+       * THE ONE-CHARACTER COLUMN.
+       *
+       * The defect this report actually shipped: a label sharing a flex row
+       * with something that refuses to shrink gets squeezed to roughly one
+       * glyph wide and stacks vertically down the card. It causes NO
+       * horizontal overflow, so the check above cannot see it at all.
+       *
+       * A crushed element is narrow, far taller than it is wide, and made of
+       * several lines. The width floor is deliberately low: a legitimate
+       * 206px paragraph running 16 lines is normal prose, and an earlier
+       * version of this heuristic flagged it. Below ~96px no real sentence
+       * wraps that way — that is a column of characters.
+       */
+      const crushed = [];
+      for (const el of document.querySelectorAll('body *')) {
+        if (el.children.length) continue;
+        const text = (el.textContent || '').trim();
+        if (text.length < 4) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        const fs = parseFloat(getComputedStyle(el).fontSize) || 16;
+        const lines = r.height / (fs * 1.2);
+        if (r.width < 96 && r.height > r.width * 1.8 && lines >= 3) {
+          crushed.push({
+            tag: el.tagName,
+            cls: String(el.className || '').slice(0, 60),
+            w: Math.round(r.width),
+            h: Math.round(r.height),
+            text: text.slice(0, 30),
+          });
+        }
+      }
+
       return {
+        crushed: crushed.slice(0, 8),
+        reportPresent: !!document.querySelector('.verify-report'),
         font: getComputedStyle(document.body).fontFamily.split(',')[0].replace(/['"]/g, ''),
         hasArticle: !!document.querySelector('article'),
         pageOverflow: de.scrollWidth > de.clientWidth,
@@ -322,9 +388,10 @@ test('the verification report has no horizontal overflow at real phone widths', 
 
     await ctx.close();
 
-    assert.ok(result.hasArticle, `${width}px: the report never rendered — the harness stubs are wrong`);
+    // The REPORT, specifically — not merely some <article> on some screen.
+    assert.ok(result.reportPresent, `${width}px: the report never rendered — the harness stubs are wrong`);
     assert.equal(result.clientWidth, width, `${width}px: the viewport was not actually applied`);
-    if (fontMode === 'product') measured.push(width);
+    if (fontMode === 'product' && !lang) measured.push(width);
 
     /* The font actually in use, read back rather than assumed — an
        override that silently failed to apply would make this half of the
@@ -333,11 +400,24 @@ test('the verification report has no horizontal overflow at real phone widths', 
       failures.push(`${width}px: the fallback font was not applied (got ${result.font})`);
     }
 
+    /*
+     * A crushed column produces no overflow, so it needs its own failure.
+     * This is the defect a customer photographed; it may never regress
+     * silently again.
+     */
+    if (result.crushed.length) {
+      const detail = result.crushed
+        .map((c) => `    ${c.tag}.${c.cls} ${c.w}x${c.h} "${c.text}"`)
+        .join('\n');
+      failures.push(
+        `${width}px [${fontMode} font${lang ? `, ${lang}` : ''}]: one-character column(s)\n${detail}`
+      );
+    }
+
     if (result.pageOverflow || result.offenders.length) {
-      failures.push(`${width}px [${fontMode} font]: scrollWidth=${result.scrollWidth} clientWidth=${result.clientWidth}\n` +
+      failures.push(`${width}px [${fontMode} font${lang ? `, ${lang}` : ''}]: scrollWidth=${result.scrollWidth} clientWidth=${result.clientWidth}\n` +
         result.offenders.map((o) => `    ${o.tag}.${o.cls} right=${o.right} "${o.text}"`).join('\n'));
     }
-  }
   }
 
   // Coverage first: an overflow-free run that measured nothing is not a pass.
@@ -345,9 +425,11 @@ test('the verification report has no horizontal overflow at real phone widths', 
   // Compared against a LITERAL list, deliberately, not against WIDTHS.
   // Comparing to WIDTHS is a tautology — shrinking WIDTHS shrinks both sides
   // and the guard stays green, which is exactly what a mutation test caught.
-  // These five widths are the supported contract; changing them has to be a
-  // deliberate edit here.
-  assert.deepEqual(measured, [320, 360, 375, 390, 430],
+  // These six widths are the supported contract; changing them has to be a
+  // deliberate edit here. 412 is the common Android width (Pixel class) and
+  // was added with the COMPANY & OWNERSHIP section, whose ownership rows and
+  // encumbrance card are the narrowest new content in the report.
+  assert.deepEqual(measured, [320, 360, 375, 390, 412, 430],
     `the suite did not measure every supported width, it covered ${JSON.stringify(measured)}`);
 
   assert.deepEqual(failures, [], `horizontal overflow at real phone widths:\n${failures.join('\n')}`);

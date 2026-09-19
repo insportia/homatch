@@ -478,7 +478,9 @@ serve(async (req) => {
       }
     }
 
-    const final = finalizeReport(pkg, raw);
+    // The bundle travels into finalize so the deterministic facts can veto a
+    // model statement that contradicts them — see stripFalseScarcity.
+    const final = finalizeReport(pkg, raw, bundle);
     if (final.mode === 'DETERMINISTIC' && final.rejectedBecause.length) {
       // Worth knowing about: a model that keeps failing the gate is a
       // prompt/model problem we want visible in logs, not silently absorbed.

@@ -345,6 +345,16 @@ export function buildIntelligencePrompt(
        */
       contextForAdvice: pkg.unavailable.map((u) => u.label),
       marketIntelligence: bundle?.market,
+      /*
+       * COMPANY & OWNERSHIP, read from the official extract.
+       *
+       * Handed over as STRUCTURE, not prose. Ownership percentages, director
+       * names and registered charges are facts the registry stated; the model
+       * explains them and may not restate, re-derive or improve them. Its
+       * `status` also tells the model which of two very different situations
+       * it is in — see companyIntelligence.ts.
+       */
+      company: bundle?.company,
       location: bundle?.location,
       participants: bundle?.people?.people?.length
         ? {
@@ -356,6 +366,33 @@ export function buildIntelligencePrompt(
         : undefined,
       fxContext: bundle?.fx,
       guidance: {
+        /*
+         * THE TWO MARKET QUESTIONS ARE SEPARATE.
+         *
+         * A real report carried 43 comparables, 32 of them active, and a
+         * median — and still told the reader there was not enough data to
+         * assess, because the SUBJECT had no asking price. Market context and
+         * subject valuation are answered independently, and the answers are
+         * computed in marketIntelligence rather than judged here.
+         */
+        marketContextAndSubjectValuationAreSeparate: true,
+        neverCallTheMarketInsufficientWhenComparablesExist: true,
+        /*
+         * A SOURCE THAT DID NOT RUN FOUND NOTHING BECAUSE IT DID NOT LOOK.
+         *
+         * company.status === 'SOURCE_UNAVAILABLE' means the official registry
+         * check never executed. Say that the check did not run. Never write
+         * that no shareholders, directors or charges were found — nobody
+         * looked, and an unrun check is not a finding about the company.
+         */
+        unrunSourceIsNotAnAbsenceOfEvidence: true,
+        /*
+         * An entrepreneur-registry charge is registered against the COMPANY.
+         * It is never a statement about the buyer's apartment, whose
+         * encumbrances live in the property registry.
+         */
+        companyChargesAreNotPropertyCharges: true,
+        registryFactsMayBeExplainedNeverRestated: true,
         askingPricesAreNotSalePrices: true,
         fxIsNotAppreciation: true,
         notFoundIsNotAbsent: true,

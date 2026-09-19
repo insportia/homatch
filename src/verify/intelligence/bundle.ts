@@ -22,6 +22,8 @@ import type { LocationIntelligence } from './locationIntelligence.ts';
 import { buildPeopleIntelligence, toParticipantModel } from './peopleIntelligence.ts';
 import type { PeopleIntelligence, ParticipantModel } from './peopleIntelligence.ts';
 import type { FxContext } from './fx.ts';
+import { buildCompanyIntelligence } from './companyIntelligence.ts';
+import type { CompanyIntelligence } from './companyIntelligence.ts';
 
 export interface PropertySnapshot {
   cadastralCode?: string;
@@ -44,6 +46,14 @@ export interface PropertySnapshot {
 export interface IntelligenceBundle {
   snapshot: PropertySnapshot;
   market: MarketIntelligence | null;
+  /*
+   * COMPANY & OWNERSHIP, read from the official extract.
+   *
+   * Null only when no company is involved. A company whose registry lookup
+   * could not run is NOT null — it is a profile whose status says so, because
+   * "we could not look" must never render as "we found nothing".
+   */
+  company: CompanyIntelligence | null;
   location: LocationIntelligence;
   people: PeopleIntelligence;
   participants: ParticipantModel;
@@ -208,6 +218,10 @@ export function buildIntelligenceBundle(
   const people = buildPeopleIntelligence(report);
   const participants = toParticipantModel(people, snapshot.owner);
 
+  /* ---- company & ownership ---- */
+
+  const companyIntel = buildCompanyIntelligence(report);
+
   /* ---- self-checks ---- */
 
   const selfChecks: SelfCheck[] = [];
@@ -230,5 +244,5 @@ export function buildIntelligenceBundle(
     });
   }
 
-  return { snapshot, market, location, people, participants, fx, selfChecks };
+  return { snapshot, market, company: companyIntel, location, people, participants, fx, selfChecks };
 }

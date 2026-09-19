@@ -126,10 +126,33 @@ export const RESULT_JSON = {
     constructionStatus: 'ჩაბარებული', architect: LONG_GEORGIAN,
     amenities: [LONG_GEORGIAN, 'კონსიერჟი', 'დაცვა'], facts: [LONG_GEORGIAN, LONG_RUSSIAN],
   },
+  /*
+   * The registry-backed shape, so COMPANY & OWNERSHIP is actually measured.
+   * Values are the real Millenio extract (job 3aa36828's fixture); the
+   * creditor string is long on purpose — a bank's full legal name with its
+   * own id code is exactly what overflows a narrow encumbrance card.
+   */
   companyProfile: {
     name: 'შპს „მილენიო გრუპი“', idCode: '404670272', legalForm: 'შეზღუდული პასუხისმგებლობის საზოგადოება',
-    registrationDate: '2021-06-14', status: 'აქტიური',
-    directors: ['კობა კვანტალიანი', 'ლევან ჩაჩუა'],
+    registrationDate: '28/03/2023', status: 'აქტიური',
+    registeredAddress: 'საქართველო, თბილისი, კრწანისის რაიონი, კრწანისის ქუჩა, N6',
+    directors: [
+      { name: 'კობა კვანტალიანი', representation: 'ერთობლივი' },
+      { name: 'ლევან ჩაჩუა', representation: 'ერთობლივი' },
+    ],
+    shareholders: [
+      { name: 'ლევან ჩაჩუა', percentage: 50, units: 50 },
+      { name: 'კობა კვანტალიანი', percentage: 50, units: 50 },
+    ],
+    encumbrances: [
+      { kind: 'PLEDGE_LEASE', reference: 'R23757008', creditor: 'სს საქართველოს ბანკი (საქართველო) 204378869', registeredAt: '19/12/2023' },
+    ],
+    liquidationRegistered: false,
+    shareholdingConsistent: true,
+    extractNumber: 'B24099518',
+    extractPreparedAt: '15/08/2024',
+    registryFields: ['name', 'idCode', 'legalForm', 'registrationDate', 'registeredAddress', 'directors', 'shareholders', 'encumbrances'],
+    sourceBasis: 'REGISTRY_CONFIRMED',
     historicalChanges: [LONG_GEORGIAN, LONG_RUSSIAN],
   },
   utilitiesMatrix: {

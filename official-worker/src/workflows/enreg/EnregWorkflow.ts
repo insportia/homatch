@@ -6,6 +6,7 @@ import { computeEnregTraversal } from '../../state/transitions.js';
 import { WorkflowPreconditionError } from '../../errors/WorkflowErrors.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 import { looksLikeCompanyId } from '../../entities/EntityValidation.js';
+import { parseRegistryExtract } from '../../evidence/RegistryExtractParser.js';
 import type { LegacySourceResult, WorkflowResult } from '../WorkflowResult.js';
 
 const SOURCE_URL = 'https://my.gov.ge/ka-ge/services/10/service/179';
@@ -41,12 +42,53 @@ async function waitForNewPage(context: BrowserContext, before: Set<Page>, timeou
   return null;
 }
 
+/*
+ * THE EXTRACT IS STRUCTURED DATA, NOT JUST TEXT.
+ *
+ * RegistryExtractParser has always been able to read an entrepreneur-registry
+ * extract into exact fields — legal name, identification code, legal form,
+ * registration date, registered address, directors with their representation
+ * rights, SHAREHOLDERS WITH EXACT PERCENTAGES, and registered encumbrances —
+ * and it is covered by test/registryExtract.test.mjs. Until now nothing
+ * called it: the module's only importer was its own test.
+ *
+ * The consequence reached customers. Downstream, companyProfile.shareholders
+ * is read by peopleIntelligence but was never written by anything, so
+ * ownership either came out empty or was left to be inferred from prose by
+ * the synthesis model. Attaching the parse HERE means the deterministic
+ * reading of an official document is available before any model sees the
+ * job, which is the only ordering in which official evidence can win.
+ *
+ * A document that is not a registry extract simply parses to null and is
+ * carried exactly as before.
+ */
 async function readPdf(buffer: Buffer, source: string) {
   const parsed = await pdf(buffer);
   const pageCount = Number(parsed.numpages || 0);
   const rawText = String(parsed.text || '');
   if (pageCount <= 0 || !rawText.trim()) throw new Error('PDF_READ_INCOMPLETE');
-  return { url: source, label: 'Official extract', documentType: 'PDF_DOCUMENT', sourceCategory: 'OFFICIAL_DOCUMENT', evidenceLevel: 'OFFICIAL', retrievalMethod: 'DOCUMENT_RETRIEVED_AND_PARSED', pageCount, pagesRead: pageCount, rawText, textExtracted: true, complete: true };
+  return {
+    url: source, label: 'Official extract', documentType: 'PDF_DOCUMENT',
+    sourceCategory: 'OFFICIAL_DOCUMENT', evidenceLevel: 'OFFICIAL',
+    retrievalMethod: 'DOCUMENT_RETRIEVED_AND_PARSED',
+    pageCount, pagesRead: pageCount, rawText, textExtracted: true, complete: true,
+    registryExtract: safeParseRegistryExtract(rawText, source),
+  };
+}
+
+/** Structured parsing may never cost a retrieved document. A parser fault
+ * degrades this to the rawText the job always had, loudly and in one line. */
+function safeParseRegistryExtract(rawText: string, source: string) {
+  try {
+    return parseRegistryExtract(rawText);
+  } catch (e) {
+    console.log(JSON.stringify({
+      at: new Date().toISOString(), scope: 'enreg',
+      event: 'registry_extract_parse_failed',
+      url: source, error: String((e as any)?.message ?? e).slice(0, 200),
+    }));
+    return null;
+  }
 }
 
 async function readHttp(page: Page, url: string) {

@@ -225,6 +225,71 @@ test('the entrypoint is observable: it logs before, during and after bringing up
   assert.equal(entrypointCode.includes('xvfb-run'), false, 'the blind xvfb-run wrapper must not come back');
 });
 
+/*
+ * PID 1 MUST REAP — production incident 2026-09-19.
+ *
+ * `exec node` (the test below, and correct) makes Node PID 1. Node only
+ * waitpid()s children it spawned, so orphaned Chromium zygote/renderer
+ * processes reparented to it become permanent zombies. After ~2 days of
+ * uptime the container hit its pid limit and every launch failed with
+ * `FATAL:...browser_task_executor.cc:299] Failed to start BrowserThread:IO`,
+ * which Playwright reports as "Target page, context or browser has been
+ * closed". Jobs still completed — with no official results at all.
+ *
+ * The two requirements pull in opposite directions and BOTH must hold: Node
+ * must receive SIGTERM directly (2026-09-08), and something must reap
+ * orphans (2026-09-19). tini -g is what satisfies both.
+ */
+test('a real init reaps orphaned Chromium processes, and it cannot be bypassed', () => {
+  const dockerfile = readFileSync(`${here}../Dockerfile`, 'utf8');
+  const code = dockerfile.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
+
+  // It must be INSTALLED — an ENTRYPOINT naming a binary the image does not
+  // contain makes the container unbootable.
+  assert.match(code, /apt-get install[^\n]*\btini\b/, 'tini must be installed in the image');
+
+  // It must be PID 1. ENTRYPOINT, not CMD: a Railway dashboard start-command
+  // override replaces CMD and would otherwise put Node back at PID 1.
+  const entrypointLine = code.split('\n').find((l) => l.trim().startsWith('ENTRYPOINT'));
+  assert.equal(typeof entrypointLine, 'string', 'the image must declare an ENTRYPOINT');
+  assert.match(entrypointLine, /tini/, 'tini must be PID 1');
+
+  // -g forwards signals to the whole process group, which is the only reason
+  // exec-ing Node under an init still satisfies the 2026-09-08 requirement.
+  assert.match(entrypointLine, /"-g"/, 'tini must forward signals to the process group');
+
+  // And the app must still be what actually runs.
+  const cmd = code.split('\n').filter((l) => l.trim().startsWith('CMD')).join('\n');
+  assert.match(cmd, /docker-entrypoint\.sh/);
+});
+
+test('a failed browser launch reports why, including the resource that was exhausted', async () => {
+  const source = readFileSync(`${here}../src/browser/LocalBrowserRuntime.ts`, 'utf8');
+  // The incident cost two days because the failure named nothing measurable.
+  // The counts must be emitted with the error itself.
+  const launchCatch = source.slice(
+    source.indexOf('let context: any;'),
+    source.indexOf('const jobBrowser: JobBrowser =')
+  );
+  assert.match(launchCatch, /logBrowserLifecycle\('job_browser_launch_failed'/);
+  assert.match(launchCatch, /processPressure\(\)/, 'the launch failure must record process pressure');
+  assert.match(launchCatch, /redactSecrets\(/, 'the raw error may not reach the log unredacted');
+
+  // The diagnostic itself must be counts only — never argv, environment or
+  // anything that can carry a credential.
+  const { processPressure } = await import('../.tstest-build/browser/LocalBrowserRuntime.js');
+  const p = await processPressure('/definitely/not/a/proc');
+  assert.deepEqual(
+    Object.keys(p).sort(),
+    ['pid1', 'pidsCurrent', 'pidsMax', 'processes', 'zombies'],
+    'process pressure must expose counts and PID 1 only'
+  );
+  // Absent /proc (every Windows and macOS developer machine) must be a null
+  // reading, never a throw on the job path.
+  assert.equal(p.processes, null);
+  assert.equal(p.zombies, null);
+});
+
 test('the entrypoint execs Node directly so SIGTERM reaches the process that cleans up Chromium', () => {
   assert.match(entrypointCode, /^exec node --import tsx src\/index\.ts$/m, 'the app must be exec-ed, not spawned');
   // npm must not sit between PID 1 and Node: it does not forward signals.

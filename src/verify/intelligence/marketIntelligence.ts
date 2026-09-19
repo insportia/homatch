@@ -131,6 +131,25 @@ export interface ScoredComparable {
   ageMonths?: number;
 }
 
+/**
+ * Whether the subject unit can be positioned against the market, and if not,
+ * WHY NOT.
+ *
+ * These are two independent questions and the report kept collapsing them
+ * into one sentence. The Villion job carried 43 comparables, 32 of them
+ * active, and a median — and still told the reader there was not enough data
+ * to assess, because the SUBJECT had no asking price of its own. That is a
+ * statement about the subject, not about the market, and printing it as the
+ * market's verdict discards a usable comparable set.
+ */
+export type SubjectValuationState =
+  /** Subject price known and a basis exists: a real position can be stated. */
+  | 'AVAILABLE'
+  /** The market is understood; this specific unit has no price to compare. */
+  | 'NO_SUBJECT_PRICE'
+  /** Nothing comparable was found; no market statement can be made at all. */
+  | 'NO_COMPARABLE_BASIS';
+
 export interface MarketIntelligence {
   currency: string;
   /** The subject's own asking price, when the research actually found one. */
@@ -147,6 +166,16 @@ export interface MarketIntelligence {
   /** The band the analysis is really based on, strongest available. */
   basis: ComparableTier;
   basisCount: number;
+
+  /*
+   * MARKET CONTEXT AND SUBJECT VALUATION, ANSWERED SEPARATELY.
+   *
+   * Computed here rather than left to prose, because prose kept merging them.
+   * `contextAvailable` says a reader can be told what this market looks like;
+   * `subjectValuation` says whether THIS unit can be placed inside it.
+   */
+  contextAvailable: boolean;
+  subjectValuation: SubjectValuationState;
 
   /** Present only when the subject's own price is known. */
   deltaFromMedianPct?: number;
@@ -784,6 +813,17 @@ export function buildMarketIntelligence(
   // runs from a cadastral code, so most of the time it does not — and
   // inventing one from the comparables would be exactly the fabrication this
   // product refuses.
+  /*
+   * The market half of the answer: a basis with a real median means context
+   * exists, whatever is or is not known about the subject.
+   */
+  out.contextAvailable = basisSet.length > 0 && med > 0;
+  out.subjectValuation = !out.contextAvailable
+    ? 'NO_COMPARABLE_BASIS'
+    : subject.pricePerSqm
+      ? 'AVAILABLE'
+      : 'NO_SUBJECT_PRICE';
+
   if (subject.pricePerSqm && med > 0) {
     const delta = ((subject.pricePerSqm - med) / med) * 100;
     out.deltaFromMedianPct = round1(delta);

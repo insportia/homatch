@@ -1164,6 +1164,7 @@ export class VoiceSession {
     utterances: 0, lastUtteranceMs: null as number | null,
     lastUtteranceBytes: null as number | null,
     sttRequests: 0, sttOk: 0, sttEmpty: 0, sttFailed: 0, finalsDeferred: 0, languageSwitches: 0, languageProbes: 0,
+    unsupportedProbeResults: 0,
     livePhase: 'IDLE' as LivePhase, socketReadyMs: null as number | null,
     socketFailures: 0, socketReconnects: 0, gateReleases: 0,
     liveSendRate: null as number | null,

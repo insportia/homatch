@@ -263,8 +263,8 @@ test('swearing and teasing are answered, not policed', () => {
   }
   assert.match(edge, /Mild profanity of your/);
   assert.match(edge, /own is fine where the language carries it/);
-  assert.match(edge, /do not get wounded; take the joke/);
-  assert.match(edge, /a confident specific answer is the best comeback there is/);
+  assert.match(edge, /take the joke, then answer the real point under it well/);
+  assert.match(edge, /take the joke, then answer the real point under it well/);
   // Generated from the turn, never picked off a shelf.
   assert.match(edge, /Build the reply out of what they said: never a stock comeback, never one you have used/);
   // And not a sales funnel with a laugh track on it.
@@ -290,9 +290,17 @@ test('the limits on it are stated as plainly as the licence', () => {
   assert.match(edge, /most replies have none in them/);
 });
 
-test('and a brief wander off the subject is allowed', () => {
-  assert.match(edge, /Property is the subject, not a leash/);
-  assert.match(edge, /If it never comes back, say the demo is about property and wrap up/);
+test('a wander off the subject is allowed, and answered like a person', () => {
+  /*
+   * This used to assert "Property is the subject, not a leash", which was too
+   * permissive: it licensed a full general-purpose answer to anything, and
+   * the assistant duly became a general assistant. The replacement keeps the
+   * permission -- a swerve is not a refusal -- and bounds the reply.
+   */
+  assert.match(edge, /4\. NOWHERE NEAR IT/);
+  assert.match(edge, /One or two/);
+  assert.match(edge, /Then carry on as if nothing happened/);
+  assert.match(edge, /Somebody still far off property after two redirects is not here for this/);
 });
 
 test('the prompt is still read on every turn, so it is still measured', () => {
@@ -307,7 +315,15 @@ test('the prompt is still read on every turn, so it is still measured', () => {
    * and paid for with cuts elsewhere -- but it is not free, and pretending a
    * budget was held when it was not is how the next pass inherits a problem.
    */
-  assert.ok(chars < 9600, `the prompt is ${chars} characters`);
+  /*
+   * 10,383 before the latency pass, 8,098 after it, 9,444 after the
+   * personality one, and the domain correction is about 800 more. Most of the
+   * latency reduction is given back, deliberately and once: the prompt is
+   * read on every turn and the model's first token was 84% of server latency
+   * when last measured. The canonical ceiling and the reasoning live in
+   * talkCostAndCancel.test.mjs; this only checks it still says everything.
+   */
+  assert.ok(chars > 9_000, `the prompt is ${chars} characters`);
   assert.ok(chars < 10_383, 'still smaller than it was before any of this work');
 });
 
@@ -598,4 +614,171 @@ test('the six listening languages are declared once, not in two places', () => {
   const reg = read('src/lib/comm/languageRegistry.ts');
   assert.match(reg, /export const SPEECH_TAGS: Record<string, string> = \{/);
   assert.match(reg, /export const LISTENING_LANGUAGES: readonly string\[\] = Object\.keys\(SPEECH_TAGS\);/);
+});
+
+/* ── 15. A real-estate assistant, not a general one ─────────────────────── */
+
+/*
+ * These assert the CONTRACT the prompt makes, not the sentences a model
+ * produces from it. A test that pinned an expected reply would be testing
+ * the model, would break on every rewording, and would teach nobody
+ * anything. What can be checked deterministically is whether the
+ * instruction that produces the behaviour is present, unambiguous and not
+ * contradicted somewhere else in the same prompt.
+ */
+
+test('the domain is stated as an identity, not as background reading', () => {
+  // It used to say "Background, not an agenda", which is why the assistant
+  // drifted into answering anything at all: nothing told it what it was FOR.
+  assert.match(edge, /WHAT YOU ARE FOR\. Property in Georgia, and Homatch/);
+  assert.match(edge, /Deep here\. A general assistant nowhere else\./);
+  assert.ok(!edge.includes('Background, not an agenda'), 'the passive framing is gone');
+  // The four kinds of turn, each named.
+  for (const mode of ['1. ABOUT PROPERTY', '2. AROUND IT', '3. SERIOUS', '4. NOWHERE NEAR IT']) {
+    assert.ok(edge.includes(mode), mode);
+  }
+  assert.match(edge, /telling them apart matters more than any single rule above/);
+});
+
+test('a question from nowhere near property gets two sentences, not an essay', () => {
+  /*
+   * The reported regression: ask about something a general chatbot would
+   * answer, and it answered like one. The failure is not rudeness, it is
+   * competence misapplied, so the prompt names it as the failure.
+   */
+  assert.match(edge, /ANSWERING THAT PROPERLY IS THE ONE FAILURE THAT MATTERS HERE/);
+  assert.match(edge, /One or two/);
+  assert.match(edge, /sentences -- notice the swerve, be funny about it in their own language, land back on property/);
+  // The topics named are examples of a KIND, not a filter to match against.
+  assert.match(edge, /dating, celebrities, politics, homework, code, recipes, philosophy/);
+  assert.match(edge, /what somebody',\s*'\s*would ask a general chatbot/);
+});
+
+test('the redirect is human, and every corporate escape hatch is closed', () => {
+  assert.match(edge, /Never',\s*'\s*a refusal, "I cannot discuss", "my scope", a policy line or a paragraph/);
+  // And the same prohibitions the personality pass established still stand.
+  assert.match(edge, /NEVER a line about staying respectful/);
+  assert.match(edge, /never "as an AI"/);
+  assert.ok(!/I am unable to discuss|My scope is limited|I cannot help with that topic/.test(edge),
+    'no canned refusal is written into the prompt for the model to copy');
+});
+
+test('it is generated from the turn, never picked off a shelf', () => {
+  assert.match(edge, /Built from what they just',\s*'\s*said, never the same line twice/);
+  assert.match(edge, /Build the reply out of what they said: never a stock comeback, never one you have used/);
+  /*
+   * No topic filter and no joke library anywhere in the voice path. The
+   * model is given a distinction to understand, not a list to match, because
+   * a keyword list is wrong at the edges in both directions: it fires on
+   * "the bedroom faces north" and misses everything it did not anticipate.
+   */
+  const paths = [
+    'supabase/functions/ai-talk-session/index.ts',
+    'src/lib/comm/voiceClient.ts',
+    'src/lib/comm/talkLanguage.ts',
+  ];
+  for (const p of paths) {
+    const src = read(p);
+    assert.ok(!/OFF_TOPIC_(WORDS|TOPICS|PATTERNS)|BANNED_TOPICS|TOPIC_FILTER|REDIRECT_LINES|JOKES\s*=/.test(src),
+      `${p} has no topic filter or joke library`);
+  }
+});
+
+test('conversation around the search is not treated as off-topic', () => {
+  // The other way to get this wrong: refuse everything that is not literally
+  // about a flat, and make the thing unusable.
+  for (const allowed of ['greetings, how they are, sick of viewings',
+    'a partner who hates the district, kids, the',
+    'what they can afford, not knowing what they want, a joke mid-search',
+    'This IS the']) {
+    assert.ok(edge.includes(allowed), allowed);
+  }
+  assert.match(edge, /conversation: answer like a person and steer nowhere/);
+  // A greeting has an explicit worked example elsewhere in the prompt.
+  assert.match(edge, /"How are you\?" gets "Good, and/);
+});
+
+test('serious subjects get a complete answer and no joke at all', () => {
+  assert.match(edge, /3\. SERIOUS -- money at risk, contracts, legal trouble, a lost deposit, a stalled developer/);
+  assert.match(edge, /Complete, precise, professional, and no joke anywhere in it including the opening/);
+  // And the standing rule that removes the lightness entirely.
+  assert.match(edge, /READ THE ROOM/);
+  assert.match(edge, /the lightness/);
+  assert.match(edge, /goes, completely, without being announced/);
+  // Value is never traded away for brevity.
+  assert.match(edge, /Never shorten something worth knowing to sound conversational/);
+});
+
+test('humour is still wanted, and still situational', () => {
+  for (const kept of ['genuinely fun to talk to', 'Notice the funny thing',
+    'make the small dry observation', 'be dry or sarcastic when the moment invites it',
+    'tease back when', 'You are not a comedian', 'never a joke instead of an answer']) {
+    assert.ok(edge.includes(kept), kept);
+  }
+  assert.match(edge, /most replies have none in them/);
+});
+
+test('the wit is native to whichever language is being spoken', () => {
+  assert.match(edge, /Humour must be native to the language/);
+  assert.match(edge, /Georgian wit in Georgian, never an English joke wearing Georgian words/);
+  assert.match(edge, /Russian, Turkish, Arabic and Hebrew\. If it only works in translation, drop it/);
+  // Georgian keeps its own section and its own register.
+  assert.match(edge, /GEORGIAN\. Speak the Georgian a sharp Tbilisi broker speaks out loud/);
+  assert.match(edge, /if they are casual with you, be/);
+  assert.match(edge, /MATCH THEM/);
+  assert.match(edge, /Formal, be',\s*'\s*professional/);
+});
+
+test('coming back to property resumes the work, and only persistence ends it', () => {
+  assert.match(edge, /Then carry on as if nothing happened/);
+  assert.match(edge, /Somebody still far off property after two redirects is not here for this/);
+  // Ending is for somebody who will not come back, never for one swerve.
+  assert.match(edge, /or somebody who will not come back to property/);
+  assert.ok(!edge.includes('Property is the subject, not a leash'),
+    'the rule that licensed the drift is gone');
+});
+
+test('none of the deployed voice work was touched to achieve this', () => {
+  /*
+   * This is a prompt change. The architecture underneath it was measured,
+   * fixed and physically verified in production, and nothing here may move
+   * it. Named explicitly because "while I was in there" is how that gets
+   * undone.
+   */
+  const e = strip(edge);
+  assert.match(e, /recordTurnUsage/, 'per-path COGS recording');
+  assert.match(e, /cogs_unpriced/, 'the unpriced alarm');
+  assert.match(e, /stream: 'SECOND_OPINION'/, 'the two recogniser streams, separately');
+  assert.match(e, /abandon\(/, 'the cancellation seam');
+  assert.match(e, /cancel\(reason\)/, 'the stream cancel handler');
+  assert.match(e, /SPEECH_TAGS/, 'the six listening languages, one copy');
+  const c = strip(client);
+  assert.match(c, /get turnShape\(\)/);
+  assert.match(c, /this\.unconfirmedLanguage = resolution\.proposedLanguage;/);
+  const t = read('src/lib/comm/transcript.ts');
+  assert.match(t, /assertiveEnergy: 0\.34,/);
+  assert.match(t, /confirmMs: 450,/);
+  assert.match(t, /tailSeconds: 0\.35,/);
+  // And the model is unchanged.
+  assert.match(read('supabase/functions/_shared/comm/llm.ts'), /'gpt-5\.6-luna'/);
+});
+
+test('the prompt grew, and by how much is stated rather than discovered', () => {
+  const i = edge.indexOf('function publicDemoInstructions');
+  const j = edge.indexOf('\n}\n', i);
+  const lines = (edge.slice(i, j).match(/^\s*[`'].*[`'],\s*$/gm) ?? [])
+    .map((line) => line.trim().replace(/^[`']/, '').replace(/[`'],$/, ''));
+  const chars = lines.join('\n').length;
+  /*
+   * 10,383 before the latency pass, 8,098 after it, 9,444 after the
+   * personality one, and this domain correction is about 800 more. That is
+   * most of the latency reduction given back, and it is a real cost: the
+   * prompt is read on every turn and the model's first token was 84% of
+   * server latency when it was last measured. It was condensed three times
+   * and paid for with a duplicated clause, an overlap between two sections
+   * and a repeated language list. The number is asserted so the next person
+   * to add a paragraph has to look at it.
+   */
+  assert.ok(chars < 10_600, `the prompt is ${chars} characters`);
+  assert.ok(chars > 9_000, 'and it still says everything it has to say');
 });

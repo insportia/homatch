@@ -24,10 +24,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Send, Sparkles, Square } from 'lucide-react';
+import { Streamdown } from 'streamdown';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAIChat } from '@/hooks/useAIChat';
 import { cn } from '@/lib/utils';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
+import { customerMessage } from '@/lib/ai/messageText';
 import { useMortgageAsk } from './askConsultant';
 import type { ConsultantBrief } from '@/mortgage/consultantBrief';
 
@@ -144,22 +146,39 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
 
       {messages.length || streaming ? (
         <div className="mt-5 max-h-[26rem] space-y-4 overflow-y-auto pe-1">
+          {/*
+            WHAT A CUSTOMER READS, AND WHAT THEY DO NOT.
+            An answer can carry a [[RESEARCH_JSON:…]] envelope that
+            sse.ts attaches for surfaces that draw a research card. This
+            one does not draw the card, so the envelope is removed
+            rather than printed. See src/lib/ai/messageText.ts, which
+            exists because it WAS printed, in Georgian, under a question
+            about a late mortgage payment.
+
+            Markdown, for the same reason /ai renders it: the model
+            emphasises the figure it just quoted, and "**1,765 ლარია**"
+            with the asterisks showing is the same class of leak.
+          */}
           {messages.map((message) => (
             <div
               key={message.id}
               className={cn(
-                'max-w-[46ch] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm leading-relaxed',
+                'prose-block max-w-[46ch] break-words rounded-2xl px-4 py-3 text-sm leading-relaxed',
                 message.role === 'user'
-                  ? 'ms-auto bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
+                  ? 'ms-auto whitespace-pre-wrap bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
                   : 'bg-[hsl(var(--secondary))] text-foreground',
               )}
             >
-              {message.content}
+              {message.role === 'user'
+                ? message.content
+                : <Streamdown parseIncompleteMarkdown>{customerMessage(message.content).text}</Streamdown>}
             </div>
           ))}
           {streaming ? (
-            <div className="max-w-[46ch] whitespace-pre-wrap break-words rounded-2xl bg-[hsl(var(--secondary))] px-4 py-3 text-sm leading-relaxed text-foreground">
-              {streamContent || t('mortgage_consultant_thinking')}
+            <div className="prose-block max-w-[46ch] break-words rounded-2xl bg-[hsl(var(--secondary))] px-4 py-3 text-sm leading-relaxed text-foreground">
+              {streamContent
+                ? <Streamdown parseIncompleteMarkdown isAnimating>{customerMessage(streamContent).text}</Streamdown>
+                : t('mortgage_consultant_thinking')}
             </div>
           ) : null}
           <div ref={bottomRef} />

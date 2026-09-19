@@ -308,6 +308,14 @@ export const PART_7 = {
     K, K, K, K,
   ],
 
+  /* The last semicolon on the English page, and a Georgian sentence
+     whose comma was doing a full stop's job. */
+  mortgage_schedule_explainer: [
+    'Each month part of your payment reduces the loan and part is the bank’s interest. Early on more of it is interest. Later more of it comes off the debt.',
+    'ყოველთვიური გადასახადის ნაწილი სესხს ამცირებს, ნაწილი კი ბანკის პროცენტია. თავიდან უფრო მეტი პროცენტზე მიდის. ბოლოს უფრო მეტი ვალის შემცირებაზე.',
+    K, K, K, K,
+  ],
+
   /* ── Dead but still in the bundle ────────────────────────────────── */
 
   /* Rendered by nothing since the result panel was rebuilt, but a key

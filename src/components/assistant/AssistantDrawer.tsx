@@ -19,6 +19,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAIChat } from '@/hooks/useAIChat';
 import { useAssistant } from './AssistantContext';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
+import { customerMessage } from '@/lib/ai/messageText';
 import { cn } from '@/lib/utils';
 
 export function AssistantDrawer() {
@@ -122,13 +123,18 @@ export function AssistantDrawer() {
                 m.role === 'user' ? 'ms-6 bg-muted/70' : 'me-2 border bg-card',
               )}
             >
-              <p className="whitespace-pre-wrap">{m.content}</p>
+              {/* The same envelope /ai strips and draws a card from. This
+                  surface draws no card, so it must not print the JSON.
+                  See src/lib/ai/messageText.ts. */}
+              <p className="whitespace-pre-wrap">
+                {m.role === 'user' ? m.content : customerMessage(m.content).text}
+              </p>
             </div>
           ))}
 
           {streaming ? (
             <div className="me-2 rounded-xl border bg-card px-3 py-2 text-[13px] leading-relaxed [overflow-wrap:anywhere]">
-              <p className="whitespace-pre-wrap">{streamContent}</p>
+              <p className="whitespace-pre-wrap">{customerMessage(streamContent).text}</p>
             </div>
           ) : null}
 

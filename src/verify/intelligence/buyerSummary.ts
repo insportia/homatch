@@ -179,8 +179,16 @@ export interface UnconfirmedInput {
 export function unconfirmedItems(input: UnconfirmedInput): UnconfirmedItem[] {
   const items: UnconfirmedItem[] = [];
 
-  // The subject's own price and area — the thing that used to be the headline.
-  if (!input.market?.subjectValuation) {
+  /*
+   * The subject's own price and area — the thing that used to be the headline.
+   *
+   * `subjectValuation` is a STATUS, not a value, and the status for the stored
+   * Villion report is the string 'NO_SUBJECT_PRICE'. A truthiness check on it
+   * is therefore true precisely when the price is missing, which is backwards:
+   * the gap disappeared from this list on the one report that has it. Only
+   * 'AVAILABLE' means the unit can actually be placed in its market.
+   */
+  if (String(input.market?.subjectValuation ?? '') !== 'AVAILABLE') {
     items.push({ key: 'verify_unconf_subject_price', weight: 'ROUTINE' });
   }
 

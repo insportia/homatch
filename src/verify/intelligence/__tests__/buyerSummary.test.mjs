@@ -141,7 +141,9 @@ test('the missing price and area reappear under what remains unconfirmed', () =>
   // The real stored shape: no subject valuation, rights NOT_CONFIRMED, no
   // utilities matrix, and a construction status that disclaims itself.
   const items = unconfirmedItems({
-    market: { subjectValuation: null, contextAvailable: true },
+    // The REAL stored value: a status string, not a price. Read as a boolean
+    // it is truthy, which silently dropped this very item from the live page.
+    market: { subjectValuation: 'NO_SUBJECT_PRICE', contextAvailable: true },
     snapshot: {
       constructionStatus:
         'საჯაროდ ხელმისაწვდომ აღწერაში ორივე ბლოკი ჩაბარებულად არის აღნიშნული. ეს აღწერა არ წარმოადგენს ოფიციალური ექსპლუატაციაში მიღების დამადასტურებელ მტკიცებულებას.',
@@ -156,9 +158,27 @@ test('the missing price and area reappear under what remains unconfirmed', () =>
   assert.ok(keys.includes('verify_unconf_commissioning'));
 });
 
+test('subjectValuation is a status, and only AVAILABLE means a price exists', () => {
+  /*
+   * Found on the deployed page: the stored Villion report carries the string
+   * 'NO_SUBJECT_PRICE', so `!subjectValuation` was false and the missing price
+   * vanished from the list it had just been moved into.
+   */
+  for (const state of ['NO_SUBJECT_PRICE', 'NO_COMPARABLE_BASIS', null, undefined, '']) {
+    const keys = unconfirmedItems({ market: { subjectValuation: state }, utilities: {} })
+      .map((i) => i.key);
+    assert.ok(
+      keys.includes('verify_unconf_subject_price'),
+      `${JSON.stringify(state)} means there is no subject price, so it must be listed`
+    );
+  }
+  const available = unconfirmedItems({ market: { subjectValuation: 'AVAILABLE' }, utilities: {} });
+  assert.deepEqual(available.map((i) => i.key), [], 'a priced subject has no gap to report');
+});
+
 test('a registry answer of “nothing found” is not an open question', () => {
   const items = unconfirmedItems({
-    market: { subjectValuation: { pricePerSqm: 1800 } },
+    market: { subjectValuation: 'AVAILABLE' },
     rights: { status: 'NONE_FOUND_IN_CHECKED_SOURCE' },
     utilities: { electricity: { status: 'CONFIRMED_CONNECTED' } },
     snapshot: {},
@@ -169,7 +189,7 @@ test('a registry answer of “nothing found” is not an open question', () => {
 test('an unverified utility is never turned into an absent one', () => {
   // "We did not check" and "this building has no water" are different claims
   // and only one of them is true.
-  const items = unconfirmedItems({ market: { subjectValuation: 1 }, utilities: null });
+  const items = unconfirmedItems({ market: { subjectValuation: 'AVAILABLE' }, utilities: null });
   assert.deepEqual(items.map((i) => i.key), ['verify_unconf_utilities']);
   assert.equal(items[0].weight, 'ROUTINE');
 });

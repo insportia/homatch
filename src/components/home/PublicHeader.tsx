@@ -78,7 +78,16 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
      that is about to render nothing. See useInstallState. */
   const installState = useInstallState();
   const canOfferApp = hasInstallAction(installState);
-  const { session } = useAuth();
+  const { session, status } = useAuth();
+  /*
+   * Same rule as AppLayout: while the answer is UNKNOWN this header shows
+   * neither the account button nor Login/Register. `session` alone cannot
+   * tell "nobody is signed in" from "we have not looked yet", and offering
+   * Register to somebody with an account is the worse of the two mistakes.
+   * A visitor with no persisted token resolves to UNAUTHENTICATED on the
+   * first frame, so a real guest still sees the real buttons immediately.
+   */
+  const authResolved = status !== 'UNKNOWN';
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -212,7 +221,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
             aria-hidden="true"
           />
 
-          {session ? (
+          {status === 'AUTHENTICATED' ? (
             <Button
               size="sm"
               className={`h-10 whitespace-nowrap rounded-full px-5 text-[16px] font-semibold ${
@@ -222,6 +231,11 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
             >
               <span {...fp('cta_dashboard')}>{sf('cta_dashboard', 'nav_dashboard')}</span>
             </Button>
+          ) : !authResolved ? (
+            /* Not yet known. A same-sized placeholder holds the row open so
+               nothing shifts when the answer lands, and no call to action is
+               offered to somebody who may already have an account. */
+            <div className="h-10 w-[7.5rem] shrink-0" aria-hidden="true" />
           ) : (
             <>
               <button
@@ -279,7 +293,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
                 {labelFor(link)}
               </button>
             ))}
-            {!session && (
+            {authResolved && status === 'UNAUTHENTICATED' && (
               <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:hidden">
                 <Button variant="outline" className="h-11 rounded-full border-border bg-transparent" onClick={() => go('/auth/login')}>
                   {t('nav_login')}

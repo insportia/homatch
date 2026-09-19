@@ -14,11 +14,10 @@
  * They are buttons, not text links, because a next step the eye skips is a
  * next step nobody takes.
  */
-import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { TrendingUp, Landmark, ArrowRight } from 'lucide-react';
+import { TrendingUp, Landmark } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { VerifyActionButton } from './VerifyActionButton';
 
 export function NextStepsCard({ cadastralCode }: { cadastralCode?: string | null }) {
   const { t } = useLanguage();
@@ -37,21 +36,20 @@ export function NextStepsCard({ cadastralCode }: { cadastralCode?: string | null
 
         {/* basis-full on the narrow end: two full-width buttons stacked beats
             two half-width buttons with their labels broken across lines. */}
+        {/* Stacked on a phone, side by side from sm. Each button sizes to its
+            own translated label rather than to a width chosen for English. */}
         <div className="flex flex-wrap gap-2">
-          <Button asChild size="lg" className="h-11 min-w-0 basis-full sm:basis-auto sm:flex-1">
-            <Link to={`/investment${suffix}`} className="min-w-0">
-              <TrendingUp className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="mx-2 min-w-0 break-words">{t('verify_next_investment')}</span>
-              <ArrowRight className="h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
-            </Link>
-          </Button>
-          <Button asChild size="lg" variant="outline" className="h-11 min-w-0 basis-full border-2 sm:basis-auto sm:flex-1">
-            <Link to={`/mortgage${suffix}`} className="min-w-0">
-              <Landmark className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="mx-2 min-w-0 break-words">{t('verify_next_mortgage')}</span>
-              <ArrowRight className="h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
-            </Link>
-          </Button>
+          <VerifyActionButton
+            to={`/investment${suffix}`}
+            icon={<TrendingUp className="h-5 w-5" />}
+            label={t('verify_next_investment')}
+          />
+          <VerifyActionButton
+            to={`/mortgage${suffix}`}
+            icon={<Landmark className="h-5 w-5" />}
+            label={t('verify_next_mortgage')}
+            variant="outline"
+          />
         </div>
       </CardContent>
     </Card>

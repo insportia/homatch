@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { deriveAuthStatus, hasPersistedSession, type AuthStatus } from '@/auth/authStatus';
 import { supabase } from '@/db/supabase';
 import { claimAnonymousWork } from '@/services/anonymousSession';
 import type { Session, User as SupaUser } from '@supabase/supabase-js';
@@ -7,6 +8,14 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 interface AuthContextValue {
   session: Session | null;
+  /*
+   * THE THREE-STATE ANSWER. Prefer this over `session` for anything that
+   * decides what a visitor SEES: `session` is null both when nobody is
+   * signed in and when we have not looked yet, and every consumer that
+   * collapsed those two showed a signed-in customer a Register button on
+   * every refresh. See src/auth/authStatus.ts.
+   */
+  status: AuthStatus;
   supaUser: SupaUser | null;
   homatchUser: User | null;
   loading: boolean;
@@ -26,6 +35,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supaUser, setSupaUser] = useState<SupaUser | null>(null);
   const [homatchUser, setHomatchUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  /*
+   * Sampled once, in a lazy initialiser, so it is read BEFORE the restore
+   * below has had a chance to change storage — and never re-read, because
+   * after a sign-out the token is gone and a re-read would turn an ordinary
+   * signed-out state back into "still hydrating".
+   */
+  const [persistedAtStartup] = useState(() => hasPersistedSession());
   const { applyProfileLanguage } = useLanguage();
 
   const fetchHomatchUser = useCallback(async (authId: string) => {
@@ -148,9 +164,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   };
 
+  const status = deriveAuthStatus({ loading, session, persisted: persistedAtStartup });
+
   return (
     <AuthContext.Provider
-      value={{ session, supaUser, homatchUser, loading, signUp, signIn, signInWithGoogle, signOut, refreshUser, sendPasswordReset, updatePassword }}
+      value={{ session, supaUser, homatchUser, loading, status, signUp, signIn, signInWithGoogle, signOut, refreshUser, sendPasswordReset, updatePassword }}
     >
       {children}
     </AuthContext.Provider>

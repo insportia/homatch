@@ -199,7 +199,11 @@ export function ResearchStream({
             size="sm"
             onClick={onStop}
             disabled={stopping}
-            className="h-9 shrink-0 border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            /* Same sizing rules as the report's CTAs: a real touch target that
+               GROWS for a long translated label instead of clipping it. `h-9`
+               was 36px, under the comfortable minimum, and size="sm" brings
+               whitespace-nowrap with it. */
+            className="h-auto min-h-11 shrink-0 whitespace-normal border-destructive/40 px-4 py-2 text-start leading-snug text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             {t(stopping ? 'verify_stop_pending' : 'verify_stop_research')}
           </Button>

@@ -4567,7 +4567,14 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
     if ((count ?? 0) > 0) return;
 
     const researchModel = Deno.env.get('OPENAI_RESEARCH_MODEL') || 'gpt-5.6-terra';
-    const reportModel = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
+    /*
+     * The model the REPORT was actually written on, so the COGS row names it.
+     * verify-synthesis prefers OPENAI_SYNTHESIS_MODEL when it is set, and the
+     * metering has to follow the same rule or it attributes the synthesis
+     * stage to a model that never ran — and prices it at that model's rate.
+     */
+    const reportModel = Deno.env.get('OPENAI_SYNTHESIS_MODEL')?.trim()
+      || 'gpt-6-astra';
 
     /*
      * RATES COME FROM THE PRICE BOOK, AND FROM THE RIGHT DATE.

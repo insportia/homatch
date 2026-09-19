@@ -411,7 +411,7 @@ export function VerifyReport({
             </p>
           </div>
           {onUploadContract ? (
-            <Button className="w-full sm:w-auto gap-2" onClick={onUploadContract}>
+            <Button className="h-auto min-h-11 w-full gap-2 whitespace-normal py-2.5 text-start leading-snug sm:w-auto" onClick={onUploadContract}>
               <FileText className="h-4 w-4" />
               {t('verify_ir_upload_cta')}
             </Button>

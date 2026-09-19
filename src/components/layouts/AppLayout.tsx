@@ -46,7 +46,7 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
    * using this shell.
    */
   useSurfaceTheme('light');
-  const { session } = useAuth();
+  const { session, status } = useAuth();
   const { pathname } = useLocation();
 
   /*
@@ -113,7 +113,59 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
    * The assistant, the floating button and the mobile bottom nav are fixed
    * chrome and sit outside the shell's scroll container in both branches.
    */
-  if (session) {
+  /*
+   * ── BEFORE WE KNOW ───────────────────────────────────────────────────
+   *
+   * `session` is null both when nobody is signed in and when supabase-js has
+   * not finished restoring, and this branch used to treat those as the same
+   * thing. On every mobile refresh an authenticated customer got the guest
+   * header — Login, Register — and then watched the entire shell be replaced
+   * by the signed-in one. Not a style glitch: two different navigations, one
+   * swapped for the other, plus a Register button offered to somebody with an
+   * account.
+   *
+   * While the answer is genuinely UNKNOWN this renders neither. It is the
+   * signed-in shell's geometry with nothing in it: the same h-16 md:h-20 bar,
+   * the same lg:ps-[18rem] rail inset, the same main padding. So the page
+   * beneath does not move when the answer arrives, and nothing on screen
+   * claims anything about who the visitor is.
+   *
+   * A visitor with no persisted token never reaches this state at all —
+   * authStatus resolves them to UNAUTHENTICATED synchronously, so a real
+   * guest still gets the real guest header on the first frame.
+   */
+  if (status === 'UNKNOWN') {
+    return (
+      <div className={hidePadding
+        ? 'flex h-[100dvh] w-full flex-col overflow-hidden bg-background'
+        : 'min-h-screen w-full bg-background'}
+      >
+        <aside className="fixed inset-y-0 start-0 z-40 hidden h-[100dvh] w-[18rem] border-e border-sidebar-border bg-sidebar lg:block" aria-hidden="true" />
+        <div className={`min-w-0 lg:ps-[18rem] ${hidePadding ? 'flex h-[100dvh] flex-col' : ''}`}>
+          <header
+            className={`z-30 border-b border-border bg-background/95 ${hidePadding ? 'shrink-0' : 'sticky top-0'}`}
+            aria-hidden="true"
+          >
+            <div className="flex h-16 items-center gap-2 px-3 sm:gap-3 sm:px-4 md:h-20 md:px-6 lg:px-8" />
+          </header>
+          <main
+            className={[
+              'min-w-0 flex-1 overflow-x-hidden',
+              hidePadding ? 'min-h-0' : '',
+              !noPadding && !hidePadding ? 'px-4 py-6 md:px-6 md:py-8' : '',
+            ].join(' ')}
+            /* Announced once, rather than a spinner that says nothing and a
+               screen reader that says nothing either. */
+            aria-busy="true"
+          >
+            {body}
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'AUTHENTICATED') {
     return (
       <AssistantProvider>
         <HomatchShell noPadding={noPadding} hidePadding={hidePadding}>

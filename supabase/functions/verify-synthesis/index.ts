@@ -81,7 +81,60 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-driver',
 };
-const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
+/*
+ * THE FINAL SYNTHESIS MODEL.
+ *
+ * This is the one call that writes the customer's Buyer Intelligence report:
+ * the research is already finished and stored, and the model's job here is to
+ * reason over the completed evidence package, not to look anything up.
+ *
+ * OPENAI_SYNTHESIS_MODEL exists so that model can be changed for THIS stage
+ * alone. OPENAI_MODEL is shared with research-agent's own report accounting,
+ * so moving it would silently move two things at once.
+ *
+ * PINNED MEANS NO FALLBACK.
+ *
+ * When OPENAI_SYNTHESIS_MODEL is set, the run is an experiment about that
+ * model, and a refusal must be visible as a refusal. Before this, a non-ok
+ * response was dropped on the floor — `if (res.ok)` and nothing else — so an
+ * unknown model id (404) or an unauthorised project (403) produced a
+ * deterministic report that looked exactly like success. That is the one
+ * outcome an experiment must never produce.
+ */
+/*
+ * VERIFIED, NOT GUESSED.
+ *
+ * `gpt-6-astra` was read from GET https://api.openai.com/v1/models using the
+ * project's existing OPENAI_API_KEY, from the server-side environment that
+ * already holds it: HTTP 200, 130 models, exactly one matching candidate. The
+ * id is written here rather than left to a secret so that what the final
+ * synthesis runs on is visible in the repository and in review, and so the
+ * deployed artifact can be checked for it.
+ *
+ * OPENAI_SYNTHESIS_MODEL still overrides it, for moving this one stage
+ * without a deploy. OPENAI_MODEL deliberately does NOT: it is shared with
+ * research-agent, and changing it would move two things at once.
+ */
+const VERIFY_SYNTHESIS_MODEL = 'gpt-6-astra';
+const SYNTHESIS_MODEL_OVERRIDE = (Deno.env.get('OPENAI_SYNTHESIS_MODEL') ?? '').trim();
+const MODEL = SYNTHESIS_MODEL_OVERRIDE || VERIFY_SYNTHESIS_MODEL;
+
+/*
+ * WHICH FAILURES ARE ALLOWED TO DEGRADE QUIETLY, AND WHICH ARE NOT.
+ *
+ * A refusal that means "this model is not available to you" — an unknown id,
+ * an unauthorised project, a malformed request — must never be absorbed. It
+ * used to be: `if (res.ok)` and nothing else, so a 404 produced a
+ * deterministic report that was indistinguishable from a successful one. An
+ * experiment about a model cannot report success when that model never ran.
+ *
+ * A transient failure is different in kind. A single 429 or a 503 says
+ * nothing about whether the model is the right one, and turning a blip into
+ * "no report" for a paying customer is a worse outcome than prose assembled
+ * deterministically from the same evidence. Those still degrade, and still
+ * say so in the log.
+ */
+const MODEL_UNAVAILABLE_STATUSES = new Set([400, 401, 403, 404]);
 
 const json = (d: unknown, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -408,10 +461,21 @@ serve(async (req) => {
             ],
           }),
         });
-        if (res.ok) raw = textOf(await res.json());
+        if (res.ok) {
+          raw = textOf(await res.json());
+        } else {
+          // The provider's own words, not a summary of them.
+          const detail = (await res.text()).slice(0, 500);
+          const reason = `SYNTHESIS_MODEL_UNAVAILABLE: ${MODEL} refused: HTTP ${res.status} ${detail}`;
+          if (MODEL_UNAVAILABLE_STATUSES.has(res.status)) throw new Error(reason);
+          console.error(reason);
+        }
       } catch (e) {
-        // A provider outage degrades the prose, never the report.
-        console.error('synthesis model call failed', e instanceof Error ? e.message : String(e));
+        const reason = e instanceof Error ? e.message : String(e);
+        // Re-throw the availability refusal raised just above; a transport
+        // failure is transient and degrades the prose, never the report.
+        if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE')) throw e;
+        console.error('synthesis model call failed', reason);
       }
     }
 
@@ -423,6 +487,9 @@ serve(async (req) => {
     }
 
     const payload = {
+      /* Which model actually wrote this, for COGS and for inspection. */
+      synthesisModel: MODEL,
+      synthesisModelPinned: true,
       report: {
         // v3: summary + keyFindings replace overallView/executiveSummary, and
         // the pre-purchase checklist is gone rather than renamed.
@@ -456,7 +523,18 @@ serve(async (req) => {
     await persist(writer, jobId, payload);
     return json(payload);
   } catch (e) {
-    console.error('verify-synthesis failed', e instanceof Error ? e.message : String(e));
+    const reason = e instanceof Error ? e.message : String(e);
+    console.error('verify-synthesis failed', reason);
+    /*
+     * A model-availability refusal is reported in full rather than as
+     * "internal_error". It names the model and carries the provider's own
+     * status — and nothing else, so no credential travels with it. Every
+     * other failure stays generic, because an unexpected stack trace is not
+     * a thing to hand a browser.
+     */
+    if (reason.startsWith('SYNTHESIS_MODEL_UNAVAILABLE')) {
+      return json({ error: 'synthesis_model_unavailable', detail: reason, model: MODEL }, 502);
+    }
     return json({ error: 'internal_error' }, 500);
   }
 });

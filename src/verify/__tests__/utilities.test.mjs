@@ -202,8 +202,10 @@ test('INVESTMENT_CONSULTANT_CTA and MORTGAGE_CONSULTANT_CTA are real buttons', (
   const src = read('src', 'components', 'verify', 'NextStepsCard.tsx');
   assert.match(src, /to=\{`\/investment\$\{suffix\}`\}/);
   assert.match(src, /to=\{`\/mortgage\$\{suffix\}`\}/);
-  // Buttons, and big ones — not subtle text links.
-  assert.equal((src.match(/<Button asChild size="lg"/g) ?? []).length, 2);
+  // Buttons, and big ones — not subtle text links. They come from the shared
+  // VerifyActionButton now, which is where the sizing rules live; the button
+  // standard itself is pinned in verifyCta.test.mjs.
+  assert.equal((src.match(/<VerifyActionButton/g) ?? []).length, 2);
   assert.match(src, /verify_next_investment/);
   assert.match(src, /verify_next_mortgage/);
 
@@ -226,7 +228,8 @@ test('VERIFY_CONTROLS_REDESIGNED: the stop action is a contained button', () => 
     'the borderless zero-padding text action must not come back');
   assert.match(code, /variant="outline"/);
   assert.match(code, /rounded-xl border border-border/);
-  assert.match(code, /h-9 shrink-0 border-destructive\/40 px-4/);
+  // Sized by content now rather than pinned to 36px — see verifyCta.test.mjs.
+  assert.match(code, /min-h-11 shrink-0 whitespace-normal border-destructive\/40/);
   // Findable, but not the loudest thing on the screen: outline, not filled.
   assert.ok(!/variant="destructive"/.test(code));
 });

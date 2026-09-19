@@ -134,7 +134,8 @@ export interface VerifyResultViewProps {
   retryBusy?: boolean;
   /** The full research detail, behind the report's own disclosure. */
   evidence?: React.ReactNode;
-  onUploadContract?: () => void;
+  /** The case a contract uploaded from the report belongs to. */
+  contractCaseId?: string | null;
 }
 
 export const VerifyResultView: React.FC<VerifyResultViewProps> = ({
@@ -148,7 +149,7 @@ export const VerifyResultView: React.FC<VerifyResultViewProps> = ({
   onRetry,
   retryBusy,
   evidence,
-  onUploadContract,
+  contractCaseId = null,
 }) => {
   const { t } = useLanguage();
 
@@ -249,7 +250,7 @@ export const VerifyResultView: React.FC<VerifyResultViewProps> = ({
           <VerifyReport
             synthesis={toVerifySynthesis(result)}
             evidence={evidence}
-            onUploadContract={onUploadContract}
+            contractCaseId={contractCaseId}
           />
         </SectionBoundary>
       ) : null}

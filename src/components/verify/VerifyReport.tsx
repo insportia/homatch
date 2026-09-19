@@ -47,6 +47,7 @@
 
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { ContractUpload } from './ContractUpload';
 import { Button } from '@/components/ui/button';
 import { FileText, Copy, Check, ExternalLink, MapPin, Users } from 'lucide-react';
 import { readable } from '@/verify/readableText';
@@ -244,12 +245,18 @@ const Prose: React.FC<{ text: string }> = ({ text }) => (
 export function VerifyReport({
   synthesis,
   evidence,
-  onUploadContract,
+  contractCaseId,
 }: {
   synthesis: VerifySynthesis;
   /** The full research detail, rendered inside the collapsed control. */
   evidence?: React.ReactNode;
-  onUploadContract?: () => void;
+  /*
+   * The verification case a contract should be attached to, when one already
+   * exists. Null is normal and correct: the uploader creates the case itself
+   * on the first contract, which is why this replaced an `onUploadContract`
+   * callback that only ever navigated somewhere else.
+   */
+  contractCaseId?: string | null;
 }) {
   const { t } = useLanguage();
   const r = synthesis.report;
@@ -410,12 +417,16 @@ export function VerifyReport({
               {clean(r.contractUpload?.text) || t('verify_ir_upload_body')}
             </p>
           </div>
-          {onUploadContract ? (
-            <Button className="h-auto min-h-11 w-full gap-2 whitespace-normal py-2.5 text-start leading-snug sm:w-auto" onClick={onUploadContract}>
-              <FileText className="h-4 w-4" />
-              {t('verify_ir_upload_cta')}
-            </Button>
-          ) : null}
+          {/*
+            * The picker, right here.
+            *
+            * This used to be a button that NAVIGATED to the case's documents
+            * tab and left the customer to find an upload control on the page
+            * it landed on — a contract upload that uploaded nothing. The same
+            * component the Verification Center uses is mounted inline
+            * instead, so choosing the file is the whole interaction.
+            */}
+          <ContractUpload caseId={contractCaseId ?? null} variant="inline" />
         </section>
       ) : null}
 

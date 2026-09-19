@@ -162,7 +162,7 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
     } else if (job.subject_type === 'DOCUMENT') {
       const { data: doc } = await sb
         .from('deal_room_documents')
-        .select('id,deal_room_id,analysis_state')
+        .select('id,deal_room_id,analysis_state,analysis_error')
         .eq('id', job.subject_id)
         .maybeSingle();
       if (!doc) continue;
@@ -170,7 +170,12 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
       nextState = DOC_STATE[d.analysis_state] ?? 'PROCESSING';
       progress = nextState === 'COMPLETED' ? 100 : d.analysis_state === 'RUNNING' ? 60 : 10;
       stage = d.analysis_state ?? null;
-      errorKey = DOC_ERROR_KEY[d.analysis_state] ?? null;
+      // A refusal for payment is FAILED, but it is not "something went
+      // wrong" — it is an action the customer can take. See the billing
+      // branch in deal-room-document-analyze.
+      errorKey = d.analysis_error === 'BILLING_REQUIRED'
+        ? 'doc_error_billing'
+        : DOC_ERROR_KEY[d.analysis_state] ?? null;
       resultRef = `/verify/${d.deal_room_id}?tab=documents&doc=${d.id}`;
 
     } else if (job.subject_type === 'MATCHING_JOB') {
@@ -185,7 +190,9 @@ async function mirror(sb: Sb): Promise<{ mirrored: number; finished: number }> {
       progress = typeof m.progress === 'number' ? m.progress : null;
       stage = m.current_step ?? null;
       if (nextState === 'FAILED') errorKey = 'job_failed_generic';
-      resultRef = m.property_id ? `/properties/${m.property_id}/matches` : job.result_ref;
+      // Singular `/property/` — see src/services/api.ts. The plural form is
+      // not a registered route and navigated the customer to NotFound.
+      resultRef = m.property_id ? `/property/${m.property_id}/matches` : job.result_ref;
     }
 
     if (!nextState) continue;

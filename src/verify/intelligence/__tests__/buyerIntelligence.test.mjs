@@ -515,9 +515,33 @@ test('verify-synthesis uses the evidence package, not the starved plan', () => {
 });
 
 test('the contract CTA reuses the Verification Case documents tab, not a second upload path', () => {
-  const page = read('src/pages/VerifyPage.tsx');
-  assert.ok(page.includes('onUploadContract'), 'the report CTA is not wired');
-  assert.ok(/\?tab=documents/.test(page), 'the CTA does not land on the case documents tab');
+  /*
+   * The invariant is unchanged — ONE upload path, landing on the case's
+   * documents tab — but it is no longer expressed as a navigation callback.
+   *
+   * `onUploadContract` uploaded nothing: it navigated to the documents tab
+   * and left the customer to find a control on the page it landed on. The
+   * report now mounts the same ContractUpload component the Verification
+   * Center uses, so choosing the file is the whole interaction and there is
+   * still exactly one implementation of it.
+   */
+  const report = read('src/components/verify/VerifyReport.tsx');
+  assert.ok(report.includes('ContractUpload'), 'the report CTA is not wired');
+  // Comments record why the callback went; only code is checked for its return.
+  const reportCode = report.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(
+    !reportCode.includes('onUploadContract'),
+    'the navigate-only callback must not come back'
+  );
+
+  // Still the case documents tab, and now the exact document within it.
+  const upload = read('src/components/verify/ContractUpload.tsx');
+  assert.ok(/\?tab=documents&doc=/.test(upload), 'the CTA does not land on the case documents tab');
+
+  // And exactly one component performs a contract upload.
+  const center = read('src/components/verify/StartFromDocument.tsx');
+  assert.ok(center.includes('ContractUpload'), 'the Center must share the one uploader');
+  assert.ok(!center.includes('uploadDocument('), 'a second upload path has reappeared');
 });
 
 test('the raw evidence explorer is still reachable underneath the report', () => {

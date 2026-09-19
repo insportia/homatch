@@ -22,6 +22,53 @@ export const ALLOWED_MIME = Object.freeze([
 
 export const MAX_BYTES = 20 * 1024 * 1024;
 
+/** The same number, for copy that has to state the limit out loud. */
+export const MAX_MB = Math.round(MAX_BYTES / (1024 * 1024));
+
+/**
+ * What the ANALYSER can actually read — not what the bucket will store.
+ *
+ * These two lists were conflated, and customers paid for it. The bucket, RLS
+ * and `ALLOWED_MIME` above all accept JPEG, PNG, WEBP and legacy `.doc`,
+ * while deal-room-document-analyze rejects everything except PDF and DOCX
+ * (`ANALYSABLE_MIME` in that function). So a photographed contract uploaded
+ * cleanly, showed a progress state, and then terminated as UNSUPPORTED —
+ * which `canReanalyze()` refuses to retry. The customer was told to upload a
+ * contract, allowed to, and then told it could not be read.
+ *
+ * A file picker that offers only what the pipeline can genuinely process is
+ * the honest fix. Images are still storable as case documents; they are just
+ * not offered where the promise is "we will read this contract".
+ *
+ * MUST mirror ANALYSABLE_MIME in supabase/functions/deal-room-document-analyze.
+ * contractUpload.test.mjs asserts the two lists stay identical.
+ */
+export const ANALYSABLE_MIME = Object.freeze([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+/** The `accept` attribute for a contract picker: MIME *and* extensions,
+ *  because Android pickers routinely honour only one of the two. */
+export const CONTRACT_ACCEPT = `${ANALYSABLE_MIME.join(',')},.pdf,.docx`;
+
+/** Human-readable format list for error copy. Never translated: these are
+ *  format names, identical in every language. */
+export const CONTRACT_FORMATS = 'PDF, DOCX';
+
+/**
+ * Validates a file the customer intends to have READ, not merely stored.
+ *
+ * Deliberately a wrapper rather than a second implementation: every rule in
+ * validateUpload still applies, and this only narrows the accepted types.
+ */
+export function validateContractUpload(file: { name: string; size: number; type: string }): UploadRejection {
+  const base = validateUpload(file);
+  if (!base.ok) return base;
+  if (!ANALYSABLE_MIME.includes(file.type)) return { ok: false, reason: 'UNSUPPORTED_TYPE' };
+  return { ok: true };
+}
+
 /** Signed URLs are minted per view and expire quickly: a leaked link should
  * stop working long before it can be passed around. */
 export const SIGNED_URL_TTL_SECONDS = 120;

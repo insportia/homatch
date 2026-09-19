@@ -336,8 +336,35 @@ serve(async (req) => {
 
     if (!grant.ok) {
       const { data: ent } = await svc.rpc('billing_entitlements', { p_user_id: hmUser.id });
-      await supabase.from('deal_room_documents')
-        .update({ analysis_state: 'PENDING', analysis_error: null }).eq('id', documentId);
+      /*
+       * A REFUSAL IS A TERMINAL ANSWER, AND IT HAS TO BE A LEGAL ONE.
+       *
+       * This wrote `analysis_state: 'PENDING'`, which the CHECK constraint on
+       * the column does not allow (NONE|QUEUED|RUNNING|DONE|FAILED|
+       * UNSUPPORTED|REQUIRES_OCR). The update's error was never inspected, so
+       * it failed silently and the row stayed RUNNING — the state set a few
+       * lines above. The customer watched "reading your contract" for six
+       * minutes until the stale-row sweeper flipped it to FAILED with
+       * "analysis stopped before it finished", which is not what happened:
+       * nothing was read and nothing was charged, a payment was needed.
+       *
+       * FAILED is the honest state — the attempt is over — and the reason is
+       * carried in analysis_error so the card and the task row can say why in
+       * the customer's own language. It stays retryable: canReanalyze()
+       * refuses only UNSUPPORTED and REQUIRES_OCR.
+       *
+       * `NONE` would be wrong for a different reason: jobs-worker maps NONE
+       * to QUEUED, so the job would never terminate and the worker would
+       * re-dispatch into the same refusal on every tick.
+       */
+      const { error: refusalErr } = await supabase.from('deal_room_documents')
+        .update({
+          analysis_state: 'FAILED',
+          analysis_error: 'BILLING_REQUIRED',
+          analyzed_at: new Date().toISOString(),
+        })
+        .eq('id', documentId);
+      if (refusalErr) console.error('[analyze] could not record billing refusal', refusalErr.message);
       return json({
         state: 'BILLING_REQUIRED',
         reason: grant.reason ?? 'BILLING_REQUIRED',

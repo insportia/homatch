@@ -345,7 +345,15 @@ export async function reorderDocuments(docs: WorkspaceDocument[]): Promise<void>
  * yet" the instant the customer asks, without claiming work has begun.
  */
 export async function requestAnalysis(
-  doc: WorkspaceDocument,
+  /*
+   * Only the three fields this function actually reads.
+   *
+   * Widened from WorkspaceDocument so a just-uploaded contract can be queued
+   * straight away without first re-reading the row to build a full model —
+   * the Verification Center used to skip analysis altogether rather than do
+   * that, leaving uploaded contracts unread and absent from Running tasks.
+   */
+  doc: Pick<WorkspaceDocument, 'id' | 'caseId' | 'name'>,
   opts?: { reanalyze?: boolean }
 ): Promise<BackgroundJob | null> {
   const job = await startJobBestEffort({

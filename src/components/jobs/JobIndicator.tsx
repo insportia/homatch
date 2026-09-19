@@ -21,6 +21,7 @@ import { JobCenter } from './JobCenter';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { isTerminal } from '@/jobs/jobState';
+import { resolveJobDestination } from '@/jobs/destination';
 
 const COMPLETION_KEY: Record<string, string> = {
   VERIFY: 'job_done_verify',
@@ -114,19 +115,28 @@ export const JobIndicator: React.FC = () => {
       }
 
       const label = job.subjectLabel ?? '';
+      /*
+       * The SAME resolver the drawer uses.
+       *
+       * This toast used to navigate to `job.resultRef` directly with its own
+       * hardcoded 'Open result' label, so the two surfaces could disagree
+       * about where one task goes — and both followed a stored path that
+       * might not be a registered route (see jobs/destination.ts).
+       */
+      const destination = resolveJobDestination(job);
+      const action = destination
+        ? { label: t(destination.labelKey), onClick: () => navigate(destination.to) }
+        : undefined;
+
       if (job.state === 'FAILED') {
         toast.error(t(job.userSafeError ?? 'job_failed_generic'), {
           description: label || undefined,
-          action: job.resultRef
-            ? { label: t('job_open_result'), onClick: () => navigate(job.resultRef as string) }
-            : undefined,
+          action,
         });
       } else {
         toast.success(t(COMPLETION_KEY[job.productType] ?? 'job_done_generic'), {
           description: label || undefined,
-          action: job.resultRef
-            ? { label: t('job_open_result'), onClick: () => navigate(job.resultRef as string) }
-            : undefined,
+          action,
         });
       }
       dismissCompletion(job.id);

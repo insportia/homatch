@@ -737,7 +737,10 @@ async function registerFindClientsJob(jobId: string, propertyId: string): Promis
     subjectType: 'MATCHING_JOB',
     subjectId: jobId,
     idempotencyKey: `matching:${jobId}`,
-    resultRef: `/properties/${propertyId}/matches`,
+    // `/property/`, singular — the registered route is /property/:id/matches.
+    // The plural spelling shipped for months and sent every finished client
+    // search to the 404 page (jobs/destination.ts rewrites the stored ones).
+    resultRef: `/property/${propertyId}/matches`,
   });
 }
 export async function pauseMatchingCampaign(

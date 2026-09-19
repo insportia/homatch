@@ -417,6 +417,11 @@ const VerificationCasePage: React.FC = () => {
               completedAt={verifyFacts?.completedAt ?? null}
               subjectId={room.verify_job_id}
               onRetry={room.verify_job_id ? () => navigate(`/verify?job=${room.verify_job_id}`) : undefined}
+              /* The case's own id, so a contract uploaded from the summary
+                 attaches HERE rather than creating a second case. This prop
+                 was simply never passed, so the summary tab had no contract
+                 upload at all. */
+              contractCaseId={room.id}
             />
           </TabsContent>
 

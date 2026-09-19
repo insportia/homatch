@@ -39,6 +39,10 @@ const COMPONENTS = {
   'src/components/research/HumanVerificationHandoff.tsx': read('src/components/research/HumanVerificationHandoff.tsx'),
   'src/components/verify/VerificationCaseList.tsx': read('src/components/verify/VerificationCaseList.tsx'),
   'src/components/verify/StartFromDocument.tsx': read('src/components/verify/StartFromDocument.tsx'),
+  // The shared contract action every entry point renders. It carries the
+  // mobile rules that used to live in StartFromDocument, so it has to be in
+  // the sweep above as well as in the targeted tests below.
+  'src/components/verify/ContractUpload.tsx': read('src/components/verify/ContractUpload.tsx'),
 };
 
 /* ---------------------------------------------------------------- *
@@ -140,10 +144,22 @@ test('primary actions are full-width on mobile and inline from sm upward', () =>
   for (const file of [
     'src/components/dealroom/DocumentsPanel.tsx',
     'src/components/research/HumanVerificationHandoff.tsx',
-    'src/components/verify/StartFromDocument.tsx',
+    // StartFromDocument delegates its action to ContractUpload, which every
+    // contract entry point now shares. The rule follows the button.
+    'src/components/verify/ContractUpload.tsx',
   ]) {
-    assert.ok(/w-full sm:w-auto/.test(ALL[file]), `${file} has no responsive primary action`);
+    assert.ok(/w-full[^"']*sm:w-auto/.test(ALL[file]), `${file} has no responsive primary action`);
   }
+});
+
+test('the shared contract action is a real touch target that wraps its label', () => {
+  // The rule above only proves the width behaviour. On a phone the label is
+  // frequently two lines in Georgian and Russian, and a fixed-height button
+  // clips it — the defect the Verify CTAs already had once.
+  const src = ALL['src/components/verify/ContractUpload.tsx'];
+  assert.ok(/min-h-12/.test(src), 'the primary contract action must be at least 48px tall');
+  assert.ok(/whitespace-normal/.test(src), 'its label must wrap rather than clip');
+  assert.ok(/h-auto/.test(src), 'its height must follow the label');
 });
 
 test('the verification case tab strip scrolls instead of wrapping to a second row', () => {

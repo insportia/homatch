@@ -188,7 +188,11 @@ export const DocumentCard: React.FC<{
 
             {doc.status === 'FAILED' ? (
               <p className="text-sm text-amber-700 dark:text-amber-400 break-words">
-                {t(DOCUMENT_FAILURE_KEY[doc.analysisState.toUpperCase()] ?? 'doc_error_failed')}
+                {t(
+                  doc.analysisError === 'BILLING_REQUIRED'
+                    ? 'doc_error_billing'
+                    : DOCUMENT_FAILURE_KEY[doc.analysisState.toUpperCase()] ?? 'doc_error_failed'
+                )}
               </p>
             ) : null}
           </div>

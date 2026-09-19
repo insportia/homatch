@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, XCircle, Ban, ExternalLink, AlertTriangle } from 'lucide-react';
 import { cancelSecondsRemaining, isTerminal } from '@/jobs/jobState';
+import { resolveJobDestination } from '@/jobs/destination';
 import { phaseFor } from '@/verify/progress';
 import type { BackgroundJob } from '@/services/backgroundJobs';
 import { toast } from 'sonner';
@@ -170,10 +171,21 @@ const JobRow: React.FC<{ job: BackgroundJob; onClose: () => void }> = ({ job, on
     }
   };
 
-  const openResult = () => {
-    if (!job.resultRef) return;
+  /*
+   * ONE contextual action, for every product, in every state.
+   *
+   * This used to be `navigate(job.resultRef)` behind a COMPLETED/PARTIAL
+   * gate, which meant a running task offered nothing at all and a wrongly
+   * written ref navigated to the 404 page. The destination — and whether
+   * there is an honest one to offer — is now decided by a single pure
+   * resolver shared with every other product. See jobs/destination.ts.
+   */
+  const destination = resolveJobDestination(job);
+
+  const openDestination = () => {
+    if (!destination) return;
     onClose();
-    navigate(job.resultRef);
+    navigate(destination.to);
   };
 
   return (
@@ -221,10 +233,17 @@ const JobRow: React.FC<{ job: BackgroundJob; onClose: () => void }> = ({ job, on
         {!done && !job.canCancel ? (
           <p className="text-sm text-muted-foreground break-words">{t('job_started_no_cancel')}</p>
         ) : null}
-        {job.resultRef && (job.state === 'COMPLETED' || job.state === 'PARTIAL') ? (
-          <Button variant="ghost" size="sm" onClick={openResult} className="w-full sm:w-auto gap-2">
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-            {t('job_open_result')}
+        {destination ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={openDestination}
+            /* h-auto + wrapping: a translated label is routinely twice the
+               length of the English one, and a fixed-height button clips it. */
+            className="h-auto min-h-11 w-full gap-2 whitespace-normal py-2 text-start leading-snug sm:w-auto"
+          >
+            <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 break-words">{t(destination.labelKey)}</span>
           </Button>
         ) : null}
       </div>

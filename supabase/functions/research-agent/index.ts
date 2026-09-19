@@ -12,6 +12,7 @@ import {
 } from '../_shared/verifyWatchdog.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
 import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/intelligence/registryOverlay.ts';
+import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
 import { planMarket, segmentsFor, snapshotBrief } from '../../../src/verify/intelligence/marketSnapshot.ts';
@@ -1657,7 +1658,7 @@ function prompt(s: Stage, j: any, p: any, l: string): string {
     const scope = publicResearchScope(i.assetClass);
     const scopeNoteLine = scope.scopeNote ? `${scope.scopeNote}\n` : '';
     return (
-      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. Official=${JSON.stringify(o).slice(0, 12000)}.\n` +
+      known + `${BASE}\nAnswer strings in ${L}. Query=${q}. Known identifiers for this exact property/project/company so far=${JSON.stringify(identifiers)}. Identity=${JSON.stringify(i).slice(0, 9000)}. OfficialContext=${compactOfficialContext(o)}.\n` +
       tasFactsNote +
       scopeNoteLine +
       `PUBLIC RESEARCH STAGE — this is a real, mandatory research stage, not optional enrichment. Do not stop after basic project/address/listing discovery. Using every identifier above, search in Georgian, English AND Russian for each of the following topics as they relate to this exact project/property/company: ${scope.targets.join(', ')}.\n` +

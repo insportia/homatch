@@ -445,7 +445,28 @@ function MarketRangeCard({m}:{m?:MarketRangeInput|null}){const{t}=useLanguage();
 // categories, each already resolved server-side to one of 4 states with a
 // localized label/note — never one broad "clean" conclusion.
 const legalStatusBadgeClass=(s:LegalStatusValue)=>({CONFIRMED_POSITIVE:'border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90',CONFIRMED_ATTENTION:'border-transparent bg-destructive text-destructive-foreground',NOT_CONFIRMED:'border-slate-300 bg-slate-50 text-slate-700',HUMAN_VERIFICATION_REQUIRED:'border-amber-300 bg-amber-50 text-amber-800'}[s]);
-function LegalStatusMatrixCard({ls}:{ls?:LegalStatusMatrix|null}){const{t}=useLanguage();if(!ls)return null;const rows=Object.values(ls).filter(Boolean);if(!rows.length)return null;return <Card><CardHeader className="pb-2"><CardTitle className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t('verify_legal_status_title')}</CardTitle></CardHeader><CardContent className="space-y-2">{rows.map((r,i)=><div key={i} className="flex items-start justify-between gap-2 text-sm"><span className="min-w-0 break-words">{r.label}</span><Badge className={`${legalStatusBadgeClass(r.status)} normal-case font-normal shrink-0`}>{r.note}</Badge></div>)}</CardContent></Card>}
+function LegalStatusMatrixCard({ls}:{ls?:LegalStatusMatrix|null}){const{t}=useLanguage();if(!ls)return null;const rows=Object.values(ls).filter(Boolean);if(!rows.length)return null;return <Card><CardHeader className="pb-2"><CardTitle className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">{t('verify_legal_status_title')}</CardTitle></CardHeader><CardContent className="space-y-2">{/*
+    THE ONE-CHARACTER COLUMNS, AND WHY THIS ROW PRODUCED THEM.
+
+    This was `flex items-start justify-between gap-2` with the label carrying
+    `min-w-0` and the Badge carrying `shrink-0`. Three things together, each
+    harmless alone:
+
+      no flex-wrap   the row cannot break onto a second line
+      min-w-0        the label may shrink below its own content, to ZERO
+      shrink-0       the badge claims its full max-content width and gives
+                     nothing back
+
+    So a long note ("დადასტურებულია საჯარო წყაროთი — ...") took the entire
+    row and the label was compressed to 0px wide, where `break-words` wrapped
+    the Georgian one glyph per line: a 512px-tall column of single characters,
+    measured on the live report. The row whose note was SHORT rendered
+    perfectly, which is why the section looked half-broken rather than broken.
+
+    The fix is the same discipline ui.tsx already applies: the row WRAPS, the
+    label owns a full line below `sm`, and the badge is allowed to wrap its
+    own text instead of refusing to shrink. Nothing is truncated. */}
+{rows.map((r,i)=><div key={i} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 text-sm"><span className="min-w-0 basis-full break-words sm:basis-auto sm:flex-1">{r.label}</span><Badge className={`${legalStatusBadgeClass(r.status)} normal-case font-normal min-w-0 max-w-full whitespace-normal break-words text-start`}>{r.note}</Badge></div>)}</CardContent></Card>}
 // ManualVerificationActionsCard was removed 2026-09-07 (Verify mandate: no
 // technical/audit-trail cards in the customer report — see the removal note
 // at this file's report-render call site). report.manualVerificationActions

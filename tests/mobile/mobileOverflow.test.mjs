@@ -31,7 +31,16 @@ const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
 
 /** Real devices, narrowest first. 320 is the floor we support. */
-const WIDTHS = [320, 360, 375, 390, 412, 430];
+/*
+ * Phones AND the widths where several metric chips share one row.
+ *
+ * The one-character-column defect on the live report was a CONTAINER-width
+ * failure: four chips competing inside `max-w-[68ch]` were all shrunk toward
+ * zero. At 320px only one chip fits per line, so nothing competes and the
+ * defect is invisible — a phone-only sweep reported green while production
+ * was broken. 768 and 1280 are where it actually reproduces.
+ */
+const WIDTHS = [320, 360, 375, 390, 412, 430, 768, 1280];
 /**
  * Chrome is DISCOVERED, not hardcoded to one machine's install path.
  * playwright-core downloads no browsers; it drives the Chrome already here.
@@ -359,7 +368,17 @@ test('the verification report has no horizontal overflow at real phone widths', 
         const text = (el.textContent || '').trim();
         if (text.length < 4) continue;
         const r = el.getBoundingClientRect();
-        if (r.width === 0 || r.height === 0) continue;
+        /*
+         * THE BLIND SPOT THAT LET THE LIVE DEFECT THROUGH.
+         *
+         * This used to skip any element of zero width as invisible. A label
+         * squeezed to ZERO by a non-shrinking sibling is not invisible — it
+         * is the worst case of exactly the defect this detector exists to
+         * catch, and it rendered 512px tall at one glyph per line on the
+         * production report. Only genuinely collapsed elements (no height
+         * either) are skipped now.
+         */
+        if (r.height === 0) continue;
         const fs = parseFloat(getComputedStyle(el).fontSize) || 16;
         const lines = r.height / (fs * 1.2);
         if (r.width < 96 && r.height > r.width * 1.8 && lines >= 3) {
@@ -425,11 +444,11 @@ test('the verification report has no horizontal overflow at real phone widths', 
   // Compared against a LITERAL list, deliberately, not against WIDTHS.
   // Comparing to WIDTHS is a tautology — shrinking WIDTHS shrinks both sides
   // and the guard stays green, which is exactly what a mutation test caught.
-  // These six widths are the supported contract; changing them has to be a
+  // These eight widths are the supported contract; changing them has to be a
   // deliberate edit here. 412 is the common Android width (Pixel class) and
   // was added with the COMPANY & OWNERSHIP section, whose ownership rows and
   // encumbrance card are the narrowest new content in the report.
-  assert.deepEqual(measured, [320, 360, 375, 390, 412, 430],
+  assert.deepEqual(measured, [320, 360, 375, 390, 412, 430, 768, 1280],
     `the suite did not measure every supported width, it covered ${JSON.stringify(measured)}`);
 
   assert.deepEqual(failures, [], `horizontal overflow at real phone widths:\n${failures.join('\n')}`);

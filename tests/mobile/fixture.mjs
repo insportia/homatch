@@ -44,8 +44,19 @@ export const SYNTHESIS = {
     sections: [
       { key: 'MARKET', title: 'ფასი და ბაზარი', body: 'იმავე პროექტში აქტიური შეთავაზებების მედიანა 5,734 ლარია კვადრატულ მეტრზე. ეს დონე უბნის შედარებით ძვირიან ალტერნატივებზე დაბალია.', metrics: [{ label: 'მედიანა', value: '5,734 ₾/მ²' }, { label: 'დიაპაზონი', value: '5,734–7,776 ₾/მ²' }, { label: 'შედარება', value: '3 განცხადება' }, { label: LONG_GEORGIAN, value: LONG_CADASTRAL }], cites: ['e2'] },
       { key: 'PROJECT', title: 'პროექტი და დეველოპერი', body: `${LONG_GEORGIAN} — პროექტი დაბალი სიმჭიდროვით გამოირჩევა.`, metrics: [], cites: ['e1'] },
-      { key: 'LOCATION', title: 'მდებარეობა', body: 'კრწანისი ძველ თბილისთან ახლოსაა.', metrics: [], cites: ['e5'] },
-      { key: 'PEOPLE', title: 'კომპანია და დაკავშირებული პირები', body: 'კომპანიას დირექტორები ერთობლივად წარმოადგენენ.', metrics: [], cites: ['e6'] },
+      { key: 'LOCATION', title: 'კრწანისის მიკროლოკაცია', body: 'კრწანისი ძველ თბილისთან ახლოსაა.', metrics: [{ label: 'შედარებადი მედიანა', value: '1,730 USD/მ²' }, { label: 'შედარებადი საშუალო', value: '1,787 USD/მ²' }, { label: 'კრწანისის ახლო შედარებადი', value: '2,114 USD/მ²' }, { label: 'შედარებადი ჯგუფი', value: '43 განცხადება' }], cites: ['e5'] },
+      /*
+       * THE REAL METRICS FROM THE LIVE VILLION REPORT
+       * (job 347f9933-e9e9-475d-a2aa-59c55c67c9ee).
+       *
+       * Four chips per section with long Georgian labels is the exact shape
+       * that collapsed into one-character columns: several chips competing
+       * for ONE row is what made the old flex layout shrink them all toward
+       * zero. At phone widths only one chip fits per line, so nothing
+       * competes and the defect never appeared — which is why this fixture
+       * now carries the real labels AND the suite runs at 768 and desktop.
+       */
+      { key: 'PEOPLE', title: 'კომპანია და ხელმოწერის პრაქტიკული საკითხი', body: 'კომპანიას დირექტორები ერთობლივად წარმოადგენენ.', metrics: [{ label: 'რეგისტრაცია', value: '28.03.2023' }, { label: 'პარტნიორთა წილები', value: '50% / 50%' }, { label: 'წარმომადგენლობა', value: 'ერთობლივი' }, { label: 'კომპანიის ვალდებულება', value: 'საქართველოს ბანკი · 19.12.2023' }], cites: ['e6'] },
       { key: 'LEGAL', title: 'სამართლებრივი და ფინანსური კონტექსტი', body: `${LONG_RUSSIAN} ${LONG_GEORGIAN}`, metrics: [], cites: ['e3'] },
     ],
     attentionPoints: [
@@ -161,6 +172,24 @@ export const RESULT_JSON = {
     gas: { status: 'NOT_CONFIRMED', note: LONG_GEORGIAN },
     sewage: { status: 'CONFIRMED_CONNECTED' },
     internet: { status: 'NOT_CONFIRMED' },
+  },
+  /*
+   * THE LEGAL-STATUS MATRIX — the section in the reported screenshot.
+   *
+   * Absent from this fixture entirely, which is why the viewport harness
+   * reported green while the live report showed Georgian labels collapsed
+   * into one-character vertical columns. The notes below are the real
+   * production wording: one SHORT note (that row renders correctly) and
+   * several LONG ones (those rows are the defect), because the collapse only
+   * happens when the non-shrinking value claims the whole row.
+   */
+  legalStatus: {
+    companyRegistration: { status: 'CONFIRMED', label: 'კომპანიის რეგისტრაცია', note: 'დადასტურებულია საჯარო წყაროთი — უარყოფითი მტკიცებულება არ გამოვლენილა.' },
+    debtorRegistry: { status: 'CONFIRMED', label: 'მოვალეთა რეესტრი', note: 'დადასტურებულია საჯარო წყაროთი — უარყოფითი მტკიცებულება არ გამოვლენილა.' },
+    taxpayerStatus: { status: 'NOT_CONFIRMED', label: 'გადასახადის გადამხდელის სტატუსი', note: 'ამ ეტაპზე საჯარო წყაროებით ვერ დადასტურდა.' },
+    propertyEncumbrances: { status: 'NOT_CONFIRMED', label: 'ქონებრივი ვალდებულებები', note: 'დადასტურებულია საჯარო წყაროთი — უარყოფითი მტკიცებულება არ გამოვლენილა.' },
+    constructionPermissions: { status: 'CONFIRMED', label: 'სამშენებლო ნებართვები', note: 'დადასტურებულია საჯარო წყაროთი — უარყოფითი მტკიცებულება არ გამოვლენილა.' },
+    commissioning: { status: 'CONFIRMED', label: 'ექსპლუატაციაში მიღება', note: 'დადასტურებულია საჯარო წყაროთი — უარყოფითი მტკიცებულება არ გამოვლენილა.' },
   },
   rightsAndRestrictions: { status: 'RESTRICTION_IDENTIFIED', items: [LONG_GEORGIAN, LONG_RUSSIAN], statement: LONG_GEORGIAN, asOf: '2026-09-09' },
   market: {

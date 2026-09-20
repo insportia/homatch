@@ -1,0 +1,22 @@
+-- Two notification types for FOR EXPATS, and they are two rather than one
+-- for the reason the brief's §45 keeps insisting on.
+--
+-- EXPAT_DEADLINE_DUE is a date an authority set. It is HIGH priority, it
+-- is worth interrupting somebody for, and a task may only carry it when a
+-- sourced fact establishes the date — expat_tasks_official_needs_source
+-- refuses the row otherwise.
+--
+-- EXPAT_TASK_DUE is a date Homatch suggested. It is NORMAL, and nothing
+-- about it may be described to a customer as a deadline.
+--
+-- One shared type would have let a later edit send the first wording for
+-- the second kind of date, which is the product telling a foreigner they
+-- have a legal deadline that Homatch invented.
+--
+-- Both are also given their own push CATEGORY, `expat_plan`, rather than
+-- falling through to `system`. Filed under system, somebody silencing
+-- import notices would also silence a residence-permit deadline, and
+-- nothing on the screen would have said so — the same defect the
+-- messages/viewings split in push-send exists to correct.
+alter type public.notification_type add value if not exists 'EXPAT_TASK_DUE';
+alter type public.notification_type add value if not exists 'EXPAT_DEADLINE_DUE';

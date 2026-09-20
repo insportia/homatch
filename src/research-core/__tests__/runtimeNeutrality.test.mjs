@@ -251,6 +251,26 @@ test('the core is consumed only through its deliberate integration points', () =
     'src/verify/search/subjectGeo.ts',
     'src/verify/search/httpCrawlFetcher.ts',
     'src/verify/__tests__/marketDiscoveryWiring.test.mjs',
+    /*
+     * FOR EXPATS PROVIDER REPUTATION — the fourth seam, and the narrowest.
+     *
+     * reputation.ts imports exactly two things: dedupeObservations and
+     * computeIndependence. It uses them for the question they were written
+     * for — how many of these are actually different sources, and which of
+     * them are the same document twice — because the alternative was a
+     * second implementation of source independence that would disagree
+     * with Verify's within a month.
+     *
+     * It reaches no fetch path, no NetworkPolicy, no rate limiter, no
+     * cache and no source registry. It does not run research; it scores
+     * evidence that a run has already produced. That is why it is a seam
+     * and not a consumer, and it is why this entry is one file rather than
+     * a directory.
+     *
+     * If this file ever imports HttpClient, a transport, or anything under
+     * fetch/ or flow/, the seam has stopped being a seam.
+     */
+    'src/expats/research/reputation.ts',
   ]);
 
   const roots = ['src', 'supabase/functions', 'official-worker/src'];

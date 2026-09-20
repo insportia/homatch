@@ -1,0 +1,39 @@
+# homatch.live
+#
+# This file was empty. An empty robots.txt is permissive — everything is
+# crawlable — so nothing was being blocked, but nothing was being pointed
+# at either, and there was no sitemap for a crawler to find.
+#
+# What is disallowed below is not secret. Every one of these paths is
+# behind authentication and returns nothing useful to an anonymous
+# crawler; they are listed so that crawl budget goes to the pages that
+# can actually be read rather than to a few hundred redirects to a login
+# screen. Anything genuinely private is protected by row level security,
+# not by this file.
+
+User-agent: *
+Allow: /
+
+# Signed-in surfaces. Nothing here renders for an anonymous visitor.
+Disallow: /admin
+Disallow: /auth/
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /credits
+Disallow: /notifications
+Disallow: /activity
+Disallow: /chat
+Disallow: /outreach/
+Disallow: /developers/home
+Disallow: /developers/projects
+Disallow: /developers/sales
+Disallow: /developers/settings
+Disallow: /studio
+Disallow: /for-expats/plan
+
+# Single-use and tokenised links. Indexing one would publish it.
+Disallow: /s/
+Disallow: /buyer/
+Disallow: /embed/
+
+Sitemap: https://homatch.live/sitemap.xml

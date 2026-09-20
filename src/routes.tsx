@@ -40,6 +40,9 @@ const DeveloperProfilePage = lazy(() => import('./pages/DeveloperProfilePage'));
 const AIPage = lazy(() => import('./pages/AIPage'));
 const VerifyPage = lazy(() => import('./pages/VerifyPage'));
 const MortgagePage = lazy(() => import('./pages/MortgagePage'));
+const ForExpatsPage = lazy(() => import('./pages/ForExpatsPage'));
+const ExpatTopicPage = lazy(() => import('./pages/ExpatTopicPage'));
+const ExpatPlanPage = lazy(() => import('./pages/ExpatPlanPage'));
 /*
  * HOMATCH INVESTMENT INTELLIGENCE.
  *
@@ -218,6 +221,21 @@ export const routes: RouteConfig[] = [
   // visitor gets the complete analytical product. The Consultant and the
   // market sweep return 401 on their own and the page says so in place.
   { name: 'Investment Intelligence', path: '/investment',         element: <InvestmentPage />,    public: true },
+  /*
+   * FOR EXPATS. Public, and more deliberately so than its neighbours: the
+   * whole product proposition is that a foreigner who has never heard of
+   * Homatch can understand Georgia before being asked for anything (§66).
+   * Only the plan requires an account, and it requires one because it
+   * stores somebody's citizenship and family — not to gate the value.
+   *
+   * The topic route is LAST of the three so that /for-expats/georgia/plan
+   * could never be swallowed by :slug. It cannot today — the plan lives at
+   * /for-expats/plan — and the ordering keeps it true if that ever moves.
+   */
+  { name: 'For Expats',        path: '/for-expats',               element: <Navigate to="/for-expats/georgia" replace />, public: true },
+  { name: 'For Expats',        path: '/for-expats/georgia',       element: <ForExpatsPage />,     public: true },
+  { name: 'My Expat Plan',     path: '/for-expats/plan',          element: <ExpatPlanPage />,     public: false },
+  { name: 'For Expats topic',  path: '/for-expats/georgia/:slug', element: <ExpatTopicPage />,    public: true },
   // 'My Deals' / '/cases' route intentionally removed from the product
   // (2026-09-06 mandate) — see the CasesPage import comment above.
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },

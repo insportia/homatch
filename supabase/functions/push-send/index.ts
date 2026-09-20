@@ -109,6 +109,10 @@ function categoryOf(eventType: string, metadata?: Record<string, unknown> | null
   if (eventType.startsWith('IMPORT_') || eventType.startsWith('PROVIDER_')) return 'system';
   if (eventType === 'VERIFY_COMPLETE' || eventType === 'DOCUMENT_ANALYZED') return 'ai_results';
   if (eventType === 'CALLBACK_REQUESTED' || eventType === 'QUALIFIED_LEAD') return 'leads';
+  /* FOR EXPATS reminders are their own switch. Filed under "system" they
+     would be turned off by somebody silencing import notices, and the
+     thing silenced would be a residence-permit deadline. */
+  if (eventType.startsWith('EXPAT_')) return 'expat_plan';
   /* A purchase is a billing event. It reached this line and was filed under
      "Account and system", so turning off system notices also turned off the
      confirmation that money had been spent. */

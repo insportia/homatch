@@ -39,7 +39,12 @@ import { supabase } from '@/db/supabase';
  * schema change was needed to tell them apart; see categoryOf in push-send.
  */
 export const NOTIFICATION_CATEGORIES = [
-  'messages', 'viewings', 'matches', 'ai_results', 'leads', 'campaigns', 'whatsapp', 'billing', 'system',
+  'messages', 'viewings', 'matches', 'ai_results', 'leads', 'campaigns', 'whatsapp', 'billing',
+  /* FOR EXPATS task and deadline reminders. Its own switch rather than
+     part of 'system', because the thing a person would be silencing is a
+     residence-permit deadline and they should have to mean it. */
+  'expat_plan',
+  'system',
 ] as const;
 
 export type NotificationCategory = typeof NOTIFICATION_CATEGORIES[number];

@@ -29,7 +29,7 @@ import {
   LogOut, Mail, Menu, MessageCircle, MessageSquare, PhoneCall, Radio, Search,
   Settings, ShieldCheck, Sparkles, User as UserIcon, UserSearch, X, Activity,
   CircleDollarSign, Coins as CoinsIcon, TrendingUp,
-  FileSignature,
+  FileSignature, Globe,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -95,6 +95,24 @@ interface NavGroup {
  * The account block is NOT in this list. It renders separately, below.
  */
 export const NAV: NavGroup[] = [
+  /*
+   * FOR EXPATS sits at the top, alone, above the workspace.
+   *
+   * It is not in the Intelligence group with Verify and Investment, and the
+   * reason is who each group is for. Everything below this is a tool for
+   * somebody who already has a deal in front of them: a property to verify,
+   * a contract to read, a payment to model. FOR EXPATS is for somebody who
+   * does not have any of that yet and is deciding whether to come at all.
+   * Filed under Intelligence it would read as a fifth analysis tool; filed
+   * here it is the door the other four lead out of.
+   *
+   * §91 says not to bury it under More or Resources. One item in its own
+   * group is the opposite of buried and costs one heading.
+   */
+  {
+    key: 'nav_group_expats',
+    items: [{ key: 'nav_for_expats', path: '/for-expats/georgia', icon: Globe }],
+  },
   {
     key: 'nav_group_workspace',
     items: [

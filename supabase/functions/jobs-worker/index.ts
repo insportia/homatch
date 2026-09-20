@@ -37,6 +37,17 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { notify } from '../_shared/notify.ts';
+/*
+ * FOR EXPATS reminders are computed by the same functions the plan screen
+ * uses, imported rather than reimplemented. A second copy of "which
+ * reminder is due" living in Deno would drift from the one in the browser,
+ * and the drift would show up as a reminder a customer was sent for a task
+ * their own plan says is blocked.
+ */
+import { dueReminders, DEFAULT_REMINDER_PREFERENCES } from '../../../src/expats/plan/reminders.ts';
+import type { PlanTask, TaskStatus } from '../../../src/expats/plan/tasks.ts';
+import type { DeadlineBasis, PlanStage, TaskCategory } from '../../../src/expats/plan/roadmap.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -403,6 +414,242 @@ async function unstickDocuments(sb: Sb): Promise<{ recovered: number; failed: nu
  * called again to continue, and the next tick finds it RUNNING and carries
  * on, which keeps a large audience off this function's wall clock.
  */
+/*
+ * FOR EXPATS — telling somebody about a deadline before it passes.
+ *
+ * WHY THIS RUNS IN A ONE-HOUR WINDOW AND NOT EVERY TICK
+ *
+ * The tick is every thirty seconds. Reminders are a once-a-day thing, and
+ * nobody wants to be woken at 03:00 because that is when their lead time
+ * elapsed. So the work happens only in the 08:00 UTC hour. Within that
+ * hour the tick runs 120 times and the dedupe log makes every run after
+ * the first a no-op, which is cheaper and far more robust than trying to
+ * fire exactly once.
+ *
+ * WHY THE CANDIDATE QUERY IS NARROW
+ *
+ * Only tasks that are open, dated, and due within the widest lead time
+ * anybody can choose. That is a handful of rows across the whole product
+ * rather than every task ever created, so the cost of this step does not
+ * grow with the number of plans that are already finished.
+ *
+ * WHY A FAILURE HERE IS SWALLOWED
+ *
+ * The same reason notify.ts swallows its own: this is a side effect of
+ * work that already happened. Letting a reminder failure take down the
+ * document driver and the campaign dispatcher in the same tick would
+ * trade six working things for one broken one.
+ */
+const REMINDER_HOUR_UTC = 8;
+const WIDEST_LEAD_DAYS = 30;
+const TASK_COLUMNS =
+  'id, user_id, template_key, category, stage, title_key, why_key, topic_slug, handoff,' +
+  ' depends_on, status, due_date, deadline_basis, completed_at, notes, sort_order, recurs_every_months';
+
+function toPlanTask(r: Record<string, unknown>): PlanTask {
+  return {
+    id: String(r.id),
+    templateKey: String(r.template_key ?? ''),
+    category: r.category as TaskCategory,
+    stage: r.stage as PlanStage,
+    titleKey: String(r.title_key ?? ''),
+    whyKey: String(r.why_key ?? ''),
+    topicKey: (r.topic_slug as string) ?? null,
+    handoff: (r.handoff as string) ?? null,
+    dependsOn: (r.depends_on as string[]) ?? [],
+    status: r.status as TaskStatus,
+    dueDate: (r.due_date as string) ?? null,
+    deadlineBasis: r.deadline_basis as DeadlineBasis,
+    completedAt: (r.completed_at as string) ?? null,
+    notes: (r.notes as string) ?? null,
+    order: Number(r.sort_order ?? 0),
+    recursEveryMonths: r.recurs_every_months === null ? null : Number(r.recurs_every_months),
+  };
+}
+
+async function sendExpatReminders(sb: Sb, now: Date): Promise<{
+  considered: number; sent: number; skipped: string;
+}> {
+  if (now.getUTCHours() !== REMINDER_HOUR_UTC) {
+    return { considered: 0, sent: 0, skipped: 'outside the reminder hour' };
+  }
+
+  const today = now.toISOString().slice(0, 10);
+  const horizon = new Date(now.getTime() + WIDEST_LEAD_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+  const { data: rows, error } = await sb
+    .from('expat_tasks')
+    .select('user_id')
+    .not('status', 'in', '("DONE","NOT_APPLICABLE")')
+    .not('due_date', 'is', null)
+    .gte('due_date', today)
+    .lte('due_date', horizon);
+
+  if (error) {
+    console.error('[jobs-worker] expat reminder query failed:', error.message);
+    return { considered: 0, sent: 0, skipped: 'query failed' };
+  }
+
+  const candidates = (rows ?? []) as { user_id: string }[];
+  if (candidates.length === 0) return { considered: 0, sent: 0, skipped: '' };
+  const userIds = [...new Set(candidates.map((r) => String(r.user_id)))];
+
+  /*
+   * Each user's WHOLE plan, not only the due rows. `dueReminders` needs
+   * every task to decide whether a due one is blocked, and a blocked task
+   * must never produce a reminder — the useful thing to say is the
+   * prerequisite, not the task waiting on it.
+   */
+  const { data: allRows } = await sb.from('expat_tasks').select(TASK_COLUMNS).in('user_id', userIds);
+  const { data: prefRows } = await sb
+    .from('expat_profiles')
+    .select('user_id, reminders_enabled, reminder_channels, reminder_lead_days, reminder_max_per_day')
+    .in('user_id', userIds);
+  const { data: sentRows } = await sb
+    .from('expat_reminder_log')
+    .select('user_id, dedupe_key')
+    .in('user_id', userIds);
+
+  const byUser = new Map<string, PlanTask[]>();
+  for (const r of (allRows ?? []) as Record<string, unknown>[]) {
+    const uid = String(r.user_id);
+    const list = byUser.get(uid) ?? [];
+    list.push(toPlanTask(r));
+    byUser.set(uid, list);
+  }
+
+  const prefsByUser = new Map<string, Record<string, unknown>>();
+  for (const p of (prefRows ?? []) as Record<string, unknown>[]) {
+    prefsByUser.set(String(p.user_id), p);
+  }
+
+  const sentByUser = new Map<string, Set<string>>();
+  for (const r of (sentRows ?? []) as Record<string, unknown>[]) {
+    const uid = String(r.user_id);
+    const set = sentByUser.get(uid) ?? new Set<string>();
+    set.add(String(r.dedupe_key));
+    sentByUser.set(uid, set);
+  }
+
+  let sent = 0;
+
+  for (const userId of userIds) {
+    const tasks = byUser.get(userId) ?? [];
+    const p = prefsByUser.get(userId);
+    const prefs = p
+      ? {
+          enabled: Boolean(p.reminders_enabled),
+          channels: (p.reminder_channels as string[]) ?? [],
+          leadTimes: (p.reminder_lead_days as number[]) ?? [],
+          maxPerDay: Number(p.reminder_max_per_day ?? 3),
+        }
+      : DEFAULT_REMINDER_PREFERENCES;
+
+    const due = dueReminders(tasks, today, sentByUser.get(userId) ?? new Set(), prefs as never);
+
+    for (const r of due) {
+      /*
+       * TWO CALLS, NOT ONE WITH A TERNARY.
+       *
+       * The difference between them is the whole of §45: a date an
+       * authority set is a deadline and is worth interrupting somebody
+       * for; a date Homatch suggested is neither. Expressing that as
+       * `priority: isOfficial ? 'HIGH' : 'NORMAL'` also defeats
+       * notificationProducts.test.mjs, which reads the literal to check
+       * that every producer has actually chosen — and it is right to: a
+       * ternary is where a later edit quietly makes everything HIGH.
+       *
+       * The dedupe key is written out here rather than passed as
+       * `r.dedupeKey` for the same reason. The key has to NAME THE
+       * OCCURRENCE — this task, this due date, this lead time — so that
+       * moving a deadline produces a genuinely new reminder, and the
+       * static gate can only see that if the shape is visible at the call
+       * site. reminderDedupeKey() builds the same string, and
+       * reminders.test.mjs pins the two together.
+       */
+      /*
+       * TWO CALLS, WRITTEN OUT IN FULL.
+       *
+       * The difference between them is the whole of §45: a date an
+       * authority set is a deadline and is worth interrupting somebody
+       * for; a date Homatch suggested is neither.
+       *
+       * It is deliberately NOT one call with ternaries, and not one call
+       * spreading a shared object either. notificationProducts.test.mjs
+       * reads these literals to check that every producer has actually
+       * chosen its recipient, its priority, its deep link and a dedupe
+       * key that names an occurrence — and a spread hides all four from
+       * it. A gate that a little indirection switches off is not a gate,
+       * so the duplication here is the price of the check and it is
+       * worth paying.
+       *
+       * The dedupe key names THIS task, THIS due date and THIS lead time,
+       * so moving a deadline produces a genuinely new reminder rather
+       * than being silenced by the old one. reminderDedupeKey() builds
+       * the same string for the log, and reminders.test.mjs pins the two
+       * shapes together.
+       */
+      const id = r.isOfficialDeadline
+        ? await notify(sb as never, {
+            userId,
+            type: 'EXPAT_DEADLINE_DUE',
+            title: `A legal deadline is ${r.leadDays} day(s) away`,
+            body: null,
+            priority: 'HIGH',
+            deepLink: '/for-expats/plan',
+            entityType: 'expat_task',
+            entityId: r.taskId,
+            dedupeKey: `expat_task:${r.taskId}:${r.dueDate}:${r.leadDays}`,
+            groupKey: `expat_deadlines_due:${today}`,
+            groupTitle: `{n} legal deadlines are approaching`,
+            groupWindow: '12 hours',
+            metadata: {
+              templateKey: r.templateKey,
+              titleKey: r.titleKey,
+              dueDate: r.dueDate,
+              leadDays: r.leadDays,
+              deadlineBasis: r.deadlineBasis,
+            },
+          })
+        : await notify(sb as never, {
+            userId,
+            type: 'EXPAT_TASK_DUE',
+            title: `A step you planned is ${r.leadDays} day(s) away`,
+            body: null,
+            priority: 'NORMAL',
+            deepLink: '/for-expats/plan',
+            entityType: 'expat_task',
+            entityId: r.taskId,
+            dedupeKey: `expat_task:${r.taskId}:${r.dueDate}:${r.leadDays}`,
+            groupKey: `expat_tasks_due:${today}`,
+            groupTitle: `{n} steps in your plan are coming up`,
+            groupWindow: '12 hours',
+            metadata: {
+              templateKey: r.templateKey,
+              titleKey: r.titleKey,
+              dueDate: r.dueDate,
+              leadDays: r.leadDays,
+              deadlineBasis: r.deadlineBasis,
+            },
+          });
+
+      /*
+       * Logged whether or not notify returned an id. The log records that
+       * we DECIDED to tell them; re-deciding tomorrow because one insert
+       * failed would produce a duplicate the day the database recovers.
+       */
+      const { error: logError } = await sb
+        .from('expat_reminder_log')
+        .insert({ user_id: userId, dedupe_key: r.dedupeKey, task_id: r.taskId, notification_id: id });
+      if (!logError) sent += 1;
+    }
+  }
+
+  return { considered: candidates.length, sent, skipped: '' };
+}
+
 async function dispatchDueCampaigns(sb: Sb, url: string, cronToken: string): Promise<{
   claimed: number; dispatched: number; failed: number;
 }> {
@@ -489,7 +736,7 @@ serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns] = await Promise.all([
+    const [mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders] = await Promise.all([
       mirror(sb),
       driveDocuments(sb, url, serviceKey),
       unstickDocuments(sb),
@@ -500,9 +747,17 @@ serve(async (req) => {
         .then((r) => r.data)
         .catch(() => null),
       dispatchDueCampaigns(sb, url, expected),
+      /* Isolated: a reminder failure must not cost the other six steps
+         their tick. See the comment on sendExpatReminders. */
+      sendExpatReminders(sb, new Date()).catch((e) => {
+        console.error('[jobs-worker] expat reminders failed', e instanceof Error ? e.message : String(e));
+        return { considered: 0, sent: 0, skipped: 'threw' };
+      }),
     ]);
 
-    return json({ ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns });
+    return json({
+      ok: true, mirrored, docsStarted, unstuck, swept, refunded, campaigns, expatReminders,
+    });
   } catch (e) {
     console.error('[jobs-worker] tick failed', e instanceof Error ? e.message : String(e));
     return json({ error: 'internal_error' }, 500);

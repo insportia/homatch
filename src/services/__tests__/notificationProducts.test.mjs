@@ -136,6 +136,11 @@ const TYPES = new Set([
   'QUALIFIED_LEAD', 'RESEARCH_PRODUCT_PURCHASED', 'SUBSCRIPTION_ACTIVATED',
   'SUBSCRIPTION_ENDED', 'SUBSCRIPTION_RENEWED', 'VERIFY_COMPLETE',
   'WHATSAPP_QUALITY_WARNING', 'WHATSAPP_TEMPLATE_REJECTED',
+  /* FOR EXPATS, added by 20260920194224_for_expats_notification_types.sql.
+     Two values rather than one because only a date an authority set may be
+     called a deadline, and a single type would eventually be sent with the
+     wrong wording. */
+  'EXPAT_TASK_DUE', 'EXPAT_DEADLINE_DUE',
 ]);
 
 test('every event type is one the database will accept', () => {

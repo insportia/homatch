@@ -30,6 +30,7 @@ import { seedSupportsMarketSearch, type ResearchSeed } from '../research-core/pl
 import { buildDiscoveryPlan } from '../research-core/market/discoveryPlan.ts';
 import {
   runDiscovery,
+  type DiscoveryReport,
   type DiscoverySubjectGeo,
   type SearchProvider,
   type SearchStatus,
@@ -105,10 +106,17 @@ export interface MarketLaneSummary {
     provider: string;
     providerStatus: SearchStatus;
     queriesExecuted: number;
+    /** Provider invocations. What the run actually cost. */
+    searchCalls: number;
+    stages: Array<{ stage: string; queries: number; localAfter: number; stopped: boolean }>;
+    /** Evidence relayed from the index, versus read off the page itself. */
+    indexEvidence: number;
+    pageEvidence: number;
     rawUrlsDiscovered: number;
     domainsDiscovered: number;
     domainsNew: number;
     tierCounts: Record<GeoTier, number>;
+    tierCountsMeasurable: Record<GeoTier, number>;
     outcomes: Record<string, number>;
     localEvidenceFound: boolean;
   } | null;
@@ -117,6 +125,15 @@ export interface MarketLaneSummary {
 export interface MarketLaneResult {
   comparables: ReportComparable[];
   summary: MarketLaneSummary;
+  /*
+   * The discovery run in full, for diagnostics that never travel.
+   *
+   * A SIBLING of `summary` on purpose: research-agent stores `lane.summary`
+   * and nothing else, so the ledger — domains, queries, failure reasons, the
+   * listings themselves — is available in-process to whoever ran the lane and
+   * is structurally incapable of reaching a stored report, let alone a buyer.
+   */
+  discoveryReport?: DiscoveryReport | null;
   /** Preserved price disagreements, in the report's own conflict vocabulary. */
   conflicts: Array<{ description: string; severity: 'MATERIAL' | 'MINOR'; evidence: string[] }>;
   evidence: MarketEvidence;
@@ -230,6 +247,8 @@ export interface RunMarketLaneOptions {
   subjectGeo?: DiscoverySubjectGeo | null;
   /** Discovery query ceiling, since each one has a price. */
   maxDiscoveryQueries?: number;
+  /** Stop widening once this much local evidence exists. */
+  enoughLocalEvidence?: number;
 }
 
 /**
@@ -323,6 +342,7 @@ export async function runMarketLane(
    * city-wide comparables is worse than one with local evidence and better
    * than none at all.
    */
+  let discoveryReport: DiscoveryReport | null = null;
   if (options.search && options.subjectGeo) {
     try {
       const plan = buildDiscoveryPlan(
@@ -341,11 +361,23 @@ export async function runMarketLane(
         subject: options.subjectGeo,
         search: options.search,
         maxQueries: options.maxDiscoveryQueries ?? 24,
+        enoughLocal: options.enoughLocalEvidence ?? 8,
       });
+      discoveryReport = report;
       summary.discovery = {
         provider: report.provider,
         providerStatus: report.providerStatus,
         queriesExecuted: report.queriesExecuted,
+        searchCalls: report.searchCalls,
+        stages: report.stages.map((st) => ({
+          stage: st.stage,
+          queries: st.queriesExecuted,
+          localAfter: st.localResultsAfter,
+          stopped: st.stoppedHere,
+        })),
+        indexEvidence: report.listings.filter((l) => l.confidence === 'INDEX').length,
+        pageEvidence: report.listings.filter((l) => l.confidence === 'PAGE').length,
+        tierCountsMeasurable: report.tierCountsMeasurable,
         rawUrlsDiscovered: report.rawUrlsDiscovered,
         domainsDiscovered: report.domainsDiscovered.length,
         domainsNew: report.domainsNew.length,
@@ -359,10 +391,18 @@ export async function runMarketLane(
         provider: options.search.id,
         providerStatus: 'PROVIDER_ERROR',
         queriesExecuted: 0,
+        searchCalls: 0,
+        stages: [],
+        indexEvidence: 0,
+        pageEvidence: 0,
         rawUrlsDiscovered: 0,
         domainsDiscovered: 0,
         domainsNew: 0,
         tierCounts: {
+          TIER_1_SAME_PROJECT: 0, TIER_2_SAME_STREET: 0, TIER_3_NEARBY_MICROLOCATION: 0,
+          TIER_4_DISTRICT: 0, TIER_5_CITY: 0,
+        },
+        tierCountsMeasurable: {
           TIER_1_SAME_PROJECT: 0, TIER_2_SAME_STREET: 0, TIER_3_NEARBY_MICROLOCATION: 0,
           TIER_4_DISTRICT: 0, TIER_5_CITY: 0,
         },
@@ -373,7 +413,7 @@ export async function runMarketLane(
     }
   }
 
-  return { comparables, summary, conflicts, evidence };
+  return { comparables, summary, conflicts, evidence, discoveryReport };
 }
 
 /**

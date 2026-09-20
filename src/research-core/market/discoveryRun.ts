@@ -180,6 +180,10 @@ export interface DiscoveryReport {
   queriesPlanned: number;
   queriesExecuted: number;
   queriesWithResults: number;
+  /** Provider invocations. What a run actually costs, before any cache. */
+  searchCalls: number;
+  /** Band by band, so a cheap run can be told from a truncated one. */
+  stages: readonly StageOutcome[];
   languages: readonly QueryLanguage[];
   rawUrlsDiscovered: number;
   domainsDiscovered: readonly string[];
@@ -307,6 +311,42 @@ function visibleText(html: string): string {
     .trim();
 }
 
+/*
+ * STAGED WIDENING — THE NARROWEST QUESTION FIRST, AND STOP WHEN IT ANSWERS.
+ *
+ * Every search costs money, so a plan of 156 formulations must never be run as
+ * 156 searches. The bands are climbed in order and sufficiency is judged only
+ * at a BOUNDARY, never mid-band: stopping halfway through "same street"
+ * because two results arrived would leave the rest of the street unasked and
+ * then report the remainder as absent — the same shape of mistake as the
+ * original zero, arrived at by thrift instead of by narrowness.
+ *
+ * Languages stage too. ka/en/ru carry Tbilisi's inventory; tr/ar/he are asked
+ * only when the core three have not produced enough, because executing a
+ * language to move a counter is how a cost is incurred for a number rather
+ * than for evidence.
+ */
+export const STAGE_ORDER: readonly QueryPrecision[] = [
+  'BUILDING',
+  'STREET',
+  'MICROLOCATION',
+  'DEVELOPER',
+  'DISTRICT',
+  'CITY',
+];
+
+/** The languages Tbilisi inventory is actually published in. */
+export const CORE_SEARCH_LANGUAGES: readonly QueryLanguage[] = ['ka', 'en', 'ru'];
+
+export interface StageOutcome {
+  stage: QueryPrecision;
+  languages: readonly QueryLanguage[];
+  queriesExecuted: number;
+  searchCalls: number;
+  localResultsAfter: number;
+  stoppedHere: boolean;
+}
+
 export async function runDiscovery(options: RunDiscoveryOptions): Promise<DiscoveryReport> {
   const { plan, subject, search } = options;
   const maxQueries = options.maxQueries ?? 0;
@@ -332,151 +372,220 @@ export async function runDiscovery(options: RunDiscoveryOptions): Promise<Discov
     return t;
   };
 
-  for (const query of plan) {
-    if (maxQueries && queriesExecuted >= maxQueries) break;
-    if (enoughLocal && localSoFar >= enoughLocal) break;
+  /*
+   * ONE TEXT, ONE SEARCH.
+   *
+   * The planner emits a formulation per language per band, and several of them
+   * come out identical — a project name is "Villion" in all six. Paying twice
+   * for the same string is the cheapest waste there is to remove, so it is
+   * removed before anything is executed rather than deduplicated afterwards.
+   */
+  const executedTexts = new Set<string>();
+  const stageOutcomes: StageOutcome[] = [];
+  const extended = [...new Set(plan.map((q) => q.language))]
+    .filter((l) => !CORE_SEARCH_LANGUAGES.includes(l));
+  const languageGroups: readonly (readonly QueryLanguage[])[] = extended.length
+    ? [CORE_SEARCH_LANGUAGES, extended]
+    : [CORE_SEARCH_LANGUAGES];
 
-    const response = await search.search(query);
-    queriesExecuted += 1;
-    languages.add(query.language);
+  let searchCalls = 0;
+  const enough = (): boolean => !!enoughLocal && localSoFar >= enoughLocal;
 
-    if (response.status !== 'OK') {
-      /*
-       * A provider that will not answer is OUR state, never the market's.
-       *
-       * Recorded and carried out of the run so a caller can say "discovery did
-       * not run" instead of computing a median from whatever else turned up
-       * and presenting it as this property's competitive environment.
-       */
-      providerStatus = response.status;
-      break;
-    }
+  outer:
+  for (const group of languageGroups) {
+    if (enough()) break;
+    for (const stage of STAGE_ORDER) {
+      const batch = plan.filter(
+        (q) => q.precision === stage && group.includes(q.language)
+          && !executedTexts.has(q.text.trim().toLocaleLowerCase()),
+      );
+      if (!batch.length) continue;
+      const before = { queries: queriesExecuted, calls: searchCalls };
 
-    if (!response.hits.length) {
-      ledger.push({
-        url: '', domain: '', domainClass: 'IRRELEVANT',
-        query: query.text, language: query.language, precision: query.precision,
-        outcome: 'NOT_DISCOVERED',
-      });
-      continue;
-    }
-    queriesWithResults += 1;
+      for (const query of batch) {
+        if (maxQueries && queriesExecuted >= maxQueries) {
+          stageOutcomes.push({
+            stage,
+            languages: [...group],
+            queriesExecuted: queriesExecuted - before.queries,
+            searchCalls: searchCalls - before.calls,
+            localResultsAfter: localSoFar,
+            stoppedHere: true,
+          });
+          break outer;
+        }
+        /*
+         * Checked HERE and not only when the batch was built: the planner
+         * emits "Villion" once per language, so all six land in the same band
+         * and a filter applied before the loop lets every one of them through.
+         * The duplicate has to be refused at the moment of asking.
+         */
+        const textKey = query.text.trim().toLocaleLowerCase();
+        if (executedTexts.has(textKey)) continue;
+        executedTexts.add(textKey);
 
-    for (const hit of response.hits) {
-      const domain = hostOf(hit.url);
-      const domainClass = classifyDomain(domain);
-      const row: DiscoveryLedgerRow = {
-        url: hit.url, domain, domainClass,
-        query: query.text, language: query.language, precision: query.precision,
-        outcome: 'DISCOVERED_BUT_EXTRACTION_FAILED',
-      };
-      const t = tally(domain, domainClass);
-      t.urlsSeen += 1;
+        const response = await search.search(query);
+        searchCalls += 1;
+        queriesExecuted += 1;
+        languages.add(query.language);
 
-      if (!worthExtracting(domainClass)) {
-        row.outcome = 'SOURCE_NOT_SUPPORTED';
-        ledger.push(row);
-        continue;
-      }
-      if (seenUrls.has(hit.url)) {
-        row.outcome = 'DUPLICATE';
-        ledger.push(row);
-        continue;
-      }
-      seenUrls.add(hit.url);
+        if (response.status !== 'OK') {
+          /*
+           * A provider that will not answer is OUR state, never the market's.
+           *
+           * Recorded and carried out of the run so a caller can say "discovery did
+           * not run" instead of computing a median from whatever else turned up
+           * and presenting it as this property's competitive environment.
+           */
+          providerStatus = response.status;
+          break outer;
+        }
 
-      /*
-       * THE SNIPPET IS EVIDENCE BEFORE THE PAGE IS.
-       *
-       * Read first, always — because for myhome.ge it is the ONLY thing we are
-       * permitted to read, and because a page fetch that then fails must not
-       * be able to erase what the index already stated.
-       */
-      const indexResult: SearchIndexResult = {
-        url: hit.url, domain, title: hit.title, snippet: hit.snippet, query: query.text,
-      };
-      let listing: ExtractedListing | null = fromSearchSnippet(indexResult, subject.streetHints);
-      let confidence: 'INDEX' | 'PAGE' = 'INDEX';
-      let via: DiscoveryLedgerRow['via'] = 'SEARCH_INDEX_RESULT';
+        if (!response.hits.length) {
+          ledger.push({
+            url: '', domain: '', domainClass: 'IRRELEVANT',
+            query: query.text, language: query.language, precision: query.precision,
+            outcome: 'NOT_DISCOVERED',
+          });
+          continue;
+        }
+        queriesWithResults += 1;
 
-      /*
-       * Enrichment, and only where access permits it. A source recorded as
-       * BROWSER or INDEX_ONLY is not fetched here: myhome.ge answers 403 to
-       * every non-browser client, and hammering it would be both useless and
-       * a control we were asked not to work around.
-       */
-      /*
-       * WHAT MAY BE READ, AND BY WHAT.
-       *
-       * A registered source states its access and that is obeyed: INDEX_ONLY is
-       * not fetched, and a BROWSER source is fetched only by a fetcher that is
-       * one — pointing plain HTTP at myhome.ge earns a 403 that would then be
-       * recorded as a portal with no inventory.
-       *
-       * An UNKNOWN domain is tried over plain HTTP, because that is how a
-       * discovery layer learns. estatehub.ge was on no list of ours and carried
-       * the acceptance listing; a rule that refused to read anything unregistered
-       * would have made the registry a gate again, which is the ceiling this
-       * whole layer exists to remove. What comes back is an observation, and a
-       * refusal is recorded rather than held against the street.
-       */
-      const source = sourceForUrl(hit.url);
-      const readable = source
-        ? (source.access === 'DIRECT'
-          || (source.access === 'BROWSER' && options.fetchPage?.canDriveBrowser === true))
-        : true;
-      if (options.fetchPage && readable) {
-        const page = await options.fetchPage.fetch(hit.url);
-        if (page.ok && page.body) {
-          const ctx = { url: hit.url, sourceDomain: domain, streetHints: subject.streetHints };
-          const richer = fromLdJson(ldBlocks(page.body), ctx)
-            ?? fromPageText(visibleText(page.body), ctx);
-          if (richer) {
-            listing = richer;
-            confidence = 'PAGE';
-            via = source?.access === 'BROWSER' ? 'BROWSER_PAGE' : 'DIRECT_PAGE';
+        for (const hit of response.hits) {
+          const domain = hostOf(hit.url);
+          const domainClass = classifyDomain(domain);
+          const row: DiscoveryLedgerRow = {
+            url: hit.url, domain, domainClass,
+            query: query.text, language: query.language, precision: query.precision,
+            outcome: 'DISCOVERED_BUT_EXTRACTION_FAILED',
+          };
+          const t = tally(domain, domainClass);
+          t.urlsSeen += 1;
+
+          if (!worthExtracting(domainClass)) {
+            row.outcome = 'SOURCE_NOT_SUPPORTED';
+            ledger.push(row);
+            continue;
           }
+          if (seenUrls.has(hit.url)) {
+            row.outcome = 'DUPLICATE';
+            ledger.push(row);
+            continue;
+          }
+          seenUrls.add(hit.url);
+
+          /*
+           * THE SNIPPET IS EVIDENCE BEFORE THE PAGE IS.
+           *
+           * Read first, always — because for myhome.ge it is the ONLY thing we are
+           * permitted to read, and because a page fetch that then fails must not
+           * be able to erase what the index already stated.
+           */
+          const indexResult: SearchIndexResult = {
+            url: hit.url, domain, title: hit.title, snippet: hit.snippet, query: query.text,
+          };
+          let listing: ExtractedListing | null = fromSearchSnippet(indexResult, subject.streetHints);
+          let confidence: 'INDEX' | 'PAGE' = 'INDEX';
+          let via: DiscoveryLedgerRow['via'] = 'SEARCH_INDEX_RESULT';
+
+          /*
+           * Enrichment, and only where access permits it. A source recorded as
+           * BROWSER or INDEX_ONLY is not fetched here: myhome.ge answers 403 to
+           * every non-browser client, and hammering it would be both useless and
+           * a control we were asked not to work around.
+           */
+          /*
+           * WHAT MAY BE READ, AND BY WHAT.
+           *
+           * A registered source states its access and that is obeyed: INDEX_ONLY is
+           * not fetched, and a BROWSER source is fetched only by a fetcher that is
+           * one — pointing plain HTTP at myhome.ge earns a 403 that would then be
+           * recorded as a portal with no inventory.
+           *
+           * An UNKNOWN domain is tried over plain HTTP, because that is how a
+           * discovery layer learns. estatehub.ge was on no list of ours and carried
+           * the acceptance listing; a rule that refused to read anything unregistered
+           * would have made the registry a gate again, which is the ceiling this
+           * whole layer exists to remove. What comes back is an observation, and a
+           * refusal is recorded rather than held against the street.
+           */
+          const source = sourceForUrl(hit.url);
+          const readable = source
+            ? (source.access === 'DIRECT'
+              || (source.access === 'BROWSER' && options.fetchPage?.canDriveBrowser === true))
+            : true;
+          if (options.fetchPage && readable) {
+            const page = await options.fetchPage.fetch(hit.url);
+            if (page.ok && page.body) {
+              const ctx = { url: hit.url, sourceDomain: domain, streetHints: subject.streetHints };
+              const richer = fromLdJson(ldBlocks(page.body), ctx)
+                ?? fromPageText(visibleText(page.body), ctx);
+              if (richer) {
+                listing = richer;
+                confidence = 'PAGE';
+                via = source?.access === 'BROWSER' ? 'BROWSER_PAGE' : 'DIRECT_PAGE';
+              }
+            }
+          }
+
+          if (!listing) {
+            t.failed += 1;
+            row.outcome = 'DISCOVERED_BUT_EXTRACTION_FAILED';
+            ledger.push(row);
+            continue;
+          }
+          t.extracted += 1;
+
+          if (!listing.address && listing.lat == null && !listing.project) {
+            /*
+             * Extracted, but with nothing that places it. Distinguished from an
+             * extraction failure on purpose: the fix for one is a parser and the
+             * fix for the other is address resolution, and a single "failed"
+             * counter told us which one neither time.
+             */
+            row.outcome = 'EXTRACTED_BUT_ADDRESS_FAILED';
+            ledger.push(row);
+            continue;
+          }
+
+          const tier = tierOfDiscovered(listing, subject);
+          if (tier === 'TIER_1_SAME_PROJECT' && !matchesProject(listing, subject).same
+            && !(subject.address && listing.address && sameAddress(listing.address, subject.address))) {
+            row.outcome = 'EXTRACTED_BUT_PROJECT_ID_FAILED';
+            ledger.push(row);
+            continue;
+          }
+
+          row.outcome = LOCAL_TIERS.includes(tier) ? 'VALID_LOCAL_RESULT' : 'VALID_CONTEXT_RESULT';
+          row.tier = tier;
+          row.via = via;
+          ledger.push(row);
+          if (LOCAL_TIERS.includes(tier)) { localSoFar += 1; t.localResults += 1; }
+
+          found.push({
+            ...listing, tier, confidence, query: query.text, language: query.language,
+            measurable: (listing.area ?? 0) > 0 || (listing.pricePerSqm ?? 0) > 0 || (listing.price ?? 0) > 0,
+          });
         }
       }
 
-      if (!listing) {
-        t.failed += 1;
-        row.outcome = 'DISCOVERED_BUT_EXTRACTION_FAILED';
-        ledger.push(row);
-        continue;
-      }
-      t.extracted += 1;
-
-      if (!listing.address && listing.lat == null && !listing.project) {
-        /*
-         * Extracted, but with nothing that places it. Distinguished from an
-         * extraction failure on purpose: the fix for one is a parser and the
-         * fix for the other is address resolution, and a single "failed"
-         * counter told us which one neither time.
-         */
-        row.outcome = 'EXTRACTED_BUT_ADDRESS_FAILED';
-        ledger.push(row);
-        continue;
-      }
-
-      const tier = tierOfDiscovered(listing, subject);
-      if (tier === 'TIER_1_SAME_PROJECT' && !matchesProject(listing, subject).same
-        && !(subject.address && listing.address && sameAddress(listing.address, subject.address))) {
-        row.outcome = 'EXTRACTED_BUT_PROJECT_ID_FAILED';
-        ledger.push(row);
-        continue;
-      }
-
-      row.outcome = LOCAL_TIERS.includes(tier) ? 'VALID_LOCAL_RESULT' : 'VALID_CONTEXT_RESULT';
-      row.tier = tier;
-      row.via = via;
-      ledger.push(row);
-      if (LOCAL_TIERS.includes(tier)) { localSoFar += 1; t.localResults += 1; }
-
-      found.push({
-        ...listing, tier, confidence, query: query.text, language: query.language,
-        measurable: (listing.area ?? 0) > 0 || (listing.pricePerSqm ?? 0) > 0 || (listing.price ?? 0) > 0,
+      /*
+       * THE BOUNDARY, WHICH IS THE ONLY PLACE WIDENING IS RECONSIDERED.
+       *
+       * Judged here and never inside the batch: a band that produced enough
+       * on its second formulation still has its remaining formulations run,
+       * because the unasked ones would otherwise be reported as an absence
+       * they were never given the chance to contradict.
+       */
+      stageOutcomes.push({
+        stage,
+        languages: [...group],
+        queriesExecuted: queriesExecuted - before.queries,
+        searchCalls: searchCalls - before.calls,
+        localResultsAfter: localSoFar,
+        stoppedHere: enough(),
       });
+      if (enough()) break;
     }
   }
 
@@ -512,6 +621,8 @@ export async function runDiscovery(options: RunDiscoveryOptions): Promise<Discov
     queriesPlanned: plan.length,
     queriesExecuted,
     queriesWithResults,
+    searchCalls,
+    stages: stageOutcomes,
     languages: [...languages],
     rawUrlsDiscovered: ledger.filter((r) => r.url).length,
     domainsDiscovered: domains,

@@ -32,6 +32,10 @@ import { summariseSources } from '../../../src/verify/intelligence/sourceVersion
 import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
 import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
+import { openAiSearchProvider } from '../../../src/verify/search/openAiSearchProvider.ts';
+import { cachingSearchProvider } from '../../../src/verify/search/searchCache.ts';
+import { supabaseSearchCache } from '../../../src/verify/search/supabaseSearchCache.ts';
+import { subjectGeoFromSeed } from '../../../src/verify/search/subjectGeo.ts';
 import { computeSections } from '../../../src/verify/sections.ts';
 import { portalHealthUpdates, mergeSourceRow } from '../../../src/verify/sourceHealth.ts';
 import {
@@ -4251,6 +4255,69 @@ async function planMarketFor(db: any, known: any, plan: any): Promise<any | null
  * it has by then is what the report gets, marked honestly. A portal that hangs
  * costs its own slot and nothing else.
  */
+/*
+ * THE SEARCH-ENGINE DISCOVERY LANE, BUILT IN ONE PLACE.
+ *
+ * The portal lane asks portals it already knows, by district id, in one
+ * language — which is why Villion returned 30 city-wide comparables and zero
+ * on its own street while myhome.ge, korter.ge, ss.ge and estatehub.ge were all
+ * publicly advertising inventory on it. A registry cannot find a source nobody
+ * registered, and a portal that answers 403 to a crawler looks to it exactly
+ * like a portal with no inventory.
+ *
+ * So discovery also asks the public index, through the web_search capability
+ * this pipeline already funds and uses for its research stages. No second
+ * search architecture and no new vendor: DataForSEO stays behind its kill
+ * switch and is never called from here.
+ *
+ * Factored out because the diagnostic probe below must run the SAME path a
+ * customer's verification runs. A probe that built its own provider would
+ * prove only that the probe works.
+ */
+function discoveryInputsFor(db: any, seed: any) {
+  const subjectGeo = subjectGeoFromSeed(seed);
+  const key = Deno.env.get('OPENAI_API_KEY');
+  const model = Deno.env.get('OPENAI_DISCOVERY_MODEL')
+    || Deno.env.get('OPENAI_FAST_MODEL')
+    || 'gpt-5.6-luna';
+
+  return {
+    subjectGeo,
+    /*
+     * Wrapped in the cache because a street is verified more than once. The
+     * next flat on Krtsanisi inherits this street's evidence instead of buying
+     * it again, which is what makes a wider search affordable at all.
+     */
+    search: subjectGeo && key
+      ? cachingSearchProvider(
+        openAiSearchProvider({ apiKey: key, model, resultsPerQuery: 10 }),
+        supabaseSearchCache(db),
+      )
+      : null,
+    /*
+     * THE PER-PROPERTY SEARCH BUDGET.
+     *
+     * The planner emits 156 formulations for a subject like this one; running
+     * them all would bill 156 searches for one verification. The bands are
+     * climbed narrowest-first and stop as soon as the local question is
+     * answered, and this is the hard ceiling underneath that — so a property
+     * whose street genuinely has nothing cannot escalate into a full-price
+     * city-wide sweep.
+     *
+     * 16 because of what the plan actually contains for a subject like this:
+     * after deduplication the core three languages hold 4 BUILDING
+     * formulations and 18 STREET ones. A ceiling of 12 would cut the STREET
+     * band in half — and stopping mid-band is the one thing the staged
+     * widening is written not to do, because the unasked half then reads as an
+     * absence it was never given the chance to contradict. 16 lets the
+     * building and most of the street be asked; `enoughLocalEvidence` ends it
+     * far sooner whenever the street actually answers.
+     */
+    maxDiscoveryQueries: Number(Deno.env.get('MARKET_DISCOVERY_MAX_QUERIES') || 16),
+    enoughLocalEvidence: 8,
+  };
+}
+
 async function runVerifyMarketLane(db: any, job: any, result: any): Promise<MarketLaneResult | null> {
   /*
    * Everything already known about this subject, as fact_key -> value.
@@ -4284,9 +4351,12 @@ async function runVerifyMarketLane(db: any, job: any, result: any): Promise<Mark
   });
 
   const runtime = createPortalRuntime();
+  const discovery = discoveryInputsFor(db, seed);
+
   const lane = await runMarketLane(seed, runtime.registry, runtime.context, {
     budgetMs: 20_000,
     limit: 40,
+    ...discovery,
   });
   if (lane) {
     /*
@@ -5169,6 +5239,115 @@ Deno.serve(async (req) => {
       // open for a minute would be a tick that pg_cron reports as a timeout.
       EdgeRuntime.waitUntil(driveLiveJobs(svc, dk, dm));
       return json({ ok: true, started: true }, 202);
+    }
+
+    /*
+     * MARKET-DISCOVERY PROBE — the production lane, one subject, no report.
+     *
+     * Architecture being deployed is not evidence that it runs. This executes
+     * the SAME discoveryInputsFor()/runMarketLane() path a customer's
+     * verification executes, against one named subject, and returns the lane's
+     * own ledger. It launches no Verify, spends no credit, writes no job row
+     * and runs no model synthesis — it is the market lane and nothing else.
+     *
+     * Authenticated by the cron token, exactly as `drive` above is: the same
+     * shared secret, the same blast radius, and no customer-reachable surface.
+     * It belongs to no customer, so it is not scoped to one.
+     */
+    if (String(preAuthBody?.action || '') === 'market-discovery-probe') {
+      const svc = createClient(Deno.env.get('SUPABASE_URL') || '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '');
+      const expected = await adminSetting(svc, 'verify_driver_token');
+      if (!expected || req.headers.get('x-cron-token') !== expected) {
+        return json({ error: 'Forbidden' }, 403);
+      }
+      const subject = preAuthBody?.subject || {};
+      const val = (v: unknown) => (v === null || v === undefined || v === '' ? null : { value: v, evidence: 'OFFICIAL', origin: 'probe' });
+      const probeSeed: any = {
+        subjectRef: 'market-discovery-probe',
+        location: {
+          countryCode: val(subject.countryCode ?? 'GE'),
+          city: val(subject.city),
+          district: val(subject.district),
+          subDistrict: null,
+          address: val(subject.address),
+          latitude: val(typeof subject.lat === 'number' ? subject.lat : null),
+          longitude: val(typeof subject.lon === 'number' ? subject.lon : null),
+        },
+        property: {
+          cadastralCode: val(subject.cadastralCode), parentCadastralCode: null,
+          propertyType: val(subject.propertyType ?? 'APARTMENT'),
+          areaSqm: val(typeof subject.areaSqm === 'number' ? subject.areaSqm : null),
+          rooms: val(typeof subject.rooms === 'number' ? subject.rooms : null),
+          bedrooms: null, floor: null, totalFloors: null, transaction: 'SALE',
+        },
+        project: {
+          name: val(subject.project),
+          aliases: Array.isArray(subject.aliases) ? subject.aliases : [],
+          developerName: null,
+          developerCompanyName: val(subject.developer),
+          developerCompanyId: null,
+          urls: [],
+        },
+        knownListingUrls: [],
+        languages: ['ka', 'en', 'ru'],
+        establishedFactKeys: [],
+      };
+
+      const runtime = createPortalRuntime();
+      const inputs = discoveryInputsFor(svc, probeSeed);
+      if (!inputs.search) {
+        return json({ ok: false, reason: inputs.subjectGeo ? 'NO_SEARCH_KEY' : 'SUBJECT_NOT_LOCATABLE' }, 200);
+      }
+      const started = Date.now();
+      const lane = await runMarketLane(probeSeed, runtime.registry, runtime.context, {
+        budgetMs: Number(preAuthBody?.budgetMs || 120_000),
+        limit: 40,
+        ...inputs,
+        maxDiscoveryQueries: Number(preAuthBody?.maxQueries || inputs.maxDiscoveryQueries),
+      });
+      return json({
+        ok: true,
+        durationMs: Date.now() - started,
+        subjectGeo: inputs.subjectGeo,
+        provider: inputs.search.id,
+        discovery: lane?.summary?.discovery ?? null,
+        portalComparables: lane?.comparables?.length ?? 0,
+        laneRan: !!lane,
+        /*
+         * The ledger, returned to the operator who asked and stored nowhere.
+         * This is the diagnostic half — which domains answered, which URLs
+         * failed and why — and section 15 keeps every word of it internal.
+         */
+        report: lane?.discoveryReport
+          ? {
+            providerStatus: lane.discoveryReport.providerStatus,
+            searchCalls: lane.discoveryReport.searchCalls,
+            queriesExecuted: lane.discoveryReport.queriesExecuted,
+            queriesWithResults: lane.discoveryReport.queriesWithResults,
+            languages: lane.discoveryReport.languages,
+            stages: lane.discoveryReport.stages,
+            rawUrlsDiscovered: lane.discoveryReport.rawUrlsDiscovered,
+            domainsDiscovered: lane.discoveryReport.domainsDiscovered,
+            domainsNew: lane.discoveryReport.domainsNew,
+            domainsProducingEvidence: lane.discoveryReport.domainsProducingEvidence,
+            perDomain: lane.discoveryReport.perDomain,
+            outcomes: lane.discoveryReport.outcomes,
+            duplicatesRemoved: lane.discoveryReport.duplicatesRemoved,
+            tierCounts: lane.discoveryReport.tierCounts,
+            tierCountsMeasurable: lane.discoveryReport.tierCountsMeasurable,
+            tierStats: lane.discoveryReport.tierStats,
+            headline: lane.discoveryReport.headline,
+            knownPublicLocalEvidenceDiscovered:
+              lane.discoveryReport.knownPublicLocalEvidenceDiscovered,
+            listings: lane.discoveryReport.listings.map((l: any) => ({
+              domain: l.sourceDomain, url: l.url, tier: l.tier, confidence: l.confidence,
+              address: l.address, area: l.area, rooms: l.rooms, floor: l.floor,
+              pricePerSqm: l.pricePerSqm, price: l.price, measurable: l.measurable,
+            })),
+            ledger: lane.discoveryReport.ledger,
+          }
+          : null,
+      }, 200);
     }
 
     const a = req.headers.get('Authorization');

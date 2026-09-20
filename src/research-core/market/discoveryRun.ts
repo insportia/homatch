@@ -200,6 +200,8 @@ export interface DiscoveryReport {
   /** Per-tier price statistics. Never merged across tiers. */
   tierStats: ReturnType<typeof statsByTier>;
   headline: ReturnType<typeof headlineTier>;
+  /** True when the clock, not the evidence, ended the run. */
+  truncatedByDeadline: boolean;
   /** The acceptance bar: did any TIER 1–3 evidence come back at all? */
   knownPublicLocalEvidenceDiscovered: boolean;
 }
@@ -219,6 +221,17 @@ export interface RunDiscoveryOptions {
   fetchPage?: PageFetcher | null;
   /** Stop asking once this many queries have run. 0 means no ceiling. */
   maxQueries?: number;
+  /*
+   * WALL-CLOCK CEILING, BECAUSE THIS RUNS INSIDE SOMEONE ELSE'S TIMEOUT.
+   *
+   * Searches are sequential and each one costs seconds. Sixteen of them can
+   * outlast the edge function hosting the verification, and a discovery lane
+   * that kills its own host does not degrade a report — it destroys one. So
+   * the run ends on time and reports what it has, which is the same contract
+   * the portal lane already keeps.
+   */
+  deadlineMs?: number;
+  now?: () => number;
   /**
    * Stop early once this much local evidence exists.
    *
@@ -389,7 +402,12 @@ export async function runDiscovery(options: RunDiscoveryOptions): Promise<Discov
     : [CORE_SEARCH_LANGUAGES];
 
   let searchCalls = 0;
+  const clock = options.now ?? (() => Date.now());
+  const startedAt = clock();
+  const outOfTime = (): boolean =>
+    !!options.deadlineMs && clock() - startedAt >= options.deadlineMs;
   const enough = (): boolean => !!enoughLocal && localSoFar >= enoughLocal;
+  let truncatedByDeadline = false;
 
   outer:
   for (const group of languageGroups) {
@@ -403,7 +421,8 @@ export async function runDiscovery(options: RunDiscoveryOptions): Promise<Discov
       const before = { queries: queriesExecuted, calls: searchCalls };
 
       for (const query of batch) {
-        if (maxQueries && queriesExecuted >= maxQueries) {
+        if ((maxQueries && queriesExecuted >= maxQueries) || outOfTime()) {
+          if (outOfTime()) truncatedByDeadline = true;
           stageOutcomes.push({
             stage,
             languages: [...group],
@@ -637,6 +656,7 @@ export async function runDiscovery(options: RunDiscoveryOptions): Promise<Discov
     tierCountsMeasurable,
     tierStats: stats,
     headline: headlineTier(stats),
+    truncatedByDeadline,
     knownPublicLocalEvidenceDiscovered: LOCAL_TIERS.some((t) => tierCounts[t] > 0),
   };
 }

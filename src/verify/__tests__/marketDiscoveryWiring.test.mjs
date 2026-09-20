@@ -454,3 +454,46 @@ test('the bought-vendor adapter stays out of Research Core', () => {
   assert.ok(!/dataforseo/i.test(core));
   assert.ok(!/openai/i.test(core), 'the core names no vendor at all');
 });
+
+test('the discovery lane ends on its own clock rather than its host’s', async () => {
+  /*
+   * Searches are sequential and each costs seconds. Sixteen of them can
+   * outlast the edge function running the verification, and a lane that kills
+   * its host does not thin a report — it destroys one. So the run ends on
+   * time, says that the clock ended it, and keeps what it already had.
+   */
+  let clock = 0;
+  const slow = {
+    id: 'SLOW',
+    async search() {
+      clock += 30_000;
+      return {
+        status: 'OK',
+        hits: [{
+          url: `https://estatehub.ge/${clock}`,
+          title: 'Apartment',
+          snippet: 'Krtsanisi Street 6, Tbilisi — 97.2 m², 3 rooms',
+        }],
+      };
+    },
+  };
+  const plan = Array.from({ length: 20 }, (_, i) => query(`q${i}`, 'en', 'STREET'));
+  const report = await runDiscovery({
+    plan, subject: SUBJECT_GEO, search: slow,
+    deadlineMs: 90_000, now: () => clock,
+  });
+
+  assert.ok(report.searchCalls <= 4, `ran ${report.searchCalls} searches past the deadline`);
+  assert.equal(report.truncatedByDeadline, true, 'the run must say the clock ended it');
+  assert.ok(report.listings.length > 0, 'what was already found must survive the cutoff');
+});
+
+test('a run that finished on evidence is not reported as truncated', async () => {
+  const report = await runDiscovery({
+    plan: [query('b1', 'en', 'BUILDING')],
+    subject: SUBJECT_GEO,
+    search: generousProvider(),
+    deadlineMs: 90_000,
+  });
+  assert.equal(report.truncatedByDeadline, false);
+});

@@ -4315,6 +4315,12 @@ function discoveryInputsFor(db: any, seed: any) {
      */
     maxDiscoveryQueries: Number(Deno.env.get('MARKET_DISCOVERY_MAX_QUERIES') || 16),
     enoughLocalEvidence: 8,
+    /*
+     * And a clock, because this runs inside the verification's own timeout.
+     * Sixteen sequential searches can outlast the function; a lane that
+     * overran would not thin a report, it would kill the one being produced.
+     */
+    discoveryBudgetMs: Number(Deno.env.get('MARKET_DISCOVERY_BUDGET_MS') || 90_000),
   };
 }
 
@@ -5304,6 +5310,13 @@ Deno.serve(async (req) => {
         limit: 40,
         ...inputs,
         maxDiscoveryQueries: Number(preAuthBody?.maxQueries || inputs.maxDiscoveryQueries),
+        /*
+         * The probe is not inside a customer's verification, so it may run
+         * longer than the production lane does — but it still runs inside an
+         * edge function's wall clock, and a probe that is killed mid-run
+         * reports nothing at all rather than reporting less.
+         */
+        discoveryBudgetMs: Number(preAuthBody?.discoveryBudgetMs || 110_000),
       });
       return json({
         ok: true,

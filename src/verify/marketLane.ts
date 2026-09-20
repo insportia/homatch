@@ -109,6 +109,8 @@ export interface MarketLaneSummary {
     /** Provider invocations. What the run actually cost. */
     searchCalls: number;
     stages: Array<{ stage: string; queries: number; localAfter: number; stopped: boolean }>;
+    /** True when the clock, not the evidence, ended discovery. */
+    truncatedByDeadline: boolean;
     /** Evidence relayed from the index, versus read off the page itself. */
     indexEvidence: number;
     pageEvidence: number;
@@ -249,6 +251,8 @@ export interface RunMarketLaneOptions {
   maxDiscoveryQueries?: number;
   /** Stop widening once this much local evidence exists. */
   enoughLocalEvidence?: number;
+  /** Wall-clock ceiling for the discovery lane, separate from the portal one. */
+  discoveryBudgetMs?: number;
 }
 
 /**
@@ -362,6 +366,15 @@ export async function runMarketLane(
         search: options.search,
         maxQueries: options.maxDiscoveryQueries ?? 24,
         enoughLocal: options.enoughLocalEvidence ?? 8,
+        /*
+         * Its own budget, not the portal lane's. The portal lane is a handful
+         * of HTTP requests; this is a sequence of searches that each take
+         * seconds, and it runs inside a verification's own timeout. A lane
+         * that overran would not thin a report, it would kill the function
+         * producing one.
+         */
+        deadlineMs: options.discoveryBudgetMs ?? 90_000,
+        now,
       });
       discoveryReport = report;
       summary.discovery = {
@@ -375,6 +388,7 @@ export async function runMarketLane(
           localAfter: st.localResultsAfter,
           stopped: st.stoppedHere,
         })),
+        truncatedByDeadline: report.truncatedByDeadline,
         indexEvidence: report.listings.filter((l) => l.confidence === 'INDEX').length,
         pageEvidence: report.listings.filter((l) => l.confidence === 'PAGE').length,
         tierCountsMeasurable: report.tierCountsMeasurable,
@@ -393,6 +407,7 @@ export async function runMarketLane(
         queriesExecuted: 0,
         searchCalls: 0,
         stages: [],
+        truncatedByDeadline: false,
         indexEvidence: 0,
         pageEvidence: 0,
         rawUrlsDiscovered: 0,

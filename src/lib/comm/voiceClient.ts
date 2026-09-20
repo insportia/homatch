@@ -3850,13 +3850,41 @@ export class VoiceSession {
     };
   }
 
-  get stageStamps(): { speechEndToFinalMs: number | null; finalToRequestMs: number | null; opinionWaitMs: number } {
+  /*
+   * WHO SPENT THE 1,630 MILLISECONDS.
+   *
+   * Measured on production session 7d01064e: speech-end to first audio byte
+   * is 2,715ms median, and 1,630ms of it -- SIXTY PER CENT -- is this one
+   * segment. The LLM and TTS are already well overlapped behind it: TTS's
+   * first byte lands 202ms after the model's first token.
+   *
+   * But speechEndedAtMs is BACKDATED (`Date.now() - silenceMs`), so that
+   * 1,630ms contains two very different waits added together:
+   *
+   *   OURS    the endpointer holding on for 300/600/900ms of silence before
+   *           it will believe the turn ended.
+   *   THEIRS  Google, from the moment we half-close to the final arriving.
+   *
+   * Tuning a silence window when the cost is actually Google's finalisation
+   * -- or touching the Google path when the cost is our own patience -- are
+   * both guesses, and one of them risks Georgian quality for nothing. The
+   * split has been recorded on this object all along and never reported, so
+   * it is reported now, BEFORE anything about the behaviour changes.
+   */
+  get stageStamps(): {
+    speechEndToFinalMs: number | null; finalToRequestMs: number | null; opinionWaitMs: number;
+    endpointConfirmedToFinalMs: number | null; endpointerWaitMs: number | null;
+  } {
     const speechEnd = this.marks.speechEndedAtMs;
     const final = this.marks.googleFinalAtMs;
+    const confirmed = this.marks.endpointConfirmedAtMs;
     return {
       speechEndToFinalMs: speechEnd && final ? Math.round(final - speechEnd) : null,
       finalToRequestMs: final ? Math.round(Date.now() - final) : null,
       opinionWaitMs: this.lastOpinionWaitMs,
+      // THEIRS: half-close to final. OURS: voice stopped to us believing it.
+      endpointConfirmedToFinalMs: confirmed && final ? Math.round(final - confirmed) : null,
+      endpointerWaitMs: speechEnd && confirmed ? Math.round(confirmed - speechEnd) : null,
     };
   }
 

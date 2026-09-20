@@ -1589,6 +1589,98 @@ export async function previewAiTalkVoice(
   return { ok: false, reason: res?.reason ?? (error ? 'UNAVAILABLE' : 'UNKNOWN') };
 }
 
+/*
+ * A SHELF OF VOICES, SO CHANGING ONE IS NOT A TYPING EXERCISE.
+ *
+ * The voice id itself already worked: paste a uuid, preview it on the real
+ * production path, save. What it did not do was REMEMBER. Trying Nino against
+ * Mariam meant keeping two uuids somewhere outside the product and pasting
+ * them back and forth, and a uuid is exactly the kind of string that gets
+ * mistyped by one character and then blamed on the voice.
+ *
+ * So saved voices are a list of names, and switching production is picking
+ * one. The stored entry holds an id and what to call it -- nothing about how
+ * the assistant speaks, thinks or listens, because that is the whole point:
+ * using a saved voice writes `ai_talk_voice` and NOTHING else. The STT, the
+ * model, the prompt, the endpointing, the streaming and the language rules
+ * are not in this key and cannot be moved by it.
+ */
+export interface SavedVoice {
+  voiceId: string;
+  /** What the admin calls it. "Mariam", "Nino", "Warm". */
+  name: string;
+  /** Cartesia's own description, when it gave one. Never invented here. */
+  description: string | null;
+  /** Cartesia's own language tag, when it gave one. */
+  language: string | null;
+  addedAt: string;
+}
+
+export function getAiTalkVoiceLibrary(): Promise<{ voices?: SavedVoice[] } | null> {
+  return readSetting<{ voices?: SavedVoice[] }>('ai_talk_voice_library');
+}
+
+/**
+ * The shelf, saved whole.
+ *
+ * A list rather than a row per voice because it is read on one screen and
+ * never joined to anything; a settings key is the right size for it, and it
+ * keeps the library out of the path a spoken turn takes.
+ */
+export async function saveAiTalkVoiceLibrary(voices: SavedVoice[]): Promise<boolean> {
+  const clean: SavedVoice[] = [];
+  const seen = new Set<string>();
+  for (const v of voices) {
+    const id = String(v.voiceId ?? '').trim();
+    // A malformed id can never reach the shelf, so it can never be one click
+    // away from becoming the production voice.
+    if (!VOICE_ID_SHAPE.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    clean.push({
+      voiceId: id,
+      name: String(v.name ?? '').trim().slice(0, 40) || id.slice(0, 8),
+      description: v.description ? String(v.description).slice(0, 240) : null,
+      language: v.language ? String(v.language).slice(0, 12) : null,
+      addedAt: v.addedAt || new Date().toISOString(),
+    });
+    if (clean.length >= 40) break;
+  }
+  return writeSetting(
+    'ai_talk_voice_library', { voices: clean },
+    'Named Cartesia voices an admin saved for AI Talk. Presentation only: the live voice is ai_talk_voice.',
+  );
+}
+
+/**
+ * What Cartesia says this id is, asked before it is offered as a voice.
+ *
+ * An id that does not resolve is refused here, on the way IN to the library,
+ * which is why production can never end up pointed at one. The name and
+ * description come back from the provider so nobody has to invent them.
+ */
+export async function lookupCartesiaVoice(
+  voiceId: string,
+): Promise<{ ok: true; name: string; description: string | null; language: string | null } | { ok: false; reason: string }> {
+  const id = voiceId.trim();
+  if (!VOICE_ID_SHAPE.test(id)) return { ok: false, reason: 'VOICE_ID_INVALID' };
+  const { data, error } = await supabase.functions.invoke('ai-talk-session', {
+    body: { action: 'voiceLookup', voiceId: id },
+  });
+  const res = data as {
+    ok?: boolean; reason?: string;
+    voice?: { name?: string; description?: string | null; language?: string | null };
+  } | null;
+  if (res?.ok && res.voice) {
+    return {
+      ok: true,
+      name: res.voice.name ?? id.slice(0, 8),
+      description: res.voice.description ?? null,
+      language: res.voice.language ?? null,
+    };
+  }
+  return { ok: false, reason: res?.reason ?? (error ? 'UNAVAILABLE' : 'UNKNOWN') };
+}
+
 export function getAiTalkLimits(): Promise<Partial<AiTalkLimits> | null> {
   return readSetting<Partial<AiTalkLimits>>('ai_talk_limits');
 }

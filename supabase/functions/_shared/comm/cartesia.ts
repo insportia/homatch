@@ -325,6 +325,48 @@ export async function listCartesiaVoices(limit = 100): Promise<ProviderResult<Ca
 }
 
 /**
+ * One voice, by id, as Cartesia describes it.
+ *
+ * So an admin pasting an id gets the provider's own name and description on
+ * the card instead of typing a guess -- and so an id that does not exist is
+ * refused BEFORE it can become the production voice.
+ *
+ * Maps only fields Cartesia actually returns, exactly as listCartesiaVoices
+ * does. Where it gives no description the card shows none; nothing here
+ * invents metadata the provider did not send.
+ */
+export async function getCartesiaVoice(voiceId: string): Promise<ProviderResult<CartesiaVoice>> {
+  const res = await providerFetch(`${CARTESIA_API}/voices/${encodeURIComponent(voiceId)}`, {
+    headers: headers(),
+    timeoutMs: 12_000,
+  }, classifyCartesia);
+  if (!res.ok) return { ok: false, sideEffect: 'NONE', latencyMs: res.latencyMs, error: res.error };
+
+  const v = (res.json ?? {}) as Record<string, unknown>;
+  const id = typeof v.id === 'string' ? v.id : null;
+  if (!id) {
+    return {
+      ok: false,
+      sideEffect: 'NONE',
+      latencyMs: res.latencyMs,
+      error: { code: 'NOT_FOUND', message: 'Cartesia returned no voice for that id', retryable: false },
+    };
+  }
+  return {
+    ok: true,
+    sideEffect: 'NONE',
+    latencyMs: res.latencyMs,
+    data: {
+      id,
+      name: typeof v.name === 'string' ? v.name : id,
+      description: typeof v.description === 'string' ? v.description : null,
+      language: typeof v.language === 'string' ? v.language : null,
+      isCustom: v.is_public === false,
+    },
+  };
+}
+
+/**
  * Batch speech-to-text, used by the Georgian benchmark harness (§25) and by
  * WhatsApp voice-note transcription (§118).
  *

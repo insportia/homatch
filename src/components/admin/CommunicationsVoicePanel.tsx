@@ -37,6 +37,7 @@ import { Loader2, Save, RotateCcw, AudioLines, Mic, Radio, Play } from 'lucide-r
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { AiTalkVoiceLibrary } from '@/components/admin/AiTalkVoiceLibrary';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -103,6 +104,12 @@ export function CommunicationsVoicePanel() {
    */
   const [voiceId, setVoiceId] = useState('');
   const [savedVoiceId, setSavedVoiceId] = useState<string | null>(null);
+  /*
+   * The voice production was on before the current one, so Restore is a
+   * button rather than a hunt through the audit log. Held in memory for
+   * this screen only: it is a convenience, not a second source of truth.
+   */
+  const [previousVoiceId, setPreviousVoiceId] = useState<string | null>(null);
   /*
    * 1.0 is the voice's own pace, and it was the default because 1.1 read as
    * hurried on a real device. The owner then found 1.0 slow enough to lose
@@ -208,7 +215,10 @@ export function CommunicationsVoicePanel() {
     setSavingVoice(true);
     try {
       const ok = await saveAiTalkVoice(id, savedVoiceId, speed);
-      if (ok) setSavedVoiceId(id);
+      if (ok) {
+        if (savedVoiceId && savedVoiceId !== id) setPreviousVoiceId(savedVoiceId);
+        setSavedVoiceId(id);
+      }
       toast[ok ? 'success' : 'error'](t(ok ? 'admin_talk_voice_saved' : 'comm_save_failed'));
     } finally {
       setSavingVoice(false);
@@ -437,6 +447,23 @@ export function CommunicationsVoicePanel() {
               </Button>
             </div>
           </div>
+
+          {/*
+            * The shelf sits under the box it replaces the need for. The box
+            * still works -- paste, hear, save -- and the shelf is what makes
+            * the SECOND voice easy: give it a name once and switching is a
+            * click rather than finding a uuid again.
+            */}
+          <AiTalkVoiceLibrary
+            activeVoiceId={savedVoiceId}
+            previousVoiceId={previousVoiceId}
+            playPcm={playPcm}
+            onActivated={(id) => {
+              if (savedVoiceId && savedVoiceId !== id) setPreviousVoiceId(savedVoiceId);
+              setSavedVoiceId(id);
+              setVoiceId(id);
+            }}
+          />
 
           <ToggleRow
             labelKey="admin_talk_enabled" hintKey="admin_talk_enabled_hint"

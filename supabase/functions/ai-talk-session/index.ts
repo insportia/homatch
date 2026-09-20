@@ -27,7 +27,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serviceClient, json, preflight, logEvent, authenticate, corsHeaders } from '../_shared/comm/auth.ts';
 import {
   cartesiaCredentialsPresent, synthesizeSpeech, synthesizePcm, PCM_SAMPLE_RATE,
-  streamCartesiaPcm, nearestCartesiaRate, clampCartesiaSpeed,
+  streamCartesiaPcm, nearestCartesiaRate, clampCartesiaSpeed, getCartesiaVoice,
 } from '../_shared/comm/cartesia.ts';
 import { callLlm, streamLlm } from '../_shared/comm/llm.ts';
 import { priceBook, llmCost, sttCost, ttsCost } from '../_shared/comm/voiceCogs.ts';
@@ -341,7 +341,8 @@ async function recordVoiceUsage(sb: Sb, event: {
 
 interface TalkRequest {
   action: 'start' | 'heartbeat' | 'end' | 'turn' | 'transcribe' | 'speak' | 'converse' | 'listen'
-    | 'voicePreview';
+    | 'voicePreview'
+    | 'voiceLookup';
   /** Auditioned, never saved: only the voicePreview action reads this. */
   voiceId?: string;
   sessionId?: string;
@@ -377,7 +378,11 @@ interface TalkRequest {
   /** True while no turn of this session has resolved a language. See talkLanguage.ts. */
   firstTurn?: boolean;
   /** What the browser spent before this request: the half of the chain the server cannot time. */
-  clientStages?: { speechEndToFinalMs?: number | null; finalToRequestMs?: number | null; opinionWaitMs?: number };
+  clientStages?: {
+    speechEndToFinalMs?: number | null; finalToRequestMs?: number | null; opinionWaitMs?: number;
+    /* The two halves of the biggest number in the whole turn. See stageStamps. */
+    endpointConfirmedToFinalMs?: number | null; endpointerWaitMs?: number | null;
+  };
   /**
    * Seconds of audio this turn streamed to each recogniser.
    *
@@ -513,6 +518,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     case 'converse':  return await converse(sb, body, req);
     case 'listen':    return await listen(sb, body);
     case 'voicePreview': return await voicePreview(sb, body, usageTier);
+    case 'voiceLookup': return await voiceLookup(body, usageTier);
     case 'heartbeat': return await heartbeat(sb, body);
     case 'end':       return await end(sb, body);
     default:          return json({ error: 'unknown_action' }, 400);
@@ -2682,6 +2688,15 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           // The device's own stages. Null when an older browser is talking to
           // a newer edge, which is a fact and not a zero.
           client_speech_end_to_final_ms: body.clientStages?.speechEndToFinalMs ?? null,
+          /*
+           * THE SPLIT. speech_end_to_final is 60% of a 2,715ms response and
+           * is two waits added together: our endpointer holding for silence,
+           * and Google finalising after the half-close. Reported apart so the
+           * next physical test says which one to fix, instead of a guess
+           * that risks Georgian quality for nothing.
+           */
+          client_endpointer_wait_ms: body.clientStages?.endpointerWaitMs ?? null,
+          client_endpoint_to_final_ms: body.clientStages?.endpointConfirmedToFinalMs ?? null,
           client_final_to_request_ms: body.clientStages?.finalToRequestMs ?? null,
           client_opinion_wait_ms: body.clientStages?.opinionWaitMs ?? null,
           resolved_language: resolution.resolvedLanguage,
@@ -3116,6 +3131,41 @@ const PREVIEW_LINES: Record<string, string> = {
   ar: 'مرحبا، أنا مريم. شقة بغرفتين في فاكي تكلف حوالي مئة وأربعين ألف دولار.',
   he: 'שלום, אני מרים. דירת שני חדרים בוואקה עולה כמאה וארבעים אלף דולר.',
 };
+
+/**
+ * What Cartesia says a voice id IS, before it can become the production voice.
+ *
+ * Two jobs, and the second matters more. It fills a saved-voice card with the
+ * provider's own name and description instead of asking an admin to type a
+ * guess -- and it is how an id that does not exist is refused while the
+ * previous working voice is still the one AI Talk is speaking with.
+ *
+ * Returns only what the provider returned. No key, no account detail, and no
+ * invented metadata: a voice with no description shows none.
+ */
+async function voiceLookup(body: TalkRequest, usageTier: UsageTier): Promise<Response> {
+  // Server-side, from the caller's own verified token, exactly as the preview
+  // does. Nothing in the request body can make somebody an administrator.
+  if (usageTier !== 'ADMIN_UNLIMITED') return json({ ok: false, reason: 'FORBIDDEN' }, 403);
+
+  const voiceId = String(body.voiceId ?? '').trim();
+  if (!VOICE_ID_SHAPE.test(voiceId)) return json({ ok: false, reason: 'VOICE_ID_INVALID' }, 400);
+
+  const out = await getCartesiaVoice(voiceId);
+  if (!out.ok) {
+    logEvent('ai-talk', 'voice_lookup_failed', { code: out.error.code });
+    return json({ ok: false, reason: out.error.code === 'NOT_FOUND' ? 'VOICE_NOT_FOUND' : 'PROVIDER_ERROR' }, 200);
+  }
+  return json({
+    ok: true,
+    voice: {
+      id: out.data.id,
+      name: out.data.name,
+      description: out.data.description,
+      language: out.data.language,
+    },
+  });
+}
 
 async function voicePreview(sb: Sb, body: TalkRequest, usageTier: UsageTier): Promise<Response> {
   // Server-side, from the caller's own verified token. There is no field in

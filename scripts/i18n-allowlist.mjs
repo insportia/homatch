@@ -11,6 +11,10 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // "Mariam" -- a placeholder showing what to type in the voice-name box,
+  // and a person's name. Turkish spells it the same as English; ka/ru/ar/he
+  // carry their own scripts (მარიამი, Мариам, مريم, מרים).
+  'admin_talk_lib_name_placeholder',
   // "Premium" — Turkish uses the same word for a renovation standard, and it
   // is what a Turkish buyer reads on a spec sheet. ka/ru/ar/he all carry
   // their own forms (პრემიუმი, Премиум, ممتاز, פרימיום).

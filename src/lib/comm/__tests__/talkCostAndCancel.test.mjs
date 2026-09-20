@@ -268,7 +268,10 @@ test('swearing and teasing are answered, not policed', () => {
   // Generated from the turn, never picked off a shelf.
   assert.match(edge, /Build the reply out of what they said: never a stock comeback, never one you have used/);
   // And not a sales funnel with a laugh track on it.
-  assert.match(edge, /NOT end every joke by steering back to Homatch/);
+  // The blanket ban cancelled the off-topic landing in production session
+  // 4be2bc31. It is now scoped: no PITCH after every joke, but landing the
+  // conversation back on their search is welcome and, off-topic, required.
+  assert.match(edge, /Do NOT end every joke with a PITCH for Homatch/);
   assert.match(edge, /never as copy/);
   // Swearing alone can no longer end a conversation.
   assert.match(edge, /swearing alone is never this/);
@@ -287,7 +290,11 @@ test('the limits on it are stated as plainly as the licence', () => {
   // Still not a comedian.
   assert.match(edge, /You are not a comedian/);
   assert.match(edge, /never a joke instead of an answer/);
-  assert.match(edge, /most replies have none in them/);
+  assert.match(edge, /Be good company\. Lively, warm, quick, a little playful/);
+  // Was: 'and most replies have none in them'. Removed deliberately after the
+  // 2026-09-20 physical test -- it is what made Mariam read as dry. The
+  // BOUNDS on humour below are unchanged; only the discouragement is gone.
+  assert.match(edge, /Wit comes from what was just said or not at all/);
 });
 
 test('a wander off the subject is allowed, and answered like a person', () => {
@@ -298,8 +305,8 @@ test('a wander off the subject is allowed, and answered like a person', () => {
    * permission -- a swerve is not a refusal -- and bounds the reply.
    */
   assert.match(edge, /4\. NOWHERE NEAR IT/);
-  assert.match(edge, /One or two/);
-  assert.match(edge, /Then carry on as if nothing happened/);
+  assert.match(edge, /One to/);
+  assert.match(edge, /THIS TOPIC DOES NOT GET A SECOND EXCHANGE/);
   assert.match(edge, /Somebody still far off property after two redirects is not here for this/);
 });
 
@@ -343,7 +350,22 @@ test('the prompt is still read on every turn, so it is still measured', () => {
    * discovered' below. The budget is not raised here; its duplicate is gone.
    */
   assert.ok(chars > 9_000, `the prompt is ${chars} characters`);
-  assert.ok(chars < 10_600, `the prompt is ${chars} characters, past the canonical ceiling`);
+  /*
+   * RAISED FROM 10,600 TO 11,400, DELIBERATELY, ON 2026-09-20.
+   *
+   * The physical test asked for two things that cost words: a real-estate
+   * gravity strong enough that an off-topic question cannot become a second
+   * conversation, and a personality that is actually good company. Both were
+   * failures of instruction, not of model, and both were paid for by trimming
+   * the wording rather than by adding sections -- the net growth is about 500
+   * characters, roughly 145 tokens.
+   *
+   * The per-turn cost of that is smaller than it looks: the prompt is prefix-
+   * cached, and production session 4be2bc31 shows 2,642 of 2,808 input tokens
+   * arriving cached on repeat turns. The ceiling still exists, and it is still
+   * the thing that stops this file growing a paragraph per incident.
+   */
+  assert.ok(chars < 11_400, `the prompt is ${chars} characters, past the canonical ceiling`);
 });
 
 /* ── 6. The failures the owner's live session actually exposed ──────────── */
@@ -683,7 +705,7 @@ test('a question from nowhere near property gets two sentences, not an essay', (
    * competence misapplied, so the prompt names it as the failure.
    */
   assert.match(edge, /ANSWERING THAT PROPERLY IS THE ONE FAILURE THAT MATTERS HERE/);
-  assert.match(edge, /One or two/);
+  assert.match(edge, /One to/);
   assert.match(edge, /sentences -- notice the swerve, be funny about it in their own language, land back on property/);
   // The topics named are examples of a KIND, not a filter to match against.
   assert.match(edge, /dating, celebrities, politics, homework, code, recipes, philosophy/);
@@ -748,10 +770,14 @@ test('serious subjects get a complete answer and no joke at all', () => {
 test('humour is still wanted, and still situational', () => {
   for (const kept of ['genuinely fun to talk to', 'Notice the funny thing',
     'make the small dry observation', 'be dry or sarcastic when the moment invites it',
-    'tease back when', 'You are not a comedian', 'never a joke instead of an answer']) {
+    'tease back when', 'You are not a comedian', 'never a joke instead of an answer',
+    'Be good company', 'Tease the apartment hunt itself']) {
     assert.ok(edge.includes(kept), kept);
   }
-  assert.match(edge, /most replies have none in them/);
+  // Was: 'and most replies have none in them'. Removed deliberately after the
+  // 2026-09-20 physical test -- it is what made Mariam read as dry. The
+  // BOUNDS on humour below are unchanged; only the discouragement is gone.
+  assert.match(edge, /Wit comes from what was just said or not at all/);
 });
 
 test('the wit is native to whichever language is being spoken', () => {
@@ -766,7 +792,7 @@ test('the wit is native to whichever language is being spoken', () => {
 });
 
 test('coming back to property resumes the work, and only persistence ends it', () => {
-  assert.match(edge, /Then carry on as if nothing happened/);
+  assert.match(edge, /THIS TOPIC DOES NOT GET A SECOND EXCHANGE/);
   assert.match(edge, /Somebody still far off property after two redirects is not here for this/);
   // Ending is for somebody who will not come back, never for one swerve.
   assert.match(edge, /or somebody who will not come back to property/);
@@ -821,6 +847,6 @@ test('the prompt grew, and by how much is stated rather than discovered', () => 
    * headroom left, which is the point of asserting the measured number rather
    * than a bound nobody ever approaches.
    */
-  assert.ok(chars < 10_600, `the prompt is ${chars} characters`);
+  assert.ok(chars < 11_400, `the prompt is ${chars} characters`);
   assert.ok(chars > 9_000, 'and it still says everything it has to say');
 });

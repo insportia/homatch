@@ -406,7 +406,14 @@ test('the conversation the model is told about is eight turns deep', () => {
 
 test('a turn the second opinion carried is never re-transcribed on top', () => {
   const c = strip(readFileSync('src/lib/comm/voiceClient.ts', 'utf8'));
-  assert.match(c, /const plan = \(opinion \|\| origin === 'SHADOW'\) \? null/);
+  /*
+   * Still exempt -- with one carve-out. Production session 4be2bc31 turn t9:
+   * `auto` answered a Georgian return in Devanagari labelled `bho`, and a
+   * recogniser that did that has not carried the turn. The batch path reads
+   * the audio in exactly that case, and nowhere else.
+   */
+  assert.match(c, /const exempt = \(opinion \|\| origin === 'SHADOW'\) && !heardUnsupported;/);
+  assert.match(c, /const plan = exempt \? null/);
 });
 
 /* ── Courtesy words are words ────────────────────────────────────────── */

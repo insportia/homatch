@@ -56,7 +56,7 @@ import {
 } from './sameTurnRecovery.ts';
 import { LATIN_CODES, SCRIPT_OF } from './languageRegistry.ts';
 import { SWITCH_MIN_LETTERS, SWITCH_MIN_LETTERS_BY_SCRIPT } from './talkLanguage.ts';
-import { scriptEvidence } from './talkLanguage.ts';
+import { scriptEvidence, SPOKEN_LANGUAGES } from './talkLanguage.ts';
 import { chooseTranscript, type TranscriptChoice } from './transcriptChoice.ts';
 import { ADMIN_SESSION_SECONDS } from './talkAllowance.ts';
 
@@ -2692,7 +2692,34 @@ export class VoiceSession {
      * sentence with Georgian, because by then the retained audio was no
      * longer the audio that sentence came from.
      */
-    const plan = (opinion || origin === 'SHADOW') ? null
+    /*
+     * ...UNLESS `auto` NAMED A LANGUAGE THIS PRODUCT DOES NOT SPEAK.
+     *
+     * The exemption above is right whenever the opinion HEARD the utterance.
+     * MEASURED, physical session 4be2bc31, 2026-09-20 01:27:56Z, turn t9: a
+     * Georgian speaker returning to Georgian after English and Russian. The
+     * grant was ka-GE, the transcript came back in DEVANAGARI labelled `bho`,
+     * 45 characters over ten words, and the resolver did exactly the right
+     * thing -- Bhojpuri is not a language this product holds conversations
+     * in, so it held Russian at confidence 0.3 and answered in Russian.
+     *
+     * Nothing in the resolver was wrong. There was simply no Georgian text
+     * for it to resolve, and `batch_final_chars` was 0: the one recogniser
+     * that could have read that sentence was never asked, because the turn
+     * had arrived through `auto` and `auto` is normally trusted to have
+     * heard what it heard.
+     *
+     * An unsupported label is the case where it plainly has not. So the
+     * exemption lifts for exactly that: a recogniser that answers Georgian
+     * speech in Devanagari has not carried the turn, whatever socket it came
+     * from, and the batch path gets to read the audio. What comes back goes
+     * through the SAME resolver -- this obtains evidence, it does not decide
+     * language, and there is still one authority.
+     */
+    const heardLanguage = detected ? normaliseLanguage(detected) : null;
+    const heardUnsupported = Boolean(heardLanguage) && !SPOKEN_LANGUAGES.includes(heardLanguage as TalkLanguage);
+    const exempt = (opinion || origin === 'SHADOW') && !heardUnsupported;
+    const plan = exempt ? null
       : (planRecovery(recoveryInput) ?? planFragmentRecovery(recoveryInput));
     if (plan && this.utterancePcm.length) {
       const outcome = await this.recoverUtterance(plan.reason, pinned, liveTranscript);

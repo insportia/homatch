@@ -748,9 +748,12 @@ test('the assistant is allowed to be funny, and told not to be a comedian', () =
     'Laugh, be surprised, be amused', 'be dry or sarcastic', 'tease back']) {
     assert.ok(edge.includes(invited), `the warmth this pass asked for: ${invited}`);
   }
-  for (const restrained of ['You are not a comedian', 'No joke in every reply', 'no punchlines',
+  for (const restrained of ['You are not a comedian', 'no punchlines',
     'no bits', 'no emoji', 'never funny at their', 'never a joke instead of an answer',
-    'and most replies', 'have none in them', 'Never reuse a joke']) {
+    // 'and most replies have none in them' was removed on 2026-09-20: it is
+    // what made Mariam read as dry in the physical test. The bounds below
+    // are the limit, and they are unchanged.
+    'Wit comes from what was just said or not at all', 'Never reuse a joke']) {
     assert.ok(edge.includes(restrained), `and the limit on it: ${restrained}`);
   }
 });

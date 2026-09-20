@@ -19,7 +19,10 @@ import {
   housingShare,
   monthlyBudget,
   shareOfBudget,
+  pricedShare,
   spreadRatio,
+  totalIsMeaningful,
+  MEANINGFUL_PRICED_SHARE,
 } from '../costOfLiving.ts';
 
 const profile = (over = {}) => ({ ...EMPTY_PROFILE, ...over });
@@ -221,6 +224,51 @@ test('a conversion refuses an impossible rate rather than producing a number', (
   assert.throws(() => convertObservation(obs(1, 2), 'USD', -1), RangeError);
   assert.throws(() => convertObservation(obs(1, 2), 'USD', Number.NaN), RangeError);
 });
+
+/* ── A mostly-unpriced month is not a monthly cost ─────────────────── */
+
+test('a total resting on a fraction of the month is not allowed the headline', () => {
+  // The exact production state that exposed this: transport and internet
+  // priced, everything else unknown, and the panel leading with
+  // "73 – 120 GEL" as the cost of a month in Tbilisi.
+  const b = build({
+    profile: { household: 'ALONE', hasVehicle: false, workStatus: 'EMPLOYED_LOCALLY' },
+    observations: { TRANSPORT: obs(40, 40), INTERNET: obs(33, 80) },
+  });
+  assert.equal(b.missing.length, b.lines.length - 2);
+  assert.ok(pricedShare(b) < MEANINGFUL_PRICED_SHARE);
+  assert.equal(totalIsMeaningful(b), false);
+});
+
+test('a well-covered month is allowed the headline', () => {
+  const b = build({
+    profile: { household: 'ALONE', hasVehicle: false, workStatus: 'EMPLOYED_LOCALLY' },
+  });
+  assert.ok(pricedShare(b) >= MEANINGFUL_PRICED_SHARE, `only ${pricedShare(b)} priced`);
+  assert.equal(totalIsMeaningful(b), true);
+});
+
+test('the threshold is a share of what applies, not a raw count', () => {
+  // Somebody who removes most categories has a small but fully covered
+  // month, and should get their total.
+  const keep = ['TRANSPORT', 'INTERNET', 'RENT'];
+  const b = build({
+    profile: { household: 'ALONE', hasVehicle: false, workStatus: 'EMPLOYED_LOCALLY' },
+    observations: { TRANSPORT: obs(40, 40), INTERNET: obs(33, 80), RENT: obs(1200, 2200) },
+    excluded: COST_CATEGORIES.filter((c) => !keep.includes(c)),
+  });
+  assert.equal(b.missing.length, 0);
+  assert.equal(totalIsMeaningful(b), true);
+});
+
+test('an empty budget is never presented as a total', () => {
+  const b = monthlyBudget({
+    profile: EMPTY_PROFILE, observations: {}, overrides: {}, currency: 'GEL',
+  });
+  assert.equal(pricedShare(b), 0);
+  assert.equal(totalIsMeaningful(b), false);
+});
+
 
 /* ── The §27 separation ───────────────────────────────────────────────── */
 

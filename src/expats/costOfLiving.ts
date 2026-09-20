@@ -324,6 +324,44 @@ export function spreadRatio(budget: MonthlyBudget): number {
   return budget.high / budget.low;
 }
 
+/** Share of the applicable categories that carry a figure. 0..1. */
+export function pricedShare(budget: MonthlyBudget): number {
+  if (budget.lines.length === 0) return 0;
+  return (budget.lines.length - budget.missing.length) / budget.lines.length;
+}
+
+/**
+ * Below this share of the month, the total is not a total.
+ *
+ * Two thirds. Chosen from what the number actually does to a reader rather
+ * than from anything statistical: with a third of the month unpriced you
+ * are looking at a figure that is wrong by an amount you can reason about,
+ * and below that you are looking at a subtotal wearing a headline.
+ */
+export const MEANINGFUL_PRICED_SHARE = 2 / 3;
+
+/**
+ * May this total be shown as the answer to "what does a month cost"?
+ *
+ * PRODUCTION FOUND THIS, NOT A TEST.
+ *
+ * Reading the live data back through the engine produced a headline of
+ * "73 – 120 GEL" for a month in Tbilisi, from the two categories that are
+ * priced: a transport pass and an internet package. Every caveat was on
+ * the screen — 2 of 17 priced, fifteen gaps listed by name — and none of
+ * them competes with a number set in 36px at the top of the panel.
+ *
+ * A reader who glances and leaves has been told that a month in Tbilisi
+ * costs about a hundred lari. That is not a caveat problem, it is a
+ * hierarchy problem, and the fix is not more warning text: it is that a
+ * figure this partial must not hold the headline at all. Below the
+ * threshold the UI leads with the coverage and demotes the sum to what it
+ * actually is, which is the cost of the lines we can price.
+ */
+export function totalIsMeaningful(budget: MonthlyBudget): boolean {
+  return pricedShare(budget) >= MEANINGFUL_PRICED_SHARE;
+}
+
 /**
  * The share of the month one category takes, at the midpoint.
  *

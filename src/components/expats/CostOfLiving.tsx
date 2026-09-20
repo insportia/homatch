@@ -30,7 +30,9 @@ import {
   annualise,
   housingShare,
   monthlyBudget,
+  pricedShare,
   spreadRatio,
+  totalIsMeaningful,
   type BudgetLine,
   type CostCategory,
   type MonthlyBudget,
@@ -98,6 +100,17 @@ export function CostOfLiving({
   const housing = housingShare(budget);
   const year = annualise(budget);
   const priced = budget.lines.length - budget.missing.length;
+  /*
+   * Whether the sum may hold the headline at all.
+   *
+   * Production had two of seventeen categories priced and this panel led
+   * with "73 – 120 GEL" for a month in Tbilisi. Every caveat was on the
+   * screen and none of them competes with a number that size. Below the
+   * threshold the coverage becomes the headline and the sum is demoted to
+   * what it is: the cost of the lines we can price.
+   */
+  const meaningful = totalIsMeaningful(budget);
+  const share = Math.round(pricedShare(budget) * 100);
 
   return (
     <section
@@ -138,32 +151,63 @@ export function CostOfLiving({
         ))}
       </div>
 
-      {/* The answer, before the detail. A reader who wants the number and
-          nothing else should not have to scroll past seventeen rows. */}
-      <div className="mb-6 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/40 p-5">
-        <p className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
-          {t('expat_col_total_label')}
-        </p>
-        <p
-          data-expat-budget-total
-          className="mt-1 font-display text-3xl font-semibold text-foreground sm:text-4xl"
-        >
-          {budget.low === budget.high
-            ? money(budget.low)
-            : `${money(budget.low)} – ${money(budget.high)}`}
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t('expat_col_total_year', { low: money(year.low), high: money(year.high) })}
-        </p>
+      {/* The answer, before the detail — but only when it IS the answer. */}
+      <div
+        data-expat-budget-panel={meaningful ? 'total' : 'partial'}
+        className="mb-6 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]/40 p-5"
+      >
+        {meaningful ? (
+          <>
+            <p className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
+              {t('expat_col_total_label')}
+            </p>
+            <p
+              data-expat-budget-total
+              className="mt-1 font-display text-3xl font-semibold text-foreground sm:text-4xl"
+            >
+              {budget.low === budget.high
+                ? money(budget.low)
+                : `${money(budget.low)} – ${money(budget.high)}`}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t('expat_col_total_year', { low: money(year.low), high: money(year.high) })}
+            </p>
+          </>
+        ) : (
+          <>
+            {/* The coverage IS the headline. The sum is below it, in body
+                size, described as a subtotal rather than as a month. */}
+            <p className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
+              {t('expat_col_partial_label')}
+            </p>
+            <p
+              data-expat-budget-partial
+              className="mt-1 font-display text-2xl font-semibold text-foreground sm:text-3xl"
+            >
+              {t('expat_col_partial_headline', { priced, total: budget.lines.length, percent: share })}
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {t('expat_col_partial_body')}
+            </p>
+            <p className="mt-3 text-sm text-foreground">
+              {t('expat_col_partial_subtotal', {
+                amount:
+                  budget.low === budget.high
+                    ? money(budget.low)
+                    : `${money(budget.low)} – ${money(budget.high)}`,
+              })}
+            </p>
+          </>
+        )}
 
-        {spread >= 1.8 ? (
+        {meaningful && spread >= 1.8 ? (
           <p className="mt-3 flex items-start gap-2 text-2xs text-muted-foreground">
             <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
             {t('expat_col_wide_spread')}
           </p>
         ) : null}
 
-        {housing !== null ? (
+        {meaningful && housing !== null ? (
           <p className="mt-2 text-2xs text-muted-foreground">
             {t('expat_col_housing_share', { percent: Math.round(housing * 100) })}
           </p>

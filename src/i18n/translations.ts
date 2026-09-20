@@ -8695,6 +8695,12 @@ const en = {
 
   /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
   expat_breadcrumb_aria: 'Breadcrumb',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_col_partial_label: 'Coverage',
+  expat_col_partial_headline: 'We can price {{priced}} of {{total}} categories',
+  expat_col_partial_body: 'That is too little of a month to call anything a monthly cost, so we are not going to show you one. Add your own figures below and the total becomes yours rather than ours.',
+  expat_col_partial_subtotal: 'The lines we can price come to {{amount}}',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17308,6 +17314,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
   expat_breadcrumb_aria: 'ნავიგაციის ბილიკი',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_col_partial_label: 'დაფარვა',
+  expat_col_partial_headline: '{{total}} კატეგორიიდან {{priced}}-ის ფასი ვიცით',
+  expat_col_partial_body: 'ეს თვის იმდენად მცირე ნაწილია, რომ ვერაფერს დავარქმევთ თვიურ ხარჯს, ამიტომ არც გაჩვენებთ. ჩაწერეთ ქვემოთ თქვენი ციფრები და ჯამი თქვენი გახდება და არა ჩვენი.',
+  expat_col_partial_subtotal: 'ხაზები, რომელთა ფასიც ვიცით, ჯამში {{amount}}',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -25912,6 +25924,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
   expat_breadcrumb_aria: 'Хлебные крошки',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_col_partial_label: 'Охват',
+  expat_col_partial_headline: 'Мы можем оценить {{priced}} категорий из {{total}}',
+  expat_col_partial_body: 'Это слишком малая часть месяца, чтобы называть что-либо месячными расходами, поэтому мы их и не показываем. Впишите ниже свои цифры — и итог станет вашим, а не нашим.',
+  expat_col_partial_subtotal: 'Строки, которые мы можем оценить, дают {{amount}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -34514,6 +34532,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
   expat_breadcrumb_aria: 'Gezinti izi',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_col_partial_label: 'Kapsam',
+  expat_col_partial_headline: '{{total}} kalemden {{priced}} tanesini fiyatlayabiliyoruz',
+  expat_col_partial_body: 'Bu, herhangi bir şeye aylık gider demek için ayın çok küçük bir kısmı; o yüzden size bir tutar göstermiyoruz. Aşağıya kendi rakamlarınızı girin, toplam bizim değil sizin olsun.',
+  expat_col_partial_subtotal: 'Fiyatlayabildiğimiz kalemler {{amount}} tutuyor',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -43116,6 +43140,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
   expat_breadcrumb_aria: 'مسار التنقل',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_col_partial_label: 'التغطية',
+  expat_col_partial_headline: 'نستطيع تسعير {{priced}} من {{total}} فئة',
+  expat_col_partial_body: 'هذا جزء من الشهر أصغر من أن نسمّي معه شيئاً تكلفة شهرية، لذلك لن نعرض عليك واحدة. أدخل أرقامك أدناه ليصبح المجموع مجموعك لا مجموعنا.',
+  expat_col_partial_subtotal: 'البنود التي نستطيع تسعيرها تبلغ {{amount}}',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -51718,6 +51748,12 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
   expat_breadcrumb_aria: 'נתיב ניווט',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_col_partial_label: 'כיסוי',
+  expat_col_partial_headline: 'אנחנו יכולים לתמחר {{priced}} מתוך {{total}} קטגוריות',
+  expat_col_partial_body: 'זה חלק קטן מדי מהחודש מכדי לקרוא למשהו עלות חודשית, ולכן לא נציג לכם אחת. הזינו למטה מספרים משלכם והסכום יהיה שלכם ולא שלנו.',
+  expat_col_partial_subtotal: 'השורות שאנחנו יכולים לתמחר מסתכמות ב־{{amount}}',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

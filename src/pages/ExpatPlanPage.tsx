@@ -106,11 +106,39 @@ export default function ExpatPlanPage() {
   if (status === 'UNAUTHENTICATED') {
     return <Navigate to="/auth/login?next=/for-expats/plan" replace />;
   }
+  /*
+   * WHILE THE SESSION IS STILL RESOLVING, THE PAGE STILL SAYS WHAT IT IS.
+   *
+   * This used to be a bare pulsing rectangle, and the mobile sweep caught
+   * it as "rendered nothing" at 320px — which is exactly what a person on
+   * a slow connection saw: an untitled grey box with no indication of
+   * where they were or that anything was coming. A skeleton is a promise
+   * that content is arriving, and a skeleton with no heading does not
+   * make that promise to anybody, including a screen reader.
+   *
+   * The header is bundle-only and needs no data, so it renders straight
+   * away and only the plan itself waits.
+   */
   if (status === 'UNKNOWN' || !userId) {
     return (
-      <div className="mx-auto w-full max-w-[64rem] px-5 py-16">
-        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
-      </div>
+      <>
+        <PageMeta title={t('expat_plan_meta_title')} description={t('expat_plan_meta_description')} />
+        <div className="mx-auto w-full max-w-[64rem] px-5 py-12 sm:py-16">
+          <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
+            {t('expat_plan_eyebrow')}
+          </p>
+          <h1 className="font-display text-3xl font-semibold text-foreground sm:text-4xl">
+            {t('expat_plan_title')}
+          </h1>
+          <p className="mt-3 max-w-[56ch] text-sm leading-relaxed text-muted-foreground">
+            {t('expat_plan_loading')}
+          </p>
+          <div aria-hidden="true" className="mt-8 space-y-3">
+            <div className="h-24 animate-pulse rounded-2xl bg-muted" />
+            <div className="h-40 animate-pulse rounded-2xl bg-muted" />
+          </div>
+        </div>
+      </>
     );
   }
 

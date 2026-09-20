@@ -222,14 +222,17 @@ function AffordabilityCard({
             {money(pricePerSqm.low)} – {money(pricePerSqm.high)}
           </dd>
         </div>
+        {/* Two labelled numbers rather than a sentence. `t()` substitutes
+            and does not inflect, so "1 sources" is what a sentence gives
+            you, and teaching six languages to pluralise for one line is
+            the wrong trade when a column of figures reads better. */}
         <div className="flex justify-between gap-3">
-          <dt>{t('expat_wcib_sample')}</dt>
-          <dd className="tabular-nums">
-            {t('expat_wcib_sample_value', {
-              comparables: reading.sampleCount,
-              sources: reading.sourceCount,
-            })}
-          </dd>
+          <dt>{t('expat_wcib_comparables')}</dt>
+          <dd className="tabular-nums text-foreground">{reading.sampleCount}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt>{t('expat_wcib_sources')}</dt>
+          <dd className="tabular-nums text-foreground">{reading.sourceCount}</dd>
         </div>
         {observed ? (
           <div className="flex justify-between gap-3">

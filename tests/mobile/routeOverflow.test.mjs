@@ -52,6 +52,13 @@ const ROUTES = [
   { path: '/verify', name: 'verify centre', auth: true },
   { path: '/mortgage', name: 'mortgage' },
   { path: '/investment', name: 'investment' },
+  /* FOR EXPATS. Public like its two neighbours, and the one most likely
+     to overflow: Georgian nav words are long and unhyphenated, and the
+     market cards carry a currency range and a comparable count on one
+     row. The plan is auth-gated. */
+  { path: '/for-expats/georgia', name: 'for expats' },
+  { path: '/for-expats/georgia/residence-permits', name: 'for expats topic' },
+  { path: '/for-expats/plan', name: 'my expat plan', auth: true },
   { path: '/pricing', name: 'pricing' },
   { path: '/developers', name: 'developers' },
   { path: '/dashboard', name: 'dashboard', auth: true },
@@ -354,7 +361,12 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
   }
 
   /* 2. A representative spread across the remaining widths, in English. */
-  const SPREAD = ROUTES.filter((r) => ['/', '/dashboard', '/ai', '/verify', '/outreach/email'].includes(r.path));
+  /* FOR EXPATS is in the spread, not just the 320/ka pass, because it is
+     the one product written for people who will read it in Arabic and
+     Hebrew — and because its market cards put a currency range and two
+     counts on one row, which is where a mirrored layout overflows. */
+  const SPREAD = ROUTES.filter((r) =>
+    ['/', '/dashboard', '/ai', '/verify', '/outreach/email', '/for-expats/georgia'].includes(r.path));
   for (const route of SPREAD) {
     for (const width of WIDTHS.filter((w) => w !== 320)) {
       const r = await measure(route, width, 'en');

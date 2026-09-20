@@ -133,8 +133,8 @@ export const EXPAT_STRINGS_2 = {
   ],
   expat_wcib_typical: ['About {{area}} at the middle of the range', 'დიაპაზონის შუაში დაახლოებით {{area}}', 'Около {{area}} в середине диапазона', 'Aralığın ortasında yaklaşık {{area}}', 'نحو {{area}} في وسط النطاق', 'כ־{{area}} באמצע הטווח'],
   expat_wcib_observed_psm: ['Observed per m²', 'დაკვირვებული კვ.მ-ზე', 'Наблюдалось за м²', 'Gözlemlenen m² fiyatı', 'المرصود لكل م²', 'שנצפה למ"ר'],
-  expat_wcib_sample: ['Evidence', 'მტკიცებულება', 'Данные', 'Kanıt', 'الأدلة', 'ראיות'],
-  expat_wcib_sample_value: ['{{comparables}} comparables, {{sources}} sources', '{{comparables}} შესადარი, {{sources}} წყარო', '{{comparables}} сопоставимых, источников: {{sources}}', '{{comparables}} emsal, {{sources}} kaynak', '{{comparables}} مقارنة، {{sources}} مصادر', '{{comparables}} השוואות, {{sources}} מקורות'],
+  expat_wcib_comparables: ['Comparables', 'შესადარი ობიექტები', 'Сопоставимых', 'Emsaller', 'العقارات المقارنة', 'נכסים להשוואה'],
+  expat_wcib_sources: ['Sources', 'წყაროები', 'Источников', 'Kaynaklar', 'المصادر', 'מקורות'],
   expat_wcib_read_on: ['Read on', 'წაკითხულია', 'Прочитано', 'Okunma', 'قُرئ في', 'נקרא בתאריך'],
   expat_wcib_basis_project: [
     'From one development ({{project}}), not a district average',

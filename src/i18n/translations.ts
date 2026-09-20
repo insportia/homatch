@@ -8498,8 +8498,6 @@ const en = {
   expat_wcib_no_readings: 'Homatch has not read this market yet, so there is nothing here to show you. That is about our coverage, not about the city.',
   expat_wcib_typical: 'About {{area}} at the middle of the range',
   expat_wcib_observed_psm: 'Observed per m²',
-  expat_wcib_sample: 'Evidence',
-  expat_wcib_sample_value: '{{comparables}} comparables, {{sources}} sources',
   expat_wcib_read_on: 'Read on',
   expat_wcib_basis_project: 'From one development ({{project}}), not a district average',
   expat_wcib_basis_district: 'A district-wide reading',
@@ -8701,6 +8699,13 @@ const en = {
   expat_col_partial_headline: 'We can price {{priced}} of {{total}} categories',
   expat_col_partial_body: 'That is too little of a month to call anything a monthly cost, so we are not going to show you one. Add your own figures below and the total becomes yours rather than ours.',
   expat_col_partial_subtotal: 'The lines we can price come to {{amount}}',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_wcib_comparables: 'Comparables',
+  expat_wcib_sources: 'Sources',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_plan_loading: 'Opening your plan.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17117,8 +17122,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   expat_wcib_no_readings: 'Homatch-ს ეს ბაზარი ჯერ არ წაუკითხავს, ამიტომ საჩვენებელი არაფერია. ეს ჩვენს დაფარვაზეა და არა ქალაქზე.',
   expat_wcib_typical: 'დიაპაზონის შუაში დაახლოებით {{area}}',
   expat_wcib_observed_psm: 'დაკვირვებული კვ.მ-ზე',
-  expat_wcib_sample: 'მტკიცებულება',
-  expat_wcib_sample_value: '{{comparables}} შესადარი, {{sources}} წყარო',
   expat_wcib_read_on: 'წაკითხულია',
   expat_wcib_basis_project: 'ერთი პროექტიდან ({{project}}) და არა უბნის საშუალო',
   expat_wcib_basis_district: 'უბნის მასშტაბის მაჩვენებელი',
@@ -17320,6 +17323,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   expat_col_partial_headline: '{{total}} კატეგორიიდან {{priced}}-ის ფასი ვიცით',
   expat_col_partial_body: 'ეს თვის იმდენად მცირე ნაწილია, რომ ვერაფერს დავარქმევთ თვიურ ხარჯს, ამიტომ არც გაჩვენებთ. ჩაწერეთ ქვემოთ თქვენი ციფრები და ჯამი თქვენი გახდება და არა ჩვენი.',
   expat_col_partial_subtotal: 'ხაზები, რომელთა ფასიც ვიცით, ჯამში {{amount}}',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_wcib_comparables: 'შესადარი ობიექტები',
+  expat_wcib_sources: 'წყაროები',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_plan_loading: 'იხსნება თქვენი გეგმა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -25727,8 +25737,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   expat_wcib_no_readings: 'Homatch пока не читал этот рынок, поэтому показывать нечего. Это о нашем охвате, а не о городе.',
   expat_wcib_typical: 'Около {{area}} в середине диапазона',
   expat_wcib_observed_psm: 'Наблюдалось за м²',
-  expat_wcib_sample: 'Данные',
-  expat_wcib_sample_value: '{{comparables}} сопоставимых, источников: {{sources}}',
   expat_wcib_read_on: 'Прочитано',
   expat_wcib_basis_project: 'По одному комплексу ({{project}}), а не средняя по району',
   expat_wcib_basis_district: 'Показатель по всему району',
@@ -25930,6 +25938,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   expat_col_partial_headline: 'Мы можем оценить {{priced}} категорий из {{total}}',
   expat_col_partial_body: 'Это слишком малая часть месяца, чтобы называть что-либо месячными расходами, поэтому мы их и не показываем. Впишите ниже свои цифры — и итог станет вашим, а не нашим.',
   expat_col_partial_subtotal: 'Строки, которые мы можем оценить, дают {{amount}}',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_wcib_comparables: 'Сопоставимых',
+  expat_wcib_sources: 'Источников',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_plan_loading: 'Открываем ваш план.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -34335,8 +34350,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   expat_wcib_no_readings: 'Homatch bu piyasayı henüz okumadı, bu yüzden gösterecek bir şey yok. Bu bizim kapsamımızla ilgili, şehirle değil.',
   expat_wcib_typical: 'Aralığın ortasında yaklaşık {{area}}',
   expat_wcib_observed_psm: 'Gözlemlenen m² fiyatı',
-  expat_wcib_sample: 'Kanıt',
-  expat_wcib_sample_value: '{{comparables}} emsal, {{sources}} kaynak',
   expat_wcib_read_on: 'Okunma',
   expat_wcib_basis_project: 'Tek bir projeden ({{project}}), semt ortalaması değil',
   expat_wcib_basis_district: 'Semt genelinde bir okuma',
@@ -34538,6 +34551,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   expat_col_partial_headline: '{{total}} kalemden {{priced}} tanesini fiyatlayabiliyoruz',
   expat_col_partial_body: 'Bu, herhangi bir şeye aylık gider demek için ayın çok küçük bir kısmı; o yüzden size bir tutar göstermiyoruz. Aşağıya kendi rakamlarınızı girin, toplam bizim değil sizin olsun.',
   expat_col_partial_subtotal: 'Fiyatlayabildiğimiz kalemler {{amount}} tutuyor',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_wcib_comparables: 'Emsaller',
+  expat_wcib_sources: 'Kaynaklar',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_plan_loading: 'Planınız açılıyor.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -42943,8 +42963,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   expat_wcib_no_readings: 'لم يقرأ Homatch هذا السوق بعد، فلا شيء لنعرضه. وهذا يخص تغطيتنا لا المدينة.',
   expat_wcib_typical: 'نحو {{area}} في وسط النطاق',
   expat_wcib_observed_psm: 'المرصود لكل م²',
-  expat_wcib_sample: 'الأدلة',
-  expat_wcib_sample_value: '{{comparables}} مقارنة، {{sources}} مصادر',
   expat_wcib_read_on: 'قُرئ في',
   expat_wcib_basis_project: 'من مشروع واحد ({{project}})، لا متوسط الحي',
   expat_wcib_basis_district: 'قراءة على مستوى الحي',
@@ -43146,6 +43164,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   expat_col_partial_headline: 'نستطيع تسعير {{priced}} من {{total}} فئة',
   expat_col_partial_body: 'هذا جزء من الشهر أصغر من أن نسمّي معه شيئاً تكلفة شهرية، لذلك لن نعرض عليك واحدة. أدخل أرقامك أدناه ليصبح المجموع مجموعك لا مجموعنا.',
   expat_col_partial_subtotal: 'البنود التي نستطيع تسعيرها تبلغ {{amount}}',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_wcib_comparables: 'العقارات المقارنة',
+  expat_wcib_sources: 'المصادر',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_plan_loading: 'يجري فتح خطتك.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -51551,8 +51576,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   expat_wcib_no_readings: 'Homatch עדיין לא קרא את השוק הזה, ולכן אין מה להציג. זה נוגע לכיסוי שלנו ולא לעיר.',
   expat_wcib_typical: 'כ־{{area}} באמצע הטווח',
   expat_wcib_observed_psm: 'שנצפה למ"ר',
-  expat_wcib_sample: 'ראיות',
-  expat_wcib_sample_value: '{{comparables}} השוואות, {{sources}} מקורות',
   expat_wcib_read_on: 'נקרא בתאריך',
   expat_wcib_basis_project: 'מפרויקט אחד ({{project}}), לא ממוצע שכונתי',
   expat_wcib_basis_district: 'קריאה ברמת השכונה',
@@ -51754,6 +51777,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   expat_col_partial_headline: 'אנחנו יכולים לתמחר {{priced}} מתוך {{total}} קטגוריות',
   expat_col_partial_body: 'זה חלק קטן מדי מהחודש מכדי לקרוא למשהו עלות חודשית, ולכן לא נציג לכם אחת. הזינו למטה מספרים משלכם והסכום יהיה שלכם ולא שלנו.',
   expat_col_partial_subtotal: 'השורות שאנחנו יכולים לתמחר מסתכמות ב־{{amount}}',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_wcib_comparables: 'נכסים להשוואה',
+  expat_wcib_sources: 'מקורות',
+
+  /* ── HOMATCH FOR EXPATS ────────────────────────────────────────── */
+  expat_plan_loading: 'פותחים את התוכנית שלכם.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

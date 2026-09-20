@@ -10,30 +10,26 @@
  * no synthesis, no credits, no model. It is the market-discovery path only.
  *
  *   node --experimental-strip-types tools/marketDiscoveryProbe.mjs
- *   node --experimental-strip-types tools/marketDiscoveryProbe.mjs --live
  *
- * ── WHAT --live MEANS, AND WHY IT IS NOT THE DEFAULT ─────────────────
+ * ── THERE IS NO LIVE MODE HERE ─────────────────────────────
  *
- * --live routes the search lane at supabase/functions/dataforseo-search, which
- * is currently held behind a deliberate kill switch and answers HTTP 423. The
- * probe reports that lock as PROVIDER_LOCKED. It does not bypass it, does not
- * read vendor credentials, and has no override flag.
+ * This replays `tools/fixtures/krtsanisiHarvest.json` — raw search-engine
+ * output recorded on 2026-09-20 — so that extraction, address resolution,
+ * project identity and tiering stay proven against real index text. The rows
+ * are evidence; every transformation below is the production code.
  *
- * The default runs the engine over `tools/fixtures/krtsanisiHarvest.json` —
- * raw search-engine output recorded on 2026-09-20 across Georgian, English and
- * Russian formulations. The rows are evidence; every piece of discovery,
- * extraction, address resolution, project identity and tiering below is the
- * production code doing the work.
+ * It cannot reach a search provider, and it once could. Market discovery does
+ * not use one, and a tool that kept the ability would be the first place that
+ * dependency grew back.
+ *
+ * The LIVE code-only discovery path is tools/codeDiscoveryProbe.mjs.
  */
 import { readFileSync } from 'node:fs';
 import { buildDiscoveryPlan, localQueries } from '../src/research-core/market/discoveryPlan.ts';
 import { runDiscovery } from '../src/research-core/market/discoveryRun.ts';
 import { harvestProvider } from '../src/research-core/market/searchProviders.ts';
-import { dataForSeoProvider } from './providers/dataForSeoSearch.ts';
 import { classifyDomain } from '../src/research-core/market/discoverySources.ts';
 import { TIER_ORDER, LOCAL_TIERS } from '../src/research-core/market/geoTier.ts';
-
-const LIVE = process.argv.includes('--live');
 
 const SUBJECT = {
   project: 'Villion',
@@ -70,32 +66,22 @@ for (const q of plan.slice(0, 6)) console.log(`   [${q.precision}/${q.language}]
  * The provider                                                        *
  * ------------------------------------------------------------------ */
 
-let provider;
-let executedPlan = plan;
-
-if (LIVE) {
-  const functionsUrl = process.env.SUPABASE_FUNCTIONS_URL ?? '';
-  if (!functionsUrl) {
-    console.error('\n--live needs SUPABASE_FUNCTIONS_URL. Refusing to guess a host.');
-    process.exit(2);
-  }
-  provider = dataForSeoProvider({
-    functionsUrl,
-    authorization: process.env.SUPABASE_ANON_KEY ? `Bearer ${process.env.SUPABASE_ANON_KEY}` : null,
-  });
-} else {
-  const harvest = JSON.parse(
-    readFileSync(new URL('./fixtures/krtsanisiHarvest.json', import.meta.url), 'utf8'),
-  );
-  provider = harvestProvider(harvest.results, 'HARVEST_2026-09-20');
-  /*
-   * The formulations that were actually executed against the index, in the
-   * order they were run. Replaying the full generated plan against a recorded
-   * harvest would count queries nobody asked as queries that returned nothing,
-   * and NOT_DISCOVERED must mean "asked, and empty".
-   */
-  executedPlan = harvest.queries;
-}
+/*
+ * REGRESSION ONLY, AND DELIBERATELY OFFLINE.
+ *
+ * This probe replays a recorded harvest through the search-shaped engine so
+ * the extraction, address resolution, project identity and tiering stay
+ * proven. It has no live mode: market discovery does not use a search
+ * provider, and a tool that could still reach one would be the first place
+ * that dependency grew back.
+ *
+ * The LIVE code-only path is tools/codeDiscoveryProbe.mjs.
+ */
+const harvest = JSON.parse(
+  readFileSync(new URL('./fixtures/krtsanisiHarvest.json', import.meta.url), 'utf8'),
+);
+const provider = harvestProvider(harvest.results, 'HARVEST_2026-09-20');
+const executedPlan = harvest.queries;
 
 const report = await runDiscovery({
   plan: executedPlan,

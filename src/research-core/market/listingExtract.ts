@@ -183,9 +183,28 @@ export function fromPageText(
    * marked. The smaller of two plausible values is the rate: no Tbilisi flat
    * costs less per square metre than in total.
    */
-  const area = areas.length ? areas[0] : null;
+  /*
+   * SANITY BANDS, BECAUSE A CATEGORY PAGE IS NOT A LISTING.
+   *
+   * Reading a page that lists twenty flats mixes their numbers together. The
+   * live crawl produced „3,457 m² at $40/m²" from one such page and put it in
+   * a same-street median — a number no source published, assembled out of two
+   * that were never about each other.
+   *
+   * These are deliberately wide: a genuine Tbilisi apartment is under 1,000 m²
+   * and its rate is not two digits. Anything outside that is an artefact of
+   * reading a list as though it were a record, so the FIELD is dropped while
+   * the observation is kept — an address on this street is still evidence that
+   * the street has inventory, and it is then counted as a locator rather than
+   * as a priced comparable.
+   */
+  const MAX_RESIDENTIAL_SQM = 1_000;
+  const MIN_RATE = 150;
+  const areasSane = areas.filter((a) => a <= MAX_RESIDENTIAL_SQM);
+  const area = areasSane.length ? areasSane[0] : null;
   const sorted = [...new Set(prices)].sort((a, b) => a - b);
-  const perSqm = sorted.length ? sorted[0] : null;
+  const rateCandidate = sorted.find((p) => p >= MIN_RATE) ?? null;
+  const perSqm = rateCandidate;
   const total = sorted.length > 1 ? sorted[sorted.length - 1] : null;
 
   return {

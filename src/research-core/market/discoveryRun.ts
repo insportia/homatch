@@ -282,12 +282,28 @@ export function tierOfDiscovered(
   const metres = distanceMetres(listing, subject);
   if (metres !== null && metres <= MICROLOCATION_M) return 'TIER_3_NEARBY_MICROLOCATION';
 
-  const haystack = `${addr} ${listing.title ?? ''}`.toLocaleLowerCase();
+  /*
+   * A NAME THAT MENTIONS THE STREET IS NOT AN ADDRESS ON IT.
+   *
+   * This searched the address AND the title together, so „Terrametric
+   * Krtsanisi" at ნადიკვარის ქუჩა 34 was placed on Krtsanisi Street, and
+   * „Krtsanisi Modern" on Gorgasali St with it. Developers name projects after
+   * the district constantly; the whole reason matchesProject refuses a bare
+   * name is that a name is not a location, and the same rule has to hold here.
+   *
+   * The street fallback reads the ADDRESS only. A project name carrying the
+   * district supports the district, which is what it actually evidences.
+   */
+  const addressOnly = addr.toLocaleLowerCase();
+  for (const hint of subject.streetHints) {
+    // The street named without a number is still this street.
+    if (hint && addressOnly.includes(hint.toLocaleLowerCase())) return 'TIER_2_SAME_STREET';
+  }
+  const haystack = `${addr} ${listing.title ?? ''} ${listing.project ?? ''}`.toLocaleLowerCase();
   const district = (subject.district ?? '').toLocaleLowerCase().trim();
   if (district && haystack.includes(district)) return 'TIER_4_DISTRICT';
   for (const hint of subject.streetHints) {
-    // The street named without a number is still this street.
-    if (hint && haystack.includes(hint.toLocaleLowerCase())) return 'TIER_2_SAME_STREET';
+    if (hint && haystack.includes(hint.toLocaleLowerCase())) return 'TIER_4_DISTRICT';
   }
   return 'TIER_5_CITY';
 }

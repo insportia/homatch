@@ -237,11 +237,10 @@ test('the core is consumed only through its deliberate integration points', () =
      * discovery function was built entirely on bought SERP calls, which is
      * why it has no capability today.
      *
-     * So WHO answers lives out here, where a cost decision belongs. These
-     * four files hold the adapter onto the web_search capability Verify
-     * already funds, the cache that stops a street being bought twice, its
-     * binding to research_cache, and the translation of a ResearchSeed into
-     * the geography the resolver needs. None of them implements a statistic,
+     * So HOW the public web is reached lives out here. These two files hold
+     * the plain HTTP fetcher the crawler drives, and the translation of a
+     * ResearchSeed into the geography the resolver needs. Neither implements a
+     * statistic,
      * a tier, an extractor or a fetch path, and none touches HttpClient,
      * NetworkPolicy or any flow-control primitive — all of that stays behind
      * createPortalRuntime and runMarketLane, exactly as before.
@@ -249,10 +248,8 @@ test('the core is consumed only through its deliberate integration points', () =
      * If an extractor or a tier ever appears in one of these, the seam has
      * stopped being a seam.
      */
-    'src/verify/search/openAiSearchProvider.ts',
-    'src/verify/search/searchCache.ts',
-    'src/verify/search/supabaseSearchCache.ts',
     'src/verify/search/subjectGeo.ts',
+    'src/verify/search/httpCrawlFetcher.ts',
     'src/verify/__tests__/marketDiscoveryWiring.test.mjs',
   ]);
 

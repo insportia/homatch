@@ -32,10 +32,10 @@ import { summariseSources } from '../../../src/verify/intelligence/sourceVersion
 import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
 import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
-import { openAiSearchProvider } from '../../../src/verify/search/openAiSearchProvider.ts';
-import { cachingSearchProvider } from '../../../src/verify/search/searchCache.ts';
-import { supabaseSearchCache } from '../../../src/verify/search/supabaseSearchCache.ts';
 import { subjectGeoFromSeed } from '../../../src/verify/search/subjectGeo.ts';
+import { httpCrawlFetcher } from '../../../src/verify/search/httpCrawlFetcher.ts';
+import { buildCodeDiscoverySeeds } from '../../../src/research-core/market/codeDiscoveryTargets.ts';
+import { SEED_DOMAINS } from '../../../src/research-core/market/discoverySources.ts';
 import { computeSections } from '../../../src/verify/sections.ts';
 import { portalHealthUpdates, mergeSourceRow } from '../../../src/verify/sourceHealth.ts';
 import {
@@ -4256,84 +4256,57 @@ async function planMarketFor(db: any, known: any, plan: any): Promise<any | null
  * costs its own slot and nothing else.
  */
 /*
- * THE SEARCH-ENGINE DISCOVERY LANE, BUILT IN ONE PLACE.
+ * THE CODE-ONLY DISCOVERY LANE, BUILT IN ONE PLACE.
  *
  * The portal lane asks portals it already knows, by district id, in one
  * language — which is why Villion returned 30 city-wide comparables and zero
- * on its own street while myhome.ge, korter.ge, ss.ge and estatehub.ge were all
- * publicly advertising inventory on it. A registry cannot find a source nobody
- * registered, and a portal that answers 403 to a crawler looks to it exactly
- * like a portal with no inventory.
+ * on its own street while korter.ge, villion.ge, estatemarket.ge and
+ * myhomesale.ge were all publicly advertising inventory on it.
  *
- * So discovery also asks the public index, through the web_search capability
- * this pipeline already funds and uses for its research stages. No second
- * search architecture and no new vendor: DataForSEO stays behind its kill
- * switch and is never called from here.
+ * Discovery now reaches the rest of the public web WITHOUT a search provider.
+ * robots.txt names each source's sitemaps, the sitemaps name its pages, the
+ * street name filters those to this street, and JSON-LD and the DOM turn the
+ * survivors into records. korter.ge's own sitemap is how the subject building
+ * was found; no SERP API and no model was involved in finding it.
+ *
+ * There is no paid search dependency here by design: no DataForSEO, no
+ * web_search, no SERP vendor. AI sees the finished dataset and not one moment
+ * earlier, because a model asked to find listings will write listings.
  *
  * Factored out because the diagnostic probe below must run the SAME path a
- * customer's verification runs. A probe that built its own provider would
- * prove only that the probe works.
+ * customer's verification runs. A probe that built its own crawler would prove
+ * only that the probe works.
  */
-function discoveryInputsFor(db: any, seed: any, diagnostics?: any[]) {
+function discoveryInputsFor(_db: any, seed: any) {
   const subjectGeo = subjectGeoFromSeed(seed);
-  const key = Deno.env.get('OPENAI_API_KEY');
-  const model = Deno.env.get('OPENAI_DISCOVERY_MODEL')
-    || Deno.env.get('OPENAI_FAST_MODEL')
-    || 'gpt-5.6-luna';
+  if (!subjectGeo) return { subjectGeo: null, codeDiscovery: null };
 
+  const subject = {
+    ...subjectGeo,
+    streetStem: seed?.location?.address?.value ?? null,
+    streetNumber: null,
+    countryCode: seed?.location?.countryCode?.value ?? 'GE',
+  };
   return {
     subjectGeo,
-    /*
-     * Wrapped in the cache because a street is verified more than once. The
-     * next flat on Krtsanisi inherits this street's evidence instead of buying
-     * it again, which is what makes a wider search affordable at all.
-     */
-    search: subjectGeo && key
-      ? cachingSearchProvider(
-        openAiSearchProvider({
-          apiKey: key,
-          model,
-          resultsPerQuery: 10,
-          /*
-           * Collected ONLY when a caller asks for them — the probe does, a
-           * customer's verification does not. A run that discovered nothing
-           * has to be able to say where it lost everything: the request
-           * failed, the tool never searched, it searched and cited nothing, or
-           * it cited pages the model declined to transcribe. Four defects,
-           * four fixes, and one zero tells them apart from none of them.
-           */
-          onCall: diagnostics ? (d: any) => diagnostics.push(d) : undefined,
-        }),
-        supabaseSearchCache(db),
-      )
-      : null,
-    /*
-     * THE PER-PROPERTY SEARCH BUDGET.
-     *
-     * The planner emits 156 formulations for a subject like this one; running
-     * them all would bill 156 searches for one verification. The bands are
-     * climbed narrowest-first and stop as soon as the local question is
-     * answered, and this is the hard ceiling underneath that — so a property
-     * whose street genuinely has nothing cannot escalate into a full-price
-     * city-wide sweep.
-     *
-     * 16 because of what the plan actually contains for a subject like this:
-     * after deduplication the core three languages hold 4 BUILDING
-     * formulations and 18 STREET ones. A ceiling of 12 would cut the STREET
-     * band in half — and stopping mid-band is the one thing the staged
-     * widening is written not to do, because the unasked half then reads as an
-     * absence it was never given the chance to contradict. 16 lets the
-     * building and most of the street be asked; `enoughLocalEvidence` ends it
-     * far sooner whenever the street actually answers.
-     */
-    maxDiscoveryQueries: Number(Deno.env.get('MARKET_DISCOVERY_MAX_QUERIES') || 16),
-    enoughLocalEvidence: 8,
-    /*
-     * And a clock, because this runs inside the verification's own timeout.
-     * Sixteen sequential searches can outlast the function; a lane that
-     * overran would not thin a report, it would kill the one being produced.
-     */
-    discoveryBudgetMs: Number(Deno.env.get('MARKET_DISCOVERY_BUDGET_MS') || 90_000),
+    codeDiscovery: {
+      subject,
+      seeds: buildCodeDiscoverySeeds(subject, Object.keys(SEED_DOMAINS)),
+      /*
+       * BUDGETS, BECAUSE THIS RUNS INSIDE A VERIFICATION'S OWN TIMEOUT.
+       *
+       * A crawl that overran would not thin a report, it would kill the
+       * function producing one. The run ends on its own clock and keeps
+       * whatever it already found.
+       */
+      budget: {
+        maxPages: Number(Deno.env.get('MARKET_DISCOVERY_MAX_PAGES') || 40),
+        maxPagesPerDomain: Number(Deno.env.get('MARKET_DISCOVERY_PAGES_PER_DOMAIN') || 8),
+        maxDepth: 2,
+        deadlineMs: Number(Deno.env.get('MARKET_DISCOVERY_BUDGET_MS') || 60_000),
+        enoughLocal: 15,
+      },
+    },
   };
 }
 
@@ -4376,6 +4349,7 @@ async function runVerifyMarketLane(db: any, job: any, result: any): Promise<Mark
     budgetMs: 20_000,
     limit: 40,
     ...discovery,
+    crawlFetcher: discovery.codeDiscovery ? httpCrawlFetcher() : null,
   });
   if (lane) {
     /*
@@ -5313,31 +5287,36 @@ Deno.serve(async (req) => {
       };
 
       const runtime = createPortalRuntime();
-      const searchDiagnostics: any[] = [];
-      const inputs = discoveryInputsFor(svc, probeSeed, searchDiagnostics);
-      if (!inputs.search) {
-        return json({ ok: false, reason: inputs.subjectGeo ? 'NO_SEARCH_KEY' : 'SUBJECT_NOT_LOCATABLE' }, 200);
+      const inputs = discoveryInputsFor(svc, probeSeed);
+      if (!inputs.codeDiscovery) {
+        return json({ ok: false, reason: 'SUBJECT_NOT_LOCATABLE' }, 200);
       }
       const started = Date.now();
       const lane = await runMarketLane(probeSeed, runtime.registry, runtime.context, {
         budgetMs: Number(preAuthBody?.budgetMs || 120_000),
         limit: 40,
         ...inputs,
-        maxDiscoveryQueries: Number(preAuthBody?.maxQueries || inputs.maxDiscoveryQueries),
-        /*
-         * The probe is not inside a customer's verification, so it may run
-         * longer than the production lane does — but it still runs inside an
-         * edge function's wall clock, and a probe that is killed mid-run
-         * reports nothing at all rather than reporting less.
-         */
-        discoveryBudgetMs: Number(preAuthBody?.discoveryBudgetMs || 110_000),
+        crawlFetcher: httpCrawlFetcher(),
+        codeDiscovery: {
+          ...inputs.codeDiscovery,
+          budget: {
+            ...inputs.codeDiscovery.budget,
+            /*
+             * The probe is not inside a customer's verification, so it may
+             * crawl further — but it still runs inside an edge function's wall
+             * clock, and a probe killed mid-run reports nothing rather than
+             * reporting less.
+             */
+            maxPages: Number(preAuthBody?.maxPages || 60),
+            deadlineMs: Number(preAuthBody?.discoveryBudgetMs || 110_000),
+          },
+        },
       });
       return json({
         ok: true,
         durationMs: Date.now() - started,
         subjectGeo: inputs.subjectGeo,
-        provider: inputs.search.id,
-        searchDiagnostics,
+        provider: 'CODE_ONLY',
         discovery: lane?.summary?.discovery ?? null,
         portalComparables: lane?.comparables?.length ?? 0,
         laneRan: !!lane,
@@ -5348,18 +5327,22 @@ Deno.serve(async (req) => {
          */
         report: lane?.discoveryReport
           ? {
-            providerStatus: lane.discoveryReport.providerStatus,
-            searchCalls: lane.discoveryReport.searchCalls,
-            queriesExecuted: lane.discoveryReport.queriesExecuted,
-            queriesWithResults: lane.discoveryReport.queriesWithResults,
-            languages: lane.discoveryReport.languages,
-            stages: lane.discoveryReport.stages,
-            rawUrlsDiscovered: lane.discoveryReport.rawUrlsDiscovered,
-            domainsDiscovered: lane.discoveryReport.domainsDiscovered,
-            domainsNew: lane.discoveryReport.domainsNew,
-            domainsProducingEvidence: lane.discoveryReport.domainsProducingEvidence,
+            searchApiCalls: lane.discoveryReport.searchApiCalls,
+            codeDiscoveryRequests: lane.discoveryReport.codeDiscoveryRequests,
+            pagesFetched: lane.discoveryReport.pagesFetched,
+            browserPagesFetched: lane.discoveryReport.browserPagesFetched,
+            sitemapsUsed: lane.discoveryReport.sitemapsUsed,
+            categoryPagesUsed: lane.discoveryReport.categoryPagesUsed,
+            robotsDisallowed: lane.discoveryReport.robotsDisallowed,
+            fetchFailures: lane.discoveryReport.fetchFailures,
+            truncatedByDeadline: lane.discoveryReport.truncatedByDeadline,
+            domainsVisited: lane.discoveryReport.domainsVisited,
+            newDomainsDiscovered: lane.discoveryReport.newDomainsDiscovered,
+            newDomainsAccepted: lane.discoveryReport.newDomainsAccepted,
+            newDomainsRejected: lane.discoveryReport.newDomainsRejected,
             perDomain: lane.discoveryReport.perDomain,
             outcomes: lane.discoveryReport.outcomes,
+            rawListings: lane.discoveryReport.rawListings,
             duplicatesRemoved: lane.discoveryReport.duplicatesRemoved,
             tierCounts: lane.discoveryReport.tierCounts,
             tierCountsMeasurable: lane.discoveryReport.tierCountsMeasurable,
@@ -5369,7 +5352,8 @@ Deno.serve(async (req) => {
               lane.discoveryReport.knownPublicLocalEvidenceDiscovered,
             listings: lane.discoveryReport.listings.map((l: any) => ({
               domain: l.sourceDomain, url: l.url, tier: l.tier, confidence: l.confidence,
-              address: l.address, area: l.area, rooms: l.rooms, floor: l.floor,
+              project: l.project, developer: l.developer, address: l.address,
+              area: l.area, rooms: l.rooms, floor: l.floor,
               pricePerSqm: l.pricePerSqm, price: l.price, measurable: l.measurable,
             })),
             ledger: lane.discoveryReport.ledger,

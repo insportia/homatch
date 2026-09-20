@@ -217,6 +217,9 @@ export const SEED_DOMAINS: Readonly<Record<string, SourceKind>> = {
   'makler.ge': 'PORTAL',
   'myhomesale.ge': 'PORTAL',
   'estatemarket.ge': 'PORTAL',
+  'livo.ge': 'PORTAL',
+  'mymarket.ge': 'PORTAL',
+  'estatehub.ge': 'PORTAL',
   'xeli.ge': 'PROJECT_INDEX',
   'korter.ge': 'PROJECT_INDEX',
   // Agencies and brokers
@@ -235,6 +238,24 @@ export const SEED_DOMAINS: Readonly<Record<string, SourceKind>> = {
   'tranio.com': 'INTERNATIONAL',
   'tranio.ru': 'INTERNATIONAL',
   'expathome.ge': 'INTERNATIONAL',
+};
+
+/*
+ * RECORDED, AND DELIBERATELY NOT CRAWLED AS A PROPERTY SOURCE.
+ *
+ * research-agent's PROPERTY_PORTAL_HOST_RE has long classified these hosts as
+ * property portals for the purpose of labelling a URL in a report. Two of them
+ * — livo.ge and mymarket.ge — are genuine Georgian listing sites and are
+ * seeded above. adjaranet.com is a video-streaming site that appears to have
+ * been added to that regex by mistake.
+ *
+ * It is kept here rather than dropped, because silently deleting a recorded
+ * source loses the knowledge that it was ever considered, and silently copying
+ * it would send a property crawler at a film archive. Named, explained, and
+ * excluded from discovery.
+ */
+export const RECORDED_NOT_PROPERTY_SOURCES: Readonly<Record<string, string>> = {
+  'adjaranet.com': 'video streaming; present in the legacy portal regex, not a property source',
 };
 
 /**

@@ -27,14 +27,16 @@ import { discoverComparables, type MarketEvidence, type UniqueProperty } from '.
 import type { PortalRegistry } from '../research-core/adapters/portal/types.ts';
 import type { AdapterContext } from '../research-core/discovery/adapter.ts';
 import { seedSupportsMarketSearch, type ResearchSeed } from '../research-core/plan/seed.ts';
-import { buildDiscoveryPlan } from '../research-core/market/discoveryPlan.ts';
+import { SEED_DOMAINS } from '../research-core/market/discoverySources.ts';
+import type { DiscoverySubjectGeo } from '../research-core/market/discoveryRun.ts';
 import {
-  runDiscovery,
-  type DiscoveryReport,
-  type DiscoverySubjectGeo,
-  type SearchProvider,
-  type SearchStatus,
-} from '../research-core/market/discoveryRun.ts';
+  runCodeDiscovery,
+  type CodeDiscoveryReport,
+  type CodeDiscoverySubject,
+  type CrawlBudget,
+  type CrawlFetcher,
+  type DiscoveryTarget,
+} from '../research-core/market/codeDiscovery.ts';
 import type { GeoTier } from '../research-core/market/geoTier.ts';
 
 /** The report's own comparable shape. Strings, because that is what it uses. */
@@ -103,20 +105,23 @@ export interface MarketLaneSummary {
    * market. Internal only — section 15 forbids any of it reaching a buyer.
    */
   discovery?: {
-    provider: string;
-    providerStatus: SearchStatus;
-    queriesExecuted: number;
-    /** Provider invocations. What the run actually cost. */
-    searchCalls: number;
-    stages: Array<{ stage: string; queries: number; localAfter: number; stopped: boolean }>;
-    /** True when the clock, not the evidence, ended discovery. */
+    /** Stated so it cannot be assumed: this lane buys no searches. */
+    searchApiUsed: 'NONE';
+    searchApiCalls: 0;
+    codeDiscoveryRequests: number;
+    pagesFetched: number;
+    browserPagesFetched: number;
+    sitemapsUsed: number;
+    categoryPagesUsed: number;
+    robotsDisallowed: number;
+    fetchFailures: number;
     truncatedByDeadline: boolean;
-    /** Evidence relayed from the index, versus read off the page itself. */
-    indexEvidence: number;
-    pageEvidence: number;
-    rawUrlsDiscovered: number;
-    domainsDiscovered: number;
-    domainsNew: number;
+    domainsVisited: number;
+    newDomainsDiscovered: number;
+    newDomainsAccepted: number;
+    rawListings: number;
+    normalizedListings: number;
+    duplicatesRemoved: number;
     tierCounts: Record<GeoTier, number>;
     tierCountsMeasurable: Record<GeoTier, number>;
     outcomes: Record<string, number>;
@@ -135,7 +140,7 @@ export interface MarketLaneResult {
    * listings themselves — is available in-process to whoever ran the lane and
    * is structurally incapable of reaching a stored report, let alone a buyer.
    */
-  discoveryReport?: DiscoveryReport | null;
+  discoveryReport?: CodeDiscoveryReport | null;
   /** Preserved price disagreements, in the report's own conflict vocabulary. */
   conflicts: Array<{ description: string; severity: 'MATERIAL' | 'MINOR'; evidence: string[] }>;
   evidence: MarketEvidence;
@@ -238,21 +243,21 @@ export interface RunMarketLaneOptions {
   limit?: number;
   now?: () => number;
   /*
-   * The search-engine discovery lane, when the caller has one to give.
+   * The code-only discovery lane: entry points and a crawler, no provider.
    *
-   * Passed in rather than constructed here, because every provider worth
-   * having bills per request and that is not a decision a library makes. When
-   * it is absent the lane behaves exactly as before.
+   * Passed in rather than constructed here so the lane stays a lane — and so
+   * a caller with a browser can supply one without this file knowing what a
+   * browser is.
    */
-  search?: SearchProvider | null;
+  codeDiscovery?: {
+    subject: CodeDiscoverySubject;
+    seeds: readonly DiscoveryTarget[];
+    budget?: Partial<CrawlBudget>;
+  } | null;
+  /** Something that can fetch a public page. Absent means discovery is skipped. */
+  crawlFetcher?: CrawlFetcher | null;
   /** Where the subject actually is, for tiering discovered results. */
   subjectGeo?: DiscoverySubjectGeo | null;
-  /** Discovery query ceiling, since each one has a price. */
-  maxDiscoveryQueries?: number;
-  /** Stop widening once this much local evidence exists. */
-  enoughLocalEvidence?: number;
-  /** Wall-clock ceiling for the discovery lane, separate from the portal one. */
-  discoveryBudgetMs?: number;
 }
 
 /**
@@ -346,85 +351,52 @@ export async function runMarketLane(
    * city-wide comparables is worse than one with local evidence and better
    * than none at all.
    */
-  let discoveryReport: DiscoveryReport | null = null;
-  if (options.search && options.subjectGeo) {
+  /*
+   * THE SECOND LANE, WITH NO SEARCH PROVIDER IN IT.
+   *
+   * Additive: the portal lane's comparables are untouched, and code discovery
+   * runs beside it to answer the question the portal lane structurally cannot
+   * — "what is on this street, on any source, that nobody registered". A
+   * failure here can never take the portal results down with it.
+   */
+  let discoveryReport: CodeDiscoveryReport | null = null;
+  if (options.codeDiscovery && options.crawlFetcher) {
     try {
-      const plan = buildDiscoveryPlan(
-        {
-          project: subjectProject,
-          street: options.subjectGeo.address ?? null,
-          streetNumber: null,
-          district: options.subjectGeo.district ?? null,
-          city: options.subjectGeo.city ?? null,
-          developer: options.subjectGeo.developer ?? null,
-        },
-        { international: true },
-      );
-      const report = await runDiscovery({
-        plan,
-        subject: options.subjectGeo,
-        search: options.search,
-        maxQueries: options.maxDiscoveryQueries ?? 24,
-        enoughLocal: options.enoughLocalEvidence ?? 8,
-        /*
-         * Its own budget, not the portal lane's. The portal lane is a handful
-         * of HTTP requests; this is a sequence of searches that each take
-         * seconds, and it runs inside a verification's own timeout. A lane
-         * that overran would not thin a report, it would kill the function
-         * producing one.
-         */
-        deadlineMs: options.discoveryBudgetMs ?? 90_000,
+      const report = await runCodeDiscovery({
+        subject: options.codeDiscovery.subject,
+        seeds: options.codeDiscovery.seeds,
+        fetcher: options.crawlFetcher,
+        budget: options.codeDiscovery.budget,
+        seededDomains: new Set(Object.keys(SEED_DOMAINS)),
         now,
       });
       discoveryReport = report;
       summary.discovery = {
-        provider: report.provider,
-        providerStatus: report.providerStatus,
-        queriesExecuted: report.queriesExecuted,
-        searchCalls: report.searchCalls,
-        stages: report.stages.map((st) => ({
-          stage: st.stage,
-          queries: st.queriesExecuted,
-          localAfter: st.localResultsAfter,
-          stopped: st.stoppedHere,
-        })),
+        searchApiUsed: 'NONE',
+        searchApiCalls: 0,
+        codeDiscoveryRequests: report.codeDiscoveryRequests,
+        pagesFetched: report.pagesFetched,
+        browserPagesFetched: report.browserPagesFetched,
+        sitemapsUsed: report.sitemapsUsed,
+        categoryPagesUsed: report.categoryPagesUsed,
+        robotsDisallowed: report.robotsDisallowed,
+        fetchFailures: report.fetchFailures,
         truncatedByDeadline: report.truncatedByDeadline,
-        indexEvidence: report.listings.filter((l) => l.confidence === 'INDEX').length,
-        pageEvidence: report.listings.filter((l) => l.confidence === 'PAGE').length,
-        tierCountsMeasurable: report.tierCountsMeasurable,
-        rawUrlsDiscovered: report.rawUrlsDiscovered,
-        domainsDiscovered: report.domainsDiscovered.length,
-        domainsNew: report.domainsNew.length,
+        domainsVisited: report.domainsVisited.length,
+        newDomainsDiscovered: report.newDomainsDiscovered.length,
+        newDomainsAccepted: report.newDomainsAccepted.length,
+        rawListings: report.rawListings,
+        normalizedListings: report.listings.length,
+        duplicatesRemoved: report.duplicatesRemoved,
         tierCounts: report.tierCounts,
+        tierCountsMeasurable: report.tierCountsMeasurable,
         outcomes: report.outcomes,
         localEvidenceFound: report.knownPublicLocalEvidenceDiscovered,
       };
     } catch (e) {
       // Recorded as a lane that did not run, never as a market that is empty.
-      summary.discovery = {
-        provider: options.search.id,
-        providerStatus: 'PROVIDER_ERROR',
-        queriesExecuted: 0,
-        searchCalls: 0,
-        stages: [],
-        truncatedByDeadline: false,
-        indexEvidence: 0,
-        pageEvidence: 0,
-        rawUrlsDiscovered: 0,
-        domainsDiscovered: 0,
-        domainsNew: 0,
-        tierCounts: {
-          TIER_1_SAME_PROJECT: 0, TIER_2_SAME_STREET: 0, TIER_3_NEARBY_MICROLOCATION: 0,
-          TIER_4_DISTRICT: 0, TIER_5_CITY: 0,
-        },
-        tierCountsMeasurable: {
-          TIER_1_SAME_PROJECT: 0, TIER_2_SAME_STREET: 0, TIER_3_NEARBY_MICROLOCATION: 0,
-          TIER_4_DISTRICT: 0, TIER_5_CITY: 0,
-        },
-        outcomes: {},
-        localEvidenceFound: false,
-      };
-      console.error('marketLane: discovery lane failed', e);
+      summary.discovery = null;
+      console.error('marketLane: code discovery lane failed', e);
     }
   }
 

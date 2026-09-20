@@ -184,8 +184,18 @@ test('a domain outside the seed registry still enters the pipeline', () => {
    * A registry that rejected unknown domains would have discarded the single
    * most relevant result of the run.
    */
-  assert.equal(SEED_DOMAINS['estatehub.ge'], undefined, 'fixture assumption: not seeded');
-  const cls = classifyDomain('estatehub.ge');
+  /*
+   * estatehub.ge carried this fixture's acceptance listing while being on no
+   * list of ours, and has since been promoted into the seed registry — which
+   * is the intended end of that story, not a weakening of this test. The
+   * property being asserted is unchanged, so it is asserted against a domain
+   * that is genuinely unknown today.
+   */
+  assert.ok(SEED_DOMAINS['estatehub.ge'], 'discovery promoted this domain into the registry');
+
+  const unknown = 'some-agency-nobody-registered.ge';
+  assert.equal(SEED_DOMAINS[unknown], undefined, 'fixture assumption: not seeded');
+  const cls = classifyDomain(unknown);
   assert.equal(cls, 'DISCOVERED_UNCLASSIFIED');
   assert.equal(worthExtracting(cls), true, 'an unknown domain must not be rejected on sight');
 });
@@ -352,12 +362,25 @@ test('every discovered URL is accounted for, including the ones that failed', as
 
 test('a domain nobody seeded still produced evidence', async () => {
   const report = await runHarvest();
-  assert.ok(report.domainsNew.includes('estatehub.ge'), 'the unknown domain was not even recorded');
+  /*
+   * estatehub.ge is seeded now, so the assertion that matters is the one about
+   * an unseeded domain's evidence surviving — proven here by rewriting the
+   * harvest onto a domain nobody has registered.
+   */
+  const rows = HARVEST.map((h) => (
+    h.domain === 'estatehub.ge'
+      ? { ...h, domain: 'unknown-portal.example', url: 'https://unknown-portal.example/1' }
+      : h
+  ));
+  const fresh = await runDiscovery({
+    plan: PLAN, subject: SUBJECT_GEO, search: harvestProvider(rows),
+  });
+  assert.ok(fresh.domainsNew.includes('unknown-portal.example'), 'the unknown domain was not recorded');
   assert.ok(
-    report.domainsProducingEvidence.includes('estatehub.ge'),
+    fresh.domainsProducingEvidence.includes('unknown-portal.example'),
     'the unknown domain carried the acceptance listing and must be credited with it'
   );
-  const tally = report.perDomain.find((d) => d.domain === 'estatehub.ge');
+  const tally = fresh.perDomain.find((d) => d.domain === 'unknown-portal.example');
   assert.ok(tally.extracted > 0);
 });
 

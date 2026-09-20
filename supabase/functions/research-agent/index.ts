@@ -4274,7 +4274,7 @@ async function planMarketFor(db: any, known: any, plan: any): Promise<any | null
  * customer's verification runs. A probe that built its own provider would
  * prove only that the probe works.
  */
-function discoveryInputsFor(db: any, seed: any) {
+function discoveryInputsFor(db: any, seed: any, diagnostics?: any[]) {
   const subjectGeo = subjectGeoFromSeed(seed);
   const key = Deno.env.get('OPENAI_API_KEY');
   const model = Deno.env.get('OPENAI_DISCOVERY_MODEL')
@@ -4290,7 +4290,20 @@ function discoveryInputsFor(db: any, seed: any) {
      */
     search: subjectGeo && key
       ? cachingSearchProvider(
-        openAiSearchProvider({ apiKey: key, model, resultsPerQuery: 10 }),
+        openAiSearchProvider({
+          apiKey: key,
+          model,
+          resultsPerQuery: 10,
+          /*
+           * Collected ONLY when a caller asks for them — the probe does, a
+           * customer's verification does not. A run that discovered nothing
+           * has to be able to say where it lost everything: the request
+           * failed, the tool never searched, it searched and cited nothing, or
+           * it cited pages the model declined to transcribe. Four defects,
+           * four fixes, and one zero tells them apart from none of them.
+           */
+          onCall: diagnostics ? (d: any) => diagnostics.push(d) : undefined,
+        }),
         supabaseSearchCache(db),
       )
       : null,
@@ -5300,7 +5313,8 @@ Deno.serve(async (req) => {
       };
 
       const runtime = createPortalRuntime();
-      const inputs = discoveryInputsFor(svc, probeSeed);
+      const searchDiagnostics: any[] = [];
+      const inputs = discoveryInputsFor(svc, probeSeed, searchDiagnostics);
       if (!inputs.search) {
         return json({ ok: false, reason: inputs.subjectGeo ? 'NO_SEARCH_KEY' : 'SUBJECT_NOT_LOCATABLE' }, 200);
       }
@@ -5323,6 +5337,7 @@ Deno.serve(async (req) => {
         durationMs: Date.now() - started,
         subjectGeo: inputs.subjectGeo,
         provider: inputs.search.id,
+        searchDiagnostics,
         discovery: lane?.summary?.discovery ?? null,
         portalComparables: lane?.comparables?.length ?? 0,
         laneRan: !!lane,

@@ -54,8 +54,34 @@ export interface OpenAiSearchOptions {
   resultsPerQuery?: number;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
-  /** Counts kept for the cost report. */
-  onCall?: (info: { query: string; webSearchCalls: number; unverifiedRows: number }) => void;
+  /** Per-call diagnostics. Internal only, and the reason a zero is explicable. */
+  onCall?: (info: SearchCallDiagnostic) => void;
+}
+
+/*
+ * WHAT HAPPENED ON ONE CALL.
+ *
+ * A run that returns nothing has to be able to say WHERE it lost everything:
+ * the request failed, or the tool never searched, or it searched and cited
+ * nothing, or it cited pages the model then declined to transcribe. Those are
+ * four different defects with four different fixes, and a single count of zero
+ * distinguishes none of them — which is the exact failure mode this whole
+ * layer was built to stop repeating.
+ */
+export interface SearchCallDiagnostic {
+  query: string;
+  httpStatus: number;
+  /** Searches the API reports the tool actually ran. */
+  webSearchCalls: number;
+  /** URLs the API states were retrieved. */
+  provenUrls: number;
+  /** Rows the model transcribed, before the provenance check. */
+  parsedRows: number;
+  /** Rows discarded because their URL was not proven. */
+  unverifiedRows: number;
+  hits: number;
+  /** A short, redacted look at what the model actually replied. */
+  sampleText: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -154,7 +180,9 @@ function firstJson(text: string): unknown {
  * most of its results is a defect that has to be visible rather than read as
  * a thin market.
  */
-export function hitsFromPayload(payload: unknown): { hits: SearchHit[]; unverified: number } {
+export function hitsFromPayload(
+  payload: unknown,
+): { hits: SearchHit[]; unverified: number; parsedRows: number } {
   const proven = provenUrls(payload);
   const parsed = firstJson(outputText(payload));
   const rows = Array.isArray(parsed)
@@ -196,7 +224,7 @@ export function hitsFromPayload(payload: unknown): { hits: SearchHit[]; unverifi
     hits.push({ url, title: '', snippet: '' });
   }
 
-  return { hits, unverified };
+  return { hits, unverified, parsedRows: rows.length };
 }
 
 /* ------------------------------------------------------------------ *
@@ -258,15 +286,25 @@ export function openAiSearchProvider(options: OpenAiSearchOptions): SearchProvid
         });
 
         if (!res.ok) {
-          const detail = `http ${res.status}`;
-          return { status: 'PROVIDER_ERROR', hits: [], detail };
+          const body = await res.text().catch(() => '');
+          options.onCall?.({
+            query: query.text, httpStatus: res.status, webSearchCalls: 0,
+            provenUrls: 0, parsedRows: 0, unverifiedRows: 0, hits: 0,
+            sampleText: body.slice(0, 400),
+          });
+          return { status: 'PROVIDER_ERROR', hits: [], detail: `http ${res.status}` };
         }
         const payload = await res.json();
-        const { hits, unverified } = hitsFromPayload(payload);
+        const { hits, unverified, parsedRows } = hitsFromPayload(payload);
         options.onCall?.({
           query: query.text,
+          httpStatus: res.status,
           webSearchCalls: webSearchCallCount(payload),
+          provenUrls: provenUrls(payload).size,
+          parsedRows,
           unverifiedRows: unverified,
+          hits: hits.length,
+          sampleText: outputText(payload).slice(0, 400),
         });
         return { status: 'OK', hits };
       } catch (e) {

@@ -24,6 +24,7 @@
 // conversation in it, and paying an LLM to summarise silence is pure waste.
 
 import { extractPlaces, parseMoney, parseBedrooms } from './entities.ts';
+import { safeBudget } from './numericSafety.ts';
 
 export type ExtractionMethod = 'DETERMINISTIC' | 'LLM' | 'HUMAN';
 
@@ -80,6 +81,26 @@ export function extractDeterministic(text: string): ExtractionRecord {
     budgetMax = Math.max(budgetMax ?? 0, Math.max(...plain)) || null;
   } else if (plain.length === 1 && budgetMax == null) {
     budgetMax = plain[0];
+  }
+
+  /*
+   * A MAGNITUDE THIS PRODUCT WILL NEVER LEGITIMATELY BE TOLD.
+   *
+   * Physical session 7d01064e stored budgetMax 120000000 USD against a search
+   * in Varketili, because the recogniser wrote მილიონი where the speaker said
+   * ათასი. The parse was faithful to the text it was given; the text was
+   * wrong, and one morpheme moves the number by a factor of a thousand.
+   *
+   * Refused, not corrected. Deciding that 120,000,000 "meant" 120,000 would be
+   * the same guess that caused this, made by us. The session simply does not
+   * learn a budget from that turn, which is the truth, and the cost of being
+   * asked again is one short question.
+   */
+  const budgetGuard = safeBudget(budgetMax);
+  if (budgetGuard.verdict !== null && budgetGuard.verdict !== 'PLAUSIBLE') {
+    budgetMax = null;
+    // A range whose top was nonsense has no trustworthy bottom either.
+    budgetMin = null;
   }
 
   const currency = money.find((m) => m.currency)?.currency ?? null;

@@ -52,6 +52,7 @@ const FILES = [
   'handoff.ts',
   'entities.ts',
   'extraction.ts',
+  'numericSafety.ts',
   'talkAllowance.ts',
   // Where AI TALK may send somebody, and when the call should end. It lives
   // beside the router because that is where a renamed route gets renamed.

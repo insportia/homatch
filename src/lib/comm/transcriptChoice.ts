@@ -37,6 +37,8 @@
  */
 
 /** The reason a transcript was chosen, for the trace. */
+import { numericConflict } from './numericSafety.ts';
+
 export type TranscriptChoiceReason =
   | 'LIVE_ONLY'
   | 'BATCH_ONLY'
@@ -44,7 +46,8 @@ export type TranscriptChoiceReason =
   | 'BATCH_EXTENDS_LIVE'
   | 'LIVE_KEPT_EQUIVALENT'
   | 'LIVE_KEPT_DIVERGENT'
-  | 'LIVE_KEPT_LONGER';
+  | 'LIVE_KEPT_LONGER'
+  | 'LIVE_KEPT_NUMERIC_CONFLICT';
 
 export interface TranscriptChoice {
   text: string;
@@ -147,6 +150,24 @@ export function chooseTranscript(liveRaw: string | null, batchRaw: string | null
    */
   if (batchWords.length <= liveWords.length) {
     return { text: live, source: 'LIVE', reason: 'LIVE_KEPT_LONGER', ...base };
+  }
+
+  /*
+   * A NUMBER IS NOT A LENGTH.
+   *
+   * Containment is the right test for words and the wrong one for magnitudes:
+   * "120 ათასი" is wholly contained in "120 მილიონი დოლარი ვარკეთილში", which
+   * is longer and carries every word -- and means a thousand times more money.
+   * Session 7d01064e stored 120,000,000 for a Varketili flat on exactly that
+   * kind of difference.
+   *
+   * Two recognisers disagreeing about a scale are not one sentence heard twice;
+   * they are two different facts, and picking either silently is the failure.
+   * The live final stays, and the disagreement is named so the turn can ask.
+   */
+  const numeric = numericConflict(live, batch);
+  if (numeric.conflict) {
+    return { text: live, source: 'LIVE', reason: 'LIVE_KEPT_NUMERIC_CONFLICT', ...base };
   }
 
   const carries = containment(liveWords, batchWords);

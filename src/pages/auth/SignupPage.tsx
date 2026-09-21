@@ -203,12 +203,19 @@ export default function SignupPage() {
                     placeholder="••••••••"
                     required
                     autoComplete="new-password"
-                    className="bg-secondary border-border h-10 pr-10"
+                    /* pe-10 and end-3: the space the field holds back and
+                       the control that stands in it both resolve from the
+                       reading direction, so they cannot end up on opposite
+                       sides. With `pr-10` against a mirrored button they
+                       did, and Arabic and Hebrew reserved forty pixels on
+                       the empty side and twelve on the side the button was
+                       actually on. Same fix as LoginPage. */
+                    className="bg-secondary border-border h-10 pe-10"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPw(v => !v)}
-                    className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground`}
+                    className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     aria-label={showPw ? t('auth_hide_password') : t('auth_show_password')}
                   >
                     {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

@@ -121,12 +121,23 @@ export default function ResetPasswordPage() {
                   minLength={8}
                   required
                   autoComplete="new-password"
-                  className="bg-secondary border-border h-10 pr-10"
+                  /* pe-10 and end-3, as on the sign-in and sign-up forms:
+                     the reserved space follows the reading direction, so
+                     it stays on the side the reveal control is actually
+                     on. `pr-10` against a mirrored button put them on
+                     opposite sides in Arabic and Hebrew. */
+                  className="bg-secondary border-border h-10 pe-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw(v => !v)}
-                  className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground`}
+                  className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  /* This button had no accessible name at all, so a screen
+                     reader announced it as an unlabelled button on the one
+                     screen where the thing it hides is a new password. The
+                     two strings already exist for the identical control on
+                     the other two forms. */
+                  aria-label={showPw ? t('auth_hide_password') : t('auth_show_password')}
                 >
                   {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>

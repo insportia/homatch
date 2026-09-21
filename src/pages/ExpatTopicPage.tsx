@@ -148,7 +148,16 @@ export default function ExpatTopicPage() {
           <p className="mb-2 text-2xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--gold-ink))]">
             {t(`expat_domain_${topic.domain.toLowerCase()}`)}
           </p>
-          <h1 className="font-display text-3xl font-semibold leading-tight text-foreground sm:text-4xl">
+          {/* text-2xl on a phone, not text-3xl. A topic title is words a
+              translator chose, and some languages compound: at 320px and
+              30px, Russian "Здравоохранение" needs 285px of a 280px
+              column and the browser has to break inside it. At 24px it
+              fits with room to spare, and the heading still reads as the
+              largest thing on the page. Shrinking the type is the fix
+              here rather than permitting a mid-word break, because a
+              title that breaks across a hyphenless boundary is the defect
+              the reader actually notices. */}
+          <h1 className="font-display text-2xl font-semibold leading-tight text-foreground sm:text-4xl">
             {content.title}
           </h1>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">{content.summary}</p>

@@ -1,3 +1,12 @@
+-- APPLIED TO PRODUCTION AS 20260921021500.
+--
+-- Recorded under the version the migration API assigned, and this file is
+-- named to match it. A repository file whose version the ledger does not
+-- know is a migration `db push` will one day replay, and neither of these
+-- is idempotent: both replace jsonb subtrees by exact string match, so a
+-- second run would find nothing to replace and its own guard would fail
+-- the deploy. The names have to agree.
+
 -- HOMATCH FOR EXPATS — Georgian copy corrections.
 --
 -- The owner read the live Georgian pages and found the prose was not of

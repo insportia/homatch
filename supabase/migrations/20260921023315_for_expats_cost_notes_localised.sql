@@ -1,3 +1,12 @@
+-- APPLIED TO PRODUCTION AS 20260921023315.
+--
+-- Recorded under the version the migration API assigned, and this file is
+-- named to match it. A repository file whose version the ledger does not
+-- know is a migration `db push` will one day replay, and neither of these
+-- is idempotent: both replace jsonb subtrees by exact string match, so a
+-- second run would find nothing to replace and its own guard would fail
+-- the deploy. The names have to agree.
+
 -- HOMATCH FOR EXPATS — the cost notes were the last English on a Georgian page.
 --
 -- Every other piece of customer-facing content in this product is jsonb

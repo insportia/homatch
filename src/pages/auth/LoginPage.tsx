@@ -214,12 +214,23 @@ export default function LoginPage() {
                     placeholder="••••••••"
                     required
                     autoComplete="current-password"
-                    className="bg-secondary border-border h-10 pr-10"
+                    /*
+                     * pe-10, not pr-10. The reveal button below is placed
+                     * at the inline END of the field, which is the right
+                     * in English and the LEFT in Arabic and Hebrew — but
+                     * the padding that keeps the password clear of it was
+                     * pinned to the physical right. In RTL that reserved
+                     * forty pixels on the empty side and left twelve on
+                     * the side the button actually occupies, so a typed
+                     * password ran underneath it. Both are logical now,
+                     * so they cannot point at opposite sides again.
+                     */
+                    className="bg-secondary border-border h-10 pe-10"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPw(v => !v)}
-                    className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground`}
+                    className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     aria-label={showPw ? t('auth_hide_password') : t('auth_show_password')}
                   >
                     {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

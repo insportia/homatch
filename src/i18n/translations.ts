@@ -36586,7 +36586,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   // ── Auth Pages (Login/Signup hero + password toggle) ──────────────────────────────────────────────
   auth_login_hero_title1: 'اعثر على الطلب.',
   auth_login_hero_title2: 'افتح العملاء المحتملين.',
-  auth_login_hero_desc: 'يفحص Homatch الويب العام بحثًا عن أشخاص يُبدون بالفعل نية الشراء أو الإيجار أو الاستثمار, ثم يطابقهم مع عقارك.',
+  auth_login_hero_desc: 'يفحص Homatch الويب العام بحثًا عن أشخاص يُبدون بالفعل نية الشراء أو الإيجار أو الاستثمار، ثم يطابقهم مع عقارك.',
   auth_signup_hero_title1: 'عقارك.',
   auth_signup_hero_title2: 'الأشخاص المناسبون.',
   auth_signup_hero_desc: 'انضم إلى ملاك العقارات والوكلاء الذين يستخدمون Homatch للعثور على مشترين ومستأجرين ومستثمرين مؤهلين.',
@@ -43634,7 +43634,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   auth_have_account: 'כבר יש לך חשבון?',
   auth_continue_google: 'המשך עם Google',
   auth_or_email: 'או עם אימייל',
-  auth_terms: 'בהמשך, אתה מסכים לתנאי השירות ומדיניות הפרטיות.',
+  auth_terms: 'המשך השימוש מהווה הסכמה לתנאי השירות ולמדיניות הפרטיות.',
 
   // Dashboard
   dash_title: 'לוח בקרה',

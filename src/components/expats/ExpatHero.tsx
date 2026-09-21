@@ -33,7 +33,6 @@
 // typographic until there is real photography to put in it.
 
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { ArrowRight, Compass, Home, KeyRound, TrendingUp } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -46,11 +45,23 @@ const PATHWAY_ICON: Record<ExpatPathway, typeof Compass> = {
   INVEST: TrendingUp,
 };
 
+/**
+ * Where each door leads.
+ *
+ * These are anchors into this page and not routes, which is what the name
+ * has said all along. They once pointed at /for-expats/georgia/move and
+ * three siblings, and no such routes exist — all four landed on "We do not
+ * have this page". The fix is not to build four pages: this page already
+ * IS the four pathways, in order, and each row describes a section of it.
+ * MOVE is the entry and residence topics, LIVE is the month's cost, BUY is
+ * what the budget reaches, and INVEST is the analysis tools its own line
+ * promises. The ids live on the sections in ForExpatsPage.
+ */
 const PATHWAY_ANCHOR: Record<ExpatPathway, string> = {
-  MOVE: '/for-expats/georgia/move',
-  LIVE: '/for-expats/georgia/live',
-  BUY: '/for-expats/georgia/buy',
-  INVEST: '/for-expats/georgia/invest',
+  MOVE: '#topics',
+  LIVE: '#cost-of-living',
+  BUY: '#budget',
+  INVEST: '#tools',
 };
 
 export function ExpatHero() {
@@ -83,9 +94,9 @@ export function ExpatHero() {
           {EXPAT_PATHWAYS.map((pathway, i) => {
             const Icon = PATHWAY_ICON[pathway];
             return (
-              <Link
+              <a
                 key={pathway}
-                to={PATHWAY_ANCHOR[pathway]}
+                href={PATHWAY_ANCHOR[pathway]}
                 data-expat-pathway={pathway}
                 className={cn(
                   'group flex items-center gap-4 px-5 py-5 transition-colors sm:gap-6 sm:px-7',
@@ -108,7 +119,7 @@ export function ExpatHero() {
                   className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 rtl:rotate-180 rtl:group-hover:-translate-x-1"
                   aria-hidden="true"
                 />
-              </Link>
+              </a>
             );
           })}
         </div>

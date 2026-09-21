@@ -17,8 +17,6 @@
 // that the population figure was four years old.
 
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { EXPAT_CITIES } from '@/expats/geography';
 
@@ -66,28 +64,27 @@ export function GeorgiaAtAGlance() {
         <ul className="mt-3 grid gap-3 sm:grid-cols-3">
           {EXPAT_CITIES.map((city) => (
             <li key={city.key}>
-              <Link
-                to={`/for-expats/georgia/${city.key}`}
+              {/* Orientation, not navigation. These were links to
+                  /for-expats/georgia/tbilisi and its two siblings, and no
+                  such routes exist — all three landed on "We do not have
+                  this page". Nor should they yet: Tbilisi is the only one
+                  of the three with any observed evidence behind it, so two
+                  of the three pages would have nothing on them. The card
+                  says what the city is, which is all it ever said. */}
+              <div
                 data-expat-city={city.key}
-                className="group flex h-full flex-col rounded-xl border border-border p-4 transition-colors hover:border-[hsl(var(--gold-border))]"
+                className="flex h-full flex-col rounded-xl border border-border p-4"
               >
-                <span className="flex items-baseline justify-between gap-2">
+                <p className="flex items-baseline justify-between gap-2">
                   <span className="font-display text-lg font-semibold text-foreground">
                     {city.nameEn}
                   </span>
                   <span className="text-2xs text-muted-foreground">{city.nameKa}</span>
-                </span>
-                <span className="mt-1.5 flex-1 text-2xs leading-relaxed text-muted-foreground">
+                </p>
+                <p className="mt-1.5 flex-1 text-2xs leading-relaxed text-muted-foreground">
                   {t(city.blurbKey)}
-                </span>
-                <span className="mt-3 inline-flex items-center gap-1 text-2xs text-[hsl(var(--gold-ink))]">
-                  {t('expat_glance_city_open')}
-                  <ArrowRight
-                    className="h-3 w-3 transition-transform group-hover:translate-x-0.5 rtl:rotate-180"
-                    aria-hidden="true"
-                  />
-                </span>
-              </Link>
+                </p>
+              </div>
             </li>
           ))}
         </ul>

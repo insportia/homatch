@@ -131,7 +131,10 @@ export function PlanBoard({
                     {blocked ? <Lock className="h-3 w-3 text-muted-foreground" aria-hidden="true" /> : null}
                   </button>
 
-                  <div className="min-w-0 flex-1">
+                  {/* Same floor as the cost rows, same reason: with
+                      `min-w-0` this cell can be shrunk past legibility by the
+                      checkbox and the skip/undo cluster instead of wrapping. */}
+                  <div className="min-w-[12rem] flex-1">
                     <p
                       className={cn(
                         'text-sm font-medium',

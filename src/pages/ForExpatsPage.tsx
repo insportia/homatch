@@ -34,7 +34,7 @@ import { TopicIndex } from '@/components/expats/TopicIndex';
 import { RentalCommunities } from '@/components/expats/RentalCommunities';
 import { WhatChanged } from '@/components/expats/WhatChanged';
 import { ExpatSeo } from '@/components/expats/ExpatSeo';
-import { EXPAT_CITIES } from '@/expats/geography';
+import { EXPAT_CITIES, cityName } from '@/expats/geography';
 import { EMPTY_PROFILE } from '@/expats/types';
 import type { LocatedSnapshot } from '@/expats/marketContext';
 import {
@@ -50,7 +50,7 @@ import {
 } from '@/services/expats';
 
 export default function ForExpatsPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { homatchUser } = useAuth();
 
   const [topics, setTopics] = React.useState<ExpatTopic[]>([]);
@@ -94,19 +94,35 @@ export default function ForExpatsPage() {
       <div className="mx-auto w-full max-w-[76rem] space-y-16 px-5 py-14 sm:py-20">
         <GeorgiaAtAGlance />
 
-        <CostOfLiving city={tbilisi.nameEn} observations={costs} profile={EMPTY_PROFILE} />
+        {/* The four hero rows are anchors into this page, so the sections
+            they name carry the ids. scroll-mt clears the sticky header;
+            without it the heading lands underneath it and the reader
+            arrives mid-paragraph. */}
+        <div id="cost-of-living" className="scroll-mt-24">
+          <CostOfLiving
+            city={cityName(tbilisi, lang)}
+            observations={costs}
+            profile={EMPTY_PROFILE}
+          />
+        </div>
 
-        <WhatCanIBuy cityKey={tbilisi.key} snapshots={snapshots} />
+        <div id="budget" className="scroll-mt-24">
+          <WhatCanIBuy cityKey={tbilisi.key} snapshots={snapshots} />
+        </div>
 
         <RentalCommunities communities={communities} />
 
-        <TopicIndex topics={topics} />
+        <div id="topics" className="scroll-mt-24">
+          <TopicIndex topics={topics} />
+        </div>
 
         <WhatChanged updates={updates} />
 
         <PlanInvitation signedIn={Boolean(homatchUser)} />
 
-        <Ecosystem />
+        <div id="tools" className="scroll-mt-24">
+          <Ecosystem />
+        </div>
       </div>
     </>
   );

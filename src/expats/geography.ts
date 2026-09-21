@@ -78,6 +78,18 @@ export function findCity(key: string | null | undefined): ExpatCity | null {
 }
 
 /**
+ * The city's name as the reader's own language writes it.
+ *
+ * Georgian is the only one of the six with its own spelling of these, and
+ * it is the one that was getting the Latin form: the two largest headings
+ * on the Georgian page read "Tbilisi-ში". Everybody else writes the Latin
+ * name, so everybody else keeps it.
+ */
+export function cityName(city: ExpatCity, lang: string): string {
+  return lang === 'ka' ? city.nameKa : city.nameEn;
+}
+
+/**
  * A district inside a city.
  *
  * `nameKa` carries the name as the Georgian portals write it. `aliasesKa`

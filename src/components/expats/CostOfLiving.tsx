@@ -180,9 +180,14 @@ export function CostOfLiving({
             <p className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
               {t('expat_col_partial_label')}
             </p>
+            {/* text-xl at the base width, not text-2xl. This headline is a
+                sentence rather than a number, and at 320px in Georgian
+                კატეგორიიდან alone needs more than the column has at 24px —
+                so the one string on this panel that is prose is the one
+                that has to start smaller. */}
             <p
               data-expat-budget-partial
-              className="mt-1 font-display text-2xl font-semibold text-foreground sm:text-3xl"
+              className="mt-1 font-display text-xl font-semibold text-foreground sm:text-3xl"
             >
               {t('expat_col_partial_headline', { priced, total: budget.lines.length, percent: share })}
             </p>
@@ -307,7 +312,14 @@ function BudgetRow({
 
   return (
     <li className="flex flex-wrap items-start gap-3 px-4 py-3" data-expat-cost-row={line.category}>
-      <div className="min-w-0 flex-1">
+      {/* A real minimum, not `min-w-0`. `flex-1` alone resolves to
+          `flex: 1 1 0%`, so this cell's hypothetical main size is zero, the
+          row never exceeds the line and `flex-wrap` can therefore never
+          fire — the price-and-buttons cluster beside it is `shrink-0` and
+          simply crushes the prose, at 390px to thirty pixels and four
+          characters a line. Giving the cell a floor makes the row wrap
+          instead, which is what the wrap was there for. */}
+      <div className="min-w-[12rem] flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-foreground">
             {t(`expat_cost_cat_${line.category.toLowerCase()}`)}

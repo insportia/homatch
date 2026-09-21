@@ -37,7 +37,7 @@ import {
   type LocatedSnapshot,
   type MarketReading,
 } from '@/expats/marketContext';
-import { findCity } from '@/expats/geography';
+import { cityName, findCity } from '@/expats/geography';
 
 const PRESETS = [50_000, 100_000, 150_000, 300_000];
 
@@ -97,7 +97,7 @@ export function WhatCanIBuy({
           {t('expat_wcib_eyebrow')}
         </p>
         <h2 className="font-display text-2xl font-semibold text-foreground sm:text-3xl">
-          {t('expat_wcib_title', { city: city?.nameEn ?? cityKey })}
+          {t('expat_wcib_title', { city: city ? cityName(city, lang) : cityKey })}
         </h2>
         <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-muted-foreground">
           {t('expat_wcib_body')}

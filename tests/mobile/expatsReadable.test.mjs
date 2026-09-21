@@ -163,6 +163,7 @@ const COSTS = [
     id: '00000000-0000-4000-8000-00000000c101', city: 'Tbilisi', category: 'INTERNET',
     low: 33, high: 60, currency: 'GEL', status: 'CURRENT', basis: 'OBSERVED',
     observed_at: '2026-09-01T00:00:00Z', notes: LONG_NOTE,
+    notes_i18n: { en: LONG_NOTE, ka: KA_NOTE },
     citation_id: CITATION.id, expat_citations: CITATION,
   },
   {
@@ -170,6 +171,10 @@ const COSTS = [
     low: 40, high: 40, currency: 'GEL', status: 'CURRENT', basis: 'OBSERVED',
     observed_at: '2026-09-01T00:00:00Z',
     notes: "The operator's published price for a one-month unlimited travel card on Tbilisi public transport.",
+    notes_i18n: {
+      en: "The operator's published price for a one-month unlimited travel card on Tbilisi public transport.",
+      ka: 'ოპერატორის მიერ გამოქვეყნებული ფასი ერთთვიან შეუზღუდავ სამგზავრო ბარათზე თბილისის ტრანსპორტში.',
+    },
     citation_id: CITATION.id, expat_citations: CITATION,
   },
 ];
@@ -471,6 +476,31 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
       if (c.textLength < 400) failures.push(`${href} rendered ${c.textLength} characters — it is the missing-page screen`);
       await o.ctx.close();
     }
+  }
+
+  /*
+   * A Georgian landing page in Georgian.
+   *
+   * The cost note was a plain `text` column while every other content
+   * field was locale-keyed, so the Georgian page rendered its headings,
+   * its categories and its coverage copy in Georgian and then a paragraph
+   * of English inside the Internet row. A page is not localised because
+   * its chrome is.
+   */
+  {
+    const { ctx, page } = await open('/for-expats/georgia', 'ka');
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-expat-cost-row] p')].map((p) => p.textContent.trim()));
+    for (const text of rows) {
+      /* Four or more consecutive Latin letters, three times over, is a
+         sentence rather than a unit or a brand: "Mbps", "GEL" and
+         "Magticom" each survive this, "The operator's published price"
+         does not. */
+      const latin = (text.match(/[A-Za-z]{4,}/g) || []).filter((w) => !/^(Mbps|Magticom)$/.test(w));
+      if (latin.length >= 3) failures.push(`Georgian cost row is in English: "${text.slice(0, 70)}" (${latin.slice(0, 5).join(' ')})`);
+    }
+    if (!rows.some((t) => /[Ⴀ-ჿ]/.test(t))) failures.push('no Georgian in any cost row note');
+    await ctx.close();
   }
 
   /* All six topic routes carry their own content, not the fallback. */

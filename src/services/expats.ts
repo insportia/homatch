@@ -177,14 +177,33 @@ export interface CostObservationRow {
   category: CostCategory;
   money: ObservedMoney;
   source: SourceRef | null;
-  notes: string | null;
+  /** Raw per-locale note. Resolved by `localiseNote`. */
+  notes: Record<string, string> | null;
+}
+
+/**
+ * The note under a cost row, in the reader's language.
+ *
+ * Same fallback rule as `localiseTopic`, and here for the same reason: the
+ * Georgian landing page used to render every heading and category in
+ * Georgian and then an English paragraph inside the Internet row, because
+ * this note was a plain `text` column while all the other content was
+ * locale-keyed. `notes_i18n` carries the six; `notes` is the original and
+ * is what a row written before that column existed still has.
+ */
+export function localiseNote(
+  notes: Record<string, string> | null,
+  language: string,
+): string | null {
+  if (!notes) return null;
+  return notes[language] ?? notes.en ?? null;
 }
 
 export async function getCostObservations(city: string, country = 'GE'): Promise<CostObservationRow[]> {
   const { data } = await supabase
     .from('expat_cost_observations')
     .select(
-      'category, low, high, currency, unit, sample_size, source_count, observed_at, district, notes,' +
+      'category, low, high, currency, unit, sample_size, source_count, observed_at, district, notes, notes_i18n,' +
         ' expat_citations ( id, publisher, url, official, published_on, effective_from, observed_at, language )',
     )
     .eq('country', country)
@@ -219,7 +238,11 @@ export async function getCostObservations(city: string, country = 'GE'): Promise
             language: String(c.language ?? 'en'),
           }
         : null,
-      notes: (r.notes as string) ?? null,
+      notes:
+        (r.notes_i18n as Record<string, string> | null) ??
+        /* A row from before notes_i18n existed still renders, in the
+           language it was written in, rather than disappearing. */
+        (r.notes ? { en: String(r.notes) } : null),
     };
   });
 }

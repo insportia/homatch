@@ -39,7 +39,7 @@ import {
 } from '@/expats/costOfLiving';
 import type { ExpatProfile, Household } from '@/expats/types';
 import type { CostObservationRow } from '@/services/expats';
-import { byCategory } from '@/services/expats';
+import { byCategory, localiseNote } from '@/services/expats';
 import { SourceLine } from './Provenance';
 
 const HOUSEHOLDS: Household[] = ['ALONE', 'COUPLE', 'FAMILY'];
@@ -71,7 +71,7 @@ export function CostOfLiving({
   observations: readonly CostObservationRow[];
   profile: ExpatProfile;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [household, setHousehold] = React.useState<Household>(profile.household ?? 'ALONE');
   const [overrides, setOverrides] = React.useState<Partial<Record<CostCategory, number>>>({});
   const [excluded, setExcluded] = React.useState<CostCategory[]>([]);
@@ -244,7 +244,10 @@ export function CostOfLiving({
             line={line}
             money={money}
             source={sourceFor(line.category)}
-            note={observations.find((o) => o.category === line.category)?.notes ?? null}
+            note={localiseNote(
+              observations.find((o) => o.category === line.category)?.notes ?? null,
+              lang,
+            )}
             onOverride={(v) =>
               setOverrides((o) => {
                 const next = { ...o };

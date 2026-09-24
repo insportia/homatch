@@ -12,10 +12,12 @@
  * for a second round trip to show itself would move the problem rather than
  * fix it.
  */
-import React, { lazy } from 'react';
+
 import type { ReactNode } from 'react';
+import React, { lazy } from 'react';
 import { Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
+
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const SignupPage = lazy(() => import('./pages/auth/SignupPage'));
 const AuthCallbackPage = lazy(() => import('./pages/auth/AuthCallbackPage'));
@@ -129,8 +131,10 @@ const ChannelAccountsPage = lazy(() => import('./pages/outreach/ChannelAccountsP
 const CommunicationsAnalyticsPage = lazy(() => import('./pages/outreach/CommunicationsAnalyticsPage'));
 const CallsPage = lazy(() => import('./pages/outreach/CallsPage'));
 const CommunicationsBillingPage = lazy(() => import('./pages/outreach/CommunicationsBillingPage'));
+
 // Admin pages
 import AdminLayout from './components/layouts/AdminLayout';
+
 const AdminOverviewPage = lazy(() => import('./pages/admin/AdminOverviewPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 const AdminUser360Page = lazy(() => import('./pages/admin/AdminUser360Page'));
@@ -159,6 +163,14 @@ const SiteStudioPage = lazy(() => import('./pages/admin/SiteStudioPage'));
 const AppContentPage = lazy(() => import('./pages/admin/AppContentPage'));
 const AdminEngagementPage = lazy(() => import('./pages/admin/AdminEngagementPage'));
 const AdminLiveChatReportsPage = lazy(() => import('./pages/admin/AdminLiveChatReportsPage'));
+const AdminHomePage = lazy(() => import('./pages/admin/AdminHomePage'));
+const CommunicationOverviewPage = lazy(() => import('./pages/admin/communication/CommunicationOverviewPage'));
+const CommunicationVoicePage = lazy(() => import('./pages/admin/communication/CommunicationVoicePage'));
+const CommunicationCallCenterPage = lazy(() => import('./pages/admin/communication/CommunicationCallCenterPage'));
+const CommunicationEmailPage = lazy(() => import('./pages/admin/communication/CommunicationEmailPage'));
+const CommunicationWhatsAppPage = lazy(() => import('./pages/admin/communication/CommunicationWhatsAppPage'));
+const CommunicationUsagePage = lazy(() => import('./pages/admin/communication/CommunicationUsagePage'));
+const CommunicationAdvancedPage = lazy(() => import('./pages/admin/communication/CommunicationAdvancedPage'));
 
 export interface RouteConfig {
   name: string;
@@ -408,7 +420,24 @@ export const routes: RouteConfig[] = [
   { name: 'Communications Analytics', path: '/outreach/analytics', element: <CommunicationsAnalyticsPage /> },
   { name: 'Communications Billing', path: '/outreach/billing',    element: <CommunicationsBillingPage /> },
   // Admin (wrapped in AdminLayout which enforces is_admin server-side)
-  { name: 'Admin Overview',    path: '/admin',                    element: adminWrap(<AdminOverviewPage />),    adminOnly: true },
+  { name: 'Admin Home',        path: '/admin',                    element: adminWrap(<AdminHomePage />),        adminOnly: true },
+  { name: 'Admin Metrics',     path: '/admin/metrics',            element: adminWrap(<AdminOverviewPage />),    adminOnly: true },
+
+  /*
+   * AI & COMMUNICATION — one destination for every channel.
+   *
+   * These are routes rather than tabs so each one can be linked,
+   * bookmarked and reached with the back button. The order matches the
+   * secondary navigation in CommunicationShell, which reads it from
+   * src/admin/navigation.ts.
+   */
+  { name: 'Admin Communication',        path: '/admin/communication',             element: adminWrap(<CommunicationOverviewPage />),   adminOnly: true },
+  { name: 'Admin Voice',                path: '/admin/communication/voice',       element: adminWrap(<CommunicationVoicePage />),      adminOnly: true },
+  { name: 'Admin Call Center',          path: '/admin/communication/call-center', element: adminWrap(<CommunicationCallCenterPage />), adminOnly: true },
+  { name: 'Admin Email',                path: '/admin/communication/email',       element: adminWrap(<CommunicationEmailPage />),      adminOnly: true },
+  { name: 'Admin WhatsApp',             path: '/admin/communication/whatsapp',    element: adminWrap(<CommunicationWhatsAppPage />),   adminOnly: true },
+  { name: 'Admin Comms Usage',          path: '/admin/communication/usage',       element: adminWrap(<CommunicationUsagePage />),      adminOnly: true },
+  { name: 'Admin Comms Advanced',       path: '/admin/communication/advanced',    element: adminWrap(<CommunicationAdvancedPage />),   adminOnly: true },
   { name: 'Admin Users',       path: '/admin/users',              element: adminWrap(<AdminUsersPage />),       adminOnly: true },
   { name: 'Admin User 360',    path: '/admin/user360',            element: adminWrap(<AdminUser360Page />),     adminOnly: true },
   { name: 'Admin Properties',  path: '/admin/properties',         element: adminWrap(<AdminPropertiesPage />),  adminOnly: true },
@@ -424,7 +453,21 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Live Chat Reports', path: '/admin/live-chat-reports', element: adminWrap(<AdminLiveChatReportsPage />), adminOnly: true },
   { name: 'Admin Providers',   path: '/admin/providers',          element: adminWrap(<AdminProvidersPage />),   adminOnly: true },
   { name: 'Admin Verify COGS', path: '/admin/verify-cogs',        element: adminWrap(<AdminVerifyCogsPage />),  adminOnly: true },
-  { name: 'Admin Voice AI',    path: '/admin/voice-ai',           element: adminWrap(<AdminVoiceAiPage />),     adminOnly: true },
+  /*
+   * The eleven-tab voice tooling moved into AI & communication. The URL
+   * still resolves, because bookmarks to it predate the redesign and a
+   * 404 is not an acceptable answer to a link that used to work. It is a
+   * redirect and not a second copy: there is one Advanced page.
+   */
+  { name: 'Admin Voice AI (moved)', path: '/admin/voice-ai',      element: <Navigate to="/admin/communication/advanced" replace />, adminOnly: true, visible: false },
+  { name: 'Admin Overview (moved)', path: '/admin/overview',      element: <Navigate to="/admin/metrics" replace />,               adminOnly: true, visible: false },
+  { name: 'Admin Comms (alias)',    path: '/admin/comms',         element: <Navigate to="/admin/communication" replace />,          adminOnly: true, visible: false },
+  { name: 'Admin Comms (alias 2)',  path: '/admin/communications', element: <Navigate to="/admin/communication" replace />,         adminOnly: true, visible: false },
+  { name: 'Admin AI (alias)',       path: '/admin/ai',            element: <Navigate to="/admin/communication" replace />,          adminOnly: true, visible: false },
+  { name: 'Admin Voice (alias)',    path: '/admin/voice',         element: <Navigate to="/admin/communication/voice" replace />,    adminOnly: true, visible: false },
+  { name: 'Admin Email (alias)',    path: '/admin/email',         element: <Navigate to="/admin/communication/email" replace />,    adminOnly: true, visible: false },
+  { name: 'Admin WhatsApp (alias)', path: '/admin/whatsapp',      element: <Navigate to="/admin/communication/whatsapp" replace />, adminOnly: true, visible: false },
+  { name: 'Admin Calls (alias)',    path: '/admin/call-center',   element: <Navigate to="/admin/communication/call-center" replace />, adminOnly: true, visible: false },
   { name: 'Admin Pricing',     path: '/admin/pricing',            element: adminWrap(<AdminPricingPage />),     adminOnly: true },
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },

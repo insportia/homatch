@@ -43,6 +43,11 @@ export const AUDIT_ALLOWED_EXACT = new Set([
   // The voice provider's own name, on the admin Voice AI screen. A company
   // name, written the same way in every language — exactly like 'Homatch'.
   'ElevenLabs',
+  // The calling vendor's own name. The Admin deliberately leads with
+  // "Calling provider" and shows this beside it as the answer, so the
+  // owner never has to know the word to find the page — but the word
+  // itself is a brand and is the same in all six languages.
+  'Vapi',
   // Placeholders in the pronunciation editor showing how to WRITE a rule for
   // the Homatch brand: an IPA transcription and a syllable hint. IPA is a
   // universal notation and both are examples of the brand name itself, so

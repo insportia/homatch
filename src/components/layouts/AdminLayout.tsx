@@ -1,97 +1,162 @@
-import React, { useEffect, useState } from 'react';
+// HOMATCH Admin — the shell, and the seven doors in it.
+//
+// WHAT CHANGED, AND WHY
+//
+// This used to render twenty-six sibling links in one scrolling column:
+// Overview, Users, User 360, Properties, Campaigns, Outreach, Markets,
+// Sources, Signals, Matches, Credits, Payments, Finance, Live Chat
+// Reports, Providers, Voice AI, Verify COGS, Pricing, Spend Caps,
+// Diagnostics, Sponsored, Settings, Health, Storage, Site Studio, App
+// Content, Engagement. That is a sitemap of the codebase, and it asks the
+// reader to already know which of twenty-six engineering words contains
+// the thing they want.
+//
+// Now there are seven groups, each of which is something an owner WANTS,
+// and the destinations live inside the group they belong to. Nothing was
+// deleted: every one of those twenty-six pages is still reachable, and
+// src/admin/navigation.ts is the single description of where each one is.
+//
+// THE GROUP OPENS WHEN YOU ARE IN IT
+//
+// Collapsing everything and making the reader hunt would trade one
+// problem for another, so the group containing the current page is open,
+// and the others are closed until asked. On a phone the whole thing is a
+// sheet, which is what it already was.
+
+import { AlertTriangle, ChevronDown, ChevronLeft, Menu, Search, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import {
-  LayoutDashboard, Users, Building2, Zap, Globe, Radio,
-  Activity, Puzzle, CreditCard, Receipt, Server, Settings2,
-  ShieldAlert, Wrench, ChevronLeft, Menu, X, AlertTriangle,
-  SlidersHorizontal, HeartPulse, UserSearch, MessageSquareWarning, Send, Paintbrush, BadgeDollarSign,
-  AudioLines, Bell, Type, HardDrive, ShieldCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ADMIN_GROUPS, destinationForPath, groupForPath } from '@/admin/navigation';
+import { AdminSearch } from '@/components/admin/AdminSearch';
+import { ImpersonationBannerBar } from '@/components/admin/ImpersonationBannerBar';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { cn } from '@/lib/utils';
 import { getSpendCapStatus } from '@/services/api';
 import type { SpendCapStatus } from '@/types/types';
-import { cn } from '@/lib/utils';
-import { ImpersonationBannerBar } from '@/components/admin/ImpersonationBannerBar';
-import { useLanguage } from '@/contexts/LanguageContext';
 
-const NAV = [
-  { path: '/admin',              labelKey: 'admin_nav_overview',   icon: LayoutDashboard },
-  { path: '/admin/users',        labelKey: 'admin_nav_users',      icon: Users },
-  { path: '/admin/user360',      labelKey: 'admin_nav_user360',    icon: UserSearch },
-  { path: '/admin/properties',   labelKey: 'admin_nav_properties', icon: Building2 },
-  { path: '/admin/campaigns',    labelKey: 'admin_nav_campaigns',  icon: Zap },
-  { path: '/admin/outreach',     labelKey: 'admin_nav_outreach',   icon: Send },
-  { path: '/admin/markets',      labelKey: 'admin_nav_markets',    icon: Globe },
-  { path: '/admin/sources',      labelKey: 'admin_nav_sources',    icon: Radio },
-  { path: '/admin/signals',      labelKey: 'admin_nav_signals',    icon: Activity },
-  { path: '/admin/matches',      labelKey: 'admin_nav_matches',    icon: Puzzle },
-  { path: '/admin/credits',      labelKey: 'admin_nav_credits',    icon: CreditCard },
-  { path: '/admin/payments',     labelKey: 'admin_nav_payments',   icon: Receipt },
-  { path: '/admin/finance',      labelKey: 'admin_nav_finance',    icon: BadgeDollarSign },
-  { path: '/admin/live-chat-reports', labelKey: 'admin_livechat_title', icon: MessageSquareWarning },
-  { path: '/admin/providers',    labelKey: 'admin_nav_providers',  icon: Server },
-  { path: '/admin/voice-ai',     labelKey: 'voice_ai_title',       icon: AudioLines },
-  { path: '/admin/verify-cogs', labelKey: 'admin_nav_verify_cogs', icon: ShieldCheck },
-  { path: '/admin/pricing',      labelKey: 'admin_nav_pricing',    icon: Settings2 },
-  { path: '/admin/spend-caps',   labelKey: 'admin_nav_spend_caps', icon: ShieldAlert },
-  { path: '/admin/diagnostics',  labelKey: 'admin_nav_diagnostics', icon: Wrench },
-  { path: '/admin/sponsored',    labelKey: 'admin_nav_sponsored',  icon: Activity },
-  { path: '/admin/settings',     labelKey: 'admin_nav_settings',   icon: SlidersHorizontal },
-  { path: '/admin/health',       labelKey: 'admin_nav_health',     icon: HeartPulse },
-  { path: '/admin/storage',      labelKey: 'admin_nav_storage',    icon: HardDrive },
-  { path: '/admin/site-studio',  labelKey: 'studio_title',         icon: Paintbrush },
-  { path: '/admin/app-content',  labelKey: 'admin_nav_content',    icon: Type },
-
-  { path: '/admin/engagement',   labelKey: 'admin_nav_engagement', icon: Bell },
-];
-
-function SidebarContent({ capWarnings, onClose }: { capWarnings: number; onClose?: () => void }) {
+function SidebarContent({ capWarnings, onClose, onSearch }: {
+  capWarnings: number;
+  onClose?: () => void;
+  onSearch: () => void;
+}) {
   const location = useLocation();
   const { t } = useLanguage();
+  const currentGroup = useMemo(() => groupForPath(location.pathname), [location.pathname]);
+  /*
+   * Exactly one destination is highlighted.
+   *
+   * A plain startsWith lit up both "Overview" and "Voice" when the reader
+   * was on /admin/communication/voice, because the section's own landing
+   * page is a prefix of every page inside it. destinationForPath resolves
+   * by LONGEST match, which is the one the reader is actually on.
+   */
+  const currentItem = useMemo(() => destinationForPath(location.pathname), [location.pathname]);
+
+  /* Open the group you are standing in; remember what the reader opens
+     after that. */
+  const [openIds, setOpenIds] = useState<string[]>(() => (currentGroup ? [currentGroup.id] : ['overview']));
+  useEffect(() => {
+    if (currentGroup) setOpenIds((prev) => (prev.includes(currentGroup.id) ? prev : [...prev, currentGroup.id]));
+  }, [currentGroup]);
+
+  const toggle = useCallback((id: string) => {
+    setOpenIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }, []);
+
   return (
-    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
-      <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border shrink-0">
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+      <div className="flex shrink-0 items-center justify-between border-b border-sidebar-border px-4 py-4">
         <Link to="/admin" className="flex items-center gap-2" onClick={onClose}>
           <span className="font-bold text-base tracking-tight text-primary">HOMATCH</span>
           <Badge variant="outline" className="text-[13px] px-1.5 py-0 border-primary/40 text-primary">ADMIN</Badge>
         </Link>
         {onClose && (
-          <Button variant="ghost" size="icon" className="md:hidden" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="md:hidden" onClick={onClose} aria-label={t('general_close')}>
             <X className="h-4 w-4" />
           </Button>
         )}
       </div>
-      <nav className="flex-1 overflow-y-auto py-2 px-2">
-        {NAV.map(({ path, labelKey, icon: Icon }) => {
-          const active = location.pathname === path || (path !== '/admin' && location.pathname.startsWith(path));
-          const isSpendCap = path === '/admin/spend-caps';
+
+      <div className="shrink-0 px-2 pt-2">
+        <button
+          type="button"
+          onClick={() => { onClose?.(); onSearch(); }}
+          className="flex w-full items-center gap-2 rounded-md border border-sidebar-border/70 px-3 py-2 text-start text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        >
+          <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">{t('admin_search_placeholder')}</span>
+        </button>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-2 py-2" aria-label={t('admin_nav_aria_label')}>
+        {ADMIN_GROUPS.map((group) => {
+          const open = openIds.includes(group.id);
+          const inGroup = currentGroup?.id === group.id;
+          const GroupIcon = group.icon;
           return (
-            <Link
-              key={path}
-              to={path}
-              onClick={onClose}
-              className={cn(
-                'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors mb-0.5',
-                active
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+            <div key={group.id} className="mb-0.5">
+              <button
+                type="button"
+                onClick={() => toggle(group.id)}
+                aria-expanded={open}
+                className={cn(
+                  'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-semibold transition-colors',
+                  inGroup
+                    ? 'text-sidebar-foreground'
+                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                )}
+              >
+                <GroupIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {/* Wraps rather than truncates. "Properties & matching" is
+                    already cut in English at 240px, and Georgian and Russian
+                    are longer; a label ending in an ellipsis is not a label. */}
+                <span className="min-w-0 flex-1 text-balance text-start leading-snug">{t(group.labelKey)}</span>
+                <ChevronDown
+                  className={cn('h-3.5 w-3.5 shrink-0 transition-transform', !open && '-rotate-90 rtl:rotate-90')}
+                  aria-hidden="true"
+                />
+              </button>
+
+              {open && (
+                <div className="mt-0.5 space-y-0.5 ps-3">
+                  {group.items.map((item) => {
+                    const active = currentItem?.path === item.path;
+                    const showCap = item.path === '/admin/spend-caps' && capWarnings > 0;
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={onClose}
+                        aria-current={active ? 'page' : undefined}
+                        className={cn(
+                          'flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+                          active
+                            ? 'bg-primary text-primary-foreground font-medium'
+                            : 'text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                        )}
+                      >
+                        <span className="min-w-0 flex-1 leading-snug">{t(item.labelKey)}</span>
+                        {showCap && (
+                          <Badge variant="destructive" className="h-4 px-1.5 text-[13px]">{capWarnings}</Badge>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1 truncate">{t(labelKey)}</span>
-              {isSpendCap && capWarnings > 0 && (
-                <Badge variant="destructive" className="text-[13px] px-1.5 py-0 h-4">{capWarnings}</Badge>
-              )}
-            </Link>
+            </div>
           );
         })}
       </nav>
-      <div className="px-4 py-3 border-t border-sidebar-border shrink-0">
+
+      <div className="shrink-0 border-t border-sidebar-border px-4 py-3">
         <Link to="/dashboard">
-          <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground text-xs gap-1.5">
-            <ChevronLeft className="h-3.5 w-3.5" /> {t('admin_back_to_app')}
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-1.5 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground">
+            <ChevronLeft className="h-3.5 w-3.5 rtl:rotate-180" /> {t('admin_back_to_app')}
           </Button>
         </Link>
       </div>
@@ -105,6 +170,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navigate = useNavigate();
   const [capWarnings, setCapWarnings] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !homatchUser?.is_admin) navigate('/dashboard', { replace: true });
@@ -113,55 +179,74 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!homatchUser?.is_admin) return;
     getSpendCapStatus().then((caps: SpendCapStatus[]) => {
-      setCapWarnings(caps.filter(c => c.warning).length);
+      setCapWarnings(caps.filter((c) => c.warning).length);
     }).catch(() => {});
   }, [homatchUser]);
+
+  /* Ctrl/Cmd-K, the shortcut every admin already tries. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   if (loading || !homatchUser?.is_admin) return null;
 
   return (
-    <div className="flex min-h-screen w-full bg-background">
-      <ImpersonationBannerBar />
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border">
-        <SidebarContent capWarnings={capWarnings} />
+    <div className="flex min-h-screen bg-background">
+      <aside className="hidden w-64 shrink-0 border-e border-sidebar-border lg:w-72 md:block">
+        <div className="sticky top-0 h-screen">
+          <SidebarContent capWarnings={capWarnings} onSearch={() => setSearchOpen(true)} />
+        </div>
       </aside>
 
-      {/* Mobile sidebar — SheetTrigger MUST be a descendant of Sheet */}
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetTrigger asChild>
-          {/* Invisible placeholder — actual trigger button is inside the header below */}
-          <span className="sr-only" />
-        </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-56 bg-sidebar" aria-label={t('admin_nav_aria_label')}>
-          <SidebarContent capWarnings={capWarnings} onClose={() => setMobileOpen(false)} />
-        </SheetContent>
-      </Sheet>
-
-      {/* Main */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 bg-background/90 backdrop-blur border-b border-border">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2 md:hidden">
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label={t('general_menu')}>
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-64 p-0 bg-sidebar" aria-label={t('admin_nav_aria_label')}>
+              <SidebarContent
+                capWarnings={capWarnings}
+                onClose={() => setMobileOpen(false)}
+                onSearch={() => setSearchOpen(true)}
+              />
+            </SheetContent>
+          </Sheet>
+          <Link to="/admin" className="flex items-center gap-1.5">
+            <span className="text-sm font-bold tracking-tight text-primary">HOMATCH</span>
+            <Badge variant="outline" className="h-4 border-primary/40 px-1 text-[13px] text-primary">ADMIN</Badge>
+          </Link>
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden shrink-0"
-            onClick={() => setMobileOpen(true)}
-            /* The only way into admin navigation on a phone. It had no name. */
-            aria-label={t('general_menu')}
+            className="ms-auto"
+            onClick={() => setSearchOpen(true)}
+            aria-label={t('admin_search_placeholder')}
           >
-            <Menu className="h-5 w-5" />
+            <Search className="h-4 w-4" />
           </Button>
           {capWarnings > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{capWarnings === 1 ? t('admin_spend_cap_warning_one', { count: capWarnings }) : t('admin_spend_cap_warning_multi', { count: capWarnings })}</span>
-            </div>
+            <Badge variant="destructive" className="gap-1 text-[13px]">
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              {capWarnings}
+            </Badge>
           )}
-        </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {children}
-        </main>
+        </div>
+
+        <ImpersonationBannerBar />
+        <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
       </div>
+
+      <AdminSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

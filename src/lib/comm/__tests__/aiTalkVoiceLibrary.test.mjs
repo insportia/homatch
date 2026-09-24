@@ -28,7 +28,17 @@ const EDGE = read('supabase/functions/ai-talk-session/index.ts');
 const CARTESIA = read('supabase/functions/_shared/comm/cartesia.ts');
 const SERVICE = read('src/services/communications.ts');
 const LIBRARY = read('src/components/admin/AiTalkVoiceLibrary.tsx');
-const PANEL = read('src/components/admin/CommunicationsVoicePanel.tsx');
+/*
+ * THE SHELF MOVED WITH THE BOX IT SITS UNDER.
+ *
+ * Both used to live in CommunicationsVoicePanel, in the middle of a
+ * settings page. They are now on /admin/communication/voice, inside
+ * AiTalkVoiceControl, which is the one editable AI TALK voice surface in
+ * the product. Nothing about the shelf itself changed — it is the same
+ * component, writing the same two settings — so what these assertions
+ * check is unchanged; only the file that hosts it is different.
+ */
+const HOST = read('src/components/admin/AiTalkVoiceControl.tsx');
 
 /* ── The latency split, shipped first ────────────────────────────────────*/
 
@@ -115,8 +125,11 @@ test('CURRENT_PREVIOUS_AND_RESTORE are all present', () => {
   assert.match(LIBRARY, /admin_talk_lib_restore/);
   // Restore is the same one action, so it cannot drift from Use Voice.
   assert.match(LIBRARY, /onClick=\{\(\) => void onUse\(previousVoiceId\)\}/);
-  // The panel remembers what was replaced.
-  assert.match(PANEL, /if \(savedVoiceId && savedVoiceId !== id\) setPreviousVoiceId\(savedVoiceId\);/);
+  // The host remembers what was replaced — both when the shelf activates
+  // a voice and when the box above it is saved, because Restore has to
+  // work whichever of the two made the change.
+  assert.match(HOST, /if \(savedVoiceId && savedVoiceId !== id\) setPreviousVoiceId\(savedVoiceId\);/);
+  assert.match(HOST, /if \(savedVoiceId && savedVoiceId !== trimmed\) setPreviousVoiceId\(savedVoiceId\);/);
 });
 
 test('a card shows what is useful and nothing that was made up', () => {

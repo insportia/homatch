@@ -24,6 +24,20 @@ const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, 
 const EDGE = code(read('supabase/functions/ai-talk-session/index.ts'));
 const PANEL = read('src/components/admin/CommunicationsVoicePanel.tsx');
 const PANEL_CODE = code(PANEL);
+/*
+ * THE VOICE CONTROL MOVED, AND THESE FOLLOWED IT.
+ *
+ * It used to be a box in the middle of CommunicationsVoicePanel, which is
+ * a settings page. It is now its own component on
+ * /admin/communication/voice, two clicks from the sidebar, because
+ * nobody could find it where it was. The guarantees below did not
+ * change -- a control that cannot say whether it is saved is still the
+ * dangerous one -- so they are asserted against the file that now holds
+ * it, and the panel is checked for having exactly one pointer to it
+ * rather than a second copy.
+ */
+const CONTROL = read('src/components/admin/AiTalkVoiceControl.tsx');
+const CONTROL_CODE = code(CONTROL);
 const SERVICE = read('src/services/communications.ts');
 const SERVICE_CODE = code(SERVICE);
 const I18N = read('src/i18n/translations.ts');
@@ -99,8 +113,14 @@ test('a malformed id cannot be saved, and says so', () => {
   assert.match(SERVICE_CODE, /export const VOICE_ID_SHAPE = \/\^\[0-9a-f\]\{8\}-/);
   const save = SERVICE_CODE.slice(SERVICE_CODE.indexOf('export async function saveAiTalkVoice'));
   assert.match(save.slice(0, 400), /if \(!VOICE_ID_SHAPE\.test\(id\)\) return false;/);
-  // And the screen refuses before it ever calls the service.
-  assert.match(PANEL_CODE, /if \(!VOICE_ID_SHAPE\.test\(id\)\) \{[\s\S]{0,80}admin_talk_voice_invalid/);
+  // And the screen refuses before it ever calls the service. The control
+  // computes the test once and both actions read it, so Test and Save
+  // cannot disagree about whether an id is usable -- and the button is
+  // disabled on the same value, so the refusal is visible before it is
+  // pressed rather than as a toast afterwards.
+  assert.match(CONTROL_CODE, /const shapeOk = VOICE_ID_SHAPE\.test\(trimmed\);/);
+  assert.match(CONTROL_CODE, /if \(!shapeOk\) \{ toast\.error\(t\('voice_id_invalid'\)\); return; \}/);
+  assert.match(CONTROL_CODE, /disabled=\{previewing \|\| !shapeOk\}/);
 });
 
 test('Test Voice auditions through the production path and writes nothing', () => {
@@ -128,17 +148,52 @@ test('the screen says which voice is actually live', () => {
   // The difference between what is typed and what is saved is the whole
   // safety of the control: an unsaved box that looks saved is how somebody
   // walks away believing the voice changed.
-  assert.match(PANEL_CODE, /savedVoiceId === voiceId\.trim\(\)/);
-  for (const key of ['admin_talk_voice_active', 'admin_talk_voice_unsaved', 'admin_talk_voice_unset']) {
-    assert.ok(PANEL.includes(key), `${key} is not rendered`);
+  //
+  // The control states it twice over, which is why both are pinned: the
+  // id that is LIVE is rendered on its own, and a draft that differs from
+  // it is badged as not saved. Save is disabled while they agree, so the
+  // button cannot claim there is something to do when there is not.
+  assert.match(CONTROL_CODE, /savedVoiceId \?\? t\('admin_no_data'\)/);
+  assert.match(CONTROL_CODE, /data-testid="ai-talk-active-voice"/);
+  assert.match(CONTROL_CODE, /const dirty = trimmed !== \(savedVoiceId \?\? ''\)/);
+  assert.match(CONTROL_CODE, /disabled=\{saving \|\| !shapeOk \|\| !dirty\}/);
+  for (const key of ['voice_unsaved', 'voice_current', 'voice_saved_toast']) {
+    assert.ok(CONTROL.includes(key), `${key} is not rendered`);
     const rows = I18N.match(new RegExp(`^  ${key}: '`, 'gm')) ?? [];
     assert.equal(rows.length, 6, `${key} is in ${rows.length} locales, not six`);
   }
 });
 
+test('there is exactly one editable AI TALK voice surface', () => {
+  /*
+   * The reason this exists: the redesign moved the control, and the
+   * cheapest way to "not break the old page" would have been to leave a
+   * copy behind. Two boxes writing ai_talk_voice is two places to look
+   * when the voice is wrong, and eventually two answers.
+   */
+  const writers = [
+    'src/components/admin/AiTalkVoiceControl.tsx',
+    'src/components/admin/AiTalkVoiceLibrary.tsx',
+    'src/components/admin/CommunicationsVoicePanel.tsx',
+    'src/pages/admin/communication/CommunicationVoicePage.tsx',
+  ].filter((f) => /saveAiTalkVoice\s*\(/.test(code(read(f))));
+  assert.deepEqual(
+    writers.sort(),
+    [
+      'src/components/admin/AiTalkVoiceControl.tsx',
+      'src/components/admin/AiTalkVoiceLibrary.tsx',
+    ],
+    'the AI TALK voice is written from somewhere other than the control and its shelf',
+  );
+  // And the old location points at the new one instead of repeating it.
+  assert.match(PANEL, /\/admin\/communication\/voice/);
+});
+
 test('the model is shown but not editable, because nothing would read it', () => {
-  assert.match(PANEL, /id="mariam-voice-model" value="sonic-3" readOnly disabled/);
-  assert.ok(!/model_id: /.test(PANEL_CODE), 'the panel is writing a model nothing reads');
+  assert.match(CONTROL, /id="ai-talk-voice-model"/);
+  assert.match(CONTROL, /value="sonic-3"/);
+  assert.match(CONTROL, /readOnly/);
+  assert.ok(!/model_id: /.test(CONTROL_CODE), 'the control is writing a model nothing reads');
   const rows = I18N.match(/^  admin_talk_voice_model_hint: '/gm) ?? [];
   assert.equal(rows.length, 6);
 });

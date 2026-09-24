@@ -18,39 +18,39 @@
 // are the ones the current model reads. A slider a provider ignores is the
 // same lie as an invented number, just quieter.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import {
   AudioLines, Brain, CheckCircle2, Download, Ear, Loader2, MinusCircle, Play,
   Plus, RefreshCw, ShieldAlert, Square, Trash2, Upload, XCircle,
 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { VoiceAudition } from '@/components/admin/VoiceAudition';
 import { TalkCostPanel } from '@/components/admin/TalkCostPanel';
+import { VoiceAudition } from '@/components/admin/VoiceAudition';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { cn } from '@/lib/utils';
+import type {
+  KeytermSelection, LibraryVoice, PersonalityProfile, 
+  PronunciationRule, ProviderModel, ProviderRoute,UsageGroup, VocabularyRow, VoiceOverview,
+} from '@/services/voiceAi';
 import {
   approvePronunciation, audioUrlFromBase64, deletePronunciation, deleteVocabularyTerm,
   exportVocabulary, getPersonality, getVoiceModels, getVoiceOverview, getVoiceUsage,
   importVocabulary, listLibraryVoices, listPronunciation, listRoutes, listVocabulary,
   previewKeyterms, previewLibraryVoice, previewPronunciation, savePersonality,
   savePronunciation, saveRoute, saveVocabularyTerm, setVoiceFlags, syncVoiceLibrary,
-} from '@/services/voiceAi';
-import type {
-  KeytermSelection, LibraryVoice, PersonalityProfile, ProviderModel, ProviderRoute,
-  PronunciationRule, UsageGroup, VocabularyRow, VoiceOverview,
 } from '@/services/voiceAi';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -59,16 +59,27 @@ const k = (s: string) => s as TKey;
 /** Languages the previews and filters offer. The provider decides what it can actually speak. */
 const LANGUAGES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
 
-export default function AdminVoiceAiPage() {
+/**
+ * The technical voice tooling.
+ *
+ * `embedded` is set when this renders inside the AI & communication
+ * centre, which supplies its own page heading. Without it the page would
+ * carry two h1 elements, and a screen reader would be told the page has
+ * two titles -- which is the kind of thing that survives a redesign
+ * because it is invisible to everyone who can see.
+ */
+export default function AdminVoiceAiPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useLanguage();
   const [tab, setTab] = useState('overview');
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold">{t(k('voice_ai_title'))}</h1>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">{t(k('voice_ai_subtitle'))}</p>
-      </div>
+      {!embedded && (
+        <div>
+          <h1 className="text-xl font-bold">{t(k('voice_ai_title'))}</h1>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{t(k('voice_ai_subtitle'))}</p>
+        </div>
+      )}
 
       <Tabs value={tab} onValueChange={setTab}>
         <div className="-mx-1 overflow-x-auto px-1">

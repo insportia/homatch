@@ -11,6 +11,35 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────
+   *
+   * Four invariants, all of them names of things rather than words
+   * about things.
+   *
+   * "WhatsApp" is Meta's product and is written WhatsApp in Georgian,
+   * Russian and Turkish; Arabic and Hebrew do carry their own forms
+   * (واتساب, וואטסאפ) and are not flagged. Translating the brand would
+   * make the Admin disagree with the phone the owner is holding.
+   *
+   * "AI TALK" is Homatch's own product name and is deliberately
+   * identical in all six. It is the name on the button a visitor
+   * presses; a localised product name would be a second product.
+   *
+   * "Email" is the ordinary Russian word for it — Russians write email —
+   * and Georgian, Arabic and Hebrew all carry their own (ელფოსტა,
+   * البريد الإلكتروني, אימייל).
+   *
+   * "Test" as the WhatsApp environment label is spelled identically in
+   * Turkish. The other five differ.
+   */
+  'admin_nav_whatsapp',
+  'admin_home_sys_whatsapp',
+  'wa_admin_title',
+  'comms_card_ai_talk',
+  'admin_nav_email',
+  'admin_home_sys_email',
+  'email_admin_title',
+  'wa_env_test',
   // "Mariam" -- a placeholder showing what to type in the voice-name box,
   // and a person's name. Turkish spells it the same as English; ka/ru/ar/he
   // carry their own scripts (მარიამი, Мариам, مريم, מרים).

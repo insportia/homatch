@@ -397,8 +397,15 @@ test('the finance page is registered and reachable as an admin route', () => {
   const routes = src('routes.tsx');
   assert.match(routes, /AdminFinancePage/);
   assert.match(routes, /path: '\/admin\/finance'[\s\S]{0,120}adminOnly: true/);
-  assert.match(src('components/layouts/AdminLayout.tsx'), /'\/admin\/finance'/);
-  assert.match(src('components/layouts/AdminLayout.tsx'), /admin_nav_finance/);
+  /*
+   * The sidebar is data now. AdminLayout renders src/admin/navigation.ts
+   * rather than holding its own list, so "reachable from the navigation"
+   * is a question about the registry -- and the registry is also what the
+   * Admin search reads, which means a page that is in one is in both.
+   */
+  assert.match(src('admin/navigation.ts'), /'\/admin\/finance'/);
+  assert.match(src('admin/navigation.ts'), /admin_nav_finance/);
+  assert.match(src('components/layouts/AdminLayout.tsx'), /ADMIN_GROUPS/);
 });
 
 test('every tab renders a real RPC rather than a placeholder', () => {

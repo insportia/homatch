@@ -28,6 +28,7 @@ import { ADMIN_STRINGS_1 } from './admin-i18n-data-1.mjs';
 import { PAYG_STRINGS_1 } from './payg-i18n-data-1.mjs';
 import { PAYG_STRINGS_2 } from './payg-i18n-data-2.mjs';
 import { PAYG_STRINGS_3 } from './payg-i18n-data-3.mjs';
+import { PAYG_STRINGS_4 } from './payg-i18n-data-4.mjs';
 import { ADMIN_STRINGS_2 } from './admin-i18n-data-2.mjs';
 import { ADMIN_STRINGS_3 } from './admin-i18n-data-3.mjs';
 import { ADMIN_STRINGS_4 } from './admin-i18n-data-4.mjs';
@@ -38,7 +39,7 @@ const LANGS = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
 
 const STRINGS = {
   ...ADMIN_STRINGS_1, ...ADMIN_STRINGS_2, ...ADMIN_STRINGS_3, ...ADMIN_STRINGS_4,
-  ...PAYG_STRINGS_1, ...PAYG_STRINGS_2, ...PAYG_STRINGS_3,
+  ...PAYG_STRINGS_1, ...PAYG_STRINGS_2, ...PAYG_STRINGS_3, ...PAYG_STRINGS_4,
 };
 
 function literal(value) {

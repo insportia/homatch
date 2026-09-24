@@ -80,7 +80,16 @@ export function PricingSimulator() {
     });
     setBusy(false);
     if (error) { toast.error(error.message); return; }
-    setResult(data as SimResult);
+    /*
+     * A response that is not the shape this screen renders becomes "no
+     * result", not a grid of $NaN. An operator sanity-checking a margin must
+     * be able to trust that a number on screen is a number the engine
+     * produced -- NaN reads as a value, and it is the absence of one.
+     */
+    const ok = data && typeof data === 'object'
+      && Array.isArray((data as SimResult).plans)
+      && Number.isFinite(Number((data as SimResult).landed_cogs_cents));
+    setResult(ok ? (data as SimResult) : null);
   };
 
   // Run once on mount with the mandate's worked example, so the screen opens
@@ -147,7 +156,7 @@ export function PricingSimulator() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.plans.map((p) => (
+                  {(result.plans ?? []).map((p) => (
                     <tr key={p.plan_code} className="border-b border-border/50">
                       <td className="py-2 font-medium">
                         {p.plan_name}

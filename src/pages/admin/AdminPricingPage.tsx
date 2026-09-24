@@ -11,7 +11,8 @@ import type { PricingConfig, ResearchProduct } from '@/types/types';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PricingSimulator } from '@/components/admin/PricingSimulator';
-import { PlanCatalogue } from '@/components/admin/PlanCatalogue';
+import { SectionBoundary } from '@/components/common/SectionBoundary';
+import { OwnerControls } from '@/components/admin/OwnerControls';
 
 type FieldDef = { key: keyof PricingConfig; label: string; hint: string; min: number; max: number; step: number };
 
@@ -114,9 +115,14 @@ export default function AdminPricingPage() {
       {/* The offer first, the algorithm second. What a plan costs and what
           it includes is what somebody opens this page to change; the match
           pricing model below it is tuned far less often. */}
-      <PlanCatalogue />
+      {/* The plan catalogue used to sit here, editing the price and the
+          monthly credit grant of FREE, VIP and PREMIUM. There are no
+          plans; these are the levers that actually run the business. */}
+      <OwnerControls />
 
-      <PricingSimulator />
+      <SectionBoundary name="admin-pricing-simulator">
+        <PricingSimulator />
+      </SectionBoundary>
 
       <Card>
         <CardHeader className="pb-2">

@@ -297,6 +297,29 @@ export interface VoiceDiagnostics {
   /** Whether the browser applied echo cancellation to the microphone track. */
   echoCancellation: boolean | null;
   /*
+   * The capture chain as the browser actually configured it, requested beside
+   * actual. See the Android routing hypothesis; this is the evidence that
+   * would confirm or kill it, and nothing acts on it yet.
+   */
+  micSettings: {
+    echoCancellationRequested: boolean; echoCancellationActual: boolean | null;
+    noiseSuppressionRequested: boolean; noiseSuppressionActual: boolean | null;
+    autoGainControlRequested: boolean; autoGainControlActual: boolean | null;
+    sampleRate: number | null; channelCount: number | null;
+    micActive: boolean | null;
+  } | null;
+  /*
+   * The OUTPUT chain, which is the half "AI Talk is too quiet" is about.
+   *
+   * outputGainValue is reported because the node exists and is never assigned:
+   * a GainNode defaults to 1, so this is expected to read exactly 1 and the
+   * number is here to prove that rather than to assert it. If it ever reads
+   * anything else, something started attenuating the assistant's voice and
+   * this says so instead of the next physical test discovering it.
+   */
+  outputGainValue: number | null;
+  audioContextSampleRate: number | null;
+  /*
    * THE FINAL THAT NEVER CAME.
    *
    * The difference between "the visitor said nothing" and "the recogniser
@@ -363,6 +386,17 @@ export interface VoiceDiagnostics {
     language: string | null; chars: number; waitMs: number; used: boolean; why: string; agreed: boolean;
   } | null;
   secondOpinionFailures: number;
+  /* Sockets, counted by role rather than lumped into one "rotations" number. */
+  primarySocketOpenCount: number;
+  recoverySocketOpenCount: number;
+  /** Finals from a stream retired by a later endpoint. Expected: zero. */
+  staleFinalsRejected: number;
+  /** Turns that opened ONE stream because nothing had armed the opinion. */
+  secondOpinionSkipped: number;
+  secondOpinionArmings: number;
+  secondOpinionDisarmings: number;
+  /** Why the opinion is armed right now, or null if it is not. */
+  secondOpinionArmedFor: string | null;
   lateFinalsDropped: number;
   /** Turns refused because every recogniser produced text of the wrong language. */
   discreditedTurnsDropped: number;
@@ -556,7 +590,10 @@ export interface VoiceMilestone {
     | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition'
   | 'no_final_recovered'
   | 'inaudible_tail'
-  | 'same_turn_recovered' | 'second_opinion_used' | 'second_opinion_turn' | 'turn_refused' | 'failed';
+  | 'same_turn_recovered' | 'second_opinion_used' | 'second_opinion_turn'
+  /* The opinion is now bought per-turn, so when it is on is itself a fact. */
+  | 'second_opinion_armed' | 'second_opinion_disarmed' | 'stale_final_rejected'
+  | 'turn_refused' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
   /** A code or a count. Never content. */
@@ -727,6 +764,17 @@ const SECOND_OPINION_LEAD_MS = 900;
 const SECOND_OPINION_GRACE_MS = 2500;
 /** Audio the second opinion may be handed after it opens (it opens a beat after the primary). */
 const SECOND_OPINION_HOLD_MS = 4000;
+/*
+ * How many consecutive clean turns end the ambiguity that armed the opinion.
+ *
+ * Three, because the case that arms it is a visitor changing language, and a
+ * change of language is not one sentence long. MEASURED, session 4be2bc31:
+ * the turns around a switch are where the labels go wrong -- t9 came back in
+ * Devanagari -- while the turns well inside one language do not. Three keeps
+ * the opinion through the crossing and drops it once the conversation has
+ * settled. It is asymmetric on purpose: arming is instant, disarming is not.
+ */
+const CLEAN_TURNS_TO_DISARM = 3;
 
 /**
  * How long an already-started answer may keep speaking after the session's
@@ -744,7 +792,34 @@ const SESSION_LIMIT_GRACE_MS = 12_000;
  * short enough that a visitor whose word was lost is listening again before
  * they have finished wondering.
  */
-const NO_FINAL_TIMEOUT_MS = 6_000;
+/*
+ * HOW LONG A FINAL MAY BE OWED BEFORE WE STOP WAITING FOR IT.
+ *
+ * This was 6,000ms, and that is where the freeze lived. MEASURED, production
+ * session 66e4e448 turn t6: our endpointer confirmed the turn in 345ms and
+ * the finalisation path then took 10,870ms -- six seconds of waiting, then
+ * recovery, then a batch round trip, for one six-word sentence. The visitor
+ * sat in silence for eleven seconds and the code was working as written.
+ *
+ * 2,500ms is READ OFF the production distribution rather than chosen:
+ *
+ *   normal Google final    647, 740, 767, 767, 817 ms
+ *   worst HEALTHY final    1,639 ms
+ *   the stall              10,870 ms
+ *
+ * So this is three times the normal case and still 861ms clear of the slowest
+ * final that ever actually arrived -- healthy recognition is not cut -- while
+ * a stall is now bounded at 2.5s plus recovery instead of eleven seconds.
+ *
+ * Recovery is not a worse answer, which is what makes the shorter deadline
+ * safe: it re-reads the RETAINED AUDIO of this same utterance through the
+ * batch recogniser. That is the audio the socket was failing to finalise, so
+ * nothing the visitor said is lost by giving up on the socket sooner.
+ *
+ * Moving this DOWN again without new measurements would start cutting real
+ * finals. Moving it back up re-opens the freeze.
+ */
+const NO_FINAL_TIMEOUT_MS = 2_500;
 /** Consecutive misses before the session stops reconnecting and says so. */
 const MAX_CONSECUTIVE_NO_FINALS = 3;
 
@@ -896,6 +971,19 @@ export class VoiceSession {
   private utterancePcm: Int16Array[] = [];
   private utteranceSamples = 0;
   private sameTurnRecoveries = 0;
+  /*
+   * IS THE LIVE SECOND OPINION WARRANTED RIGHT NOW?
+   *
+   * Starts FALSE. The overwhelmingly common turn is a healthy one in the
+   * language the page is already in, and it should not pay for the rare one.
+   * armSecondOpinion() turns it on the moment a turn proves the pinned socket
+   * cannot be trusted; CLEAN_TURNS_TO_DISARM clean turns turn it off again.
+   */
+  private secondOpinionArmed = false;
+  private cleanTurnsSinceArmed = 0;
+  /** Why it is armed. Null while disarmed. Carried into the trace. */
+  private secondOpinionReason: string | null = null;
+
   /** The `auto` socket beside the pinned one. See SECOND_OPINION. */
   private shadow: LiveSocket | null = null;
   /** A shadow closed by a rotation whose final for the current utterance is still owed. */
@@ -923,6 +1011,28 @@ export class VoiceSession {
   /** Counts utterances whose final is owed; a turn is produced for each epoch at most once. */
   private utteranceEpoch = 0;
   private producedEpoch = -1;
+  /*
+   * WHICH SOCKET IS STILL ALLOWED TO ANSWER.
+   *
+   * A half-closed socket keeps draining: Google flushes its last transcript
+   * after finalize(), which is exactly why the turn boundary works at all. So
+   * a final can arrive from a socket that has already been replaced, and it
+   * has to be allowed to -- that IS the normal path, and rotateLive() nulls
+   * `this.live` before the replacement is ready.
+   *
+   * What must NOT happen is that final landing on somebody else's turn. Set
+   * at each finalize() alongside the epoch it opens, so the previous socket
+   * loses its licence at the same instant the next endpoint is declared: a
+   * late final may still complete its OWN utterance, and can never be read as
+   * the answer to the next one.
+   *
+   * CODE-PROVEN before the fix: onFinal called onLiveFinal with no reference
+   * to the socket it came from, and the only guard -- producedEpoch ===
+   * utteranceEpoch -- compares equal ONLY while the epoch is unchanged. Once
+   * the next turn had begun the epochs differed, the guard passed, and a
+   * transcript from a retired stream was committed as the new turn's words.
+   */
+  private finalOwedFrom: LiveSocket | null = null;
   private shadowGraceUntil = 0;
   /** The conversation language before the turn being processed. */
   private previousTurnLanguage: string | null = null;
@@ -1103,6 +1213,15 @@ export class VoiceSession {
   private tapSamples = 0;
   /** Voiced audio seen before the recogniser socket was ready to take it. */
   private voicedBeforeReadyMs = 0;
+  /**
+   * Voiced audio that arrived while nothing was guaranteed to receive it.
+   *
+   * The honest measure of first-syllable loss. Expected: zero. See
+   * safeToListen -- if that is true on every block, this cannot move.
+   */
+  private voicedWithoutDestinationMs = 0;
+  /** LISTENING was shown while safeToListen was false. Expected: zero. */
+  private unsafeListenClaims = 0;
   /** When the visitor's speech interrupted the assistant, and when it stopped. */
   private bargeSpeechAt = 0;
   private lastBargeStopMs: number | null = null;
@@ -1204,8 +1323,24 @@ export class VoiceSession {
     unsupportedProbeResults: 0,
     livePhase: 'IDLE' as LivePhase, socketReadyMs: null as number | null,
     socketFailures: 0, socketReconnects: 0, gateReleases: 0,
+    /*
+     * PRIMARY AND OPINION COUNTED APART.
+     *
+     * One number called "rotations" was what let two streams per turn hide in
+     * plain sight: it moved by two and looked like one busy turn. These are
+     * the numbers that make the next production trace readable, and the whole
+     * point of the change above is that recoverySocketOpenCount is now
+     * expected to be ZERO across a healthy multi-turn session.
+     */
+    primarySocketOpenCount: 0,
+    recoverySocketOpenCount: 0,
+    staleFinalsRejected: 0,
+    secondOpinionSkipped: 0,
+    secondOpinionArmings: 0,
+    secondOpinionDisarmings: 0,
     liveSendRate: null as number | null,
     echoCancellation: null as boolean | null,
+    micSettings: null as VoiceDiagnostics['micSettings'],
     sessionEndReason: null as string | null,
     llmTextChars: null as number | null, ttsTextChars: null as number | null,
     ttsRequests: null as number | null,
@@ -1373,8 +1508,40 @@ export class VoiceSession {
     this.milestone('mic_open');
     try {
       const track = this.micStream?.getAudioTracks()[0];
-      this.echoCancelled = Boolean(track?.getSettings?.().echoCancellation);
+      const got = track?.getSettings?.() ?? {};
+      this.echoCancelled = Boolean(got.echoCancellation);
       this.diag.echoCancellation = this.echoCancelled;
+      /*
+       * WHAT WAS ASKED FOR, AND WHAT THE BROWSER ACTUALLY DID.
+       *
+       * The three constraints are requested as `{ ideal: true }`, which a
+       * browser may decline without telling anybody. That difference is the
+       * whole of the standing hypothesis about Android playback: asking for
+       * echo cancellation can move the device onto communication-call audio
+       * routing, which is quieter by design -- and the request is in the source
+       * while the OUTCOME has never been recorded, so the hypothesis has stayed
+       * a hypothesis through three physical tests.
+       *
+       * Recorded, not acted on. An echoCancellation=false workaround is not
+       * shipping unless the volume gain is proven AND self-transcription stays
+       * controlled; echo prevention matters more than a louder speaker.
+       */
+      this.diag.micSettings = {
+        echoCancellationRequested: true,
+        /*
+         * Coerced deliberately. MediaTrackSettings types echoCancellation as
+         * `string | boolean` because some browsers report a cancellation MODE
+         * here rather than a flag, and a mode string is still "it is on".
+         */
+        echoCancellationActual: got.echoCancellation === undefined ? null : Boolean(got.echoCancellation),
+        noiseSuppressionRequested: true,
+        noiseSuppressionActual: got.noiseSuppression ?? null,
+        autoGainControlRequested: true,
+        autoGainControlActual: got.autoGainControl ?? null,
+        sampleRate: got.sampleRate ?? null,
+        channelCount: got.channelCount ?? null,
+        micActive: track ? track.readyState === 'live' && track.enabled && !track.muted : null,
+      };
     } catch { this.echoCancelled = false; }
     /*
      * A tab that goes to the background suspends its AudioContext on some
@@ -1476,6 +1643,9 @@ export class VoiceSession {
       transcribing: this.transcribing,
       gateReleases: this.gateReleases,
       echoCancellation: this.diag.echoCancellation ?? null,
+      micSettings: this.diag.micSettings ?? null,
+      outputGainValue: this.outputGain?.gain.value ?? null,
+      audioContextSampleRate: this.audioContext?.sampleRate ?? null,
       noFinalCount: this.finalWatch.noFinalCount,
       consecutiveNoFinals: this.finalWatch.consecutiveNoFinals,
       noFinalRecoveries: this.finalWatch.noFinalRecoveries,
@@ -1519,6 +1689,13 @@ export class VoiceSession {
       lastRecovery: this.diag.lastRecovery ?? null,
       secondOpinion: this.diag.secondOpinion ?? null,
       secondOpinionFailures: this.diag.secondOpinionFailures ?? 0,
+      primarySocketOpenCount: this.diag.primarySocketOpenCount,
+      recoverySocketOpenCount: this.diag.recoverySocketOpenCount,
+      staleFinalsRejected: this.diag.staleFinalsRejected,
+      secondOpinionSkipped: this.diag.secondOpinionSkipped,
+      secondOpinionArmings: this.diag.secondOpinionArmings,
+      secondOpinionDisarmings: this.diag.secondOpinionDisarmings,
+      secondOpinionArmedFor: this.secondOpinionReason,
       lateFinalsDropped: this.diag.lateFinalsDropped ?? 0,
       discreditedTurnsDropped: this.diag.discreditedTurnsDropped ?? 0,
       liveRetries: this.liveRetries,
@@ -1837,6 +2014,23 @@ export class VoiceSession {
     if (level >= SPEECH_RMS && !this.live?.isReady && !this.micGated && !this.muted) {
       this.voicedBeforeReadyMs += blockMs;
       this.preReadyVoicedMs += blockMs;
+      /*
+       * AND THE HALF OF THAT QUESTION THIS COUNTER NEVER ANSWERED.
+       *
+       * voicedBeforeReadyMs is cumulative for the whole session and says only
+       * "this much voiced audio did not go straight out". MEASURED: 5,291ms of
+       * it in one session whose router_phase_at_speech_start was READY --
+       * which read like five seconds of lost speech and was nothing of the
+       * kind. Almost all of it was audio HELD across mid-conversation socket
+       * rotations and then flushed, in order, intact.
+       *
+       * Delayed and lost need separate numbers, because they have completely
+       * different fixes: delay is a rotation to overlap, loss is a defect. So
+       * this one counts only the voiced audio that arrived while the router
+       * had nowhere durable to put it -- which, given safeToListen, should be
+       * zero on every session, and is now checkable rather than hoped for.
+       */
+      if (!this.safeToListen) this.voicedWithoutDestinationMs += blockMs;
     }
 
     // The state of the world at the first voiced block of this utterance,
@@ -2008,6 +2202,9 @@ export class VoiceSession {
     }
     // From here a final is owed. If it never comes, the watch says so.
     this.finalWatch.requested(Date.now());
+    // This socket, and only this socket, may answer for the epoch now opening.
+    // The socket that answered for the previous one is retired by this line.
+    this.finalOwedFrom = live;
     this.utteranceEpoch += 1;
     this.shadowResult = null;
     try { this.shadow?.finalize?.(); } catch { /* the opinion is optional */ }
@@ -2039,9 +2236,41 @@ export class VoiceSession {
    */
   /* ── The second opinion ─────────────────────────────────────────────── */
 
+  /*
+   * ARMED BY EVIDENCE, NOT PREPAID ON EVERY TURN.
+   *
+   * CODE-PROVEN and then measured: this was called unconditionally from every
+   * socket open, so every turn cost TWO Google streams. Railway shows them
+   * arriving in pairs 1-103ms apart --
+   *
+   *   15:16:45.094  19,709 ms
+   *   15:16:45.095  19,427 ms
+   *
+   * -- and a three-turn session opened about seventeen speech streams.
+   *
+   * THE OPINION IS NOT BEING DELETED. It exists for reasons that were each
+   * measured on a real device: a ka-GE socket returns nothing at all for
+   * Hebrew, writes Turkish in Arabic letters, and an en-US socket hands back
+   * Hebrew as fluent English TRANSLATION that no amount of text inspection
+   * can catch. All of that still works. It is simply no longer bought in
+   * advance for a turn that shows no sign of needing it.
+   *
+   * WHAT PROTECTS THE TURN THAT DOES NEED IT. Two things, and neither is the
+   * live opinion. First, that turn recovers from its own retained audio
+   * through the batch recogniser -- an unhinted second reading of exactly the
+   * audio in question, which is what the opinion was for. Second, the turn
+   * that needed it ARMS the session, so the turns that follow are heard twice
+   * for as long as the ambiguity lasts. The cost follows the evidence in both
+   * directions instead of being paid flat.
+   */
   private openShadow(grant: LiveGrant): void {
     this.closeShadow();
     if (!SECOND_OPINION || grant.provider !== 'GOOGLE' || this.closed) return;
+    if (!this.secondOpinionArmed) {
+      this.diag.secondOpinionSkipped += 1;
+      return;
+    }
+    this.diag.recoverySocketOpenCount += 1;
     const shadow = createTranscriber({ ...grant, detect: true }, {
       onSpeechStart: () => {},
       onSpeechEnd: () => {},
@@ -2062,6 +2291,44 @@ export class VoiceSession {
       this.shadowHeldSamples = 0;
       shadow.setGated(this.micGated || this.muted);
     }).catch(() => { /* reported by onUnavailable */ });
+  }
+
+  /**
+   * This turn proved the pinned socket cannot be trusted: hear the next ones
+   * twice.
+   *
+   * Idempotent per reason, and it does NOT reach for a socket itself -- the
+   * next rotation reads the flag. A turn boundary already rotates (see
+   * onLiveFinal), so arming costs no extra handshake and no extra latency; it
+   * changes what the NEXT socket open decides.
+   */
+  private armSecondOpinion(reason: string): void {
+    this.cleanTurnsSinceArmed = 0;
+    if (this.secondOpinionArmed) return;
+    this.secondOpinionArmed = true;
+    this.secondOpinionReason = reason;
+    this.diag.secondOpinionArmings += 1;
+    this.milestone('second_opinion_armed', reason);
+  }
+
+  /**
+   * A turn that came back clean, in a language we speak, with no recovery.
+   *
+   * CLEAN_TURNS_TO_DISARM of these in a row and the ambiguity is over, so the
+   * session stops paying for the opinion. Disarming is deliberately slower
+   * than arming: one clean turn after a language switch proves very little,
+   * and the cost of staying armed one turn too long is one socket, while the
+   * cost of disarming one turn too early is a mistranscribed sentence.
+   */
+  private noteCleanTurn(): void {
+    if (!this.secondOpinionArmed) return;
+    this.cleanTurnsSinceArmed += 1;
+    if (this.cleanTurnsSinceArmed < CLEAN_TURNS_TO_DISARM) return;
+    this.secondOpinionArmed = false;
+    this.secondOpinionReason = null;
+    this.cleanTurnsSinceArmed = 0;
+    this.diag.secondOpinionDisarmings += 1;
+    this.milestone('second_opinion_disarmed', String(CLEAN_TURNS_TO_DISARM));
   }
 
   private closeShadow(): void {
@@ -2253,6 +2520,15 @@ export class VoiceSession {
 
   private recoverFromNoFinal(decision: FinalDecision): void {
     if (this.closed) return;
+    /*
+     * A socket that was asked for a final and produced none is the clearest
+     * evidence there is that the pinned recogniser is not coping with what it
+     * is being given -- it is the exact shape of a ka-GE stream being handed
+     * Hebrew. Arm here, in the one place both miss routes converge
+     * (the provider's own onNoFinal and our NO_FINAL_TIMEOUT_MS tick), so
+     * neither can arm without the other.
+     */
+    this.armSecondOpinion(`NO_FINAL_${decision.reason}`);
     // The opinion may still be on its way; give it a moment to carry the turn.
     this.shadowGraceUntil = Date.now() + SECOND_OPINION_GRACE_MS;
     if (this.shadowResult && this.shadowResult.epoch === this.utteranceEpoch && this.shadowResult.text) {
@@ -2392,7 +2668,7 @@ export class VoiceSession {
         // firing is not a turn, and half of them here were never one.
       },
       onPartial: (text) => this.showPartial(text),
-      onFinal: (text, heard) => { void this.onLiveFinal(text, heard ?? null); },
+      onFinal: (text, heard) => { void this.onLiveFinal(text, heard ?? null, 'LIVE', live); },
       onNoFinal: (reason) => {
         const decision = this.finalWatch.missed(reason, Date.now());
         if (decision) this.recoverFromNoFinal(decision);
@@ -2446,6 +2722,7 @@ export class VoiceSession {
      * construction, and each buffer is sent exactly once.
      */
     this.live = live;
+    this.diag.primarySocketOpenCount += 1;
     this.diag.languageState.socket = grant.languageCode ?? this.language.current;
     this.openShadow(grant);
     this.diag.livePhase = 'READY';
@@ -2521,8 +2798,29 @@ export class VoiceSession {
   }
 
   /** The finished sentence, from the live socket. */
-  private async onLiveFinal(text: string, detected: string | null = null, origin: 'LIVE' | 'SHADOW' = 'LIVE'): Promise<void> {
+  private async onLiveFinal(
+    text: string,
+    detected: string | null = null,
+    origin: 'LIVE' | 'SHADOW' = 'LIVE',
+    /** The socket that produced it. See finalOwedFrom. */
+    from: LiveSocket | null = null,
+  ): Promise<void> {
     if (this.closed) return;
+    /*
+     * A TRANSCRIPT FROM A SOCKET WHOSE TURN IS OVER.
+     *
+     * Not the same thing as a late final: `from === this.finalOwedFrom` is the
+     * normal path and is allowed through below, because a half-closed socket
+     * is meant to keep draining. This is the stream that was already retired
+     * when the NEXT endpoint was declared, arriving with the previous
+     * visitor's sentence while a new one is being heard. Committing it would
+     * put words into a turn that did not contain them.
+     */
+    if (origin === 'LIVE' && from && from !== this.live && from !== this.finalOwedFrom) {
+      this.diag.staleFinalsRejected += 1;
+      this.milestone('stale_final_rejected', String(this.utteranceEpoch));
+      return;
+    }
     if (origin === 'LIVE' && this.producedEpoch === this.utteranceEpoch) {
       // The second opinion already carried this utterance; the socket that
       // finally answered is answering a question that has been asked.
@@ -2549,6 +2847,37 @@ export class VoiceSession {
     let said = text.trim();
     const id = this.livePartialId ?? `u${++this.utteranceSeq}`;
     this.livePartialId = null;
+
+    /*
+     * ARM BEFORE THE ROTATION, NOT AFTER THE ARBITRATION.
+     *
+     * The rotation a few lines below is what opens the next socket, and it is
+     * deliberately early so the handshake overlaps the reply being written.
+     * That means the arming decision has to be made HERE to reach the socket
+     * this very turn is about to open -- deciding it after the arbitration
+     * further down would arm a socket two turns late, and the turn that most
+     * needs the opinion is the NEXT one, not the one after that.
+     *
+     * Both signals below are already known at this point:
+     *
+     *   an empty final       the pinned socket heard speech and returned no
+     *                        words, which is the Hebrew-on-a-ka-GE-socket case
+     *   an unsupported label a recogniser that answers Georgian speech in
+     *                        Devanagari has not understood the utterance,
+     *                        whatever it returned (MEASURED: 4be2bc31 t9)
+     *
+     * The subtler evidence -- a recovery plan actually firing -- is arming too,
+     * further down, where it becomes known. That one carries the two-turn lag,
+     * and can afford to: those turns repair themselves from retained audio.
+     */
+    if (origin === 'LIVE' && this.liveSpeechMs > 0 && !said) {
+      this.armSecondOpinion('EMPTY_FINAL_AFTER_SPEECH');
+    } else if (detected) {
+      const label = normaliseLanguage(detected);
+      if (label && !SPOKEN_LANGUAGES.includes(label as TalkLanguage)) {
+        this.armSecondOpinion('UNSUPPORTED_LABEL');
+      }
+    }
 
     /*
      * A turn we ended ourselves has spent its socket: the worker closes the
@@ -2745,6 +3074,23 @@ export class VoiceSession {
         this.milestone('same_turn_recovered', outcome.language ?? 'unknown');
       }
     }
+    /*
+     * THE LEDGER FOR THIS TURN, NOW THAT EVERY VERDICT IS IN.
+     *
+     * A recovery plan firing is the honest definition of "the pinned socket
+     * was not enough": planRecovery only returns one when the live transcript
+     * is inconsistent with the pinned language, too short for the speech it
+     * claims to cover, or fragmentary. And a turn the opinion CARRIED is by
+     * construction a turn the primary got wrong.
+     *
+     * Otherwise this was a clean turn and it counts towards disarming. The
+     * counter only moves on turns that actually produced a sentence -- silence
+     * is not evidence that recognition is healthy.
+     */
+    if (plan) this.armSecondOpinion(`RECOVERY_${plan.reason}`);
+    else if (origin === 'SHADOW') this.armSecondOpinion('OPINION_CARRIED_TURN');
+    else if (said) this.noteCleanTurn();
+
     this.utterancePcm = [];
     this.utteranceSamples = 0;
     this.marks.googleFinalAtMs = googleFinalAt;
@@ -3783,9 +4129,15 @@ export class VoiceSession {
     selectedChars: number; selectedSource: string; selectionReason: string;
     samplesCaptured: number; bytesSent: number;
     voicedBeforeReadyMs: number; preReadyVoicedMs: number;
+    /* Delayed is not lost. See voicedWithoutDestinationMs. */
+    voicedWithoutDestinationMs: number;
+    unsafeListenClaims: number;
+    droppedByReason: Record<string, number>;
+    dropsAccountedFor: boolean;
     routerPhaseAtSpeechStart: string | null; socketRotations: number;
     audioContextStateAtSpeechStart: string | null; audioContextStateAtSpeechEnd: string | null;
     gateReleases: number; utteranceMs: number;
+    audioChain: Record<string, unknown>;
     playback: {
       receivedChunks: number; receivedBytes: number; scheduled: number;
       startDelayMs: number | null; minAheadMs: number | null;
@@ -3824,6 +4176,10 @@ export class VoiceSession {
       bytesSent: this.diag.bytesSent,
       voicedBeforeReadyMs: Math.round(this.voicedBeforeReadyMs),
       preReadyVoicedMs: Math.round(this.preReadyVoicedMs),
+      voicedWithoutDestinationMs: Math.round(this.voicedWithoutDestinationMs),
+      unsafeListenClaims: this.unsafeListenClaims,
+      droppedByReason: { ...this.router.droppedByReason },
+      dropsAccountedFor: this.router.dropsAccountedFor(),
       routerPhaseAtSpeechStart: this.routerPhaseAtSpeechStart,
       socketRotations: this.socketRotations,
       audioContextStateAtSpeechStart: this.ctxStateAtSpeechStart,
@@ -3838,6 +4194,23 @@ export class VoiceSession {
         underruns: 0, maxUnderrunMs: 0,
         contextStateAtStart: null, contextStateChanges: 0,
         queueResets: 0, scheduleCorrections: 0,
+      },
+      /*
+       * THE OUTPUT CHAIN, SO "TOO QUIET" STOPS BEING A REPORT AND BECOMES A
+       * NUMBER.
+       *
+       * These live in the client's own diagnostics panel already, which is no
+       * use: the device that sounds quiet is a phone in somebody's hand and the
+       * panel is on a laptop. They belong in the turn trace, beside pcmPeak
+       * from the player, because the question "is the audio arriving quiet or
+       * are we attenuating it" is answered by reading these together and by
+       * nothing else.
+       */
+      audioChain: {
+        outputGainValue: this.outputGain?.gain.value ?? null,
+        audioContextState: this.audioContext?.state ?? null,
+        audioContextSampleRate: this.audioContext?.sampleRate ?? null,
+        micSettings: this.diag.micSettings ?? null,
       },
       shadowLanguage: this.shadowResult?.language ?? null,
       shadowChars: this.shadowResult?.text.length ?? 0,
@@ -4069,6 +4442,30 @@ export class VoiceSession {
     this.publishDiagnostics();
   }
 
+  /**
+   * IS IT TRUE, RIGHT NOW, THAT WE ARE LISTENING?
+   *
+   * One definition, both halves. The router answers whether the audio has a
+   * destination (see LiveAudioRouter.safeToListen); this adds the part the
+   * router cannot see -- that the session has a capture path at all and that
+   * the microphone is not gated shut behind the assistant's own voice.
+   *
+   * Everything that shows LISTENING to a visitor is checked against this, so
+   * "the panel said it was listening" and "the audio was going somewhere" can
+   * no longer come apart. They did come apart on a real Android session, which
+   * held 688,128 bytes of speech, evicted all of it, completed zero turns, and
+   * displayed itself as listening throughout.
+   */
+  private get safeToListen(): boolean {
+    if (this.closed) return false;
+    // Nothing can be captured without a graph and a context that is running.
+    if (!this.audioContext || this.audioContext.state === 'closed') return false;
+    // The floor belongs to the assistant; that is a deliberate silence, not a
+    // claim to be hearing anything.
+    if (this.micGated || this.muted) return false;
+    return this.router.safeToListen;
+  }
+
   /** Hand the floor back. Only from here, so the mic cannot open mid-reply. */
   private resumeListening(): void {
     if (this.closed) return;
@@ -4210,7 +4607,22 @@ export class VoiceSession {
    * live call is worse than a diagnostic line. An entry in the log is a bug
    * to fix; a call that froze because a guard said no is a bug to explain.
    */
+  /*
+   * A LISTENING that was not true when it was shown.
+   *
+   * Recorded rather than thrown: an exception inside the audio path would cost
+   * the visitor the conversation, and a wrong label costs them a repeated
+   * sentence. But it is recorded EVERY time, so "we never claim to be
+   * listening when we are not" is a number in the trace instead of a belief.
+   */
+  private noteListenClaim(): void {
+    if (this.safeToListen) return;
+    this.unsafeListenClaims += 1;
+    this.diag.lastError = this.diag.lastError ?? 'LISTENING_WITHOUT_DESTINATION';
+  }
+
   private setState(state: VoiceState, detail?: string): void {
+    if (state === 'LISTENING') this.noteListenClaim();
     if (this.state === state) return;
     /*
      * THE ECHO GUARD HAD NO CLOCK.

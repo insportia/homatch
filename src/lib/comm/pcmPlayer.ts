@@ -274,8 +274,15 @@ export class PcmStreamPlayer {
    * A playback log that fires per chunk would be forty lines a sentence and
    * would be switched off within a day.
    */
+  /** Loudest decoded sample this turn, 0..1. Unity scale: 1.0 is full scale. */
+  private turnPcmPeak = 0;
+  private turnPcmSumSquares = 0;
+  private turnPcmSamples = 0;
+
   playbackStats(): {
     receivedChunks: number; receivedBytes: number; scheduled: number;
+    /* What the provider actually sent, before this file's unity conversion. */
+    pcmPeak: number | null; pcmRms: number | null;
     startDelayMs: number | null; minAheadMs: number | null;
     p50AheadMs: number | null; p95AheadMs: number | null;
     underruns: number; maxUnderrunMs: number;
@@ -288,6 +295,9 @@ export class PcmStreamPlayer {
       receivedChunks: this.turnReceivedChunks,
       receivedBytes: this.turnReceivedBytes,
       scheduled: this.turnScheduled,
+      pcmPeak: this.turnPcmSamples ? Number(this.turnPcmPeak.toFixed(4)) : null,
+      pcmRms: this.turnPcmSamples
+        ? Number(Math.sqrt(this.turnPcmSumSquares / this.turnPcmSamples).toFixed(4)) : null,
       startDelayMs: this.turnStartDelayMs,
       minAheadMs: ahead.length ? ahead[0] : null,
       p50AheadMs: at(0.5),
@@ -325,7 +335,41 @@ export class PcmStreamPlayer {
 
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const input = new Float32Array(count);
-    for (let i = 0; i < count; i++) input[i] = view.getInt16(i * 2, true) / 0x8000;
+    /*
+     * HOW LOUD THE PROVIDER'S AUDIO ACTUALLY IS, BEFORE ANYTHING HERE TOUCHES IT.
+     *
+     * "AI Talk starts too quiet" has two completely different causes and they
+     * need opposite responses: either the audio arriving from Cartesia is
+     * quiet, or something on this side is attenuating it. Reading the source
+     * settles the second half -- the conversion below is unity, `outputGain` is
+     * never assigned a value, there is no fade, ramp, stored preference, and
+     * ducking does not touch gain -- but it cannot settle the first, and a fix
+     * chosen without knowing which half is at fault is a guess with a volume
+     * control attached.
+     *
+     * So this measures. Peak and RMS of the decoded samples, accumulated over
+     * the turn, computed in the loop that already walks every sample so it
+     * costs one comparison and one multiply per sample and no extra pass.
+     *
+     * DELIBERATELY NOT NORMALISING ANYTHING. A peak near 1.0 means the
+     * provider is sending full-scale audio and the quietness is downstream of
+     * here -- device routing, most likely, which is a different fix entirely.
+     * A peak near 0.3 means the audio really did arrive quiet. Until one of
+     * those is on the table, amplifying would be exactly the "fake 100% volume
+     * by clipping" that must not ship.
+     */
+    let peak = 0;
+    let sumSquares = 0;
+    for (let i = 0; i < count; i++) {
+      const v = view.getInt16(i * 2, true) / 0x8000;
+      input[i] = v;
+      const mag = v < 0 ? -v : v;
+      if (mag > peak) peak = mag;
+      sumSquares += v * v;
+    }
+    if (peak > this.turnPcmPeak) this.turnPcmPeak = peak;
+    this.turnPcmSumSquares += sumSquares;
+    this.turnPcmSamples += count;
 
     if (this.providerRate !== sampleRate) {
       // A rate change mid-reply would be a provider or route change mid

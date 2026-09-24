@@ -58,7 +58,18 @@ test('first-audible is stamped on the session clock, not after the stream ends',
 test('echo cancellation is read from the microphone track, not assumed', () => {
   const c = strip(readFileSync('src/lib/comm/voiceClient.ts', 'utf8'));
   assert.doesNotMatch(c, /echoCancelled: true,/, 'hard-coding true disabled the echo guard for every laptop speaker');
-  assert.match(c, /getSettings\?\.\(\)\.echoCancellation/, 'the browser says whether it applied it');
+  /*
+   * Repointed, not relaxed. The single expression this used to match --
+   * `track?.getSettings?.().echoCancellation` -- was split when the capture
+   * chain started reporting requested-vs-actual for all three constraints, so
+   * the settings object is read once into `got` and used several times. The
+   * claim is unchanged and is asserted in two halves: the value comes off the
+   * track, and it is what echoCancelled is derived from.
+   */
+  assert.match(c, /const got = track\?\.getSettings\?\.\(\) \?\? \{\};/, 'the settings are read from the track');
+  assert.match(c, /this\.echoCancelled = Boolean\(got\.echoCancellation\);/, 'the browser says whether it applied it');
+  // And the new evidence: what was asked for, beside what was granted.
+  assert.match(c, /echoCancellationActual:/, 'the outcome is recorded, not only the request');
 });
 
 /* ── 3. Segment gaps are measured on the real player ──────────────────── */

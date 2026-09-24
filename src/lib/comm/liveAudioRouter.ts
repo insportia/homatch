@@ -30,6 +30,24 @@
 
 export type LivePhase = 'IDLE' | 'CONNECTING' | 'READY' | 'ROTATING' | 'FAILED';
 
+/*
+ * WHY AUDIO WAS THROWN AWAY. Every reason is named; there is no `UNKNOWN`.
+ *
+ * There are exactly two places in this file that discard a byte, and both are
+ * below. A reason cannot be missing because neither site can run without
+ * naming one, and nothing else touches `chunks`. That is the property worth
+ * having: "dropped audio" with no reason attached is indistinguishable from an
+ * accounting bug, and this session has already spent a day on one of those.
+ *
+ *   ABANDONED_NO_SOCKET   held audio whose socket never arrived. The batch
+ *                         path takes over from the NEXT block, so what was
+ *                         already held has no recogniser left to go to.
+ *   HOLD_BUFFER_OVERFLOW  the hold buffer reached maxBufferMs. maxWaitMs is
+ *                         meant to abandon long before this, so a non-zero
+ *                         count here means the two bounds disagree.
+ */
+export type DropReason = 'ABANDONED_NO_SOCKET' | 'HOLD_BUFFER_OVERFLOW';
+
 /** What the caller should do with the block it just handed over. */
 export type Route =
   | { kind: 'SEND' }        // a socket is ready; send it
@@ -58,6 +76,18 @@ export class LiveAudioRouter {
   sentLiveBytes = 0;
   flushedBufferedBytes = 0;
   droppedPcmBytes = 0;
+  /*
+   * The same bytes as droppedPcmBytes, split by cause.
+   *
+   * Kept beside the total rather than replacing it so the two can be checked
+   * against each other -- see dropsAccountedFor(). A total that does not match
+   * its parts is how a byte goes missing without any single counter looking
+   * wrong.
+   */
+  droppedByReason: Record<DropReason, number> = {
+    ABANDONED_NO_SOCKET: 0,
+    HOLD_BUFFER_OVERFLOW: 0,
+  };
   /*
    * Bytes the BATCH path took, because no socket was coming.
    *
@@ -102,6 +132,19 @@ export class LiveAudioRouter {
   get bufferedMs(): number { return (this.samples / this.opts.sampleRate) * 1000; }
   get bufferFormat(): string { return `pcm_s16le ${this.opts.sampleRate}Hz mono`; }
 
+  /**
+   * The ONLY way a byte leaves this router unaccounted for.
+   *
+   * Private and singular on purpose: both drop sites go through here, so the
+   * total and the per-reason ledger cannot be updated one without the other.
+   */
+  private discard(chunks: Int16Array[], reason: DropReason): void {
+    for (const c of chunks) {
+      this.droppedPcmBytes += c.byteLength;
+      this.droppedByReason[reason] += c.byteLength;
+    }
+  }
+
   /** A socket is on its way. Starts the clock that stops it being forever. */
   expect(phase: 'CONNECTING' | 'ROTATING'): void {
     this.phase = phase;
@@ -138,7 +181,7 @@ export class LiveAudioRouter {
     this.expectingSince = 0;
     this.socketFailures += 1;
     this.lastFellBack = reason;
-    for (const c of this.chunks) this.droppedPcmBytes += c.byteLength;
+    this.discard(this.chunks, 'ABANDONED_NO_SOCKET');
     this.chunks = [];
     this.samples = 0;
   }
@@ -180,7 +223,7 @@ export class LiveAudioRouter {
     while (this.samples > cap && this.chunks.length > 1) {
       const gone = this.chunks.shift()!;
       this.samples -= gone.length;
-      this.droppedPcmBytes += gone.byteLength;
+      this.discard([gone], 'HOLD_BUFFER_OVERFLOW');
     }
     return { kind: 'HELD' };
   }
@@ -196,5 +239,42 @@ export class LiveAudioRouter {
       this.sentLiveBytes + this.flushedBufferedBytes
       + this.bufferedBytes + this.droppedPcmBytes + this.batchedPcmBytes
     );
+  }
+
+  /**
+   * Every dropped byte has a named reason, and the reasons sum to the total.
+   *
+   * Separate from accountsBalance() because they fail for different reasons and
+   * mean different things: that one says a byte went missing, this one says a
+   * byte was lost for a cause nobody wrote down.
+   */
+  dropsAccountedFor(): boolean {
+    let sum = 0;
+    for (const n of Object.values(this.droppedByReason)) sum += n;
+    return sum === this.droppedPcmBytes;
+  }
+
+  /**
+   * Does audio arriving right now have somewhere it will definitely end up?
+   *
+   * THE ONE DEFINITION. The UI may say it is listening only when this is true,
+   * and "listening" is a promise about the audio, not about the socket:
+   *
+   *   READY                 goes straight to the recogniser.
+   *   CONNECTING/ROTATING   held in order and flushed on ready(), bounded by
+   *                         maxWaitMs -- delayed, which is not the same as
+   *                         lost, and the flush is in order by construction.
+   *   FAILED                the batch path owns it. Still a destination.
+   *   IDLE                  nothing has claimed it. Not a destination, and
+   *                         the one state in which claiming to listen is a
+   *                         lie -- which is precisely the Android session
+   *                         that held 688,128 bytes and completed no turns.
+   *
+   * The caller has one more condition this class cannot see -- whether its
+   * batch capture is actually armed -- and combines the two. This is the half
+   * that belongs to routing.
+   */
+  get safeToListen(): boolean {
+    return this.phase !== 'IDLE';
   }
 }

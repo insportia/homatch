@@ -225,6 +225,31 @@ function serve(
 
   const started = Date.now();
   let ended = false;
+  /*
+   * WHY THIS STREAM ENDED, KEPT RATHER THAN THROWN AWAY.
+   *
+   * finish() has always known the reason -- it puts it in the WebSocket close
+   * frame -- and session_closed then logged frames, bytes and language without
+   * it. So Railway could show a /speech/stream that lived 19,709ms and there
+   * was no way to ask whether it ended on a final, on a grace timeout, on the
+   * browser going away, or on the fifteen-minute ceiling.
+   *
+   * MEASURED, and the reason this now matters: streams arrive in PAIRS
+   * 1-103ms apart (15:16:45.094 at 19,709ms beside 15:16:45.095 at 19,427ms),
+   * and one session showed a 499 with totalDuration 1ms -- "client has closed
+   * the request before the server could send a response". Neither of those is
+   * diagnosable from durations alone.
+   *
+   * CLOSED_BEFORE_OPEN is the 499 case: the socket went away before anything
+   * was decided, so the close has no other reason to report.
+   */
+  let closeReason:
+    | 'CLIENT_DONE' | 'CLIENT_DONE_NO_FINAL' | 'SOCKET_CLOSED' | 'SOCKET_ERROR'
+    | 'SESSION_LIMIT' | 'PROVIDER_UNAVAILABLE' | 'CLOSED_BEFORE_OPEN' = 'CLOSED_BEFORE_OPEN';
+  /** Did a usable final actually leave this socket? The half-close's purpose. */
+  let finalsSent = 0;
+  /** When the input half closed, so the provider's finalisation is measurable. */
+  let halfClosedAt: number | null = null;
 
   const stream = new GoogleSpeechStream(
     { ...cfg, languageCode: language, languageCodes: detect ? ['auto'] : languages, detect }, {
@@ -233,6 +258,7 @@ function serve(
       // The language the PROVIDER decided it heard, not the one we guessed.
       // It is the only thing that separates English from Turkish here.
       send({ type: 'final', text, confidence, language: heard ?? language });
+      finalsSent += 1;
       // The sentence the half-close was waiting for. Ordinary mid-conversation
       // finals leave awaitingFinal null and change nothing here.
       if (awaitingFinal) {
@@ -250,6 +276,9 @@ function serve(
     onSpeechEvent: (kind) => send({ type: 'speech_event', kind }),
     onUnavailable: (reason) => {
       send({ type: 'unavailable', reason });
+      // The provider's own words go in the close frame; the LEDGER gets the
+      // category, so these can be counted without parsing prose.
+      closeReason = 'PROVIDER_UNAVAILABLE';
       finish(1011, reason);
     },
   });
@@ -257,6 +286,14 @@ function serve(
   function finish(code: number, reason: string): void {
     if (ended) return;
     ended = true;
+    /*
+     * First close wins, which is the same rule the close frame already follows.
+     * PROVIDER_UNAVAILABLE is set by its own caller before this runs, so it is
+     * not overwritten by the generic name here.
+     */
+    if (closeReason === 'CLOSED_BEFORE_OPEN' && reason !== 'PROVIDER_UNAVAILABLE') {
+      closeReason = reason as typeof closeReason;
+    }
     stream.close();
     clearTimeout(ceiling);
     try { ws.close(code, reason.slice(0, 120)); } catch { /* already closing */ }
@@ -305,6 +342,7 @@ function serve(
   function endOfSpeech(): void {
     if (ended || awaitingFinal) return;
     stream.halfClose();
+    halfClosedAt = Date.now();
     awaitingFinal = setTimeout(() => finish(1000, 'CLIENT_DONE_NO_FINAL'), FINAL_GRACE_MS);
   }
 
@@ -337,6 +375,17 @@ function serve(
       at: new Date().toISOString(), service: 'speech',
       event: 'session_closed', ms: Date.now() - started,
       frames: stream.frames, bytes: stream.bytes, language,
+      /*
+       * The four facts that make a duration readable. Counts and categories
+       * only -- still not one word of what was said.
+       */
+      closeReason,
+      finalsSent,
+      halfClosed: halfClosedAt !== null,
+      // Half-close to close: the provider's finalisation, measured server-side,
+      // so it can be compared against the client's own no-final deadline
+      // instead of the two blaming each other.
+      finalizeMs: halfClosedAt === null ? null : Date.now() - halfClosedAt,
     }));
   });
 }

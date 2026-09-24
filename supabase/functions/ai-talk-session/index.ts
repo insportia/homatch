@@ -414,6 +414,16 @@ interface TalkRequest {
     gateReleases?: number; utteranceMs?: number;
     /* What the playback scheduler did with the audio we sent it. */
     playback?: Record<string, unknown> | null;
+    /*
+     * The output chain on the visitor's actual device: gain, context state and
+     * rate, and the capture constraints the browser really applied.
+     *
+     * "AI Talk starts too quiet" was reported from a phone three physical tests
+     * running, and every number that could settle it lived only in a panel on a
+     * different machine. Passed straight through, unread: a Record, because
+     * this function has no business interpreting the browser's audio graph.
+     */
+    audioChain?: Record<string, unknown> | null;
   };
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
@@ -526,6 +536,94 @@ Deno.serve(async (req: Request): Promise<Response> => {
 });
 
 type Sb = ReturnType<typeof serviceClient>;
+
+/*
+ * WHY THE FIRST ANSWER OF EVERY CONVERSATION IS THE SLOW ONE.
+ *
+ * MEASURED, two production sessions:
+ *
+ *                       first turn        later turns
+ *   llm_cached_input_tokens        0      most of the input
+ *   llm first token       2,473 / 2,990   610 - 1,623 ms
+ *   tts first byte        5,102 / 8,641   1,001 - 1,850 ms
+ *
+ * The system instruction is the largest part of a voice turn's input and it is
+ * IDENTICAL on every turn of a conversation, so from the second turn onwards
+ * the provider serves it from its prompt cache. The first turn pays to read it
+ * from cold -- and it is the turn a visitor judges the product on.
+ *
+ * Nothing about the prompt needs to change for that to stop happening. The
+ * cache is populated by having ASKED ONCE. So this asks once, at the moment
+ * the session is created, while the visitor is still reaching for the
+ * microphone: the same model, the same instructions, byte for byte, because a
+ * prefix that differs by one character is a different prefix and caches
+ * nothing.
+ *
+ * WHAT IT MUST NOT DO, AND HOW EACH IS PREVENTED
+ *
+ *   It must not block the microphone.  It is handed to EdgeRuntime.waitUntil
+ *     AFTER the grant response has been built, so it runs in time the visitor
+ *     was already spending on getUserMedia. Nothing awaits it. If it never
+ *     finishes, the only consequence is a cold first turn -- which is today's
+ *     behaviour.
+ *   It must not become a turn.  It writes no session row, no transcript, no
+ *     usage, and returns nothing to the browser. The conversation does not
+ *     know it happened.
+ *   It must not speak.  No Cartesia call, no TTS, no audio. It ends at the
+ *     model.
+ *   It must not use tools.  streamLlm sends none.
+ *   It must not cost an answer.  maxOutputTokens 16 and reasoning 'none': the
+ *     reply is discarded after the first event, and the point was never the
+ *     reply.
+ */
+async function warmPromptCache(locale: string, sessionId: string): Promise<void> {
+  const startedAt = Date.now();
+  logEvent('ai-talk', 'cache_warm_start', { sessionId, locale });
+  let cached: number | null = null;
+  let inputTokens: number | null = null;
+  let failed: string | null = null;
+  try {
+    for await (const event of streamLlm({
+      // BYTE FOR BYTE what a real turn sends. publicDemoInstructions is the
+      // one authority for this text and is called here rather than copied,
+      // so the two cannot drift apart and silently stop sharing a prefix.
+      system: publicDemoInstructions(locale),
+      // Two characters, after the cacheable prefix, so they cannot affect it.
+      user: 'ok',
+      maxTokens: 8,
+      maxOutputTokens: 16,
+      reasoningEffort: 'none',
+      // Short: a warm-up that is still running when the visitor speaks has
+      // already missed its purpose, and holding the instance open past that
+      // costs more than the cold turn it was trying to avoid.
+      timeoutMs: 8_000,
+    })) {
+      if (event.type === 'meta') {
+        if (event.cachedInputTokens !== undefined) cached = event.cachedInputTokens;
+        if (event.inputTokens !== undefined) inputTokens = event.inputTokens;
+      }
+      if (event.type === 'error') failed = String(event.error ?? 'unknown').slice(0, 120);
+      // The text is deliberately not read. Nothing consumes it.
+    }
+  } catch (e) {
+    failed = e instanceof Error ? e.message.slice(0, 120) : 'threw';
+  }
+  /*
+   * The warm-up's OWN cache figures, which are the proof it did something.
+   *
+   * On a cold instance `cached` here is 0 or null -- this call is the one
+   * paying -- and the first real turn should then report a non-zero
+   * llm_cached_input_tokens. Those two lines side by side are the measurement;
+   * one of them alone is an assumption.
+   */
+  logEvent('ai-talk', 'cache_warm_done', {
+    sessionId,
+    ms: Date.now() - startedAt,
+    warmInputTokens: inputTokens,
+    warmCachedInputTokens: cached,
+    failed,
+  });
+}
 
 async function start(
   sb: Sb, req: Request, body: TalkRequest, limits: TalkLimits, enabled: boolean, userId: string | null,
@@ -702,6 +800,27 @@ async function start(
    * even though the conversation itself would have worked.
    */
   logEvent('ai-talk', 'granted', { sessionId: session.id, seconds: decision.seconds });
+
+  /*
+   * ASK THE MODEL ONCE, NOW, SO THE FIRST TURN IS NOT THE COLD ONE.
+   *
+   * Deliberately NOT awaited and deliberately after everything the response
+   * needs: waitUntil keeps the instance alive for this work while the reply
+   * below is already on its way to the browser. The visitor's next few hundred
+   * milliseconds go on a microphone permission prompt and an AudioContext, and
+   * this happens inside them.
+   *
+   * A failure here is not a session failure. It is logged and the conversation
+   * proceeds exactly as it does today.
+   */
+  const warmLocale = String(body.locale ?? 'ka');
+  try {
+    EdgeRuntime.waitUntil(warmPromptCache(warmLocale, session.id));
+  } catch {
+    // No waitUntil on this runtime: skip the warm-up rather than risk the
+    // grant. A cold first turn is the current behaviour, not a regression.
+    logEvent('ai-talk', 'cache_warm_unavailable', { sessionId: session.id });
+  }
 
   return json({
     ok: true,
@@ -1686,7 +1805,7 @@ async function transcribe(sb: Sb, body: TalkRequest): Promise<Response> {
  */
 async function activeSession(
   sb: Sb, sessionId: string,
-): Promise<{ row: { id: string; turns: number | null } } | { refusal: Response }> {
+): Promise<{ row: { id: string; turns: number | null; createdAt: string | null } } | { refusal: Response }> {
   const { data: session } = await sb.from('comm_talk_sessions')
     .select('id, state, granted_seconds, consumed_seconds, expires_at, created_at, turns')
     .eq('id', sessionId).maybeSingle();
@@ -1700,7 +1819,19 @@ async function activeSession(
       .eq('id', session.id);
     return { refusal: json({ ok: false, ended: true, reason: 'SESSION_EXPIRED' }, 409) };
   }
-  return { row: { id: String(session.id), turns: session.turns as number | null } };
+  /*
+   * created_at was already being SELECTED here and then dropped on the floor.
+   * The turn trace needs it: "llm_cached_input_tokens = 0" means one thing on
+   * the first turn of a session and something entirely different twenty
+   * minutes in, and without the session's age the two are indistinguishable.
+   */
+  return {
+    row: {
+      id: String(session.id),
+      turns: session.turns as number | null,
+      createdAt: session.created_at ? String(session.created_at) : null,
+    },
+  };
 }
 
 /**
@@ -1745,6 +1876,16 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
   const guard = await activeSession(sb, body.sessionId);
   if ('refusal' in guard) { void abuseCheck.catch(() => false); return guard.refusal; }
   const session = guard.row;
+  /*
+   * Which turn of the conversation this is, and how long after it opened.
+   *
+   * Read straight off the session row rather than counted here, so a retry or
+   * a reconnect cannot make a later turn look like a first one -- which is
+   * exactly the direction that would flatter the cache measurement.
+   */
+  const turnIndex = session.turns ?? 0;
+  const sessionAgeMs = session.createdAt
+    ? Math.max(0, Date.now() - Date.parse(session.createdAt)) : null;
 
   const locale = String(body.locale ?? 'ka').toLowerCase().slice(0, 5);
   /*
@@ -2721,6 +2862,18 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           llm_think_ms: llmThinkMs,
           llm_input_tokens: llmInputTokens,
           llm_cached_input_tokens: llmCachedInputTokens,
+          /*
+           * WHICH TURN THIS IS, AND HOW LONG AFTER THE SESSION OPENED.
+           *
+           * Without these two the cache measurement is unreadable: a turn with
+           * llm_cached_input_tokens = 0 could be a warm-up that failed or a
+           * conversation that has been idle long enough for the provider to
+           * have evicted the prefix, and those need different answers. Read
+           * together with cache_warm_done for the same sessionId, they say
+           * whether the warm-up worked.
+           */
+          first_turn: turnIndex === 0,
+          session_age_ms: sessionAgeMs,
           transcript_chars: body.turnShape?.transcriptChars ?? null,
           transcript_words: body.turnShape?.transcriptWords ?? null,
           shadow_language: body.turnShape?.shadowLanguage ?? null,
@@ -2768,6 +2921,7 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
            * look is where the browser puts the audio on the clock.
            */
           playback: body.turnShape?.playback ?? null,
+          audio_chain: body.turnShape?.audioChain ?? null,
           tts_skipped_phrases: skippedPhrases,
           tts_skipped_chars: skippedChars,
           abandoned_why: abandoned,

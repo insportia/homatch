@@ -205,6 +205,60 @@ export async function startTopUp(opts: { packCode?: string; amountUsd?: number }
   return data;
 }
 
+// ── Campaign budget ─────────────────────────────────────────────────────────
+//
+// WALLET BALANCE IS NOT CAMPAIGN BUDGET.
+//
+// The balance is everything the customer owns. The campaign budget is the most
+// they are willing to let ONE search consume, and it is the number that ends up
+// in usage_reservations.authorized_max_credits, where a schema CHECK stops
+// settlement from ever exceeding it.
+//
+// The presets, which one is recommended, and whether a custom amount is allowed
+// are all admin settings read by billing_my_budget_choices(). Nothing here
+// invents a ladder, and the affordability of each rung is decided against the
+// server's view of the balance rather than the browser's.
+
+export interface BudgetChoice {
+  credits: number;
+  affordable: boolean;
+  viable: boolean;
+  recommended: boolean;
+}
+
+export interface BudgetChoices {
+  ok: boolean;
+  reason?: string;
+  product_code?: string;
+  balance?: number;
+  min_viable?: number;
+  allow_custom?: boolean;
+  recommended?: number;
+  presets?: BudgetChoice[];
+}
+
+export async function getBudgetChoices(productCode: string): Promise<BudgetChoices | null> {
+  const { data, error } = await supabase.rpc('billing_my_budget_choices', {
+    p_product_code: productCode,
+  });
+  if (error) return null;
+  return (data ?? null) as BudgetChoices | null;
+}
+
+/**
+ * The rung to select before the customer touches anything.
+ *
+ * The recommended preset when they can afford it, otherwise the largest they
+ * can — never their whole balance by default, and never a rung below what the
+ * product needs to produce anything worth having.
+ */
+export function defaultBudget(choices: BudgetChoices | null): number | null {
+  const usable = (choices?.presets ?? []).filter((p) => p.affordable && p.viable);
+  if (usable.length === 0) return null;
+  const recommended = usable.find((p) => p.recommended);
+  return (recommended ?? usable[usable.length - 1]).credits;
+}
+
 // ── Card activation ─────────────────────────────────────────────────────────
 //
 // The offer that replaced the registration grant. An account now starts at

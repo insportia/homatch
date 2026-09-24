@@ -21,6 +21,7 @@ import {
   MessageSquare, Bot, CalendarDays,
 } from 'lucide-react';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { SearchBudgetOffer } from '@/components/billing/SearchBudgetOffer';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
 import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
@@ -401,6 +402,9 @@ function MatchesContent() {
   // Campaign
   const [campaignActive, setCampaignActive] = useState(false);
   const [campaignLoading, setCampaignLoading] = useState(false);
+  /* The search does not begin until the customer has said how much it
+     may spend. Wallet balance is not campaign budget. */
+  const [showBudget, setShowBudget] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
@@ -576,11 +580,12 @@ function MatchesContent() {
   }, [navigate, propertyId]);
 
   // Start matching campaign
-  const handleStartMatching = async () => {
+  const handleStartMatching = async (authorizedMaxCredits: number | null) => {
     if (!propertyId || !homatchUser) return;
+    setShowBudget(false);
     setCampaignLoading(true);
     try {
-      const result = await startMatchingCampaign(propertyId, homatchUser.id);
+      const result = await startMatchingCampaign(propertyId, homatchUser.id, authorizedMaxCredits);
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       setCampaignActive(true);
       setActiveJobId(result.jobId);
@@ -650,7 +655,7 @@ function MatchesContent() {
               <Button
                 size="sm"
                 className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-8 gap-1.5 font-semibold"
-                onClick={handleStartMatching}
+                onClick={() => setShowBudget(true)}
                 disabled={campaignLoading}
               >
                 {campaignLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
@@ -723,7 +728,7 @@ function MatchesContent() {
               {!campaignActive && (
                 <Button
                   className="mt-6 bg-primary text-primary-foreground hover:bg-primary/90"
-                  onClick={handleStartMatching}
+                  onClick={() => setShowBudget(true)}
                 >
                   <Play className="h-4 w-4 mr-2" />
                   {t('matches_start_matching')}
@@ -867,6 +872,29 @@ function MatchesContent() {
       )}
 
       {/* Pause confirm */}
+      {/*
+        AUTHORISING THE SPEND, BEFORE ANYTHING IS SPENT.
+
+        SearchBudgetOffer decides what to show: an included run needs no
+        authorisation, a balance below the minimum viable budget is sent to
+        top up rather than allowed to waste its last credits, and otherwise
+        the customer picks the ceiling from the configured ladder. The figure
+        it hands back is what becomes authorized_max_credits.
+      */}
+      <Dialog open={showBudget} onOpenChange={setShowBudget}>
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('matches_start_matching')}</DialogTitle>
+            <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
+          </DialogHeader>
+          <SearchBudgetOffer
+            productCode="FIND_CLIENTS"
+            onRun={(authorized) => void handleStartMatching(authorized)}
+            running={campaignLoading}
+          />
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={showPauseConfirm} onOpenChange={setShowPauseConfirm}>
         <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-md bg-card border-border">
           <AlertDialogHeader>

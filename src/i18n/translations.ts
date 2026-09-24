@@ -8890,6 +8890,15 @@ const en = {
   payg_cta_wallet: 'Open your wallet',
   payg_cta_start: 'Create a free account',
   payg_free_account: 'Creating an account is free.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  budget_choose_title: 'How much may this search spend?',
+  budget_choose_help: 'This is a limit, not a price. Anything the search does not use stays in your balance.',
+  budget_recommended: 'Recommended',
+  budget_custom_label: 'Another amount',
+  budget_over_balance: 'More than your balance',
+  budget_broader_note: 'A larger limit lets Homatch search more sources and go deeper.',
+  budget_cta_authorize: 'Search with up to {{credits}} credits',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17698,6 +17707,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   payg_cta_wallet: 'გახსენით საფულე',
   payg_cta_start: 'შექმენით უფასო ანგარიში',
   payg_free_account: 'ანგარიშის შექმნა უფასოა.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  budget_choose_title: 'რამდენის დახარჯვა შეუძლია ამ ძიებას?',
+  budget_choose_help: 'ეს ზღვარია და არა ფასი. რასაც ძიება არ დახარჯავს, თქვენს ბალანსზე რჩება.',
+  budget_recommended: 'რეკომენდებული',
+  budget_custom_label: 'სხვა ოდენობა',
+  budget_over_balance: 'თქვენს ბალანსზე მეტი',
+  budget_broader_note: 'დიდი ზღვარი Homatch-ს მეტ წყაროში და უფრო ღრმად ძებნის საშუალებას აძლევს.',
+  budget_cta_authorize: 'ძებნა მაქსიმუმ {{credits}} კრედიტით',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26497,6 +26515,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   payg_cta_wallet: 'Открыть кошелёк',
   payg_cta_start: 'Создать бесплатный аккаунт',
   payg_free_account: 'Создание аккаунта бесплатно.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  budget_choose_title: 'Сколько может потратить этот поиск?',
+  budget_choose_help: 'Это лимит, а не цена. Всё, что поиск не потратит, останется на балансе.',
+  budget_recommended: 'Рекомендуем',
+  budget_custom_label: 'Другая сумма',
+  budget_over_balance: 'Больше вашего баланса',
+  budget_broader_note: 'Больший лимит позволяет Homatch искать в большем числе источников и глубже.',
+  budget_cta_authorize: 'Искать не более чем на {{credits}} кредитов',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35294,6 +35321,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   payg_cta_wallet: 'Cüzdanınızı açın',
   payg_cta_start: 'Ücretsiz hesap oluşturun',
   payg_free_account: 'Hesap oluşturmak ücretsizdir.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  budget_choose_title: 'Bu arama en fazla ne kadar harcayabilir?',
+  budget_choose_help: 'Bu bir üst sınırdır, fiyat değil. Aramanın kullanmadığı her şey bakiyenizde kalır.',
+  budget_recommended: 'Önerilen',
+  budget_custom_label: 'Başka bir tutar',
+  budget_over_balance: 'Bakiyenizden fazla',
+  budget_broader_note: 'Daha yüksek bir sınır, Homatch’in daha çok kaynakta ve daha derine bakmasını sağlar.',
+  budget_cta_authorize: 'En fazla {{credits}} kredi ile ara',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44091,6 +44127,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   payg_cta_wallet: 'افتح محفظتك',
   payg_cta_start: 'أنشئ حسابًا مجانيًا',
   payg_free_account: 'إنشاء الحساب مجاني.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  budget_choose_title: 'ما الحد الأقصى الذي يمكن أن ينفقه هذا البحث؟',
+  budget_choose_help: 'هذا حد أقصى وليس سعرًا. كل ما لا يستخدمه البحث يبقى في رصيدك.',
+  budget_recommended: 'موصى به',
+  budget_custom_label: 'مبلغ آخر',
+  budget_over_balance: 'أكثر من رصيدك',
+  budget_broader_note: 'الحد الأعلى يتيح لـ Homatch البحث في مصادر أكثر وبعمق أكبر.',
+  budget_cta_authorize: 'ابحث بحد أقصى {{credits}} رصيد',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -52888,6 +52933,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   payg_cta_wallet: 'פתחו את הארנק',
   payg_cta_start: 'פתחו חשבון חינם',
   payg_free_account: 'פתיחת חשבון היא בחינם.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  budget_choose_title: 'כמה מותר לחיפוש הזה להוציא?',
+  budget_choose_help: 'זו תקרה, לא מחיר. כל מה שהחיפוש לא ניצל נשאר ביתרה שלכם.',
+  budget_recommended: 'מומלץ',
+  budget_custom_label: 'סכום אחר',
+  budget_over_balance: 'יותר מהיתרה שלכם',
+  budget_broader_note: 'תקרה גבוהה יותר מאפשרת ל-Homatch לחפש ביותר מקורות ולעומק רב יותר.',
+  budget_cta_authorize: 'חיפוש עם עד {{credits}} קרדיטים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -22,6 +22,8 @@ import {
   Play, Pause, Loader2, ChevronRight, Bot, TrendingDown, Shield, Landmark,
 } from 'lucide-react';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { SearchBudgetOffer } from '@/components/billing/SearchBudgetOffer';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
 import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
 import { PrivateImage } from '@/components/common/PrivateImage';
@@ -131,11 +133,14 @@ function CampaignPanel({
   const [loading, setLoading] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  /* Nothing is spent until the customer names the ceiling. */
+  const [showBudget, setShowBudget] = useState(false);
 
-  const handleStart = async () => {
+  const handleStart = async (authorizedMaxCredits: number | null) => {
+    setShowBudget(false);
     setLoading(true);
     try {
-      const result = await startMatchingCampaign(propertyId, userId);
+      const result = await startMatchingCampaign(propertyId, userId, authorizedMaxCredits);
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       setActive(true);
       setActiveJobId(result.jobId);
@@ -234,7 +239,7 @@ function CampaignPanel({
           ) : (
             <Button
               size="sm"
-              onClick={handleStart}
+              onClick={() => setShowBudget(true)}
               disabled={loading}
               className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8 gap-1.5"
             >
@@ -263,6 +268,21 @@ function CampaignPanel({
           }}
         />
       )}
+
+      {/* The ceiling is chosen before anything is spent. */}
+      <Dialog open={showBudget} onOpenChange={setShowBudget}>
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('matches_start_matching')}</DialogTitle>
+            <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
+          </DialogHeader>
+          <SearchBudgetOffer
+            productCode="FIND_CLIENTS"
+            onRun={(authorized) => void handleStart(authorized)}
+            running={loading}
+          />
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={showPauseConfirm} onOpenChange={setShowPauseConfirm}>
         <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-md bg-card border-border">

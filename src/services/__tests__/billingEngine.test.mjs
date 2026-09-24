@@ -1090,3 +1090,92 @@ test('EXISTING_CREDITS_ARE_NOT_REACHED_BACKWARDS', () => {
      reservations point at it. */
   assert.match(CORE, /plan_code_snapshot text NOT NULL REFERENCES public\.billing_plans\(code\)/);
 });
+
+// ── The customer chooses the ceiling ───────────────────────────────────────
+
+const PRESETS = mig('20260924130000_search_budget_presets.sql');
+const OFFER_UI = read(path.join(SRC, 'components', 'billing', 'SearchBudgetOffer.tsx'));
+const BILLING_SVC = read(path.join(SRC, 'services', 'billing.ts'));
+
+test('PRESSING_START_NEVER_SPENDS_THE_WHOLE_BALANCE', () => {
+  /*
+   * §5, and the sentence the brief puts in bold: "A customer with 100 credits
+   * must NEVER accidentally spend all 100 simply by pressing Start."
+   *
+   * The default selection is the RECOMMENDED rung when it is affordable, and
+   * otherwise the largest affordable one -- which is a rung, not the balance.
+   * The only way to authorise the whole balance is to type it.
+   */
+  assert.match(BILLING_SVC, /export function defaultBudget/);
+  const fn = BILLING_SVC.slice(BILLING_SVC.indexOf('export function defaultBudget'));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  assert.match(body, /p\.affordable && p\.viable/);
+  assert.match(body, /usable\.find\(\(p\) => p\.recommended\)/);
+  /* It never reaches for the balance. */
+  assert.ok(!/balance/.test(body), 'the default budget is derived from the balance');
+});
+
+test('THE_LADDER_IS_CONFIGURATION, NOT A COMPONENT CONSTANT', () => {
+  /* §22: the presets are an owner control, changeable without a deploy. */
+  assert.match(PRESETS, /\('search_budget_presets', '\[10, 20, 30, 40, 50, 100\]'::jsonb/);
+  assert.match(PRESETS, /\('search_budget_recommended', '20'::jsonb/);
+  assert.match(PRESETS, /\('search_budget_allow_custom', 'true'::jsonb/);
+  /* And the component does not carry its own copy of them. */
+  assert.ok(
+    !/\[\s*10\s*,\s*20\s*,\s*30\s*,\s*40\s*,\s*50\s*,\s*100\s*\]/.test(OFFER_UI),
+    'the budget ladder is hardcoded in the component',
+  );
+});
+
+test('AN_UNAFFORDABLE_RUNG_IS_SHOWN_AND_REFUSED, NOT HIDDEN', () => {
+  /*
+   * Affordability is decided against the SERVER's view of the balance, and a
+   * rung the customer cannot pay for is disabled rather than removed, so the
+   * ladder does not silently change shape as a balance moves.
+   */
+  assert.match(PRESETS, /'affordable', c <= v_balance/);
+  assert.match(PRESETS, /'viable', c >= v_min/);
+  assert.match(OFFER_UI, /disabled=\{disabled\}/);
+  assert.match(OFFER_UI, /const disabled = !p\.affordable \|\| !p\.viable;/);
+  /* Only non-viable rungs are filtered out: a rung the product cannot do
+     anything useful with is not an offer at all. */
+  assert.match(OFFER_UI, /\.filter\(\(p\) => p\.viable\)/);
+});
+
+test('A_TYPED_AMOUNT_IS_CLAMPED_BEFORE_IT_IS_OFFERED', () => {
+  /*
+   * The client clamp is for the button's sake only. The binding check is
+   * wallet_reserve's, which refuses more than the wallet holds and writes the
+   * figure into authorized_max_credits, where a CHECK constraint stops
+   * settlement from ever exceeding it. Both exist; neither is trusted alone.
+   */
+  assert.match(OFFER_UI, /customCredits >= Number\(choices\?\.min_viable \?\? 0\)/);
+  assert.match(OFFER_UI, /customCredits <= Number\(choices\?\.balance \?\? 0\)/);
+  assert.match(CORE, /CONSTRAINT usage_reservations_settle_within_authorization\s*\n?\s*CHECK \(settled_credits <= authorized_max_credits\)/);
+});
+
+test('THE_BUDGET_CHOICES_RPC_LEAKS_NO_ECONOMICS', () => {
+  /*
+   * A customer deciding how much to authorise does not need, and must not be
+   * shown, the provider ceiling that budget implies. billing_budget_to_cogs_ceiling
+   * stays service-role only and is not called from here.
+   */
+  const fn = PRESETS.slice(PRESETS.indexOf('billing_my_budget_choices'));
+  for (const forbidden of ['cogs', 'margin', 'landed', 'provider_budget', 'profit']) {
+    assert.ok(!new RegExp(forbidden, 'i').test(fn.slice(0, fn.indexOf('$fn$;'))),
+      `billing_my_budget_choices mentions ${forbidden}`);
+  }
+  assert.match(PRESETS, /revoke all on function public\.billing_my_budget_choices\(text\) from public, anon;/);
+  assert.match(PRESETS, /grant execute on function public\.billing_my_budget_choices\(text\) to authenticated;/);
+});
+
+test('THE_CTA_NAMES_THE_CEILING_THE_CUSTOMER_PICKED', () => {
+  /*
+   * "Search with up to 20 credits" rather than "Search". The number on the
+   * button is the number that becomes authorized_max_credits, so the last
+   * thing the customer reads before consenting is what they are consenting to.
+   */
+  assert.match(OFFER_UI, /t\('budget_cta_authorize', \{ credits: cr\(authorized\) \}\)/);
+  /* And "you only pay for what was used" is still next to it. */
+  assert.match(OFFER_UI, /cost_only_actual/);
+});

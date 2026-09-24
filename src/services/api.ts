@@ -630,7 +630,16 @@ export async function initiateTopUp(amountUsd: number): Promise<{
 
 export async function startMatchingCampaign(
   propertyId: string,
-  userId: string
+  userId: string,
+  /*
+   * The ceiling the customer explicitly authorised for THIS search, in
+   * credits. Omitted means "no explicit authorisation" and the engine falls
+   * back to reserving its own estimate -- which is safe, but it is not the
+   * same thing as the customer having chosen, and under pay-as-you-go the
+   * customer chooses. match-campaign has always accepted this; nothing was
+   * sending it.
+   */
+  authorizedMaxCredits?: number | null,
 ): Promise<{ jobId: string; campaignId: string } | null> {
   // 1. Upsert campaign record
   let campaignId: string;
@@ -679,7 +688,12 @@ export async function startMatchingCampaign(
   const launchedAfter = new Date(Date.now() - 5_000).toISOString();
   let invocationFailure: Error | null = null;
   const invocation = supabase.functions.invoke('match-campaign', {
-    body: { propertyId, campaignId, idempotencyKey },
+    body: {
+      propertyId,
+      campaignId,
+      idempotencyKey,
+      ...(authorizedMaxCredits != null ? { authorizedMaxCredits } : {}),
+    },
   }).then(({ data, error }) => {
     if (error) throw new Error(`match-campaign EF error: ${error.message}`);
     if (!data?.jobId) throw new Error('match-campaign returned no jobId');

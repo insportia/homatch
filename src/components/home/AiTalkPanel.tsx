@@ -39,6 +39,10 @@ import type { VoiceSession, VoiceState, VoiceDiagnostics } from '@/lib/comm/voic
 import { AiTalkDiagnostics } from './AiTalkDiagnostics';
 import { AiTalkOrb, type OrbMode } from './AiTalkOrb';
 import { converseStream } from '@/lib/comm/converse';
+import {
+  newInstanceId, claimActivation, takeOwnership, releaseOwnership,
+  adoptExisting, currentSessionId, rejectStale,
+} from '@/lib/comm/talkOwnership';
 import type { TranscriptTurn } from '@/lib/comm/transcript';
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
@@ -398,6 +402,18 @@ export function AiTalkPanel({ className }: { className?: string }) {
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics | null>(null);
   const debug = useMemo(debugRequested, []);
 
+  /*
+   * WHICH COMPONENT INSTANCE THIS IS.
+   *
+   * Stable for the life of the instance and meaningless outside it -- six
+   * random characters, nothing derived from the visitor. It exists so the
+   * module-scope owner can tell "the same component asking twice" from "a
+   * second component that also thinks it is in charge", which is the
+   * distinction a useRef cannot make and the whole reason production ran two
+   * sessions at once.
+   */
+  const instanceId = useRef<string>(newInstanceId()).current;
+
   const sessionRef = useRef<VoiceSession | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const grantedRef = useRef<number>(0);
@@ -499,28 +515,69 @@ export function AiTalkPanel({ className }: { className?: string }) {
 
   useEffect(() => { turnsRef.current = turns; }, [turns]);
 
+  /*
+   * AN UNMOUNT IS NOT AN ENDING, AND IT IS NOT NOTHING EITHER.
+   *
+   * This used to stop the client pipeline and return. The microphone and the
+   * sockets were released correctly -- and the SERVER session was left
+   * running. MEASURED: c6e9e704 sat ACTIVE for sixty billed seconds after its
+   * component was gone, because nothing here ever told the server.
+   *
+   * It is handed to the module owner instead, which does one of two things:
+   * a new instance adopts the session inside the grace window, and the
+   * conversation carries straight through the remount untouched; or nobody
+   * does, and it is disposed properly -- pipeline stopped AND the server told.
+   * Either way it cannot be orphaned, which is the only outcome that was
+   * possible before.
+   */
   const cleanup = useCallback(() => {
     if (heartbeatRef.current !== null) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
-    void sessionRef.current?.stop('unmount');
-    sessionRef.current = null;
-  }, []);
+    releaseOwnership(instanceId, 'unmount', 'ADOPTABLE');
+  }, [instanceId]);
 
   useEffect(() => cleanup, [cleanup]);
 
+  /*
+   * A REMOUNT FINDS THE CONVERSATION STILL RUNNING AND PICKS IT UP.
+   *
+   * Runs once per instance, before anything can ask for a new session. If the
+   * previous instance left one inside the grace window this adopts it, and
+   * the visitor never learns that their component was re-created.
+   */
+  useEffect(() => {
+    const adopted = adoptExisting(instanceId);
+    if (adopted) sessionIdRef.current = adopted;
+  }, [instanceId]);
+
+  /**
+   * End it, and be safe to call again.
+   *
+   * IDEMPOTENT BY CONSTRUCTION. Both refs are read and cleared before
+   * anything is awaited, so a second call -- the End button pressed twice, an
+   * unmount racing a deliberate end, a failure path that also tidies up --
+   * finds nothing left to do and returns. The server's `end` action is
+   * likewise addressed by session id and is harmless to repeat.
+   */
   const endSession = useCallback(async (reason: string) => {
     if (heartbeatRef.current !== null) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
-    const consumed = sessionRef.current?.consumedSeconds ?? 0;
-    await sessionRef.current?.stop(reason);
+    const live = sessionRef.current;
+    const liveId = sessionIdRef.current;
     sessionRef.current = null;
-    if (sessionIdRef.current) {
+    sessionIdRef.current = null;
+    if (!live && !liveId) return;
+    // Deliberate: no grace period. A visitor who pressed End does not want
+    // the microphone open for another second and a quarter.
+    releaseOwnership(instanceId, reason, 'CALLER_DISPOSES');
+    const consumed = live?.consumedSeconds ?? 0;
+    await live?.stop(reason);
+    if (liveId) {
       // Best effort. The server's own expiry ends the session whether or not
       // this lands, which is exactly why the expiry exists (§28).
       void supabase.functions.invoke('ai-talk-session', {
-        body: { action: 'end', sessionId: sessionIdRef.current, consumedSeconds: consumed, endedReason: reason },
+        body: { action: 'end', sessionId: liveId, consumedSeconds: consumed, endedReason: reason },
       });
-      sessionIdRef.current = null;
     }
-  }, []);
+  }, [instanceId]);
 
   /**
    * Take the assistant up on where it offered to send them.
@@ -556,8 +613,6 @@ export function AiTalkPanel({ className }: { className?: string }) {
    * to go away; this makes it await the same activation the first one
    * started, so the caller still gets a session and there is still only one.
    */
-  const startInFlight = useRef<Promise<void> | null>(null);
-
   const startOnce = useCallback(async () => {
     /*
      * EVERYTHING THAT NEEDS THE GESTURE HAPPENS BEFORE THE FIRST await.
@@ -669,6 +724,30 @@ export function AiTalkPanel({ className }: { className?: string }) {
       if (reason) setFailure(reason);
       else if (grant?.userMessage === 'BUSY') setFailure('BUSY');
       // Nothing will use it now, and an abandoned context holds hardware open.
+      try { await primed?.close(); } catch { /* already gone */ }
+      return;
+    }
+
+    /*
+     * A START THAT CAME BACK TO A PAGE THAT HAD MOVED ON.
+     *
+     * The request is in flight for a round trip; in that time this instance
+     * can be superseded. Opening a microphone now would create the second
+     * pipeline LATE, which is exactly as damaging as creating it early -- and
+     * it is how the 18:21 incident kept two conversations alive at once.
+     *
+     * So the session is given back rather than dropped: an abandoned row is
+     * the leak this whole change exists to stop.
+     */
+    const ownerNow = currentSessionId();
+    if (ownerNow && ownerNow !== grant.sessionId) {
+      rejectStale();
+      void supabase.functions.invoke('ai-talk-session', {
+        body: {
+          action: 'end', sessionId: grant.sessionId,
+          consumedSeconds: 0, endedReason: 'superseded_start',
+        },
+      });
       try { await primed?.close(); } catch { /* already gone */ }
       return;
     }
@@ -935,6 +1014,37 @@ export function AiTalkPanel({ className }: { className?: string }) {
     );
 
     sessionRef.current = session;
+    /*
+     * FROM HERE THIS PAGE HAS EXACTLY ONE MICROPHONE, AND IT IS THIS ONE.
+     *
+     * dispose is what the owner calls when nobody adopts the session inside
+     * the grace window: it stops the pipeline AND tells the server, which is
+     * the half that was missing when c6e9e704 leaked for sixty seconds.
+     */
+    const dispose = async (reason: string) => {
+      try { await session.stop(reason); } catch { /* already stopped */ }
+      void supabase.functions.invoke('ai-talk-session', {
+        body: {
+          action: 'end', sessionId: grant.sessionId,
+          consumedSeconds: session.consumedSeconds ?? 0, endedReason: reason,
+        },
+      });
+    };
+    /*
+     * THE COMPONENT MAY HAVE GONE WHILE THIS WAS BEING BUILT.
+     *
+     * takeOwnership refuses when this instance has already unmounted, and a
+     * refusal is not something to shrug at: the server row exists and the
+     * pipeline is constructed, so with nobody to drive them both would simply
+     * stay open. Disposing here is what makes "unmount during startup" safe.
+     */
+    if (!takeOwnership(instanceId, grant.sessionId, dispose)) {
+      sessionRef.current = null;
+      sessionIdRef.current = null;
+      await dispose('unmounted_during_start');
+      try { await primed?.close(); } catch { /* already gone */ }
+      return;
+    }
     // Built inside the tap, above. The session adopts it instead of
     // constructing its own three awaits too late to be allowed to sound.
     session.adoptAudioContext(primed);
@@ -1020,12 +1130,25 @@ export function AiTalkPanel({ className }: { className?: string }) {
    * genuinely separate, activation still gets its own session -- this
    * de-duplicates one activation, it does not permanently latch.
    */
-  const start = useCallback(async () => {
-    if (startInFlight.current) return startInFlight.current;
-    const attempt = startOnce().finally(() => { startInFlight.current = null; });
-    startInFlight.current = attempt;
-    return attempt;
-  }, [startOnce]);
+  /*
+   * ONE ACTIVATION PER PAGE, NOT ONE PER COMPONENT.
+   *
+   * The ref this replaced was correct and insufficient in exactly the way a
+   * ref must be: airtight inside one instance, blind to a second one. On
+   * 2026-09-24 two instances each held their own `startInFlight`, each saw it
+   * empty, and each started a session 46 ms apart.
+   *
+   * claimActivation lives in module scope, so every caller in this page --
+   * this instance, another instance, a retry -- joins the same activation
+   * promise and there is exactly one session at the end of it. It still
+   * clears when the activation settles, so a LATER, genuinely separate
+   * activation gets its own session; this de-duplicates one press, it does
+   * not latch the page to a single conversation forever.
+   */
+  const start = useCallback(
+    () => claimActivation(() => startOnce()),
+    [startOnce],
+  );
 
   // The history a turn carries is what was actually said, taken from what is
   // on screen, so it cannot drift from the transcript the visitor can read.

@@ -191,7 +191,10 @@ test('SERIOUS_CONTEXT_DISALLOWS_FLIPPANT_HUMOR', () => {
 /* ── v109 must survive ───────────────────────────────────────────────────*/
 
 test('the v109 fixes and the runtime contract are untouched', () => {
-  assert.match(read('src/components/home/AiTalkPanel.tsx'), /if \(startInFlight\.current\) return startInFlight\.current;/);
+  // The one-activation-one-session guard, now module-scope rather than a ref
+  // on one component instance. Same claim, enforced where two instances
+  // cannot each hold their own copy of it. See talkOwnership.test.mjs.
+  assert.match(read('src/components/home/AiTalkPanel.tsx'), /claimActivation\(\(\) => startOnce\(\)\)/);
   assert.match(CLIENT, /const choice = chooseTranscript\(liveTranscript, text\);/);
   assert.match(CLIENT, /routerPhaseAtSpeechStart: this\.routerPhaseAtSpeechStart/);
   assert.match(CLIENT, /playback: this\.player\?\.playbackStats\(\)/);

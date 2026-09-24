@@ -4138,6 +4138,8 @@ export class VoiceSession {
     audioContextStateAtSpeechStart: string | null; audioContextStateAtSpeechEnd: string | null;
     gateReleases: number; utteranceMs: number;
     audioChain: Record<string, unknown>;
+    /* Every voiced byte, and which of the four places it ended up. */
+    audioAccounting: Record<string, unknown>;
     playback: {
       receivedChunks: number; receivedBytes: number; scheduled: number;
       startDelayMs: number | null; minAheadMs: number | null;
@@ -4206,6 +4208,36 @@ export class VoiceSession {
        * are we attenuating it" is answered by reading these together and by
        * nothing else.
        */
+      /*
+       * DELAYED, LOST, OR STILL IN HAND -- SAID OUT LOUD, ON THE SERVER.
+       *
+       * These existed already and went only into the client's own diagnostics
+       * panel, which is on a laptop while the device that matters is a phone
+       * in somebody's hand. So the one question they were built to answer --
+       * was that audio delayed or was it lost -- could not be answered from a
+       * production trace, and a report had to say "I cannot prove this".
+       *
+       * bufferedVoicedMs and flushedVoicedMs are the two halves of "delayed":
+       * still held, and handed over in order once a socket arrived. Against
+       * voicedWithoutDestinationMs, which is the only one of the three that
+       * means anything was actually lost, they settle it outright.
+       */
+      audioAccounting: {
+        voicedWithoutDestinationMs: Math.round(this.voicedWithoutDestinationMs),
+        unsafeListenClaims: this.unsafeListenClaims,
+        droppedByReason: { ...this.router.droppedByReason },
+        dropsAccountedFor: this.router.dropsAccountedFor(),
+        bytesAccountedFor: this.router.accountsBalance(),
+        bufferedVoicedMs: Math.round(this.router.bufferedMs),
+        flushedBufferedBytes: this.router.flushedBufferedBytes,
+        droppedPcmBytes: this.router.droppedPcmBytes,
+        staleFinalsRejected: this.diag.staleFinalsRejected,
+        primarySocketOpenCount: this.diag.primarySocketOpenCount,
+        recoverySocketOpenCount: this.diag.recoverySocketOpenCount,
+        secondOpinionSkipped: this.diag.secondOpinionSkipped,
+        secondOpinionArmings: this.diag.secondOpinionArmings,
+        secondOpinionArmedFor: this.secondOpinionReason,
+      },
       audioChain: {
         outputGainValue: this.outputGain?.gain.value ?? null,
         audioContextState: this.audioContext?.state ?? null,

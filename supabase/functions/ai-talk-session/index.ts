@@ -424,6 +424,13 @@ interface TalkRequest {
      * this function has no business interpreting the browser's audio graph.
      */
     audioChain?: Record<string, unknown> | null;
+    /*
+     * The byte ledger for the capture path: sent, buffered, flushed, dropped
+     * with a named reason. Passed through unread -- this function has no
+     * business interpreting the browser's audio accounting, only recording it
+     * where somebody can read it against a real device.
+     */
+    audioAccounting?: Record<string, unknown> | null;
   };
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
@@ -768,6 +775,27 @@ async function start(
 
   const expiresAt = grantExpiry(decision.seconds);
 
+  /*
+   * A SESSION THAT ENDED BY EXPIRING STILL SAYS ACTIVE UNTIL SOMEBODY ASKS.
+   *
+   * Expiry is applied lazily, by activeSession(), when a request arrives for
+   * that session. A row nobody ever touches again is therefore never expired,
+   * and production is carrying nineteen of them -- every one past its
+   * expires_at, the oldest from 2026-09-16, none of them a live conversation.
+   *
+   * That matters here and not only as untidiness, because the concurrency
+   * rule below counts ACTIVE rows: one leaked row is one visitor who can
+   * never start again. Retiring this visitor's dead rows immediately before
+   * the count is what keeps a leak from becoming a lockout, and it is the
+   * same transition activeSession() performs -- the reason is `expired`
+   * because that is what happened.
+   */
+  await sb.from('comm_talk_sessions')
+    .update({ state: 'ENDED', ended_at: new Date().toISOString(), ended_reason: 'expired' })
+    .eq(countedAgainst.column, countedAgainst.value)
+    .eq('state', 'ACTIVE')
+    .lte('expires_at', new Date().toISOString());
+
   const { data: session, error } = await sb.from('comm_talk_sessions').insert({
     anon_session_id: anonSessionId,
     user_id: userId,
@@ -780,6 +808,72 @@ async function start(
   if (error || !session) {
     logEvent('ai-talk', 'session_insert_failed', { error: error?.message });
     return json({ ok: false, reason: 'ERROR', userMessage: 'UNAVAILABLE' }, 500);
+  }
+
+  /*
+   * THE CONCURRENCY RULE WAS RIGHT AND THE RACE WENT ROUND IT.
+   *
+   * decideGrant already refuses a second live session: perVisitorConcurrent
+   * is 1 and the refusal is ALREADY_IN_SESSION, with a comment naming exactly
+   * this case -- "two tabs, or a session the previous page never closed".
+   *
+   * It is a SELECT then an INSERT. MEASURED, 2026-09-24T18:21:35Z: two starts
+   * arrived 41 ms apart, both counted the visitor's live sessions before
+   * either row existed, both counted zero, and both were granted. The visitor
+   * got two microphones, two prompt warm-ups and two assistants answering the
+   * same sentence twelve seconds apart, and paid for both.
+   *
+   * A read AFTER the write closes it without a schema change. Both racers now
+   * see both rows, and they agree on which one survives because the rule is
+   * deterministic and total: earliest created_at, and the smaller id settles
+   * a tie. The loser retires ITS OWN row and refuses itself -- never the
+   * other one's, so the two requests can never cancel each other out and
+   * leave the visitor with nothing.
+   *
+   * The winner is unaffected and does not pay for this: one indexed read.
+   */
+  const { data: liveNow } = await sb.from('comm_talk_sessions')
+    .select('id, created_at')
+    .eq(countedAgainst.column, countedAgainst.value)
+    .eq('state', 'ACTIVE')
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: true })
+    .limit(10);
+
+  const rows = liveNow ?? [];
+  if (rows.length > 1) {
+    const winner = rows.reduce((best, row) => {
+      const a = Date.parse(String(row.created_at));
+      const b = Date.parse(String(best.created_at));
+      if (a !== b) return a < b ? row : best;
+      return String(row.id) < String(best.id) ? row : best;
+    }, rows[0]);
+
+    if (String(winner.id) !== String(session.id)) {
+      await sb.from('comm_talk_sessions')
+        .update({
+          state: 'ENDED',
+          ended_at: new Date().toISOString(),
+          ended_reason: 'duplicate_activation',
+        })
+        .eq('id', session.id).eq('state', 'ACTIVE');
+      /*
+       * Counted so the next production trace can say whether this is still
+       * happening and how often. No identity: the session id is this
+       * request's own row, which it just created and is now retiring.
+       */
+      logEvent('ai-talk', 'duplicate_session_collapsed', {
+        retired: session.id,
+        liveForVisitor: rows.length,
+      });
+      return json({
+        ok: false,
+        reason: 'ALREADY_IN_SESSION',
+        userMessage: 'BUSY',
+        usageTier,
+        window: 'ROLLING_24H',
+      }, 200);
+    }
   }
 
   /*
@@ -938,8 +1032,27 @@ async function listen(sb: Sb, body: TalkRequest): Promise<Response> {
     const ready = await googleSpeechReady();
     const grant = ready ? await mintSpeechGrant(body.sessionId) : null;
     if (ready && grant) {
+      /*
+       * WHAT THIS SOCKET WILL ACTUALLY BE CONFIGURED WITH.
+       *
+       * `ready.language` is the worker's /health default -- `?? 'ka-GE'` in
+       * googleSpeechReady -- and is the same string for every grant ever
+       * issued. Logging it as `language` made the field read like the
+       * socket's language, and a whole session's worth of Russian and English
+       * turns were recorded as ka-GE because of it. It cost real analysis
+       * time: the field was read as evidence that the recogniser never
+       * re-pinned, which it simply could not show either way.
+       *
+       * The browser sends `languageHint` and configures the socket from it,
+       * so that is the value with meaning here. The worker default is still
+       * reported, under a name that says what it is.
+       */
       logEvent('ai-talk', 'listen_granted', {
-        provider: 'GOOGLE', model: ready.model, language: ready.language,
+        provider: 'GOOGLE',
+        model: ready.model,
+        requestedLanguage: language,
+        candidates: speechCandidates(body.languageHint ?? null, body.locale ?? null),
+        workerDefaultLanguage: ready.language,
       });
       return json({
         ok: true,
@@ -2813,6 +2926,13 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
          * and what it concluded, which is the part that was invisible while a
          * Georgian session was quietly becoming Korean.
          */
+        /*
+         * Did the conversation's language actually change on this turn?
+         * Read off the two values the trace already carries, so it cannot
+         * disagree with the fields printed beside it.
+         */
+        const languageChangedThisTurn = Boolean(body.previousLanguage)
+          && body.previousLanguage !== resolution.resolvedLanguage;
         logEvent('ai-talk', 'turn_trace', {
           session_id: session.id,
           turn_id: String(body.turnId ?? '').slice(0, 40) || null,
@@ -2843,7 +2963,23 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           resolved_language: resolution.resolvedLanguage,
           resolution_reason: resolution.resolutionReason,
           resolution_confidence: resolution.confidence,
-          language_switched: resolution.switched,
+          /*
+           * A SWITCH THE RESOLVER DID NOT CALL A SWITCH.
+           *
+           * MEASURED: t6 arrived with previous ka and resolved ru, and t9
+           * with previous ru and resolved en. Both reported
+           * language_switched = false, so a trace could show a conversation
+           * changing language three times and claim it never switched once.
+           *
+           * The resolver's own verdict is kept, under its own name, because
+           * the two disagreeing is itself worth seeing. This field now
+           * answers the question it appears to answer: did the conversation's
+           * language change on this turn. Telemetry only -- nothing here
+           * decides anything.
+           */
+          language_switched: resolution.switched || languageChangedThisTurn,
+          language_switch_resolver: resolution.switched,
+          language_switch_observed: languageChangedThisTurn,
           reply_language_guard: languageChecked ? (wrongLanguage ? 'RETRIED' : 'OK') : 'UNCHECKED',
           llm_first_token_ms: llmFirstTokenAt,
           llm_final_ms: Date.now() - startedAt,
@@ -2922,6 +3058,7 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
            */
           playback: body.turnShape?.playback ?? null,
           audio_chain: body.turnShape?.audioChain ?? null,
+          audio_accounting: body.turnShape?.audioAccounting ?? null,
           tts_skipped_phrases: skippedPhrases,
           tts_skipped_chars: skippedChars,
           abandoned_why: abandoned,

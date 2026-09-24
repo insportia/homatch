@@ -67,10 +67,21 @@ test('DOUBLE_START_SINGLE_SESSION: a re-entrant start joins the first attempt', 
 });
 
 test('DOUBLE_START_SINGLE_SESSION: the panel actually uses that guard', () => {
-  assert.match(PANEL, /const startInFlight = useRef<Promise<void> \| null>\(null\);/);
-  assert.match(PANEL, /if \(startInFlight\.current\) return startInFlight\.current;/);
-  // The guard must wrap the real thing, not sit beside it.
-  assert.match(PANEL, /const attempt = startOnce\(\)\.finally\(\(\) => \{ startInFlight\.current = null; \}\);/);
+  /*
+   * REPOINTED, NOT RELAXED -- the guard moved up a level.
+   *
+   * This asserted the useRef form, which was correct inside one component
+   * instance and blind to a second one. On 2026-09-24 two instances each held
+   * their own ref, each saw it empty, and production ran two full sessions 46
+   * ms apart. The guard now lives in module scope, so every caller on the
+   * page joins one activation; the claim this test makes is unchanged and is
+   * now enforced somewhere a second instance cannot get around.
+   * See talkOwnership.test.mjs, which drives it rather than reading it.
+   */
+  assert.match(PANEL, /import \{[\s\S]*?claimActivation[\s\S]*?\} from '@\/lib\/comm\/talkOwnership';/);
+  assert.match(PANEL, /const start = useCallback\([\s\S]{0,40}claimActivation\(\(\) => startOnce\(\)\),/);
+  // The guard must still wrap the real thing, not sit beside it.
+  assert.ok(!/useRef<Promise</.test(PANEL), 'an activation promise is held per instance again');
   // And the button still calls the guarded entry point.
   assert.match(PANEL, /onClick=\{\(\) => void start\(\)\}/);
 });

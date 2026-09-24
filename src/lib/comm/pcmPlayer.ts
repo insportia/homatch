@@ -136,6 +136,25 @@ export class PcmStreamPlayer {
     this.turnAheadMs = [];
     this.turnStartDelayMs = null;
     this.turnMaxUnderrunMs = 0;
+    /*
+     * THESE WERE NAMED `turn*` AND NEVER RESET.
+     *
+     * They sat directly under a comment reading "Reset by startTurn(), never
+     * across turns", and startTurn() did not touch them -- so peak and RMS
+     * were session-cumulative while everything around them was per-turn.
+     *
+     * It showed up in the first production trace that used them, as a peak
+     * that could only ever climb: 0.4941, 0.5357, 0.5717, 0.5717, 0.5930,
+     * 0.5930, 0.9849, 0.9849. Read as per-turn that says the assistant got
+     * steadily louder through the conversation, which is not what happened
+     * and is exactly the kind of wrong number that sends somebody looking in
+     * the wrong place. The session maximum below keeps what was genuinely
+     * useful about the old behaviour, under a name that admits what it is.
+     */
+    if (this.turnPcmPeak > this.sessionPcmPeak) this.sessionPcmPeak = this.turnPcmPeak;
+    this.turnPcmPeak = 0;
+    this.turnPcmSumSquares = 0;
+    this.turnPcmSamples = 0;
     this.turnUnderruns = 0;
     this.turnQueueResets = 0;
     this.turnScheduleCorrections = 0;
@@ -276,13 +295,15 @@ export class PcmStreamPlayer {
    */
   /** Loudest decoded sample this turn, 0..1. Unity scale: 1.0 is full scale. */
   private turnPcmPeak = 0;
+  /** Loudest across the whole session. Survives startTurn deliberately. */
+  private sessionPcmPeak = 0;
   private turnPcmSumSquares = 0;
   private turnPcmSamples = 0;
 
   playbackStats(): {
     receivedChunks: number; receivedBytes: number; scheduled: number;
     /* What the provider actually sent, before this file's unity conversion. */
-    pcmPeak: number | null; pcmRms: number | null;
+    pcmPeak: number | null; pcmRms: number | null; sessionPcmPeak: number | null;
     startDelayMs: number | null; minAheadMs: number | null;
     p50AheadMs: number | null; p95AheadMs: number | null;
     underruns: number; maxUnderrunMs: number;
@@ -298,6 +319,9 @@ export class PcmStreamPlayer {
       pcmPeak: this.turnPcmSamples ? Number(this.turnPcmPeak.toFixed(4)) : null,
       pcmRms: this.turnPcmSamples
         ? Number(Math.sqrt(this.turnPcmSumSquares / this.turnPcmSamples).toFixed(4)) : null,
+      // The high-water mark for the conversation, including turns already
+      // finished. Never resets, which is the point of having both.
+      sessionPcmPeak: Math.max(this.sessionPcmPeak, this.turnPcmPeak) || null,
       startDelayMs: this.turnStartDelayMs,
       minAheadMs: ahead.length ? ahead[0] : null,
       p50AheadMs: at(0.5),

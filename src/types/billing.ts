@@ -115,11 +115,27 @@ export interface EntitlementMatrixRow {
   priority_level: number;
 }
 
+/**
+ * A product and what it costs, with no plan dimension.
+ *
+ * `price_credits` is null when the product is registered but has no approved
+ * pricing. Null and zero are deliberately different: zero would read as free.
+ */
+export interface CataloguePrice {
+  code: string;
+  name: string;
+  billing_mode: 'FIXED' | 'VARIABLE' | 'FREE';
+  pricing_active: boolean;
+  price_credits: number | null;
+  sort_order: number;
+}
+
 export interface BillingCatalogue {
   plans: BillingPlanRow[];
   topupPacks: TopupPack[];
   firstTopupPromo: FirstTopupPromo | null;
   entitlementMatrix: EntitlementMatrixRow[];
+  products: CataloguePrice[];
   creditsPerUsd: number;
 }
 

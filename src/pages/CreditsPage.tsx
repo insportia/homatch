@@ -21,7 +21,6 @@ import { getCreditAccount, getCreditLedger, getResearchProducts, getMyResearchPu
 import { getCatalogue, getMyCreditLots, startTopUp, formatCredits, confirmCardSetup } from '@/services/billing';
 import { CardActivationCard, CardActivationResult } from '@/components/billing/CardActivationOffer';
 import { useEntitlements } from '@/hooks/useEntitlements';
-import { PlanBadge } from '@/components/billing/PlanBadge';
 import type { CreditLot, TopupPack, FirstTopupPromo } from '@/types/billing';
 import { purchaseResearchProduct } from '@/services/api3';
 import type { CreditAccount, CreditLedgerEntry, LedgerType, ResearchProduct, ResearchPurchase } from '@/types/types';
@@ -255,7 +254,7 @@ function CreditsContent() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold text-foreground">{t('credits_title')}</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{t('credits_topup_desc')}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{t('credits_topup_desc', { min: (minCents / 100).toFixed(2).replace(/\.00$/, ''), credits: String(ent.creditsPerUsd || 10) })}</p>
           </div>
           <Button
             onClick={() => setShowTopUp(true)}
@@ -389,9 +388,10 @@ function CreditsContent() {
         {lots.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
+              {/* The plan badge that used to sit here named FREE, VIP or
+                  PREMIUM. There are no plans, so the heading stands alone. */}
+              <CardTitle className="text-sm font-medium">
                 {t('wallet_where_from')}
-                <PlanBadge planCode={ent.plan} size="sm" />
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
@@ -472,7 +472,7 @@ function CreditsContent() {
               <Zap className="h-4 w-4 text-primary" />
               {t('credits_topup_title')}
             </DialogTitle>
-            <DialogDescription>{t('credits_topup_desc')}</DialogDescription>
+            <DialogDescription>{t('credits_topup_desc', { min: (minCents / 100).toFixed(2).replace(/\.00$/, ''), credits: String(ent.creditsPerUsd || 10) })}</DialogDescription>
           </DialogHeader>
 
           {topUpResult ? (

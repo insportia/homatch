@@ -643,7 +643,7 @@ const en = {
   credits_balance: 'Current Balance',
   credits_topup_btn: 'Top Up',
   credits_topup_title: 'Add Credits',
-  credits_topup_desc: 'Minimum top-up: $30 = 30 Credits. $1 = 1 Credit.',
+  credits_topup_desc: 'Top up from ${{min}}. {{credits}} credits = $1.',
   credits_topup_amount: 'Amount (USD)',
   credits_topup_confirm: 'Proceed to Payment',
   credits_topup_mock_note: 'Payment gateway not configured. A mock session will be created.',
@@ -8875,6 +8875,21 @@ const en = {
   card_activation_unavailable_body: 'Homatch cannot store a card without charging it yet, so this offer is paused. Your balance and everything you have already bought are unaffected.',
   card_activation_failed: 'The card was not saved.',
   card_activation_failed_body: 'Nothing was charged. You can try again whenever you like.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  payg_headline: 'Pay only for what you use',
+  payg_no_subscription: 'No subscription and no monthly fee. If you don\'t use Homatch, you pay nothing.',
+  payg_rate_line: '{{credits}} credits = ${{usd}}',
+  payg_prices_title: 'What things cost',
+  payg_price_from: 'from {{credits}} credits',
+  payg_price_each: '{{credits}} credits',
+  payg_price_unavailable: 'Not available yet',
+  payg_only_actual: 'You are charged what the search actually used, never the maximum you allowed.',
+  payg_topup_title: 'Add credits from $1',
+  payg_topup_body: 'Choose any amount. Credits you buy never expire.',
+  payg_cta_wallet: 'Open your wallet',
+  payg_cta_start: 'Create a free account',
+  payg_free_account: 'Creating an account is free.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -9551,7 +9566,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   credits_balance: 'მიმდინარე ბალანსი',
   credits_topup_btn: 'შევსება',
   credits_topup_title: 'კრედიტების დამატება',
-  credits_topup_desc: 'მინიმალური შევსება: $30 = 30 კრედიტი. $1 = 1 კრედიტი.',
+  credits_topup_desc: 'შეავსეთ ${{min}}-დან. {{credits}} კრედიტი = $1.',
   credits_topup_amount: 'თანხა (USD)',
   credits_topup_confirm: 'გადახდაზე გადასვლა',
   credits_topup_mock_note: 'გადახდის სისტემა არ არის კონფიგურირებული. სადემო სესია შეიქმნება.',
@@ -17668,6 +17683,21 @@ const ka: Partial<Record<TranslationKey, string>> = {
   card_activation_unavailable_body: 'Homatch-ს ჯერ არ შეუძლია ბარათის შენახვა თანხის ჩამოჭრის გარეშე, ამიტომ შეთავაზება შეჩერებულია. თქვენს ბალანსს და უკვე შეძენილს ეს არ ეხება.',
   card_activation_failed: 'ბარათი არ შენახულა.',
   card_activation_failed_body: 'თანხა არ ჩამოჭრილა. სცადეთ ნებისმიერ დროს.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  payg_headline: 'გადაიხადეთ მხოლოდ იმაში, რასაც იყენებთ',
+  payg_no_subscription: 'არანაირი გამოწერა და ყოველთვიური გადასახადი. თუ Homatch-ს არ იყენებთ, არაფერს იხდით.',
+  payg_rate_line: '{{credits}} კრედიტი = ${{usd}}',
+  payg_prices_title: 'რა რამდენი ღირს',
+  payg_price_from: '{{credits}} კრედიტიდან',
+  payg_price_each: '{{credits}} კრედიტი',
+  payg_price_unavailable: 'ჯერ ხელმისაწვდომი არ არის',
+  payg_only_actual: 'გადაიხდით იმას, რაც ძიებამ რეალურად დახარჯა და არა თქვენ მიერ დაშვებულ მაქსიმუმს.',
+  payg_topup_title: 'დაამატეთ კრედიტი $1-დან',
+  payg_topup_body: 'აირჩიეთ ნებისმიერი თანხა. ნაყიდ კრედიტს ვადა არ გასდის.',
+  payg_cta_wallet: 'გახსენით საფულე',
+  payg_cta_start: 'შექმენით უფასო ანგარიში',
+  payg_free_account: 'ანგარიშის შექმნა უფასოა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -18324,7 +18354,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   credits_balance: 'Текущий баланс',
   credits_topup_btn: 'Пополнить',
   credits_topup_title: 'Добавить кредиты',
-  credits_topup_desc: 'Минимальное пополнение: $30 = 30 кредитов.',
+  credits_topup_desc: 'Пополнение от ${{min}}. {{credits}} кредитов = $1.',
   credits_topup_amount: 'Сумма (USD)',
   credits_topup_confirm: 'Перейти к оплате',
   credits_topup_mock_note: 'Платёжный шлюз не настроен. Будет создана тестовая сессия.',
@@ -26452,6 +26482,21 @@ const ru: Partial<Record<TranslationKey, string>> = {
   card_activation_unavailable_body: 'Homatch пока не может сохранить карту без списания, поэтому предложение приостановлено. На ваш баланс и уже купленное это не влияет.',
   card_activation_failed: 'Карта не сохранена.',
   card_activation_failed_body: 'Ничего не списано. Попробуйте снова в любой момент.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  payg_headline: 'Платите только за то, чем пользуетесь',
+  payg_no_subscription: 'Никаких подписок и ежемесячных платежей. Не пользуетесь Homatch — не платите ничего.',
+  payg_rate_line: '{{credits}} кредитов = ${{usd}}',
+  payg_prices_title: 'Сколько что стоит',
+  payg_price_from: 'от {{credits}} кредитов',
+  payg_price_each: '{{credits}} кредитов',
+  payg_price_unavailable: 'Пока недоступно',
+  payg_only_actual: 'Списывается то, что поиск реально израсходовал, а не разрешённый вами максимум.',
+  payg_topup_title: 'Пополнение от $1',
+  payg_topup_body: 'Выберите любую сумму. Купленные кредиты не сгорают.',
+  payg_cta_wallet: 'Открыть кошелёк',
+  payg_cta_start: 'Создать бесплатный аккаунт',
+  payg_free_account: 'Создание аккаунта бесплатно.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -27116,7 +27161,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   reset_pw_mismatch: 'Şifreler eşleşmiyor.',
   credits_topup_btn: 'Yükle',
   credits_topup_title: 'Kredi Ekle',
-  credits_topup_desc: 'Minimum yükleme: $30 = 30 Kredi.',
+  credits_topup_desc: '${{min}} tutarından itibaren yükleyin. {{credits}} kredi = $1.',
   credits_topup_confirm: 'Ödemeye Git',
   credits_ledger_title: 'İşlem geçmişi',
   credits_ledger_empty: 'Henüz işlem yok.',
@@ -35234,6 +35279,21 @@ const tr: Partial<Record<TranslationKey, string>> = {
   card_activation_unavailable_body: 'Homatch henüz kartı ücret almadan kaydedemiyor, bu yüzden teklif duraklatıldı. Bakiyeniz ve satın aldıklarınız etkilenmez.',
   card_activation_failed: 'Kart kaydedilmedi.',
   card_activation_failed_body: 'Hiçbir ücret alınmadı. İstediğiniz zaman tekrar deneyebilirsiniz.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  payg_headline: 'Yalnızca kullandığınız kadar ödeyin',
+  payg_no_subscription: 'Abonelik yok, aylık ücret yok. Homatch’i kullanmazsanız hiçbir şey ödemezsiniz.',
+  payg_rate_line: '{{credits}} kredi = ${{usd}}',
+  payg_prices_title: 'Neyin ne kadar tuttuğu',
+  payg_price_from: '{{credits}} krediden itibaren',
+  payg_price_each: '{{credits}} kredi',
+  payg_price_unavailable: 'Henüz kullanılamıyor',
+  payg_only_actual: 'Aramanın gerçekte harcadığı kadar ödersiniz, izin verdiğiniz üst sınır kadar değil.',
+  payg_topup_title: '1 $’dan itibaren kredi ekleyin',
+  payg_topup_body: 'İstediğiniz tutarı seçin. Satın aldığınız krediler asla geçersiz olmaz.',
+  payg_cta_wallet: 'Cüzdanınızı açın',
+  payg_cta_start: 'Ücretsiz hesap oluşturun',
+  payg_free_account: 'Hesap oluşturmak ücretsizdir.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -35895,7 +35955,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   credits_balance: 'الرصيد الحالي',
   credits_topup_btn: 'شحن',
   credits_topup_title: 'إضافة اعتمادات',
-  credits_topup_desc: 'الحد الأدنى للشحن: $30 = 30 اعتماداً.',
+  credits_topup_desc: 'اشحن ابتداءً من ${{min}}. {{credits}} رصيد = $1.',
   credits_topup_confirm: 'الانتقال للدفع',
   credits_ledger_title: 'سجل المعاملات',
   credits_ledger_empty: 'لا توجد معاملات بعد.',
@@ -44016,6 +44076,21 @@ const ar: Partial<Record<TranslationKey, string>> = {
   card_activation_unavailable_body: 'لا يستطيع Homatch بعد حفظ البطاقة دون خصم مبلغ، لذلك أُوقف هذا العرض مؤقتًا. لا يتأثر رصيدك ولا ما اشتريته من قبل.',
   card_activation_failed: 'لم يتم حفظ البطاقة.',
   card_activation_failed_body: 'لم يتم خصم أي مبلغ. يمكنك المحاولة مرة أخرى في أي وقت.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  payg_headline: 'ادفع مقابل ما تستخدمه فقط',
+  payg_no_subscription: 'لا اشتراك ولا رسوم شهرية. إذا لم تستخدم Homatch فلن تدفع شيئًا.',
+  payg_rate_line: '{{credits}} رصيد = ${{usd}}',
+  payg_prices_title: 'كم تكلّف الخدمات',
+  payg_price_from: 'ابتداءً من {{credits}} رصيد',
+  payg_price_each: '{{credits}} رصيد',
+  payg_price_unavailable: 'غير متاح بعد',
+  payg_only_actual: 'يُخصم منك ما استهلكه البحث فعليًا، وليس الحد الأقصى الذي سمحت به.',
+  payg_topup_title: 'أضف رصيدًا ابتداءً من 1$',
+  payg_topup_body: 'اختر أي مبلغ. الرصيد الذي تشتريه لا تنتهي صلاحيته.',
+  payg_cta_wallet: 'افتح محفظتك',
+  payg_cta_start: 'أنشئ حسابًا مجانيًا',
+  payg_free_account: 'إنشاء الحساب مجاني.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -44677,7 +44752,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   credits_balance: 'יתרה נוכחית',
   credits_topup_btn: 'הוסף',
   credits_topup_title: 'הוסף קרדיטים',
-  credits_topup_desc: 'מינימום: $30 = 30 קרדיטים.',
+  credits_topup_desc: 'טעינה מ-${{min}}. {{credits}} קרדיטים = $1.',
   credits_topup_confirm: 'עבור לתשלום',
   credits_ledger_title: 'היסטוריית עסקאות',
   credits_ledger_empty: 'אין עסקאות עדיין.',
@@ -52798,6 +52873,21 @@ const he: Partial<Record<TranslationKey, string>> = {
   card_activation_unavailable_body: 'Homatch עדיין אינו יכול לשמור כרטיס בלי לחייב אותו, ולכן ההצעה מושהית. היתרה שלכם וכל מה שכבר רכשתם אינם מושפעים.',
   card_activation_failed: 'הכרטיס לא נשמר.',
   card_activation_failed_body: 'לא חויבתם בכלום. אפשר לנסות שוב מתי שתרצו.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  payg_headline: 'משלמים רק על מה שמשתמשים',
+  payg_no_subscription: 'אין מנוי ואין תשלום חודשי. אם לא משתמשים ב-Homatch, לא משלמים כלום.',
+  payg_rate_line: '{{credits}} קרדיטים = ${{usd}}',
+  payg_prices_title: 'כמה עולה כל דבר',
+  payg_price_from: 'החל מ-{{credits}} קרדיטים',
+  payg_price_each: '{{credits}} קרדיטים',
+  payg_price_unavailable: 'עדיין לא זמין',
+  payg_only_actual: 'מחויבים במה שהחיפוש באמת צרך, לא בתקרה שאישרתם.',
+  payg_topup_title: 'הוספת קרדיטים מ-1$',
+  payg_topup_body: 'בחרו כל סכום. קרדיטים שרכשתם אינם פגים.',
+  payg_cta_wallet: 'פתחו את הארנק',
+  payg_cta_start: 'פתחו חשבון חינם',
+  payg_free_account: 'פתיחת חשבון היא בחינם.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

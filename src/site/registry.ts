@@ -308,8 +308,8 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     repeatable: false,
     fields: [
       f('eyebrow', 'studio_f_eyebrow', 'nav_pricing'),
-      f('title', 'studio_f_title', 'pricing_page_title'),
-      f('body', 'studio_f_body', 'pricing_page_sub', 'textarea'),
+      f('title', 'studio_f_title', 'payg_headline'),
+      f('body', 'studio_f_body', 'payg_no_subscription', 'textarea'),
     ],
     media: [],
   },

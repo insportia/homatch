@@ -38,10 +38,10 @@ export function PricingIntroSection() {
         className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl"
         {...fp('title')}
       >
-        {sf('title', 'pricing_page_title')}
+        {sf('title', 'payg_headline')}
       </h1>
       <p className="mt-4 text-pretty text-base text-muted-foreground sm:text-lg" {...fp('body')}>
-        {sf('body', 'pricing_page_sub')}
+        {sf('body', 'payg_no_subscription')}
       </p>
     </header>
   );

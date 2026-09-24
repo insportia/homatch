@@ -124,7 +124,20 @@ async function catalogue(sb: any) {
   // page. BROKER_FINDER is priced and ready but has no execution path yet, and
   // AI_CALL / EMAIL_CAMPAIGN are deliberately unpriced.
   const { data: enabledProducts } = await sb
-    .from('billable_products').select('code').eq('enabled', true);
+    .from('billable_products')
+    /*
+     * standard_retail_cents is the price with no plan concession applied,
+     * which under pay-as-you-go is simply THE price -- there are no plans to
+     * concede anything. pricing_active is carried so a product that is
+     * registered but has no approved pricing can be listed as such instead of
+     * appearing to be free.
+     *
+     * reference_landed_cogs_cents and min_gross_margin_bps are NOT selected.
+     * They are our economics and have no business leaving the server.
+     */
+    .select('code, name, standard_retail_cents, pricing_active, billing_mode, sort_order')
+    .eq('enabled', true)
+    .order('sort_order');
   const enabled = new Set((enabledProducts ?? []).map((p: any) => p.code));
 
   return {
@@ -132,6 +145,19 @@ async function catalogue(sb: any) {
     topupPacks: packs ?? [],
     firstTopupPromo: promo?.enabled ? promo : null,
     entitlementMatrix: (ents ?? []).filter((e: any) => enabled.has(e.product_code)),
+    products: (enabledProducts ?? []).map((p: any) => ({
+      code: p.code,
+      name: p.name,
+      billing_mode: p.billing_mode,
+      pricing_active: p.pricing_active,
+      /* Credits, derived from cents on the server so no caller re-implements
+         the conversion. A product with no approved pricing reports null
+         rather than zero, because zero reads as free. */
+      price_credits: p.pricing_active
+        ? Math.round((Number(p.standard_retail_cents) / 100) * Number(cpu?.value ?? 10) * 100) / 100
+        : null,
+      sort_order: p.sort_order,
+    })),
     creditsPerUsd: Number(cpu?.value ?? 10),
   };
 }

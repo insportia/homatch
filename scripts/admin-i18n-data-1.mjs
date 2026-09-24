@@ -161,7 +161,7 @@ export const ADMIN_STRINGS_1 = {
     '{{ok}} of {{total}} working',
     '{{total}}-დან {{ok}} მუშაობს',
     'работают {{ok}} из {{total}}',
-    '{{total}} hizmetten {{ok}} tanesi çalışıyor',
+    '{{total}} bölümden {{ok}} tanesi çalışıyor',
     '{{ok}} من {{total}} تعمل',
     '{{ok}} מתוך {{total}} פועלים',
   ],

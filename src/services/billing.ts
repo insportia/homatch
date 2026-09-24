@@ -205,6 +205,127 @@ export async function startTopUp(opts: { packCode?: string; amountUsd?: number }
   return data;
 }
 
+// ── Card activation ─────────────────────────────────────────────────────────
+//
+// The offer that replaced the registration grant. An account now starts at
+// zero and earns its first credits by proving a real payment method exists.
+//
+// EVERY DECISION HERE IS THE SERVER'S. Whether the offer may be shown, how
+// many credits it is worth, how many times it has been waved away and whether
+// it has already been claimed all arrive from billing_my_activation_offer().
+// None of it is cached in the browser, because a customer who clears their
+// storage must not get a second bonus, and one who switches device must not
+// lose the offer.
+
+export interface ActivationOffer {
+  eligible: boolean;
+  already_claimed: boolean;
+  has_payment_method: boolean;
+  credits: number;
+  credits_per_usd: number;
+  dismissals: number;
+  max_reminders: number;
+  cooldown_hours: number;
+  last_dismissed_at: string | null;
+}
+
+export async function getActivationOffer(): Promise<ActivationOffer | null> {
+  const { data, error } = await supabase.rpc('billing_my_activation_offer');
+  if (error) return null;
+  return (data ?? null) as ActivationOffer | null;
+}
+
+/**
+ * Whether to put the offer in front of the customer right now.
+ *
+ * Claimed is permanent and silent. Otherwise the first showing is free, and
+ * each later one waits out the cooldown and respects the reminder budget --
+ * which is how "do not spam the user" is expressed as a rule rather than a
+ * hope. The persistent dashboard entry point is NOT governed by this: it is
+ * always available and never counts as a reminder.
+ */
+export function shouldPromptActivation(offer: ActivationOffer | null, now = Date.now()): boolean {
+  if (!offer || !offer.eligible || offer.already_claimed) return false;
+  if (offer.dismissals === 0) return true;
+  if (offer.dismissals > offer.max_reminders) return false;
+  if (!offer.last_dismissed_at) return true;
+  const since = now - new Date(offer.last_dismissed_at).getTime();
+  return since >= offer.cooldown_hours * 3_600_000;
+}
+
+export async function recordOfferStep(
+  step: 'OFFER_SHOWN' | 'OFFER_DISMISSED' | 'CTA_CLICKED',
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  /* Analytics must never break the screen it measures. */
+  await supabase.rpc('billing_record_offer_step', {
+    p_promo_code: 'CARD_ACTIVATION',
+    p_step: step,
+    p_metadata: metadata,
+  }).then(undefined, () => undefined);
+}
+
+export interface ProviderCapabilityReport {
+  provider: string;
+  capabilities: {
+    oneTimePayment: boolean | 'unknown';
+    zeroAmountSetup: boolean | 'unknown';
+    reusablePaymentMethod: boolean | 'unknown';
+    instrumentFingerprint: boolean | 'unknown';
+    refunds: boolean | 'unknown';
+    webhooks: boolean | 'unknown';
+    legalInvoice: boolean | 'unknown';
+    minAmountCents: number | null;
+    maxAmountCents: number | null;
+    currencies: string[];
+    simulated: boolean;
+    notes: string;
+  };
+}
+
+export async function getPaymentCapabilities(): Promise<ProviderCapabilityReport | null> {
+  const { data, error } = await supabase.functions.invoke('payment-method-setup', {
+    body: { action: 'capabilities' },
+  });
+  if (error) return null;
+  return data as ProviderCapabilityReport;
+}
+
+export async function startCardSetup(): Promise<{
+  ok: boolean;
+  setupUrl?: string;
+  setupId?: string;
+  mock?: boolean;
+  code?: string;
+  message?: string;
+}> {
+  const { data, error } = await supabase.functions.invoke('payment-method-setup', {
+    body: {
+      action: 'start',
+      returnUrl: `${window.location.origin}/credits?setup=return`,
+      cancelUrl: `${window.location.origin}/credits?setup=cancelled`,
+    },
+  });
+  if (error) return { ok: false, code: 'REQUEST_FAILED', message: error.message };
+  return data;
+}
+
+export async function confirmCardSetup(setupId: string): Promise<{
+  ok: boolean;
+  granted?: boolean;
+  credits?: number;
+  balanceAfter?: number | null;
+  card?: { brand: string | null; last4: string | null };
+  code?: string;
+  reason?: string | null;
+}> {
+  const { data, error } = await supabase.functions.invoke('payment-method-setup', {
+    body: { action: 'confirm', setupId },
+  });
+  if (error) return { ok: false, code: 'REQUEST_FAILED' };
+  return data;
+}
+
 // ── Display helpers ─────────────────────────────────────────────────────────
 //
 // Formatting only. The conversion RATE is never assumed: it arrives from the

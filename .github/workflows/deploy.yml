@@ -507,6 +507,12 @@ jobs:
             "storage-inventory"
             "atomic-unlock"
             "credits-topup"
+            # Stores a reusable payment method and grants the one-time
+            # activation bonus. Browser-facing and JWT-verified: it acts on
+            # the signed-in customer and on nobody else, and the bonus it
+            # can trigger is granted by a service-role RPC that refuses
+            # every other caller.
+            "payment-method-setup"
             "import-property"
             "match-campaign"
             "provider-health-check"

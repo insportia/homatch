@@ -893,3 +893,200 @@ test('the UI offers a search rather than a dead end', () => {
   // A scoped search must not read as a less truthful one.
   assert.match(ui, /budget_scoped_note/);
 });
+
+// ── PAY AS YOU GO: the wallet starts at zero, the card earns the bonus ──────
+//
+// The business model changed: no subscriptions, no VIP, no monthly plans, and
+// an account is worth nothing until somebody proves they are a real person.
+// These assert the parts of that which must not quietly regress.
+
+const PAYG = mig('20260924120000_payg_zero_signup_and_card_activation.sql');
+const SETUP_FN = fn(path.join('payment-method-setup', 'index.ts'));
+const PROVIDER = fn(path.join('_shared', 'payment_provider.ts'));
+
+test('SIGNUP_ALONE_GRANTS_NOTHING', () => {
+  /*
+   * §32.10. The 50-credit registration grant is switched OFF through the kill
+   * switch it already shipped with. The trigger is deliberately left in place
+   * -- it is correct, idempotent, and hung off the one canonical registration
+   * funnel -- so this asserts the SETTING, which is the thing that decides.
+   */
+  assert.match(PAYG, /update public\.admin_settings\s+set value = 'false'::jsonb/);
+  assert.match(PAYG, /where key = 'signup_welcome_credits_enabled'/);
+
+  /* And the grant function still reads that switch before doing anything, so
+     turning it off is sufficient and no second edit is required. */
+  const SIGNUP = mig('20260919152027_signup_welcome_credits.sql');
+  assert.match(SIGNUP, /if not public\.billing_setting_bool\('signup_welcome_credits_enabled', true\) then return; end if;/);
+});
+
+test('THE_BONUS_IS_EXACTLY_WHAT_CONFIGURATION_SAYS', () => {
+  /*
+   * §32.11. Ten credits, from admin_settings, never from a literal in a
+   * component or an edge function.
+   */
+  assert.match(PAYG, /\('card_activation_bonus_credits', '10'::jsonb/);
+  assert.match(strip(PAYG), /v_credits := public\.billing_setting_num\('card_activation_bonus_credits', 0\);/);
+  /* Zero or missing configuration grants nothing rather than defaulting. */
+  assert.match(strip(PAYG), /if v_credits is null or v_credits <= 0 then/);
+  assert.match(PAYG, /'NO_CREDITS_CONFIGURED'/);
+});
+
+test('THE_BONUS_CAN_ONLY_BE_CLAIMED_ONCE, BY INDEX AND NOT BY A READ', () => {
+  /*
+   * §32.9, and the specific abuse the brief names: "cannot be claimed twice by
+   * removing/re-adding cards". Three unique indexes stand between a customer
+   * and a second bonus -- per account, per physical card across accounts, and
+   * per stored method -- and the grant catches the violation rather than
+   * checking first, because a read-then-write loses a race.
+   */
+  assert.match(PAYG, /create unique index if not exists uidx_promo_redemption_method/);
+  /* The per-user and per-fingerprint indexes are the ones already shipped. */
+  assert.match(CORE, /uidx_promo_redemption_user\s+ON public\.promotion_redemptions\(user_id, promo_code\)/);
+  assert.match(CORE, /uidx_promo_redemption_fingerprint/);
+
+  const grant = PAYG.slice(PAYG.indexOf('billing_grant_card_activation'));
+  assert.match(grant, /exception when unique_violation then/);
+  assert.match(grant, /'ALREADY_REDEEMED'/);
+  /* Deleting the card does not delete the redemption: the FK is ON DELETE SET
+     NULL, so the row that blocks a second claim outlives the instrument. */
+  assert.match(PAYG, /payment_method_id uuid references public\.payment_methods\(id\) on delete set null/);
+});
+
+test('ONLY_A_PROVIDER_CONFIRMED_METHOD_EARNS_IT', () => {
+  /*
+   * A row this system created optimistically is not evidence a card exists.
+   * The grant refuses anything that is not ACTIVE, and only the provider's own
+   * answer promotes a row to ACTIVE.
+   */
+  assert.match(strip(PAYG), /if v_method\.status <> 'ACTIVE' then/);
+  assert.match(PAYG, /'PAYMENT_METHOD_NOT_ACTIVE'/);
+  /* The edge function inserts PENDING and never ACTIVE at start... */
+  const start = SETUP_FN.slice(SETUP_FN.indexOf("action === 'start'"), SETUP_FN.indexOf("action === 'confirm'"));
+  assert.match(start, /status: 'PENDING'/);
+  assert.ok(!/status: 'ACTIVE'/.test(start), 'the start path marks a method active before the provider answered');
+  /* ...and promotes it only after reading the stored method back. */
+  const confirm = SETUP_FN.slice(SETUP_FN.indexOf("action === 'confirm'"));
+  assert.match(confirm, /const stored = await provider\.getStoredPaymentMethod\(setupId\);/);
+  assert.match(confirm, /if \(!stored\)/);
+  assert.ok(
+    confirm.indexOf('if (!stored)') < confirm.indexOf("status: 'ACTIVE'"),
+    'the method is activated before the provider was asked whether it exists',
+  );
+});
+
+test('THE_GRANT_IS_SERVICE_ROLE_ONLY', () => {
+  /* §32.17. A browser cannot grant itself credits. */
+  assert.match(strip(PAYG), /is distinct from 'service_role' then/);
+  assert.match(PAYG, /raise exception 'SERVICE_ROLE_ONLY'/);
+  assert.match(PAYG, /revoke all on function public\.billing_grant_card_activation\(uuid, uuid\) from public, anon, authenticated;/);
+});
+
+test('A_CLIENT_CANNOT_ASSERT_THE_STEPS_ONLY_A_PROVIDER_KNOWS', () => {
+  /*
+   * The funnel is client-reported for the three steps only the browser can
+   * observe, and refuses the rest. It grants nothing either way -- which is
+   * exactly why it is safe to let the client write to it at all.
+   */
+  const step = PAYG.slice(PAYG.indexOf('billing_record_offer_step'));
+  assert.match(step, /if p_step not in \('OFFER_SHOWN','OFFER_DISMISSED','CTA_CLICKED'\) then/);
+  assert.match(step, /raise exception 'STEP_NOT_CLIENT_REPORTABLE/);
+  /* Eligibility is never read from the funnel table. */
+  const offer = PAYG.slice(PAYG.indexOf('billing_my_activation_offer'));
+  assert.match(offer, /from public\.promotion_redemptions/);
+  assert.match(offer, /'eligible', public\.billing_setting_bool\('card_activation_bonus_enabled', true\)\s+and not v_redeemed/);
+});
+
+test('NO_CARDHOLDER_DATA_IS_STORABLE', () => {
+  /*
+   * The table physically cannot hold a card number: there is no column for
+   * one, last4 is constrained to four digits, and nothing else could
+   * reconstruct a PAN.
+   */
+  const table = PAYG.slice(
+    PAYG.indexOf('create table if not exists public.payment_methods'),
+    PAYG.indexOf('create unique index if not exists uidx_payment_methods_provider_ref'),
+  );
+  for (const forbidden of ['card_number', 'pan', 'cvv', 'cvc', 'security_code', 'full_number']) {
+    assert.ok(!new RegExp('\\b' + forbidden + '\\b', 'i').test(table), 'payment_methods has a ' + forbidden + ' column');
+  }
+  assert.match(table, /last4 text check \(last4 is null or last4 ~ '\^\[0-9\]\{4\}\$'\)/);
+  /* And no customer may write to it: reads are their own, writes are the
+     provider's webhook under the service role. */
+  assert.match(PAYG, /create policy payment_methods_read_own on public\.payment_methods\s+for select/);
+  assert.ok(
+    !/create policy[^;]*payment_methods[^;]*for (all|insert|update) to authenticated/i.test(PAYG),
+    'a client role can write payment_methods',
+  );
+});
+
+test('A_PROVIDER_THAT_CANNOT_DO_IT_IS_NEVER_PRETENDED_ABOUT', () => {
+  /*
+   * §2: "do not fake it". The offer promises $0 charged now, which is only
+   * keepable where the provider can store a card without capturing money. So
+   * the capability is checked BEFORE the customer is sent anywhere.
+   */
+  assert.match(SETUP_FN, /if \(caps\.zeroAmountSetup !== true\)/);
+  assert.match(SETUP_FN, /'SETUP_UNSUPPORTED'/);
+  assert.ok(
+    SETUP_FN.indexOf('caps.zeroAmountSetup !== true') < SETUP_FN.indexOf('provider.createSetup'),
+    'the customer is sent to a provider before its capability is checked',
+  );
+
+  /* Capabilities are declared by the adapter, never by configuration -- a
+     settings row would let an operator tick a box the API cannot honour. */
+  assert.match(PROVIDER, /capabilities\(\): ProviderCapabilities;/);
+  assert.ok(
+    !/admin_settings[\s\S]{0,120}capabilit/i.test(PROVIDER),
+    'capabilities are being read from settings rather than declared in code',
+  );
+
+  /* 'unknown' is a real value and not a synonym for false. */
+  assert.match(PROVIDER, /export type Capability = true \| false \| 'unknown';/);
+});
+
+test('THE_MOCK_PROVIDER_CLAIMS_NOTHING', () => {
+  /*
+   * Production has no payment provider configured -- both payments on record
+   * are stripe_mock -- so this is the adapter actually in use. A mock that
+   * reported a plausible stored card would let the bonus be claimed with no
+   * card existing anywhere, which is the exact fraud the promotion resists.
+   */
+  const mock = PROVIDER.slice(PROVIDER.indexOf('class MockPaymentProvider'));
+  const caps = mock.slice(mock.indexOf('capabilities()'), mock.indexOf('async createSetup'));
+  assert.match(caps, /simulated: true/);
+  assert.match(caps, /zeroAmountSetup: 'unknown'/);
+  assert.match(caps, /instrumentFingerprint: false/);
+  /* And it never hands back a stored method. */
+  assert.match(mock, /async getStoredPaymentMethod\(\): Promise<StoredPaymentMethod \| null> \{ return null; \}/);
+});
+
+test('LEGAL_INVOICING_IS_NOT_CLAIMED_BY_ANY_ADAPTER', () => {
+  /*
+   * §20: do not invent Georgian statutory compliance. No adapter may report
+   * legalInvoice true until somebody with authority says the document it
+   * produces is the document the law wants.
+   */
+  for (const cls of ['class StripePaymentProvider', 'class MockPaymentProvider']) {
+    const body = PROVIDER.slice(PROVIDER.indexOf(cls));
+    const caps = body.slice(body.indexOf('capabilities()'), body.indexOf('capabilities()') + 1400);
+    assert.match(caps, /legalInvoice: false/, cls + ' claims legal invoicing');
+  }
+});
+
+test('EXISTING_CREDITS_ARE_NOT_REACHED_BACKWARDS', () => {
+  /*
+   * §31. Two accounts hold 50 promotional credits from the old registration
+   * grant. Turning the promotion off must not take them back, and this
+   * migration must contain nothing that touches a lot, a ledger entry or a
+   * balance that already exists.
+   */
+  const body = strip(PAYG);
+  assert.ok(!/delete\s+from\s+public\.(credit_lots|credit_ledger|credit_accounts)/i.test(body));
+  assert.ok(!/update\s+public\.(credit_lots|credit_ledger|credit_accounts)\s+set/i.test(body));
+  assert.ok(!/drop\s+table[^;]*(credit_|billing_plans|user_subscriptions)/i.test(body));
+  /* billing_plans and user_subscriptions stay: usage_reservations.
+     plan_code_snapshot is a NOT NULL FK to billing_plans and historical
+     reservations point at it. */
+  assert.match(CORE, /plan_code_snapshot text NOT NULL REFERENCES public\.billing_plans\(code\)/);
+});

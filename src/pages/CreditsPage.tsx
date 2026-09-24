@@ -18,7 +18,8 @@ import {
   Send, MessageCircle, ShoppingCart, Lock, Unlock, Sparkles, Gift,
 } from 'lucide-react';
 import { getCreditAccount, getCreditLedger, getResearchProducts, getMyResearchPurchases } from '@/services/api';
-import { getCatalogue, getMyCreditLots, startTopUp, formatCredits } from '@/services/billing';
+import { getCatalogue, getMyCreditLots, startTopUp, formatCredits, confirmCardSetup } from '@/services/billing';
+import { CardActivationCard, CardActivationResult } from '@/components/billing/CardActivationOffer';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { PlanBadge } from '@/components/billing/PlanBadge';
 import type { CreditLot, TopupPack, FirstTopupPromo } from '@/types/billing';
@@ -123,6 +124,11 @@ function CreditsContent() {
   const [products, setProducts] = useState<ResearchProduct[]>([]);
   const [purchases, setPurchases] = useState<ResearchPurchase[]>([]);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  /* The outcome of a card setup the customer has just returned from. */
+  const [activation, setActivation] = useState<{
+    failed: boolean; granted: boolean; credits: number;
+    cardBrand?: string | null; cardLast4?: string | null;
+  } | null>(null);
 
   const loadData = useCallback(async () => {
     if (!homatchUser) return;
@@ -165,6 +171,41 @@ function CreditsContent() {
       window.history.replaceState({}, '', '/credits');
     }
   }, [loadData, t]);
+
+  /*
+   * COMING BACK FROM THE CARD SETUP.
+   *
+   * The provider sends the customer here with a session id, and nothing about
+   * that redirect is evidence: a customer who abandons the form can still be
+   * bounced back to the success URL. So this asks the SERVER to confirm, which
+   * asks the provider. `granted` is the server's answer and may legitimately
+   * be false on a perfectly saved card -- this account, or this physical card,
+   * may already have claimed the bonus.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('setup') !== 'return') {
+      if (params.get('setup') === 'cancelled') {
+        window.history.replaceState({}, '', '/credits');
+      }
+      return;
+    }
+    const setupId = params.get('setup_id') ?? params.get('session_id') ?? '';
+    window.history.replaceState({}, '', '/credits');
+    if (!setupId) { setActivation({ failed: true, granted: false, credits: 0 }); return; }
+
+    void confirmCardSetup(setupId).then((r) => {
+      if (!r.ok) { setActivation({ failed: true, granted: false, credits: 0 }); return; }
+      setActivation({
+        failed: false,
+        granted: !!r.granted,
+        credits: Number(r.credits ?? 0),
+        cardBrand: r.card?.brand ?? null,
+        cardLast4: r.card?.last4 ?? null,
+      });
+      if (r.granted) loadData();
+    });
+  }, [loadData]);
 
   const handleTopUp = async () => {
     setTopUpLoading(true);
@@ -224,6 +265,24 @@ function CreditsContent() {
             {t('credits_topup_btn')}
           </Button>
         </div>
+
+        {/*
+          The result of a card setup takes precedence over the offer: somebody
+          who has just come back from the provider is asking "did that work?",
+          not "would you like to add a card?".
+        */}
+        {activation ? (
+          <CardActivationResult
+            failed={activation.failed}
+            granted={activation.granted}
+            credits={activation.credits}
+            cardBrand={activation.cardBrand}
+            cardLast4={activation.cardLast4}
+          />
+        ) : (
+          /* Renders nothing once the bonus is claimed, or if it never applied. */
+          <CardActivationCard />
+        )}
 
         {/* Balance card */}
         <Card className="border-primary/20 bg-primary/5">

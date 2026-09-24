@@ -8847,6 +8847,34 @@ const en = {
   cc_status_blocked: 'Homatch cannot make phone calls yet.',
   talk_status_blocked: 'Homatch cannot speak to visitors yet.',
   admin_provider_says: 'What the provider reported',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  activation_body: '{{credits}} credits are worth ${{usd}} and can be used on anything Homatch charges for.',
+  activation_zero_charge: '$0 charged now.',
+  activation_dismiss: 'Not now',
+  activation_claim_short: 'Claim {{credits}} free credits',
+  activation_granted_title: '{{credits}} credits added',
+  activation_granted_body: 'They are in your balance and never expire.',
+  activation_card_saved: 'Card saved',
+  activation_unavailable: 'Card saving is not available yet.',
+  activation_unavailable_body: 'Homatch cannot store a card without charging it yet, so this offer is paused. Your balance and everything you have already bought are unaffected.',
+  activation_failed: 'The card was not saved.',
+  activation_failed_body: 'Nothing was charged. You can try again whenever you like.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  card_activation_title: 'Get {{credits}} free credits',
+  card_activation_body: '{{credits}} credits are worth ${{usd}} and can be used on anything Homatch charges for.',
+  card_activation_cta: 'Add card & get {{credits}} credits',
+  card_activation_zero_charge: '$0 charged now.',
+  card_activation_dismiss: 'Not now',
+  card_activation_claim_short: 'Claim {{credits}} free credits',
+  card_activation_granted_title: '{{credits}} credits added',
+  card_activation_granted_body: 'They are in your balance and never expire.',
+  card_activation_card_saved: 'Card saved',
+  card_activation_unavailable: 'Card saving is not available yet.',
+  card_activation_unavailable_body: 'Homatch cannot store a card without charging it yet, so this offer is paused. Your balance and everything you have already bought are unaffected.',
+  card_activation_failed: 'The card was not saved.',
+  card_activation_failed_body: 'Nothing was charged. You can try again whenever you like.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17612,6 +17640,34 @@ const ka: Partial<Record<TranslationKey, string>> = {
   cc_status_blocked: 'Homatch-ს ჯერ არ შეუძლია ზარების განხორციელება.',
   talk_status_blocked: 'Homatch-ს ჯერ არ შეუძლია ვიზიტორებს ესაუბროს.',
   admin_provider_says: 'რას იუწყება მომწოდებელი',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  activation_body: '{{credits}} კრედიტი ${{usd}}-ს უდრის და ნებისმიერ ფასიან სერვისზე გამოგადგებათ.',
+  activation_zero_charge: 'ახლა თანხა არ ჩამოგეჭრებათ.',
+  activation_dismiss: 'ახლა არა',
+  activation_claim_short: 'მიიღეთ {{credits}} უფასო კრედიტი',
+  activation_granted_title: '{{credits}} კრედიტი დაემატა',
+  activation_granted_body: 'ისინი თქვენს ბალანსზეა და ვადა არ გასდის.',
+  activation_card_saved: 'ბარათი შენახულია',
+  activation_unavailable: 'ბარათის შენახვა ჯერ ხელმისაწვდომი არ არის.',
+  activation_unavailable_body: 'Homatch-ს ჯერ არ შეუძლია ბარათის შენახვა თანხის ჩამოჭრის გარეშე, ამიტომ შეთავაზება შეჩერებულია. თქვენს ბალანსს და უკვე შეძენილს ეს არ ეხება.',
+  activation_failed: 'ბარათი არ შენახულა.',
+  activation_failed_body: 'თანხა არ ჩამოჭრილა. სცადეთ ნებისმიერ დროს.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  card_activation_title: 'მიიღეთ {{credits}} უფასო კრედიტი',
+  card_activation_body: '{{credits}} კრედიტი ${{usd}}-ს უდრის და ნებისმიერ ფასიან სერვისზე გამოგადგებათ.',
+  card_activation_cta: 'დაამატეთ ბარათი და მიიღეთ {{credits}} კრედიტი',
+  card_activation_zero_charge: 'ახლა თანხა არ ჩამოგეჭრებათ.',
+  card_activation_dismiss: 'ახლა არა',
+  card_activation_claim_short: 'მიიღეთ {{credits}} უფასო კრედიტი',
+  card_activation_granted_title: '{{credits}} კრედიტი დაემატა',
+  card_activation_granted_body: 'ისინი თქვენს ბალანსზეა და ვადა არ გასდის.',
+  card_activation_card_saved: 'ბარათი შენახულია',
+  card_activation_unavailable: 'ბარათის შენახვა ჯერ ხელმისაწვდომი არ არის.',
+  card_activation_unavailable_body: 'Homatch-ს ჯერ არ შეუძლია ბარათის შენახვა თანხის ჩამოჭრის გარეშე, ამიტომ შეთავაზება შეჩერებულია. თქვენს ბალანსს და უკვე შეძენილს ეს არ ეხება.',
+  card_activation_failed: 'ბარათი არ შენახულა.',
+  card_activation_failed_body: 'თანხა არ ჩამოჭრილა. სცადეთ ნებისმიერ დროს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26368,6 +26424,34 @@ const ru: Partial<Record<TranslationKey, string>> = {
   cc_status_blocked: 'Homatch пока не может звонить.',
   talk_status_blocked: 'Homatch пока не может говорить с посетителями.',
   admin_provider_says: 'Что сообщает поставщик',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  activation_body: '{{credits}} кредитов — это ${{usd}}, и их можно потратить на любую платную услугу Homatch.',
+  activation_zero_charge: 'Сейчас ничего не спишется.',
+  activation_dismiss: 'Не сейчас',
+  activation_claim_short: 'Забрать {{credits}} бесплатных кредитов',
+  activation_granted_title: 'Начислено {{credits}} кредитов',
+  activation_granted_body: 'Они на вашем балансе и не сгорают.',
+  activation_card_saved: 'Карта сохранена',
+  activation_unavailable: 'Сохранение карты пока недоступно.',
+  activation_unavailable_body: 'Homatch пока не может сохранить карту без списания, поэтому предложение приостановлено. На ваш баланс и уже купленное это не влияет.',
+  activation_failed: 'Карта не сохранена.',
+  activation_failed_body: 'Ничего не списано. Попробуйте снова в любой момент.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  card_activation_title: 'Получите {{credits}} бесплатных кредитов',
+  card_activation_body: '{{credits}} кредитов — это ${{usd}}, и их можно потратить на любую платную услугу Homatch.',
+  card_activation_cta: 'Добавить карту и получить {{credits}} кредитов',
+  card_activation_zero_charge: 'Сейчас ничего не спишется.',
+  card_activation_dismiss: 'Не сейчас',
+  card_activation_claim_short: 'Забрать {{credits}} бесплатных кредитов',
+  card_activation_granted_title: 'Начислено {{credits}} кредитов',
+  card_activation_granted_body: 'Они на вашем балансе и не сгорают.',
+  card_activation_card_saved: 'Карта сохранена',
+  card_activation_unavailable: 'Сохранение карты пока недоступно.',
+  card_activation_unavailable_body: 'Homatch пока не может сохранить карту без списания, поэтому предложение приостановлено. На ваш баланс и уже купленное это не влияет.',
+  card_activation_failed: 'Карта не сохранена.',
+  card_activation_failed_body: 'Ничего не списано. Попробуйте снова в любой момент.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35122,6 +35206,34 @@ const tr: Partial<Record<TranslationKey, string>> = {
   cc_status_blocked: 'Homatch henüz telefon araması yapamıyor.',
   talk_status_blocked: 'Homatch henüz ziyaretçilerle konuşamıyor.',
   admin_provider_says: 'Sağlayıcının bildirdiği',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  activation_body: '{{credits}} kredi ${{usd}} değerindedir ve Homatch’in ücretli hizmetlerinin tamamında kullanılabilir.',
+  activation_zero_charge: 'Şimdi hiçbir ücret alınmaz.',
+  activation_dismiss: 'Şimdi değil',
+  activation_claim_short: '{{credits}} ücretsiz krediyi alın',
+  activation_granted_title: '{{credits}} kredi eklendi',
+  activation_granted_body: 'Bakiyenizde duruyor ve süresi dolmaz.',
+  activation_card_saved: 'Kart kaydedildi',
+  activation_unavailable: 'Kart kaydetme henüz kullanılamıyor.',
+  activation_unavailable_body: 'Homatch henüz kartı ücret almadan kaydedemiyor, bu yüzden teklif duraklatıldı. Bakiyeniz ve satın aldıklarınız etkilenmez.',
+  activation_failed: 'Kart kaydedilmedi.',
+  activation_failed_body: 'Hiçbir ücret alınmadı. İstediğiniz zaman tekrar deneyebilirsiniz.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  card_activation_title: '{{credits}} ücretsiz kredi alın',
+  card_activation_body: '{{credits}} kredi ${{usd}} değerindedir ve Homatch’in ücretli hizmetlerinin tamamında kullanılabilir.',
+  card_activation_cta: 'Kart ekleyin, {{credits}} kredi alın',
+  card_activation_zero_charge: 'Şimdi hiçbir ücret alınmaz.',
+  card_activation_dismiss: 'Şimdi değil',
+  card_activation_claim_short: '{{credits}} ücretsiz krediyi alın',
+  card_activation_granted_title: '{{credits}} kredi eklendi',
+  card_activation_granted_body: 'Bakiyenizde duruyor ve süresi dolmaz.',
+  card_activation_card_saved: 'Kart kaydedildi',
+  card_activation_unavailable: 'Kart kaydetme henüz kullanılamıyor.',
+  card_activation_unavailable_body: 'Homatch henüz kartı ücret almadan kaydedemiyor, bu yüzden teklif duraklatıldı. Bakiyeniz ve satın aldıklarınız etkilenmez.',
+  card_activation_failed: 'Kart kaydedilmedi.',
+  card_activation_failed_body: 'Hiçbir ücret alınmadı. İstediğiniz zaman tekrar deneyebilirsiniz.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -43876,6 +43988,34 @@ const ar: Partial<Record<TranslationKey, string>> = {
   cc_status_blocked: 'لا يستطيع Homatch بعد إجراء المكالمات.',
   talk_status_blocked: 'لا يستطيع Homatch بعد التحدث إلى الزوار.',
   admin_provider_says: 'ما أبلغ عنه المزوّد',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  activation_body: '{{credits}} رصيد تساوي ${{usd}} ويمكن استخدامها في أي خدمة مدفوعة من Homatch.',
+  activation_zero_charge: 'لن يُخصم منك أي مبلغ الآن.',
+  activation_dismiss: 'ليس الآن',
+  activation_claim_short: 'احصل على {{credits}} رصيد مجاني',
+  activation_granted_title: 'تمت إضافة {{credits}} رصيد',
+  activation_granted_body: 'أصبحت في رصيدك ولا تنتهي صلاحيتها.',
+  activation_card_saved: 'تم حفظ البطاقة',
+  activation_unavailable: 'حفظ البطاقة غير متاح بعد.',
+  activation_unavailable_body: 'لا يستطيع Homatch بعد حفظ البطاقة دون خصم مبلغ، لذلك أُوقف هذا العرض مؤقتًا. لا يتأثر رصيدك ولا ما اشتريته من قبل.',
+  activation_failed: 'لم يتم حفظ البطاقة.',
+  activation_failed_body: 'لم يتم خصم أي مبلغ. يمكنك المحاولة مرة أخرى في أي وقت.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  card_activation_title: 'احصل على {{credits}} رصيد مجاني',
+  card_activation_body: '{{credits}} رصيد تساوي ${{usd}} ويمكن استخدامها في أي خدمة مدفوعة من Homatch.',
+  card_activation_cta: 'أضف بطاقة واحصل على {{credits}} رصيد',
+  card_activation_zero_charge: 'لن يُخصم منك أي مبلغ الآن.',
+  card_activation_dismiss: 'ليس الآن',
+  card_activation_claim_short: 'احصل على {{credits}} رصيد مجاني',
+  card_activation_granted_title: 'تمت إضافة {{credits}} رصيد',
+  card_activation_granted_body: 'أصبحت في رصيدك ولا تنتهي صلاحيتها.',
+  card_activation_card_saved: 'تم حفظ البطاقة',
+  card_activation_unavailable: 'حفظ البطاقة غير متاح بعد.',
+  card_activation_unavailable_body: 'لا يستطيع Homatch بعد حفظ البطاقة دون خصم مبلغ، لذلك أُوقف هذا العرض مؤقتًا. لا يتأثر رصيدك ولا ما اشتريته من قبل.',
+  card_activation_failed: 'لم يتم حفظ البطاقة.',
+  card_activation_failed_body: 'لم يتم خصم أي مبلغ. يمكنك المحاولة مرة أخرى في أي وقت.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -52630,6 +52770,34 @@ const he: Partial<Record<TranslationKey, string>> = {
   cc_status_blocked: 'Homatch עדיין אינו יכול לבצע שיחות.',
   talk_status_blocked: 'Homatch עדיין אינו יכול לדבר עם המבקרים.',
   admin_provider_says: 'מה שהספק דיווח',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  activation_body: '{{credits}} קרדיטים שווים ${{usd}} וניתן להשתמש בהם בכל שירות בתשלום של Homatch.',
+  activation_zero_charge: 'לא מחויבים כלום עכשיו.',
+  activation_dismiss: 'לא עכשיו',
+  activation_claim_short: 'קבלו {{credits}} קרדיטים בחינם',
+  activation_granted_title: 'נוספו {{credits}} קרדיטים',
+  activation_granted_body: 'הם ביתרה שלכם ואינם פגים.',
+  activation_card_saved: 'הכרטיס נשמר',
+  activation_unavailable: 'שמירת כרטיס אינה זמינה עדיין.',
+  activation_unavailable_body: 'Homatch עדיין אינו יכול לשמור כרטיס בלי לחייב אותו, ולכן ההצעה מושהית. היתרה שלכם וכל מה שכבר רכשתם אינם מושפעים.',
+  activation_failed: 'הכרטיס לא נשמר.',
+  activation_failed_body: 'לא חויבתם בכלום. אפשר לנסות שוב מתי שתרצו.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  card_activation_title: 'קבלו {{credits}} קרדיטים בחינם',
+  card_activation_body: '{{credits}} קרדיטים שווים ${{usd}} וניתן להשתמש בהם בכל שירות בתשלום של Homatch.',
+  card_activation_cta: 'הוסיפו כרטיס וקבלו {{credits}} קרדיטים',
+  card_activation_zero_charge: 'לא מחויבים כלום עכשיו.',
+  card_activation_dismiss: 'לא עכשיו',
+  card_activation_claim_short: 'קבלו {{credits}} קרדיטים בחינם',
+  card_activation_granted_title: 'נוספו {{credits}} קרדיטים',
+  card_activation_granted_body: 'הם ביתרה שלכם ואינם פגים.',
+  card_activation_card_saved: 'הכרטיס נשמר',
+  card_activation_unavailable: 'שמירת כרטיס אינה זמינה עדיין.',
+  card_activation_unavailable_body: 'Homatch עדיין אינו יכול לשמור כרטיס בלי לחייב אותו, ולכן ההצעה מושהית. היתרה שלכם וכל מה שכבר רכשתם אינם מושפעים.',
+  card_activation_failed: 'הכרטיס לא נשמר.',
+  card_activation_failed_body: 'לא חויבתם בכלום. אפשר לנסות שוב מתי שתרצו.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

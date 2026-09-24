@@ -235,7 +235,9 @@ export default function AdminHomePage() {
      * under it unchanged. Nothing is paraphrased: a diagnosis rewritten
      * in the browser is a diagnosis nobody checked.
      */
-    const out: Array<{ key: string; title: string; detail: string | null; to: string }> = [];
+    const out: Array<{
+      key: string; title: string; detail: string | null; detailDir?: 'ltr'; to: string;
+    }> = [];
     const CHANNEL: Record<string, { title: string; to: string }> = {
       RESEND: { title: t('admin_home_sys_email'), to: '/admin/communication/email' },
       META: { title: t('admin_home_sys_whatsapp'), to: '/admin/communication/whatsapp' },
@@ -246,7 +248,7 @@ export default function AdminHomePage() {
       if (p.health === 'HEALTHY' || p.health === 'DISABLED') continue;
       if (!p.detail) continue;
       const channel = CHANNEL[p.provider] ?? { title: p.provider, to: '/admin/providers' };
-      out.push({ key: `p:${p.provider}`, title: channel.title, detail: p.detail, to: channel.to });
+      out.push({ key: `p:${p.provider}`, title: channel.title, detail: p.detail, detailDir: 'ltr', to: channel.to });
     }
     /*
      * A CHANNEL CAN BE BLOCKED WHILE ITS PROVIDER IS FINE.
@@ -263,20 +265,47 @@ export default function AdminHomePage() {
      * still invents no diagnosis. A channel blocked with nothing said
      * about why stays out, for the same reason as above.
      */
-    const READINESS: Partial<Record<ChannelReadinessRow['channel'], { title: string; to: string; provider: string }>> = {
-      AI_TALK: { title: t('admin_home_sys_voice'), to: '/admin/communication/voice', provider: 'CARTESIA' },
-      TELEPHONY: { title: t('admin_home_sys_calls'), to: '/admin/communication/call-center', provider: 'VAPI' },
-      WHATSAPP: { title: t('admin_home_sys_whatsapp'), to: '/admin/communication/whatsapp', provider: 'META' },
+    type Channel = ChannelReadinessRow['channel'];
+    const READINESS: Partial<Record<Channel, { title: string; to: string; provider: string; blocked: TranslationKey }>> = {
+      AI_TALK: {
+        title: t('admin_home_sys_voice'), to: '/admin/communication/voice',
+        provider: 'CARTESIA', blocked: 'talk_status_blocked',
+      },
+      TELEPHONY: {
+        title: t('admin_home_sys_calls'), to: '/admin/communication/call-center',
+        provider: 'VAPI', blocked: 'cc_status_blocked',
+      },
+      WHATSAPP: {
+        title: t('admin_home_sys_whatsapp'), to: '/admin/communication/whatsapp',
+        provider: 'META', blocked: 'wa_status_blocked',
+      },
     };
     for (const r of readiness) {
       if (r.ready) continue;
       const c = READINESS[r.channel];
       /* Already named by its provider — one row per thing to fix. */
       if (!c || out.some((o) => o.key === `p:${c.provider}`)) continue;
-      const said = r.blockedBy.filter((s) => typeof s === 'string' && s.trim().length > 0);
-      const detail = said.length > 0 ? said.join(' ') : byProvider.get(c.provider)?.detail ?? null;
-      if (!detail) continue;
-      out.push({ key: `r:${r.channel}`, title: c.title, detail, to: c.to });
+      /*
+       * NOT `blockedBy`. Its own type says what it is — "Keys of failing
+       * checks" — and production proved it: joining them put
+       * "WEBHOOK_SECRET CALLER_NUMBER AI_CALL_ENABLED
+       * AI_CALL_PRICING_ACTIVE ..." on the front door as though it were a
+       * sentence. The keys are not lost; the destination page renders
+       * them as a checklist, which is where a list of conditions belongs.
+       *
+       * So: the provider's own sentence when it wrote one, and otherwise
+       * the translated consequence — the same sentence, derived from the
+       * same `ready` flag, that the channel page already leads with.
+       */
+      const said = byProvider.get(c.provider)?.detail;
+      const provider = typeof said === 'string' && said.trim().length > 0;
+      out.push({
+        key: `r:${r.channel}`,
+        title: c.title,
+        detail: provider ? (said as string) : t(c.blocked),
+        detailDir: provider ? 'ltr' : undefined,
+        to: c.to,
+      });
     }
 
     for (const c of caps ?? []) {
@@ -285,6 +314,7 @@ export default function AdminHomePage() {
         key: `c:${c.provider}`,
         title: t('admin_home_sys_spend'),
         detail: c.provider,
+        detailDir: 'ltr',
         to: '/admin/spend-caps',
       });
     }
@@ -375,7 +405,9 @@ export default function AdminHomePage() {
                     <div className="min-w-[12rem] flex-1">
                       <p className="text-sm font-medium text-foreground">{a.title}</p>
                       {a.detail && (
-                        <p dir="ltr" className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">{a.detail}</p>
+                        <p dir={a.detailDir} className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">
+                          {a.detail}
+                        </p>
                       )}
                     </div>
                     <Button asChild size="sm" variant="outline" className="shrink-0">

@@ -259,11 +259,28 @@ test('the control centre cannot contradict itself', () => {
   /* The attention list consults readiness, not only provider health. */
   const memo = HOME.slice(HOME.indexOf('const attention = React.useMemo'), HOME.indexOf('const okCount'));
   assert.ok(memo.includes('for (const r of readiness)'), 'the attention list ignores channel readiness');
-  assert.ok(memo.includes('r.blockedBy'), 'the attention list is not using the backend\'s own reason');
   /* ...and does not name the same thing twice. */
   assert.ok(memo.includes('out.some((o) => o.key === `p:${c.provider}`)'), 'a channel can be listed twice');
-  /* ...and still invents nothing: no reason given, no row. */
-  assert.ok(memo.includes('if (!detail) continue;'), 'a blocked channel with no stated reason is given one');
+
+  /*
+   * AND IT NEVER RENDERS `blockedBy` AS PROSE.
+   *
+   * Its own type says what it holds -- "Keys of failing checks" -- and
+   * the first version of this joined them, which put
+   *
+   *   WEBHOOK_SECRET CALLER_NUMBER AI_CALL_ENABLED AI_CALL_PRICING_ACTIVE
+   *   AI_CALL_RETAIL_SET AI_CALL_COGS_SET KILL_SWITCH_OFF
+   *
+   * on the production front door as if it were a sentence. The keys are
+   * not lost: the destination page renders them as a checklist. The
+   * front door gets a sentence.
+   */
+  assert.doesNotMatch(HOME, /blockedBy\s*\.\s*(join|map|filter)/, 'blockedBy is being rendered as text again');
+  for (const key of ['talk_status_blocked', 'cc_status_blocked', 'wa_status_blocked']) {
+    assert.ok(memo.includes(key), `${key} is not offered as the blocked channel's sentence`);
+  }
+  /* The provider's sentence wins when it wrote one, and only then is it LTR. */
+  assert.ok(memo.includes("detailDir: provider ? 'ltr' : undefined"), 'a translated sentence is being forced to LTR');
 });
 
 test("the provider's own sentence is marked LTR wherever it is shown", () => {
@@ -280,7 +297,12 @@ test("the provider's own sentence is marked LTR wherever it is shown", () => {
    */
   const HOME = read('src/pages/admin/AdminHomePage.tsx');
   assert.match(HOME, /<p dir=\{detailDir\}/, 'the status row renders a provider sentence without a direction');
-  assert.match(HOME, /<p dir="ltr"[^>]*>\{a\.detail\}/, 'the attention list renders a provider sentence without a direction');
+  /*
+   * The attention list carries BOTH kinds now — the provider's English
+   * when it wrote a sentence, our translated consequence when it did not
+   * — so it takes a per-item direction rather than a blanket one.
+   */
+  assert.match(HOME, /<p dir=\{a\.detailDir\}/, 'the attention list renders a sentence without a direction');
 
   for (const [file, marker] of [
     ['src/pages/admin/communication/CommunicationEmailPage.tsx', '{resend.detail}'],

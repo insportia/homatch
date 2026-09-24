@@ -8845,6 +8845,7 @@ const en = {
   wa_status_blocked: 'Homatch cannot message people on WhatsApp yet.',
   cc_status_ready: 'Homatch can make and answer phone calls.',
   cc_status_blocked: 'Homatch cannot make phone calls yet.',
+  talk_status_blocked: 'Homatch cannot speak to visitors yet.',
   admin_provider_says: 'What the provider reported',
 };
 
@@ -17609,6 +17610,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   wa_status_blocked: 'Homatch-ს ჯერ არ შეუძლია WhatsApp-ით ადამიანებისთვის მიწერა.',
   cc_status_ready: 'Homatch-ს ზარების განხორციელება და პასუხი შეუძლია.',
   cc_status_blocked: 'Homatch-ს ჯერ არ შეუძლია ზარების განხორციელება.',
+  talk_status_blocked: 'Homatch-ს ჯერ არ შეუძლია ვიზიტორებს ესაუბროს.',
   admin_provider_says: 'რას იუწყება მომწოდებელი',
 };
 
@@ -26364,6 +26366,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   wa_status_blocked: 'Homatch пока не может писать людям в WhatsApp.',
   cc_status_ready: 'Homatch может звонить и отвечать на звонки.',
   cc_status_blocked: 'Homatch пока не может звонить.',
+  talk_status_blocked: 'Homatch пока не может говорить с посетителями.',
   admin_provider_says: 'Что сообщает поставщик',
 };
 
@@ -35117,6 +35120,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   wa_status_blocked: 'Homatch henüz WhatsApp üzerinden mesaj gönderemiyor.',
   cc_status_ready: 'Homatch telefon araması yapabiliyor ve yanıtlayabiliyor.',
   cc_status_blocked: 'Homatch henüz telefon araması yapamıyor.',
+  talk_status_blocked: 'Homatch henüz ziyaretçilerle konuşamıyor.',
   admin_provider_says: 'Sağlayıcının bildirdiği',
 };
 
@@ -43870,6 +43874,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   wa_status_blocked: 'لا يستطيع Homatch بعد مراسلة الناس عبر واتساب.',
   cc_status_ready: 'يستطيع Homatch إجراء المكالمات والرد عليها.',
   cc_status_blocked: 'لا يستطيع Homatch بعد إجراء المكالمات.',
+  talk_status_blocked: 'لا يستطيع Homatch بعد التحدث إلى الزوار.',
   admin_provider_says: 'ما أبلغ عنه المزوّد',
 };
 
@@ -52623,6 +52628,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   wa_status_blocked: 'Homatch עדיין אינו יכול לשלוח הודעות בוואטסאפ.',
   cc_status_ready: 'Homatch יכול לבצע שיחות ולענות להן.',
   cc_status_blocked: 'Homatch עדיין אינו יכול לבצע שיחות.',
+  talk_status_blocked: 'Homatch עדיין אינו יכול לדבר עם המבקרים.',
   admin_provider_says: 'מה שהספק דיווח',
 };
 

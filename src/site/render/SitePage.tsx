@@ -246,8 +246,32 @@ export function SitePage({
             data-studio-section={section.id}
             onClick={(e) => {
               onSelect(section.id);
-              // Which picture, if any, was under the pointer.
-              const hit = (e.target as HTMLElement | null)?.closest?.('[data-hm-media]');
+              /*
+               * Which picture, if any, was under the pointer.
+               *
+               * `closest` alone only answers when the pointer landed INSIDE
+               * the media element. A background photo is a sibling underneath
+               * the copy, not an ancestor of it, so clicking the hero — which
+               * is mostly text — asked to change a picture and was told there
+               * wasn't one. An owner could only reach the hero image by
+               * finding the few pixels of it that no letter covered.
+               *
+               * So when the ancestor walk finds nothing, ask what is actually
+               * stacked under that point. elementsFromPoint returns the whole
+               * stack, nearest first, which is exactly the question "what
+               * picture am I looking at here".
+               */
+              const target = e.target as HTMLElement | null;
+              let hit = target?.closest?.('[data-hm-media]') ?? null;
+              if (!hit) {
+                const stack = target?.ownerDocument?.elementsFromPoint?.(e.clientX, e.clientY) ?? [];
+                for (const node of stack) {
+                  const media = (node as HTMLElement).closest?.('[data-hm-media]');
+                  /* Stay inside the section that was clicked: a photo showing
+                     through from a neighbour is not what was pointed at. */
+                  if (media && e.currentTarget.contains(media)) { hit = media; break; }
+                }
+              }
               onSelectMedia?.(section.id, hit?.getAttribute('data-hm-media') ?? null);
             }}
           >

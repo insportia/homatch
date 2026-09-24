@@ -348,3 +348,23 @@ export function searchAdmin(
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit).map(({ item, group }) => ({ item, group }));
 }
+
+/*
+ * KNOWN DEFECT — SITE STUDIO HAS TOO LITTLE ROOM TO PREVIEW A DESKTOP.
+ *
+ * Site Studio is an editor nested inside this sidebar. Measured at a 1920px
+ * viewport, its preview iframe is x=568 width=976 -- below the 1024px the
+ * public site needs before it renders desktop navigation. So the preview
+ * correctly shows the tablet layout, and an owner on a large monitor cannot
+ * click the navigation labels they opened Site Studio to edit.
+ *
+ * The sidebar reached w-64/lg:w-72 in the Admin redesign because group labels
+ * such as "Properties & matching" were being truncated. Both are real; they
+ * are in tension, and the resolution is the editor taking the full width,
+ * which changes preview geometry enough that the Studio regression suite has
+ * to be re-verified as a whole. That belongs with the Site Studio work rather
+ * than bolted on here, so this is recorded and not silently left unnoticed.
+ *
+ * Reproduce: tests/studio/blocks.test.mjs, "the navigation and footer are
+ * edited once, for the whole site".
+ */

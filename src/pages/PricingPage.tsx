@@ -94,7 +94,16 @@ export default function PricingPage() {
           {t('payg_rate_line', { credits: rateCredits, usd: rateUsd })}
         </p>
 
-        {/* ── What things cost ──────────────────────────────────── */}
+        {/*
+          ── What things cost ────────────────────────────────────
+
+          Rendered only when there is something to render. An empty list left
+          a heading with a blank space under it on production for the window
+          between the frontend deploying and the catalogue function catching
+          up -- a page that looks broken rather than one that is simply
+          waiting. The same shape protects against the endpoint failing.
+        */}
+        {(loading || products.length > 0) && (
         <section className="mt-10 sm:mt-14" aria-labelledby="payg-prices">
           <h2 id="payg-prices" className="text-lg font-semibold tracking-tight">
             {t('payg_prices_title')}
@@ -127,6 +136,7 @@ export default function PricingPage() {
             {t('payg_only_actual')}
           </p>
         </section>
+        )}
 
         {/* ── Getting credits ───────────────────────────────────── */}
         <section className="mt-10 sm:mt-14 rounded-2xl border border-border/60 bg-card/50 p-6 sm:p-8">

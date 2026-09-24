@@ -578,10 +578,17 @@ test('no component decides what to show by comparing the plan name', () => {
   const offenders = [];
   for (const file of walkSrc()) {
     const rel = path.relative(ROOT, file);
-    // The hook, the badge and the pricing page legitimately name the plans:
-    // one produces the answer, one renders the plan's own identity, and one is
-    // the plan comparison itself.
-    if (/useEntitlements\.ts|PlanBadge\.tsx|PricingPage\.tsx|types[\/]billing\.ts/.test(rel)) continue;
+    /*
+     * The allowlist used to carry PlanBadge.tsx and PricingPage.tsx as well:
+     * one rendered a plan's own identity and the other was the plan
+     * comparison. Both are gone -- the badge deleted, the page rewritten with
+     * nothing to compare -- so the exemption goes with them. Leaving a name
+     * in this list for a file that no longer exists is how a future plan
+     * conditional finds somewhere to hide.
+     *
+     * What remains: the hook that produces the answer, and the types.
+     */
+    if (/useEntitlements\.ts|types[\/]billing\.ts/.test(rel)) continue;
     const code = strip(fs.readFileSync(file, 'utf8'));
     if (/\bplan\s*===\s*['"](PREMIUM|VIP)['"]/.test(code) ||
         /['"](PREMIUM|VIP)['"]\s*===\s*\w*[Pp]lan\b/.test(code)) {

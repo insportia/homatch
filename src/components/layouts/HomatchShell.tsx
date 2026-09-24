@@ -351,15 +351,18 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
             </DropdownMenu>
           </div>
 
-          <dl className="mt-3 grid grid-cols-2 gap-2 text-[13px]">
-            <div className="min-w-0 rounded-[0.5rem] bg-secondary px-2.5 py-1.5">
-              <dt className="truncate text-muted-foreground">{t('db_plan_title')}</dt>
-              <dd className="truncate font-semibold uppercase text-foreground">{homatchUser?.plan || 'FREE'}</dd>
-            </div>
+          {/*
+            This was a two-up: a tile reading "Plan — FREE" beside the credit
+            balance, under a gold "Upgrade" button pointing at the plan grid.
+            There are no plans to be on and nothing to upgrade to, so the
+            balance takes the whole row and the button does the only thing
+            a customer can actually do with money here.
+          */}
+          <dl className="mt-3 text-[13px]">
             <button
               type="button"
               onClick={() => navigate('/credits')}
-              className="min-w-0 rounded-[0.5rem] bg-secondary px-2.5 py-1.5 text-start transition-colors hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-full min-w-0 rounded-[0.5rem] bg-secondary px-2.5 py-1.5 text-start transition-colors hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="block truncate text-muted-foreground">{t('nav_credits')}</span>
               <span className="block truncate font-semibold tabular-nums text-foreground">
@@ -371,9 +374,9 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
           <Button
             size="sm"
             className="mt-2.5 h-9 w-full gap-1.5 rounded-[0.5rem] bg-gold text-primary hover:bg-gold-hover"
-            onClick={() => navigate('/pricing')}
+            onClick={() => navigate('/credits')}
           >
-            {t('db_plan_upgrade')} <ArrowRight className={`h-3.5 w-3.5 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+            {t('cta_top_up')} <ArrowRight className={`h-3.5 w-3.5 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
           </Button>
         </div>
       </div>

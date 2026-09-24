@@ -146,31 +146,15 @@ export async function getMyReservations(userId: string, limit = 20): Promise<Usa
 
 // ── Subscriptions ───────────────────────────────────────────────────────────
 
-export async function startSubscription(planCode: 'VIP' | 'PREMIUM'): Promise<{
-  success?: boolean; checkoutUrl?: string; mock?: boolean; message?: string; error?: string;
-}> {
-  return invoke({
-    action: 'subscribe',
-    planCode,
-    successUrl: `${window.location.origin}/pricing?subscribed=1`,
-    cancelUrl: `${window.location.origin}/pricing?cancelled=1`,
-  });
-}
-
-export async function cancelSubscription(): Promise<{
-  success?: boolean; cancelAtPeriodEnd?: boolean; activeUntil?: string; creditsRetained?: boolean; error?: string;
-}> {
-  return invoke({ action: 'cancel' });
-}
-
-/**
- * What a plan WOULD have saved this customer, replayed from their real charged
- * executions at current pricing. Returns eligible:false when they have no paid
- * history — the product must never show an invented savings figure.
+/*
+ * startSubscription, cancelSubscription and getUpgradeSavings lived here.
+ *
+ * There are no subscriptions to start, none to cancel, and no upgrade whose
+ * savings could be replayed -- and production never had one to begin with:
+ * user_subscriptions has always been empty. The billing function still
+ * answers those actions, so history and any in-flight caller are unaffected;
+ * nothing in the product asks for them any more.
  */
-export async function getUpgradeSavings(targetPlan: 'VIP' | 'PREMIUM'): Promise<UpgradeSavings> {
-  return invoke({ action: 'upgrade-savings', targetPlan });
-}
 
 // ── Top-up ──────────────────────────────────────────────────────────────────
 

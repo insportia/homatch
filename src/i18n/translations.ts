@@ -35015,7 +35015,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_home_sys_whatsapp: 'WhatsApp',
   admin_home_sys_calls: 'Telefon çağrıları',
   admin_home_sys_spend: 'Harcama',
-  admin_home_providers_count: '{{total}} hizmetten {{ok}} tanesi çalışıyor',
+  admin_home_providers_count: '{{total}} bölümden {{ok}} tanesi çalışıyor',
   admin_status_working: 'Çalışıyor',
   admin_status_action: 'İşlem gerekli',
   admin_status_not_configured: 'Kurulmadı',

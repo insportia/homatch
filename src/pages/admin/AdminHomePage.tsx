@@ -248,6 +248,37 @@ export default function AdminHomePage() {
       const channel = CHANNEL[p.provider] ?? { title: p.provider, to: '/admin/providers' };
       out.push({ key: `p:${p.provider}`, title: channel.title, detail: p.detail, to: channel.to });
     }
+    /*
+     * A CHANNEL CAN BE BLOCKED WHILE ITS PROVIDER IS FINE.
+     *
+     * The credentials answer, the probe is healthy, and the channel
+     * still cannot run because something else is unset. The status row
+     * above knows that — it reads readiness — but the loop above only
+     * reads provider health, so production showed three rows saying
+     * Action required and exactly one thing to do underneath. The screen
+     * contradicted itself, which is the one thing a control centre may
+     * not do.
+     *
+     * `blockedBy` is the backend's own channel-level reason, so this
+     * still invents no diagnosis. A channel blocked with nothing said
+     * about why stays out, for the same reason as above.
+     */
+    const READINESS: Partial<Record<ChannelReadinessRow['channel'], { title: string; to: string; provider: string }>> = {
+      AI_TALK: { title: t('admin_home_sys_voice'), to: '/admin/communication/voice', provider: 'CARTESIA' },
+      TELEPHONY: { title: t('admin_home_sys_calls'), to: '/admin/communication/call-center', provider: 'VAPI' },
+      WHATSAPP: { title: t('admin_home_sys_whatsapp'), to: '/admin/communication/whatsapp', provider: 'META' },
+    };
+    for (const r of readiness) {
+      if (r.ready) continue;
+      const c = READINESS[r.channel];
+      /* Already named by its provider — one row per thing to fix. */
+      if (!c || out.some((o) => o.key === `p:${c.provider}`)) continue;
+      const said = r.blockedBy.filter((s) => typeof s === 'string' && s.trim().length > 0);
+      const detail = said.length > 0 ? said.join(' ') : byProvider.get(c.provider)?.detail ?? null;
+      if (!detail) continue;
+      out.push({ key: `r:${r.channel}`, title: c.title, detail, to: c.to });
+    }
+
     for (const c of caps ?? []) {
       if (!c.warning) continue;
       out.push({
@@ -258,10 +289,20 @@ export default function AdminHomePage() {
       });
     }
     return out;
-  }, [providers, caps, t]);
+  }, [providers, readiness, byProvider, caps, t]);
 
-  const okCount = (providers ?? []).filter((p) => p.health === 'HEALTHY').length;
-  const totalCount = (providers ?? []).length;
+  /*
+   * THE COUNT DESCRIBES THE LIST UNDER IT.
+   *
+   * This used to count PROVIDERS while the list rendered ROWS, and the
+   * two do not agree: a row's state also takes channel readiness into
+   * account, so production showed "3 of 5 working" directly above five
+   * rows of which two said Working. A summary that contradicts the thing
+   * it summarises is worse than no summary, because the reader trusts
+   * the short number and stops reading.
+   */
+  const okCount = rows.filter((r) => r.state === 'OK').length;
+  const totalCount = rows.length;
 
   return (
     <div className="mx-auto w-full max-w-[64rem] space-y-6">

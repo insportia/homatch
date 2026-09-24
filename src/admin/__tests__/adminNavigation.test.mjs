@@ -230,6 +230,42 @@ test('no secret value is rendered anywhere in the new admin', () => {
   }
 });
 
+test('the control centre cannot contradict itself', () => {
+  /*
+   * Both of these were found on the live production front door, not in a
+   * fixture, and both are the same class of bug: a summary computed over
+   * one set of things while the reader is looking at another.
+   *
+   * 1. The count said "3 of 5 working" above five rows of which two said
+   *    Working, because it counted PROVIDERS and the list renders ROWS.
+   * 2. Three rows said Action required and the attention list named one,
+   *    because it read provider health only. A channel blocked by
+   *    READINESS while its provider is healthy never reached it.
+   */
+  const HOME = read('src/pages/admin/AdminHomePage.tsx');
+
+  assert.match(
+    HOME,
+    /const okCount = rows\.filter\(\(r\) => r\.state === 'OK'\)\.length;/,
+    'the summary count is not counting the rows it sits above',
+  );
+  assert.match(HOME, /const totalCount = rows\.length;/, 'the summary total is not the number of rows shown');
+  assert.doesNotMatch(
+    HOME,
+    /okCount = \(providers \?\? \[\]\)/,
+    'the count went back to counting providers',
+  );
+
+  /* The attention list consults readiness, not only provider health. */
+  const memo = HOME.slice(HOME.indexOf('const attention = React.useMemo'), HOME.indexOf('const okCount'));
+  assert.ok(memo.includes('for (const r of readiness)'), 'the attention list ignores channel readiness');
+  assert.ok(memo.includes('r.blockedBy'), 'the attention list is not using the backend\'s own reason');
+  /* ...and does not name the same thing twice. */
+  assert.ok(memo.includes('out.some((o) => o.key === `p:${c.provider}`)'), 'a channel can be listed twice');
+  /* ...and still invents nothing: no reason given, no row. */
+  assert.ok(memo.includes('if (!detail) continue;'), 'a blocked channel with no stated reason is given one');
+});
+
 test("the provider's own sentence is marked LTR wherever it is shown", () => {
   /*
    * comm-provider-status writes in English and names environment

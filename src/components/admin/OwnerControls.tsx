@@ -79,6 +79,16 @@ const GROUPS: Array<{ titleKey: TranslationKey; controls: Control[] }> = [
     titleKey: 'owner_group_welcome',
     controls: [
       { key: 'card_activation_bonus_enabled', labelKey: 'owner_f_welcome_enabled', kind: 'switch' },
+      /*
+       * The signup grant, as a lever rather than a decision made for the
+       * owner. Pay-as-you-go says an account earns its first credits by
+       * proving a card -- which assumes a payment provider exists. While
+       * none is connected, leaving this off means a new account starts
+       * empty with no way to earn anything, and that trade belongs to
+       * whoever owns the business, not to this file.
+       */
+      { key: 'signup_welcome_credits_enabled', labelKey: 'owner_f_signup_credits_enabled', hintKey: 'owner_h_signup_credits_enabled', kind: 'switch' },
+      { key: 'signup_welcome_credits', labelKey: 'owner_f_signup_credits', kind: 'number' },
       { key: 'card_activation_bonus_credits', labelKey: 'owner_f_welcome_credits', hintKey: 'owner_h_welcome_credits', kind: 'number' },
       { key: 'card_activation_reminder_cooldown_hours', labelKey: 'owner_f_welcome_cooldown', kind: 'number' },
       { key: 'card_activation_max_reminders', labelKey: 'owner_f_welcome_max_reminders', hintKey: 'owner_h_welcome_reminders', kind: 'number' },

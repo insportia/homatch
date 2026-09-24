@@ -8935,6 +8935,11 @@ const en = {
   owner_cap_refunds: 'Refunds',
   owner_cap_invoice: 'Legally valid tax invoice',
   owner_cap_invoice_note: 'Never reported as supported until an accountant confirms the document satisfies Georgian requirements.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  owner_f_signup_credits_enabled: 'Also give free credits at signup',
+  owner_h_signup_credits_enabled: 'Off under pay-as-you-go: an account earns its first credits by adding a card. Turn it on if no payment provider is connected yet, or new accounts will start empty with no way to earn them.',
+  owner_f_signup_credits: 'Credits at signup',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17788,6 +17793,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   owner_cap_refunds: 'თანხის დაბრუნება',
   owner_cap_invoice: 'იურიდიულად ნამდვილი საგადასახადო ინვოისი',
   owner_cap_invoice_note: 'არასოდეს აღინიშნება მხარდაჭერილად, სანამ ბუღალტერი არ დაადასტურებს, რომ დოკუმენტი აკმაყოფილებს ქართულ მოთხოვნებს.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  owner_f_signup_credits_enabled: 'უფასო კრედიტის გაცემა რეგისტრაციისასაც',
+  owner_h_signup_credits_enabled: 'გამორთულია: ანგარიში პირველ კრედიტს ბარათის დამატებით იღებს. ჩართეთ, თუ გადახდის მომწოდებელი ჯერ არ არის დაკავშირებული, თორემ ახალი ანგარიშები ცარიელი დარჩება.',
+  owner_f_signup_credits: 'კრედიტი რეგისტრაციისას',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26632,6 +26642,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   owner_cap_refunds: 'Возвраты',
   owner_cap_invoice: 'Юридически действительный налоговый счёт',
   owner_cap_invoice_note: 'Никогда не отмечается как поддерживаемое, пока бухгалтер не подтвердит соответствие документа требованиям Грузии.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  owner_f_signup_credits_enabled: 'Также давать бесплатные кредиты при регистрации',
+  owner_h_signup_credits_enabled: 'Выключено: аккаунт получает первые кредиты за добавление карты. Включите, если платёжный провайдер ещё не подключён, иначе новые аккаунты останутся пустыми.',
+  owner_f_signup_credits: 'Кредитов при регистрации',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35474,6 +35489,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   owner_cap_refunds: 'İadeler',
   owner_cap_invoice: 'Yasal geçerli vergi faturası',
   owner_cap_invoice_note: 'Bir muhasebeci belgenin Gürcistan gerekliliklerini karşıladığını onaylayana kadar asla destekleniyor olarak bildirilmez.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  owner_f_signup_credits_enabled: 'Kayıt olurken de ücretsiz kredi ver',
+  owner_h_signup_credits_enabled: 'Kapalı: hesap ilk kredilerini kart ekleyerek kazanır. Henüz bir ödeme sağlayıcısı bağlı değilse açın, yoksa yeni hesaplar boş başlar ve kazanamaz.',
+  owner_f_signup_credits: 'Kayıtta verilen kredi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44316,6 +44336,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   owner_cap_refunds: 'المبالغ المستردة',
   owner_cap_invoice: 'فاتورة ضريبية صالحة قانونيًا',
   owner_cap_invoice_note: 'لا يُبلَّغ عنها كمدعومة إطلاقًا حتى يؤكد محاسب أن المستند يستوفي المتطلبات الجورجية.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  owner_f_signup_credits_enabled: 'منح رصيد مجاني عند التسجيل أيضًا',
+  owner_h_signup_credits_enabled: 'مُعطّل: يكسب الحساب أول رصيد له بإضافة بطاقة. فعّله إذا لم يكن هناك مزوّد دفع متصل بعد، وإلا ستبدأ الحسابات الجديدة فارغة بلا وسيلة للكسب.',
+  owner_f_signup_credits: 'الرصيد عند التسجيل',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -53158,6 +53183,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   owner_cap_refunds: 'החזרים',
   owner_cap_invoice: 'חשבונית מס תקפה משפטית',
   owner_cap_invoice_note: 'לעולם לא מדווח כנתמך עד שרואה חשבון יאשר שהמסמך עומד בדרישות בגאורגיה.',
+
+  /* ── HOMATCH ADMIN ─────────────────────────────────────────────── */
+  owner_f_signup_credits_enabled: 'לתת קרדיטים חינם גם בהרשמה',
+  owner_h_signup_credits_enabled: 'כבוי: חשבון מרוויח את הקרדיטים הראשונים בהוספת כרטיס. הפעילו אם עדיין לא מחובר ספק תשלומים, אחרת חשבונות חדשים יתחילו ריקים בלי דרך להרוויח.',
+  owner_f_signup_credits: 'קרדיטים בהרשמה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

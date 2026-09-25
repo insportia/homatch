@@ -23,6 +23,21 @@
 // the place to find out. The check is made against the DATABASE rather than
 // against the adapter list, because the adapter existing is not permission.
 //
+// WHEN A CAMPAIGN ASKS
+//
+// Given a campaignId, this function builds the envelope ITSELF from the
+// campaign's property and its resolved search languages. It does not accept
+// one from the caller. A campaign that selected Georgian and English has a
+// ceiling, and a ceiling a caller can widen by passing a wider body is not a
+// ceiling -- it is a default.
+//
+// The envelope is deliberately narrow in two places and deliberately open in
+// two others, and both choices are about what a comparable IS. See
+// campaignEnvelope() for the reasoning; the short version is that price is
+// never constrained, because a competing asking price is the answer this
+// scan exists to produce and filtering on it would hide exactly the listings
+// that explain the market.
+//
 // WHAT IT WILL NOT DO
 //
 // Reach a host with no SourcePolicy — the runtime refuses that, not this
@@ -88,12 +103,23 @@ Deno.serve(async (req: Request) => {
   const started = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
-    const city = String(body.city || 'Tbilisi');
-    const transaction = String(body.transaction || 'SALE').toUpperCase() === 'RENT' ? 'RENT' : 'SALE';
     const perSource = Math.max(1, Math.min(10, Number(body.limitPerSource) || 3));
     const campaignId = body.campaignId ? String(body.campaignId) : null;
     const jobId = body.jobId ? String(body.jobId) : null;
-    const countryCode = String(body.countryCode || 'GE').toUpperCase();
+
+    /*
+     * THE CAMPAIGN'S ENVELOPE IS NOT NEGOTIABLE BY THE CALLER.
+     *
+     * With a campaignId, every constraint below comes from the campaign's own
+     * property and language selection, read here. Without one, this is an
+     * operator sweep and the body supplies the market.
+     */
+    const scope = campaignId
+      ? await campaignEnvelope(db, campaignId)
+      : operatorEnvelope(body);
+    if ('error' in scope) return json({ error: scope.error }, scope.status);
+
+    const { city, transaction, countryCode } = scope;
 
     /*
      * THE REGISTRY DECIDES, NOT THE ADAPTER LIST.
@@ -127,14 +153,23 @@ Deno.serve(async (req: Request) => {
 
     const query = {
       id: `supply-${countryCode}-${city}-${transaction}`.toLowerCase(),
-      transaction, propertyType: 'ANY', countryCode,
-      city, district: null, subDistrict: null, projectName: null,
-      area: { min: null, max: null }, rooms: { min: null, max: null },
-      bedrooms: { min: null, max: null }, floor: { min: null, max: null },
-      price: { min: null, max: null }, priceCurrency: null,
-      languages: ['ka', 'en'] as const,
+      transaction, countryCode, city,
+      propertyType: scope.propertyType,
+      district: scope.district,
+      subDistrict: null, projectName: null,
+      area: scope.area,
+      rooms: { min: null, max: null },
+      bedrooms: { min: null, max: null },
+      floor: { min: null, max: null },
+      /*
+       * OPEN, ALWAYS. A comparable set filtered by the subject's own price
+       * would confirm the price it was given instead of testing it.
+       */
+      price: { min: null, max: null },
+      priceCurrency: null,
+      languages: scope.languages,
       limit: perSource,
-      rationale: 'supply discovery',
+      rationale: scope.rationale,
     };
 
     const perSourceReport: Record<string, unknown>[] = [];
@@ -208,6 +243,12 @@ Deno.serve(async (req: Request) => {
         persisted: rows.length,
         networkRequests: outcome.value.networkRequests,
         appliedFilters: outcome.value.appliedFilters,
+        /*
+         * Read listings the envelope removed. Without it, a source that
+         * offered forty comparables and matched two reports the same as one
+         * that had two -- and the first is a source worth reading again.
+         */
+        rejectedByEnvelope: outcome.value.rejectedByEnvelope ?? 0,
       });
     }
 
@@ -223,6 +264,20 @@ Deno.serve(async (req: Request) => {
     return json({
       success: true,
       city, transaction, countryCode,
+      campaignId,
+      /*
+       * The envelope, echoed back. A run whose scope cannot be read off its
+       * own result is a run nobody can reproduce or audit later.
+       */
+      envelope: {
+        source: campaignId ? 'CAMPAIGN' : 'REQUEST',
+        propertyType: scope.propertyType,
+        district: scope.district,
+        area: scope.area,
+        price: null,
+        languages: scope.languages,
+        rationale: scope.rationale,
+      },
       sourcesPermitted: permitted.size,
       sourcesReached: reached,
       sourcesBlocked: blocked,
@@ -240,6 +295,147 @@ Deno.serve(async (req: Request) => {
 });
 
 /* ────────────────────────────────────────────────────────────────────── */
+
+interface Envelope {
+  city: string;
+  transaction: 'SALE' | 'RENT';
+  countryCode: string;
+  propertyType: 'APARTMENT' | 'HOUSE' | 'LAND' | 'COMMERCIAL' | 'ANY';
+  district: string | null;
+  area: { min: number | null; max: number | null };
+  languages: readonly string[];
+  rationale: string;
+}
+
+/**
+ * An operator sweep. The body says which market, and nothing narrows it.
+ *
+ * This is how the market gets read outside any campaign — a scheduled tick
+ * filling the global store so the first campaign in a city is not also the
+ * one that pays for discovering it.
+ */
+function operatorEnvelope(body: Record<string, unknown>): Envelope {
+  return {
+    city: String(body.city || 'Tbilisi'),
+    transaction: String(body.transaction || 'SALE').toUpperCase() === 'RENT' ? 'RENT' : 'SALE',
+    countryCode: String(body.countryCode || 'GE').toUpperCase(),
+    propertyType: 'ANY',
+    district: null,
+    area: { min: null, max: null },
+    languages: ['ka', 'en'],
+    rationale: 'operator supply sweep: fill the global store for this market',
+  };
+}
+
+/**
+ * THE COMPARABLE ENVELOPE, derived from the campaign's own subject.
+ *
+ * NARROW ON TWO THINGS
+ *
+ * The transaction and the property type, because a rental is not a comparable
+ * for a sale and a plot of land is not a comparable for a flat. These are
+ * categorical: getting them wrong does not make the set noisier, it makes it
+ * about something else.
+ *
+ * Area, within a band. A 97m2 flat is not meaningfully compared against a
+ * 300m2 one, and the band is stated in admin_settings rather than buried
+ * here, because how wide "similar size" is is a market judgement that will be
+ * argued about and should be arguable in one place.
+ *
+ * OPEN ON TWO THINGS, DELIBERATELY
+ *
+ * PRICE. The competing asking price is the ANSWER this scan produces. An
+ * envelope built around the subject's own price would return the listings
+ * that agree with it and silently drop the ones that do not, which is how a
+ * tool ends up confirming every price it is shown.
+ *
+ * DISTRICT. The property states Krtsanisi; the portals write ქრწანისი,
+ * Krtsanisi and Krcanisi, and the alias table that makes Tbilisi and თბილისი
+ * one city covers cities only. Applying a district filter today would drop
+ * real neighbours over spelling, and the difference between "no comparables
+ * in this district" and "we could not read the district" is exactly the kind
+ * of false emptiness this codebase keeps refusing to produce. The district
+ * travels on each observation, so ranking can weigh it later — it is a
+ * weight, not a gate, until the vocabulary is real.
+ */
+async function campaignEnvelope(
+  db: any,
+  campaignId: string,
+): Promise<Envelope | { error: string; status: number }> {
+  const { data: campaign, error } = await db
+    .from('matching_campaigns')
+    .select('id,property_id,search_language_mode,search_languages_selected,search_languages_resolved')
+    .eq('id', campaignId)
+    .maybeSingle();
+  if (error) return { error: message(error), status: 500 };
+  if (!campaign) return { error: `campaign ${campaignId} does not exist`, status: 404 };
+
+  const { data: property } = await db
+    .from('properties')
+    .select('id,property_type,transaction_type')
+    .eq('id', campaign.property_id)
+    .maybeSingle();
+  const { data: facts } = await db
+    .from('property_facts')
+    .select('city,district,country_code,area')
+    .eq('property_id', campaign.property_id)
+    .maybeSingle();
+
+  /*
+   * NO CITY, NO SCAN. Every source here is a city-level collection page, and
+   * a campaign whose property has no stated city would otherwise be given the
+   * default market — a scan that looks like it answered a question about this
+   * property and did not.
+   */
+  const city = String(facts?.city ?? '').trim();
+  if (!city) {
+    return { error: 'the campaign property states no city; supply discovery has no market to read', status: 422 };
+  }
+
+  const { data: bandRow } = await db
+    .from('admin_settings').select('value').eq('key', 'supply_comparable_area_band').maybeSingle();
+  const band = clampBand(bandRow?.value);
+
+  const area = Number(facts?.area ?? 0);
+  const areaBand = area > 0
+    ? { min: Math.round(area * (1 - band)), max: Math.round(area * (1 + band)) }
+    : { min: null, max: null };
+
+  return {
+    city,
+    transaction: String(property?.transaction_type ?? 'SALE').toUpperCase() === 'RENT' ? 'RENT' : 'SALE',
+    countryCode: String(facts?.country_code ?? 'GE').toUpperCase(),
+    propertyType: normalizeType(property?.property_type),
+    district: null,
+    area: areaBand,
+    /*
+     * THE CEILING, as the campaign resolved it. Not widened here and not
+     * defaulted past: a campaign that has not yet resolved its languages gets
+     * the source-neutral pair the adapters can actually read, recorded in the
+     * rationale so the report does not imply a choice the customer made.
+     */
+    languages: Array.isArray(campaign.search_languages_resolved) && campaign.search_languages_resolved.length > 0
+      ? campaign.search_languages_resolved
+      : ['ka', 'en'],
+    rationale: Array.isArray(campaign.search_languages_resolved) && campaign.search_languages_resolved.length > 0
+      ? `comparables for campaign ${campaignId}, languages as resolved by the campaign`
+      : `comparables for campaign ${campaignId}; the campaign has resolved no search languages, so this scan used ka+en and claims no customer selection`,
+  };
+}
+
+/** A band of 0 would return only exact-area matches; one of 1 is no band at all. */
+function clampBand(raw: unknown): number {
+  const parsed = Number(String(raw ?? '').replace(/^"|"$/g, ''));
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 1) return 0.25;
+  return parsed;
+}
+
+function normalizeType(raw: unknown): Envelope['propertyType'] {
+  const value = String(raw ?? '').toUpperCase();
+  return value === 'APARTMENT' || value === 'HOUSE' || value === 'LAND' || value === 'COMMERCIAL'
+    ? value
+    : 'ANY';
+}
 
 async function persist(
   db: any,

@@ -314,6 +314,8 @@ Deno.serve(async (req: Request) => {
       'external_discovery_min_strong_matches',
       'external_discovery_fresh_hours',
       'external_discovery_max_jobs_per_property_tick',
+      'supply_discovery_for_campaigns',
+      'supply_discovery_limit_per_source',
     ];
     const { data: settingRows, error: settingsError } = await db
       .from('admin_settings')
@@ -357,6 +359,77 @@ Deno.serve(async (req: Request) => {
       bestScore: Number(internal.data?.bestScore || 0),
       buckets: internal.data?.buckets || {},
     });
+
+    /*
+     * SUPPLY COMPARABLES — the one discovery path that is actually live.
+     *
+     * This reads real listings from sources the registry has marked
+     * LIVE_TESTED, over Homatch's own fetch path: no provider, no per-call
+     * fee, no wallet reservation. It is not a replacement for the retired
+     * external discovery below and it answers a different question — that one
+     * looked for BUYERS, this looks at what this property is competing
+     * against.
+     *
+     * OFF BY DEFAULT. A new step in a customer's campaign is enabled
+     * deliberately, once, by an operator, and not by a deploy.
+     *
+     * A FAILURE HERE DOES NOT FAIL THE CAMPAIGN. The matching above is the
+     * customer's result; comparables are intelligence around it. A source
+     * that has started refusing us is recorded as a refusal against that
+     * source and the campaign carries on, because the alternative is a
+     * portal's bad afternoon deciding whether somebody's campaign ran.
+     */
+    let supplyResult: any = null;
+    if (settings.supply_discovery_for_campaigns === true) {
+      const perSource = Math.max(1, Math.min(10, Number(settings.supply_discovery_limit_per_source || 3)));
+      await event(db, jobId, 'SUPPLY_SCAN_START', {
+        message: 'Reading live comparable supply for this property',
+        limitPerSource: perSource,
+      });
+      try {
+        const supply = await invoke(baseUrl, serviceKey, 'supply-discovery', {
+          /*
+           * The campaign id and NOTHING ELSE that narrows. supply-discovery
+           * builds the envelope from the campaign's own property and resolved
+           * languages; a city or a price passed from here would be this
+           * function's opinion of the campaign overriding the campaign.
+           */
+          campaignId,
+          jobId,
+          limitPerSource: perSource,
+        }, 120_000);
+        supplyResult = supply.data;
+
+        const perSourceRows = Array.isArray(supply.data?.perSource) ? supply.data.perSource : [];
+        await event(db, jobId, 'SUPPLY_SCAN_COMPLETE', {
+          message: `Read ${Number(supply.data?.sourcesReached || 0)} live sources for comparable supply`,
+          /* DISCOVERED vs REUSED: the second campaign in a market should be
+             cheaper than the first, and this is where that shows or does
+             not. */
+          observationsNew: Number(supply.data?.observationsNew || 0),
+          observationsReused: Number(supply.data?.observationsUpdated || 0),
+          sourcesPermitted: Number(supply.data?.sourcesPermitted || 0),
+          sourcesReached: Number(supply.data?.sourcesReached || 0),
+          sourcesBlocked: Number(supply.data?.sourcesBlocked || 0),
+          /* The scope this scan actually used, so the event is reproducible
+             without re-deriving it from the property. */
+          envelope: supply.data?.envelope ?? null,
+          rejectedByEnvelope: perSourceRows.reduce(
+            (total: number, row: any) => total + Number(row?.rejectedByEnvelope || 0), 0,
+          ),
+          networkRequests: Number(supply.data?.fetch?.networkRequests || 0),
+          entitiesTouched: Number(supply.data?.resolution?.entitiesTouched || 0),
+          /* No provider was called, so this is stated rather than left to be
+             assumed from a missing number. */
+          providerSpendUsd: 0,
+        });
+      } catch (error) {
+        await event(db, jobId, 'SUPPLY_SCAN_FAILED', {
+          message: 'Comparable supply could not be read; the campaign continued without it',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     const strongScore = Number(settings.external_discovery_strong_score || 70);
     const minStrong = Number(settings.external_discovery_min_strong_matches || 3);
@@ -584,6 +657,14 @@ Deno.serve(async (req: Request) => {
       candidateSignals,
       costUsd: totalCost,
       externalDiscovery: externalControlled ? (externalResult || { skipped: true }) : { locked: true },
+      /*
+       * Stated as disabled rather than omitted. A caller that sees no supply
+       * field cannot tell whether the scan found nothing or never ran, and
+       * those are opposite facts about the market.
+       */
+      supplyComparables: settings.supply_discovery_for_campaigns === true
+        ? (supplyResult || { failed: true })
+        : { enabled: false },
     });
   } catch (error) {
     const errorMessage = message(error);

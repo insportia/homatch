@@ -1225,3 +1225,56 @@
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+   SITE STUDIO — WHAT A CLICK IN THE PREVIEW IS FOR.
+
+   Studio-only by construction. `data-studio-section` is written by
+   SitePage ONLY when an onSelect handler is supplied, which only Site
+   Studio does; the public render takes the Reveal branch and carries none
+   of these attributes, so none of this can reach a visitor.
+
+   THE DEFECT THIS FIXES
+
+   A hero's background photograph is a sibling UNDERNEATH the copy, not an
+   ancestor of it, and the copy's container reserves 156px of top padding.
+   So the top-left of that photograph is bare photograph on screen — and
+   clicking it hit the transparent padding of the container in front,
+   which is not editable and not the picture. The owner clicked the thing
+   they could see and nothing happened.
+
+   Raising the picture instead would have fixed the click and broken the
+   preview: paint order is what makes the preview a truthful picture of
+   the site, and a photograph that jumps in front of its own headline is a
+   lie about the page. So this changes only HIT TESTING, never painting.
+
+   THE RULE
+
+   In the editor there are exactly three things worth clicking — a word to
+   change, a picture to replace, a repeated child to move — plus the
+   editor's own controls. Everything else in a section is decoration as far
+   as a click is concerned, so decoration stops intercepting: the click
+   falls through to whichever of those three is actually beneath it, and
+   to the section itself when none is.
+
+   Links and forms were already neutralised by StudioPreview, which
+   preventDefaults them; this is the same intent expressed one layer
+   earlier, so a click does not have to be cancelled after the fact.
+   ──────────────────────────────────────────────────────────────────── */
+[data-studio-section] * {
+  pointer-events: none;
+}
+[data-studio-section] [data-hm-field],
+[data-studio-section] [data-hm-field] *,
+[data-studio-section] [data-hm-media],
+[data-studio-section] [data-hm-item-root],
+[data-studio-section] [data-studio-ui],
+[data-studio-section] [data-studio-ui] * {
+  pointer-events: auto;
+}
+/* A picture's own <img> must not become the hit target in place of the slot
+   that names it: the editor looks the slot up by data-hm-media, and an
+   element inside it answers to nothing. */
+[data-studio-section] [data-hm-media] * {
+  pointer-events: none;
+}

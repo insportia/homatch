@@ -350,21 +350,41 @@ export function searchAdmin(
 }
 
 /*
- * KNOWN DEFECT — SITE STUDIO HAS TOO LITTLE ROOM TO PREVIEW A DESKTOP.
+ * ADMIN SURFACES THAT NEED THE WHOLE SCREEN.
  *
- * Site Studio is an editor nested inside this sidebar. Measured at a 1920px
- * viewport, its preview iframe is x=568 width=976 -- below the 1024px the
- * public site needs before it renders desktop navigation. So the preview
- * correctly shows the tablet layout, and an owner on a large monitor cannot
- * click the navigation labels they opened Site Studio to edit.
+ * Site Studio is an editor, not a page. It carries its own structure panel,
+ * its own inspector, and a preview frame whose job is to render the real site
+ * at real breakpoints.
  *
- * The sidebar reached w-64/lg:w-72 in the Admin redesign because group labels
- * such as "Properties & matching" were being truncated. Both are real; they
- * are in tension, and the resolution is the editor taking the full width,
- * which changes preview geometry enough that the Studio regression suite has
- * to be re-verified as a whole. That belongs with the Site Studio work rather
- * than bolted on here, so this is recorded and not silently left unnoticed.
+ * THE ARITHMETIC THAT MADE THIS NECESSARY
  *
- * Reproduce: tests/studio/blocks.test.mjs, "the navigation and footer are
- * edited once, for the whole site".
+ * StudioPreview documents the invariant in its own header: "at a 1920px
+ * browser the frame gets 1040px, and the site's lg breakpoint is 1024.
+ * Anything added to either side panel has to be checked against that number."
+ * Sixteen pixels of headroom.
+ *
+ * The Admin redesign took the admin sidebar from w-56 (224px) to w-64 with
+ * lg:w-72 (288px), because "Properties & matching" was truncating. That is
+ * +64px at exactly the widths where the invariant is tightest, and 1040 - 64
+ * is 976: below the breakpoint. The preview began rendering the TABLET
+ * layout, so an owner on a large monitor could not see or click the desktop
+ * navigation labels they had opened Site Studio to edit.
+ *
+ * Widening the sidebar was right and shrinking it again would only re-break
+ * the labels. The real fault is that an editor was living inside a page
+ * chrome that charges it 288px plus padding for navigation it does not need
+ * while editing. So editor routes take the full width, and the admin
+ * navigation stays one tap away in the same sheet that has always served
+ * every screen below md.
+ *
+ * Measured after the change: the preview frame goes from 976px to 1312px, and
+ * tests/studio/previewWidth.test.mjs now fails if it ever drops under 1024
+ * again rather than silently turning the desktop preview into a tablet.
  */
+export const FULL_BLEED_ADMIN_PATHS: ReadonlySet<string> = new Set([
+  '/admin/site-studio',
+]);
+
+export function isFullBleedAdminPath(pathname: string): boolean {
+  return FULL_BLEED_ADMIN_PATHS.has(pathname.replace(/\/+$/, '') || '/admin');
+}

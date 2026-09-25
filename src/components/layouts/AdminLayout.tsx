@@ -26,7 +26,7 @@
 import { AlertTriangle, ChevronDown, ChevronLeft, Menu, Search, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ADMIN_GROUPS, destinationForPath, groupForPath } from '@/admin/navigation';
+import { ADMIN_GROUPS, destinationForPath, groupForPath, isFullBleedAdminPath } from '@/admin/navigation';
 import { AdminSearch } from '@/components/admin/AdminSearch';
 import { ImpersonationBannerBar } from '@/components/admin/ImpersonationBannerBar';
 import { Badge } from '@/components/ui/badge';
@@ -165,6 +165,12 @@ function SidebarContent({ capWarnings, onClose, onSearch }: {
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  /*
+   * An editor takes the screen. The admin navigation is not removed — the
+   * compact bar below keeps the same sheet that serves every narrow screen,
+   * so it is one tap away rather than 288px wide. See FULL_BLEED_ADMIN_PATHS.
+   */
+  const fullBleed = isFullBleedAdminPath(useLocation().pathname);
   const { t } = useLanguage();
   const { homatchUser, loading } = useAuth();
   const navigate = useNavigate();
@@ -199,14 +205,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-64 shrink-0 border-e border-sidebar-border lg:w-72 md:block">
+      <aside className={cn('hidden w-64 shrink-0 border-e border-sidebar-border lg:w-72', !fullBleed && 'md:block')}>
         <div className="sticky top-0 h-screen">
           <SidebarContent capWarnings={capWarnings} onSearch={() => setSearchOpen(true)} />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2 md:hidden">
+        <div className={cn('flex items-center gap-2 border-b border-border px-3 py-2', !fullBleed && 'md:hidden')}>
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" aria-label={t('general_menu')}>
@@ -243,7 +249,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <ImpersonationBannerBar />
-        <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
+        <main className={cn('min-w-0 flex-1', !fullBleed && 'p-4 sm:p-6')}>{children}</main>
       </div>
 
       <AdminSearch open={searchOpen} onOpenChange={setSearchOpen} />

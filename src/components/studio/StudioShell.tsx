@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { uploadAsset } from '@/services/siteContent';
-import { Loader2 } from 'lucide-react';
+import { Loader2, PanelLeft, SlidersHorizontal } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { LayersPanel } from './LayersPanel';
 import { Inspector } from './Inspector';
@@ -225,6 +227,50 @@ export function StudioShell() {
       <p className="border-b bg-muted/50 px-4 py-1.5 text-[14px] text-muted-foreground">
         {t('studio_draft_only')} {t('studio_mode_hint')}
       </p>
+
+      {/*
+        THE TWO PANELS, ON A SCREEN THAT CANNOT HOLD THREE COLUMNS.
+        Below lg the structure list and the inspector were `hidden`, with no
+        way back: an owner on a phone could retype words already on the page
+        and nothing else — not reorder a section, not hide one, not change a
+        picture, not read the history. The panels are the same components,
+        in sheets, because a control that only exists on a desktop is a
+        control the owner does not have.
+      */}
+      <div className="flex items-center gap-2 border-b px-3 py-1.5 lg:hidden">
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[14px]">
+              <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('studio_structure')}
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="flex w-[88vw] max-w-sm flex-col p-0">
+            <SheetTitle className="sr-only">{t('studio_structure')}</SheetTitle>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <LayersPanel studio={studio} />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[14px]">
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('studio_inspector')}
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="flex w-[88vw] max-w-sm flex-col p-0">
+            <SheetTitle className="sr-only">{t('studio_inspector')}</SheetTitle>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <Inspector studio={studio} />
+              <div className="border-t">
+                <HistoryPanel studio={studio} />
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
 
       {studio.loading ? (
         <div className="flex flex-1 items-center justify-center gap-2 text-[16px] text-muted-foreground">

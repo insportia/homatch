@@ -51,6 +51,15 @@ import type { SupportedLanguage } from '@/types/types';
  * one. Anything added to either side panel has to be checked against that
  * number.
  */
+/**
+ * The narrowest viewport that is honestly a desktop: the site's own `lg`.
+ *
+ * Used as the desktop preview's viewport whenever the pane cannot hold one,
+ * because the least scaling is the least blur, and any wider number would
+ * scale a 1440px laptop harder for no extra truth.
+ */
+export const DESKTOP_MIN_WIDTH = 1024;
+
 export const DEVICE_WIDTHS = [
   { key: 'desktop', width: null as number | null, labelKey: 'studio_device_desktop' },
   { key: 'tablet', width: 834, labelKey: 'studio_device_tablet' },
@@ -92,8 +101,9 @@ export type DeviceKey = typeof DEVICE_WIDTHS[number]['key'];
 const FRAME_DOC = '<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>';
 
 function PreviewFrame({
-  width, rtl, locale, children, onBody, editing,
-}: { width: number | null; rtl: boolean; locale: Locale; children: React.ReactNode; editing: boolean;
+  width, height, scale, rtl, locale, children, onBody, editing,
+}: { width: number | null; height: number | null; scale: number;
+     rtl: boolean; locale: Locale; children: React.ReactNode; editing: boolean;
      onBody?: (body: HTMLElement | null) => void }) {
   const { t } = useLanguage();
   const ref = useRef<HTMLIFrameElement>(null);
@@ -217,8 +227,18 @@ function PreviewFrame({
       /* shrink-0: the frame is a stated width, and a flex parent narrower
          than it must scroll rather than squeeze it. Without this the
          "desktop" preview silently became whatever was left over. */
-      className="h-full shrink-0 bg-background shadow-sm ring-1 ring-border"
-      style={{ width: width ? `${width}px` : '100%', border: 0 }}
+      className={scale === 1 ? 'h-full shrink-0 bg-background shadow-sm ring-1 ring-border'
+        : 'shrink-0 bg-background shadow-sm ring-1 ring-border'}
+      style={{
+        width: width ? `${width}px` : '100%',
+        /* Only set when scaling: otherwise h-full keeps doing its job. */
+        ...(scale === 1 ? {} : {
+          height: height ? `${height}px` : '100%',
+          transform: `scale(${scale})`,
+          transformOrigin: rtl ? 'top right' : 'top left',
+        }),
+        border: 0,
+      }}
     >
       {body ? createPortal(children, body) : null}
     </iframe>
@@ -392,12 +412,66 @@ export function StudioPreview({
 
   const rtl = forceRTL || RTL_LANGUAGES.includes(locale as SupportedLanguage);
 
+  /*
+   * A DESKTOP PREVIEW HAS TO BE A DESKTOP, IN A PANE THAT IS OFTEN SMALLER.
+   *
+   * "Desktop" used to mean "whatever the pane happens to be", which is right
+   * only while the pane is at least the site's own lg breakpoint. It rarely
+   * is: with the structure panel and the inspector open, a 1440px laptop
+   * leaves 832px and a 1280px window leaves 672px. Both render the TABLET
+   * layout, so the desktop navigation an owner opened this editor to rename
+   * is not on screen at all — and nothing says so, because a tablet layout is
+   * a perfectly good-looking page.
+   *
+   * So when the pane cannot hold a desktop, the frame is given a real desktop
+   * viewport and scaled down to fit. The media queries and `sizes` attributes
+   * inside it then behave exactly as they do on a desktop, which is the whole
+   * point of the frame; only the pixels on the way to the eye are smaller.
+   *
+   * This is NOT the transform that the note at the top of this file rejects.
+   * That one was about the phone previews, where scaling a desktop render
+   * would have shown a shrunken desktop instead of the real mobile layout.
+   * Here the desktop layout IS the thing being asked for, and the frame is
+   * still a real viewport of a real width — 1024 exactly, the narrowest
+   * width that is honestly a desktop, so the scale stays as close to 1 as the
+   * pane allows and a wide window still scales by nothing at all.
+   */
+  const paneRef = useRef<HTMLDivElement>(null);
+  const [pane, setPane] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = paneRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      setPane({ w: Math.round(r.width), h: Math.round(r.height) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /* The padding the pane draws around the frame (p-4 on each side). */
+  const PANE_PAD = 32;
+  const avail = Math.max(0, pane.w - PANE_PAD);
+  const needsScale = width === null && avail > 0 && avail < DESKTOP_MIN_WIDTH;
+  const frameWidth = needsScale ? DESKTOP_MIN_WIDTH : width;
+  const scale = needsScale ? avail / DESKTOP_MIN_WIDTH : 1;
+  /* Scaled by s, the frame must be 1/s taller to still fill the pane. */
+  const frameHeight = needsScale ? Math.round(Math.max(0, pane.h - PANE_PAD) / scale) : null;
+
   /* `justify-start` until there is room to centre: a 1280px frame centred in
      a 1000px pane hides its left edge behind the scroll origin, where no
      amount of scrolling reaches it. */
   return (
-    <div className="flex h-full justify-start overflow-auto bg-muted/40 p-4 xl:justify-center">
-      <PreviewFrame width={width} rtl={rtl} locale={locale} onBody={setPreviewBody} editing={Boolean(editing && onInlineEdit)}>
+    <div ref={paneRef} className="flex h-full justify-start overflow-auto bg-muted/40 p-4 xl:justify-center">
+      <PreviewFrame
+        width={frameWidth}
+        height={frameHeight}
+        scale={scale}
+        rtl={rtl}
+        locale={locale}
+        onBody={setPreviewBody}
+        editing={Boolean(editing && onInlineEdit)}
+      >
         {/*
           * App Content overrides, carried into the preview.
           *

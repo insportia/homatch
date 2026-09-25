@@ -249,29 +249,19 @@ export function SitePage({
               /*
                * Which picture, if any, was under the pointer.
                *
-               * `closest` alone only answers when the pointer landed INSIDE
-               * the media element. A background photo is a sibling underneath
-               * the copy, not an ancestor of it, so clicking the hero — which
-               * is mostly text — asked to change a picture and was told there
-               * wasn't one. An owner could only reach the hero image by
-               * finding the few pixels of it that no letter covered.
+               * `closest` is the whole answer again, because the stylesheet
+               * now makes the hit target honest: decoration inside a section
+               * does not intercept, so a click on bare photograph arrives at
+               * the photograph rather than at the transparent padding of the
+               * container in front of it.
                *
-               * So when the ancestor walk finds nothing, ask what is actually
-               * stacked under that point. elementsFromPoint returns the whole
-               * stack, nearest first, which is exactly the question "what
-               * picture am I looking at here".
+               * An earlier version of this reached for elementsFromPoint when
+               * closest found nothing. That fixed the same symptom from the
+               * wrong end and paid for it: clicking a HEADLINE also resolved
+               * to the photograph behind it, so editing hero copy summoned an
+               * image toolbar over the words being typed.
                */
-              const target = e.target as HTMLElement | null;
-              let hit = target?.closest?.('[data-hm-media]') ?? null;
-              if (!hit) {
-                const stack = target?.ownerDocument?.elementsFromPoint?.(e.clientX, e.clientY) ?? [];
-                for (const node of stack) {
-                  const media = (node as HTMLElement).closest?.('[data-hm-media]');
-                  /* Stay inside the section that was clicked: a photo showing
-                     through from a neighbour is not what was pointed at. */
-                  if (media && e.currentTarget.contains(media)) { hit = media; break; }
-                }
-              }
+              const hit = (e.target as HTMLElement | null)?.closest?.('[data-hm-media]');
               onSelectMedia?.(section.id, hit?.getAttribute('data-hm-media') ?? null);
             }}
           >

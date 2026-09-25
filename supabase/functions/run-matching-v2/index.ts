@@ -148,14 +148,6 @@ Deno.serve(async (req: Request) => {
      * is how the two ends up disagreeing.
      */
     const marketCity = String(facts?.city || '').trim();
-    /*
-     * Sanitised because it is interpolated into a PostgREST `or` filter below
-     * rather than passed as a bound value. country_code arrives from imported
-     * listing data, so a value carrying a comma or a paren would not be a bad
-     * country -- it would be extra filter syntax. Letters and dashes only.
-     */
-    const marketCountry = String(facts?.country_code || facts?.country || '')
-      .trim().replace(/[^A-Za-z-]/g, '').slice(0, 8);
 
     /* An operator switch, because this widens what a campaign considers.
        A missing setting means ON: demand Homatch already paid nothing to
@@ -172,8 +164,24 @@ Deno.serve(async (req: Request) => {
         .select('signal_id')
         .ilike('city', marketCity)
         .limit(GLOBAL_DEMAND_LIMIT);
-      /* Same city name in a different country is a different city. */
-      if (marketCountry) query = query.or(`country.is.null,country.eq.${marketCountry}`);
+      /*
+       * NO COUNTRY CLAUSE, AND THAT IS NOT AN OVERSIGHT.
+       *
+       * The first version of this filtered country.eq.${marketCountry}, and
+       * it shipped as a no-op for the exact case it was written for.
+       * intent_profiles.country is UNNORMALISED: production holds 'Georgia'
+       * on 52 rows -- including all 35 Tbilisi ones and the forum lead this
+       * was built to reach -- and 'GE' on 10, because the classifier writes
+       * whatever the model said. 'Egypt' and 'EG', 'Saudi Arabia' and 'SA',
+       * 'United Arab Emirates' and 'UAE' are all present as pairs.
+       *
+       * Matching a code against a name needs a country lookup this
+       * repository does not have, and inventing one here would be a second
+       * place vocabulary sitting beside normalize/place.ts and disagreeing
+       * with it. So the CITY is the discriminator -- it is the specific half
+       * of the pair anyway -- and country is left to whoever normalises the
+       * column. Recorded rather than worked around.
+       */
       const { data, error: globalError } = await query;
       if (globalError) throw globalError;
       globalRows = data || [];

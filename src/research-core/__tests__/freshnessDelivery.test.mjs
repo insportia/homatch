@@ -346,12 +346,17 @@ test('global demand is bounded and scoped to the property market', () => {
    */
   const c = code(MATCHER);
   assert.match(c, /\.limit\(GLOBAL_DEMAND_LIMIT\)/);
-  // A city name without a country is a different city somewhere else.
-  assert.match(c, /country\.is\.null,country\.eq\.\$\{marketCountry\}/);
-  /* That country goes into a PostgREST `or` string, not a bound value, so a
-     comma or paren arriving from imported listing data would be read as more
-     filter syntax. Letters and dashes only. */
-  assert.match(c, /marketCountry[\s\S]{0,140}replace\(\/\[\^A-Za-z-\]\/g, ''\)/);
+  /*
+   * AND NO COUNTRY CLAUSE. The first version filtered country.eq.<code> and
+   * matched nothing: intent_profiles.country is unnormalised, holding
+   * 'Georgia' on 52 production rows and 'GE' on 10. The city is the
+   * discriminator until that column is normalised, so this asserts the
+   * interpolated filter is GONE rather than that it is escaped.
+   */
+  assert.equal(/country\.eq\.\$\{/.test(c), false,
+    'the unnormalised country column is being filtered on again');
+  assert.equal(/\.or\(`country/.test(c), false,
+    'a country value is interpolated into a PostgREST filter string');
   // No market, no global read — never a whole-table scan.
   assert.match(c, /if \(includeGlobalDemand && marketCity\)/);
 });

@@ -33,7 +33,7 @@
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader } from '@/components/home/PublicHeader';
+import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
 import { usePublicNavLinks } from '@/site/publicNav';
 import LocalSectionNav from '@/components/common/LocalSectionNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
@@ -49,7 +49,16 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
-      <PublicHeader links={headerLinks} />
+      {/*
+        * Solid, because this page opens on white.
+        *
+        * The transparent state exists for a full-bleed black hero and renders
+        * the navigation at white/75, which over this page's rgb(236,237,239)
+        * measures 1.17:1 against a 4.5 requirement — the labels are there and
+        * cannot be read. Only the home page earns the transparent header.
+        */}
+      <PublicHeader links={headerLinks} solid />
+      <HeaderSpacer />
 
       {/*
         * The page's own three sections, restored as LOCAL navigation.

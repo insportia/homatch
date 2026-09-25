@@ -188,7 +188,23 @@ test('a signed-in visitor keeps one shell on every authenticated tool', opts, as
   const failures = [];
   for (const route of APP_ROUTES) {
     await page.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1800);
+    /*
+     * WAIT FOR THE RAIL, NOT FOR A CLOCK.
+     *
+     * This was a flat 1800ms and /dashboard -- the FIRST route in the list,
+     * navigated immediately after the browser boots -- failed with "no
+     * sidebar navigation (labels seen: none)" while the other thirteen
+     * passed and the next test in this file, which waits 2000ms on the same
+     * route, passed too. Cold hydration simply had not finished.
+     *
+     * A longer sleep would have hidden it again on a slower machine. Waiting
+     * for the thing being asserted is deterministic, and it fails honestly:
+     * if the rail genuinely does not render, this times out and the route is
+     * still reported below rather than silently passing.
+     */
+    await page
+      .waitForSelector('aside nav[aria-label]', { timeout: 15000 })
+      .catch(() => {});
     const seen = await page.evaluate(PROBE);
 
     const labels = seen.navs.map((n) => n.label);

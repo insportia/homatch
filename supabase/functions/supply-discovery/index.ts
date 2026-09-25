@@ -174,13 +174,40 @@ Deno.serve(async (req: Request) => {
       if (userId) {
         const { data: ent } = await db.rpc('billing_entitlements', { p_user_id: userId });
         const product = (ent?.products ?? []).find((p: any) => p.product_code === 'FIND_CLIENTS');
+        const planCode = String(ent?.plan_code ?? 'FREE');
+
+        /*
+         * THE SPEND CEILING COMES FROM THE TABLE, NOT FROM THE RPC.
+         *
+         * billing_entitlements returns quality_tier, result_ceiling and
+         * priority_level per product and does NOT return
+         * provider_budget_ceiling_cents -- billing.ts reads that separately in
+         * providerBudgetFor(), which is why nothing noticed.
+         *
+         * Reading it off the RPC payload therefore yielded undefined, the
+         * budget reported "cost is UNKNOWN", and a ceiling that IS configured
+         * (200c on FIND_CLIENTS/FREE, 600 on VIP, 1500 on PREMIUM) was
+         * silently not enforced. Caught by the first production run of this
+         * gate rather than by any test, because every fixture had supplied the
+         * field the real RPC omits.
+         *
+         * Nothing overspent while it was wrong: maxSourceJobs is the bound
+         * that always applies, which is the entire reason it exists.
+         */
+        const { data: ceiling } = await db
+          .from('product_plan_entitlements')
+          .select('provider_budget_ceiling_cents')
+          .eq('product_code', 'FIND_CLIENTS')
+          .eq('plan_code', planCode)
+          .maybeSingle();
+
         budget = deriveSearchBudget(product
           ? {
             productCode: 'FIND_CLIENTS',
-            planCode: String(ent?.plan_code ?? 'FREE'),
+            planCode,
             qualityTier: product.quality_tier ?? null,
             resultCeiling: product.result_ceiling ?? null,
-            providerBudgetCeilingCents: product.provider_budget_ceiling_cents ?? null,
+            providerBudgetCeilingCents: ceiling?.provider_budget_ceiling_cents ?? null,
             priorityLevel: product.priority_level ?? null,
           }
           : null);
@@ -354,6 +381,10 @@ Deno.serve(async (req: Request) => {
         rationale: entitlementNote,
         sourcePriorityCeiling: budget?.sourcePriorityCeiling ?? null,
         targetResults: budget?.targetResults ?? null,
+        /* Reported so "unset" can be told from "set and ignored" — the exact
+           confusion that hid the ceiling not being read at all. */
+        maxInternalCostCents: budget?.maxInternalCostCents ?? null,
+        maxSourceJobs: budget?.maxSourceJobs ?? null,
         sourcesConsidered: tiered.length,
         sourcesOutsideEntitlement: gate.skipped.length,
         skipped: gate.skipped.slice(0, 10),

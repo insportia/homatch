@@ -24,18 +24,21 @@ interface JobRow {
   progress: number;
   current_step: string | null;
   current_tier: number;
-  query_packs_created: number;
-  queries_run: number;
   signals_collected: number;
   signals_classified: number;
   signals_rejected: number;
   candidates_after_filter: number;
   matches_created: number;
-  tiers_run: number;
-  cost_usd_total: number;
-  provider_results: Record<string, string> | null;
-  failure_reason: string | null;
-  error_message: string | null;
+  /*
+   * NOT SELECTED, and the omission is the point.
+   *
+   * cost_usd_total, provider_results, query_packs_created, queries_run,
+   * tiers_run, failure_reason and error_message all still exist on
+   * matching_jobs and the admin view still reads every one. A customer
+   * component should not hold Homatch's internal cost or its suppliers'
+   * names in memory at all -- not rendering them is one edit away from
+   * rendering them again, which is how they got here.
+   */
   started_at: string | null;
   completed_at: string | null;
 }
@@ -102,23 +105,40 @@ export function statusLabel(status: string, t: (key: string) => string) {
   return key ? t(key) : status;
 }
 
-export function providerBadge(key: string, value: string) {
-  const color =
-    value === 'LIVE' ? 'bg-green-500/15 text-green-700 border-green-300' :
-    value === 'FAILED' ? 'bg-destructive/15 text-destructive border-destructive/30' :
-    value === 'NOT_CONFIGURED' ? 'bg-muted text-muted-foreground border-border' :
-    'bg-yellow-500/15 text-yellow-700 border-yellow-300';
-  return (
-    <span key={key} className={cn('text-[13px] font-mono px-1.5 py-0.5 rounded border', color)}>
-      {key.toUpperCase()}: {value}
-    </span>
-  );
+/**
+ * What this step was, in words the customer already has.
+ *
+ * The raw event_type used to be printed: DFSEO_TASK_COMPLETE,
+ * CLASSIFY_BATCH_START, APIFY_RUN_FAILED. That is our queue's vocabulary --
+ * it names suppliers, internal stages and, in two cases, providers that have
+ * been retired -- and it was rendering in monospace on a customer's own
+ * search.
+ *
+ * Every phrase below is an EXISTING mjp_status_* string, already translated
+ * into all six languages for the status line at the top of this panel. So
+ * the feed now says "Classifying" where it said CLASSIFY_BATCH_START, and an
+ * event nobody has mapped says "Analysing" rather than leaking its token.
+ */
+function eventLabel(t: (key: string) => string, type: string): string {
+  const upper = String(type || '').toUpperCase();
+  if (/ERROR|FAIL|FATAL/.test(upper)) return t('mjp_error_fallback');
+  if (/COMPLETE|DONE|FINISH/.test(upper)) return t('mjp_status_completed');
+  if (/CLASSIFY|OPENAI|INTENT/.test(upper)) return t('mjp_status_classifying');
+  if (/DEDUP|RESOLVE|ENTITY/.test(upper)) return t('mjp_status_deduplicating');
+  if (/NORMALI/.test(upper)) return t('mjp_status_normalizing');
+  if (/MATCH|CANDIDATE|RANK|SCORE/.test(upper)) return t('mjp_status_ranking');
+  if (/QUERY|PACK|PLAN/.test(upper)) return t('mjp_status_generating_queries');
+  if (/SEARCH|DISCOVER|SCAN|SUPPLY|FETCH/.test(upper)) return t('mjp_status_searching');
+  if (/SIGNAL|COLLECT/.test(upper)) return t('mjp_status_collecting');
+  return t('mjp_status_analysing');
 }
 
 function eventIcon(type: string) {
-  if (type.startsWith('DFSEO') || type.startsWith('DATAFORSEO')) return <Search className="h-3 w-3 shrink-0 text-blue-500" />;
-  if (type.startsWith('APIFY')) return <Database className="h-3 w-3 shrink-0 text-purple-500" />;
+  /* Shapes of work, not names of suppliers. The first two branches here
+     tested for DFSEO and APIFY, both retired. */
   if (type.startsWith('CLASSIFY') || type.startsWith('OPENAI')) return <Cpu className="h-3 w-3 shrink-0 text-orange-500" />;
+  if (/SEARCH|DISCOVER|SCAN|SUPPLY|FETCH|QUERY/.test(type)) return <Search className="h-3 w-3 shrink-0 text-blue-500" />;
+  if (/SIGNAL|COLLECT|NORMALI/.test(type)) return <Database className="h-3 w-3 shrink-0 text-purple-500" />;
   if (type.includes('MATCH') || type.includes('CANDIDATE')) return <Users className="h-3 w-3 shrink-0 text-green-500" />;
   if (type.includes('ERROR') || type.includes('FAIL') || type.includes('FATAL')) return <XCircle className="h-3 w-3 shrink-0 text-destructive" />;
   return <div className="h-3 w-3 shrink-0 rounded-full bg-muted-foreground/40 mt-0.5" />;
@@ -140,7 +160,7 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
   const loadJob = async () => {
     const { data } = await supabase
       .from('matching_jobs')
-      .select('id,status,progress,current_step,current_tier,query_packs_created,queries_run,signals_collected,signals_classified,signals_rejected,candidates_after_filter,matches_created,tiers_run,cost_usd_total,provider_results,failure_reason,error_message,started_at,completed_at')
+      .select('id,status,progress,current_step,current_tier,signals_collected,signals_classified,signals_rejected,candidates_after_filter,matches_created,started_at,completed_at')
       .eq('id', jobId)
       .maybeSingle();
     if (data) setJob(data as JobRow);
@@ -288,24 +308,34 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
         <Progress value={job.progress} className="h-1.5" />
       )}
 
-      {/* Provider status */}
-      {job.provider_results && Object.keys(job.provider_results).length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {Object.entries(job.provider_results).map(([k, v]) => providerBadge(k, v))}
-        </div>
-      )}
+      {/*
+        NO PROVIDER BADGES. This rendered job.provider_results as
+        "DATAFORSEO: LIVE" and "APIFY: FAILED" in monospace, on a page a
+        CUSTOMER opens -- MatchesPage and PropertyDetailPage both mount this.
+        Which suppliers Homatch buys from is not something a customer should
+        have to read, and two of the names were retired providers besides.
+
+        NO COST LINE EITHER. It printed job.cost_usd_total to four decimal
+        places, which is HOMATCH'S internal cost of running the search, not
+        the customer's charge. The customer's price is in Credits and is
+        shown where they unlock; the money it costs us to find a lead is ours
+        to know. Admin keeps both.
+      */}
 
       {/* Counters grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
         {[
-          { label: t('mjp_counter_query_packs'), value: job.query_packs_created },
-          { label: t('mjp_counter_queries_run'), value: job.queries_run },
+          /*
+            The crawler's own stages are gone: query packs, queries run and
+            tiers run are how the search is BUILT, not what it FOUND, and a
+            customer reading "Tiers run 3" has been handed our architecture
+            to interpret. What is left answers the only question they asked --
+            how many people were looked at, and how many matched.
+          */
           { label: t('mjp_counter_signals'), value: job.signals_collected },
           { label: t('mjp_counter_classified'), value: job.signals_classified },
-          { label: t('mjp_counter_rejected'), value: job.signals_rejected },
           { label: t('mjp_counter_candidates'), value: job.candidates_after_filter },
           { label: t('mjp_counter_matches'), value: job.matches_created },
-          { label: t('mjp_counter_tiers_run'), value: job.tiers_run },
         ].map(({ label, value }) => (
           <div key={label} className="bg-muted/50 rounded-lg px-2 py-1.5">
             <div className="text-muted-foreground">{label}</div>
@@ -314,17 +344,16 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
         ))}
       </div>
 
-      {/* Cost */}
-      {job.cost_usd_total > 0 && (
-        <div className="text-xs text-muted-foreground">
-          {t('mjp_cost_so_far')}: <span className="font-mono text-foreground" dir="ltr">${job.cost_usd_total.toFixed(4)}</span>
-        </div>
-      )}
-
-      {/* Error */}
-      {job.status === 'failed' && job.error_message && (
+      {/*
+        Error, WITHOUT the internals. This printed job.failure_reason and
+        job.error_message verbatim -- enum names like
+        NO_INTERNAL_MATCHES_EXTERNAL_LOCKED and whatever string a worker
+        threw, including provider and queue wording. A customer cannot act on
+        either, and both are kept for the admin view and the job record.
+      */}
+      {job.status === 'failed' && (
         <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-xs text-destructive">
-          <strong>{job.failure_reason ?? t('mjp_error_fallback')}</strong>: {job.error_message}
+          {t('mjp_error_fallback')}
         </div>
       )}
 
@@ -354,19 +383,18 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
                     ev.event_type.includes('ERROR') || ev.event_type.includes('FAIL') || ev.event_type.includes('FATAL')
                       ? 'text-destructive' : 'text-muted-foreground'
                   )}>
-                    {ev.stream === 'external' ? `${t('mjp_external_prefix')} ` : ''}{ev.event_type}
+                    {ev.stream === 'external' ? `${t('mjp_external_prefix')} ` : ''}{eventLabel(t, ev.event_type)}
                   </span>
                   <span className="text-foreground/70 truncate">
-                    {String(
-                      ev.payload?.message ??
-                      [
-                        ev.payload?.provider,
-                        ev.payload?.platform,
-                        ev.payload?.itemCount != null ? `${String(ev.payload.itemCount)} results` : null,
-                        ev.payload?.actualCostUsd != null ? `${Number(ev.payload.actualCostUsd).toFixed(4)}` : null,
-                      ].filter(Boolean).join(' · ') ??
-                      ''
-                    ).slice(0, 160)}
+                    {/*
+                      MESSAGE ONLY. The fallback used to assemble
+                      payload.provider and payload.actualCostUsd into the
+                      line, so a customer watching their own search read the
+                      supplier's name and what that step cost Homatch, to
+                      four decimal places. `message` is copy somebody wrote
+                      to be read; the rest is instrumentation.
+                    */}
+                    {String(ev.payload?.message ?? '').slice(0, 160)}
                   </span>
                 </div>
               ))}

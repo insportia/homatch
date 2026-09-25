@@ -264,6 +264,28 @@ test('an operator sweep is ungated and a campaign sweep is not', () => {
   assert.match(sweep, /operator sweep: no customer, no priority ceiling/);
 });
 
+test('the spend ceiling is read from the table the RPC does not return it in', () => {
+  /*
+   * THE DEFECT THIS LOCKS DOWN, found by the first production run rather than
+   * by any test. billing_entitlements returns quality_tier, result_ceiling
+   * and priority_level per product and does NOT return
+   * provider_budget_ceiling_cents -- billing.ts reads that separately in
+   * providerBudgetFor(). Reading it off the RPC payload yielded undefined,
+   * the sweep reported "cost is UNKNOWN", and a ceiling that IS configured
+   * (200c FREE, 600 VIP, 1500 PREMIUM on FIND_CLIENTS) went unenforced.
+   *
+   * Every fixture had supplied the field the real RPC omits, which is why
+   * fifteen passing tests said nothing about it.
+   */
+  const sweep = readFileSync('supabase/functions/supply-discovery/index.ts', 'utf8');
+  assert.match(sweep, /from\('product_plan_entitlements'\)[\s\S]{0,160}provider_budget_ceiling_cents/,
+    'the spend ceiling is not read from product_plan_entitlements');
+  assert.match(sweep, /providerBudgetCeilingCents: ceiling\?\.provider_budget_ceiling_cents/,
+    'the budget is still built from the RPC payload');
+  // And it must be reported, so "unset" can be told from "set and ignored".
+  assert.match(sweep, /maxInternalCostCents: budget\?\.maxInternalCostCents/);
+});
+
 test('the sweep reports what the entitlement excluded', () => {
   // "permitted 3" cannot be told from "the registry only has 3", and the two
   // call for opposite responses.

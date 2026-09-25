@@ -299,3 +299,149 @@ test('LIKELY_THRESHOLD is high enough that one weak signal cannot reach it', () 
   // The strongest single positive signal is identical content at 0.6.
   assert.ok(LIKELY_THRESHOLD > 0.6, `threshold ${LIKELY_THRESHOLD} can be reached by one signal`);
 });
+
+/* ── THE FALSE MERGE THAT REACHED PRODUCTION ───────────────────────────── */
+
+/**
+ * The four place.ge listings, exactly as they were persisted on 2026-09-25.
+ *
+ * The resolver fused all four into ONE entity. Its representative district
+ * was "\u10d1\u10d8\u10dc\u10d0" -- the Georgian word for "apartment" -- and its price
+ * spread was 38%. The record described none of the four flats.
+ */
+const PRODUCTION_2026_09_25 = {
+  s1317856: obs({
+    id: 's1317856', adapterId: 'place-ge', externalId: '1317856',
+    canonicalUrl: 'https://place.ge/ge/ads/view/1317856',
+    city: '\u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8', district: '\u10e1\u10d0\u10d1\u10e3\u10e0\u10d7\u10d0\u10da\u10dd',
+    areaSqm: 89, rooms: 3, bedrooms: 2, floor: 3,
+    saleAmount: 145000, contentFingerprint: 'fp-1317856',
+  }),
+  s1317855: obs({
+    id: 's1317855', adapterId: 'place-ge', externalId: '1317855',
+    canonicalUrl: 'https://place.ge/ge/ads/view/1317855',
+    city: '\u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8', district: '\u10e1\u10d0\u10d1\u10e3\u10e0\u10d7\u10d0\u10da\u10dd',
+    areaSqm: 89, rooms: 3, bedrooms: 2, floor: 3,
+    saleAmount: 140000, contentFingerprint: 'fp-1317855',
+  }),
+  /* A different district: \u10e9\u10e3\u10e6\u10e3\u10e0\u10d4\u10d7\u10d8, Chughureti. */
+  s1317880: obs({
+    id: 's1317880', adapterId: 'place-ge', externalId: '1317880',
+    canonicalUrl: 'https://place.ge/ge/ads/view/1317880',
+    city: '\u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8', district: '\u10e9\u10e3\u10e6\u10e3\u10e0\u10d4\u10d7\u10d8',
+    areaSqm: 87, rooms: 3, bedrooms: 1, floor: null,
+    saleAmount: 140000, contentFingerprint: 'fp-1317880',
+  }),
+  /* The one whose title stated no district at all. */
+  s1317870: obs({
+    id: 's1317870', adapterId: 'place-ge', externalId: '1317870',
+    canonicalUrl: 'https://place.ge/ge/ads/view/1317870',
+    city: '\u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8', district: null,
+    areaSqm: 90, rooms: 3, bedrooms: 1, floor: null,
+    saleAmount: 90000, contentFingerprint: 'fp-1317870',
+  }),
+};
+
+test('two flats in different districts of one city are NOT one property', () => {
+  /*
+   * Saburtalo against Chughureti: a twenty-minute drive, 87 m2 against
+   * 89 m2, both asking $140,000. In production this reached
+   * LIKELY_SAME_ENTITY at 0.85 on area agreement, room count and "same
+   * city", with the districts contributing nothing at all.
+   */
+  const { s1317880, s1317855 } = PRODUCTION_2026_09_25;
+  const decision = resolve(s1317880, s1317855);
+
+  assert.equal(decision.verdict, 'DISTINCT');
+  assert.match(decision.reason, /district/i);
+  assert.ok(
+    decision.signals.some((s) => s.name === 'district conflict'),
+    'the districts disagreed and nothing said so',
+  );
+});
+
+test('being in the same city is not evidence, because every comparison shares it', () => {
+  /*
+   * resolveMarket compares within ONE city, so "same city" was true of every
+   * comparison the resolver has ever made -- and it was worth +0.1. A signal
+   * that cannot distinguish any pair from any other moved the whole
+   * population that much closer to a merge, and 0.1 is exactly what carried
+   * the pair below over LIKELY_THRESHOLD.
+   *
+   * It is still recorded, so a reader can see the cities were checked.
+   */
+  const { s1317870, s1317856 } = PRODUCTION_2026_09_25;
+  const decision = resolve(s1317870, s1317856);
+
+  const city = decision.signals.find((s) => s.name === 'same city');
+  assert.ok(city, 'the city agreement is no longer recorded at all');
+  assert.equal(city.weight, 0);
+
+  /*
+   * $90,000 against $145,000, one bedroom against two, one district stated
+   * and the other absent. Area and room count alone must not reach a merge.
+   */
+  assert.notEqual(decision.verdict, 'LIKELY_SAME_ENTITY');
+  assert.notEqual(decision.verdict, 'EXACT_DUPLICATE');
+});
+
+test('a stated bedroom disagreement counts against, and a studio still does not', () => {
+  const { s1317870, s1317855 } = PRODUCTION_2026_09_25;
+  const decision = resolve(s1317870, s1317855);
+  assert.ok(
+    decision.signals.some((s) => s.name === 'bedroom count' && s.weight < 0),
+    'one bedroom against two contributed nothing',
+  );
+
+  /*
+   * 0 against 1 is the case not to be confident about: some sites write a
+   * studio as 0 bedrooms and some as 1, so that difference must NOT be
+   * treated as a disagreement about the property.
+   */
+  const studioA = obs({ id: 'st-a', bedrooms: 0 });
+  const studioB = obs({ id: 'st-b', bedrooms: 1 });
+  assert.equal(
+    resolve(studioA, studioB).signals.some((s) => s.name === 'bedroom count'),
+    false,
+    'a studio written two ways was treated as a contradiction',
+  );
+});
+
+test('the genuine duplicate among the four still merges', () => {
+  /*
+   * THE OTHER HALF OF THE FIX, and the one that makes it a fix rather than a
+   * retreat. 1317855 and 1317856 really do look like one flat advertised
+   * twice: same district, same area, same room count, same floor, $140,000
+   * against $145,000.
+   *
+   * A change that stopped the false merges by refusing everything would have
+   * passed the three tests above and destroyed the feature.
+   */
+  const { s1317855, s1317856 } = PRODUCTION_2026_09_25;
+  const decision = resolve(s1317855, s1317856);
+
+  assert.equal(decision.verdict, 'LIKELY_SAME_ENTITY');
+  assert.ok(decision.confidence >= LIKELY_THRESHOLD, `confidence ${decision.confidence}`);
+  /* And the 5k gap is recorded as no evidence either way, not as a conflict. */
+  const price = decision.signals.find((s) => s.name === 'price differs');
+  assert.ok(price);
+  assert.equal(price.weight, 0);
+});
+
+test('the whole production set resolves to one pair and no others', () => {
+  /*
+   * The four listings, every pair compared, as resolveMarket would. Exactly
+   * one merge -- the two Saburtalo listings -- and nothing else may reach
+   * LIKELY. This is the test that would have caught the entity that fused
+   * four flats at a 38% price spread.
+   */
+  const all = Object.values(PRODUCTION_2026_09_25);
+  const merged = [];
+  for (let i = 0; i < all.length; i += 1) {
+    for (let j = i + 1; j < all.length; j += 1) {
+      const decision = resolve(all[i], all[j]);
+      if (mergesEntity(decision.verdict)) merged.push(`${all[i].externalId}+${all[j].externalId}`);
+    }
+  }
+  assert.deepEqual(merged, ['1317856+1317855']);
+});

@@ -230,6 +230,37 @@ export function resolve(
   }
 
   /*
+   * TWO STATED DISTRICTS IN ONE CITY ARE TWO PLACES.
+   *
+   * PRODUCTION, 2026-09-25. This rule did not exist, and four place.ge
+   * listings were fused into a single entity: two in Saburtalo, one in
+   * Chughureti, one with no district at all, at $90,000, $140,000, $140,000
+   * and $145,000. The record described none of them. Its representative
+   * district was "\u10d1\u10d8\u10dc\u10d0" -- the Georgian word for "apartment" -- and its
+   * price spread was 38%.
+   *
+   * A district was already worth +0.2 as AGREEMENT. Nothing read it as
+   * disagreement, so two flats a twenty-minute drive apart could reach
+   * LIKELY on area and room count alone.
+   *
+   * ONE CAVEAT, AND IT POINTS THE SAFE WAY. Sources name districts
+   * differently -- "Vake-Saburtalo" against "Saburtalo", Georgian against
+   * Latin -- so this will sometimes separate two observations of one
+   * property. That is the recoverable mistake: two entities a human can
+   * merge later, rather than one record that cannot be taken apart once the
+   * evidence justifying it has aged out.
+   */
+  if (conflicts(a.district, b.district)) {
+    say('district conflict', -1, `${a.district} vs ${b.district}`);
+    return {
+      verdict: 'DISTINCT',
+      confidence: 0.8,
+      signals,
+      reason: 'different districts of the same city',
+    };
+  }
+
+  /*
    * A ROOM COUNT IS NOT PHYSICS. Sources count a studio as 0, 1 and
    * "open-plan", and some count bedrooms where others count rooms. A
    * difference of one is noise; more than one is a real disagreement and
@@ -238,6 +269,29 @@ export function resolve(
   if (a.rooms !== null && b.rooms !== null && Math.abs(a.rooms - b.rooms) > 1) {
     say('room count', -0.4, `${a.rooms} vs ${b.rooms}`);
     score -= 0.4;
+  }
+
+  /*
+   * A BEDROOM COUNT IS FIRMER THAN A ROOM COUNT, and it was being ignored.
+   *
+   * The ambiguity that makes rooms weak -- is the living room a room? is a
+   * studio 0 or 1? -- mostly does not apply to bedrooms: a source that
+   * states two bedrooms and one that states one are describing different
+   * flats, or one of them is wrong. Either way it is not evidence FOR one
+   * property, and the false merge above had 1 against 2 with nothing
+   * subtracted.
+   *
+   * Still a push rather than a verdict. A studio is written as 0 bedrooms by
+   * some sites and 1 by others, so a difference of one between a 0 and a 1
+   * is exactly the case not to be confident about.
+   */
+  if (a.bedrooms !== null && b.bedrooms !== null && a.bedrooms !== b.bedrooms) {
+    const studioAmbiguity = Math.min(a.bedrooms, b.bedrooms) === 0
+      && Math.abs(a.bedrooms - b.bedrooms) === 1;
+    if (!studioAmbiguity) {
+      say('bedroom count', -0.4, `${a.bedrooms} vs ${b.bedrooms}`);
+      score -= 0.4;
+    }
   }
 
   /* ── agreements ────────────────────────────────────────────────────── */
@@ -250,8 +304,24 @@ export function resolve(
     say('same district', 0.2, String(a.district));
     score += 0.2;
   } else if (agrees(a.city, b.city)) {
-    say('same city', 0.1, String(a.city));
-    score += 0.1;
+    /*
+     * RECORDED AT ZERO, BECAUSE IT FIRES ON EVERY PAIR.
+     *
+     * resolveMarket compares observations WITHIN one city, so "same city"
+     * was true of every comparison this resolver has ever made -- and it was
+     * worth +0.1. A signal that cannot distinguish any pair from any other
+     * carries no information about either; it just moved the whole
+     * population 0.1 closer to a merge.
+     *
+     * That 0.1 is why two flats in different districts reached 0.70 exactly
+     * -- LIKELY_THRESHOLD -- on area and room count. Tbilisi has thousands
+     * of 90 m2 three-room flats. Being in Tbilisi is what made them
+     * comparable, not what makes them the same.
+     *
+     * Kept in the signal list rather than deleted: a reader of a decision
+     * should be able to see that the cities were checked and did agree.
+     */
+    say('same city', 0, `${a.city} — the market being compared, not evidence within it`);
   }
   if (a.rooms !== null && a.rooms === b.rooms) {
     say('same room count', 0.15, String(a.rooms));

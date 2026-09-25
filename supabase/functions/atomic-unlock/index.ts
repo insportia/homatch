@@ -185,7 +185,23 @@ serve(async (req) => {
       provider: 'OTHER',
       operation_type: 'MATCH_UNLOCK',
       units: 1,
-      cost_usd: 0, // Revenue tracked separately
+      /*
+       * An honest zero, and now labelled as one.
+       *
+       * An unlock spends the customer's credits; it buys nothing from a
+       * provider. The COGS of the match was recorded when the discovery and
+       * verification that produced it ran, and charging it again here would
+       * double-count it. So cost_usd = 0 is correct -- but until pricing_state
+       * existed it was indistinguishable from the zeros that meant "we never
+       * found out what this cost", and those are the ones margin has to
+       * exclude. ZERO_REAL says this one can be trusted.
+       *
+       * The revenue side of the same event lives in the ledger, which is the
+       * only place it belongs. Wallet, campaign budget, actual spend and
+       * provider COGS are four different numbers.
+       */
+      cost_usd: 0,
+      pricing_state: 'ZERO_REAL',
       success: true,
       cache_hit: false,
       property_id: match.property_id,

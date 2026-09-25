@@ -347,7 +347,16 @@ test('the recorder prices from the book, at the date the job completed', () => {
 test('bookkeeping can never cost a customer their report', () => {
   const src = agent();
   const i = src.indexOf('async function recordVerificationCost');
-  const fn = src.slice(i, i + 4500);
+  /*
+   * The WHOLE function, not its first 4500 characters.
+   *
+   * The catch is the last thing in it, so an arbitrary window tests the
+   * guarantee right up until somebody adds a comment — which is how this
+   * started reporting that a try/catch had been removed when a paragraph had
+   * been added. The recorder ends where sanitizeForCustomer begins, and that
+   * is a boundary the file actually has.
+   */
+  const fn = src.slice(i, src.indexOf('\nfunction sanitizeForCustomer', i));
   assert.match(fn, /try \{/);
   assert.match(fn, /catch \(e\)/);
   const iSave = src.indexOf("const finished = await sb.from('research_jobs').update({ status: 'COMPLETE'");
@@ -358,7 +367,8 @@ test('bookkeeping can never cost a customer their report', () => {
 test('a missing price book degrades to unpriced, it does not fail the job', () => {
   const src = agent();
   const i = src.indexOf('async function recordVerificationCost');
-  const fn = src.slice(i, i + 4500);
+  // Same real boundary as above, for the same reason.
+  const fn = src.slice(i, src.indexOf('\nfunction sanitizeForCustomer', i));
   assert.match(fn, /price book unavailable/, 'a price-book failure is silent');
   assert.ok(!/if \(priceError\) return/.test(fn), 'a price-book failure discards the usage too');
 });

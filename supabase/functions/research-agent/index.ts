@@ -10,6 +10,7 @@ import {
   assessFinancialEntityWait, beginWait, unavailableEntityResult,
   type WatchdogState,
 } from '../_shared/verifyWatchdog.ts';
+import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
 import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/intelligence/registryOverlay.ts';
 import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
@@ -4695,28 +4696,52 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
     if (!stages.length) return;
     const total = totalVerificationCost(stages);
 
-    const rows = stages.map((s) => ({
-      provider: 'OPENAI',
-      operation_type: costOperationFor(s.stage),
+    const rows = stages.map((s) => {
       /*
-       * Not customer-facing, and deliberately explicit about whether the
-       * dollars are real: a zero meaning "no rate for this" must never be
-       * read as a zero meaning "free". Anything unpriced is named, so the gap
-       * is actionable rather than merely visible.
+       * HOW MUCH THIS FIGURE IS WORTH, IN A COLUMN RATHER THAN A STRING.
+       *
+       * `source` has always named the gap -- unpriced=INPUT_TOKEN+... -- but
+       * nothing reads it, and every consumer of cost_events sums cost_usd. So
+       * a stage on a model the price book has not caught up with was recorded
+       * as $0.00 and counted as free; production has a row from 2026-09-19
+       * doing exactly that. pricing_state puts the same knowledge where a
+       * query can filter on it.
+       *
+       * consumedNothing, NOT cache_hit: a prompt cache makes a call cheaper,
+       * not free, and treating a mostly-cached verification as a real zero
+       * would delete most of the Verify cost base.
        */
-      source: [
-        `model=${s.model}`,
-        s.priced ? null : `unpriced=${s.unpricedUnits.join('+')}`,
-        s.webSearches ? `searches=${s.webSearches}` : null,
-      ].filter(Boolean).join(';'),
-      units: s.totalTokens,
-      cost_usd: s.costUsd,
-      success: true,
-      // Some of the prompt came back from the provider's cache. This is the
-      // number the reuse work has to move.
-      cache_hit: s.cachedInputTokens > 0,
-      job_id: job.id,
-    }));
+      const consumedNothing = s.totalTokens === 0 && s.webSearches === 0 && s.toolCalls === 0;
+      const { cost_usd, pricing_state } = pricingStateForDerivedCost({
+        costUsd: s.costUsd,
+        fullyPriced: s.priced,
+        consumedNothing,
+      });
+
+      return {
+        provider: 'OPENAI',
+        operation_type: costOperationFor(s.stage),
+        /*
+         * Not customer-facing. Kept alongside pricing_state because it names
+         * WHICH dimensions had no rate, which is what makes the gap
+         * actionable: pricing_state says a rate is missing, this says which
+         * row to add to provider_price_book.
+         */
+        source: [
+          `model=${s.model}`,
+          s.priced ? null : `unpriced=${s.unpricedUnits.join('+')}`,
+          s.webSearches ? `searches=${s.webSearches}` : null,
+        ].filter(Boolean).join(';'),
+        units: s.totalTokens,
+        cost_usd,
+        pricing_state,
+        success: true,
+        // Some of the prompt came back from the provider's cache. This is the
+        // number the reuse work has to move.
+        cache_hit: s.cachedInputTokens > 0,
+        job_id: job.id,
+      };
+    });
 
     const { error } = await db.from('cost_events').insert(rows);
     if (error) {

@@ -51,6 +51,11 @@ import { structuredQuality } from '../../../src/research-core/parse/listing.ts';
 import { detectLanguage } from '../../../src/research-core/normalize/language.ts';
 import { contentHash } from '../../../src/research-core/normalize/hash.ts';
 import {
+  deriveSearchBudget,
+  withinPriorityCeiling,
+  type SearchBudget,
+} from '../../../src/research-core/discovery/search-budget.ts';
+import {
   mergesEntity,
   priceRange,
   representative,
@@ -131,15 +136,75 @@ Deno.serve(async (req: Request) => {
      */
     const { data: sourceRows, error: sourceError } = await db
       .from('source_registry')
-      .select('id,name,url,adapter_id,lifecycle,active,quality_score')
+      .select('id,name,url,adapter_id,lifecycle,active,quality_score,priority_tier')
       .not('adapter_id', 'is', null)
       .eq('active', true)
       .in('lifecycle', ['LIVE_TESTED', 'PRODUCTIVE']);
     if (sourceError) throw sourceError;
 
+    /*
+     * WHAT THIS CUSTOMER HAS PAID TO HAVE SEARCHED.
+     *
+     * The registry says which sources CAN be read. It says nothing about how
+     * many of them one campaign is entitled to, and without that a free-plan
+     * campaign fans out across every source in the registry -- which is
+     * survivable at eight and is not at a hundred.
+     *
+     * The numbers are not invented here. product_plan_entitlements already
+     * carries priority_level per plan and product, and its 0/1/2 is the same
+     * axis as source_registry.priority_tier, so the ceiling is one
+     * comparison. billing_entitlements is the same RPC beginExecution reads,
+     * so a campaign's discovery and its bill cannot disagree about the plan.
+     *
+     * AN OPERATOR SWEEP HAS NO CEILING, and that is deliberate rather than an
+     * oversight: with no campaignId there is no customer, nobody is being
+     * billed, and the run is Homatch filling its own store. The bound there
+     * is limitPerSource, which is already applied.
+     */
+    let budget: SearchBudget | null = null;
+    let entitlementNote = 'operator sweep: no customer, no priority ceiling';
+    if (campaignId) {
+      const { data: owner } = await db
+        .from('matching_campaigns')
+        .select('property:properties!property_id(user_id)')
+        .eq('id', campaignId)
+        .maybeSingle();
+      const property = Array.isArray(owner?.property) ? owner?.property[0] : owner?.property;
+      const userId = property?.user_id ?? null;
+      if (userId) {
+        const { data: ent } = await db.rpc('billing_entitlements', { p_user_id: userId });
+        const product = (ent?.products ?? []).find((p: any) => p.product_code === 'FIND_CLIENTS');
+        budget = deriveSearchBudget(product
+          ? {
+            productCode: 'FIND_CLIENTS',
+            planCode: String(ent?.plan_code ?? 'FREE'),
+            qualityTier: product.quality_tier ?? null,
+            resultCeiling: product.result_ceiling ?? null,
+            providerBudgetCeilingCents: product.provider_budget_ceiling_cents ?? null,
+            priorityLevel: product.priority_level ?? null,
+          }
+          : null);
+        entitlementNote = budget.rationale;
+      } else {
+        /* A campaign whose owner cannot be resolved is not given the widest
+           envelope by default. The narrowest one is the safe failure. */
+        budget = deriveSearchBudget(null);
+        entitlementNote = `campaign owner unresolved; ${budget.rationale}`;
+      }
+    }
+
+    const tiered = (sourceRows ?? []).map((row: any) => ({
+      id: String(row.adapter_id),
+      priorityTier: row.priority_tier ?? null,
+      row: row as SourceRow,
+    }));
+    const gate = budget
+      ? withinPriorityCeiling(tiered, budget)
+      : { eligible: tiered, skipped: [] as Array<{ id: string; reason: string; detail: string }> };
+
     const permitted = new Map<string, SourceRow>();
-    for (const row of (sourceRows ?? []) as SourceRow[]) {
-      if (row.adapter_id) permitted.set(row.adapter_id, row);
+    for (const entry of gate.eligible) {
+      if (entry.row.adapter_id) permitted.set(entry.row.adapter_id, entry.row);
     }
     if (permitted.size === 0) {
       return json({
@@ -279,6 +344,20 @@ Deno.serve(async (req: Request) => {
         rationale: scope.rationale,
       },
       sourcesPermitted: permitted.size,
+      /*
+       * What the entitlement did, reported rather than implied. "Permitted 3"
+       * on its own cannot be told apart from "the registry only has 3", and
+       * the two call for opposite responses.
+       */
+      entitlement: {
+        applied: budget !== null,
+        rationale: entitlementNote,
+        sourcePriorityCeiling: budget?.sourcePriorityCeiling ?? null,
+        targetResults: budget?.targetResults ?? null,
+        sourcesConsidered: tiered.length,
+        sourcesOutsideEntitlement: gate.skipped.length,
+        skipped: gate.skipped.slice(0, 10),
+      },
       sourcesReached: reached,
       sourcesBlocked: blocked,
       observationsWritten: written.length,

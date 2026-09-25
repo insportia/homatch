@@ -12,6 +12,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   deriveSearchBudget,
@@ -222,6 +223,53 @@ test('1,000 mixed-entitlement searches stay inside their plans', () => {
   assert.ok(totalJobsAuthorised <= 1000 * 6,
     `fan-out ${totalJobsAuthorised} exceeds what any plan authorises`);
   assert.ok(totalJobsAuthorised < 8000, 'the registry size, not the plan, is bounding the search');
+});
+
+/* ── WIRED, not merely implemented ──────────────────────────────────────── */
+
+test('the supply sweep actually applies the entitlement ceiling', () => {
+  /*
+   * A budget module with passing unit tests and no caller is a budget nobody
+   * is subject to. Before this, supply-discovery selected EVERY source that
+   * was LIVE_TESTED and active, whatever the customer had paid for, and
+   * grant.priorityLevel was computed by beginExecution and then used
+   * nowhere at all.
+   *
+   * This asserts the call sites rather than the export, because the export
+   * existing is what was already true while the behaviour was missing.
+   */
+  const sweep = readFileSync('supabase/functions/supply-discovery/index.ts', 'utf8');
+  assert.match(sweep, /deriveSearchBudget/, 'the sweep never derives a budget');
+  assert.match(sweep, /withinPriorityCeiling\(tiered, budget\)/,
+    'the sweep never applies the ceiling to its source list');
+  // The tier has to be SELECTED before it can be compared.
+  assert.match(sweep, /select\('id,name,url,adapter_id,lifecycle,active,quality_score,priority_tier'\)/,
+    'priority_tier is compared but never read from the registry');
+  // And the plan comes from the same RPC the billing path uses.
+  assert.match(sweep, /billing_entitlements/,
+    'the sweep invents a plan instead of reading the one billing resolved');
+});
+
+test('an operator sweep is ungated and a campaign sweep is not', () => {
+  /*
+   * The distinction that keeps this honest in both directions. No campaign
+   * means no customer and no bill, so Homatch filling its own store is not
+   * throttled by an entitlement nobody holds. A campaign with an
+   * unresolvable owner gets the NARROWEST envelope rather than the widest,
+   * because a lookup that failed is not a licence.
+   */
+  const sweep = readFileSync('supabase/functions/supply-discovery/index.ts', 'utf8');
+  assert.match(sweep, /if \(campaignId\) \{/);
+  assert.match(sweep, /campaign owner unresolved/);
+  assert.match(sweep, /operator sweep: no customer, no priority ceiling/);
+});
+
+test('the sweep reports what the entitlement excluded', () => {
+  // "permitted 3" cannot be told from "the registry only has 3", and the two
+  // call for opposite responses.
+  const sweep = readFileSync('supabase/functions/supply-discovery/index.ts', 'utf8');
+  assert.match(sweep, /sourcesOutsideEntitlement: gate\.skipped\.length/);
+  assert.match(sweep, /sourcesConsidered: tiered\.length/);
 });
 
 test('overlapping searches on the same plan authorise identical envelopes', () => {

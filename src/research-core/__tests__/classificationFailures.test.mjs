@@ -70,16 +70,62 @@ test('the three causes are recorded separately', () => {
    * rather than for one exact spelling of it.
    */
   const kindWrites = [...CODE.matchAll(/classification_error_kind:([^,}]+)/g)].map((m) => m[1]).join(' | ');
-  for (const kind of ['BATCH_FAILED', 'MODEL_OMITTED', 'WRITE_FAILED', 'ATTEMPTS_EXHAUSTED']) {
+  for (const kind of ['BATCH_FAILED', 'WRITE_FAILED', 'ATTEMPTS_EXHAUSTED']) {
     assert.ok(kindWrites.includes(kind), `${kind} is never recorded (writes: ${kindWrites})`);
   }
 });
 
+test('an omission is named, but it is not an error', () => {
+  /*
+   * MODEL_OMITTED used to be the fourth error kind, and that was wrong in
+   * both directions.
+   *
+   * It buried recoverable failures: a truncated or unparseable response tells
+   * us nothing about any id in the batch, and it was written to every id as a
+   * terminal ERROR that the selector -- which takes only PENDING -- would
+   * never look at again.
+   *
+   * And it called a judgement a fault. This prompt asks for one verdict per
+   * id and says that where it is unclear whether the author is seeking or
+   * offering, the answer is UNKNOWN and never BUY/RENT, so an id the model
+   * left out of a batch it otherwise answered cannot be a demand verdict.
+   *
+   * Production, 2026-09-25: 44 signals sent, 5 verdicts returned, 39 rows
+   * terminally dead on roughly 480 completion tokens -- nowhere near a token
+   * limit, so nothing had been truncated and nothing was retried.
+   *
+   * The cause still has its own name. It is simply no longer an error.
+   */
+  assert.match(CODE, /reason:'model_omitted_from_batch'/);
+  // Countable in the response, so a batch the model half-answers is visible.
+  assert.match(CODE, /modelOmitted/);
+  // And it is never written as an ERROR row.
+  const omissionWrite = CODE.slice(CODE.indexOf("reason:'model_omitted_from_batch'") - 400,
+    CODE.indexOf("reason:'model_omitted_from_batch'"));
+  assert.match(omissionWrite, /classification_status:'FILTERED_OUT'/);
+});
+
+test('a batch that told us nothing is retried rather than buried', () => {
+  /*
+   * The half this previously lost. Truncation and unparseable JSON are the
+   * two cases where no id in the batch learned anything, so they belong in
+   * the existing catch -- which returns the chunk to PENDING until the
+   * attempt budget runs out -- and not on the per-id path.
+   */
+  assert.match(CODE, /finish_reason/);
+  assert.match(CODE, /finishReason==='length'/);
+  assert.match(CODE, /throw new Error\(finishReason==='length'\?/);
+});
+
 test('every error path records which attempt it was', () => {
-  // Otherwise a MODEL_OMITTED signal sits at attempt 0 forever and is
-  // reselected on every run.
+  /*
+   * Otherwise a failing signal sits at attempt 0 forever and is reselected on
+   * every run. This used to require two such writes; the omission path is no
+   * longer one of them, so it requires that every remaining one carries the
+   * counter rather than that a particular number of them exist.
+   */
   const writes = [...CODE.matchAll(/classification_status:'ERROR'[^}]*}/g)].map((m) => m[0]);
-  assert.ok(writes.length >= 2, 'the error writes could not be found');
+  assert.ok(writes.length >= 1, 'the error writes could not be found');
   for (const write of writes) {
     assert.match(write, /classification_attempts/, `an error write leaves the counter alone: ${write.slice(0, 80)}`);
   }

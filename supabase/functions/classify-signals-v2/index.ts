@@ -71,7 +71,7 @@ Deno.serve(async(req:Request)=>{
   const {data:signals,error}=await db.from('raw_signals').select(`id,original_text,language,platform,classification_attempts,research_direction,author_is_agency,source:source_registry!source_id(country_code,language)`).eq('classification_status','PENDING').lt('classification_attempts',MAX_ATTEMPTS).order('classification_attempts',{ascending:true}).order('discovered_at',{ascending:true}).limit(Math.min(500,batchSize));
   if(error)throw error;if(!signals?.length)return json({success:true,processed:0,classified:0,filteredOut:0,deterministicFiltered:0,errors:0});
   const key=Deno.env.get('OPENAI_API_KEY')!;if(!key)return json({error:'OPENAI_API_KEY missing'},500);
-  let retried=0;let classified=0,filteredOut=0,deterministicFiltered=0,errors=0,totalCostUsd=0;
+  let retried=0;let classified=0,filteredOut=0,deterministicFiltered=0,errors=0,totalCostUsd=0,modelOmitted=0;
   const aiSignals:any[]=[];
   /*
    * THE DETERMINISTIC VERDICT IS ALREADY ON THE ROW. USE IT.
@@ -119,11 +119,34 @@ Deno.serve(async(req:Request)=>{
     const input=chunk.map((s:any)=>({id:s.id,text:String(s.original_text||'').slice(0,2500),language:s.language||null,platform:s.platform}));
     const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},messages:[{role:'system',content:prompt},{role:'user',content:JSON.stringify(input)}]})});
     if(!r.ok)throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0,300)}`);const raw=await r.json();const u=raw.usage||{};totalCostUsd+=(Number(u.prompt_tokens||0)*0.15+Number(u.completion_tokens||0)*0.6)/1_000_000;
-    let parsed:any={};try{parsed=JSON.parse(raw.choices?.[0]?.message?.content||'{}')}catch{}const byId=new Map((parsed.results||[]).map((x:any)=>[x.id,x]));
-    for(const s of chunk){const x:any=byId.get(s.id);if(!x){await db.from('raw_signals').update({classification_status:'ERROR',classification_error_kind:'MODEL_OMITTED',classification_attempts:(s as any).classification_attempts+1,classification_last_error:'the batch returned no verdict for this id'}).eq('id',s.id);errors++;continue}const isDemand=DEMAND.has(String(x.intentType||'').toUpperCase())&&Number(x.intentConfidence||0)>=0.35;if(!isDemand){await db.from('intent_profiles').delete().eq('signal_id',s.id);await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:x.intentType||null,intent_json:x}).eq('id',s.id);filteredOut++;continue}const source=Array.isArray(s.source)?s.source[0]:s.source;await db.from('intent_profiles').delete().eq('signal_id',s.id);const {error:ins}=await db.from('intent_profiles').insert({signal_id:s.id,intent_type:x.intentType,country:x.country||source?.country_code||market,region:x.region||null,city:x.city||null,district:x.district||null,neighborhoods:x.neighborhoods||null,transaction_type:x.transactionType||null,property_types:x.propertyTypes||null,bedrooms_min:x.bedroomsMin||null,bedrooms_max:x.bedroomsMax||null,area_min:x.areaMin||null,area_max:x.areaMax||null,budget_min:x.budgetMin||null,budget_max:x.budgetMax||null,currency:x.currency||null,timeline:x.timeline||null,relocation_intent:!!x.relocationIntent,investment_intent:!!x.investmentIntent,language:x.language||s.language||source?.language||null,intent_confidence:Number(x.intentConfidence||0),specificity_score:Number(x.specificityScore||0),actionability_score:Number(x.actionabilityScore||0),original_text:s.original_text,translated_text:x.translatedText||null,ai_model:'gpt-4o-mini',ai_cost_usd:Math.max(0.00001,totalCostUsd/Math.max(1,aiSignals.length))});if(ins){await db.from('raw_signals').update({classification_status:'ERROR',classification_error_kind:'WRITE_FAILED',classification_attempts:(s as any).classification_attempts+1,classification_last_error:String(ins.message||ins).slice(0,300)}).eq('id',s.id);errors++;}else{await db.from('raw_signals').update({classification_status:'CLASSIFIED',intent_type:x.intentType,intent_json:x}).eq('id',s.id);classified++;}}
+    /*
+     * TWO DIFFERENT SILENCES, WHICH USED TO BE ONE.
+     *
+     * A batch that came back truncated or unparseable tells us NOTHING about
+     * any id in it. A batch that parsed cleanly and returned verdicts for
+     * some ids but not others has told us something about the ones it left
+     * out: this prompt asks for one verdict per id and says that when it is
+     * unclear whether the author is seeking or offering, the answer is
+     * UNKNOWN and never BUY/RENT. So an omission cannot be a demand verdict.
+     *
+     * Both were recorded as ERROR/MODEL_OMITTED, which is terminal -- the
+     * selector only takes PENDING -- so the rows were stranded, and the
+     * truncation case was never retried even though it was recoverable.
+     * Production, 2026-09-25: 44 signals sent, 5 verdicts returned, 39 rows
+     * dead with ~480 completion tokens spent, i.e. no truncation at all.
+     *
+     * Truncation now throws into the existing retry path. A clean omission is
+     * recorded as FILTERED_OUT under its own reason, never merged with a
+     * verdict the model actually gave, so it stays countable and auditable.
+     */
+    const finishReason=String(raw.choices?.[0]?.finish_reason||'');
+    let parsed:any=null;try{parsed=JSON.parse(raw.choices?.[0]?.message?.content||'')}catch{parsed=null}
+    if(parsed===null||finishReason==='length')throw new Error(finishReason==='length'?'the batch response was truncated at the token limit':'the batch response was not parseable JSON');
+    const byId=new Map((parsed.results||[]).map((x:any)=>[x.id,x]));
+    for(const s of chunk){const x:any=byId.get(s.id);if(!x){await db.from('intent_profiles').delete().eq('signal_id',s.id);await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:null,intent_json:{intentType:null,reason:'model_omitted_from_batch',detail:'the batch parsed and returned verdicts for other ids in it, and none for this one',verdictsReturned:byId.size,idsSent:chunk.length}}).eq('id',s.id);modelOmitted++;filteredOut++;continue}const isDemand=DEMAND.has(String(x.intentType||'').toUpperCase())&&Number(x.intentConfidence||0)>=0.35;if(!isDemand){await db.from('intent_profiles').delete().eq('signal_id',s.id);await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:x.intentType||null,intent_json:x}).eq('id',s.id);filteredOut++;continue}const source=Array.isArray(s.source)?s.source[0]:s.source;await db.from('intent_profiles').delete().eq('signal_id',s.id);const {error:ins}=await db.from('intent_profiles').insert({signal_id:s.id,intent_type:x.intentType,country:x.country||source?.country_code||market,region:x.region||null,city:x.city||null,district:x.district||null,neighborhoods:x.neighborhoods||null,transaction_type:x.transactionType||null,property_types:x.propertyTypes||null,bedrooms_min:x.bedroomsMin||null,bedrooms_max:x.bedroomsMax||null,area_min:x.areaMin||null,area_max:x.areaMax||null,budget_min:x.budgetMin||null,budget_max:x.budgetMax||null,currency:x.currency||null,timeline:x.timeline||null,relocation_intent:!!x.relocationIntent,investment_intent:!!x.investmentIntent,language:x.language||s.language||source?.language||null,intent_confidence:Number(x.intentConfidence||0),specificity_score:Number(x.specificityScore||0),actionability_score:Number(x.actionabilityScore||0),original_text:s.original_text,translated_text:x.translatedText||null,ai_model:'gpt-4o-mini',ai_cost_usd:Math.max(0.00001,totalCostUsd/Math.max(1,aiSignals.length))});if(ins){await db.from('raw_signals').update({classification_status:'ERROR',classification_error_kind:'WRITE_FAILED',classification_attempts:(s as any).classification_attempts+1,classification_last_error:String(ins.message||ins).slice(0,300)}).eq('id',s.id);errors++;}else{await db.from('raw_signals').update({classification_status:'CLASSIFIED',intent_type:x.intentType,intent_json:x}).eq('id',s.id);classified++;}}
   }catch(e){console.error('classification chunk',e);const why=String((e as any)?.message||e).slice(0,300);for(const s of chunk){const tried=((s as any).classification_attempts||0)+1;const exhausted=tried>=MAX_ATTEMPTS;await db.from('raw_signals').update({classification_status:exhausted?'ERROR':'PENDING',classification_error_kind:exhausted?'ATTEMPTS_EXHAUSTED':'BATCH_FAILED',classification_attempts:tried,classification_last_error:why}).eq('id',s.id);if(exhausted)errors++;else retried++;}}}
   if(totalCostUsd>0)await db.from('cost_events').insert({provider:'OPENAI',operation_type:'CLASSIFY_SIGNALS_V2',market,units:aiSignals.length,cost_usd:totalCostUsd,success:errors<Math.max(1,aiSignals.length),cache_hit:false});
-  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,errors,retried,totalCostUsd});
+  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,modelOmitted,errors,retried,totalCostUsd});
  }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
 });
 

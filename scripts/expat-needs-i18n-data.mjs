@@ -245,7 +245,7 @@ export const EXPAT_NEEDS_STRINGS = {
   ],
   expat_step_check_property_b: [
     'Do this before any money moves. Verify reads the public record and tells you what it found, what it could not check, and what is unclear.',
-    'გააკეთეთ ეს ნებისმიერი თანხის გადახდამდე. Verify კითხულობს საჯარო რეესტრს და გეუბნებათ, რა იპოვა, რისი შემოწმება ვერ შეძლო და რა არის გაურკვეველი.',
+    'გააკეთეთ ეს ნებისმიერი თანხის გადახდამდე. გადამოწმება კითხულობს საჯარო რეესტრს და გეუბნებათ, რა იპოვა, რისი შემოწმება ვერ შეძლო და რა არის გაურკვეველი.',
     'Сделайте это до любых платежей. Verify читает публичный реестр и сообщает, что найдено, что проверить не удалось и что осталось неясным.',
     'Bunu herhangi bir ödemeden önce yapın. Verify kamu kaydını okur ve neyi bulduğunu, neyi kontrol edemediğini ve neyin belirsiz kaldığını söyler.',
     'افعل ذلك قبل تحويل أي مبلغ. يقرأ Verify السجل العام ويخبرك بما وجده، وما تعذّر التحقّق منه، وما بقي غامضًا.',

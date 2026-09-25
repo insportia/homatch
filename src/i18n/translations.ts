@@ -8997,6 +8997,11 @@ const en = {
   expat_step_professional_t: 'Find a professional',
   expat_step_professional_b: 'Some steps need a person: a lawyer, a notary, or a broker who knows the area. Homatch lists brokers who work here and can look for others.',
   expat_tool_budget: 'See what a budget reaches',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  range_from: 'from {{value}}',
+  range_up_to: 'up to {{value}}',
+  range_unknown: 'Not stated',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17892,7 +17897,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   expat_step_find_property_t: 'იპოვეთ შესაფერისი ქონება',
   expat_step_find_property_b: 'ერთხელ უთხარით Homatch-ს რა გჭირდებათ. ის ერთდროულად ეძებს Homatch-ის განცხადებებსა და ღია ბაზარს, ყველა საიტის ცალ-ცალკე გახსნის ნაცვლად.',
   expat_step_check_property_t: 'შეამოწმეთ ქონება და მისი მესაკუთრე',
-  expat_step_check_property_b: 'გააკეთეთ ეს ნებისმიერი თანხის გადახდამდე. Verify კითხულობს საჯარო რეესტრს და გეუბნებათ, რა იპოვა, რისი შემოწმება ვერ შეძლო და რა არის გაურკვეველი.',
+  expat_step_check_property_b: 'გააკეთეთ ეს ნებისმიერი თანხის გადახდამდე. გადამოწმება კითხულობს საჯარო რეესტრს და გეუბნებათ, რა იპოვა, რისი შემოწმება ვერ შეძლო და რა არის გაურკვეველი.',
   expat_step_agreement_t: 'გაიგეთ, რას აწერთ ხელს',
   expat_step_agreement_b: 'ატვირთეთ ხელშეკრულება და Homatch აგიხსნით თქვენს ენაზე: რას ჰპირდება თითოეული მხარე, რა ვადებია და რომელი პუნქტებია უჩვეულო.',
   expat_step_money_t: 'მოამზადეთ თანხა',
@@ -17912,6 +17917,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   expat_step_professional_t: 'იპოვეთ პროფესიონალი',
   expat_step_professional_b: 'ზოგი ნაბიჯი ადამიანს საჭიროებს: იურისტს, ნოტარიუსს ან ბროკერს, რომელმაც უბანი იცის. Homatch აჩვენებს აქ მომუშავე ბროკერებს და სხვების მოძებნაც შეუძლია.',
   expat_tool_budget: 'ნახეთ, რას სწვდება ბიუჯეტი',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  range_from: '{{value}}-დან',
+  range_up_to: '{{value}}-მდე',
+  range_unknown: 'არ არის მითითებული',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26818,6 +26828,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   expat_step_professional_t: 'Найдите специалиста',
   expat_step_professional_b: 'Некоторые шаги требуют человека: юриста, нотариуса или брокера, знающего район. Homatch показывает работающих здесь брокеров и может искать других.',
   expat_tool_budget: 'Посмотреть, на что хватит бюджета',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  range_from: 'от {{value}}',
+  range_up_to: 'до {{value}}',
+  range_unknown: 'Не указано',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35722,6 +35737,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   expat_step_professional_t: 'Bir profesyonel bulun',
   expat_step_professional_b: 'Bazı adımlar insan ister: avukat, noter veya bölgeyi bilen bir emlakçı. Homatch burada çalışan emlakçıları listeler ve başkalarını da arayabilir.',
   expat_tool_budget: 'Bütçe neye yetiyor',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  range_from: '{{value}} ve üzeri',
+  range_up_to: '{{value}} kadar',
+  range_unknown: 'Belirtilmemiş',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44626,6 +44646,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   expat_step_professional_t: 'اعثر على مختص',
   expat_step_professional_b: 'بعض الخطوات تحتاج إلى شخص: محامٍ أو كاتب عدل أو وسيط يعرف المنطقة. يعرض Homatch وسطاء يعملون هنا ويمكنه البحث عن غيرهم.',
   expat_tool_budget: 'انظر إلى ما تصل إليه الميزانية',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  range_from: 'من {{value}}',
+  range_up_to: 'حتى {{value}}',
+  range_unknown: 'غير محدّد',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -53530,6 +53555,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   expat_step_professional_t: 'למצוא איש מקצוע',
   expat_step_professional_b: 'חלק מהשלבים דורשים אדם: עורך דין, נוטריון, או מתווך שמכיר את האזור. Homatch מציג מתווכים שעובדים כאן ויכול לחפש אחרים.',
   expat_tool_budget: 'לראות למה התקציב מגיע',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  range_from: 'מ-{{value}}',
+  range_up_to: 'עד {{value}}',
+  range_unknown: 'לא צוין',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

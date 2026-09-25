@@ -25,32 +25,37 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { ProfileStrip } from '@/components/expats/ProfileStrip';
 import { PlanBoard } from '@/components/expats/PlanBoard';
+import { ProfileStrip } from '@/components/expats/ProfileStrip';
 import { ReminderSettings } from '@/components/expats/ReminderSettings';
 import { WhatChanged } from '@/components/expats/WhatChanged';
+import { HeaderSpacer, PublicHeader } from '@/components/home/PublicHeader';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { roadmapFor } from '@/expats/plan/roadmap';
-import { progress } from '@/expats/plan/tasks';
 import type { PlanTask } from '@/expats/plan/tasks';
+import { progress } from '@/expats/plan/tasks';
 import { EMPTY_PROFILE, type ExpatProfile } from '@/expats/types';
 import {
+  type ExpatUpdate,
   getProfile,
   getReminderPreferences,
   getTasks,
   getUpdates,
+  type ReminderPreferenceRow,
   saveProfile,
   writePlan,
-  type ExpatUpdate,
-  type ReminderPreferenceRow,
 } from '@/services/expats';
-import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
 import { usePublicNavLinks } from '@/site/publicNav';
-import { SiteFooter } from '@/components/home/sections/SiteFooter';
 
 export default function ExpatPlanPage() {
   const { t } = useLanguage();
+  /* At the top, never after an early return: this component returns a
+     redirect and two placeholder states above, and a hook called past one
+     of them changes the hook order between renders. */
+  const headerLinks = usePublicNavLinks();
+
   const { homatchUser, status } = useAuth();
 
   const [profile, setProfile] = React.useState<ExpatProfile>(EMPTY_PROFILE);
@@ -148,7 +153,6 @@ export default function ExpatPlanPage() {
   const stats = progress(tasks);
   const planKeys = tasks.map((task) => task.templateKey);
 
-  const headerLinks = usePublicNavLinks();
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">

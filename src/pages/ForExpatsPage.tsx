@@ -20,39 +20,39 @@
 // has never heard of Homatch. The account is offered where it adds
 // something — a plan that remembers — and nowhere else.
 
+import { ArrowRight, CircleDollarSign, FileSignature, Search, ShieldCheck, TrendingUp } from 'lucide-react';
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, FileSignature, ShieldCheck, TrendingUp, CircleDollarSign, Search } from 'lucide-react';
+import LocalSectionNav from '@/components/common/LocalSectionNav';
 import PageMeta from '@/components/common/PageMeta';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { ExpatHero } from '@/components/expats/ExpatHero';
 import { CostOfLiving } from '@/components/expats/CostOfLiving';
-import { WhatCanIBuy } from '@/components/expats/WhatCanIBuy';
-import { GeorgiaAtAGlance } from '@/components/expats/GeorgiaAtAGlance';
-import { TopicIndex } from '@/components/expats/TopicIndex';
-import { RentalCommunities } from '@/components/expats/RentalCommunities';
-import { WhatChanged } from '@/components/expats/WhatChanged';
+import { ExpatHero } from '@/components/expats/ExpatHero';
 import { ExpatSeo } from '@/components/expats/ExpatSeo';
-import { EXPAT_CITIES, cityName } from '@/expats/geography';
-import { EMPTY_PROFILE } from '@/expats/types';
+import { GeorgiaAtAGlance } from '@/components/expats/GeorgiaAtAGlance';
+import { RentalCommunities } from '@/components/expats/RentalCommunities';
+import { TopicIndex } from '@/components/expats/TopicIndex';
+import { WhatCanIBuy } from '@/components/expats/WhatCanIBuy';
+import { WhatChanged } from '@/components/expats/WhatChanged';
+import WhatDoYouNeed from '@/components/expats/WhatDoYouNeed';
+import { HeaderSpacer, PublicHeader } from '@/components/home/PublicHeader';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { cityName, EXPAT_CITIES } from '@/expats/geography';
 import type { LocatedSnapshot } from '@/expats/marketContext';
+import { EMPTY_PROFILE } from '@/expats/types';
 import {
+  type CostObservationRow,
+  type ExpatTopic,
+  type ExpatUpdate,
   getCostObservations,
   getMarketReadings,
   getRentalCommunities,
   getUpdates,
   listTopics,
-  type CostObservationRow,
-  type ExpatTopic,
-  type ExpatUpdate,
   type RentalCommunity,
 } from '@/services/expats';
-import WhatDoYouNeed from '@/components/expats/WhatDoYouNeed';
-import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
 import { usePublicNavLinks } from '@/site/publicNav';
-import { SiteFooter } from '@/components/home/sections/SiteFooter';
-import LocalSectionNav from '@/components/common/LocalSectionNav';
 
 export default function ForExpatsPage() {
   const { t, lang } = useLanguage();

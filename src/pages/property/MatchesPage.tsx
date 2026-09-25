@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { rangeShape, formatRange } from '@/lib/rangeSemantics';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { Button } from '@/components/ui/button';
@@ -73,6 +74,33 @@ function StrengthBars({ strength }: { strength: keyof typeof STRENGTH_CONFIG }) 
   );
 }
 
+/**
+ * A budget, said honestly.
+ *
+ * The old line coerced both bounds with `?? 0` and joined them with a dash,
+ * so a buyer who gave a floor and no ceiling was rendered as USD60,000-0 --
+ * a range running downwards to nothing. rangeShape() decides what the two
+ * bounds actually describe and this supplies the currency and the words.
+ */
+function useMoney() {
+  const { t } = useLanguage();
+  return (
+    min: number | null | undefined,
+    max: number | null | undefined,
+    currency?: string | null,
+  ) => {
+    const unit = currency ?? '$';
+    return formatRange(
+      rangeShape(min, max),
+      (n) => `${unit}${n.toLocaleString()}`,
+      {
+        from: (v) => t('range_from', { value: v }),
+        upTo: (v) => t('range_up_to', { value: v }),
+        unknown: () => t('range_unknown'),
+      },
+    );
+  };
+}
 function LockedMatchCard({
   match,
   onUnlock,
@@ -89,11 +117,14 @@ function LockedMatchCard({
   onRequestViewing: (m: Match) => void;
 }) {
   const { t } = useLanguage();
+  const money = useMoney();
   const cfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
   const platformIcon = PLATFORM_ICONS[match.preview_platform ?? 'OTHER'] ?? '·';
   const budgetStr =
-    match.preview_budget_min || match.preview_budget_max
-      ? `${match.preview_currency ?? '$'}${Number(match.preview_budget_min ?? 0).toLocaleString()}–${Number(match.preview_budget_max ?? 0).toLocaleString()}`
+    /* An absent bound is not zero: see src/lib/rangeSemantics.ts. This
+       rendered USD60,000–0 for a buyer who stated no ceiling. */
+    rangeShape(match.preview_budget_min, match.preview_budget_max).kind !== 'unknown'
+      ? money(match.preview_budget_min, match.preview_budget_max, match.preview_currency)
       : null;
 
   return (
@@ -260,6 +291,7 @@ function UnlockedMatchDialog({
   onClose: () => void;
 }) {
   const { t } = useLanguage();
+  const money = useMoney();
   const cfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
 
   return (
@@ -306,8 +338,8 @@ function UnlockedMatchDialog({
                   [t('matches_district_label'), unlock.full_intent_json.district],
                   [t('matches_transaction_label'), unlock.full_intent_json.transaction_type],
                   [t('matches_types_label'), unlock.full_intent_json.property_types?.join(', ')],
-                  [t('matches_budget'), unlock.full_intent_json.budget_min || unlock.full_intent_json.budget_max
-                    ? `${unlock.full_intent_json.currency ?? '$'}${Number(unlock.full_intent_json.budget_min ?? 0).toLocaleString()}–${Number(unlock.full_intent_json.budget_max ?? 0).toLocaleString()}`
+                  [t('matches_budget'), rangeShape(unlock.full_intent_json.budget_min, unlock.full_intent_json.budget_max).kind !== 'unknown'
+                    ? money(unlock.full_intent_json.budget_min, unlock.full_intent_json.budget_max, unlock.full_intent_json.currency)
                     : null],
                   [t('matches_bedrooms'), unlock.full_intent_json.bedrooms_min != null
                     ? `${unlock.full_intent_json.bedrooms_min}+`
@@ -376,6 +408,7 @@ function UnlockedMatchDialog({
 function MatchesContent() {
   const { homatchUser } = useAuth();
   const { t } = useLanguage();
+  const money = useMoney();
   const { id: propertyId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -520,8 +553,8 @@ function MatchesContent() {
     const strengthCfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
     const strengthLabel = t(strengthCfg.labelKey);
     const cityPart = match.preview_city ? t('matches_ai_prompt_in_city', { city: match.preview_city }) : '';
-    const budgetPart = match.preview_budget_min || match.preview_budget_max
-      ? t('matches_ai_prompt_with_budget', { budget: `${match.preview_currency ?? '$'}${Number(match.preview_budget_min ?? 0).toLocaleString()}–${Number(match.preview_budget_max ?? 0).toLocaleString()}` })
+    const budgetPart = rangeShape(match.preview_budget_min, match.preview_budget_max).kind !== 'unknown'
+      ? t('matches_ai_prompt_with_budget', { budget: money(match.preview_budget_min, match.preview_budget_max, match.preview_currency) })
       : '';
     const platformPart = match.preview_platform ? t('matches_ai_prompt_from_platform', { platform: match.preview_platform }) : '';
     navigate('/ai', {

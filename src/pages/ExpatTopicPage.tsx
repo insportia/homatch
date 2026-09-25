@@ -20,24 +20,24 @@
 // be told that is what happened, not left wondering whether the interface
 // broke. One line, at the top, and then the English.
 
-import React from 'react';
-import { useParams, Link, Navigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
+import React from 'react';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { ExpatSeo, ExpatBreadcrumbs, type Crumb } from '@/components/expats/ExpatSeo';
+import { type Crumb, ExpatBreadcrumbs, ExpatSeo } from '@/components/expats/ExpatSeo';
 import { SourcedFact } from '@/components/expats/Provenance';
+import { HeaderSpacer, PublicHeader } from '@/components/home/PublicHeader';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { judgeFreshness } from '@/expats/types';
 import {
+  type ExpatTopic,
   getTopic,
   getTopicFacts,
   localiseTopic,
-  type ExpatTopic,
   type TopicFact,
 } from '@/services/expats';
-import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
 import { usePublicNavLinks } from '@/site/publicNav';
-import { SiteFooter } from '@/components/home/sections/SiteFooter';
 
 /** The handoffs a topic can carry, by the domain it belongs to. */
 const DOMAIN_HANDOFF: Record<string, { to: string; key: string }[]> = {
@@ -54,6 +54,11 @@ const DOMAIN_HANDOFF: Record<string, { to: string; key: string }[]> = {
 export default function ExpatTopicPage() {
   const { slug } = useParams<{ slug: string }>();
   const { t, lang } = useLanguage();
+  /* At the top, never after an early return: this component returns a
+     redirect and two placeholder states above, and a hook called past one
+     of them changes the hook order between renders. */
+  const headerLinks = usePublicNavLinks();
+
 
   const [topic, setTopic] = React.useState<ExpatTopic | null>(null);
   const [facts, setFacts] = React.useState<TopicFact[]>([]);
@@ -122,7 +127,6 @@ export default function ExpatTopicPage() {
   const freshness = judgeFreshness(topic.lastVerifiedAt, topic.factClass);
   const handoffs = DOMAIN_HANDOFF[topic.domain] ?? [];
 
-  const headerLinks = usePublicNavLinks();
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">

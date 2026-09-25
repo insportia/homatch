@@ -125,3 +125,8 @@ verify_jwt = false
 # authenticates on supply_discovery_token in admin_settings.
 [functions.supply-discovery]
 verify_jwt = false
+
+# Demand discovery. Same shape as supply-discovery: no customer, no user JWT,
+# authenticates on demand_discovery_token in admin_settings.
+[functions.demand-discovery]
+verify_jwt = false

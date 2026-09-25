@@ -804,6 +804,14 @@ jobs:
             # the worker topology, never by a browser, and authenticated on
             # a private token like every other tick here.
             "supply-discovery"
+            # Demand discovery. The other half of the market, and the
+            # first live source of it since the providers were retired:
+            # it reads a forum board whose robots.txt states a
+            # crawl-delay, over the SAME createPortalRuntime() the
+            # supply path uses, and writes PublicSignals into
+            # raw_signals. Worker-driven, never a browser, authenticated
+            # on a private token like every other tick here.
+            "demand-discovery"
             # ── Communications: the three that are NOT called by a browser ──
             #
             # These MUST be here rather than in the JWT list, and the

@@ -348,6 +348,21 @@ test('the core is consumed only through its deliberate integration points', () =
      * the seam has stopped being a seam.
      */
     'supabase/functions/supply-discovery/index.ts',
+    /*
+     * DEMAND DISCOVERY — the supply seam's opposite number.
+     *
+     * It builds the same createPortalRuntime() and asks a forum reader for
+     * posts instead of asking an adapter for listings. There is ONE fetch
+     * path in this system, and a second one built for demand would be a
+     * second place to get robots, rate limits and the SSRF allowlist wrong.
+     *
+     * Same rule as every other seam: it assembles the door and walks
+     * through it. No post delimiter, no author pattern, no direction
+     * lexicon, no boilerplate rule appears in this file -- those live in
+     * adapters/forum and signals/direction, where they can be tested
+     * without a network.
+     */
+    'supabase/functions/demand-discovery/index.ts',
   ]);
 
   const roots = ['src', 'supabase/functions', 'official-worker/src'];

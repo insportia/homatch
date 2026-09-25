@@ -1186,8 +1186,24 @@ export async function getAdminOutreachOverview(limit = 50): Promise<AdminOutreac
 }
 
 export async function getAdminSources(limit = 100, offset = 0) {
+  /*
+   * IMPORTANCE FIRST, THEN OBSERVED QUALITY.
+   *
+   * This ordered by quality_score alone, which is a LEARNED number about how
+   * well a source parses — so a tidy little agency site with three listings
+   * outranked ss.ge, and an operator scrolling this page could not tell
+   * which sources the business actually depends on.
+   *
+   * priority_tier is the business judgement (0 = P0 critical .. 3 =
+   * experimental) and quality_score is the measurement. Sorting by the
+   * judgement first and the measurement within it puts the sources that
+   * matter at the top, which is the whole point of having tiered them.
+   * Untiered sources sort last: nobody has decided they are worth a
+   * customer's budget.
+   */
   const { data } = await supabase.from('source_registry')
     .select('*')
+    .order('priority_tier', { ascending: true, nullsFirst: false })
     .order('quality_score', { ascending: false })
     .range(offset, offset + limit - 1);
   return data ?? [];
@@ -1209,6 +1225,15 @@ export interface SourceConcentrationRow {
   source_family: string | null;
   lifecycle: string | null;
   active: boolean | null;
+  /**
+   * Business importance, 0 = P0 critical .. 3 = experimental.
+   *
+   * Separate from lifecycle on purpose: lifecycle says what we can READ,
+   * this says what we should want to. A source can be P0 and blocked, or
+   * P3 and productive. Null means nobody has judged it, and the entitlement
+   * planner treats that as not worth a customer's budget.
+   */
+  priority_tier: number | null;
   observations: number;
   share_of_held: number;
   with_price: number;

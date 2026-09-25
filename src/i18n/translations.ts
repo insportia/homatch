@@ -9047,6 +9047,9 @@ const en = {
 
   /* ── ADMIN SOURCE CONCENTRATION ── */
   admin_sources_provenance: 'Provenance',
+
+  /* ── ADMIN SOURCE PRIORITY TIER ── */
+  admin_sources_tier: 'Priority',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -18012,6 +18015,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE CONCENTRATION ── */
   admin_sources_provenance: 'წარმომავლობა',
+
+  /* ── ADMIN SOURCE PRIORITY TIER ── */
+  admin_sources_tier: 'პრიორიტეტი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26968,6 +26974,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE CONCENTRATION ── */
   admin_sources_provenance: 'Происхождение',
+
+  /* ── ADMIN SOURCE PRIORITY TIER ── */
+  admin_sources_tier: 'Приоритет',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35922,6 +35931,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE CONCENTRATION ── */
   admin_sources_provenance: 'Köken',
+
+  /* ── ADMIN SOURCE PRIORITY TIER ── */
+  admin_sources_tier: 'Öncelik',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44876,6 +44888,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE CONCENTRATION ── */
   admin_sources_provenance: 'المصدر',
+
+  /* ── ADMIN SOURCE PRIORITY TIER ── */
+  admin_sources_tier: 'الأولوية',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -53830,6 +53845,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE CONCENTRATION ── */
   admin_sources_provenance: 'מקור',
+
+  /* ── ADMIN SOURCE PRIORITY TIER ── */
+  admin_sources_tier: 'עדיפות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -36,6 +36,7 @@ import {
 } from '@/services/api';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 type Row = Record<string, any>;
@@ -236,6 +237,10 @@ export default function AdminSourcesPage() {
                   <thead>
                     <tr className="border-b border-border bg-muted/50">
                       <Th>{t('admin_sources_url')}</Th>
+                      {/* Importance before measurement: the rows are ordered
+                          by tier, so an operator sees what the business
+                          depends on before what merely parses tidily. */}
+                      <Th>{t('admin_sources_tier')}</Th>
                       <Th>{t('admin_sources_family')}</Th>
                       <Th>{t('admin_sources_lifecycle')}</Th>
                       <Th>{t('admin_sources_observations')}</Th>
@@ -247,13 +252,37 @@ export default function AdminSourcesPage() {
                   </thead>
                   <tbody>
                     {loading ? (
-                      <LoadingRows cols={8} />
+                      <LoadingRows cols={9} />
                     ) : concentration.length === 0 ? (
-                      <EmptyRow cols={8} label={t('admin_sources_concentration_empty')} />
+                      <EmptyRow cols={9} label={t('admin_sources_concentration_empty')} />
                     ) : (
                       concentration.map((c) => (
                         <tr key={c.adapter_id} className="border-b border-border/50">
                           <td className="px-4 py-2.5 whitespace-nowrap font-mono text-xs">{c.adapter_id}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap">
+                            {/*
+                              P0 has to LOOK different from P3, not just read
+                              differently — the point of tiering was that an
+                              operator can tell at a glance which sources the
+                              product depends on. An untiered source says so
+                              rather than borrowing P0's styling.
+                            */}
+                            {c.priority_tier === null || c.priority_tier === undefined ? (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            ) : (
+                              <Badge
+                                variant={c.priority_tier === 0 ? 'default' : 'outline'}
+                                className={cn(
+                                  'text-[13px] font-mono',
+                                  c.priority_tier === 0 && 'bg-primary text-primary-foreground',
+                                  c.priority_tier === 1 && 'border-primary/50 text-primary',
+                                  c.priority_tier >= 2 && 'text-muted-foreground',
+                                )}
+                              >
+                                P{c.priority_tier}
+                              </Badge>
+                            )}
+                          </td>
                           <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{c.source_family ?? '—'}</td>
                           <td className="px-4 py-2.5 whitespace-nowrap">
                             <Badge variant={c.active ? 'default' : 'outline'} className="text-[13px]">

@@ -27,7 +27,8 @@
  * separate, deliberate step, because a script that both measures and promotes
  * is a script that will eventually promote something it should not have.
  *
- * Usage: node scripts/live-test-portals.mjs [adapterId ...] [--limit 3] [--json]
+ * Usage: node scripts/live-test-portals.mjs [adapterId ...] [--limit 3]
+ *                                            [--city Tbilisi] [--json]
  */
 import { createPortalRuntime } from '../src/research-core/market/runtime.ts';
 import { structuredQuality } from '../src/research-core/parse/listing.ts';
@@ -36,21 +37,32 @@ const args = process.argv.slice(2);
 const JSON_ONLY = args.includes('--json');
 const limitArg = args.indexOf('--limit');
 const LIMIT = limitArg > -1 ? Number(args[limitArg + 1]) : 3;
-const only = args.filter((a) => !a.startsWith('--') && a !== String(LIMIT));
+/*
+ * The market to ask about. A Batumi developer tested against a Tbilisi
+ * envelope now correctly returns nothing, which says nothing about the
+ * source -- so the city has to be settable by whoever is doing the testing.
+ */
+const cityArg = args.indexOf('--city');
+const CITY = cityArg > -1 ? String(args[cityArg + 1]) : 'Tbilisi';
+const consumed = new Set([String(LIMIT), CITY]);
+const only = args.filter((a) => !a.startsWith('--') && !consumed.has(a));
 
 /**
  * A minimal envelope, with a real city.
  *
  * ss-ge refuses one without: it turns a city into a server-side filter and
- * treats a country-wide sweep as not a comparable set, which is right. The
- * other three have no server-side city filter at all and simply ignore it --
- * and their appliedFilters says so.
+ * treats a country-wide sweep as not a comparable set, which is right.
+ *
+ * THE OTHER THREE NO LONGER IGNORE IT. They apply the city after fetching,
+ * so a Batumi developer tested against a Tbilisi envelope correctly returns
+ * nothing -- which says everything about the envelope and nothing about the
+ * source. Pass --city to test a source where it actually sells.
  */
-function envelope(id, transaction) {
+function envelope(id, transaction, city = CITY) {
   return {
     id,
     countryCode: 'GE',
-    city: 'Tbilisi',
+    city,
     district: null,
     subDistrict: null,
     projectName: null,
@@ -104,7 +116,10 @@ async function testOne(adapter, context, runtime) {
     countries: [...adapter.countries],
     reachable: false,
     permitted: null,
+    /* The market this run asked about, so a result can be read on its own. */
+    city: CITY,
     parsed: 0,
+    rejectedByEnvelope: 0,
     listings: [],
     networkRequests: 0,
     latencyMs: 0,
@@ -148,6 +163,8 @@ async function testOne(adapter, context, runtime) {
   result.reachable = true;
   result.permitted = true;
   result.parsed = outcome.value.listings.length;
+  /* Read and dropped, which is not the same as not read. */
+  result.rejectedByEnvelope = outcome.value.rejectedByEnvelope ?? 0;
   result.networkRequests = outcome.value.networkRequests;
   result.truncated = outcome.value.truncated;
   result.appliedFilters = outcome.value.appliedFilters;
@@ -162,7 +179,24 @@ async function testOne(adapter, context, runtime) {
   result.idsUnique = ids.length === new Set(ids).size;
   result.idsPresent = ids.length;
 
-  if (result.parsed === 0) {
+  if (result.parsed === 0 && result.rejectedByEnvelope > 0) {
+    /*
+     * READ, AND DELIBERATELY DROPPED.
+     *
+     * The adapter reached the source, understood every listing on the page
+     * and rejected them all because they are outside the envelope -- a
+     * Batumi tower answering a Tbilisi question. That is the filter working.
+     *
+     * Calling it DEGRADED would demote a healthy source for answering a
+     * narrow question honestly, and DEGRADED is a claim about a SOURCE: that
+     * it has started refusing us or changed its markup. Neither happened
+     * here, and the difference decides whether somebody goes and looks.
+     */
+    result.verdict = 'LIVE_OK';
+    result.reason =
+      `read ${result.rejectedByEnvelope} listing(s), all outside the envelope `
+      + `(city ${result.city}) — the source is fine, the question was narrow`;
+  } else if (result.parsed === 0) {
     result.verdict = 'DEGRADED';
     result.reason = 'reached the source and parsed no listing';
   } else if (!result.idsUnique) {

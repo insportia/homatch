@@ -269,7 +269,80 @@ export const ZARAYA: PortalSourceConfig = {
   enrich: [
     { field: 'title', from: 'OPEN_GRAPH', property: 'title' },
     { field: 'description', from: 'OPEN_GRAPH', property: 'description' },
-    { field: 'areaSqm', from: 'TEXT_PATTERN', pattern: /(\d{2,4}(?:[.,]\d+)?)\s*(?:m²|m2|sqm|кв\.?м)/i },
+    /*
+     * THIS SITE PUTS SPACES INSIDE ITS NUMBERS.
+     *
+     * It prints "$ 383, 521" and "113. 30 m²" -- a thousands separator with
+     * a space after it, and a decimal point with a space after it. The first
+     * area rule here was an unanchored `(\d{2,4}(?:[.,]\d+)?)\s*m²`, which
+     * could not span the gap in "113. 30", so it matched further along and
+     * returned an area of 30 for a 113 m² apartment. Plausible, wrong, and
+     * invisible: 30 m² is a real size for a real flat.
+     *
+     * numberFrom already reassembles these correctly -- it strips whitespace
+     * before parsing -- so the fix is entirely in what the patterns are
+     * allowed to span and where they are anchored.
+     *
+     * EVERY RULE BELOW IS ANCHORED ON THE SPEC TABLE'S OWN LABEL ROW, which
+     * the page prints as a block:
+     *
+     *   BEDROOMS BATHROOMS BUILT FLOORS LOCATION  2  1  113. 30 m²  44  Batumi
+     *
+     * The labels come first and the values follow in the same order, so each
+     * rule re-states the whole label sequence and counts across. That reads
+     * positionally, which is fragile -- and it fails CLOSED: a page with a
+     * different label set matches nothing and yields absent fields rather
+     * than another listing's numbers.
+     */
+    { field: 'areaSqm', from: 'TEXT_PATTERN',
+      pattern: /BEDROOMS\s+BATHROOMS\s+BUILT\s+FLOORS\s+LOCATION\s+\d+\s+\d+\s+([\d.,\s]+?)\s*m²/i },
+    { field: 'bedrooms', from: 'TEXT_PATTERN',
+      pattern: /BEDROOMS\s+BATHROOMS\s+BUILT\s+FLOORS\s+LOCATION\s+(\d+)\s/i },
+    /*
+     * The BUILDING's height, not this unit's floor. A 44-storey tower is a
+     * fact about the tower, and putting it in `floor` would say this
+     * apartment is on the 44th.
+     */
+    { field: 'totalFloors', from: 'TEXT_PATTERN',
+      pattern: /LOCATION\s+\d+\s+\d+\s+[\d.,\s]+?\s*m²\s+(\d+)\s/i },
+    /*
+     * PRICE, ANCHORED ON THE TABLE THAT FOLLOWS IT.
+     *
+     * The page carries a second dollar figure in its prose -- "buyers
+     * investing over $100,000 can obtain permanent residency" -- which is a
+     * fact about Georgian immigration law and not the price of this
+     * apartment. The listing's own price is the one printed immediately
+     * above the spec table, so BEDROOMS is what makes it identifiable.
+     *
+     * USD because that is the symbol this developer prices in, stated here
+     * rather than inferred: a number beside a $ is not a currency
+     * declaration, and this site sells to buyers in three languages.
+     *
+     * VERIFIED LIVE, AND THE TWO LISTINGS CHECK EACH OTHER:
+     *
+     *   0001   113.30 m2   $383,521   ->  $3,385 / m2
+     *   1009    39.25 m2   $129,407   ->  $3,297 / m2
+     *
+     * Two unrelated units, three times apart in size, landing within 3% of
+     * each other per square metre. Either rule reading the wrong number
+     * would have to be wrong by the same factor on both pages to produce
+     * that, which is what makes it evidence rather than a coincidence.
+     */
+    { field: 'price', from: 'PRICE_TEXT', side: 'SALE', currency: 'USD',
+      pattern: /\$\s*([\d,\s]{4,14}?)\s+BEDROOMS/i },
+    /*
+     * THE CITY, from the last slot in the same row.
+     *
+     * Worth reading rather than leaving absent: a listing that states no
+     * city survives every city envelope, because absence is not a mismatch.
+     * Left unread, this source would widen the envelope of every campaign it
+     * appears in and the applied-filter report would have to say so.
+     *
+     * ", Georgia" is required rather than optional -- it is what makes the
+     * captured word a place name instead of whatever else ends that row.
+     */
+    { field: 'city', from: 'TEXT_CAPTURE',
+      pattern: /LOCATION\s+\d+\s+\d+\s+[\d.,\s]+?\s*m²\s+\d+\s+([A-Za-z][A-Za-z\s\-]{2,30}?)\s*,\s*Georgia/i },
   ],
 };
 

@@ -107,6 +107,26 @@ async function sweep(query, pages = { [COLLECTION]: collectionOf(HOME24_DETAIL),
   return { outcome, ctx };
 }
 
+/**
+ * The same envelope against a second source, with a different extraction
+ * strategy and a different city.
+ *
+ * A filter proven on one adapter is a filter proven on one adapter. This one
+ * reads OpenGraph and a spec table where home24 reads schema.org, and it
+ * publishes a Batumi property where home24 publishes Tbilisi.
+ */
+async function zarayaSweep(query) {
+  const adapter = new ConfiguredPortalAdapter({
+    config: ZARAYA,
+    routes: [{ transaction: 'SALE', url: COLLECTION }],
+  });
+  const ctx = context({
+    [COLLECTION]: collectionOf(ZARAYA_DETAIL),
+    [ZARAYA_DETAIL]: zarayaHtml,
+  });
+  return adapter.searchListings(query, ctx);
+}
+
 /* ── the Chakvi regression ─────────────────────────────────────────────── */
 
 test('a listing in another city is dropped, not persisted with the city filter marked applied', async () => {
@@ -155,37 +175,46 @@ test('the listing in the requested city survives', async () => {
 
 /* ── absence, and two spellings of one place ───────────────────────────── */
 
-test('a listing that states no city is KEPT, and the filter stops claiming to have run', async () => {
+test('a Batumi listing does not answer a Tbilisi envelope, across sources', async () => {
   /*
-   * zarayaproperties.com publishes no address at all — its fixture yields a
-   * property type and an area and nothing else. Dropping it would manufacture
-   * a disqualifying fact out of a field the source never published, which is
-   * the same invention as claiming a filter ran, pointed the other way.
+   * zarayaproperties.com is a Batumi developer and its page states the city
+   * in its own spec row. This is the Chakvi failure at full size: a seafront
+   * tower 300km from the subject, on a different source, with a different
+   * strategy, filtered by the same rule.
+   */
+  const outcome = await zarayaSweep(envelope({ city: 'Tbilisi' }));
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.value.listings.length, 0);
+  assert.equal(outcome.value.rejectedByEnvelope, 1);
+  assert.ok(outcome.value.appliedFilters.client.includes('city'));
+
+  const inBatumi = await zarayaSweep(envelope({ city: 'Batumi' }));
+  assert.equal(inBatumi.value.listings.length, 1);
+});
+
+test('a listing that states no district is KEPT, and the filter stops claiming to have run', async () => {
+  /*
+   * zaraya publishes a city and no district. Dropping the listing would
+   * manufacture a disqualifying fact out of a field the source never
+   * published, which is the same invention as claiming a filter ran, pointed
+   * the other way.
    *
    * But KEEPING it costs something, and the second assertion is that cost
-   * being paid honestly: a caller who asked for Tbilisi and received a
-   * listing that never said where it is has a wider envelope than it
-   * requested, so `city` moves to `unsupported` for this sweep.
+   * being paid where it can be seen: a caller who asked for Vake and
+   * received a listing that never said which district it is in has a wider
+   * envelope than it requested, so `district` moves to `unsupported`.
    */
-  const adapter = new ConfiguredPortalAdapter({
-    config: ZARAYA,
-    routes: [{ transaction: 'SALE', url: COLLECTION }],
-  });
-  const ctx = context({
-    [COLLECTION]: collectionOf(ZARAYA_DETAIL),
-    [ZARAYA_DETAIL]: zarayaHtml,
-  });
-  const outcome = await adapter.searchListings(envelope({ city: 'Tbilisi' }), ctx);
+  const outcome = await zarayaSweep(envelope({ district: 'Vake' }));
 
   assert.equal(outcome.ok, true);
   const kept = outcome.value.listings[0];
-  assert.ok(kept, 'a listing with no stated city must survive a city envelope');
-  assert.equal(kept.listing.city, null);
+  assert.ok(kept, 'a listing with no stated district must survive a district envelope');
+  assert.equal(kept.listing.district, null);
   assert.ok(
-    outcome.value.appliedFilters.unsupported.includes('city'),
-    'the returned set is not all in Tbilisi, so the city filter must not be reported as applied',
+    outcome.value.appliedFilters.unsupported.includes('district'),
+    'the returned set is not all in Vake, so the district filter must not be reported as applied',
   );
-  assert.equal(outcome.value.appliedFilters.client.includes('city'), false);
+  assert.equal(outcome.value.appliedFilters.client.includes('district'), false);
 });
 
 test('a constraint the returned listings cannot be judged on is unsupported, not client-applied', async () => {

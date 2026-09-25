@@ -39,7 +39,13 @@ import type { AdapterContext, AdapterOutcome } from '../../discovery/adapter.ts'
 import { samePlace } from '../../normalize/place.ts';
 import { toSqm } from '../../normalize/area.ts';
 import type { NormalizedListing } from '../../parse/listing.ts';
-import { extractListing, isDetailUrl, transactionFromUrl, type PortalSourceConfig } from './family.ts';
+import {
+  extractListing,
+  isDetailUrl,
+  servableUrl,
+  transactionFromUrl,
+  type PortalSourceConfig,
+} from './family.ts';
 import type {
   AppliedFilters,
   ListingPortalAdapter,
@@ -186,7 +192,23 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
       };
     }
 
-    const candidates = detailLinks(collection.body, route.url, this.config);
+    /*
+     * TWO WAYS A COLLECTION PAGE NAMES ITS LISTINGS.
+     *
+     * Anchors are the usual one. makler.ge does something better: it
+     * publishes a schema.org ItemList with every listing's url and a
+     * numberOfItems, and its grid carries no <a href> to a listing at all --
+     * 375KB of markup, 46 mentions of /ad/, zero anchors. Scraping hrefs
+     * found nothing and would have written the source off.
+     *
+     * The ItemList is preferred where present: it is the site stating its
+     * own listing URLs deliberately, rather than us inferring them from
+     * layout. Anchors remain the fallback, and a source that offers both
+     * gets the union.
+     */
+    const fromList = itemListUrls(collection.body, route.url, this.config);
+    const fromAnchors = detailLinks(collection.body, route.url, this.config);
+    const candidates = [...new Set([...fromList, ...fromAnchors])];
     if (candidates.length === 0) {
       /*
        * The collection page answered and carried no listing links. That is a
@@ -275,11 +297,19 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
       value: {
         listings,
         /*
-         * NULL, not zero and not a guess. None of these sources states a
-         * total for a collection page in a form anyone has verified, and a
-         * number invented here would become a market size in a report.
+         * NULL unless the SOURCE stated it, and a guess never.
+         *
+         * Most of these sources publish no total, and a number invented here
+         * would become a market size in a report. makler.ge does publish one
+         * -- schema.org ItemList carries numberOfItems, 1056 for apartments
+         * for sale in Tbilisi -- so for that source this is a real figure
+         * with a provenance, and for the others it stays null.
+         *
+         * It is NOT the number of listings returned, and it is not a
+         * denominator for coverage. It is what one collection page said its
+         * category contains.
          */
-        totalAvailable: null,
+        totalAvailable: itemListTotal(collection.body),
         truncated: candidates.length > wanted.length,
         appliedFilters: appliedFilters(query, unevaluated, Boolean(route.countryCode)),
         /*
@@ -494,6 +524,74 @@ function appliedFilters(
   return { server, client, unsupported };
 }
 
+/**
+ * Listing URLs a collection page publishes as a schema.org ItemList.
+ *
+ * Only URLs this source recognises as its own detail pages: an ItemList can
+ * legitimately contain breadcrumbs, categories or related searches, and
+ * isDetailUrl is what separates a listing from a link to one.
+ */
+export function itemListUrls(html: string, base: string, config: PortalSourceConfig): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const node of jsonLdBlocks(html)) {
+    const items = (node as { itemListElement?: unknown }).itemListElement;
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      const raw = (item as { url?: unknown })?.url;
+      if (typeof raw !== 'string') continue;
+      let absolute: string;
+      try {
+        const url = new URL(raw, base);
+        url.search = '';
+        url.hash = '';
+        absolute = url.toString().replace(/\/$/, '');
+      } catch {
+        continue;
+      }
+      if (!isDetailUrl(absolute, config)) continue;
+      /* The URL the site SERVES, which is not always the one it publishes. */
+      const servable = servableUrl(absolute, config);
+      if (seen.has(servable)) continue;
+      seen.add(servable);
+      out.push(servable);
+    }
+  }
+  return out;
+}
+
+/**
+ * How many listings the collection page says its category holds.
+ *
+ * Read from ItemList.numberOfItems and nowhere else. A count of the items
+ * present on the page would be the page size, not the total, and reporting
+ * that as `totalAvailable` would make a first page look like a whole market.
+ */
+export function itemListTotal(html: string): number | null {
+  for (const node of jsonLdBlocks(html)) {
+    const raw = (node as { numberOfItems?: unknown }).numberOfItems;
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    if (Number.isFinite(value) && value > 0) return Math.round(value);
+  }
+  return null;
+}
+
+/** Parsed ld+json blocks. A malformed one is skipped, not fatal. */
+function jsonLdBlocks(html: string): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const match of String(html).matchAll(
+    /<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi,
+  )) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      for (const node of Array.isArray(parsed) ? parsed : [parsed]) {
+        if (node && typeof node === 'object') out.push(node as Record<string, unknown>);
+      }
+    } catch { /* a site with one broken block still has the others */ }
+  }
+  return out;
+}
+
 /** Detail URLs for THIS source, in document order, de-duplicated. */
 export function detailLinks(html: string, base: string, config: PortalSourceConfig): string[] {
   const out: string[] = [];
@@ -509,9 +607,10 @@ export function detailLinks(html: string, base: string, config: PortalSourceConf
       continue;
     }
     if (!isDetailUrl(absolute, config)) continue;
-    if (seen.has(absolute)) continue;
-    seen.add(absolute);
-    out.push(absolute);
+    const servable = servableUrl(absolute, config);
+    if (seen.has(servable)) continue;
+    seen.add(servable);
+    out.push(servable);
   }
   return out;
 }

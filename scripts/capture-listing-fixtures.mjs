@@ -104,6 +104,39 @@ const SOURCES = {
     collection: 'https://realting.com/georgia/property',
     detailHint: /realting\.com\/[a-z-]+\/property\/\d+/i,
   },
+  /*
+   * WAVE 2, chosen from audit-source-shape.mjs rather than from impressions.
+   *
+   * makler.ge      CLASSIFIEDS, and the first source here that publishes its
+   *                own sitemap in seven languages -- ka, en, ru, tr, ar, zh
+   *                and he. Six of those are Homatch campaign languages. Its
+   *                detail pages carry a RealEstateListing node, though only
+   *                name/description/url/image are in it; price and area are
+   *                in the visible text.
+   * caucasusestate.ge  AGENCY_SITE, WordPress, /properties/<slug>/ with ka,
+   *                ru and ar variants of every listing. OpenGraph only.
+   * estatemarket.ge    DEVELOPER-side inventory: House, QuantitativeValue,
+   *                PostalAddress and GeoCoordinates on a unit-type page
+   *                inside a named complex.
+   *
+   * Three families, three extraction strategies, three different stacks --
+   * which is the point of a batch. Sources that audited badly are NOT here
+   * and the reason is recorded in market/runtime.ts: myhomesale.ge and
+   * xeli.ge render client-side, topbroker.ge is an agency brochure with
+   * eighteen pages and no listings.
+   */
+  'makler.ge': {
+    collection: 'https://www.makler.ge/ka/iyideba/binebi/',
+    detailHint: /makler\.ge\/[a-z]{2}\/ad\/[^/]*-\d{6,}$/i,
+  },
+  'caucasusestate.ge': {
+    collection: 'https://caucasusestate.ge/properties/',
+    detailHint: /caucasusestate\.ge\/(?:[a-z]{2}\/)?properties\/[^/]+\/$/i,
+  },
+  'estatemarket.ge': {
+    collection: 'https://estatemarket.ge/catalog/',
+    detailHint: /estatemarket\.ge\/(?:en\/)?zk\/[^/]+\/[^/]+\/$/i,
+  },
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

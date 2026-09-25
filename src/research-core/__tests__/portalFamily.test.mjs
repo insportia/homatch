@@ -24,13 +24,17 @@ import {
   canonicalIdFrom,
   extractListing,
   isDetailUrl,
+  servableUrl,
   transactionFromUrl,
 } from '../adapters/portal/family.ts';
 import {
-  HOME24_GE, HOME_SS_GE, PLACE_GE, PORTAL_SOURCES, REALTING, sourceById, sourceForUrl, ZARAYA,
+  ESTATEMARKET_GE, HOME24_GE, HOME_SS_GE, MAKLER_GE, PLACE_GE, PORTAL_SOURCES, REALTING,
+  sourceById, sourceForUrl, ZARAYA,
 } from '../adapters/portal/sources.ts';
 import { ORIGIN_QUALITY } from '../parse/listing.ts';
 import { createPortalRuntime } from '../market/runtime.ts';
+import { detailLinks, itemListTotal, itemListUrls } from '../adapters/portal/configured.ts';
+import { samePlace } from '../normalize/place.ts';
 
 const DIR = 'src/research-core/adapters/portal/__fixtures__/';
 const fixture = (name) => readFileSync(`${DIR}${name}`, 'utf8');
@@ -41,6 +45,8 @@ const CAPTURED = {
   place: 'https://place.ge/ge/ads/view/1317856',
   zaraya: 'https://www.zarayaproperties.com/properties-1/0001',
   realting: 'https://realting.com/georgia/property/3820614',
+  makler: 'https://www.makler.ge/ka/ad/20063506--20063506',
+  estatemarket: 'https://estatemarket.ge/zk/next-collection/1-spalnya-45-8-m2/',
 };
 
 /* ── the framework's shape ─────────────────────────────────────────────── */
@@ -48,7 +54,7 @@ const CAPTURED = {
 test('the batch is chosen for difference, and is no longer one country', () => {
   // A framework validated against two portals sharing a CMS has not been
   // validated, so the batch was chosen for difference as well as inventory.
-  assert.equal(PORTAL_SOURCES.length, 5);
+  assert.equal(PORTAL_SOURCES.length, 7);
   const strategies = new Set(PORTAL_SOURCES.map((s) => s.strategy));
   assert.deepEqual([...strategies].sort(), ['EMBEDDED_STATE', 'OPEN_GRAPH', 'SCHEMA_ORG']);
   const families = new Set(PORTAL_SOURCES.map((s) => s.family));
@@ -401,6 +407,149 @@ test('a listing whose title omits the district gets NO district, not the sidebar
   // The rest of the listing still reads: scoping one rule narrows one rule.
   assert.equal(l.sale.amount, 145000);
   assert.deepEqual(l.area, { value: 89, unit: 'sqm' });
+});
+
+/* ── wave 2: a board with no links, and a developer in Russian ─────────── */
+
+test('makler publishes its listing URLs as data, not as anchors', () => {
+  /*
+   * 375KB of collection markup, 46 mentions of /ad/, and not one <a href>
+   * to a listing. Scraping anchors found nothing, which would have written
+   * this source off as a client-rendered shell.
+   *
+   * It is not. The grid carries a schema.org ItemList naming every listing,
+   * which is the site stating its own URLs deliberately rather than us
+   * inferring them from layout.
+   */
+  const html = fixture('makler.ge.collection.html');
+  assert.equal(
+    detailLinks(html, 'https://www.makler.ge/ka/iyideba/bina/', MAKLER_GE).length,
+    0,
+    'the anchors this source does not have have appeared',
+  );
+
+  const urls = itemListUrls(html, 'https://www.makler.ge/ka/iyideba/bina/', MAKLER_GE);
+  assert.ok(urls.length >= 5, `only ${urls.length} listing url(s) from the ItemList`);
+  assert.equal(new Set(urls).size, urls.length, 'the ItemList repeated a listing');
+});
+
+test('a total comes from the source or not at all', () => {
+  /*
+   * makler states numberOfItems on its collection page — 1,056 apartments
+   * for sale in Tbilisi — so totalAvailable is a real figure with a
+   * provenance for this source. It is NOT a count of what came back, and it
+   * is not a denominator for a coverage percentage.
+   *
+   * Every other source in the batch publishes no total, and for those it
+   * stays null: a number invented here would become a market size.
+   */
+  assert.equal(itemListTotal(fixture('makler.ge.collection.html')), 1056);
+  assert.equal(itemListTotal(fixture('realting.com.collection.html')), null);
+  assert.equal(itemListTotal('<html><body>no structured data</body></html>'), null);
+});
+
+test('a URL the source publishes but does not serve is corrected, once, declaratively', () => {
+  /*
+   * makler's ItemList names every listing as /ge/ad/<id>--<id>, and /ge/
+   * answers HTTP 500 on all of them — the site uses /ka/ for Georgian
+   * everywhere else. Verified on 20063506: /ge/ 500s, /ka/ returns the
+   * listing.
+   *
+   * The rewrite is narrow on purpose. It must not reach another source's
+   * URLs, and it must not fire on a URL that is already correct.
+   */
+  assert.equal(
+    servableUrl('https://www.makler.ge/ge/ad/20063506--20063506', MAKLER_GE),
+    'https://www.makler.ge/ka/ad/20063506--20063506',
+  );
+  assert.equal(
+    servableUrl('https://www.makler.ge/ka/ad/20063506--20063506', MAKLER_GE),
+    'https://www.makler.ge/ka/ad/20063506--20063506',
+    'the rewrite fired on a URL that was already correct',
+  );
+  /* A source with no rule is untouched, including one whose URLs contain ge. */
+  assert.equal(
+    servableUrl('https://realting.com/georgia/property/3820614', REALTING),
+    'https://realting.com/georgia/property/3820614',
+  );
+
+  // And the URLs the reader hands out are the ones that work.
+  const urls = itemListUrls(
+    fixture('makler.ge.collection.html'), 'https://www.makler.ge/ka/iyideba/bina/', MAKLER_GE,
+  );
+  assert.ok(urls.every((u) => u.includes('/ka/ad/')), 'a /ge/ URL reached the fetch path');
+});
+
+test('makler reads its spec block and states no price', () => {
+  const l = extractListing(fixture('makler.ge.detail.html'), CAPTURED.makler, MAKLER_GE).listing;
+  assert.equal(l.listingId, '20063506');
+  assert.deepEqual(l.area, { value: 103, unit: 'sqm' });
+  assert.equal(l.rooms, 4);
+  assert.equal(l.bedrooms, 3);
+  assert.equal(l.floor, 2);
+  assert.equal(l.totalFloors, 2);
+
+  /*
+   * THE PRICE IS ON THE PAGE AND IS DELIBERATELY NOT READ.
+   *
+   * It prints three unlabelled figures — 260 000, 678 106, 225 404 — with a
+   * lari/dollar/euro selector. The ratios match GEL/USD and EUR/USD, so the
+   * order is almost certainly USD, GEL, EUR; the selector lists lari first.
+   * "Almost certainly" is not a currency declaration, and reading it wrong
+   * is a factor of 2.6 in the field that decides what a customer sees.
+   */
+  assert.equal(l.sale, null, 'a price was read whose currency nobody has identified');
+  assert.equal(l.rent, null);
+  assert.equal(
+    MAKLER_GE.enrich.some((r) => r.field === 'price'),
+    false,
+    'a price rule appeared without a page that identifies the currency',
+  );
+});
+
+test('a developer site in Russian lands in the place table that was waiting for it', () => {
+  /*
+   * estatemarket publishes addressLocality "\u0411\u0430\u0442\u0443\u043c\u0438" — Batumi, in Cyrillic.
+   * normalize/place.ts had that row before any source needed it, written
+   * for the entity resolver; this is the source that exercises it.
+   */
+  const r = extractListing(
+    fixture('estatemarket.ge.detail.html'), CAPTURED.estatemarket, ESTATEMARKET_GE,
+  );
+  assert.equal(r.ok, true, r.reason);
+  const l = r.listing;
+
+  assert.equal(l.city, '\u0411\u0430\u0442\u0443\u043c\u0438');
+  assert.equal(samePlace(l.city, 'Batumi'), true, 'the Cyrillic locality does not resolve');
+  assert.equal(samePlace(l.city, '\u10d1\u10d0\u10d7\u10e3\u10db\u10d8'), true);
+  assert.equal(samePlace(l.city, 'Tbilisi'), false);
+
+  assert.equal(l.country, 'GE');
+  assert.equal(l.propertyType, 'APARTMENT');
+  assert.equal(l.sale.currency, 'USD');
+  /* A developer's own figure, never an asking price from a reseller. */
+  assert.equal(l.sale.basis, 'DEVELOPER_PRICE');
+  assert.ok(r.quality > 0.85, `a fully structured source scored ${r.quality}`);
+});
+
+test('estatemarket states two different areas and the structured one wins', () => {
+  /*
+   * Its JSON-LD floorSize says 35 m². Its own title and URL slug say 45,8 —
+   * "1-spalnya-45-8-m2". A 31% disagreement, in the field the entity
+   * resolver treats as physics within 3%.
+   *
+   * The structured value is taken because it is the source's DATA and the
+   * title is its prose, which is the same rule applied everywhere else here.
+   * Recorded rather than reconciled: a developer quoting interior area in
+   * one place and total-with-balcony in another is the likely explanation,
+   * and guessing which is which would invent a fact about the flat.
+   */
+  const l = extractListing(
+    fixture('estatemarket.ge.detail.html'), CAPTURED.estatemarket, ESTATEMARKET_GE,
+  ).listing;
+  assert.deepEqual(l.area, { value: 35, unit: 'sqm' });
+  assert.equal(l.fieldOrigins.area, 'JSON_LD');
+  assert.match(l.title, /45[.,]8/, 'the title no longer disagrees; re-check the source');
 });
 
 test('a thin source scores lower than a structured one, and the gap is visible', () => {

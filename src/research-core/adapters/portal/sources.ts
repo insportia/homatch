@@ -514,8 +514,164 @@ export const REALTING: PortalSourceConfig = {
 
 
 
+/**
+ * makler.ge — a classifieds board that publishes in seven languages.
+ *
+ * WHY IT IS HERE
+ *
+ * Its sitemap index carries sitemap_ka, _en, _ru, _tr, _ar, _zh and _he.
+ * Six of those seven are Homatch campaign languages, which makes this the
+ * first source in the batch that can answer a question asked in Hebrew,
+ * Arabic or Turkish with the site's own text rather than a translation.
+ *
+ * ITS COLLECTION PAGE HAS NO LINKS
+ *
+ * 375KB of markup, 46 mentions of /ad/, and not one <a href> to a listing.
+ * Scraping anchors found nothing and would have written the source off as a
+ * client-rendered shell. It is not: the grid publishes a schema.org ItemList
+ * with every listing's url and numberOfItems — 1,056 for apartments for sale
+ * in Tbilisi — so the site states its listing URLs deliberately, as data.
+ * That is what itemListUrls() in configured.ts now reads, and makler is also
+ * the first source to give a real totalAvailable instead of null.
+ *
+ * AND THOSE URLS DO NOT WORK
+ *
+ * The ItemList publishes https://www.makler.ge/ge/ad/<id>--<id>, and /ge/
+ * answers HTTP 500 on every listing: the site uses /ka/ for Georgian
+ * everywhere else. Same id, same page, working prefix — verified on
+ * 20063506, where /ge/ 500s and /ka/ returns 5,041 characters of listing.
+ *
+ * So the rewrite below is a stated correction, not a guess, and it is
+ * declarative so a test can check it. Fixing it in configuration is right:
+ * the alternative is an adapter that politely fetches 500s forever because
+ * the site's own canonical URLs are broken.
+ */
+export const MAKLER_GE: PortalSourceConfig = {
+  id: 'makler-ge',
+  host: 'makler.ge',
+  family: 'CLASSIFIEDS',
+  strategy: 'SCHEMA_ORG',
+  countryCode: 'GE',
+  /* The seven its sitemaps cover, minus zh which the model has no campaign
+     language for. Claiming zh would put a coverage number in a report for
+     work no campaign can commission. */
+  languages: ['ka', 'en', 'ru', 'tr', 'ar', 'he'],
+  detailUrl: { pattern: /makler\.ge\/[a-z]{2}\/ad\/[^/]*?(\d{6,})$/i, idGroup: 1 },
+  urlRewrite: { match: /\/ge\/ad\//i, replace: '/ka/ad/' },
+  transactionFromUrl: [
+    { match: /iyideba|for-sale|prodazha/i, transaction: 'SALE' },
+    { match: /qiravdeba|for-rent|arenda/i, transaction: 'RENT' },
+  ],
+  saleBasis: 'ASKING_SALE_PRICE',
+  rentBasis: 'ASKING_RENT',
+  enrich: [
+    /*
+     * LABEL-ANCHORED, every one. The page carries a related-listings strip
+     * with its own areas (114, 147, 120 m²), and this source's own spec
+     * block is the only place these Georgian labels appear with a colon.
+     * Verified against the captured page: each pattern matches twice, both
+     * times this listing's own value.
+     */
+    { field: 'areaSqm', from: 'TEXT_PATTERN',
+      pattern: /\u10e4\u10d0\u10e0\u10d7\u10dd\u10d1\u10d8\s*:\s*([\d.,]+)\s*m/ },
+    { field: 'rooms', from: 'TEXT_PATTERN',
+      pattern: /\u10dd\u10d7\u10d0\u10ee\u10d4\u10d1\u10d8\s*:\s*(\d+)/ },
+    { field: 'bedrooms', from: 'TEXT_PATTERN',
+      pattern: /\u10e1\u10d0\u10eb\u10d8\u10dc\u10d4\u10d1\u10d4\u10da\u10d8\s*:\s*(\d+)/ },
+    /*
+     * "\u10e1\u10d0\u10e0\u10d7\u10e3\u10da\u10d8 \u10e1\u10e3\u10da" is the building's height and "\u10e1\u10d0\u10e0\u10d7\u10e3\u10da\u10d8" alone is this
+     * unit's floor. The totalFloors pattern is written first and is more
+     * specific; the floor pattern requires the colon to follow immediately,
+     * so it cannot swallow the other label.
+     */
+    { field: 'totalFloors', from: 'TEXT_PATTERN',
+      pattern: /\u10e1\u10d0\u10e0\u10d7\u10e3\u10da\u10d8\s*\u10e1\u10e3\u10da\s*:\s*(\d+)/ },
+    { field: 'floor', from: 'TEXT_PATTERN',
+      pattern: /\u10e1\u10d0\u10e0\u10d7\u10e3\u10da\u10d8\s*:\s*(\d+)/ },
+  ],
+};
+
+/*
+ * MAKLER PUBLISHES A PRICE AND THIS CONFIGURATION DOES NOT READ IT.
+ *
+ * The page prints three figures side by side with a lari/dollar/euro
+ * selector and no label on any of them:
+ *
+ *   \u10e4\u10d0\u10e1\u10d8: 260 000 / 2 524.27    678 106 / 6 583.55    225 404 / 2 188.39
+ *
+ * The second number in each pair is that figure divided by the area (103
+ * m²), which confirms all three describe this flat. The ratios between them
+ * — 678,106/260,000 = 2.608 and 225,404/260,000 = 0.867 — match GEL/USD and
+ * EUR/USD, so the order is almost certainly USD, GEL, EUR.
+ *
+ * "Almost certainly" is not a currency declaration. The selector lists lari
+ * FIRST, and if the reading is wrong the error is a factor of 2.6 in a field
+ * that decides what a customer is shown. A source that says "260 000" and a
+ * source that says "$260,000" are not the same statement, and this file
+ * exists to keep that distinction.
+ *
+ * So: no price rule, the evidence written down, and the next person finishes
+ * it from a page where the currency is identifiable — a listing whose
+ * selector state is in the markup, or the /en/ variant. place.ge carried a
+ * note like this one for a day and was completed from it.
+ */
+
+/**
+ * estatemarket.ge — developer inventory, and the first source whose own
+ * address is in Russian.
+ *
+ * Its unit pages publish a schema.org Apartment with PostalAddress,
+ * QuantitativeValue floorSize and GeoCoordinates, so the generic reader
+ * handles it with no rules at all. addressLocality comes back as "\u0411\u0430\u0442\u0443\u043c\u0438"
+ * — Batumi, in Cyrillic — which the place table in normalize/place.ts
+ * already resolves against "Batumi" and "\u10d1\u10d0\u10d7\u10e3\u10db\u10d8". That was written for the
+ * entity resolver before any source needed it; this is the source that does.
+ *
+ * TWO LEVELS, NOT ONE. /catalog/ lists COMPLEXES and each complex page lists
+ * its unit types: /zk/<complex>/<type>-<size>-m2/. The collection route is
+ * therefore a complex, not the catalogue — 16 unit links on
+ * /zk/next-collection/ against zero on /catalog/.
+ *
+ * A unit type is not a listing of one flat. It is a developer's offer of a
+ * floor plan, which is why the basis is DEVELOPER_PRICE and why two units of
+ * the same type in one complex are RELATED rather than duplicates.
+ *
+ * ITS floorSize AND ITS TITLE DISAGREE, AND THE LIVE RUN SETTLES IT.
+ *
+ * The JSON-LD says 35 m2 where the title and slug say 45,8 -- a 31% gap in
+ * the field the resolver treats as physics within 3%. Three units, read live
+ * on 2026-09-25:
+ *
+ *   studiya-31-51-m2    24 m2   $45,500   ->  $1,896 / m2
+ *   1-spalnya-45-8-m2   35 m2   $66,500   ->  $1,900 / m2
+ *   2-spalni-79-31-m2   55 m2   $104,500  ->  $1,900 / m2
+ *
+ * The structured area gives this developer a flat $1,900 per square metre
+ * across all three units; the title figures do not. So floorSize is the area
+ * the price is quoted against, which is the one a comparison needs. That is
+ * evidence, rather than the general rule about data beating prose -- though
+ * it happens to agree with it.
+ *
+ * What the title figure IS remains unknown. Total-including-balcony is the
+ * usual explanation and this file is not going to assert it.
+ */
+export const ESTATEMARKET_GE: PortalSourceConfig = {
+  id: 'estatemarket-ge',
+  host: 'estatemarket.ge',
+  family: 'DEVELOPER_SITE',
+  strategy: 'SCHEMA_ORG',
+  countryCode: 'GE',
+  languages: ['ru', 'en'],
+  detailUrl: { pattern: /estatemarket\.ge\/(?:en\/)?zk\/[^/]+\/([a-z0-9-]+)\/?$/i, idGroup: 1 },
+  /* A developer sells; nothing here is let. */
+  transactionFromUrl: [{ match: /\/zk\//i, transaction: 'SALE' }],
+  saleBasis: 'DEVELOPER_PRICE',
+  rentBasis: 'ASKING_RENT',
+  enrich: [],
+};
+
 export const PORTAL_SOURCES: readonly PortalSourceConfig[] = [
-  HOME_SS_GE, HOME24_GE, PLACE_GE, ZARAYA, REALTING,
+  HOME_SS_GE, HOME24_GE, PLACE_GE, ZARAYA, REALTING, MAKLER_GE, ESTATEMARKET_GE,
 ];
 
 export function sourceForUrl(url: string): PortalSourceConfig | null {

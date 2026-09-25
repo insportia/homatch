@@ -170,6 +170,23 @@ export interface PortalSourceConfig {
    * gives it to us without a second request.
    */
   detailUrl: { pattern: RegExp; idGroup: number };
+  /**
+   * A correction to URLs the SOURCE publishes but does not serve.
+   *
+   * makler.ge's collection page names every listing as /ge/ad/<id>--<id>,
+   * and /ge/ answers HTTP 500 on all of them: the site uses /ka/ for
+   * Georgian everywhere else. Same id, same page, working prefix — verified
+   * on listing 20063506.
+   *
+   * This is deliberately NOT a general URL normaliser. It is declarative so
+   * a test can check it, narrow so it cannot reach another source's URLs,
+   * and it exists because the alternative is an adapter that politely
+   * fetches 500s forever on the strength of the site's own canonical links.
+   *
+   * It is applied where URLs ENTER the adapter — the collection reader —
+   * so everything downstream, identity included, sees the URL that works.
+   */
+  urlRewrite?: { match: RegExp; replace: string };
 
   /**
    * What the URL says about the transaction and the property type, where the
@@ -647,6 +664,13 @@ export function isDetailUrl(url: string, config: PortalSourceConfig): boolean {
 export function canonicalIdFrom(url: string, config: PortalSourceConfig): string | null {
   const match = config.detailUrl.pattern.exec(url);
   return match?.[config.detailUrl.idGroup] ?? null;
+}
+
+/** A URL as the source actually serves it. Unchanged where no rule applies. */
+export function servableUrl(url: string, config: PortalSourceConfig): string {
+  const rule = config.urlRewrite;
+  if (!rule) return url;
+  return rule.match.test(url) ? url.replace(rule.match, rule.replace) : url;
 }
 
 /** What the URL says the transaction is, or null when it says nothing. */

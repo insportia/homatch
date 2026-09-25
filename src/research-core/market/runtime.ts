@@ -32,7 +32,9 @@ import type { AdapterContext, AdapterDocument } from '../discovery/adapter.ts';
 import { PortalRegistry } from '../adapters/portal/types.ts';
 import { SsGeAdapter, SS_GE_HOST } from '../adapters/portal/ss-ge.ts';
 import { ConfiguredPortalAdapter } from '../adapters/portal/configured.ts';
-import { HOME24_GE, PLACE_GE, REALTING, ZARAYA } from '../adapters/portal/sources.ts';
+import {
+  ESTATEMARKET_GE, HOME24_GE, MAKLER_GE, PLACE_GE, REALTING, ZARAYA,
+} from '../adapters/portal/sources.ts';
 
 /**
  * Portals this build knows how to read.
@@ -132,6 +134,78 @@ export const PORTAL_SOURCE_POLICIES: SourcePolicy[] = [
       'carries an id and a title, and deliberately no price: the site writes ' +
       'prices in several formats in running text and a pattern that guessed ' +
       'would produce a market figure that is not one.',
+  },
+  {
+    ...DEFAULT_SOURCE_POLICY,
+    id: 'portal:makler.ge',
+    domains: ['makler.ge'],
+    hosts: ['makler.ge', 'www.makler.ge'],
+    sourceFamily: 'makler.ge',
+    /*
+     * PROPERTY_PORTAL, the same kind home.ss.ge carries, although both are
+     * general classifieds boards rather than dedicated portals.
+     *
+     * SourceKind weights source INDEPENDENCE -- how much two observations
+     * corroborate each other -- and for that question a classifieds board
+     * and a portal are the same kind of thing: a place where the seller
+     * publishes, not a registry that records. The lifecycle registry keeps
+     * the finer distinction in source_family, where CLASSIFIEDS exists and
+     * is what this source is called.
+     */
+    kind: 'PROPERTY_PORTAL',
+    enabled: true,
+    allowedMethods: ['GET'],
+    /*
+     * Its robots.txt states no crawl-delay for anyone, so one request every
+     * five seconds is our restraint rather than their instruction.
+     *
+     * What it DOES say is a list of query-string patterns -- /*?grid=,
+     * /*?ordering=, /*?limitstart=, /*?pg=, /*?lan= -- which are its sort
+     * and pagination controls. Nothing here fetches one: the collection
+     * route is a plain category path and canonicalize() strips query
+     * strings before a URL is requested.
+     */
+    rate: { concurrency: 1, requestsPerSecond: 0.2, burst: 1 },
+    robots: 'RESPECT',
+    browserRenderingAllowed: false,
+    maxResponseBytes: 4_000_000,
+    timeoutMs: 20_000,
+    cacheTtlMs: 30 * 60 * 1000,
+    cacheStaleMs: 60 * 60 * 1000,
+    visibility: 'PUBLIC',
+    authority: 0.45,
+    notes:
+      'Classifieds in seven languages, six of them campaign languages. Its '
+      + 'grid carries no listing anchors at all -- the URLs come from a '
+      + 'schema.org ItemList, which also states a real total. Publishes a '
+      + 'price in three unlabelled currencies; no price rule until one page '
+      + 'identifies which is which.',
+  },
+  {
+    ...DEFAULT_SOURCE_POLICY,
+    id: 'portal:estatemarket.ge',
+    domains: ['estatemarket.ge'],
+    hosts: ['estatemarket.ge', 'www.estatemarket.ge'],
+    sourceFamily: 'estatemarket.ge',
+    kind: 'DEVELOPER_SITE',
+    enabled: true,
+    allowedMethods: ['GET'],
+    /* robots.txt disallows nothing for *. The rate is entirely ours. */
+    rate: { concurrency: 1, requestsPerSecond: 0.2, burst: 1 },
+    robots: 'RESPECT',
+    browserRenderingAllowed: false,
+    maxResponseBytes: 4_000_000,
+    timeoutMs: 20_000,
+    cacheTtlMs: 30 * 60 * 1000,
+    cacheStaleMs: 60 * 60 * 1000,
+    visibility: 'PUBLIC',
+    authority: 0.5,
+    notes:
+      'Developer inventory as unit TYPES inside named complexes, not '
+      + 'individual flats. Full schema.org Apartment with a Russian-language '
+      + 'address, which is what first exercised the Cyrillic entries in the '
+      + 'place table. Its floorSize and its own title disagree on area -- see '
+      + 'ESTATEMARKET_GE in sources.ts.',
   },
   {
     ...DEFAULT_SOURCE_POLICY,
@@ -398,6 +472,34 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
    *               ones.
    *   realting.com  IMPLEMENTED. See REALTING in sources.ts.
    *
+   * SURVEYED 2026-09-25 with scripts/audit-source-shape.mjs, which reads
+   * robots.txt, the sitemap index, one child sitemap and one detail page per
+   * host. Two were implemented; the rest are recorded here so the next
+   * person does not re-probe them:
+   *
+   *   makler.ge     IMPLEMENTED. Classifieds in seven languages.
+   *   estatemarket.ge  IMPLEMENTED. Developer units, Russian addresses.
+   *
+   *   myhomesale.ge  1,491 characters of visible text in 55KB, and its
+   *                 JSON-LD is ApartmentComplex -- a project page rendered
+   *                 client-side. korter.ge's category.
+   *   xeli.ge       1,103 characters in 62KB. Same shape: Residence nodes
+   *                 for projects, the listings behind JavaScript.
+   *   topbroker.ge  A Tilda brochure. Eighteen URLs in its whole sitemap,
+   *                 no listings at all -- an agency's website rather than
+   *                 an agency's inventory.
+   *   caucasusestate.ge  SERVER-RENDERED AND PARTLY PRIVATE. Its
+   *                 /properties/ page lists real listings in four languages
+   *                 including Arabic, and the first one fetched answered:
+   *                 "This is a private, off-market listing. Please enter
+   *                 your access code to continue."
+   *
+   *                 That is an access control. It is not implemented and it
+   *                 will not be worked around; if it is implemented later,
+   *                 a protected listing must be recorded as a refusal
+   *                 against the SOURCE -- LOGIN_WALL -- and never as a
+   *                 listing that could not be parsed.
+   *
    * Recorded rather than acted on, deliberately. Adding an adapter here is
    * cheap by design — see the contract in adapters/portal/types.ts — but one
    * written against a guessed page shape cannot be verified without spending a
@@ -483,6 +585,30 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
         { transaction: 'SALE', countryCode: 'IL', url: 'https://realting.com/israel/property' },
         { transaction: 'SALE', countryCode: 'US', url: 'https://realting.com/united-states/property' },
         { transaction: 'SALE', countryCode: 'KH', url: 'https://realting.com/cambodia/property' },
+      ],
+    }))
+    .register(new ConfiguredPortalAdapter({
+      config: MAKLER_GE,
+      routes: [
+        /*
+         * Read off the site. /ka/iyideba/binebi/ -- the plural -- renders a
+         * category index with no listings; /ka/iyideba/bina/ is the grid,
+         * and its ItemList names 1,056 apartments for sale in Tbilisi.
+         */
+        { transaction: 'SALE', url: 'https://www.makler.ge/ka/iyideba/bina/', propertyType: 'APARTMENT' },
+        { transaction: 'RENT', url: 'https://www.makler.ge/ka/qiravdeba/bina/', propertyType: 'APARTMENT' },
+      ],
+    }))
+    .register(new ConfiguredPortalAdapter({
+      config: ESTATEMARKET_GE,
+      routes: [
+        /*
+         * A COMPLEX, not the catalogue. /catalog/ lists complexes and links
+         * to no units; /zk/next-collection/ lists sixteen unit types. One
+         * route per complex is the honest shape for a developer site, and
+         * this is the complex that was verified.
+         */
+        { transaction: 'SALE', url: 'https://estatemarket.ge/zk/next-collection/', propertyType: 'APARTMENT' },
       ],
     }));
 

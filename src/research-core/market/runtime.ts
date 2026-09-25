@@ -546,6 +546,20 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
    *                 against the SOURCE -- LOGIN_WALL -- and never as a
    *                 listing that could not be parsed.
    *
+   *   cgagency.ge   VIABLE, NOT YET IMPLEMENTED. Server-rendered, 60 sitemap
+   *                 URLs, and it publishes catalogue pages per city in three
+   *                 languages -- /ka|ru|en/property/catalog-batumi and
+   *                 /listings. The next source to pick up; it is absent from
+   *                 this batch for time rather than for shape.
+   *   origencollection.com  A Wix site: 1,084,975 bytes of markup carrying
+   *                 1,346 characters of visible text, and two properties in
+   *                 its entire sitemap. Client-rendered, and almost no
+   *                 inventory even if it were not.
+   *   realtor.ge    Its robots.txt has NO group for * at all -- permission by
+   *                 omission rather than by statement -- and it publishes no
+   *                 sitemap. Finding its listings means guessing at URL
+   *                 shapes, which is the thing this file exists to stop.
+   *
    * Recorded rather than acted on, deliberately. Adding an adapter here is
    * cheap by design — see the contract in adapters/portal/types.ts — but one
    * written against a guessed page shape cannot be verified without spending a

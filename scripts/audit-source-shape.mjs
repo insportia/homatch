@@ -175,12 +175,30 @@ async function audit(host) {
        * REJECT list does most of the work: a site's sitemap index is mostly
        * things that are not listings.
        */
-      const REJECT = /(categor|post|page|blog|author|tag|news|misc|image|video|static|brand)/i;
-      const PREFER = /(propert|listing|object|estate|realt|sale|rent|flat|apart|ads?[-_.]|catalog|item|offer)/i;
+      const REJECT = /(categor|post|page|blog|author|tag|news|misc|image|video|static|brand|profile)/i;
+      const PREFER = /(propert|listing|object|estate|realt|sale|rent|flat|apart|catalog|offer)/i;
+
+      /*
+       * THE WORD "sitemap" CONTAINS "item".
+       *
+       * PREFER used to include `item`, and every child sitemap URL on earth
+       * ends in sitemap.xml -- s-ITEM-ap -- so every candidate scored as
+       * preferred and the ranking degenerated to children[0].
+       *
+       * origencollection.com published member-profiles, dynamic-properties
+       * and pages sitemaps; it followed member-profiles and reported zero
+       * listings for a site that publishes a properties sitemap by name.
+       *
+       * Same shape as the two substring traps already in this repository:
+       * "дом" inside "рядом", and \b never matching Georgian. Testing on the
+       * FILENAME with the word sitemap removed is what stops a token
+       * matching the scaffolding instead of the content.
+       */
+      const subject = (u) => u.split('/').pop().replace(/sitemaps?/gi, '');
       const ranked = [
-        ...children.filter((u) => PREFER.test(u) && !REJECT.test(u)),
-        ...children.filter((u) => !PREFER.test(u) && !REJECT.test(u)),
-        ...children.filter((u) => PREFER.test(u) && REJECT.test(u)),
+        ...children.filter((u) => PREFER.test(subject(u)) && !REJECT.test(subject(u))),
+        ...children.filter((u) => !PREFER.test(subject(u)) && !REJECT.test(subject(u))),
+        ...children.filter((u) => PREFER.test(subject(u)) && REJECT.test(subject(u))),
       ];
       const preferred = ranked[0] ?? children[0];
       result.notes.push(`followed child sitemap ${preferred}`);

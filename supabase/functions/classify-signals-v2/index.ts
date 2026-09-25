@@ -1,17 +1,53 @@
+// HOMATCH — signal classification, and the failure that was not a failure.
+//
+// WHAT WAS WRONG HERE, MEASURED RATHER THAN GUESSED
+//
+// Production held 510 ERROR against 119 CLASSIFIED, which reads as a broken
+// pipeline. The ERROR rows are not spread over time the way individual
+// content judgements would be -- around 85% of them arrived in seven single
+// minutes, each spanning dozens of unrelated sources:
+//
+//   2026-08-28 22:30   111 errors across 31 distinct sources
+//   2026-08-28 21:45    83 errors across 57 distinct sources
+//
+// That is the shape of the catch at the bottom of this file. One OpenAI call
+// threw, and every signal in the chunk -- up to 300, from sources with
+// nothing in common -- was written ERROR.
+//
+// And ERROR was TERMINAL, because the selector below reads only PENDING. A
+// network timeout permanently discarded hundreds of signals that had never
+// been read. Nothing retried them and nothing could.
+//
+// So a batch failure now returns its signals to PENDING with the attempt
+// counted, and only an exhausted count is terminal. The three causes are
+// recorded separately -- BATCH_FAILED is the provider, MODEL_OMITTED is the
+// model declining to say anything, WRITE_FAILED is ours -- because one word
+// for three different things is what made this invisible for a month.
+//
+// The OTHER half of that 510 is not fixable here: 139 signals came from
+// r/Riyadh and r/opensooqsd, and 83 from r/CheatProctoredTests and
+// r/GeorgiaRealEstateExam -- the US state's licensing exam, registered by a
+// retired discovery sweep for "Georgia real estate". Those are posts about
+// passing an AWS certification, correctly producing no property intent. They
+// are a SOURCE SELECTION defect, and source_lifecycle keeps them out.
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
 const json=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,'Content-Type':'application/json'}});
 const DEMAND=new Set(['BUY','RENT','INVEST','RELOCATE_BUY','RELOCATE_RENT']);
+/* Three tries. Enough to cross a provider blip, few enough that a signal
+   nothing can classify stops consuming budget. */
+const MAX_ATTEMPTS=3;
 
 Deno.serve(async(req:Request)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:CORS});
  const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
  try{
   const {batchSize=300,market='GE'}=await req.json().catch(()=>({}));
-  const {data:signals,error}=await db.from('raw_signals').select(`id,original_text,language,platform,source:source_registry!source_id(country_code,language)`).eq('classification_status','PENDING').order('discovered_at',{ascending:true}).limit(Math.min(500,batchSize));
+  const {data:signals,error}=await db.from('raw_signals').select(`id,original_text,language,platform,classification_attempts,source:source_registry!source_id(country_code,language)`).eq('classification_status','PENDING').lt('classification_attempts',MAX_ATTEMPTS).order('classification_attempts',{ascending:true}).order('discovered_at',{ascending:true}).limit(Math.min(500,batchSize));
   if(error)throw error;if(!signals?.length)return json({success:true,processed:0,classified:0,filteredOut:0,deterministicFiltered:0,errors:0});
   const key=Deno.env.get('OPENAI_API_KEY')!;if(!key)return json({error:'OPENAI_API_KEY missing'},500);
-  let classified=0,filteredOut=0,deterministicFiltered=0,errors=0,totalCostUsd=0;
+  let retried=0;let classified=0,filteredOut=0,deterministicFiltered=0,errors=0,totalCostUsd=0;
   const aiSignals:any[]=[];
   for(const s of signals){
     if(isSupplyAd(String(s.original_text||''))){
@@ -26,10 +62,10 @@ Deno.serve(async(req:Request)=>{
     const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},messages:[{role:'system',content:prompt},{role:'user',content:JSON.stringify(input)}]})});
     if(!r.ok)throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0,300)}`);const raw=await r.json();const u=raw.usage||{};totalCostUsd+=(Number(u.prompt_tokens||0)*0.15+Number(u.completion_tokens||0)*0.6)/1_000_000;
     let parsed:any={};try{parsed=JSON.parse(raw.choices?.[0]?.message?.content||'{}')}catch{}const byId=new Map((parsed.results||[]).map((x:any)=>[x.id,x]));
-    for(const s of chunk){const x:any=byId.get(s.id);if(!x){await db.from('raw_signals').update({classification_status:'ERROR'}).eq('id',s.id);errors++;continue}const isDemand=DEMAND.has(String(x.intentType||'').toUpperCase())&&Number(x.intentConfidence||0)>=0.35;if(!isDemand){await db.from('intent_profiles').delete().eq('signal_id',s.id);await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:x.intentType||null,intent_json:x}).eq('id',s.id);filteredOut++;continue}const source=Array.isArray(s.source)?s.source[0]:s.source;await db.from('intent_profiles').delete().eq('signal_id',s.id);const {error:ins}=await db.from('intent_profiles').insert({signal_id:s.id,intent_type:x.intentType,country:x.country||source?.country_code||market,region:x.region||null,city:x.city||null,district:x.district||null,neighborhoods:x.neighborhoods||null,transaction_type:x.transactionType||null,property_types:x.propertyTypes||null,bedrooms_min:x.bedroomsMin||null,bedrooms_max:x.bedroomsMax||null,area_min:x.areaMin||null,area_max:x.areaMax||null,budget_min:x.budgetMin||null,budget_max:x.budgetMax||null,currency:x.currency||null,timeline:x.timeline||null,relocation_intent:!!x.relocationIntent,investment_intent:!!x.investmentIntent,language:x.language||s.language||source?.language||null,intent_confidence:Number(x.intentConfidence||0),specificity_score:Number(x.specificityScore||0),actionability_score:Number(x.actionabilityScore||0),original_text:s.original_text,translated_text:x.translatedText||null,ai_model:'gpt-4o-mini',ai_cost_usd:Math.max(0.00001,totalCostUsd/Math.max(1,aiSignals.length))});if(ins){await db.from('raw_signals').update({classification_status:'ERROR'}).eq('id',s.id);errors++;}else{await db.from('raw_signals').update({classification_status:'CLASSIFIED',intent_type:x.intentType,intent_json:x}).eq('id',s.id);classified++;}}
-  }catch(e){console.error('classification chunk',e);for(const s of chunk){await db.from('raw_signals').update({classification_status:'ERROR'}).eq('id',s.id);errors++;}}}
+    for(const s of chunk){const x:any=byId.get(s.id);if(!x){await db.from('raw_signals').update({classification_status:'ERROR',classification_error_kind:'MODEL_OMITTED',classification_attempts:(s as any).classification_attempts+1,classification_last_error:'the batch returned no verdict for this id'}).eq('id',s.id);errors++;continue}const isDemand=DEMAND.has(String(x.intentType||'').toUpperCase())&&Number(x.intentConfidence||0)>=0.35;if(!isDemand){await db.from('intent_profiles').delete().eq('signal_id',s.id);await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:x.intentType||null,intent_json:x}).eq('id',s.id);filteredOut++;continue}const source=Array.isArray(s.source)?s.source[0]:s.source;await db.from('intent_profiles').delete().eq('signal_id',s.id);const {error:ins}=await db.from('intent_profiles').insert({signal_id:s.id,intent_type:x.intentType,country:x.country||source?.country_code||market,region:x.region||null,city:x.city||null,district:x.district||null,neighborhoods:x.neighborhoods||null,transaction_type:x.transactionType||null,property_types:x.propertyTypes||null,bedrooms_min:x.bedroomsMin||null,bedrooms_max:x.bedroomsMax||null,area_min:x.areaMin||null,area_max:x.areaMax||null,budget_min:x.budgetMin||null,budget_max:x.budgetMax||null,currency:x.currency||null,timeline:x.timeline||null,relocation_intent:!!x.relocationIntent,investment_intent:!!x.investmentIntent,language:x.language||s.language||source?.language||null,intent_confidence:Number(x.intentConfidence||0),specificity_score:Number(x.specificityScore||0),actionability_score:Number(x.actionabilityScore||0),original_text:s.original_text,translated_text:x.translatedText||null,ai_model:'gpt-4o-mini',ai_cost_usd:Math.max(0.00001,totalCostUsd/Math.max(1,aiSignals.length))});if(ins){await db.from('raw_signals').update({classification_status:'ERROR',classification_error_kind:'WRITE_FAILED',classification_attempts:(s as any).classification_attempts+1,classification_last_error:String(ins.message||ins).slice(0,300)}).eq('id',s.id);errors++;}else{await db.from('raw_signals').update({classification_status:'CLASSIFIED',intent_type:x.intentType,intent_json:x}).eq('id',s.id);classified++;}}
+  }catch(e){console.error('classification chunk',e);const why=String((e as any)?.message||e).slice(0,300);for(const s of chunk){const tried=((s as any).classification_attempts||0)+1;const exhausted=tried>=MAX_ATTEMPTS;await db.from('raw_signals').update({classification_status:exhausted?'ERROR':'PENDING',classification_error_kind:exhausted?'ATTEMPTS_EXHAUSTED':'BATCH_FAILED',classification_attempts:tried,classification_last_error:why}).eq('id',s.id);if(exhausted)errors++;else retried++;}}}
   if(totalCostUsd>0)await db.from('cost_events').insert({provider:'OPENAI',operation_type:'CLASSIFY_SIGNALS_V2',market,units:aiSignals.length,cost_usd:totalCostUsd,success:errors<Math.max(1,aiSignals.length),cache_hit:false});
-  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,errors,totalCostUsd});
+  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,errors,retried,totalCostUsd});
  }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
 });
 

@@ -73,6 +73,21 @@ const ROUTES = [
   { path: '/outreach/email', name: 'email campaigns', auth: true },
   { path: '/outreach/calls', name: 'AI call center', auth: true },
   { path: '/property/add', name: 'add property', auth: true },
+  /*
+   * THE SCREEN THE PRODUCT IS SOLD ON, and it was not in this matrix.
+   *
+   * /property/:id/matches is where a customer meets the locked preview, the
+   * unlock price in Credits and the match strength — the only screen where
+   * money changes hands. Every other customer route was being rendered at
+   * 320px and this one never had been, which is the combination most likely
+   * to overflow: a price, a strength badge and a redacted excerpt on one row,
+   * in Georgian, at the narrowest supported width.
+   *
+   * The id is a stub; every non-local request is intercepted, so this
+   * exercises the page's own layout and its empty state rather than a
+   * backend.
+   */
+  { path: '/property/11111111-1111-4111-8111-111111111111/matches', name: 'property matches', auth: true },
   /* Homatch for Developers. The workspace shell, the screens a sales floor
      lives in, the sales file, and the buyer-facing shared apartment page.
      These render against the dev_* fixtures below rather than a backend. */

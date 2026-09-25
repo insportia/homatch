@@ -15,6 +15,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stripComments } from '../../../scripts/lib/stripComments.mjs';
 import {
   TelegramAdapter,
   canonicalizeTelegramUrl,
@@ -497,7 +498,7 @@ test('no credential is ever read from the environment inside the core', () => {
    */
   for (const file of ['client.ts', 'index.ts', 'normalize.ts']) {
     const src = readFileSync(`src/research-core/adapters/telegram/${file}`, 'utf8');
-    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const code = stripComments(src);
     assert.equal(/process\.env|Deno\.env/.test(code), false, `${file} reads a secret directly`);
   }
 });
@@ -565,7 +566,7 @@ test('passing these tests is FIXTURE_TESTED and never LIVE_TESTED', () => {
   }
 
   const client = readFileSync('src/research-core/adapters/telegram/client.ts', 'utf8');
-  const code = client.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const code = stripComments(client);
   const occurrences = [...code.matchAll(/'LIVE_TESTED'/g)];
   assert.equal(occurrences.length, 1, 'LIVE_TESTED appears somewhere other than its type');
   assert.match(code, /export type TelegramVerification =[^;]*'LIVE_TESTED'/);
@@ -588,7 +589,7 @@ test('Telegram is an adapter, not a second discovery engine', () => {
    */
   const src = readFileSync('src/research-core/adapters/telegram/index.ts', 'utf8');
   assert.match(src, /implements SourceAdapter/);
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const code = stripComments(src);
   for (const forbidden of [/setInterval/, /setTimeout/, /class \w*Queue/, /class \w*Worker/, /class \w*Scheduler/]) {
     assert.equal(forbidden.test(code), false, `a parallel engine is growing here: ${forbidden}`);
   }
@@ -598,7 +599,7 @@ test('the adapter never reaches the network itself', () => {
   // Everything goes through the client, which is the only thing that will
   // hold a credential and the only thing that has to change when one arrives.
   const src = readFileSync('src/research-core/adapters/telegram/index.ts', 'utf8');
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const code = stripComments(src);
   assert.equal(/\bfetch\s*\(|XMLHttpRequest|axios/.test(code), false);
 });
 

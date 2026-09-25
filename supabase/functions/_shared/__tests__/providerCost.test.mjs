@@ -17,6 +17,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { stripComments } from '../../../../scripts/lib/stripComments.mjs';
 import { join } from 'node:path';
 import { resolveProviderCost, pricingStateForDerivedCost } from '../providerCost.ts';
 
@@ -31,7 +32,7 @@ const read = (p) => readFileSync(p, 'utf8');
  * understand strings-containing-slashes, only to stop prose counting as code.
  */
 const withoutComments = (src) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  stripComments(src);
 
 /* ── resolveProviderCost: providers that bill per call ─────────────────── */
 

@@ -20,6 +20,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { assertStripped, stripComments } from '../../../scripts/lib/stripComments.mjs';
 import {
   CAMPAIGN_SEARCH_LANGUAGES,
   communicationVerdict,
@@ -32,7 +33,7 @@ import { planQueries } from '../discovery/query-plan.ts';
 import { classifyDirection, satisfiesJob } from '../signals/direction.ts';
 
 const read = (p) => readFileSync(p, 'utf8');
-const code = (p) => read(p).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const code = (p) => stripComments(read(p));
 
 const SUBJECT = {
   countryCode: 'GE',
@@ -320,8 +321,19 @@ test('a Hebrew-discovered buyer matches a Georgian-language listing', () => {
 
   // satisfiesJob takes no language argument at all, which is the structural
   // reason it cannot accidentally become one.
-  const src = code('src/research-core/signals/direction.ts');
+  /*
+   * assertStripped, because this is an ABSENCE assertion and those are the
+   * dangerous kind. A comment stripper that ate `satisfiesJob` would make
+   * indexOf return -1, slice return the empty string, and this pass while
+   * proving nothing. direction.ts is the file where the naive stripper lost
+   * seven kilobytes.
+   */
+  const src = assertStripped(
+    readFileSync('src/research-core/signals/direction.ts', 'utf8'),
+    ['export function satisfiesJob', 'export function classifyDirection'],
+  );
   const fn = src.slice(src.indexOf('export function satisfiesJob'));
+  assert.ok(fn.length > 100, 'satisfiesJob was not found in the stripped source');
   assert.equal(/language/i.test(fn.slice(0, 500)), false,
     'the job filter has grown a language condition');
 });

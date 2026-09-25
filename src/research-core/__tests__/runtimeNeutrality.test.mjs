@@ -300,6 +300,35 @@ test('the core is consumed only through its deliberate integration points', () =
     'src/campaign/searchLanguages.ts',
     'supabase/functions/_shared/campaignLanguages.ts',
     'supabase/functions/match-campaign/index.ts',
+    /*
+     * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
+     * customer is allowed to see.
+     *
+     * The rules about which timestamp may move live in
+     * discovery/revalidation.ts and nowhere else, because the failure they
+     * prevent is subtle enough to be re-introduced by anybody
+     * reimplementing them: a revalidation job whose fetch times out, setting
+     * last_verified_at = now() in the same statement that records the
+     * attempt, so the stalest evidence in the system becomes the evidence
+     * that looks newest.
+     *
+     * _shared/evidenceFreshness.ts is the door. It reads rows, hands them to
+     * applyRevalidation and judgeDelivery, and writes back what comes out. It
+     * holds no rule of its own and performs no fetch.
+     *
+     * The two functions below are listed because they call that door:
+     * run-matching-v2 is the only thing that turns external evidence into a
+     * customer-visible row, so the delivery gate belongs there; and
+     * revalidate-evidence is the worker that does the re-reading on its own
+     * tick, so that neither a match run nor a page view ever puts somebody
+     * else's server latency in front of a customer.
+     *
+     * If either grows its own copy of "advance last_verified_at", the seam
+     * has stopped being a seam.
+     */
+    'supabase/functions/_shared/evidenceFreshness.ts',
+    'supabase/functions/run-matching-v2/index.ts',
+    'supabase/functions/revalidate-evidence/index.ts',
   ]);
 
   const roots = ['src', 'supabase/functions', 'official-worker/src'];

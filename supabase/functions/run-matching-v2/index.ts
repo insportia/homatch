@@ -1,4 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  FRESHNESS_COLUMNS, gateForDelivery, loadFreshnessPolicy,
+} from '../_shared/evidenceFreshness.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -125,13 +128,17 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, matchesCreated: 0, matchesSkipped: 0, candidateSignals: 0, bestScore: 0, buckets: { '20-49': 0, '50-79': 0, '80-100': 0 } });
     }
 
+    // Once per run. The window is a product decision and the setting is the
+    // authority; a missing setting means the seven-day default, not no gate.
+    const freshnessPolicy = await loadFreshnessPolicy(db);
+
     const requested = Math.min(5000, Math.max(1, Number(intentProfileBatchSize) || 1500));
     const profiles: any[] = [];
     for (let offset = 0; offset < signalIds.length && profiles.length < requested; offset += 200) {
       const chunk = signalIds.slice(offset, offset + 200);
       const { data, error } = await db
         .from('intent_profiles')
-        .select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,created_at,signal:raw_signals!signal_id(id,platform,property_id,published_at,source_url,classification_status,intent_type,original_text,source:source_registry!source_id(quality_score))`)
+        .select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,created_at,signal:raw_signals!signal_id(id,platform,property_id,published_at,source_url,classification_status,intent_type,original_text,${FRESHNESS_COLUMNS},source:source_registry!source_id(quality_score))`)
         .in('signal_id', chunk)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -147,6 +154,11 @@ Deno.serve(async (req: Request) => {
     let rejectedDistrict = 0;
     let rejectedSelfSourced = 0;
     let insertErrors = 0;
+    /* Refused for freshness, and what was done about it. Reported so a run
+       that delivered nothing because everything was stale is legible. */
+    let rejectedStaleEvidence = 0;
+    let queuedRevalidations = 0;
+    const staleReasons: Record<string, number> = {};
     let best = 0;
     const errors: string[] = [];
     const buckets: Record<string, number> = { '20-49': 0, '50-79': 0, '80-100': 0 };
@@ -166,6 +178,35 @@ Deno.serve(async (req: Request) => {
       ) {
         skipped++;
         if (isSupplyAd(text)) rejectedSupply++;
+        continue;
+      }
+
+      /*
+       * THE SEVEN-DAY RULE, ENFORCED WHERE EVIDENCE BECOMES VISIBLE.
+       *
+       * This function is the only thing in Homatch that turns external
+       * evidence into a row a customer sees, so the freshness contract is
+       * enforced here once rather than in every reader.
+       *
+       * A refusal is not a deletion. Evidence that is merely too old to
+       * TRUST is queued for a re-check and will be deliverable on the next
+       * run -- dropping it silently would shrink the corpus every week with
+       * nothing recording why. Evidence we have conclusively established is
+       * REMOVED or INVALID is not queued, because re-reading something we
+       * know is gone is spending money to learn it again.
+       *
+       * Nothing here fetches. The queue is deduplicated per signal, so a
+       * signal wanted by forty campaigns is re-read once, on the worker's
+       * own tick, and never inside a customer's campaign.
+       */
+      const gate = await gateForDelivery(db, profile.signal_id, signal, {
+        policy: freshnessPolicy,
+      });
+      if (!gate.deliverable) {
+        skipped++;
+        rejectedStaleEvidence++;
+        if (gate.queuedJobId) queuedRevalidations++;
+        staleReasons[gate.decision.verdict] = (staleReasons[gate.decision.verdict] || 0) + 1;
         continue;
       }
 
@@ -300,6 +341,13 @@ Deno.serve(async (req: Request) => {
         preview_bedrooms: profile.bedrooms_min || null,
         preview_excerpt: redact(text),
         preview_recency: recency,
+        /*
+         * What the freshness contract said AT THE MOMENT this match was
+         * created. Stored rather than re-derived, because the timestamps it
+         * was judged on will have moved on by the time anybody asks.
+         */
+        evidence_freshness: gate.decision.verdict,
+        evidence_verified_at: signal.last_verified_at ?? null,
       });
       if (insertError) {
         insertErrors++;
@@ -324,6 +372,16 @@ Deno.serve(async (req: Request) => {
       rejectedPropertyType,
       rejectedDistrict,
       rejectedSelfSourced,
+      /*
+       * Refused because the evidence was not fresh enough to deliver, and how
+       * many re-checks that scheduled. A run that produced nothing because
+       * everything it had was stale must not be indistinguishable from a run
+       * that found nothing relevant -- the first is a freshness backlog and
+       * the second is a market.
+       */
+      rejectedStaleEvidence,
+      queuedRevalidations,
+      staleReasons,
       insertErrors,
       errors,
       bestScore: best,

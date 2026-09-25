@@ -48,6 +48,7 @@ import {
   type ExpatUpdate,
   type RentalCommunity,
 } from '@/services/expats';
+import WhatDoYouNeed from '@/components/expats/WhatDoYouNeed';
 import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
 import { usePublicNavLinks } from '@/site/publicNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
@@ -115,6 +116,7 @@ export default function ForExpatsPage() {
       <LocalSectionNav
         ariaLabelKey="nav_on_this_page"
         sections={[
+          { id: 'needs', labelKey: 'expat_needs_title' },
           { id: 'cost-of-living', labelKey: 'expat_pathway_live_title' },
           { id: 'budget', labelKey: 'expat_pathway_buy_title' },
           { id: 'topics', labelKey: 'expat_pathway_move_title' },
@@ -124,6 +126,13 @@ export default function ForExpatsPage() {
 
       <div className="mx-auto w-full max-w-[76rem] space-y-16 px-5 py-14 sm:py-20">
         <GeorgiaAtAGlance />
+
+        {/* The front door: one question, then the steps and the tool for
+            each. Above the long sections because it is what most visitors
+            actually came to resolve. */}
+        <div id="needs" className="scroll-mt-24">
+          <WhatDoYouNeed topics={topics} />
+        </div>
 
         {/* The four hero rows are anchors into this page, so the sections
             they name carry the ids. scroll-mt clears the sticky header;

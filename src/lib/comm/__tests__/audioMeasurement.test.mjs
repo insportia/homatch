@@ -254,43 +254,81 @@ test('the report is bounded: a long reply cannot inflate the payload', () => {
 
 /* ── Delivery: measured after the audio exists ───────────────────────────*/
 
-test('THE_REPORT_IS_DELIVERED_AFTER_THE_AUDIO_EXISTS', () => {
+test('THE_REPORT_IS_FROZEN_BEFORE_THE_COUNTERS_ARE_CLEARED', () => {
   /*
-   * turnShape is sent with the request, so it can only ever describe the
-   * PREVIOUS assistant turn -- which has finished playing, and whose per-turn
-   * state the player still holds because startTurn() for the next one has not
-   * run. That is the one moment a completed turn is reportable without a
-   * second round trip.
+   * TWO placements of this were wrong, both for the same reason, and both
+   * reported nothing in production.
+   *
+   * turnShape is assembled inside the converse REQUEST -- and
+   * player.startTurn() runs BEFORE that request is sent, clearing every
+   * per-turn counter. So reading the live report at either point returns an
+   * empty turn: session ffa36b53 reported zeros, and session 1837d8ff
+   * reported `NO_AUDIO_RECEIVED` on every turn, from the opposite side of the
+   * same reset.
+   *
+   * The snapshot is therefore taken INSIDE startTurn, in the one instant the
+   * finished turn still exists and the next has not begun.
    */
-  assert.match(CLIENT, /previousTurnAudio: this\.player\?\.turnAudioReport\(\) \?\? \{ measured: false, reason: 'NO_PLAYER' \}/);
+  const PLAYER_SRC = read('src/lib/comm/pcmPlayer.ts');
+  const startTurn = PLAYER_SRC.slice(PLAYER_SRC.indexOf('startTurn(generation: number): void {'));
+  const freeze = startTurn.indexOf('this.lastReport =');
+  const firstReset = startTurn.indexOf('this.turnReceivedChunks = 0;');
+  assert.ok(freeze > 0, 'the finished turn is never frozen');
+  assert.ok(freeze < firstReset, 'the snapshot is taken after the counters are cleared');
+
+  // And the trace reads the frozen snapshot, not the live one.
+  assert.match(CLIENT, /previousTurnAudio: this\.player\?\.lastTurnAudioReport\(\)/);
   assert.match(EDGE, /previous_turn_audio: body\.turnShape\?\.previousTurnAudio \?\? null,/);
-  // The old, structurally-empty snapshot is still sent but is no longer the
-  // only thing available -- and it is not what the volume question is read from.
-  assert.match(EDGE, /recovery_diagnostics: body\.turnShape\?\.recoveryDiagnostics \?\? null,/);
-  assert.match(EDGE, /endpoint_diagnostics: body\.turnShape\?\.endpointDiagnostics \?\? null,/);
+});
+
+test('a frozen report survives the next turn starting', () => {
+  const ctx = new FakeContext();
+  const p = new PcmStreamPlayer(ctx, {});
+  p.startTurn(1);
+  for (const c of [pcm(RATE, (i) => (i % 2 ? 20000 : -20000))]) p.push(c, RATE, 1);
+
+  // Turn 2 begins: the counters are cleared, and the finished turn is kept.
+  p.startTurn(2);
+  const frozen = p.lastTurnAudioReport();
+  assert.equal(frozen.measured, true, 'the finished turn was lost when the next began');
+  // 20000/32768 = 0.6104 -> -4.3 dBFS. Asserted as the real figure rather
+  // than a round number, so the freeze is proved to carry the actual signal
+  // rather than merely a populated-looking object.
+  assert.ok(Math.abs(frozen.pcm.peakDbFS + 4.3) < 0.2, `peakDbFS ${frozen.pcm.peakDbFS}`);
+  // ...while the LIVE report correctly says the new turn has nothing yet.
+  assert.equal(p.turnAudioReport().measured, false);
+});
+
+test('before any turn has finished, the snapshot says so rather than inventing one', () => {
+  const p = new PcmStreamPlayer(new FakeContext(), {});
+  const r = p.lastTurnAudioReport();
+  assert.equal(r.measured, false);
+  assert.equal(r.reason, 'NO_PREVIOUS_TURN');
 });
 
 /* ── Language diagnostics ────────────────────────────────────────────────*/
 
-test('THE_PRE_RESET_SPEECH_DURATION is captured before anything can zero it', () => {
+test('THE_SPEECH_DURATION_SURVIVES_FINALIZATION', () => {
   /*
-   * PROVEN in production: lastTurnSpeechMs is captured six lines after
+   * The bug this replaced: lastTurnSpeechMs was assigned six lines after
    * `void this.rotateLive()`, and rotateLive's body runs synchronously as far
    * as its own `this.liveSpeechMs = 0` because it has no await before it. The
-   * capture therefore reads zero on every turn.
+   * capture read zero on every turn of every session, both recovery planners
+   * declined at their first guard, and a language switch had nothing to
+   * rescue it.
    *
-   * This pass does NOT fix that. It records the honest value at the top of
-   * the turn so the next physical test measures the bug rather than a
-   * half-corrected version of it.
+   * Both the diagnostic and the value recovery uses are now taken at the top
+   * of the turn, before anything has run.
    */
   const final = CLIENT.slice(CLIENT.indexOf('private async onLiveFinal('));
-  const capture = final.indexOf('this.diag.speechMsAtFinal = Math.round(this.liveSpeechMs);');
+  const diag = final.indexOf('this.diag.speechMsAtFinal = Math.round(this.liveSpeechMs);');
+  const used = final.indexOf('this.lastTurnSpeechMs = Math.round(this.liveSpeechMs);');
   const rotate = final.indexOf('void this.rotateLive();');
-  assert.ok(capture > 0, 'the pre-reset capture is missing');
-  assert.ok(capture < rotate, 'the diagnostic capture is after the reset that caused the bug');
-
-  // And the buggy line is deliberately still there, unchanged.
-  assert.match(CLIENT, /this\.lastTurnSpeechMs = Math\.round\(this\.liveSpeechMs\);/);
+  assert.ok(diag > 0 && used > 0, 'the speech duration is not captured');
+  assert.ok(used < rotate, 'the value recovery uses is captured after the rotation that zeroes it');
+  assert.ok(diag < rotate, 'the diagnostic is captured after the rotation');
+  // And it is not reassigned afterwards, where it would read zero again.
+  assert.equal((CLIENT.match(/this\.lastTurnSpeechMs = Math\.round/g) ?? []).length, 1);
   assert.match(CLIENT, /speechMs: this\.lastTurnSpeechMs \|\| \(this\.diag\.lastEndTurnSpeechMs \?\? 0\),/);
 });
 

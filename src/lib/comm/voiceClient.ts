@@ -2963,6 +2963,21 @@ export class VoiceSession {
      * half-corrected version of it.
      */
     this.diag.speechMsAtFinal = Math.round(this.liveSpeechMs);
+    /*
+     * AND THIS IS THE VALUE RECOVERY ACTUALLY USES.
+     *
+     * It was assigned further down, six lines after `void this.rotateLive()`.
+     * rotateLive is async but has no await before its own
+     * `this.liveSpeechMs = 0`, so its body runs synchronously that far and the
+     * later assignment read a counter zeroed one statement earlier. speechMs
+     * was therefore 0 on every turn of every session ever recorded, both
+     * recovery planners declined at their first guard, and a language switch
+     * had nothing to rescue it -- t5 of ffa36b53 was five words of Hangul
+     * against a Cyrillic socket and never reached the script check.
+     *
+     * Assigned here, at the top of the turn, where nothing has run yet.
+     */
+    this.lastTurnSpeechMs = Math.round(this.liveSpeechMs);
 
     let said = text.trim();
     const id = this.livePartialId ?? `u${++this.utteranceSeq}`;
@@ -3008,10 +3023,10 @@ export class VoiceSession {
     if (said) { this.finalWatch.arrived(); this.producedEpoch = this.utteranceEpoch; }
     if (this.live?.isFinalizing) void this.rotateLive();
     /*
-     * Before the reset, and regardless of which endpointer decided. This is
-     * the line that makes recovery reachable at all -- see lastTurnSpeechMs.
+     * NOT reassigned here. This is where it used to be, and by this point
+     * rotateLive has already zeroed liveSpeechMs -- which is the entire bug.
+     * The value was taken at the top of the turn instead.
      */
-    this.lastTurnSpeechMs = Math.round(this.liveSpeechMs);
     this.liveSpeechMs = 0;
     this.livePartialWords = 0;
     this.liveEnded = false;
@@ -4431,7 +4446,7 @@ export class VoiceSession {
        * `measured: false` when there is nothing to report. A null is not a
        * zero: 0 dBFS is full scale, and null is nobody looked.
        */
-      previousTurnAudio: this.player?.turnAudioReport() ?? { measured: false, reason: 'NO_PLAYER' },
+      previousTurnAudio: this.player?.lastTurnAudioReport() ?? { measured: false, reason: 'NO_PLAYER' },
       /* Language-recovery diagnostics. Recorded, never consulted. */
       recoveryDiagnostics: {
         speechMsAtFinal: this.diag.speechMsAtFinal,

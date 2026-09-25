@@ -77,7 +77,25 @@ test('THE_PRODUCTION_SHAPE: speechMs 0 made every recovery unreachable', () => {
 test('THE_CLIENT_NOW_CAPTURES_IT_ON_EVERY_PATH, not only the local endpoint', () => {
   // Written before liveSpeechMs is reset, so whichever endpointer ended the
   // turn, the duration survives it.
-  assert.match(CLIENT, /this\.lastTurnSpeechMs = Math\.round\(this\.liveSpeechMs\);\s*\n\s*this\.liveSpeechMs = 0;/);
+  /*
+   * REPOINTED AFTER THE FIX, AND THIS IS THE ASSERTION THAT MATTERS.
+   *
+   * The first version of this pinned the capture as sitting immediately
+   * before `this.liveSpeechMs = 0` -- which it did, and which was still
+   * wrong: `void this.rotateLive()` six lines earlier zeroes the same counter
+   * synchronously, because rotateLive has no await before its own reset. The
+   * capture read 0 on every turn ever recorded and the test passed happily.
+   *
+   * So the property is no longer "next to the reset" but "BEFORE the
+   * rotation", which is the thing that was actually broken.
+   */
+  const final = CLIENT.slice(CLIENT.indexOf('private async onLiveFinal('));
+  const capture = final.indexOf('this.lastTurnSpeechMs = Math.round(this.liveSpeechMs);');
+  const rotate = final.indexOf('void this.rotateLive();');
+  assert.ok(capture > 0, 'the speech duration is never captured');
+  assert.ok(rotate > 0, 'the rotation moved; re-check this ordering');
+  assert.ok(capture < rotate,
+    'the speech duration is captured after rotateLive(), which zeroes it synchronously');
   // Both consumers read the honest number, preferring it over the
   // local-only field that production proved is always null.
   assert.match(CLIENT, /speechMs: this\.lastTurnSpeechMs \|\| \(this\.diag\.lastEndTurnSpeechMs \?\? 0\),/);

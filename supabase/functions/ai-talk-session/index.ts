@@ -1586,6 +1586,131 @@ function ttsSpeed(): number | null {
  */
 const CARTESIA_DEFAULT_SPEED = 1.0;
 
+/*
+ * HOW LOUD IS THE AUDIO CARTESIA ACTUALLY SENDS?
+ *
+ * The question three physical tests could not answer. The browser reports
+ * outputGain = 1 and a running 48 kHz context, so nothing in our WebAudio
+ * graph attenuates -- but the amplitude of the signal ENTERING that graph was
+ * never measured, and two attempts to measure it client-side both landed on
+ * the wrong side of a per-turn reset and reported nothing at all.
+ *
+ * Here there is no such problem. onChunk receives the provider's raw
+ * Uint8Array before anything downstream exists, so this is the earliest and
+ * least ambiguous point in the entire path. If the peak here is near full
+ * scale the audio leaves Cartesia loud and the quietness is ours or the
+ * device's; if it is far below, the audio is quiet at source and no amount of
+ * looking at the browser would ever have shown it.
+ *
+ * Aggregates only. No audio is stored, none is altered, and the chunk is
+ * forwarded byte-for-byte exactly as before.
+ */
+class PcmLevelMeter {
+  private peak = 0;
+  private sumSquares = 0;
+  private samples = 0;
+  /** 20 ms windows, so silence can be found without keeping the audio. */
+  private windowSumSquares = 0;
+  private windowSamples = 0;
+  private windowSize: number;
+  private silentRun = 0;
+  private windowsSeen = 0;
+  private speechSumSquares = 0;
+  private speechSamples = 0;
+  regions = 0;
+  longestSilenceMs = 0;
+  totalSilenceMs = 0;
+  /** An odd trailing byte: a sample split across two chunks. */
+  private carry: number | null = null;
+
+  constructor(private rate: number) {
+    this.windowSize = Math.max(1, Math.round(rate * 0.02));
+  }
+
+  add(chunk: Uint8Array): void {
+    let i = 0;
+    // A chunk boundary can fall inside a 16-bit sample; the low byte is held
+    // rather than dropped, which would put a click into the measurement.
+    if (this.carry !== null && chunk.length > 0) {
+      this.sample((chunk[0] << 8 | this.carry) << 16 >> 16);
+      this.carry = null;
+      i = 1;
+    }
+    for (; i + 1 < chunk.length; i += 2) {
+      this.sample((chunk[i + 1] << 8 | chunk[i]) << 16 >> 16);
+    }
+    this.carry = i < chunk.length ? chunk[i] : null;
+  }
+
+  private sample(int16: number): void {
+    const v = int16 / 32768;
+    const mag = v < 0 ? -v : v;
+    if (mag > this.peak) this.peak = mag;
+    this.sumSquares += v * v;
+    this.samples += 1;
+    this.windowSumSquares += v * v;
+    this.windowSamples += 1;
+    if (this.windowSamples >= this.windowSize) this.closeWindow();
+  }
+
+  private closeWindow(): void {
+    const rms = Math.sqrt(this.windowSumSquares / Math.max(1, this.windowSamples));
+    if (rms < PCM_SILENCE_FLOOR) {
+      this.silentRun += 1;
+    } else {
+      this.endRun();
+      this.speechSumSquares += this.windowSumSquares;
+      this.speechSamples += this.windowSamples;
+    }
+    this.windowsSeen += 1;
+    this.windowSumSquares = 0;
+    this.windowSamples = 0;
+  }
+
+  private endRun(): void {
+    if (this.silentRun === 0) return;
+    const ms = this.silentRun * 20;
+    if (ms >= 120) {
+      this.regions += 1;
+      this.totalSilenceMs += ms;
+      if (ms > this.longestSilenceMs) this.longestSilenceMs = ms;
+    }
+    this.silentRun = 0;
+  }
+
+  report(): Record<string, unknown> {
+    this.endRun();
+    if (!this.samples) return { measured: false, reason: 'NO_PCM' };
+    const rms = Math.sqrt(this.sumSquares / this.samples);
+    const speechRms = this.speechSamples
+      ? Math.sqrt(this.speechSumSquares / this.speechSamples) : null;
+    return {
+      measured: true,
+      sampleRate: this.rate,
+      samples: this.samples,
+      durationMs: Math.round((this.samples / this.rate) * 1000),
+      peak: Number(this.peak.toFixed(4)),
+      peakDbFS: pcmDbfs(this.peak),
+      rmsDbFS: pcmDbfs(rms),
+      // What a listener judges loudness by: the pauses excluded.
+      speechRmsDbFS: speechRms === null ? null : pcmDbfs(speechRms),
+      // Headroom is what decides whether a safe gain exists at all.
+      headroomDb: this.peak > 0 ? Number((-20 * Math.log10(this.peak)).toFixed(1)) : null,
+      silenceRegions: this.regions,
+      longestSilenceMs: this.longestSilenceMs || null,
+      totalSilenceMs: this.totalSilenceMs || null,
+    };
+  }
+}
+
+/** -50 dBFS: below any voice, above any digital floor. */
+const PCM_SILENCE_FLOOR = Math.pow(10, -50 / 20);
+
+function pcmDbfs(amplitude: number): number | null {
+  if (!(amplitude > 0)) return null;
+  return Number((20 * Math.log10(amplitude)).toFixed(1));
+}
+
 async function speakPhraseStreaming(sb: Sb, params: {
   text: string;
   language: string;
@@ -1640,6 +1765,12 @@ async function speakPhraseStreaming(sb: Sb, params: {
   }
 
   let lastChunkAt = 0;
+  /*
+   * Measures the provider's own PCM as it passes through. Constructed with the
+   * rate actually requested, because dBFS is rate-independent but the silence
+   * windows are not.
+   */
+  const meter = new PcmLevelMeter(params.outputSampleRate ?? 48_000);
   let maxChunkGapMs = 0;
   const chunkGaps: number[] = [];
 
@@ -1678,6 +1809,8 @@ async function speakPhraseStreaming(sb: Sb, params: {
       chunkGaps.push(gap);
     }
     lastChunkAt = at;
+    // Read before it is forwarded, and the chunk is forwarded unchanged.
+    meter.add(chunk);
     params.onChunk(chunk);
   });
 
@@ -1721,6 +1854,12 @@ async function speakPhraseStreaming(sb: Sb, params: {
       provider: 'CARTESIA',
       voiceId: voice.voiceId,
       model: out.data.model,
+      /*
+       * The provider's own loudness, measured on the bytes it sent. This is
+       * the earliest point in the path and the one that settles whether the
+       * audio is quiet at source or becomes quiet downstream.
+       */
+      level: meter.report(),
     };
   }
 
@@ -2462,6 +2601,26 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           }
 
           if (out.ok) {
+            /*
+             * The loudest phrase of the reply, and the silence across all of
+             * them. A reply is several synthesis calls, so the turn's level is
+             * the worst case of its parts rather than any one of them.
+             */
+            if (out.level && (out.level as { measured?: boolean }).measured) {
+              const lv = out.level as Record<string, number | null>;
+              const pk = lv.peakDbFS;
+              if (pk !== null && pk !== undefined && (turnPeakDbFS === null || pk > turnPeakDbFS)) {
+                turnPeakDbFS = pk;
+              }
+              const sp = lv.speechRmsDbFS;
+              if (sp !== null && sp !== undefined && (turnSpeechRmsDbFS === null || sp > turnSpeechRmsDbFS)) {
+                turnSpeechRmsDbFS = sp;
+              }
+              turnProviderSilenceRegions += Number(lv.silenceRegions ?? 0);
+              const ls = Number(lv.longestSilenceMs ?? 0);
+              if (ls > turnProviderLongestSilenceMs) turnProviderLongestSilenceMs = ls;
+              if (turnLevelSample === null) turnLevelSample = out.level as Record<string, unknown>;
+            }
             if (out.maxChunkGapMs > worstChunkGapMs) worstChunkGapMs = out.maxChunkGapMs;
             if (out.p95ChunkGapMs > worstP95ChunkGapMs) worstP95ChunkGapMs = out.p95ChunkGapMs;
             /*
@@ -2516,6 +2675,12 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
       /** When the model stopped writing -- the fact the overlap verdict is judged against. */
       let llmFinalAt: number | null = null;
     let worstChunkGapMs = 0;
+    /* Provider-side loudness and encoded silence, across the reply's phrases. */
+    let turnPeakDbFS: number | null = null;
+    let turnSpeechRmsDbFS: number | null = null;
+    let turnProviderSilenceRegions = 0;
+    let turnProviderLongestSilenceMs = 0;
+    let turnLevelSample: Record<string, unknown> | null = null;
     let worstP95ChunkGapMs = 0;
     let worstPhraseSeamMs = 0;
     let lastPhraseDoneMs: number | null = null;
@@ -3082,6 +3247,17 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           // Evenness, not volume. A chunk is about 0.17s of audio, so a gap
           // far past that means the stream starved before the browser saw it.
           tts_max_chunk_gap_ms: worstChunkGapMs || null,
+          /*
+           * CARTESIA'S OWN LOUDNESS, measured on the bytes it sent, before
+           * anything of ours touched them. The one number that separates
+           * "the audio is quiet at source" from "our path or the device makes
+           * it quiet", and which no amount of browser telemetry could show.
+           */
+          tts_peak_dbfs: turnPeakDbFS,
+          tts_speech_rms_dbfs: turnSpeechRmsDbFS,
+          tts_provider_silence_regions: turnProviderSilenceRegions || null,
+          tts_provider_longest_silence_ms: turnProviderLongestSilenceMs || null,
+          tts_level: turnLevelSample,
           tts_p95_chunk_gap_ms: worstP95ChunkGapMs || null,
           // The silence a listener hears between one sentence and the next.
           tts_phrase_seam_ms: worstPhraseSeamMs || null,
@@ -3794,6 +3970,31 @@ function publicDemoInstructions(language: string): string {
   const lines = [
     `You are Mariam, Homatch's AI assistant for the Georgian property market, speaking by VOICE in ${name}.`,
     '',
+    /*
+     * WHAT THIS CONVERSATION ACTUALLY IS.
+     *
+     * AI TALK is the live demonstration of the AI Call Center: the visitor is
+     * not using a support line, they are hearing the product they could run
+     * themselves. That was true of the architecture and absent from the
+     * prompt, so the demo never said so and no visitor could have known.
+     *
+     * Kept to a handful of lines on purpose. This text is read on EVERY turn
+     * and the model's time to first token scales with it -- the section above
+     * exists because three sections once described one personality. A product
+     * pitch bolted on here would be paid for in latency on every reply.
+     *
+     * DEMONSTRATE BY BEING, NOT BY DESCRIBING. The instruction is to answer
+     * well and let the quality of the answer be the argument; the explanation
+     * is only for somebody who asks.
+     */
+    'WHAT THIS IS. This call is the live demo of Homatch AI Call Center: they are hearing the kind of agent',
+    'they could run themselves. Demonstrate it by BEING it -- answer the actual question well and let that be',
+    'the argument. Explain the product only when asked, or when it genuinely fits what they just said; briefly,',
+    'never bolted onto an unrelated answer.',
+    'Your voice and pace are ONE demo setting, not what their agent must sound like -- somebody who dislikes',
+    'the voice is telling you about a setting. Configurable per campaign: purpose, instructions, language,',
+    'voice, speaking pace. Nothing beyond that. Never name a provider or model id.',
+    '',
     'WHO YOU ARE. A sharp, well-read person who knows this market and enjoys talking about it. Warm, relaxed,',
     'direct, good company, and genuinely fun to talk to. Not a support script and not a brochure. You have',
     'opinions about districts and you say them. Notice the funny thing, make the small dry observation, let',
@@ -3929,6 +4130,19 @@ function publicDemoInstructions(language: string): string {
     'Use a KEY from this list and nothing else:',
     destinationMenu(),
     'Only when it genuinely helps. Not on every reply.',
+    /*
+     * ONE STRONG RECOMMENDATION BEATS SIX.
+     *
+     * The keys resolve to routes this application registers; an unknown key
+     * resolves to nothing and the turn simply has no button. That guard
+     * already existed. What did not exist was any sense that the visitor's
+     * need might belong to a DIFFERENT Homatch product -- so somebody who
+     * said they would rather type heard about typing, and was left to find
+     * the page themselves.
+     */
+    'MATCH THE NEED TO THE PRODUCT, one only: rather type or read -> ai_chat; looking for a property ->',
+    'search; owns one, wants buyers -> add_property; ownership or encumbrances -> verify; yields ->',
+    'investment; automated calling for their own business -> call_center, which is this.',
     'END with "end":true and one of: OBJECTIVE_MET (answered, no follow-up); FAREWELL (goodbye or thanks);',
     'HANDED_OFF (sent to the page that does the rest); NOTHING_ACTIONABLE (repeated turns with nothing to act',
     'on, or somebody who will not come back to property); ABUSE (abusive with no real question underneath --',

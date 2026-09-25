@@ -162,7 +162,16 @@ test('the identity a visitor reads is Mariam, and AI Talk is still the feature',
   assert.equal(badges.length, 6);
   assert.equal(new Set(titles).size, 6, 'six locales, six real translations');
   assert.equal(new Set(badges).size, 6, 'six locales, six real translations');
-  assert.match(I18N, /^  talk_badge: 'Mariam — Homatch AI Assistant',$/m);
+  /*
+   * The badge now says what she is a demonstration OF as well as who she is.
+   * AI TALK is the live demo of the AI Call Center -- true of the architecture
+   * all along and stated nowhere a visitor could read it.
+   *
+   * Mariam stays in it. The first attempt at this copy replaced her name with
+   * the product name, which bought the framing by losing the identity somebody
+   * is actually talking to; this assertion refused it, correctly.
+   */
+  assert.match(I18N, /^  talk_badge: 'Mariam — Homatch AI Call Center live demo',$/m);
   assert.match(I18N, /^  talk_title: 'Talk to Mariam',$/m);
   // The product name is untouched wherever it is the product name.
   assert.match(I18N, /^  talk_languages: 'Speak naturally in your own language\. AI Talk follows/m);

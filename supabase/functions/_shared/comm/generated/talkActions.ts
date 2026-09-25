@@ -50,6 +50,32 @@ export interface TalkDestination {
  * product being broken rather than as the guard working.
  */
 export const TALK_DESTINATIONS: readonly TalkDestination[] = [
+  /*
+   * THE PRODUCT THIS DEMO IS A DEMO OF.
+   *
+   * AI TALK is the live demonstration of the AI Call Center, so the one place
+   * a convinced visitor needs to reach is where campaigns are configured.
+   * /outreach/calls IS the AI Call Center -- routes.tsx says so in a comment
+   * beside it, added when it was found mounting the wrong page.
+   */
+  { key: 'call_center', path: '/outreach/calls', purpose: 'set up an AI Call Center campaign: the product this demo is a live demonstration of' },
+  /*
+   * The same conversation, typed.
+   *
+   * Somebody who says they would rather not talk, or wants to read at their
+   * own pace, or has many questions, is not losing interest -- they are
+   * asking for a different surface. /ai is that surface.
+   */
+  { key: 'ai_chat', path: '/ai', purpose: 'the same assistant in writing, for somebody who would rather type or read' },
+  { key: 'investment', path: '/investment', purpose: 'investment analysis: yields, comparisons and market intelligence' },
+  /*
+   * Added when For Expats landed, not before. It was deliberately absent
+   * hours earlier because no such route existed and offering it would have
+   * been advertising a page that 404s. The Phase 2 workstream shipped
+   * /for-expats/georgia as a public route; re-fetching main before committing
+   * is what caught it.
+   */
+  { key: 'expat', path: '/for-expats/georgia', purpose: 'moving to or living in Georgia as a foreigner: residency, costs, practicalities' },
   { key: 'search', path: '/active-search', purpose: 'start or continue a property search with live matching' },
   { key: 'verify', path: '/verify', purpose: 'check a property in the public registry: owner, extract, encumbrances' },
   { key: 'mortgage', path: '/mortgage', purpose: 'mortgage and instalment options' },

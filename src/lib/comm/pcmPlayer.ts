@@ -130,6 +130,15 @@ export class PcmStreamPlayer {
 
   /** Begin a new turn. Anything still arriving from the previous one is dropped. */
   startTurn(generation: number): void {
+    /*
+     * FREEZE THE TURN THAT JUST ENDED, BEFORE ANY OF IT IS CLEARED.
+     *
+     * Everything below this line resets the per-turn counters, and this
+     * method runs before the next converse request is sent -- so this is the
+     * only moment at which a completed turn's audio can still be described.
+     */
+    this.lastReport = this.turnPcmSamples || this.turnReceivedChunks
+      ? this.turnAudioReport() : this.lastReport;
     this.generation = generation;
     this.stats.started = 0;
     this.stats.nonSilentSamples = 0;
@@ -330,6 +339,23 @@ export class PcmStreamPlayer {
    * is false when nothing was received, and every field is null rather than
    * zero. A reported 0 dBFS peak means full scale; null means nobody looked.
    */
+  /**
+   * The COMPLETED previous turn, captured before its counters were cleared.
+   *
+   * Two placements of this measurement have now been wrong, both for the same
+   * reason: startTurn() resets every per-turn counter, and it runs BEFORE the
+   * request that carries turnShape. Reading the live report there returned
+   * `NO_AUDIO_RECEIVED` on every turn of session 1837d8ff -- the same empty
+   * answer as before, from the opposite side.
+   *
+   * So the snapshot is taken inside startTurn(), in the one instant the
+   * finished turn still exists and the next one has not begun.
+   */
+  lastTurnAudioReport(): Record<string, unknown> {
+    return this.lastReport ?? { measured: false, reason: 'NO_PREVIOUS_TURN' };
+  }
+
+  /** The turn IN PROGRESS. Live diagnostics and tests; not the trace. */
   turnAudioReport(): Record<string, unknown> {
     // A run that was still silent when the turn ended is still a silence.
     this.endSilentRun();
@@ -497,6 +523,8 @@ export class PcmStreamPlayer {
 
   /** Loudest decoded sample this turn, 0..1. Unity scale: 1.0 is full scale. */
   private turnPcmPeak = 0;
+  /** The finished turn, frozen by startTurn() before it cleared the counters. */
+  private lastReport: Record<string, unknown> | null = null;
   /** Loudest across the whole session. Survives startTurn deliberately. */
   private sessionPcmPeak = 0;
   private turnPcmSumSquares = 0;

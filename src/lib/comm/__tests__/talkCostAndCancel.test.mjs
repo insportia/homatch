@@ -365,7 +365,31 @@ test('the prompt is still read on every turn, so it is still measured', () => {
    * arriving cached on repeat turns. The ceiling still exists, and it is still
    * the thing that stops this file growing a paragraph per incident.
    */
-  assert.ok(chars < 11_400, `the prompt is ${chars} characters, past the canonical ceiling`);
+  /*
+   * RAISED FROM 11,400 TO 12,200 ON 2026-09-25, AND THIS ONE IS PAID FOR.
+   *
+   * AI TALK is the live demo of the AI Call Center, which was true of the
+   * architecture and absent from the prompt -- so the demo never said what it
+   * was, and no visitor could have known. That identity, the honest list of
+   * what a campaign can actually configure, and the mapping from a stated
+   * need to ONE product cost about 620 characters after two passes of
+   * trimming. They are capability, not explanation.
+   *
+   * WHAT CHANGED SINCE THE LAST CEILING, AND WHY IT MATTERS HERE.
+   *
+   * This ceiling was set when the first turn of every conversation read the
+   * whole prompt cold: production measured llm_cached_input_tokens = 0 on
+   * turn one and a first token at 2,473-2,990 ms. The prompt-cache warm-up
+   * now asks once at session creation, and the first turn of session
+   * 65bd451d arrived with 2,765 of 2,937 input tokens CACHED -- 94% -- with a
+   * first token at 1,500 ms. The marginal cost of prompt length on turn one
+   * is a fraction of what this ceiling was originally protecting.
+   *
+   * It is still a ceiling, and it is still the thing that stops this file
+   * growing a paragraph per incident. The next person who wants more must
+   * trim first, as this change did, and then say what they measured.
+   */
+  assert.ok(chars < 12_200, `the prompt is ${chars} characters, past the canonical ceiling`);
 });
 
 /* ── 6. The failures the owner's live session actually exposed ──────────── */
@@ -847,6 +871,14 @@ test('the prompt grew, and by how much is stated rather than discovered', () => 
    * headroom left, which is the point of asserting the measured number rather
    * than a bound nobody ever approaches.
    */
-  assert.ok(chars < 11_400, `the prompt is ${chars} characters`);
+  /*
+   * 12,200 on 2026-09-25, for the AI Call Center demo identity -- what this
+   * call IS, what a campaign can honestly be configured with, and the mapping
+   * from a stated need to ONE product. About 620 characters after two passes
+   * of trimming, and the reasoning, including the prompt-cache measurement
+   * that changed the cost of prompt length, is stated once beside the other
+   * ceiling assertion above rather than twice.
+   */
+  assert.ok(chars < 12_200, `the prompt is ${chars} characters`);
   assert.ok(chars > 9_000, 'and it still says everything it has to say');
 });

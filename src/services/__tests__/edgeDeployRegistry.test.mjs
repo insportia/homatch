@@ -144,3 +144,44 @@ test('every function that emits a notification is one CI can ship', () => {
   assert.deepEqual(stranded, [],
     `these notify through notify_emit in the repository and run last year's code in production:\n${stranded.join('\n')}`);
 });
+
+test('every function CI deploys without a JWT declares that in config.toml', () => {
+  /*
+   * Two places say whether a function verifies its caller's JWT, and they
+   * must agree.
+   *
+   *   deploy.yml passes --no-verify-jwt for the functions in NO_JWT_FUNCTIONS
+   *   supabase/config.toml carries [functions.<name>] verify_jwt = false
+   *
+   * CI wins while CI is deploying. But a `supabase functions deploy` run by
+   * hand reads config.toml and nothing else, so a function that is in the
+   * workflow list and NOT in the config silently has its gateway check turned
+   * back ON by the next manual deploy -- and a pg_cron tick that suddenly
+   * requires a user JWT stops working completely, with every screen still
+   * looking correct.
+   *
+   * config.toml's own header says these entries exist for exactly that
+   * reason. This is the check that makes it true rather than remembered.
+   */
+  const config = readFileSync('supabase/config.toml', 'utf8');
+  const declared = new Set(
+    [...config.matchAll(/^\[functions\.([a-z0-9-]+)\]\s*$/gim)].map((m) => m[1]),
+  );
+  assert.ok(declared.size > 0, 'config.toml declares no functions at all');
+
+  const undeclared = noJwt.filter((fn) => !declared.has(fn));
+  assert.deepEqual(undeclared, [],
+    'CI deploys these with --no-verify-jwt and config.toml does not say so, so a '
+    + 'manual deploy would turn the gateway check back on:\n  - ' + undeclared.join('\n  - '));
+});
+
+test('nothing declares verify_jwt = false without CI deploying it that way', () => {
+  // The other direction. A config entry for a function CI deploys WITH the
+  // JWT check is a trap in the opposite direction: the two deploy paths
+  // disagree and which one ran last decides production's behaviour.
+  const config = readFileSync('supabase/config.toml', 'utf8');
+  const declared = [...config.matchAll(/^\[functions\.([a-z0-9-]+)\]\s*$/gim)].map((m) => m[1]);
+  const inJwtList = declared.filter((fn) => jwt.includes(fn));
+  assert.deepEqual(inJwtList, [],
+    'declared verify_jwt = false but deployed by the JWT loop:\n  - ' + inJwtList.join('\n  - '));
+});

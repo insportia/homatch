@@ -40,3 +40,83 @@ verify_jwt = false
 
 [functions.comm-dispatch-worker]
 verify_jwt = false
+
+# The freshness worker. Same shape as the ticks above: pg_cron calls it, it
+# belongs to no customer, and it authenticates on revalidation_worker_token in
+# admin_settings. Anything else gets 403.
+#
+# This entry also exists because run 727 deployed it with --no-verify-jwt,
+# reported success, and left nothing in production -- it is the first
+# brand-new edge function this pipeline has been asked to CREATE rather than
+# update. Being declared here is the one difference between it and every
+# cron-driven function that deploys cleanly, and it is a difference the
+# repository controls.
+[functions.revalidate-evidence]
+verify_jwt = false
+
+
+# ── THE REST OF THE NO-JWT SET, WHICH WAS NEVER DECLARED ────────────────────
+#
+# Added 2026-09-25, after a test compared this file against the workflow for
+# the first time and found FIFTEEN functions that CI deploys with
+# --no-verify-jwt and this file said nothing about.
+#
+# CI wins while CI is deploying, so production has been correct. But a
+# `supabase functions deploy` run by hand reads THIS FILE and nothing else,
+# so any one of these would have had its gateway JWT check silently turned
+# back ON by the next manual deploy -- and a pg_cron tick or a provider
+# webhook that suddenly requires a user JWT fails completely while every
+# screen still looks right.
+#
+# That is precisely the drift the header above describes, and it was already
+# present fifteen times over. Declaring them changes nothing about how CI
+# deploys; it makes the two paths agree.
+#
+# Each of these authenticates its own caller: the webhooks verify a provider
+# signature, the workers check a private token in admin_settings, and the
+# retired-provider stubs answer 423 to everyone.
+
+[functions.classify-signals]
+verify_jwt = false
+
+[functions.dataforseo-search]
+verify_jwt = false
+
+[functions.apify-discover]
+verify_jwt = false
+
+[functions.source-discovery-massive]
+verify_jwt = false
+
+[functions.source-monitor-public]
+verify_jwt = false
+
+[functions.classify-signals-v2]
+verify_jwt = false
+
+[functions.payment-webhook]
+verify_jwt = false
+
+[functions.run-matching]
+verify_jwt = false
+
+[functions.social-collect]
+verify_jwt = false
+
+[functions.spend-cap-check]
+verify_jwt = false
+
+[functions.discovery-queue-worker]
+verify_jwt = false
+
+[functions.run-matching-v2]
+verify_jwt = false
+
+[functions.research-agent]
+verify_jwt = false
+
+[functions.email-webhook]
+verify_jwt = false
+
+[functions.active-search-notify]
+verify_jwt = false

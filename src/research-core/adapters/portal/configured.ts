@@ -36,6 +36,8 @@
 // could hammer somebody.
 
 import type { AdapterContext, AdapterOutcome } from '../../discovery/adapter.ts';
+import { toSqm } from '../../normalize/area.ts';
+import type { NormalizedListing } from '../../parse/listing.ts';
 import { extractListing, isDetailUrl, transactionFromUrl, type PortalSourceConfig } from './family.ts';
 import type {
   AppliedFilters,
@@ -171,6 +173,18 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
     const wanted = candidates.slice(0, limit);
     const listings: PortalListing[] = [];
     const failures: string[] = [];
+    /*
+     * Kept apart from `failures` on purpose. A listing dropped because it is
+     * in another city is not a listing this adapter could not read, and
+     * folding the two together would make a working source look broken.
+     */
+    const outsideEnvelope: string[] = [];
+    /*
+     * Union across the listings actually returned. One kept listing that
+     * never stated its bedroom count is enough to make "bedrooms was applied"
+     * false for the set the caller receives.
+     */
+    const unevaluated = new Set<string>();
 
     for (const url of wanted) {
       let detail;
@@ -185,6 +199,10 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
 
       const extracted = extractListing(detail.body, detail.url || url, this.config);
       if (!extracted.ok || !extracted.listing) { failures.push(`${url}: ${extracted.reason}`); continue; }
+
+      const verdict = withinEnvelope(query, extracted.listing);
+      if (!verdict.keep) { outsideEnvelope.push(`${url}: ${verdict.reason}`); continue; }
+      for (const constraint of verdict.unevaluated) unevaluated.add(constraint);
 
       const transaction = transactionFromUrl(url, this.config) ?? route.transaction;
 
@@ -203,13 +221,22 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
       });
     }
 
-    if (listings.length === 0) {
+    if (listings.length === 0 && failures.length > 0) {
       return {
         ok: false,
         reason: 'PARSE_FAILED',
         detail: `no listing on ${this.config.host} could be read: ${failures.slice(0, 3).join('; ')}`,
       };
     }
+
+    /*
+     * Every listing was read and none of them matched the envelope. That is a
+     * true empty answer, not a failure: the listings this collection page
+     * published are somewhere else, or some other kind of property. Reporting
+     * it as PARSE_FAILED would mark a working source DEGRADED for answering
+     * honestly; returning the unfiltered set would answer a question nobody
+     * asked. The count travels so the caller can tell the two apart.
+     */
 
     return {
       ok: true,
@@ -222,7 +249,13 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
          */
         totalAvailable: null,
         truncated: candidates.length > wanted.length,
-        appliedFilters: clientSideOnly(query),
+        appliedFilters: appliedFilters(query, unevaluated),
+        /*
+         * How many readable listings the envelope removed. A sweep that found
+         * forty and kept two is a different event from one that found two,
+         * and without this number they report identically.
+         */
+        rejectedByEnvelope: outsideEnvelope.length,
         pagesFetched: 1,
         networkRequests,
       },
@@ -230,15 +263,162 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
   }
 }
 
+interface EnvelopeVerdict {
+  keep: boolean;
+  reason: string | null;
+  /**
+   * Constraints that could not be evaluated for THIS listing, because the
+   * listing does not state the field — or, for price, states it in another
+   * currency.
+   *
+   * This is what makes appliedFilters a statement about the returned set
+   * rather than about the code path. A caller reading `client: ['bedrooms']`
+   * is entitled to believe every listing it got back satisfies the bedroom
+   * constraint. If one of them simply never said how many bedrooms it has,
+   * that belief is false, and the honest place for the constraint is
+   * `unsupported` — the envelope really was wider than requested.
+   */
+  unevaluated: string[];
+}
+
 /**
- * Every envelope constraint, declared as applied CLIENT-SIDE.
+ * The client-side filter, ACTUALLY APPLIED.
  *
- * These sources' collection pages separate sale from rent and nothing else
- * that has been verified. Declaring a server-side filter this adapter does
- * not have would make a broad sweep look like a targeted one, which is the
- * difference between twenty comparables and twenty arbitrary listings.
+ * The first version of this file declared city as client-applied and never
+ * applied it. A Tbilisi query came back with a flat in Chakvi -- 300km away,
+ * on the Black Sea -- and appliedFilters reported the city as handled. A
+ * filter claimed and not run is worse than one declared unsupported, because
+ * the report says the envelope was honoured and what reaches the customer is
+ * a comparable from another market.
+ *
+ * ABSENCE IS NOT A MISMATCH. A listing that does not STATE a city is kept.
+ * Dropping it would narrow a result set on the strength of a field the source
+ * never published, which is the same error facing the other way: inventing a
+ * disqualifying fact out of silence.
  */
-function clientSideOnly(query: ListingQuery): AppliedFilters {
+function withinEnvelope(query: ListingQuery, listing: NormalizedListing): EnvelopeVerdict {
+  const unevaluated: string[] = [];
+  const reject = (reason: string): EnvelopeVerdict => ({ keep: false, reason, unevaluated });
+
+  if (query.propertyType !== 'ANY') {
+    if (!listing.propertyType) unevaluated.push('propertyType');
+    else if (listing.propertyType !== query.propertyType) {
+      return reject(`propertyType ${listing.propertyType} is not ${query.propertyType}`);
+    }
+  }
+
+  if (query.city) {
+    if (!listing.city) unevaluated.push('city');
+    else if (!samePlace(listing.city, query.city)) {
+      return reject(`city ${listing.city} is not ${query.city}`);
+    }
+  }
+
+  if (query.district) {
+    if (!listing.district) unevaluated.push('district');
+    else if (!samePlace(listing.district, query.district)) {
+      return reject(`district ${listing.district} is not ${query.district}`);
+    }
+  }
+
+  /*
+   * Converted to sqm before comparing. A source publishing hectares against
+   * an envelope in square metres would otherwise reject every plot it has, or
+   * keep every one, depending which way the numbers happened to fall.
+   */
+  if (constrains(query.area)) {
+    if (!listing.area) unevaluated.push('area');
+    else if (outsideRange(toSqm(listing.area), query.area)) {
+      return reject(`area ${toSqm(listing.area)}sqm is outside the envelope`);
+    }
+  }
+
+  if (constrains(query.bedrooms)) {
+    if (listing.bedrooms === null) unevaluated.push('bedrooms');
+    else if (outsideRange(listing.bedrooms, query.bedrooms)) {
+      return reject(`${listing.bedrooms} bedrooms is outside the envelope`);
+    }
+  }
+
+  /*
+   * Price is compared ONLY in the currency the envelope asked in. These
+   * portals quote USD and GEL on the same page and no rate is carried here;
+   * converting one to the other with a number invented at read time would put
+   * a fabricated exchange rate inside a filter decision, where nothing
+   * downstream could ever see it. A different currency, or none stated, means
+   * the constraint did not apply to this listing -- and appliedFilters says
+   * so for the sweep.
+   */
+  if (constrains(query.price)) {
+    const money = query.transaction === 'RENT' ? listing.rent : listing.sale;
+    if (!money || !query.priceCurrency || money.currency !== query.priceCurrency) {
+      unevaluated.push('price');
+    } else if (outsideRange(money.amount, query.price)) {
+      return reject(`${money.amount} ${money.currency} is outside the envelope`);
+    }
+  }
+
+  return { keep: true, reason: null, unevaluated };
+}
+
+/** True when a range actually narrows anything. An open window is not a filter. */
+function constrains(range: { min: number | null; max: number | null } | null): boolean {
+  return Boolean(range) && (range!.min !== null || range!.max !== null);
+}
+
+function outsideRange(value: number, range: { min: number | null; max: number | null } | null): boolean {
+  if (!range) return false;
+  if (range.min !== null && value < range.min) return true;
+  if (range.max !== null && value > range.max) return true;
+  return false;
+}
+
+/**
+ * Two spellings of one place.
+ *
+ * Georgian portals write Tbilisi as "Tbilisi" and as "თბილისი" on pages
+ * otherwise identical, and a comparison that only folded case would drop
+ * every Georgian-language listing while reporting the filter as applied --
+ * exactly the failure this function exists to prevent, moved one step along.
+ *
+ * The table holds the spellings the AUDITED sources actually publish. It is a
+ * lookup, not a transliterator: a rule that mapped scripts mechanically would
+ * eventually equate two real places that merely look alike.
+ */
+const PLACE_ALIASES: readonly (readonly string[])[] = [
+  ['tbilisi', 'თბილისი', 'тбилиси', 'tiflis'],
+  ['batumi', 'ბათუმი', 'батуми'],
+  ['kutaisi', 'ქუთაისი', 'кутаиси'],
+  ['rustavi', 'რუსთავი', 'рустави'],
+  ['gudauri', 'გუდაური', 'гудаури'],
+  ['bakuriani', 'ბაკურიანი', 'бакуриани'],
+];
+
+export function samePlace(a: string, b: string): boolean {
+  const left = a.trim().toLowerCase();
+  const right = b.trim().toLowerCase();
+  if (left === right) return true;
+  return PLACE_ALIASES.some((names) => names.includes(left) && names.includes(right));
+}
+
+/**
+ * What this adapter did with each constraint, for the listings it is
+ * returning.
+ *
+ * `server` holds only what the PORTAL enforced: these collection pages
+ * separate sale from rent by URL and nothing else anyone has verified.
+ *
+ * `client` holds constraints withinEnvelope evaluated against EVERY returned
+ * listing. A constraint that one of them could not be judged on -- no stated
+ * bedroom count, a price in another currency -- moves to `unsupported`, even
+ * though it removed other listings. That is the stricter reading and the
+ * right one: the caller's question is "is everything I got back inside my
+ * envelope", and the answer there is no.
+ *
+ * Nothing is listed in `client` that is not applied in withinEnvelope, and a
+ * test drives a violating listing through every name on the list.
+ */
+function appliedFilters(query: ListingQuery, unevaluated: ReadonlySet<string>): AppliedFilters {
   /*
    * THREE LISTS, NOT A MAP PER CONSTRAINT. Read off the AppliedFilters
    * declaration rather than invented -- an earlier version of this function
@@ -252,20 +432,37 @@ function clientSideOnly(query: ListingQuery): AppliedFilters {
   // are different URLs, so the portal really did enforce it.
   const server = ['transaction'];
 
-  // Applied here, after fetching, because that is where it happens.
-  client.push('propertyType');
-  if (query.city) client.push('city');
-  if (query.district) client.push('district');
-  if (query.area && (query.area.min !== null || query.area.max !== null)) client.push('area');
-  if (query.bedrooms && (query.bedrooms.min !== null || query.bedrooms.max !== null)) client.push('bedrooms');
+  const record = (constraint: string) => {
+    if (unevaluated.has(constraint)) unsupported.push(constraint);
+    else client.push(constraint);
+  };
+
+  if (query.propertyType !== 'ANY') record('propertyType');
+  if (query.city) record('city');
+  if (query.district) record('district');
+  if (query.area && (query.area.min !== null || query.area.max !== null)) record('area');
+  if (query.bedrooms && (query.bedrooms.min !== null || query.bedrooms.max !== null)) record('bedrooms');
 
   /*
-   * Price is UNSUPPORTED rather than client-side on the OpenGraph sources,
-   * because those listings carry no price at all -- a constraint cannot be
-   * applied to a field that is absent, and calling it client-applied would
-   * claim a filter that never ran.
+   * Price needs a currency on BOTH sides. An envelope that names none cannot
+   * be compared against anything, and the OpenGraph sources in this family
+   * publish listings carrying no price at all -- so this is frequently, and
+   * correctly, unsupported.
    */
-  if (query.price && (query.price.min !== null || query.price.max !== null)) unsupported.push('price');
+  if (query.price && (query.price.min !== null || query.price.max !== null)) {
+    if (query.priceCurrency) record('price');
+    else unsupported.push('price');
+  }
+
+  /*
+   * Constraints this family cannot express at all. Stated rather than
+   * omitted: a caller reading appliedFilters is entitled to learn that its
+   * envelope was widened, and silence reads as agreement.
+   */
+  if (query.subDistrict) unsupported.push('subDistrict');
+  if (query.projectName) unsupported.push('projectName');
+  if (query.rooms && (query.rooms.min !== null || query.rooms.max !== null)) unsupported.push('rooms');
+  if (query.floor && (query.floor.min !== null || query.floor.max !== null)) unsupported.push('floor');
 
   return { server, client, unsupported };
 }

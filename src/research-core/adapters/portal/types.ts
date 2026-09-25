@@ -139,6 +139,18 @@ export interface ListingSearchResult {
   /** True when the scan stopped at `limit` rather than at the end. */
   truncated: boolean;
   appliedFilters: AppliedFilters;
+  /**
+   * Readable listings this adapter dropped because they were outside the
+   * envelope — a flat in another city, a house when the query asked for
+   * apartments.
+   *
+   * Separate from a parse failure and separate from an empty market. A sweep
+   * that read forty listings and kept two is a different event from one that
+   * found two, and with only `listings.length` to go on the two report
+   * identically. Optional because the hand-written adapters ask the portal a
+   * narrow question and have nothing to reject.
+   */
+  rejectedByEnvelope?: number;
   pagesFetched: number;
   /** Real hops, for cost accounting and the external-request metric. */
   networkRequests: number;

@@ -23,7 +23,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 import {
   compareArtifacts, uploadAccounting, ABSENT,
@@ -480,7 +480,7 @@ test('artifact 11: a valid body parses, and only its LOCAL modules are compared'
   const bytes = await build([entryUrl], async (specifier) => ({
     kind: 'module',
     specifier,
-    content: readFileSync(decodeURIComponent(new URL(specifier).pathname).replace(/^\//, ''), 'utf8'),
+    content: readFileSync(fileURLToPath(specifier), 'utf8'),
   }));
   assert.equal(Buffer.from(bytes.slice(0, 5)).toString('latin1'), 'ESZIP', 'not an eszip container');
 
@@ -526,7 +526,7 @@ test('artifact 11b: the whole chain against a real eszip — fetch, parse, prove
   const bytes = await build([entryUrl], async (specifier) => ({
     kind: 'module',
     specifier,
-    content: readFileSync(decodeURIComponent(new URL(specifier).pathname).replace(/^\//, ''), 'utf8'),
+    content: readFileSync(fileURLToPath(specifier), 'utf8'),
   }));
 
   const serve = (buf) => async () => ({

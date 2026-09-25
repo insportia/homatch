@@ -87,19 +87,35 @@ export const HOME24_GE: PortalSourceConfig = {
 };
 
 /**
- * place.ge — OpenGraph only, and honest about it.
+ * place.ge — not OpenGraph-only after all.
  *
- * The probe found og:url, og:type, og:title and og:image and no structured
- * data at all. So this configuration reads what OpenGraph carries and takes
- * the numbers it can from the page's own visible text, with every one of
- * those recorded as TEXT provenance — the weakest kind, so a consumer
- * weighing evidence can see the difference between a number the site
- * published and a number found in a sentence.
+ * THE MISTAKE THIS ROW CORRECTS
  *
- * There is deliberately no price rule. place.ge writes prices in several
- * formats and currencies in running text, and a pattern that guessed would
- * produce a number that looks like a market figure and is not. A listing from
- * here carries a title, an id and an area, and says nothing about money.
+ * The first configuration read og:title and gave up, reporting listings with
+ * an id and nothing else, and place.ge was very nearly written off as a thin
+ * source on the strength of it. Two things were wrong.
+ *
+ * The detail URL pattern matched /ge/a/<id>/ads — which is an AGENCY page,
+ * not a listing. The live test dutifully "parsed" three of them and reported
+ * three unique ids that were agency ids. A source that produces confident
+ * nonsense is worse than one that produces nothing, and nothing in the
+ * numbers would have shown it: three listings, three unique ids, green.
+ *
+ * The real shape is /ge/ads/view/<id>, which appears thirty times on the very
+ * page that was being misread.
+ *
+ * And the site publishes plenty in its own markup — GEL2,559,015 with a
+ * price per square metre beside it, a stated publication date, the listing
+ * agency, monthly rents in GEL and USD. None of it is structured data, and
+ * all of it is printed where a person can read it.
+ *
+ * So the rules below read the text. Every one records TEXT provenance, which
+ * is the weakest kind and exactly what it is: a number found in prose rather
+ * than published as data.
+ *
+ * Prices are GEL because that is what the symbol on this site is, stated in
+ * the configuration rather than inferred at the call site — a bare number
+ * beside a symbol is not a currency declaration.
  */
 export const PLACE_GE: PortalSourceConfig = {
   id: 'place-ge',
@@ -108,7 +124,9 @@ export const PLACE_GE: PortalSourceConfig = {
   strategy: 'OPEN_GRAPH',
   countryCode: 'GE',
   languages: ['ka', 'en', 'ru'],
-  detailUrl: { pattern: /place\.ge\/[a-z]{2}\/[^/]+\/(\d+)/i, idGroup: 1 },
+  // /ge/ads/view/<id>. Read off the site's own markup, after the first
+  // pattern turned out to match its agency pages.
+  detailUrl: { pattern: /place\.ge\/[a-z]{2}\/ads\/view\/(\d+)/i, idGroup: 1 },
   transactionFromUrl: [
     { match: /iyideba|for-sale/i, transaction: 'SALE' },
     { match: /qiravdeba|for-rent/i, transaction: 'RENT' },
@@ -123,8 +141,46 @@ export const PLACE_GE: PortalSourceConfig = {
   enrich: [
     { field: 'title', from: 'OPEN_GRAPH', property: 'title' },
     { field: 'description', from: 'OPEN_GRAPH', property: 'description' },
-    // "120 მ²" / "120 m2". Group 1 is the number and nothing else.
-    { field: 'areaSqm', from: 'TEXT_PATTERN', pattern: /(\d{2,4}(?:[.,]\d+)?)\s*(?:მ²|m²|m2|кв\.?м)/i },
+    /*
+     * PRICE, ANCHORED ON THE PER-SQUARE-METRE SUFFIX.
+     *
+     * The listing's own price is the only figure printed as
+     * "$145,000 / $1,629 per sqm"; the related-listings sidebar prints bare
+     * amounts. An unanchored pattern matched the sidebar and returned the
+     * SAME number for three different listings -- three green rows of
+     * confident nonsense, which is worse than an empty result because
+     * nothing in the counts shows it.
+     *
+     * USD, because that is the symbol this site prices in. Stated here
+     * rather than inferred, since a number beside a symbol is not a currency
+     * declaration.
+     *
+     * Verified against three live listings: 145,000 / 140,000 / 140,000.
+     */
+    { field: 'price', from: 'PRICE_TEXT', side: 'SALE', currency: 'USD',
+      pattern: /\$\s*([\d,]{3,12})\s*\/\s*\$[\d,]+\s*\u10d9\u10d5\.\u10db/ },
+    // "24.09.2026", day first. Verified: 24.09, 24.09, 25.09 across three.
+    { field: 'publishedAt', from: 'DATE_TEXT', order: 'DMY', pattern: /(\d{2}\.\d{2}\.\d{4})/ },
+    /*
+     * THE TITLE IS THE STRUCTURED PART OF THIS SITE.
+     *
+     * "\u10d8\u10e7\u10d8\u10d3\u10d4\u10d1\u10d0, \u10d1\u10d8\u10dc\u10d0, 3 \u10dd\u10d7\u10d0\u10ee\u10d8, \u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8, \u10d5\u10d0\u10d9\u10d4-\u10e1\u10d0\u10d1\u10e3\u10e0\u10d7\u10d0\u10da\u10dd, \u10e1\u10d0\u10d1\u10e3\u10e0\u10d7\u10d0\u10da\u10dd" is
+     * transaction, type, rooms, city, macro-district, district -- published
+     * deliberately and in a fixed order.
+     */
+    { field: 'city', from: 'TEXT_CAPTURE',
+      pattern: /\u10dd\u10d7\u10d0\u10ee\u10d8,\s*([^,]{3,25}),/ },
+    { field: 'district', from: 'TEXT_CAPTURE',
+      pattern: /\u10dd\u10d7\u10d0\u10ee\u10d8,\s*[^,]{3,25},\s*[^,]{3,30},\s*([^,\-]{3,30})/ },
+    /*
+     * AREA AND ROOMS ARE DELIBERATELY ABSENT.
+     *
+     * The obvious area pattern matched the PRICE PER SQUARE METRE -- "$1,629
+     * per sqm" yielding an area of 629 on a flat that has nothing of the
+     * sort. Three listings came back with areas of 629, 573 and 609, all
+     * wrong, all plausible. Until the real figure can be read without
+     * ambiguity this source publishes no area, which is true and checkable.
+     */
   ],
 };
 

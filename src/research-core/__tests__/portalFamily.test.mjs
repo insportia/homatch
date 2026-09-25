@@ -37,7 +37,7 @@ const fixture = (name) => readFileSync(`${DIR}${name}`, 'utf8');
 /** The URLs the capture actually landed on. Not invented. */
 const CAPTURED = {
   home24: 'https://www.home24.ge/ge/property/1079/For-Sale-Flat',
-  place: 'https://place.ge/ge/a/1286083/ads',
+  place: 'https://place.ge/ge/ads/view/1317856',
   zaraya: 'https://www.zarayaproperties.com/properties-1/0001',
 };
 
@@ -115,19 +115,62 @@ test('"product" is not a property type', () => {
 
 /* ── place.ge and zaraya: thin, and honest about it ────────────────────── */
 
-test('place.ge yields an id and a title, and does not invent a price', () => {
+test('place.ge yields a real price, place and date from its own text', () => {
   /*
-   * The site publishes OpenGraph and nothing else. A configuration that
-   * pattern-matched a price out of running text would produce a number that
-   * looks like a market figure and is not, so there is deliberately no price
-   * rule and the listing says nothing about money.
+   * THE FIXTURE THIS REPLACES WAS NOT A LISTING.
+   *
+   * The first detail-URL pattern matched /ge/a/<id>/ads — an AGENCY page —
+   * so the capture, the tests and a live run all operated on the wrong kind
+   * of page, reporting three "listings" whose unique ids were agency ids.
+   * The real shape is /ge/ads/view/<id>, and it appears thirty times on the
+   * very page that was being misread.
+   *
+   * On a real listing the site publishes plenty: a price anchored to a
+   * per-square-metre figure, a stated date, and a title broken into
+   * transaction, type, rooms, city, macro-district and district.
    */
   const result = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE);
   assert.equal(result.ok, true, result.reason);
-  assert.equal(result.listing.listingId, '1286083');
+  assert.equal(result.listing.listingId, '1317856');
   assert.ok(result.listing.title);
-  assert.equal(result.listing.sale, null);
-  assert.equal(result.listing.rent, null);
+
+  assert.ok(result.listing.sale, 'no price was read');
+  assert.equal(result.listing.sale.amount, 145000);
+  assert.equal(result.listing.sale.currency, 'USD');
+  assert.equal(result.listing.sale.basis, 'ASKING_SALE_PRICE');
+  assert.equal(result.listing.rent, null, 'a sale listing produced a rent');
+
+  assert.equal(result.listing.publishedAt, '2026-09-24');
+  assert.ok(result.listing.city);
+  assert.ok(result.listing.district);
+});
+
+test('the place.ge price is the listing\'s own, not the sidebar\'s', () => {
+  /*
+   * The failure this pins. An unanchored price pattern matched the
+   * related-listings sidebar and returned GEL3,117 for three DIFFERENT
+   * listings — three green rows, three unique ids, one wrong number
+   * repeated. Nothing in the counts would have shown it.
+   *
+   * The anchor is the per-square-metre suffix, which only the listing's own
+   * price line carries.
+   */
+  const l = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE).listing;
+  assert.notEqual(l.sale.amount, 3117, 'the sidebar price is back');
+  // And it is recorded as prose, because that is what it is.
+  assert.equal(l.fieldOrigins.sale, 'TEXT');
+});
+
+test('place.ge publishes no area, and none is invented', () => {
+  /*
+   * The obvious area pattern matched the PRICE PER SQUARE METRE: "$1,629 per
+   * sqm" yielded an area of 629 on a flat that has nothing of the sort, and
+   * three listings came back with 629, 573 and 609 — all wrong, all
+   * plausible. Absent is the honest answer until it can be read without
+   * ambiguity.
+   */
+  const l = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE).listing;
+  assert.equal(l.area, null, 'an area appeared that the site does not publish unambiguously');
 });
 
 test('a thin source scores lower than a structured one, and the gap is visible', () => {
@@ -137,10 +180,21 @@ test('a thin source scores lower than a structured one, and the gap is visible',
    * actually published rather than how many fields happen to be filled.
    */
   const rich = extractListing(fixture('home24.ge.detail.html'), CAPTURED.home24, HOME24_GE);
-  const thin = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE);
+  const thin = extractListing(fixture('zarayaproperties.com.detail.html'), CAPTURED.zaraya, ZARAYA);
   assert.ok(rich.quality > 0.8, `structured source scored ${rich.quality}`);
-  assert.ok(thin.quality < 0.7, `OpenGraph-only source scored ${thin.quality}`);
+  assert.ok(thin.quality < 0.7, `prose-only source scored ${thin.quality}`);
   assert.ok(rich.quality > thin.quality);
+
+  /*
+   * place.ge sits between them and scores LOW despite carrying price, place
+   * and date — because every one of those was read out of prose. The score
+   * measures how the source PUBLISHED its data, not how many fields we
+   * managed to fill, which is what makes it useful for deciding whose
+   * observation wins when two disagree.
+   */
+  const prose = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE);
+  assert.ok(prose.listing.sale, 'place.ge carries a price');
+  assert.ok(prose.quality < rich.quality, 'prose scored as high as structured data');
 });
 
 test('quality is a number, not NaN', () => {
@@ -270,9 +324,19 @@ test('a site that drops one of two equivalent fields still parses', () => {
 });
 
 test('missing fields are reported, not hidden', () => {
-  const result = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE);
+  /*
+   * zaraya rather than place.ge: place.ge now matches every rule configured
+   * for it and correctly reports nothing missing, which is the right answer
+   * and made this assertion meaningless there. The point stands and needs a
+   * source that genuinely has a gap.
+   */
+  const result = extractListing(fixture('zarayaproperties.com.detail.html'), CAPTURED.zaraya, ZARAYA);
   assert.ok(Array.isArray(result.missing));
-  assert.ok(result.missing.length > 0, 'a thin page reported nothing missing');
+  assert.ok(result.missing.length > 0, 'a page with an unmatched rule reported nothing missing');
+
+  // And a source whose every rule matched says so, rather than padding the list.
+  const complete = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE);
+  assert.deepEqual(complete.missing, []);
 });
 
 /* ── the fixtures are real ─────────────────────────────────────────────── */

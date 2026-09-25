@@ -122,7 +122,22 @@ test('two concurrent runs for the same district share one fetch', async () => {
 
   const stats = runtime.stats();
   assert.ok(stats.coalescedJoins > 0, 'one run joined the other instead of refetching');
-  assert.ok(state.sends < 8, `expected sharing, saw ${state.sends} hops`);
+
+  /*
+   * NO URL WAS FETCHED TWICE.
+   *
+   * This used to read `state.sends < 8`, a bound calibrated when the registry
+   * held one adapter. It said nothing about sharing -- it said "few adapters"
+   * -- and it failed the moment three more portals were registered even
+   * though coalescing was working perfectly.
+   *
+   * Distinct-equals-total is the property the test is actually about, and it
+   * holds however many adapters exist: if the two runs had not shared, every
+   * URL would appear twice.
+   */
+  const distinct = new Set(state.urls).size;
+  assert.equal(distinct, state.sends,
+    `${state.sends - distinct} URL(s) were fetched more than once across two concurrent runs`);
 });
 
 test('the brief tells the model the research is done, not to go and search', async () => {

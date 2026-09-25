@@ -31,6 +31,8 @@ import {
 import type { AdapterContext, AdapterDocument } from '../discovery/adapter.ts';
 import { PortalRegistry } from '../adapters/portal/types.ts';
 import { SsGeAdapter, SS_GE_HOST } from '../adapters/portal/ss-ge.ts';
+import { ConfiguredPortalAdapter } from '../adapters/portal/configured.ts';
+import { HOME24_GE, PLACE_GE, ZARAYA } from '../adapters/portal/sources.ts';
 
 /**
  * Portals this build knows how to read.
@@ -66,6 +68,95 @@ export const PORTAL_SOURCE_POLICIES: SourcePolicy[] = [
       'home.ss.ge serves search results as JSON inside __NEXT_DATA__. robots.txt ' +
       'disallows only /ka/user, /en/user and /ru/user; listing and search paths ' +
       'are permitted. No browser, no session, no bypass.',
+  },
+
+  /*
+   * THE THREE ADDED 2026-09-25, AFTER AN AUDIT AND A PROBE.
+   *
+   * scripts/audit-property-sources.mjs read each one's robots.txt with the
+   * identifying User-Agent and found every listing path permitted;
+   * scripts/probe-property-sources.mjs then established how each publishes
+   * its data. Both ran before a line of adapter was written, which is the
+   * order the survey note below this block asks for.
+   *
+   * Every rate here is deliberately slower than ss.ge's. These are smaller
+   * operations than ss.ge and a first-contact sweep is not the moment to
+   * find out where their limits are.
+   */
+  {
+    ...DEFAULT_SOURCE_POLICY,
+    id: 'portal:home24.ge',
+    domains: ['home24.ge'],
+    hosts: ['www.home24.ge', 'home24.ge'],
+    sourceFamily: 'home24.ge',
+    kind: 'PROPERTY_PORTAL',
+    enabled: true,
+    allowedMethods: ['GET'],
+    rate: { concurrency: 1, requestsPerSecond: 0.5, burst: 1 },
+    robots: 'RESPECT',
+    browserRenderingAllowed: false,
+    maxResponseBytes: 4_000_000,
+    timeoutMs: 15_000,
+    cacheTtlMs: 10 * 60 * 1000,
+    cacheStaleMs: 30 * 60 * 1000,
+    visibility: 'PUBLIC',
+    authority: 0.5,
+    notes:
+      'Publishes schema.org RealEstateListing, Offer, PostalAddress, PropertyValue ' +
+      'and a QuantitativeValue in MTK on every detail page - the richest structured ' +
+      'data of the eighteen sites audited. robots.txt permits every listing path.',
+  },
+  {
+    ...DEFAULT_SOURCE_POLICY,
+    id: 'portal:place.ge',
+    domains: ['place.ge'],
+    hosts: ['place.ge', 'www.place.ge'],
+    sourceFamily: 'place.ge',
+    kind: 'PROPERTY_PORTAL',
+    enabled: true,
+    allowedMethods: ['GET'],
+    rate: { concurrency: 1, requestsPerSecond: 0.5, burst: 1 },
+    robots: 'RESPECT',
+    browserRenderingAllowed: false,
+    maxResponseBytes: 4_000_000,
+    timeoutMs: 15_000,
+    cacheTtlMs: 10 * 60 * 1000,
+    cacheStaleMs: 30 * 60 * 1000,
+    visibility: 'PUBLIC',
+    // Lower than home24: OpenGraph only, so a listing from here carries an
+    // id, a title and little else. Authority is what the source PUBLISHES,
+    // not how much we like it.
+    authority: 0.35,
+    notes:
+      'OpenGraph only - no ld+json and no microdata. A listing from here ' +
+      'carries an id and a title, and deliberately no price: the site writes ' +
+      'prices in several formats in running text and a pattern that guessed ' +
+      'would produce a market figure that is not one.',
+  },
+  {
+    ...DEFAULT_SOURCE_POLICY,
+    id: 'portal:zarayaproperties.com',
+    domains: ['zarayaproperties.com'],
+    hosts: ['www.zarayaproperties.com', 'zarayaproperties.com'],
+    sourceFamily: 'zarayaproperties.com',
+    kind: 'PROPERTY_PORTAL',
+    enabled: true,
+    allowedMethods: ['GET'],
+    // Its own robots.txt asks for Crawl-delay: 10. Honoured here rather than
+    // discovered by being rate-limited.
+    rate: { concurrency: 1, requestsPerSecond: 0.1, burst: 1 },
+    robots: 'RESPECT',
+    browserRenderingAllowed: false,
+    maxResponseBytes: 4_000_000,
+    timeoutMs: 20_000,
+    cacheTtlMs: 30 * 60 * 1000,
+    cacheStaleMs: 60 * 60 * 1000,
+    visibility: 'PUBLIC',
+    authority: 0.4,
+    notes:
+      "A developer's own site. What it publishes is a DEVELOPER_PRICE, not a " +
+      'resale asking price, and pooling the two produces a market statistic ' +
+      'that is simply wrong. Publishes Crawl-delay: 10, honoured in the rate above.',
   },
 ];
 
@@ -262,7 +353,46 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
    * that works. The next person to widen this starts from the survey above
    * instead of repeating it.
    */
-  const registry = new PortalRegistry().register(new SsGeAdapter());
+  /*
+   * FOUR NOW, AND THE SURVEY ABOVE IS WHY THREE OF THEM ARE HERE.
+   *
+   * The note above says an adapter written against a guessed page shape
+   * cannot be verified without spending a real research run. So none of
+   * these was guessed: each site's robots.txt was read, its structure
+   * probed, and one real page captured as a fixture before the
+   * configuration was written. korter.ge remains absent for exactly the
+   * reason recorded above -- independently re-confirmed by the 2026-09-25
+   * probe, which found the same JS shell.
+   *
+   * Registering an adapter is still not enough to reach the network: the
+   * SourceAccessPolicyRegistry above refuses any host without a policy, and
+   * that is where the rate, the robots stance and the byte cap live.
+   */
+  const registry = new PortalRegistry()
+    .register(new SsGeAdapter())
+    .register(new ConfiguredPortalAdapter({
+      config: HOME24_GE,
+      routes: [
+        // Read off the site, not constructed: this is the collection URL the
+        // 2026-09-25 capture actually fetched, and it yielded 23 detail links.
+        { transaction: 'SALE', url: 'https://www.home24.ge/ge/results/for_sale/flat', propertyType: 'APARTMENT' },
+        { transaction: 'RENT', url: 'https://www.home24.ge/ge/results/for_rent/flat', propertyType: 'APARTMENT' },
+      ],
+    }))
+    .register(new ConfiguredPortalAdapter({
+      config: PLACE_GE,
+      routes: [
+        { transaction: 'SALE', url: 'https://place.ge/ge/sakartvelo/bina/iyideba', propertyType: 'APARTMENT' },
+        { transaction: 'RENT', url: 'https://place.ge/ge/sakartvelo/bina/qiravdeba', propertyType: 'APARTMENT' },
+      ],
+    }))
+    .register(new ConfiguredPortalAdapter({
+      config: ZARAYA,
+      routes: [
+        // One route: a developer sells, it does not let.
+        { transaction: 'SALE', url: 'https://www.zarayaproperties.com/en/properties-1', propertyType: 'APARTMENT' },
+      ],
+    }));
 
   const context: AdapterContext = {
     fetchDocument,

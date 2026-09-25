@@ -90,7 +90,40 @@ export type EnrichmentRule =
    * and every match records its origin as the weakest kind.
    */
   | { field: 'areaSqm' | 'rooms' | 'bedrooms' | 'floor' | 'totalFloors';
-      from: 'TEXT_PATTERN'; pattern: RegExp };
+      from: 'TEXT_PATTERN'; pattern: RegExp }
+  /*
+   * A price written the way a person reads it: a currency mark and a number,
+   * in the page's own visible text.
+   *
+   * Generic on purpose. Several of the audited sites publish no structured
+   * data at all and yet print "GEL2,559,015" and "$5,250 / month" plainly --
+   * reading OpenGraph and stopping would have written those sources off as
+   * empty when they are not. `currency` is stated by the CONFIGURATION rather
+   * than guessed from the symbol, because a bare number next to a symbol is
+   * not a currency declaration and getting it wrong misprices a market.
+   *
+   * `perPeriod` marks a rent. A monthly figure landing in the sale field is
+   * the single worst thing this file could do.
+   */
+  | { field: 'price'; from: 'PRICE_TEXT'; pattern: RegExp; currency: string;
+      side: 'SALE' | 'RENT'; perPeriod?: 'MONTH' | 'DAY' | 'YEAR' }
+  /*
+   * A publication date the page states. NEVER the time we read it: a
+   * first-seen date is not a listing date, and the difference is what makes
+   * "days on market" a real number or a fabricated one.
+   */
+  | { field: 'publishedAt'; from: 'DATE_TEXT'; pattern: RegExp; order: 'DMY' | 'YMD' }
+  /**
+   * A free-text value the page prints: the listing agency, or a place name.
+   *
+   * Locations are here because several sites put a clean, comma-separated
+   * breakdown in the page TITLE -- "for sale, apartment, 3 rooms, Tbilisi,
+   * Vake-Saburtalo, Saburtalo" -- which is more reliable than anything in the
+   * body and is published deliberately. It is still prose, so it is still
+   * recorded as TEXT provenance.
+   */
+  | { field: 'agencyName' | 'developerName' | 'projectName' | 'city' | 'district';
+      from: 'TEXT_CAPTURE'; pattern: RegExp };
 
 export interface PortalSourceConfig {
   /** Stable key. Appears in provenance and in the registry. */
@@ -217,6 +250,29 @@ function visibleText(html: string): string {
     .trim();
 }
 
+/**
+ * A stated date, as an ISO day.
+ *
+ * `order` is declared by the configuration because 04.09.2026 is the fourth
+ * of September in Tbilisi and the ninth of April in a different convention,
+ * and there is nothing in the string that settles it. A site that writes
+ * ambiguous dates gets whichever order its own locale uses, stated once, in
+ * one place, by somebody who looked.
+ *
+ * No time and no zone: the page said a day. Inventing midnight in a guessed
+ * timezone would be inventing precision.
+ */
+function isoFromParts(raw: string, order: 'DMY' | 'YMD'): string | null {
+  const parts = String(raw).match(/(\d{1,4})[.\-/](\d{1,2})[.\-/](\d{1,4})/);
+  if (!parts) return null;
+  const [a, b, c] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
+  const [year, month, day] = order === 'YMD' ? [a, b, c] : [c, b, a];
+  if (!year || !month || !day) return null;
+  if (year < 1900 || year > 2200 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return Number.isNaN(Date.parse(iso)) ? null : iso;
+}
+
 function numberFrom(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string') return null;
@@ -308,7 +364,8 @@ export function extractListing(
   }
 
   const nodes = config.strategy === 'OPEN_GRAPH' ? [] : jsonLdNodes(html);
-  const text = config.enrich?.some((r) => r.from === 'TEXT_PATTERN') ? visibleText(html) : '';
+  const TEXT_RULES = new Set(['TEXT_PATTERN', 'PRICE_TEXT', 'DATE_TEXT', 'TEXT_CAPTURE']);
+  const text = config.enrich?.some((r) => TEXT_RULES.has(r.from)) ? visibleText(html) : '';
 
   for (const rule of config.enrich ?? []) {
     const value = readRule(rule, { nodes, html, text });
@@ -395,8 +452,28 @@ function readRule(
       const match = rule.pattern.exec(ctx.text);
       return match ? numberFrom(match[1]) : null;
     }
+    case 'PRICE_TEXT': {
+      const match = rule.pattern.exec(ctx.text);
+      if (!match) return null;
+      const amount = numberFrom(match[1]);
+      // Zero is not a price. A page that printed one has not told us what it
+      // costs, and a free property is not a thing.
+      return amount !== null && amount > 0 ? amount : null;
+    }
+    case 'DATE_TEXT': {
+      const match = rule.pattern.exec(ctx.text);
+      return match ? (match[1] ?? null) : null;
+    }
+    case 'TEXT_CAPTURE': {
+      const match = rule.pattern.exec(ctx.text);
+      const value = match?.[1]?.trim();
+      return value && value.length > 1 ? value : null;
+    }
   }
 }
+
+/** Rules that read prose. Their findings are the weakest evidence there is. */
+const TEXT_ORIGIN_RULES = new Set(['TEXT_PATTERN', 'PRICE_TEXT', 'DATE_TEXT', 'TEXT_CAPTURE']);
 
 function applyRule(
   listing: NormalizedListing,
@@ -409,7 +486,7 @@ function applyRule(
    * in prose -- so it is recorded as such and never overwrites a structured
    * value that is already present.
    */
-  const kind: OriginKind = rule.from === 'TEXT_PATTERN'
+  const kind: OriginKind = TEXT_ORIGIN_RULES.has(rule.from)
     ? 'TEXT'
     : rule.from === 'OPEN_GRAPH' ? 'METADATA' : 'STRUCTURED';
 
@@ -422,6 +499,46 @@ function applyRule(
     bag[field] = n;
     listing.fieldOrigins[field as string] = origin(config, kind);
   };
+
+  if (rule.from === 'PRICE_TEXT') {
+    const amount = typeof value === 'number' ? value : numberFrom(value);
+    if (amount === null || amount <= 0) return;
+    /*
+     * Sale and rent NEVER pool. A monthly figure in the sale field turns a
+     * $5,250 tenancy into a $5,250 flat, and every market statistic built on
+     * it is then wrong in a way nobody can see.
+     */
+    if (rule.side === 'RENT') {
+      if (listing.rent) return;
+      listing.rent = { amount, currency: rule.currency, basis: config.rentBasis };
+      listing.rentPeriod = rule.perPeriod ?? null;
+      listing.fieldOrigins.rent = origin(config, kind);
+    } else {
+      if (listing.sale) return;
+      listing.sale = { amount, currency: rule.currency, basis: config.saleBasis };
+      listing.fieldOrigins.sale = origin(config, kind);
+    }
+    return;
+  }
+
+  if (rule.from === 'DATE_TEXT') {
+    if (listing.publishedAt) return;
+    const iso = isoFromParts(String(value), rule.order);
+    // An unparseable date stays absent. A wrong one would become market
+    // evidence, which is worse than none.
+    if (!iso) return;
+    listing.publishedAt = iso;
+    listing.fieldOrigins.publishedAt = origin(config, kind);
+    return;
+  }
+
+  if (rule.from === 'TEXT_CAPTURE') {
+    const field = rule.field as 'agencyName' | 'developerName' | 'projectName' | 'city' | 'district';
+    if (listing[field] != null) return;
+    listing[field] = String(value);
+    listing.fieldOrigins[field] = origin(config, kind);
+    return;
+  }
 
   if (rule.field === 'areaSqm') {
     if (listing.area) return;

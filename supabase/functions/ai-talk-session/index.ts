@@ -2684,6 +2684,29 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
     let worstP95ChunkGapMs = 0;
     let worstPhraseSeamMs = 0;
     let lastPhraseDoneMs: number | null = null;
+    /*
+     * THE GAP A LISTENER CAN ACTUALLY HEAR, WHICH THE SEAM ONLY HINTS AT.
+     *
+     * `tts_phrase_seam_ms` measures synthesis: phrase N+1's first byte against
+     * phrase N's last. It is a real fact and it is not the experience, because
+     * synthesis runs far faster than speech -- the 719ms seam measured in
+     * production sat inside a phrase carrying about six seconds of audio, so
+     * nothing stopped. A seam is only heard when the browser runs out of
+     * buffered speech before the next phrase arrives.
+     *
+     * RUNWAY is that quantity: the speech already handed over, minus the time
+     * elapsed since playback began. Positive means the listener's ear is still
+     * behind the stream and a seam is invisible; negative means the browser
+     * had nothing to play, and for exactly that long the voice was silent.
+     *
+     * It is an estimate in one respect only -- playback is assumed to start
+     * when the first piece is sent and to run without pausing -- which makes
+     * it optimistic about the network and honest about this pipeline. That is
+     * the right direction: it will not claim a gap the segmentation did not
+     * cause.
+     */
+    let queuedAudioMs = 0;
+    let minRunwayMs: number | null = null;
       let ttsRequestAt: number | null = null;
       let ttsFirstByteAt: number | null = null;
 
@@ -2725,8 +2748,19 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
 
           const piece = phrase.chunks[offset];
           offset += 1;
-          if (!firstAudioAt) firstAudioAt = Date.now() - startedAt;
-          audioBytes += Math.round(piece.length * 0.75);
+          if (!firstAudioAt) {
+            firstAudioAt = Date.now() - startedAt;
+          } else {
+            // Measured before this piece is counted, because the question is
+            // what the browser had to play while it was waiting for it.
+            const runway = queuedAudioMs - ((Date.now() - startedAt) - firstAudioAt);
+            if (minRunwayMs === null || runway < minRunwayMs) minRunwayMs = Math.round(runway);
+          }
+          const pieceBytes = Math.round(piece.length * 0.75);
+          audioBytes += pieceBytes;
+          // 16-bit mono PCM: two bytes per sample, at the rate this phrase
+          // was synthesised for.
+          queuedAudioMs += (pieceBytes / 2) / ((phrase.sampleRate || outputSampleRate) / 1_000);
           send('audio', {
             // Monotonic across phrases, because the browser schedules by
             // arrival order and a per-phrase index would repeat.
@@ -2741,6 +2775,37 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           });
         }
       })();
+
+      /*
+       * HOW MUCH TEXT THE NEXT PHRASE NEEDS BEFORE IT IS WORTH CUTTING.
+       *
+       * The opening is deliberately tiny: it is the phrase the visitor waits
+       * through in silence, and eight characters of "Understood," is audio
+       * about a second sooner than a whole sentence would be.
+       *
+       * After that the trade reverses, and the old fixed floor of 45 missed
+       * it. The voice is already speaking, so waiting for more text costs
+       * nothing at all while there is runway -- and it buys a phrase cut at a
+       * real sentence end rather than at the first comma past forty-five
+       * characters. Fewer, longer phrases mean fewer seams to begin with,
+       * better prosody, and more buffered speech per request.
+       *
+       * So the floor rises once the browser is comfortably fed and drops back
+       * the moment it is not. That is the only arrangement that gives both a
+       * fast first word and an unbroken reply; a single constant has to pick
+       * one of them and lose the other.
+       */
+      const phraseFloor = (): number => {
+        if (spoken.length === 0) return OPENING_PHRASE_MIN_CHARS;
+        /*
+         * Nothing has been sent yet, so phrase 0's audio is still in flight
+         * and its duration is not knowable. Stay at the short floor: this is
+         * the one boundary where starvation is genuinely possible.
+         */
+        if (!firstAudioAt) return HUNGRY_PHRASE_MIN_CHARS;
+        const runway = queuedAudioMs - ((Date.now() - startedAt) - firstAudioAt);
+        return runway >= RUNWAY_COMFORTABLE_MS ? SETTLED_PHRASE_MIN_CHARS : HUNGRY_PHRASE_MIN_CHARS;
+      };
 
       let full = '';
       /** What has actually been shown and queued: `full` minus the marker. */
@@ -2893,11 +2958,11 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           // them. Everything already spoken stays honestly recorded.
           if (turnAbort.signal.aborted) break;
           if (languageChecked) {
-            let phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
+            let phrase = takePhrase(pending, phraseFloor(), spoken.length === 0);
             while (phrase) {
               queuePhrase(phrase);
               pending = pending.slice(phrase.length);
-              phrase = takePhrase(pending, spoken.length === 0 ? 8 : 45, spoken.length === 0);
+              phrase = takePhrase(pending, phraseFloor(), spoken.length === 0);
             }
           }
         }
@@ -3090,6 +3155,9 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
             ttsFirstByteMs: ttsFirstByteAt,
             firstAudioSentMs: firstAudioAt || null,
             streamed: spoken[0] ? spoken[0].chunks.length > 1 : null,
+            // What the segmentation left the browser holding at its thinnest.
+            minRunwayMs,
+            phraseSeamMs: worstPhraseSeamMs || null,
           },
         });
         /*
@@ -3259,8 +3327,22 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           tts_provider_longest_silence_ms: turnProviderLongestSilenceMs || null,
           tts_level: turnLevelSample,
           tts_p95_chunk_gap_ms: worstP95ChunkGapMs || null,
-          // The silence a listener hears between one sentence and the next.
+          /*
+           * The synthesis-side gap between one phrase and the next. Kept
+           * because it is a real fact about the pipeline, but read together
+           * with the runway below: a large seam under a large runway was never
+           * heard by anybody.
+           */
           tts_phrase_seam_ms: worstPhraseSeamMs || null,
+          /*
+           * The least buffered speech the browser was ever left holding, in
+           * milliseconds. Positive means the voice never ran dry. Negative is
+           * the length of an actual silence, and the only number here that
+           * describes what the visitor heard. Null when a turn produced too
+           * little audio to measure a second piece against a first.
+           */
+          tts_min_runway_ms: minRunwayMs,
+          tts_starvation_ms: minRunwayMs === null || minRunwayMs >= 0 ? null : -minRunwayMs,
           tts_bytes: audioBytes,
           tts_failure: voiceFailure?.code ?? null,
           action_offered: action.destination?.key ?? null,
@@ -3313,6 +3395,23 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
     },
   });
 }
+
+/*
+ * THE THREE FLOORS SEGMENTATION CHOOSES BETWEEN. See `phraseFloor`.
+ *
+ * Opening: short enough that the first word is quick. Hungry: the old fixed
+ * value, used whenever the browser's buffer is thin. Settled: long enough to
+ * reach a sentence end, used while there is speech buffered ahead of the ear.
+ *
+ * `RUNWAY_COMFORTABLE_MS` is the boundary between the last two, and it is not
+ * arbitrary: measured first-byte latency for a phrase runs about 250-350ms and
+ * reaching the settled floor costs a few hundred milliseconds more of model
+ * output, so a second and a bit of buffered speech covers both with room over.
+ */
+const OPENING_PHRASE_MIN_CHARS = 8;
+const HUNGRY_PHRASE_MIN_CHARS = 45;
+const SETTLED_PHRASE_MIN_CHARS = 110;
+const RUNWAY_COMFORTABLE_MS = 1_200;
 
 /**
  * The next complete thing that can be spoken, or empty if there is not one yet.

@@ -681,6 +681,62 @@ test('artifact: remote dependencies are excluded from the comparison entirely', 
   assert.ok(isProven(proof));
 });
 
+test('artifact: a local module is anything that is not a remote scheme', async () => {
+  /*
+   * Run 36111826961 retrieved and parsed all eighteen production bodies and
+   * found zero local modules, because the filter asked for `file:` and
+   * production does not name them that way. What a local module IS varies
+   * with how the bundler was invoked; what it is NOT does not.
+   */
+  const { build } = await import('@deno/eszip');
+  const dir = mkdtempSync(join(tmpdir(), 'eszip-'));
+  writeFileSync(join(dir, 'index.ts'), 'export const n: number = 1;\n');
+  const entryUrl = pathToFileURL(join(dir, 'index.ts')).href;
+  const bytes = await build([entryUrl], async (specifier) => ({
+    kind: 'module',
+    specifier,
+    content: readFileSync(fileURLToPath(specifier), 'utf8'),
+  }));
+
+  const body = await fetchDeployedModules('demo-fn', {
+    projectRef: 'r',
+    token: 't',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    }),
+  });
+  assert.equal(body.ok, true, body.reason);
+  assert.equal(body.modules.length, 1, 'the local module was filtered out');
+  assert.match(body.reason, /\[.*:\d/, 'the scheme census should be reported for the next person');
+
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('artifact: remote schemes never reach the comparison, whatever the path looks like', () => {
+  /*
+   * A jsr or deno.land module does not come from this repository and there is
+   * nothing here to compare it against — and one whose path happens to end in
+   * something repo-shaped must not be mistaken for a repository file.
+   */
+  const d = deployedTree({ version: 8 });
+  const proof = prove(d);
+  assert.equal(proof.deployedFileCount, 3);
+  assert.ok(isProven(proof));
+
+  /* And a scheme-less absolute path IS compared: that is the production shape. */
+  const bare = deployedTree({ version: 8 });
+  bare.modules = bare.modules.map((m) => ({
+    ...m,
+    specifier: m.specifier.replace('file://', ''),
+    sourceUrl: m.sourceUrl.replace('file://', ''),
+  }));
+  const bareProof = prove(bare);
+  assert.equal(bareProof.state, PROOF.PROVEN_EXACT, 'a scheme-less module path was not matched');
+  assert.equal(bareProof.matched, 3);
+});
+
 test('artifact: the runner path and the repository path resolve, unambiguously', () => {
   assert.deepEqual(matchDeployedName(`/home/runner/work/homatch/homatch/${SHARED}`, [SHARED]), [SHARED]);
   assert.deepEqual(matchDeployedName('functions/_shared/comm/auth.ts', [SHARED]), [SHARED]);

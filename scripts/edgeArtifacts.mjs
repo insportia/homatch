@@ -245,10 +245,28 @@ export async function fetchDeployedModules(name, { projectRef, token, fetchImpl 
     return { ok: false, reason: `eszip did not parse: ${lastError}`, modules: null, bytes: raw.length };
   }
 
+  /*
+   * LOCAL IS DECIDED BY SCHEME, AND ONLY THE REMOTE SCHEMES ARE NAMED.
+   *
+   * An earlier version kept `file:` modules and dropped everything else. Run
+   * 36111826961 retrieved and parsed all eighteen bodies and found ZERO of
+   * them: production's bundler does not name local modules the way a locally
+   * built eszip does. Listing what a local module is NOT is the durable half
+   * of that question — http, jsr, npm, node and data are dependencies by
+   * definition, and anything else is a candidate whose identity the suffix
+   * match then confirms or rejects.
+   */
+  const REMOTE = /^(https?|jsr|npm|node|data|blob):/i;
+  const schemes = new Map();
   const modules = [];
+  const examples = [];
   for (const specifier of specifiers) {
-    if (!String(specifier).startsWith('file:')) continue;
-    let sourceUrl = specifier;
+    const spec = String(specifier);
+    const scheme = (spec.match(/^([a-z][a-z0-9+.-]*):/i)?.[1] ?? '(none)').toLowerCase();
+    schemes.set(scheme, (schemes.get(scheme) ?? 0) + 1);
+    if (REMOTE.test(spec)) continue;
+
+    let sourceUrl = spec;
     let content = null;
     try {
       const rawMap = await parser.getModuleSourceMap(specifier);
@@ -256,15 +274,28 @@ export async function fetchDeployedModules(name, { projectRef, token, fetchImpl 
         const map = JSON.parse(rawMap);
         const from = (map.sources ?? [])[0];
         const text = (map.sourcesContent ?? [])[0];
-        if (typeof text === 'string') {
-          content = text;
-          if (typeof from === 'string' && from.startsWith('file:')) sourceUrl = from;
-        }
+        if (typeof text === 'string') content = text;
+        if (typeof from === 'string' && !REMOTE.test(from)) sourceUrl = from;
       }
     } catch { /* leave content null: unresolvable, not wrong */ }
-    modules.push({ specifier, sourceUrl, content });
+    if (examples.length < 3) examples.push(sourceUrl);
+    modules.push({ specifier: spec, sourceUrl, content });
   }
-  return { ok: true, reason: `${modules.length} local module(s)`, modules, bytes: raw.length };
+
+  /*
+   * Shapes, never contents: this log is public build output. It exists
+   * because the one thing that has repeatedly cost a run is not knowing how
+   * production names a module.
+   */
+  const census = [...schemes.entries()].sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `${k}:${n}`).join(' ');
+  return {
+    ok: true,
+    reason: `${modules.length} local of ${specifiers.length} modules [${census}]`,
+    modules,
+    bytes: raw.length,
+    examples,
+  };
 }
 
 /*
@@ -624,7 +655,10 @@ if (isMain) {
       console.log(`${name}:`);
       console.log(`  version ${pre[name]?.version ?? 0} -> ${proof.version}`);
       console.log(`  deployment: ${moved}`);
-      console.log(`  body: ${body.ok ? `retrieved (${body.bytes ?? 0} bytes)` : `NOT retrieved — ${body.reason}`}`);
+      console.log(`  body: ${body.ok ? `retrieved (${body.bytes ?? 0} bytes)` : `NOT retrieved`} — ${body.reason}`);
+      /* Path shapes only. How production names a module is the thing that
+         has repeatedly cost a run to discover. */
+      if (body.examples?.length) console.log(`  module paths: ${body.examples.join(" | ")}`);
       console.log(`  artifact: ${proof.state}`);
       console.log(
         `  modules: ${proof.deployedFileCount} deployed local, ${proof.matched} compared`

@@ -431,6 +431,17 @@ interface TalkRequest {
      * where somebody can read it against a real device.
      */
     audioAccounting?: Record<string, unknown> | null;
+    /*
+     * The PREVIOUS assistant turn's audio, measured after it played.
+     *
+     * turnShape arrives with the request, so anything it says about the turn
+     * being requested is necessarily empty -- which is how five turns of zeros
+     * were once mistaken for a measurement. This describes the turn before it,
+     * which has finished. Passed through unread.
+     */
+    previousTurnAudio?: Record<string, unknown> | null;
+    recoveryDiagnostics?: Record<string, unknown> | null;
+    endpointDiagnostics?: Record<string, unknown> | null;
   };
   /** converse: the browser's name for this turn, echoed into the trace. */
   turnId?: string;
@@ -3059,6 +3070,9 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
           playback: body.turnShape?.playback ?? null,
           audio_chain: body.turnShape?.audioChain ?? null,
           audio_accounting: body.turnShape?.audioAccounting ?? null,
+          previous_turn_audio: body.turnShape?.previousTurnAudio ?? null,
+          recovery_diagnostics: body.turnShape?.recoveryDiagnostics ?? null,
+          endpoint_diagnostics: body.turnShape?.endpointDiagnostics ?? null,
           tts_skipped_phrases: skippedPhrases,
           tts_skipped_chars: skippedChars,
           abandoned_why: abandoned,

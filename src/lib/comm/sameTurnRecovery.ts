@@ -110,6 +110,57 @@ export function consistentWith(text: string, lang: string | null | undefined): b
  * language's script, or it is but carries none of that language's function
  * words. The recovery itself asks for no language.
  */
+/**
+ * WHY a turn did not earn a recovery, in the planner's own order.
+ *
+ * Diagnostic only, and deliberately a SEPARATE function rather than a return
+ * value threaded through planRecovery: nothing here may influence the
+ * decision, and keeping it apart makes that checkable rather than promised.
+ *
+ * It exists because production could not answer the question. Session
+ * ffa36b53 turn t5 had five words of Hangul against a Cyrillic-pinned socket
+ * -- an unmistakable mismatch -- and no recovery ran. Reconstructing why
+ * needed the source, the guard order, and a separate session's counters. The
+ * next trace will simply say it.
+ *
+ * The order below MIRRORS planRecovery. If that changes, this must change
+ * with it, which is what the test pinning both orders is for.
+ */
+export type RecoveryDecline =
+  | 'UNSUPPORTED_PIN'      // the pinned language's transcripts cannot be judged
+  | 'SPENT_LIMIT'          // the session's recovery budget is gone
+  | 'SPEECH_TOO_SHORT'     // less voice than RECOVERY_MIN_SPEECH_MS
+  | 'NO_TRANSCRIPT'        // nothing to judge
+  | 'INSUFFICIENT_WORDS'   // too few words for either planner
+  | 'SCRIPT_MATCH'         // written in the pinned language's own script
+  | 'FUNCTION_WORDS_PRESENT'  // and carrying that language's words
+  | 'EXEMPT_OPINION'       // the second opinion already carried the turn
+  | 'NOT_DECLINED';        // a plan was made
+
+export function describeRecoveryDecline(
+  input: RecoveryInput,
+  exempt: boolean,
+): RecoveryDecline {
+  if (exempt) return 'EXEMPT_OPINION';
+  if (!isCheckable(input.pinned)) return 'UNSUPPORTED_PIN';
+  if (input.spent >= RECOVERY_MAX_PER_SESSION) return 'SPENT_LIMIT';
+  if (input.speechMs < RECOVERY_MIN_SPEECH_MS) return 'SPEECH_TOO_SHORT';
+  const text = input.transcript.trim();
+  if (!text) return 'NO_TRANSCRIPT';
+  const words = text.split(/\s+/).filter(Boolean).length;
+  // input.pinned, not a local copy: isCheckable narrowed it above, exactly as
+  // planRecovery relies on, and a copy would lose that narrowing.
+  if (words >= 2 && !SCRIPT_OF[input.pinned].test(text)) return 'NOT_DECLINED';
+  if (words < 2) return 'INSUFFICIENT_WORDS';
+  if (words < RECOVERY_MIN_WORDS) {
+    // planFragmentRecovery's territory: two or three words, right script.
+    return hasAnyFunctionWord(text, input.pinned) ? 'FUNCTION_WORDS_PRESENT' : 'NOT_DECLINED';
+  }
+  const { ratio } = functionWordRatio(text, input.pinned);
+  if (ratio > RECOVERY_MAX_RATIO) return 'FUNCTION_WORDS_PRESENT';
+  return 'NOT_DECLINED';
+}
+
 export function planRecovery(input: RecoveryInput): RecoveryPlan | null {
   if (!isCheckable(input.pinned)) return null;
   if (input.spent >= RECOVERY_MAX_PER_SESSION) return null;

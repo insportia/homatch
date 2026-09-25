@@ -52,7 +52,8 @@ import { gateWatchdog } from './gateWatchdog.ts';
 import {
   planRecovery, planFragmentRecovery, consistentWith, hasAnyFunctionWord, isDiscreditedTurn,
   labelMatchesScript,
-  RECOVERY_MIN_WORDS, RECOVERY_MAX_PER_SESSION, RECOVERY_MIN_SPEECH_MS, type RecoveryReason,
+  RECOVERY_MIN_WORDS, RECOVERY_MAX_PER_SESSION, RECOVERY_MIN_SPEECH_MS,
+  describeRecoveryDecline, type RecoveryReason,
 } from './sameTurnRecovery.ts';
 import { LATIN_CODES, SCRIPT_OF } from './languageRegistry.ts';
 import { SWITCH_MIN_LETTERS, SWITCH_MIN_LETTERS_BY_SCRIPT } from './talkLanguage.ts';
@@ -1406,7 +1407,18 @@ export class VoiceSession {
     lastBargeStopMs: null as number | null,
     preReadyFlushBytes: 0, preReadyFlushMs: 0,
     turnsEndedLocally: 0,
+    /* Language-recovery diagnostics. See speechMsAtFinal and RecoveryDecline. */
+    speechMsAtFinal: null as number | null,
+    recoveryDecision: null as string | null,
+    recoveryInputSpeechMs: null as number | null,
+    recoveryInputWords: null as number | null,
+    recoveryPinned: null as string | null,
+    retainedUtteranceSamples: null as number | null,
     lastEndTurnSilenceMs: null as number | null, lastEndTurnSpeechMs: null as number | null,
+    /* The provider endpointer's own events, for decomposing endpointerWaitMs. */
+    providerSpeechEndEvents: 0,
+    firstProviderSpeechEndAtMs: null as number | null,
+    lastProviderSpeechEndAtMs: null as number | null,
     lastSttMs: null as number | null, lastSttChars: null as number | null,
     lastSttLanguage: null as string | null, lastTranscript: null as string | null,
     turnsSent: 0, lastTurnMs: null as number | null,
@@ -2736,6 +2748,23 @@ export class VoiceSession {
       onSpeechEnd: () => {
         // The provider's endpointer, not ours. This is the moment the wait
         // a person actually feels begins.
+        /*
+         * RECORDED SEPARATELY SO THE ~940 ms CAN BE READ.
+         *
+         * Both marks below are assigned the same instant, which should make
+         * endpointerWaitMs zero -- and production reports a near-constant
+         * ~940 ms on every turn (937, 936, 941, 940). The two cannot both be
+         * true, so one of them is being written somewhere else, or these are
+         * being overwritten between events. This counts the events and keeps
+         * the first and last of them, which is enough to tell those apart
+         * without changing a single window.
+         */
+        this.diag.providerSpeechEndEvents = (this.diag.providerSpeechEndEvents ?? 0) + 1;
+        const nowMs = Date.now();
+        if (this.diag.firstProviderSpeechEndAtMs === null) {
+          this.diag.firstProviderSpeechEndAtMs = nowMs;
+        }
+        this.diag.lastProviderSpeechEndAtMs = nowMs;
         this.marks.speechEndedAtMs = Date.now();
         this.marks.endpointConfirmedAtMs = Date.now();
         // Not UNDERSTANDING: see maybeEndLiveTurn. The provider's endpointer
@@ -2917,6 +2946,23 @@ export class VoiceSession {
       this.diag.finalsDeferred = (this.diag.finalsDeferred ?? 0) + 1;
       return;
     }
+
+    /*
+     * THE NUMBER AS IT STANDS RIGHT NOW, BEFORE ANYTHING TOUCHES IT.
+     *
+     * PROVEN in production: `lastTurnSpeechMs` is captured further down, six
+     * lines after `void this.rotateLive()` -- and rotateLive is an async
+     * function whose body runs SYNCHRONOUSLY as far as its own
+     * `this.liveSpeechMs = 0`, because it has no await before that line. So
+     * the capture reads a counter that was zeroed one statement earlier, and
+     * recovery has seen speechMs = 0 on every turn of every session.
+     *
+     * This records the honest value at the top of the turn, where nothing has
+     * run yet. It is DIAGNOSTIC ONLY -- deliberately not fed to the planner
+     * in this pass, so the next physical test measures the bug rather than a
+     * half-corrected version of it.
+     */
+    this.diag.speechMsAtFinal = Math.round(this.liveSpeechMs);
 
     let said = text.trim();
     const id = this.livePartialId ?? `u${++this.utteranceSeq}`;
@@ -3177,6 +3223,19 @@ export class VoiceSession {
     const exempt = (opinion || origin === 'SHADOW') && !heardUnsupported;
     const plan = exempt ? null
       : (planRecovery(recoveryInput) ?? planFragmentRecovery(recoveryInput));
+    /*
+     * Recorded, never consulted. describeRecoveryDecline is a separate pure
+     * function precisely so it cannot influence `plan`, which was decided on
+     * the line above and is not read back here.
+     */
+    this.diag.recoveryDecision = plan
+      ? `PLANNED_${plan.reason}`
+      : describeRecoveryDecline(recoveryInput, exempt);
+    this.diag.recoveryInputSpeechMs = recoveryInput.speechMs;
+    this.diag.recoveryInputWords = said.trim() ? said.trim().split(/\s+/).filter(Boolean).length : 0;
+    this.diag.recoveryPinned = pinned;
+    this.diag.retainedUtteranceSamples = this.utteranceSamples;
+
     if (plan && this.utterancePcm.length) {
       const outcome = await this.recoverUtterance(plan.reason, pinned, liveTranscript);
       this.diag.lastRecovery = {
@@ -4271,6 +4330,10 @@ export class VoiceSession {
     audioChain: Record<string, unknown>;
     /* Every voiced byte, and which of the four places it ended up. */
     audioAccounting: Record<string, unknown>;
+    /* The previous assistant turn's audio, measured after it existed. */
+    previousTurnAudio: Record<string, unknown>;
+    recoveryDiagnostics: Record<string, unknown>;
+    endpointDiagnostics: Record<string, unknown>;
     playback: {
       receivedChunks: number; receivedBytes: number; scheduled: number;
       startDelayMs: number | null; minAheadMs: number | null;
@@ -4353,6 +4416,42 @@ export class VoiceSession {
        * voicedWithoutDestinationMs, which is the only one of the three that
        * means anything was actually lost, they settle it outright.
        */
+      /*
+       * THE PREVIOUS ASSISTANT TURN'S AUDIO, MEASURED AFTER IT EXISTED.
+       *
+       * turnShape is assembled inside the converse REQUEST, so anything it
+       * says about THIS turn's playback is structurally empty -- production
+       * session ffa36b53 reported peak, rms, chunks and bytes all zero on all
+       * five turns, indistinguishable from silence. By this point the
+       * PREVIOUS response has finished playing and the player still holds its
+       * per-turn state, because startTurn() for the next one has not run yet.
+       * So this is the one moment a completed turn can be reported without
+       * inventing a second round trip.
+       *
+       * `measured: false` when there is nothing to report. A null is not a
+       * zero: 0 dBFS is full scale, and null is nobody looked.
+       */
+      previousTurnAudio: this.player?.turnAudioReport() ?? { measured: false, reason: 'NO_PLAYER' },
+      /* Language-recovery diagnostics. Recorded, never consulted. */
+      recoveryDiagnostics: {
+        speechMsAtFinal: this.diag.speechMsAtFinal,
+        lastTurnSpeechMs: this.lastTurnSpeechMs,
+        recoveryInputSpeechMs: this.diag.recoveryInputSpeechMs,
+        recoveryInputWords: this.diag.recoveryInputWords,
+        recoveryPinned: this.diag.recoveryPinned,
+        recoveryDecision: this.diag.recoveryDecision,
+        retainedUtteranceSamples: this.diag.retainedUtteranceSamples,
+        sameTurnRecoveries: this.sameTurnRecoveries,
+      },
+      /* The provider endpointer's events, for decomposing endpointerWaitMs. */
+      endpointDiagnostics: {
+        providerSpeechEndEvents: this.diag.providerSpeechEndEvents,
+        firstProviderSpeechEndAtMs: this.diag.firstProviderSpeechEndAtMs,
+        lastProviderSpeechEndAtMs: this.diag.lastProviderSpeechEndAtMs,
+        turnsEndedLocally: this.diag.turnsEndedLocally,
+        lastEndTurnSpeechMs: this.diag.lastEndTurnSpeechMs,
+        lastEndTurnSilenceMs: this.diag.lastEndTurnSilenceMs,
+      },
       audioAccounting: {
         voicedWithoutDestinationMs: Math.round(this.voicedWithoutDestinationMs),
         unsafeListenClaims: this.unsafeListenClaims,

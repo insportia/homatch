@@ -77,6 +77,22 @@ export interface PcmPlayerStats {
   contextRate: number;
 }
 
+/**
+ * Amplitude to dBFS, with silence handled rather than returning -Infinity.
+ *
+ * 1.0 is full scale and reads 0 dBFS. Digital silence has no logarithm, so it
+ * is reported as null -- which the reader must be able to tell apart from a
+ * very quiet signal, and -Infinity in JSON cannot.
+ */
+function dbfs(amplitude: number): number | null {
+  if (!(amplitude > 0)) return null;
+  return Number((20 * Math.log10(amplitude)).toFixed(1));
+}
+
+function round4(n: number): number {
+  return Number(n.toFixed(4));
+}
+
 export class PcmStreamPlayer {
   private readonly ctx: AudioContext;
   private readonly destination: AudioNode;
@@ -155,6 +171,18 @@ export class PcmStreamPlayer {
     this.turnPcmPeak = 0;
     this.turnPcmSumSquares = 0;
     this.turnPcmSamples = 0;
+    this.windowSumSquares = 0;
+    this.windowSamples = 0;
+    this.silentRunWindows = 0;
+    this.windowsSeen = 0;
+    this.silenceRegions = [];
+    this.silenceRegionCount = 0;
+    this.silenceTotalMs = 0;
+    this.silenceLongestMs = 0;
+    this.speechSumSquares = 0;
+    this.speechSamples = 0;
+    this.turnChunkArrivals = [];
+    this.turnProviderRate = null;
     this.turnUnderruns = 0;
     this.turnQueueResets = 0;
     this.turnScheduleCorrections = 0;
@@ -287,12 +315,186 @@ export class PcmStreamPlayer {
   get queuedChunks(): number { return this.stats.batches; }
 
   /**
+   * Everything measurable about ONE finished assistant turn.
+   *
+   * WHY THIS EXISTS SEPARATELY FROM playbackStats().
+   *
+   * playbackStats() is read where turnShape is assembled -- inside the
+   * converse REQUEST, which is sent before the assistant has said anything.
+   * Every per-turn counter it reports is therefore structurally zero, and a
+   * production trace showed exactly that: peak, rms, chunks and bytes all 0
+   * on all five turns of session ffa36b53, with no way to tell that from
+   * genuine silence. This is read after the audio has actually arrived.
+   *
+   * `measured` is the distinction the numbers cannot make for themselves: it
+   * is false when nothing was received, and every field is null rather than
+   * zero. A reported 0 dBFS peak means full scale; null means nobody looked.
+   */
+  turnAudioReport(): Record<string, unknown> {
+    // A run that was still silent when the turn ended is still a silence.
+    this.endSilentRun();
+    const samples = this.turnPcmSamples;
+    if (!samples) {
+      return {
+        measured: false,
+        reason: this.turnReceivedChunks === 0 ? 'NO_AUDIO_RECEIVED' : 'NO_SAMPLES_DECODED',
+        receivedChunks: this.turnReceivedChunks,
+        receivedBytes: this.turnReceivedBytes,
+      };
+    }
+    const rms = Math.sqrt(this.turnPcmSumSquares / samples);
+    const speechRms = this.speechSamples
+      ? Math.sqrt(this.speechSumSquares / this.speechSamples) : null;
+    const rate = this.turnProviderRate ?? null;
+    const gaps = this.chunkGaps();
+    const ahead = [...this.turnAheadMs].sort((a, b) => a - b);
+    const at = (q: number) => (ahead.length ? ahead[Math.min(ahead.length - 1, Math.floor(ahead.length * q))] : null);
+    return {
+      measured: true,
+      pcm: {
+        format: 'pcm_s16le',
+        channels: 1,
+        sampleRate: rate,
+        chunks: this.turnReceivedChunks,
+        bytes: this.turnReceivedBytes,
+        samples,
+        durationMs: rate ? Math.round((samples / rate) * 1000) : null,
+        peak: round4(this.turnPcmPeak),
+        rms: round4(rms),
+        peakDbFS: dbfs(this.turnPcmPeak),
+        rmsDbFS: dbfs(rms),
+        // Excluding the silences, which is what a listener judges loudness by.
+        speechRms: speechRms === null ? null : round4(speechRms),
+        speechRmsDbFS: speechRms === null ? null : dbfs(speechRms),
+        sessionPeak: round4(Math.max(this.sessionPcmPeak, this.turnPcmPeak)),
+      },
+      silence: {
+        thresholdDbFS: PcmStreamPlayer.SILENCE_DBFS,
+        minRegionMs: PcmStreamPlayer.SILENCE_MIN_MS,
+        regions: this.silenceRegionCount,
+        longestMs: this.silenceLongestMs || null,
+        totalMs: this.silenceTotalMs || null,
+        // Bounded: the first few, so a long reply cannot inflate the payload.
+        sample: this.silenceRegions.slice(0, PcmStreamPlayer.SILENCE_MAX_REGIONS),
+      },
+      arrival: {
+        maxGapMs: gaps.max,
+        p50GapMs: gaps.p50,
+      },
+      playback: {
+        scheduled: this.turnScheduled,
+        startDelayMs: this.turnStartDelayMs,
+        minAheadMs: ahead.length ? ahead[0] : null,
+        p50AheadMs: at(0.5),
+        underruns: this.turnUnderruns,
+        maxUnderrunMs: this.turnMaxUnderrunMs || null,
+        queueResets: this.turnQueueResets,
+        scheduleCorrections: this.turnScheduleCorrections,
+        // Technical silences the SCHEDULER introduced, as opposed to the ones
+        // inside the audio: the two together separate a starved queue from a
+        // reply that simply contains pauses.
+        scheduleGaps: this.turnGapsMs.length,
+        maxScheduleGapMs: this.turnGapsMs.length ? Math.max(...this.turnGapsMs) : null,
+        contextStateAtStart: this.turnContextStateAtStart,
+        contextStateChanges: this.turnContextStateChanges,
+        contextState: this.ctx.state ?? null,
+        contextSampleRate: this.ctx.sampleRate ?? null,
+      },
+    };
+  }
+
+  /** Gaps between provider chunk arrivals, as aggregates. */
+  private chunkGaps(): { max: number | null; p50: number | null } {
+    const a = this.turnChunkArrivals;
+    if (a.length < 2) return { max: null, p50: null };
+    const gaps: number[] = [];
+    for (let i = 1; i < a.length; i += 1) gaps.push(a[i] - a[i - 1]);
+    gaps.sort((x, y) => x - y);
+    return { max: gaps[gaps.length - 1], p50: gaps[Math.floor(gaps.length / 2)] };
+  }
+
+  /**
    * One turn's scheduler behaviour, for the trace.
    *
    * Aggregates only: percentiles and counts, never a per-chunk event stream.
    * A playback log that fires per chunk would be forty lines a sentence and
    * would be switched off within a day.
    */
+  /*
+   * SILENCE, AS THE DIAGNOSTIC SEES IT.
+   *
+   * -50 dBFS is comfortably below anything a voice produces and comfortably
+   * above a digital floor, so it separates "nobody is speaking" from "quiet
+   * speech" without pretending to be a voice detector. 120 ms is the shortest
+   * gap a listener registers as a pause rather than as articulation -- the
+   * stop inside a consonant is far shorter than that.
+   *
+   * These decide what gets REPORTED. Nothing here reaches the audio.
+   */
+  private static readonly SILENCE_DBFS = -50;
+  private static readonly SILENCE_MIN_MS = 120;
+  /** At most this many regions are described; the counts stay exact. */
+  private static readonly SILENCE_MAX_REGIONS = 12;
+  private static readonly WINDOW_MS = 20;
+
+  private windowSize = 960;
+  private windowSumSquares = 0;
+  private windowSamples = 0;
+  /** Consecutive silent windows so far, and where the run began (ms). */
+  private silentRunWindows = 0;
+  private windowsSeen = 0;
+  private silenceRegions: Array<{ atMs: number; ms: number }> = [];
+  private silenceRegionCount = 0;
+  private silenceTotalMs = 0;
+  private silenceLongestMs = 0;
+  /** Sum of squares over NON-silent windows only, and their sample count. */
+  private speechSumSquares = 0;
+  private speechSamples = 0;
+  private turnChunkArrivals: number[] = [];
+  private turnProviderRate: number | null = null;
+
+  /**
+   * One 20 ms window has finished: classify it and fold it into the run.
+   *
+   * Called from the decode loop, so it must stay arithmetic -- no allocation
+   * beyond the bounded region list, and no work proportional to the turn.
+   */
+  private closeWindow(): void {
+    const rms = Math.sqrt(this.windowSumSquares / Math.max(1, this.windowSamples));
+    const silent = rms < PcmStreamPlayer.silenceFloor();
+    if (silent) {
+      this.silentRunWindows += 1;
+    } else {
+      this.endSilentRun();
+      this.speechSumSquares += this.windowSumSquares;
+      this.speechSamples += this.windowSamples;
+    }
+    this.windowsSeen += 1;
+    this.windowSumSquares = 0;
+    this.windowSamples = 0;
+  }
+
+  /** A run of silent windows ended: record it if it was long enough to hear. */
+  private endSilentRun(): void {
+    if (this.silentRunWindows === 0) return;
+    const ms = this.silentRunWindows * PcmStreamPlayer.WINDOW_MS;
+    if (ms >= PcmStreamPlayer.SILENCE_MIN_MS) {
+      const atMs = (this.windowsSeen - this.silentRunWindows) * PcmStreamPlayer.WINDOW_MS;
+      this.silenceRegionCount += 1;
+      this.silenceTotalMs += ms;
+      if (ms > this.silenceLongestMs) this.silenceLongestMs = ms;
+      if (this.silenceRegions.length < PcmStreamPlayer.SILENCE_MAX_REGIONS) {
+        this.silenceRegions.push({ atMs, ms });
+      }
+    }
+    this.silentRunWindows = 0;
+  }
+
+  /** Amplitude below which a window counts as silence. */
+  private static silenceFloor(): number {
+    return Math.pow(10, PcmStreamPlayer.SILENCE_DBFS / 20);
+  }
+
   /** Loudest decoded sample this turn, 0..1. Unity scale: 1.0 is full scale. */
   private turnPcmPeak = 0;
   /** Loudest across the whole session. Survives startTurn deliberately. */
@@ -384,16 +586,34 @@ export class PcmStreamPlayer {
      */
     let peak = 0;
     let sumSquares = 0;
+    /*
+     * WINDOWED, IN THE SAME PASS.
+     *
+     * A whole-turn RMS is misleading on speech: a reply that is half pause
+     * reads as half as loud as it sounds. So the same walk that converts the
+     * samples also carries a 20 ms window, and the window state lives on the
+     * instance because a provider chunk is not window-aligned -- a run of
+     * silence spans chunks and would otherwise be counted as several short
+     * ones, or missed entirely.
+     *
+     * Aggregates only. No sample is stored, none is altered, and the
+     * conversion below is byte-for-byte the one that was here before.
+     */
     for (let i = 0; i < count; i++) {
       const v = view.getInt16(i * 2, true) / 0x8000;
       input[i] = v;
       const mag = v < 0 ? -v : v;
       if (mag > peak) peak = mag;
       sumSquares += v * v;
+      this.windowSumSquares += v * v;
+      this.windowSamples += 1;
+      if (this.windowSamples >= this.windowSize) this.closeWindow();
     }
     if (peak > this.turnPcmPeak) this.turnPcmPeak = peak;
     this.turnPcmSumSquares += sumSquares;
     this.turnPcmSamples += count;
+    this.turnChunkArrivals.push(Date.now());
+    if (this.turnProviderRate === null) this.turnProviderRate = sampleRate;
 
     if (this.providerRate !== sampleRate) {
       // A rate change mid-reply would be a provider or route change mid

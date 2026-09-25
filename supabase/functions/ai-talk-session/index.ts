@@ -1711,6 +1711,161 @@ function pcmDbfs(amplitude: number): number | null {
   return Number((20 * Math.log10(amplitude)).toFixed(1));
 }
 
+/*
+ * THE LOUDNESS THE OLD IMPLEMENTATION GOT FOR FREE.
+ *
+ * Until 2026-09-15 (c23dbcb2) AI TALK received the reply as mp3 and played it
+ * with `new Audio(url)`. Provider-encoded audio arrives loudness-normalised and
+ * an <audio> element needed no help, so nothing in this product ever had to
+ * think about level. That commit replaced both halves at once: raw pcm_s16le
+ * instead of mp3, and a WebAudio graph instead of the element. The PCM is
+ * correct and unprocessed -- which is the problem, because nothing normalises
+ * it any more.
+ *
+ * MEASURED, two physical Android sessions on the Georgian site:
+ *
+ *   43b3c3ea  speech RMS  -21.7  -25.8  -22.8 dBFS
+ *   d1d5645d  speech RMS  -23.9  -24.6        dBFS
+ *   the client's own gain calculation, independently:  want = 6.3 dB
+ *
+ * Six decibels is half the amplitude, which is exactly what the owner reports
+ * hearing. So the amplitude is not being lost anywhere downstream: it was never
+ * added upstream, and the previous implementation did not have to add it.
+ *
+ * WHY THIS IS HERE AND NOT IN THE BROWSER. The first attempt corrected it with
+ * the client's output GainNode, measured from the PREVIOUS turn's audio -- so
+ * the first reply of every session, the one the owner judges, always played at
+ * unity. The trace says so in as many words: turn 1
+ * `UNITY_NOT_MEASURED:NO_PREVIOUS_TURN`, gain 1. Measuring here fixes the first
+ * phrase of the first turn, because this is where the samples already pass
+ * through a meter.
+ *
+ * WHY A LIMITER AND NOT MORE GAIN. Cartesia's crest factor is about 19 dB
+ * (peak -4.0 against speech RMS -22.8), where processed speech sits at 10-14.
+ * Flat gain is therefore capped by the peak at roughly 3 dB -- half the deficit
+ * -- which is why the first correction was inaudible. Closing 6 dB requires
+ * controlling the peaks, so that is what this does: one gain, then a real
+ * lookahead limiter that shaves the rare transient instead of turning the whole
+ * reply down to accommodate it. No compression of the speech itself, so the
+ * dynamics a listener judges as natural are untouched.
+ */
+const LOUDNESS_TARGET_DBFS = -17;
+/** True peak ceiling. Nothing leaves here above it. */
+const LOUDNESS_CEILING = Math.pow(10, -1 / 20);
+/** The most this will ever add, however quiet the input claims to be. */
+const LOUDNESS_MAX_DB = 9;
+/** 2 ms at 48 kHz: long enough to see a transient coming, short enough to be free. */
+const LIMITER_LOOKAHEAD_SAMPLES = 96;
+
+/**
+ * How much to add, as an operator setting with a measured default.
+ *
+ * 6 dB is the deficit two physical sessions measured independently -- the
+ * client's own calculation asked for 6.3 -- so the default is the measurement
+ * rather than a preference. It is an environment variable because the right
+ * final value for "loud enough on a phone" is settled by listening, and the
+ * owner must be able to move it and hear the difference without a deploy.
+ */
+function loudnessMakeupDb(): number {
+  const raw = Deno.env.get('AI_TALK_LOUDNESS_MAKEUP_DB');
+  if (!raw) return 6;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.min(LOUDNESS_MAX_DB, n)) : 6;
+}
+
+/**
+ * Gain and a lookahead limiter over a streaming Int16 PCM signal.
+ *
+ * Stateful across chunks on purpose: the lookahead buffer and the gain envelope
+ * both have to survive a chunk boundary, or every boundary is a click. Call
+ * `process` per chunk and `flush` once at the end to emit the samples still
+ * inside the lookahead.
+ */
+class PcmLoudness {
+  private readonly look: number[] = [];
+  /** Current limiter gain reduction, 1 = none. Moves smoothly, never jumps. */
+  private reduction = 1;
+  private clamped = 0;
+  private appliedDb: number;
+
+  constructor(targetDb: number) {
+    this.appliedDb = Math.max(0, Math.min(LOUDNESS_MAX_DB, targetDb));
+  }
+
+  get gainDb(): number { return this.appliedDb; }
+  get clampedSamples(): number { return this.clamped; }
+
+  private get gain(): number { return Math.pow(10, this.appliedDb / 20); }
+
+  /** One chunk in, one chunk out, delayed by the lookahead. */
+  process(chunk: Uint8Array): Uint8Array {
+    if (this.appliedDb <= 0) return chunk;
+    const view = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    const count = Math.floor(chunk.byteLength / 2);
+    const out = new Uint8Array(count * 2);
+    const outView = new DataView(out.buffer);
+    let written = 0;
+    for (let i = 0; i < count; i++) {
+      this.look.push(view.getInt16(i * 2, true) / 0x8000);
+      if (this.look.length <= LIMITER_LOOKAHEAD_SAMPLES) continue;
+      const s = this.emit();
+      outView.setInt16(written * 2, s, true);
+      written += 1;
+    }
+    return written === count ? out : out.subarray(0, written * 2);
+  }
+
+  /** Whatever is still held in the lookahead, once the stream has ended. */
+  flush(): Uint8Array {
+    if (this.appliedDb <= 0 || !this.look.length) return new Uint8Array(0);
+    const out = new Uint8Array(this.look.length * 2);
+    const view = new DataView(out.buffer);
+    let written = 0;
+    while (this.look.length) {
+      view.setInt16(written * 2, this.emit(), true);
+      written += 1;
+    }
+    return out;
+  }
+
+  /** The oldest sample, limited against the loudest one in sight. */
+  private emit(): number {
+    const sample = this.look.shift() as number;
+    let peak = Math.abs(sample);
+    for (const v of this.look) { const a = v < 0 ? -v : v; if (a > peak) peak = a; }
+    const wanted = peak * this.gain;
+    /*
+     * The reduction needed for the loudest sample within the lookahead. Attack
+     * is immediate because a transient that is already visible must not be
+     * allowed through; release is slow so the level does not pump between
+     * syllables, which is what makes a limiter audible.
+     */
+    const needed = wanted > LOUDNESS_CEILING ? LOUDNESS_CEILING / wanted : 1;
+    this.reduction = needed < this.reduction ? needed : this.reduction + (needed - this.reduction) * 0.02;
+    let v = sample * this.gain * this.reduction;
+    /*
+     * Belt and braces. If this ever fires the envelope above is wrong, and a
+     * counted clamp is how that becomes visible instead of audible.
+     *
+     * The tolerance matters: when the loudest sample in the lookahead IS the one
+     * being emitted, the reduction is exactly ceiling/(peak*gain) and the product
+     * lands on the ceiling to within floating-point noise. Counting those would
+     * report a limiter in distress on every peak of every reply, so the counter
+     * only moves when a sample is over by more than one 16-bit step -- which is
+     * the smallest amount that could survive quantisation and be real.
+     */
+    const step = 1 / 0x8000;
+    if (v > LOUDNESS_CEILING) {
+      if (v > LOUDNESS_CEILING + step) this.clamped += 1;
+      v = LOUDNESS_CEILING;
+    } else if (v < -LOUDNESS_CEILING) {
+      if (v < -LOUDNESS_CEILING - step) this.clamped += 1;
+      v = -LOUDNESS_CEILING;
+    }
+    return Math.max(-32768, Math.min(32767, Math.round(v * 0x8000)));
+  }
+}
+
 async function speakPhraseStreaming(sb: Sb, params: {
   text: string;
   language: string;
@@ -1771,6 +1926,13 @@ async function speakPhraseStreaming(sb: Sb, params: {
    * windows are not.
    */
   const meter = new PcmLevelMeter(params.outputSampleRate ?? 48_000);
+  /*
+   * The same measurement taken AFTER normalisation, on the bytes the browser
+   * actually receives. This is the number the acceptance test turns on, and it
+   * is the one the previous attempt could not produce.
+   */
+  const outMeter = new PcmLevelMeter(params.outputSampleRate ?? 48_000);
+  const loudness = new PcmLoudness(loudnessMakeupDb());
   let maxChunkGapMs = 0;
   const chunkGaps: number[] = [];
 
@@ -1809,10 +1971,29 @@ async function speakPhraseStreaming(sb: Sb, params: {
       chunkGaps.push(gap);
     }
     lastChunkAt = at;
-    // Read before it is forwarded, and the chunk is forwarded unchanged.
+    /*
+     * Measured RAW, then normalised, then measured again. Two meters because
+     * the question "is Cartesia quiet" and the question "is what we sent loud
+     * enough" are different, and one number cannot answer both -- which is how
+     * the first attempt at this shipped a correction nobody could hear while
+     * every metric read healthy.
+     */
     meter.add(chunk);
-    params.onChunk(chunk);
+    const louder = loudness.process(chunk);
+    if (louder.byteLength) {
+      outMeter.add(louder);
+      params.onChunk(louder);
+    }
   });
+  // The lookahead still holds the tail of the reply; without this the last few
+  // milliseconds of every phrase are dropped.
+  {
+    const tail = loudness.flush();
+    if (tail.byteLength) {
+      outMeter.add(tail);
+      params.onChunk(tail);
+    }
+  }
 
   if (out.ok && out.data) {
     /*
@@ -1860,6 +2041,15 @@ async function speakPhraseStreaming(sb: Sb, params: {
        * audio is quiet at source or becomes quiet downstream.
        */
       level: meter.report(),
+      /*
+       * And the same measurement on what was SENT. `level` answers "was
+       * Cartesia quiet"; this answers "was the browser given something loud
+       * enough", which is the only one the listener can hear. They must differ
+       * by the makeup gain, and if they do not the normaliser is not running.
+       */
+      outLevel: outMeter.report(),
+      loudnessMakeupDb: loudness.gainDb,
+      loudnessClampedSamples: loudness.clampedSamples,
     };
   }
 
@@ -2621,6 +2811,28 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
               if (ls > turnProviderLongestSilenceMs) turnProviderLongestSilenceMs = ls;
               if (turnLevelSample === null) turnLevelSample = out.level as Record<string, unknown>;
             }
+            /*
+             * AND THE SAME AGGREGATION ON WHAT WAS SENT.
+             *
+             * The pair is the point. `tts_speech_rms_dbfs` says what Cartesia
+             * produced; `tts_sent_speech_rms_dbfs` says what the browser was
+             * given. The difference between them IS the normaliser, so a
+             * correction that silently stops working shows up as the two
+             * numbers converging rather than as a physical test failing.
+             */
+            const ol = out.outLevel as Record<string, number | null> | undefined;
+            if (ol && (out.outLevel as { measured?: boolean }).measured) {
+              const pk = ol.peakDbFS;
+              if (pk !== null && pk !== undefined && (sentPeakDbFS === null || pk > sentPeakDbFS)) {
+                sentPeakDbFS = pk;
+              }
+              const sp = ol.speechRmsDbFS;
+              if (sp !== null && sp !== undefined && (sentSpeechRmsDbFS === null || sp > sentSpeechRmsDbFS)) {
+                sentSpeechRmsDbFS = sp;
+              }
+            }
+            if (typeof out.loudnessMakeupDb === 'number') loudnessMakeupDb = out.loudnessMakeupDb;
+            loudnessClamped += Number(out.loudnessClampedSamples ?? 0);
             if (out.maxChunkGapMs > worstChunkGapMs) worstChunkGapMs = out.maxChunkGapMs;
             if (out.p95ChunkGapMs > worstP95ChunkGapMs) worstP95ChunkGapMs = out.p95ChunkGapMs;
             /*
@@ -2681,6 +2893,11 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
     let turnProviderSilenceRegions = 0;
     let turnProviderLongestSilenceMs = 0;
     let turnLevelSample: Record<string, unknown> | null = null;
+    /* The same three facts about the audio actually put on the wire. */
+    let sentPeakDbFS: number | null = null;
+    let sentSpeechRmsDbFS: number | null = null;
+    let loudnessMakeupDb: number | null = null;
+    let loudnessClamped = 0;
     let worstP95ChunkGapMs = 0;
     let worstPhraseSeamMs = 0;
     let lastPhraseDoneMs: number | null = null;
@@ -3323,6 +3540,11 @@ async function converse(sb: Sb, body: TalkRequest, req?: Request): Promise<Respo
            */
           tts_peak_dbfs: turnPeakDbFS,
           tts_speech_rms_dbfs: turnSpeechRmsDbFS,
+          // What left the server, after normalisation. The pair is the proof.
+          tts_sent_peak_dbfs: sentPeakDbFS,
+          tts_sent_speech_rms_dbfs: sentSpeechRmsDbFS,
+          tts_loudness_makeup_db: loudnessMakeupDb,
+          tts_loudness_clamped_samples: loudnessClamped || null,
           tts_provider_silence_regions: turnProviderSilenceRegions || null,
           tts_provider_longest_silence_ms: turnProviderLongestSilenceMs || null,
           tts_level: turnLevelSample,

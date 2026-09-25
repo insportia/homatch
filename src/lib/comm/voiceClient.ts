@@ -324,12 +324,11 @@ export interface VoiceDiagnostics {
    * and -22.8 dBFS RMS, where ordinary spoken audio is around -16 to -20. That
    * is the "half volume", and it is at the source.
    *
-   * So the node is assigned now, and outputGainValue reports the correction
-   * rather than a constant. It is never below 1 -- see makeupGainFor.
+   * The correction now happens at the edge, on the samples themselves, so this
+   * node stays at unity and this number is once again evidence that nothing
+   * here attenuates the assistant -- which is all it was ever good for.
    */
   outputGainValue: number | null;
-  /** How the makeup gain above was arrived at, or why it stayed at unity. */
-  outputGainReason: string | null;
   audioContextSampleRate: number | null;
   /*
    * THE FINAL THAT NEVER CAME.
@@ -608,6 +607,7 @@ export interface VoiceMilestone {
     | 'session_granted' | 'mic_open' | 'audio_context_running'
     | 'first_input_audio' | 'first_speech' | 'first_utterance_sent'
     | 'first_transcript' | 'user_turn_sent' | 'turn_dropped_in_flight'
+    | 'second_opinion_refused'
     | 'assistant_text' | 'tts_audio_received' | 'playback_started'
     | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition'
   | 'no_final_recovered'
@@ -1452,7 +1452,6 @@ export class VoiceSession {
     lastBargeStopMs: null as number | null,
     preReadyFlushBytes: 0, preReadyFlushMs: 0, heldVoicedCreditedMs: 0,
     noFinalReadBack: null as string | null,
-    outputGainReason: null as string | null,
     turnsEndedLocally: 0,
     /* Language-recovery diagnostics. See speechMsAtFinal and RecoveryDecline. */
     speechMsAtFinal: null as number | null,
@@ -1744,7 +1743,6 @@ export class VoiceSession {
       echoCancellation: this.diag.echoCancellation ?? null,
       micSettings: this.diag.micSettings ?? null,
       outputGainValue: this.outputGain?.gain.value ?? null,
-      outputGainReason: this.diag.outputGainReason ?? null,
       audioContextSampleRate: this.audioContext?.sampleRate ?? null,
       noFinalCount: this.finalWatch.noFinalCount,
       consecutiveNoFinals: this.finalWatch.consecutiveNoFinals,
@@ -2508,6 +2506,39 @@ export class VoiceSession {
     await new Promise((r) => window.setTimeout(r, SECOND_OPINION_LEAD_MS));
     if (this.closed || this.producedEpoch === result.epoch || result.epoch !== this.utteranceEpoch) return;
     if (!owed()) return;
+    /*
+     * AN `auto` OPINION DOES NOT GET TO SPEAK FOR A SETTLED NON-LATIN SESSION.
+     *
+     * The shadow socket is the only one configured with `auto`, and the worker's
+     * own measurement of `auto` on short Georgian is recorded beside it: დიახ ->
+     * lb "dir", კარგი -> ha "Karki", ვაკეში -> en "Wackisch". So when this path
+     * fires for a Georgian session and the opinion comes back in Latin letters,
+     * the TEXT is wrong, not merely the label -- and carrying it hands the
+     * conversation a mangled sentence that then has to be answered.
+     *
+     * MEASURED, physical Android sessions on the Georgian site: the opinion
+     * labelled one turn `ar-Latn` and another `es`, and a third `en`. Existing
+     * guards caught the labels; nothing caught the transcripts.
+     *
+     * judgeSecondOpinion already states the rule for the other direction -- it
+     * has to agree with itself first -- and this is the same rule on the path
+     * that skipped it. Refusing here is not a lost turn: the pinned socket's
+     * final may still arrive, and the NO_FINAL read-back re-reads the retained
+     * audio through a recogniser that was told which language to expect.
+     */
+    const settled = this.language.current;
+    const opinionScript = scriptEvidence(result.text);
+    const settledScript = SCRIPT_OF[settled as keyof typeof SCRIPT_OF] ?? null;
+    if (settledScript && !LATIN_CODES.includes(settled) && opinionScript.ratio >= 0.5
+        && opinionScript.script !== settledScript) {
+      this.diag.secondOpinion = {
+        language: result.language ? normaliseLanguage(result.language) : null,
+        chars: result.text.length, waitMs: SECOND_OPINION_LEAD_MS, used: false,
+        why: 'AUTO_WRONG_SCRIPT_FOR_SETTLED_SESSION', agreed: false,
+      };
+      this.milestone('second_opinion_refused', result.language ?? 'unknown');
+      return;
+    }
     this.finalWatch.arrived();
     this.producedEpoch = result.epoch;
     this.diag.secondOpinion = {
@@ -2634,9 +2665,24 @@ export class VoiceSession {
    */
   private async readBackAfterNoFinal(reason: NoFinalReason): Promise<void> {
     const epoch = this.utteranceEpoch;
-    const speechMs = this.diag.lastEndTurnSpeechMs ?? 0;
-    if (speechMs < RECOVERY_MIN_SPEECH_MS) {
-      this.diag.noFinalReadBack = `SKIPPED_SPEECH_TOO_SHORT:${Math.round(speechMs)}`;
+    /*
+     * GATED ON THE AUDIO IT RE-READS, NOT ON A COUNTER THAT ROTATIONS ZERO.
+     *
+     * This asked `lastEndTurnSpeechMs` first, and in production that number is
+     * wrong for exactly the case this exists to serve. MEASURED, session
+     * d1d5645d turn t1 (2026-09-25 22:03): heldVoicedCreditedMs 512 -- the held
+     * audio WAS credited -- and `noFinalReadBack SKIPPED_SPEECH_TOO_SHORT:171`,
+     * because `lastEndTurnSpeechMs` is stamped at the half-close and
+     * recoverFromNoFinal zeroes the speech clock before rotating, so by the time
+     * the read-back looked, the count belonged to a different socket.
+     *
+     * The retained utterance cannot drift that way: it is the literal audio
+     * about to be sent to the batch recogniser, so its length is the only
+     * honest gate on whether re-reading it is worth a round trip.
+     */
+    const retainedMs = (this.utteranceSamples / LIVE_SAMPLE_RATE) * 1000;
+    if (retainedMs < RECOVERY_MIN_SPEECH_MS) {
+      this.diag.noFinalReadBack = `SKIPPED_TOO_LITTLE_AUDIO:${Math.round(retainedMs)}`;
       return;
     }
     if (!this.utterancePcm.length || !this.utteranceSamples) {
@@ -4124,9 +4170,6 @@ export class VoiceSession {
     const generation = this.turnGeneration;
     this.turnId = `t${generation}-${Date.now().toString(36)}`;
     this.player?.startTurn(generation);
-    // startTurn froze the finished turn's measurement, so the report is now the
-    // immediately preceding reply -- which is what this turn is matched to.
-    this.applyMeasuredMakeupGain();
 
     /*
      * T3. Everything the SERVER reports is an offset from here, because the
@@ -4712,7 +4755,6 @@ export class VoiceSession {
       },
       audioChain: {
         outputGainValue: this.outputGain?.gain.value ?? null,
-        outputGainReason: this.diag.outputGainReason ?? null,
         audioContextState: this.audioContext?.state ?? null,
         audioContextSampleRate: this.audioContext?.sampleRate ?? null,
         micSettings: this.diag.micSettings ?? null,
@@ -5090,82 +5132,28 @@ export class VoiceSession {
    * and neither is the bill.
    */
   /*
-   * MAKING UP THE LOUDNESS CARTESIA DID NOT SEND, AND NOT ONE DECIBEL MORE.
+   * THE OUTPUT GAIN IS UNITY, AND LOUDNESS IS SETTLED BEFORE THE BYTES ARRIVE.
    *
-   * Three numbers decide this and all three are measured rather than chosen:
+   * This node briefly carried a makeup gain computed from the PREVIOUS turn's
+   * measurement, and the production trace showed exactly why that could not
+   * work: turn 1 of every session reported
+   * `outputGainReason UNITY_NOT_MEASURED:NO_PREVIOUS_TURN`, gain 1 -- so the
+   * first reply, the one a listener judges the product by, always played at the
+   * unaltered provider level. The owner's report was specifically that it
+   * "starts quiet", which is the one case the design could never reach.
    *
-   *   TARGET is where ordinary spoken audio sits. Production measured Cartesia
-   *   at -21.7, -25.8 and -22.8 dBFS speech RMS, which is 3-7 dB below it.
+   * It was also the wrong instrument. Cartesia's crest factor is about 19 dB, so
+   * a flat gain is capped by the peak at roughly 3 dB against a measured 6.3 dB
+   * deficit -- half the correction, which is inaudible. Closing it needs the
+   * peaks controlled, and that belongs where the samples are produced.
    *
-   *   CEILING is the sample ceiling. The gain is capped so the loudest sample
-   *   MEASURED SO FAR THIS SESSION, multiplied by it, still lands under the
-   *   ceiling -- so clipping is not "avoided", it is arithmetically impossible.
-   *   sessionPeak only ever grows, so the cap only ever tightens.
-   *
-   *   MAX is a bound on the whole idea. A correction larger than this is not a
-   *   quiet voice any more, it is a broken measurement, and amplifying six
-   *   decibels of nothing is how a hiss becomes a feature.
-   *
-   * Never below unity. This is loudness matching, and an attenuation dressed
-   * up as one is the bug the outputGainValue field was added to catch.
-   *
-   * Not a limiter and not a compressor: no sample is reshaped, the whole reply
-   * is multiplied by one constant, so the speech keeps its own dynamics. The
-   * cost is that a quiet reply after a loud one waits a turn for its
-   * correction, which is the right trade for never distorting anybody.
+   * So normalisation moved to the edge (see PcmLoudness): gain plus a lookahead
+   * limiter, applied to the first phrase of the first turn, measured before and
+   * after on the server. This node is back to what it is for -- a place for the
+   * visualiser to read and for barge-in to duck -- and outputGainValue is once
+   * again a number that proves nothing is attenuating the assistant rather than
+   * a correction that had to be trusted.
    */
-  private static readonly TARGET_SPEECH_RMS_DBFS = -19;
-  private static readonly PEAK_CEILING_DBFS = -1;
-  private static readonly MAX_MAKEUP_DB = 6;
-
-  /** The gain this measurement justifies, and the reason, for the trace. */
-  private makeupGainFor(report: Record<string, unknown>): { gain: number; reason: string } {
-    if (report.measured !== true) {
-      return { gain: 1, reason: `UNITY_NOT_MEASURED:${String(report.reason ?? 'UNKNOWN')}` };
-    }
-    const pcm = report.pcm as { speechRmsDbFS?: number | null; sessionPeak?: number | null } | undefined;
-    const speech = pcm?.speechRmsDbFS;
-    const peak = pcm?.sessionPeak;
-    if (typeof speech !== 'number' || typeof peak !== 'number' || peak <= 0) {
-      return { gain: 1, reason: 'UNITY_NO_LEVEL' };
-    }
-    const wantedDb = VoiceSession.TARGET_SPEECH_RMS_DBFS - speech;
-    const headroomDb = VoiceSession.PEAK_CEILING_DBFS - (20 * Math.log10(peak));
-    const db = Math.min(wantedDb, headroomDb, VoiceSession.MAX_MAKEUP_DB);
-    if (!Number.isFinite(db) || db <= 0) {
-      return { gain: 1, reason: `UNITY_NO_HEADROOM:want=${wantedDb.toFixed(1)}:head=${headroomDb.toFixed(1)}` };
-    }
-    return {
-      gain: 10 ** (db / 20),
-      reason: `MAKEUP:${db.toFixed(1)}dB:want=${wantedDb.toFixed(1)}:head=${headroomDb.toFixed(1)}`,
-    };
-  }
-
-  private applyMeasuredMakeupGain(): void {
-    const gainNode = this.outputGain;
-    const ctx = this.audioContext;
-    if (!gainNode || !ctx) return;
-    const { gain, reason } = this.makeupGainFor(this.player?.lastTurnAudioReport() ?? { measured: false, reason: 'NO_PLAYER' });
-    this.diag.outputGainReason = reason;
-    if (Math.abs(gainNode.gain.value - gain) < 0.01) return;
-    /*
-     * Ramped over 30ms rather than assigned: a step change in gain between two
-     * samples is a click, and the click is audible even when the change is an
-     * improvement. Short enough that the first word is already at full level,
-     * and it ends AT the target rather than approaching it, so no reply is left
-     * playing under the gain it was given.
-     */
-    const now = ctx.currentTime;
-    try {
-      gainNode.gain.cancelScheduledValues(now);
-      gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-      gainNode.gain.linearRampToValueAtTime(gain, now + 0.03);
-    } catch {
-      // A context that will not schedule still gets the correction.
-      gainNode.gain.value = gain;
-    }
-  }
-
   private stopPlayback(reason = 'UNSPECIFIED'): void {
     for (const source of this.playingSources) {
       try { source.stop(); } catch { /* already stopped */ }

@@ -256,148 +256,73 @@ test('THE_SESSION_IS_NOT_STICKY_FOREVER: Georgian can be returned to', () => {
 
 /* ── V. Volume ───────────────────────────────────────────────────────────*/
 
-/** The real makeup-gain rule, lifted from the source and run. */
-const makeup = (() => {
-  const target = /TARGET_SPEECH_RMS_DBFS = (-?[\d.]+)/.exec(CODE);
-  const ceiling = /PEAK_CEILING_DBFS = (-?[\d.]+)/.exec(CODE);
-  const max = /MAX_MAKEUP_DB = (-?[\d.]+)/.exec(CODE);
-  assert.ok(target && ceiling && max, 'the makeup-gain constants are gone');
-  const T = Number(target[1]); const C = Number(ceiling[1]); const M = Number(max[1]);
-  return {
-    T, C, M,
-    gain(speechRmsDbFS, sessionPeak) {
-      const wanted = T - speechRmsDbFS;
-      const headroom = C - (20 * Math.log10(sessionPeak));
-      const db = Math.min(wanted, headroom, M);
-      return !Number.isFinite(db) || db <= 0 ? 1 : 10 ** (db / 20);
-    },
-  };
-})();
+/*
+ * THE VOLUME SECTION MOVED, AND SO DID THE MECHANISM IT GUARDED.
+ *
+ * This file's volume tests originally held a client-side makeup gain on the
+ * output GainNode, computed from the previous turn's measurement. Production
+ * then showed that design could not work: turn 1 of every session reported
+ * `outputGainReason UNITY_NOT_MEASURED:NO_PREVIOUS_TURN`, gain 1, so the first
+ * reply -- the one the owner judges, and the one they described as starting
+ * quiet -- always played at the provider's level. It was also capped by the
+ * peak at about 3dB against a measured 6.3dB deficit.
+ *
+ * Loudness is now settled at the source, before the bytes are sent, and is
+ * tested in loudnessNormalisation.test.mjs where the real limiter is run over
+ * real signals. What remains here is the part this file is still the right home
+ * for: that the browser does not attenuate, and does not try to correct either.
+ */
 
-test('THE_DEFAULT_IS_UNITY, and unmeasured audio changes nothing', () => {
-  /*
-   * The bug this guards is the one the report suspected: an app that quietly
-   * starts at 0.5 or 0.7. The node is created and left alone, and a correction
-   * is applied only from a measurement of a reply that has actually played.
-   */
+test('THE_CLIENT_DOES_NOT_TOUCH_PLAYBACK_GAIN, in either direction', () => {
+  // Two corrections in two places is how a product ends up quiet with every
+  // metric green. There is exactly one now, and it is not here.
+  assert.ok(!/applyMeasuredMakeupGain|makeupGainFor/.test(CODE),
+    'the client is correcting loudness again');
+  assert.ok(!/outputGain\.gain\.value = /.test(CODE),
+    'something assigns the output gain directly');
+  assert.ok(!/outputGain\.gain\.(setValueAtTime|linearRampToValueAtTime)/.test(CODE),
+    'something schedules the output gain');
+});
+
+test('AND_THE_NODE_IS_STILL_THERE, because two other things need it', () => {
+  // The visualiser reads the analyser behind it and barge-in ducks through it.
   assert.match(CODE, /this\.outputGain = this\.audioContext\.createGain\(\);/);
-  const at = CODE.indexOf('this.outputGain = this.audioContext.createGain();');
-  const after = CODE.slice(at, at + 400);
-  assert.ok(!/outputGain\.gain\.value = 0?\.\d/.test(after),
-    'the output gain is being initialised below unity');
-  const m = CODE.indexOf('private makeupGainFor(');
-  const body = CODE.slice(m, CODE.indexOf('private applyMeasuredMakeupGain', m));
-  assert.match(body, /report\.measured !== true/);
-  assert.match(body, /return \{ gain: 1, reason: `UNITY_NOT_MEASURED/);
+  assert.match(CODE, /this\.outputGain\.connect\(this\.outputAnalyser\);/);
+  assert.match(CODE, /this\.outputAnalyser\.connect\(this\.audioContext\.destination\);/);
+  // And it is reported, so "nothing here is attenuating" stays checkable.
+  assert.match(CODE, /outputGainValue: this\.outputGain\?\.gain\.value \?\? null,/);
 });
 
-test('AND_NEVER_BELOW_UNITY, whatever the measurement says', () => {
-  // A loud reply asks for negative gain. Attenuating the assistant is the
-  // failure being fixed, so the answer is unity, not 0.7.
-  assert.equal(makeup.gain(-6, 0.9), 1, 'a loud reply was attenuated');
-  assert.equal(makeup.gain(makeup.T, 0.5), 1, 'a reply already at target was touched');
-  for (const [rms, peak] of [[-30, 0.99], [-19, 0.5], [-10, 0.95], [-16, 0.891]]) {
-    assert.ok(makeup.gain(rms, peak) >= 1, `gain fell below unity at ${rms}dBFS/${peak}`);
-  }
-});
-
-test('CLIPPING_IS_ARITHMETICALLY_IMPOSSIBLE, not merely avoided', () => {
+test('THE_PLAYER_PLAYS_THROUGH_THAT_NODE, not straight at the destination', () => {
   /*
-   * The cap is derived from the loudest sample MEASURED so far, so the gain can
-   * never carry that peak past the ceiling. This is the property that makes
-   * this a measured correction rather than the "+6dB and hope" the brief
-   * forbids -- and sessionPeak only grows, so the cap only tightens.
+   * The question the owner was right to insist on: a gain node nothing plays
+   * through proves nothing. The player is constructed with it as its
+   * destination, and pcmPlayer connects every source to that destination -- so
+   * there is one graph and the assistant's voice is inside it.
    */
-  const ceilingLinear = 10 ** (makeup.C / 20);
-  for (let peak = 0.05; peak <= 1.0; peak += 0.05) {
-    for (const rms of [-35, -30, -27.9, -25.8, -22.8, -21.7, -19, -12]) {
-      const g = makeup.gain(rms, peak);
-      /*
-       * Two different guarantees, and only one of them is about the ceiling.
-       *
-       * Where a correction is APPLIED it must land under the ceiling -- that is
-       * the cap doing its work. Where none is applied the audio is passed
-       * through untouched, so a source that already peaks at 0.99 still peaks
-       * at 0.99: above the ceiling, and correctly so, because attenuating the
-       * assistant is the failure this whole change exists to avoid. What must
-       * hold in both cases is that nothing clips.
-       */
-      if (g > 1) {
-        assert.ok(peak * g <= ceilingLinear + 1e-9,
-          `peak ${peak} * gain ${g.toFixed(3)} = ${(peak * g).toFixed(4)} exceeds the ceiling`);
-      } else {
-        assert.equal(g, 1, 'the only alternative to a correction is passing it through');
-      }
-      assert.ok(peak * g <= 1 + 1e-9, `a sample would have clipped at ${peak}/${rms}`);
-    }
-  }
-});
-
-test('THE_CORRECTION_IS_BOUNDED, so a broken measurement cannot amplify a hiss', () => {
-  const maxLinear = 10 ** (makeup.M / 20);
-  // Digital silence with a tiny peak asks for an enormous correction.
-  assert.ok(makeup.gain(-90, 0.001) <= maxLinear + 1e-9);
-  assert.ok(makeup.gain(-60, 0.01) <= maxLinear + 1e-9);
-});
-
-test('THE_REAL_MEASUREMENTS_GET_AN_AUDIBLE_BUT_SAFE_CORRECTION', () => {
-  /*
-   * The three turns from the physical session, with the session peak the client
-   * actually reported (0.5907). This is the number that answers "is it worth
-   * shipping": about +3.5dB, roughly one and a half times the amplitude, with
-   * the loudest sample landing exactly on the ceiling and not past it.
-   */
-  const sessionPeak = 0.5907;
-  for (const rms of [-21.7, -25.8, -22.8]) {
-    const g = makeup.gain(rms, sessionPeak);
-    const db = 20 * Math.log10(g);
-    assert.ok(db > 2.5, `only ${db.toFixed(2)}dB of correction for ${rms}dBFS speech`);
-    assert.ok(db <= makeup.M, 'past the bound');
-    assert.ok(sessionPeak * g <= 10 ** (makeup.C / 20) + 1e-9);
-  }
-});
-
-test('THE_GAIN_IS_RAMPED_AND_LANDS_ON_THE_TARGET', () => {
-  /*
-   * A step change in gain between two samples is a click. A ramp that never
-   * arrives is worse: it leaves the reply playing under the gain it was given,
-   * which is the "fade that stays below unity" the brief calls out. So the ramp
-   * is short and ends AT the value.
-   */
-  const at = CODE.indexOf('private applyMeasuredMakeupGain(): void {');
-  assert.ok(at > 0, 'the gain is no longer applied');
-  const body = CODE.slice(at, at + 1100);
-  assert.match(body, /cancelScheduledValues\(now\)/);
-  assert.match(body, /linearRampToValueAtTime\(gain, now \+ 0\.03\)/);
-  assert.match(body, /gainNode\.gain\.value = gain;/, 'no fallback for a context that will not schedule');
+  assert.match(CODE, /this\.player = new PcmStreamPlayer\(this\.audioContext, this\.outputGain\);/);
+  const PLAYER = read('src/lib/comm/pcmPlayer.ts');
+  assert.match(PLAYER, /constructor\(ctx: AudioContext, destination: AudioNode\)/);
+  assert.match(PLAYER, /source\.connect\(this\.destination\);/);
+  assert.ok(!/connect\(this\.ctx\.destination\)/.test(PLAYER),
+    'a source bypasses the gain node and goes straight to the destination');
 });
 
 test('THE_MICROPHONE_MONITOR_STAYS_MUTED, and is not the playback path', () => {
   /*
-   * There is one other gain node at zero, and it is the reason a naive grep for
-   * "gain 0.x" is misleading: the microphone is routed to a muted sink so the
-   * phone does not scream at its owner. It must stay at zero, and it must stay
-   * off the playback graph.
+   * There is one other gain node at zero, and it is why a naive grep for a low
+   * gain misleads: the microphone is routed to a muted sink so the phone does
+   * not scream at its owner. It must stay at zero and stay off the playback graph.
    */
   const at = CODE.indexOf('const sink = this.audioContext.createGain();');
   assert.ok(at > 0, 'the microphone sink moved');
   const body = CODE.slice(at, at + 300);
   assert.match(body, /sink\.gain\.value = 0;/);
   assert.match(body, /this\.processor\.connect\(sink\);/);
-  // And the assistant's voice goes through the OTHER node.
-  assert.match(CODE, /this\.outputGain\.connect\(this\.outputAnalyser\);/);
-  assert.match(CODE, /this\.outputAnalyser\.connect\(this\.audioContext\.destination\);/);
 });
 
 test('NO_PERSISTED_VOLUME_PREFERENCE can reintroduce a quiet start', () => {
-  /*
-   * A stale stored preference is the other way "it starts quiet" happens, and
-   * the honest answer is that no such preference exists: the gain is derived
-   * from this session's own measurements every turn, so a fresh session and a
-   * reloaded one start identically.
-   */
-  assert.ok(!/localStorage|sessionStorage/.test(CODE.slice(
-    CODE.indexOf('private makeupGainFor('),
-    CODE.indexOf('private stopPlayback('),
-  )), 'the playback gain is reading stored state');
+  // A stale stored preference is the other way "it starts quiet" happens. There
+  // is no such preference: loudness is decided server-side, per phrase.
+  assert.ok(!/localStorage|sessionStorage/.test(CODE), 'the client stores audio state');
 });

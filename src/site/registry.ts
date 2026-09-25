@@ -830,12 +830,15 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     // There is one header. It is hidden by nothing and duplicated by nobody.
     repeatable: false,
     fields: [
-      f('nav_start', 'mp_nav_start', 'mp_nav_start'),
-      f('nav_expat', 'nav_for_expats', 'nav_for_expats'),
-      f('nav_intelligence', 'mp_nav_capabilities', 'mp_nav_capabilities'),
+      /* One field per label the header actually renders. A field for a link
+         that is no longer in the navigation is a control that edits nothing,
+         which is the thing the Admin redesign set out to remove. */
+      f('nav_find_property', 'dnav_find_property', 'dnav_find_property'),
+      f('nav_find_client', 'dnav_find_client', 'dnav_find_client'),
       f('nav_verify', 'nav_verify', 'nav_verify'),
+      f('nav_intelligence', 'mp_nav_capabilities', 'mp_nav_capabilities'),
       f('nav_investment', 'nav_investment', 'nav_investment'),
-      f('nav_mortgage', 'nav_mortgage', 'nav_mortgage'),
+      f('nav_expat', 'nav_for_expats', 'nav_for_expats'),
       f('nav_professional', 'nav_professional', 'nav_professional'),
       f('nav_developers', 'mp_nav_developers', 'mp_nav_developers'),
       f('nav_partners', 'home_nav_partners', 'home_nav_partners'),

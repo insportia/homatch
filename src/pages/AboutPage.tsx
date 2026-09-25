@@ -35,6 +35,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { PublicHeader } from '@/components/home/PublicHeader';
 import { usePublicNavLinks } from '@/site/publicNav';
+import LocalSectionNav from '@/components/common/LocalSectionNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { SitePage } from '@/site/render/SitePage';
 import { usePublishedPage } from '@/site/render/usePublishedPage';
@@ -49,6 +50,21 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <PublicHeader links={headerLinks} />
+
+      {/*
+        * The page's own three sections, restored as LOCAL navigation.
+        * They used to be in the site header, where they competed with
+        * Verify and Pricing as though a part of this page were a product
+        * area of its own.
+        */}
+      <LocalSectionNav
+        ariaLabelKey="nav_on_this_page"
+        sections={[
+          { id: 'what', labelKey: 'about_nav_what' },
+          { id: 'market', labelKey: 'about_nav_market' },
+          { id: 'sources', labelKey: 'about_nav_sources' },
+        ]}
+      />
 
       <main>
         <SitePage slug="about" content={published} />

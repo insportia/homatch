@@ -61,19 +61,38 @@ export interface PublicNavLink {
  */
 export function publicNav({ onHome = false }: { onHome?: boolean } = {}): PublicNavLink[] {
   return [
-    onHome
-      ? { key: 'start', labelKey: 'mp_nav_start', target: 'start' }
-      : { key: 'home', labelKey: 'mp_nav_start', target: '/' },
-
-    /* The product, in the order §6 asks for. */
-    { key: 'expat', labelKey: 'nav_for_expats', target: '/for-expats/georgia' },
+    /*
+     * WHAT HOMATCH DOES, IN THE ORDER SOMEBODY ARRIVES WANTING IT.
+     *
+     * The two matching actions lead because they are the product: a visitor
+     * either has a property and wants demand, or wants a property and has
+     * demand. Everything else on this list is something they reach for once
+     * one of those two is underway.
+     *
+     * Expat is NOT first. §6's Workspace -> Expat -> Intelligence is about
+     * the signed-in hierarchy, where it sits after the work; giving it the
+     * first slot out here would tell a Georgian seller that Homatch is a
+     * relocation site. It is last among the products and still primary,
+     * which is where somebody who needs it will look for it.
+     *
+     * There is no Start link: the logo goes home, which every visitor
+     * already knows, and the slot is worth more to Find a property.
+     */
+    { key: 'find_property', labelKey: 'dnav_find_property', target: '/ai' },
+    { key: 'find_client', labelKey: 'dnav_find_client', target: '/property/add' },
+    { key: 'verify', labelKey: 'nav_verify', target: '/verify' },
     onHome
       ? { key: 'intelligence', labelKey: 'mp_nav_capabilities', target: 'intelligence' }
       : { key: 'intelligence', labelKey: 'mp_nav_capabilities', target: '/#intelligence' },
-    { key: 'verify', labelKey: 'nav_verify', target: '/verify' },
     { key: 'investment', labelKey: 'nav_investment', target: '/investment' },
-    { key: 'mortgage', labelKey: 'nav_mortgage', target: '/mortgage' },
+    { key: 'expat', labelKey: 'nav_for_expats', target: '/for-expats/georgia' },
 
+    /*
+     * Mortgage is deliberately not here. It is linked from the home page's
+     * own sections, the footer, the Expat plan, What can I buy, and both
+     * signed-in navigations -- so it is discoverable without spending the
+     * scarcest row in the product on it.
+     */
     {
       key: 'professional',
       labelKey: 'nav_professional',
@@ -94,7 +113,6 @@ export function publicNav({ onHome = false }: { onHome?: boolean } = {}): Public
     },
   ];
 }
-
 /** Every destination the navigation can reach, groups flattened away. */
 export function publicNavTargets(): string[] {
   const out: string[] = [];

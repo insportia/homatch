@@ -8944,6 +8944,9 @@ const en = {
   /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
   nav_company: 'Company',
   nav_professional: 'For professionals',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_on_this_page: 'On this page',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17806,6 +17809,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
   nav_company: 'კომპანია',
   nav_professional: 'პროფესიონალებს',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_on_this_page: 'ამ გვერდზე',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26659,6 +26665,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
   nav_company: 'Компания',
   nav_professional: 'Профессионалам',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_on_this_page: 'На этой странице',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35510,6 +35519,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
   nav_company: 'Kurumsal',
   nav_professional: 'Profesyonellere',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_on_this_page: 'Bu sayfada',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44361,6 +44373,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
   nav_company: 'الشركة',
   nav_professional: 'للمحترفين',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_on_this_page: 'في هذه الصفحة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -53212,6 +53227,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
   nav_company: 'החברה',
   nav_professional: 'לאנשי מקצוע',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_on_this_page: 'בדף הזה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

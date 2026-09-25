@@ -33,4 +33,12 @@ export const NAV_STRINGS = {
     'للمحترفين',
     'לאנשי מקצוע',
   ],
+  nav_on_this_page: [
+    'On this page',
+    'ამ გვერდზე',
+    'На этой странице',
+    'Bu sayfada',
+    'في هذه الصفحة',
+    'בדף הזה',
+  ],
 };

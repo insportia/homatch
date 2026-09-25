@@ -64,13 +64,12 @@ export interface HeaderLink {
  * the test beside that file checks that it does.
  */
 const NAV_FIELDS: Readonly<Record<string, TranslationKey>> = {
-  start: 'mp_nav_start',
-  home: 'mp_nav_start',
-  expat: 'nav_for_expats',
-  intelligence: 'mp_nav_capabilities',
+  find_property: 'dnav_find_property',
+  find_client: 'dnav_find_client',
   verify: 'nav_verify',
+  intelligence: 'mp_nav_capabilities',
   investment: 'nav_investment',
-  mortgage: 'nav_mortgage',
+  expat: 'nav_for_expats',
   professional: 'nav_professional',
   developers: 'mp_nav_developers',
   partners: 'home_nav_partners',

@@ -22,7 +22,7 @@ const ROUTES = readFileSync('src/routes.tsx', 'utf8');
 
 /** The link keys, in the order the file declares them. */
 function orderedKeys() {
-  return [...NAV.matchAll(/key: '([a-z]+)'/g)].map((m) => m[1]);
+  return [...NAV.matchAll(/key: '([a-z_]+)'/g)].map((m) => m[1]);
 }
 
 test('nav 1: no page declares a navigation of its own any more', () => {
@@ -41,16 +41,35 @@ test('nav 1: no page declares a navigation of its own any more', () => {
     'a page is declaring its own header links again — that is how four navigations appeared');
 });
 
-test('nav 2: Expat leads the products, and Intelligence follows it', () => {
-  /* §6: Workspace -> Expat -> Intelligence. A public page has no workspace,
-     so Expat leads the product links and Intelligence comes after. */
+test('nav 2: the two matching actions lead, and Expat is primary without leading', () => {
+  /*
+   * The product is matching: a visitor either has a property and wants
+   * demand, or wants a property and has demand. Those two come first.
+   *
+   * Expat is primary and deliberately NOT first. The Workspace -> Expat ->
+   * Intelligence order in §6 is about the signed-in hierarchy, where Expat
+   * sits after the work; giving it the first slot on a public page would
+   * tell a Georgian seller that Homatch is a relocation site.
+   */
   const keys = orderedKeys();
+  assert.equal(keys[0], 'find_property', 'the first thing offered should be finding a property');
+  assert.equal(keys[1], 'find_client', 'finding demand should sit beside finding supply');
+
   const expat = keys.indexOf('expat');
-  const intelligence = keys.indexOf('intelligence');
-  assert.ok(expat > 0, 'Expat is missing from the public navigation');
-  assert.ok(intelligence > expat, 'Intelligence must follow Expat, not precede it');
+  assert.ok(expat > 1, 'Expat should not take a leading slot on a public page');
+  const groups = ['professional', 'company'].map((k) => keys.indexOf(k));
+  assert.ok(groups.every((g) => g > expat), 'Expat must stay primary, above the grouped items');
 });
 
+test('nav 2b: no Start link, because the logo already goes home', () => {
+  /* The slot is worth more to a product action than to a control every
+     visitor already knows how to use. */
+  const keys = orderedKeys();
+  assert.ok(!keys.includes('start') && !keys.includes('home'),
+    'a redundant Start link is back in the primary row');
+  const header = readFileSync('src/components/home/PublicHeader.tsx', 'utf8');
+  assert.match(header, /home_nav_home_aria/, 'the logo must remain the labelled way home');
+});
 test('nav 3: the secondary destinations are grouped, not competing for the row', () => {
   /* Seven flat links is what made the header crowd. About, Pricing, For
      developers and Partners are real destinations that are not what a
@@ -97,7 +116,7 @@ test('nav 6: every label an admin may rewrite is offered in the Studio registry'
   const registry = readFileSync('src/site/registry.ts', 'utf8');
   const fields = header.slice(header.indexOf('const NAV_FIELDS'), header.indexOf('/** The header,'));
 
-  for (const key of ['expat', 'investment', 'pricing', 'company', 'professional']) {
+  for (const key of ['find_property', 'find_client', 'expat', 'investment', 'pricing', 'company', 'professional']) {
     assert.ok(fields.includes(`${key}:`), `${key} is not admin-editable in NAV_FIELDS`);
     assert.ok(registry.includes(`f('nav_${key}'`), `nav_${key} is not offered in the Studio registry`);
   }

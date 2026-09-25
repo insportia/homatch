@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search } from 'lucide-react';
 import {
   getAdminSources,
+  getSourceConcentration,
   toggleSourceActive,
   getResearchSourceHealth,
   getResearchConnections,
@@ -38,6 +39,7 @@ import { format } from 'date-fns';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 type Row = Record<string, any>;
+type ConcentrationRow = Awaited<ReturnType<typeof getSourceConcentration>>[number];
 
 const when = (value: unknown) =>
   value ? format(new Date(String(value)), 'MMM d, HH:mm') : '—';
@@ -57,6 +59,7 @@ export default function AdminSourcesPage() {
   const [health, setHealth] = useState<Row[]>([]);
   const [connections, setConnections] = useState<Row[]>([]);
   const [queue, setQueue] = useState<Row[]>([]);
+  const [concentration, setConcentration] = useState<ConcentrationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
 
@@ -68,12 +71,16 @@ export default function AdminSourcesPage() {
       getResearchSourceHealth(500).catch(() => []),
       getResearchConnections().catch(() => []),
       getResearchAccessQueue(undefined, 200).catch(() => []),
+      /* Through an RPC: supply_observations has no grant for authenticated,
+         so the concentration cannot be assembled in the browser. */
+      getSourceConcentration().catch(() => []),
     ])
-      .then(([s, h, c, qu]) => {
+      .then(([s, h, c, qu, conc]) => {
         setSources(s);
         setHealth(h);
         setConnections(c);
         setQueue(qu);
+        setConcentration(conc);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -134,6 +141,7 @@ export default function AdminSourcesPage() {
         <TabsList>
           <TabsTrigger value="registry">{t('admin_sources_tab_registry')}</TabsTrigger>
           <TabsTrigger value="health">{t('admin_sources_tab_health')}</TabsTrigger>
+          <TabsTrigger value="concentration">{t('admin_sources_tab_concentration')}</TabsTrigger>
           <TabsTrigger value="access">{t('admin_sources_tab_access')}</TabsTrigger>
           <TabsTrigger value="queue">
             {t('admin_sources_tab_queue')}
@@ -204,6 +212,77 @@ export default function AdminSourcesPage() {
         </TabsContent>
 
         {/* ── Health: what each source actually produced ─────────────────── */}
+        <TabsContent value="concentration">
+          <Card>
+            <CardContent className="p-0">
+              {/*
+                * IS THIS A DISCOVERY NETWORK, OR ONE SOURCE?
+                *
+                * Share is of the observations Homatch HOLDS, never of a
+                * market: nobody knows how many properties are for sale in
+                * Tbilisi, and a coverage percentage would need that number.
+                *
+                * The column that decides whether a source earns its rate
+                * limit is "only here" — entities no other source reached.
+                * A source can hold a healthy share and take nothing with it
+                * when dropped, which is what two sources reading the same
+                * listings looks like.
+                */}
+              <div className="p-4 text-xs text-muted-foreground">
+                {t('admin_sources_concentration_note')}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <Th>{t('admin_sources_url')}</Th>
+                      <Th>{t('admin_sources_family')}</Th>
+                      <Th>{t('admin_sources_lifecycle')}</Th>
+                      <Th>{t('admin_sources_observations')}</Th>
+                      <Th>{t('admin_sources_share_held')}</Th>
+                      <Th>{t('admin_sources_priced')}</Th>
+                      <Th>{t('admin_sources_only_here')}</Th>
+                      <Th>{t('admin_sources_provenance')}</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <LoadingRows cols={8} />
+                    ) : concentration.length === 0 ? (
+                      <EmptyRow cols={8} label={t('admin_sources_concentration_empty')} />
+                    ) : (
+                      concentration.map((c) => (
+                        <tr key={c.adapter_id} className="border-b border-border/50">
+                          <td className="px-4 py-2.5 whitespace-nowrap font-mono text-xs">{c.adapter_id}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{c.source_family ?? '—'}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap">
+                            <Badge variant={c.active ? 'default' : 'outline'} className="text-[13px]">
+                              {c.lifecycle ?? '—'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-2.5 whitespace-nowrap text-xs font-mono">{c.observations}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap text-xs font-mono">
+                            {(Number(c.share_of_held) * 100).toFixed(1)}%
+                          </td>
+                          <td className="px-4 py-2.5 whitespace-nowrap text-xs font-mono">
+                            {c.with_price}/{c.observations}
+                          </td>
+                          <td className="px-4 py-2.5 whitespace-nowrap text-xs font-mono">
+                            {c.incremental_unique_entities}
+                          </td>
+                          <td className="px-4 py-2.5 whitespace-nowrap text-xs font-mono">
+                            {Number(c.avg_quality).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="health">
           <Card>
             <CardContent className="p-0">

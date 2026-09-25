@@ -1193,6 +1193,40 @@ export async function getAdminSources(limit = 100, offset = 0) {
   return data ?? [];
 }
 
+/**
+ * Per-source supply concentration, for the admin area.
+ *
+ * Through an RPC rather than a table read, because supply_observations has
+ * no grant for `authenticated` — it is the intelligence customers pay for,
+ * and an admin screen reading it directly would be a second way in.
+ *
+ * WHAT IT IS NOT. There is no coverage percentage, and there cannot be one:
+ * nobody knows how many properties are for sale in Tbilisi. `share_of_held`
+ * is a share of what Homatch holds and is named so it cannot be misread.
+ */
+export interface SourceConcentrationRow {
+  adapter_id: string;
+  source_family: string | null;
+  lifecycle: string | null;
+  active: boolean | null;
+  observations: number;
+  share_of_held: number;
+  with_price: number;
+  with_area: number;
+  cities: number;
+  entities_touched: number;
+  /** Entities no other source reached — what dropping this source would cost. */
+  incremental_unique_entities: number;
+  avg_quality: number;
+  last_successful_at: string | null;
+}
+
+export async function getSourceConcentration(): Promise<SourceConcentrationRow[]> {
+  const { data, error } = await supabase.rpc('admin_source_concentration');
+  if (error) return [];
+  return (data ?? []) as SourceConcentrationRow[];
+}
+
 export async function toggleSourceActive(sourceId: string, active: boolean) {
   await supabase.from('source_registry').update({ active }).eq('id', sourceId);
 }

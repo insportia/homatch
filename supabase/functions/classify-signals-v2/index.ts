@@ -41,16 +41,74 @@ const MAX_ATTEMPTS=3;
 
 Deno.serve(async(req:Request)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:CORS});
- const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+ const serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+ const db=createClient(Deno.env.get('SUPABASE_URL')!,serviceKey);
+
+ /*
+  * AN UNAUTHENTICATED ENDPOINT THAT SPENDS MONEY.
+  *
+  * This function is deployed --no-verify-jwt, which is right: it is a worker
+  * tick with no customer and no user JWT. But it had no check of its own
+  * either, so anybody who knew the URL could call it, and every call reads a
+  * batch of up to 500 signals and pays OpenAI for them. The cost lands in
+  * cost_events as ours.
+  *
+  * Same token shape as every other tick here -- supply_discovery_token,
+  * demand_discovery_token, revalidation_worker_token -- read from
+  * admin_settings, never from a file. A caller holding the service key is
+  * also accepted, which is how the in-cluster workers reach it.
+  */
+ const presented=req.headers.get('x-cron-token')||'';
+ const authorization=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
+ if(authorization!==serviceKey){
+   const {data:tokenRow}=await db.from('admin_settings').select('value').eq('key','classify_signals_token').maybeSingle();
+   const expected=String(tokenRow?.value??'').replace(/^"|"$/g,'');
+   if(!expected||presented!==expected)return json({error:'Forbidden'},403);
+ }
+
  try{
   const {batchSize=300,market='GE'}=await req.json().catch(()=>({}));
-  const {data:signals,error}=await db.from('raw_signals').select(`id,original_text,language,platform,classification_attempts,source:source_registry!source_id(country_code,language)`).eq('classification_status','PENDING').lt('classification_attempts',MAX_ATTEMPTS).order('classification_attempts',{ascending:true}).order('discovered_at',{ascending:true}).limit(Math.min(500,batchSize));
+  const {data:signals,error}=await db.from('raw_signals').select(`id,original_text,language,platform,classification_attempts,research_direction,author_is_agency,source:source_registry!source_id(country_code,language)`).eq('classification_status','PENDING').lt('classification_attempts',MAX_ATTEMPTS).order('classification_attempts',{ascending:true}).order('discovered_at',{ascending:true}).limit(Math.min(500,batchSize));
   if(error)throw error;if(!signals?.length)return json({success:true,processed:0,classified:0,filteredOut:0,deterministicFiltered:0,errors:0});
   const key=Deno.env.get('OPENAI_API_KEY')!;if(!key)return json({error:'OPENAI_API_KEY missing'},500);
   let retried=0;let classified=0,filteredOut=0,deterministicFiltered=0,errors=0,totalCostUsd=0;
   const aiSignals:any[]=[];
+  /*
+   * THE DETERMINISTIC VERDICT IS ALREADY ON THE ROW. USE IT.
+   *
+   * demand-discovery runs classifyDirection() when it reads a post and
+   * stores research_direction and author_is_agency. This function used to
+   * ignore both and form its own opinion with isSupplyAd() -- two
+   * deterministic judgements about the same question, neither aware of the
+   * other, and the richer one discarded.
+   *
+   * Two reasons to use it. A post the reader already knows is SUPPLY, or is
+   * an agency advertising, is not a buyer lead and should not cost a model
+   * call to find that out. And the reader's verdict carries the matched
+   * phrases, so the reason a signal was dropped is a phrase somebody can
+   * read rather than "deterministic_supply_filter".
+   *
+   * NULL IS NOT FALSE, on either field. Every signal collected before these
+   * columns existed has them null, and those still go to the model -- the
+   * question was never asked of them, and refusing them here would silently
+   * retire 868 rows nobody re-examined.
+   *
+   * UNKNOWN also goes to the model. The reader is deliberately conservative
+   * and most forum posts are neither an offer nor a request; deciding here
+   * that UNKNOWN means "not a lead" would throw away exactly the nuanced
+   * cases the model is better at.
+   */
   for(const s of signals){
-    if(isSupplyAd(String(s.original_text||''))){
+    const direction=String((s as any).research_direction||'');
+    const agencyVoice=(s as any).author_is_agency===true;
+    if(direction==='SUPPLY'||agencyVoice){
+      const why=agencyVoice
+        ?'the reader judged this an agency speaking, not a principal'
+        :'the reader judged this an offer, not a request';
+      await db.from('intent_profiles').delete().eq('signal_id',s.id);
+      await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:'PROPERTY_AD',intent_json:{intentType:'PROPERTY_AD',reason:'deterministic_direction',detail:why,researchDirection:direction||null,agencyVoice}}).eq('id',s.id);
+      filteredOut++;deterministicFiltered++;
+    } else if(isSupplyAd(String(s.original_text||''))){
       await db.from('intent_profiles').delete().eq('signal_id',s.id);
       await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:'PROPERTY_AD',intent_json:{intentType:'PROPERTY_AD',reason:'deterministic_supply_filter'}}).eq('id',s.id);
       filteredOut++;deterministicFiltered++;

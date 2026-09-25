@@ -9033,6 +9033,20 @@ const en = {
   matches_included_badge: 'Included',
   matches_included_hint: 'Your campaign already paid for this result',
   matches_included_view_btn: 'View contact',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_tab_concentration: 'Concentration',
+  admin_sources_concentration_note: 'Share of the observations Homatch holds — not of the market. "Only here" counts properties no other source reached.',
+  admin_sources_concentration_empty: 'No supply observations yet',
+  admin_sources_family: 'Family',
+  admin_sources_lifecycle: 'Lifecycle',
+  admin_sources_observations: 'Observations',
+  admin_sources_share_held: 'Share of held',
+  admin_sources_priced: 'With price',
+  admin_sources_only_here: 'Only here',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_provenance: 'Provenance',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17984,6 +17998,20 @@ const ka: Partial<Record<TranslationKey, string>> = {
   matches_included_badge: 'შედის',
   matches_included_hint: 'თქვენმა კამპანიამ უკვე გადაიხადა ამ შედეგისთვის',
   matches_included_view_btn: 'კონტაქტის ნახვა',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_tab_concentration: 'კონცენტრაცია',
+  admin_sources_concentration_note: 'წილი Homatch-ის მიერ შენახულ დაკვირვებებში — არა ბაზარში. „მხოლოდ აქ" ითვლის ქონებას, რომელიც სხვა წყარომ ვერ იპოვა.',
+  admin_sources_concentration_empty: 'ჯერ არ არის მიწოდების დაკვირვებები',
+  admin_sources_family: 'ოჯახი',
+  admin_sources_lifecycle: 'სასიცოცხლო ციკლი',
+  admin_sources_observations: 'დაკვირვებები',
+  admin_sources_share_held: 'წილი შენახულში',
+  admin_sources_priced: 'ფასით',
+  admin_sources_only_here: 'მხოლოდ აქ',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_provenance: 'წარმომავლობა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26926,6 +26954,20 @@ const ru: Partial<Record<TranslationKey, string>> = {
   matches_included_badge: 'Включено',
   matches_included_hint: 'Ваша кампания уже оплатила этот результат',
   matches_included_view_btn: 'Посмотреть контакт',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_tab_concentration: 'Концентрация',
+  admin_sources_concentration_note: 'Доля от наблюдений, которые хранит Homatch, — не от рынка. «Только здесь» считает объекты, которых не нашёл ни один другой источник.',
+  admin_sources_concentration_empty: 'Пока нет наблюдений предложения',
+  admin_sources_family: 'Семейство',
+  admin_sources_lifecycle: 'Жизненный цикл',
+  admin_sources_observations: 'Наблюдения',
+  admin_sources_share_held: 'Доля от хранимого',
+  admin_sources_priced: 'С ценой',
+  admin_sources_only_here: 'Только здесь',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_provenance: 'Происхождение',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35866,6 +35908,20 @@ const tr: Partial<Record<TranslationKey, string>> = {
   matches_included_badge: 'Dahil',
   matches_included_hint: 'Kampanyanız bu sonucun ücretini zaten ödedi',
   matches_included_view_btn: 'İletişimi görüntüle',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_tab_concentration: 'Yoğunlaşma',
+  admin_sources_concentration_note: 'Homatch\'in elindeki gözlemlerdeki pay — pazardaki değil. "Yalnızca burada", başka hiçbir kaynağın ulaşmadığı mülkleri sayar.',
+  admin_sources_concentration_empty: 'Henüz arz gözlemi yok',
+  admin_sources_family: 'Aile',
+  admin_sources_lifecycle: 'Yaşam döngüsü',
+  admin_sources_observations: 'Gözlemler',
+  admin_sources_share_held: 'Elde tutulan pay',
+  admin_sources_priced: 'Fiyatlı',
+  admin_sources_only_here: 'Yalnızca burada',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_provenance: 'Köken',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44806,6 +44862,20 @@ const ar: Partial<Record<TranslationKey, string>> = {
   matches_included_badge: 'مشمول',
   matches_included_hint: 'لقد دفعت حملتك بالفعل مقابل هذه النتيجة',
   matches_included_view_btn: 'عرض جهة الاتصال',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_tab_concentration: 'التركّز',
+  admin_sources_concentration_note: 'حصة من الملاحظات التي يحتفظ بها Homatch — وليست من السوق. «هنا فقط» تحسب العقارات التي لم يصل إليها أي مصدر آخر.',
+  admin_sources_concentration_empty: 'لا توجد ملاحظات عرض بعد',
+  admin_sources_family: 'العائلة',
+  admin_sources_lifecycle: 'دورة الحياة',
+  admin_sources_observations: 'الملاحظات',
+  admin_sources_share_held: 'حصة المحتفظ به',
+  admin_sources_priced: 'بسعر',
+  admin_sources_only_here: 'هنا فقط',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_provenance: 'المصدر',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -53746,6 +53816,20 @@ const he: Partial<Record<TranslationKey, string>> = {
   matches_included_badge: 'כלול',
   matches_included_hint: 'הקמפיין שלך כבר שילם עבור תוצאה זו',
   matches_included_view_btn: 'הצג איש קשר',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_tab_concentration: 'ריכוזיות',
+  admin_sources_concentration_note: 'חלק מתוך התצפיות ש-Homatch מחזיקה — לא מתוך השוק. "רק כאן" סופר נכסים ששום מקור אחר לא הגיע אליהם.',
+  admin_sources_concentration_empty: 'אין עדיין תצפיות היצע',
+  admin_sources_family: 'משפחה',
+  admin_sources_lifecycle: 'מחזור חיים',
+  admin_sources_observations: 'תצפיות',
+  admin_sources_share_held: 'חלק מהמוחזק',
+  admin_sources_priced: 'עם מחיר',
+  admin_sources_only_here: 'רק כאן',
+
+  /* ── ADMIN SOURCE CONCENTRATION ── */
+  admin_sources_provenance: 'מקור',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

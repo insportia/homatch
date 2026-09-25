@@ -294,6 +294,36 @@ test('the sweep reports what the entitlement excluded', () => {
   assert.match(sweep, /sourcesConsidered: tiered\.length/);
 });
 
+test('what the search did not reach is remembered, in the customer\'s vocabulary', () => {
+  /*
+   * The sweep already knew: it gates sources by entitlement and reports
+   * sourcesOutsideEntitlement -- five of eight on FREE, two on VIP. That
+   * lived only in one HTTP response, so nothing afterwards could offer a
+   * deeper search without running a search to discover one was possible.
+   *
+   * It is now written to matching_jobs.discovery_headroom, and the shape is
+   * the constraint: a customer surface must be able to render "more is
+   * available" without being handed a tier number, an adapter id, a supplier
+   * name or a cost -- the same things the progress panel had to be cleaned
+   * of. Admin reads the sweep's own response for the detail.
+   */
+  const campaign = readFileSync('supabase/functions/match-campaign/index.ts', 'utf8');
+  assert.match(campaign, /discovery_headroom/, 'the headroom is computed and then forgotten');
+  assert.match(campaign, /moreAvailable: deeper > 0/);
+  assert.match(campaign, /searchDepth: grant\.qualityTier/);
+
+  /* The payload is built inside this block; nothing tier- or supplier-shaped
+     may appear in it. */
+  const start = campaign.indexOf('discovery_headroom: {');
+  const payload = campaign.slice(start, campaign.indexOf('},', start));
+  assert.ok(start > 0, 'the headroom payload could not be located');
+  for (const leak of ['priority_tier', 'priorityTier', 'adapter', 'sourcePriorityCeiling',
+    'cost', 'Cost', 'skipped']) {
+    assert.equal(payload.includes(leak), false,
+      `${leak} is in a payload a customer surface reads`);
+  }
+});
+
 test('overlapping searches on the same plan authorise identical envelopes', () => {
   /*
    * Coalescing happens a layer up, in the planner that groups jobs. It can

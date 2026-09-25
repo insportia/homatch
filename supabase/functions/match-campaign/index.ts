@@ -400,6 +400,35 @@ Deno.serve(async (req: Request) => {
         }, 120_000);
         supplyResult = supply.data;
 
+        /*
+         * WHAT THIS SEARCH DID NOT REACH, remembered.
+         *
+         * The sweep gates sources by the customer's entitlement and reports
+         * how many it therefore did not touch -- five of eight on FREE, two
+         * on VIP. That existed only in this response, so nothing afterwards
+         * knew a deeper search was possible without running one to find out.
+         *
+         * Stored in the customer's vocabulary and nothing else: how deep the
+         * search went, how many sources it read, how many more exist, and
+         * whether there is any point offering more. No tier numbers, no
+         * adapter ids, no supplier names, no costs -- the same line the
+         * progress panel had to be cleaned of. Admin reads the sweep's own
+         * response for the detail.
+         */
+        const ent = supply.data?.entitlement;
+        if (ent?.applied) {
+          const deeper = Number(ent.sourcesOutsideEntitlement ?? 0);
+          await updateJob(db, jobId, {
+            discovery_headroom: {
+              searchDepth: grant.qualityTier,
+              sourcesSearched: Number(supply.data?.sourcesReached ?? 0),
+              sourcesAvailableDeeper: deeper,
+              resultCeiling: grant.resultCeiling,
+              moreAvailable: deeper > 0,
+            },
+          }).catch(() => undefined);
+        }
+
         const perSourceRows = Array.isArray(supply.data?.perSource) ? supply.data.perSource : [];
         await event(db, jobId, 'SUPPLY_SCAN_COMPLETE', {
           message: `Read ${Number(supply.data?.sourcesReached || 0)} live sources for comparable supply`,

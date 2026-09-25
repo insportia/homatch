@@ -434,3 +434,18 @@ export function hasAnyFunctionWord(text: string, lang: string | null | undefined
   return functionWordRatio(text, lang).ratio > 0;
 }
 
+/**
+ * HOW MANY of that language's own words the text carries, not merely whether.
+ *
+ * `hasAnyFunctionWord` answers "at least one", which is the right question when
+ * the only alternative is nonsense. It is the wrong question when a settled
+ * conversation is about to be moved out of its own alphabet: a transliterated
+ * Georgian sentence reaches one English function word by accident -- `me` is a
+ * Georgian word too -- and one accident should not take the session.
+ */
+export function functionWordHits(text: string, lang: string | null | undefined): number {
+  if (!isCheckable(lang)) return 0;
+  const { ratio, words } = functionWordRatio(text, lang);
+  return Math.round(ratio * words);
+}
+

@@ -47,7 +47,7 @@ import {
 } from './talkLanguage.ts';
 import { createTranscriber, LIVE_SAMPLE_RATE, type LiveGrant, type LiveSocket } from './liveTranscribe.ts';
 import { LiveAudioRouter, type LivePhase } from './liveAudioRouter.ts';
-import { FinalWatch, type FinalDecision } from './finalWatch.ts';
+import { FinalWatch, type FinalDecision, type NoFinalReason } from './finalWatch.ts';
 import { gateWatchdog } from './gateWatchdog.ts';
 import {
   planRecovery, planFragmentRecovery, consistentWith, hasAnyFunctionWord, isDiscreditedTurn,
@@ -312,13 +312,24 @@ export interface VoiceDiagnostics {
   /*
    * The OUTPUT chain, which is the half "AI Talk is too quiet" is about.
    *
-   * outputGainValue is reported because the node exists and is never assigned:
-   * a GainNode defaults to 1, so this is expected to read exactly 1 and the
-   * number is here to prove that rather than to assert it. If it ever reads
-   * anything else, something started attenuating the assistant's voice and
-   * this says so instead of the next physical test discovering it.
+   * outputGainValue was reported because the node existed and was never
+   * assigned: a GainNode defaults to 1, and the number proved that rather than
+   * asserting it. It did its job. MEASURED, physical Android session 43b3c3ea
+   * (2026-09-25 20:45): outputGainValue 1, AudioContext running at 48kHz, and
+   * the client's own decode of the reply matching the server's meter to the
+   * decibel -- peak -4.6 against -4.6, -8.2 against -8.2. Nothing in this
+   * browser was attenuating anything.
+   *
+   * What the same trace showed is that Cartesia's speech sits at -21.7, -25.8
+   * and -22.8 dBFS RMS, where ordinary spoken audio is around -16 to -20. That
+   * is the "half volume", and it is at the source.
+   *
+   * So the node is assigned now, and outputGainValue reports the correction
+   * rather than a constant. It is never below 1 -- see makeupGainFor.
    */
   outputGainValue: number | null;
+  /** How the makeup gain above was arrived at, or why it stayed at unity. */
+  outputGainReason: string | null;
   audioContextSampleRate: number | null;
   /*
    * THE FINAL THAT NEVER CAME.
@@ -401,6 +412,12 @@ export interface VoiceDiagnostics {
   lateFinalsDropped: number;
   /** Turns refused because every recogniser produced text of the wrong language. */
   discreditedTurnsDropped: number;
+  /*
+   * Utterances recognised, then dropped because a turn was already in
+   * flight. The visitor spoke and got no answer, which was invisible until
+   * this counter existed. See the turnInFlight branch in onLiveFinal.
+   */
+  turnsDroppedInFlight: number;
   /** Times the live path was re-tried after a fallback to batch. */
   liveRetries: number;
   /**
@@ -426,6 +443,10 @@ export interface VoiceDiagnostics {
   /** Speech held across a socket rotation and replayed into the new one. */
   preReadyFlushBytes: number;
   preReadyFlushMs: number;
+  /** Voiced ms the router held and the flush handed to the speech clock. */
+  heldVoicedCreditedMs: number;
+  /** What the no-final read-back did, or why it declined. See readBackAfterNoFinal. */
+  noFinalReadBack: string | null;
   /** Held audio that was let go because no socket came. Should stay at zero. */
   droppedPreReadyBytes: number;
   /** One row per completed turn, for a real-device session. */
@@ -586,7 +607,7 @@ export interface VoiceMilestone {
   event:
     | 'session_granted' | 'mic_open' | 'audio_context_running'
     | 'first_input_audio' | 'first_speech' | 'first_utterance_sent'
-    | 'first_transcript' | 'user_turn_sent'
+    | 'first_transcript' | 'user_turn_sent' | 'turn_dropped_in_flight'
     | 'assistant_text' | 'tts_audio_received' | 'playback_started'
     | 'playback_ended' | 'listening_resumed' | 'session_ended' | 'silent_turn' | 'illegal_transition'
   | 'no_final_recovered'
@@ -1170,6 +1191,29 @@ export class VoiceSession {
    * visitor is still in the middle of.
    */
   private preReadyVoicedMs = 0;
+  /*
+   * THE VOICE INSIDE THE HELD AUDIO, WHICH THE SPEECH CLOCK NEVER SAW.
+   *
+   * A block the router HELDs returns early, before `liveSpeechMs` is grown and
+   * before `utterancePcm` is appended to. The held audio IS flushed to the
+   * recogniser in order, so Google hears it -- but as far as this client was
+   * concerned the visitor had not spoken yet.
+   *
+   * MEASURED, physical Android session 43b3c3ea turn t1 (Georgian, 2026-09-25
+   * 20:45): pre_ready_voiced_ms 768, flushedBufferedBytes 38,230 (1,195ms at
+   * 16kHz), capture_bytes_sent 199,338 (6,229ms) -- and
+   * lastEndTurnSpeechMs 256. The first socket needed 6,468ms to finalise, our
+   * deadline fired at 2,500ms and rotated, and the same-turn recovery that is
+   * supposed to make the shorter deadline safe declined with SPEECH_TOO_SHORT
+   * because 256 < RECOVERY_MIN_SPEECH_MS. The visitor's first Georgian
+   * sentence came back as nine characters and one word.
+   *
+   * So this counts the voiced milliseconds the router is holding, and the
+   * flush hands them to the speech clock along with the bytes. Only blocks the
+   * router actually held: a mute or a gate is not held audio, and audio that
+   * is abandoned to the batch path is discarded rather than credited.
+   */
+  private heldVoicedMs = 0;
   private lastPreReadyFlush: { bytes: number; ms: number } | null = null;
   /** Where a block of audio goes, and every byte counter. See liveAudioRouter. */
   private router = new LiveAudioRouter({
@@ -1398,6 +1442,7 @@ export class VoiceSession {
     secondOpinionFailures: 0,
     lateFinalsDropped: 0,
     discreditedTurnsDropped: 0,
+    turnsDroppedInFlight: 0,
     liveRetries: 0,
     languageState: { socket: null, turn: null, previous: null, response: null, recovery: null } as VoiceDiagnostics['languageState'],
     assistantAudibleResponseCompleted: null as boolean | null,
@@ -1405,7 +1450,9 @@ export class VoiceSession {
     playbackInterruptReason: null as string | null,
     lastRelisten: null as string | null,
     lastBargeStopMs: null as number | null,
-    preReadyFlushBytes: 0, preReadyFlushMs: 0,
+    preReadyFlushBytes: 0, preReadyFlushMs: 0, heldVoicedCreditedMs: 0,
+    noFinalReadBack: null as string | null,
+    outputGainReason: null as string | null,
     turnsEndedLocally: 0,
     /* Language-recovery diagnostics. See speechMsAtFinal and RecoveryDecline. */
     speechMsAtFinal: null as number | null,
@@ -1697,6 +1744,7 @@ export class VoiceSession {
       echoCancellation: this.diag.echoCancellation ?? null,
       micSettings: this.diag.micSettings ?? null,
       outputGainValue: this.outputGain?.gain.value ?? null,
+      outputGainReason: this.diag.outputGainReason ?? null,
       audioContextSampleRate: this.audioContext?.sampleRate ?? null,
       noFinalCount: this.finalWatch.noFinalCount,
       consecutiveNoFinals: this.finalWatch.consecutiveNoFinals,
@@ -1750,6 +1798,7 @@ export class VoiceSession {
       secondOpinionArmedFor: this.secondOpinionReason,
       lateFinalsDropped: this.diag.lateFinalsDropped ?? 0,
       discreditedTurnsDropped: this.diag.discreditedTurnsDropped ?? 0,
+      turnsDroppedInFlight: this.diag.turnsDroppedInFlight ?? 0,
       liveRetries: this.liveRetries,
       languageState: this.diag.languageState,
       usageTier: this.grantInfo.usageTier,
@@ -1769,6 +1818,8 @@ export class VoiceSession {
       voicedBeforeReadyMs: Math.round(this.voicedBeforeReadyMs),
       preReadyFlushBytes: this.diag.preReadyFlushBytes ?? 0,
       preReadyFlushMs: this.diag.preReadyFlushMs ?? 0,
+      heldVoicedCreditedMs: this.diag.heldVoicedCreditedMs ?? 0,
+      noFinalReadBack: this.diag.noFinalReadBack ?? null,
       droppedPreReadyBytes: this.router.droppedPcmBytes,
       turnTrace: this.turnTrace,
       turnsEndedLocally: this.diag.turnsEndedLocally ?? 0,
@@ -2139,7 +2190,12 @@ export class VoiceSession {
           // capture below take this block: the conversation keeps going.
           this.noteLiveAbandoned();
         }
-        if (route.kind === 'HELD') return;
+        if (route.kind === 'HELD') {
+          // Counted here rather than from preReadyVoicedMs, because only the
+          // router knows which blocks it actually kept. See heldVoicedMs.
+          if (level >= SPEECH_RMS) this.heldVoicedMs += blockMs;
+          return;
+        }
       }
       if (liveReady) {
         if (level >= SPEECH_RMS) this.liveSpeechMs += blockMs;
@@ -2563,6 +2619,61 @@ export class VoiceSession {
     return { text, language: outcome.language };
   }
 
+  /**
+   * A final that never arrived, answered from the audio this client kept.
+   *
+   * Delivered through onLiveFinal so it takes exactly the same path as a real
+   * final: the same language resolution, the same refusal rules, the same
+   * duplicate guard. Nothing here decides anything a final would not.
+   *
+   * The epoch is captured before the batch call and checked after it. A
+   * visitor who spoke again while it was in flight has opened a new utterance,
+   * and an answer to the previous one must not arrive on top of it; and if a
+   * socket answered first, producedEpoch already holds that epoch and
+   * onLiveFinal drops this one.
+   */
+  private async readBackAfterNoFinal(reason: NoFinalReason): Promise<void> {
+    const epoch = this.utteranceEpoch;
+    const speechMs = this.diag.lastEndTurnSpeechMs ?? 0;
+    if (speechMs < RECOVERY_MIN_SPEECH_MS) {
+      this.diag.noFinalReadBack = `SKIPPED_SPEECH_TOO_SHORT:${Math.round(speechMs)}`;
+      return;
+    }
+    if (!this.utterancePcm.length || !this.utteranceSamples) {
+      this.diag.noFinalReadBack = 'SKIPPED_NO_RETAINED_AUDIO';
+      return;
+    }
+    if (this.sameTurnRecoveries >= RECOVERY_MAX_PER_SESSION) {
+      this.diag.noFinalReadBack = 'SKIPPED_SPENT_LIMIT';
+      return;
+    }
+    if (this.producedEpoch === epoch) {
+      this.diag.noFinalReadBack = 'SKIPPED_ALREADY_ANSWERED';
+      return;
+    }
+    const outcome = await this.recoverUtterance('NO_FINAL', this.language.current, '');
+    this.diag.sameTurnRecoveries = this.sameTurnRecoveries;
+    const text = outcome.text?.trim();
+    if (!text || !outcome.used) {
+      this.diag.noFinalReadBack = `EMPTY:${reason}`;
+      return;
+    }
+    if (this.closed || epoch !== this.utteranceEpoch || this.producedEpoch === epoch) {
+      this.diag.noFinalReadBack = `STALE:${reason}`;
+      return;
+    }
+    this.diag.noFinalReadBack = `ANSWERED:${reason}:${text.length}`;
+    this.diag.lastRecovery = {
+      from: this.language.current, hint: null, ms: outcome.ms, used: true,
+      ratio: 0, words: text.split(/\s+/).filter(Boolean).length,
+      reason: 'NO_FINAL',
+      originalLiveTranscript: null,
+      recoveredTranscript: text.slice(0, 120),
+      language: outcome.language,
+    };
+    await this.onLiveFinal(text, outcome.language, 'LIVE', null);
+  }
+
   private async recoverUtterance(
     reason: RecoveryReason, pinned: string | null, liveTranscript: string,
   ): Promise<{ text: string | null; language: string | null; ms: number; used: boolean }> {
@@ -2633,6 +2744,30 @@ export class VoiceSession {
       return;
     }
     this.milestone('no_final_recovered', decision.reason);
+    /*
+     * THE READ-BACK THE DEADLINE'S OWN DERIVATION PROMISED.
+     *
+     * NO_FINAL_TIMEOUT_MS was lowered from 6,000ms to 2,500ms on the argument
+     * that "recovery is not a worse answer, ... it re-reads the RETAINED AUDIO
+     * of this same utterance through the batch recogniser". That was the whole
+     * safety case for the shorter deadline, and it was never true: the only
+     * callers of recoverUtterance passed EMPTY_FINAL or a language plan, so
+     * the 'NO_FINAL' reason -- declared in RecoveryReason, handled inside
+     * recoverUtterance's `used` rule -- was dead code. What actually happened
+     * on a timeout was a rotation, which hands the NEXT socket the tail of a
+     * sentence whose beginning went to the socket we just abandoned.
+     *
+     * MEASURED, session 43b3c3ea turn t1 (2026-09-25 20:45, Georgian, Android):
+     * finalisation took 6,468ms on the session's first socket against 636ms and
+     * 1,561ms later in the same session. The deadline fired at 2,500ms and the
+     * utterance was split across two recognisers.
+     *
+     * So the read-back is wired here, where the promise was made. It is still
+     * bounded by the same session budget as every other recovery, and it is
+     * still the same retained audio -- which, since the held-audio fix above,
+     * finally contains the opening of the sentence.
+     */
+    void this.readBackAfterNoFinal(decision.reason);
     void this.rotateLive();
     if (this.state === 'UNDERSTANDING') this.setState('LISTENING');
     this.publishDiagnostics();
@@ -2848,7 +2983,35 @@ export class VoiceSession {
       for (const chunk of held) {
         live.append(chunk);
         bytes += chunk.byteLength;
+        /*
+         * RETAINED FOR THE RECOVERY TOO, NOT ONLY SENT.
+         *
+         * `utterancePcm` is the audio a same-turn recovery re-reads, and the
+         * HELD branch used to return before reaching it. So the recovery -- the
+         * thing that makes giving up on a slow socket safe -- re-read an
+         * utterance with its opening missing, which is the syllable the visitor
+         * says was swallowed. Appended in the router's order, and after
+         * anything already retained: held audio always follows the blocks that
+         * were sent before the socket went away.
+         */
+        this.utterancePcm.push(chunk);
+        this.utteranceSamples += chunk.length;
       }
+      const keep = (UTTERANCE_KEEP_MS / 1000) * LIVE_SAMPLE_RATE;
+      while (this.utteranceSamples > keep && this.utterancePcm.length > 1) {
+        this.utteranceSamples -= this.utterancePcm.shift()!.length;
+      }
+      /*
+       * AND THE SPEECH CLOCK IS TOLD WHAT IT MISSED.
+       *
+       * Without this the recovery gate judges a first utterance spoken during
+       * startup on the fraction of it that arrived after the socket opened, and
+       * declines it as SPEECH_TOO_SHORT. Credited at the flush, because that is
+       * the moment the held audio provably reached a recogniser.
+       */
+      this.liveSpeechMs += this.heldVoicedMs;
+      this.diag.heldVoicedCreditedMs = Math.round(this.heldVoicedMs);
+      this.heldVoicedMs = 0;
       this.lastPreReadyFlush = { bytes, ms: Date.now() - startedAt };
       this.diag.preReadyFlushBytes = bytes;
       this.diag.preReadyFlushMs = this.lastPreReadyFlush.ms;
@@ -3435,6 +3598,41 @@ export class VoiceSession {
       return;
     }
 
+    /*
+     * THE SAME RULE, FOR THE TURN THAT IS DROPPED RATHER THAN REFUSED.
+     *
+     * takeTurn opens with `if (this.closed || this.turnInFlight || !said.trim())
+     * return;` -- a silent drop, and until now it happened AFTER the language
+     * had already been committed below. So an utterance that was never sent to
+     * the model, never answered, and never shown still got to decide what
+     * language the rest of the session was heard in.
+     *
+     * MEASURED, physical Android session 43b3c3ea (2026-09-25 20:45, Georgian):
+     * turns t1, t2 and t4 have traces and t3 has none -- it never reached the
+     * edge function at all. t4 then arrived carrying
+     * previous_conversation_language "ka" (the last turn actually answered) and
+     * previous_session_language "en". Those two fields disagreeing is the whole
+     * proof: t3 committed English and was never answered, and from there the
+     * pinned socket was en-US and Georgian could not come back.
+     *
+     * The refusal branch above already states the principle -- "a turn we will
+     * not send to the model is a turn we did not understand" -- and this is the
+     * same case wearing a different name. The drop itself is left alone,
+     * because pre-empting an in-flight turn is a barge-in decision and not a
+     * language one; it is counted here instead of being invisible, and the
+     * session is put back to LISTENING rather than left in UNDERSTANDING with
+     * nothing coming.
+     */
+    if (this.turnInFlight) {
+      this.diag.turnsDroppedInFlight = (this.diag.turnsDroppedInFlight ?? 0) + 1;
+      this.turns = this.turns.filter((t) => t.id !== id);
+      this.cb.onTranscript(this.turns);
+      this.milestone('turn_dropped_in_flight', resolution.resolvedLanguage);
+      this.publishDiagnostics();
+      this.resumeListening();
+      return;
+    }
+
     const before = this.language.current;
     this.language = {
       ...this.language,
@@ -3551,6 +3749,13 @@ export class VoiceSession {
     try { this.live?.close(); } catch { /* already gone */ }
     this.live = null;
     this.closeShadow();
+    /*
+     * The router discarded what it was holding, so those voiced milliseconds
+     * reached no recogniser and must not be credited to the speech clock by a
+     * later flush. Crediting them would claim the visitor was heard for longer
+     * than any recogniser was given.
+     */
+    this.heldVoicedMs = 0;
     this.diag.livePhase = 'FAILED';
     this.diag.liveMode = 'batch';
     this.diag.liveFellBack = this.router.lastFellBack;
@@ -3919,6 +4124,9 @@ export class VoiceSession {
     const generation = this.turnGeneration;
     this.turnId = `t${generation}-${Date.now().toString(36)}`;
     this.player?.startTurn(generation);
+    // startTurn froze the finished turn's measurement, so the report is now the
+    // immediately preceding reply -- which is what this turn is matched to.
+    this.applyMeasuredMakeupGain();
 
     /*
      * T3. Everything the SERVER reports is an offset from here, because the
@@ -4482,9 +4690,29 @@ export class VoiceSession {
         secondOpinionSkipped: this.diag.secondOpinionSkipped,
         secondOpinionArmings: this.diag.secondOpinionArmings,
         secondOpinionArmedFor: this.secondOpinionReason,
+        /*
+         * THE THREE NUMBERS THAT SEPARATE THE THREE FAILURES.
+         *
+         * heldVoicedCreditedMs: speech the router held and the flush handed to
+         * the speech clock. Non-zero means a first utterance spoken during
+         * startup was judged on all of itself; it read zero while the recovery
+         * gates were declining a six-second utterance as 256ms of speech.
+         *
+         * noFinalReadBack: what happened when a final did not arrive -- the
+         * safety case the 2,500ms deadline was justified by, which until now
+         * was never invoked at all.
+         *
+         * turnsDroppedInFlight: utterances recognised and then silently
+         * discarded because a turn was already running. The visitor spoke and
+         * got no answer, and nothing anywhere recorded it.
+         */
+        heldVoicedCreditedMs: this.diag.heldVoicedCreditedMs ?? 0,
+        noFinalReadBack: this.diag.noFinalReadBack ?? null,
+        turnsDroppedInFlight: this.diag.turnsDroppedInFlight ?? 0,
       },
       audioChain: {
         outputGainValue: this.outputGain?.gain.value ?? null,
+        outputGainReason: this.diag.outputGainReason ?? null,
         audioContextState: this.audioContext?.state ?? null,
         audioContextSampleRate: this.audioContext?.sampleRate ?? null,
         micSettings: this.diag.micSettings ?? null,
@@ -4861,6 +5089,83 @@ export class VoiceSession {
    * too: a visitor who interrupted is not waiting for the rest of the answer,
    * and neither is the bill.
    */
+  /*
+   * MAKING UP THE LOUDNESS CARTESIA DID NOT SEND, AND NOT ONE DECIBEL MORE.
+   *
+   * Three numbers decide this and all three are measured rather than chosen:
+   *
+   *   TARGET is where ordinary spoken audio sits. Production measured Cartesia
+   *   at -21.7, -25.8 and -22.8 dBFS speech RMS, which is 3-7 dB below it.
+   *
+   *   CEILING is the sample ceiling. The gain is capped so the loudest sample
+   *   MEASURED SO FAR THIS SESSION, multiplied by it, still lands under the
+   *   ceiling -- so clipping is not "avoided", it is arithmetically impossible.
+   *   sessionPeak only ever grows, so the cap only ever tightens.
+   *
+   *   MAX is a bound on the whole idea. A correction larger than this is not a
+   *   quiet voice any more, it is a broken measurement, and amplifying six
+   *   decibels of nothing is how a hiss becomes a feature.
+   *
+   * Never below unity. This is loudness matching, and an attenuation dressed
+   * up as one is the bug the outputGainValue field was added to catch.
+   *
+   * Not a limiter and not a compressor: no sample is reshaped, the whole reply
+   * is multiplied by one constant, so the speech keeps its own dynamics. The
+   * cost is that a quiet reply after a loud one waits a turn for its
+   * correction, which is the right trade for never distorting anybody.
+   */
+  private static readonly TARGET_SPEECH_RMS_DBFS = -19;
+  private static readonly PEAK_CEILING_DBFS = -1;
+  private static readonly MAX_MAKEUP_DB = 6;
+
+  /** The gain this measurement justifies, and the reason, for the trace. */
+  private makeupGainFor(report: Record<string, unknown>): { gain: number; reason: string } {
+    if (report.measured !== true) {
+      return { gain: 1, reason: `UNITY_NOT_MEASURED:${String(report.reason ?? 'UNKNOWN')}` };
+    }
+    const pcm = report.pcm as { speechRmsDbFS?: number | null; sessionPeak?: number | null } | undefined;
+    const speech = pcm?.speechRmsDbFS;
+    const peak = pcm?.sessionPeak;
+    if (typeof speech !== 'number' || typeof peak !== 'number' || peak <= 0) {
+      return { gain: 1, reason: 'UNITY_NO_LEVEL' };
+    }
+    const wantedDb = VoiceSession.TARGET_SPEECH_RMS_DBFS - speech;
+    const headroomDb = VoiceSession.PEAK_CEILING_DBFS - (20 * Math.log10(peak));
+    const db = Math.min(wantedDb, headroomDb, VoiceSession.MAX_MAKEUP_DB);
+    if (!Number.isFinite(db) || db <= 0) {
+      return { gain: 1, reason: `UNITY_NO_HEADROOM:want=${wantedDb.toFixed(1)}:head=${headroomDb.toFixed(1)}` };
+    }
+    return {
+      gain: 10 ** (db / 20),
+      reason: `MAKEUP:${db.toFixed(1)}dB:want=${wantedDb.toFixed(1)}:head=${headroomDb.toFixed(1)}`,
+    };
+  }
+
+  private applyMeasuredMakeupGain(): void {
+    const gainNode = this.outputGain;
+    const ctx = this.audioContext;
+    if (!gainNode || !ctx) return;
+    const { gain, reason } = this.makeupGainFor(this.player?.lastTurnAudioReport() ?? { measured: false, reason: 'NO_PLAYER' });
+    this.diag.outputGainReason = reason;
+    if (Math.abs(gainNode.gain.value - gain) < 0.01) return;
+    /*
+     * Ramped over 30ms rather than assigned: a step change in gain between two
+     * samples is a click, and the click is audible even when the change is an
+     * improvement. Short enough that the first word is already at full level,
+     * and it ends AT the target rather than approaching it, so no reply is left
+     * playing under the gain it was given.
+     */
+    const now = ctx.currentTime;
+    try {
+      gainNode.gain.cancelScheduledValues(now);
+      gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+      gainNode.gain.linearRampToValueAtTime(gain, now + 0.03);
+    } catch {
+      // A context that will not schedule still gets the correction.
+      gainNode.gain.value = gain;
+    }
+  }
+
   private stopPlayback(reason = 'UNSPECIFIED'): void {
     for (const source of this.playingSources) {
       try { source.stop(); } catch { /* already stopped */ }

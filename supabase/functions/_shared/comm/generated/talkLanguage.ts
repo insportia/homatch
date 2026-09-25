@@ -8,7 +8,7 @@
 import {
   LANGUAGE_CODES, LANGUAGE_NAMES, LATIN_CODES, SCRIPT_FAMILIES, SCRIPT_TESTS, guessLatinLanguage,
   latinLanguageAgainst, guessCyrillicLanguage, isGreeting, SCRIPT_OF, type Script,
-  hasAnyFunctionWord, isCheckable, scoreLatinLanguages, LISTENING_LANGUAGES,
+  hasAnyFunctionWord, functionWordHits, isCheckable, scoreLatinLanguages, LISTENING_LANGUAGES,
 } from './languageRegistry.ts';
 // HOMATCH AI TALK — one place that decides what language a turn is in.
 //
@@ -639,7 +639,40 @@ export function resolveTurnLanguage(input: ResolveInput): LanguageResolution {
          */
         const speaksIt = hasAnyFunctionWord(transcript, provider)
           || scoreLatinLanguages(transcript).length > 0;
-        const unbacked = leavingNonLatin && !speaksIt;
+        /*
+         * ...AND ONE BORROWED WORD IS STILL NOT A LANGUAGE.
+         *
+         * `speaksIt` asks whether the text carries ANY of that language's
+         * words, which was enough while the alternative was "Madoba,
+         * najuandis." -- nonsense carrying nothing. It is not enough for a
+         * transliteration, because a transliterated Georgian sentence reaches
+         * one English function word by accident: `me` is a Georgian word as
+         * well as an English one, and so are `is` and `ar` once Georgian is
+         * written in Latin letters.
+         *
+         * MEASURED, physical Android session 43b3c3ea (2026-09-25 20:45,
+         * GEORGIAN page, owner speaking Georgian): the ka-GE grant carried
+         * candidates ka-GE, en-US, ru-RU, tr-TR, and Chirp labelled one turn
+         * `ar-Latn` (6 characters, held by stickiness) and the next `en` (34
+         * characters, 7 words). PROVIDER_LATIN took the `en` at 0.7, which is
+         * above the locking threshold, so the socket was repinned to en-US --
+         * and an en-US socket cannot emit Georgian letters, so SCRIPT evidence
+         * could never bring the session back. The visitor was speaking
+         * Georgian.
+         *
+         * So LEAVING a non-Latin session now wants its alphabet or more than
+         * one of its words. Letters still count on their own, because `ı` or
+         * `ñ` belongs to exactly one language here and no transliteration of
+         * Georgian produces either. An unjudgeable language is unaffected, and
+         * a session that is NOT leaving its own script is unaffected: this
+         * makes switching harder in exactly one direction, which is the only
+         * direction a transliteration can corrupt.
+         */
+        const stronglySpeaksIt = !leavingNonLatin
+          || !isCheckable(provider)
+          || scoreLatinLanguages(transcript).length > 0
+          || functionWordHits(transcript, provider) >= 2;
+        const unbacked = leavingNonLatin && (!speaksIt || !stronglySpeaksIt);
         return decide(provider, 'PROVIDER_LATIN',
           leavingNonLatin && (unbacked || (!substantial && !detectedEnough)) ? 0.35 : 0.7);
       }

@@ -303,9 +303,26 @@ test('only one transcriber consumes the microphone at a time', () => {
   const src = read(CLIENT);
   const at = src.indexOf("const route = this.router.route(pcm, liveReady)");
   assert.ok(at > 0, 'the session no longer routes through the router');
-  const window = src.slice(at, at + 1400);
+  // 1400 when the HELD branch was a single line. It now credits the held voiced
+  // milliseconds to the speech clock before returning, which pushed the
+  // live-ready branch to +1398 -- far enough that the match itself was cut in
+  // half by the window and the test failed on its own arithmetic.
+  const window = src.slice(at, at + 1800);
   assert.ok(/route\.kind === 'SEND'/.test(window), 'SEND must reach the socket');
-  assert.ok(/if \(route\.kind === 'HELD'\) return;/.test(window),
+  /*
+   * The GUARANTEE, not the punctuation: a HELD block returns before it can
+   * reach the batch capture below. This used to match the one-line
+   * `if (route.kind === 'HELD') return;` exactly, which broke the moment the
+   * branch acquired a body -- it now credits the held voiced milliseconds to
+   * the speech clock before returning, because held audio IS flushed to the
+   * recogniser and used to count as no speech at all. Still exactly one
+   * consumer of the microphone; the test just stopped reading formatting.
+   */
+  const heldAt = window.indexOf("if (route.kind === 'HELD')");
+  assert.ok(heldAt > 0, 'the HELD answer is no longer handled');
+  const readyAt = window.indexOf('if (liveReady)', heldAt);
+  assert.ok(readyAt > heldAt, 'the live-ready branch no longer follows the routing');
+  assert.ok(/\breturn;/.test(window.slice(heldAt, readyAt)),
     'HELD must not fall through into batch capture as well');
   assert.ok(/route\.kind === 'BATCH'/.test(window),
     'BATCH must be handled, or a failed socket silences the session');

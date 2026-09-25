@@ -28,7 +28,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import {
   compareArtifacts, uploadAccounting, ABSENT,
   proveArtifact, matchDeployedName, isProven, PROOF, fetchArtifact,
-  fetchDeployedModules, unwrapEszip,
+  fetchDeployedModules, unwrapEszip, isRepositoryModule,
 } from '../../scripts/edgeArtifacts.mjs';
 
 const WORKFLOW = readFileSync('.github/workflows/deploy.yml', 'utf8');
@@ -735,6 +735,53 @@ test('artifact: remote schemes never reach the comparison, whatever the path loo
   const bareProof = prove(bare);
   assert.equal(bareProof.state, PROOF.PROVEN_EXACT, 'a scheme-less module path was not matched');
   assert.equal(bareProof.matched, 3);
+});
+
+test('artifact: what counts as a repository module, against the real production strings', () => {
+  /*
+   * Every string here was read out of run 36113577620's census rather than
+   * imagined. The repository modules are scheme-less and named relative to
+   * the bundle root; vfs: is vendored npm (529 of research-agent's 624
+   * entries); and the two ---...--- records are eszip control data that sit
+   * beside the modules in every function.
+   */
+  for (const local of ['functions/_shared/comm/auth.ts', 'homatch/src/verify/researchPlan.ts', 'functions/cartesia-access-token/index.ts']) {
+    assert.equal(isRepositoryModule(local), true, `${local} should be compared`);
+  }
+  for (const other of [
+    'vfs://12',
+    '---EDGE-RUNTIME-METADATA---',
+    '---SUPABASE-ESZIP-VERSION-ESZIP---',
+    'https://deno.land/std@0.168.0/http/server.ts',
+    'jsr:@supabase/functions-js',
+    'npm:web-push@3.6.7',
+    'node:zlib',
+  ]) {
+    assert.equal(isRepositoryModule(other), false, `${other} is not repository code`);
+  }
+});
+
+test('artifact: counting control records as code fails an otherwise perfect function', () => {
+  /*
+   * Exactly what run 36113577620 did: eighteen functions INCOMPLETE for
+   * "running files this revision does not have", with zero real mismatches
+   * underneath. The proof is right to refuse an entry it cannot place — so
+   * the fix belongs where the entries are collected, and this pins the
+   * consequence so the two cannot drift apart.
+   */
+  const d = deployedTree({ version: 8 });
+  const clean = prove(d);
+  assert.equal(clean.state, PROOF.PROVEN_EXACT);
+
+  d.modules.push(
+    { specifier: '---SUPABASE-ESZIP-VERSION-ESZIP---', sourceUrl: '---SUPABASE-ESZIP-VERSION-ESZIP---', content: '2.3' },
+    { specifier: '---EDGE-RUNTIME-METADATA---', sourceUrl: '---EDGE-RUNTIME-METADATA---', content: '{}' },
+  );
+  const polluted = prove(d);
+  assert.equal(polluted.state, PROOF.INCOMPLETE);
+  assert.equal(polluted.foreign.length, 2, 'the control records must be refused, not silently matched');
+  assert.ok(d.modules.filter((m) => !isRepositoryModule(m.specifier)).length === 2,
+    'and isRepositoryModule is what keeps them out of the list in the first place');
 });
 
 test('artifact: the runner path and the repository path resolve, unambiguously', () => {

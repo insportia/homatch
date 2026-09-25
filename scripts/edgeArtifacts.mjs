@@ -186,6 +186,44 @@ export async function fetchArtifact(name, { projectRef, token, fetchImpl = fetch
   };
 }
 
+/*
+ * WHAT PRODUCTION CALLS A LOCAL MODULE, MEASURED.
+ *
+ * Not `file:`. An eszip built on a laptop names local modules with file URLs;
+ * the containerised bundler that made these does not, and run 36111826961
+ * retrieved and parsed all eighteen bodies and found zero of them. Run
+ * 36113577620 printed the census instead of guessing a third time:
+ *
+ *   cartesia-access-token   6 local of 22   [https:15 (none):6 jsr:1]
+ *   research-agent        600 local of 624  [vfs:529 (none):71 https:17 npm:5 jsr:2]
+ *
+ * The repository modules are the SCHEME-LESS ones, named relative to the
+ * bundle root — functions/_shared/comm/auth.ts, or
+ * homatch/src/verify/researchPlan.ts once the closure reaches into src/.
+ *
+ * The rest are not ours. vfs: is vendored npm — 529 of research-agent's 624
+ * entries. And an eszip carries control records that are not code at all:
+ * ---SUPABASE-ESZIP-VERSION-ESZIP--- and ---EDGE-RUNTIME-METADATA--- sit
+ * beside the modules in every single function, and counting them as deployed
+ * source made all eighteen INCOMPLETE for "running files this revision does
+ * not have" — while underneath that verdict every real module matched.
+ */
+const REMOTE_SCHEME = /^(https?|jsr|npm|node|data|blob|vfs):/i;
+const CONTROL_RECORD = /^-{3}[A-Z0-9-]+-{3}$/;
+
+/**
+ * Could this eszip entry have come from this repository?
+ *
+ * Stated as what it is NOT, because that is the half that does not move when
+ * the bundler is invoked differently. Being lenient here admits nothing on its
+ * own: an entry only reaches the comparison if its path ALSO suffix-matches a
+ * file in the expected closure.
+ */
+export function isRepositoryModule(specifier) {
+  const spec = String(specifier);
+  return !REMOTE_SCHEME.test(spec) && !CONTROL_RECORD.test(spec);
+}
+
 /**
  * The local modules production is actually running, as original source.
  *
@@ -245,18 +283,6 @@ export async function fetchDeployedModules(name, { projectRef, token, fetchImpl 
     return { ok: false, reason: `eszip did not parse: ${lastError}`, modules: null, bytes: raw.length };
   }
 
-  /*
-   * LOCAL IS DECIDED BY SCHEME, AND ONLY THE REMOTE SCHEMES ARE NAMED.
-   *
-   * An earlier version kept `file:` modules and dropped everything else. Run
-   * 36111826961 retrieved and parsed all eighteen bodies and found ZERO of
-   * them: production's bundler does not name local modules the way a locally
-   * built eszip does. Listing what a local module is NOT is the durable half
-   * of that question — http, jsr, npm, node and data are dependencies by
-   * definition, and anything else is a candidate whose identity the suffix
-   * match then confirms or rejects.
-   */
-  const REMOTE = /^(https?|jsr|npm|node|data|blob):/i;
   const schemes = new Map();
   const modules = [];
   const examples = [];
@@ -264,7 +290,7 @@ export async function fetchDeployedModules(name, { projectRef, token, fetchImpl 
     const spec = String(specifier);
     const scheme = (spec.match(/^([a-z][a-z0-9+.-]*):/i)?.[1] ?? '(none)').toLowerCase();
     schemes.set(scheme, (schemes.get(scheme) ?? 0) + 1);
-    if (REMOTE.test(spec)) continue;
+    if (!isRepositoryModule(spec)) continue;
 
     let sourceUrl = spec;
     let content = null;
@@ -275,7 +301,7 @@ export async function fetchDeployedModules(name, { projectRef, token, fetchImpl 
         const from = (map.sources ?? [])[0];
         const text = (map.sourcesContent ?? [])[0];
         if (typeof text === 'string') content = text;
-        if (typeof from === 'string' && !REMOTE.test(from)) sourceUrl = from;
+        if (typeof from === 'string' && isRepositoryModule(from)) sourceUrl = from;
       }
     } catch { /* leave content null: unresolvable, not wrong */ }
     if (examples.length < 3) examples.push(sourceUrl);

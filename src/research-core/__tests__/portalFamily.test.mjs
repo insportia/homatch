@@ -161,16 +161,60 @@ test('the place.ge price is the listing\'s own, not the sidebar\'s', () => {
   assert.equal(l.fieldOrigins.sale, 'TEXT');
 });
 
-test('place.ge publishes no area, and none is invented', () => {
+test('the place.ge area is the listing\'s own, and the site\'s arithmetic proves it', () => {
   /*
-   * The obvious area pattern matched the PRICE PER SQUARE METRE: "$1,629 per
-   * sqm" yielded an area of 629 on a flat that has nothing of the sort, and
-   * three listings came back with 629, 573 and 609 — all wrong, all
-   * plausible. Absent is the honest answer until it can be read without
-   * ambiguity.
+   * WHAT THIS TEST USED TO ASSERT, AND WHY IT CHANGED.
+   *
+   * It asserted the area was null. The first pattern had matched the PRICE
+   * PER SQUARE METRE — "$1,629 per sqm" yielding an area of 629 on a flat
+   * that has nothing of the sort, and three listings came back with 629, 573
+   * and 609: all wrong, all plausible. The field was removed, and absent was
+   * the honest answer while the figure could not be read unambiguously.
+   *
+   * It can be read. The unit was never the anchor; the LABEL is. The site's
+   * own spec panel prints "ფართი: 89 კვ.მ." and the per-sqm suffix carries
+   * no such label, so the pattern that reads it cannot reach the price.
+   *
+   * AND THE SITE CHECKS ITSELF. This listing prints $145,000 total and
+   * $1,629 per square metre. 145000 / 89 = 1629.2. The number that caused
+   * the original bug is the number that now confirms the fix, from two
+   * independent places on the page.
    */
   const l = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE).listing;
-  assert.equal(l.area, null, 'an area appeared that the site does not publish unambiguously');
+  assert.deepEqual(l.area, { value: 89, unit: 'sqm' });
+
+  const perSqm = l.sale.amount / l.area.value;
+  assert.ok(
+    Math.abs(perSqm - 1629) < 1,
+    `the area disagrees with the site's own per-sqm figure: ${perSqm.toFixed(1)}`,
+  );
+
+  /*
+   * ROOMS AND BEDROOMS ARE DIFFERENT FIELDS, and this listing is why. The
+   * title says three rooms; the description says two bedrooms; both are true
+   * of one flat. Folding them together would report a bedroom count that is
+   * really a room count, which reads as a bigger property than it is.
+   */
+  assert.equal(l.rooms, 3);
+  assert.equal(l.bedrooms, 2);
+  assert.equal(l.floor, 3);
+
+  // Read out of prose, and recorded as prose.
+  assert.equal(l.fieldOrigins.area, 'TEXT');
+});
+
+test('the place.ge area is not the sidebar\'s, and not the price per sqm', () => {
+  /*
+   * The failure this source keeps teaching: the page carries seven other
+   * room counts and several other prices, all belonging to the
+   * related-listings sidebar, and an unanchored pattern reads whichever one
+   * the layout happens to put first.
+   */
+  const l = extractListing(fixture('place.ge.detail.html'), CAPTURED.place, PLACE_GE).listing;
+  for (const wrong of [629, 1629, 573, 609]) {
+    assert.notEqual(l.area.value, wrong, `the area is a price-per-sqm figure: ${wrong}`);
+  }
+  assert.ok(l.area.value > 20 && l.area.value < 400, `implausible flat area ${l.area.value}`);
 });
 
 test('a thin source scores lower than a structured one, and the gap is visible', () => {

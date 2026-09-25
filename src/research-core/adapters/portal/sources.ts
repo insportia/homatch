@@ -173,14 +173,68 @@ export const PLACE_GE: PortalSourceConfig = {
     { field: 'district', from: 'TEXT_CAPTURE',
       pattern: /\u10dd\u10d7\u10d0\u10ee\u10d8,\s*[^,]{3,25},\s*[^,]{3,30},\s*([^,\-]{3,30})/ },
     /*
-     * AREA AND ROOMS ARE DELIBERATELY ABSENT.
+     * AREA, ON THE LABEL RATHER THAN THE UNIT.
      *
-     * The obvious area pattern matched the PRICE PER SQUARE METRE -- "$1,629
-     * per sqm" yielding an area of 629 on a flat that has nothing of the
-     * sort. Three listings came back with areas of 629, 573 and 609, all
-     * wrong, all plausible. Until the real figure can be read without
-     * ambiguity this source publishes no area, which is true and checkable.
+     * THE MISTAKE THIS REPLACES. The first attempt matched the PRICE PER
+     * SQUARE METRE -- "$1,629 / sqm" yielding an area of 629 on a flat that
+     * has nothing of the sort. Three listings came back with 629, 573 and
+     * 609: all wrong, all plausible, none detectable from the counts. The
+     * field was removed and the comment said the figure could not be read
+     * without ambiguity.
+     *
+     * It can. The unit was never the anchor -- the LABEL is. place.ge prints
+     * its own spec panel as "\u10e4\u10d0\u10e0\u10d7\u10d8: 89 \u10d9\u10d5.\u10db." and the per-sqm suffix
+     * carries no such label, so matching on it cannot reach the price again.
+     *
+     * The site rounds: its panel says 89 where the seller's own sentence
+     * further down says "\u10e1\u10d0\u10d4\u10e0\u10d7\u10dd \u10e4\u10d0\u10e0\u10d7\u10d8: 88.30\u10d9\u10d5.\u10db". The panel is taken
+     * because it is the site's field rather than a seller's prose, and the
+     * 0.8% difference is inside the 3% the resolver treats as one property.
+     *
+     * VERIFIED LIVE, AND THE OLD BUG VERIFIES IT.
+     *
+     * The same three listings that produced the wrong answer:
+     *
+     *   1317856   89 m2   $145,000   ->  $1,629 / m2
+     *   1317855   89 m2   $140,000   ->  $1,573 / m2
+     *   1317880   87 m2   $140,000   ->  $1,609 / m2
+     *
+     * The three areas the broken pattern reported were 629, 573 and 609 --
+     * the per-square-metre figures with the leading "1," eaten. Dividing the
+     * real price by the real area reproduces all three of those numbers
+     * exactly, from two independent places on each page. The evidence that
+     * once made the bug convincing is the evidence that now settles it.
      */
+    { field: 'areaSqm', from: 'TEXT_PATTERN',
+      pattern: /\u10e4\u10d0\u10e0\u10d7\u10d8:\s*([\d.,]+)\s*\u10d9\u10d5\.\u10db/ },
+    /*
+     * ROOMS FROM THE TITLE'S OWN SLOT, not from the first number beside the
+     * word. The page prints seven other room counts -- the related-listings
+     * sidebar -- and an unanchored pattern would read whichever the layout
+     * happened to put first. That is precisely how three listings once
+     * reported the same price. The title's comma-delimited shape is
+     * published deliberately and in a fixed order, so it is the anchor.
+     */
+    { field: 'rooms', from: 'TEXT_PATTERN',
+      pattern: /,\s*(\d+)\s*\u10dd\u10d7\u10d0\u10ee\u10d8\s*,/ },
+    /*
+     * BEDROOMS AND ROOMS ARE NOT THE SAME FIELD and this listing is the
+     * reason to keep them apart: the title says 3 rooms, the description
+     * says 2 bedrooms, and both are true of one flat. A source that folded
+     * them together would produce a bedroom count that is really a room
+     * count, which reads as a bigger property than it is.
+     */
+    { field: 'bedrooms', from: 'TEXT_PATTERN',
+      pattern: /(\d+)\s*\u10e1\u10d0\u10eb\u10d8\u10dc\u10d4\u10d1\u10d4\u10da/ },
+    /*
+     * FLOOR, from the Georgian ordinal. "\u10db\u10d4-3 \u10e1\u10d0\u10e0\u10d7\u10e3\u10da\u10d6\u10d4" is the third
+     * floor; the "\u10db\u10d4-" prefix is what separates it from "in a 5-storey
+     * building", which is a different fact about a different thing. A first
+     * floor is written "\u10de\u10d8\u10e0\u10d5\u10d4\u10da \u10e1\u10d0\u10e0\u10d7\u10e3\u10da\u10d6\u10d4" and does not match -- it is
+     * absent rather than wrong, which is the side to err on.
+     */
+    { field: 'floor', from: 'TEXT_PATTERN',
+      pattern: /\u10db\u10d4-(\d+)\s*\u10e1\u10d0\u10e0\u10d7\u10e3\u10da/ },
   ],
 };
 

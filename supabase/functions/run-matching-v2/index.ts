@@ -148,7 +148,14 @@ Deno.serve(async (req: Request) => {
      * is how the two ends up disagreeing.
      */
     const marketCity = String(facts?.city || '').trim();
-    const marketCountry = String(facts?.country_code || facts?.country || '').trim();
+    /*
+     * Sanitised because it is interpolated into a PostgREST `or` filter below
+     * rather than passed as a bound value. country_code arrives from imported
+     * listing data, so a value carrying a comma or a paren would not be a bad
+     * country -- it would be extra filter syntax. Letters and dashes only.
+     */
+    const marketCountry = String(facts?.country_code || facts?.country || '')
+      .trim().replace(/[^A-Za-z-]/g, '').slice(0, 8);
 
     /* An operator switch, because this widens what a campaign considers.
        A missing setting means ON: demand Homatch already paid nothing to

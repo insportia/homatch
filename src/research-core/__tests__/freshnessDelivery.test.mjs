@@ -348,6 +348,10 @@ test('global demand is bounded and scoped to the property market', () => {
   assert.match(c, /\.limit\(GLOBAL_DEMAND_LIMIT\)/);
   // A city name without a country is a different city somewhere else.
   assert.match(c, /country\.is\.null,country\.eq\.\$\{marketCountry\}/);
+  /* That country goes into a PostgREST `or` string, not a bound value, so a
+     comma or paren arriving from imported listing data would be read as more
+     filter syntax. Letters and dashes only. */
+  assert.match(c, /marketCountry[\s\S]{0,140}replace\(\/\[\^A-Za-z-\]\/g, ''\)/);
   // No market, no global read — never a whole-table scan.
   assert.match(c, /if \(includeGlobalDemand && marketCity\)/);
 });

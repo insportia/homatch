@@ -95,24 +95,6 @@ interface NavGroup {
  * The account block is NOT in this list. It renders separately, below.
  */
 export const NAV: NavGroup[] = [
-  /*
-   * FOR EXPATS sits at the top, alone, above the workspace.
-   *
-   * It is not in the Intelligence group with Verify and Investment, and the
-   * reason is who each group is for. Everything below this is a tool for
-   * somebody who already has a deal in front of them: a property to verify,
-   * a contract to read, a payment to model. FOR EXPATS is for somebody who
-   * does not have any of that yet and is deciding whether to come at all.
-   * Filed under Intelligence it would read as a fifth analysis tool; filed
-   * here it is the door the other four lead out of.
-   *
-   * §91 says not to bury it under More or Resources. One item in its own
-   * group is the opposite of buried and costs one heading.
-   */
-  {
-    key: 'nav_group_expats',
-    items: [{ key: 'nav_for_expats', path: '/for-expats/georgia', icon: Globe }],
-  },
   {
     key: 'nav_group_workspace',
     items: [
@@ -121,6 +103,25 @@ export const NAV: NavGroup[] = [
       { key: 'dnav_find_client', path: '/property/add', icon: UserSearch },
       { key: 'nav_active_search', path: '/active-search', icon: Radio },
     ],
+  },
+  /*
+   * FOR EXPATS sits between the workspace and the intelligence tools.
+   *
+   * It used to sit at the very top, above everything, on the reasoning that
+   * filing it under Intelligence would make it read as a fifth analysis
+   * tool. That reasoning still holds and this is not a demotion: it keeps
+   * its own group and its own heading.
+   *
+   * What changed is what comes FIRST. Opening the product on a relocation
+   * guide told every signed-in owner, buyer and broker that the thing
+   * Homatch does is explain Georgia to foreigners. The workspace is what
+   * they came for; Expat is what they reach for when a question about the
+   * country gets in the way of it, which is exactly here -- after the work,
+   * before the tools that assume you already know the ground rules.
+   */
+  {
+    key: 'nav_group_expats',
+    items: [{ key: 'nav_for_expats', path: '/for-expats/georgia', icon: Globe }],
   },
   {
     key: 'nav_group_intelligence',

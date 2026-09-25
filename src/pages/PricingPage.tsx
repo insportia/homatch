@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader, HeaderSpacer, type HeaderLink } from '@/components/home/PublicHeader';
+import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
+import { usePublicNavLinks } from '@/site/publicNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { PageBlocks } from '@/site/render/PageBlocks';
 import { SitePage } from '@/site/render/SitePage';
@@ -65,11 +66,7 @@ export default function PricingPage() {
   const rateCredits = String(creditsPerUsd);
   const rateUsd = '1';
 
-  const headerLinks: HeaderLink[] = [
-    { key: 'verify', label: t('nav_verify'), target: '/verify' },
-    { key: 'mortgage', label: t('nav_mortgage'), target: '/mortgage' },
-    { key: 'investment', label: t('nav_investment'), target: '/investment' },
-  ];
+  const headerLinks = usePublicNavLinks();
 
   const products = (catalogue?.products ?? [])
     .slice()

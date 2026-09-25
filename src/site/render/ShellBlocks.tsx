@@ -1,6 +1,6 @@
 import React from 'react';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
+import { PublicHeader } from '@/components/home/PublicHeader';
+import { usePublicNavLinks } from '@/site/publicNav';
 
 /**
  * THE HEADER, AS SITE STUDIO SEES IT.
@@ -20,18 +20,13 @@ import { PublicHeader, type HeaderLink } from '@/components/home/PublicHeader';
  *   being previewed.
  */
 export function SiteHeaderBlock() {
-  const { t } = useLanguage();
 
-  /* The home page's navigation — the longest one, so every label the block
-     declares has somewhere to be clicked. */
-  const links: HeaderLink[] = [
-    { key: 'start', label: t('mp_nav_start'), target: 'start' },
-    { key: 'intelligence', label: t('mp_nav_capabilities'), target: 'intelligence' },
-    { key: 'verify', label: t('nav_verify'), target: '/verify' },
-    { key: 'mortgage', label: t('nav_mortgage'), target: '/mortgage' },
-    { key: 'developers', label: t('mp_nav_developers'), target: '/developers' },
-    { key: 'about', label: t('nav_about'), target: '/about' },
-  ];
+  /*
+   * The same navigation the site renders, from the same file. The Studio
+   * preview showing a DIFFERENT set of links than the live header is how
+   * Investment came to be missing from one and not the other.
+   */
+  const links = usePublicNavLinks({ onHome: true });
 
   return (
     <div className="relative [&>header]:!static">

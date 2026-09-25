@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader, HeaderSpacer, type HeaderLink } from '@/components/home/PublicHeader';
+import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
+import { usePublicNavLinks } from '@/site/publicNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { PageBlocks } from '@/site/render/PageBlocks';
 import { PAGE } from '@/components/home/sections/primitives';
@@ -30,11 +31,7 @@ export default function PrivacyPage() {
   useSurfaceTheme('light');
   const { t, lang } = useLanguage();
 
-  const headerLinks: HeaderLink[] = [
-    { key: 'home', label: t('mp_nav_start'), target: '/' },
-    { key: 'about', label: t('nav_about'), target: '/about' },
-    { key: 'terms', label: t('privacy_terms_nav_link'), target: '/terms' },
-  ];
+  const headerLinks = usePublicNavLinks();
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">

@@ -8940,6 +8940,10 @@ const en = {
   owner_f_signup_credits_enabled: 'Also give free credits at signup',
   owner_h_signup_credits_enabled: 'Off under pay-as-you-go: an account earns its first credits by adding a card. Turn it on if no payment provider is connected yet, or new accounts will start empty with no way to earn them.',
   owner_f_signup_credits: 'Credits at signup',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_company: 'Company',
+  nav_professional: 'For professionals',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17798,6 +17802,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   owner_f_signup_credits_enabled: 'უფასო კრედიტის გაცემა რეგისტრაციისასაც',
   owner_h_signup_credits_enabled: 'გამორთულია: ანგარიში პირველ კრედიტს ბარათის დამატებით იღებს. ჩართეთ, თუ გადახდის მომწოდებელი ჯერ არ არის დაკავშირებული, თორემ ახალი ანგარიშები ცარიელი დარჩება.',
   owner_f_signup_credits: 'კრედიტი რეგისტრაციისას',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_company: 'კომპანია',
+  nav_professional: 'პროფესიონალებს',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26647,6 +26655,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   owner_f_signup_credits_enabled: 'Также давать бесплатные кредиты при регистрации',
   owner_h_signup_credits_enabled: 'Выключено: аккаунт получает первые кредиты за добавление карты. Включите, если платёжный провайдер ещё не подключён, иначе новые аккаунты останутся пустыми.',
   owner_f_signup_credits: 'Кредитов при регистрации',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_company: 'Компания',
+  nav_professional: 'Профессионалам',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35494,6 +35506,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   owner_f_signup_credits_enabled: 'Kayıt olurken de ücretsiz kredi ver',
   owner_h_signup_credits_enabled: 'Kapalı: hesap ilk kredilerini kart ekleyerek kazanır. Henüz bir ödeme sağlayıcısı bağlı değilse açın, yoksa yeni hesaplar boş başlar ve kazanamaz.',
   owner_f_signup_credits: 'Kayıtta verilen kredi',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_company: 'Kurumsal',
+  nav_professional: 'Profesyonellere',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44341,6 +44357,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   owner_f_signup_credits_enabled: 'منح رصيد مجاني عند التسجيل أيضًا',
   owner_h_signup_credits_enabled: 'مُعطّل: يكسب الحساب أول رصيد له بإضافة بطاقة. فعّله إذا لم يكن هناك مزوّد دفع متصل بعد، وإلا ستبدأ الحسابات الجديدة فارغة بلا وسيلة للكسب.',
   owner_f_signup_credits: 'الرصيد عند التسجيل',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_company: 'الشركة',
+  nav_professional: 'للمحترفين',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -53188,6 +53208,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   owner_f_signup_credits_enabled: 'לתת קרדיטים חינם גם בהרשמה',
   owner_h_signup_credits_enabled: 'כבוי: חשבון מרוויח את הקרדיטים הראשונים בהוספת כרטיס. הפעילו אם עדיין לא מחובר ספק תשלומים, אחרת חשבונות חדשים יתחילו ריקים בלי דרך להרוויח.',
   owner_f_signup_credits: 'קרדיטים בהרשמה',
+
+  /* ── HOMATCH PUBLIC NAVIGATION ─────────────────────────────────── */
+  nav_company: 'החברה',
+  nav_professional: 'לאנשי מקצוע',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

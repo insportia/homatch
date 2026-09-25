@@ -5,7 +5,8 @@ import { Building2, MapPin, Box, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader, HeaderSpacer, type HeaderLink } from '@/components/home/PublicHeader';
+import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
+import { usePublicNavLinks } from '@/site/publicNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { resolvePublicProject } from '@/services/developer/share';
 import { formatMoney, formatArea, formatDate } from '@/components/developer/primitives';
@@ -65,11 +66,7 @@ export default function PublicProjectPage() {
     return { min: Math.min(...prices), max: Math.max(...prices) };
   }, [units]);
 
-  const headerLinks: HeaderLink[] = [
-    { key: 'home', label: t('mp_nav_start'), target: '/' },
-    { key: 'developers', label: t('mp_nav_developers'), target: '/developers' },
-    { key: 'verify', label: t('nav_verify'), target: '/verify' },
-  ];
+  const headerLinks = usePublicNavLinks();
 
   if (loading) {
     return (

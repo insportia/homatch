@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, X } from 'lucide-react';
+import { ChevronDown, Menu, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,12 @@ export interface HeaderLink {
   label: string;
   /** In-page region id, or a router path when it starts with '/'. */
   target: string;
+  /**
+   * A group. Present only on the two secondary headings, which are not
+   * themselves destinations: seven flat links is what made this header
+   * crowd, and hierarchy is the fix that smaller text was standing in for.
+   */
+  children?: HeaderLink[];
 }
 
 /**
@@ -60,17 +66,87 @@ export interface HeaderLink {
 const NAV_FIELDS: Readonly<Record<string, TranslationKey>> = {
   start: 'mp_nav_start',
   home: 'mp_nav_start',
+  expat: 'nav_for_expats',
   intelligence: 'mp_nav_capabilities',
   verify: 'nav_verify',
+  investment: 'nav_investment',
   mortgage: 'nav_mortgage',
+  professional: 'nav_professional',
   developers: 'mp_nav_developers',
-  about: 'nav_about',
   partners: 'home_nav_partners',
+  company: 'nav_company',
+  about: 'nav_about',
+  pricing: 'nav_pricing',
 };
 
 /** The header, wrapped in whatever the site has stored for its chrome. */
 export function PublicHeader(props: { links: HeaderLink[]; solid?: boolean }) {
   return <ShellScope part="site_header"><HeaderBody {...props} /></ShellScope>;
+}
+
+/**
+ * A secondary heading that opens onto its destinations.
+ *
+ * Not a mega-menu: two items, no columns, no imagery. It exists so that
+ * About, Pricing, For developers and Partners stop competing with the product
+ * for the widest row in the header, and it closes on Escape, on outside
+ * click and on choosing something — the three ways a person expects to get
+ * out of an open menu.
+ */
+function NavGroup({
+  link, onDark, go, label,
+}: { link: HeaderLink; onDark: boolean; go: (target: string) => void; label: string }) {
+  const [open, setOpen] = React.useState(false);
+  const wrap = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e: MouseEvent) => {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrap} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen(v => !v)}
+        className={`relative inline-flex items-center gap-1 whitespace-nowrap [overflow-wrap:normal] text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+          onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
+        }`}
+      >
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute top-full z-50 mt-2 min-w-[11rem] overflow-hidden rounded-xl border border-border bg-background py-1 shadow-lg ltr:start-0 rtl:end-0"
+        >
+          {link.children?.map(child => (
+            <button
+              key={child.key}
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); go(child.target); }}
+              className="block w-full whitespace-nowrap px-4 py-2.5 text-start text-sm text-foreground transition-colors hover:bg-muted"
+            >
+              {child.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boolean }) {
@@ -165,8 +241,10 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
           <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} className="hidden sm:flex" />
         </button>
 
-        <nav className="mx-auto hidden items-center gap-6 lg:flex xl:gap-8">
-          {links.map(link => (
+        <nav className="mx-auto hidden items-center gap-5 lg:flex xl:gap-7">
+          {links.map(link => (link.children && link.children.length > 0 ? (
+            <NavGroup key={link.key} link={link} onDark={onDark} go={go} label={labelFor(link)} />
+          ) : (
             <button
               key={link.key}
               type="button"
@@ -178,7 +256,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
             >
               {labelFor(link)}
             </button>
-          ))}
+          )))}
         </nav>
 
         {/*
@@ -282,7 +360,29 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           <nav className={`${PAGE} flex flex-col py-3`}>
-            {links.map(link => (
+            {/*
+              * A group is a HEADING with its items under it, not a second
+              * menu to open. There is already a menu open; making somebody
+              * tap twice to reach About is the crowding problem moved
+              * rather than solved, and the sheet has room a header does not.
+              */}
+            {links.map(link => (link.children && link.children.length > 0 ? (
+              <div key={link.key} className="mt-2 border-t border-border pt-2">
+                <p className="px-1 py-1 text-[13px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {labelFor(link)}
+                </p>
+                {link.children.map(child => (
+                  <button
+                    key={child.key}
+                    type="button"
+                    onClick={() => go(child.target)}
+                    className="block w-full rounded-xl py-3.5 text-start text-[17px] text-foreground transition-colors hover:text-gold"
+                  >
+                    {child.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
               <button
                 key={link.key}
                 type="button"
@@ -292,7 +392,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
               >
                 {labelFor(link)}
               </button>
-            ))}
+            )))}
             {authResolved && status === 'UNAUTHENTICATED' && (
               <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:hidden">
                 <Button variant="outline" className="h-11 rounded-full border-border bg-transparent" onClick={() => go('/auth/login')}>

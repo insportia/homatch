@@ -247,9 +247,20 @@ test('For Expats is in the navigation and is not buried', () => {
   const shell = read('src/components/layouts/HomatchShell.tsx');
   assert.ok(shell.includes("path: '/for-expats/georgia'"), 'it is not in the rail');
   const nav = shell.slice(shell.indexOf('export const NAV'));
-  // First group, so it is above everything rather than under a heading
-  // somebody has to scroll to.
-  assert.ok(nav.indexOf('nav_group_expats') < nav.indexOf('nav_group_workspace'));
+  /*
+   * WORKSPACE -> EXPAT -> INTELLIGENCE.
+   *
+   * It used to be the first group of all, on the reasoning that anything
+   * lower would read as a fifth analysis tool. It keeps its own group and
+   * its own heading, which is what 'not buried' means; what changed is that
+   * opening the product on a relocation guide told every signed-in owner,
+   * buyer and broker that explaining Georgia to foreigners is the thing
+   * Homatch does. It sits after the work and before the tools now.
+   */
+  assert.ok(nav.indexOf('nav_group_workspace') < nav.indexOf('nav_group_expats'),
+    'Expat should follow the workspace, not precede it');
+  assert.ok(nav.indexOf('nav_group_expats') < nav.indexOf('nav_group_intelligence'),
+    'Expat should come before the intelligence tools');
   for (const burial of ['nav_group_more', 'nav_group_resources', 'nav_group_tools']) {
     assert.ok(!nav.includes(burial), `it is filed under ${burial}`);
   }

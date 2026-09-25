@@ -1,7 +1,8 @@
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
-import { PublicHeader, HeaderSpacer, type HeaderLink } from '@/components/home/PublicHeader';
+import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
+import { usePublicNavLinks } from '@/site/publicNav';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { SitePage } from '@/site/render/SitePage';
 import { usePublishedPage } from '@/site/render/usePublishedPage';
@@ -36,12 +37,7 @@ export default function DevelopersPage() {
   const { t } = useLanguage();
   const published = usePublishedPage('developers');
 
-  const headerLinks: HeaderLink[] = [
-    { key: 'home', label: t('mp_nav_start'), target: '/' },
-    { key: 'about', label: t('nav_about'), target: '/about' },
-    { key: 'verify', label: t('nav_verify'), target: '/verify' },
-    { key: 'pricing', label: t('nav_pricing'), target: '/pricing' },
-  ];
+  const headerLinks = usePublicNavLinks();
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">

@@ -51,7 +51,13 @@ export interface RecoveryInput {
   spent: number;
 }
 
-export type RecoveryReason = 'NO_FUNCTION_WORDS' | 'SCRIPT_MISMATCH' | 'FRAGMENT' | 'NO_FINAL';
+/*
+ * EMPTY_FINAL is not NO_FINAL. NO_FINAL is a socket that never answered;
+ * EMPTY_FINAL is one that answered with no words in it, which is what a
+ * ka-GE recogniser does when it is handed Russian. Same re-read, different
+ * evidence, and worth telling apart in a trace.
+ */
+export type RecoveryReason = 'NO_FUNCTION_WORDS' | 'SCRIPT_MISMATCH' | 'FRAGMENT' | 'NO_FINAL' | 'EMPTY_FINAL';
 
 export interface RecoveryPlan {
   /**

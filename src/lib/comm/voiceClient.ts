@@ -52,7 +52,7 @@ import { gateWatchdog } from './gateWatchdog.ts';
 import {
   planRecovery, planFragmentRecovery, consistentWith, hasAnyFunctionWord, isDiscreditedTurn,
   labelMatchesScript,
-  RECOVERY_MIN_WORDS, type RecoveryReason,
+  RECOVERY_MIN_WORDS, RECOVERY_MAX_PER_SESSION, RECOVERY_MIN_SPEECH_MS, type RecoveryReason,
 } from './sameTurnRecovery.ts';
 import { LATIN_CODES, SCRIPT_OF } from './languageRegistry.ts';
 import { SWITCH_MIN_LETTERS, SWITCH_MIN_LETTERS_BY_SCRIPT } from './talkLanguage.ts';
@@ -593,6 +593,7 @@ export interface VoiceMilestone {
   | 'same_turn_recovered' | 'second_opinion_used' | 'second_opinion_turn'
   /* The opinion is now bought per-turn, so when it is on is itself a fact. */
   | 'second_opinion_armed' | 'second_opinion_disarmed' | 'stale_final_rejected'
+  | 'empty_final_recovered'
   | 'turn_refused' | 'failed';
   /** Milliseconds since start() was called. */
   atMs: number;
@@ -819,6 +820,17 @@ const SESSION_LIMIT_GRACE_MS = 12_000;
  * Moving this DOWN again without new measurements would start cutting real
  * finals. Moving it back up re-opens the freeze.
  */
+/*
+ * How much voice an empty final must have contained to be worth re-reading.
+ *
+ * RECOVERY_MIN_SPEECH_MS itself, imported rather than restated: the first
+ * version of this wrote 900 here with a comment claiming that stopped the two
+ * drifting apart, which is precisely backwards. Below this floor a socket
+ * returning nothing is a socket that correctly heard nothing -- a cough, a
+ * chair, a door -- and a batch call behind every noise in the room is not a
+ * recovery, it is a bill.
+ */
+
 const NO_FINAL_TIMEOUT_MS = 2_500;
 /** Consecutive misses before the session stops reconnecting and says so. */
 const MAX_CONSECUTIVE_NO_FINALS = 3;
@@ -1212,6 +1224,34 @@ export class VoiceSession {
   private tap: Int16Array[] = [];
   private tapSamples = 0;
   /** Voiced audio seen before the recogniser socket was ready to take it. */
+  /*
+   * HOW MUCH VOICE THIS TURN ACTUALLY CARRIED, WHOEVER ENDED IT.
+   *
+   * MEASURED, production session 65bd451d (2026-09-25) and 66e4e448 before
+   * it: `turns_ended_locally` is 0 and `last_end_turn_speech_ms` is 0 on
+   * EVERY turn of both sessions. Google's endpointer ends these turns, which
+   * is correct and deliberate -- its voice detection hears a pause inside a
+   * sentence better than an energy threshold here ever could.
+   *
+   * But lastEndTurnSpeechMs is written in exactly one place, inside
+   * maybeEndLiveTurn, on the LOCAL endpoint path. When the provider ends the
+   * turn that line never runs, so the field stays null for the whole session
+   * -- and two decisions read it as though it meant "speech in this turn":
+   *
+   *   planRecovery / planFragmentRecovery   `if (speechMs < 900) return null`
+   *   the language probe                    `sustained = speechMs >= ...`
+   *
+   * Both therefore returned null on every turn ever recorded. Seventeen turns
+   * across two sessions, `batch_final_chars` zero on all of them: the
+   * same-audio recovery path and the probe were not merely unlucky, they were
+   * unreachable. That is why a language switch had nothing to rescue it.
+   *
+   * So the duration is captured where the turn ENDS, not where one particular
+   * endpointer ends it. Written just before liveSpeechMs is reset, on every
+   * path out of a turn.
+   */
+  private lastTurnSpeechMs = 0;
+
   private voicedBeforeReadyMs = 0;
   /**
    * Voiced audio that arrived while nothing was guaranteed to receive it.
@@ -2477,6 +2517,40 @@ export class VoiceSession {
   }
 
   /** The retained utterance through the batch recogniser, with no language hint. */
+  /**
+   * Re-read a turn whose recogniser returned nothing at all.
+   *
+   * Separate from planRecovery because the evidence is different in kind:
+   * there is no transcript to judge the script or the function words of, only
+   * the fact that a person spoke for a while and the socket produced no
+   * words. On a socket pinned to one language that is the signature of
+   * somebody speaking another one.
+   *
+   * Returns null unless it is worth spending a batch call on, and null again
+   * if the re-read produces nothing usable -- in which case the caller
+   * resumes listening exactly as it did before.
+   */
+  private async recoverFromEmptyFinal(): Promise<{ text: string; language: string | null } | null> {
+    if (this.lastTurnSpeechMs < RECOVERY_MIN_SPEECH_MS) return null;
+    if (!this.utterancePcm.length || !this.utteranceSamples) return null;
+    if (this.sameTurnRecoveries >= RECOVERY_MAX_PER_SESSION) return null;
+    const outcome = await this.recoverUtterance(
+      'EMPTY_FINAL', this.language.current, '',
+    );
+    this.diag.sameTurnRecoveries = this.sameTurnRecoveries;
+    const text = outcome.text?.trim();
+    if (!text) return null;
+    this.diag.lastRecovery = {
+      from: this.language.current, hint: null, ms: outcome.ms, used: true,
+      ratio: 0, words: text.split(/\s+/).filter(Boolean).length,
+      reason: 'EMPTY_FINAL',
+      originalLiveTranscript: null,
+      recoveredTranscript: text.slice(0, 120),
+      language: outcome.language,
+    };
+    return { text, language: outcome.language };
+  }
+
   private async recoverUtterance(
     reason: RecoveryReason, pinned: string | null, liveTranscript: string,
   ): Promise<{ text: string | null; language: string | null; ms: number; used: boolean }> {
@@ -2887,11 +2961,58 @@ export class VoiceSession {
      */
     if (said) { this.finalWatch.arrived(); this.producedEpoch = this.utteranceEpoch; }
     if (this.live?.isFinalizing) void this.rotateLive();
+    /*
+     * Before the reset, and regardless of which endpointer decided. This is
+     * the line that makes recovery reachable at all -- see lastTurnSpeechMs.
+     */
+    this.lastTurnSpeechMs = Math.round(this.liveSpeechMs);
     this.liveSpeechMs = 0;
     this.livePartialWords = 0;
     this.liveEnded = false;
 
-    if (!said) { this.resumeListening(); return; }
+    /*
+     * THE SENTENCE THE VISITOR HAS TO SAY TWICE.
+     *
+     * MEASURED, session 65bd451d: turn ids run t1 t2 t3 t4 _ t6 t7 t8 t9. The
+     * missing t5 sits exactly at the Georgian-to-Russian switch, and it never
+     * reached the model at all -- `refused_before` on t6 is 0, so it was not
+     * refused as gibberish. It produced an EMPTY final: Russian spoken into a
+     * ka-GE socket, which returns nothing rather than something wrong.
+     *
+     * This line then returned to LISTENING, which is precisely what the owner
+     * described -- the panel says it is listening again and the sentence has
+     * to be repeated. The repeat works because the empty final armed the
+     * second opinion, so t6 had the `auto` socket running and it heard the
+     * Russian. The system recovers on the SECOND attempt by design and loses
+     * the first one by accident.
+     *
+     * The audio is still in hand. utterancePcm holds the whole utterance, and
+     * an unhinted re-read is exactly what it is retained for -- the same
+     * mechanism the recovery path uses, on the same bytes, from the
+     * beginning. So an empty final after real speech now earns one, instead
+     * of being treated as though nobody said anything.
+     *
+     * DELIBERATELY NARROW. It requires real sustained speech, retained audio,
+     * and a recovery budget the session has not spent; silence, a cough and a
+     * door still cost nothing. A healthy turn never reaches this line at all,
+     * because a healthy turn has a transcript.
+     */
+    if (!said) {
+      const recovered = await this.recoverFromEmptyFinal();
+      if (!recovered) { this.resumeListening(); return; }
+      said = recovered.text;
+      detected = recovered.language ?? detected;
+      // The turn exists after all: it must count as produced, or the socket
+      // that delivered the empty final is still owed a final forever.
+      this.finalWatch.arrived();
+      this.producedEpoch = this.utteranceEpoch;
+      this.turns = reduceTranscript(this.turns, {
+        id, speaker: 'USER', text: said, final: true,
+        language: recovered.language, atMs: Date.now(),
+      });
+      this.cb.onTranscript(this.turns);
+      this.milestone('empty_final_recovered', recovered.language ?? 'unknown');
+    }
 
     this.diag.sttOk += 1;
     this.diag.sttRequests += 1;
@@ -3008,7 +3129,13 @@ export class VoiceSession {
     const recoveryInput = {
       pinned,
       transcript: said,
-      speechMs: this.diag.lastEndTurnSpeechMs ?? 0,
+      /*
+       * The turn's speech, not the local endpointer's record of it. Reading
+       * lastEndTurnSpeechMs here is what kept this planner returning null on
+       * every turn of every session -- the provider ends these turns, so that
+       * field was never written.
+       */
+      speechMs: this.lastTurnSpeechMs || (this.diag.lastEndTurnSpeechMs ?? 0),
       spent: this.sameTurnRecoveries,
     };
     /*
@@ -3126,7 +3253,11 @@ export class VoiceSession {
      * talking. Sustained speech that still cannot resolve is the only thing
      * that earns a probe.
      */
-    const sustained = (this.diag.lastEndTurnSpeechMs ?? 0) >= SWITCH_PROBE_SPEECH_MS;
+    // Same correction as the recovery planner: the probe exists precisely for
+    // a non-Latin language spoken into a Latin-pinned socket, and it could
+    // never arm while its only input was written on a path that never ran.
+    const sustained = (this.lastTurnSpeechMs || (this.diag.lastEndTurnSpeechMs ?? 0))
+      >= SWITCH_PROBE_SPEECH_MS;
 
     /*
      * A TURN THE PROBE RUINED IS NOT EVIDENCE THAT THE PROBE IS NEEDED.

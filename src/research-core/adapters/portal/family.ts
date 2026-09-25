@@ -74,6 +74,31 @@ export type ExtractionStrategy = 'SCHEMA_ORG' | 'EMBEDDED_STATE' | 'OPEN_GRAPH';
  * value. The narrowness is the point: a rule that could compute would be a
  * rule that could invent.
  */
+/**
+ * WHICH TEXT A PATTERN IS ALLOWED TO SEE.
+ *
+ * 'PAGE' -- the default -- is every visible word on the document, and that
+ * includes the related-listings sidebar. Most of what this framework has got
+ * wrong has come from there: three listings reporting one sidebar price, an
+ * area that was a price per square metre, and a district of "\u10d1\u10d8\u10dc\u10d0" (which
+ * means "apartment") captured from a NEIGHBOURING listing's title because
+ * this listing's own title had no district in it.
+ *
+ * That last one is the instructive case. The pattern was correct, the page
+ * was readable, and the answer was a real word from a real listing -- just
+ * not this one. Nothing in the counts could show it.
+ *
+ * 'TITLE' restricts a pattern to the listing's OWN title, which og:title
+ * gives us as a single-listing field. A site that publishes its facts in a
+ * structured title -- place.ge writes
+ * "\u10d8\u10e7\u10d8\u10d3\u10d4\u10d1\u10d0, \u10d1\u10d8\u10dc\u10d0, 3 \u10dd\u10d7\u10d0\u10ee\u10d8, \u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8, \u10d5\u10d0\u10d9\u10d4-\u10e1\u10d0\u10d1\u10e3\u10e0\u10d7\u10d0\u10da\u10dd, \u10e1\u10d0\u10d1\u10e3\u10e0\u10d7\u10d0\u10da\u10dd"
+ * -- can then be read without the rest of the page being able to answer.
+ *
+ * A listing whose title omits a slot yields ABSENCE, which is the honest
+ * answer and the one this scope exists to make possible.
+ */
+export type RuleScope = 'PAGE' | 'TITLE';
+
 export type EnrichmentRule =
   /** A schema.org PropertyValue, matched by its `name`. */
   | { field: 'areaSqm' | 'rooms' | 'bedrooms' | 'floor' | 'totalFloors' | 'yearBuilt';
@@ -82,6 +107,8 @@ export type EnrichmentRule =
   | { field: 'areaSqm'; from: 'QUANTITATIVE_VALUE'; unitCode: string }
   /** schema.org PostalAddress parts. */
   | { field: 'city' | 'district' | 'country' | 'street'; from: 'POSTAL_ADDRESS'; key: string }
+
+
   /** An og: meta tag. */
   | { field: 'title' | 'description' | 'image'; from: 'OPEN_GRAPH'; property: string }
   /**
@@ -90,7 +117,7 @@ export type EnrichmentRule =
    * and every match records its origin as the weakest kind.
    */
   | { field: 'areaSqm' | 'rooms' | 'bedrooms' | 'floor' | 'totalFloors';
-      from: 'TEXT_PATTERN'; pattern: RegExp }
+      from: 'TEXT_PATTERN'; pattern: RegExp; scope?: RuleScope }
   /*
    * A price written the way a person reads it: a currency mark and a number,
    * in the page's own visible text.
@@ -106,13 +133,14 @@ export type EnrichmentRule =
    * the single worst thing this file could do.
    */
   | { field: 'price'; from: 'PRICE_TEXT'; pattern: RegExp; currency: string;
-      side: 'SALE' | 'RENT'; perPeriod?: 'MONTH' | 'DAY' | 'YEAR' }
+      side: 'SALE' | 'RENT'; perPeriod?: 'MONTH' | 'DAY' | 'YEAR'; scope?: RuleScope }
   /*
    * A publication date the page states. NEVER the time we read it: a
    * first-seen date is not a listing date, and the difference is what makes
    * "days on market" a real number or a fabricated one.
    */
-  | { field: 'publishedAt'; from: 'DATE_TEXT'; pattern: RegExp; order: 'DMY' | 'YMD' }
+  | { field: 'publishedAt'; from: 'DATE_TEXT'; pattern: RegExp; order: 'DMY' | 'YMD';
+      scope?: RuleScope }
   /**
    * A free-text value the page prints: the listing agency, or a place name.
    *
@@ -123,7 +151,7 @@ export type EnrichmentRule =
    * recorded as TEXT provenance.
    */
   | { field: 'agencyName' | 'developerName' | 'projectName' | 'city' | 'district';
-      from: 'TEXT_CAPTURE'; pattern: RegExp };
+      from: 'TEXT_CAPTURE'; pattern: RegExp; scope?: RuleScope };
 
 export interface PortalSourceConfig {
   /** Stable key. Appears in provenance and in the registry. */
@@ -385,7 +413,12 @@ export function extractListing(
   const text = config.enrich?.some((r) => TEXT_RULES.has(r.from)) ? visibleText(html) : '';
 
   for (const rule of config.enrich ?? []) {
-    const value = readRule(rule, { nodes, html, text });
+    /*
+     * The title is passed even when no rule asks for it. It is already
+     * extracted by this point -- OpenGraph or JSON-LD filled it above -- so
+     * a TITLE-scoped rule costs nothing extra to support.
+     */
+    const value = readRule(rule, { nodes, html, text, title: listing.title ?? '' });
     if (value === null) { missing.push(rule.field); continue; }
     applyRule(listing, rule, value, config);
   }
@@ -445,8 +478,15 @@ export function extractListing(
 
 function readRule(
   rule: EnrichmentRule,
-  ctx: { nodes: Record<string, unknown>[]; html: string; text: string },
+  ctx: { nodes: Record<string, unknown>[]; html: string; text: string; title: string },
 ): string | number | null {
+  /*
+   * The text this rule may look at. Default PAGE, which includes the
+   * related-listings sidebar; TITLE restricts it to the listing's own title,
+   * so a site that publishes its facts in a structured title can be read
+   * without a neighbouring listing being able to answer. See RuleScope.
+   */
+  const scoped = 'scope' in rule && rule.scope === 'TITLE' ? ctx.title : ctx.text;
   switch (rule.from) {
     case 'PROPERTY_VALUE': {
       const node = ctx.nodes.find((n) =>
@@ -466,11 +506,11 @@ function readRule(
     case 'OPEN_GRAPH':
       return ogValue(ctx.html, rule.property);
     case 'TEXT_PATTERN': {
-      const match = rule.pattern.exec(ctx.text);
+      const match = rule.pattern.exec(scoped);
       return match ? numberFrom(match[1]) : null;
     }
     case 'PRICE_TEXT': {
-      const match = rule.pattern.exec(ctx.text);
+      const match = rule.pattern.exec(scoped);
       if (!match) return null;
       const amount = numberFrom(match[1]);
       // Zero is not a price. A page that printed one has not told us what it
@@ -478,11 +518,11 @@ function readRule(
       return amount !== null && amount > 0 ? amount : null;
     }
     case 'DATE_TEXT': {
-      const match = rule.pattern.exec(ctx.text);
+      const match = rule.pattern.exec(scoped);
       return match ? (match[1] ?? null) : null;
     }
     case 'TEXT_CAPTURE': {
-      const match = rule.pattern.exec(ctx.text);
+      const match = rule.pattern.exec(scoped);
       const value = match?.[1]?.trim();
       return value && value.length > 1 ? value : null;
     }

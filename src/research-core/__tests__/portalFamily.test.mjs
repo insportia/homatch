@@ -354,6 +354,55 @@ test('a nightly rate is not a tenancy: short-term-rental URLs are not listings',
   );
 });
 
+test('a listing whose title omits the district gets NO district, not the sidebar\'s', () => {
+  /*
+   * PRODUCTION, 2026-09-25. place.ge listing 1317870 was persisted with a
+   * district of "\u10d1\u10d8\u10dc\u10d0", which means "apartment".
+   *
+   * Its real title, as the site served it, is:
+   *   "\u10d8\u10e7\u10d8\u10d3\u10d4\u10d1\u10d0, \u10d1\u10d8\u10dc\u10d0, 3 \u10dd\u10d7\u10d0\u10ee\u10d8, \u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8, \u10e1\u10d0\u10e1\u10ec\u10e0\u10d0\u10e4\u10dd\u10d3"
+   * — sale, apartment, 3 rooms, Tbilisi, urgent. No macro-district and no
+   * district, because that seller did not give one. The other three listings
+   * captured the same day all carry both.
+   *
+   * The pattern went on scanning the visible page, reached the
+   * related-listings sidebar, and matched a NEIGHBOURING listing's title. The
+   * pattern was correct, the page was readable, and the answer was a real
+   * word from a real listing — just not this one, and nothing in the counts
+   * could show it.
+   *
+   * The markup here is the captured fixture with its og:title replaced by
+   * 1317870's real title. Both halves are real; the splice is what lets a
+   * test reach a listing whose own capture was never taken.
+   *
+   * AND AGAINST THIS FIXTURE THE UNSCOPED RULE IS WORSE THAN PRODUCTION WAS.
+   * It returns "საბურთალო" — Saburtalo, a real Tbilisi district,
+   * belonging to a sidebar listing. Production's "ბინა" at least looked
+   * wrong to anyone who reads Georgian. A plausible district attached to the
+   * wrong flat would have been believed, and would have decided which
+   * comparables a customer was shown.
+   */
+  const withShortTitle = fixture('place.ge.detail.html').replace(
+    /(<meta[^>]+property=["\']og:title["\'][^>]+content=["\'])[^"\']*/i,
+    '$1\u10d8\u10e7\u10d8\u10d3\u10d4\u10d1\u10d0, \u10d1\u10d8\u10dc\u10d0, 3 \u10dd\u10d7\u10d0\u10ee\u10d8, \u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8, \u10e1\u10d0\u10e1\u10ec\u10e0\u10d0\u10e4\u10dd\u10d3 - place.ge',
+  );
+  assert.notEqual(withShortTitle, fixture('place.ge.detail.html'), 'the og:title was not replaced');
+
+  const l = extractListing(withShortTitle, CAPTURED.place, PLACE_GE).listing;
+
+  assert.equal(l.city, '\u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8', 'the city is in the title and should still be read');
+  assert.equal(
+    l.district,
+    null,
+    `a district was invented from elsewhere on the page: ${l.district}`,
+  );
+  assert.notEqual(l.district, '\u10d1\u10d8\u10dc\u10d0', 'the district is the word for "apartment"');
+
+  // The rest of the listing still reads: scoping one rule narrows one rule.
+  assert.equal(l.sale.amount, 145000);
+  assert.deepEqual(l.area, { value: 89, unit: 'sqm' });
+});
+
 test('a thin source scores lower than a structured one, and the gap is visible', () => {
   /*
    * This is the number that decides which of two conflicting observations

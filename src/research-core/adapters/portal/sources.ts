@@ -168,9 +168,27 @@ export const PLACE_GE: PortalSourceConfig = {
      * transaction, type, rooms, city, macro-district, district -- published
      * deliberately and in a fixed order.
      */
-    { field: 'city', from: 'TEXT_CAPTURE',
+    { field: 'city', from: 'TEXT_CAPTURE', scope: 'TITLE',
       pattern: /\u10dd\u10d7\u10d0\u10ee\u10d8,\s*([^,]{3,25}),/ },
-    { field: 'district', from: 'TEXT_CAPTURE',
+    /*
+     * THE DISTRICT, READ ONLY FROM THIS LISTING'S OWN TITLE.
+     *
+     * This rule produced a district of "\u10d1\u10d8\u10dc\u10d0" -- which means "apartment"
+     * -- in production, on listing 1317870. Its title is
+     * "\u10d8\u10e7\u10d8\u10d3\u10d4\u10d1\u10d0, \u10d1\u10d8\u10dc\u10d0, 3 \u10dd\u10d7\u10d0\u10ee\u10d8, \u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8, \u10e1\u10d0\u10e1\u10ec\u10e0\u10d0\u10e4\u10dd\u10d3": no
+     * macro-district and no district, because that seller did not give one.
+     * Unscoped, the pattern went on scanning the visible page and matched a
+     * RELATED LISTING in the sidebar.
+     *
+     * The pattern was right, the page was readable, and the answer was a real
+     * word from a real listing -- just not this one, and nothing in the counts
+     * could show it. The same sidebar had already produced one price for
+     * three listings and an area that was a price per square metre.
+     *
+     * Scoped to the title, a listing that omits the slot yields absence,
+     * which is what 1317870 should have said in the first place.
+     */
+    { field: 'district', from: 'TEXT_CAPTURE', scope: 'TITLE',
       pattern: /\u10dd\u10d7\u10d0\u10ee\u10d8,\s*[^,]{3,25},\s*[^,]{3,30},\s*([^,\-]{3,30})/ },
     /*
      * AREA, ON THE LABEL RATHER THAN THE UNIT.
@@ -208,14 +226,14 @@ export const PLACE_GE: PortalSourceConfig = {
     { field: 'areaSqm', from: 'TEXT_PATTERN',
       pattern: /\u10e4\u10d0\u10e0\u10d7\u10d8:\s*([\d.,]+)\s*\u10d9\u10d5\.\u10db/ },
     /*
-     * ROOMS FROM THE TITLE'S OWN SLOT, not from the first number beside the
-     * word. The page prints seven other room counts -- the related-listings
-     * sidebar -- and an unanchored pattern would read whichever the layout
-     * happened to put first. That is precisely how three listings once
-     * reported the same price. The title's comma-delimited shape is
-     * published deliberately and in a fixed order, so it is the anchor.
+     * ROOMS FROM THE TITLE'S OWN SLOT, and scoped so it cannot be anything
+     * else. The page prints seven other room counts -- the related-listings
+     * sidebar -- and matching on the page would read whichever the layout
+     * happened to put first. The title's comma-delimited shape is published
+     * deliberately and in a fixed order, so it is both the anchor and, now,
+     * the only text this rule can see.
      */
-    { field: 'rooms', from: 'TEXT_PATTERN',
+    { field: 'rooms', from: 'TEXT_PATTERN', scope: 'TITLE',
       pattern: /,\s*(\d+)\s*\u10dd\u10d7\u10d0\u10ee\u10d8\s*,/ },
     /*
      * BEDROOMS AND ROOMS ARE NOT THE SAME FIELD and this listing is the

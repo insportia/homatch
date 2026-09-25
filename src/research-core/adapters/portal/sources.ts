@@ -481,6 +481,39 @@ export const REALTING: PortalSourceConfig = {
   enrich: [],
 };
 
+/*
+ * A LIMITATION OF REALTING'S PRICES, FOUND BY LOOKING AT ONE THAT LOOKED WRONG.
+ *
+ * A Warsaw studio came back at $426,627 for 36 m2 — about $11,850 per square
+ * metre, extreme even for a prestige tower. The extraction is faithful: the
+ * site's own Offer node says `"price": 426627, "priceCurrency": "USD"`.
+ *
+ * But the same page carries these:
+ *
+ *   data-price-EUR="€375 053"   data-price-USD="$426 627"
+ *   data-price-GBP="£322 855"   data-price-AED="1,57M AED"
+ *   data-price-RUB="36,26M ₽"   data-price-BYN="1,29M Br"
+ *
+ * Six currencies and NO PLN. realting converts, the JSON-LD emits whichever
+ * currency the session is displaying, and for a Polish flat the seller's own
+ * asking currency is not published at all.
+ *
+ * So a realting price outside a USD-denominated market is realting's
+ * conversion, at a rate and on a date this repository does not know. It is
+ * recorded as the source stated it — currency USD, origin JSON_LD — because
+ * that is literally what the source published, and inventing an "original
+ * currency" from one listing would be the guess this file exists to avoid.
+ *
+ * WHERE IT MATTERS AND WHERE IT DOES NOT. Georgia prices property in USD, so
+ * a Georgian realting price and an ss.ge price are the same kind of number.
+ * Comparing a Polish realting price against another Polish source would be
+ * comparing a conversion with an asking price, and there is no second Polish
+ * source yet. The model has no currency-provenance field to say this in data;
+ * until it does, this comment is where it is said.
+ */
+
+
+
 export const PORTAL_SOURCES: readonly PortalSourceConfig[] = [
   HOME_SS_GE, HOME24_GE, PLACE_GE, ZARAYA, REALTING,
 ];

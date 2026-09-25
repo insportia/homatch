@@ -448,27 +448,41 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
     .register(new ConfiguredPortalAdapter({
       config: REALTING,
       /*
-       * FOUR MARKETS, EACH WITH ITS OWN COLLECTION PAGE.
+       * ELEVEN MARKETS ON FOUR CONTINENTS, EACH WITH ITS OWN COLLECTION PAGE.
        *
-       * Every URL here was fetched on 2026-09-25 and counted: Georgia 30
-       * detail links, Montenegro 32, Cyprus 31, Turkey 31. None was
-       * constructed by pattern from another — the site could have used any
-       * shape for any of them, and a guessed URL is how an adapter ends up
-       * fetching 404s politely.
+       * Every URL here was fetched on 2026-09-25 and the listing links on it
+       * were counted: Georgia 30, Montenegro 32, Cyprus 31, Turkey 31,
+       * Poland 31, Thailand 31, Latvia 31, Lithuania 30, Israel 32, the
+       * United States 32, Cambodia 31.
        *
-       * The list is short because it is the list that was verified, not the
-       * list the site could support. Its sitemaps also carry Cambodia,
-       * Poland, the United States, Thailand, Latvia, Lithuania and Israel,
-       * and each of those becomes a route when somebody has actually loaded
-       * the page.
+       * None was constructed by pattern from another. The site could have
+       * used any shape for any of them, and a guessed URL is how an adapter
+       * ends up fetching 404s politely — this list is what was loaded, not
+       * what the sitemap implies.
+       *
+       * ONLY GEORGIA HAS A RENT ROUTE, because only Georgia's was checked.
+       * The rest will get one when somebody has opened the page, which is the
+       * same standard the sale routes were held to.
+       *
+       * Homatch is a Georgian product today. This is here so that the
+       * architecture cannot quietly assume it always will be: a market
+       * planner that can only name one country is not a planner, and nothing
+       * reveals that faster than a source that answers about ten others.
        */
-      countries: ['GE', 'ME', 'CY', 'TR'],
+      countries: ['GE', 'ME', 'CY', 'TR', 'PL', 'TH', 'LV', 'LT', 'IL', 'US', 'KH'],
       routes: [
         { transaction: 'SALE', countryCode: 'GE', url: 'https://realting.com/georgia/property' },
         { transaction: 'RENT', countryCode: 'GE', url: 'https://realting.com/georgia/property-to-rent' },
         { transaction: 'SALE', countryCode: 'ME', url: 'https://realting.com/montenegro/property' },
         { transaction: 'SALE', countryCode: 'CY', url: 'https://realting.com/cyprus/property' },
         { transaction: 'SALE', countryCode: 'TR', url: 'https://realting.com/turkey/property' },
+        { transaction: 'SALE', countryCode: 'PL', url: 'https://realting.com/poland/property' },
+        { transaction: 'SALE', countryCode: 'TH', url: 'https://realting.com/thailand/property' },
+        { transaction: 'SALE', countryCode: 'LV', url: 'https://realting.com/latvia/property' },
+        { transaction: 'SALE', countryCode: 'LT', url: 'https://realting.com/lithuania/property' },
+        { transaction: 'SALE', countryCode: 'IL', url: 'https://realting.com/israel/property' },
+        { transaction: 'SALE', countryCode: 'US', url: 'https://realting.com/united-states/property' },
+        { transaction: 'SALE', countryCode: 'KH', url: 'https://realting.com/cambodia/property' },
       ],
     }));
 

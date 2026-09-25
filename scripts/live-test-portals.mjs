@@ -28,7 +28,8 @@
  * is a script that will eventually promote something it should not have.
  *
  * Usage: node scripts/live-test-portals.mjs [adapterId ...] [--limit 3]
- *                                            [--city Tbilisi] [--json]
+ *                                            [--city Tbilisi] [--country GE]
+ *                                            [--json]
  */
 import { createPortalRuntime } from '../src/research-core/market/runtime.ts';
 import { structuredQuality } from '../src/research-core/parse/listing.ts';
@@ -44,7 +45,17 @@ const LIMIT = limitArg > -1 ? Number(args[limitArg + 1]) : 3;
  */
 const cityArg = args.indexOf('--city');
 const CITY = cityArg > -1 ? String(args[cityArg + 1]) : 'Tbilisi';
-const consumed = new Set([String(LIMIT), CITY]);
+/*
+ * The market, which is NOT the same question as the city.
+ *
+ * This was hard-coded to GE, and an adapter registered for eleven countries
+ * answered every test with its Georgian route. Passing --city Warsaw against
+ * a GE envelope reads Georgian listings and then drops them all on the city
+ * filter -- LIVE_OK, zero parsed, and nothing about Poland proven.
+ */
+const countryArg = args.indexOf('--country');
+const COUNTRY = (countryArg > -1 ? String(args[countryArg + 1]) : 'GE').toUpperCase();
+const consumed = new Set([String(LIMIT), CITY, COUNTRY]);
 const only = args.filter((a) => !a.startsWith('--') && !consumed.has(a));
 
 /**
@@ -61,7 +72,7 @@ const only = args.filter((a) => !a.startsWith('--') && !consumed.has(a));
 function envelope(id, transaction, city = CITY) {
   return {
     id,
-    countryCode: 'GE',
+    countryCode: COUNTRY,
     city,
     district: null,
     subDistrict: null,
@@ -118,6 +129,7 @@ async function testOne(adapter, context, runtime) {
     permitted: null,
     /* The market this run asked about, so a result can be read on its own. */
     city: CITY,
+    countryCode: COUNTRY,
     parsed: 0,
     rejectedByEnvelope: 0,
     listings: [],

@@ -25,7 +25,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { compareArtifacts, uploadAccounting, ABSENT } from '../../scripts/edgeArtifacts.mjs';
+import {
+  compareArtifacts, uploadAccounting, ABSENT,
+  proveArtifact, matchDeployedName, isProven, PROOF, fetchArtifact,
+} from '../../scripts/edgeArtifacts.mjs';
 
 const WORKFLOW = readFileSync('.github/workflows/deploy.yml', 'utf8');
 const SCOPE_URL = pathToFileURL(resolve('scripts/deploy-scope.mjs')).href;
@@ -318,4 +321,299 @@ test('10: a falsely advanced ref is visible, and only a proven artifact can adva
   assert.ok(!/advance edge/.test(record), 'record-deployment is deciding the edge ref again');
   assert.ok(!/deploy-functions\.result/.test(record), 'the edge ref is being inferred from a job result again');
   assert.ok(!/needs\.scope\.outputs\.edge/.test(record), 'the broken output is back in the ref decision');
+});
+
+/* ── THE ARTIFACT PROOF ───────────────────────────────────────────────────
+ *
+ * Ten more, and they are about a different question than the ten above.
+ *
+ * Those ask "did the pipeline do the work and admit it when it didn't?".
+ * These ask "is the code production is running the code this revision says
+ * it should be running?" -- which the pipeline could not ask until
+ * 2026-09-25, and answered with the version counter instead.
+ *
+ * Every case below is modelled on something that actually happened in run
+ * 36099775881 or the two before it. The fixtures are small on purpose: the
+ * rule is pure, so it can be driven directly rather than grepped for.
+ */
+
+const FN = 'demo-fn';
+const ENTRY = `supabase/functions/${FN}/index.ts`;
+const SHARED = 'supabase/functions/_shared/comm/auth.ts';
+const SRC = 'src/lib/ai/identity.ts';
+
+/** The repository at this revision. */
+const expectedTree = ({ entry = 'ENTRY@v2', shared = 'SHARED@v2', src = 'SRC@v2' } = {}) =>
+  ({ [ENTRY]: entry, [SHARED]: shared, [SRC]: src });
+
+/*
+ * What production hands back. The `homatch/` prefix is not decoration: it is
+ * how the CLI names files when a closure reaches into src/, and dropping it
+ * would test a path the real API never takes.
+ */
+const deployedTree = ({
+  version = 7, entry = 'ENTRY@v2', shared = 'SHARED@v2', src = 'SRC@v2', ...rest
+} = {}) => ({
+  version,
+  updated_at: 5_000,
+  ezbr_sha256: `sha-${entry}-${shared}-${src}`,
+  files: [
+    { name: `homatch/${ENTRY}`, content: entry },
+    { name: `homatch/${SHARED}`, content: shared },
+    { name: `homatch/${SRC}`, content: src },
+  ],
+  ...rest,
+});
+
+const prove = (deployed, expected = expectedTree()) =>
+  proveArtifact({ name: FN, expected, deployed });
+
+test('artifact 1: everything reached production — proven, and the ref may advance', () => {
+  const proof = prove(deployedTree({ version: 8 }));
+  assert.equal(proof.state, PROOF.PROVEN_EXACT);
+  assert.ok(isProven(proof));
+  assert.deepEqual(proof.mismatched, []);
+  assert.equal(proof.deployedFileCount, 3);
+});
+
+test('artifact 2: a partial deployment leaves one function unproven, so the ref stays', () => {
+  const good = prove(deployedTree({ version: 8 }));
+  const bad = prove(deployedTree({ version: 7, shared: 'SHARED@v1' }));
+  assert.ok(isProven(good));
+  assert.ok(!isProven(bad), 'a stale function passed');
+  assert.equal([good, bad].every(isProven), false, 'the run as a whole must not be proven');
+});
+
+test('artifact 3: the retry after a partial deploy — dedup and fresh upload both prove', () => {
+  /* A was already correct and this run deduplicated it: the version does not
+     move. B uploaded now. Under the old rule A was UNPROVEN forever and the
+     ref could never advance again. */
+  const deduped = prove(deployedTree({ version: 7 }));
+  const uploaded = prove(deployedTree({ version: 8 }));
+  assert.equal(deduped.state, PROOF.PROVEN_EXACT);
+  assert.equal(uploaded.state, PROOF.PROVEN_EXACT);
+  assert.ok([deduped, uploaded].every(isProven), 'a converged production still cannot advance the ref');
+});
+
+test('artifact 4: the CLI said deployed and exited 0, and production is stale — fails anyway', () => {
+  const proof = prove(deployedTree({ version: 9, entry: 'ENTRY@v1' }));
+  assert.equal(proof.state, PROOF.STALE);
+  assert.ok(!isProven(proof));
+  assert.deepEqual(proof.mismatched, [ENTRY]);
+});
+
+test('artifact 5: "No change found" over a deployed artifact that differs — fails', () => {
+  const proof = prove(deployedTree({ version: 7, src: 'SRC@v1' }));
+  assert.equal(proof.state, PROOF.STALE);
+  assert.deepEqual(proof.mismatched, [SRC]);
+});
+
+test('artifact 6: "No change found" over an identical artifact — passes', () => {
+  const proof = prove(deployedTree({ version: 7 }));
+  assert.equal(proof.state, PROOF.PROVEN_EXACT);
+  assert.ok(isProven(proof));
+});
+
+test('artifact 7: the entrypoint is untouched and a _shared dependency is not', () => {
+  /* The exact shape of the owed set in run 36099775881: eleven of the
+     eighteen functions were owed for a dependency they do not mention. */
+  const proof = prove(deployedTree({ version: 7, shared: 'SHARED@v1' }));
+  assert.equal(proof.state, PROOF.STALE, 'an old dependency in a current entrypoint was accepted');
+  assert.deepEqual(proof.mismatched, [SHARED]);
+  assert.ok(!proof.mismatched.includes(ENTRY), 'the entrypoint is not the thing that changed');
+});
+
+test('artifact 8: a rate-limited deploy leaves production stale — unproven and retryable', () => {
+  /* The bundle never reached production, so production still answers with
+     the previous revision. Nothing here advances the ref, and nothing here
+     makes the next attempt impossible. */
+  const proof = prove(deployedTree({ version: 7, entry: 'ENTRY@v1', shared: 'SHARED@v1' }));
+  assert.ok(!isProven(proof));
+  assert.equal(proof.state, PROOF.STALE);
+  assert.equal(proof.mismatched.length, 2);
+});
+
+test('artifact 9: platform-side dedup — "Deploying" then "Deployed", version unmoved, artifact right', () => {
+  /*
+   * cartesia-access-token, run 36099775881. The CLI decided the bundle had
+   * changed and uploaded 95 kB; the platform recognised an eszip it already
+   * had and minted no new version. Deployment evidence says nothing
+   * happened. The artifact says production is correct, and the artifact is
+   * what the ref is about.
+   */
+  const proof = prove(deployedTree({ version: 26 }));
+  assert.equal(proof.version, 26);
+  assert.equal(proof.state, PROOF.PROVEN_EXACT);
+  assert.ok(isProven(proof), 'the platform-side dedup case regressed');
+});
+
+test('artifact 10: the version incremented and the artifact is wrong — MUST fail', () => {
+  /*
+   * The direction the old rule got backwards. An increment proves an upload
+   * occurred, never that it carried this revision.
+   */
+  const proof = prove(deployedTree({ version: 99, entry: 'ENTRY@v1', src: 'SRC@v1' }));
+  assert.ok(!isProven(proof), 'a version bump over the wrong tree was accepted as proof');
+  assert.equal(proof.state, PROOF.STALE);
+});
+
+test('artifact: production that will not say what it runs is UNAVAILABLE, never assumed', () => {
+  const noFiles = prove(deployedTree({ version: 8, files: null }));
+  assert.equal(noFiles.state, PROOF.UNAVAILABLE);
+  assert.ok(!isProven(noFiles), 'a function with no artifact evidence was treated as proven');
+
+  /* The one substitute allowed, and only when the hash is one we can
+     reproduce rather than one we merely received. */
+  const hashed = proveArtifact({
+    name: FN,
+    expected: expectedTree(),
+    deployed: { version: 8, updated_at: 5_000, ezbr_sha256: 'abc123', files: null },
+    expectedEzbr: 'abc123',
+  });
+  assert.equal(hashed.state, PROOF.PROVEN_HASH);
+  assert.ok(isProven(hashed));
+});
+
+test('artifact: production running a file this revision does not have is INCOMPLETE', () => {
+  const deployed = deployedTree({ version: 8 });
+  deployed.files.push({ name: 'homatch/src/removed/gone.ts', content: 'x' });
+  const proof = prove(deployed);
+  assert.equal(proof.state, PROOF.INCOMPLETE);
+  assert.deepEqual(proof.foreign, ['homatch/src/removed/gone.ts']);
+});
+
+test('artifact: a deployment missing the entrypoint cannot be proven', () => {
+  const deployed = deployedTree({ version: 8 });
+  deployed.files = deployed.files.filter((f) => !f.name.endsWith(`${FN}/index.ts`));
+  const proof = prove(deployed);
+  assert.equal(proof.state, PROOF.INCOMPLETE);
+  assert.ok(!isProven(proof));
+});
+
+test('artifact: both CLI naming layouts resolve, and neither resolves ambiguously', () => {
+  /* functions/… when the closure stays inside supabase/functions, homatch/…
+     when it reaches into src/. Both are real; both are measured. */
+  assert.deepEqual(matchDeployedName('functions/_shared/comm/auth.ts', [SHARED]), [SHARED]);
+  assert.deepEqual(matchDeployedName(`homatch/${SHARED}`, [SHARED]), [SHARED]);
+  assert.deepEqual(matchDeployedName('functions/_shared/comm/auth.ts', [ENTRY, SRC]), []);
+});
+
+/* ── MUTATION GUARDS ──────────────────────────────────────────────────────
+ *
+ * Each of these fails if a specific weakening is applied to the rule. They
+ * are written as behaviour rather than as a grep, so they survive the file
+ * being rewritten and they cannot be satisfied by a comment.
+ */
+
+test('mutation: deleting the content comparison makes two different productions identical', () => {
+  /*
+   * Same version, same updated_at, same file count, same names. Content is
+   * the ONLY input that differs, so a rule that stopped reading contents
+   * would have to return the same verdict for both.
+   */
+  const exact = prove(deployedTree({ version: 7 }));
+  const stale = prove(deployedTree({ version: 7, shared: 'SHARED@v1' }));
+  assert.equal(exact.deployedFileCount, stale.deployedFileCount);
+  assert.equal(exact.version, stale.version);
+  assert.notEqual(exact.state, stale.state, 'the proof is no longer reading file contents');
+});
+
+test('mutation: accepting a version increment alone flips case 10 green', () => {
+  const bumpedAndWrong = prove(deployedTree({ version: 99, entry: 'ENTRY@v1' }));
+  const unbumpedAndRight = prove(deployedTree({ version: 1 }));
+  assert.ok(!isProven(bumpedAndWrong), 'version increment is being treated as proof');
+  assert.ok(isProven(unbumpedAndRight), 'an unmoved version is being treated as failure');
+});
+
+test('mutation: ignoring the dependency closure flips case 7 green', () => {
+  /* The entrypoint is byte-perfect in both. Only a dependency differs, so a
+     rule that compared the top-level file alone would pass the stale one. */
+  const stale = prove(deployedTree({ version: 7, shared: 'SHARED@v1' }));
+  const entryOnly = stale.mismatched.filter((p) => p === ENTRY);
+  assert.deepEqual(entryOnly, [], 'the entrypoint is unchanged, as the case requires');
+  assert.ok(!isProven(stale), 'a stale _shared dependency is being ignored');
+});
+
+test('the workflow wires the artifact proof, bounded concurrency and a best-effort warm-up', () => {
+  const deploy = job('deploy-functions');
+
+  /* Eight simultaneous anonymous ECR pulls from one runner IP. */
+  assert.ok(!/RUNNING >= [3-9]/.test(deploy), 'edge deploy concurrency is unbounded again');
+  assert.equal((deploy.match(/RUNNING >= 2/g) ?? []).length, 2, 'both deploy loops must be bounded');
+
+  /* The warm-up is an optimisation and must never be able to fail the job or
+     stand in for proof. */
+  const warm = deploy.slice(deploy.indexOf('- name: Warm the edge-runtime image'));
+  assert.match(warm.slice(0, 400), /continue-on-error: true/, 'the warm-up can fail the deploy');
+  assert.ok(!/edge-runtime:v[0-9]+\.[0-9]+\.[0-9]+["'\s]*$/m.test(warm.split('- name:')[1] ?? ''),
+    'the edge-runtime tag is hardcoded and will go stale when the CLI is bumped');
+
+  /* And the proof itself still runs, after the deploys, before the ref. */
+  const proveAt = deploy.indexOf('- name: Prove it in production');
+  assert.ok(deploy.indexOf('- name: Warm the edge-runtime image') < proveAt);
+  assert.match(deploy.slice(proveAt), /edgeArtifacts\.mjs verify/);
+});
+
+/*
+ * HOW THE DEPLOYED FILES ARE ASKED FOR.
+ *
+ * CI is the only place this runs against the real API, so the route logic is
+ * driven here with a stub rather than taken on trust. The plain endpoint is
+ * the one that answered with `files` when this was measured on 2026-09-25;
+ * the second form exists so a rename cannot silently turn every function
+ * UNAVAILABLE, and the plain route stays the only one allowed to fail a run.
+ */
+test('artifact source: the plain route is preferred, and asked once when it answers', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        version: 3, updated_at: 9, files: [{ name: 'functions/x/index.ts', content: 'a' }],
+      }),
+    };
+  };
+  const got = await fetchArtifact('x', { projectRef: 'r', token: 't', fetchImpl });
+  assert.equal(calls.length, 1, 'the API was asked twice when once was enough');
+  assert.ok(!calls[0].includes('include_files'));
+  assert.equal(got.route, 'plain');
+  assert.equal(got.files.length, 1);
+});
+
+test('artifact source: a plain route without files falls through to the explicit form', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    const files = url.includes('include_files')
+      ? [{ name: 'functions/x/index.ts', content: 'a' }]
+      : undefined;
+    return { ok: true, status: 200, json: async () => ({ version: 3, updated_at: 9, files }) };
+  };
+  const got = await fetchArtifact('x', { projectRef: 'r', token: 't', fetchImpl });
+  assert.equal(calls.length, 2);
+  assert.equal(got.route, 'include_files');
+  assert.equal(got.files.length, 1);
+});
+
+test('artifact source: no files from any route is UNAVAILABLE, never a pass', async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ version: 3, updated_at: 9 }) });
+  const got = await fetchArtifact('x', { projectRef: 'r', token: 't', fetchImpl });
+  assert.equal(got.files, null);
+  const proof = proveArtifact({
+    name: 'x', expected: { 'supabase/functions/x/index.ts': 'a' }, deployed: got,
+  });
+  assert.equal(proof.state, PROOF.UNAVAILABLE);
+  assert.ok(!isProven(proof), 'a function with no artifact evidence was allowed to advance the ref');
+});
+
+test('artifact source: a function production has never heard of is ABSENT, and unprovable', async () => {
+  const fetchImpl = async () => ({ ok: false, status: 404, json: async () => ({}) });
+  const got = await fetchArtifact('x', { projectRef: 'r', token: 't', fetchImpl });
+  assert.equal(got.absent, true);
+  const proof = proveArtifact({
+    name: 'x', expected: { 'supabase/functions/x/index.ts': 'a' }, deployed: got,
+  });
+  assert.equal(proof.state, PROOF.UNAVAILABLE);
 });

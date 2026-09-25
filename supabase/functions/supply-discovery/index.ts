@@ -586,6 +586,21 @@ async function resolveMarket(db: any, countryCode: string, city: string, transac
     saleCurrency: r.sale_currency,
     contentFingerprint: r.content_fingerprint,
     quality: Number(r.structured_quality ?? 0),
+    /*
+     * THE ENTITY THIS OBSERVATION IS ALREADY ON.
+     *
+     * The select has always asked for entity_id and this mapping dropped it,
+     * so applyMerges' `existingId` lookup found undefined every time and
+     * INSERTED a new entity on every run. Production had three rows for one
+     * Saburtalo flat: identical city, district, area and price range, each
+     * claiming observation_count 2, and two of them holding no observations
+     * at all because the newest insert had taken them.
+     *
+     * Nothing failed. The orphans are invisible unless you ask which
+     * observations point at an entity, and any count of "properties known"
+     * was growing by one per merged pair per run.
+     */
+    entityId: r.entity_id ?? null,
   }));
 
   const verdicts: Record<string, number> = {};
@@ -653,7 +668,12 @@ async function applyMerges(
     const range = priceRange(members);
     const now = new Date().toISOString();
 
-    const existingId = (members.find((m) => (m as any).entityId) as any)?.entityId ?? null;
+    /*
+     * REUSE THE ENTITY THAT EXISTS. No cast: the field is on the type now,
+     * so dropping it in the mapping is a compile error rather than a silent
+     * new entity on every run.
+     */
+    const existingId = members.find((m) => m.entityId)?.entityId ?? null;
     const payload = {
       country_code: countryCode,
       city: rep?.city ?? city,

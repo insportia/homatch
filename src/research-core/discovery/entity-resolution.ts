@@ -57,6 +57,16 @@ export type ResolutionVerdict =
 
 /** One observation, in the shape resolution needs and nothing more. */
 export interface ResolvableObservation {
+  /**
+   * The entity this observation is ALREADY attached to, where it is.
+   *
+   * Declared here rather than read through a cast, because a cast is what
+   * hid the bug: the caller selected entity_id, forgot to map it, and every
+   * merge inserted a fresh entity instead of updating the one that existed.
+   * Production grew three rows for one flat, two of them holding no
+   * observations at all. Optional because a new observation has none yet.
+   */
+  entityId?: string | null;
   id: string;
   sourceId: string;
   adapterId: string;

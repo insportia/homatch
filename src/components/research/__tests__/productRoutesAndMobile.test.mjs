@@ -77,7 +77,13 @@ test('each new route resolves to a real page component, not a placeholder', () =
      * than shipped in the bundle the home page parses.
      */
     const eager = ROUTES.includes(`import ${c} from`);
-    const split = ROUTES.includes(`const ${c} = lazy(() => import(`);
+    /*
+     * lazy() or lazyRoute() — the loader gained deploy recovery on
+     * 2026-09-25 and the claim here is unchanged: the route resolves to the
+     * real page. Matching the suffix keeps this about the page rather than
+     * about which helper wraps the import.
+     */
+    const split = new RegExp(`const ${c} = lazy(?:Route)?\\(\\(\\) => import\\(`).test(ROUTES);
     assert.ok(eager || split, `${c} is neither imported nor lazily loaded`);
     assert.ok(ROUTES.includes(`<${c} />`) || ROUTES.includes(`<${c} />)`), `${c} is not rendered`);
   }

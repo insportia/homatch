@@ -16,6 +16,7 @@ import { JobsProvider } from '@/contexts/JobsContext';
 import { DeveloperWorkspaceProvider } from '@/contexts/DeveloperWorkspaceContext';
 import { JobIndicator } from '@/components/jobs/JobIndicator';
 import { noteInAppNavigation } from '@/lib/backNavigation';
+import ScrollToTop from '@/components/common/ScrollToTop';
 
 /*
  * Counts route changes so SmartBack can tell the difference between "there
@@ -71,5 +72,5 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState>{
  */
 const RouteFallback: React.FC = () => <div className="min-h-[50vh]" aria-busy="true" />;
 
-const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Suspense fallback={<RouteFallback/>}><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></Suspense></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
+const App:React.FC=()=> <Router><LanguageProvider><AuthProvider><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><ScrollToTop/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Suspense fallback={<RouteFallback/>}><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></Suspense></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
 export default App;

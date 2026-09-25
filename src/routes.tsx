@@ -14,37 +14,38 @@
  */
 
 import type { ReactNode } from 'react';
-import React, { lazy } from 'react';
+import React from 'react';
+import { lazyRoute } from '@/lib/lazyRoute';
 import { Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 
-const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
-const SignupPage = lazy(() => import('./pages/auth/SignupPage'));
-const AuthCallbackPage = lazy(() => import('./pages/auth/AuthCallbackPage'));
-const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage'));
-const ProfilePage = lazy(() => import('./pages/ProfilePage'));
-const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
-const TermsPage = lazy(() => import('./pages/TermsPage'));
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-const ActivityPage = lazy(() => import('./pages/ActivityPage'));
-const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
-const AddPropertyPage = lazy(() => import('./pages/property/AddPropertyPage'));
-const URLImportPage = lazy(() => import('./pages/property/URLImportPage'));
-const PrivateListingPage = lazy(() => import('./pages/property/PrivateListingPage'));
-const PropertyDetailPage = lazy(() => import('./pages/property/PropertyDetailPage'));
-const MatchesPage = lazy(() => import('./pages/property/MatchesPage'));
-const CreditsPage = lazy(() => import('./pages/CreditsPage'));
-const ChatPage = lazy(() => import('./pages/ChatPage'));
-const LiveChatPage = lazy(() => import('./pages/LiveChatPage'));
-const ViewingsPage = lazy(() => import('./pages/ViewingsPage'));
-const ActiveSearchPage = lazy(() => import('./pages/ActiveSearchPage'));
-const DeveloperProfilePage = lazy(() => import('./pages/DeveloperProfilePage'));
-const AIPage = lazy(() => import('./pages/AIPage'));
-const VerifyPage = lazy(() => import('./pages/VerifyPage'));
-const MortgagePage = lazy(() => import('./pages/MortgagePage'));
-const ForExpatsPage = lazy(() => import('./pages/ForExpatsPage'));
-const ExpatTopicPage = lazy(() => import('./pages/ExpatTopicPage'));
-const ExpatPlanPage = lazy(() => import('./pages/ExpatPlanPage'));
+const LoginPage = lazyRoute(() => import('./pages/auth/LoginPage'));
+const SignupPage = lazyRoute(() => import('./pages/auth/SignupPage'));
+const AuthCallbackPage = lazyRoute(() => import('./pages/auth/AuthCallbackPage'));
+const ResetPasswordPage = lazyRoute(() => import('./pages/auth/ResetPasswordPage'));
+const ProfilePage = lazyRoute(() => import('./pages/ProfilePage'));
+const PrivacyPage = lazyRoute(() => import('./pages/PrivacyPage'));
+const TermsPage = lazyRoute(() => import('./pages/TermsPage'));
+const DashboardPage = lazyRoute(() => import('./pages/DashboardPage'));
+const ActivityPage = lazyRoute(() => import('./pages/ActivityPage'));
+const NotificationsPage = lazyRoute(() => import('./pages/NotificationsPage'));
+const AddPropertyPage = lazyRoute(() => import('./pages/property/AddPropertyPage'));
+const URLImportPage = lazyRoute(() => import('./pages/property/URLImportPage'));
+const PrivateListingPage = lazyRoute(() => import('./pages/property/PrivateListingPage'));
+const PropertyDetailPage = lazyRoute(() => import('./pages/property/PropertyDetailPage'));
+const MatchesPage = lazyRoute(() => import('./pages/property/MatchesPage'));
+const CreditsPage = lazyRoute(() => import('./pages/CreditsPage'));
+const ChatPage = lazyRoute(() => import('./pages/ChatPage'));
+const LiveChatPage = lazyRoute(() => import('./pages/LiveChatPage'));
+const ViewingsPage = lazyRoute(() => import('./pages/ViewingsPage'));
+const ActiveSearchPage = lazyRoute(() => import('./pages/ActiveSearchPage'));
+const DeveloperProfilePage = lazyRoute(() => import('./pages/DeveloperProfilePage'));
+const AIPage = lazyRoute(() => import('./pages/AIPage'));
+const VerifyPage = lazyRoute(() => import('./pages/VerifyPage'));
+const MortgagePage = lazyRoute(() => import('./pages/MortgagePage'));
+const ForExpatsPage = lazyRoute(() => import('./pages/ForExpatsPage'));
+const ExpatTopicPage = lazyRoute(() => import('./pages/ExpatTopicPage'));
+const ExpatPlanPage = lazyRoute(() => import('./pages/ExpatPlanPage'));
 /*
  * HOMATCH INVESTMENT INTELLIGENCE.
  *
@@ -54,21 +55,21 @@ const ExpatPlanPage = lazy(() => import('./pages/ExpatPlanPage'));
  * only the AI Consultant and the market sweep need an account (both
  * enforce that server-side, not by gating this route).
  */
-const InvestmentPage = lazy(() => import('./pages/InvestmentPage'));
-const VerificationCasePage = lazy(() => import('./pages/VerificationCasePage'));
-const ContractsPage = lazy(() => import('./pages/ContractsPage'));
-const ContractResultPage = lazy(() => import('./pages/ContractResultPage'));
-const ContractsHistoryPage = lazy(() => import('./pages/ContractsHistoryPage'));
-const VerifyHistoryPage = lazy(() => import('./pages/VerifyHistoryPage'));
-const LegacyDealRoomRedirect = lazy(() => import('./pages/LegacyDealRoomRedirect'));
+const InvestmentPage = lazyRoute(() => import('./pages/InvestmentPage'));
+const VerificationCasePage = lazyRoute(() => import('./pages/VerificationCasePage'));
+const ContractsPage = lazyRoute(() => import('./pages/ContractsPage'));
+const ContractResultPage = lazyRoute(() => import('./pages/ContractResultPage'));
+const ContractsHistoryPage = lazyRoute(() => import('./pages/ContractsHistoryPage'));
+const VerifyHistoryPage = lazyRoute(() => import('./pages/VerifyHistoryPage'));
+const LegacyDealRoomRedirect = lazyRoute(() => import('./pages/LegacyDealRoomRedirect'));
 // CasesPage import removed (2026-09-06 "REMOVE MY DEALS/CASES" mandate) —
 // the /cases route below is intentionally not registered. The file itself
 // is left in place (dormant), not deleted, in case this product surface
 // is revisited later.
-const PartnersPage = lazy(() => import('./pages/PartnersPage'));
-const PricingPage = lazy(() => import('./pages/PricingPage'));
-const DevelopersPage = lazy(() => import('./pages/DevelopersPage'));
-const AboutPage = lazy(() => import('./pages/AboutPage'));
+const PartnersPage = lazyRoute(() => import('./pages/PartnersPage'));
+const PricingPage = lazyRoute(() => import('./pages/PricingPage'));
+const DevelopersPage = lazyRoute(() => import('./pages/DevelopersPage'));
+const AboutPage = lazyRoute(() => import('./pages/AboutPage'));
 /*
  * HOMATCH FOR DEVELOPERS — the private sales workspace.
  *
@@ -78,99 +79,99 @@ const AboutPage = lazy(() => import('./pages/AboutPage'));
  * one of these is deeper. A visitor who has never signed in still lands on
  * the page that explains the offer.
  */
-const DeveloperStartPage = lazy(() => import('./pages/developer/DeveloperStartPage'));
-const DeveloperHomePage = lazy(() => import('./pages/developer/DeveloperHomePage'));
-const DeveloperProjectsPage = lazy(() => import('./pages/developer/DeveloperProjectsPage'));
-const DeveloperProjectPage = lazy(() => import('./pages/developer/DeveloperProjectPage'));
-const DeveloperContactsPage = lazy(() => import('./pages/developer/DeveloperContactsPage'));
-const DeveloperSalesOverviewPage = lazy(() => import('./pages/developer/DeveloperSalesOverviewPage'));
-const DeveloperViewingsPage = lazy(() => import('./pages/developer/DeveloperViewingsPage'));
-const DeveloperReservationsPage = lazy(() => import('./pages/developer/DeveloperReservationsPage'));
-const DeveloperOffersPage = lazy(() => import('./pages/developer/DeveloperOffersPage'));
-const DeveloperContractsPage = lazy(() => import('./pages/developer/DeveloperContractsPage'));
-const DeveloperCommissionsPage = lazy(() => import('./pages/developer/DeveloperCommissionsPage'));
-const DeveloperHandoverPage = lazy(() => import('./pages/developer/DeveloperHandoverPage'));
-const DeveloperPaymentsPage = lazy(() => import('./pages/developer/DeveloperPaymentsPage'));
-const DeveloperLedgerPage = lazy(() => import('./pages/developer/DeveloperLedgerPage'));
-const DeveloperDocumentsPage = lazy(() => import('./pages/developer/DeveloperDocumentsPage'));
-const DeveloperMarketingPage = lazy(() => import('./pages/developer/DeveloperMarketingPage'));
-const DeveloperInsightsPage = lazy(() => import('./pages/developer/DeveloperInsightsPage'));
-const DeveloperSettingsPage = lazy(() => import('./pages/developer/DeveloperSettingsPage'));
-const DeveloperExportTemplatesPage = lazy(() => import('./pages/developer/DeveloperExportTemplatesPage'));
-const DeveloperAuditPage = lazy(() => import('./pages/developer/DeveloperAuditPage'));
-const SharedUnitPage = lazy(() => import('./pages/developer/SharedUnitPage'));
-const PublicProjectPage = lazy(() => import('./pages/developer/PublicProjectPage'));
-const BuyerRoomPage = lazy(() => import('./pages/developer/BuyerRoomPage'));
-const TwinViewerPage = lazy(() => import('./pages/developer/TwinViewerPage'));
-const StudioPage = lazy(() => import('./pages/developer/StudioPage'));
-const StudioProjectPage = lazy(() => import('./pages/developer/StudioProjectPage'));
+const DeveloperStartPage = lazyRoute(() => import('./pages/developer/DeveloperStartPage'));
+const DeveloperHomePage = lazyRoute(() => import('./pages/developer/DeveloperHomePage'));
+const DeveloperProjectsPage = lazyRoute(() => import('./pages/developer/DeveloperProjectsPage'));
+const DeveloperProjectPage = lazyRoute(() => import('./pages/developer/DeveloperProjectPage'));
+const DeveloperContactsPage = lazyRoute(() => import('./pages/developer/DeveloperContactsPage'));
+const DeveloperSalesOverviewPage = lazyRoute(() => import('./pages/developer/DeveloperSalesOverviewPage'));
+const DeveloperViewingsPage = lazyRoute(() => import('./pages/developer/DeveloperViewingsPage'));
+const DeveloperReservationsPage = lazyRoute(() => import('./pages/developer/DeveloperReservationsPage'));
+const DeveloperOffersPage = lazyRoute(() => import('./pages/developer/DeveloperOffersPage'));
+const DeveloperContractsPage = lazyRoute(() => import('./pages/developer/DeveloperContractsPage'));
+const DeveloperCommissionsPage = lazyRoute(() => import('./pages/developer/DeveloperCommissionsPage'));
+const DeveloperHandoverPage = lazyRoute(() => import('./pages/developer/DeveloperHandoverPage'));
+const DeveloperPaymentsPage = lazyRoute(() => import('./pages/developer/DeveloperPaymentsPage'));
+const DeveloperLedgerPage = lazyRoute(() => import('./pages/developer/DeveloperLedgerPage'));
+const DeveloperDocumentsPage = lazyRoute(() => import('./pages/developer/DeveloperDocumentsPage'));
+const DeveloperMarketingPage = lazyRoute(() => import('./pages/developer/DeveloperMarketingPage'));
+const DeveloperInsightsPage = lazyRoute(() => import('./pages/developer/DeveloperInsightsPage'));
+const DeveloperSettingsPage = lazyRoute(() => import('./pages/developer/DeveloperSettingsPage'));
+const DeveloperExportTemplatesPage = lazyRoute(() => import('./pages/developer/DeveloperExportTemplatesPage'));
+const DeveloperAuditPage = lazyRoute(() => import('./pages/developer/DeveloperAuditPage'));
+const SharedUnitPage = lazyRoute(() => import('./pages/developer/SharedUnitPage'));
+const PublicProjectPage = lazyRoute(() => import('./pages/developer/PublicProjectPage'));
+const BuyerRoomPage = lazyRoute(() => import('./pages/developer/BuyerRoomPage'));
+const TwinViewerPage = lazyRoute(() => import('./pages/developer/TwinViewerPage'));
+const StudioPage = lazyRoute(() => import('./pages/developer/StudioPage'));
+const StudioProjectPage = lazyRoute(() => import('./pages/developer/StudioProjectPage'));
 /* The verification screen for the 2D -> 3D pipeline. Lazy like its
    siblings: it pulls the floor-plan renderer and nothing else does. */
-const StudioFloorPlanPage = lazy(() => import('./pages/developer/StudioFloorPlanPage'));
+const StudioFloorPlanPage = lazyRoute(() => import('./pages/developer/StudioFloorPlanPage'));
 // Outreach pages
-const OutreachHubPage = lazy(() => import('./pages/outreach/OutreachHubPage'));
-const CommunitiesPage = lazy(() => import('./pages/outreach/CommunitiesPage'));
-const ContactListsPage = lazy(() => import('./pages/outreach/ContactListsPage'));
-const EmailCampaignsPage = lazy(() => import('./pages/outreach/EmailCampaignsPage'));
-const SmsCampaignsPage = lazy(() => import('./pages/outreach/SmsCampaignsPage'));
-const OutreachInsightsPage = lazy(() => import('./pages/outreach/OutreachInsightsPage'));
+const OutreachHubPage = lazyRoute(() => import('./pages/outreach/OutreachHubPage'));
+const CommunitiesPage = lazyRoute(() => import('./pages/outreach/CommunitiesPage'));
+const ContactListsPage = lazyRoute(() => import('./pages/outreach/ContactListsPage'));
+const EmailCampaignsPage = lazyRoute(() => import('./pages/outreach/EmailCampaignsPage'));
+const SmsCampaignsPage = lazyRoute(() => import('./pages/outreach/SmsCampaignsPage'));
+const OutreachInsightsPage = lazyRoute(() => import('./pages/outreach/OutreachInsightsPage'));
 // Communications Hub. These EVOLVE the Outreach area rather than replacing it:
 // every route above still exists and still works (§8).
-const CommunicationsOverviewPage = lazy(() => import('./pages/outreach/CommunicationsOverviewPage'));
-const AgentsPage = lazy(() => import('./pages/outreach/AgentsPage'));
-const AgentBuilderPage = lazy(() => import('./pages/outreach/AgentBuilderPage'));
-const CampaignsPage = lazy(() => import('./pages/outreach/CampaignsPage'));
-const CampaignBuilderPage = lazy(() => import('./pages/outreach/CampaignBuilderPage'));
-const ContactsPage = lazy(() => import('./pages/outreach/ContactsPage'));
-const ContactImportPage = lazy(() => import('./pages/outreach/ContactImportPage'));
-const ContactProfilePage = lazy(() => import('./pages/outreach/ContactProfilePage'));
-const WhatsAppPage = lazy(() => import('./pages/outreach/WhatsAppPage'));
-const WhatsAppInboxPage = lazy(() => import('./pages/outreach/WhatsAppInboxPage'));
-const WhatsAppTemplatesPage = lazy(() => import('./pages/outreach/WhatsAppTemplatesPage'));
-const ChannelAccountsPage = lazy(() => import('./pages/outreach/ChannelAccountsPage'));
-const CommunicationsAnalyticsPage = lazy(() => import('./pages/outreach/CommunicationsAnalyticsPage'));
-const CallsPage = lazy(() => import('./pages/outreach/CallsPage'));
-const CommunicationsBillingPage = lazy(() => import('./pages/outreach/CommunicationsBillingPage'));
+const CommunicationsOverviewPage = lazyRoute(() => import('./pages/outreach/CommunicationsOverviewPage'));
+const AgentsPage = lazyRoute(() => import('./pages/outreach/AgentsPage'));
+const AgentBuilderPage = lazyRoute(() => import('./pages/outreach/AgentBuilderPage'));
+const CampaignsPage = lazyRoute(() => import('./pages/outreach/CampaignsPage'));
+const CampaignBuilderPage = lazyRoute(() => import('./pages/outreach/CampaignBuilderPage'));
+const ContactsPage = lazyRoute(() => import('./pages/outreach/ContactsPage'));
+const ContactImportPage = lazyRoute(() => import('./pages/outreach/ContactImportPage'));
+const ContactProfilePage = lazyRoute(() => import('./pages/outreach/ContactProfilePage'));
+const WhatsAppPage = lazyRoute(() => import('./pages/outreach/WhatsAppPage'));
+const WhatsAppInboxPage = lazyRoute(() => import('./pages/outreach/WhatsAppInboxPage'));
+const WhatsAppTemplatesPage = lazyRoute(() => import('./pages/outreach/WhatsAppTemplatesPage'));
+const ChannelAccountsPage = lazyRoute(() => import('./pages/outreach/ChannelAccountsPage'));
+const CommunicationsAnalyticsPage = lazyRoute(() => import('./pages/outreach/CommunicationsAnalyticsPage'));
+const CallsPage = lazyRoute(() => import('./pages/outreach/CallsPage'));
+const CommunicationsBillingPage = lazyRoute(() => import('./pages/outreach/CommunicationsBillingPage'));
 
 // Admin pages
 import AdminLayout from './components/layouts/AdminLayout';
 
-const AdminOverviewPage = lazy(() => import('./pages/admin/AdminOverviewPage'));
-const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
-const AdminUser360Page = lazy(() => import('./pages/admin/AdminUser360Page'));
-const AdminPropertiesPage = lazy(() => import('./pages/admin/AdminPropertiesPage'));
-const AdminCampaignsPage = lazy(() => import('./pages/admin/AdminCampaignsPage'));
-const AdminOutreachPage = lazy(() => import('./pages/admin/AdminOutreachPage'));
-const AdminMarketsPage = lazy(() => import('./pages/admin/AdminMarketsPage'));
-const AdminSourcesPage = lazy(() => import('./pages/admin/AdminSourcesPage'));
-const AdminSignalsPage = lazy(() => import('./pages/admin/AdminSignalsPage'));
-const AdminMatchesPage = lazy(() => import('./pages/admin/AdminMatchesPage'));
-const AdminCreditsPage = lazy(() => import('./pages/admin/AdminCreditsPage'));
-const AdminPaymentsPage = lazy(() => import('./pages/admin/AdminPaymentsPage'));
-const AdminFinancePage = lazy(() => import('./pages/admin/AdminFinancePage'));
-const AdminProvidersPage = lazy(() => import('./pages/admin/AdminProvidersPage'));
-const AdminVerifyCogsPage = lazy(() => import('./pages/admin/AdminVerifyCogsPage'));
-const AdminVoiceAiPage = lazy(() => import('./pages/admin/AdminVoiceAiPage'));
-const AdminPricingPage = lazy(() => import('./pages/admin/AdminPricingPage'));
-const AdminSpendCapsPage = lazy(() => import('./pages/admin/AdminSpendCapsPage'));
-const AdminDiagnosticsPage = lazy(() => import('./pages/admin/AdminDiagnosticsPage'));
-const AdminStoragePage = lazy(() => import('./pages/admin/AdminStoragePage'));
-const AdminSponsoredPage = lazy(() => import('./pages/admin/AdminSponsoredPage'));
-const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
-const AdminHealthPage = lazy(() => import('./pages/admin/AdminHealthPage'));
-const AdminRiskPage = lazy(() => import('./pages/admin/AdminRiskPage'));
-const SiteStudioPage = lazy(() => import('./pages/admin/SiteStudioPage'));
-const AppContentPage = lazy(() => import('./pages/admin/AppContentPage'));
-const AdminEngagementPage = lazy(() => import('./pages/admin/AdminEngagementPage'));
-const AdminLiveChatReportsPage = lazy(() => import('./pages/admin/AdminLiveChatReportsPage'));
-const AdminHomePage = lazy(() => import('./pages/admin/AdminHomePage'));
-const CommunicationOverviewPage = lazy(() => import('./pages/admin/communication/CommunicationOverviewPage'));
-const CommunicationVoicePage = lazy(() => import('./pages/admin/communication/CommunicationVoicePage'));
-const CommunicationCallCenterPage = lazy(() => import('./pages/admin/communication/CommunicationCallCenterPage'));
-const CommunicationEmailPage = lazy(() => import('./pages/admin/communication/CommunicationEmailPage'));
-const CommunicationWhatsAppPage = lazy(() => import('./pages/admin/communication/CommunicationWhatsAppPage'));
-const CommunicationUsagePage = lazy(() => import('./pages/admin/communication/CommunicationUsagePage'));
-const CommunicationAdvancedPage = lazy(() => import('./pages/admin/communication/CommunicationAdvancedPage'));
+const AdminOverviewPage = lazyRoute(() => import('./pages/admin/AdminOverviewPage'));
+const AdminUsersPage = lazyRoute(() => import('./pages/admin/AdminUsersPage'));
+const AdminUser360Page = lazyRoute(() => import('./pages/admin/AdminUser360Page'));
+const AdminPropertiesPage = lazyRoute(() => import('./pages/admin/AdminPropertiesPage'));
+const AdminCampaignsPage = lazyRoute(() => import('./pages/admin/AdminCampaignsPage'));
+const AdminOutreachPage = lazyRoute(() => import('./pages/admin/AdminOutreachPage'));
+const AdminMarketsPage = lazyRoute(() => import('./pages/admin/AdminMarketsPage'));
+const AdminSourcesPage = lazyRoute(() => import('./pages/admin/AdminSourcesPage'));
+const AdminSignalsPage = lazyRoute(() => import('./pages/admin/AdminSignalsPage'));
+const AdminMatchesPage = lazyRoute(() => import('./pages/admin/AdminMatchesPage'));
+const AdminCreditsPage = lazyRoute(() => import('./pages/admin/AdminCreditsPage'));
+const AdminPaymentsPage = lazyRoute(() => import('./pages/admin/AdminPaymentsPage'));
+const AdminFinancePage = lazyRoute(() => import('./pages/admin/AdminFinancePage'));
+const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersPage'));
+const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCogsPage'));
+const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
+const AdminPricingPage = lazyRoute(() => import('./pages/admin/AdminPricingPage'));
+const AdminSpendCapsPage = lazyRoute(() => import('./pages/admin/AdminSpendCapsPage'));
+const AdminDiagnosticsPage = lazyRoute(() => import('./pages/admin/AdminDiagnosticsPage'));
+const AdminStoragePage = lazyRoute(() => import('./pages/admin/AdminStoragePage'));
+const AdminSponsoredPage = lazyRoute(() => import('./pages/admin/AdminSponsoredPage'));
+const AdminSettingsPage = lazyRoute(() => import('./pages/admin/AdminSettingsPage'));
+const AdminHealthPage = lazyRoute(() => import('./pages/admin/AdminHealthPage'));
+const AdminRiskPage = lazyRoute(() => import('./pages/admin/AdminRiskPage'));
+const SiteStudioPage = lazyRoute(() => import('./pages/admin/SiteStudioPage'));
+const AppContentPage = lazyRoute(() => import('./pages/admin/AppContentPage'));
+const AdminEngagementPage = lazyRoute(() => import('./pages/admin/AdminEngagementPage'));
+const AdminLiveChatReportsPage = lazyRoute(() => import('./pages/admin/AdminLiveChatReportsPage'));
+const AdminHomePage = lazyRoute(() => import('./pages/admin/AdminHomePage'));
+const CommunicationOverviewPage = lazyRoute(() => import('./pages/admin/communication/CommunicationOverviewPage'));
+const CommunicationVoicePage = lazyRoute(() => import('./pages/admin/communication/CommunicationVoicePage'));
+const CommunicationCallCenterPage = lazyRoute(() => import('./pages/admin/communication/CommunicationCallCenterPage'));
+const CommunicationEmailPage = lazyRoute(() => import('./pages/admin/communication/CommunicationEmailPage'));
+const CommunicationWhatsAppPage = lazyRoute(() => import('./pages/admin/communication/CommunicationWhatsAppPage'));
+const CommunicationUsagePage = lazyRoute(() => import('./pages/admin/communication/CommunicationUsagePage'));
+const CommunicationAdvancedPage = lazyRoute(() => import('./pages/admin/communication/CommunicationAdvancedPage'));
 
 export interface RouteConfig {
   name: string;

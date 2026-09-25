@@ -89,7 +89,33 @@ export interface LanguageLexicon {
   propertyTypes: Record<PropertyTerm, string[]>;
   /** "budget", "price up to". */
   budget: string[];
-  /** Words that mean the writer is an agent/agency, not a principal. */
+  /**
+   * FIRST-PERSON AGENCY SPEECH. Not the word "agency".
+   *
+   * These decide agencyVoice, which disqualifies a post as DEMAND: "we have
+   * clients looking for 2BR flats" is a sales pitch aimed at sellers, not a
+   * lead.
+   *
+   * THE LIST USED TO CONTAIN BARE NOUNS -- agency, agent, broker, realtor,
+   * სააგენტო, агентство -- and matched anybody who MENTIONED an agency.
+   * Production, 2026-09-25, forum.ge board 92, all three flagged as agency
+   * voice and all three real buyers:
+   *
+   *   "მე ბინას ვეძებ, ჯერ სააგენტო ... არ შემხვედრია რომელიც ტყუილში არ დავიჭირე"
+   *     I'm looking for a flat; I have not met an agent who did not lie
+   *   "მინდა ბინა შევიძინო ... სააგენტოები არ გამომეხმაურონო"
+   *     I want to buy a flat; the seller says agencies should not call
+   *   "ორი კვირაა რაც ვრეკავ უძრავი ქონების სააგენტოებში"
+   *     for two weeks I have been ringing estate agencies
+   *
+   * The second one is a buyer explicitly saying agencies should not contact
+   * her, marked as an agency. These are the three strongest leads the board
+   * produced, and every one would have been discarded.
+   *
+   * A noun names a topic; only a verb in the first person names a speaker.
+   * Same failure as "дом" inside "рядом": a keyword standing in for a
+   * judgement.
+   */
   agency: string[];
 }
 
@@ -154,7 +180,7 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       property: ['property', 'real estate', 'place'],
     },
     budget: ['budget', 'up to', 'max price', 'price range', 'around'],
-    agency: ['agency', 'agent', 'broker', 'realtor', 'we have', 'our listings', 'contact us'],
+    agency: ['we have', 'our listings', 'contact us'],
   },
 
   ka: {
@@ -186,7 +212,7 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       property: ['უძრავი ქონება', 'ქონება'],
     },
     budget: ['ბიუჯეტი', 'მაქსიმუმ', 'ფასი', 'დაახლოებით'],
-    agency: ['სააგენტო', 'აგენტი', 'ბროკერი', 'დაგვიკავშირდით'],
+    agency: ['დაგვიკავშირდით', 'გთავაზობთ'],
   },
 
   ru: {
@@ -221,7 +247,7 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       property: ['недвижимость', 'жилье', 'жильё'],
     },
     budget: ['бюджет', 'до', 'максимум', 'в районе', 'ценовой диапазон'],
-    agency: ['агентство', 'агент', 'риелтор', 'брокер', 'наши объекты', 'звоните'],
+    agency: ['наши объекты', 'звоните'],
   },
 
   tr: {
@@ -253,7 +279,7 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       property: ['gayrimenkul', 'emlak', 'konut'],
     },
     budget: ['bütçe', 'en fazla', 'fiyat aralığı', 'civarında'],
-    agency: ['emlakçı', 'emlak ofisi', 'danışman', 'bize ulaşın'],
+    agency: ['bize ulaşın', 'ofisimiz'],
   },
 
   ar: {
@@ -284,7 +310,7 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       property: ['عقار', 'عقارات'],
     },
     budget: ['الميزانية', 'حتى', 'السعر', 'حوالي'],
-    agency: ['مكتب عقاري', 'وسيط', 'تواصل معنا'],
+    agency: ['تواصل معنا', 'لدينا'],
   },
 
   he: {
@@ -315,7 +341,7 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       property: ['נדלן', 'נדל"ן', 'נכס'],
     },
     budget: ['תקציב', 'עד', 'טווח מחירים', 'בערך'],
-    agency: ['תיווך', 'מתווך', 'סוכנות', 'צרו קשר'],
+    agency: ['צרו קשר', 'יש לנו'],
   },
 
   hi: {
@@ -346,7 +372,7 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       property: ['प्रॉपर्टी', 'संपत्ति'],
     },
     budget: ['बजट', 'तक', 'कीमत', 'लगभग'],
-    agency: ['एजेंट', 'ब्रोकर', 'दलाल', 'संपर्क करें'],
+    agency: ['संपर्क करें', 'हमारे पास'],
   },
 };
 

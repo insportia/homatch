@@ -324,23 +324,29 @@ export function resolve(
     score += 0.2;
   } else if (comparePlaces(a.city, b.city) === 'AGREE') {
     /*
-     * RECORDED AT ZERO, BECAUSE IT FIRES ON EVERY PAIR.
+     * RECORDED AT ZERO.
      *
-     * resolveMarket compares observations WITHIN one city, so "same city"
-     * was true of every comparison this resolver has ever made -- and it was
-     * worth +0.1. A signal that cannot distinguish any pair from any other
-     * carries no information about either; it just moved the whole
-     * population 0.1 closer to a merge.
+     * Not because the cities are guaranteed to match -- resolveMarket
+     * compares within a COUNTRY and a transaction, not within a city, and a
+     * Chakvi listing really does conflict with a Tbilisi one a few lines
+     * above. That conflict does real work.
      *
-     * That 0.1 is why two flats in different districts reached 0.70 exactly
-     * -- LIKELY_THRESHOLD -- on area and room count. Tbilisi has thousands
-     * of 90 m2 three-room flats. Being in Tbilisi is what made them
-     * comparable, not what makes them the same.
+     * But among the pairs that get this far, having survived the city
+     * conflict check, "same city" is close to constant: Georgian inventory
+     * concentrates in the capital, so almost every surviving pair is two
+     * Tbilisi listings. A signal that is nearly always true of the pairs
+     * that reach it separates almost nothing, and it was worth +0.1.
      *
-     * Kept in the signal list rather than deleted: a reader of a decision
-     * should be able to see that the cities were checked and did agree.
+     * That 0.1 was the whole margin. Area agreement (0.45) plus a matching
+     * room count (0.15) is 0.60; plus the city it is 0.70, which is
+     * LIKELY_THRESHOLD exactly. Two flats in different districts merged on
+     * it. Tbilisi has thousands of 90 m2 three-room flats: being in Tbilisi
+     * is what made them comparable, not what makes them the same.
+     *
+     * Kept in the signal list rather than deleted, so a reader of a decision
+     * can see the cities were checked and did agree.
      */
-    say('same city', 0, `${a.city} — the market being compared, not evidence within it`);
+    say('same city', 0, `${a.city} — true of nearly every pair that reaches here`);
   }
   if (a.rooms !== null && a.rooms === b.rooms) {
     say('same room count', 0.15, String(a.rooms));

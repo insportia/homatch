@@ -362,11 +362,14 @@ test('two flats in different districts of one city are NOT one property', () => 
 
 test('being in the same city is not evidence, because every comparison shares it', () => {
   /*
-   * resolveMarket compares within ONE city, so "same city" was true of every
-   * comparison the resolver has ever made -- and it was worth +0.1. A signal
-   * that cannot distinguish any pair from any other moved the whole
-   * population that much closer to a merge, and 0.1 is exactly what carried
-   * the pair below over LIKELY_THRESHOLD.
+   * "Same city" was worth +0.1, and among the pairs that reach the scoring
+   * -- having already survived the city-conflict check -- it is nearly
+   * always true: Georgian inventory concentrates in the capital. A signal
+   * that separates almost nothing moved the whole population that much
+   * closer to a merge.
+   *
+   * And 0.1 was the entire margin: area (0.45) plus room count (0.15) is
+   * 0.60, plus the city it is 0.70, which is LIKELY_THRESHOLD exactly.
    *
    * It is still recorded, so a reader can see the cities were checked.
    */

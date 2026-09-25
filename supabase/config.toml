@@ -120,3 +120,8 @@ verify_jwt = false
 
 [functions.active-search-notify]
 verify_jwt = false
+
+# Supply discovery. Same shape as the other ticks: no customer, no user JWT,
+# authenticates on supply_discovery_token in admin_settings.
+[functions.supply-discovery]
+verify_jwt = false

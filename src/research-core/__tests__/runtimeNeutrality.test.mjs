@@ -329,6 +329,25 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/evidenceFreshness.ts',
     'supabase/functions/run-matching-v2/index.ts',
     'supabase/functions/revalidate-evidence/index.ts',
+    /*
+     * SUPPLY DISCOVERY — the seventh seam, and the widest.
+     *
+     * It is the production discovery path: it builds createPortalRuntime()
+     * and asks the registered adapters for listings. That means it touches
+     * more of the core than any other consumer — the runtime, the listing
+     * model, language detection, hashing and entity resolution.
+     *
+     * It is still a seam rather than a consumer, and the test is what it
+     * does NOT contain: no extractor, no fetch of its own, no source policy,
+     * no resolution rule. It assembles the door, walks through it, and
+     * writes down what it found. Every decision it makes is made by a pure
+     * function in the core, which is what keeps those decisions testable
+     * without a network.
+     *
+     * If a selector, a rate limit or a merge rule ever appears in this file,
+     * the seam has stopped being a seam.
+     */
+    'supabase/functions/supply-discovery/index.ts',
   ]);
 
   const roots = ['src', 'supabase/functions', 'official-worker/src'];

@@ -785,6 +785,13 @@ jobs:
             # inside a customer's campaign or a page view -- a signal wanted by
             # forty campaigns is re-read once, here, on this tick.
             "revalidate-evidence"
+            # Supply discovery. The production fetch path: it builds
+            # createPortalRuntime() - SSRF allowlist, robots, rate limiter,
+            # breaker, coalescer - asks each PERMITTED adapter for listings
+            # and writes them into the global intelligence store. Driven by
+            # the worker topology, never by a browser, and authenticated on
+            # a private token like every other tick here.
+            "supply-discovery"
             # ── Communications: the three that are NOT called by a browser ──
             #
             # These MUST be here rather than in the JWT list, and the
